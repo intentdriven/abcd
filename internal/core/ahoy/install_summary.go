@@ -318,6 +318,31 @@ var remainingHelp = SummaryItem{
 	Action: "Run abcd ahoy install again and answer y to each question; abcd ahoy doctor lists the steps one by one.",
 }
 
+// unverifiedCopyHelp explains an owned PATH copy whose build provenance did not
+// verify, with the hand check for that file.
+func unverifiedCopyHelp(check, why string) SummaryItem {
+	if check == "" {
+		check = ghAttestationVerifyCommand("<the abcd on your PATH>", "")
+	}
+	if why != "" {
+		// The hand check is bound to the copy's own older tag, which a
+		// genuine older build passes, so it is qualified: a pass is not the
+		// copy being adopted.
+		return SummaryItem{
+			What:   "The abcd on your PATH is " + why + ", so it was not adopted; it was left as it is.",
+			Why:    "With no verified cache to compare it with, the copy names its own release, and a release older than the newest this machine has known is refused so an old build cannot stand in for a newer one.",
+			Action: "Reinstall the newest release with the install one-liner in the README, or run abcd update. You can check the copy by hand with `" + check + "`, but a pass proves only that it is a genuine build of that older release; it does not lift the newest-release floor, and the copy is still refused.",
+			Refs:   []string{UnverifiedCopyGapID},
+		}
+	}
+	return SummaryItem{
+		What:   "The abcd on your PATH could not be verified as a release build of abcd, so it was not adopted; it was left as it is.",
+		Why:    "Its recorded checksum shows only that it is the file that was installed; the build record the release workflow signed is what shows who built it.",
+		Action: "Check it by hand with `" + check + "`, or run abcd ahoy install again once GitHub's attestations API is reachable; if it fails, reinstall with the install one-liner in the README.",
+		Refs:   []string{UnverifiedCopyGapID},
+	}
+}
+
 // statusHeadline is the one sentence that opens the summary for each status.
 var statusHeadline = map[string]string{
 	"already_up_to_date": "abcd was already set up in this repository, so nothing needed changing.",
@@ -381,9 +406,17 @@ func (r *InstallResult) explain() {
 		it.Refs = []string{c}
 		r.Summary = append(r.Summary, it)
 	}
-	if len(r.Remaining) > 0 {
+	var rest []string
+	for _, id := range r.Remaining {
+		if id == UnverifiedCopyGapID {
+			r.Summary = append(r.Summary, unverifiedCopyHelp(r.unverifiedCheck, r.unverifiedWhy))
+			continue
+		}
+		rest = append(rest, id)
+	}
+	if len(rest) > 0 {
 		it := remainingHelp
-		it.Refs = append([]string(nil), r.Remaining...)
+		it.Refs = rest
 		r.Summary = append(r.Summary, it)
 	}
 	for _, id := range r.OptionalSkipped {

@@ -49,11 +49,29 @@ authenticating the cached hash against the release's published `checksums.txt`
 when online, or noting in its success line that it provisioned from an
 unauthenticated cache when offline. Only an empty, stale, or unavailable cache
 falls back to downloading the release binary and `checksums.txt` and verifying
-the binary's SHA-256 against the manifest. Whenever a run has established that
+the binary's SHA-256 against the manifest. The manifest sits on the same
+release page as the binary, so a download is also checked against its signed
+build provenance when the GitHub CLI, `gh`, is installed and signed in: the
+bootstrap runs `gh attestation verify` on it, held to this repository's release
+workflow and to the commit the release tag names, and installs nothing if that
+check fails, or if the GitHub API cannot say which commit the tag names. abcd
+does not require `gh`. Without it, with a `gh` older than 2.68, or with a `gh`
+that is not signed in, the download installs
+on the checksum alone, and the success line carries a warning that says so,
+why, and the `gh attestation verify` command that checks the installed binary
+by hand. Whenever a run has established that
 manifest trust — an authenticated cache hit, or a fresh verified download — it
 also writes `~/.abcd.noindex/cache-attestation`, a small home-scoped record naming the
-data directory, the manifest-verified SHA-256, and the trust it rests on; an
-offline run writes nothing there and leaves an existing record as it was. A mismatch, a manifest that doesn't
+data directory, the manifest-verified SHA-256, the release, and the trust it
+rests on; an offline run writes nothing there and leaves an existing record as
+it was, and a run that cannot write a new record removes the old one rather
+than leave it vouching for an earlier release. The same run raises
+`~/.abcd.noindex/release-mark`, the newest release this machine has installed
+or verified, which `abcd update` records too. A release older than that mark is
+not installed: not a cached copy, and not a latest release that has fallen back
+below it because the newer one was withdrawn. Going back is your choice, made by
+naming the tag, `abcd update <tag>`, which installs that release and records it
+as the newest. A mismatch, a manifest that doesn't
 list the platform, or a platform outside the released matrix (darwin and linux
 on amd64 and arm64) installs nothing and says why in plain language. A plugin
 root that already holds the binary costs one file test and no network.
@@ -91,8 +109,17 @@ own install verb — whichever entry it leaves on `PATH`: the copy of the
 verified release binary, the track-latest shim `--dev` writes, and a symlink
 into the plugin root that an earlier release wrote and that still works. The
 copy is made only from a cache that `~/.abcd.noindex/cache-attestation` vouches for —
-the directory it names, holding the hash it names — so a data directory pointed
-at by an environment variable alone is never promoted onto `PATH`. Neither
+the directory it names, holding the hash it names, at a release no older than
+the newest-release mark — so a data directory pointed at by an environment
+variable alone is never promoted onto `PATH`, and neither is an older release's
+copy restored into the attested directory. Before it writes the copy, the
+install verb also verifies the cached binary's signed build provenance, the
+same check `abcd update` makes, bound to the commit of the release the
+attestation names, so it reaches GitHub's attestations and git APIs and the
+Sigstore TUF repository; when that check fails or cannot run, offline
+included, it writes no entry and says what failed. An entry that already holds
+those bytes is not written again, but its provenance is still checked, and
+if that fails it is left as it is and reported as not verified. Neither
 record counts when `~/.abcd.noindex` is a symlink — a dotfiles checkout, say — and
 nothing abcd writes goes through one: the hooks, the install verb and the
 one-liner each refuse it and say so, as the rules loader refuses a
@@ -101,7 +128,12 @@ installing. With no verified copy to make, the install writes no entry rather th
 the plugin root, which the next plugin update would break: it says which record
 is missing or disagrees, and names the command to run first, the
 [install](#cli) one-liner, after which re-running the install adopts the copy
-the one-liner wrote. A symlink into the plugin root that an earlier release
+the one-liner wrote, once that copy passes the same build-provenance check,
+bound to the release its build metadata names. Every later install checks the
+copy again, whether or not the cache is there. A copy that fails, or that cannot be checked, is
+left as it is and not adopted: the install says what failed, gives the
+`gh attestation verify` command for that file, and reports itself only partly
+done rather than set up. A symlink into the plugin root that an earlier release
 wrote is named by `abcd ahoy` as a gap while it still works, and an entry the
 record names that has since stopped resolving is reported as abcd's own and
 replaced by the install. The record is read
@@ -190,7 +222,7 @@ a release it did not come from.
 
 abcd keeps what belongs to your account rather than to one repository in one
 folder in your home directory, `~/.abcd.noindex`: the `path-entry` and
-`cache-attestation` records, the `trusted-roots`, `filter-roots` and
+`cache-attestation` and `release-mark` records, the `trusted-roots`, `filter-roots` and
 `rules.json` declarations, the transcript, worktree and sources stores, and the run logs.
 The `.noindex` ending is a name the Mac's search indexer passes over, so a new
 worktree or transcript there sets off no indexing; abcd changes only the name
@@ -350,23 +382,32 @@ those reasons is named, with the check it failed, by `abcd ahoy` as a
 
 ## CLI
 
-One line, checksum-verified, no administrator rights. Pick your operating
+One line, no administrator rights. Pick your operating
 system: the command detects your architecture, downloads the binary and the
 `checksums.txt` manifest from the latest release, verifies the binary's SHA-256
 against the manifest (and refuses to install on any mismatch — or if the
 manifest doesn't list the binary at all), then installs to `~/.local/bin`, the
-single-user location.
+single-user location. When the GitHub CLI, `gh` 2.68 or later, is installed
+and signed in, the command also checks the binary against its signed build
+record with `gh attestation verify`, held to this repository's release
+workflow and to the commit the latest release's tag names, and installs
+nothing if that check fails or that commit cannot be looked up.
+
+If you do not have `gh`, the download is checked only against the
+`checksums.txt` published beside it on the same release page, not against the
+signed build record, and the command prints a warning saying so, with the `gh
+attestation verify` command that checks the installed binary by hand.
 
 ### macOS
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; v=none; if command -v gh >/dev/null 2>&1 && gh attestation verify --help 2>/dev/null | grep -q -e --source-digest; then t=$(curl -q --proto =https --proto-redir =https -fsS -o /dev/null -w "%{redirect_url}" "https://github.com/intentdriven/abcd/releases/latest") || t=; t=$(printf "%s\n" "$t" | sed -n "s|^https://github.com/intentdriven/abcd/releases/tag/\(v[0-9][0-9A-Za-z.-]*\)$|\1|p"); c=; [ -z "$t" ] || c=$(curl -q --proto =https --proto-redir =https -fsS -H "Accept: application/vnd.github.sha" "https://api.github.com/repos/intentdriven/abcd/commits/$t") || c=; printf "%s\n" "$c" | grep -q "^[0-9a-f]\{40\}$" || { echo "abcd install: the commit of the latest release could not be resolved through the GitHub API, so the build provenance of $b cannot be bound to that release. Nothing is installed." >&2; exit 1; }; v=0; gh attestation verify "$b" --hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml --source-digest "$c" || v=$?; fi; case "$v" in 0|4|none) ;; *) echo "abcd install: gh attestation verify could not verify the build provenance of $b as signed by the release workflow of intentdriven/abcd from the commit of release $t. Nothing is installed." >&2; exit 1;; esac; [ "$v" = 0 ] || echo "abcd install: WARNING: $b was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record, because gh 2.68 or later, signed in, is not available. To check it by hand: gh attestation verify $HOME/.local/bin/abcd --hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml --source-digest \$(gh api repos/intentdriven/abcd/commits/\$($HOME/.local/bin/abcd --version | sed -n \"1s/^abcd //p\") -H \"Accept: application/vnd.github.sha\")" >&2; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
 ```
 
 ### Linux
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; v=none; if command -v gh >/dev/null 2>&1 && gh attestation verify --help 2>/dev/null | grep -q -e --source-digest; then t=$(curl -q --proto =https --proto-redir =https -fsS -o /dev/null -w "%{redirect_url}" "https://github.com/intentdriven/abcd/releases/latest") || t=; t=$(printf "%s\n" "$t" | sed -n "s|^https://github.com/intentdriven/abcd/releases/tag/\(v[0-9][0-9A-Za-z.-]*\)$|\1|p"); c=; [ -z "$t" ] || c=$(curl -q --proto =https --proto-redir =https -fsS -H "Accept: application/vnd.github.sha" "https://api.github.com/repos/intentdriven/abcd/commits/$t") || c=; printf "%s\n" "$c" | grep -q "^[0-9a-f]\{40\}$" || { echo "abcd install: the commit of the latest release could not be resolved through the GitHub API, so the build provenance of $b cannot be bound to that release. Nothing is installed." >&2; exit 1; }; v=0; gh attestation verify "$b" --hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml --source-digest "$c" || v=$?; fi; case "$v" in 0|4|none) ;; *) echo "abcd install: gh attestation verify could not verify the build provenance of $b as signed by the release workflow of intentdriven/abcd from the commit of release $t. Nothing is installed." >&2; exit 1;; esac; [ "$v" = 0 ] || echo "abcd install: WARNING: $b was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record, because gh 2.68 or later, signed in, is not available. To check it by hand: gh attestation verify $HOME/.local/bin/abcd --hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml --source-digest \$(gh api repos/intentdriven/abcd/commits/\$($HOME/.local/bin/abcd --version | sed -n \"1s/^abcd //p\") -H \"Accept: application/vnd.github.sha\")" >&2; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
 ```
 
 ### Windows
@@ -401,7 +442,9 @@ not own.
 
 Prefer to inspect before running? The command is exactly what it says: two
 downloads from [the latest release](https://github.com/intentdriven/abcd/releases/latest),
-a checksum verification, a copy into a directory you own, and one two-line
+a checksum verification, a `gh attestation verify` when `gh` can run one,
+bound to the commit GitHub's API names for the latest release's tag (or the
+warning when it cannot), a copy into a directory you own, and one two-line
 record in `~/.abcd.noindex/path-entry` naming what it just installed and that binary's
 SHA-256. The record is what the plugin's hooks read before they will run an
 `abcd` off your `PATH`. You can do the same by hand — grab the binary for your
@@ -415,7 +458,23 @@ commit, with the checksums generated over the same bytes that are uploaded.
 To move a `~/.local/bin` install to a later release, run `abcd update`; `abcd
 update --check` reports whether one is available and names the command your
 install shape takes, since a plugin-root binary takes a plugin update and a
-package-manager install takes the manager's own upgrade.
+package-manager install takes the manager's own upgrade. `abcd update` checks
+more than the checksum: before it swaps anything it verifies the release's
+signed build provenance, proving the binary was built by this repository's
+release workflow from the commit the release's tag names, and it refuses the
+swap, naming what failed, when that cannot be verified, offline included. To
+do the same check by hand, run `gh attestation verify <binary> --repo
+intentdriven/abcd --signer-workflow
+intentdriven/abcd/.github/workflows/release.yml --source-digest <commit>`,
+where `<commit>` is what `gh api repos/intentdriven/abcd/commits/<tag> -H
+'Accept: application/vnd.github.sha'` prints for the release's tag.
+
+The script abcdev.app serves at `/install.sh` does what the one-liners do,
+the same `gh attestation verify` step and its warning included, and one thing
+more: after the install it records the release in
+`~/.abcd.noindex/release-mark`, the newest-release mark the plugin's bootstrap
+and `abcd update` keep, and only ever raises it. It does not write
+`~/.abcd.noindex/path-entry`.
 
 ## What adopting a repository commits
 
