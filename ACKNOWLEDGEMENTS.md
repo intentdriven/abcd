@@ -338,6 +338,21 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   dashboard's writes pass through: over plain HTTP it judges a request's
   Origin against its Host, with no token to keep.
   <https://pkg.go.dev/net/http#CrossOriginProtection>
+- **coder/websocket (Coder, ISC, <https://github.com/coder/websocket>)** —
+  the WebSocket library the brief session's relay speaks through
+  (`internal/surface/session`, spc-2610141709430146 step 1): one module with
+  no dependencies of its own. Like golang.org/x/term it is named here rather
+  than in `go.mod` alone, because the product thinker approved it by name as
+  the one dependency the relay adds.
+- **The rascals demo repository's join pattern** — the precedent for how a
+  person joins a brief session and how a team runs its relay
+  (itd-2610091016262335, adr-2610091016270711): a six-character code from a
+  31-symbol alphabet with the look-alike characters left out, drawn from a
+  cryptographic source; wrong codes limited per address, an IPv6 visitor
+  counted by its /64, and the forwarded address trusted only behind a
+  declared proxy; and one free Render web service, deployed from a Blueprint
+  with its secret unsynced, serving every room. `internal/core/session` and
+  `abcd session blueprint` follow it.
 - **TruffleHog (Truffle Security)** — the optional deeper secret scanner the
   `scan.deep` recommendation keys on when the binary is present
   (`internal/core/ahoy`); integrated as an opt-in engine, never bundled.
