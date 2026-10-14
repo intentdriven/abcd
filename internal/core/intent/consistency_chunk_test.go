@@ -652,3 +652,71 @@ func TestConsistencyIngestRefusesAnEndOutsideItsChunk(t *testing.T) {
 		t.Fatalf("the refused ingest filed %d findings or wrote the reviews shelf", len(f.calls))
 	}
 }
+
+// TestConsistencyOwnerMatchesTheChunkThatReports: for every pair of documents,
+// across whole-corpus plans of two to six or more groups, the owner the plan
+// computes (consistencyOwners.owner, the ingest's set-aside test) is the one
+// chunk whose request reports the pair, so the cross-group formula is held on
+// every pair rather than through self-pairs.
+func TestConsistencyOwnerMatchesTheChunkThatReports(t *testing.T) {
+	seen := map[int]bool{}
+	// A plan of two groups overflows only beside a document no chunk holds:
+	// two groups alone fit the limit, so the first case carries one.
+	for _, tc := range []struct {
+		n     int
+		sizes map[int]int
+	}{{3, map[int]int{1: 5000}}, {4, nil}, {5, nil}, {8, nil}} {
+		r, all := chunkRepo(t, tc.n, 1000, tc.sizes)
+		root := r.Root()
+		n := tc.n
+		const limit = 6000
+		em, err := EmitConsistency(root, "", ConsistencyEmitOptions{MaxRequestBytes: limit})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if em.Overflow == nil {
+			t.Fatalf("n=%d: the fixture did not overflow", n)
+		}
+		c, err := assembleConsistency(root, ConsistencyScopeCorpus)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan, err := planConsistencyChunks(c, em.ReceiptID, em.Overflow.CorpusBytes, limit)
+		if err != nil {
+			t.Fatal(err)
+		}
+		seen[plan.Groups] = true
+		unreviewed := map[string]bool{}
+		for _, u := range plan.Unreviewed {
+			unreviewed[u.Path] = true
+		}
+		var paths []string
+		for _, p := range all {
+			if !unreviewed[p] {
+				paths = append(paths, p)
+			}
+		}
+		reported := pairOwners(t, root, em.Chunks)
+		for a := range paths {
+			for b := a; b < len(paths); b++ {
+				got := reported[[2]string{paths[a], paths[b]}]
+				if len(got) != 1 {
+					t.Errorf("g=%d: %s and %s are reported by chunks %v; want exactly one", plan.Groups, paths[a], paths[b], got)
+					continue
+				}
+				for _, ab := range [][2]string{{paths[a], paths[b]}, {paths[b], paths[a]}} {
+					if o := plan.Owners.owner(ab[0], ab[1]); o != got[0] {
+						t.Errorf("g=%d: owner(%s, %s) = %d, but chunk %d reports the pair", plan.Groups, ab[0], ab[1], o, got[0])
+					}
+				}
+			}
+		}
+	}
+	big := 0
+	for g := range seen {
+		big = max(big, g)
+	}
+	if !seen[2] || big < 5 {
+		t.Fatalf("the plans covered groups %v; want 2 and at least one of 5 or more", seen)
+	}
+}
