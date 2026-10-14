@@ -775,8 +775,10 @@ These are the facilitator's design calls; none changes a criterion.
     printing runes only, with no C1 control, bidi mark or zero-width rune:
     the writer refuses another, and the reader reads a tip carrying one as
     unreadable, which neither the cap nor the overlap counts.
-  - A renew-only act (the loop's renewal and its fence) is not checked for
-    overlap: it keeps the tip's own footprint and cannot widen it, and the
+  - A renew-only act (the loop's renewal and its fence) over a live tip is
+    not checked for overlap (one over its own lapsed tip is, since the
+    lapsed reservation held nothing and another may have reserved its paths
+    since; the final review of 2026-10-14): it keeps the tip's own footprint and cannot widen it, and the
     overlap is not compared-and-swapped, so two people racing can each pass
     it with overlapping footprints; were renewals checked, both would then
     fail, and both land fences refuse, until one lapsed. A reserve naming its

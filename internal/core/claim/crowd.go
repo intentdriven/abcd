@@ -16,8 +16,8 @@ const MaxLive = 10
 // (the cap, checked first, since taking other work does not lift it). A
 // renewal, and a take-over of one's own other copy, add no reservation, so the
 // cap never refuses them. A reserve naming its footprint re-checks it, so a
-// reservation is never widened past another; a renew-only act, which keeps
-// the tip's footprint, is not checked for overlap.
+// reservation is never widened past another; a renew-only act over a live
+// tip, which keeps the tip's footprint, is not checked for overlap.
 //
 // Both are judged on the view just fetched, not compared-and-swapped: each
 // reservation is its own ref, so two people racing can each pass the cap or
@@ -45,11 +45,12 @@ func crowding(p *prepared, j judged, res Result) error {
 			return capRefusal(mine)
 		}
 	}
-	// A renew-only act keeps the tip's own footprint, so it widens nothing,
-	// and is not judged for overlap: an overlap a race let in would
-	// otherwise stop both reservations renewing, and both lanes landing,
-	// until one lapsed.
-	if p.req.Renew {
+	// A renew-only act over a live tip keeps the tip's own footprint, so it
+	// widens nothing, and is not judged for overlap: an overlap a race let in
+	// would otherwise stop both reservations renewing, and both lanes
+	// landing, until one lapsed. One over a lapsed tip revives a reservation
+	// that held nothing while it lapsed, so it is judged like a new one.
+	if p.req.Renew && j.verdict.Live {
 		return nil
 	}
 	for _, r := range others {

@@ -61,7 +61,8 @@ work is this copy's: the user's other computer still backs off), naming that pat
 paths are shared when they are equal or one is a directory holding the other.
 Running the command again to renew is checked the same way, since it names
 its footprint anew, so a reservation is never widened onto another; a build's
-or a drain's own renewal keeps its footprint and is not checked. Take other
+or a drain's own renewal keeps its footprint and is not checked while the
+reservation is live, but is when it revives a lapsed one. Take other
 work, or reserve with a footprint that does not overlap. The cap below and this
 overlap are judged on the reservations fetched just before the push, and each
 reservation is its own branch, so two people reserving at the same moment can

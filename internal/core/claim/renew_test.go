@@ -127,3 +127,30 @@ func TestARenewOnlyActIsNeverRefusedByAnOverlap(t *testing.T) {
 		t.Fatalf("a re-reserve naming its footprint is checked for overlap: %v", err)
 	}
 }
+
+// TestRevivingALapsedReservationIsJudgedForOverlap: a renew-only act over one's
+// own lapsed tip revives a reservation that held nothing while it lapsed, and
+// another may have reserved its paths since, so it is judged for overlap like
+// a new one.
+func TestRevivingALapsedReservationIsJudgedForOverlap(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	q := w.clone("99+quinn@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "iss-1", Footprint: []string{"a.go"}, Lease: time.Minute}); err != nil {
+		t.Fatal(err)
+	}
+	w.set(t0.Add(2 * time.Minute))
+	if _, err := q.reserve("iss-2", "a.go"); err != nil {
+		t.Fatalf("Q reserves the path P's lapsed reservation named: %v", err)
+	}
+	tip := w.remoteTip("iss-1")
+	w.set(t0.Add(3 * time.Minute))
+	_, err := p.do(Request{Record: "iss-1", Renew: true})
+	want := `"a.go" is in the footprint of iss-2, reserved by quinn until 2026-10-03T16:02:00Z; take other work; nothing was pushed`
+	if !errors.Is(err, ErrBackOff) || err.Error() != want {
+		t.Fatalf("reviving P's lapsed iss-1 over Q's iss-2 = %v; want %q", err, want)
+	}
+	if got := w.remoteTip("iss-1"); got != tip {
+		t.Fatalf("the refused revival moved the branch to %s", got)
+	}
+}
