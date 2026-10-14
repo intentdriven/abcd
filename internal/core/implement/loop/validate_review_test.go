@@ -1087,12 +1087,12 @@ func TestASecondAnswerKeptAsideNeverReplacesTheFirst(t *testing.T) {
 // lock, so a lock held past the retries never leaves the route's answer
 // standing where the host's agent writes; the refusal then names the answer
 // still recorded on the await. A return the host's agent wrote over the
-// placement is never taken back.
+// placement is never taken back, and a refused drop then never says it was.
 func TestATakeBackRemovesOnlyTheRoutesAnswerAndNeedsNoLockToDoIt(t *testing.T) {
 	for _, tc := range []struct {
 		name              string
 		busy, overwritten bool
-	}{{"busy lock", true, false}, {"host overwrote", false, true}} {
+	}{{"busy lock", true, false}, {"host overwrote", false, true}, {"host overwrote, busy lock", true, true}} {
 		t.Run(tc.name, func(t *testing.T) {
 			repo, id, stages, _ := startAtValidate(t, "one.txt", "")
 			res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
@@ -1135,6 +1135,9 @@ func TestATakeBackRemovesOnlyTheRoutesAnswerAndNeedsNoLockToDoIt(t *testing.T) {
 			if tc.overwritten {
 				if rerr != nil || string(b) != host {
 					t.Fatalf("the host's return over the placement stands: %q %v", b, rerr)
+				}
+				if tc.busy && (strings.Contains(err.Error(), "taken back") || !strings.Contains(err.Error(), "not the route's answer")) {
+					t.Fatalf("a refused drop says the host's return was kept, not taken back: %v", err)
 				}
 				return
 			}

@@ -975,7 +975,7 @@ func DriveReview(ctx context.Context, repoRoot, runID string, res StepResult, st
 		// writes there afresh, and the review falls back like any other the
 		// route did not return; the fallback's own locked write drops the
 		// answer recorded on the await.
-		if rerr := removePlaced(repoRoot, runID, aw.Receipt); rerr != nil {
+		if _, rerr := removePlaced(repoRoot, runID, aw.Receipt); rerr != nil {
 			return res, rerr
 		}
 		return fallBack(repoRoot, runID, res, aw, rr, &reviewFailure{runner.ReasonInvalid, err.Error()}, o)
@@ -1095,39 +1095,44 @@ func validatorRoute(lane Lane, ret string) *runner.RouteRecord {
 // where the host's agent writes; the drop it does need is then refused naming
 // the answer still recorded.
 func takeBack(repoRoot, runID, rel string) error {
-	if err := removePlaced(repoRoot, runID, rel); err != nil {
+	removed, err := removePlaced(repoRoot, runID, rel)
+	if err != nil {
 		return err
 	}
-	err := retryContended(func() error {
+	err = retryContended(func() error {
 		return mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 			return st.dropAnswer(repoRoot, rel), nil
 		})
 	})
-	if err != nil {
+	switch {
+	case err != nil && removed:
 		return fmt.Errorf("the route's return is taken back off %s, but the answer recorded on its await stays in the run's state: %s", rel, err.Error())
+	case err != nil:
+		return fmt.Errorf("nothing was removed from %s, as what stands there, if anything, is not the route's answer, and the answer recorded on its await stays in the run's state: %s", rel, err.Error())
 	}
 	return nil
 }
 
 // removePlaced removes the return at rel only while it is the answer the
 // route's step placed there: its bytes have the digest recorded on its await.
+// It reports whether it removed it.
 // The await is read without the run's lock, which a stale read can only make
 // keep a file; a return the host's agent wrote over the placement, and a
 // path holding no regular file within the answer's bound, is never removed. A
 // return or a state it cannot read is refused naming the return as still
 // standing, and the answer recorded on its await stays with it.
-func removePlaced(repoRoot, runID, rel string) error {
+func removePlaced(repoRoot, runID, rel string) (bool, error) {
 	st, err := ReadState(repoRoot, runID)
 	if err != nil {
-		return fmt.Errorf("the route's return still stands at %s: the run's state it is checked against cannot be read: %s", rel, err.Error())
+		return false, fmt.Errorf("the route's return still stands at %s: the run's state it is checked against cannot be read: %s", rel, err.Error())
 	}
 	i, k := st.findAwait(repoRoot, rel)
 	if i < 0 || st.Lanes[i].Awaits[k].Answered == nil {
-		return nil
+		return false, nil
 	}
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
-		return fmt.Errorf("the route's return still stands at %s: opening the checkout: %w", rel, err)
+		return false, fmt.Errorf("the route's return still stands at %s: opening the checkout: %w", rel, err)
 	}
 	defer root.Close()
 	b, err := fsutil.ReadGuardedInRoot(root, rel, maxReturnBytes)
@@ -1135,16 +1140,16 @@ func removePlaced(repoRoot, runID, rel string) error {
 	case errors.Is(err, fs.ErrNotExist), errors.Is(err, fsutil.ErrNotRegular), errors.Is(err, fsutil.ErrTooBig):
 		// Nothing there, or nothing the route placed: an answer is a regular
 		// file of at most maxReturnBytes.
-		return nil
+		return false, nil
 	case err != nil:
-		return fmt.Errorf("the route's return still stands at %s: it cannot be read to take it back: %w", rel, err)
+		return false, fmt.Errorf("the route's return still stands at %s: it cannot be read to take it back: %w", rel, err)
 	case answerDigest(b) != st.Lanes[i].Awaits[k].Answered.SHA256:
-		return nil
+		return false, nil
 	}
 	if err := root.Remove(rel); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return fmt.Errorf("removing %s: %w", rel, err)
+		return false, fmt.Errorf("removing %s: %w", rel, err)
 	}
-	return nil
+	return true, nil
 }
 
 // dropAnswer drops the answer a route was recorded as placing on the await at
