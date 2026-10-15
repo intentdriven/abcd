@@ -328,3 +328,33 @@ func TestGeneratedIndexMissingDirectoryFailsClosed(t *testing.T) {
 		})
 	}
 }
+
+// TestGeneratedIndexDuplicateRegionRefused: a document holding a second region
+// for the same id — a pasted copy, or a merge that kept both sides' markers —
+// must be a finding and a generator refusal naming both lines. Taking the first
+// region and ignoring the second left a stale listing in the document that no
+// gate read and no regeneration rewrote.
+func TestGeneratedIndexDuplicateRegionRefused(t *testing.T) {
+	spec := namesGenSpec()
+	root := t.TempDir()
+	writeFile(t, root, filepath.Join("commands", "ahoy.md"), "# ahoy\n")
+	writeFile(t, root, spec.Doc, genDoc(spec.ID, ""))
+	rw, err := RegenerateIndexes(root, indexCfg(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The first region is current; a second, stale one follows it.
+	doc := rw[0].Want + "\n<!-- index: commands -->\n`gone`.\n<!-- /index -->\n"
+	writeFile(t, root, spec.Doc, doc)
+
+	fs, err := Lint(indexCfg(spec), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, "index_drift"); n != 1 || !messageContains(fs, "lines 5 and 11") {
+		t.Fatalf("a second region for the same id must be one finding naming both lines; got %+v", fs)
+	}
+	if _, err := RegenerateIndexes(root, indexCfg(spec)); err == nil || !strings.Contains(err.Error(), "lines 5 and 11") {
+		t.Fatalf("the generator must refuse a second region for the same id; got %v", err)
+	}
+}

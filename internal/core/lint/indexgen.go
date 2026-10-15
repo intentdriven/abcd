@@ -125,35 +125,45 @@ func validateGeneratedSpec(spec IndexSpec, i int) error {
 	return nil
 }
 
-// errNoRegion and errUnclosedRegion are generatedRegion's two refusals.
+// generatedRegion's refusals.
 var (
-	errNoRegion       = errors.New("no region")
-	errUnclosedRegion = errors.New("unclosed region")
+	errNoRegion        = errors.New("no region")
+	errUnclosedRegion  = errors.New("unclosed region")
+	errDuplicateRegion = errors.New("duplicate region")
 )
 
 // generatedRegion locates a generated region: the index of the line holding
 // only the opening marker for id, and of the line holding only the closing
 // marker after it. A generated region's markers stand on lines of their own, so
 // the generator can replace everything between them without touching a byte of
-// the prose around them.
+// the prose around them. A second opening marker for the same id is refused,
+// naming both lines: taking the first and ignoring the rest would leave a
+// listing in the document that no gate reads and no regeneration rewrites.
 func generatedRegion(lines []string, id string) (open, end int, err error) {
-	open = -1
+	var opens []int
+	end = -1
 	for i, line := range lines {
 		t := strings.TrimSpace(line)
-		if open < 0 {
-			if m := indexOpenRe.FindStringSubmatch(t); m != nil && m[0] == t && m[1] == id {
-				open = i
-			}
+		if m := indexOpenRe.FindStringSubmatch(t); m != nil && m[0] == t && m[1] == id {
+			opens = append(opens, i)
 			continue
 		}
-		if loc := indexCloseRe.FindString(t); loc != "" && loc == t {
-			return open, i, nil
+		if len(opens) == 1 && end < 0 {
+			if loc := indexCloseRe.FindString(t); loc != "" && loc == t {
+				end = i
+			}
 		}
 	}
-	if open < 0 {
+	switch {
+	case len(opens) == 0:
 		return -1, -1, fmt.Errorf("%w: no line holding only <!-- index: %s --> (add the two marker lines, then run %s)", errNoRegion, id, IndexRegenerateCommand)
+	case len(opens) > 1:
+		return -1, -1, fmt.Errorf("%w: <!-- index: %s --> stands on lines %d and %d; keep one region per id (delete the other, markers included), then run %s",
+			errDuplicateRegion, id, opens[0]+1, opens[1]+1, IndexRegenerateCommand)
+	case end < 0:
+		return -1, -1, fmt.Errorf("%w: <!-- index: %s --> on line %d has no <!-- /index --> line after it", errUnclosedRegion, id, opens[0]+1)
 	}
-	return -1, -1, fmt.Errorf("%w: <!-- index: %s --> on line %d has no <!-- /index --> line after it", errUnclosedRegion, id, open+1)
+	return opens[0], end, nil
 }
 
 // checkGeneratedIndex is index_drift's generated mode: the region must equal
