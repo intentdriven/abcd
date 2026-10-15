@@ -78,3 +78,61 @@ func TestAFutureDatedStampHoldsNoMoreThanADayFromTheReader(t *testing.T) {
 		t.Fatalf("a past claim = %+v, want clamped to its claimed-at plus a day", v)
 	}
 }
+
+// TestAStampFarAheadIsCountedFromWhenItWasFirstSeen: a claim dated more than
+// Skew ahead of the reader is counted from when the reader first saw it, so
+// it stops holding a day after that however far ahead it is dated, and does
+// not hold for a day from every reading. An unreadable stamp written ahead is
+// held for its grace from the same first sighting.
+func TestAStampFarAheadIsCountedFromWhenItWasFirstSeen(t *testing.T) {
+	ahead := t0.Add(5 * 365 * 24 * time.Hour)
+	s := Stamp{ClaimedAt: ahead, ExpiresAt: ahead.Add(Max), FirstSeen: t0}
+	if v := Judge(s, time.Minute, t0.Add(Max-time.Second)); !v.Live || !v.EffectiveExpiry.Equal(t0.Add(Max)) {
+		t.Fatalf("a claim five years ahead, a second before a day from its first sighting = %+v; want live until %s", v, t0.Add(Max))
+	}
+	for _, at := range []time.Duration{Max, Max + Skew, 30 * 24 * time.Hour} {
+		if v := Judge(s, time.Minute, t0.Add(at)); v.Live || !v.EffectiveExpiry.Equal(t0.Add(Max)) {
+			t.Fatalf("a claim five years ahead, %s after its first sighting = %+v; want lapsed at %s", at, v, t0.Add(Max))
+		}
+	}
+	u := Stamp{Unreadable: true, WrittenAt: ahead, FirstSeen: t0}
+	if v := Judge(u, 2*time.Hour, t0.Add(2*time.Hour-time.Second)); !v.Live || !v.EffectiveExpiry.Equal(t0.Add(2*time.Hour)) {
+		t.Fatalf("an unreadable stamp written five years ahead, within its grace = %+v; want held until %s", v, t0.Add(2*time.Hour))
+	}
+	if v := Judge(u, 2*time.Hour, t0.Add(10*time.Hour)); v.Live || !v.EffectiveExpiry.Equal(t0.Add(2*time.Hour)) {
+		t.Fatalf("an unreadable stamp written five years ahead, past its grace from its first sighting = %+v; want lapsed at %s", v, t0.Add(2*time.Hour))
+	}
+	// A first sighting dated after the reading is no later than the reading.
+	if v := Judge(Stamp{ClaimedAt: ahead, ExpiresAt: ahead.Add(Max), FirstSeen: ahead}, time.Minute, t0); !v.EffectiveExpiry.Equal(t0.Add(Max)) {
+		t.Fatalf("a first sighting ahead of the reader = %+v; want counted from the reader's now, %s", v, t0.Add(Max))
+	}
+}
+
+// TestAStampWithinTheSkewIsJudgedByItsOwnDates: a claim dated up to Skew
+// ahead of the reader, the small difference two honest clocks have, is judged
+// exactly as before, its first sighting ignored.
+func TestAStampWithinTheSkewIsJudgedByItsOwnDates(t *testing.T) {
+	early := t0.Add(-10 * time.Hour)
+	for _, ahead := range []time.Duration{0, time.Minute, Skew} {
+		c := t0.Add(ahead)
+		v := Judge(Stamp{ClaimedAt: c, ExpiresAt: c.Add(Default), FirstSeen: early}, time.Minute, t0)
+		if !v.Live || !v.EffectiveExpiry.Equal(c.Add(Default)) {
+			t.Fatalf("a claim %s ahead = %+v; want live until its own expiry %s", ahead, v, c.Add(Default))
+		}
+		v = Judge(Stamp{ClaimedAt: c, ExpiresAt: c.Add(30 * 24 * time.Hour), FirstSeen: early}, time.Minute, t0)
+		if !v.EffectiveExpiry.Equal(t0.Add(Max)) {
+			t.Fatalf("a claim %s ahead with a far expiry = %+v; want clamped to the reader's now plus a day, %s", ahead, v, t0.Add(Max))
+		}
+		v = Judge(Stamp{Unreadable: true, WrittenAt: c, FirstSeen: early}, 2*time.Hour, t0)
+		if !v.EffectiveExpiry.Equal(t0.Add(2 * time.Hour)) {
+			t.Fatalf("an unreadable stamp written %s ahead = %+v; want held for its grace from the reader's now, %s", ahead, v, t0.Add(2*time.Hour))
+		}
+	}
+}
+
+// TestTheSkewIsFiveMinutes pins the allowance for clocks that differ.
+func TestTheSkewIsFiveMinutes(t *testing.T) {
+	if Skew != 5*time.Minute {
+		t.Fatalf("Skew = %s; want 5m", Skew)
+	}
+}
