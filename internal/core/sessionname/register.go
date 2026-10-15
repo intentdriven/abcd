@@ -588,9 +588,11 @@ func hold(m Machine, req Request) Outcome {
 				return true, nil
 			case i >= 0:
 				reg.Given.move(reg.Live[i].SessionID, req.SessionID)
-			// A clear is never a fork: it is this session under a new id, so
-			// a title no entry on this host accounts for is the person's own.
-			case req.Source != "clear" && reg.Given.inherits(req.SessionID, req.Title):
+			// Only a fork inherits: the host starts one with source "fork"
+			// (seen live). A clear is this session under a new id, and a
+			// resume is this session again, so a title no record accounts
+			// for there is the person's own (C4).
+			case req.Source == "fork" && reg.Given.inherits(req.SessionID, req.Title):
 				inherited = true
 			case req.Source == "clear":
 				// The person's own title under the clear's new id: recorded

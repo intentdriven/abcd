@@ -1005,6 +1005,23 @@ func TestAClearBeforeAbcdGaveTheNameStillRecordsItAsThePersons(t *testing.T) {
 	}
 }
 
+// TestAResumeOfAPersonsNameWithNoRecordIsNeverReplaced: a resume is never a
+// fork (the host starts a fork with source "fork"), so a person's title on a
+// session the register has no record of (one named before naming existed, or
+// whose record aged out) is kept while abcd's session of that name runs (C4).
+// Found by the doc-fidelity review of 2026-10-16.
+func TestAResumeOfAPersonsNameWithNoRecordIsNeverReplaced(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(200, root, "a"), "Alice")
+	mustName(t, m.start(300, root, "b"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}, {"b", "", "Bob"}})
+	if out := Start(m.at(m.launch(400)), Request{Root: root, SessionID: "old", Source: "resume", Title: "Bob"}); out.Name != "" {
+		t.Fatalf("resuming the person's unrecorded Bob reserved %q, want nothing", out.Name)
+	}
+	resends(t, m, []struct{ sid, title, want string }{{"old", "Bob", ""}})
+}
+
 // TestResumeHoldsANameFromAnEarlierPersonaList: the name abcd gave is held on
 // resume even when the repository's persona list no longer has it, because
 // what makes the title abcd's is the record of the names it gave, not the
@@ -1104,10 +1121,10 @@ func TestGivenKeepsTheNewestNames(t *testing.T) {
 	}
 }
 
-// forkSources are the sources a fork's session start can arrive with: the host
-// documents "fork", and a fork made with --resume and --fork-session can
-// arrive as "resume".
-var forkSources = []string{"fork", "resume"}
+// forkSources are the sources a fork's session start arrives with: seen live
+// on 2026-10-16, a fork made with --resume and --fork-session starts with
+// source "fork".
+var forkSources = []string{"fork"}
 
 // TestAForkOfARunningSessionTakesTheNextFreeName is the live sequence of
 // 2026-10-16: Alice is named at its first prompt and, while it runs, is forked

@@ -187,13 +187,16 @@ session-start hook reserves the next free name in the machine register,
 session, and sets no title; the prompt hook sets the title once, at the
 session's first prompt, because the host ignores a title equal to the one a
 session already has, and a title set at start never reached its session list.
-The status line shows the name directly after the badge. A name the person
-gave is never replaced, except in a fork while a session abcd gave the same name runs (the register records, by session id, which names abcd
-gave), a resumed or cleared session keeps its name unless a running session was
-given it since, and a fork takes the next free name at its first prompt while
-the session it came from runs, a name is not handed out again while any named
-session runs, and naming restarts at
-Alice once every named session's host process has ended. The board's presence
+The status line shows the name directly after the badge. The register
+records, by session id, which names abcd gave (the newest 512), and only a
+session start with source `fork` reads a title as inherited. A name the person
+gave is never replaced, except in a fork made while a session abcd gave the
+same name runs. A resumed or cleared session keeps its name unless a running
+session was given it since; a fork takes the next free name at its first
+prompt while the session it came from runs. A name is not handed out again
+while any named session runs, except to a session resumed after its record
+aged out of the newest 512, and naming restarts at the first persona once
+every named session's host process has ended. The board's presence
 line carries no name: it has no host payload to read one from.
 
 **The peers line and `/abcd:peers`** (itd-2609091416295622,

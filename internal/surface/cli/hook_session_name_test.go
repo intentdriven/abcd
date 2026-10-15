@@ -326,11 +326,11 @@ func TestPromptRouterReplacesAResumedNameARunningSessionHolds(t *testing.T) {
 
 // TestPromptRouterRenamesAForkOfARunningSession is the live sequence of
 // 2026-10-16 through the hooks: Alice runs, and a fork of it starts as a new
-// session id carrying Alice's title, with source fork or resume. The fork's
+// session id carrying Alice's title, with source fork (seen live). The fork's
 // first prompt sets Bob in place of the inherited title, and Alice keeps
 // Alice.
 func TestPromptRouterRenamesAForkOfARunningSession(t *testing.T) {
-	for _, source := range []string{"fork", "resume"} {
+	for _, source := range []string{"fork"} {
 		t.Run(source, func(t *testing.T) {
 			f := newNameFixture(t)
 			f.launch(1000)
