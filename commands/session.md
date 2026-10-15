@@ -17,7 +17,9 @@ hour. It writes nothing to disk and logs nothing: no token, no secret, no
 brief text.
 
 The page itself is a set of static files `page` writes, for the team to serve
-from any static host.
+from any static host. The abcdesign.app address goes live when abcd publishes
+the page there; until then a team serves the page itself with `page` and admits
+its origin with `--origin`.
 
 There are two ways to run the relay, both the team's own:
 
@@ -90,10 +92,14 @@ The relay bounds what it holds: 256 connections, 16 from one address (an IPv4
 address or an IPv6 /48), past which a new one is refused with 503; 30 seconds
 for a connection to host, join or rejoin; 1,024 queued items and 8 MiB per
 connection, past which that connection is dropped; a member's updates to 60 a
-second in bursts of 200; an awareness message to 8 KiB, and a session's
-awareness to 128 KiB a second; a guest's suggestions to 70 KiB each, 100 per
-connection and 1 MiB per session; every control message and refused frame to
-50 a second per connection, closing one refused 1,000 times; sign-in
+second in bursts of 200; an awareness message to 8 KiB, one connection's
+awareness to 32 KiB a second (bursts of 64 KiB), and a session's to 128 KiB a
+second; a guest's suggestions to 70 KiB each, 100 and 256 KiB per participant
+(a rejoin does not reset them) and 1 MiB per session; every control message
+and refused frame to 50 a second per connection, closing one refused 1,000
+times; an update or cursor over its rate is dropped and answered once a second
+at most; a connection the relay closes ends within 5 seconds and stays counted
+until it has, and a log replay is bounded to a minute; sign-in
 exchanges to 10 per address in ten minutes; a session's life to 12 hours,
 after which it ends for everyone with `closed {reason: "expired"}`; and
 joining by code pauses for everybody for ten minutes past 600 wrong codes from
@@ -121,8 +127,10 @@ trusts; the session page reads it. A file left exactly as abcd wrote it is
 replaced; one that was edited, or that abcd did not write, is never
 overwritten, and then nothing is written (exit 2). It refuses outside a
 checkout abcd manages, in a checkout whose origin is not on github.com, a
-`--relay-origin` or `--origin` that is not `https://host[:port]`, and a release that
-publishes no checksum for the linux/amd64 binary.
+`--relay-origin` or `--origin` that is not `https://host[:port]`, a release
+older than the first to include `abcd session` (the relay runs it; this
+abcd's own release is always taken), and a release that publishes no checksum
+for the linux/amd64 binary.
 
 Relay what it prints: each file and whether it was written, replaced or left
 unchanged, the release and checksum pinned, and the next steps. The user

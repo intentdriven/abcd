@@ -51,10 +51,12 @@ which is optional.
 1. In the project's checkout, write the blueprint:
 
    ```bash
-   abcd session blueprint --release v0.14.1
+   abcd session blueprint --release <vMAJOR.MINOR.PATCH>
    ```
 
-   Name the abcd release the relay should run. The command writes
+   Name the abcd release the relay should run: one that includes the
+   `abcd session` command, since the relay runs it. Left out, the release is
+   the abcd you are running; an older release is refused. The command writes
    `.abcd/relay/render.yaml` and `.abcd/relay/Dockerfile`. The Dockerfile
    downloads that release's linux/amd64 binary and checks it against the
    checksum the release published, which the command reads from the release
@@ -87,7 +89,7 @@ which is optional.
    repository trusts, and commit the file this writes:
 
    ```bash
-   abcd session blueprint --release v0.14.1 --relay-origin https://<your service>.onrender.com
+   abcd session blueprint --release <vMAJOR.MINOR.PATCH> --relay-origin https://<your service>.onrender.com
    ```
 
    It adds `.abcd/relay/relays.json`, which the session page reads from the
@@ -113,7 +115,10 @@ keeps neither the token nor anything else once it has the answer.
 
 1. On GitHub, register a new GitHub App under the team's organisation or your
    account. Set its callback URL to the address the session page is served
-   from, `https://abcdesign.app/`. Give it exactly the repository
+   from, `https://abcdesign.app/`. That address goes live when abcd publishes
+   the page there; until then, serve the page yourself with
+   `abcd session page`, use its address as the callback URL, and admit its
+   origin with `--origin`. Give it exactly the repository
    permissions the page uses, and no others: **Contents** read and write,
    **Pull requests** read and write, and **Metadata** read. Install it on
    the repositories your sessions are for, and only those. A GitHub App's
