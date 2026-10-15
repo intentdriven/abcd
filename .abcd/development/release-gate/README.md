@@ -56,7 +56,7 @@ naming the repository the tag will be pushed to, exits 0 when the release will
 pass. Without `--repository` a pin whose address names another repository (a
 fork, a rename, a transfer) passes locally and is refused after the tag,
 consuming the version. From the ship's merge
-until the publish job uploads the archive, the catalog on `main` names a zip that
+until the Release is published, the catalog on `main` names a zip that
 is not there yet; an install or update in that window fails closed and leaves an
 installed plugin on its previous release, so approve the release deployment
 promptly.
@@ -74,7 +74,17 @@ audit, dependency review, `govulncheck`, the attribution gate and the external
 review. The normal release path (`auto-release` tagging the main tip) re-checks
 nothing those gates have not already passed on the exact tagged commit; a
 hand-pushed tag on a commit outside `main` forgoes them, which is one more
-reason the runbook's branch → PR → merge path is the supported one.
+reason the runbook's branch → PR → merge path is the supported one. On a public
+repository it is also the only path that publishes: every provenance check
+verifies release provenance against `release.yml` on `main` and the tagged
+commit, so a run started by a hand-pushed tag stops at the release job's first
+check and leaves no published Release.
+
+The Release is created as a draft holding the binaries, the plugin archive and
+`checksums.txt`; the site run attaches `site.tar.gz` and then publishes it, so
+a Release is public only once every asset is attached and no asset is added
+after publication. A run that stops before that leaves a draft and nothing
+public: re-run the failed jobs of that run.
 
 ## Semantic gates (host-run, before the tag)
 

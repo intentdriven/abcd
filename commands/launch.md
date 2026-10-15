@@ -91,13 +91,15 @@ deployment gate that no merge can bypass, because publishing cannot be undone.
 | 2 | Prove the release gate locally | you, one command |
 | 3 | Open the release PR, wait for green, merge | you, in GitHub |
 | 4 | Tag the release | automatic |
-| 5 | Build, checksum, attest, publish | **stops and waits for your approval** |
-| 6 | Deploy the website from the tag | automatic, after step 5 |
+| 5 | Build, checksum, attest, create the Release as a draft | **stops and waits for your approval** |
+| 6 | Attach the website, publish the Release, deploy the website | automatic, after step 5 |
 | 7 | Update your plugin and check what you got | you, locally |
 
 Steps 4-6 are one GitHub Actions run. You do not visit Cloudflare: the site
 deploy is invoked by the release workflow, so approving step 5 releases step 6
-with it.
+with it. The Release stays an unpublished draft until step 6 has attached the
+website's archive to it, so it becomes public with every asset already
+attached; there is nothing extra to click.
 
 ### Step 3 — merging, and the one hazard
 
@@ -132,8 +134,10 @@ Click it, tick the **release** environment, optionally leave a comment, and clic
 What you are approving: building four platform binaries stamped with the tag,
 rendering the plugin archive (`abcd-plugin-vX.Y.Z.zip`) and proving it is the one
 the catalog pins, checksumming exactly those bytes, signing a provenance
-attestation, publishing a GitHub Release with the binaries and the archive
-attached, and deploying the website from the tag. That is why it is gated — it is the step that puts bytes in front of the
+attestation, creating the GitHub Release as a draft with the binaries and the
+archive attached, verifying the draft's downloads against that attestation,
+then attaching the website's archive, publishing the Release and deploying the
+website from the tag. That is why it is gated — it is the step that puts bytes in front of the
 public. The reviewer requirement itself lives in the repository's environment
 settings rather than in a workflow file, and the scaffold-parity test fails any
 edit that drops the `environment:` binding from the job.
@@ -143,8 +147,8 @@ checks before it (`verify`) take a few minutes: they build, test and lint the
 tagged commit. Wait for `verify` to go green.
 
 **Approve promptly.** From the moment the release PR merges, the catalog on `main`
-names this release's archive, and the archive exists only once this job uploads
-it. A plugin install or update in between fails closed — the download is not
+names this release's archive, and the archive is downloadable only once the
+Release is published, a few minutes after you approve. A plugin install or update in between fails closed — the download is not
 there yet, so the harness refuses and an installed plugin stays on its previous
 release — and nothing else can be installed in its place, because the pinned
 digest refuses any other bytes. The window cannot be closed (the pin has to be in
@@ -172,6 +176,12 @@ Six failures are worth recognising, because each looks like something else.
 
 - **The run says `Waiting` for a long time and nothing happens.** That is the
   approval gate, not a hang. Approve it.
+- **`site / render` or `site / publish` failed.** The Release is still an
+  unpublished draft, so nothing new is public and installs stay on the
+  previous release. Re-run the failed jobs of the same run (**Re-run failed
+  jobs** on its page, or `gh run rerun <run-id> --failed`): the render attaches
+  the website's archive to the draft and `publish` publishes it. The dispatch
+  below does not help here, because it deploys published releases only.
 - **The release succeeded but `site / deploy` failed.** Known, recorded as
   iss-2608231912566984, and not a release failure: the binaries, checksums and
   attestation are published and correct, and only the website is behind. Deploy
