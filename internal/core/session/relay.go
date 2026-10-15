@@ -789,11 +789,14 @@ func (c *Conn) notify(code, text string) {
 	c.sendJSON(map[string]string{"type": "error", "code": code, "message": text})
 }
 
-// rateLimited answers a message dropped for coming too fast. The connection
-// stays open: only the message is dropped. A rate limit counts as no
-// refusal: a cursor dragged quickly meets it often, and that is no abuse.
-func (c *Conn) rateLimited() {
-	c.notify("rate-limited", "too many messages of this kind; this one was dropped")
+// rateLimited answers a message dropped for coming too fast, naming its kind
+// ("update", "awareness", "host" or "suggest") so the page can tell which of
+// its messages went: a guest's dropped cursor must not read as a dropped
+// suggestion. The connection stays open: only the message is dropped. A rate
+// limit counts as no refusal: a cursor dragged quickly meets it often, and
+// that is no abuse.
+func (c *Conn) rateLimited(kind string) {
+	c.sendJSON(map[string]string{"type": "error", "code": "rate-limited", "kind": kind, "message": "too many messages of this kind; this one was dropped"})
 }
 
 // binary handles a tagged Yjs frame, under the lock.
@@ -813,7 +816,7 @@ func (c *Conn) binary(data []byte) {
 			return
 		}
 		if !c.updates.take(c.r.now(), c.r.limits.UpdatesPerSecond, c.r.limits.UpdateBurst) {
-			c.rateLimited()
+			c.rateLimited("update")
 			return
 		}
 		cost := len(data) + LogEntryOverhead
@@ -843,7 +846,7 @@ func (c *Conn) binary(data []byte) {
 		now := c.r.now()
 		if !c.awareness.take(now, c.r.limits.AwarenessPerSecond, c.r.limits.AwarenessBurst) ||
 			!rm.awareness.takeN(now, c.r.limits.AwarenessBytesPerSecond, c.r.limits.AwarenessBytesBurst, len(data)) {
-			c.rateLimited()
+			c.rateLimited("awareness")
 			return
 		}
 		// Sent on as the relay attributes it, as an update is, so a page can
@@ -989,7 +992,7 @@ func (c *Conn) host(repo string) {
 		c.fail("too-many-sessions", "this relay holds as many sessions as it may")
 		return
 	case r.hosted.blocked(c.addr, r.now()):
-		c.rateLimited()
+		c.rateLimited("host")
 		return
 	}
 	code, err := r.newCode()
@@ -1225,7 +1228,7 @@ func (c *Conn) suggest(body json.RawMessage) {
 		c.fail("not-a-guest", "a team member edits directly")
 		return
 	case !c.suggests.take(c.r.now(), c.r.limits.SuggestPerSecond, c.r.limits.SuggestBurst):
-		c.rateLimited()
+		c.rateLimited("suggest")
 		return
 	}
 	trimmed := strings.TrimSpace(string(body))

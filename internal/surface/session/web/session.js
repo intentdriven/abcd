@@ -812,10 +812,10 @@ function onError(msg) {
     renderSide();
     return;
   }
-  if (code === "rate-limited" && session.role === "guest" && suggestionInFlight) {
-    // The relay dropped a message that came too fast; with a suggestion in
-    // flight it is taken to be that one, as nothing else a guest sends waits
-    // for an answer: the guest is told to send it again.
+  if (code === "rate-limited" && msg.kind === "suggest" && suggestionInFlight) {
+    // The relay dropped the guest's suggestion for coming too fast, and says
+    // so by its kind: a dropped cursor ("awareness") leaves it alone. The
+    // guest is told to send it again.
     suggestionInFlight = null;
     toast(WORDS.suggestTooFast);
     renderSide();
@@ -826,10 +826,18 @@ function onError(msg) {
     quietClose = true;
     return;
   }
-  if (code === "rate-limited" && session.role === "member" && !session.verifying) {
-    // The relay dropped a message that came too fast: perhaps an update, so
-    // the recent ones go again.
+  if (code === "rate-limited" && msg.kind === "update" && session.role === "member") {
+    // The relay dropped an update that came too fast, and says so by its
+    // kind, so the recent ones go again. A dropped cursor needs nothing: the
+    // next one replaces it.
     resendRecent();
+    return;
+  }
+  if (code === "rate-limited") {
+    // A dropped cursor needs nothing, as the next one replaces it, and must
+    // never read as a failed sign-in or a toast per drag. Only a refused
+    // session start is worth saying.
+    if (msg.kind === "host") toast(text);
     return;
   }
   if (session.verifying) {

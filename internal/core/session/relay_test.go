@@ -740,6 +740,14 @@ func rateLimited(t *testing.T, p *fakePeer) bool {
 	return e != nil && e["code"] == "rate-limited" && !p.closed
 }
 
+// rateLimitedAs reports whether p's last error is rate-limited for a message
+// of kind, so a page can tell a dropped cursor from a dropped suggestion.
+func rateLimitedAs(t *testing.T, p *fakePeer, kind string) bool {
+	t.Helper()
+	e := p.last(t, "error")
+	return rateLimited(t, p) && e["kind"] == kind
+}
+
 func TestAwarenessIsRateLimitedPerConnection(t *testing.T) {
 	h := newHarness(t, nil)
 	l := DefaultLimits()
@@ -764,7 +772,7 @@ func TestAwarenessIsRateLimitedPerConnection(t *testing.T) {
 	if n := len(hp.binaries()); n != l.AwarenessBurst {
 		t.Fatal("a frame past the burst was forwarded")
 	}
-	if !rateLimited(t, gp) {
+	if !rateLimitedAs(t, gp, "awareness") {
 		t.Fatalf("past the burst: %v, closed=%v; want rate-limited and still open", gp.last(t, "error"), gp.closed)
 	}
 	// A second refills the rate, and no more.
@@ -777,7 +785,7 @@ func TestAwarenessIsRateLimitedPerConnection(t *testing.T) {
 	if n := len(hp.binaries()); n != l.AwarenessPerSecond {
 		t.Fatalf("a second later %d frames were forwarded, want %d", n, l.AwarenessPerSecond)
 	}
-	if !rateLimited(t, gp) {
+	if !rateLimitedAs(t, gp, "awareness") {
 		t.Fatal("the frame past the refill was not refused")
 	}
 	// Each connection has its own bucket.
@@ -811,7 +819,7 @@ func TestSuggestIsRateLimitedPerConnection(t *testing.T) {
 	if n := count(); n != l.SuggestBurst {
 		t.Fatalf("%d suggestions delivered, want the burst of %d", n, l.SuggestBurst)
 	}
-	if !rateLimited(t, gp) {
+	if !rateLimitedAs(t, gp, "suggest") {
 		t.Fatalf("past the burst: %v, closed=%v; want rate-limited and still open", gp.last(t, "error"), gp.closed)
 	}
 	h.clock.advance(time.Second)
@@ -821,7 +829,7 @@ func TestSuggestIsRateLimitedPerConnection(t *testing.T) {
 	}
 	gp.reset()
 	send(t, g, msg{"type": "suggest", "body": msg{"text": "z"}})
-	if !rateLimited(t, gp) || count() != l.SuggestBurst+1 {
+	if !rateLimitedAs(t, gp, "suggest") || count() != l.SuggestBurst+1 {
 		t.Fatal("the suggestion past the refill was not refused")
 	}
 }

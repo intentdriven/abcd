@@ -1147,9 +1147,15 @@ func TestARefusedSuggestionLeavesNothingWaiting(t *testing.T) {
 		t.Errorf("onSuggested does not take the suggestion in flight:\n%s", ok)
 	}
 	on := functionBody(t, js, "onError")
-	limited := strings.Index(on, `if (code === "rate-limited" && session.role === "guest" && suggestionInFlight) {`)
+	limited := strings.Index(on, `if (code === "rate-limited" && msg.kind === "suggest" && suggestionInFlight) {`)
 	if limited < 0 {
 		t.Fatalf("onError leaves a rate-limited suggestion waiting:\n%s", on)
+	}
+	// A rate limit names the kind it dropped: a dropped cursor is answered by
+	// nothing, and never reaches the sign-in branch below it.
+	other, verifying := strings.Index(on, "if (code === \"rate-limited\") {"), strings.Index(on, "if (session.verifying) {")
+	if other < 0 || verifying < 0 || other > verifying {
+		t.Errorf("onError lets a dropped cursor read as a failed sign-in:\n%s", on)
 	}
 	branch := on[limited:]
 	branch = branch[:strings.Index(branch, "\n  }\n")]
