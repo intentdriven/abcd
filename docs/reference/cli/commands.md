@@ -125,6 +125,8 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
+      --outbound-forge          opt this repo into the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which it refuses when they carry a live agent-session URL or a tool attribution footer; it writes no hook and names no binary, and the choice is recorded in .abcd/config.json as outbound.forge, so a later install without the flag keeps it
+      --outbound-hook           opt this repo into the committed commit-msg hook that refuses a commit message carrying a live agent-session URL or a tool attribution footer; it runs only the abcd named by git config --local abcd.binary and lets the commit through with one warning when none is set; the choice is recorded, so a later install without the flag keeps the hook
       --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
@@ -378,8 +380,8 @@ rounds falsifies the pick: the run record (`abcd implement record`) carries the 
 score table and says so, and the intent's entry is not edited.
 
 No candidate for a first pick is refused, naming each excluded intent and the check that
-excluded it, and nothing is written. Refused too, writing nothing: a negative --max,
---max with --until-empty, and, while a series is in progress, a count or pace other than
+excluded it, and nothing is written. Refused too, writing nothing: --max 0 or a negative
+--max, --max with --until-empty, and, while a series is in progress, a count or pace other than
 the one it began with, and, until it is restored or removed, a series state that cannot be
 read, does not parse, or names a count, a pick, an outcome, pace flags or a pace the series
 never writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.
@@ -415,7 +417,7 @@ File an issue from quoted text, or render the ledger's status bare: Writes one r
       --remedy abcd capture remedy   the proposed fix, one line (required); abcd capture remedy rewrites it later
       --severity string              severity: nitpick | minor | major | critical (default minor)
       --slug string                  override the slug derived from the text
-      --source string                surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo (default user-observation)
+      --source string                surfacing channel: plan-review | impl-review | manual-test | review-followup | agent-finding | agent-observation | user-observation | drift-detection | memory-curation | managed-repo | security-advisory (default user-observation)
 ```
 
 #### `abcd capture admit`
@@ -1162,6 +1164,170 @@ abcd drain --dry-run
   abcd drain --max 3
   abcd drain --json
   abcd drain --judgement .abcd/.work.local/run/drain-judgement.json --json
+```
+
+### `abcd embargo`
+
+Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.
+
+**Usage:** `abcd embargo`
+
+Keep this repository's private security advisories private until their fix
+ships. Each advisory GitHub holds in triage or draft becomes a private record
+in the embargo store, a detached worktree in abcd's machine-scoped worktree
+store that is never committed; the link from advisory to record lives in the
+store's state, never in the record. Every sub-verb verifies the store before
+it reads or writes it, and refuses, writing nothing, when it is on a branch,
+tracks a private record, or sits inside this checkout.
+
+Every remote call is the person's own `gh` against github.com; abcd holds no
+token. close and publish each act on GitHub only with --approve naming the
+digest of exactly the text or plan they showed, and a host passes it only
+after the person, in that session, has seen it and said yes.
+
+Exit 2 on a refusal (nothing written) and on a check finding.
+
+#### `abcd embargo check`
+
+Check a commit range or texts for what would disclose an advisory under embargo: Writes nothing; refuses on each id, reserved CVE id, title or store path found.
+
+**Usage:** `abcd embargo check [flags]`
+
+The outbound embargo check: before anything is made public, read a commit
+range (--range <a>..<b>: each commit's message and the lines it adds, a
+merge's against its first parent) and any texts (--file <path>, repeatable;
+- reads stdin), and refuse every unpublished advisory's id, a CVE id
+reserved for one, its title, the store's location on this machine, and any
+other advisory id --allow does not name. A finding names where the match is
+and never repeats it.
+
+Limits: a title shorter than 12 characters is not matched on its own (its
+id still is); a paraphrase or a count ("fixes several private reports") is
+not recognised, and stays the author's to avoid; an advisory id of the
+placeholder form, each four-character group one character repeated
+(GHSA-xxxx-xxxx-xxxx), is not refused as unlisted, though one the store
+holds is still refused by its id. The check warns when the last intake is
+more than a day old.
+
+Exit 0 clean, or when no embargo store exists on this machine; exit 2 on any
+finding.
+
+**Flags:**
+
+```
+      --allow stringArray   an advisory id of another project, already public, that may appear (repeatable)
+      --file stringArray    a text to read (repeatable; - reads stdin)
+      --range string        a commit range <a>..<b> whose messages and added lines are read
+```
+
+#### `abcd embargo close`
+
+Show an advisory's closing text and digest, or close it on GitHub with it: Writes GitHub and the store only with --approve; refuses a digest for other text.
+
+**Usage:** `abcd embargo close <iss-N|GHSA-id> [flags]`
+
+Close one advisory whose verdict is not-abcds or not-a-vulnerability on
+GitHub, with the closing explanation its triage drafted. GitHub offers no
+comment on a repository advisory, so the explanation is posted at the head of
+the advisory's description, with the reporter's own text kept whole below a
+separator line.
+
+Without --approve it reads the advisory and shows exactly the text that would
+be posted and the digest that approves it; nothing but that read is sent. With
+--approve <digest> it re-reads both and closes only when the digest is the
+one over exactly that text and the description as read, then reads the
+advisory back to confirm it is closed with the text. A digest for any other
+text sends nothing. A host passes --approve only after the person, in that
+session, has seen the text and said yes to it.
+
+**Flags:**
+
+```
+      --approve string   the digest shown for the text; only on the person's yes to exactly that text
+```
+
+**Example:**
+
+```
+abcd embargo close GHSA-xxxx-xxxx-xxxx
+```
+
+#### `abcd embargo intake`
+
+Take this repository's private advisories into private records in the embargo store: Writes only the embargo store; refuses a remote that is not on GitHub.
+
+**Usage:** `abcd embargo intake`
+
+List the repository's security advisories in the triage and draft states
+(GitHub's REST API, through your own `gh`) and mint one private record per
+advisory not seen before, in the embargo store's own ledger. The store is
+made on first use, detached at the default branch's tip. Severity maps
+critical to critical, high to major, medium and low to minor; an advisory
+with no severity is listed for you to set on GitHub and not recorded. A
+re-run records nothing twice. Nothing is written to this checkout's ledger
+or committed anywhere.
+
+#### `abcd embargo publish`
+
+Show the publication plan with computed patched versions, or publish it: Writes GitHub and the store only with --approve; refuses a digest for another plan.
+
+**Usage:** `abcd embargo publish [flags]`
+
+Show the publication plan for the release tag (--release, default the highest
+vMAJOR.MINOR.PATCH tag): for each advisory judged a vulnerability and not yet
+published, its record resolved in that release, its fix commit, the first
+release tag holding the fix, the patched version that gives, and the affected
+range in GitHub's form. An advisory whose record is not resolved there, whose
+fix is in no release tag, whose package is not set on GitHub, or whose text
+carries a secret, a private name or another advisory still under embargo is
+left out, saying why. Without --approve nothing but reads is sent.
+
+With --approve <digest> of exactly the plan shown it publishes one advisory as
+a canary and reads it back, then the rest the same way, stopping at the first
+mismatch, and confirms none is left in draft. A host passes --approve only
+after the person, in that session, has seen the plan and said yes to it.
+
+**Flags:**
+
+```
+      --approve string   the plan's digest; only on the person's yes to exactly that plan
+      --release string   the release tag vMAJOR.MINOR.PATCH to publish from (default the highest)
+```
+
+#### `abcd embargo triage`
+
+Record a verdict on a private advisory, drafting a closing verdict's text: Writes the embargo store; refuses an unknown verdict or one missing its reason.
+
+**Usage:** `abcd embargo triage <iss-N|GHSA-id> <verdict> [flags]`
+
+Record your verdict on one private advisory, with who decided it (--by) and
+when (the clock, never typed). The verdicts:
+
+  vulnerability        the record stays open in the store, to be fixed
+  not-abcds            needs --exists-without and --cannot-help, the two
+                       halves of abcd-fixes-what-it-adds
+  not-a-vulnerability  needs --reason
+  public-track         needs --reason; prints the `abcd capture` command to
+                       run in the public checkout
+
+The two closing verdicts move the record to the store's wontfix/ and draft
+the closing explanation, printed here, for `abcd embargo close`. A second
+triage of the same advisory keeps the earlier verdict in its history. An
+unknown verdict, or one missing its reason, is refused with nothing written.
+
+**Flags:**
+
+```
+      --by string               who decided the verdict (required)
+      --cannot-help string      not-abcds: why abcd cannot help without changing how the repository works
+      --exists-without string   not-abcds: why the problem would exist without abcd
+      --reason string           why: required for not-a-vulnerability and public-track
+```
+
+**Example:**
+
+```
+abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "Alice Example" --reason "the behaviour is the documented one"
 ```
 
 ### `abcd embark`
@@ -2325,6 +2491,20 @@ asked for, the reason and the route that runs it. A role left unset is the host'
 the call is exactly the host-driven step. A step that re-tells an await starts nothing.
 An interrupt kills the runner's process group.
 
+With oracle.review set to rp (in .abcd/config.json or ~/.abcd.noindex/config.json, the
+MCP oracle's address, oracle.rp.url, in the latter alone), a ruthless or security review
+the step hands to the host is sent instead to that MCP oracle, with a request rendered
+beside the reviewer's brief (its agent definition, the lane's brief, the reports and the
+diff): the answer is written to the review's return path and its verdict recorded through
+the same receipt, and the result's route names rp; a return the host's agent wrote first
+stands, and the answer is kept aside beside it. A review the route does not return (no
+server named on this machine, a refused connection, a bound run out, the server's error,
+a return with no verdict or too large, a request too large to compose, or an interrupt)
+falls back: the host is handed the same brief and return path, and the call records one
+fallback naming the role, rp, the reason and the host, which status and record count. The
+intent-auditor, and a reviewer routed to a runner, are unchanged; with oracle.review unset
+or host nothing changes, and abcd never starts, installs or configures the oracle.
+
 The run's window clock: once the run's working window has elapsed, the call starts
 nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an
 agent already started may still hand back its receipt. Before next_eligible_at the call
@@ -3301,6 +3481,91 @@ Gate the built website, rendering it first when absent: Writes only inside the o
       --out string   built output directory to check (rendered first if absent) (default "site")
 ```
 
+### `abcd memory`
+
+Count the memory notes in both layers and name any layer it cannot read: Writes nothing; refuses an unknown sub-verb.
+
+**Usage:** `abcd memory`
+
+Keep memory notes: short lessons an agent writes so a later session does not
+relearn them. Personal notes live in the machine layer, `~/.abcd.noindex/memory.json`;
+notes a person promoted into the project live in its `.abcd/memory.json`, beside each
+rules.json. Both are read with the trust checks the rules layers get.
+
+Bare `abcd memory` counts the personal notes tied to this repository and those
+recalled everywhere, and the notes in the project's file, and names any layer
+that could not be read and why. `abcd memory add` writes one note to the machine
+layer and nothing else, after a gate refuses any note holding a secret, a
+network address or a name this checkout's private banlist holds. `abcd memory
+list` shows every note with its body, recall words, stamps and reach; `abcd
+memory remove <mem-id>` removes any personal note. A note in the project's file
+is removed by editing that file in a reviewed change, never by this verb.
+
+Exit 2 on a refusal, with nothing written.
+
+#### `abcd memory add`
+
+Write one memory note, its body read from stdin: Writes ~/.abcd.noindex/memory.json only; refuses a secret, a network address or a private name.
+
+**Usage:** `abcd memory add --title <title> --recall <word> --by <vendor:model> [flags]`
+
+Write one note to the machine layer, the body read from stdin. The note is
+stamped with the writer (--by, the Assisted-by form <Vendor>:<model-version>),
+the clock's time and the host's session id (--session; without it the session
+is recorded as unknown, and the write says so). It is tied to this repository
+unless --everywhere recalls it in every repository; such a note has been
+checked against this checkout's private names only, and the write says so.
+--moved-from-host stamps a lesson the person pointed at in the host's own
+memory files; the text still arrives on stdin, since add takes no path.
+
+Exit 2 on a refusal — a field past its limit, a secret, a network address or
+a private name, a session shaped like a link — with nothing written.
+
+**Flags:**
+
+```
+      --by string            the writer, in the Assisted-by form <Vendor>:<model-version>
+      --everywhere           recall the note in every repository, not only this one
+      --moved-from-host      stamp a lesson the person pointed at in the host's own memory files
+      --recall stringArray   a word or short phrase a later prompt would use (repeatable, 1 to 12)
+      --session string       the host's id for this session; without it the session is recorded as unknown
+      --title string         the note's title, one line of at most 120 characters
+```
+
+**Example:**
+
+```
+abcd memory add --title "The tests need the race flag" --recall test --recall race --by Example:model-1 < note.txt
+```
+
+#### `abcd memory list`
+
+List every memory note with its body, recall words, stamps and reach: Writes nothing; refuses any argument.
+
+**Usage:** `abcd memory list`
+
+List every note in both layers: its id, title, body, recall words, who wrote
+it, when and in which session, its origin, and its reach (this repository,
+everywhere, another repository, or the project's file). Read-only.
+
+#### `abcd memory remove`
+
+Remove one personal memory note, whoever wrote it: Writes ~/.abcd.noindex/memory.json only; refuses a note in the project's file.
+
+**Usage:** `abcd memory remove <mem-id>`
+
+Remove one personal note from the machine layer, whoever wrote it, run by a
+person or by an agent at a person's request. A note in the project's file is
+removed by editing that file in a reviewed change, and is refused here.
+
+Exit 2 on a refusal, with nothing written.
+
+**Example:**
+
+```
+abcd memory remove mem-2609010000000001
+```
+
 ### `abcd mode`
 
 Print or set whose answer the agent loop is waiting on: Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.
@@ -3342,7 +3607,7 @@ and nothing is written on any of them.
 
 ### `abcd peers`
 
-List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout.
+List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.
 
 **Usage:** `abcd peers`
 
@@ -3360,10 +3625,20 @@ whose common dir is another repository's, or one whose ledger holds an id in
 two status folders is named with the reason and not read; a gone or refused
 worktree's branch is then read from the object store instead.
 
-Strictly read-only: it writes nothing, takes no lock, and fetches nothing.
+Then the reservations on the shared remote: one fetch from origin of every
+abcd-reserved/ branch, with pruning, and of the default branch, then every
+reservation with its record, holder, footprint, effective expiry and state
+(live, expired, released, or unreadable with its reason and the end of its
+hold), and each person's count of live reservations. The fetch is the only
+network act; it updates the remote-tracking reservation branches and stamps
+when it ran in the local tier, and nothing else is written. A checkout with no
+remote named origin lists no reservations. When the fetch fails, the
+reservations are listed as last fetched, with that view's age, and the failure
+is named on stderr and in fetch_error.
+
 A worktree is named home-relative (~/...), or by its directory name when it
-sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 2
-outside a git checkout.
+sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
+the reservations could not be fetched; exit 2 outside a git checkout.
 
 ### `abcd reading`
 
@@ -3580,11 +3855,62 @@ nothing filed. After the editor ran, both name where what was written is kept.
       --template   print the report skeleton to fill (writes nothing)
 ```
 
+### `abcd reserve`
+
+Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.
+
+**Usage:** `abcd reserve <record-id> [flags]`
+
+abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
+abcd reserve <record-id> --release
+
+Reserve an issue or an intent on the shared remote before starting work on it, so
+every other participant sees it is taken. The reservation is the branch
+abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits
+naming the record, the holder (your GitHub username), this working copy, the files
+the work will change (--footprint, once per repository-relative path) and the
+lease (--lease, default 2h, from 1m to 24h).
+
+Every act fetches the reservations from origin, judges the tip, writes one
+commit and makes one plain fast-forward push, with the repository's hooks
+running: a reservation, a renewal by the same person and copy, a take-over of
+a reservation lapsed past its expiry by five minutes, or a release (--release),
+which pushes a tombstone. --take-over moves your own live reservation from
+another copy to this one; it never moves another person's. A record already
+resolved, won't-fixed, shipped or superseded on origin's default branch counts
+as released whatever its reservation says.
+
+The holder is read from user.email when it is a GitHub no-reply address, or from
+reservation.github_username in the machine configuration; the repository's
+own configuration is never read for it. The checkout must have its local tier
+(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every
+reservation.
+
+Exit 0 when the act reached origin (or a release was already made); exit 3 when
+the record is held by someone else or by your other copy, so back off; exit 2
+on every other refusal and failure. Nothing is pushed on a refusal, and a failed
+push leaves no reservation and nothing in the checkout.
+
+**Flags:**
+
+```
+      --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
+      --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
+      --release                 release your reservation from this copy by pushing a tombstone
+      --take-over               move your own live reservation from another copy to this one
+```
+
+**Example:**
+
+```
+abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go
+```
+
 ### `abcd rules`
 
 Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.
 
-**Usage:** `abcd rules [domain]`
+**Usage:** `abcd rules [domain] [flags]`
 
 Render the rule set the modular-rules loader injects: the bundled default
 domains, overridden by this machine's ~/.abcd.noindex/rules.json and then by this repo's
@@ -3624,7 +3950,20 @@ check in "abcd guard hook" enforces, so the rules and the check cannot state a
 limit differently. It recalls on words of asking and choosing, so it lands in
 most sessions; a repository silences it with {"GRILL": {"state": "dormant"}} in
 its .abcd/rules.json.
+
+--prompt "<text>" shows what that one prompt would bring back to a fresh
+session: each rule domain it matches, with the recall words that hit, and
+each memory note it recalls from ~/.abcd.noindex/memory.json and .abcd/memory.json,
+with its layer and the recall words that hit, each in full or as not fitting
+the per-turn budget. It reads against an empty ledger and writes nothing.
+--prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.
+
+**Flags:**
+
+```
+      --prompt string   show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls
+```
 
 ### `abcd scribe`
 

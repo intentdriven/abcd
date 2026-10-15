@@ -329,6 +329,11 @@ func NewRootCommand() *cobra.Command {
 					for _, m := range d.NextMoves {
 						fmt.Fprintf(w, "  next: %s\n", termsafe.Sanitize(m))
 					}
+					// The reservation as last fetched, from disk alone; its
+					// holder is a username a writer chose, so it is masked.
+					if d.Reservation != nil {
+						fmt.Fprintf(w, "  reservation: %s\n", termsafe.Sanitize(d.Reservation.Text))
+					}
 				})
 			}
 			// The banner: interactive-TTY bare invocation only, per adr-49 —
@@ -397,11 +402,13 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
+	root.AddCommand(newReserveCommand(&asJSON))
 	root.AddCommand(newDrainCommand(&asJSON))
 	root.AddCommand(newBuildCommand(&asJSON))
 	root.AddCommand(newLabCommand(&asJSON))
 	root.AddCommand(newImplementCommand(&asJSON))
 	root.AddCommand(newReportCommand(&asJSON))
+	root.AddCommand(newMemoryCommand(&asJSON))
 	root.AddCommand(newInboxCommand(&asJSON))
 	root.AddCommand(newDashboardCommand(&asJSON))
 	root.AddCommand(newStatuslineCommand(&asJSON))
@@ -583,6 +590,7 @@ func NewRootCommand() *cobra.Command {
 	// `reflect` is the release retrospective (itd-24): the seed a cut release's
 	// interview opens from, and the one write that files it.
 	root.AddCommand(newReflectCommand(&asJSON))
+	root.AddCommand(newEmbargoCommand(&asJSON))
 
 	root.AddCommand(newCaptureCommand(&asJSON))
 	root.AddCommand(newBanlistCommand(&asJSON))
@@ -1625,9 +1633,14 @@ func hookSession(in hookInput) string {
 // Active is absent only when the router could not evaluate the prompt — an
 // unreadable payload or a rules.json that will not load — and Error says why:
 // that is "unknown, change nothing", never "every domain stopped".
+//
+// Recalled names each memory item text carries after the rules block
+// (spc-2610111627213138), an empty list on a turn that recalls nothing,
+// beside Injected for the domains, so a reader can tell what came back.
 type routerView struct {
 	Text     string    `json:"text"`
 	Injected []string  `json:"injected"`
+	Recalled []string  `json:"recalled"`
 	Active   *[]string `json:"active,omitempty"`
 	Error    string    `json:"error,omitempty"`
 }
@@ -1639,7 +1652,7 @@ func routerRefused(cmd *cobra.Command, asJSON bool, msg string) error {
 	if !asJSON {
 		return nil
 	}
-	return routerEmit(cmd, routerView{Injected: []string{}, Error: msg})
+	return routerEmit(cmd, routerView{Injected: []string{}, Recalled: []string{}, Error: msg})
 }
 
 // routerEmit writes the envelope and fails open like every other hook verb
@@ -1673,18 +1686,21 @@ func newHookCommand(asJSON *bool) *cobra.Command {
 	// prompt-router — UserPromptSubmit: recall-match, dedup, inject.
 	hookCmd.AddCommand(&cobra.Command{
 		Use:   "prompt-router",
-		Short: "UserPromptSubmit: inject the rules matching the prompt",
-		Long: `Plain, stdout is the rendered rule block the host injects, and nothing on a
+		Short: "UserPromptSubmit: inject the rules and memory notes matching the prompt",
+		Long: `Plain, stdout is the rendered rule block the host injects, followed by a
+"## MEMORY" block of the memory notes the prompt recalls, and nothing on a
 turn with nothing new. With --json, stdout is one envelope in place of the
 generic machine-reader shape:
 
-  {"text": ..., "injected": [...], "active": [...], "error": ...}
+  {"text": ..., "injected": [...], "recalled": [...], "active": [...], "error": ...}
 
 text is byte for byte what the plain form writes; injected names the domains
-text carries; active is the full set of domains in force this turn, so a name
-missing from it has stopped. error is present only when the prompt could not
-be evaluated, and then active is absent: the set is unknown. Every outcome,
-an error included, exits 0, so the hook can never wedge a session.`,
+text carries, and recalled the notes; active is the full set of domains in
+force this turn, so a name missing from it has stopped. error is present only
+when the prompt could not be evaluated, and then active is absent: the set is
+unknown. A memory.json that cannot be read is named on stderr and recalls
+nothing, and the rules still inject. Every outcome, an error included,
+exits 0, so the hook can never wedge a session.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
@@ -1717,7 +1733,7 @@ an error included, exits 0, so the hook can never wedge a session.`,
 			// stdout is injected into the session's context, and this drain's
 			// strings are transcript paths and capture errors, which are the
 			// least appropriate text in the program to hand to a model.
-			drainWhileLive(cmd, cwd)
+			drained := drainWhileLive(cmd, cwd)
 			// The badge's reset (itd-2609212130146198): a human message after
 			// an admitted question is its answer. Before the rules work, for
 			// the drain's reason: a rules.json that will not load must not
@@ -1742,6 +1758,12 @@ an error included, exits 0, so the hook can never wedge a session.`,
 			// The fixed-N backstop comes from the repo's config (default 15 when
 			// unset); event-driven reset is the primary refresh (D1).
 			res := rules.Inject(rs, in.Prompt, rules.LoadState(session), rules.LoadBackstop(root))
+			// The memory recall, after the rules and within what they left
+			// of the one per-turn budget (spc-2610111627213138). It shares
+			// the session's state file through its own ledger.
+			mem := recallMemory(cmd.ErrOrStderr(), rs, root, in.Prompt, res.State.Recalled, rules.InjectionBudgetBytes-len(res.Text),
+				promptRoot(drained, root))
+			res.State.Recalled = mem.Ledger
 			if err := rules.SaveState(session, res.State); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%s)\n", termsafe.Sanitize(err.Error()))
 			}
@@ -1750,15 +1772,33 @@ an error included, exits 0, so the hook can never wedge a session.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			// Each note id carries its layer ("mem-… (project)"), as the
+			// rules line's names carry theirs, so the log says whether the
+			// words came from this repository's committed file or from the
+			// person's own notes.
+			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d note(s) [%s], %d bytes", len(mem.Recalled),
+					strings.Join(mem.Labels(mem.Recalled), ", "), len(mem.Text))
+				if len(mem.Omitted) > 0 {
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched note(s) [%s] did not fit this turn's budget and are tried again on the next",
+						len(mem.Omitted), strings.Join(mem.Labels(mem.Omitted), ", "))
+				}
+				fmt.Fprintln(cmd.ErrOrStderr())
+			}
+			text := res.Text + mem.Text
 			if *asJSON {
 				injected := res.Injected
 				if injected == nil {
 					injected = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: res.Text, Injected: injected, Active: &res.Active})
+				recalled := mem.Recalled
+				if recalled == nil {
+					recalled = []string{}
+				}
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active})
 			}
-			if res.Text != "" {
-				fmt.Fprint(cmd.OutOrStdout(), res.Text)
+			if text != "" {
+				fmt.Fprint(cmd.OutOrStdout(), text)
 			}
 			return nil
 		},
@@ -2195,16 +2235,28 @@ var livePromptDrainBudget = history.DrainBudget{MaxEntries: 1, MaxBytes: 512 << 
 // single git call that field actually needs.
 //
 // EVERY output goes to stderr and nothing to stdout — see the call site. A
-// failure to drain is never a failure of the prompt: this function returns
-// nothing and the hook exits 0 whatever happened here, because a transcript
-// backlog must not be able to wedge a session.
-func drainWhileLive(cmd *cobra.Command, cwd string) {
+// failure to drain is never a failure of the prompt: the hook exits 0
+// whatever happened here, because a transcript backlog must not be able to
+// wedge a session. What it returns is only the root-commit lookup it made,
+// for the memory recall to reuse (promptRoot), so one prompt spawns that
+// full-history rev-list once. That lookup is bounded (boundedRootCommit): a
+// git that does not answer in time drains nothing this turn, says so on
+// stderr, and leaves the recall's tied notes out.
+func drainWhileLive(cmd *cobra.Command, cwd string) rootLookup {
 	if cwd == "" {
-		return
+		return rootLookup{}
 	}
-	rootSHA := gitutil.RootCommit(cwd)
+	rootSHA, rootErr := boundedRootCommit(cwd)
+	looked := rootLookup{sha: rootSHA, err: rootErr, asked: true}
+	if rootErr != nil {
+		// git did not answer in time: nothing is drained this turn, and the
+		// staged transcripts wait for the next one.
+		diagnosticLine(cmd.ErrOrStderr(), "abcd history: this repository's root commit: %s; draining no staged transcripts this turn",
+			fsutil.RedactHome(rootErr.Error()))
+		return looked
+	}
 	if rootSHA == "" {
-		return // not a git repo with commits: nothing here has a store
+		return looked // not a git repo with commits: nothing here has a store
 	}
 	// Look before spending: the ordinary prompt has nothing staged, and this
 	// listing is one readdir of a usually-empty directory, so the redaction
@@ -2213,14 +2265,14 @@ func drainWhileLive(cmd *cobra.Command, cwd string) {
 	// drain below, because every store verb now takes it.
 	repoRoot := captureRoot(cwd)
 	if staged, lerr := history.ListStaged(repoRoot, rootSHA); lerr == nil && len(staged) == 0 {
-		return
+		return looked
 	}
 	dr, err := history.Drain(repoRoot, rootSHA, livePromptDrainBudget)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"abcd history: could not drain staged transcripts this turn (%s); they hold UNREDACTED text until one succeeds.\n",
 			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
-		return
+		return looked
 	}
 	for _, f := range dr.Failed {
 		fmt.Fprintln(cmd.ErrOrStderr(), drainFailureNotice(f))
@@ -2236,6 +2288,7 @@ func drainWhileLive(cmd *cobra.Command, cwd string) {
 	for _, l := range scanGapLines(dr.ScanGap) {
 		fmt.Fprintln(cmd.ErrOrStderr(), "abcd history: "+l)
 	}
+	return looked
 }
 
 // drainFailureNotice renders one DrainFailure as the operator-facing sentence,
@@ -2379,7 +2432,8 @@ type rulesView struct {
 // diagnostic — it never mutates and there is no `show` sub-verb (the positional
 // argument is the scope, per the bare-command-as-render discipline).
 func newRulesCommand(asJSON *bool) *cobra.Command {
-	return &cobra.Command{
+	var prompt string
+	cmd := &cobra.Command{
 		Use: "rules [domain]",
 		Long: `Render the rule set the modular-rules loader injects: the bundled default
 domains, overridden by this machine's ` + abcdhome.Display("rules.json") + ` and then by this repo's
@@ -2419,14 +2473,26 @@ check in "abcd guard hook" enforces, so the rules and the check cannot state a
 limit differently. It recalls on words of asking and choosing, so it lands in
 most sessions; a repository silences it with {"GRILL": {"state": "dormant"}} in
 its .abcd/rules.json.
+
+--prompt "<text>" shows what that one prompt would bring back to a fresh
+session: each rule domain it matches, with the recall words that hit, and
+each memory note it recalls from ` + abcdhome.Display("memory.json") + ` and .abcd/memory.json,
+with its layer and the recall words that hit, each in full or as not fitting
+the per-turn budget. It reads against an empty ledger and writes nothing.
+--prompt and a DOMAIN are two forms and are refused together, exit 2.
 Read-only.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			byPrompt := cmd.Flags().Changed("prompt")
+			if byPrompt && len(args) == 1 {
+				return &exitError{Code: 2, Msg: `abcd rules: --prompt and a DOMAIN are two forms; run abcd rules <DOMAIN> to render one domain, or abcd rules --prompt "<text>" to see what one prompt brings back (nothing rendered)`}
+			}
 			cwd, err := os.Getwd()
 			if err != nil {
 				return err
 			}
-			rs, err := rules.Load(rulesRoot(cwd, cmd.ErrOrStderr()))
+			root := rulesRoot(cwd, cmd.ErrOrStderr())
+			rs, err := rules.Load(root)
 			if err != nil {
 				return err
 			}
@@ -2434,6 +2500,10 @@ Read-only.`,
 			// diagnostic mixed into it would break every parser reading it.
 			for _, note := range rs.Notes() {
 				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
+			}
+			if byPrompt {
+				v := rulesPrompt(cmd.ErrOrStderr(), rs, root, prompt)
+				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) { renderRulesPrompt(w, rs, v) })
 			}
 			// Scoped: inspect one domain's configured content regardless of its
 			// state OR the kill switch — this diagnostic shows what a domain holds,
@@ -2454,14 +2524,7 @@ Read-only.`,
 				if rs.Disabled {
 					// The switch is sticky across layers, so name every file
 					// that set it: each has to clear it.
-					var files []string
-					for _, src := range rs.KillSwitchSources() {
-						files = append(files, rules.LayerPath(src))
-					}
-					if len(files) == 0 {
-						files = []string{rules.RepoRelPath}
-					}
-					fmt.Fprintf(w, "abcd rules — disabled (kill switch set in %s)\n", strings.Join(files, " and "))
+					fmt.Fprintf(w, "abcd rules — disabled (kill switch set in %s)\n", strings.Join(killSwitchFiles(rs), " and "))
 					return
 				}
 				if out := rules.Render(active); out != "" {
@@ -2472,6 +2535,8 @@ Read-only.`,
 			})
 		},
 	}
+	cmd.Flags().StringVar(&prompt, "prompt", "", "show what this one prompt would bring back to a fresh session: the domains it matches and the memory notes it recalls")
+	return cmd
 }
 
 // intentStoreRoot is the shared front-door step for every `intent` verb: the
@@ -3877,6 +3942,8 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		refuseAdopt   bool
 		dev           bool
 		attribution   bool
+		outboundHook  bool
+		outboundForge bool
 		allowStale    bool
 		binDir        string
 		visibility    string
@@ -3908,6 +3975,8 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				opts.ReadmeParts = readmeParts
 			}
+			opts.OutboundHook = outboundHook
+			opts.OutboundForge = outboundForge
 			opts.VerifyProvenance = ahoyReleaseProvenance
 			named, err := installToolNames(installTools)
 			if err != nil {
@@ -4054,6 +4123,8 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
 	installCmd.Flags().BoolVar(&attribution, "attribution", false, "opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook")
+	installCmd.Flags().BoolVar(&outboundHook, "outbound-hook", false, "opt this repo into the committed commit-msg hook that refuses a commit message carrying a live agent-session URL or a tool attribution footer; it runs only the abcd named by git config --local abcd.binary and lets the commit through with one warning when none is set; the choice is recorded, so a later install without the flag keeps the hook")
+	installCmd.Flags().BoolVar(&outboundForge, "outbound-forge", false, "opt this repo into the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which it refuses when they carry a live agent-session URL or a tool attribution footer; it writes no hook and names no binary, and the choice is recorded in .abcd/config.json as outbound.forge, so a later install without the flag keeps it")
 	installCmd.Flags().BoolVar(&allowStale, "allow-stale-binary", false, "proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix")
 	installCmd.Flags().StringVar(&binDir, "bin-dir", "", "directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges")
 	installCmd.Flags().StringVar(&visibility, "visibility", "", "repo visibility: private | public")

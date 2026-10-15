@@ -7,9 +7,12 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"unicode"
 
 	"github.com/intentdriven/abcd/internal/abcdrepo"
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -37,7 +40,8 @@ import (
 //     flag) the binary refused. That is direct evidence the surface is newer
 //     than the binary, and the remedy follows where the binary sits: a source
 //     checkout is rebuilt, a plugin-root binary is replaced by a plugin update,
-//     a PATH copy takes `abcd update`.
+//     a PATH copy takes `abcd update`, and a local `dev` build elsewhere (`go
+//     run` from a source checkout) is only told the thing is not in this build.
 //  2. Otherwise, the disk-only vintage comparison `abcd --version` already
 //     renders: behind the checkout tip (dogfood) or differing from the release
 //     the plugin cache pinned.
@@ -95,7 +99,6 @@ var retiredTokens = map[string]string{
 	"ingest":            "`ingest` folded into the library page: run /abcd:library, where `abcd library add` registers a document in the sources corpus; `abcd library ingest` distils a source into memory pages and registers nothing",
 	"prepare-this-repo": "`prepare-this-repo` folded into ahoy install: run /abcd:ahoy install, which prepares the repository in the host agent around the binary's `abcd ahoy install`",
 	"changelog":         "`changelog` merged into launch as its preview: run `abcd launch --dry-run`, which renders the release cut (derived version, records, guard verdict) beside the bundle report",
-	"memory":            "`memory` merged into the library verb: run `abcd library` for the memory store's status beside the sources corpus, and `abcd library ingest`, `ask` or `lint` for the store's verbs",
 	"source":            "`source` merged into the library verb: run `abcd library` for the sources corpus beside the memory store, and `abcd library init`, `add`, `declassify`, `ledger`, `sync-banlist` or `cite-check` for the corpus's verbs",
 	"version":           "`version` is a root flag, not a verb: run `abcd --version`, and bare `abcd` shows the installed version as the board's last line (asking for a newer release is the update verb's --check)",
 }
@@ -107,9 +110,10 @@ const maxCommandPageBytes = 256 << 10
 // command path the binary does know, then either the verb it does not or the
 // flag it does not.
 type usageSkew struct {
-	known []string // the command path below the root the binary resolved
-	verb  string   // the unknown verb under known; "" for a flag-only skew
-	flag  string   // the unknown flag, consulted only when verb is ""
+	known    []string // the command path below the root the binary resolved
+	verb     string   // the unknown verb under known; "" for a flag-only skew
+	flag     string   // the unknown flag, consulted only when verb is ""
+	subVerbs bool     // the command at known has sub-verbs (flag skews only)
 }
 
 // staleUsageNote is the sentence appended to a usage error, or "" when the
@@ -146,6 +150,15 @@ func staleUsageNote(root *cobra.Command, args []string, msg string) string {
 				return fmt.Sprintf("this binary predates %s its command surface documents — the plugin root is a source checkout, so rebuild it with `make build`", what)
 			case inRoot:
 				return fmt.Sprintf("this binary predates %s its plugin surface documents — %s", what, update.RemedyPluginUpdate)
+			case !releaseBuild():
+				// Outside every plugin root and unstamped by the release: `go
+				// run` from a source checkout (its build cache), a hand-run `go
+				// build`. Not a copy `abcd update` provisioned, so updating it
+				// changes nothing and its age is not what the page proves
+				// (iss-2610120921425348). The stamp is compiled in, so no path,
+				// cwd or environment can talk a release copy out of its remedy
+				// or a local build into one.
+				return fmt.Sprintf("the plugin surface documents %s, which is not in this build — an unstamped `dev` build, not a release binary, so the surface is no evidence that it is stale", what)
 			default:
 				return fmt.Sprintf("this binary predates %s the plugin surface it was provisioned from documents — this PATH copy is stale; run `abcd update`", what)
 			}
@@ -201,33 +214,34 @@ func classifyUsageError(root *cobra.Command, args []string, msg string) (usageSk
 		return usageSkew{known: fields[1:], verb: tok}, true
 	}
 	if m := unknownFlagRe.FindStringSubmatch(msg); m != nil {
-		known, verb := walkKnownPath(root, args)
-		return usageSkew{known: known, verb: verb, flag: m[1]}, true
+		known, verb, at := walkKnownPath(root, args)
+		return usageSkew{known: known, verb: verb, flag: m[1], subVerbs: at.HasSubCommands()}, true
 	}
 	return usageSkew{}, false
 }
 
 // walkKnownPath descends the tree along the positional tokens of args and
-// returns the path the binary knows plus the first token it does not. A token
-// under a leaf is an argument, never an unknown verb; a flag value that looks
-// positional can only ever make the lookup fail safe (no page is named for it).
-func walkKnownPath(root *cobra.Command, args []string) (known []string, unknown string) {
+// returns the path the binary knows, the first token it does not, and the
+// command the known path ends at. A token under a leaf is an argument, never an
+// unknown verb; a flag value that looks positional can only ever make the
+// lookup fail safe (no page is named for it).
+func walkKnownPath(root *cobra.Command, args []string) (known []string, unknown string, at *cobra.Command) {
 	cur := root
 	for _, tok := range args {
 		if strings.HasPrefix(tok, "-") {
 			continue
 		}
 		if !cur.HasSubCommands() {
-			return known, ""
+			return known, "", cur
 		}
 		next := subcommandNamed(cur, tok)
 		if next == nil {
-			return known, tok
+			return known, tok, cur
 		}
 		known = append(known, tok)
 		cur = next
 	}
-	return known, ""
+	return known, "", cur
 }
 
 // subcommandNamed is findByPath's one-level form that also honours aliases,
@@ -247,9 +261,10 @@ func subcommandNamed(cur *cobra.Command, tok string) *cobra.Command {
 // by its own page, commands/<verb>.md. A sub-verb is documented when its
 // top-level page hands it over as an invocation in any of the ladder's
 // spellings (`"${CLAUDE_PLUGIN_ROOT}/abcd" capture resolve`, `abcd capture
-// resolve`, `/abcd:capture resolve`); a flag when the page names it literally.
-// Prose that merely contains the word is not evidence: "status" appears in
-// most pages without `<verb> status` being a command.
+// resolve`, `/abcd:capture resolve`); a flag when the typed command's own
+// synopsis carries it (synopsisCarriesFlag). Prose that merely contains the
+// word is not evidence: "status" appears in most pages without `<verb> status`
+// being a command.
 func surfaceDocuments(pluginRoot string, s usageSkew) (what string, ok bool) {
 	for _, k := range s.known {
 		if !verbShape.MatchString(k) {
@@ -283,9 +298,90 @@ func surfaceDocuments(pluginRoot string, s usageSkew) (what string, ok bool) {
 	if body == "" {
 		return "", false
 	}
-	re := regexp.MustCompile(`(?:^|[^A-Za-z0-9-])` + regexp.QuoteMeta(s.flag) + `(?:[^A-Za-z0-9-]|$)`)
 	what = "the `" + s.flag + "` flag of `" + strings.Join(append([]string{"abcd"}, s.known...), " ") + "`"
-	return what, re.MatchString(body)
+	return what, synopsisCarriesFlag(body, s)
+}
+
+// synopsisCarriesFlag reports whether a synopsis line for the typed command —
+// an invocation of exactly s.known inside a fenced block — names s.flag after
+// it. The rest of the page is not evidence (iss-2610120921497084): build.md
+// mentions `/abcd:drain --dry-run` in prose, and implement.md gives --run to
+// `implement step` and `implement receipt`, not to `implement log`. An
+// invocation of the path followed by a verb-shaped word, where the command has
+// sub-verbs, is a deeper sub-verb's synopsis (`implement outage record` is not
+// `implement outage`'s); where it has none, the word is an argument.
+func synopsisCarriesFlag(body string, s usageSkew) bool {
+	head := `abcd["':]?`
+	if len(s.known) > 0 {
+		head += `\s*` + regexp.QuoteMeta(strings.Join(s.known, " "))
+	}
+	invocation := regexp.MustCompile(head + `(?:\s|$)`)
+	flag := regexp.MustCompile(`(?:^|[^A-Za-z0-9-])(` + regexp.QuoteMeta(s.flag) + `)(?:[^A-Za-z0-9-]|$)`)
+	// Which lines are fenced is mdrecord's to say, under the rule the site
+	// renders command pages by: a page nests fences in list items (ahoy.md's
+	// install steps), and ListNested reads those as TopLevel cannot.
+	lines := strings.Split(body, "\n")
+	for _, sp := range mdrecord.Read(lines, mdrecord.ListNested).Fences {
+		end := sp.End
+		if sp.Closed {
+			end-- // the closing delimiter line
+		}
+		if synopsisInBlock(lines[sp.Start+1:end], s, invocation, flag) {
+			return true
+		}
+	}
+	return false
+}
+
+// synopsisInBlock is synopsisCarriesFlag over the content lines of one fenced
+// block. A wrapped synopsis never runs past its block's closing delimiter.
+func synopsisInBlock(block []string, s usageSkew, invocation, flag *regexp.Regexp) bool {
+	// A synopsis wrapped with trailing backslashes, joined so far; a builder,
+	// because recopying the joined text per wrapped line is quadratic too.
+	var held strings.Builder
+	for _, line := range block {
+		if cont, wrapped := strings.CutSuffix(strings.TrimRight(line, " \t"), `\`); wrapped {
+			held.WriteString(cont)
+			held.WriteByte(' ')
+			continue
+		}
+		if held.Len() > 0 {
+			held.WriteString(line)
+			line = held.String()
+			held.Reset()
+		}
+		invocations := invocation.FindAllStringIndex(line, -1)
+		if len(invocations) == 0 {
+			continue
+		}
+		// One pass over the line for each pattern, never one per invocation: a
+		// page repeating an invocation along one line would otherwise rescan
+		// the rest of it each time. The flag counts after an invocation when
+		// its last occurrence starts at or past the invocation's end.
+		last := -1
+		for _, m := range flag.FindAllStringSubmatchIndex(line, -1) {
+			last = m[2]
+		}
+		for _, loc := range invocations {
+			if s.subVerbs && verbShape.MatchString(leadingField(line[loc[1]:])) {
+				continue
+			}
+			if last >= loc[1] {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// leadingField is strings.Fields(s)[0] (or ""), reading only as far as it —
+// archive.go's firstField splits the whole string, the rescan this avoids.
+func leadingField(s string) string {
+	s = strings.TrimLeftFunc(s, unicode.IsSpace)
+	if end := strings.IndexFunc(s, unicode.IsSpace); end >= 0 {
+		return s[:end]
+	}
+	return s
 }
 
 func commandPagePath(pluginRoot, verb string) string {
@@ -305,6 +401,13 @@ func readCommandPage(pluginRoot, verb string) string {
 func isRegularFile(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
+}
+
+// releaseBuild reports whether the release stamped this binary's version
+// (`make build VERSION=<tag>`); every other build answers "dev", the test the
+// vintage comparison applies to the same value (ahoy.vintageFrom).
+func releaseBuild() bool {
+	return core.Version != "" && core.Version != "dev"
 }
 
 // isSourceCheckout reports whether a plugin root is abcd's own source checkout,

@@ -193,6 +193,10 @@ type Registry struct {
 	// read for it (script.go); nil for a registry that reads no file, which
 	// is what Defaults returns until a front door names the directory.
 	files *Files
+
+	// forge is the forge-text opt-in of the repository this registry was
+	// loaded for (forge.go); nil for a registry with no repository behind it.
+	forge *forgeGate
 }
 
 // Decision is what core returns for one candidate command. It carries no
@@ -916,7 +920,7 @@ func message(v Verdict, e Entry) string {
 }
 
 func cloneRegistry(r Registry) Registry {
-	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files}
+	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files, forge: r.forge}
 	if r.Entries != nil {
 		out.Entries = make(map[string]Entry, len(r.Entries))
 		for id, e := range r.Entries {

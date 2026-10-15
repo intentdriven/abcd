@@ -223,13 +223,34 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 10. Version 10
+under a run id it does not name. The state is schema version 12. Version 12
+added an await's `answered` (itd-6): the reviewer route and the SHA-256 of the
+answer its step placed at the review's return path, written under the run's
+lock with the answer, so a hand-back of that answer is recorded as the route's.
+Version 11 is its strict subset, read as a run no route placed an answer for,
+its `reserved_at` kept; a file of version 11 or lower carrying `answered` is
+refused. An abcd that writes version 10 (v0.14.0 and v0.14.1), or a build that
+writes version 11, decodes a newer file strictly before it checks the version,
+so a version-12 file carrying `answered` or `reserved_at` reaches it as a file
+that does not parse, with a remedy to restore it or remove the run directory.
+That remedy would throw the run away: the run is intact, so run the newer abcd
+that wrote it instead (`abcd update`), and do not remove the run directory. A
+version-12 file carrying neither reaches it as a version it does not know. From
+version 12 on, the reader refuses a version above its own before any strict
+decode, naming it as a newer abcd's file, whatever that version added. Version 11
+added the run's reservation on the shared remote (itd-2609091034175565): the
+run's `reserved_at`, the reservation each step of the run renews at half its
+lease, fences before the landing arms a merge, and tombstones once the run's
+last lane has landed. Version 10 is its strict subset, read as a run that holds
+no reservation; a file of version 10 or lower carrying `reserved_at` is
+refused. Version 10
 added an await's `kept` (iss-2610100913086397): why a rate-limit checkpoint
 kept the await when it could not save the gone agent's return aside, which a
 restart of the lane re-tells. Version 9 is its strict subset, read as a run no rate
 limit kept an await of; a file of version 9 or lower carrying `kept` is
-refused, and an abcd that writes version 9 refuses a version-10 file as a
-version it does not know. Version 9
+refused. An abcd that writes version 9 (up to v0.13.4) meets a version-10
+file carrying `kept` the same way, as a file that does not parse, and one
+without it as a version it does not know. Version 9
 made a run work in parallel up to its ceiling (ruling DR6): a lane's `awaits`,
 a list replacing the one `awaiting`, the run's `waiting` (the work the ceiling
 holds back, each item with the time first held), a lane's `syncs` (each merge of
@@ -241,7 +262,11 @@ whose lanes await zero or one agent, its `awaiting` carried over to a one-entry
 file of version 9 or later carrying `awaiting`. Version 8
 added the runner's record (itd-2609201916056194): the run's `fallbacks`, one
 receipt per role a routed runner did not run, and the `route` a verified receipt
-or a validator's recorded return names when a runner ran its agent. Version 7
+or a validator's recorded return names when a runner ran its agent. A review the
+reviewer route (itd-6) did not return is one more receipt in the same
+`fallbacks`, asked `rp`, and a review it ran names `rp` as its `route`;
+neither changes the file's shape, and the answer it placed is version 12's
+`answered`. Version 7
 added the landing (a lane's `landing`, the implementers' `receipts` it verified
 with the model each runner reported, and the captures its receipts declared
 fixed, `resolves`) and the run's captured `transcripts`. Version 6
@@ -250,7 +275,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 10 by its next mutation; an earlier version carrying what
+written back at version 12 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -414,6 +439,41 @@ record verbs count the fallbacks per runner and per role. A host session
 always drives this: the no-host path, where a host-routed role goes to the
 machine's `runner.fallback_host`, is the process driver's reversal of the
 host-delegated boundary, and waits on the ADR decision 6 of the intent owes.
+
+**The reviewer route** (itd-6, spc-2609211950427074). A build lane's ruthless
+and security reviews can go to RepoPrompt over MCP instead of the host's own
+agents: `oracle.review` in the layered configuration names `host`, the bundled
+default, or `rp`, from the repository's `.abcd/config.json` or the machine's
+`~/.abcd.noindex/config.json`, the repository's file winning a key both set,
+and the MCP server's address, `oracle.rp.url` (with an optional
+`oracle.rp.tool`), sits in the machine's file alone, admitted only to this
+machine, and read only when the route is `rp`. A fault in `oracle.review`, and
+on the `rp` route a repository declaring the server or any fault in it, is
+refused at the `review` stage before anything moves. When the validate stage hands a ruthless
+or security review to the host, and no runner took it, the step verb renders
+the review's request beside its brief (`request.md`: the reviewer's agent
+definition, the lane's brief, the implementer's report and each fix round's,
+and the lane's own changes as git's own diff, from the default-branch commit
+its last sync merged in, or its base), sends it over MCP outside the run's
+lock, writes the answer to the review's return path, under the lock and only
+while the review still awaits it and no return stands there, and hands it back
+through the same receipt, so the loop records its verdict as it records any
+validator's and the result's and the return's `route` name `rp`. A return the
+host's agent wrote while the route worked stands: the route's answer is kept
+aside beside it (`rp-return.md`) and recorded nowhere. A review the route does
+not return (no server named on this machine, a refused connection, a bound run
+out, the server's error, an answer that is not the protocol's, a return with no
+verdict or larger than a return may be, a request that could not be composed,
+or a step interrupted while the route worked) leaves the lane awaiting: the
+call records one fallback receipt (the role, `asked: rp`, the reason, abcd's
+detail, `ran: host`) in the state and the record, retrying while another
+invocation holds the run's lock, and hands the host the same brief and return
+path, naming the fallback; the status and record verbs count it with the
+runner's. The intent-auditor stays
+on the host, a reviewer routed to a runner keeps its runner, and with
+`oracle.review` unset or `host` the call is the host-driven step byte for
+byte. abcd never starts, installs or configures RepoPrompt
+([`02-adapters.md`](../05-internals/02-adapters.md)).
 
 **The lost connection** (iss-2610080620372731). The step verb reads the shared
 run's outage before every move ([`27-implement.md`](27-implement.md) states the
@@ -671,9 +731,10 @@ verb reads a run's state back as its record: every lane with its spec step,
 branch and heads, the implementers' receipts the loop verified with the model
 each runner reported (as reported; the binary cannot verify it), every verdict
 the loop recorded, round by round, the route that ran a receipt's or a return's
-agent when a runner ran it, the captures the lane fixed, its pull request
-and what its landing did, the run's pending steps, every fallback with the
-count per runner and per role, the transcripts captured and
+agent when a runner or the reviewer route ran it, the captures the lane fixed,
+its pull request and what its landing did, the run's pending steps, every
+fallback with the count per runner or route and per role, the transcripts
+captured and
 the record's lines, in text and JSON. On a complete run, the record verb
 captures each transcript it is named into the history store as the history
 verb's capture of one path does, one capture per path, and records it in the

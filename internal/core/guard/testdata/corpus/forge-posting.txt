@@ -1,0 +1,37 @@
+# Everyday posting commands an agent hands the forge CLI — the forge-text half
+# of the false-positive sweep (sweep_test.go, iss-2610142210511831).
+#
+# Each line is ordinary work and should allow, with the forge-text check
+# switched on and off alike: a pull request, an issue, an edit and a comment,
+# their titles and bodies in every spelling gh accepts, a body that mentions a
+# session or a tool in prose, and a body file that exists and is clean. A
+# block or warn on any line here is a false positive the sweep counts, and a
+# forge-text verdict on any of them fails the sweep outright.
+
+gh pr create --title "fix: the walk skips a record family" --body "Closes #31. Assisted-by: Claude:claude-opus-5-5"
+gh pr create -t "feat: an opt-in outbound gate" -b "Summary of the change, and the tests that prove it."
+gh pr create --title="chore: capture two findings" --body="Records only; no code changes."
+gh pr create -t"docs: say what the guard does not see" -b"One paragraph in commands/guard.md."
+gh pr create --draft --base main --head feat/x --title "wip: the reader" --body "Draft while the review runs."
+gh pr create --fill
+gh pr create --fill --label security --assignee @me
+gh pr new --title "fix: a typo" --body "One word."
+gh pr edit 1012 --title "fix: count an exit 1 as a refusal only beside the verdict"
+gh pr edit 1012 --body "Updated after review: the session store is now keyed on the root commit."
+gh pr edit 1012 --add-label needs-review --remove-label wip
+gh pr comment 1012 --body "Re-ran the targeted tests; all pass. The session URL problem is fixed in the next commit."
+gh pr comment 1012 -b "LGTM once CI is green."
+gh pr comment 1012 --body "A tool footer such as 'Generated with' belongs in the Assisted-by trailer instead."
+gh issue create --title "guard: a body file over the cap is not read" --body "Steps: write a large file, post it with -F."
+gh issue create -t "docs: the forge check's reach" -b "commands/guard.md should name gh api as unseen." --label docs
+gh issue new --title "a question" --body "Is the agent session store per machine?"
+gh issue edit 77 --title "renamed: the store is per machine"
+gh issue edit 77 --body "See https://github.com/intentdriven/abcd/pull/1012 for the fix."
+gh issue comment 77 --body "Fixed in #1012."
+gh issue comment 77 -b "Closing: duplicate of #75."
+gh pr create --title t --body-file testdata/corpus/forge-posting.txt
+gh issue comment 77 -F testdata/corpus/forge-posting.txt
+gh pr view 1012 --json title,body
+gh pr list --state open --search "session"
+gh issue list --label security
+gh pr merge 1012 --squash --subject "fix: the walk" --body "Squashed."

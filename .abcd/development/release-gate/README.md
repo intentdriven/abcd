@@ -48,15 +48,13 @@ merge-queue batch carries the ship with any other queued pull request, and one
 that touches the payload renders another digest. A refusal tags nothing and
 leaves the version free — land a follow-up pull request that re-pins (the
 refusal names the rendered digest) or reverts the payload change, and its push
-retries. A hand-pushed tag exists before `verify` runs, so a refusal there
-consumes the version, and `auto-release.yml` then refuses to rebuild it and
-names the re-cut, a new dated version; prove it on the release branch first: `go run ./cmd/abcd launch
+retries. Prove it on the release branch first: `go run ./cmd/abcd launch
 archive --out "$(mktemp -d)" --tag vX.Y.Z --verify --repository <owner/name>`,
 naming the repository the tag will be pushed to, exits 0 when the release will
 pass. Without `--repository` a pin whose address names another repository (a
 fork, a rename, a transfer) passes locally and is refused after the tag,
 consuming the version. From the ship's merge
-until the publish job uploads the archive, the catalog on `main` names a zip that
+until the Release is published, the catalog on `main` names a zip that
 is not there yet; an install or update in that window fails closed and leaves an
 installed plugin on its previous release, so approve the release deployment
 promptly.
@@ -74,7 +72,27 @@ audit, dependency review, `govulncheck`, the attribution gate and the external
 review. The normal release path (`auto-release` tagging the main tip) re-checks
 nothing those gates have not already passed on the exact tagged commit; a
 hand-pushed tag on a commit outside `main` forgoes them, which is one more
-reason the runbook's branch → PR → merge path is the supported one.
+reason the runbook's branch → PR → merge path is the supported one. It is also
+the only path that publishes: every provenance check verifies release
+provenance against `release.yml` on `main` and the released commit, which only
+auto-release's call provides, so a run started by a hand-pushed tag is refused
+by its first job (`pushed-tag`) before anything is checked out, built or
+signed. A pre-release tag (`vX.Y.Z-…`) is refused by the release job's tag
+check, since the site run publishes full releases only.
+
+The Release is created as a draft holding the binaries, the plugin archive and
+`checksums.txt`; the site run attaches `site.tar.gz` and then publishes it, so
+a Release is public only once every asset is attached and no asset is added
+after publication. The release job hands the site run the draft's numeric id,
+and both address the Release by that id alone, refusing when more than one
+Release carries the tag. Immediately before publishing, the site run downloads
+every asset again by its id and checks it against `checksums.txt`, against the
+archive the render attached and against the release provenance policy; it
+marks the Release latest only when no published release carries a higher
+version, and fails if the assets differ afterwards from the ones it checked. A run that stops before that leaves a draft and nothing
+public: re-run the failed jobs of that run. A later push to `main` does not
+re-cut it, because a run started by that push releases a different commit:
+`auto-release`'s `detect` fails and names this remedy instead.
 
 ## Semantic gates (host-run, before the tag)
 
@@ -99,9 +117,11 @@ against the exact commit to be tagged:
 **A receipt names the commit its reviewer READ, and lives in a LATER commit** —
 it can never sit in the tree of the commit it names, because adding it would
 change that commit's sha. Under changelog-driven auto-release (adr-37) the
-release branch is therefore exactly two commits: the CHANGELOG roll (the
+release branch is therefore two commits: the CHANGELOG roll (the
 release-content commit the reviewers read), then the semantic receipts naming
-it. On merge, the released tree carries the receipts, and `release.yml` derives
+it. A review that defers a finding adds a third: the captures, one open issue
+record per deferred finding, committed after the receipts (see *Dispositions*
+below). On merge, the released tree carries the receipts, and `release.yml` derives
 the *content* commit from the **receipts directory** it carries — the receipts
 name the commit they gate, so `record-lint --derive-content-sha` reads the
 `.abcd/work/reviews/<sha>/` entry on the released lineage and returns that `<sha>`
@@ -220,18 +240,127 @@ release's content tree:
    inputs are not this release's.
 2. `tier` is insufficient for the release's impact class — a shallow receipt on a
    feature or breaking release.
-3. A `failing` entry carries no `disposition` — an un-triaged finding.
+3. A `failing` entry carries no `disposition` — an un-triaged finding. From
+   manifest `schemaVersion` 2 this refusal is the closed vocabulary below.
 
 None of these judges a finding's **content or severity**. Confirmed findings
-route to the maintainer, whose PROMOTE with recorded dispositions is the gate
+route to the technical facilitator cutting the release, whose PROMOTE with
+recorded dispositions is the gate
 (verifier-selects-gates-decide); the gate does not hard-block on a confirmed
 major and keeps no never-worse ratchet across tiers.
+
+### Dispositions
+
+From manifest `schemaVersion` 2, every `failing` entry of a release receipt
+carries exactly one of three dispositions, compared byte for byte:
+
+- **`fixed`** — the change that answers the finding is in the reviewed tree;
+- **`invalid`** — re-verification shows the finding is not a defect;
+- **`deferred`** — the finding is captured as an open issue record of its own,
+  which the entry names in a separate `record` field.
+
+```json
+{"where": "04-surfaces/16-lint.md:12", "disposition": "deferred", "record": "iss-<id>"}
+```
+
+This is the deferred-finding discipline
+([itd-2610141956319695](../intents/disciplines/itd-2610141956319695-a-deferred-finding-is-its-own-captured.md)):
+a deferral is always a capture, never a line in a catch-all. `receipt_gate`
+refuses, naming the gate, the entry's index in `failing` and what is wrong:
+
+- any other disposition: free text such as `accepted: …`, a capitalised
+  `Deferred`, a trailing space or a blank;
+- a `deferred` entry with no `record`, or a `record` that is not `iss-<digits>`
+  with no leading zero;
+- a `record` that no file in `.abcd/work/issues/` carries, that two files claim,
+  that sits in `resolved/` or `wontfix/` rather than `open/`, that is reached
+  through a symbolic link, or that the ledger's reader (the one `abcd capture`
+  reads with) refuses;
+- a `record` on a `fixed` or `invalid` entry;
+- one `record` named by two or more deferred entries, counted across every
+  required gate's receipts for the commit, refused once with the count and each
+  entry.
+
+A receipt's keys bind case-insensitively, as JSON does in Go: `"Record"` reads
+as `record` and `"Disposition"` as `disposition`. Two spellings of one key in
+the same object, such as `"record"` beside `"Record"`, are refused as a
+duplicate key rather than read last-wins. The values are compared byte for
+byte.
+
+**What the gate does not check.** It checks that a deferred entry's record is
+open, well-formed and named by that entry alone. It cannot check that the record
+describes the finding, or that the record is new rather than an older open issue
+about something else; the reviewer who dispositions the finding owns both.
+Naming an older open record is correct when that record really is this finding:
+a defect already captured is deferred to the record that holds it, not captured
+twice.
+
+**The captures land after the receipts.** A deferred entry's record is read from
+the tree the release job checks out, so it is committed on the release branch in
+a commit after the receipts commit, and the merge tree holds it. It cannot ride
+in the roll: the reviewers read the roll before any finding exists, and the
+receipts name the roll's sha. `abcd launch receipts` refuses while a capture,
+like a receipt, is still uncommitted.
+
+**A record resolved before the merge.** A deferral may name an older open record
+that really is the finding. If a peer pull request, or an entry batched with the
+release in the merge queue, resolves that record before the release merges, the
+merge tree holds it in `resolved/`, and `verify` refuses the receipt entry ("in
+resolved/, not open/") although the local check admitted it on the release
+branch. On the auto-release path the refusal comes before the tag, so the
+version stays free. Heal it by correcting that receipt entry in a follow-up pull
+request — `fixed` if the resolving change fixed the finding, or `deferred` to a
+new open record of its own — since the sha-keyed receipt directories are
+mutable (RD002's append-only rule covers the dated review directories, not
+them); the next push to `main` retries the release.
+
+**What the local check reads.** `abcd launch receipts` holds the working tree to
+the committed one for every input of the verdict: the receipts directory, the
+records the deferred findings name, `.abcd/record-lint.json`, the manifest,
+CHANGELOG.md and the release workflow. Another session's capture of an unrelated
+finding is not an input and is left alone. It cannot see a file git ignores or
+one marked skip-worktree, so a receipt or record hidden either way can pass
+locally and still be refused by the release job, which reads only what is
+committed. It also refuses a clone that carries no release tags while
+CHANGELOG.md names an earlier release, because the gate reads the tags to judge
+the manifest's era and the release's version; `git fetch --tags` clears it.
 
 **Era gating.** The manifest's presence in the armed content tree is the era
 marker. The three refusals above arm only when `manifest.json` is present at the
 gate's armed commit, so receipts written before the manifest existed — the
 receipts committed under `.abcd/work/reviews/` for earlier releases — stay valid
-for their own commits, judged by the checks that predate the manifest.
+for their own commits, judged by the checks that predate the manifest. A release
+after one whose tag carried the manifest cannot predate it, so the release gate
+reads the release tags (the `verify` job checks out full history) and refuses a
+release whose tree has none when an older release tag's tree carried it, or when
+such a tag exists and CHANGELOG.md names no dated release, rather than judging it
+by those older checks (iss-130). A repository whose releases never carried the
+manifest — a managed repository whose scaffolded release workflow runs the gate —
+keeps the pre-manifest checks, and release tags that cannot be read fail the
+release closed. The manifest's own `schemaVersion` marks the next
+era the same way: a commit whose manifest is `schemaVersion` 1 keeps the
+free-text dispositions its receipts were written to, and the closed vocabulary
+arms at `schemaVersion` 2, which a receipt's `manifestHash` pins like every other
+byte of the manifest. A manifest below `schemaVersion` 2 is refused in a release
+after v0.14.1, and in a tree whose CHANGELOG.md names no dated release, so
+setting the manifest back cannot turn the vocabulary off.
+
+**A release is newer than every release tag.** Both era refusals read the
+release's version from CHANGELOG.md, so in the manifest era — the tree carries
+the manifest, or an earlier release tag's tree did — the gate also refuses a
+release whose version is not newer than every release tag, unless it re-gates
+its own tagged commit and every newer release tag descends from that commit.
+A version already tagged at another commit is refused too. This refuses a point
+release on an older line, such as v0.14.2 after v0.15.0: cut the next version on
+`main` instead. That is the release policy, not only the gate's: the product
+thinker ruled on 2026-10-14 that before 1.0 only the newest release is offered
+(the decisions log line of that date, iss-2610141938299842), and
+`launch.ComputeRetention` already refuses an out-of-order ship. On the
+auto-release path `verify` runs before the tag exists, and a tag push or a
+re-run from an existing tag gates the tagged commit itself, so a release and its
+re-run both pass. **A hand-pushed tag is used up if `verify` refuses it:** tags
+cannot be deleted or moved, so the version cannot be cut again, and the fix
+goes out under the next version.
 
 The `receipt_gate` rule is **disabled by default** — it must never fire on
 ordinary PRs/pushes, only at release time — and is armed by `release.yml`'s
@@ -241,11 +370,15 @@ semantic refusal blocks the release without the version-consuming wedge of a gat
 that sat in the publish path (iss-2608231226347380). `verify` supplies the
 content commit and the required-gate list from the workflow (the trust root), not
 the in-tree config: `record-lint --release-gate <sha> --require-gate <name>…`,
-where `<sha>` is `record-lint --derive-content-sha`. Before it, on a tag push,
-`verify` requires the tag to be `v` plus the version `record-lint
---released-version` reads from the released tree — the strict reader the
-receipts are bound with — so a hand-pushed tag naming another version cannot
-publish under the receipts of the CHANGELOG's version (iss-2609251945586202).
+where `<sha>` is `record-lint --derive-content-sha`. That trust root has an edge:
+`verify` builds `record-lint` from the tree it gates, so a release cannot disarm
+the gate short of editing `release.yml` or the gate code (`internal/core/lint`,
+`cmd/record-lint`), both reviewed in the pull request and nothing more
+(iss-2610142152501415). Before it, `verify` requires the release tag to be `v`
+plus the version `record-lint --released-version` reads from the released
+tree — the strict reader the receipts are bound with — so a tag naming another
+version cannot publish under the receipts of the CHANGELOG's version
+(iss-2609251945586202).
 On abcd's own profile `launch archive --tag` refuses such a tag earlier still.
 The rule is skipped on the
 rehearsal path (`workflow_dispatch`), where no real receipts exist. Once `verify`
@@ -269,18 +402,26 @@ family + `gh` the binary provenance already uses).
 
 ## Procedure
 
-1. Land all work on the release commit; open the release the normal way (branch
-   → PR → merge). `ci.yml`'s required checks gate the merge; `verify` re-runs
-   the deterministic gates against the tagged commit before anything is
-   published.
-2. On the merged commit, run the two semantic gates above in the harness.
-3. Record each verdict as a receipt keyed to that commit's sha.
-4. Tag `vX.Y.Z` on the commit. `receipt_gate` is armed fail-closed in
-   `release.yml`'s **`verify` job, before the binaries are built or published**
-   (adr-52): the release is refused unless every semantic receipt is present and
-   PROMOTE, alongside the deterministic gates. The tag itself is never moved
-   (anti-tag-move); moving the gate to the safe side of the tag is what stops a
-   semantic refusal from wedging a version the way a gate in the publish path did
-   (iss-2608231226347380, iss-326). On the auto-release path the tag is made by
-   `release.yml`'s own `tag` job, which needs `verify`, so a refused gate —
-   semantic or deterministic — leaves no tag and the version stays free.
+1. **Roll the changelog.** On a release branch, `abcd launch ship` composes the
+   dated section from the records that shipped; commit it. That commit is the
+   content commit, R: the commit the reviewers read and every receipt names.
+2. **Review R.** Run the two semantic gates above against R in the harness.
+3. **Capture each deferred finding** as its own open issue record with
+   `abcd capture`, one record per finding, so its id exists before its receipt
+   entry names it.
+4. **Commit the receipts**, keyed to R's full sha at
+   `.abcd/work/reviews/<R>/<gate>.json`, each finding dispositioned `fixed`,
+   `invalid` or `deferred`, a deferred one with its `record`.
+5. **Commit the captures** after the receipts, so the merge tree holds them.
+6. **Run `abcd launch receipts`** on the release branch: the release job's
+   receipt gate, run locally. Merge only when it exits 0.
+7. **Open the pull request and enter the merge queue.** `ci.yml`'s required
+   checks gate the merge.
+8. **Auto-release tags after `verify` passes.** On the merge, `auto-release.yml`
+   reads the new dated heading and calls `release.yml`, whose `verify` job arms
+   `receipt_gate` fail-closed against R, derived from the receipts directory,
+   alongside the deterministic gates, **before the tag** (adr-52). Its `tag`
+   job needs `verify`, so a refused gate leaves no tag and the version stays
+   free; the tag is never moved (anti-tag-move), which is what stops a semantic
+   refusal from wedging a version the way a gate in the publish path did
+   (iss-2608231226347380, iss-326).

@@ -904,6 +904,40 @@ is recorded in `.abcd/config.json`, so a later `install` without the flag keeps
 the hook and restores a hand-deleted one; a `prepare-commit-msg` hook abcd did
 not write is reported, never replaced.
 
+`--outbound-hook` opts the repo into the committed `commit-msg` hook, which
+refuses a commit whose message carries a live agent-session URL or a tool's own
+attribution footer, by running `abcd lint outbound` over it. Like
+`--attribution` it is its own approval, it is opt-in and never a default
+(installing a hook changes how the repository's commits work, which is the
+repository's choice), the choice is recorded in `.abcd/config.json`, and a
+`commit-msg` hook abcd did not write is reported, never replaced. The hook finds
+abcd one way only, an absolute path each clone sets once:
+
+```bash
+git config --local abcd.binary /absolute/path/to/abcd
+```
+
+It never searches `PATH`, never reads an environment variable, and never runs a
+file inside the working tree, a symlink that resolves into it included. When no
+usable abcd is configured, or the one configured cannot judge the message (an
+exit 1 without `lint outbound`'s own verdict line counts as that), it prints one
+warning line and the commit proceeds: refusing every commit where
+abcd is absent would change how the repository works. Only a message abcd
+judges and refuses is blocked. Like the guard hooks, it runs once the clone's
+`core.hooksPath` points at `.githooks`.
+
+`--outbound-forge` opts the repo into the shell guard's forge-text check: the
+title, body and body file a posting `gh pr` or `gh issue` command (create, new,
+edit, comment) hands the forge are judged against the same outbound policy
+before the command runs, and a live agent-session URL or a tool attribution
+footer in them is refused (`forge-text-outbound`, in `commands/guard.md`). It is
+opt-in and never a default, on `--outbound-hook`'s terms, and independent of
+it. It writes no hook and needs no `abcd.binary`: the guard is the abcd already
+running in the session, so there is no binary to find and none to be missing.
+The choice is recorded in `.abcd/config.json` as `outbound.forge: true`, which
+is all the guard reads, so a later `install` without the flag keeps it; remove
+the key, or set it to `false`, to turn the check off.
+
 For dogfooding abcd itself, `abcd ahoy install --dev` installs a track-latest
 shim instead of the pinned owned copy: the `PATH` entry rebuilds abcd from
 the source tip on every call and fails loudly on a broken build. Re-running
@@ -1219,6 +1253,26 @@ Renders the canonical `DetectionResult` JSON envelope and writes nothing — the
 same pass `install` would apply, shown rather than applied. `--dry-run` always
 emits JSON, so it needs no `--json` flag. Use it when the user wants to see
 exactly what an install would do before letting it run.
+
+## `rules --prompt` — what one prompt brings back
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" rules --prompt "<text>" --json
+```
+
+Shows what the rule loader `install` sets up would bring back for that one
+prompt in a fresh session, and writes nothing. `domains` lists each rule
+domain the prompt matches, with the recall words that hit (`hits`, or
+`*NAME` for a star activation); `notes` lists each memory note it recalls
+from `~/.abcd.noindex/memory.json` or the project's `.abcd/memory.json`, with
+its `layer` (`machine` or `project`) and the recall words that hit. Each
+carries a `form`: `full`, or `over-budget` when it would not fit the
+per-turn budget and would come back on a later prompt instead. `disabled`
+is true under the kill switch, and then nothing comes back; `unreadable`
+names a `memory.json` that could not be read, and why. Use it when someone
+asks why a rule or a note did, or did not, come back on a prompt. A
+positional DOMAIN with `--prompt` is refused, exit 2: `rules <DOMAIN>`
+renders one domain's rules instead.
 
 ## Scoping note: `--identity` is CLI-only
 

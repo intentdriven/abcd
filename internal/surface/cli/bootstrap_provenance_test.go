@@ -24,8 +24,9 @@ import (
 // fixture bytes against GitHub.
 
 // ghVerifyArgs is the policy every gh call must carry: this repository's
-// release workflow, on github.com.
-const ghVerifyArgs = "--hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml"
+// release workflow on main, built from main on a GitHub-hosted runner, on
+// github.com.
+const ghVerifyArgs = "--hostname github.com --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners"
 
 func TestBootstrapInstallsADownloadGhVerifies(t *testing.T) {
 	root := bootstrapRoot(t)
@@ -142,7 +143,7 @@ func TestBootstrapWarnsWhenGhIsNotSignedIn(t *testing.T) {
 func assertProvenanceWarning(t *testing.T, out, why string) {
 	t.Helper()
 	flat := strings.Join(strings.Fields(out), " ")
-	for _, want := range []string{"WARNING", "not checked against the signed build record", why, "gh attestation verify", "--repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml"} {
+	for _, want := range []string{"WARNING", "not checked against the signed build record", why, "gh attestation verify", "--repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners"} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("the warning must say %q; output %q", want, out)
 		}
@@ -194,4 +195,47 @@ func TestBootstrapWarnsWhenGhCannotBindTheCommit(t *testing.T) {
 		t.Errorf("a gh that cannot bind the commit must not be asked to verify: %q", calls)
 	}
 	assertProvenanceWarning(t, out, "--source-digest")
+}
+
+// TestBootstrapWarnsWhenGhCannotPinTheSourceRef: a gh whose attestation
+// verify has --source-digest but no --source-ref cannot hold the check to the
+// ref the release was built from, so it counts as a gh that cannot verify.
+func TestBootstrapWarnsWhenGhCannotPinTheSourceRef(t *testing.T) {
+	root := bootstrapRoot(t)
+	body := []byte("#!/bin/sh\nexit 0\n")
+	fx := bootstrapServer(t, body, bootstrapManifest(body))
+	gh := newGhStub(t, ghNoSourceRef)
+
+	out, code := runScriptGh(t, bootstrapFixtureScript(t, fx.base), root, fx.env(), "", gh.dir)
+	if code != 0 {
+		t.Fatalf("a gh that cannot pin the source ref is no gh, not a failed verification; exit %d, output %q", code, out)
+	}
+	if calls := gh.verifyCalls(t); len(calls) != 0 {
+		t.Errorf("a gh that cannot pin the source ref must not be asked to verify: %q", calls)
+	}
+	assertProvenanceWarning(t, out, "--source-ref")
+}
+
+// TestBootstrapWarnsWhenGhLacksAPolicyFlag: a gh whose attestation verify has
+// no --cert-identity or no --deny-self-hosted-runners cannot apply the
+// release's verification policy, so it counts as a gh that cannot verify
+// rather than failing part-way through the check.
+func TestBootstrapWarnsWhenGhLacksAPolicyFlag(t *testing.T) {
+	for mode, flag := range map[ghMode]string{ghNoCertIdentity: "--cert-identity", ghNoDenySelfHosted: "--deny-self-hosted-runners"} {
+		t.Run(flag, func(t *testing.T) {
+			root := bootstrapRoot(t)
+			body := []byte("#!/bin/sh\nexit 0\n")
+			fx := bootstrapServer(t, body, bootstrapManifest(body))
+			gh := newGhStub(t, mode)
+
+			out, code := runScriptGh(t, bootstrapFixtureScript(t, fx.base), root, fx.env(), "", gh.dir)
+			if code != 0 {
+				t.Fatalf("a gh without %s is no gh, not a failed verification; exit %d, output %q", flag, code, out)
+			}
+			if calls := gh.verifyCalls(t); len(calls) != 0 {
+				t.Errorf("a gh without %s must not be asked to verify: %q", flag, calls)
+			}
+			assertProvenanceWarning(t, out, flag)
+		})
+	}
 }

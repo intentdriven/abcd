@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -101,6 +102,20 @@ type RuleConfig struct {
 	// the verdict is judged. It is how CheckGateReceipt reads what a HOLD
 	// receipt found with the gate's own reader; no config file can set it.
 	onReceipt func(gate, verdict string, failing []ReceiptFinding)
+	// release, when set, says the receipt gate is judging a release. Only
+	// ArmReceiptGate sets it, so no config file can, and CheckGateReceipt — the
+	// reader the doc-fidelity gate (itd-60) shares, with dispositions of its own
+	// such as "confirmed" — never does. It arms the two release-only rules: the
+	// closed disposition vocabulary from manifest schemaVersion 2, where a
+	// finding is fixed, invalid or deferred to its own open issue record; and
+	// the refusal of a release whose tree carries no manifest although an
+	// older release tag's tree carried it (iss-130).
+	release bool
+	// onDeferred, when set, is handed the record id of each deferred finding
+	// the release gate reads with a well-shaped record. It is how
+	// CheckReleaseReceipts learns which ledger files are inputs to the verdict;
+	// no config file can set it.
+	onDeferred func(id string)
 	// Fields is the no_git_metadata banned frontmatter key list.
 	Fields []string `json:"fields"`
 	// Exempt is a glob allowlist of repo-relative paths (filepath.Match, so `*`
@@ -318,8 +333,8 @@ type RuleConfig struct {
 	DiffRange string `json:"-"`
 }
 
-// IndexSpec is one index_drift pair — a hand-written enumeration of a
-// directory's contents, and the directory it must agree with.
+// IndexSpec is one index_drift pair — an enumeration of a directory's contents,
+// hand-written or generated, and the directory it must agree with.
 type IndexSpec struct {
 	// ID names the region: the document fences it with `<!-- index: <id> -->`
 	// and `<!-- /index -->`.
@@ -344,9 +359,17 @@ type IndexSpec struct {
 	// Suffix is the file extension an exact index enumerates (".md" lists file
 	// stems); empty enumerates the directory's immediate subdirectories.
 	Suffix string `json:"suffix"`
-	// Mode is "exact" (default — the listing and the directory must agree) or
-	// "absent" (every listed path must NOT exist, the planned-seams shape).
+	// Mode is "exact" (default — the listing and the directory must agree),
+	// "absent" (every listed path must NOT exist, the planned-seams shape), or
+	// "generated" (the region is written by the generator from the directory and
+	// must equal its rendering byte for byte; iss-2608220150157511).
 	Mode string `json:"mode"`
+	// Render names how a generated region is composed from the directory:
+	// "names" (a backticked, comma-separated list of entry names), "titles" (one
+	// bullet per record, its id and its H1 title) or "adr-table" (the ADR
+	// store's ID/Title/Status/Date table read from each record's frontmatter).
+	// Required in generated mode and refused in the others.
+	Render string `json:"render"`
 }
 
 // ArmReceiptGate returns cfg with the receipt_gate rule armed for a release: it
@@ -377,6 +400,18 @@ func ArmReceiptGate(cfg Config, commit string, requiredGates []string) Config {
 	// clears the gates (fail-closed at check time) rather than inheriting the
 	// committer-editable config.
 	rc.RequiredGates = requiredGates
+	// The ledger a deferred finding's record is read from is the canonical
+	// one, pinned like Severity: an issues_dir from the committer-editable
+	// config could point the gate at a shadow ledger of hand-made records that
+	// the ledger rules, the capture verbs and the release cut never read.
+	rc.IssuesDir = recordid.IssuesRelDir
+	// The receipts are read from the canonical reviews directory for the same
+	// reason: it is the one release.yml's --derive-content-sha derives the
+	// content commit from and the local receipts check scans for uncommitted
+	// changes, so a receipts_dir from the committer-editable config would let
+	// the gate judge receipts neither of them reads.
+	rc.ReceiptsDir = reviewsSubdir
+	rc.release = true
 	rules["receipt_gate"] = rc
 	cfg.Rules = rules
 	return cfg

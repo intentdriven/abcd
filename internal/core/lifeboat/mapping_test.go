@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -29,6 +30,38 @@ func repoRoot(t *testing.T) string {
 		}
 		dir = parent
 	}
+}
+
+// thisRepoPlan is one plan of this repository, shared by the tests that only
+// read it or the coverage it was packed from. Plan probes the tree and packs
+// from that report, unchanged, so its Coverage is exactly what Probe returns;
+// both are pure functions of the tree, and no test in this package writes to
+// this repository, so every one of those tests saw the same report. Under
+// -race each probe of this record cost about 40 seconds, nearly all of it the
+// open-questions marker scan over every file. A test that changes what it was
+// handed must plan or probe for itself.
+var thisRepoPlan struct {
+	once sync.Once
+	lb   Lifeboat
+	err  error
+}
+
+// planThisRepo returns that shared plan of this repository.
+func planThisRepo(t *testing.T) Lifeboat {
+	t.Helper()
+	root := repoRoot(t)
+	thisRepoPlan.once.Do(func() { thisRepoPlan.lb, thisRepoPlan.err = Plan(root) })
+	if thisRepoPlan.err != nil {
+		t.Fatal(thisRepoPlan.err)
+	}
+	return thisRepoPlan.lb
+}
+
+// probeThisRepo returns the coverage of that shared plan: this repository's
+// probe.
+func probeThisRepo(t *testing.T) Coverage {
+	t.Helper()
+	return planThisRepo(t).Coverage
 }
 
 // TestBriefCarriesTheRenderedMappingTable is the anti-drift detector: the brief

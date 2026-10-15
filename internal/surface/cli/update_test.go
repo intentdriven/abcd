@@ -404,7 +404,7 @@ func (provenanceRefusingUpdater) Apply(target, tag string, _ io.Writer) (update.
 		Refusal: &update.Refusal{
 			Shape:  "unverified-provenance",
 			Detail: "no build-provenance attestation is published for sha256 " + strings.Repeat("ab", 32),
-			Remedy: "install by hand: … `gh attestation verify abcd-test-arch --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml` …",
+			Remedy: "install by hand: … `gh attestation verify abcd-test-arch --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners` …",
 		},
 	}, nil
 }

@@ -86,6 +86,10 @@ var wordReaders = map[string]string{
 	"readGitConfig":          "firstOperandLimit, and flagCouldBe on every unknown word",
 	"hooksPathRewrite":       "sitesNamed and firstOperands",
 	"bareStash":              "sitesNamed and operandReadings",
+	"forgePostsOf":           "sitesNamed and operandReadings",
+	"forgeValues":            "exempt: reads only the words forgeWord says the line fixes; a flag word a substitution prints is not read as a text flag, and the text it sets goes unseen, as commands/guard.md names",
+	"forgeFlag":              "exempt: reads the known word forgeValues hands it",
+	"forgeFile":              "exempt: compares a body-file value the line fixes with `-`, standard input, which is never read",
 	"stashHasMessage":        "exempt: fail-closed by construction — an unknown word is never read as the message, so the stash stays bare",
 	"abbreviatesAlternative": "exempt: reads the known text flagGroupHit hands it",
 	"gitValueFlags":          "exempt: builds the value-flag table the git passes read words with, and reads no word",
@@ -108,6 +112,7 @@ var wordReaders = map[string]string{
 
 	// carried.go: the values a text assigns before it uses them
 	// (iss-2609281134544802).
+	"packageName":        "unknownMark: an `@` before a substitution's output is no version the line fixes",
 	"filtersProcessList": "commandSites and nameCouldBeAny: a name a substitution prints can be grep, awk or ps",
 	"awkMatches":         "isUnknown on every word: an option or program the line does not fix is read as one that matches",
 	"namesAssigned":      "commandSites, isUnknown and nameCouldBeAny: a command whose name the line does not fix, or one a substitution can print as an assigning builtin, assigns every name-shaped operand",

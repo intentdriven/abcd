@@ -3,8 +3,10 @@ package cli
 import (
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -32,5 +34,23 @@ func boardStatus(cwd string, stderr io.Writer) *statusblock.Block {
 		fmt.Fprintf(stderr, "abcd: the Now / Next / Later block is omitted — %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
 		return nil
 	}
+	markReserved(root, &b, time.Now(), stderr)
 	return &b
+}
+
+// markReserved names on each row the reservation another copy holds on its
+// record, read from disk alone as the checkout last fetched the reservations
+// (no fetch, no push); a view that cannot be read is said on stderr and marks
+// nothing.
+func markReserved(root string, b *statusblock.Block, now time.Time, stderr io.Writer) {
+	snap, err := claim.View(root, now)
+	if err != nil {
+		fmt.Fprintf(stderr, "abcd: the reservations are omitted from the block — %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+		return
+	}
+	for _, rows := range [][]statusblock.Row{b.Now, b.Next, b.Later} {
+		for i := range rows {
+			rows[i].Reserved = termsafe.Sanitize(snap.HeldBy(rows[i].ID, now))
+		}
+	}
 }

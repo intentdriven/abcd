@@ -158,6 +158,26 @@ type InstallOptions struct {
 	// install keeps the hook instead of making the maintainer re-pass the flag to
 	// keep something they already chose.
 	Attribution bool
+	// OutboundHook opts this repo into the committed commit-msg hook that runs
+	// `abcd lint outbound` over every commit message. --outbound-hook.
+	//
+	// Opt-IN, never a default: installing a hook changes how the repository's
+	// commits work, which is the repository's choice (iss-2609250834251447). The
+	// hook finds abcd only through `git config --local abcd.binary` and fails
+	// open with one warning when none is configured. The choice is PERSISTED
+	// (`outbound.hook` in config.json), as Attribution's is.
+	OutboundHook bool
+	// OutboundForge opts this repo into the shell guard's forge-text check:
+	// the title, body and body file a posting gh command hands the forge are
+	// judged against the outbound policy before the command runs.
+	// --outbound-forge.
+	//
+	// Opt-IN, never a default, on --outbound-hook's terms: refusing a posting
+	// command changes how work in the repository goes, which is the
+	// repository's choice (iss-2610142210511831). It writes no hook and names
+	// no binary, because the guard is the abcd already running. The choice is
+	// PERSISTED (`outbound.forge` in config.json), which is all the guard reads.
+	OutboundForge bool
 	// AllowStaleBinary overrides the itd-111 staleness refusal: an install run
 	// through a binary that is stale against its source tip, or whose vintage
 	// cannot be determined, otherwise refuses before any write. The override is

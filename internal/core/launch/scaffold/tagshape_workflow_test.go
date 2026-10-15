@@ -37,8 +37,15 @@ func TestReleaseShapeChecksTheTagBeforeBuilding(t *testing.T) {
 			ok  bool
 		}{
 			{"v1.2.3", true},
-			{"v0.10.0-rc.1", true},
+			// abcd's release chain publishes a Release only once the site run
+			// has attached its archive, and the site run deploys and publishes
+			// full releases only: a pre-release tag is refused before it starts.
+			// A managed repository publishes in the release job itself, so a
+			// pre-release tag there is a release like any other.
+			{"v0.10.0-rc.1", !subs.Abcd},
+			{"v1.2.3-1", !subs.Abcd},
 			{"v1.2.3+build.7", true},
+			{"v1.2.3+build-7", true},
 			{`v9.9.9";echo INJECTED;x="`, false},
 			{"v1.2.3\nforged=1", false},
 			{"1.2.3", false},
@@ -55,6 +62,14 @@ func TestReleaseShapeChecksTheTagBeforeBuilding(t *testing.T) {
 			// output shows it ran.
 			if strings.Contains("\n"+string(out), "\nINJECTED\n") {
 				t.Errorf("tag %q executed its payload (Abcd=%v)", c.tag, subs.Abcd)
+			}
+		}
+		if subs.Abcd {
+			cmd := exec.Command("bash", "-c", script)
+			cmd.Env = []string{"TAG=v0.10.0-rc.1", "PATH=/usr/bin:/bin"}
+			out, _ := cmd.CombinedOutput()
+			if !strings.Contains(string(out), "pre-release") {
+				t.Errorf("the refusal of a pre-release tag must say why:\n%s", out)
 			}
 		}
 	}

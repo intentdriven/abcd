@@ -2,8 +2,9 @@
 
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
 questions, records the answers, and gets on with it; `ahoy install
---attribution` writes one more key, and four further keys can be hand-set and
-are read but never written. Beyond those nine, the binary reads only keys a
+--attribution`, `ahoy install --outbound-hook` and `ahoy install
+--outbound-forge` write one more key each, and four further keys can be hand-set
+and are read but never written. Beyond those eleven, the binary reads only keys a
 person opts into: the provider adapter's `oracle` keys and the interview's list
 style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
@@ -19,10 +20,12 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Nine keys plus a `meta` block. Install asks about visibility, the docs target,
+Eleven keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, and the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and writes exactly those four values back.
-`attribution.hook` is written by `ahoy install --attribution`. The remaining four —
+`attribution.hook` is written by `ahoy install --attribution`, and
+`outbound.hook` by `ahoy install --outbound-hook`, and `outbound.forge` by
+`ahoy install --outbound-forge`, which the shell guard reads. The remaining four —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, and the filing-time match's threshold and compared fields —
 are hand-set: the binary reads them and never writes them.
@@ -58,6 +61,12 @@ are hand-set: the binary reads them and never writes them.
   "attribution": {
     "hook": true                        // the committed prepare-commit-msg prompt asking each commit to
                                         //   declare whether a tool assisted it
+  },
+  "outbound": {
+    "hook": true,                       // the committed commit-msg gate refusing a session URL or a tool
+                                        //   footer; runs only the abcd `git config --local abcd.binary` names
+    "forge": true                       // the shell guard refuses a posting gh pr/issue command whose title,
+                                        //   body or body file carries either shape (forge-text-outbound)
   },
   "rules": {
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is
@@ -204,6 +213,48 @@ agent's steps there whatever tier the routing tables name, and only a `--route`
 overrides it for one run. The delegating verb sends such a step through the
 adapter itself and ingests the answer (spc-2609251028149555), and its receipt
 names the provider as the connection used.
+
+### The reviewer route's keys
+
+The RepoPrompt reviewer route (itd-6, spc-2609211950427074) reads two keys
+under `oracle` through the layered resolver, each validated when `implement
+step` reads it and refused loudly, naming the file and the key, rather than
+passed over for the default:
+
+```json
+{
+  "oracle": {
+    "review": "rp",                      // "host" (the bundled default) | "rp"; repo or machine,
+                                         //   the repository's file winning a key both set
+    "rp": {                              // MACHINE LAYER ONLY: ~/.abcd.noindex/config.json
+      "url": "http://127.0.0.1:7777/mcp",  // the MCP server's address: http or https to this
+                                           //   machine, no credentials, query or fragment
+      "tool": "oracle_send"              // optional: the tool a review is sent to
+    }
+  }
+}
+```
+
+- **`oracle.review` selects the route.** `host` keeps a build lane's reviews on
+  the host's own agents; `rp` sends the ruthless and security reviews to
+  RepoPrompt over MCP ([`02-adapters.md`](02-adapters.md)). Any other value is
+  refused. No flag sets it in this build.
+- **The server sits on the machine alone.** `oracle.rp` names the address a
+  review request (the lane's diff and its record) is sent to, so a
+  repository's `.abcd/config.json` declaring it is refused, as a provider block
+  is, and the URL is admitted only to localhost or a loopback address. A
+  refusal never quotes the URL, which could carry a credential. An unknown key
+  under `oracle.rp` is refused, and so is an `oracle.rp` with no `url`.
+- **The server block is read on the rp route alone.** With `oracle.review`
+  unset or `host`, `oracle.rp` is not read, so a fault in it refuses nothing in
+  a repository that never opted in; every refusal above is the rp route's.
+- **A route with no server here is not a fault.** A repository that sets
+  `oracle.review` to `rp` on a machine whose file names no `oracle.rp.url`
+  breaks nothing: each review the step hands out falls back to the host with a
+  receipt whose reason is `absent`.
+
+Unconfigured, nothing changes: every review runs on the host, and abcd never
+starts, installs or configures RepoPrompt, and never writes either key.
 
 ### The interview key
 

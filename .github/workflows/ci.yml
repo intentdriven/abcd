@@ -379,11 +379,18 @@ jobs:
       # ones, and the plain pass reports a failure minutes before the race pass
       # would. The macOS leg runs one race-enabled pass over the whole module
       # instead (the last step of this group).
+      #
+      # The two packages named ahead of the pattern are the slowest in this
+      # pass (126-187s and 110-147s on the four-core runner, 2026-10-15). In
+      # import-path order internal/surface/cli started about three and a half
+      # minutes into the step and finished it alone; named first, both start
+      # with the step. The set is still exactly ./... (go test runs a package
+      # named twice once), which TestPlainTestStepRunsTheWholeModule pins.
       - name: Test
         if: matrix.os == 'ubuntu-latest'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test ./...
+        run: go test ./internal/core/implement/loop ./internal/surface/cli ./...
 
       # Only a source change can introduce a data race, and the plain lane above
       # has already run the same tests over the record.
@@ -406,11 +413,15 @@ jobs:
       # in import-path order internal/surface/cli started among the last and ran
       # alone as the step's tail. go test runs a package named twice once, so the
       # set is still exactly the pattern's; the same test pins that with go list.
+      # internal/core/implement/loop and internal/core/interview joined the list
+      # on 2026-10-15: 172-244s and 160s under -race on the ubuntu runner, they
+      # started last in import-path order and were still running when two
+      # checks were cancelled at the leg's 30-minute ceiling.
       - name: Test (race, internal)
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
       # The macOS leg's one test pass (iss-2610110938293273): race-enabled, over
       # the whole module, with the same slowest-first order and the same
@@ -426,7 +437,7 @@ jobs:
         if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
-        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./...
+        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./...
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level
