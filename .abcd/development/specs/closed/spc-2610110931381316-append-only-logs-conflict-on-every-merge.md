@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2609151138388536](../../intents/planned/itd-2609151138388536-append-only-logs-conflict-on-every-merge.md):
+[itd-2609151138388536](../../intents/shipped/itd-2609151138388536-append-only-logs-conflict-on-every-merge.md):
 a decision is a record of its own, `dcn-<id>-<slug>.md` in the flat folder
 `.abcd/work/decisions/`, and the single log `.abcd/work/DECISIONS.md` is
 retired. The rule is
@@ -175,7 +175,7 @@ asserts: both merges exit 0, both files are present, and
   changes in the same step (spec-moves-with-the-surface). So does whichever
   page then carries the adoption workflow: `commands/prepare-this-repo.md`, or
   `commands/ahoy.md` if the verb split's step 4
-  ([spc-2610100613109045](../closed/spc-2610100613109045-a-person-who-types-abcd-sees-only-the.md))
+  ([spc-2610100613109045](spc-2610100613109045-a-person-who-types-abcd-sees-only-the.md))
   has already folded it there.
 - **The repository lint's decision-durability rule**
   (`internal/core/repolint/rule_decisions.go`). It passes when

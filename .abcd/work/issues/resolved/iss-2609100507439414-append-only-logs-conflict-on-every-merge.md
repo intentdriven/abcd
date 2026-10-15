@@ -13,6 +13,11 @@ remedy: "Waits on the M28 planning interview for itd-2609151138388536: build the
 related_intents: [itd-2609151138388536]
 deferred_after: v0.11.1
 deferral_reason: "Promoted to itd-2609151138388536 (draft), and a promoted issue keeps its folder until the intent ships (commands/capture.md, promote). The product thinker's ruling M28 of 2026-09-23 plans it next cycle as its own intent. Owed: that planning interview, which opens on one question: for a managed repository's existing decision log, convert it, offer to convert it, or apply the folder of records to new entries only?"
+resolution: "The decision log is a folder of minted dcn- records, one file per decision under .abcd/work/decisions/, so two branches that each record a decision add two files and conflict on nothing; abcd's own log was converted and retired with its gate and union merge line (itd-2609151138388536)."
+impact: breaking
+resolved_by:
+  intent: "itd-2609151138388536"
+  spec: "spc-2610110931381316"
 ---
 
 A managed repository's shared append-only files conflict on nearly every merge, and abcd propagates neither of the two remedies it has already adopted for itself.
@@ -51,6 +56,8 @@ recipe so the pattern is abcd's rather than each repository's.
 Same day, second session (gropiusllm-97): the two-session append to
 DECISIONS.md and NEXT.md held by convention only, and the ask is the same
 append-only `decide line` verb.
+
+- pursued: decisions recorded on branches from two accounts merge without anyone resolving a conflict; shown wrong if a pull request that records a decision is still dropped from the merge queue over a decision conflict.
 
 ## Deferral 2026-09-29
 

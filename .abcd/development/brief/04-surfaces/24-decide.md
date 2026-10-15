@@ -1,7 +1,7 @@
 # `/abcd:decide` — Record a Decision, List Them, or File an ADR
 
 `/abcd:decide` is the verb for both decision stores
-([spc-2610110931381316](../../specs/open/spc-2610110931381316-append-only-logs-conflict-on-every-merge.md),
+([spc-2610110931381316](../../specs/closed/spc-2610110931381316-append-only-logs-conflict-on-every-merge.md),
 decision 17):
 
 - `abcd decide "<text>"` **records a decision**: one new file,
