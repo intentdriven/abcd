@@ -68,6 +68,10 @@ func (l Lane) masked() Lane {
 	l.Stage = Stage(line(string(l.Stage)))
 	l.Awaits = maskEach(l.Awaits, func(a Await) Await {
 		a.Role, a.Brief, a.Receipt, a.Kept = line(a.Role), line(a.Brief), line(a.Receipt), free(a.Kept)
+		a.Answered = maskPtr(a.Answered, func(r RouteAnswer) RouteAnswer {
+			r.Route, r.SHA256 = line(r.Route), line(r.SHA256)
+			return r
+		})
 		return a
 	})
 	l.Syncs = maskEach(l.Syncs, func(s Sync) Sync {

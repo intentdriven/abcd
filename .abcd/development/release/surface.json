@@ -1328,6 +1328,118 @@
       ]
     },
     {
+      "path": "abcd embargo",
+      "hidden": false,
+      "group": "release",
+      "block": "people",
+      "sentence": "Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd embargo check",
+      "hidden": false,
+      "sentence": "Check a commit range or texts for what would disclose an advisory under embargo: Writes nothing; refuses on each id, reserved CVE id, title or store path found.",
+      "flags": [
+        {
+          "name": "allow",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "file",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "range",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo close",
+      "hidden": false,
+      "sentence": "Show an advisory's closing text and digest, or close it on GitHub with it: Writes GitHub and the store only with --approve; refuses a digest for other text.",
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo intake",
+      "hidden": false,
+      "sentence": "Take this repository's private advisories into private records in the embargo store: Writes only the embargo store; refuses a remote that is not on GitHub.",
+      "flags": []
+    },
+    {
+      "path": "abcd embargo publish",
+      "hidden": false,
+      "sentence": "Show the publication plan with computed patched versions, or publish it: Writes GitHub and the store only with --approve; refuses a digest for another plan.",
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo triage",
+      "hidden": false,
+      "sentence": "Record a verdict on a private advisory, drafting a closing verdict's text: Writes the embargo store; refuses an unknown verdict or one missing its reason.",
+      "flags": [
+        {
+          "name": "by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "cannot-help",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "exists-without",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd embark",
       "hidden": false,
       "group": "portability",
@@ -3117,6 +3229,75 @@
       ]
     },
     {
+      "path": "abcd memory",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Count the memory notes in both layers and name any layer it cannot read: Writes nothing; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd memory add",
+      "hidden": false,
+      "sentence": "Write one memory note, its body read from stdin: Writes ~/.abcd.noindex/memory.json only; refuses a secret, a network address or a private name.",
+      "flags": [
+        {
+          "name": "by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "everywhere",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "moved-from-host",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "recall",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "title",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd memory list",
+      "hidden": false,
+      "sentence": "List every memory note with its body, recall words, stamps and reach: Writes nothing; refuses any argument.",
+      "flags": []
+    },
+    {
+      "path": "abcd memory remove",
+      "hidden": false,
+      "sentence": "Remove one personal memory note, whoever wrote it: Writes ~/.abcd.noindex/memory.json only; refuses a note in the project's file.",
+      "flags": []
+    },
+    {
       "path": "abcd mode",
       "hidden": false,
       "group": "agents",
@@ -3319,7 +3500,15 @@
       "group": "agents",
       "block": "agents",
       "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
-      "flags": []
+      "flags": [
+        {
+          "name": "prompt",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd scribe",

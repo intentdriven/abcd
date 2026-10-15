@@ -38,6 +38,11 @@ const maxStateFileBytes = 256 * 1024
 // this; only a bloated or hostile rules.json can reach it.
 const injectionBudgetBytes = 64 * 1024
 
+// InjectionBudgetBytes is the per-turn budget, exported because the memory
+// recall shares it (spc-2610111627213138, "Budget"): the rules render first,
+// and the recall takes what they leave, never a budget of its own.
+const InjectionBudgetBytes = injectionBudgetBytes
+
 // injectionTruncatedMarker is the unmistakable substring the loud truncation
 // notice carries when the budget bites — searchable in the injected output and
 // in host logs.
@@ -85,9 +90,17 @@ func (r InjectResult) Labels() []string {
 
 // SessionState is the per-session dedup ledger plus the prompt counter that
 // drives the fixed-N refresh backstop.
+//
+// Recalled is the memory recall's own ledger (internal/core/recall,
+// spc-2610111627213138): item key to a signature of the item's content. It is
+// a second map because Inject prunes every Ledger name that is not an active
+// domain, which would forget every recalled item each turn; Inject carries it
+// through untouched, and the same resets clear both — ResetState removes the
+// file, and the backstop prompt clears the two together.
 type SessionState struct {
-	Count  int               `json:"count"`
-	Ledger map[string]string `json:"ledger"` // domain name -> last-injected signature
+	Count    int               `json:"count"`
+	Ledger   map[string]string `json:"ledger"`             // domain name -> last-injected signature
+	Recalled map[string]string `json:"recalled,omitempty"` // memory item key -> content signature
 }
 
 // Inject is the pure heart of the prompt-router hook: it recall-matches prompt,
@@ -98,22 +111,23 @@ type SessionState struct {
 //
 // backstop is the fixed-N full-refresh interval; <= 0 uses DefaultRefreshBackstop.
 // When the (incremented) prompt count is a multiple of the backstop, the ledger
-// is cleared first so always-relevant domains re-inject.
+// is cleared first so always-relevant domains re-inject, and the recalled
+// ledger with it, so a recalled item comes back on the same prompt.
 func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectResult {
 	if backstop <= 0 {
 		backstop = DefaultRefreshBackstop
 	}
-	if len(prompt) > maxPromptBytes {
-		prompt = prompt[:maxPromptBytes]
-	}
+	prompt = CapPrompt(prompt)
 
 	ledger := map[string]string{}
 	for k, v := range prev.Ledger {
 		ledger[k] = v
 	}
+	recalled := copyLedger(prev.Recalled)
 	count := prev.Count + 1
 	if count%backstop == 0 {
 		ledger = map[string]string{}
+		recalled = nil
 	}
 
 	matched := rs.Match(prompt)
@@ -161,8 +175,21 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectRe
 		Injected: injected,
 		Active:   names,
 		Sources:  sources,
-		State:    SessionState{Count: count, Ledger: ledger},
+		State:    SessionState{Count: count, Ledger: ledger, Recalled: recalled},
 	}
+}
+
+// copyLedger copies the memory recall's ledger, nil for an empty one, so the
+// state Inject hands back never shares a map with the caller's.
+func copyLedger(m map[string]string) map[string]string {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // activeNames is the set of domain names in force this turn: every domain the

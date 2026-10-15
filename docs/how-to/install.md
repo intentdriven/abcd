@@ -239,7 +239,9 @@ is a symlink, or that belongs to another account, is left as it is.
 If your home folder is itself a git repository, a dotfiles repository you push
 somewhere, abcd keeps its folder out of it. The first time an abcd command
 other than the status line runs with `~/.abcd.noindex` in place, it writes `~/.abcd.noindex/.gitignore` holding `*`,
-so a `git add -A` in your home stages nothing abcd keeps there. It does this once:
+so a `git add -A` in your home stages nothing abcd keeps there that your home
+repository does not already track; an ignore file never untracks a file already
+committed. It does this once:
 a file beside it, `gitignore-laid`, records that it did, and while that file
 stands abcd never writes `.gitignore` again. To let your home repository track
 abcd's folder, delete `.gitignore`; abcd leaves it deleted. Credentials are the

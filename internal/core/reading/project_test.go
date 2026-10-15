@@ -191,7 +191,15 @@ func TestAnElementABrowserDoesNotRenderIsReadWithoutItsContent(t *testing.T) {
 // searched the whole remainder for `-->` once per unclosed `<!--`, 21 s over
 // 800 KB. Each terminator search now remembers that it failed, and the walk
 // through unrendered elements only advances, however deep they nest.
+//
+// Its only assertions are the two CPU bounds, which hold in the plain lane
+// alone (raceEnabled), and both readers run on the caller's goroutine, so
+// under -race it asserted nothing and gave the detector nothing to watch: it
+// skips there, where it cost about a minute of CPU for no verdict.
 func TestTheHiddenHTMLReadersStayLinear(t *testing.T) {
+	if raceEnabled {
+		t.Skip("asserts only CPU bounds, which the plain lane holds; nothing here is concurrent for -race to watch")
+	}
 	headings := map[string]bool{"Audit Notes": true}
 	for _, unit := range []string{
 		"<!-- <?x?> <![CDATA[ <!x ",

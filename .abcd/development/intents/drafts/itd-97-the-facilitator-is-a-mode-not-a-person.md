@@ -131,6 +131,7 @@ sign-off, irreversible actions) stay human in both modes
 ## Decisions
 
 - 2026-10-11: the product thinker proposed a toggle that automates the technical facilitator's role, set to human or auto, with auto-merge as the first example: always refused as a hard rule while the facilitator is human, so a human merges; armed automatically when it is auto. Shown that this draft already covers the switch, they chose "Add to the draft" over a new intent, so the example lands here as this intent's first two-mode gate, and other facilitator responsibilities follow the same pattern (adr-2609151528057260: every gate declares its behaviour in both modes). "human" and "auto" are the product thinker's names for duo and solo.
+- 2026-10-15, the product thinker, refining the 2026-10-11 decision: with the facilitator automated, every ready pull request auto-merges, or is enqueued, with no human step; with a human facilitator, the facilitator reviews and approves, and the merge waits for them. Automated merging is not unreviewed merging: the reviews are automated by separate agents. A ready pull request has a passing preflight, a review pair of separate agents on different models with fresh context (principle evaluator-outside-the-loop), the stop rule (only a critical or major finding blocks; anything smaller becomes its own capture), and CI and the merge queue on the merged tree. The land defaults built for the next release (iss-2610150524235929, push after a passing preflight; iss-2610150524246898, enqueue every ready pull request) follow this gate rather than fixing either mode in place.
 
 ## Audit Notes
 
@@ -144,5 +145,7 @@ _Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
   itd-83 (the "when" drafts this composes).
 - `.abcd/development/principles/verifier-selects-gates-decide.md` — the role
   boundary both modes preserve.
+- itd-2610150602547271 (builds on this intent): its first slice, the
+  facilitator mode declaration and the merge gate that obeys it.
 - itd-98 (the evaluation), itd-99 (plural thinkers) — the sibling drafts
   filed with this one.
