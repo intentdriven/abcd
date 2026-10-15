@@ -278,6 +278,25 @@ func TestGeneratorWordsReadNamesAndCounts(t *testing.T) {
 	}
 }
 
+// TestGeneratorWordsReadAMultiWordNameBesideAYear: the footer prints
+// "© <year> <author>", and an author's name may be two words. The name is the
+// package's own metadata, so it is read whole wherever it stands in a piece;
+// its words one by one are not names, and a sentence made of them still fails.
+func TestGeneratorWordsReadAMultiWordNameBesideAYear(t *testing.T) {
+	g := generatorWords{
+		phrases: map[string]bool{"fixture author": true}, names: map[string]bool{"fixture author": true, "mit": true},
+		attribution: map[string]bool{}, exists: func(string) bool { return false },
+	}
+	if !g.covers("© 2026 Fixture Author") {
+		t.Error(`covers("© 2026 Fixture Author") = false; the year and the author's name are both the generator's to print`)
+	}
+	for _, bad := range []string{"© 2026 Fixture", "Author of record", "2026 Fixture Author wrote this"} {
+		if g.covers(bad) {
+			t.Errorf("covers(%q) = true; nothing entitles the generator to say it", bad)
+		}
+	}
+}
+
 // TestCheckAccountsForAPageThatNamesItself covers the explorer's title shape:
 // a page that names itself reads `<page> · <project>`, and BOTH halves are
 // held up — the tail against the Identity block, the head against what the

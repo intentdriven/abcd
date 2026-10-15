@@ -986,13 +986,33 @@ func (g generatorWords) covers(text string) bool {
 		if g.phrases[strings.ToLower(collapseSpaces(piece))] || g.attribution[strings.ToLower(collapseSpaces(piece))] {
 			continue
 		}
-		for _, field := range strings.Fields(piece) {
-			if !g.token(field) {
+		fields := strings.Fields(piece)
+		for i := 0; i < len(fields); i++ {
+			if n := g.nameRun(fields[i:]); n > 0 {
+				i += n - 1
+				continue
+			}
+			if !g.token(fields[i]) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// nameRun is how many of fields, from the first, spell one name of more than
+// one word (the package's author, a contributor), longest first; 0 when none
+// does. The footer prints "© <year> <author>", so a two-word author shares a
+// piece with the year and is read whole there. Only names are read this way:
+// a run of interface strings is still not a sentence the generator may print.
+func (g generatorWords) nameRun(fields []string) int {
+	for n := len(fields); n > 1; n-- {
+		run := strings.ToLower(strings.Join(fields[:n], " "))
+		if g.names[run] || g.attribution[run] {
+			return n
+		}
+	}
+	return 0
 }
 
 // token reports whether one whitespace-delimited word is something the
