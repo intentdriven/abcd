@@ -588,7 +588,9 @@ func TestHostClosePurgesTheSession(t *testing.T) {
 	if c := gp.last(t, "closed"); c == nil || !gp.closed {
 		t.Fatalf("the guest was not told and closed: %v", gp.texts(t))
 	}
-	if s := h.r.Stats(); s != (Stats{}) {
+	// Nothing of the session is held; the two sockets are counted until
+	// their transports end them.
+	if s := h.r.Stats(); s != (Stats{Connections: 2}) {
 		t.Fatalf("after the host closed, the relay still holds %+v", s)
 	}
 	if _, p := h.join(t, code, "Late", "198.51.100.8"); p.last(t, "error")["code"] != "bad-code" {
@@ -1013,7 +1015,7 @@ func TestRejoinTokenDiesWithItsSession(t *testing.T) {
 	_, gp := h.join(t, code, "Gus", "198.51.100.7")
 	tok := rejoinToken(t, gp, "joined")
 	send(t, host, msg{"type": "close"})
-	if s := h.r.Stats(); s != (Stats{}) {
+	if s := h.r.Stats(); s != (Stats{Connections: 2}) {
 		t.Fatalf("after the host closed, the relay still holds %+v", s)
 	}
 	for _, tk := range []string{tok, hostTok} {
@@ -1118,14 +1120,21 @@ func TestConnectionsAreCappedRelayWideAndPerAddress(t *testing.T) {
 }
 
 // TestClosingASessionGivesItsConnectionsBack: the host's close ends every
-// connection in the session, and each one's place is free again.
+// connection in the session at once, and each one's place is free again once
+// its transport has ended it: a close can wait behind a log replay, and the
+// socket is held until then (final review A).
 func TestClosingASessionGivesItsConnectionsBack(t *testing.T) {
 	h := newHarness(t, nil)
 	host, _, code := h.host(t, "tok-ada")
-	h.join(t, code, "Gus", "198.51.100.7")
+	guest, _ := h.join(t, code, "Gus", "198.51.100.7")
 	send(t, host, msg{"type": "close"})
+	if s := h.r.Stats(); s != (Stats{Connections: 2}) {
+		t.Fatalf("after the close the relay holds %+v, want only the two sockets", s)
+	}
+	host.Leave()
+	guest.Leave()
 	if s := h.r.Stats(); s != (Stats{}) {
-		t.Fatalf("after the close the relay holds %+v", s)
+		t.Fatalf("after both transports left the relay holds %+v", s)
 	}
 }
 
@@ -1145,8 +1154,12 @@ func TestAConnectionThatEntersNoSessionExpires(t *testing.T) {
 	if e := idle.last(t, "error"); e == nil || e["code"] != "join-timeout" {
 		t.Fatalf("error = %v, want join-timeout", e)
 	}
+	if s := h.r.Stats(); s.Connections != 1 {
+		t.Fatalf("connections = %d after the expiry, want the socket held until its transport ends it", s.Connections)
+	}
+	c.Leave()
 	if s := h.r.Stats(); s.Connections != 0 {
-		t.Fatalf("connections = %d after the expiry, want 0", s.Connections)
+		t.Fatalf("connections = %d after the transport left, want 0", s.Connections)
 	}
 
 	host, hp, code := h.host(t, "tok-ada")
@@ -1577,9 +1590,9 @@ func TestAwarenessBytesAreRatedPerRoom(t *testing.T) {
 // (security review 2, item 2).
 func TestSuggestionsAreBoundedInSizeCountAndRoomBytes(t *testing.T) {
 	d := DefaultLimits()
-	if d.MaxSuggestBytes != 70<<10 || d.MaxSuggestsPerConn != 100 || d.MaxRoomSuggestBytes != 1<<20 {
+	if d.MaxSuggestBytes != 70<<10 || d.MaxSuggestsPerSeat != 100 || d.MaxRoomSuggestBytes != 1<<20 {
 		t.Fatalf("suggestion defaults = %d bytes, %d a connection, %d a room; want 70 KiB, 100, 1 MiB",
-			d.MaxSuggestBytes, d.MaxSuggestsPerConn, d.MaxRoomSuggestBytes)
+			d.MaxSuggestBytes, d.MaxSuggestsPerSeat, d.MaxRoomSuggestBytes)
 	}
 	delivered := func(p *fakePeer) int {
 		n := 0
@@ -1607,7 +1620,7 @@ func TestSuggestionsAreBoundedInSizeCountAndRoomBytes(t *testing.T) {
 	t.Run("count", func(t *testing.T) {
 		h := newHarness(t, func(l *Limits) {
 			l.SuggestPerSecond, l.SuggestBurst = 1<<20, 1<<20
-			l.MaxSuggestsPerConn = 3
+			l.MaxSuggestsPerSeat = 3
 		})
 		_, hp, code := h.host(t, "tok-ada")
 		g, gp := h.join(t, code, "Gus", "198.51.100.7")
@@ -1740,7 +1753,7 @@ func TestSessionsExpireAfterTheirLifetime(t *testing.T) {
 			t.Fatalf("a participant of an expired session: %v, closed=%v", p.last(t, "closed"), p.closed)
 		}
 	}
-	if s := h.r.Stats(); s != (Stats{}) {
+	if s := h.r.Stats(); s != (Stats{Connections: 2}) {
 		t.Fatalf("after the session expired, the relay still holds %+v", s)
 	}
 	if _, p := h.rejoin(t, tok, "192.0.2.1"); p.last(t, "error")["code"] != "bad-rejoin" {

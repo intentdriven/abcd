@@ -25,6 +25,7 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
@@ -182,17 +183,27 @@ type Limits struct {
 	MaxAwarenessBytes int
 	// AwarenessBytesPerSecond and AwarenessBytesBurst are one session's
 	// token bucket for awareness, in bytes, shared by every participant: the
-	// frames each connection may send are bounded by its own bucket, and
+	// frames each connection may send are bounded by its own buckets, and
 	// what the session forwards to each of its connections by this one.
 	AwarenessBytesPerSecond int
 	AwarenessBytesBurst     int
-	// MaxSuggestBytes caps one suggestion's body, MaxSuggestsPerConn the
-	// suggestions one connection makes, and MaxRoomSuggestBytes the bytes of
-	// every suggestion one session forwards: a member's page records each
-	// suggestion in the session's document, so they land in its log.
-	MaxSuggestBytes     int
-	MaxSuggestsPerConn  int
-	MaxRoomSuggestBytes int
+	// AwarenessConnBytesPerSecond and AwarenessConnBytesBurst are one
+	// connection's token bucket for awareness, in bytes. Its rate is below
+	// the session's, so one participant cannot spend the session's alone and
+	// hold up everyone else's cursors.
+	AwarenessConnBytesPerSecond int
+	AwarenessConnBytesBurst     int
+	// MaxSuggestBytes caps one suggestion's body; MaxSuggestsPerSeat and
+	// MaxSuggestBytesPerSeat the suggestions, and their bytes, one participant
+	// makes, counted on their seat so a rejoin does not start them afresh;
+	// and MaxRoomSuggestBytes the bytes of every suggestion one session
+	// forwards, a backstop for guests who join anew by code: a member's page
+	// records each suggestion in the session's document, so they land in its
+	// log.
+	MaxSuggestBytes        int
+	MaxSuggestsPerSeat     int
+	MaxSuggestBytesPerSeat int
+	MaxRoomSuggestBytes    int
 	// MessagesPerSecond and MessageBurst are one connection's token bucket
 	// for every control message and every binary frame the relay refuses; a
 	// message past it is dropped unanswered, without taking the relay's
@@ -266,11 +277,16 @@ func DefaultLimits() Limits {
 		MaxAwarenessBytes:       8 << 10,
 		AwarenessBytesPerSecond: 128 << 10,
 		AwarenessBytesBurst:     512 << 10,
+		// One participant's share: a quarter of the session's rate.
+		AwarenessConnBytesPerSecond: 32 << 10,
+		AwarenessConnBytesBurst:     64 << 10,
 		// A suggestion carries a passage and its replacement (the page caps
-		// a replacement at 64,000 characters).
-		MaxSuggestBytes:     70 << 10,
-		MaxSuggestsPerConn:  100,
-		MaxRoomSuggestBytes: 1 << 20,
+		// a replacement at 64,000 characters); one participant may make a
+		// quarter of the session's suggestion bytes.
+		MaxSuggestBytes:        70 << 10,
+		MaxSuggestsPerSeat:     100,
+		MaxSuggestBytesPerSeat: 256 << 10,
+		MaxRoomSuggestBytes:    1 << 20,
 		// The page sends a control message now and then: hosting, joining,
 		// signing in, registering, suggesting.
 		MessagesPerSecond:   50,
@@ -300,7 +316,9 @@ type Options struct {
 }
 
 // Stats is what the relay holds, in counts: after a session is purged, none of
-// it counts towards any of these.
+// it counts towards any of these. Connections counts every socket the
+// transport has not yet ended, a connection the relay closed included, until
+// its final Leave.
 type Stats struct {
 	Connections  int
 	Sessions     int
@@ -377,7 +395,10 @@ func New(o Options) *Relay {
 	fill(&l.AwarenessBytesPerSecond, d.AwarenessBytesPerSecond)
 	fill(&l.AwarenessBytesBurst, d.AwarenessBytesBurst)
 	fill(&l.MaxSuggestBytes, d.MaxSuggestBytes)
-	fill(&l.MaxSuggestsPerConn, d.MaxSuggestsPerConn)
+	fill(&l.MaxSuggestsPerSeat, d.MaxSuggestsPerSeat)
+	fill(&l.MaxSuggestBytesPerSeat, d.MaxSuggestBytesPerSeat)
+	fill(&l.AwarenessConnBytesPerSecond, d.AwarenessConnBytesPerSecond)
+	fill(&l.AwarenessConnBytesBurst, d.AwarenessConnBytesBurst)
 	fill(&l.MaxRoomSuggestBytes, d.MaxRoomSuggestBytes)
 	fill(&l.MessagesPerSecond, d.MessagesPerSecond)
 	fill(&l.MessageBurst, d.MessageBurst)
@@ -387,6 +408,9 @@ func New(o Options) *Relay {
 	// A frame the session's byte burst cannot hold could never be sent.
 	if l.AwarenessBytesBurst < l.MaxAwarenessBytes {
 		l.AwarenessBytesBurst = l.MaxAwarenessBytes
+	}
+	if l.AwarenessConnBytesBurst < l.MaxAwarenessBytes {
+		l.AwarenessConnBytesBurst = l.MaxAwarenessBytes
 	}
 	if l.MaxRejoinTokens < l.MaxParticipants {
 		l.MaxRejoinTokens = l.MaxParticipants
@@ -482,6 +506,10 @@ type seat struct {
 	name     string
 	login    string
 	memberOf string
+	// suggested and suggestBytes count the suggestions this participant had
+	// forwarded, and their bytes, over every connection that held the seat.
+	suggested    int
+	suggestBytes int
 }
 
 // save records c's participant on its seat.
@@ -516,15 +544,26 @@ type Conn struct {
 	login    string // the verified GitHub login, if any
 	memberOf string // the repository key the verified login may push to
 	verifies int
+	// left says the relay serves the connection no more: it left its
+	// session, or the relay closed it. released says its transport has ended
+	// it, and its place in the connection caps is given back; only the
+	// transport's final Leave does that, since a socket the relay closed may
+	// still be writing a log replay.
 	left     bool
+	released bool
 	entered  bool  // it has hosted, joined or rejoined
 	seat     *seat // the participant a rejoin token restores
-	// awareness, suggests and updates are the connection's token buckets.
-	awareness bucket
-	suggests  bucket
-	updates   bucket
-	// suggested counts the suggestions this connection had forwarded.
-	suggested int
+	// awareness, awarenessBytes and updates are the connection's token
+	// buckets for its binary frames, guarded by gate, so a frame over its
+	// rate is dropped without the relay's lock; suggests is its bucket for
+	// suggestions, guarded by the relay's lock.
+	awareness      bucket
+	awarenessBytes bucket
+	suggests       bucket
+	updates        bucket
+	// answered is when a rate limit of each kind was last answered, guarded
+	// by gate: past its rate a frame is answered once a second at most.
+	answered map[string]time.Time
 	// gate guards the message budget. It is taken alone, or inside r.mu,
 	// never the other way round, so a message past the budget is dropped
 	// without waiting for the relay's lock.
@@ -560,12 +599,13 @@ func (r *Relay) Connect(p Peer, addr string) (*Conn, error) {
 	return &Conn{r: r, id: "p" + strconv.FormatUint(uint64(r.nextConn), 10), num: r.nextConn, peer: p, addr: key}, nil
 }
 
-// markLeft ends c's hold on the relay, once: it is out of every count.
-func (c *Conn) markLeft() {
-	if c.left {
+// release gives c's place in the connection caps back, once. Only the
+// transport's final Leave calls it.
+func (c *Conn) release() {
+	if c.released {
 		return
 	}
-	c.left = true
+	c.released = true
 	r := c.r
 	r.open--
 	if r.openBy[c.addr]--; r.openBy[c.addr] <= 0 {
@@ -618,6 +658,13 @@ func (c *Conn) Receive(ctx context.Context, f Frame) {
 	onSight := !f.Binary || len(f.Data) == 0 || len(f.Data) > r.limits.MaxMessageBytes ||
 		(f.Data[0] != TagUpdate && f.Data[0] != TagAwareness)
 	if !c.budget(onSight) {
+		// A guest's page holds its one suggestion until an answer comes, so
+		// a suggest dropped here is answered too, once a second at most.
+		if !f.Binary && isSuggest(f.Data) && c.mayAnswer("suggest") {
+			r.mu.Lock()
+			c.rateLimited("suggest")
+			r.mu.Unlock()
+		}
 		return
 	}
 	if len(f.Data) > r.limits.MaxMessageBytes {
@@ -627,6 +674,17 @@ func (c *Conn) Receive(ctx context.Context, f Frame) {
 		return
 	}
 	if f.Binary {
+		// An update or awareness frame over its connection's rate is
+		// dropped here, without the relay's lock, and answered once a second
+		// at most.
+		if kind := c.overRate(f.Data); kind != "" {
+			if c.mayAnswer(kind) {
+				r.mu.Lock()
+				c.rateLimited(kind)
+				r.mu.Unlock()
+			}
+			return
+		}
 		r.mu.Lock()
 		defer r.mu.Unlock()
 		c.binary(f.Data)
@@ -702,6 +760,65 @@ func (c *Conn) chargeRefusal() bool {
 	return c.msgs.take(c.r.now(), c.r.limits.MessagesPerSecond, c.r.limits.MessageBurst)
 }
 
+// rateAnswerEvery is how often, at most, a rate limit of one kind is
+// answered on one connection; the drops between are silent.
+const rateAnswerEvery = time.Second
+
+// overRate spends the connection's own buckets for an update or awareness
+// frame (one the budget did not charge on sight) and names its kind when
+// they are spent: "update" or "awareness". An awareness frame over its size
+// is left for the relay to refuse.
+func (c *Conn) overRate(data []byte) string {
+	l := &c.r.limits
+	c.gate.Lock()
+	defer c.gate.Unlock()
+	now := c.r.now()
+	switch data[0] {
+	case TagUpdate:
+		if !c.updates.take(now, l.UpdatesPerSecond, l.UpdateBurst) {
+			return "update"
+		}
+	case TagAwareness:
+		if len(data) > l.MaxAwarenessBytes {
+			return ""
+		}
+		if !c.awareness.take(now, l.AwarenessPerSecond, l.AwarenessBurst) ||
+			!c.awarenessBytes.takeN(now, l.AwarenessConnBytesPerSecond, l.AwarenessConnBytesBurst, len(data)) {
+			return "awareness"
+		}
+	}
+	return ""
+}
+
+// mayAnswer reports whether a rate limit of kind may be answered now, and
+// notes it if so: once every rateAnswerEvery at most. It takes gate alone or
+// inside the relay's lock.
+func (c *Conn) mayAnswer(kind string) bool {
+	c.gate.Lock()
+	defer c.gate.Unlock()
+	now := c.r.now()
+	if last, ok := c.answered[kind]; ok && now.Sub(last) < rateAnswerEvery {
+		return false
+	}
+	if c.answered == nil {
+		c.answered = map[string]time.Time{}
+	}
+	c.answered[kind] = now
+	return true
+}
+
+// isSuggest reports whether a control message is a suggest, read without the
+// relay's lock.
+func isSuggest(data []byte) bool {
+	if !bytes.Contains(data, []byte(`"suggest"`)) {
+		return false
+	}
+	var m struct {
+		Type string `json:"type"`
+	}
+	return json.Unmarshal(data, &m) == nil && m.Type == "suggest"
+}
+
 // closeIfAbusive closes c once it has been refused MaxRefusals times: a page
 // that keeps sending what the relay refuses is not one the relay serves.
 func (c *Conn) closeIfAbusive() {
@@ -719,20 +836,23 @@ func (c *Conn) closeIfAbusive() {
 	}
 }
 
-// Leave removes the connection; the transport calls it when the connection
-// ends, and it may be called more than once.
+// Leave removes the connection and gives its place in the connection caps
+// back; the transport calls it when the connection has ended, and it may be
+// called more than once.
 func (c *Conn) Leave() {
 	c.r.mu.Lock()
 	defer c.r.mu.Unlock()
 	c.leave()
+	c.release()
 }
 
-// leave is Leave under the lock.
+// leave takes c out of its session, under the lock: the relay serves it no
+// more. It stays counted until its transport's Leave.
 func (c *Conn) leave() {
 	if c.left {
 		return
 	}
-	c.markLeft()
+	c.left = true
 	rm := c.room
 	c.room = nil
 	if s := c.seat; s != nil && s.conn == c {
@@ -783,6 +903,13 @@ func (c *Conn) fail(code, text string) {
 	}
 }
 
+// failSuggest refuses c's suggest as fail does, naming its kind.
+func (c *Conn) failSuggest(code, text string) {
+	if c.chargeRefusal() {
+		c.sendJSON(map[string]string{"type": "error", "code": code, "kind": "suggest", "message": text})
+	}
+}
+
 // notify sends c an error message that answers nothing it sent, or a rate
 // limit's: it is not counted against the message budget.
 func (c *Conn) notify(code, text string) {
@@ -794,7 +921,8 @@ func (c *Conn) notify(code, text string) {
 // its messages went: a guest's dropped cursor must not read as a dropped
 // suggestion. The connection stays open: only the message is dropped. A rate
 // limit counts as no refusal: a cursor dragged quickly meets it often, and
-// that is no abuse.
+// that is no abuse. An update or awareness frame's is sent once a second at
+// most (mayAnswer).
 func (c *Conn) rateLimited(kind string) {
 	c.sendJSON(map[string]string{"type": "error", "code": "rate-limited", "kind": kind, "message": "too many messages of this kind; this one was dropped"})
 }
@@ -813,10 +941,6 @@ func (c *Conn) binary(data []byte) {
 	case data[0] == TagUpdate:
 		if c.role != roleMember {
 			c.fail("read-only", "a guest suggests changes; only a team member edits")
-			return
-		}
-		if !c.updates.take(c.r.now(), c.r.limits.UpdatesPerSecond, c.r.limits.UpdateBurst) {
-			c.rateLimited("update")
 			return
 		}
 		cost := len(data) + LogEntryOverhead
@@ -843,10 +967,12 @@ func (c *Conn) binary(data []byte) {
 			c.fail("too-big", fmt.Sprintf("an awareness message is at most %d bytes", c.r.limits.MaxAwarenessBytes))
 			return
 		}
-		now := c.r.now()
-		if !c.awareness.take(now, c.r.limits.AwarenessPerSecond, c.r.limits.AwarenessBurst) ||
-			!rm.awareness.takeN(now, c.r.limits.AwarenessBytesPerSecond, c.r.limits.AwarenessBytesBurst, len(data)) {
-			c.rateLimited("awareness")
+		// The connection's own buckets were spent before the lock was
+		// taken (overRate); the session's is spent here.
+		if !rm.awareness.takeN(c.r.now(), c.r.limits.AwarenessBytesPerSecond, c.r.limits.AwarenessBytesBurst, len(data)) {
+			if c.mayAnswer("awareness") {
+				c.rateLimited("awareness")
+			}
 			return
 		}
 		// Sent on as the relay attributes it, as an update is, so a page can
@@ -972,6 +1098,9 @@ func (c *Conn) verify(ctx context.Context, token, repo string) {
 // host opens a session for repo, which c must be a verified member of.
 func (c *Conn) host(repo string) {
 	r := c.r
+	// A session past its lifetime holds no place among MaxSessions while it
+	// waits for the sweep: it ends now.
+	r.endExpired(r.now())
 	switch {
 	case c.room != nil:
 		c.fail("already-in-session", "this connection is in a session already")
@@ -1217,15 +1346,17 @@ func (c *Conn) isHost() bool {
 	return c.room != nil && c.role == roleMember && c.login == c.room.hostLogin
 }
 
-// suggest routes a guest's proposed change to the team members.
+// suggest routes a guest's proposed change to the team members. Every
+// refusal names kind "suggest": the guest's page holds its one suggestion in
+// flight until an answer comes.
 func (c *Conn) suggest(body json.RawMessage) {
-	rm := c.room
+	rm, s := c.room, c.seat
 	switch {
-	case rm == nil:
-		c.fail("not-in-session", "join or host a session first")
+	case rm == nil || s == nil:
+		c.failSuggest("not-in-session", "join or host a session first")
 		return
 	case c.role != roleGuest:
-		c.fail("not-a-guest", "a team member edits directly")
+		c.failSuggest("not-a-guest", "a team member edits directly")
 		return
 	case !c.suggests.take(c.r.now(), c.r.limits.SuggestPerSecond, c.r.limits.SuggestBurst):
 		c.rateLimited("suggest")
@@ -1234,21 +1365,25 @@ func (c *Conn) suggest(body json.RawMessage) {
 	trimmed := strings.TrimSpace(string(body))
 	switch {
 	case len(trimmed) > c.r.limits.MaxSuggestBytes:
-		c.fail("suggestion-too-big", fmt.Sprintf("a suggestion is at most %d bytes", c.r.limits.MaxSuggestBytes))
+		c.failSuggest("suggestion-too-big", fmt.Sprintf("a suggestion is at most %d bytes", c.r.limits.MaxSuggestBytes))
 		return
-	case c.suggested >= c.r.limits.MaxSuggestsPerConn:
-		c.fail("too-many-suggestions", "this connection has made as many suggestions as it may")
+	case s.suggested >= c.r.limits.MaxSuggestsPerSeat:
+		c.failSuggest("too-many-suggestions", "you have made as many suggestions as this session takes from one participant")
+		return
+	case s.suggestBytes+len(trimmed) > c.r.limits.MaxSuggestBytesPerSeat:
+		c.failSuggest("participant-suggestions-full", "your suggestions have reached what this session takes from one participant")
 		return
 	case rm.suggestBytes+len(trimmed) > c.r.limits.MaxRoomSuggestBytes:
-		c.fail("suggestions-full", "this session holds as many suggestions as it may")
+		c.failSuggest("suggestions-full", "this session holds as many suggestions as it may")
 		return
 	}
 	var obj map[string]json.RawMessage
 	if !strings.HasPrefix(trimmed, "{") || json.Unmarshal(body, &obj) != nil {
-		c.fail("bad-suggestion", "a suggestion's body is one JSON object")
+		c.failSuggest("bad-suggestion", "a suggestion's body is one JSON object")
 		return
 	}
-	c.suggested++
+	s.suggested++
+	s.suggestBytes += len(trimmed)
 	rm.suggestBytes += len(trimmed)
 	rm.suggests++
 	id := "s" + strconv.Itoa(rm.suggests)
@@ -1337,12 +1472,22 @@ func (r *Relay) endRoom(rm *room, reason string) {
 		text = "session expired"
 	}
 	for _, o := range conns {
-		o.room = nil
-		o.markLeft()
+		// Out of the session at once; each stays counted until its
+		// transport's Leave.
+		o.room, o.left = nil, true
 		o.peer.Close(false, text)
 	}
 	rm.conns = nil
 	r.purge(rm)
+}
+
+// endExpired ends every session that has lived MaxSessionLife.
+func (r *Relay) endExpired(now time.Time) {
+	for _, rm := range r.rooms {
+		if r.expired(rm, now) {
+			r.endRoom(rm, "expired")
+		}
+	}
 }
 
 // expired reports whether rm has lived MaxSessionLife.
