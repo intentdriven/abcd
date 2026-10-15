@@ -59,7 +59,8 @@
     ]
   },
   "record": {
-    "issue_ledger": true
+    "issue_ledger": true,
+    "decisions": true
   },
   "docs": {
     "index": "docs/README.md",
