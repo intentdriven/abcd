@@ -100,17 +100,28 @@ identity block `.abcd/positioning.json` points at (as the heading), the
 brief's opening (the first section with text in
 `.abcd/development/brief/01-product/01-press-release.md`), the press releases of
 the three newest shipped intents whose audit was met, and the release list in
-`CHANGELOG.md`. Anything absent is left out, never filled. The record pages are
-built as they always are; the references page (which quotes
-`ACKNOWLEDGEMENTS.md`) and every picture (which lives under `docs/`) are left
-out, and so is a hand-written `docs/` tree or `README.md`: a project's own
-documentation is read on GitHub. A build whose `--project` and settings file
-disagree is refused, both ways.
+`CHANGELOG.md`. Anything absent is left out, never filled; with no identity
+block, the page is headed and titled by the repository's name on GitHub. A
+repository holding none of the four parts is refused before anything is
+written, since the site would be empty. The repository's address and name
+come from the origin remote alone: `.claude-plugin/plugin.json` is not read, so
+no name, author or licence written there reaches a page. The record pages are
+built as they always are, from the stores `.abcd/record-lint.json` names or,
+where the repository carries no such file, from abcd's standard layout under
+`.abcd/development/` (intents, specs, ADRs and principles, plus the issue
+ledger under `.abcd/work/issues` where the settings opt in to it). The
+references page (which quotes `ACKNOWLEDGEMENTS.md`), the contributors page
+(whose names and declared tools are read out of git history), and every
+picture (which lives under `docs/`) are left out, and so is a hand-written
+`docs/` tree or `README.md`: a project's own documentation is read on GitHub.
+A build whose `--project` and settings file disagree is refused, both ways.
 
 Every page opens with one line saying it is the record of an abcd-managed
 repository, linking to that repository. Its words are the `managed_record`
-interface string in `site-src/ui.json`, so like every other word the generator
-adds, they are declared there and nowhere else.
+interface string: on a composed site, the one in `site-src/ui.json`, declared
+there like every other word the generator adds; on a project site, the one in
+the interface words the binary carries, since a project site reads no
+interface words from the repository.
 
 Four flags exist so a build can pin what the footer says rather than reading it
 from the working tree: `--version`, `--commit`, `--date` and `--preview` (stamp
@@ -202,6 +213,11 @@ provider, and these things differ:
   project's own docs are read on GitHub. A repository holding none of the
   about page's four parts yet is refused before anything is asked or written,
   since the site would be empty.
+- **A release of abcd that builds project sites.** The workflow downloads
+  abcd's latest release and builds with it, so its build fails until abcd
+  publishes a release whose `site build` takes `--project`. Setup does not ask
+  the network which release is latest, so it says this in a note on every run
+  for a project site.
 - **The switch.** Before anything is written, setup asks whether to switch the
   project site on, naming the address. A yes writes `.abcd/site.json` holding
   the project site's settings (`"mode": "project"` and the `hosting` block with

@@ -115,11 +115,22 @@ The landing page is an about page derived in code, from four parts in this
 order, each rendered only where the repository holds it: the identity block,
 the brief's opening (the first section of the brief skeleton,
 `01-product/01-press-release.md`), the press releases of the newest shipped
-intents whose audit was met, and the release list in `CHANGELOG.md`. A
-repository holding none of the four is refused at setup, since its site would be
-empty. The record pages are built exactly as for any site; the references page,
-the contribution policy and every picture are left out, because each comes from
-a person's own files (pictures are a later intent, iss-2610150529485165).
+intents whose audit was met, and the release list in `CHANGELOG.md`. Without an
+identity block the page is headed and titled by the repository's name on
+GitHub. A repository holding none of the four is refused at setup and at build,
+since its site would be empty. The repository's address and name come from the
+origin remote alone, never from the package manifest, which is a person's file.
+The record pages are built exactly as for any site, from the record's lint
+configuration or, where a managed repository carries none, from abcd's standard
+layout under `.abcd/development/` (the issue ledger only where the settings opt
+in). The references page, the contributors page and every picture are left
+out, because each comes from a person's own files or from git history rather
+than from what abcd writes (pictures are a later intent, iss-2610150529485165).
+
+The project route depends on abcd's own releases: the workflow downloads abcd's
+latest release to build with, so a project site cannot build until a release of
+abcd carries the project flag. Setup states this in a note on every project
+setup, since it asks the network nothing to learn which release is latest.
 
 The gate holds the line: on a project site, a rendered span whose source file
 abcd does not write fails the build, on every page, the record's own included.
