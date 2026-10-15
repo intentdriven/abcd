@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -25,7 +26,7 @@ const StoreName = "embargo"
 
 // ledgerRel is where a private record sits inside the store: the ledger's own
 // layout, so the capture and resolve code read it unchanged.
-const ledgerRel = ".abcd/work/issues"
+const ledgerRel = recordid.IssuesRelDir
 
 // maxListing caps the store's ls-files answer.
 const maxListing = 16 << 20
