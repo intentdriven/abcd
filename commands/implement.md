@@ -535,7 +535,9 @@ by another person or copy says so in its answer and logs `reservation_lost` in
 the run record, once. A run keyed by an issue whose lane is handed back
 releases its reservation as the step hands it back: it pushes the tombstone
 while the reservation is still this copy's and logs `reservation_released`
-with the outcome, since the issue is the person's again. An intent's run keeps
+with the outcome, since the issue is the person's again; a fetch or push that
+fails is logged `reservation_release_failed` instead, and the drain routing
+the hand-back pushes the tombstone again. An intent's run keeps
 its reservation through a hand-back, for the lanes it still holds. A run whose state records no
 reservation is neither renewed nor fenced.
 

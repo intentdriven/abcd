@@ -39,6 +39,10 @@ const (
 	// StageReservationReleased is a step's release of an issue run's
 	// reservation when its lane is handed back.
 	StageReservationReleased = "reservation_released"
+	// StageReservationReleaseFailed is a step's release of an issue run's
+	// reservation that could not push the tombstone: the drain routing the
+	// hand-back tries it again.
+	StageReservationReleaseFailed = "reservation_release_failed"
 )
 
 // StageReservation is the refusal stage, and the run record's stage, of a
@@ -488,17 +492,21 @@ func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
 // back (iss-2610142247197128): the issue is a person's again, so it is not
 // left holding others off until it lapses, whether a drain routes the
 // hand-back or the run was started by `abcd build <iss-N>`. The run record
-// logs the outcome at reservation_released. An intent's run keeps its
+// logs the outcome at reservation_released or, when the fetch or the push
+// failed, at reservation_release_failed, which the drain routing the
+// hand-back tries again (releaseHandedBack). An intent's run keeps its
 // reservation: its held lanes may still land.
 func releaseOnHandBack(repoRoot string, st *State, now time.Time) {
 	if st.ReservedAt == nil || st.Issue() == "" {
 		return
 	}
 	clause, failed := releaseReservation(repoRoot, st.Key, now)
+	stage := StageReservationReleased
 	if failed {
-		clause += ", so it lapses with its lease"
+		clause += ", so it lapses with its lease unless a drain routing the hand-back releases it"
+		stage = StageReservationReleaseFailed
 	}
-	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationReleased, Note: clause})
+	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})
 	st.UpdatedAt = now
 }
 
@@ -528,16 +536,18 @@ func noFoundAtHandBack(issue string, now time.Time) DrainRoute {
 // releaseHandedBack releases the reservation of an issue run whose lane was
 // handed back, as the drain routes the hand-back: the issue is a person's
 // again, so it is not left holding others off until it lapses. A step that
-// handed the lane back released it already (releaseOnHandBack), and its
-// record's clause is returned; a run handed back by an abcd before that
-// step is released here. It returns the route's clause, "" for a run that
-// holds no reservation.
+// handed the lane back and released it (releaseOnHandBack) logged
+// reservation_released, and that record's clause is returned; one whose
+// fetch or push failed logged reservation_release_failed instead, and that
+// run, like one handed back by an abcd before that step, is released here.
+// It returns the route's clause, "" for a run that holds no reservation.
 func releaseHandedBack(repoRoot string, run State, now time.Time) string {
 	if run.ReservedAt == nil || run.Issue() == "" {
 		return ""
 	}
 	// The step that handed the lane back has already released it, and its
-	// record says how (releaseOnHandBack).
+	// record says how (releaseOnHandBack). A failed release is a different
+	// stage, so it is never reused: the tombstone is pushed again below.
 	for k := len(run.Record) - 1; k >= 0; k-- {
 		if run.Record[k].Stage == StageReservationReleased {
 			return run.Record[k].Note

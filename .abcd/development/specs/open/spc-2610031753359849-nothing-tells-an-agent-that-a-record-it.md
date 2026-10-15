@@ -996,7 +996,12 @@ These are the facilitator's design calls; none changes a criterion.
     back, in the step or the receipt that hands it back
     (`releaseOnHandBack`, the run record's stage `reservation_released`),
     whoever started the run (iss-2610142247197128). The drain's route reuses
-    the record's clause rather than pushing again. An intent's run keeps its
+    the record's clause rather than pushing again, but only for a release
+    that succeeded: a fetch or push that failed is logged at its own stage,
+    `reservation_release_failed`, and the drain's route pushes the tombstone
+    again, so an issue handed back while `origin` was unreachable does not
+    hold every drain off until its lease lapses (review of steps 12 to 15,
+    2026-10-15). An intent's run keeps its
     reservation through a hand-back: its held lanes may still land, and the
     fence would refuse them over a released one.
   - The state's schema is unchanged: `reserved_at` (version 11) carries the
