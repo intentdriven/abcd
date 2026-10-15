@@ -92,12 +92,12 @@ type PublicationPlan struct {
 	ApproveWith string      `json:"approve_with"`
 }
 
-// PlanPublication builds the publication plan and changes nothing on GitHub:
+// planPublication builds the publication plan and changes nothing on GitHub:
 // the only requests it sends are reads of the advisories it plans. In the
 // store it records only what those reads report: an advisory GitHub already
 // holds published or closed.
-func PlanPublication(req PublishRequest) (PublicationPlan, error) {
-	s, st, err := OpenExisting(req.Home, req.RepoRoot)
+func planPublication(req PublishRequest) (PublicationPlan, error) {
+	s, st, err := openExisting(req.Home, req.RepoRoot)
 	if err != nil {
 		return PublicationPlan{}, err
 	}

@@ -74,7 +74,7 @@ func (e *PublishFailedError) Error() string {
 // the run before the next update and says which advisories are published.
 // Last, the draft and triage listings must name none of the planned ones.
 func Publish(req PublishRequest) (PublishResult, error) {
-	s, st, err := OpenExisting(req.Home, req.RepoRoot)
+	s, st, err := openExisting(req.Home, req.RepoRoot)
 	if err != nil {
 		return PublishResult{}, err
 	}

@@ -51,17 +51,17 @@ func mustRefuse(t *testing.T, err error, want string) {
 	}
 }
 
-// TestStoreCreatedDetachedOnce: the first Open makes the store as a detached
+// TestStoreCreatedDetachedOnce: the first openStore makes the store as a detached
 // worktree at the default branch's tip, in the machine-scoped worktree store
 // keyed on the repository's root commit; the second finds it and makes nothing.
 func TestStoreCreatedDetachedOnce(t *testing.T) {
 	f := newFixture(t)
-	s, created, err := Open(f.home, f.repo.Root())
+	s, created, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !created {
-		t.Fatal("the first Open did not report making the store")
+		t.Fatal("the first openStore did not report making the store")
 	}
 	rootSHA := f.repo.Git("rev-list", "--max-parents=0", "HEAD")
 	want := abcdhome.Path(f.home, "worktrees", rootSHA, "embargo")
@@ -75,12 +75,12 @@ func TestStoreCreatedDetachedOnce(t *testing.T) {
 	if err != nil || head != f.repo.Git("rev-parse", "main") {
 		t.Fatalf("store HEAD %q (%v), want main's tip", head, err)
 	}
-	s2, created, err := Open(f.home, f.repo.Root())
+	s2, created, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created || s2.Root != s.Root {
-		t.Fatalf("the second Open made a store (%v) or moved it (%s)", created, s2.Root)
+		t.Fatalf("the second openStore made a store (%v) or moved it (%s)", created, s2.Root)
 	}
 	if n := strings.Count(f.repo.Git("worktree", "list", "--porcelain"), "worktree "); n != 2 {
 		t.Fatalf("git lists %d worktrees, want the checkout and the store", n)
@@ -91,7 +91,7 @@ func TestStoreCreatedDetachedOnce(t *testing.T) {
 // that can be pushed, so every sub-verb refuses it.
 func TestVerifyStoreRefusesBranchHead(t *testing.T) {
 	f := newFixture(t)
-	s, _, err := Open(f.home, f.repo.Root())
+	s, _, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,8 +100,8 @@ func TestVerifyStoreRefusesBranchHead(t *testing.T) {
 	}
 	_, err = s.Verify()
 	mustRefuse(t, err, "branch")
-	if _, _, err := Open(f.home, f.repo.Root()); err == nil {
-		t.Fatal("Open accepted a store on a branch")
+	if _, _, err := openStore(f.home, f.repo.Root()); err == nil {
+		t.Fatal("openStore accepted a store on a branch")
 	}
 }
 
@@ -109,7 +109,7 @@ func TestVerifyStoreRefusesBranchHead(t *testing.T) {
 // tracks is one commit from the public history, so every sub-verb refuses.
 func TestVerifyStoreRefusesTrackedRecord(t *testing.T) {
 	f := newFixture(t)
-	s, _, err := Open(f.home, f.repo.Root())
+	s, _, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,14 +135,14 @@ func TestVerifyStoreRefusesTrackedRecord(t *testing.T) {
 }
 
 // TestVerifyStoreRefusesStoreInsideCheckout: a home inside the checkout would
-// put the store, and its private records, inside the public working tree. Open
+// put the store, and its private records, inside the public working tree. openStore
 // refuses before making anything.
 func TestVerifyStoreRefusesStoreInsideCheckout(t *testing.T) {
 	f := newFixture(t)
-	_, _, err := Open(f.repo.Root(), f.repo.Root())
+	_, _, err := openStore(f.repo.Root(), f.repo.Root())
 	mustRefuse(t, err, "inside")
 	if _, err := os.Lstat(abcdhome.Path(f.repo.Root())); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("a refused Open made something inside the checkout: %v", err)
+		t.Fatalf("a refused openStore made something inside the checkout: %v", err)
 	}
 }
 
@@ -158,16 +158,16 @@ func TestVerifyStoreRefusesAPlainDirectory(t *testing.T) {
 	if err := os.MkdirAll(p, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = Open(f.home, f.repo.Root())
+	_, _, err = openStore(f.home, f.repo.Root())
 	mustRefuse(t, err, "worktree")
 }
 
 // TestStoreRootOwnerOnly: git makes a worktree at the umask's 0755, which lets
 // every account on the machine list the store and read its private records;
-// Open closes the store's folder to everyone but this account.
+// openStore closes the store's folder to everyone but this account.
 func TestStoreRootOwnerOnly(t *testing.T) {
 	f := newFixture(t)
-	s, _, err := Open(f.home, f.repo.Root())
+	s, _, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestStoreRootOwnerOnly(t *testing.T) {
 // can read or enter is refused, and the refusal says how to close it.
 func TestVerifyStoreRefusesRootOpenToOthers(t *testing.T) {
 	f := newFixture(t)
-	s, _, err := Open(f.home, f.repo.Root())
+	s, _, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -193,8 +193,8 @@ func TestVerifyStoreRefusesRootOpenToOthers(t *testing.T) {
 	}
 	_, err = s.Verify()
 	mustRefuse(t, err, "chmod 700")
-	if _, _, err := Open(f.home, f.repo.Root()); err == nil {
-		t.Fatal("Open accepted a store open to other accounts")
+	if _, _, err := openStore(f.home, f.repo.Root()); err == nil {
+		t.Fatal("openStore accepted a store open to other accounts")
 	}
 }
 
@@ -202,7 +202,7 @@ func TestVerifyStoreRefusesRootOpenToOthers(t *testing.T) {
 // that another account could read is refused, without naming the record.
 func TestVerifyStoreRefusesRecordOpenToOthers(t *testing.T) {
 	f := newFixture(t)
-	s, _, err := Open(f.home, f.repo.Root())
+	s, _, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}

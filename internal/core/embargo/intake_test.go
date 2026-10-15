@@ -98,9 +98,9 @@ func TestSeverityMapping(t *testing.T) {
 		if in != "" {
 			p = &in
 		}
-		got, ok := MapSeverity(p)
+		got, ok := mapSeverity(p)
 		if got != want || ok != (want != "") {
-			t.Errorf("MapSeverity(%q) = %q, %v; want %q", in, got, ok, want)
+			t.Errorf("mapSeverity(%q) = %q, %v; want %q", in, got, ok, want)
 		}
 	}
 }
@@ -357,7 +357,7 @@ func TestIntakeRefusesMalformedListingWritingNothing(t *testing.T) {
 // repository (a fork sharing the root commit) is not mixed with this one's.
 func TestIntakeRefusesAnotherRepositorysStore(t *testing.T) {
 	f, _ := intakeFixture(t)
-	s, _, err := Open(f.home, f.repo.Root())
+	s, _, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}

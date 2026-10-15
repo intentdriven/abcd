@@ -148,7 +148,7 @@ func closeDigest(ghsa, text, description string) string {
 // private-names layer, and every other advisory still under embargo: the
 // advisory stays private after closing, but its reporter reads the text.
 func Close(req CloseRequest) (CloseResult, error) {
-	s, st, err := OpenExisting(req.Home, req.RepoRoot)
+	s, st, err := openExisting(req.Home, req.RepoRoot)
 	if err != nil {
 		return CloseResult{}, err
 	}
@@ -160,7 +160,7 @@ func Close(req CloseRequest) (CloseResult, error) {
 	switch {
 	case a.ClosedAt != nil || a.PublishedAt != nil:
 		return CloseResult{}, refuse("this advisory is already closed or published; nothing was sent", "there is nothing left to close")
-	case a.Verdict == nil || !IsClosingVerdict(*a.Verdict):
+	case a.Verdict == nil || !isClosingVerdict(*a.Verdict):
 		return CloseResult{}, refuse("only an advisory whose verdict is not-abcds or not-a-vulnerability is closed, and this one's verdict is not; nothing was sent",
 			"record a closing verdict with `abcd embargo triage` first")
 	case st.Repo == "":

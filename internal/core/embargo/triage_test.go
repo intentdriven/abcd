@@ -27,7 +27,7 @@ const seededTitle = "a sample report title"
 func seedStore(t *testing.T) seeded {
 	t.Helper()
 	f := newFixture(t)
-	s, _, err := Open(f.home, f.repo.Root())
+	s, _, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -23,7 +23,7 @@ const examplePackage = "example.com/example"
 func newPlanFixture(t *testing.T) planFixture {
 	t.Helper()
 	f := newFixture(t)
-	s, _, err := Open(f.home, f.repo.Root())
+	s, _, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,10 +104,10 @@ func (pf planFixture) remote(t *testing.T, ghsa, state, description string, vuln
 
 func (pf planFixture) plan(t *testing.T, release string) PublicationPlan {
 	t.Helper()
-	p, err := PlanPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Release: release,
+	p, err := planPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Release: release,
 		Now: func() time.Time { return fixedNow.Add(time.Hour) }})
 	if err != nil {
-		t.Fatalf("PlanPublication: %v", err)
+		t.Fatalf("planPublication: %v", err)
 	}
 	return p
 }
@@ -177,9 +177,9 @@ func TestPrereleaseTagsIgnored(t *testing.T) {
 	if p.Release != "v0.9.0" || len(p.Entries) != 1 || p.Entries[0].FirstTag != "v0.9.0" || p.Entries[0].PatchedVersion != "0.9.0" {
 		t.Fatalf("plan %+v", p)
 	}
-	_, err := PlanPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Release: "v0.9.0-rc.1"})
+	_, err := planPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Release: "v0.9.0-rc.1"})
 	mustRefuse(t, err, "vMAJOR.MINOR.PATCH")
-	_, err = PlanPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Release: "v7.7.7"})
+	_, err = planPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Release: "v7.7.7"})
 	mustRefuse(t, err, "no tag")
 }
 

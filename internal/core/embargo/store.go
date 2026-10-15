@@ -75,11 +75,11 @@ func StorePath(home, repoRoot string) (string, error) {
 	return abcdhome.Path(home, "worktrees", sha, StoreName), nil
 }
 
-// Open returns the store of the repository at repoRoot, making it on first
+// openStore returns the store of the repository at repoRoot, making it on first
 // use as a detached worktree at the default branch's tip, and verifies it
 // either way. created reports that this call made it. A store that would sit
 // inside the checkout is refused before anything is made.
-func Open(home, repoRoot string) (s Store, created bool, err error) {
+func openStore(home, repoRoot string) (s Store, created bool, err error) {
 	top, err := gitutil.Toplevel(repoRoot)
 	if err != nil {
 		return Store{}, false, refuse("this is not inside a git checkout", "run it from the repository's checkout")
@@ -108,10 +108,10 @@ func Open(home, repoRoot string) (s Store, created bool, err error) {
 	return s, created, nil
 }
 
-// OpenExisting returns the store of the repository at repoRoot and its
+// openExisting returns the store of the repository at repoRoot and its
 // verified state, making nothing: the sub-verbs after intake act on a store
 // intake made, and with none there is nothing under embargo to act on.
-func OpenExisting(home, repoRoot string) (Store, State, error) {
+func openExisting(home, repoRoot string) (Store, State, error) {
 	top, err := gitutil.Toplevel(repoRoot)
 	if err != nil {
 		return Store{}, State{}, refuse("this is not inside a git checkout", "run it from the repository's checkout")

@@ -36,7 +36,7 @@ type checkFixture struct {
 func newCheckFixture(t *testing.T) checkFixture {
 	t.Helper()
 	f := newFixture(t)
-	s, _, err := Open(f.home, f.repo.Root())
+	s, _, err := openStore(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}

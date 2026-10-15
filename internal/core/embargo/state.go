@@ -54,8 +54,8 @@ var (
 	issueIDRe = regexp.MustCompile(`^iss-[1-9][0-9]{0,19}$`)
 )
 
-// ValidGHSAID reports whether s is a GitHub advisory id.
-func ValidGHSAID(s string) bool { return ghsaRe.MatchString(s) }
+// validGHSAID reports whether s is a GitHub advisory id.
+func validGHSAID(s string) bool { return ghsaRe.MatchString(s) }
 
 // State is the store's record of every advisory it holds. The link from an
 // advisory to its private record lives here and not in the record, so the

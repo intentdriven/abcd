@@ -46,11 +46,11 @@ type IntakeResult struct {
 	NeedsSeverity []string       `json:"needs_severity"`
 }
 
-// MapSeverity maps GitHub's advisory severity onto the ledger's: critical to
+// mapSeverity maps GitHub's advisory severity onto the ledger's: critical to
 // critical, high to major, medium and low to minor. A null or unknown severity
 // is not mapped (ok is false): a guessed severity would decide whether the
 // release cut's open-findings guard counts the record.
-func MapSeverity(s *string) (string, bool) {
+func mapSeverity(s *string) (string, bool) {
 	if s == nil {
 		return "", false
 	}
@@ -112,7 +112,7 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 		}
 		for _, a := range items {
 			switch {
-			case !ValidGHSAID(a.GHSAID):
+			case !validGHSAID(a.GHSAID):
 				return IntakeResult{}, refuse("GitHub listed an advisory whose advisory id is not of the shape this abcd reads; nothing was recorded",
 					"run it again with a newer abcd, or report it")
 			case !slices.Contains(ForgeStates, a.State):
@@ -131,7 +131,7 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 	}
 	slices.Sort(ids)
 
-	s, created, err := Open(req.Home, top)
+	s, created, err := openStore(req.Home, top)
 	if err != nil {
 		return IntakeResult{}, err
 	}
@@ -164,7 +164,7 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 		if _, ok := held[id]; ok {
 			continue
 		}
-		if _, ok := MapSeverity(a.Severity); !ok {
+		if _, ok := mapSeverity(a.Severity); !ok {
 			p := PendingAdvisory{GHSAID: a.GHSAID, Title: a.Summary, ForgeState: a.State}
 			if a.CVEID != nil && *a.CVEID != "" {
 				cve := *a.CVEID
@@ -180,7 +180,7 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 			res.Held = append(res.Held, id)
 			continue
 		}
-		sev, ok := MapSeverity(a.Severity)
+		sev, ok := mapSeverity(a.Severity)
 		if !ok {
 			res.NeedsSeverity = append(res.NeedsSeverity, id)
 			continue

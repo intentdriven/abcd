@@ -179,7 +179,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	case err != nil:
 		return CheckResult{}, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
 	}
-	s, st, err := OpenExisting(req.Home, top)
+	s, st, err := openExisting(req.Home, top)
 	if err != nil {
 		return CheckResult{}, err
 	}
@@ -231,7 +231,7 @@ func parseAllow(ids []string) (map[string]bool, []string, error) {
 	set := map[string]bool{}
 	for _, id := range ids {
 		up := canonGHSA(id)
-		if !ValidGHSAID(up) {
+		if !validGHSAID(up) {
 			return nil, nil, refuse("an --allow value is not a GitHub advisory id", "pass each as GHSA-xxxx-xxxx-xxxx")
 		}
 		set[up] = true

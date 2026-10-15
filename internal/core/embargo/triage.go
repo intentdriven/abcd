@@ -49,8 +49,8 @@ type TriageResult struct {
 // closingVerdicts are the verdicts that close the advisory on GitHub.
 var closingVerdicts = []string{VerdictNotAbcds, VerdictNotAVulnerability}
 
-// IsClosingVerdict reports whether v closes its advisory on GitHub.
-func IsClosingVerdict(v string) bool { return slices.Contains(closingVerdicts, v) }
+// isClosingVerdict reports whether v closes its advisory on GitHub.
+func isClosingVerdict(v string) bool { return slices.Contains(closingVerdicts, v) }
 
 // findAdvisory is the index of the entry target names: the private record's
 // iss-N, or the advisory's GHSA id in any case. The refusal does not repeat
@@ -126,7 +126,7 @@ func Triage(req TriageRequest) (TriageResult, error) {
 	now := clock(req.Now)
 	by := strings.TrimSpace(req.By)
 
-	s, st, err := OpenExisting(req.Home, req.RepoRoot)
+	s, st, err := openExisting(req.Home, req.RepoRoot)
 	if err != nil {
 		return TriageResult{}, err
 	}
@@ -152,7 +152,7 @@ func Triage(req TriageRequest) (TriageResult, error) {
 	}
 
 	draft := ""
-	if IsClosingVerdict(req.Verdict) {
+	if isClosingVerdict(req.Verdict) {
 		draft = closingDraft(req.Verdict, reason, strings.TrimSpace(req.ExistsWithout), strings.TrimSpace(req.CannotHelp))
 	}
 
