@@ -24,8 +24,14 @@ name: auto-release
 # exists but its Release is MISSING or still an unpublished draft (e.g. a transient
 # publish failure), `detect`
 # sets need_release=true and re-invokes `release` ALONE — built from the tagged
-# commit (release_ref), never the moved-on HEAD — so a flaky publish never
-# permanently wedges the version. A tag its own verify refused is the exception:
+# commit (release_ref), never the moved-on HEAD.
+# On a public repository it does so only when this push IS the tagged commit:
+# release.yml verifies build provenance against the commit a run is
+# started for, so a run started by a later push cannot finish that Release.
+# `detect` then fails and names the remedy instead: re-run the failed jobs of
+# the release run of the tagged commit. A private repository's releases carry
+# no attestation, so any later push re-releases.
+# A tag its own verify refused is the exception:
 # a hand-pushed tag runs release.yml before verify, and when that run's verify
 # failed, `detect` refuses loudly and names the re-cut (a new dated version)
 # rather than rebuilding the refused commit on every push.
@@ -77,6 +83,7 @@ jobs:
         # view` can read the repo's releases under the floor `contents: read`.
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
         run: |
           set -euo pipefail
           # The first heading of the form "## [X.Y.Z] - <date>" (or the historical
@@ -95,10 +102,10 @@ jobs:
           tag="v$version"
           if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
             # The tag already exists, so it is NEVER moved (immutable). Re-release
-            # ONLY when its GitHub Release is missing: a transient publish failure
-            # must not permanently wedge the version. Build the re-release FROM the
-            # tagged commit, not the current (moved-on) main HEAD — resolve the tag
-            # to its immutable commit SHA and hand it to release.yml as `ref`.
+            # ONLY when its GitHub Release is missing or unpublished. Build the
+            # re-release FROM the tagged commit, not the current (moved-on) main
+            # HEAD — resolve the tag to its immutable commit SHA and hand it to
+            # release.yml as `ref`.
             echo "need_tag=false" >> "$GITHUB_OUTPUT"
             # Deliberate fail-open: ANY non-zero from `gh release view` (a true 404
             # or a transient rate-limit/auth blip) counts as "Release missing" and
@@ -140,6 +147,14 @@ jobs:
                 fi
               fi
               commit="$(git rev-parse --verify "$tag^{commit}")"
+              # On a public repository release.yml verifies build provenance
+              # against the commit a run is started for, so only the release run
+              # of the tagged commit can finish its Release. When this push is
+              # a later commit, ask for no release: fail and name the remedy.
+              if [ "$commit" != "$GITHUB_SHA" ] && [ "$REPO_PRIVATE" != true ]; then
+                echo "::error::$tag is tagged at $commit, and its GitHub Release is missing or an unpublished draft. This push ($GITHUB_SHA) cannot finish it: re-run the failed jobs of the auto-release run of $commit (gh run rerun <run-id> --failed). If no such run exists, roll a new dated CHANGELOG version."
+                exit 1
+              fi
               echo "$tag is tagged but has NO GitHub Release; re-releasing from $commit."
               echo "need_release=true" >> "$GITHUB_OUTPUT"
               echo "release_ref=$commit" >> "$GITHUB_OUTPUT"
