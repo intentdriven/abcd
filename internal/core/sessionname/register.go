@@ -552,7 +552,9 @@ func (reg *register) reserve(personas []string, sessionID string, host Host, rep
 // is given the same name.
 //
 // The register is first read without the lock, as the prompt hook reads it:
-// a title abcd never gave costs no process-table read and writes nothing.
+// a title abcd never gave costs no process-table read and writes nothing,
+// except on a clear, which records the new id as given nothing (keep), so a
+// later resume of it keeps the person's title (C4).
 //
 // When a running session on another host holds the name, which happens once
 // every named session had ended and naming restarted while this one was away,
