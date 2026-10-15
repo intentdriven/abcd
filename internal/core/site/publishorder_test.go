@@ -2,6 +2,7 @@ package site
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -96,5 +97,126 @@ func TestTheReleaseIsPublishedOnlyOnceEveryAssetIsAttached(t *testing.T) {
 			t.Errorf("site.yml's jobs must run resolve, render, publish, deploy in that order")
 		}
 		last = i
+	}
+}
+
+// publishFakeGH answers the four gh calls site.yml's publish step makes: the
+// checksums.txt download, the asset listing (applying the step's own --jq
+// filter to the canned assets), the publish edit, and the draft read-back.
+const publishFakeGH = `#!/usr/bin/env bash
+set -euo pipefail
+sub="$1 $2"; shift 3
+expr=""; dir=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --jq) expr="$2"; shift 2 ;;
+    --dir) dir="$2"; shift 2 ;;
+    --repo|--pattern|--json) shift 2 ;;
+    --draft=false) : > "$FAKE_DIR/published"; shift ;;
+    *) echo "fake gh: unexpected $1" >&2; exit 97 ;;
+  esac
+done
+case "$sub" in
+  "release download") printf '%s  abcd-linux-amd64\n%s  abcd-plugin-v1.2.3.zip\n' aaa bbb > "$dir/checksums.txt" ;;
+  "release view")
+    if [ "$expr" = .isDraft ]; then
+      if [ -f "$FAKE_DIR/published" ]; then echo false; else echo true; fi
+    else
+      jq -r "$expr" "$FAKE_DIR/release.json"
+    fi ;;
+  "release edit") ;;
+  *) echo "fake gh: $sub is not faked" >&2; exit 99 ;;
+esac
+`
+
+// runBlockOf returns the script of the first `run: |` block in text.
+func runBlockOf(t *testing.T, text string) string {
+	t.Helper()
+	lines := strings.Split(text, "\n")
+	for i, l := range lines {
+		if strings.TrimSpace(l) != "run: |" {
+			continue
+		}
+		key := len(l) - len(strings.TrimLeft(l, " "))
+		var body []string
+		indent := -1
+		for _, b := range lines[i+1:] {
+			if strings.TrimSpace(b) == "" {
+				body = append(body, "")
+				continue
+			}
+			n := len(b) - len(strings.TrimLeft(b, " "))
+			if n <= key {
+				break
+			}
+			if indent < 0 {
+				indent = n
+			}
+			body = append(body, b[indent:])
+		}
+		return strings.Join(body, "\n") + "\n"
+	}
+	t.Fatal("no run: | block")
+	return ""
+}
+
+// TestPublishRequiresEveryAssetUploaded executes site.yml's publish step
+// against a fake gh: a Release is published only when every asset
+// checksums.txt names, checksums.txt and site.tar.gz are attached in the
+// uploaded state. An asset whose upload has not completed counts as missing.
+func TestPublishRequiresEveryAssetUploaded(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatal("jq is required to fake gh's --jq and is missing on a CI runner")
+		}
+		t.Skip("jq not on PATH; the fake gh needs it to apply the step's --jq filters")
+	}
+	script := runBlockOf(t, topJob(t, readWorkflow(t, siteWorkflowRel), "publish"))
+	names := []string{"abcd-linux-amd64", "abcd-plugin-v1.2.3.zip", "checksums.txt", "site.tar.gz"}
+	for name, c := range map[string]struct {
+		pending string // an asset whose upload has not completed
+		publish bool
+	}{
+		"every asset uploaded":               {publish: true},
+		"a binary still uploading":           {pending: "abcd-linux-amd64"},
+		"the site archive still uploading":   {pending: "site.tar.gz"},
+		"the checksums file still uploading": {pending: "checksums.txt"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			fake := t.TempDir()
+			bin := t.TempDir()
+			var assets []string
+			for _, n := range names {
+				state := "uploaded"
+				if n == c.pending {
+					state = "open"
+				}
+				assets = append(assets, `{"name":"`+n+`","state":"`+state+`"}`)
+			}
+			if err := os.WriteFile(filepath.Join(fake, "release.json"), []byte(`{"assets":[`+strings.Join(assets, ",")+`]}`), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(publishFakeGH), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			cmd := exec.Command("bash", "-eo", "pipefail", "-c", script)
+			cmd.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
+				"FAKE_DIR=" + fake, "TAG=v1.2.3", "GITHUB_REPOSITORY=example/fixture", "RUNNER_TEMP=" + t.TempDir()}
+			out, err := cmd.CombinedOutput()
+			_, statErr := os.Stat(filepath.Join(fake, "published"))
+			published := statErr == nil
+			if c.publish {
+				if err != nil || !published {
+					t.Fatalf("every asset is uploaded, so the Release must publish (err=%v, published=%v):\n%s", err, published, out)
+				}
+				return
+			}
+			if err == nil || published {
+				t.Fatalf("%s is not uploaded, so the Release must not publish (err=%v, published=%v):\n%s", c.pending, err, published, out)
+			}
+			if !strings.Contains(string(out), c.pending) {
+				t.Errorf("the refusal must name %s:\n%s", c.pending, out)
+			}
+		})
 	}
 }

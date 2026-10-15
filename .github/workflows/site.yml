@@ -617,9 +617,10 @@ jobs:
   # Release is a draft exactly when `render` attached site.tar.gz to it, so this runs
   # then and never on the emergency redeploy. It runs no build code and holds no
   # credential but the job token. It checks every file checksums.txt names, the
-  # manifest itself and site.tar.gz are attached, publishes, and confirms the
-  # Release is no longer a draft. It runs before `deploy`, so abcdev.app never
-  # describes a release that is not published.
+  # manifest itself and site.tar.gz are attached with their uploads complete
+  # (asset state `uploaded`), publishes, and confirms the Release is no longer a
+  # draft. It runs before `deploy`, so abcdev.app never describes a release that
+  # is not published.
   publish:
     needs: [resolve, render]
     if: ${{ needs.render.outputs.draft == 'true' }}
@@ -642,13 +643,13 @@ jobs:
           gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" \
             --pattern 'checksums.txt' --dir "$dl"
           attached="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
-            --json assets --jq '.assets[].name')"
+            --json assets --jq '.assets[] | select(.state == "uploaded") | .name')"
           want="$(awk '{print $2}' "$dl/checksums.txt"; printf '%s\n' checksums.txt site.tar.gz)"
           missing=0
           while IFS= read -r name; do
             [ -n "$name" ] || continue
             if ! grep -Fxq -- "$name" <<<"$attached"; then
-              echo "::error::${TAG} has no $name attached; refusing to publish it."
+              echo "::error::${TAG} has no uploaded $name attached; refusing to publish it."
               missing=1
             fi
           done <<<"$want"
