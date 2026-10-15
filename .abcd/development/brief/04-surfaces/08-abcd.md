@@ -178,6 +178,21 @@ state itself with `abcd mode`, naming whom it addresses. A repository abcd
 does not manage, or one without the local tier, has no badge, and its
 questions are not gated.
 
+**Session names** (itd-2610111707085098, spc-2610152057143798). Each session
+the hooks run in takes a persona name, unique across the machine: the
+repository's personas in order (`.abcd/development/personas.json`, else the
+bundled Alice to Nia), then the same names again as Alice Two up to Nine. The
+session-start hook reserves the next free name in the machine register,
+`~/.abcd.noindex/sessions/names.json`, beside the host process that runs the
+session, and sets no title; the prompt hook sets the title once, at the
+session's first prompt, because the host ignores a title equal to the one a
+session already has, and a title set at start never reached its session list.
+The status line shows the name directly after the badge. A name the person
+gave is never replaced, a resumed or cleared session keeps its name, a name is
+not handed out again while any named session runs, and naming restarts at
+Alice once every named session's host process has ended. The board's presence
+line carries no name: it has no host payload to read one from.
+
 **The peers line and `/abcd:peers`** (itd-2609091416295622,
 spc-2609202056480020). A peer is a linked worktree sharing this checkout's git
 common dir, read off its disk so an uncommitted capture is seen, or a local
