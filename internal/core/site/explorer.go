@@ -133,6 +133,12 @@ func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot
 		e.glossaryByPath[en.Path] = en
 	}
 	e.terms = newTermLinker(entries)
+	// A decision is a record with a page of its own and a link target like any
+	// other; it is only the chart's node list it is kept out of.
+	for _, n := range export.Decisions {
+		e.byID[n.ID] = n
+		e.byPath[n.Path] = n
+	}
 	for _, n := range export.Nodes {
 		e.byID[n.ID] = n
 		e.byPath[n.Path] = n
@@ -238,12 +244,14 @@ func (e *explorer) Pages() (map[string]string, error) {
 			pages[en.Route+"index.html"] = html
 		}
 	}
-	for _, n := range e.export.Nodes {
-		html, err := e.recordPage(n)
-		if err != nil {
-			return nil, err
+	for _, nodes := range [][]ExportNode{e.export.Nodes, e.export.Decisions} {
+		for _, n := range nodes {
+			html, err := e.recordPage(n)
+			if err != nil {
+				return nil, err
+			}
+			pages[RecordRoute(n)+"index.html"] = html
 		}
-		pages[RecordRoute(n)+"index.html"] = html
 	}
 	return pages, nil
 }

@@ -532,7 +532,7 @@ func build(req Request, written *labelsAdded) (Result, error) {
 
 	res := Result{
 		OutDir:      fsutil.RepoRelativePath(repoRoot, outDir),
-		Records:     len(export.Nodes),
+		Records:     len(export.Nodes) + len(export.Decisions),
 		Links:       len(export.Edges),
 		Mentions:    len(export.Mentions),
 		Unresolved:  len(export.Health.Unresolved),

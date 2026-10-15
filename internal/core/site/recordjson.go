@@ -38,14 +38,27 @@ type RecordExport struct {
 	SchemaVersion int `json:"schema_version"`
 	// Build is the only non-derived content in the file: what produced it.
 	Build BuildStamp `json:"build"`
-	// Nodes are every record, ordered by store then id.
+	// Nodes are every record the relationship chart draws, ordered by store
+	// then id. The layout's arrangements are aligned with this list, one entry
+	// per node.
 	Nodes []ExportNode `json:"nodes"`
+	// Decisions are the decision records, oldest first, where the repository
+	// opts in to publishing them (RecordOpts.Decisions); absent otherwise. They
+	// are held apart from Nodes because the chart, the genealogy and the
+	// development page are built for the stores that move, and hundreds of
+	// one-line decisions would bury them: the decision log page lists them
+	// instead (spc-2610110931381316, decision 8). A typed link or a body
+	// mention that reaches one is still in Edges and Mentions, so both
+	// records' pages carry it; the chart, which places only Nodes, skips it.
+	Decisions []ExportNode `json:"decisions,omitempty"`
 	// Edges are the record's typed links, each distinct link appearing once.
 	Edges []ExportEdge `json:"edges"`
 	// Mentions are body references between records that no typed link already
 	// records. They are undirected and deduplicated against Edges.
 	Mentions []ExportMention `json:"mentions"`
-	// Counts are the corpus by store and by lifecycle bucket.
+	// Counts are the corpus by store and by lifecycle bucket: the Nodes, so the
+	// chart's filters and the dashboard's store tiles count what the chart
+	// draws. The decisions are counted by their own list.
 	Counts Counts `json:"counts"`
 	// Releases are the dated CHANGELOG headings, newest first. Absent where the
 	// repository records none.
@@ -217,17 +230,37 @@ func BuildRecordExport(repoRoot, baselineRel string, graph lint.RecordGraph, ext
 		}
 		nodes = kept
 	}
+	// The decision records are working-tier data too (adr-32), published only
+	// on their own switch, and they leave the chart's node list either way.
+	// They are appended after the chart's nodes, so a link or a mention can
+	// reach one through the same index while the layout, which places the
+	// chart's nodes alone, keeps only the pairs inside that prefix.
+	var decisionNodes []lint.RecordNode
+	{
+		kept := nodes[:0:0]
+		for _, n := range nodes {
+			if n.Type != decisionType {
+				kept = append(kept, n)
+			} else if opts.Decisions {
+				decisionNodes = append(decisionNodes, n)
+			}
+		}
+		nodes = kept
+	}
+	charted := len(nodes)
+	all := append(nodes[:len(nodes):len(nodes)], decisionNodes...)
 
-	index := make(map[string]int, len(nodes))
-	for i, n := range nodes {
+	index := make(map[string]int, len(all))
+	for i, n := range all {
 		index[n.ID] = i
 	}
 
 	edges, typedPairs := collapseEdges(graph.Edges, index)
-	mentions, mentionPairs, err := scanMentions(repoRoot, nodes, index, typedPairs)
+	mentions, mentionPairs, err := scanMentions(repoRoot, all, index, typedPairs)
 	if err != nil {
 		return RecordExport{}, err
 	}
+	typedPairs, mentionPairs = chartedPairs(typedPairs, charted), chartedPairs(mentionPairs, charted)
 
 	lay := make([]LayoutNode, len(nodes))
 	exp := RecordExport{
@@ -266,6 +299,15 @@ func BuildRecordExport(repoRoot, baselineRel string, graph lint.RecordGraph, ext
 		exp.Nodes[i].Degree = exp.Layout.Degree[i]
 	}
 
+	for _, n := range decisionNodes {
+		exp.Decisions = append(exp.Decisions, ExportNode{
+			ID: n.ID, Type: n.Type, Lifecycle: n.Lifecycle, Title: n.Title, Path: n.Path,
+			Status: n.Status, Kind: n.Kind, Severity: n.Severity,
+			Date: hist.EffectiveDate(n.Path, n.Date), Dates: hist.Files[n.Path],
+		})
+	}
+	sortDecisionNodes(exp.Decisions)
+
 	releases, _, err := changelog.DatedReleases(repoRoot)
 	if err != nil {
 		return RecordExport{}, err
@@ -285,6 +327,32 @@ func BuildRecordExport(repoRoot, baselineRel string, graph lint.RecordGraph, ext
 		return RecordExport{}, err
 	}
 	return exp, nil
+}
+
+// decisionType is the decision records' store name in the record graph.
+const decisionType = "decision"
+
+// chartedPairs keeps the pairs whose both ends are among the first n nodes, the
+// ones the chart places.
+func chartedPairs(pairs [][2]int, n int) [][2]int {
+	kept := pairs[:0:0]
+	for _, p := range pairs {
+		if p[0] < n && p[1] < n {
+			kept = append(kept, p)
+		}
+	}
+	return kept
+}
+
+// sortDecisionNodes puts the decisions oldest first: by date, then by id, which
+// is the mint stamp and so the order they were recorded in within one day.
+func sortDecisionNodes(nodes []ExportNode) {
+	sort.SliceStable(nodes, func(i, j int) bool {
+		if nodes[i].Date != nodes[j].Date {
+			return nodes[i].Date < nodes[j].Date
+		}
+		return lint.HandleLess(nodes[i].ID, nodes[j].ID)
+	})
 }
 
 // collapseEdges normalises each typed reference to one direction and drops the

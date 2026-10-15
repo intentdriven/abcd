@@ -294,9 +294,15 @@ type Release struct {
 	Assets string `json:"assets"`
 }
 
-// RecordOpts carries the working-tier publication opt-in (adr-32, itd-140).
+// RecordOpts carries the working-tier publication opt-ins (adr-32, itd-140).
+// Each store it names sits in the working tier, so publishing it is the
+// repository's choice, and without the switch the store is not in the export at
+// all rather than merely hidden by the pages.
 type RecordOpts struct {
 	IssueLedger bool `json:"issue_ledger"`
+	// Decisions publishes the decision records, `.abcd/work/decisions/`, as the
+	// decision log page and a page per record (itd-2609151138388536).
+	Decisions bool `json:"decisions"`
 }
 
 // DocsRefs names the documentation pages the site links its docs surface to.
