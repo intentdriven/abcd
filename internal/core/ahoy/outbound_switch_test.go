@@ -386,6 +386,11 @@ func TestAForeignHookThatRunsTheCheckIsNotReported(t *testing.T) {
 		{"runs it", "#!/bin/sh\n\"$work/abcd\" lint outbound --label \"commit message\" \"$1\" || exit 1\n", false},
 		{"only names it in a comment", "#!/bin/sh\n# we should run abcd lint outbound here\nexit 0\n", true},
 		{"does not mention it", "#!/bin/sh\nexit 0\n", true},
+		{"only echoes it", "#!/bin/sh\necho lint outbound\nexit 0\n", true},
+		{"names it in an echoed sentence", "#!/bin/sh\necho \"and runs \\`abcd lint outbound\\`, and\" >&2\nexit 0\n", true},
+		{"runs it from PATH", "#!/bin/sh\nset -e\nabcd lint outbound --label \"commit message\" \"$1\"\n", false},
+		{"runs it as an if condition", "#!/bin/sh\nif ! \"$bin\" lint outbound \"$1\"; then exit 1; fi\n", false},
+		{"chains abcd's copy of the check", "#!/bin/sh\n" + outboundShimChainLine + "\nexit 0\n", false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			setupHermetic(t)

@@ -946,17 +946,25 @@ the flag keeps both and restores a hand-deleted hook.
   in a plain clone, shared by every worktree), where no `core.hooksPath` is
   set at any scope and nothing is at that path. That copy finds abcd through
   `abcd.binary` like the committed one and never runs or calls the committed
-  copy. Where `core.hooksPath` is set, or a `commit-msg` hook abcd did not
-  write is already there, it writes nothing, and one note says the check is
-  not wired, why, and the line to add to that hook to chain it:
+  copy. Where `core.hooksPath` is set (the empty value included: git then
+  runs no hook from `.git/hooks`), or a `commit-msg` hook abcd did not write
+  is already there, it leaves that hook alone and saves the same template as
+  `hooks/abcd-commit-msg` in the common git directory instead, a name git
+  never runs; one note says the check is not wired, why, and the line to add
+  to the hook git runs, which calls that copy:
 
   ```bash
-  if bin=$(git config --local --get abcd.binary); then "$bin" lint outbound --label "commit message" "$1" || exit 1; fi
+  h="$(git rev-parse --git-common-dir 2>/dev/null || true)/hooks/abcd-commit-msg"; if [ -x "$h" ]; then "$h" "$1" || exit 1; fi
   ```
 
-  A hooks path whose `commit-msg` already runs the check draws no note. A
-  rerun leaves a current copy as it is and refreshes an abcd-marked one that
-  is not the current template. A plain `install` never writes this copy.
+  So the chained check is the template itself and fails open as it does: a
+  missing copy, a missing binary or an abcd that cannot judge the message
+  lets the commit through, and only abcd's own refusal blocks it. A hooks
+  path whose `commit-msg` already runs the check draws no note. A rerun
+  leaves a current copy as it is and refreshes one only when it is byte for
+  byte a template an earlier abcd wrote; a marked copy the person edited is
+  left as it is, and a note says so. A plain `install` never writes either
+  copy.
 - **The forge-text check.** The title, body and body file a posting `gh pr` or
   `gh issue` command (create, new, edit, comment) hands the forge are judged
   against the same outbound policy before the command runs, and a live

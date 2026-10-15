@@ -4,7 +4,8 @@
 # `abcd ahoy install --outbound`, because this repository asked for it, into the
 # committed .githooks/ and, in a clone with no core.hooksPath and no commit-msg
 # hook of its own, into the clone's own git hooks directory, where git runs it
-# with no further step. abcd never installs it by default, never replaces a
+# with no further step; elsewhere as hooks/abcd-commit-msg there, for the
+# person's own hook to call. abcd never installs it by default, never replaces a
 # commit-msg hook it did not write, and never sets core.hooksPath.
 #
 # Refuses a commit whose message carries a LIVE AGENT-SESSION URL or a tool's own

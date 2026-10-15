@@ -323,10 +323,14 @@ clone. So that the check runs with no manual step, the explicit flag alone also
 writes the same embedded template, marked as abcd's, as the clone's own
 `commit-msg` in the common git directory's `hooks/` (shared by every worktree),
 where no hooks path is set at any scope and nothing occupies that path; it
-never runs or calls the committed copy. Where a hooks path is set, or a
-`commit-msg` hook abcd did not write is there, it writes nothing and one note
-says the check is not wired, why, and the line to chain it with; a rerun leaves
-a current shim as it is and refreshes a stale abcd-marked one. The binary is not
+never runs or calls the committed copy. Where a hooks path is set (the empty
+value included), or a `commit-msg` hook abcd did not write is there, it leaves
+that hook alone, saves the same template as `hooks/abcd-commit-msg`, a name git
+never runs, and one note says the check is not wired, why, and the line that
+calls that copy from the person's own hook, so the chained check fails open as
+the template does; a rerun leaves a current copy as it is, refreshes one only
+when it is byte for byte a template an earlier abcd wrote, and leaves an edited
+one, saying so. The binary is not
 re-verified at commit time: a swap of the `PATH` copy by the same account is out
 of scope. The two flags that each turned on one half are retired and refused
 naming the switch, and a repository that recorded one half under them, leaving

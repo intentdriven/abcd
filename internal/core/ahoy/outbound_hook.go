@@ -1,9 +1,12 @@
 package ahoy
 
 import (
+	"bytes"
 	_ "embed"
 	"os"
+	"path"
 	"regexp"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -39,12 +42,56 @@ const (
 // recognised as abcd's and can be healed).
 var outboundHookMarkerRe = regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(outboundHookMarkerPrefix) + `[ \t]*v[0-9]+[ \t\r]*$`)
 
-// outboundHookRunsCheckRe matches a line that runs `lint outbound`, outside a
-// comment. A commit-msg hook abcd did not write but that runs the check itself
-// (abcd's own repository carries one) leaves nothing for the foreign-hook
-// advisory to say. It is a reading of the text, not a proof the hook works: it
-// only ever silences an advisory, and never decides a write or what runs.
-var outboundHookRunsCheckRe = regexp.MustCompile(`(?m)^[ \t]*[^#\s].*\blint[ \t]+outbound\b`)
+// outboundHookRunsCheckRe matches `lint outbound` invoked as a command, outside
+// a comment: after the start of a line or a shell separator, the word in front
+// of it is the program run (group 1), and outboundHookRunsCheck holds that word
+// to an abcd binary. A commit-msg hook abcd did not write but that runs the
+// check itself (abcd's own repository carries one) leaves nothing for the
+// foreign-hook advisory to say. It is a reading of the text, not a proof the
+// hook works: it only ever silences an advisory, and never decides a write or
+// what runs. A separator inside a quoted string can still read as one.
+var outboundHookRunsCheckRe = regexp.MustCompile(`(?m)(?:^|[;&|(){}!]|\b(?:if|elif|then|do|else|while|until|exec))[ \t]*("[^"\n]*"|'[^'\n]*'|[^\s;&|(){}#"'\x60]+)[ \t]+lint[ \t]+outbound\b`)
+
+// outboundHookChainsCopyRe matches, outside a comment, the chain line's
+// reference to abcd's own copy of the check (outboundShimChainLine).
+var outboundHookChainsCopyRe = regexp.MustCompile(`(?m)^[ \t]*[^#\s].*` + regexp.QuoteMeta(shimChainRel))
+
+// outboundHookRunsCheck reports whether a hook's text runs `abcd lint
+// outbound` or chains abcd's copy of the check (outboundHookChainsCopy). The
+// program in front of `lint outbound` must be an expansion (`"$bin"`,
+// `"$work/abcd"`) or a path whose last element starts with abcd, so `echo lint
+// outbound` runs nothing.
+func outboundHookRunsCheck(data []byte) bool {
+	code := hookCode(data)
+	if outboundHookChainsCopyRe.Match(code) {
+		return true
+	}
+	for _, m := range outboundHookRunsCheckRe.FindAllSubmatch(code, -1) {
+		word := strings.Trim(string(m[1]), `"'`)
+		if strings.HasPrefix(word, "$") || strings.HasPrefix(path.Base(word), "abcd") {
+			return true
+		}
+	}
+	return false
+}
+
+// outboundHookChainsCopy reports whether a hook's text calls abcd's copy of
+// the check at shimChainRel, as outboundShimChainLine does.
+func outboundHookChainsCopy(data []byte) bool {
+	return outboundHookChainsCopyRe.Match(hookCode(data))
+}
+
+// hookCode is a hook's text without its comment lines.
+func hookCode(data []byte) []byte {
+	var code []byte
+	for _, line := range bytes.SplitAfter(data, []byte("\n")) {
+		if t := bytes.TrimLeft(line, " \t"); len(t) > 0 && t[0] == '#' {
+			continue
+		}
+		code = append(code, line...)
+	}
+	return code
+}
 
 // classifyOutboundHook is classifyHook against the outbound marker, with
 // whether a hook abcd did not write runs the check itself.
@@ -54,7 +101,7 @@ func classifyOutboundHook(root *os.Root, rel string) (state HookState, runsCheck
 		return state, false
 	}
 	data, err := fsutil.ReadGuardedInRoot(root, rel, maxAhoyFileBytes)
-	return state, err == nil && outboundHookRunsCheckRe.Match(data)
+	return state, err == nil && outboundHookRunsCheck(data)
 }
 
 // outboundHookLeft says why the commit-msg hook at OutboundHookRelPath is not

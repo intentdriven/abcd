@@ -2,9 +2,12 @@ package ahoy
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -25,34 +28,79 @@ import (
 // executes the committed .githooks copy, so no repository-authored code runs
 // through it. It lives in the common git directory, so every worktree of the
 // clone shares the one hook. It never replaces a hook abcd did not write, never
-// sets core.hooksPath and never touches global config: where git runs other
-// hooks, or a commit-msg hook is already there, it writes nothing and one note
-// says the check is not wired, why, and the line to chain it with.
+// sets core.hooksPath and never touches global config. Where git runs other
+// hooks, or a commit-msg hook is already there, it saves the same template as
+// hooks/abcd-commit-msg instead, a name git never runs, and one note says the
+// check is not wired, why, and the line that calls that copy from the person's
+// own hook: the copy then fails open exactly as the shim does, and blocks only
+// on abcd's own refusal.
 
-// shimAction is what the explicit opt-in does to the clone's commit-msg.
+// shimAction is what the explicit opt-in does to the file a plan names.
 type shimAction int
 
 const (
-	shimNone    shimAction = iota // nothing to write: wired, or not abcd's to wire (see note)
+	shimNone    shimAction = iota // nothing to write: current, or not abcd's to write (see note)
 	shimCreate                    // nothing at the path: write the template
-	shimRefresh                   // abcd's own shim, not the current template: replace it
+	shimRefresh                   // a template abcd wrote earlier: replace it with the current one
 )
 
 // shimHookRel is the commit-msg hook's path inside the common git directory.
-const shimHookRel = "hooks/commit-msg"
+// shimChainRel is where abcd saves its copy of the check for a person's own
+// hook to call, under a name git never runs as a hook.
+const (
+	shimHookRel  = "hooks/commit-msg"
+	shimChainRel = "hooks/abcd-commit-msg"
+)
 
 // outboundShimChainLine is the one line a person adds to a commit-msg hook of
-// their own to run the check. It runs only the abcd this clone's abcd.binary
-// names, and does nothing when none is named.
-const outboundShimChainLine = `if bin=$(git config --local --get abcd.binary); then "$bin" lint outbound --label "commit message" "$1" || exit 1; fi`
+// their own to run the check. It runs abcd's own copy of the template, saved at
+// shimChainRel, so the checks are the template's (an absolute abcd.binary
+// outside the working tree, the scissors cut, the verdict line) and it fails
+// open as the template does; where the copy is missing it does nothing.
+const outboundShimChainLine = `h="$(git rev-parse --git-common-dir 2>/dev/null || true)/` + shimChainRel + `"; if [ -x "$h" ]; then "$h" "$1" || exit 1; fi`
+
+// earlierShimSHA256 is the SHA-256, hex, of every template an earlier abcd
+// wrote as the shim or its chained copy. A file byte for byte one of them, or
+// the current template, is abcd's to refresh; any other file carrying the
+// marker is the person's edit and is left alone. None yet: the shim first
+// shipped with the current template. A change to defaults/commit-msg adds the
+// hash of the template it replaces. A var so a test can stand in an earlier
+// template.
+var earlierShimSHA256 = []string{}
+
+// shimKind is what a file carrying abcd's marker is.
+type shimKind int
+
+const (
+	shimCurrent shimKind = iota // the current template, byte for byte
+	shimEarlier                 // a template an earlier abcd wrote, byte for byte
+	shimEdited                  // anything else: the person's edit
+)
+
+// kindOfShim classifies the marked file at rel by its bytes.
+func kindOfShim(root *os.Root, rel string) shimKind {
+	data, err := fsutil.ReadGuardedInRoot(root, rel, maxAhoyFileBytes)
+	if err != nil {
+		return shimEdited
+	}
+	if bytes.Equal(data, outboundHookTemplate) {
+		return shimCurrent
+	}
+	sum := sha256.Sum256(data)
+	if slices.Contains(earlierShimSHA256, hex.EncodeToString(sum[:])) {
+		return shimEarlier
+	}
+	return shimEdited
+}
 
 // outboundShimPlan is what the explicit opt-in would do to the clone's
 // commit-msg, read without writing anything.
 type outboundShimPlan struct {
 	gitDir string     // the common git directory; "" when git could not name it
-	path   string     // the absolute commit-msg path git runs with no hooks path
+	rel    string     // the file under gitDir the action writes: shimHookRel or shimChainRel
+	shown  string     // how the receipt names that file
 	action shimAction // what to write there
-	note   string     // why the check is not wired; "" when it is, or will be
+	note   string     // why the check is not wired, or a copy was left; "" when neither
 }
 
 // gitCommonDir names the clone's common git directory, absolute: the one every
@@ -71,34 +119,89 @@ func gitCommonDir(cwd string) (string, error) {
 	return filepath.Clean(out), nil
 }
 
-// notWired renders the note for a clone whose check this run did not wire.
-func notWired(why, where string) string {
-	return "the commit-message check is not wired into git in this clone: " + why +
-		". abcd never replaces a hook, sets core.hooksPath or changes global git config, so to run the check add this line to " +
-		where + ": " + outboundShimChainLine
+// shimShown names rel, a file under the common git directory, for a note or
+// the receipt: repo-relative where the directory is inside the working tree,
+// and otherwise (a linked worktree's, the main checkout's) by what it is, never
+// by its path, which can carry a private name.
+func shimShown(cwd, gitDir, rel string) string {
+	if p := filepath.Join(gitDir, filepath.FromSlash(rel)); under(cwd, p) {
+		return filepath.ToSlash(fsutil.RepoRel(cwd, p))
+	}
+	return rel + " in this clone's shared git directory (git rev-parse --git-common-dir names it)"
 }
 
-// hookDirRunsCheck reports whether the commit-msg in dir is abcd's template or
-// runs `abcd lint outbound` itself.
-func hookDirRunsCheck(dir string) bool {
+// notWired renders the note for a clone whose check this run did not wire,
+// where abcd's copy of the check is at chain for the person's hook to call.
+func notWired(why, where, chain string) string {
+	return "the commit-message check is not wired into git in this clone: " + why +
+		". abcd never replaces a hook, sets core.hooksPath or changes global git config, so it keeps its copy of the check at " +
+		chain + ", a name git never runs; to run the check, add this line to " + where + ": " + outboundShimChainLine
+}
+
+// notWiredNoCopy renders the note for a clone where abcd could keep no copy
+// of the check either, so there is no line to give.
+func notWiredNoCopy(why string) string {
+	return "the commit-message check is not wired into git in this clone: " + why +
+		", so abcd wrote nothing; run abcd ahoy install --outbound again once that is resolved"
+}
+
+// editedNote says a marked file abcd would refresh was edited, so it was left.
+func editedNote(shown string) string {
+	return shown + " is abcd's copy of the commit-message check but was edited since abcd wrote it, so abcd left it as it is and did not refresh it"
+}
+
+// readHook classifies the commit-msg at rel under root: whether it is abcd's
+// (marked), and, for one abcd did not write, whether it runs the check and
+// whether it does so by calling abcd's copy at shimChainRel.
+func readHook(root *os.Root, rel string) (state HookState, runsCheck, chains bool) {
+	state, runsCheck = classifyOutboundHook(root, rel)
+	if runsCheck {
+		data, err := fsutil.ReadGuardedInRoot(root, rel, maxAhoyFileBytes)
+		chains = err == nil && outboundHookChainsCopy(data)
+	}
+	return state, runsCheck, chains
+}
+
+// hookDirRunsCheck is readHook for the commit-msg in dir.
+func hookDirRunsCheck(dir string) (state HookState, runsCheck, chains bool) {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return false
+		return HookUnreadable, false, false
 	}
 	defer root.Close()
-	state, runsCheck := classifyOutboundHook(root, "commit-msg")
-	return state == HookInstalled || runsCheck
+	return readHook(root, "commit-msg")
 }
 
 // planOutboundShim reads what the explicit opt-in would do to the clone's
 // commit-msg hook. It writes nothing; stepOutboundShim acts on it, and
 // outboundWouldChange counts it.
 func planOutboundShim(cwd string) outboundShimPlan {
-	paths, err := gitutil.HooksPaths(cwd)
+	gitDir, err := gitCommonDir(cwd)
 	if err != nil {
-		return outboundShimPlan{note: notWired("git could not say whether core.hooksPath is set ("+errText(err)+"), so abcd wrote no hook", "the commit-msg hook git runs in this clone")}
+		return outboundShimPlan{note: notWiredNoCopy("git could not name this clone's git directory (" + errText(err) + ")")}
 	}
-	if len(paths) > 0 {
+	root, err := os.OpenRoot(gitDir)
+	if err != nil {
+		return outboundShimPlan{note: notWiredNoCopy("this clone's git directory could not be opened (" + errText(err) + ")")}
+	}
+	defer root.Close()
+	plan := outboundShimPlan{gitDir: gitDir}
+	hook := shimShown(cwd, gitDir, shimHookRel)
+
+	// why and where say, for a clone where git runs a hook other than the
+	// shim, why the check is not wired and which hook the line goes in.
+	var why, where string
+	var runsCheck, chains bool
+	paths, err := gitutil.HooksPaths(cwd)
+	switch {
+	case err != nil:
+		why = "git could not say whether core.hooksPath is set (" + errText(err) + "), so abcd wrote no hook git runs"
+		where = "the commit-msg hook git runs in this clone"
+	case len(paths) > 0 && paths[len(paths)-1] == "":
+		// git reads an empty value as set, and runs no hook from hooks/.
+		why = "core.hooksPath is set to the empty value, so git runs no commit-msg hook in this clone, not even " + hook
+		where = "a commit-msg hook in a directory you point core.hooksPath at"
+	case len(paths) > 0:
 		// The last value is the one git runs. A relative value is relative to
 		// the working tree's root. Its path is never printed: a directory name
 		// on it can be a private name.
@@ -106,39 +209,69 @@ func planOutboundShim(cwd string) outboundShimPlan {
 		if !filepath.IsAbs(dir) {
 			dir = filepath.Join(cwd, dir)
 		}
-		if hookDirRunsCheck(dir) {
+		state, runs, ch := hookDirRunsCheck(dir)
+		if state == HookInstalled {
 			return outboundShimPlan{}
 		}
-		return outboundShimPlan{note: notWired("core.hooksPath is set, so git runs the hooks in the directory it names (git config --get core.hooksPath prints it) and never .git/hooks",
-			"the commit-msg hook in that directory")}
-	}
-	gitDir, err := gitCommonDir(cwd)
-	if err != nil {
-		return outboundShimPlan{note: notWired("git could not name this clone's git directory ("+errText(err)+"), so abcd wrote no hook", "the commit-msg hook git runs in this clone")}
-	}
-	plan := outboundShimPlan{gitDir: gitDir, path: filepath.Join(gitDir, filepath.FromSlash(shimHookRel))}
-	shown := receiptPath(cwd, plan.path)
-	root, err := os.OpenRoot(gitDir)
-	if err != nil {
-		plan.note = notWired("this clone's git directory could not be opened ("+errText(err)+"), so abcd wrote no hook", shown)
-		return plan
-	}
-	defer root.Close()
-	state, runsCheck := classifyOutboundHook(root, shimHookRel)
-	switch state {
-	case HookAbsent:
-		plan.action = shimCreate
-	case HookInstalled:
-		data, err := fsutil.ReadGuardedInRoot(root, shimHookRel, maxAhoyFileBytes)
-		if err != nil || !bytes.Equal(data, outboundHookTemplate) {
-			plan.action = shimRefresh
+		runsCheck, chains = runs, ch
+		why = "core.hooksPath is set, so git runs the hooks in the directory it names (git config --get core.hooksPath prints it) and never " + hook
+		where = "the commit-msg hook in that directory"
+	default:
+		state, runs, ch := readHook(root, shimHookRel)
+		switch state {
+		case HookAbsent:
+			plan.rel, plan.shown, plan.action = shimHookRel, hook, shimCreate
+			return plan
+		case HookInstalled:
+			switch kindOfShim(root, shimHookRel) {
+			case shimEarlier:
+				plan.rel, plan.shown, plan.action = shimHookRel, hook, shimRefresh
+			case shimEdited:
+				plan.note = editedNote(hook)
+			}
+			return plan
+		case HookForeign:
+			runsCheck, chains = runs, ch
+			why = "a commit-msg hook abcd did not write is already at " + hook
+			where = "it"
+		default:
+			why = hook + " could not be read as a regular file (it is a symlink, a directory or a file this account cannot read, or its path leads outside the git directory)"
+			where = "the commit-msg hook git runs there"
 		}
-	case HookForeign:
-		if !runsCheck {
-			plan.note = notWired("a commit-msg hook abcd did not write is already at "+shown, "it")
+	}
+
+	// git runs a hook abcd did not write: keep abcd's copy of the check
+	// beside it for that hook to call. A hook that runs the check already
+	// draws no note, and needs no copy unless it calls one, which is then
+	// written and kept current.
+	chain := shimShown(cwd, gitDir, shimChainRel)
+	switch classifyHook(root, shimChainRel, outboundHookMarkerRe) {
+	case HookAbsent:
+		if runsCheck && !chains {
+			return plan
+		}
+		plan.rel, plan.shown, plan.action = shimChainRel, chain, shimCreate
+	case HookInstalled:
+		switch kindOfShim(root, shimChainRel) {
+		case shimEarlier:
+			plan.rel, plan.shown, plan.action = shimChainRel, chain, shimRefresh
+		case shimEdited:
+			if runsCheck {
+				plan.note = editedNote(chain)
+				return plan
+			}
+			plan.note = notWired(why, where, chain) + " (" + editedNote(chain) + ")"
+			return plan
 		}
 	default:
-		plan.note = notWired(shown+" exists but cannot be read as a hook (a symlink, a directory or an unreadable file)", "it once it is a regular file")
+		if runsCheck && !chains {
+			return plan
+		}
+		plan.note = notWiredNoCopy(why + "; and " + chain + " holds a file abcd did not write or could not read, so abcd left it and has no copy of the check for that hook to call (move it aside to let abcd write one)")
+		return plan
+	}
+	if !runsCheck {
+		plan.note = notWired(why, where, chain)
 	}
 	return plan
 }
@@ -157,64 +290,66 @@ func outboundStandingNotes(cwd string, opts InstallOptions) []string {
 
 // stepOutboundShim wires the commit-message check into git for this clone, on
 // the explicit --outbound alone. It writes abcd's embedded template where
-// nothing is, refreshes abcd's own shim when it is not the current template,
-// and otherwise writes nothing, giving the plan's note when the check is not
-// wired. A refresh re-checks the marker just before it replaces the file, so a
-// hook that changed hands since the plan was read is left alone.
+// nothing is, refreshes a template an earlier abcd wrote, and otherwise writes
+// nothing, giving the plan's note when the check is not wired or a copy was
+// left. A refresh re-reads the file just before it replaces it, so a file
+// that changed since the plan was read is left alone.
 func (a *applyCtx) stepOutboundShim() {
 	if !a.outbound {
 		return
 	}
 	plan := planOutboundShim(a.cwd)
+	if plan.action != shimNone && !a.writeShim(plan) {
+		return
+	}
 	if plan.note != "" {
 		a.refuse(plan.note)
-		return
 	}
-	if plan.action == shimNone {
-		return
-	}
-	shown := receiptPath(a.cwd, plan.path)
-	failed := func(err error) {
-		a.refuse(notWired(shown+" could not be written ("+errText(err)+")", shown))
+}
+
+// writeShim writes the plan's file, and reports whether it did.
+func (a *applyCtx) writeShim(plan outboundShimPlan) bool {
+	failed := func(err error) bool {
+		a.refuse(notWiredNoCopy(plan.shown + " could not be written (" + errText(err) + ")"))
+		return false
 	}
 	root, err := os.OpenRoot(plan.gitDir)
 	if err != nil {
-		failed(err)
-		return
+		return failed(err)
 	}
 	defer root.Close()
 	switch plan.action {
 	case shimCreate:
-		dir := filepath.Dir(filepath.FromSlash(shimHookRel))
+		dir := filepath.Dir(filepath.FromSlash(plan.rel))
 		_, statErr := root.Lstat(dir)
 		if err := root.MkdirAll(dir, 0o755); err != nil {
-			failed(err)
-			return
+			return failed(err)
 		}
 		if statErr != nil {
 			if err := root.Chmod(dir, 0o755); err != nil {
-				failed(err)
-				return
+				return failed(err)
 			}
 		}
-		if err := fsutil.CreateExclusiveIn(root, shimHookRel, outboundHookTemplate, 0o755); err != nil {
-			failed(err)
-			return
+		if err := fsutil.CreateExclusiveIn(root, plan.rel, outboundHookTemplate, 0o755); err != nil {
+			return failed(err)
 		}
 		// A umask-stripped exec bit would leave a hook git never runs.
-		if err := root.Chmod(shimHookRel, 0o755); err != nil {
-			failed(err)
-			return
+		if err := root.Chmod(plan.rel, 0o755); err != nil {
+			return failed(err)
 		}
 	case shimRefresh:
-		if classifyHook(root, shimHookRel, outboundHookMarkerRe) != HookInstalled {
-			a.refuse(notWired(shown+" changed while install ran and is no longer abcd's, so abcd left it", shown))
-			return
+		if classifyHook(root, plan.rel, outboundHookMarkerRe) != HookInstalled || kindOfShim(root, plan.rel) != shimEarlier {
+			a.refuse(plan.shown + " changed while install ran, so abcd left it as it is")
+			return false
 		}
-		if err := fsutil.WriteFileAtomicInRoot(root, shimHookRel, outboundHookTemplate, 0o755); err != nil {
-			failed(err)
-			return
+		if err := fsutil.WriteFileAtomicInRoot(root, plan.rel, outboundHookTemplate, 0o755); err != nil {
+			return failed(err)
 		}
 	}
-	a.note(writeOutboundShim, plan.path)
+	kind := writeOutboundShim
+	if plan.rel == shimChainRel {
+		kind = writeOutboundChain
+	}
+	a.note(kind, plan.shown)
+	return true
 }

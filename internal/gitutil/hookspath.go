@@ -20,6 +20,11 @@ const maxHooksPathBytes = 64 << 10
 // environment, whose -c core.hooksPath=/dev/null would answer for itself.
 // Reading configuration runs no hook and starts no fsmonitor. None set is an
 // empty answer; a git that cannot answer is an error.
+//
+// A value set to the empty string is kept, as "": git reads the key as set all
+// the same, and then runs no hook from the git directory's hooks/. A caller
+// that places a directory from the last value handles it; one that reads the
+// values only to name directories skips it.
 func HooksPaths(root string) ([]string, error) {
 	// -z ends each value with a NUL rather than a newline: a value may hold a
 	// newline, and is one path all the same.
@@ -39,11 +44,9 @@ func HooksPaths(root string) ([]string, error) {
 	if w.overflowed {
 		return nil, fmt.Errorf("git config core.hooksPath: output exceeded the %d-byte cap", maxHooksPathBytes)
 	}
-	var out []string
-	for _, v := range strings.Split(string(w.buf), "\x00") {
-		if v != "" {
-			out = append(out, v)
-		}
+	if len(w.buf) == 0 {
+		return nil, nil
 	}
-	return out, nil
+	// Every value, the empty one included, ends with its own NUL.
+	return strings.Split(strings.TrimSuffix(string(w.buf), "\x00"), "\x00"), nil
 }
