@@ -493,3 +493,45 @@ func TestBuildNextExcludesAnIntentWithNoFootprintToReserve(t *testing.T) {
 		t.Fatalf("the picked intent is reserved: %v", fp)
 	}
 }
+
+// TestAStepThatHandsAnIssueLaneBackReleasesItsReservation: the release on a
+// hand-back is the step's as well as the receipt's. A `build <iss-N>` lane
+// whose round fails with no fix round left is handed back by the step that
+// reads the validators, and that step pushes the tombstone.
+func TestAStepThatHandsAnIssueLaneBackReleasesItsReservation(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	res, err := Start(repo.Root(), secondIssue, Options{FixRounds: strp("0")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, stages := res.RunID, DefaultStages()
+	stepTo(t, repo, id, stages, StageImplement)
+	if r, err := advance(repo.Root(), id, stages, Options{}); err != nil || r.Awaiting == nil {
+		t.Fatalf("the implement stage awaits an implementer: %+v %v", r, err)
+	}
+	l := currentLane(t, repo, id)
+	dir := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir), id, l.ID)
+	sha := laneCommit(t, repo, l, "fix.txt")
+	rc := goodReceipt(t, id, l, dir, sha)
+	rc.Resolves = []Resolution{{Issue: secondIssue, Commit: sha, Note: "the page names the flag", Impact: "fix",
+		Grounds: "pursued: the page names the flag; shown wrong if a reader cannot find it"}}
+	if _, err := Receipt(repo.Root(), id, writeReceipt(t, dir, rc), stages, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	handBack(t, repo, id, stages, RoleRuthless, reviewerReturn("FIX FIRST"))
+	passRound(t, repo, id, stages, RoleSecurity)
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); tomb.released {
+		t.Fatalf("the reservation is released before the lane is handed back: %+v", tomb)
+	}
+
+	step, err := advance(repo.Root(), id, stages, Options{})
+	if err != nil || step.Stage != StageHandedBack || step.HandBack == nil {
+		t.Fatalf("a failed round with no fix round left hands the lane back: %+v %v", step, err)
+	}
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != "octo" {
+		t.Fatalf("the step that hands the lane back releases its reservation: %+v", tomb)
+	}
+	if note := recordNote(t, repo, id, StageReservationReleased); !strings.Contains(note, "released the reservation on "+secondIssue) {
+		t.Fatalf("the run record says the reservation was released: %q", note)
+	}
+}
