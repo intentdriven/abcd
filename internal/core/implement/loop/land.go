@@ -420,7 +420,7 @@ func modelGap(lane Lane, what, gap string) error {
 
 // hookedGit runs one git command in the lane's worktree with the repository's
 // hooks running, under the developer's own configuration less any injected
-// GIT_DIR or GIT_CONFIG_* (as netGit), with no terminal prompt.
+// GIT_DIR or GIT_CONFIG_* (as gitutil.Net), with no terminal prompt.
 func hookedGit(dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
 	defer cancel()
@@ -495,7 +495,7 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 		return Outcome{}, r
 	}
 	ref := "refs/heads/" + lane.Branch
-	if _, err := netGit(c.RepoRoot, "push", "--porcelain", Remote, ref+":"+ref); err != nil {
+	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, ref+":"+ref); err != nil {
 		if r := netFailure(StageLand, lane.ID, "git push "+lane.Branch, err); r != nil {
 			return Outcome{}, r
 		}
@@ -508,52 +508,6 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.PreflightReceipt, ld.Pushed, ld.CheckWaitSince = fsutil.RedactHome(rcp), lane.HeadSHA, nil
 	return Outcome{Stay: true, Note: note}, nil
-}
-
-// netGit runs one git command that reaches the remote, from the checkout the
-// run lives in. Its hooks run (the pre-push gate is the point), under the
-// developer's own configuration less any injected GIT_DIR or GIT_CONFIG_*.
-// A connection that stalls is cut off in about a minute rather than at
-// netTimeout, so a lost network is met as a failure the outage classifier
-// reads while the run's lock is held only briefly (iss-2610080620372731): an
-// HTTP transfer slower than netLowSpeedLimit bytes a second for
-// netLowSpeedTime is aborted, and ssh, unless the developer configured their
-// own ssh command, gives up a connect after netConnectTimeout and a silent
-// connection after netServerAlive missed keepalives.
-func netGit(dir string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
-	defer cancel()
-	full := append([]string{"-c", "core.quotePath=false",
-		"-c", "http.lowSpeedLimit=" + netLowSpeedLimit, "-c", "http.lowSpeedTime=" + netLowSpeedTime, "-C", dir}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Env = append(gitutil.ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
-	if ssh := netSSHCommand(dir); ssh != "" {
-		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
-	}
-	return runCapped(cmd, "git "+args[0])
-}
-
-// The bounds netGit sets on a stalled connection.
-const (
-	netLowSpeedLimit = "1000"
-	netLowSpeedTime  = "60"
-	netSSHOptions    = "-o ConnectTimeout=30 -o ServerAliveInterval=15 -o ServerAliveCountMax=4"
-)
-
-// netSSHCommand is the ssh command netGit runs git's ssh transport through:
-// ssh with the connect and keepalive bounds, or "" when the developer chose
-// their own (GIT_SSH_COMMAND, GIT_SSH, or core.sshCommand), which is left as
-// it is.
-func netSSHCommand(dir string) string {
-	if os.Getenv("GIT_SSH_COMMAND") != "" || os.Getenv("GIT_SSH") != "" {
-		return ""
-	}
-	cmd := exec.Command("git", "-C", dir, "config", "--get", "core.sshCommand")
-	cmd.Env = gitutil.ScrubbedEnv()
-	if out, err := cmd.Output(); err == nil && strings.TrimSpace(string(out)) != "" {
-		return ""
-	}
-	return "ssh " + netSSHOptions
 }
 
 // runCapped runs cmd, returning its stdout within the forge cap and its
@@ -898,9 +852,31 @@ func requiresApproval(c Context, lane Lane, params json.RawMessage) bool {
 // base is the default branch the lane was cut from, so the lane's own commits
 // cannot change the rule it lands by.
 func mergeRule(c Context, lane Lane, def string) (string, bool, error) {
+	r, err := readMergeRule(c, lane, def)
+	return r.method, r.approval, err
+}
+
+// mergeRuleRead is the ruleset mirror read at a lane's base: the merge
+// queue's method ("" when none gates the default branch), whether a person's
+// approval is required, and whether a mirror exists at all, which decides the
+// land fence's lease.
+type mergeRuleRead struct {
+	method   string
+	approval bool
+	mirrored bool
+}
+
+// readMergeRule is mergeRule with whether the mirror exists.
+func readMergeRule(c Context, lane Lane, def string) (mergeRuleRead, error) {
+	method, approval, mirrored, err := mergeRuleParts(c, lane, def)
+	return mergeRuleRead{method: method, approval: approval, mirrored: mirrored}, err
+}
+
+// mergeRuleParts reads the mirror once for mergeRule and readMergeRule.
+func mergeRuleParts(c Context, lane Lane, def string) (string, bool, bool, error) {
 	names, err := gitutil.RunCappedBytes(c.RepoRoot, maxGitOutput, "ls-tree", "-z", "--name-only", lane.BaseSHA, "--", RulesetsRelDir+"/")
 	if err != nil {
-		return "", false, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", err)
+		return "", false, false, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", err)
 	}
 	method := ""
 	approval := false
@@ -910,15 +886,15 @@ func mergeRule(c Context, lane Lane, def string) (string, bool, error) {
 			continue
 		}
 		if count++; count > maxRulesets {
-			return "", false, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("the ruleset mirror holds more than %d files", maxRulesets), "trim the mirror, then run `abcd implement step` again")
+			return "", false, false, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("the ruleset mirror holds more than %d files", maxRulesets), "trim the mirror, then run `abcd implement step` again")
 		}
 		raw, err := gitutil.RunCappedBytes(c.RepoRoot, maxRulesetBytes, "cat-file", "blob", lane.BaseSHA+":"+name)
 		if err != nil {
-			return "", false, refuse(string(StageLand), "", lane.ID, name+" cannot be read at the lane's base", "restore the ruleset mirror, then run `abcd implement step` again")
+			return "", false, false, refuse(string(StageLand), "", lane.ID, name+" cannot be read at the lane's base", "restore the ruleset mirror, then run `abcd implement step` again")
 		}
 		var rs ruleset
 		if err := json.Unmarshal(raw, &rs); err != nil {
-			return "", false, refuse(string(StageLand), "", lane.ID, name+" does not parse as a ruleset, so the merge rule cannot be read",
+			return "", false, false, refuse(string(StageLand), "", lane.ID, name+" does not parse as a ruleset, so the merge rule cannot be read",
 				"restore the ruleset mirror (its README says how to refresh it), then run `abcd implement step` again")
 		}
 		if !rs.targets(def) {
@@ -940,17 +916,17 @@ func mergeRule(c Context, lane Lane, def string) (string, bool, error) {
 				m = "MERGE"
 			}
 			if _, ok := mergeMethods[m]; !ok {
-				return "", false, refuse(string(StageLand), "", lane.ID, name+" names a merge-queue method the forge client has no flag for",
+				return "", false, false, refuse(string(StageLand), "", lane.ID, name+" names a merge-queue method the forge client has no flag for",
 					"correct the ruleset mirror, then run `abcd implement step` again")
 			}
 			if method != "" && method != m {
-				return "", false, refuse(string(StageLand), "", lane.ID, "the ruleset mirror gates the default branch through merge queues with different methods",
+				return "", false, false, refuse(string(StageLand), "", lane.ID, "the ruleset mirror gates the default branch through merge queues with different methods",
 					"correct the ruleset mirror, then run `abcd implement step` again")
 			}
 			method = m
 		}
 	}
-	return method, approval, nil
+	return method, approval, count > 0, nil
 }
 
 // landArm arms the merge by the ruleset's rule, or leaves the pull request
@@ -964,18 +940,31 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	method, approval, err := mergeRule(c, *lane, def)
+	rule, err := readMergeRule(c, *lane, def)
 	if err != nil {
 		return Outcome{}, err
+	}
+	method, approval := rule.method, rule.approval
+	// The land fence (spc-2610031753359849 spec 2): before the rule decides,
+	// the run's reservation must still be this person's from this copy, and
+	// it is renewed for a day under a mirror, where every landing waits on a
+	// person, and for the default lease with no mirror.
+	holds, err := landFence(c, *lane, fenceLease(rule.mirrored))
+	if err != nil {
+		return Outcome{}, err
+	}
+	held := ""
+	if !holds.IsZero() {
+		held = "; the reservation on " + c.State.Key + " holds until " + stamp(holds)
 	}
 	n := strconv.Itoa(lane.PR)
 	if method == "" {
 		ld.Merge = "left open: no ruleset gates " + def + " through a merge queue"
-		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + "; it lands when a person merges it"}, nil
+		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + "; it lands when a person merges it" + held}, nil
 	}
 	if !approval {
 		ld.Merge = "left open for a person to merge: the ruleset requires no approval on " + def
-		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + ", so the loop does not arm auto-merge; it lands when a person merges it"}, nil
+		return Outcome{Stay: true, Note: "pull request #" + n + " " + ld.Merge + ", so the loop does not arm auto-merge; it lands when a person merges it" + held}, nil
 	}
 	// A pull request the forge already reports conflicting never enters the
 	// queue, and nothing is pushed to a lane after arming: it is refused here,
@@ -997,7 +986,7 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	}
 	ld.Armed = true
 	ld.Merge = "auto-merge armed through " + def + "'s merge queue (" + strings.ToLower(method) + ")"
-	return Outcome{Stay: true, Note: "pull request #" + n + ": " + ld.Merge + "; nothing is pushed to the lane after this"}, nil
+	return Outcome{Stay: true, Note: "pull request #" + n + ": " + ld.Merge + "; nothing is pushed to the lane after this" + held}, nil
 }
 
 // landMerged waits for the pushed head to be an ancestor of the default branch
@@ -1076,15 +1065,21 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 		}
 	}
 	ld.Merged = merged
-	return Outcome{Note: fmt.Sprintf("pull request #%s landed: %s is on %s/%s at %s; removed the lane's worktree and branch %s",
-		n, shortSHA(ld.Pushed), Remote, def, shortSHA(merged), lane.Branch)}, nil
+	note := fmt.Sprintf("pull request #%s landed: %s is on %s/%s at %s; removed the lane's worktree and branch %s",
+		n, shortSHA(ld.Pushed), Remote, def, shortSHA(merged), lane.Branch)
+	// The run's reservation is tidied once its last lane has landed
+	// (reservation.go); the lane branch removal above touches only build/.
+	if tidy := tidyReservation(c, *lane); tidy != "" {
+		note += "; " + tidy
+	}
+	return Outcome{Note: note}, nil
 }
 
 // fetchDefault fetches the default branch def from the remote into its
 // remote-tracking ref, and returns the ref.
 func fetchDefault(c Context, lane Lane, def string) (string, error) {
 	tracking := "refs/remotes/" + Remote + "/" + def
-	if _, err := netGit(c.RepoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
+	if _, err := gitutil.Net(c.RepoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
 		if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
 			return "", r
 		}

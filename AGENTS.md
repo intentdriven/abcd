@@ -265,7 +265,13 @@ with `*CONCURRENCY` to force it).
   retire it with `git worktree remove`.
 - **Scan before mutating anything a peer reads or runs.** Check the harness's
   session listing and announce the mutation to any peer found; before
-  capturing, resolving or picking a record, also run `go run ./cmd/abcd peers`.
+  capturing, resolving or picking a record, also run `go run ./cmd/abcd peers`,
+  which also fetches and lists every reservation on `origin`.
+- **Reserve a record before starting it.** Another person, computer or hosted
+  session sees only what reaches `origin`: before working an issue or an
+  intent, reserve it with `go run ./cmd/abcd reserve <id> --footprint <path>`
+  (once per path the work will change), back off on exit 3, and release it
+  with `--release` when done.
 - **A diff you did not make is a peer's work.** Never commit it, revert it, or
   stash it away silently; uncommitted peer work is untouchable.
 - **A verifier works on a copy** (`git -C <wt> archive HEAD | tar -x -C
@@ -395,7 +401,8 @@ gate.
 - **The trailer has exactly three accepted forms:** `<Vendor>:<model-version>`;
   `None`, which a human-only change declares, and which is a false disclosure
   for assisted work; and `abcd:<version>`, which only abcd writes, on a commit
-  it composes from record facts.
+  it composes from record facts, the reservation commits `abcd reserve` pushes
+  among them.
 - **Every commit is authored by a human, and the gate refuses a machine** in
   the author or committer role: an assistant vendor's name or mail domain, a
   `[bot]` name or mailbox, a trailing bot word, and, as author only, a

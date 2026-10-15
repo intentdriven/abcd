@@ -329,6 +329,32 @@ the run's transcripts into the history store, one capture per path; a
 transcript stored without the scanner coverage the repository armed carries its
 scan gap on the record, as the history verb reports it for a capture.
 
+A run that holds a reservation on the shared remote (itd-2609091034175565;
+the state's `reserved_at`) holds it for the copy the run lives in. The step
+verb renews it before a stage once half its lease has passed, as last fetched,
+keeping its own term (at least the default lease, at most a day), and logs
+`reservation_renewed` in the run record; under
+half it pushes nothing, and a renewal that fails is logged and named while the
+stage still runs. A renewal renews only this person's own reservation from
+this copy, never reserving a released record again or taking one over. Before
+the landing's merge rule decides, the land fence fetches the reservation and
+arms nothing unless it is still this person's, from this copy, and live,
+naming the other person, the other copy or the release, as contention; when it
+holds it is renewed for a day wherever a ruleset mirror exists at the
+lane's base, since every landing there waits on a person (the approval an
+armed merge needs, or the merge of a pull request left open), which is also
+past any queue's `check_response_timeout_minutes`; with no mirror, for the
+default lease. Past the fence the hold rests on renewals at half the lease: each step
+of the run, whatever its stage, each receipt handed back, and each drain move
+for a drain lane parked at land. A run neither stepped, given a receipt nor
+drained over for longer than its lease loses its reservation; one that finds
+it held by another person or copy says so and logs `reservation_lost` once. Once the run's last lane has landed, the
+step pushes a tombstone over the reservation while it is still this person's
+from this copy, leaves another's as it stands and names the holder, and a
+tombstone that fails is named without undoing the landing; the lane branch
+removal touches only the lane's `build/` branch. A run holding no reservation
+is neither renewed, fenced nor tombstoned.
+
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
 drain opens for each eligible issue) has one lane. Its brief is the issue's
 record with its remedy as the work; its receipt must declare the issue fixed,

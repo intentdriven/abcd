@@ -477,7 +477,13 @@ over each of the run's lanes' own diff.
    not computed yet, keeps it waiting. A pull request closed without merging,
    or merged in a way that rewrote the head, is refused and nothing is cleaned
    up. So is an open one the forge reports `CONFLICTING`, at exit 2, since it
-   never merges on its own.
+   never merges on its own. Once the lane that completes the run (no step
+   pending, every other lane done) has landed, a run holding a reservation
+   pushes a tombstone over it while it is still this person's from this copy;
+   another person's or another copy's is left as it stands and named in the
+   landing's note, and a tombstone origin refuses is named there and never
+   undoes the landing. The branch removal touches only the lane's
+   `build/<run>-<lane>`, never the reservation branch.
 
 A conflicting pull request is refused naming what this checkout can say about
 it: the files a merge of `origin/<default>` and the pushed head conflicts in
@@ -494,6 +500,40 @@ nothing on its own: the remedy is a person's hand merge in the lane's worktree
 `origin/<default>` into the lane's branch, run `make preflight`, push, re-arm
 with the queue's method), then `step` again; or closing it and handing the
 lane back.
+
+A run that holds a reservation on the shared remote (its state's
+`reserved_at`; `abcd peers` lists it) keeps it for the copy the run lives in.
+Before a step performs a stage, it reads the reservation as last fetched and,
+once half its lease has passed since its `Abcd-Claimed-At`, fetches and pushes
+a renewal that keeps the reservation's own term (at least the default two
+hours, at most a day, so a day-long fence is never cut short), logged in the
+run record as
+`reservation_renewed`; under half, it pushes nothing. A renewal that fails is
+logged as `reservation_renew_failed` and named in the step's answer, and the
+stage still runs: the land fence is where a lost reservation stops the run. A
+renewal only renews this person's own reservation from this copy: it never
+reserves a released record again and never takes one over. At step 5, before
+the merge rule decides, the **land fence** fetches the reservation and arms
+nothing unless it is still this person's, from this copy, and live: it names
+the other person and the expiry, says the reservation moved to your copy on
+another computer, or says it was released (reserve it again with `abcd build
+<id>`), and a fetch origin does not answer is named too, each as contention
+(exit 3 when nothing else moves). When it holds, the fence renews it for a day
+wherever a ruleset mirror exists at the lane's base: every landing there waits
+on a person, either the approval the armed merge needs (an approving review,
+or a code owner's) or the merge of a pull request left open for one, and
+either can wait overnight; a day is also past any merge queue's
+`check_response_timeout_minutes`. With no mirror at all the lease is the
+default two hours. Past the fence the reservation holds only
+while something renews it at half its lease: each step of the run does,
+whatever its stage, an implementer's long stage included, so does handing an
+agent's receipt back with `receipt`, and each `abcd drain` move does for a
+drain's lane parked at land. A run nobody steps, hands a receipt to or drains
+over for longer than its lease loses the reservation, and another person may
+then take the record over. A step or a receipt that finds the reservation held
+by another person or copy says so in its answer and logs `reservation_lost` in
+the run record, once. A run whose state records no
+reservation is neither renewed nor fenced.
 
 Every landing step is recorded as it completes, so a killed `step` repeats the
 move that did not complete and finds what it made rather than making it twice.
