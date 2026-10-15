@@ -29,8 +29,17 @@ The following are non-negotiable invariants — any architectural choice that vi
    and pushed only by verbs whose documented meaning says so: `reserve`, whose
    meaning is one fetch of the reservations and one push to the record's
    `abcd-reserved/` branch, and `peers`, whose meaning includes one fetch of
-   the reservations; every render of a reservation reads the view as last
-   fetched, from disk.
+   the reservations; `build`, whose meaning includes the run's reservation as
+   it starts or resumes (a fetch and one push, the spec's footprint or the
+   issue's `found_at` naming the files) and, with `--release`, a fetch and
+   one tombstone push; `drain`, whose meaning includes reserving each issue as
+   its lane starts and renewing, at half its lease, the reservation of each
+   lane parked at land; and `implement step` and `implement receipt`, whose
+   meaning includes renewing the run's reservation at half its lease, the land
+   fence's fetch and renewal before a merge is armed, and the tombstone once
+   the run's last lane lands or an issue lane is handed back. `build next`'s
+   exclusions, `build <itd-N>`'s peers check and every render of a
+   reservation read the view as last fetched, from disk.
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it
    listens on this computer's own Tailscale addresses alone, never every
