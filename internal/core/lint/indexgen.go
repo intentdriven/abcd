@@ -138,11 +138,17 @@ var (
 // the generator can replace everything between them without touching a byte of
 // the prose around them. A second opening marker for the same id is refused,
 // naming both lines: taking the first and ignoring the rest would leave a
-// listing in the document that no gate reads and no regeneration rewrites.
+// listing in the document that no gate reads and no regeneration rewrites. A
+// marker inside a fenced code block is quoted material — a page showing what a
+// region looks like — and is never read as one.
 func generatedRegion(lines []string, id string) (open, end int, err error) {
 	var opens []int
 	end = -1
+	fenced := fenceMask(lines)
 	for i, line := range lines {
+		if fenced[i] {
+			continue
+		}
 		t := strings.TrimSpace(line)
 		if m := indexOpenRe.FindStringSubmatch(t); m != nil && m[0] == t && m[1] == id {
 			opens = append(opens, i)

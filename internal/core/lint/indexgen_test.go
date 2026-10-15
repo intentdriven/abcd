@@ -1,6 +1,7 @@
 package lint
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -356,5 +357,42 @@ func TestGeneratedIndexDuplicateRegionRefused(t *testing.T) {
 	}
 	if _, err := RegenerateIndexes(root, indexCfg(spec)); err == nil || !strings.Contains(err.Error(), "lines 5 and 11") {
 		t.Fatalf("the generator must refuse a second region for the same id; got %v", err)
+	}
+}
+
+// TestGeneratedIndexSkipsFencedMarkers: a document may show the marker shape in
+// a fenced code block. The example is quoted material, never the region: the
+// generator must leave it byte for byte and write the real region after it, the
+// fenced copy must not count as a second region, and a document whose only
+// markers are fenced has no region at all.
+func TestGeneratedIndexSkipsFencedMarkers(t *testing.T) {
+	spec := namesGenSpec()
+	root := t.TempDir()
+	writeFile(t, root, filepath.Join("commands", "ahoy.md"), "# ahoy\n")
+	example := "```markdown\n<!-- index: commands -->\n`example`.\n<!-- /index -->\n```\n"
+	writeFile(t, root, spec.Doc, "# Register\n\nThe region looks like this:\n\n"+example+"\n"+
+		"<!-- index: commands -->\n<!-- /index -->\n")
+
+	rw, err := RegenerateIndexes(root, indexCfg(spec))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := "# Register\n\nThe region looks like this:\n\n" + example + "\n" +
+		"<!-- index: commands -->\n`ahoy`.\n<!-- /index -->\n"
+	if rw[0].Want != want {
+		t.Fatalf("the generator must skip the fenced example and write the real region:\n--- got ---\n%s\n--- want ---\n%s", rw[0].Want, want)
+	}
+	writeFile(t, root, spec.Doc, rw[0].Want)
+	fs, err := Lint(indexCfg(spec), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := countRule(fs, "index_drift"); n != 0 {
+		t.Fatalf("a regenerated region beside a fenced example must pass; got %+v", fs)
+	}
+
+	writeFile(t, root, spec.Doc, "# Register\n\n"+example)
+	if _, err := RegenerateIndexes(root, indexCfg(spec)); !errors.Is(err, errNoRegion) {
+		t.Fatalf("a document whose only markers are fenced has no region; got %v", err)
 	}
 }
