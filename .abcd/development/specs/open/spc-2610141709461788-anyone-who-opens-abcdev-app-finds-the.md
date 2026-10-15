@@ -63,9 +63,10 @@ composition and no site sources.
   when abcd wrote its file; the brief's opening, the first section with text in
   `.abcd/development/brief/01-product/01-press-release.md` (the first row of
   the brief↔lifeboat contract, `internal/core/lifeboat/mapping.go`); the press
-  releases of the three newest shipped intents whose audit was met (the
-  `shipped-intent-press-release` feature's pick, applied to more than one);
-  and the release list in `CHANGELOG.md`. Anything absent is left out; with
+  releases of the three newest shipped intents whose audit was met, newest id
+  first (a timestamped id carries when abcd minted it, and an ordinal id sorts
+  before every timestamped one; the date an intent entered `shipped/` is git's
+  and plays no part); and the release list in `CHANGELOG.md`. Anything absent is left out; with
   no identity block the page is headed and titled by the repository's name
   on GitHub. Setup, and `site build --project` before it writes anything,
   refuse a repository holding none of the four: the site would be empty. The
@@ -74,11 +75,16 @@ composition and no site sources.
   every site, from `.abcd/record-lint.json` or, where a managed repository
   carries none, from abcd's standard layout under `.abcd/development/` (the
   issue ledger only where the settings opt in). The references page (it
-  quotes `ACKNOWLEDGEMENTS.md`), the contributors page (its names and
-  declared tools come from git history, which abcd does not write; recorded
-  by the facilitator as owed to the product thinker for confirmation) and
-  every picture (pictures live under `docs/`; asking for them is
-  iss-2610150529485165) are left out. The workflow builds with abcd's latest
+  quotes `ACKNOWLEDGEMENTS.md`) and every picture (pictures live under
+  `docs/`; asking for them is iss-2610150529485165) are left out. A project
+  site also carries no git-history details, as the product thinker ruled, and
+  the build never reads git history (no log, shortlog or blame): no
+  contributors page, no timeline, none of the health page's authorship checks,
+  and no `authorship`, `history` or per-record `dates` in `record.json`; a
+  record is dated by its own frontmatter alone. abcd's own composed site keeps
+  all of them and is byte-identical before and after (3096 files at `/` and at
+  `--base-path /abcd/`). Whether a project site should show any of it is to be
+  revisited. The workflow builds with abcd's latest
   release, so a project site cannot build until a release carries
   `--project`; setup says so in a note on every project run.
   The interface words, stylesheet, scripts and headers policy are the binary's
