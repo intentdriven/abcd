@@ -396,3 +396,44 @@ func TestGeneratedIndexSkipsFencedMarkers(t *testing.T) {
 		t.Fatalf("a document whose only markers are fenced has no region; got %v", err)
 	}
 }
+
+// TestGeneratedIndexRegionAdviceFitsTheCase: each region refusal carries the
+// advice for its own case. Only a missing region may suggest deleting the
+// config entry (the enumeration went); an unclosed region needs its closing
+// marker, and a duplicate needs one region removed — both then regenerated.
+func TestGeneratedIndexRegionAdviceFitsTheCase(t *testing.T) {
+	spec := namesGenSpec()
+	cases := []struct {
+		name, doc      string
+		want           []string
+		mustNotSuggest bool
+	}{
+		{"missing", "# Register\n", []string{"delete the config entry"}, false},
+		{"unclosed", "# Register\n\n<!-- index: commands -->\n`ahoy`.\n",
+			[]string{"add a line holding only <!-- /index --> where the region ends", IndexRegenerateCommand}, true},
+		{"duplicate", "<!-- index: commands -->\n<!-- /index -->\n<!-- index: commands -->\n<!-- /index -->\n",
+			[]string{"keep one region per id", IndexRegenerateCommand}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, filepath.Join("commands", "ahoy.md"), "# ahoy\n")
+			writeFile(t, root, spec.Doc, tc.doc)
+			fs, err := Lint(indexCfg(spec), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if countRule(fs, "index_drift") != 1 {
+				t.Fatalf("expected one finding, got %+v", fs)
+			}
+			for _, w := range tc.want {
+				if !messageContains(fs, w) {
+					t.Errorf("the %s finding must say %q; got %q", tc.name, w, fs[0].Message)
+				}
+			}
+			if tc.mustNotSuggest && messageContains(fs, "delete the config entry") {
+				t.Errorf("the %s finding must not advise deleting the config entry; got %q", tc.name, fs[0].Message)
+			}
+		})
+	}
+}

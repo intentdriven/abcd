@@ -167,7 +167,8 @@ func generatedRegion(lines []string, id string) (open, end int, err error) {
 		return -1, -1, fmt.Errorf("%w: <!-- index: %s --> stands on lines %d and %d; keep one region per id (delete the other, markers included), then run %s",
 			errDuplicateRegion, id, opens[0]+1, opens[1]+1, IndexRegenerateCommand)
 	case end < 0:
-		return -1, -1, fmt.Errorf("%w: <!-- index: %s --> on line %d has no <!-- /index --> line after it", errUnclosedRegion, id, opens[0]+1)
+		return -1, -1, fmt.Errorf("%w: <!-- index: %s --> on line %d has no <!-- /index --> line after it; "+
+			"add a line holding only <!-- /index --> where the region ends, then run %s", errUnclosedRegion, id, opens[0]+1, IndexRegenerateCommand)
 	}
 	return opens[0], end, nil
 }
@@ -189,7 +190,12 @@ func checkGeneratedIndex(repoRoot string, spec IndexSpec, i int, cfg RuleConfig)
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
 	open, end, err := generatedRegion(lines, spec.ID)
 	if err != nil {
-		return finding(0, "generated index '"+spec.ID+"': "+err.Error()+"; delete the config entry when the enumeration goes"), nil
+		msg := "generated index '" + spec.ID + "': " + err.Error()
+		if errors.Is(err, errNoRegion) {
+			// Only a region that is gone altogether may mean the enumeration went.
+			msg += "; delete the config entry when the enumeration goes"
+		}
+		return finding(0, msg), nil
 	}
 	want, err := renderIndex(repoRoot, spec)
 	if err != nil {
