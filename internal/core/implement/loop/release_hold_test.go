@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/lease"
 )
 
 // The release hold at the land fence (itd-2609151838312703 C7,
@@ -132,5 +133,31 @@ func TestTheFenceRefusesWhenItCannotReadTheHold(t *testing.T) {
 		!strings.HasSuffix(r.Reason, ", so no release hold could be judged and the merge is not armed") ||
 		r.Remedy != "run abcd implement step again once origin answers" {
 		t.Fatalf("the fence names the failed fetch: %+v", r)
+	}
+}
+
+// TestACheckoutWithNoOriginIsNotHeld: a checkout with no remote named origin
+// has no reservations to read, so the fence holds nothing, even with a
+// release reservation left over from before origin was removed; the same
+// leftover with origin there holds the lane.
+func TestACheckoutWithNoOriginIsNotHeld(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	now := time.Now().UTC().Truncate(time.Second)
+	q := otherCopy(t, f.bare, quinnEmail)
+	reserveRelease(t, q, "rel-v0.16.0", now.Add(-time.Minute))
+	root := f.repo.Root()
+	c := Context{RepoRoot: root, Now: now}
+	lane := Lane{ID: "lane-1"}
+	if _, err := landFence(c, lane, lease.Max); err == nil {
+		t.Fatal("with origin there, the fence holds nothing; want Q's release to hold the lane")
+	}
+	ref := claim.TrackingPrefix + "rel-v0.16.0"
+	tip := gitIn(t, root, "rev-parse", ref)
+	gitIn(t, root, "remote", "remove", claim.Remote)
+	// Removing the remote drops its tracking refs; one put back by hand is
+	// the hold a stale copy might still carry.
+	gitIn(t, root, "update-ref", ref, tip)
+	if exp, err := landFence(c, lane, lease.Max); err != nil || !exp.IsZero() {
+		t.Fatalf("the fence with no origin = %s, %v; want nothing held and no renewal", exp, err)
 	}
 }
