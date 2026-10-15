@@ -275,7 +275,8 @@ with `*CONCURRENCY` to force it).
   `go run ./cmd/abcd build <id>` reserves with the spec's footprint (an
   issue's `found_at`), `drain` each issue as its lane opens, and the run
   renews, fences and releases it; reserve by hand only for work neither
-  starts.
+  starts. Each worktree is its own copy: two builds in sibling worktrees
+  whose footprints overlap back off, and the second is refused (exit 3).
 - **A diff you did not make is a peer's work.** Never commit it, revert it, or
   stash it away silently; uncommitted peer work is untouchable.
 - **A verifier works on a copy** (`git -C <wt> archive HEAD | tar -x -C

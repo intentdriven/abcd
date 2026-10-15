@@ -1031,6 +1031,15 @@ These are the facilitator's design calls; none changes a criterion.
     fence would refuse them over a released one.
   - The state's schema is unchanged: `reserved_at` (version 11) carries the
     reservation, and `reservation_released` is a record entry.
+- **Builds in sibling worktrees serialise on their footprints** (ruling of
+  the product thinker, 2026-10-15, answered "agreed!" on the review of steps
+  12 to 15): each worktree is its own copy (its local tier holds its own copy
+  key), so two concurrent sessions building intents whose footprints overlap
+  in sibling worktrees of one checkout still back off, and the second is
+  refused at the reservation with exit 3, as a second person would be. This
+  follows step 10's overlap design and is kept as it stands; `commands/build.md`
+  and the AGENTS.md concurrent-sessions short form (with the `CONCURRENCY`
+  domain in `.abcd/rules.json`) say so.
 - **What step 15 settled** (the ship records, 2026-10-15): no source was
   adopted, so `ACKNOWLEDGEMENTS.md` is unchanged (decision 23: the primitive
   is git itself). iss-2610142247197128 was resolved with impact `internal`,

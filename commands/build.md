@@ -56,7 +56,9 @@ reserves nothing and carries none.
   started`. An issue whose `found_at` names no repository-relative path is
   refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
 - Another person's live reservation, or yours from another computer, refuses
-  the start as contention, exit 3: back off and take other work. For your own
+  the start as contention, exit 3: back off and take other work. Each
+  worktree is its own copy, so a build in a sibling worktree of this checkout
+  whose footprint overlaps one already reserved there backs off the same way. For your own
   other copy the refusal says `pass --take-over to continue here`; pass
   `--take-over` only when the person means to move the work to this copy. It
   never moves another person's.
