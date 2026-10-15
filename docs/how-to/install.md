@@ -700,7 +700,7 @@ it did on its `readme:` line, for example
 ```bash
 make preflight   # the pre-push gate: the load check first (load-check, a
                  # warning, never a failure), then fmt-check, lint-reviews,
-                 # lint-issues, lint-decisions, record-lint, issue-drift,
+                 # lint-issues, record-lint, issue-drift,
                  # docs-lint, check-attribution, site-render, smoke and
                  # evals-cold-reading, then
                  # build, vet, test and race, all on the toolchain go.mod declares

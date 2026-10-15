@@ -16,7 +16,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 # Go step `preflight` makes, below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
-.PHONY: build test vet clean preflight load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke \
+.PHONY: build test vet clean preflight load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
 	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
@@ -159,8 +159,8 @@ check-attribution:
 # over the branch's own changes, the merge-base range `origin/main...HEAD`. CI's
 # step passes the same three-dot range from its base commit. Unarmed, the check
 # is a no-op, and a prompt edit passed three green preflights to be refused in
-# the merge queue (iss-2609021152026246). Like lint-issues and lint-decisions,
-# it needs origin/main.
+# the merge queue (iss-2609021152026246). Like lint-issues, it needs
+# origin/main.
 record-lint:
 	@go run ./cmd/record-lint -agent-diff origin/main...HEAD
 
@@ -189,49 +189,6 @@ lint-issues:
 	@bash scripts/check-issue-resolution-cases.sh
 	@bash scripts/check-issue-resolution.sh ledger HEAD
 	@bash scripts/check-issue-resolution.sh commits origin/main HEAD
-
-# Deterministic append-only gate for .abcd/work/DECISIONS.md
-# (iss-2608271804494867), in internal/core/lint (iss-2608291814575169). The
-# ledger declares itself append-only and newest-last, and nothing enforced it;
-# the backwards date steps already in the file are historical and are NOT
-# repaired, because reordering a committed append-only log is the one thing
-# append-only forbids. Position, not date order, is the first rule: a
-# back-dated entry appended at the tail is honest, an entry written above
-# existing ones is not. Four rules, each per-commit against that commit's own
-# parents:
-#
-#   DA001 position    — an added line lands after the last line the parent had.
-#   DA002 preservation — no committed line below the header is removed, against
-#                        EVERY parent. Position alone only fires while content
-#                        SURVIVES below the addition, so a rewrite that reaches
-#                        end-of-file, and its truncate-then-restore cousin, slip
-#                        past it entirely.
-#   DA003 merge authors nothing — a merge's ledger holds a line no more times
-#                        than the merge base held it plus what each parent
-#                        added. Merges cannot be skipped (a forged resolution is
-#                        an unchecked write path) and DA001 cannot be applied to
-#                        them (the ledger is merge=union, and the driver's
-#                        interleaving leaves the result a tail extension of
-#                        neither side), so the count bound is what holds.
-#   DA004 the ledger is text — no commit introduces a NUL byte. One NUL makes git
-#                        call the file binary, which empties the diff of hunks and
-#                        silently disarms every rule above, permanently. The diffs
-#                        are read with --text so that cannot happen; DA004 keeps
-#                        the byte out of the file, which --text does not.
-#
-# Both operations the gate legitimately refuses — redacting a leaked line, and
-# the ledger's own planned graduation to per-file decisions/ — are deliberate
-# gate-edit-and-review changes, not escape hatches: see the contract at the top
-# of internal/core/lint/decisionsappend.go.
-#
-# The cases run first, as in lint-reviews and lint-issues: a gate nobody has
-# watched fail is an enforcement claim with no evidence behind it. They are the
-# TestDecisionsAppend* tests, which `go test ./...` also runs. Needs full git
-# history, like its siblings: on a shallow checkout the gate refuses (exit 2)
-# rather than read every append as a whole-file add.
-lint-decisions:
-	@go test -count=1 -run 'TestDecisionsAppend' ./internal/core/lint/ ./cmd/record-lint/
-	@go run ./cmd/record-lint decisions-append origin/main HEAD
 
 # Deterministic docs-currency gate (itd-60): the same internal/core/lint engine,
 # driven over docs/ and the repo root via the transport-agnostic `abcd lint docs`
@@ -299,8 +256,8 @@ asking-sync-check:
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
 # receipt the last step mints, below): the load check first (a
 # warning, never a failure: load-check), then the format gate (fmt-check), the
-# seven lint gates
-# (lint-reviews, lint-issues, lint-decisions, record-lint, issue-drift,
+# six lint gates
+# (lint-reviews, lint-issues, record-lint, issue-drift,
 # docs-lint, and check-attribution over the branch's commits), the
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
 # prerequisites, then build, vet, test,
@@ -337,7 +294,7 @@ asking-sync-check:
 # waited on, and on a CI runner it opens at once. Each test stage then takes a
 # go test -p derived from the online cores and the load as the stage starts
 # (cmd/test-parallelism), so one run cannot saturate the machine.
-preflight: load-check fmt-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go run ./cmd/abcd implement load --wait --timeout 2h

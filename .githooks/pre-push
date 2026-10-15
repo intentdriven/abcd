@@ -28,9 +28,9 @@
 #      CI on the commit; here it earns no receipt, so the push is refused.
 #
 #      What the preflight runs: the load check first (load-check, a warning,
-#      never a failure), then the `make fmt-check` format gate, the seven lint
-#      gates (lint-reviews, lint-issues, lint-decisions, record-lint,
-#      issue-drift, docs-lint, check-attribution over the branch's commits),
+#      never a failure), then the `make fmt-check` format gate, the six lint
+#      gates (lint-reviews, lint-issues, record-lint, issue-drift, docs-lint,
+#      check-attribution over the branch's commits),
 #      the site-render gate and both tagged eval lanes
 #      (smoke, evals-cold-reading), then build, vet, test and the race-enabled
 #      internal tests, every Go step on the toolchain go.mod declares, as CI's
@@ -38,8 +38,8 @@
 #      compile them, so a defect there would otherwise reach a push unopposed
 #      (iss-2608311632382737). The secret-scan, workflow-audit,
 #      dependency-review and govulncheck lanes run in Actions only, and the
-#      record-lint job there repeats the reviews-charter, issue-resolution and
-#      decisions-append gates preflight already ran here.
+#      record-lint job there repeats the reviews-charter and issue-resolution
+#      gates preflight already ran here.
 #
 #      The exemptions are the receipt-less prefixes, declared in the table
 #      below, one row per prefix, each with the shape check a push under it

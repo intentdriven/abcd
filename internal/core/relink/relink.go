@@ -37,12 +37,13 @@
 // record is broken wherever it is written. It never enters .git, the local
 // tier (.abcd/.work.local, which is per-checkout scratch), a node_modules
 // directory, or a nested checkout (any directory holding its own .git), whose
-// files belong to another working tree. Nor does it write into the two
-// append-only logs the repository's gates refuse an in-place edit of — the
-// decision log (DA002) and the reviews folder (RD002): a link there is history
-// as written, and rewriting it would trade a dead link no lint root reads for a
-// refused change. It reads and writes through an os.Root, follows no symlink,
-// and skips any file past a byte cap.
+// files belong to another working tree. Nor does it write into the history no
+// change may edit — a managed repository's frozen decision log, which abcd reads
+// and never writes, and the reviews folder, whose gate refuses an in-place edit
+// (RD002): a link there is history as written. A decision record in
+// .abcd/work/decisions/ is relinked like any other record
+// (spc-2610110931381316, decision 13). It reads and writes through an os.Root,
+// follows no symlink, and skips any file past a byte cap.
 //
 // The package is transport-free: it writes no output, and reports what it did as
 // data for the front door to render.
@@ -59,17 +60,17 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// appendOnly names the committed logs no rewrite may touch: the decision log,
-// whose gate refuses a removed line below its header (DA002 in
-// internal/core/lint/decisionsappend.go), and the reviews folder, whose gate
-// refuses any change to a file after it is created (RD002 in
-// scripts/check-reviews.sh).
+// appendOnly names the committed history no rewrite may touch: a managed
+// repository's frozen decision log, read-only history abcd never writes
+// (spc-2610110931381316, decision 7), and the reviews folder, whose gate refuses
+// any change to a file after it is created (RD002 in scripts/check-reviews.sh).
 var appendOnly = map[string]bool{
-	".abcd/work/DECISIONS.md": true,
-	".abcd/work/reviews":      true,
+	decisions.FrozenLog:  true,
+	".abcd/work/reviews": true,
 }
 
 // maxFileBytes caps a markdown file the walk will read and rewrite. The record

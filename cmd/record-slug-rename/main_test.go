@@ -34,9 +34,9 @@ func fixture(t *testing.T) string {
 		"AGENTS.md": "See .abcd/work/issues/open/iss-2610100626320367-" + longIss + ".md and\n" +
 			"[adr](.abcd/development/decisions/adrs/0058-" + longADR + ".md#context).\n" +
 			"A derived name iss-2610100626320367-" + longIss + "-review.json is not a reference.\n",
-		".abcd/work/DECISIONS.md": "- 2026-10-10 decided per iss-2610100626320367-" + longIss + ".md\n",
-		"internal/x/x_test.go":    "package x\n\nconst p = \"spc-2610100627454581-" + longItd + ".md\"\n",
-		"docs/prose.md":           "The slug " + longItd + " alone is not a path.\n",
+		".abcd/work/decisions/dcn-2610100000000001-decided.md": "---\nid: dcn-2610100000000001\nslug: decided\ndate: 2026-10-10\n---\n2026-10-10 — decided per iss-2610100626320367-" + longIss + ".md\n",
+		"internal/x/x_test.go":                                 "package x\n\nconst p = \"spc-2610100627454581-" + longItd + ".md\"\n",
+		"docs/prose.md":                                        "The slug " + longItd + " alone is not a path.\n",
 	}
 	for rel, body := range files {
 		abs := filepath.Join(root, filepath.FromSlash(rel))
@@ -144,19 +144,22 @@ func TestApplyRenamesRewritesAndReports(t *testing.T) {
 	if got := read(t, root, "internal/x/x_test.go"); !strings.Contains(got, "spc-2610100627454581-"+shortItd+".md") {
 		t.Errorf("a path in a test was not rewritten:\n%s", got)
 	}
-	if got := read(t, root, ".abcd/work/DECISIONS.md"); !strings.Contains(got, longIss) {
-		t.Errorf("the append-only decision log was rewritten:\n%s", got)
+	// A decision record is rewritten like any other record (spc-2610110931381316,
+	// decision 13).
+	if got := read(t, root, ".abcd/work/decisions/dcn-2610100000000001-decided.md"); !strings.Contains(got, "iss-2610100626320367-"+shortIss+".md") {
+		t.Errorf("the decision record's reference was not rewritten:\n%s", got)
 	}
-	// The issue's link to the intent, AGENTS.md's issue path and ADR link, and
-	// the test's spec path; the derived name and the decision log are left.
-	if rep.References != 4 || rep.Files != 3 {
-		t.Errorf("rewrote %d reference(s) in %d file(s), want 4 in 3", rep.References, rep.Files)
+	// The issue's link to the intent, AGENTS.md's issue path and ADR link, the
+	// decision record's issue path and the test's spec path; the derived name is
+	// left.
+	if rep.References != 5 || rep.Files != 4 {
+		t.Errorf("rewrote %d reference(s) in %d file(s), want 5 in 4", rep.References, rep.Files)
 	}
 	var left bytes.Buffer
 	for _, l := range rep.Leftovers {
 		left.WriteString(l.File + ": " + l.Slug + " (" + l.Why + ")\n")
 	}
-	for _, want := range []string{"AGENTS.md: " + longIss, ".abcd/work/DECISIONS.md: " + longIss, "docs/prose.md: " + longItd} {
+	for _, want := range []string{"AGENTS.md: " + longIss, "docs/prose.md: " + longItd} {
 		if !strings.Contains(left.String(), want) {
 			t.Errorf("leftovers lack %q:\n%s", want, left.String())
 		}

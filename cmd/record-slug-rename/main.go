@@ -32,7 +32,8 @@
 //     repository-relative path, a relative link, a bare filename and an anchor
 //     all follow. A name glued to more text (a derived file such as
 //     `<name>-review.json`) is not a reference to the record and is left.
-//     The append-only decision log is never rewritten.
+//     A decision record is rewritten like any other record
+//     (spc-2610110931381316, decision 13).
 //  5. Stages every change (the tree was clean, so every change is the run's),
 //     leaving the commit to whoever runs it.
 //  6. Reports per family how many records it renamed, how many references it
@@ -82,11 +83,6 @@ var families = []family{
 	{"spc", "spc", spec.SpecsRelDir},
 	{"adr", "", recordid.ADRsRelDir},
 }
-
-// appendOnly are the tracked files whose existing lines no commit may change
-// (the decisions-append gate, DA002). A reference in one is reported, never
-// rewritten.
-var appendOnly = map[string]bool{".abcd/work/DECISIONS.md": true}
 
 // rename is one record's move.
 type rename struct {
@@ -190,7 +186,7 @@ func run(root string, apply bool) (Report, error) {
 		if err != nil {
 			return rep, err
 		}
-		if !ok || appendOnly[rel] {
+		if !ok {
 			continue
 		}
 		out, n := rewriteRefs(data, byID)
@@ -412,9 +408,6 @@ func findLeftovers(root string, plan []rename) ([]Leftover, error) {
 			continue
 		}
 		why := "glued to other text, or the slug without its id"
-		if appendOnly[rel] {
-			why = "an append-only file, never rewritten"
-		}
 		for i, line := range strings.Split(string(data), "\n") {
 			for _, s := range slugsIn(line, old) {
 				out = append(out, Leftover{File: rel, Line: i + 1, Slug: s, Why: why})

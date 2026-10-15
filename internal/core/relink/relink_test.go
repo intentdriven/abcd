@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/decisions"
 )
 
 func write(t *testing.T, root, rel, content string) {
@@ -151,8 +153,9 @@ func TestRepointReadsAnEarlierMovesOwnLinksWhereTheFileIs(t *testing.T) {
 }
 
 // The walk stays out of git's directory, the local tier and a nested checkout,
-// whose files belong to another working tree, and writes nothing into the two
-// append-only logs whose gates refuse an in-place edit.
+// whose files belong to another working tree, and writes nothing into the
+// history no change may edit (a frozen decision log, the reviews folder); a
+// decision record is relinked like any other record.
 func TestRepointStaysOutOfForeignTreesAndAppendOnlyLogs(t *testing.T) {
 	root := t.TempDir()
 	write(t, root, openA, "a\n")
@@ -161,7 +164,8 @@ func TestRepointStaysOutOfForeignTreesAndAppendOnlyLogs(t *testing.T) {
 	write(t, root, "nested/.git", "gitdir: elsewhere\n")
 	write(t, root, "nested/sub/x.md", link)
 	write(t, root, ".git/x/y.md", link)
-	write(t, root, ".abcd/work/DECISIONS.md", link)
+	write(t, root, decisions.FrozenLog, link)
+	write(t, root, ".abcd/work/decisions/dcn-2610100000000001-x.md", "[a](../../../specs/open/a.md)\n")
 	write(t, root, ".abcd/work/reviews/2026-01-01-x/00-summary.md", link)
 	move(t, root, openA, closedA)
 
@@ -169,11 +173,13 @@ func TestRepointStaysOutOfForeignTreesAndAppendOnlyLogs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 0 {
-		t.Fatalf("no file outside the working tree's own record may be rewritten: %+v", got)
+	// A decision record is relinked like any other record (spc-2610110931381316,
+	// decision 13); nothing else here may be rewritten.
+	if len(got) != 1 || got[0].File != ".abcd/work/decisions/dcn-2610100000000001-x.md" {
+		t.Fatalf("only the decision record may be rewritten: %+v", got)
 	}
 	for _, rel := range []string{".abcd/.work.local/x.md", "nested/sub/x.md", ".git/x/y.md",
-		".abcd/work/DECISIONS.md", ".abcd/work/reviews/2026-01-01-x/00-summary.md"} {
+		decisions.FrozenLog, ".abcd/work/reviews/2026-01-01-x/00-summary.md"} {
 		if g := read(t, root, rel); g != link {
 			t.Errorf("%s rewritten to %q", rel, g)
 		}

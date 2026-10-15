@@ -17,7 +17,7 @@ const (
 )
 
 // unionOne is the lane's file under the union driver, as .gitattributes names
-// CHANGELOG.md and DECISIONS.md in this repository.
+// CHANGELOG.md in this repository.
 var unionOne = map[string]string{".gitattributes": "one.txt merge=union\n"}
 
 // forgeSays sets the stub forge's mergeability of the pull request.

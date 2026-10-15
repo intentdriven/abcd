@@ -3,21 +3,19 @@
 #
 # A merge driver named here holds for a LOCAL `git merge` only. The forge does
 # not apply it: a pull request's mergeability and the merge queue's merge are
-# computed on the forge, so two open pull requests that each append to one of
-# the files below still conflict there as soon as the first merges, while a
-# local merge of the same two is clean. The remedy that removes the conflict on
-# the forge too is one file per entry (adr-2609151138420062), not this
-# attribute (iss-2609240646538011).
+# computed on the forge, so two open pull requests that each append to it
+# still conflict there as soon as the first merges, while a local merge of the
+# same two is clean. The remedy that removes the conflict on the forge too is
+# one file per entry (adr-2610110925465593), which is how decisions are kept
+# now, in .abcd/work/decisions/ with no merge attribute; not this attribute
+# (iss-2609240646538011).
 CHANGELOG.md merge=union
 
-# Same shape, same remedy (iss-118): DECISIONS.md is an append-only ledger of
-# anonymous, dated, order-independent entries that never need identity, so two
-# concurrent appends have nothing to actually disagree on. ACKNOWLEDGEMENTS.md
-# left this list when its references section became a numbered, alphabetically
-# ordered list: an insertion renumbers subsequent entries, so a union merge of
-# two concurrent additions would silently interleave both sides' renumbered
-# lines. A loud conflict is the correct outcome there.
-.abcd/work/DECISIONS.md merge=union
+# ACKNOWLEDGEMENTS.md left this list when its references section became a
+# numbered, alphabetically ordered list: an insertion renumbers subsequent
+# entries, so a union merge of two concurrent additions would silently
+# interleave both sides' renumbered lines. A loud conflict is the correct
+# outcome there.
 
 # The committed git hooks are executed by bash on every platform that runs them,
 # and a CRLF checkout makes the shebang line unparseable ("bad interpreter").
