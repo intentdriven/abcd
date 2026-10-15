@@ -1,20 +1,23 @@
 package ahoy
 
 import (
+	"crypto/sha256"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // TestInstallCreatesTheCommittedTiers pins iss-2610071538028804: every tier
 // the repository lint's three-tier-layout rule requires is a gap on a repo
 // without it, install creates each as a real directory and seeds the shared
-// tier's decision log, and nothing is left for detection to report.
+// tier's decisions folder, and nothing is left for detection to report.
 func TestInstallCreatesTheCommittedTiers(t *testing.T) {
 	setupHermetic(t)
 	harnessFixture(t, "")
@@ -58,16 +61,12 @@ func TestInstallCreatesTheCommittedTiers(t *testing.T) {
 			t.Errorf("%s is not on the receipt: %v", tier.Rel, res.Writes)
 		}
 	}
-	ledger, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(lint.DecisionsLedger)))
-	if err != nil {
-		t.Fatalf("the decision log was not seeded: %v", err)
+	folderReadme := decisions.RelDir + "/README.md"
+	if !fileExists(filepath.Join(repo, filepath.FromSlash(folderReadme))) {
+		t.Fatalf("the decisions folder was not seeded")
 	}
-	if !strings.Contains(writes, lint.DecisionsLedger) {
-		t.Errorf("the decision log is not on the receipt: %v", res.Writes)
-	}
-	// The seed is a header only: it claims no decision was made.
-	if regexp.MustCompile(`(?m)^\s*[-*] `).Match(ledger) {
-		t.Errorf("the seeded decision log carries an entry:\n%s", ledger)
+	if !strings.Contains(writes, folderReadme) {
+		t.Errorf("the decisions folder's README is not on the receipt: %v", res.Writes)
 	}
 
 	readme, err := os.ReadFile(filepath.Join(repo, ".abcd", "development", "README.md"))
@@ -92,69 +91,8 @@ func TestInstallCreatesTheCommittedTiers(t *testing.T) {
 			t.Errorf("the %s gap persists after install", tier.Rel)
 		}
 	}
-	if hasGap(after.Gaps, decisionsLedgerGapID) {
-		t.Error("the decision-log gap persists after install")
-	}
-}
-
-// TestInstallSeedsTheLedgerIntoAnExistingWorkTier: a shared tier that is
-// already there but holds no decision log is a gap of its own, and install
-// seeds the log beside what the tier holds.
-func TestInstallSeedsTheLedgerIntoAnExistingWorkTier(t *testing.T) {
-	setupHermetic(t)
-	harnessFixture(t, "")
-	repo := t.TempDir()
-	for _, d := range []string{".git", ".abcd/development", ".abcd/work"} {
-		if err := os.MkdirAll(filepath.Join(repo, filepath.FromSlash(d)), 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-	det, _ := Detect(repo)
-	if !hasGap(det.Gaps, decisionsLedgerGapID) {
-		t.Fatalf("no %s gap for a work tier without a decision log: %v", decisionsLedgerGapID, gapIDs(det.Gaps))
-	}
-	if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
-		t.Fatal(err)
-	}
-	if !fileExists(filepath.Join(repo, filepath.FromSlash(lint.DecisionsLedger))) {
-		t.Fatal("the decision log was not seeded into the existing work tier")
-	}
-}
-
-// TestInstallKeepsAnExistingDecisionLog: install never overwrites a decision
-// log the repository already keeps, while it still creates a missing tier.
-func TestInstallKeepsAnExistingDecisionLog(t *testing.T) {
-	setupHermetic(t)
-	harnessFixture(t, "")
-	repo := t.TempDir()
-	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	const own = "# our decisions\n\n- 2026-01-01 — keep it.\n"
-	p := filepath.Join(repo, filepath.FromSlash(lint.DecisionsLedger))
-	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(p, []byte(own), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	det, _ := Detect(repo)
-	if hasGap(det.Gaps, decisionsLedgerGapID) {
-		t.Error("a decision log that exists is reported missing")
-	}
-	res, err := Install(repo, installOpts(), RefusingPrompter{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	got, err := os.ReadFile(p)
-	if err != nil || string(got) != own {
-		t.Errorf("the existing decision log was changed: %q (err=%v)", got, err)
-	}
-	if strings.Contains(strings.Join(res.Writes, "\n"), lint.DecisionsLedger) {
-		t.Errorf("the receipt claims a write of the existing log: %v", res.Writes)
-	}
-	if !fsutil.IsRealDir(filepath.Join(repo, ".abcd", "development")) {
-		t.Error("the missing durable-record tier was not created")
+	if hasGap(after.Gaps, decisionsFolderGapID) {
+		t.Error("the decisions-folder gap persists after install")
 	}
 }
 
@@ -254,5 +192,130 @@ func TestDevelopmentReadmeGapInAnExistingTier(t *testing.T) {
 	}
 	if !fileExists(filepath.Join(repo, ".abcd", "development", "README.md")) {
 		t.Fatal("the README was not seeded into the existing durable-record tier")
+	}
+}
+
+// TestInstallSeedsTheDecisionsFolder is A6 of spc-2610110931381316: adoption
+// with no decision log gets the decisions folder, seeded with a README so git
+// keeps it, and no single log. The folder's absence is a gap of its own in a
+// shared tier that already exists, and install closes it.
+func TestInstallSeedsTheDecisionsFolder(t *testing.T) {
+	setupHermetic(t)
+	harnessFixture(t, "")
+	repo := t.TempDir()
+	for _, d := range []string{".git", ".abcd/development", ".abcd/work"} {
+		if err := os.MkdirAll(filepath.Join(repo, filepath.FromSlash(d)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const gapID = decisionsFolderGapID
+	det, _ := Detect(repo)
+	if !hasGap(det.Gaps, gapID) {
+		t.Fatalf("no %s gap for a shared tier without the decisions folder: %v", gapID, gapIDs(det.Gaps))
+	}
+	res, err := Install(repo, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readmeRel := decisions.RelDir + "/README.md"
+	readme, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(readmeRel)))
+	if err != nil {
+		t.Fatalf("the decisions folder was not seeded with its README: %v", err)
+	}
+	if !strings.Contains(strings.Join(res.Writes, "\n"), readmeRel) {
+		t.Errorf("the README is not on the receipt: %v", res.Writes)
+	}
+	// The seed says what the folder holds and how a decision is recorded, and
+	// is no decision itself.
+	if !strings.Contains(string(readme), `abcd decide "`) {
+		t.Errorf("the seeded README does not name the verb that records a decision:\n%s", readme)
+	}
+	if ds, skipped, err := decisions.List(repo); err != nil || len(ds) != 0 || len(skipped) != 0 {
+		t.Errorf("the seeded folder reads as decisions %v, skipped %v, err %v; want none", ds, skipped, err)
+	}
+	if _, err := os.Lstat(filepath.Join(repo, ".abcd", "work", "DECISIONS.md")); !os.IsNotExist(err) {
+		t.Errorf("install laid a single decisions log: %v", err)
+	}
+	after, _ := Detect(repo)
+	if hasGap(after.Gaps, gapID) {
+		t.Errorf("the %s gap persists after install", gapID)
+	}
+}
+
+// TestInstallLeavesAFrozenLogByteForByte is A5 of spc-2610110931381316: a
+// managed repository's existing DECISIONS.md is never opened for writing by
+// install, compared by hash, while the folder new decisions go to is seeded
+// beside it.
+func TestInstallLeavesAFrozenLogByteForByte(t *testing.T) {
+	setupHermetic(t)
+	harnessFixture(t, "")
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// No trailing newline and a CRLF line on purpose: a writer that normalised
+	// the file in passing would change its hash.
+	frozen := []byte("# our decisions\r\n\n- 2026-01-01 — keep it.\n- 2026-02-02 — and this")
+	p := filepath.Join(repo, ".abcd", "work", "DECISIONS.md")
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(p, frozen, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := sha256.Sum256(frozen)
+	res, err := Install(repo, installOpts(), RefusingPrompter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sha256.Sum256(got) != before {
+		t.Errorf("install changed the frozen log:\n%q", got)
+	}
+	if strings.Contains(strings.Join(res.Writes, "\n"), "DECISIONS.md") {
+		t.Errorf("the receipt claims a write of the frozen log: %v", res.Writes)
+	}
+	if !fileExists(filepath.Join(repo, filepath.FromSlash(decisions.RelDir), "README.md")) {
+		t.Error("the decisions folder was not seeded beside the frozen log")
+	}
+	if !fsutil.IsRealDir(filepath.Join(repo, ".abcd", "development")) {
+		t.Error("the missing durable-record tier was not created")
+	}
+}
+
+// TestInstallScaffoldsNoMergeAttribute is A5's other half: install lays the
+// decisions folder and gives it no merge attribute and no driver, because
+// recording a decision adds a file and git has nothing to reconcile. The one
+// attribute install writes is the hooks' EOL pin.
+func TestInstallScaffoldsNoMergeAttribute(t *testing.T) {
+	setupHermetic(t)
+	harnessFixture(t, "")
+	repo := gittest.NewRepo(t)
+	if _, err := Install(repo.Root(), installOpts(), RefusingPrompter{}); err != nil {
+		t.Fatal(err)
+	}
+	if !fsutil.IsRealDir(filepath.Join(repo.Root(), filepath.FromSlash(decisions.RelDir))) {
+		t.Fatalf("install did not lay %s/", decisions.RelDir)
+	}
+	attrs, err := os.ReadFile(filepath.Join(repo.Root(), ".gitattributes"))
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(attrs), "\n") {
+		if strings.Contains(line, "merge=") {
+			t.Errorf(".gitattributes carries a merge attribute: %q", line)
+		}
+	}
+	for _, rel := range []string{
+		decisions.RelDir + "/dcn-2610150000001234-a-decision.md",
+		decisions.RelDir + "/README.md",
+		".abcd/work/DECISIONS.md",
+	} {
+		if got := repo.Git("check-attr", "merge", "--", rel); !strings.HasSuffix(got, ": merge: unspecified") {
+			t.Errorf("git check-attr merge %s = %q, want unspecified", rel, got)
+		}
 	}
 }

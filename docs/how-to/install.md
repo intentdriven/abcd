@@ -498,8 +498,13 @@ shared tiers, and `.abcd/.work.local/`, which stays on this machine. A missing
 tier is created with one starter file, because git keeps no empty folder and
 the tier would otherwise be missing from every clone: `.abcd/development/`
 gets a `README.md` saying what the tier holds, and `.abcd/work/` a
-`DECISIONS.md` that holds only a header saying how the log is kept. A starter
-file already there is left as it is. By default the install writes
+`decisions/` folder whose `README.md` says how a decision is recorded. Each
+decision is a file of its own there, written by `abcd decide "<text>"`, so two
+branches that each record one merge without a conflict, and the install adds
+no merge attribute or driver for it. A starter file already there is left as
+it is, and so is a single `DECISIONS.md` log a repository already keeps: the
+install never opens it, it stays as frozen earlier history, and new decisions
+go to the folder. By default the install writes
 abcd's name into none of the
 repository's conventions files; the managed block that documents the rule
 loader, and names abcd, goes into `AGENTS.md`, and only into `AGENTS.md`, when

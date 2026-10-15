@@ -245,12 +245,14 @@ target's `.abcd/.work.local/scratch/` (create the directory via
 
 1. **Three tiers.** Create `.abcd/development/` (subdirectories only where
    there is content), `.abcd/work/` with a repo-specific `CONTEXT.md` (what the
-   repo is, current phase, sharp edges — never copied from abcd) and an empty
-   `DECISIONS.md`, and `.abcd/.work.local/` (`NEXT.md`, `scratch/`, `logs/`)
+   repo is, current phase, sharp edges — never copied from abcd) and a
+   `decisions/` folder, one file per decision, with a `README.md` so git keeps
+   it, and `.abcd/.work.local/` (`NEXT.md`, `scratch/`, `logs/`)
    excluded via `.git/info/exclude`.
 2. **Legacy migration — propose, then wait.** If Phase 2 found a legacy
    `.work/` layout, present the mapping (`.work/DECISIONS.md` →
-   `.abcd/work/DECISIONS.md`, and so on) and get explicit sign-off before
+   `.abcd/work/DECISIONS.md`, kept there frozen as earlier history, and so
+   on) and get explicit sign-off before
    moving anything. Moves are content-preserving (`git mv`, then fold), never
    delete-and-recreate. Hard rule: never leave both `.work/` and `.abcd/work/`
    behind — complete the migration or do not start it.
@@ -366,12 +368,13 @@ substance:
 
 - Three-tier working state: `.abcd/development/` (durable record: ADRs in
   `decisions/adrs/` using MADR under timestamp ids, dated plans and research notes),
-  `.abcd/work/` (committed: `CONTEXT.md` orientation, `DECISIONS.md`
-  append-only one-line decision log), `.abcd/.work.local/` (gitignored:
+  `.abcd/work/` (committed: `CONTEXT.md` orientation, `decisions/` one file
+  per decision), `.abcd/.work.local/` (gitignored:
   `NEXT.md` handover, `scratch/`, `logs/` — runtime artefacts go here, never
   in tracked directories).
-- Decisions: one dated line in `.abcd/work/DECISIONS.md`; promote
-  architecture-shaping decisions to ADRs.
+- Decisions: one file per decision in `.abcd/work/decisions/`, opening with
+  its date and never edited after; correct one by recording another, and
+  promote architecture-shaping decisions to ADRs.
 - Docs: `docs/` is user-facing only, one Diátaxis type per page, present tense
   only; British English prose, US English in code and commits. No stray root
   markdown beyond the standard set.

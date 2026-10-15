@@ -282,7 +282,10 @@ on the current repository.
   place of `AGENTS.md`, is named as setup names it, as holding the owner's words
   or as only repeating `AGENTS.md`, and the report points at setup's offer to
   retire the second kind rather than acting on it.
-- **Adopts the conventions.** The three-tier layout; a merged, never
+- **Adopts the conventions.** The three-tier layout, with the shared tier's
+  decisions folder seeded (one file per decision, and a README so git keeps
+  the folder) and any single decisions log the repository already keeps left
+  untouched as frozen history; a merged, never
   overwritten, `AGENTS.md` carrying verified repo facts plus a marked
   working-conventions block; a registered identity block; and the commit gates.
   `AGENTS.md` is the one conventions file it writes: it makes no other tool's

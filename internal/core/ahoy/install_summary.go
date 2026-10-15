@@ -29,7 +29,7 @@ const (
 	writeGitignore               writeKind = "gitignore"
 	writeLocalTier               writeKind = "local-tier"
 	writeRecordTiers             writeKind = "record-tiers"
-	writeDecisionsLedger         writeKind = "decisions-ledger"
+	writeDecisionsFolder         writeKind = "decisions-folder"
 	writeDevelopmentReadme       writeKind = "development-readme"
 	writeNameGuard               writeKind = "name-guard"
 	writePrivateNames            writeKind = "private-names"
@@ -58,7 +58,7 @@ const (
 // allWriteKinds is every kind, in the order the summary lists them: the
 // repository's own files first, then this machine, then the optional extras.
 var allWriteKinds = []writeKind{
-	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
+	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsFolder, writeNameGuard, writePrivateNames,
 	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
@@ -96,10 +96,10 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		Why:    "git keeps a folder only once a file is in it, so the folder now reaches every clone of the repository.",
 		Action: "Commit it. Rewrite it for this repository whenever you like.",
 	},
-	writeDecisionsLedger: {
-		What:   "Started .abcd/work/DECISIONS.md, an empty log for the decisions made in this repository.",
-		Why:    "A decision written there is committed, so it survives a fresh clone and the next session can find it.",
-		Action: "Commit it. Add one dated line per decision, newest last, and never edit an old line.",
+	writeDecisionsFolder: {
+		What:   "Started .abcd/work/decisions/, the folder for the decisions made in this repository, with a README saying what it holds.",
+		Why:    "Each decision is a file of its own there, committed, so it survives a fresh clone, the next session can find it, and two branches that each record one merge without a conflict.",
+		Action: "Commit it. Record a decision with abcd decide \"<text>\", and list them with abcd decide.",
 	},
 	writeNameGuard: {
 		What:   "Added a check that runs before every commit and merge and stops one that contains a name you have banned.",

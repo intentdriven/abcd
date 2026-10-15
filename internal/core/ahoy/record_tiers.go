@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -24,14 +25,21 @@ import (
 //
 // git keeps no empty directory, so each tier is seeded with one file, or a
 // fresh clone of the installed repository loses it and fails the same rule.
-// The shared tier's seed is its decision log (lint.DecisionsLedger), which the
-// lint's decision-durability rule also asks for; the durable-record tier's is
-// a README. Each seed is a header that says what the file is for and claims
-// nothing about the repository.
+// The shared tier's seed is the README of its decisions folder
+// (decisions.RelDir), which the lint's decision-durability rule also asks for;
+// the durable-record tier's is a README of its own. Each seed is a header that
+// says what its folder is for and claims nothing about the repository.
+//
+// No single decisions log is seeded, and one a repository already keeps is never
+// opened: it stays as that repository's frozen history (spc-2610110931381316,
+// decision 7). Nothing here writes a merge attribute either: recording a
+// decision adds a file of its own, so git has nothing to reconcile.
 
-// decisionsLedgerGapID is the gap install closes by seeding the decision log
-// into a shared tier that exists without one.
-const decisionsLedgerGapID = "skeleton.decisions_ledger_missing"
+// decisionsFolderGapID is the gap install closes by seeding the decisions
+// folder into a shared tier that exists without one. It replaced
+// skeleton.decisions_ledger_missing, which named a file no longer seeded, with
+// no alias (spc-2610110931381316, decision 11).
+const decisionsFolderGapID = "skeleton.decisions_folder_missing"
 
 // developmentReadmeGapID is the gap install closes by seeding the README into
 // a durable-record tier that exists without one.
@@ -42,14 +50,17 @@ func committedTierGapID(t lint.CommittedTier) string {
 	return "skeleton." + path.Base(t.Rel) + "_tier_missing"
 }
 
-// decisionsLedgerSeed is the decision log's starter text: how the log is kept,
-// and no entry.
-const decisionsLedgerSeed = `# DECISIONS
+// decisionsFolderSeed is the decisions folder's README: what the folder holds
+// and the command that records and lists it, and no decision. It is static:
+// recording a decision adds a file beside it and never edits it.
+const decisionsFolderSeed = `# Decisions
 
-Append-only, one line per decision, newest last, each line starting with its
-date (YYYY-MM-DD). Correct an earlier entry by adding a new dated line, never
-by editing the old one. Architecture-shaping decisions graduate to an ADR under
-../development/decisions/adrs/ (abcd decide --adr).
+One file per decision, dcn-<id>-<slug>.md, each opening with its date. Record
+one with abcd decide "<text>", which adds a new file and edits nothing else, so
+two branches that each record a decision merge cleanly. List them, oldest
+first, with abcd decide. Correct an earlier decision by recording a new one,
+never by editing the old file. Architecture-shaping decisions graduate to an
+ADR under ../../development/decisions/adrs/ (abcd decide --adr).
 `
 
 // developmentReadmeSeed is the durable-record tier's starter text: what the
@@ -65,7 +76,8 @@ carries it.
 type tierSeed struct {
 	tier    string // the tier's repo-relative path, as lint.CommittedTiers names it
 	file    string // the seed's repo-relative path
-	gapID   string // the gap raised when the tier exists without the file
+	present string // the path whose presence means the tier needs no seed
+	gapID   string // the gap raised when the tier exists without present
 	content string
 	kind    writeKind
 	detail  string // the gap's detail
@@ -76,14 +88,16 @@ type tierSeed struct {
 func tierSeeds() []tierSeed {
 	return []tierSeed{
 		{
-			tier: ".abcd/development", file: ".abcd/development/README.md",
+			tier: ".abcd/development", file: ".abcd/development/README.md", present: ".abcd/development/README.md",
 			gapID: developmentReadmeGapID, content: developmentReadmeSeed, kind: writeDevelopmentReadme,
 			detail: "The durable-record tier holds no README. git keeps no empty folder, so without a file in it the tier is missing from every clone, and abcd lint reports that as an error.",
 		},
 		{
-			tier: path.Dir(lint.DecisionsLedger), file: lint.DecisionsLedger,
-			gapID: decisionsLedgerGapID, content: decisionsLedgerSeed, kind: writeDecisionsLedger,
-			detail: "The shared tier holds no decision log. Decisions recorded there are committed and survive a clone; abcd lint warns without one.",
+			// The folder, not its README, is what closes the gap: a folder that
+			// already holds decisions needs no seed to survive a clone.
+			tier: path.Dir(decisions.RelDir), file: decisions.RelDir + "/README.md", present: decisions.RelDir,
+			gapID: decisionsFolderGapID, content: decisionsFolderSeed, kind: writeDecisionsFolder,
+			detail: "The shared tier holds no decisions folder (" + decisions.RelDir + "/). A decision recorded there is a file of its own, committed, so it survives a clone and merges without conflict; abcd lint warns without one.",
 		},
 	}
 }
@@ -124,10 +138,10 @@ func detectCommittedTiers(cwd string) []Gap {
 		if !seeded {
 			continue
 		}
-		if _, err := os.Lstat(filepath.Join(cwd, filepath.FromSlash(seed.file))); errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Lstat(filepath.Join(cwd, filepath.FromSlash(seed.present))); errors.Is(err, fs.ErrNotExist) {
 			gaps = append(gaps, Gap{
 				ID: seed.gapID, Category: SafeAutocreate, Scope: "repo",
-				Title:    seed.file + " missing",
+				Title:    seed.present + " missing",
 				Detail:   seed.detail,
 				FixHint:  "ahoy install seeds it with a short header that claims nothing about the repository.",
 				Required: true, Resolvable: true,

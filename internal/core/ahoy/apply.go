@@ -240,7 +240,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// untracked is on disk.
 	ac.stepLocalTier()
 	// The committed tiers the repository lint requires, with the shared tier's
-	// decision log (iss-2610071538028804).
+	// decisions folder (iss-2610071538028804, spc-2610110931381316).
 	ac.stepCommittedTiers()
 	ac.stepBanlist()
 	// Beside the guard hooks, and after them: both land in the same committed hooks
