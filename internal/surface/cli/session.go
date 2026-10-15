@@ -206,7 +206,6 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 					"; the relay signs in through a GitHub App only: register one with Contents and Pull requests read and write and Metadata read, and unset the variable (nothing started)"}
 			}
 			admit, admitFrom := sessionOrigins(origins, os.Getenv(sessionOriginsEnv))
-			secret := os.Getenv(sessionSecretEnv)
 			// On loopback alone, the relay is the host's own machine behind
 			// Tailscale Serve, and a visitor is counted by the tailnet address
 			// Serve forwards.
@@ -217,10 +216,8 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 				Repos:        allowRepos,
 				Owners:       allowOwners,
 				ClientID:     clientID,
-				ClientSecret: secret,
+				ClientSecret: os.Getenv(sessionSecretEnv),
 			})
-			secret = ""
-			_ = secret
 			if err != nil {
 				return &exitError{Code: 2, Msg: prefix + admitFrom + " " + err.Error() + " (nothing started)"}
 			}
@@ -347,7 +344,7 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 				return fmt.Errorf("%s%w", prefix, err)
 			}
 			fmt.Fprintf(cmd.ErrOrStderr(), "%sreading release %s's checksums.txt from %s\n", prefix, termsafe.Sanitize(release), sessionReleaseOrigin)
-			res, err := coresession.WriteBlueprint(coresession.BlueprintRequest{Root: root, Release: release, Fetch: fetch, Repos: []string{served}, RelayOrigin: relayOrigin, Origins: pageOrigins})
+			res, err := coresession.WriteBlueprint(coresession.BlueprintRequest{Root: root, Release: release, Running: core.Version, Fetch: fetch, Repos: []string{served}, RelayOrigin: relayOrigin, Origins: pageOrigins})
 			if err != nil {
 				var ref *coresession.BlueprintRefusal
 				if errors.As(err, &ref) || res.Digest == "" {
