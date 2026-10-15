@@ -387,22 +387,25 @@ func (snap *peerSnapshot) readReservations(repoRoot string) error {
 // view as last fetched, with the view's age: another person's, this person's
 // on another computer, or an unreadable one within its hold. This copy's own
 // is never a holder, nor this person's other copy under --take-over. "" when
-// nothing but this copy holds it.
-func (snap *peerSnapshot) reservationHolder(id string) string {
+// nothing but this copy holds it. yours is true when the holder is this
+// person's other copy, which --take-over moves here; never for another
+// person's.
+func (snap *peerSnapshot) reservationHolder(id string) (holder string, yours bool) {
 	if snap.reservedErr != "" {
-		return "the reservations as last fetched could not be read, so whether another copy reserved it is unknown (" + snap.reservedErr + ")"
+		return "the reservations as last fetched could not be read, so whether another copy reserved it is unknown (" + snap.reservedErr + ")", false
 	}
 	if snap.reserved == nil {
-		return ""
+		return "", false
 	}
 	r, ok := snap.reserved.Lookup(id)
 	if ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && claim.SameHolder(r.Holder, snap.reader) {
 		if snap.takeOver {
-			return ""
+			return "", false
 		}
-		return fmt.Sprintf("your copy on another computer reserved it until %s, %s", stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now))
+		return fmt.Sprintf("your copy on another computer reserved it until %s, %s; pass --take-over to continue here",
+			stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now)), true
 	}
-	return snap.reserved.HeldBy(id, snap.now)
+	return snap.reserved.HeldBy(id, snap.now), false
 }
 
 // peersCheck refuses a record a peer holds, from the places a holding is
@@ -440,9 +443,11 @@ func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations boo
 			holders = append(holders, fmt.Sprintf("session %s claims it for lane %s", c.Session, c.Lane))
 		}
 	}
+	yours := false
 	if reservations {
-		if h := snap.reservationHolder(id); h != "" {
+		if h, mine := snap.reservationHolder(id); h != "" {
 			holders = append(holders, h)
+			yours = mine
 		}
 	}
 	if len(holders) == 0 {
@@ -453,6 +458,10 @@ func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations boo
 	row.contention = true
 	row.Detail = id + " is held by a peer: " + strings.Join(holders, "; ")
 	row.Remedy = "take other work, or coordinate with the peer; `abcd peers` and `abcd implement` show what each holds, and name why a peer is not read"
+	if yours {
+		row.Remedy = "take other work, or, when the work is to move to this copy, `abcd build " + id + " --take-over`; " +
+			"`abcd peers` and `abcd implement` show what each holds, and name why a peer is not read"
+	}
 	return row
 }
 

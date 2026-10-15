@@ -952,7 +952,10 @@ These are the facilitator's design calls; none changes a criterion.
     one, an unreadable one within its hold (in the board's words, from
     `Snapshot.HeldBy`), and this person's own live one from another computer,
     named "your copy on another computer reserved it until `<expiry>`" with the
-    view's age, which `--take-over` exempts (step 13), since the start's
+    view's age and "pass --take-over to continue here", the remedy naming
+    `abcd build <itd-N> --take-over` too, as the start's own reservation
+    would (review of steps 12 to 15, 2026-10-15); another person's never
+    names it. `--take-over` exempts it (step 13), since the start's
     reservation then moves it. Telling this person's other copy apart reads
     the reader's username by the reservation verb's rule
     (`claim.ReaderHolder`), only when such a reservation is in the view; when

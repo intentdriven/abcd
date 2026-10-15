@@ -96,10 +96,39 @@ func TestBuildRefusesAnotherPersonsReservationAtThePeersCheck(t *testing.T) {
 	if !strings.Contains(r.Reason, "reserved by quinn until ") || !strings.Contains(r.Reason, "as of the last fetch") {
 		t.Fatalf("the refusal names Q's reservation and the view's age: %q", r.Reason)
 	}
+	if strings.Contains(r.Reason, "take-over") || strings.Contains(r.Remedy, "take-over") {
+		t.Fatalf("another person's reservation never suggests --take-over: %+v", r)
+	}
 	runTierAbsent(t, repo.Root())
 	if got := gitIn(t, bare, "for-each-ref", "--format=%(objectname)", reservedRef); got != held {
 		t.Fatalf("Q's reservation moved: %s", got)
 	}
+}
+
+// TestThePeersCheckNamesTakeOverForYourOtherCopy: once the view is fetched,
+// `build <itd-N>` over this person's live reservation from another computer
+// is refused at the peers check, before the start's own reservation could
+// say so, so the peers check names --take-over as the start would.
+func TestThePeersCheckNamesTakeOverForYourOtherCopy(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	bare := onOrigin(t, repo)
+	p2 := otherCopy(t, bare, patEmail)
+	if _, err := claim.Reserve(p2, claim.Request{Record: "itd-10", Footprint: []string{"internal/widget"}}, claim.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	fetchedBy(t, repo.Root())
+	_, err := Start(repo.Root(), "itd-10", Options{})
+	r := mustRefusal(t, err)
+	if r.Check != CheckPeers || !r.Contention {
+		t.Fatalf("want the peers check as contention: %+v", r)
+	}
+	if !strings.Contains(r.Reason, "your copy on another computer") || !strings.Contains(r.Reason, "pass --take-over to continue here") {
+		t.Fatalf("the refusal names your other copy and --take-over: %q", r.Reason)
+	}
+	if !strings.Contains(r.Remedy, "--take-over") {
+		t.Fatalf("the remedy names --take-over: %q", r.Remedy)
+	}
+	runTierAbsent(t, repo.Root())
 }
 
 // TestTheRunsOwnReservationIsNeverAHolder: this copy's own reservation on the
