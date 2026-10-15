@@ -229,8 +229,10 @@ const (
 const maxStateBytes = 4 << 20
 
 // lockTimeout bounds how long a mutation waits for another invocation's
-// mutation to finish before it reports contention.
-const lockTimeout = 3 * time.Second
+// mutation to finish before it reports contention. It is a variable so a test
+// that holds the lock to see a waiter back off can shorten the wait
+// (shortLockTimeout); nothing else assigns it.
+var lockTimeout = 3 * time.Second
 
 // runIDRe is the shape of a run id, checked before any path is built from one.
 var runIDRe = regexp.MustCompile(`^run-[0-9]{16}$`)

@@ -390,10 +390,7 @@ func fileHashes(t *testing.T, root string) map[string]string {
 // accounts for all of them. A section silently dropped from the report would be
 // a gap the coverage experiment could not see.
 func TestProbeReportsEverySection(t *testing.T) {
-	cov, err := Probe(repoRoot(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	cov := probeThisRepo(t)
 	if cov.SchemaVersion != SchemaVersion {
 		t.Errorf("schema_version = %d, want %d", cov.SchemaVersion, SchemaVersion)
 	}
