@@ -48,8 +48,10 @@ var outboundHookMarkerRe = regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(o
 // to an abcd binary. A commit-msg hook abcd did not write but that runs the
 // check itself (abcd's own repository carries one) leaves nothing for the
 // foreign-hook advisory to say. It is a reading of the text, not a proof the
-// hook works: it only ever silences an advisory, and never decides a write or
-// what runs. A separator inside a quoted string can still read as one.
+// hook works. It never decides a write to a hook git runs, or what runs: a
+// match silences the advisory and withholds the copy of the check abcd would
+// otherwise save beside the hook (outboundShimChainLine). A separator inside a
+// quoted string can still read as one, and an unquoted ${name} does not.
 var outboundHookRunsCheckRe = regexp.MustCompile(`(?m)(?:^|[;&|(){}!]|\b(?:if|elif|then|do|else|while|until|exec))[ \t]*("[^"\n]*"|'[^'\n]*'|[^\s;&|(){}#"'\x60]+)[ \t]+lint[ \t]+outbound\b`)
 
 // outboundHookChainsCopyRe matches, outside a comment, the chain line's

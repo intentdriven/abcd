@@ -128,14 +128,14 @@ func localHooksPath(t *testing.T, repo *gittest.Repo) (string, error) {
 	return strings.TrimSpace(string(out)), err
 }
 
-// TestOutboundShimWritesNothingWhereGitRunsOtherHooks — a core.hooksPath set
+// TestOutboundShimWritesNoHookGitRunsWhereGitRunsOtherHooks — a core.hooksPath set
 // in the clone's own config or the person's global config, set to the empty
 // value, or a commit-msg hook already at the clone's path, leaves the shim
 // unwritten and the file untouched, and one note says the check is not wired,
 // why, and the line to chain it with. A rerun that has nothing to write still
 // says it. A hooks path whose commit-msg runs the check already is wired, and
 // draws no note.
-func TestOutboundShimWritesNothingWhereGitRunsOtherHooks(t *testing.T) {
+func TestOutboundShimWritesNoHookGitRunsWhereGitRunsOtherHooks(t *testing.T) {
 	assertNote := func(t *testing.T, res InstallResult, why string) {
 		t.Helper()
 		joined := notesJoined(res.Notes)
