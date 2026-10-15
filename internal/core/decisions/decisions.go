@@ -7,9 +7,9 @@
 // reconcile.
 //
 // This file is the READ side: the folder's path, the parse of one record, and
-// the listing of every record in id order. The writer arrives with the verb
-// (spc-2610110931381316, step 2). The package is transport-agnostic: it never
-// writes to stdout and knows no front door.
+// the listing of every record in id order. record.go is the WRITE side, Record,
+// and the verb's listing (spc-2610110931381316, step 2). The package is
+// transport-agnostic: it never writes to stdout and knows no front door.
 //
 // A record is:
 //
