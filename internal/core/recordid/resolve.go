@@ -408,7 +408,7 @@ func readDirIfPresent(dir string) ([]os.DirEntry, error) {
 // memory note's id (mem, internal/core/memnote) is one too, since the memory
 // recall brings notes back into running text (spc-2610111627213138 step 2).
 var handleInTextRe = regexp.MustCompile(
-	`(?i)(?:^|[^A-Za-z0-9-])((?:adr|itd|spc|iss|rdi|rdg|dsp|adm|srp|rfm|cond|mem)-[0-9]+)(?:$|[^A-Za-z0-9])`)
+	`(?i)(?:^|[^A-Za-z0-9-])((?:adr|itd|spc|iss|dcn|rdi|rdg|dsp|adm|srp|rfm|cond|mem)-[0-9]+)(?:$|[^A-Za-z0-9])`)
 
 // HandleInText returns the first record handle the text carries, and whether it
 // carries one. It is the one answer the principles lint and the reading

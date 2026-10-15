@@ -699,7 +699,8 @@
         "dsp": ".abcd/work/issues/dispositions",
         "rdg": ".abcd/development/readings",
         "adm": ".abcd/work/issues/admissions",
-        "srp": ".abcd/work/issues/surprises"
+        "srp": ".abcd/work/issues/surprises",
+        "dcn": ".abcd/work/decisions"
       }
     }
   },

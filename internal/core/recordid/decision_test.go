@@ -63,3 +63,18 @@ func TestDateFromStampReadsTheMintStamp(t *testing.T) {
 		}
 	}
 }
+
+// TestHandleInTextFindsADecisionHandle closes the gap step 1 left: the running
+// text reader the principles lint, the question check and the reading assembler
+// share must read a decision handle as a citation, as it reads every other
+// family's. A dcn handle named in prose is as much a pointer back into the
+// record as an issue's is.
+func TestHandleInTextFindsADecisionHandle(t *testing.T) {
+	got, ok := HandleInText("settled by dcn-2610141200001234, as recorded")
+	if !ok || got != "dcn-2610141200001234" {
+		t.Errorf("HandleInText over a dcn handle = %q, %v; want dcn-2610141200001234, true", got, ok)
+	}
+	if got, ok := HandleInText("the lifeboat's dec-12 key is no family"); ok {
+		t.Errorf("HandleInText read %q as a handle; dec is not a record family", got)
+	}
+}
