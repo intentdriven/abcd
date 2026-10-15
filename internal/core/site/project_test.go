@@ -1,7 +1,7 @@
 package site
 
 // The project route (itd-2610091010348892, the product thinker's ruling of
-// 2026-10-15: "The website only renders what abcd already writes -- SSOT").
+// 2026-10-15 that a project's site renders only what abcd already writes).
 // A project site's `.abcd/site.json` holds settings only; its about page is
 // derived from the identity block, the brief's opening, the shipped intents'
 // press releases and CHANGELOG.md; its interface words, styles and scripts come

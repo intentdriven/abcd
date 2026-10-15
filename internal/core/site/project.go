@@ -3,9 +3,10 @@ package site
 // The project route (itd-2610091010348892): a project site built from nothing
 // but what abcd already writes to the repository.
 //
-// The product thinker's ruling of 2026-10-15, verbatim: "The website only
-// renders what abcd already writes -- SSOT." A project's hand-written
-// documentation is read on GitHub, not rendered. So the project route has no
+// The product thinker ruled on 2026-10-15 that a project's site renders only
+// what abcd already writes to the repository, as its single source, and
+// nothing written for the website. A project's hand-written documentation is
+// read on GitHub, not rendered. So the project route has no
 // composition: `.abcd/site.json` holds the project site's SETTINGS (the hosting
 // block and its switch, `"mode": "project"`), and nothing in it says where a
 // word comes from. The pages are derived in code:

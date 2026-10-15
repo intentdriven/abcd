@@ -103,10 +103,9 @@ writes nothing and says so. Two providers ship, behind an adapter seam
 The second provider publishes a managed repository's site on the project's own
 GitHub Pages, built by the project's own workflow at each release
 (itd-2610091010348892). Such a site renders only what abcd already writes to the
-repository; the product thinker's ruling of 2026-10-15 is, verbatim, "The
-website only renders what abcd already writes -- SSOT". A project's
-hand-written documentation is read on GitHub, and nothing is written for the
-website.
+repository, as its single source, as the product thinker ruled on 2026-10-15. A
+project's hand-written documentation is read on GitHub, and nothing is written
+for the website.
 
 So setting one up writes two files and no more: the site's settings, holding
 the publish switch and no composition, and the workflow. The interface words,

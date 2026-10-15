@@ -15,9 +15,8 @@ workflow at each release and published on its own GitHub Pages, at
 `https://<owner>.github.io/<repo>/` (or the root of a custom domain), with no
 secret and nothing run by abcd. It is the existing `abcd site setup` pipeline
 with a second hosting provider, not a parallel one: one canonical primitive.
-Every word on the site comes from what abcd already writes to the repository
-(the product thinker's ruling of 2026-10-15, verbatim: "The website only
-renders what abcd already writes -- SSOT"), so the project route has no
+Every word on the site comes from what abcd already writes to the repository,
+as the product thinker ruled on 2026-10-15, so the project route has no
 composition and no site sources.
 
 - **The provider.** `internal/adapter/hosting/githubpages` implements the
