@@ -249,9 +249,13 @@ func TestHostAndGuestOverTheWire(t *testing.T) {
 	}
 
 	host.sendJSON(map[string]string{"type": "close"})
-	guest.until("closed")
-	if _, _, err := guest.next(); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
-		t.Fatalf("after close the guest read %v, want a normal closure", err)
+	// Each page reads its close, so each socket ends at once; a socket
+	// stays counted until it has.
+	for _, c := range []*client{guest, host} {
+		c.until("closed")
+		if _, _, err := c.next(); websocket.CloseStatus(err) != websocket.StatusNormalClosure {
+			t.Fatalf("after close a page read %v, want a normal closure", err)
+		}
 	}
 	deadline := time.Now().Add(2 * time.Second)
 	for f.srv.Relay().Stats() != (core.Stats{}) {
@@ -854,6 +858,7 @@ func TestANonReadingPeerStaysBounded(t *testing.T) {
 			c.Limits.MaxAwarenessBytes = 256 << 10
 			c.Limits.AwarenessPerSecond, c.Limits.AwarenessBurst = 1<<20, 1<<20
 			c.Limits.AwarenessBytesPerSecond, c.Limits.AwarenessBytesBurst = 1<<30, 1<<30
+			c.Limits.AwarenessConnBytesPerSecond, c.Limits.AwarenessConnBytesBurst = 1<<30, 1<<30
 		})
 		_, code := f.hostSession(t) // the host reads nothing from here on
 		guest := f.dial(t, origin)

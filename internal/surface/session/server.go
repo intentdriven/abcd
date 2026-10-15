@@ -81,6 +81,14 @@ const (
 	// WebSocket is bounded by its pings instead, since a deadline on the
 	// server would outlive the upgrade.
 	httpWait = 30 * time.Second
+	// DefaultCloseGrace is how long a connection the relay closed may take
+	// to end before its socket is torn down: its close may wait behind
+	// frames a page is slow to read, and the connection is counted until it
+	// ends.
+	DefaultCloseGrace = 5 * time.Second
+	// DefaultReplayWithin bounds one log replay: 8 MiB, the most a log
+	// holds, in a minute is about 1.1 Mbit/s.
+	DefaultReplayWithin = 60 * time.Second
 )
 
 // Config is what the front door needs.
@@ -116,6 +124,13 @@ type Config struct {
 	Limits     core.Limits
 	Now        func() time.Time
 	Rand       io.Reader
+	// CloseGrace is how long a connection the relay closed may take to end:
+	// past it the socket is torn down, whatever it was still writing. Zero
+	// is DefaultCloseGrace.
+	CloseGrace time.Duration
+	// ReplayWithin bounds one log replay: a connection that has not taken
+	// the whole log within it is ended. Zero is DefaultReplayWithin.
+	ReplayWithin time.Duration
 }
 
 // Server is the relay's HTTP handler.
@@ -178,6 +193,12 @@ func New(cfg Config) (*Server, error) {
 	c.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	if c.Timeout == 0 {
 		c.Timeout = githubTimeout
+	}
+	if cfg.CloseGrace <= 0 {
+		cfg.CloseGrace = DefaultCloseGrace
+	}
+	if cfg.ReplayWithin <= 0 {
+		cfg.ReplayWithin = DefaultReplayWithin
 	}
 	s := &Server{cfg: cfg, origins: origins, client: &c, peers: map[*peer]struct{}{}}
 	s.relay = core.New(core.Options{
@@ -353,6 +374,7 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 	p := newPeer(cancel, preRoomQueue, s.relay.Limits().MaxQueuedBytes)
+	p.grace, p.replayWithin = s.cfg.CloseGrace, s.cfg.ReplayWithin
 	conn, err := s.relay.Connect(p, clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly))
 	if err != nil {
 		http.Error(w, "the relay is busy; try again later", http.StatusServiceUnavailable)
@@ -374,7 +396,9 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ws.SetReadLimit(int64(s.relay.Limits().MaxMessageBytes))
+	p.mu.Lock()
 	p.ws = ws
+	p.mu.Unlock()
 	expire := time.AfterFunc(s.relay.Limits().AdmitWithin, conn.Expire)
 	defer expire.Stop()
 	done := make(chan struct{})
@@ -387,10 +411,14 @@ func (s *Server) serveSession(w http.ResponseWriter, r *http.Request) {
 		}
 		conn.Receive(ctx, core.Frame{Binary: typ == websocket.MessageBinary, Data: data})
 	}
-	conn.Leave()
 	cancel()
 	<-done
 	_ = ws.CloseNow()
+	p.stopGrace()
+	// The socket is gone: only now does the connection give its place in
+	// the relay's caps back. A connection the relay closed earlier stayed
+	// counted while it finished writing.
+	conn.Leave()
 }
 
 // outFrame is one queued item: a frame, a session's log replay, or the close
@@ -405,7 +433,10 @@ type outFrame struct {
 }
 
 // peer is the relay's handle on one WebSocket: a queue its writer drains in
-// order, so a close the relay asks for follows every item queued before it.
+// order, so a close the relay asks for follows every item queued before it;
+// but a close asked for during a log replay stops the replay at the next
+// entry and is written at once, dropping what was queued after the replay,
+// and whatever is still waiting, the socket ends within its close grace.
 // The queue holds at most limit items and maxBytes bytes of frames; a log
 // replay is one item however long the log, written frame by frame as the
 // connection takes them, and is charged no bytes: its entries are the
@@ -420,10 +451,19 @@ type peer struct {
 	bytes    int // the frames' bytes waiting
 	maxBytes int
 	closed   bool
+	// closing is the close the relay asked for, once it has.
+	closing outFrame
+	// grace is how long a closed connection may take to end, and
+	// graceTimer tears it down when that has passed.
+	grace      time.Duration
+	graceTimer *time.Timer
+	// replayWithin bounds one log replay.
+	replayWithin time.Duration
 }
 
 func newPeer(cancel context.CancelFunc, limit, maxBytes int) *peer {
-	return &peer{cancel: cancel, wake: make(chan struct{}, 1), limit: limit, maxBytes: maxBytes}
+	return &peer{cancel: cancel, wake: make(chan struct{}, 1), limit: limit, maxBytes: maxBytes,
+		grace: DefaultCloseGrace, replayWithin: DefaultReplayWithin}
 }
 
 // queuedBytes is what the peer's queue holds now, in bytes.
@@ -502,7 +542,38 @@ func (p *peer) Close(policy bool, reason string) {
 	if policy {
 		status = websocket.StatusPolicyViolation
 	}
-	p.push(outFrame{close: true, status: status, reason: reason})
+	p.closing = outFrame{close: true, status: status, reason: reason}
+	p.push(p.closing)
+	// Whatever it is still writing, the connection ends within its grace.
+	p.graceTimer = time.AfterFunc(p.grace, p.abort)
+}
+
+// abort tears the connection down at once: the context its reads and writes
+// run under ends, and so does the socket.
+func (p *peer) abort() {
+	p.cancel()
+	p.mu.Lock()
+	ws := p.ws
+	p.mu.Unlock()
+	if ws != nil {
+		_ = ws.CloseNow()
+	}
+}
+
+// stopGrace stops the close grace's timer once the connection has ended.
+func (p *peer) stopGrace() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.graceTimer != nil {
+		p.graceTimer.Stop()
+	}
+}
+
+// closeAsked returns the close the relay asked for, if it has.
+func (p *peer) closeAsked() (outFrame, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.closing, p.closed
 }
 
 // next takes the oldest queued item, waiting for one until ctx ends.
@@ -559,26 +630,53 @@ func (p *peer) writeLoop(ctx context.Context) {
 			return
 		}
 		if f.log != nil {
-			for _, entry := range f.log {
-				if !p.write(ctx, core.Frame{Binary: true, Data: entry}) {
-					return
-				}
+			if !p.replay(ctx, f.log) {
+				return
 			}
 			continue
 		}
-		if !p.write(ctx, f.frame) {
+		if !p.write(ctx, f.frame, time.Time{}) {
 			return
 		}
 	}
 }
 
-// write writes one frame, ending the connection when it cannot.
-func (p *peer) write(ctx context.Context, f core.Frame) bool {
+// replay writes a log replay entry by entry, within the peer's replay bound.
+// A close the relay asks for meanwhile stops it at the next entry: the rest
+// of the log, and everything queued after it, is dropped and the close is
+// written at once. A replay past its bound ends the connection. It reports
+// whether the connection carries on.
+func (p *peer) replay(ctx context.Context, log [][]byte) bool {
+	deadline := time.Now().Add(p.replayWithin)
+	for _, entry := range log {
+		if c, closed := p.closeAsked(); closed {
+			_ = p.ws.Close(c.status, c.reason)
+			p.cancel()
+			return false
+		}
+		if !time.Now().Before(deadline) {
+			p.cancel()
+			return false
+		}
+		if !p.write(ctx, core.Frame{Binary: true, Data: entry}, deadline) {
+			return false
+		}
+	}
+	return true
+}
+
+// write writes one frame, by deadline when one is given and within
+// writeTimeout in any case, ending the connection when it cannot.
+func (p *peer) write(ctx context.Context, f core.Frame, deadline time.Time) bool {
 	typ := websocket.MessageText
 	if f.Binary {
 		typ = websocket.MessageBinary
 	}
-	wctx, cancel := context.WithTimeout(ctx, writeTimeout)
+	by := time.Now().Add(writeTimeout)
+	if !deadline.IsZero() && deadline.Before(by) {
+		by = deadline
+	}
+	wctx, cancel := context.WithDeadline(ctx, by)
 	err := p.ws.Write(wctx, typ, f.Data)
 	cancel()
 	if err != nil {
