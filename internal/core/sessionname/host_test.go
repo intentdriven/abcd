@@ -85,3 +85,31 @@ func TestAliveTellsAReusedProcessIDFromTheSession(t *testing.T) {
 		}
 	}
 }
+
+// TestAliveWidensForTheReadThatRecordedTheHost: a start time read from a slow
+// table is early by up to the read's length, so an entry recorded from a
+// three-second read is alive when a fast later reading puts its start three
+// seconds later. Without the read's length (an entry written before it was
+// recorded) the tolerance is unchanged, and the same start is a different
+// process. The widening is capped, so a recorded length past the cap cannot
+// keep a reused id alive.
+func TestAliveWidensForTheReadThatRecordedTheHost(t *testing.T) {
+	tab := hookChain()
+	start := readAt.Add(-time.Hour).Unix()
+	for name, c := range map[string]struct {
+		h    Host
+		want bool
+	}{
+		"recorded 3s early by a 3s read":     {Host{PID: 100, StartUnix: start - 3, Slack: 3 * time.Second}, true},
+		"recorded 3s early, no read length":  {Host{PID: 100, StartUnix: start - 3}, false},
+		"recorded 5s early by a 3s read":     {Host{PID: 100, StartUnix: start - 5, Slack: 3 * time.Second}, true},
+		"recorded 6s early by a 3s read":     {Host{PID: 100, StartUnix: start - 6, Slack: 3 * time.Second}, false},
+		"later than the reading, 3s read":    {Host{PID: 100, StartUnix: start + 3, Slack: 3 * time.Second}, false},
+		"a reused pid, an hour-long read":    {Host{PID: 100, StartUnix: start - 600, Slack: time.Hour}, false},
+		"just inside the cap, past it early": {Host{PID: 100, StartUnix: start - 2 - int64(maxReadSlack/time.Second), Slack: time.Hour}, true},
+	} {
+		if got := tab.Alive(c.h); got != c.want {
+			t.Errorf("%s: Alive(%+v) = %v, want %v", name, c.h, got, c.want)
+		}
+	}
+}

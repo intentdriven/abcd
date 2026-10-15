@@ -134,6 +134,12 @@ type entry struct {
 	// HostPID and HostStartUnix are the host process (Host).
 	HostPID       int   `json:"host_pid"`
 	HostStartUnix int64 `json:"host_start_unix"`
+	// HostReadMS is how long, in milliseconds, the table read that stamped
+	// HostStartUnix took (capped at maxReadSlack): how far that start time may
+	// be early, which widens the tolerance this entry is judged by. Absent on
+	// a fast read and on an entry written before it was recorded, where the
+	// tolerance is unchanged.
+	HostReadMS int64 `json:"host_read_ms,omitempty"`
 	// Sent records that the prompt hook has dealt with the title: set it,
 	// found it already set, or found the person's own name there. Session
 	// start reserves the name and sets no title (decision 9); the title is
@@ -143,6 +149,17 @@ type entry struct {
 	// now holds (decision 10): the one title the prompt hook replaces with
 	// Name. Empty on every other entry.
 	Replaces string `json:"replaces,omitempty"`
+}
+
+// host is the host process the entry was recorded for, as that reading saw it.
+func (e entry) host() Host {
+	return Host{PID: e.HostPID, StartUnix: e.HostStartUnix, Slack: readSlack(time.Duration(e.HostReadMS) * time.Millisecond)}
+}
+
+// newEntry is a live entry for sessionID under host.
+func newEntry(name, sessionID string, host Host) entry {
+	return entry{Name: name, SessionID: sessionID, HostPID: host.PID, HostStartUnix: host.StartUnix,
+		HostReadMS: readSlack(host.Slack).Milliseconds()}
 }
 
 // register is the file's shape.
@@ -169,32 +186,40 @@ type register struct {
 // it, and the register holds the name for the process now running it, so no
 // other session is given it (C5); unless a running session on another host
 // now holds that name, when the resumed session reserves the next free name
-// instead (decision 10). A compaction changes nothing: the host keeps the
-// title through it.
+// instead (decision 10). A compaction of a titled session changes nothing: the
+// host keeps the title through it.
+//
+// A resume, clear or compaction with no title is a session whose first prompt
+// has not set its name yet (rejoin): its entry is re-keyed to the process now
+// running it, or, when it has none, it reserves the next free name as a new
+// session does.
 func Start(m Machine, req Request) Outcome {
 	if !Acts(req) {
 		return Outcome{}
 	}
-	if req.Title == "" {
+	switch {
+	case req.Title != "":
+		return hold(m, req)
+	case req.Source == "startup" || req.Source == "fork":
 		return name(m, req)
 	}
-	return hold(m, req)
+	return rejoin(m, req)
 }
 
 // Acts reports whether Start can do anything for req, so a front door can skip
 // resolving the repository root for a payload naming never acts on: a
 // sub-agent's (C12), one with no session id, a new session that already has a
-// title (the person's own name wins, C4), a resume or clear without one, and a
-// compaction, through which the host keeps the title (C5).
+// title (the person's own name wins, C4), and the compaction of a titled
+// session, through which the host keeps the title (C5).
 func Acts(req Request) bool {
 	if req.AgentID != "" || req.SessionID == "" {
 		return false
 	}
 	switch req.Source {
-	case "startup", "fork":
+	case "startup", "fork", "compact":
 		return req.Title == ""
 	case "resume", "clear":
-		return req.Title != ""
+		return true
 	}
 	return false
 }
@@ -220,6 +245,53 @@ func name(m Machine, req Request) Outcome {
 	return out
 }
 
+// rejoin is session start for a resume, clear or compaction that carries no
+// title: a session whose name, if it has one, the first prompt has not set.
+//
+// Its entry, when it has one, is re-keyed to the host process now running it,
+// keeping its name and whether the title is still owed: the old host has
+// ended, and an entry left under it would be pruned at the next start and the
+// name handed out again while this session's first prompt sets it. The entry
+// is re-keyed before the prune, so it is judged by the host now running it. A
+// compaction runs in the same process, so its entry is kept exactly as it is.
+// A session with no entry reserves the next free name, as a new session does.
+// The returned name is the one its first prompt sets, "" when nothing is owed.
+func rejoin(m Machine, req Request) Outcome {
+	personas, note := Personas(req.Root)
+	var out Outcome
+	if note != "" {
+		out.Notes = append(out.Notes, note)
+	}
+	err := m.update(func(reg *register, tab Table, host Host) (bool, error) {
+		if i := slices.IndexFunc(reg.Live, func(e entry) bool { return e.SessionID == req.SessionID }); i >= 0 {
+			e := &reg.Live[i]
+			if !e.Sent {
+				out.Name = e.Name
+			}
+			if req.Source == "compact" {
+				return false, nil
+			}
+			rekeyed := newEntry(e.Name, e.SessionID, host)
+			rekeyed.Sent, rekeyed.Replaces = e.Sent, e.Replaces
+			*e = rekeyed
+			if !slices.Contains(reg.Handed, e.Name) {
+				reg.Handed = append(reg.Handed, e.Name)
+			}
+			reg.prune(tab)
+			return true, nil
+		}
+		reg.prune(tab)
+		var err error
+		out.Name, err = reg.reserve(personas, req.SessionID, host, "")
+		return err == nil, err
+	})
+	if err != nil {
+		out.Name = ""
+		out.Notes = append(out.Notes, failed(err))
+	}
+	return out
+}
+
 // reserve hands the session the first name of the persona sequence not
 // already handed out, and records it live for this session's host, owed to the
 // first prompt. replaces is the title it stands in for (decision 10), or "".
@@ -230,7 +302,9 @@ func (reg *register) reserve(personas []string, sessionID string, host Host, rep
 		}
 		reg.Handed = append(reg.Handed, n)
 		reg.Live = slices.DeleteFunc(reg.Live, func(e entry) bool { return e.SessionID == sessionID })
-		reg.Live = append(reg.Live, entry{Name: n, SessionID: sessionID, HostPID: host.PID, HostStartUnix: host.StartUnix, Replaces: replaces})
+		e := newEntry(n, sessionID, host)
+		e.Replaces = replaces
+		reg.Live = append(reg.Live, e)
 		return n, nil
 	}
 	return "", errors.New("every name of this repository's persona sequence, through its ninth round, is held while a named session runs")
@@ -260,7 +334,7 @@ func hold(m Machine, req Request) Outcome {
 		// it a new id: the same process, so the same session.
 		reg.Live = slices.DeleteFunc(reg.Live, func(e entry) bool {
 			return e.SessionID == req.SessionID ||
-				(e.Name == req.Title && sameHost(Host{PID: e.HostPID, StartUnix: e.HostStartUnix}, host))
+				(e.Name == req.Title && sameHost(e.host(), host))
 		})
 		if slices.ContainsFunc(reg.Live, func(e entry) bool { return e.Name == req.Title }) {
 			var err error
@@ -269,8 +343,9 @@ func hold(m Machine, req Request) Outcome {
 		}
 		// Sent: the host kept the title as the session's own, so the session
 		// list already shows it and the prompt hook owes nothing.
-		reg.Live = append(reg.Live, entry{Name: req.Title, SessionID: req.SessionID,
-			HostPID: host.PID, HostStartUnix: host.StartUnix, Sent: true})
+		e := newEntry(req.Title, req.SessionID, host)
+		e.Sent = true
+		reg.Live = append(reg.Live, e)
 		if !slices.Contains(reg.Handed, req.Title) {
 			reg.Handed = append(reg.Handed, req.Title)
 		}
@@ -363,8 +438,8 @@ func (reg *register) owed(sessionID, title string) (int, bool) {
 // none is left, so naming starts again at Alice (C8).
 //
 // An entry whose host started after the table was read (within the start
-// tolerance) cannot be judged by that table: the process is simply not in it
-// yet. Such an entry is a session that started while this one was reading the
+// tolerance, widened by the slack of the read that recorded the entry) cannot
+// be judged by that table: the process is simply not in it yet. Such an entry is a session that started while this one was reading the
 // table and was registered first, and it is kept. This is what lets the table
 // be read before the register's lock is taken, so a platform or a process
 // table abcd cannot read costs no write to the home, without two sessions
@@ -378,10 +453,11 @@ func (reg *register) prune(tab Table) {
 		return
 	}
 	reg.Live = slices.DeleteFunc(reg.Live, func(e entry) bool {
-		if e.HostStartUnix >= tab.ReadAt.Unix()-startTolerance {
+		h := e.host()
+		if h.StartUnix+slackSecs(h.Slack) >= tab.ReadAt.Unix()-startTolerance {
 			return false
 		}
-		return !tab.Alive(Host{PID: e.HostPID, StartUnix: e.HostStartUnix})
+		return !tab.Alive(h)
 	})
 	if len(reg.Live) == 0 {
 		reg.Handed = nil

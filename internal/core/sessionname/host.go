@@ -20,6 +20,12 @@ type Host struct {
 	// minus the process's age. With the pid it tells the process apart from a
 	// later one the kernel gave the same id.
 	StartUnix int64
+	// Slack is how far StartUnix may be early: the length of the table read
+	// it came from, capped at maxReadSlack. The read's moment is taken before
+	// the read and each age somewhere inside it, so a start time is early by
+	// up to the read's length and never late. Zero is a fast read, and an
+	// entry written before the length was recorded.
+	Slack time.Duration
 }
 
 // Table is one reading of the process table and the moment the read began,
@@ -39,6 +45,27 @@ type Table struct {
 // process given the same id starts at least the time it took the old one to
 // end and the id to come round, which is far longer.
 const startTolerance = 2
+
+// maxReadSlack caps how far a start time is allowed to be early for a slow
+// read. It sits above the twenty seconds macOS's ps run is given before it is
+// killed (a read that long fails and names nothing), so no read that names a
+// session is cut short; and it bounds how long after a host's recorded start a
+// different process given the same id can still pass for it, which takes the
+// host ending and the id coming round inside that window.
+const maxReadSlack = 30 * time.Second
+
+// readSlack is the slack a read of length took gives: took, kept within zero
+// and maxReadSlack.
+func readSlack(took time.Duration) time.Duration {
+	return min(max(took, 0), maxReadSlack)
+}
+
+// slackSecs is a slack in whole seconds, rounded up: start times are whole
+// seconds.
+func slackSecs(slack time.Duration) int64 {
+	slack = readSlack(slack)
+	return int64((slack + time.Second - 1) / time.Second)
+}
 
 // shells are the programs a hook command runs in. The host walk passes over
 // them: they are the plumbing between the host and abcd, and a shell started
@@ -69,7 +96,7 @@ func FindHost(t Table, from int) (Host, error) {
 			return Host{}, fmt.Errorf("no host process was found above the hook: process %d is not in the process table", pid)
 		}
 		if !passOver(p.Name) {
-			return Host{PID: p.PID, StartUnix: t.ReadAt.Add(-p.Age).Unix()}, nil
+			return t.host(p), nil
 		}
 		pid = p.PPID
 	}
@@ -84,8 +111,15 @@ func passOver(name string) bool {
 	return slices.Contains(shells, name) || name == "abcd" || strings.HasPrefix(name, "abcd-")
 }
 
+// host is the table's reading of p: its start time measured back from the
+// moment the read began, early by up to the read's length.
+func (t Table) host(p machineload.Proc) Host {
+	return Host{PID: p.PID, StartUnix: t.ReadAt.Add(-p.Age).Unix(), Slack: readSlack(t.Took)}
+}
+
 // Alive reports whether h is running: its process id is in the table, and the
-// process holding it started when h says, within startTolerance (C9).
+// process holding it started when h says, within startTolerance widened by
+// each reading's slack (C9).
 func (t Table) Alive(h Host) bool {
 	if h.PID <= 1 {
 		return false
@@ -94,14 +128,17 @@ func (t Table) Alive(h Host) bool {
 		if p.PID != h.PID {
 			continue
 		}
-		return sameHost(Host{PID: p.PID, StartUnix: t.ReadAt.Add(-p.Age).Unix()}, h)
+		return sameHost(t.host(p), h)
 	}
 	return false
 }
 
 // sameHost reports whether two readings name one process: the same id, and
-// start times within startTolerance of each other.
+// start times within startTolerance of each other, widened by each reading's
+// slack on the side it can err. A reading is early by up to its slack and
+// never late, so a may sit below b by up to a's slack, and above it by up to
+// b's.
 func sameHost(a, b Host) bool {
 	d := a.StartUnix - b.StartUnix
-	return a.PID == b.PID && d >= -startTolerance && d <= startTolerance
+	return a.PID == b.PID && d >= -(startTolerance+slackSecs(a.Slack)) && d <= startTolerance+slackSecs(b.Slack)
 }

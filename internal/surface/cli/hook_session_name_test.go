@@ -360,3 +360,31 @@ func TestPromptRouterJSONCarriesTheSessionTitle(t *testing.T) {
 		}
 	}
 }
+
+// TestAResumeBeforeTheFirstPromptKeepsTheName through the hooks: a session
+// reserved Alice and its host ended before its first prompt; resumed without a
+// title, it keeps Alice under its new host, so the next session is Bob and the
+// resumed session's first prompt sets Alice.
+func TestAResumeBeforeTheFirstPromptKeepsTheName(t *testing.T) {
+	f := newNameFixture(t)
+	f.launch(1000)
+	runSessionStart(startJSON(t, "s1", f.cwd, map[string]string{"source": "startup"}), "hook", "session-start")
+	f.launch(2000) // the first host has ended
+	stdout, _, _ := runSessionStart(startJSON(t, "s1", f.cwd, map[string]string{"source": "resume"}), "hook", "session-start")
+	if strings.HasPrefix(stdout, "{") {
+		t.Fatalf("resume set a title at start: %q", stdout)
+	}
+	f.launch(3000)
+	f.procs = append(f.procs, machineload.Proc{PID: 2000, PPID: 1, Name: "claude", Age: time.Hour})
+	runSessionStart(startJSON(t, "s2", f.cwd, map[string]string{"source": "startup"}), "hook", "session-start")
+	for _, c := range []struct{ sid, want string }{{"s2", "Bob"}, {"s1", "Alice"}} {
+		out, _ := runHook(t, promptJSON(t, c.sid, f.cwd, "paint a landscape", ""), "hook", "prompt-router")
+		got := ""
+		if strings.HasPrefix(out, "{") {
+			got = decodeTitled(t, out).HookSpecificOutput.SessionTitle
+		}
+		if got != c.want {
+			t.Fatalf("%s was titled %q, want %q", c.sid, got, c.want)
+		}
+	}
+}

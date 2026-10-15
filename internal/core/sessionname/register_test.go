@@ -635,3 +635,187 @@ func TestLiveWaitsTwoSecondsForTheLock(t *testing.T) {
 		t.Fatalf("Live().From = %d, want the parent %d", m.From, os.Getppid())
 	}
 }
+
+// slowly makes mm's process-table read report that it took took.
+func slowly(mm Machine, took time.Duration) Machine {
+	read := mm.ReadTable
+	mm.ReadTable = func() (Table, error) {
+		tab, err := read()
+		tab.Took = took
+		return tab, err
+	}
+	return mm
+}
+
+// age sets the age the table reports for the process at pid.
+func (m *machine) age(pid int, age time.Duration) {
+	for i := range m.procs {
+		if m.procs[i].PID == pid {
+			m.procs[i].Age = age
+		}
+	}
+}
+
+// startAfterASlowRead runs Alice's session start under a table read that took
+// three seconds and sampled her host's age at its end, so the start time it
+// records is three seconds early; then a fast later reading puts the host's
+// start where it truly is.
+func startAfterASlowRead(t *testing.T, m *machine, root string) {
+	t.Helper()
+	from := m.launch(100)
+	m.age(100, time.Hour+3*time.Second)
+	mustName(t, Start(slowly(m.at(from), 3*time.Second), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+	m.age(100, time.Hour)
+}
+
+// TestASlowReadAtReservationDoesNotEndTheSession: the entry records how long
+// the read that stamped its host took, and its tolerance widens by that, so
+// the still-running session is alive under a fast later read and Bob is the
+// next name, not a second Alice.
+func TestASlowReadAtReservationDoesNotEndTheSession(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	startAfterASlowRead(t, m, root)
+	recorded := m.register()
+	mustName(t, m.start(200, root, "b"), "Bob")
+	if !bytes.Contains(recorded, []byte(`"host_read_ms": 3000`)) {
+		t.Fatalf("the entry does not record the read's length:\n%s", recorded)
+	}
+	if !bytes.Contains(m.register(), []byte(`"session_id": "a"`)) {
+		t.Fatalf("the running session was judged ended:\n%s", m.register())
+	}
+}
+
+// TestAnEntryWithoutTheReadLengthKeepsTheTolerance: the same entry as written
+// before the read's length was recorded is judged with the tolerance alone,
+// which is what the widening changes: three seconds early is a different
+// process, so the entry is pruned and naming restarts at Alice.
+func TestAnEntryWithoutTheReadLengthKeepsTheTolerance(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	startAfterASlowRead(t, m, root)
+	p := abcdhome.Path(m.home, "sessions", "names.json")
+	legacy := bytes.Replace(m.register(), []byte(`,
+      "host_read_ms": 3000`), nil, 1)
+	if bytes.Contains(legacy, []byte("host_read_ms")) {
+		t.Fatalf("the fixture did not strip the field:\n%s", legacy)
+	}
+	if err := os.WriteFile(p, legacy, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mustName(t, m.start(200, root, "b"), "Alice")
+}
+
+// TestPruneKeepsATooRecentEntryRecordedBySlowRead: an entry whose host started
+// after this table was read is kept unjudged; recorded by a three-second read,
+// its start may sit three seconds before this reading, and it is still too
+// recent to judge.
+func TestPruneKeepsATooRecentEntryRecordedBySlowRead(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	if err := os.MkdirAll(abcdhome.Path(m.home, "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	reg := fmt.Sprintf(`{"schema_version":1,"handed":["Alice"],"live":[{"name":"Alice","session_id":"a","host_pid":100,"host_start_unix":%d,"sent":false,"host_read_ms":3000}]}`, readAt.Unix()-3)
+	if err := os.WriteFile(abcdhome.Path(m.home, "sessions", "names.json"), []byte(reg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	mustName(t, m.start(200, root, "b"), "Bob")
+}
+
+// TestAClearReadSlowlyStillHoldsTheName: a clear in the same process whose
+// own read was slow puts the host's start early by that read; matched against
+// the entry with the clear's read length, it is the same host, and the name
+// is held rather than replaced.
+func TestAClearReadSlowlyStillHoldsTheName(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	from := m.launch(100)
+	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+	m.age(100, time.Hour+3*time.Second)
+	out := Start(slowly(m.at(from), 3*time.Second), Request{Root: root, SessionID: "a2", Source: "clear", Title: "Alice"})
+	if out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("a slowly read clear in the same process: %+v, want the name held", out)
+	}
+	if reg := m.register(); bytes.Count(reg, []byte(`"session_id"`)) != 1 || !bytes.Contains(reg, []byte(`"a2"`)) {
+		t.Fatalf("the register does not hold Alice once, for a2:\n%s", reg)
+	}
+}
+
+// TestAResumeBeforeTheFirstPromptKeepsTheReservedName: a session reserved
+// Alice and its host ended before its first prompt, so it carries no title.
+// Resumed or cleared, its entry is re-keyed to the process now running it,
+// keeping the name and the title still owed; a later start does not prune it
+// and hand Alice out again, and the first prompt sets Alice.
+func TestAResumeBeforeTheFirstPromptKeepsTheReservedName(t *testing.T) {
+	for _, source := range []string{"resume", "clear"} {
+		t.Run(source, func(t *testing.T) {
+			m := newMachine(t)
+			root := t.TempDir()
+			mustName(t, m.start(100, root, "a"), "Alice")
+			m.end(100)
+			mustName(t, Start(m.at(m.launch(300)), Request{Root: root, SessionID: "a", Source: source}), "Alice")
+			reg := m.register()
+			if !bytes.Contains(reg, []byte(`"host_pid": 300`)) || bytes.Contains(reg, []byte(`"host_pid": 100`)) || !bytes.Contains(reg, []byte(`"sent": false`)) {
+				t.Fatalf("the entry was not re-keyed to the running host, still owed:\n%s", reg)
+			}
+			mustName(t, m.start(400, root, "b"), "Bob")
+			resends(t, m, []struct{ sid, title, want string }{
+				{"a", "", "Alice"},
+				{"b", "", "Bob"},
+			})
+		})
+	}
+}
+
+// TestAResumeWithoutATitleKeepsASentEntrySent: an entry whose title the
+// prompt hook already dealt with stays dealt with when it is re-keyed, so a
+// resume that somehow arrives without the title is not sent the name again.
+func TestAResumeWithoutATitleKeepsASentEntrySent(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(100, root, "a"), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
+	m.end(100)
+	out := Start(m.at(m.launch(300)), Request{Root: root, SessionID: "a", Source: "resume"})
+	if out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("re-keying a sent entry: %+v, want nothing owed", out)
+	}
+	if reg := m.register(); !bytes.Contains(reg, []byte(`"host_pid": 300`)) || !bytes.Contains(reg, []byte(`"sent": true`)) {
+		t.Fatalf("the sent entry was not re-keyed as sent:\n%s", reg)
+	}
+	mustName(t, m.start(400, root, "b"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", ""}})
+}
+
+// TestAResumeWithoutATitleOrAnEntryTakesAFreshName: a session with no title
+// and no entry (its start reserved nothing, or the entry is gone) reserves the
+// next free name at a resume, a clear or a compaction, exactly as a startup
+// does, and its first prompt sets it.
+func TestAResumeWithoutATitleOrAnEntryTakesAFreshName(t *testing.T) {
+	for _, source := range []string{"resume", "clear", "compact"} {
+		t.Run(source, func(t *testing.T) {
+			m := newMachine(t)
+			root := t.TempDir()
+			mustName(t, m.start(100, root, "a"), "Alice")
+			mustName(t, Start(m.at(m.launch(300)), Request{Root: root, SessionID: "z", Source: source}), "Bob")
+			resends(t, m, []struct{ sid, title, want string }{{"z", "", "Bob"}})
+		})
+	}
+}
+
+// TestACompactionBeforeTheFirstPromptKeepsItsEntry: a compaction runs in the
+// same process, so the entry already names this host; it is kept exactly as it
+// is, and the first prompt still sets the name.
+func TestACompactionBeforeTheFirstPromptKeepsItsEntry(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	from := m.launch(100)
+	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+	before := m.register()
+	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "a", Source: "compact"}), "Alice")
+	if !bytes.Equal(m.register(), before) {
+		t.Fatalf("compaction changed the register:\n%s\nwant\n%s", m.register(), before)
+	}
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
+}
