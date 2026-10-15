@@ -141,11 +141,11 @@ the command's sentence (the section below).
 | Block | Group | Verbs |
 |---|---|---|
 | people | set-up | `ahoy`, `dashboard`, `update`, and the framework's `help` and `completion` |
-| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `library` |
+| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
-| agents and hosts | — | `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `land`, `lint`, `mode`, `peers`, `reflect`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`, `statusline` |
+| agents and hosts | — | `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `mode`, `peers`, `reflect`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles

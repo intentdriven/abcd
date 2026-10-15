@@ -2553,8 +2553,8 @@
     {
       "path": "abcd land",
       "hidden": false,
-      "group": "agents",
-      "block": "agents",
+      "group": "records",
+      "block": "people",
       "sentence": "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
       "flags": [
         {

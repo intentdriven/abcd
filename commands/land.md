@@ -2,8 +2,7 @@
 name: land
 description: "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree."
 argument-hint: "[<branch>] [--no-push] [--no-enqueue]"
-block: agents
-user-invocable: false
+block: people
 ---
 
 # `/abcd:land`
