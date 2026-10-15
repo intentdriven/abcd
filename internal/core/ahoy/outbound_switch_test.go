@@ -13,8 +13,8 @@ import (
 )
 
 // The one outbound switch (iss-2610152024327989) and the abcd.binary it writes
-// (iss-2610152024267547): the product thinker's rulings of 2026-10-15, "One
-// switch for both" and "Installer sets it up".
+// (iss-2610152024267547): the product thinker ruled on 2026-10-15 that one
+// opt-in turns on both checks and that the installer writes abcd.binary itself.
 
 // cloneAbcdBinary reads this clone's abcd.binary, "" when it is unset.
 func cloneAbcdBinary(t *testing.T, repo *gittest.Repo) string {

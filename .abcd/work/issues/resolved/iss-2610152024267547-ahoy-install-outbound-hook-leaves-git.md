@@ -16,4 +16,4 @@ resolved_by:
   commit: "06333892658848ab003a8323ac143e8d07d32052"
 ---
 
-ahoy install --outbound-hook leaves git config --local abcd.binary for each person to set by hand in each clone, so the commit-message check warns and lets every commit through until someone does, although the recorded remedy of iss-2609250834251447 said ahoy install would write it to the owned PATH copy, the abcd.guardPath precedent. The product thinker's answer, 2026-10-15 ~20:15 BST: "Installer sets it up": ahoy install --outbound-hook writes abcd.binary itself, to the absolute path of the provenance-verified abcd copy ahoy installs.
+ahoy install --outbound-hook leaves git config --local abcd.binary for each person to set by hand in each clone, so the commit-message check warns and lets every commit through until someone does, although the recorded remedy of iss-2609250834251447 said ahoy install would write it to the owned PATH copy, the abcd.guardPath precedent. The product thinker ruled on 2026-10-15 that the installer writes abcd.binary itself, to the absolute path of the provenance-verified abcd copy ahoy installs.

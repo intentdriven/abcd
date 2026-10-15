@@ -18,8 +18,8 @@ func localAbcdBinary(cwd string) (string, error) {
 }
 
 // stepOutboundBinary tells the commit-message check where abcd is
-// (iss-2610152024267547, the product thinker's "Installer sets it up" of
-// 2026-10-15): on the explicit --outbound alone, it writes this clone's
+// (iss-2610152024267547; the product thinker ruled on 2026-10-15 that the
+// installer writes it itself): on the explicit --outbound alone, it writes this clone's
 // `git config --local abcd.binary` to the absolute path of the PATH copy whose
 // build provenance this run verified. It runs after the PATH-entry steps, so it
 // names the entry they actually left.

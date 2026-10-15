@@ -16,4 +16,4 @@ resolved_by:
   commit: "06333892658848ab003a8323ac143e8d07d32052"
 ---
 
-ahoy install has two opt-ins for the one outbound policy, --outbound-hook for the commit-message check and --outbound-forge for the shell guard's forge-text check, so a repository can be left with one half on and a person has to know to pass both. The product thinker's answer, 2026-10-15 ~20:15 BST: "One switch for both": a single opt-in turns on both the commit-message check and the forge-text check.
+ahoy install has two opt-ins for the one outbound policy, --outbound-hook for the commit-message check and --outbound-forge for the shell guard's forge-text check, so a repository can be left with one half on and a person has to know to pass both. The product thinker ruled on 2026-10-15 that a single opt-in turns on both the commit-message check and the forge-text check.
