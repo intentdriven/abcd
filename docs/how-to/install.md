@@ -345,7 +345,9 @@ badge, and in the harness's session list.
 - **A name lasts the session.** A compacted or resumed session keeps its name.
   The one exception: if every named session had ended and a new one has since
   been given that name, the resumed session takes the next free name at its
-  first prompt, so two running sessions never share one.
+  first prompt, so two running sessions never share one. A forked session
+  starts with the name of the session it came from; while that session is
+  still running, the fork takes the next free name at its own first prompt.
 - **No two running sessions share a name**, across every repository on the
   machine. A name is not handed out again while any named session is still
   running, and naming starts again at Alice once every named session has

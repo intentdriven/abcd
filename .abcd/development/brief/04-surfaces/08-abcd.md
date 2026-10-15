@@ -188,8 +188,11 @@ session, and sets no title; the prompt hook sets the title once, at the
 session's first prompt, because the host ignores a title equal to the one a
 session already has, and a title set at start never reached its session list.
 The status line shows the name directly after the badge. A name the person
-gave is never replaced, a resumed or cleared session keeps its name, a name is
-not handed out again while any named session runs, and naming restarts at
+gave is never replaced (the register records, by session id, which names abcd
+gave), a resumed or cleared session keeps its name unless a running session was
+given it since, and a fork takes the next free name at its first prompt while
+the session it came from runs, a name is not handed out again while any named
+session runs, and naming restarts at
 Alice once every named session's host process has ended. The board's presence
 line carries no name: it has no host payload to read one from.
 
