@@ -363,6 +363,7 @@ func TestARemovedPickIsPickedPast(t *testing.T) {
 // next.lock within the lock timeout is refused as contention (exit 3 at the
 // front door), at the pick, and starts nothing.
 func TestASeriesMoveBacksOffWhileAnotherHoldsItsLock(t *testing.T) {
+	shortLockTimeout(t)
 	root := seriesRepo(t)
 	first, err := Next(root, Options{}, NextOptions{Max: 2})
 	if err != nil {
