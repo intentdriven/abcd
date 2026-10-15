@@ -2,6 +2,7 @@ package claim
 
 import (
 	"os"
+	"path"
 	"path/filepath"
 	"slices"
 	"strconv"
@@ -208,5 +209,173 @@ func TestACheckoutWithoutItsTierKeepsNoMark(t *testing.T) {
 	}
 	if h, err := testNamespace.since(r.Root(), b.ref, 10); err != nil || h.Since != "" || len(h.Added) != 1 {
 		t.Fatalf("a walk without the tier = %+v, %v", h, err)
+	}
+}
+
+// TestAMarkedWalkReadsNoFurtherThanItsWindow: a branch that gained more than
+// the limit since its mark is answered from walks that each stop at limit+1
+// commits from where they start. A walk that excludes the mark (`^mark`), or
+// asks whether the mark is in the tip's history, reads every commit between
+// the two whatever --max-count says, so a writer who pushed a million commits
+// would make the walk read a million.
+func TestAMarkedWalkReadsNoFurtherThanItsWindow(t *testing.T) {
+	r := newCheckout(t, "1234+octo@users.noreply.github.com")
+	b := newBranch(t, r, "octo")
+	read := b.grow(2)[1]
+	if err := testNamespace.markRead(r.Root(), b.ref, read); err != nil {
+		t.Fatal(err)
+	}
+	b.grow(6)
+	log := traced(t)
+	if _, err := testNamespace.since(r.Root(), b.ref, 3); err != nil {
+		t.Fatal(err)
+	}
+	walks := 0
+	for _, c := range log.cmds {
+		switch c[0] {
+		case "for-each-ref", "rev-parse":
+		case "rev-list":
+			walks++
+			if !slices.Contains(c, "--first-parent") || !slices.Contains(c, "--max-count=4") {
+				t.Errorf("a walk without its bound: %q", c)
+			}
+			for _, a := range c[1:] {
+				if strings.HasPrefix(a, "^") || strings.HasPrefix(a, "--not") || strings.Contains(a, "..") {
+					t.Errorf("a walk that excludes a commit, which reads all between: %q", c)
+				}
+			}
+		default:
+			t.Errorf("the walk ran git %q", c)
+		}
+	}
+	if walks == 0 || walks > 2 {
+		t.Fatalf("the walk ran %d rev-lists; want one or two: %q", walks, log.cmds)
+	}
+}
+
+// TestAMarkedBranchPastItsLimitSaysMore: what came after the mark, past the
+// limit, is the newest limit commits and More; exactly the limit is all of it.
+func TestAMarkedBranchPastItsLimitSaysMore(t *testing.T) {
+	r := newCheckout(t, "1234+octo@users.noreply.github.com")
+	b := newBranch(t, r, "octo")
+	read := b.grow(2)[1]
+	if err := testNamespace.markRead(r.Root(), b.ref, read); err != nil {
+		t.Fatal(err)
+	}
+	added := b.grow(5)
+	h, err := testNamespace.since(r.Root(), b.ref, 3)
+	if err != nil || h.Since != read || !h.More || h.Rewritten || !slices.Equal(h.Added, newest(added)[:3]) {
+		t.Fatalf("a marked walk past its limit = %+v, %v; want the newest three and More", h, err)
+	}
+	if err := testNamespace.markRead(r.Root(), b.ref, h.Tip); err != nil {
+		t.Fatal(err)
+	}
+	added = b.grow(3)
+	h, err = testNamespace.since(r.Root(), b.ref, 3)
+	if err != nil || h.More || h.Rewritten || !slices.Equal(h.Added, newest(added)) {
+		t.Fatalf("a marked walk at its limit = %+v, %v; want all three and no More", h, err)
+	}
+}
+
+// TestABranchMovedBackIsRewrittenWithNothingAdded: a tip that is an ancestor
+// of the mark holds nothing the mark does not.
+func TestABranchMovedBackIsRewrittenWithNothingAdded(t *testing.T) {
+	r := newCheckout(t, "1234+octo@users.noreply.github.com")
+	b := newBranch(t, r, "octo")
+	base := b.grow(2)
+	read := b.grow(1)[0]
+	if err := testNamespace.markRead(r.Root(), b.ref, read); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("update-ref", b.ref, base[0])
+	h, err := testNamespace.since(r.Root(), b.ref, 10)
+	if err != nil || !h.Rewritten || h.More || h.Since != read || h.Tip != base[0] || len(h.Added) != 0 {
+		t.Fatalf("a branch moved back = %+v, %v; want Rewritten and nothing added", h, err)
+	}
+}
+
+// TestADivergedPushReadsAsRewritten: a branch force-pushed to origin onto
+// another line, then fetched, reads as rewritten, with only the new line's
+// own commit added.
+func TestADivergedPushReadsAsRewritten(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	trunk := w.seed.Git("rev-parse", "main")
+	tree := w.seed.Git("hash-object", "-w", "-t", "tree", "/dev/null")
+	first := w.seed.Git("commit-tree", tree, "-p", trunk, "-m", "first")
+	w.seed.Git("push", "-q", "origin", first+":refs/heads/abcd-test/octo")
+	if _, err := fetch(p.dir, t0, "nothing was read", testNamespace); err != nil {
+		t.Fatal(err)
+	}
+	ref := testNamespace.track("octo")
+	h, err := testNamespace.since(p.dir, ref, 10)
+	if err != nil || h.Tip != first || !slices.Equal(h.Added, []string{first, trunk}) {
+		t.Fatalf("a first walk = %+v, %v", h, err)
+	}
+	if err := testNamespace.markRead(p.dir, ref, h.Tip); err != nil {
+		t.Fatal(err)
+	}
+	other := w.seed.Git("commit-tree", tree, "-p", trunk, "-m", "other")
+	w.seed.Git("push", "-q", "-f", "origin", other+":refs/heads/abcd-test/octo")
+	if _, err := fetch(p.dir, t0, "nothing was read", testNamespace); err != nil {
+		t.Fatal(err)
+	}
+	h, err = testNamespace.since(p.dir, ref, 10)
+	if err != nil || h.Tip != other || h.Since != first || !h.Rewritten || h.More || !slices.Equal(h.Added, []string{other}) {
+		t.Fatalf("a diverged push = %+v, %v; want Rewritten and the one new commit", h, err)
+	}
+}
+
+// TestMarkingTheSameCommitTwiceLeavesNoTempFile: a second mark at the same
+// commit replaces the first and leaves the marks' directory holding the mark
+// alone.
+func TestMarkingTheSameCommitTwiceLeavesNoTempFile(t *testing.T) {
+	r := newCheckout(t, "1234+octo@users.noreply.github.com")
+	b := newBranch(t, r, "octo")
+	tip := b.grow(1)[0]
+	for range 2 {
+		if err := testNamespace.markRead(r.Root(), b.ref, tip); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries, err := os.ReadDir(filepath.Join(r.Root(), filepath.FromSlash(testNamespace.readDir())))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	if want := path.Base(testNamespace.markRel(b.ref)); !slices.Equal(names, []string{want}) {
+		t.Fatalf("the marks' directory holds %q; want only %q", names, want)
+	}
+	if got := testNamespace.lastRead(r.Root(), b.ref); got != tip {
+		t.Fatalf("the mark reads %q; want %q", got, tip)
+	}
+}
+
+// TestWhatTheBoundLeavesUnsaid pins the two readings the bound costs. A
+// rewrite whose new line runs past the limit before it meets the old reads as
+// More, not Rewritten; and a mark the tip reaches only through a merge's
+// second parent is off the tip's first-parent line, so reads as rewritten.
+func TestWhatTheBoundLeavesUnsaid(t *testing.T) {
+	r := newCheckout(t, "1234+octo@users.noreply.github.com")
+	b := newBranch(t, r, "octo")
+	base := b.grow(1)[0]
+	read := b.grow(1)[0]
+	if err := testNamespace.markRead(r.Root(), b.ref, read); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("update-ref", b.ref, base)
+	fresh := b.grow(5)
+	h, err := testNamespace.since(r.Root(), b.ref, 3)
+	if err != nil || h.Rewritten || !h.More || !slices.Equal(h.Added, newest(fresh)[:3]) {
+		t.Fatalf("a rewrite longer than the window = %+v, %v; want More, not Rewritten", h, err)
+	}
+	merge := b.commit(base, read)
+	r.Git("update-ref", b.ref, merge)
+	h, err = testNamespace.since(r.Root(), b.ref, 10)
+	if err != nil || !h.Rewritten || !slices.Equal(h.Added, []string{merge}) {
+		t.Fatalf("a mark reached through a second parent = %+v, %v; want Rewritten and the merge", h, err)
 	}
 }
