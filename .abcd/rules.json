@@ -181,7 +181,8 @@
       "rules": [
         "Assess every security finding against .abcd/development/principles/abcd-fixes-what-it-adds.md before proposing a fix: would it exist without abcd? If not, abcd added it and fixes it. If it would, it is not abcd's vulnerability: abcd helps prevent it only where that changes nothing about how the repository works, and otherwise the finding is closed (wontfix, or the advisory closed) with that reason, never fixed by default.",
         "A security fix never changes how a repository works on its own: its hooks, content filters, large-file storage, merge tools and remote transport stay as the repository set them. A fix that needs one of those changed is not proposed; say plainly that the finding cannot be fixed within the rule.",
-        "Record the answer on the finding: each security record and each advisory triage names whether the route exists without abcd (prove it with a scratch test where it is not obvious) and which side of the rule that puts it on."
+        "Record the answer on the finding: each security record and each advisory triage names whether the route exists without abcd (prove it with a scratch test where it is not obvious) and which side of the rule that puts it on.",
+        "A security-relevant finding raised during development or review is fixed in the same development cycle, before the change that raised it lands. Where that is not possible, it is recorded as a private advisory (the forge's draft security advisory, or the embargo store), never as an open issue, and it is named nowhere public until the fix ships: not in a commit message, a pull-request title or body, an issue, a comment, a review receipt or any committed record. A trailer, a capture or a receipt note that would name it is left out, and the finding is described in public text only after its advisory is published (product thinker, 2026-10-15)."
       ]
     }
   },
