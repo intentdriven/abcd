@@ -95,7 +95,7 @@ The document has `gc` off, so each change can be credited. Credit comes from the
 
 Every request in a session goes to the team's relay, to GitHub, or to the static page's host. None reaches a server abcd runs.
 
-The hosting of abcdesign.app is recorded in the plan but not made in this change. abcd's own GitHub Pages site is planned to become abcd's record (itd-2610142145236613, adr-2610142147242544), and a repository has one Pages site, so the static abcdesign.app page is published from a repository of its own: that repository's workflow downloads the released abcd and runs `abcd session page`. Creating that repository is an outward act, done at the cut with the product thinker's go.
+abcdesign.app is published from a repository of its own, intentdriven/abcdesign, created on 2026-10-15 at the product thinker's go. abcd's own GitHub Pages site is planned to become abcd's record (itd-2610142145236613, adr-2610142147242544), and a repository has one Pages site. That repository holds no code: its one workflow downloads the latest abcd release daily or on demand, verifies its checksum and build provenance, runs `abcd session page`, and deploys to its GitHub Pages under the abcdesign.app domain, using only the run's own token. A release without `abcd session page` publishes nothing. Its main branch takes changes only through a pull request, its Actions are limited to GitHub's own, and its workflow token is read-only by default. Pointing abcdesign.app's DNS at GitHub Pages and verifying the domain for the organisation are the product thinker's steps, with a token scoped to that zone.
 
 ## Footprint
 
