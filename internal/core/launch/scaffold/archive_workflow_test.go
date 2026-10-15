@@ -90,12 +90,14 @@ func TestReleaseWorkflowPublishesThePinnedArchive(t *testing.T) {
 		t.Error("the release notes must state the v2.1.224 harness floor for the archive-sourced plugin")
 	}
 
-	// Post-release: the published archive is downloaded fresh, attested, and
-	// byte-compared with the one verified against the pin.
+	// Post-release: every asset of the draft, the archive among them, is
+	// downloaded fresh by its asset id and byte-compared with the file this job
+	// built, and the archive is attested.
 	for _, needle := range []string{
-		`--pattern "abcd-plugin-${TAG}.zip"`,
+		`releases/${RELEASE_ID}/assets?per_page=100`,
+		`for f in bin/abcd-* bin/checksums.txt; do`,
+		`cmp "$DL/$name" "$f"`,
 		`gh attestation verify "$DL/abcd-plugin-${TAG}.zip"`,
-		`cmp "$DL/abcd-plugin-${TAG}.zip" "bin/abcd-plugin-${TAG}.zip"`,
 	} {
 		if !strings.Contains(rel, needle) {
 			t.Errorf("the post-release check must carry %q", needle)

@@ -48,15 +48,13 @@ merge-queue batch carries the ship with any other queued pull request, and one
 that touches the payload renders another digest. A refusal tags nothing and
 leaves the version free — land a follow-up pull request that re-pins (the
 refusal names the rendered digest) or reverts the payload change, and its push
-retries. A hand-pushed tag exists before `verify` runs, so a refusal there
-consumes the version, and `auto-release.yml` then refuses to rebuild it and
-names the re-cut, a new dated version; prove it on the release branch first: `go run ./cmd/abcd launch
+retries. Prove it on the release branch first: `go run ./cmd/abcd launch
 archive --out "$(mktemp -d)" --tag vX.Y.Z --verify --repository <owner/name>`,
 naming the repository the tag will be pushed to, exits 0 when the release will
 pass. Without `--repository` a pin whose address names another repository (a
 fork, a rename, a transfer) passes locally and is refused after the tag,
 consuming the version. From the ship's merge
-until the publish job uploads the archive, the catalog on `main` names a zip that
+until the Release is published, the catalog on `main` names a zip that
 is not there yet; an install or update in that window fails closed and leaves an
 installed plugin on its previous release, so approve the release deployment
 promptly.
@@ -74,7 +72,27 @@ audit, dependency review, `govulncheck`, the attribution gate and the external
 review. The normal release path (`auto-release` tagging the main tip) re-checks
 nothing those gates have not already passed on the exact tagged commit; a
 hand-pushed tag on a commit outside `main` forgoes them, which is one more
-reason the runbook's branch → PR → merge path is the supported one.
+reason the runbook's branch → PR → merge path is the supported one. It is also
+the only path that publishes: every provenance check verifies release
+provenance against `release.yml` on `main` and the released commit, which only
+auto-release's call provides, so a run started by a hand-pushed tag is refused
+by its first job (`pushed-tag`) before anything is checked out, built or
+signed. A pre-release tag (`vX.Y.Z-…`) is refused by the release job's tag
+check, since the site run publishes full releases only.
+
+The Release is created as a draft holding the binaries, the plugin archive and
+`checksums.txt`; the site run attaches `site.tar.gz` and then publishes it, so
+a Release is public only once every asset is attached and no asset is added
+after publication. The release job hands the site run the draft's numeric id,
+and both address the Release by that id alone, refusing when more than one
+Release carries the tag. Immediately before publishing, the site run downloads
+every asset again by its id and checks it against `checksums.txt`, against the
+archive the render attached and against the release provenance policy; it
+marks the Release latest only when no published release carries a higher
+version, and fails if the assets differ afterwards from the ones it checked. A run that stops before that leaves a draft and nothing
+public: re-run the failed jobs of that run. A later push to `main` does not
+re-cut it, because a run started by that push releases a different commit:
+`auto-release`'s `detect` fails and names this remedy instead.
 
 ## Semantic gates (host-run, before the tag)
 
@@ -130,7 +148,9 @@ Each semantic pass records its outcome as a **commit-sha-keyed receipt** — a
 Verification Summary Attestation (VSA) shape carrying `verificationResult`
 (PROMOTE / HOLD), the pinned judge-model snapshot, the detector version, and the
 failing categories. Receipts live at `.abcd/work/reviews/<commit-sha>/<gate>.json`;
-[`receipt.example.json`](receipt.example.json) is the concrete shape. The
+[`receipt.example.json`](receipt.example.json) is the concrete shape, with a
+placeholder where a real receipt carries the computed `manifestHash` (see
+below). The
 `receipt_gate` `record-lint` rule verifies, before a tag, that each required gate
 has a PROMOTE receipt whose subject digest is the target commit, whose
 `policy.detector` names that gate, and which pins a judge model; a missing,
@@ -153,12 +173,17 @@ own receipt from its own detector.
 The cross-check runs against a **committed input manifest**,
 [`manifest.json`](manifest.json), which pins the reproducibility inputs: the
 brief-doc list (every `04-surfaces/` chapter plus the constraints, internals
-and delivery chapters that count or enumerate the shipped surface), the two
-directions (A: brief→surface, B: surface→brief), the checker count (one per
-brief doc plus one per surface), and the prompt (context plus both direction
-templates, with the prompt's own `sha256` over the three parts joined by blank
-lines). The context names every `commands/` page and every `agents/` prompt,
-and says that a surface claim found outside the pinned chapters is in scope.
+and delivery chapters that count or enumerate the shipped surface), the
+`commands` and `agents` rosters (every `commands/` page and every `agents/`
+prompt), the two directions (A: brief→surface, B: surface→brief), and the
+prompt (context plus both direction templates, with the prompt's own `sha256`
+over the three parts joined by blank lines). The detector fills the context's
+`${commands}` and `${agents}` from the rosters, as it fills `${doc}` and
+`${s.name}` for each checker, so `promptHash` covers the wording and changes
+only when the wording does; the rosters are pinned with everything else by the
+`manifestHash` a receipt echoes. The context says that a surface claim found
+outside the pinned chapters is in scope. The checker count, one per brief doc
+plus one per surface, follows from the lists and is not stored.
 Two honest runs of the same tier therefore examine the same scope — no run
 chooses its own. The
 [`brief-surface-crosscheck.js`](brief-surface-crosscheck.js) detector consumes
@@ -187,11 +212,26 @@ Pinning makes runs comparable in scope to each other, not to the tree: a surface
 ships without joining the pin is invisible to a run that obeys it, and the
 receipt attests coverage it never had. `TestReleaseGateManifestIsCurrent`
 (`internal/core/lint`) holds the manifest to the tree — every `04-surfaces/`
-chapter pinned, the pinned command and agent rosters equal to `commands/` and
-`agents/` on disk, `checkerCount` equal to the sum of the lists, `promptHash`
-equal to the prompt text — so a new verb, agent or chapter fails the unit
-suite until the manifest names it, and the `manifestHash` a receipt echoes
-changes with it.
+chapter pinned, the `commands` and `agents` rosters equal to `commands/` and
+`agents/` on disk, `promptHash` equal to the prompt text, and no stored
+checker count — so a new verb, agent or chapter fails the unit suite until the
+manifest names it, and the `manifestHash` a receipt echoes changes with it.
+
+The manifest is shaped so that branches adding surfaces at the same time merge
+without a conflict (iss-2610150526192138). Before, each such branch rewrote
+the same lines — the one-line context that carried both rosters, `promptHash`
+over it, a stored `checkerCount`, the line after the highest-numbered chapter
+in `briefDocs`, and the example receipt's literal copy of this file's hash — so
+any two of them conflicted and the second went back for a fresh preflight. Now
+each roster is a sorted array with one name per line, `briefDocs` is ordered by
+directory and then by file name with its leading chapter number removed (so a
+new chapter sits beside its neighbours by name, not after the newest number),
+nothing derived from the lists is stored, and the example receipt carries a
+placeholder. The same test holds both orders, and
+`TestSurfaceAdditionsMergeCleanly` merges two branches that each add a surface
+in a throwaway repository. A new name goes at its sorted place, never at the
+end; two branches can still conflict when their names sort into the same gap,
+and the resolution is to keep both lines.
 
 Depth is **tiered by the release's impact class**:
 
@@ -212,7 +252,13 @@ A manifest-era receipt therefore carries two further fields alongside the ones
 above:
 
 - **`manifestHash`** — the `sha256` of `manifest.json` the run pinned its inputs
-  against.
+  against, as `sha256:<hex>`. The receipt writer computes it at the reviewed
+  commit: `printf 'sha256:'; shasum -a 256 .abcd/development/release-gate/manifest.json | cut -d' ' -f1`.
+  The example receipt carries a placeholder there, never a literal: the hash
+  changes with every edit to the manifest, so a literal in the example went
+  stale with every surface a branch added and made any two such branches
+  conflict. `receipt_gate` refuses the placeholder like any other mismatch, so
+  a receipt copied from the example without computing the hash fails closed.
 - **`tier`** — `full` or `shallow`, the depth the run used.
 
 `receipt_gate` adds three **procedural** refusals once the manifest exists in the
@@ -356,11 +402,11 @@ where `<sha>` is `record-lint --derive-content-sha`. That trust root has an edge
 `verify` builds `record-lint` from the tree it gates, so a release cannot disarm
 the gate short of editing `release.yml` or the gate code (`internal/core/lint`,
 `cmd/record-lint`), both reviewed in the pull request and nothing more
-(iss-2610142152501415). Before it, on a tag push,
-`verify` requires the tag to be `v` plus the version `record-lint
---released-version` reads from the released tree — the strict reader the
-receipts are bound with — so a hand-pushed tag naming another version cannot
-publish under the receipts of the CHANGELOG's version (iss-2609251945586202).
+(iss-2610142152501415). Before it, `verify` requires the release tag to be `v`
+plus the version `record-lint --released-version` reads from the released
+tree — the strict reader the receipts are bound with — so a tag naming another
+version cannot publish under the receipts of the CHANGELOG's version
+(iss-2609251945586202).
 On abcd's own profile `launch archive --tag` refuses such a tag earlier still.
 The rule is skipped on the
 rehearsal path (`workflow_dispatch`), where no real receipts exist. Once `verify`

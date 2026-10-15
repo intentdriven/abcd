@@ -20,16 +20,27 @@ itself.
 <%- else %> On merge to
 `<% .DefaultBranch %>`, `auto-release.yml` reads the newest dated heading and
 calls `<% .ReleaseWorkflow %>`, which verifies exactly that commit, tags it only once the
-gates pass, and publishes. A refused gate leaves no tag, so the version stays
+gates pass, and publishes: the Release is created as a draft with every asset
+attached and published only after, by the draft's id once its assets are the
+files built, so it is never visible with an asset missing and no asset is
+added once it is public. It is marked the latest release only when no
+published release carries a higher version. A refused gate leaves no tag, so the version stays
 free. Nothing else declares a release; an ordinary push with no new dated
 heading is a no-op.
 
 The whole path runs on the built-in `GITHUB_TOKEN` — no personal access token,
 no standing secret. Tags are immutable; a publish is idempotent and self-healing
-(a missing Release is re-cut from the tagged commit, never a moved-on HEAD).
+(a missing Release, or one left an unpublished draft, is re-cut from the tagged
+commit, never a moved-on HEAD<% if or .Abcd .SemanticGates %>. On a public
+repository only the release run of the tagged commit can finish it, because
+provenance is verified against the commit a run is started for: re-run that
+run's failed jobs. A later push to `<% .DefaultBranch %>` refuses and names that
+remedy rather than re-cutting<% end %>).
+<%- if .VerifiesPushedTag %>
 The one tag it does not heal is a hand-pushed tag its own `verify` refused:
 rebuilding that commit would fail the same way, so `auto-release.yml` refuses
 loudly and names the re-cut, a new dated version.
+<%- end %>
 <%- end %>
 
 ## Before the first real release: run the rehearsal
@@ -130,10 +141,12 @@ blocks the release, an earlier release's receipts never stand in for this
 one's, and a batch-mate's receipts never shadow them. The released tree's
 newest release heading must be a dated `## [X.Y.Z] - <date>` heading; a
 pre-release or undated head refuses, because there is no version to bind the
-receipts to. On a tag push, `verify` first requires the tag to be `v` plus that
-same version, read by the same reader (`record-lint --released-version`), so a
-hand-pushed tag naming another version refuses before the receipt gate runs and
-cannot publish under the receipts of the CHANGELOG's version.
+receipts to. `verify` first requires the release tag to be `v` plus that same
+version, read by the same reader (`record-lint --released-version`), so a tag
+naming another version refuses before the receipt gate runs and cannot publish
+under the receipts of the CHANGELOG's version. A run started by a pushed version
+tag is refused before `verify` runs: releases are made by `auto-release.yml`
+from `<% .DefaultBranch %>`.
 
 Receipts live at `.abcd/work/reviews/<commit-sha>/<gate>.json`. A receipt is
 bound to its gate by its `policy.detector` value, not its filename, so one

@@ -19,15 +19,21 @@ name: auto-release
 # Only the NEWEST dated version is ever tagged: older CHANGELOG versions are left
 # alone, because tagging them at the current HEAD would mis-point an immutable
 # tag at the wrong code. Idempotent: when the newest version is already tagged AND
-# its GitHub Release exists, `detect` reports need_tag=need_release=false and
+# its GitHub Release is published, `detect` reports need_tag=need_release=false and
 # nothing runs, so an ordinary (non-release) push to main does nothing. If the tag
-# exists but its Release is MISSING (e.g. a transient publish failure), `detect`
+# exists but its Release is MISSING or still an unpublished draft (e.g. a transient
+# publish failure), `detect`
 # sets need_release=true and re-invokes `release` ALONE — built from the tagged
-# commit (release_ref), never the moved-on HEAD — so a flaky publish never
-# permanently wedges the version. A tag its own verify refused is the exception:
-# a hand-pushed tag runs release.yml before verify, and when that run's verify
-# failed, `detect` refuses loudly and names the re-cut (a new dated version)
-# rather than rebuilding the refused commit on every push.
+# commit (release_ref), never the moved-on HEAD.
+# On a public repository it does so only when this push IS the tagged commit:
+# release.yml verifies build provenance against the commit a run is
+# started for, so a run started by a later push cannot finish that Release.
+# `detect` then fails and names the remedy instead: re-run the failed jobs of
+# the release run of the tagged commit. A private repository's releases carry
+# no attestation, so any later push re-releases.
+# A run release.yml starts for a pushed version tag runs no verify
+# and releases nothing, so `detect` treats such a tag like any other tag with
+# no published Release.
 on:
   push:
     branches: [main]
@@ -47,13 +53,12 @@ permissions:
 jobs:
   # Decide whether the newest dated CHANGELOG version still needs a tag. Pure
   # read: no writes, no pushes. contents: read for the checkout and the Release
-  # lookup; actions: read to list release.yml's runs for a tag with no Release.
+  # lookup.
   detect:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
-      actions: read
     outputs:
       version: ${{ steps.detect.outputs.version }}
       need_tag: ${{ steps.detect.outputs.need_tag }}
@@ -76,6 +81,7 @@ jobs:
         # view` can read the repo's releases under the floor `contents: read`.
         env:
           GH_TOKEN: ${{ github.token }}
+          REPO_PRIVATE: ${{ github.event.repository.private }}
         run: |
           set -euo pipefail
           # The first heading of the form "## [X.Y.Z] - <date>" (or the historical
@@ -94,49 +100,34 @@ jobs:
           tag="v$version"
           if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
             # The tag already exists, so it is NEVER moved (immutable). Re-release
-            # ONLY when its GitHub Release is missing: a transient publish failure
-            # must not permanently wedge the version. Build the re-release FROM the
-            # tagged commit, not the current (moved-on) main HEAD — resolve the tag
-            # to its immutable commit SHA and hand it to release.yml as `ref`.
+            # ONLY when its GitHub Release is missing or unpublished. Build the
+            # re-release FROM the tagged commit, not the current (moved-on) main
+            # HEAD — resolve the tag to its immutable commit SHA and hand it to
+            # release.yml as `ref`.
             echo "need_tag=false" >> "$GITHUB_OUTPUT"
             # Deliberate fail-open: ANY non-zero from `gh release view` (a true 404
             # or a transient rate-limit/auth blip) counts as "Release missing" and
-            # re-releases. Safe — `gh release create` (release.yml) has no --clobber,
-            # so a false positive just errors on the existing release and nothing is
-            # overwritten: one red run, no data loss. Parsing the error to isolate a
+            # re-releases. Safe — release.yml refuses a tag whose Release is
+            # already published before it creates anything, so a false positive is
+            # one red run, no data loss. Parsing the error to isolate a
             # real 404 was rejected — it would hinge on gh's wording and could
             # misclassify a genuine missing-Release, re-wedging the very failure
-            # this heals.
-            if gh release view "$tag" >/dev/null 2>&1; then
+            # this heals. Only a PUBLISHED Release counts: a Release is created as
+            # a draft and published once every asset is attached, so a draft is a
+            # release that did not finish, and it is re-released like a missing one.
+            if [ "$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)" = false ]; then
               echo "$tag is tagged and released; nothing to do."
               echo "need_release=false" >> "$GITHUB_OUTPUT"
             else
-              # A refused gate is not healed. A hand-pushed tag runs release.yml
-              # on its own push, before verify; when the newest such run's verify
-              # job failed, the tagged commit is the one the gate refused, and
-              # rebuilding it fails the same way on every later push
-              # (iss-2609251125599536). The version is consumed: refuse loudly
-              # and name the re-cut. The tag auto-release asks release.yml to
-              # make is made only after verify is green and fires no push run,
-              # so a heal on that path finds none and proceeds. A listing that
-              # errors refuses too: guessing past it is the loop this closes.
-              if ! run_id="$(gh run list --workflow release.yml --event push --branch "$tag" \
-                  --limit 1 --json databaseId --jq '.[0].databaseId // ""')"; then
-                echo "::error::cannot list release.yml's push runs for $tag, so cannot tell a refused verify from a failed publish; not rebuilding it."
+              commit="$(git rev-parse --verify "$tag^{commit}")"
+              # On a public repository release.yml verifies build provenance
+              # against the commit a run is started for, so only the release run
+              # of the tagged commit can finish its Release. When this push is
+              # a later commit, ask for no release: fail and name the remedy.
+              if [ "$commit" != "$GITHUB_SHA" ] && [ "$REPO_PRIVATE" != true ]; then
+                echo "::error::$tag is tagged at $commit, and its GitHub Release is missing or an unpublished draft. This push ($GITHUB_SHA) cannot finish it: re-run the failed jobs of the auto-release run of $commit (gh run rerun <run-id> --failed). If no such run exists, or if the re-run fails again, roll a new dated CHANGELOG version."
                 exit 1
               fi
-              if [ -n "$run_id" ]; then
-                if ! verify="$(gh run view "$run_id" --json jobs \
-                    --jq '[.jobs[] | select(.name == "verify") | .conclusion] | first // ""')"; then
-                  echo "::error::cannot read the jobs of release.yml run $run_id for $tag; not rebuilding it."
-                  exit 1
-                fi
-                if [ "$verify" = failure ]; then
-                  echo "::error::$tag was refused by its own verify gate (release.yml run $run_id), so rebuilding the tagged commit would fail the same way. The version is consumed: roll a new dated CHANGELOG version on a commit that carries the fix, and its push cuts that release."
-                  exit 1
-                fi
-              fi
-              commit="$(git rev-parse --verify "$tag^{commit}")"
               echo "$tag is tagged but has NO GitHub Release; re-releasing from $commit."
               echo "need_release=true" >> "$GITHUB_OUTPUT"
               echo "release_ref=$commit" >> "$GITHUB_OUTPUT"
@@ -161,11 +152,11 @@ jobs:
   release:
     needs: detect
     # Run when a release is needed: a fresh version (need_tag, so release.yml
-    # tags it after verify) or a tagged version whose Release is missing (the
-    # heal path, built from the tagged commit).
+    # tags it after verify) or a tagged version whose Release is missing or a
+    # draft (the heal path, built from the tagged commit).
     if: needs.detect.outputs.need_release == 'true'
     permissions:
-      contents: write        # release.yml: push the new tag after verify, create the Release; site.yml: attach site.tar.gz
+      contents: write        # release.yml: push the new tag after verify, create the draft Release; site.yml: attach site.tar.gz and publish the Release
       id-token: write        # release.yml + site.yml: OIDC for build-provenance attestation
       attestations: write    # release.yml: publish + read back the attestations; site.yml: attest site.tar.gz
     uses: ./.github/workflows/release.yml
