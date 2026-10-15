@@ -110,22 +110,108 @@ func TestAStampFarAheadIsCountedFromWhenItWasFirstSeen(t *testing.T) {
 
 // TestAStampWithinTheSkewIsJudgedByItsOwnDates: a claim dated up to Skew
 // ahead of the reader, the small difference two honest clocks have, is judged
-// exactly as before, its first sighting ignored.
+// exactly as before, whether its first sighting (here, now) is recorded or
+// not.
 func TestAStampWithinTheSkewIsJudgedByItsOwnDates(t *testing.T) {
-	early := t0.Add(-10 * time.Hour)
-	for _, ahead := range []time.Duration{0, time.Minute, Skew} {
+	for _, seen := range []time.Time{{}, t0} {
+		for _, ahead := range []time.Duration{0, time.Minute, Skew} {
+			c := t0.Add(ahead)
+			v := Judge(Stamp{ClaimedAt: c, ExpiresAt: c.Add(Default), FirstSeen: seen}, time.Minute, t0)
+			if !v.Live || !v.EffectiveExpiry.Equal(c.Add(Default)) {
+				t.Fatalf("a claim %s ahead, first seen %s = %+v; want live until its own expiry %s", ahead, seen, v, c.Add(Default))
+			}
+			v = Judge(Stamp{ClaimedAt: c, ExpiresAt: c.Add(30 * 24 * time.Hour), FirstSeen: seen}, time.Minute, t0)
+			if !v.EffectiveExpiry.Equal(t0.Add(Max)) {
+				t.Fatalf("a claim %s ahead with a far expiry, first seen %s = %+v; want clamped to the reader's now plus a day, %s", ahead, seen, v, t0.Add(Max))
+			}
+			v = Judge(Stamp{Unreadable: true, WrittenAt: c, FirstSeen: seen}, 2*time.Hour, t0)
+			if !v.EffectiveExpiry.Equal(t0.Add(2 * time.Hour)) {
+				t.Fatalf("an unreadable stamp written %s ahead, first seen %s = %+v; want held for its grace from the reader's now, %s", ahead, seen, v, t0.Add(2*time.Hour))
+			}
+		}
+	}
+}
+
+// TestAStampAheadWhenFirstSeenStaysCountedFromThatSighting: a claim dated more
+// than Skew ahead of its first sighting is counted from that sighting at every
+// later reading, including once the reader's clock has passed the claim's own
+// date, so it never comes back to life.
+func TestAStampAheadWhenFirstSeenStaysCountedFromThatSighting(t *testing.T) {
+	for _, tc := range []struct {
+		ahead, at time.Duration
+		live      bool
+	}{
+		{23 * time.Hour, 23*time.Hour + 10*time.Minute, true},
+		{23 * time.Hour, Max, false},
+		{30 * time.Hour, Max + 10*time.Minute, false},
+		{30 * time.Hour, 30*time.Hour + 10*time.Minute, false},
+		{30 * time.Hour, 60 * time.Hour, false},
+	} {
+		c := t0.Add(tc.ahead)
+		v := Judge(Stamp{ClaimedAt: c, ExpiresAt: c.Add(Max), FirstSeen: t0}, time.Minute, t0.Add(tc.at))
+		if v.Live != tc.live || !v.EffectiveExpiry.Equal(t0.Add(Max)) {
+			t.Fatalf("a claim dated %s ahead, first seen at %s, judged %s later = %+v; want live=%v, expiry %s",
+				tc.ahead, t0, tc.at, v, tc.live, t0.Add(Max))
+		}
+		u := Judge(Stamp{Unreadable: true, WrittenAt: c, FirstSeen: t0}, 2*time.Hour, t0.Add(tc.at))
+		if u.Live || !u.EffectiveExpiry.Equal(t0.Add(2*time.Hour)) {
+			t.Fatalf("an unreadable stamp written %s ahead, first seen at %s, judged %s later = %+v; want lapsed at %s",
+				tc.ahead, t0, tc.at, u, t0.Add(2*time.Hour))
+		}
+	}
+}
+
+// TestAStampsExpiryNeverRisesAsTimePasses: for a fixed stamp with a recorded
+// first sighting, the effective expiry never moves later as the reader's clock
+// moves on: from the sighting for a claim dated more than Skew ahead of it,
+// and from the claim's own date for one dated within Skew of it (before that
+// date the reader's now is the clamp, as it always was).
+func TestAStampsExpiryNeverRisesAsTimePasses(t *testing.T) {
+	aheads := []time.Duration{-time.Hour, 0, time.Minute, Skew, Skew + time.Second, time.Hour,
+		23 * time.Hour, Max, 30 * time.Hour, 5 * 365 * 24 * time.Hour}
+	leases := []time.Duration{Min, Default, Max, 30 * 24 * time.Hour}
+	for _, ahead := range aheads {
 		c := t0.Add(ahead)
-		v := Judge(Stamp{ClaimedAt: c, ExpiresAt: c.Add(Default), FirstSeen: early}, time.Minute, t0)
-		if !v.Live || !v.EffectiveExpiry.Equal(c.Add(Default)) {
-			t.Fatalf("a claim %s ahead = %+v; want live until its own expiry %s", ahead, v, c.Add(Default))
+		start := t0
+		if !Ahead(c, t0) && c.After(t0) {
+			start = c
 		}
-		v = Judge(Stamp{ClaimedAt: c, ExpiresAt: c.Add(30 * 24 * time.Hour), FirstSeen: early}, time.Minute, t0)
-		if !v.EffectiveExpiry.Equal(t0.Add(Max)) {
-			t.Fatalf("a claim %s ahead with a far expiry = %+v; want clamped to the reader's now plus a day, %s", ahead, v, t0.Add(Max))
+		stamps := []Stamp{{Unreadable: true, WrittenAt: c, FirstSeen: t0}}
+		for _, l := range leases {
+			stamps = append(stamps, Stamp{ClaimedAt: c, ExpiresAt: c.Add(l), FirstSeen: t0})
 		}
-		v = Judge(Stamp{Unreadable: true, WrittenAt: c, FirstSeen: early}, 2*time.Hour, t0)
-		if !v.EffectiveExpiry.Equal(t0.Add(2 * time.Hour)) {
-			t.Fatalf("an unreadable stamp written %s ahead = %+v; want held for its grace from the reader's now, %s", ahead, v, t0.Add(2*time.Hour))
+		for _, s := range stamps {
+			var last time.Time
+			for now := start; now.Before(t0.Add(72 * time.Hour)); now = now.Add(7 * time.Minute) {
+				exp := Judge(s, 2*time.Hour, now).EffectiveExpiry
+				if !last.IsZero() && exp.After(last) {
+					t.Fatalf("stamp %+v: expiry rose from %s to %s at %s", s, last, exp, now)
+				}
+				last = exp
+			}
+		}
+	}
+}
+
+// TestARecordedSightingChangesNothingForAClaimWithinTheSkewOfIt: a claim dated
+// no more than Skew after its first sighting is judged exactly as one with no
+// sighting recorded, at every reading from the sighting on, so counting from
+// sightings never shortens a claim from a clock that differs by a little.
+func TestARecordedSightingChangesNothingForAClaimWithinTheSkewOfIt(t *testing.T) {
+	for _, ahead := range []time.Duration{-time.Hour, 0, time.Second, time.Minute, Skew} {
+		c := t0.Add(ahead)
+		for _, s := range []Stamp{
+			{ClaimedAt: c, ExpiresAt: c.Add(Max)},
+			{ClaimedAt: c, ExpiresAt: c.Add(Default)},
+			{Unreadable: true, WrittenAt: c},
+		} {
+			seen := s
+			seen.FirstSeen = t0
+			for now := t0; now.Before(t0.Add(30 * time.Hour)); now = now.Add(time.Minute) {
+				if a, b := Judge(seen, 2*time.Hour, now), Judge(s, 2*time.Hour, now); a != b {
+					t.Fatalf("a claim dated %s after its sighting, judged at %s: %+v with the sighting, %+v without; want the same", ahead, now, a, b)
+				}
+			}
 		}
 	}
 }

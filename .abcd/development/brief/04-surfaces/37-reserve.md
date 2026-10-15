@@ -89,10 +89,11 @@ Expiry is the holder's clock judged by the reader's, and the five-minute
 take-over margin is the only skew it absorbs: a holder whose clock runs behind
 by more than half its lease plus the margin can be taken over between its own
 renewals, and a reservation never renewed is open to a take-over once the
-holder's clock is behind by more than its lease. A clock ahead is clamped to a
-day from the reader's now. No bound read on the reader's side holds: the
-commit date is written by the same clock, and the time this copy first saw a
-tip cannot tell a holder's slow clock from a late fetch.
+holder's clock is behind by more than its lease. A reservation dated more than
+five minutes ahead of the reader counts from when that copy first fetched it,
+so it holds at most a day from then. No bound read on the reader's side holds
+for a slow clock: the commit date is written by the same clock, and the time
+this copy first saw a tip cannot tell a holder's slow clock from a late fetch.
 
 ## Exits
 

@@ -52,9 +52,10 @@ const (
 	// TakeoverMargin is how long past a reservation's effective expiry (or an
 	// unreadable tip's hold) another person waits before taking it over, by
 	// the taker's clock: the slack that absorbs small skew between clocks,
-	// and the same allowance as lease.Skew, within which a reservation dated
-	// ahead of the reader is still judged by its own dates. A holder whose clock runs behind by more than half
-	// its lease plus this margin can be taken over between its renewals;
+	// and the only slack. It is lease.Skew, the allowance within which a
+	// reservation dated ahead of the reader is still judged by its own dates.
+	// A holder whose clock runs behind by more than half its lease plus this
+	// margin can be taken over between its renewals;
 	// nothing on the reader's side bounds it, since the commit date comes
 	// from the same clock (spc-2610031753359849, the review of 2026-10-14).
 	TakeoverMargin = lease.Skew
