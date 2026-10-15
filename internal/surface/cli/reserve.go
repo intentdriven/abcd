@@ -68,7 +68,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits\n" +
 			"naming the record, the holder (your GitHub username), this working copy, the files\n" +
 			"the work will change (--footprint, once per repository-relative path) and the\n" +
-			"lease (--lease, default 2h, from 1m to 24h).\n\n" +
+			"lease (--lease, from 1m to 24h; default 2h, or 24h for a release).\n\n" +
 			"A session cutting a release reserves the release instead, rel-vX.Y.Z, with no\n" +
 			"footprint: while it is live every other session's land step holds its merge.\n" +
 			"It holds for 24h unless --lease names less, sits outside the cap of ten, and\n" +
@@ -132,7 +132,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringArrayVar(&footprint, "footprint", nil, "a repository-relative path the work will change; repeat once per path (never split on commas)")
 	cmd.Flags().BoolVar(&takeOver, "take-over", false, "move your own live reservation from another copy to this one")
-	cmd.Flags().DurationVar(&leaseFor, "lease", 0, "how long the reservation holds, from 1m to 24h (default 2h)")
+	cmd.Flags().DurationVar(&leaseFor, "lease", 0, "how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)")
 	cmd.Flags().BoolVar(&release, "release", false, "release your reservation from this copy by pushing a tombstone")
 	return cmd
 }

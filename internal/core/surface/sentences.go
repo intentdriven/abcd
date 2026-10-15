@@ -354,8 +354,8 @@ var sentences = map[string]string{
 	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
 		"Writes the fetched reservations; refuses outside a git checkout.",
 
-	"abcd reserve": "Reserve an issue or intent on the shared remote, or release it: " +
-		"Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
+	"abcd reserve": "Reserve an issue, intent or release on the shared remote, or release it: " +
+		"Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
 
 	"abcd reading": "Render the cold-reading assembler's state: " +
 		"Writes nothing; refuses any argument.",

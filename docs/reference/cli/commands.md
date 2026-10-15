@@ -3634,8 +3634,12 @@ being cut (a live rel-vX.Y.Z reservation, which holds every other session's
 merge until its tag is on origin). The fetch is the only network act, and it
 reads origin's release tags with the reservations; it updates the
 remote-tracking reservation branches and the release tags abcd keeps under
-refs/abcd/release-tags/, stamps when it ran in the local tier, and nothing else
-is written. A checkout with no remote named origin lists no reservations.
+refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
+first fetched each reservation dated ahead of this computer's clock or
+undated, and nothing else is written. The release-tag refs are ordinary
+refs of this checkout, so git log --all lists the commits they name and
+git push --mirror would push them. A checkout with no remote named origin
+lists no reservations.
 When the fetch fails, the reservations are listed as last fetched, with that
 view's age, and the failure is named on stderr and in fetch_error.
 
@@ -3860,7 +3864,7 @@ nothing filed. After the editor ran, both name where what was written is kept.
 
 ### `abcd reserve`
 
-Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.
+Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.
 
 **Usage:** `abcd reserve <record-id> [flags]`
 
@@ -3872,7 +3876,7 @@ every other participant sees it is taken. The reservation is the branch
 abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits
 naming the record, the holder (your GitHub username), this working copy, the files
 the work will change (--footprint, once per repository-relative path) and the
-lease (--lease, default 2h, from 1m to 24h).
+lease (--lease, from 1m to 24h; default 2h, or 24h for a release).
 
 A session cutting a release reserves the release instead, rel-vX.Y.Z, with no
 footprint: while it is live every other session's land step holds its merge.
@@ -3905,7 +3909,7 @@ push leaves no reservation and nothing in the checkout.
 
 ```
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
-      --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
+      --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
       --release                 release your reservation from this copy by pushing a tombstone
       --take-over               move your own live reservation from another copy to this one
 ```

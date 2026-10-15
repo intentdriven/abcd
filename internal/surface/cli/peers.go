@@ -110,8 +110,12 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"merge until its tag is on origin). The fetch is the only network act, and it\n" +
 			"reads origin's release tags with the reservations; it updates the\n" +
 			"remote-tracking reservation branches and the release tags abcd keeps under\n" +
-			"refs/abcd/release-tags/, stamps when it ran in the local tier, and nothing else\n" +
-			"is written. A checkout with no remote named origin lists no reservations.\n" +
+			"refs/abcd/release-tags/, stamps when it ran in the local tier, with when it\n" +
+			"first fetched each reservation dated ahead of this computer's clock or\n" +
+			"undated, and nothing else is written. The release-tag refs are ordinary\n" +
+			"refs of this checkout, so git log --all lists the commits they name and\n" +
+			"git push --mirror would push them. A checkout with no remote named origin\n" +
+			"lists no reservations.\n" +
 			"When the fetch fails, the reservations are listed as last fetched, with that\n" +
 			"view's age, and the failure is named on stderr and in fetch_error.\n\n" +
 			"A worktree is named home-relative (~/...), or by its directory name when it\n" +
