@@ -551,6 +551,90 @@
         ]
       }
     },
+    "fuser-kill": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "fuser",
+        "value_flags": ["-n", "--namespace"],
+        "flags": ["-k|--kill"]
+      },
+      "why": "`fuser -k` signals every process that holds the port or file it names — with `-m`, everything using that file system — so freeing a port this way stops whatever holds it, another session's server or test run included, not the process you started.",
+      "successor": "Stop only a process you started, by the pid you recorded when you started it (`kill \"$pid\"`) or by its own process group (`kill -- -\"$pgid\"`); if another session holds the port or file, message that session or ask the person.",
+      "fixtures": {
+        "known_bad": [
+          "fuser -k 8080/tcp",
+          "fuser -km /home",
+          "fuser -k -n tcp 8080",
+          "fuser --kill 8080/tcp"
+        ],
+        "known_good": [
+          "fuser 8080/tcp",
+          "fuser -v 8080/tcp",
+          "fuser -m /home",
+          "lsof -i :8080",
+          "abcd capture \"fuser -k 8080/tcp stopped a peer's server\""
+        ]
+      }
+    },
+    "kill-by-holder": {
+      "tier": "blocker",
+      "everyday_verb": true,
+      "pattern": {
+        "command": "kill",
+        "args_from": [
+          {
+            "command": "lsof"
+          },
+          {
+            "command": "fuser"
+          }
+        ]
+      },
+      "why": "`kill` handed the pids `lsof` or `fuser` prints — `kill $(lsof -t -i :8080)`, `lsof -ti:8080 | xargs kill` — signals every process that holds that port or file, another session's server or test run included, exactly as `fuser -k` does.",
+      "successor": "Stop only a process you started, by the pid you recorded when you started it (`kill \"$pid\"`) or by its own process group (`kill -- -\"$pgid\"`); if another session holds the port or file, message that session or ask the person.",
+      "fixtures": {
+        "known_bad": [
+          "kill $(lsof -t -i :8080)",
+          "kill -9 $(lsof -ti:8080)",
+          "lsof -ti tcp:8080 | xargs kill",
+          "kill $(fuser 8080/tcp 2>/dev/null)"
+        ],
+        "known_good": [
+          "lsof -i :8080",
+          "lsof -t -i :8080",
+          "fuser 8080/tcp",
+          "kill 4242",
+          "kill -- -4242",
+          "abcd capture 'kill $(lsof -t -i :8080) stopped a peer server'"
+        ]
+      }
+    },
+    "kill-port": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "kill-port",
+        "min_operands": 1
+      },
+      "why": "`kill-port` — run as `npx kill-port 3000`, `npm exec`, `pnpm dlx`, `yarn dlx` or installed — stops every process that holds the port it names, another session's server or test run included, exactly as `fuser -k` does.",
+      "successor": "Stop only a process you started, by the pid you recorded when you started it (`kill \"$pid\"`) or by its own process group (`kill -- -\"$pgid\"`); if another session holds the port or file, message that session or ask the person.",
+      "fixtures": {
+        "known_bad": [
+          "npx kill-port 3000",
+          "npx --yes kill-port@latest 3000 8080",
+          "npm exec kill-port 3000",
+          "pnpm dlx kill-port 3000",
+          "yarn dlx kill-port 3000",
+          "kill-port 3000"
+        ],
+        "known_good": [
+          "npx prettier --check .",
+          "npm exec eslint .",
+          "lsof -i :3000",
+          "kill 4242",
+          "abcd capture \"npx kill-port 3000 stopped a peer's server\""
+        ]
+      }
+    },
     "abcd-source-ledger-flip": {
       "tier": "blocker",
       "pattern": {

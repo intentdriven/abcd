@@ -15,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -84,6 +85,12 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	// (iss-2608290810037524). Nothing has been written yet.
 	if err := validateRequestEnums(req); err != nil {
 		return CaptureResult{}, err
+	}
+	// A finding key is written only in the one shape the pass derives, so the
+	// ledger reader and record_schema never meet a key capture wrote and they
+	// refuse.
+	if req.FindingRef != "" && !findingkey.Valid(req.FindingRef) {
+		return CaptureResult{}, refused(fmt.Errorf("capture: finding_ref %q is not a finding key (cfk- and sixteen lowercase hex digits); nothing written", req.FindingRef))
 	}
 	// Every new issue carries a remedy (ruling BX3 of 2026-09-29, itd-82
 	// decision 6): the fix it proposes, or, from an automatic filer with none,
@@ -285,6 +292,12 @@ func commitCaptureWith(lock ledgerLocker, repoRoot, issuesRoot string, req Captu
 	if req.BlockedBy != nil {
 		fields = append(fields, kv{"blocked_by", req.BlockedBy})
 		fm["blocked_by"] = req.BlockedBy
+	}
+	// Written bare: the key is machine-read, and its shape (already checked)
+	// holds nothing a quote would protect.
+	if req.FindingRef != "" {
+		fields = append(fields, kv{"finding_ref", rawScalar(req.FindingRef)})
+		fm["finding_ref"] = req.FindingRef
 	}
 
 	if err := validateStrict(fm); err != nil {
