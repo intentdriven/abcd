@@ -1,5 +1,5 @@
 {
-  "_comment": "Example semantic-pass receipt (a Verification Summary Attestation). One file per gate, stored at .abcd/work/reviews/<commit-sha>/<gate>.json. The receipt_gate record-lint rule verifies, at release time, that subject.digest.gitCommit matches the target commit, verificationResult is PROMOTE, judgeModel is a pinned snapshot (never a floating alias), and policy.detector names this gate. Once the pinned input manifest (manifest.json) exists in the release's content tree — the era marker — three further PROCEDURAL checks arm: manifestHash must equal manifest.json's actual sha256; tier must be sufficient for the release's impact class (a shallow receipt is refused on a feature/breaking release); and every entry in failing must carry a disposition. The gate never judges a finding's content or severity — confirmed findings route to the maintainer, whose PROMOTE with recorded dispositions is the gate. A missing, mismatched, malformed, HOLD, or model-less receipt fails the release closed. In phase 4 the receipt is cosign-signed and the signature verified in-Go.",
+  "_comment": "Example semantic-pass receipt (a Verification Summary Attestation). One file per gate, stored at .abcd/work/reviews/<commit-sha>/<gate>.json. The receipt_gate record-lint rule verifies, at release time, that subject.digest.gitCommit matches the target commit, verificationResult is PROMOTE, judgeModel is a pinned snapshot (never a floating alias), and policy.detector names this gate. Once the pinned input manifest (manifest.json) exists in the release's content tree — the era marker — three further PROCEDURAL checks arm: manifestHash must equal manifest.json's actual sha256; tier must be sufficient for the release's impact class (a shallow receipt is refused on a feature/breaking release); and every entry in failing must carry a disposition. From manifest schemaVersion 2 that disposition is exactly fixed, invalid or deferred, and a deferred entry also carries \"record\": \"iss-<id>\", the open issue record it is captured as, which no other deferred entry of the release names; for example {\"where\": \"04-surfaces/16-lint.md:12\", \"disposition\": \"deferred\", \"record\": \"iss-2610150900000001\"}. The gate never judges a finding's content or severity — confirmed findings route to the maintainer, whose PROMOTE with recorded dispositions is the gate. A missing, mismatched, malformed, HOLD, or model-less receipt fails the release closed. In phase 4 the receipt is cosign-signed and the signature verified in-Go.",
   "subject": {
     "digest": { "gitCommit": "0123456789abcdef0123456789abcdef01234567" }
   },
@@ -8,7 +8,7 @@
   "verificationResult": "PROMOTE",
   "judgeModel": "claude-opus-4-8",
   "tier": "full",
-  "manifestHash": "sha256:6f91027ff74432b1a933695174b6b86bbb640a7829c247a021f5a7d5fdff5f52",
+  "manifestHash": "sha256:9ea13fb1bfa2e104d21073e1611f529e7ce538f4e96f6104052d1c58f40e2f84",
   "policy": {
     "detector": "iss35-brief-surface-crosscheck",
     "version": "1",

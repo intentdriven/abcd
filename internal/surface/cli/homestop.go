@@ -33,7 +33,9 @@ import (
 // host adds a prompt or session-start hook's stdout to the agent's context, so
 // the agent can tell the person; a staging hook's result line is the machine
 // contract its callers parse; the shell guard's blocking status is what keeps a
-// command from running unchecked; and the status line is one short row.
+// command from running unchecked; `lint outbound` exits 2, its "could not
+// run", because its callers read exit 1 as a refusal of the text; and the
+// status line is one short row.
 
 // homeStop is the stop in force for the home HOME names, or nil. An empty or
 // relative HOME is no stop: the refusals for that shape stand where they are.
@@ -108,6 +110,19 @@ func renderHomeStop(root *cobra.Command, args []string, stop *abcdhome.Stop, std
 	case "statusline":
 		fmt.Fprintln(stdout, stop.Short)
 		return 0
+	case "lint outbound":
+		// Exit 2, the verb's "the check could not run": its callers read exit
+		// 1 as a refusal of the text, and the scaffolded commit-msg gate would
+		// then block every commit while the stop stands rather than failing
+		// open as it promises.
+		if asJSON {
+			enc := json.NewEncoder(stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(newErrorEnvelope(stop.Line, 2))
+			return 2
+		}
+		fmt.Fprintln(stderr, "abcd:", stop.Line)
+		return 2
 	}
 	if asJSON {
 		enc := json.NewEncoder(stdout)

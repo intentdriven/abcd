@@ -35,6 +35,8 @@ const (
 	writePrivateNames            writeKind = "private-names"
 	writeDocsCheck               writeKind = "docs-check"
 	writeAttributionHook         writeKind = "attribution-hook"
+	writeOutboundHook            writeKind = "outbound-hook"
+	writeOutboundForge           writeKind = "outbound-forge"
 	writeSessionStore            writeKind = "session-store"
 	writeConventionsBlock        writeKind = "conventions-block"
 	writeConventionsBlockRemoved writeKind = "conventions-block-removed"
@@ -57,7 +59,7 @@ const (
 // repository's own files first, then this machine, then the optional extras.
 var allWriteKinds = []writeKind{
 	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
-	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
+	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
 }
@@ -118,6 +120,16 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Added a commit-message prompt that asks every commit to say whether an AI tool helped write it.",
 		Why:    "It keeps an honest record of AI assistance in the repository's history.",
 		Action: "Nothing. Answer the prompt when you commit.",
+	},
+	writeOutboundHook: {
+		What:   "Added a commit-message check that stops a commit whose message carries a live AI-session link or an AI tool's sign-off line.",
+		Why:    "Once pushed, either one can be removed from the repository's history only by rewriting it.",
+		Action: "Tell the check where abcd is, once per clone: git config --local abcd.binary /absolute/path/to/abcd. Until then it warns and lets each commit through.",
+	},
+	writeOutboundForge: {
+		What:   "Switched on a check that stops your AI assistant posting a pull request, issue or comment whose text carries a live AI-session link or an AI tool's sign-off line.",
+		Why:    "The forge keeps the earlier version of anything posted, so either one cannot be taken back once it is sent.",
+		Action: "Nothing. Your assistant is told what to remove when a post is stopped.",
 	},
 	writeRules: {
 		What:   "Created .abcd/rules.json, which switches abcd's working-rule reminders on or off for this repository.",

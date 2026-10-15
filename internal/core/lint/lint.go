@@ -1194,17 +1194,25 @@ type receipt struct {
 	ManifestHash string `json:"manifestHash"`
 	// Failing is the findings the run recorded. It already existed in the receipt
 	// schema (an informational VSA field); the manifest-era gate now READS it to
-	// require that each finding carries a disposition. Only the disposition is
-	// inspected — the gate never judges a finding's content or severity.
+	// require that each finding carries a disposition, and from manifest
+	// schemaVersion 2 the release gate holds that disposition to fixed, invalid
+	// or deferred to its own open issue record. Only the disposition and the
+	// record are inspected — the gate never judges a finding's content or
+	// severity.
 	Failing []ReceiptFinding `json:"failing"`
 }
 
 // ReceiptFinding is one entry of a receipt's failing list. The release gate
-// reads its Disposition only; the doc-fidelity gate (itd-60) also reads the
-// sentence a reviewer found false, where it stands, and the evidence, so a
-// refusal can name the sentence rather than a count.
+// reads its Disposition and Record only; the doc-fidelity gate (itd-60) also
+// reads the sentence a reviewer found false, where it stands, and the evidence,
+// so a refusal can name the sentence rather than a count.
 type ReceiptFinding struct {
 	Disposition string `json:"disposition"`
+	// Record is the open issue record a deferred finding is captured as
+	// (`iss-<id>`). The release gate reads it from manifest schemaVersion 2,
+	// where a finding's disposition is exactly fixed, invalid or deferred and
+	// only a deferred finding names a record (receiptdispositions.go).
+	Record string `json:"record,omitempty"`
 	// Doc is "brief" or "public": which document the sentence stands in. A
 	// public-doc sentence is reported and never refuses in this rung.
 	Doc      string `json:"doc,omitempty"`
@@ -1250,8 +1258,12 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	// scope and depth, so once it exists a receipt must echo its hash and a
 	// sufficient tier, and any recorded finding must carry a disposition. Its
 	// presence in the content tree is the era marker — a receipt/commit that
-	// predates the manifest is judged by the pre-manifest rules only. Read it from
-	// repoRoot, the checked-out content tree the gate is armed against.
+	// predates the manifest is judged by the pre-manifest rules only. A release
+	// after one whose tag carried the manifest cannot predate it, so the
+	// release's arming refuses one whose tree has none rather than reverting it
+	// to those rules (iss-130).
+	// Read it from repoRoot, the checked-out content tree the gate is armed
+	// against.
 	//
 	// Both this read and each receipt read below are fsutil.ReadGuardedInRoot
 	// through an os.Root opened on repoRoot: the reviews store and the manifest
@@ -1272,20 +1284,54 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 	}
 	defer root.Close()
 	manifestBytes, manifestErr := fsutil.ReadGuardedInRoot(root, releaseGateManifestPath, maxReceiptBytes)
-	var manifestEra bool
+	var manifestEra, closedDispositions bool
 	var expectedManifestHash, requiredTier string
 	switch {
 	case manifestErr == nil:
 		manifestEra = true
 		expectedManifestHash = hashManifest(manifestBytes)
 		requiredTier = requiredReleaseTier(repoRoot)
+		// The release arms the closed disposition vocabulary from the gated
+		// tree's own manifest: an older commit re-gated reads its own
+		// schemaVersion-1 manifest and keeps the rules its receipts were written
+		// to, and turning the rule off means editing the manifest, whose hash
+		// every receipt echoes.
+		if cfg.release {
+			version, err := manifestSchemaVersion(manifestBytes)
+			if err != nil {
+				return failClosed("receipt_gate cannot read the schemaVersion of the release-gate manifest " + releaseGateManifestPath + ": " + err.Error() + "; the release gate fails closed"), nil
+			}
+			closedDispositions = version >= closedDispositionsSchemaVersion
+			if !closedDispositions {
+				if msg := schemaDowngradeRefusal(root, version); msg != "" {
+					return failClosed(msg), nil
+				}
+			}
+		}
 	case os.IsNotExist(manifestErr):
 		manifestEra = false
+		// Where an earlier release carried the manifest, its absence is a
+		// deletion, not the pre-manifest era (iss-130).
+		if cfg.release {
+			if msg := missingManifestRefusal(repoRoot, root); msg != "" {
+				return failClosed(msg), nil
+			}
+		}
 	default:
 		// The manifest exists but cannot be read — never fall through to the
 		// pre-manifest rules on an I/O error, which would silently drop the new
 		// refusals; fail closed.
 		return failClosed("receipt_gate cannot read the release-gate manifest " + releaseGateManifestPath + ": " + manifestErr.Error()), nil
+	}
+
+	// The release's own version is held to the release tags too. It runs after
+	// the two era refusals above, which read the same CHANGELOG.md version: a
+	// release they admit as an older one is refused here when that version is
+	// not newer than every release tag.
+	if cfg.release {
+		if msg := backdatedReleaseRefusal(repoRoot, root, manifestEra); msg != "" {
+			return failClosed(msg), nil
+		}
 	}
 
 	// The receipts directory comes out of the committed config, so it is held to
@@ -1313,6 +1359,10 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			File: rel, Line: 0, RuleID: "receipt_gate", Severity: cfg.Severity, Message: msg,
 		})
 	}
+	// deferrals collects every deferred finding of every receipt that survives
+	// the checks before it, across all required gates, so one record named by
+	// two findings is refused however the findings are split between gates.
+	deferrals := newDeferralCheck(repoRoot, root, issuesDirOf(cfg), cfg.onDeferred)
 	for _, gate := range cfg.RequiredGates {
 		if !receiptGateRe.MatchString(gate) {
 			add(dir, "receipt_gate required gate name '"+gate+"' is not a safe path component; the release gate fails closed")
@@ -1386,12 +1436,23 @@ func checkReceiptGate(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 			add(rel, "'"+gate+"' receipt tier '"+r.Tier+"' is insufficient for a "+requiredTier+"-tier release; run the crosscheck at "+requiredTier+" depth")
 			continue
 		}
+		if closedDispositions {
+			for i, f := range r.Failing {
+				if msg := deferrals.judge(gate, rel, i, f); msg != "" {
+					add(rel, "'"+gate+"' receipt failing["+strconv.Itoa(i)+"] "+msg)
+				}
+			}
+			continue
+		}
 		for _, f := range r.Failing {
 			if strings.TrimSpace(f.Disposition) == "" {
 				add(rel, "'"+gate+"' receipt carries a finding with no recorded disposition; every finding must record a disposition before release")
 				break
 			}
 		}
+	}
+	for _, shared := range deferrals.shared() {
+		add(shared.rel, shared.msg)
 	}
 	return out, nil
 }
@@ -2145,11 +2206,8 @@ func issuesDirOf(cfg RuleConfig) string {
 // per-root. A missing ledger, or a missing status directory within it, is not an
 // error — it simply contributes no records.
 func scanIssueLedger(repoRoot, issuesDir string) (issueLedger, error) {
-	issuesRoot := filepath.Join(repoRoot, issuesDir)
-	if _, err := os.Stat(issuesRoot); err != nil {
-		if os.IsNotExist(err) {
-			return issueLedger{}, nil
-		}
+	files, err := listIssueLedger(repoRoot, issuesDir)
+	if err != nil || files == nil {
 		return issueLedger{}, err
 	}
 
@@ -2157,25 +2215,8 @@ func scanIssueLedger(repoRoot, issuesDir string) (issueLedger, error) {
 	// the issue's identity across the ledger, and a bypassed-allocator file (or two
 	// parallel branches) can land the same id silently otherwise.
 	ledger := issueLedger{idFiles: map[string][]string{}}
-	type pending struct{ status, abs string }
-	var files []pending
-	for _, sub := range issueStatusDirs {
-		entries, err := os.ReadDir(filepath.Join(issuesRoot, sub))
-		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-			return issueLedger{}, err
-		}
-		for _, e := range entries {
-			if e.IsDir() || !issueFileRe.MatchString(e.Name()) {
-				continue
-			}
-			fileAbs := filepath.Join(issuesRoot, sub, e.Name())
-			id := canonRecordID(issueIDRe.FindString(e.Name()))
-			ledger.idFiles[id] = append(ledger.idFiles[id], fileAbs)
-			files = append(files, pending{status: sub, abs: fileAbs})
-		}
+	for _, p := range files {
+		ledger.idFiles[p.id] = append(ledger.idFiles[p.id], p.abs)
 	}
 
 	for _, p := range files {
@@ -2191,6 +2232,47 @@ func scanIssueLedger(repoRoot, issuesDir string) (issueLedger, error) {
 		})
 	}
 	return ledger, nil
+}
+
+// issueFile is one entry of the ledger's status directories: the directory it
+// sits in, its repo-absolute path, and the canonical iss-N id its name carries.
+type issueFile struct{ status, abs, id string }
+
+// listIssueLedger lists the ledger's status directories (open/, resolved/,
+// wontfix/) without reading a record: every file whose name is an issue
+// filename, keyed by the canonical id that name carries. It is the one listing
+// scanIssueLedger and the release gate's deferred-record check both read, so an
+// id means the same file to each. A missing ledger is a nil list and no error;
+// a missing status directory contributes nothing.
+func listIssueLedger(repoRoot, issuesDir string) ([]issueFile, error) {
+	issuesRoot := filepath.Join(repoRoot, issuesDir)
+	if _, err := os.Stat(issuesRoot); err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	files := []issueFile{}
+	for _, sub := range issueStatusDirs {
+		entries, err := os.ReadDir(filepath.Join(issuesRoot, sub))
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.IsDir() || !issueFileRe.MatchString(e.Name()) {
+				continue
+			}
+			files = append(files, issueFile{
+				status: sub,
+				abs:    filepath.Join(issuesRoot, sub, e.Name()),
+				id:     canonRecordID(issueIDRe.FindString(e.Name())),
+			})
+		}
+	}
+	return files, nil
 }
 
 // canonRecordID normalises a matched record id to its canonical spelling by

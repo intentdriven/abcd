@@ -68,7 +68,9 @@ type CandidateSet struct {
 
 // NextOptions are the run count the caller asked for.
 type NextOptions struct {
-	// Max is --max as typed; 0 when not given.
+	// Max is --max as typed; 0 when not given. An explicit --max 0 is told
+	// apart from an absent flag only at the front door, which refuses it with
+	// RunCountRefusal.
 	Max int
 	// UntilEmpty is --until-empty.
 	UntilEmpty bool
@@ -175,6 +177,14 @@ func readiness(repoRoot string, corpus intent.Corpus, store spec.Store, id, spec
 	return intent.ReadinessIn(repoRoot, store, it, specID)
 }
 
+// RunCountRefusal is the pick's refusal of a --max below 1, which names no
+// run count. Next refuses a negative Max with it; Max reads 0 when --max is
+// not given, so a front door refuses an explicit --max 0 with it before
+// calling Next, rather than let it read as no count (iss-2610121210280182).
+func RunCountRefusal(max int) error {
+	return refuse(StagePick, "", "", fmt.Sprintf("--max %d is not a run count", max), "give --max a whole number of picks, 1 or more")
+}
+
 // Next picks the readiest planned intent and starts its run. An empty
 // candidate set is refused naming every excluded intent and its check, and
 // writes nothing. With --max above 1 or --until-empty it begins a series
@@ -185,7 +195,7 @@ func readiness(repoRoot string, corpus intent.Corpus, store spec.Store, id, spec
 func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 	switch {
 	case n.Max < 0:
-		return NextResult{}, refuse(StagePick, "", "", fmt.Sprintf("--max %d is not a run count", n.Max), "give --max a whole number of picks, 1 or more")
+		return NextResult{}, RunCountRefusal(n.Max)
 	case n.UntilEmpty && n.Max > 0:
 		return NextResult{}, refuse(StagePick, "", "", fmt.Sprintf("--max %d and --until-empty name two run counts", n.Max),
 			"give one: --max <n> stops after n picks, --until-empty when no candidate is left")
