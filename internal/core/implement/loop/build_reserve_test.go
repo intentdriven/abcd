@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -327,5 +328,35 @@ func TestAHandedBackBuildLaneReleasesItsReservation(t *testing.T) {
 	}
 	if note := recordNote(t, repo, res.RunID, StageReservationReleased); !strings.Contains(note, "released the reservation on "+secondIssue) {
 		t.Fatalf("the run record says the reservation was released: %q", note)
+	}
+}
+
+// TestAResumedIssueRunReadsFoundAtWhereverItsIssueIs: a resume is not
+// re-judged, since the run's own lane resolves its issue, so `build <iss-N>`
+// over a run whose issue has left open/ reads the found_at from the folder it
+// is in, and reserves with it, rather than calling it a record with none.
+func TestAResumedIssueRunReadsFoundAtWhereverItsIssueIs(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	res, err := Start(repo.Root(), secondIssue, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := capture.Resolve(capture.ResolveRequest{RepoRoot: repo.Root(), ID: secondIssue, Resolution: "the page names the flag",
+		Impact: "fix", Grounds: "pursued: the page names the flag; shown wrong if a reader cannot find it"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(repo.Root(), ".abcd", "work", "issues", "open", secondIssue+".md")); err == nil {
+		t.Fatal("the issue is still open")
+	}
+	held := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	again, err := Start(repo.Root(), secondIssue, Options{})
+	if err != nil || !again.Resumed || again.RunID != res.RunID {
+		t.Fatalf("the run whose issue left open/ resumes: %+v %v", again, err)
+	}
+	if tip := originReservation(t, bare, claim.RefPrefix+secondIssue); tip.parent != held.commit || tip.released {
+		t.Fatalf("the resume renews the issue's reservation: before %+v, after %+v", held, tip)
+	}
+	if fp := footprintOf(t, bare, secondIssue); !slices.Equal(fp, []string{"commands/drain.md"}) {
+		t.Fatalf("the footprint is the resolved issue's found_at path: %v", fp)
 	}
 }

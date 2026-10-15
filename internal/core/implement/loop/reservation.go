@@ -417,15 +417,23 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 
 // runFootprint is the footprint a run's record names to reserve its key
 // with: an intent's spec's `## Footprint` packages line, each cleaned, and an
-// issue's found_at path. A record that names none is refused at the
-// reservation, its reason ending with outcome (what was not done).
+// issue's found_at path, read from whichever status folder holds the issue:
+// a resume is not re-judged, and the run's own lane resolves its issue, so an
+// issue that has left open/ mid-run still names its footprint. A record that
+// names none is refused at the reservation, its reason ending with outcome
+// (what was not done).
 func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
 	if validIssueKey(key) {
-		issues, err := openIssues(repoRoot)
+		lr, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: capture.StateAll})
 		if err != nil {
 			return nil, err
 		}
-		if fp, ok := issueFootprint(issues[key]); ok {
+		i := slices.IndexFunc(lr.Issues, func(iss capture.Issue) bool { return recordid.SameID(iss.ID, key) })
+		if i < 0 {
+			return nil, refuse(StageReservation, "", "", key+" is in no status folder of this checkout's ledger, so it names no found_at path to reserve it with; "+outcome,
+				"restore the issue's record, or remove the run's directory if the issue is gone for good")
+		}
+		if fp, ok := issueFootprint(lr.Issues[i]); ok {
 			return fp, nil
 		}
 		return nil, refuse(StageReservation, "", "", key+" has no found_at path to reserve it with; give it a found_at naming the file the fix changes, then run abcd build again; "+outcome,

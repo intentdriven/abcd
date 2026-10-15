@@ -988,6 +988,13 @@ These are the facilitator's design calls; none changes a criterion.
     released or a run started before reservations never took. A run handed
     back reserves nothing. A refusal leaves the run unchanged and says so; a
     fresh reservation whose recording fails is released.
+  - A resumed issue run reads its issue's `found_at` from whichever status
+    folder holds the issue, not from `open/` alone (review of steps 12 to
+    15, 2026-10-15). It is not refused as "no longer open": a resume is not
+    re-judged, because the run's own lane resolves its issue (as a lane
+    moves an intent to `shipped/`), so refusing an issue that left `open/`
+    would refuse the run as its own peer. An issue in no folder at all is
+    refused at the reservation, naming that, with the run unchanged.
   - `--release` is `loop.ReleaseReservation`: the tombstone, through the
     reserve verb's release, and nothing in any run's state. It takes no other
     flag (a usage error, exit 2), its refusals keep the reserve verb's exit
