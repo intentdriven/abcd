@@ -42,22 +42,33 @@ turned it off), `stopped` (it cannot act yet: its `note` says what to do, and
 running the command again resumes), `left` (the act is a person's) or
 `landed` (the head is already on the default branch). A step that prints a
 `command` gives the exact command to run by hand. With `land.push` and
-`land.enqueue` both off nothing runs, the gate included.
+`land.enqueue` both off nothing runs, the gate included. With `land.push` off
+and `land.enqueue` on, the gate still runs: arming a pull request says its head
+is ready to merge, and the passing preflight is what makes it ready.
 
 Before any step, `origin`'s every fetch and push URL must be the repository
-the forge client resolves here (an SSH host alias is refused, naming it: land
-does not read ssh config), and the forge's own default branch must be the one
-`origin/HEAD` names here and not the branch. Then `origin`'s default branch is
-fetched: a head already on it has landed, and the one step reported is
-`land` with status `landed`; nothing is gated, pushed or queued, so a re-run
-after the merge never recreates the deleted branch.
+the forge client resolves here (an SSH host alias is refused, naming it, with
+the `insteadOf` rule that maps it in the URL's own form: land does not read ssh
+config; a URL on another real host is refused as on a different host, with the
+`git remote set-url` that points `origin` back), and the forge's own default
+branch must be the one `origin/HEAD` names here and not the branch. Then
+`origin`'s default branch is fetched, and the head has landed when it is on
+it, or when the forge lists a merged pull request from this repository's
+branch whose head was this head (a squash or rebase merge puts another commit
+on the default branch). Either way the one step reported is `land` with status
+`landed` (naming the pull request when the forge proved it), and nothing is
+gated, pushed or queued, so a re-run after the merge never recreates the
+deleted branch, whichever merge method the queue used. A pull request merged
+at another head proves nothing about this one, and a forge that cannot be
+asked gets no gate and no push.
 
 1. **gate**: skipped when a preflight receipt already names the branch's head,
    in any worktree, as the pre-push hook looks for one. Otherwise `make
    preflight` runs in the branch's checkout (it waits on the machine's load
    itself), its output on stderr, and the head must be unchanged and a receipt
-   present after it. A repository whose make file declares no `preflight`
-   target gets no push. The receipt is a convenience check, not a security
+   present after it, and `origin`'s URLs exactly as they were checked (the
+   branch's own preflight could add a push URL or a `pushInsteadOf`). A
+   repository whose make file declares no `preflight` target gets no push. The receipt is a convenience check, not a security
    boundary: CI re-runs every gate on the pushed commit.
 2. **push** (`land.push`): the plain push above, of the gated commit whatever
    the branch names by then. A push git refuses carries git's own per-ref
@@ -75,15 +86,19 @@ after the merge never recreates the deleted branch.
    request is in the queue at the head it armed, toggling auto-merge once when
    the forge reports it CLEAN and unqueued, and otherwise names what holds it;
    a toggle whose re-arming fails says the pull request is now disarmed and
-   gives the command that arms it again. With no pull request the step is
+   gives the command that arms it again. A re-run never toggles an arming
+   again, its own included, so an armed pull request still CLEAN and outside
+   the queue is reported with what the user can do: wait for the forge to
+   queue it, or withdraw and re-arm it with the exact `gh pr merge` commands
+   the note gives. With no pull request the step is
    `stopped` with the `gh pr create` command: relay it to the user, who opens
    the pull request; the next `abcd land` queues it.
 
 The payload carries `branch`, `head`, `checkout` (home-relative),
 `default_branch`, `push` and `enqueue` (each `key`, `on`, and the `layer` and
 `origin` that decided it), `pull_request` and `pull_request_url` when one was
-found, `pushed` (the commit the push sent) when it pushed, `landed` when the
-head was already on the default branch, and `steps`, each with `name`, `status`, `note` and, when it prints
+found (or proved the head merged), `pushed` (the commit the push sent) when it
+pushed, `landed` when the head had already landed, and `steps`, each with `name`, `status`, `note` and, when it prints
 one, `command`.
 
 Tell the user what was pushed and where the pull request stands.
@@ -110,9 +125,10 @@ it off, and the push step prints the push command to run by hand.
 Exit 2, naming what was done before the refusal: the default branch, a
 detached HEAD, uncommitted changes (staged, unstaged or untracked), a branch
 checked out in no worktree, a preflight that failed or minted no receipt, a
-head that moved while the preflight ran, an `origin` URL that is not the
-forge's repository, a forge default branch that differs from the local one or
-is the branch, a forge that cannot be asked, a push git or the pre-push hook
+head that moved while the preflight ran, `origin`'s URLs changed while the
+preflight ran, an `origin` URL that is not the forge's repository, a forge
+default branch that differs from the local one or is the branch, a forge that
+cannot be asked (whether the branch already merged included), a push git or the pre-push hook
 refused, more than one open pull request from this repository, only a fork's
 pull request, a pull request that conflicts with the default branch, a head
 that moved on the forge after arming, an unreadable ruleset mirror, and the

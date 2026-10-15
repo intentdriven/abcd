@@ -30,9 +30,8 @@ const (
 // Net runs one git command that reaches the remote, from the checkout at dir:
 // a fetch or a push. It is the one networked git runner, shared by the
 // implement loop's landing, `abcd land` and the reservation on the shared
-// remote, and the one runner of a git command that must read the developer's
-// own configuration with the repository's hooks running (the loop's records
-// commit, `abcd land`'s read of origin's URLs, insteadOf rewrites applied).
+// remote. A git command that reaches no remote runs through LocalGit instead, so
+// a hook it runs sees none of the network settings below.
 //
 // The repository's hooks run (the pre-push gate is the point), under the
 // developer's own configuration less any injected GIT_DIR or GIT_CONFIG_*
@@ -50,14 +49,35 @@ const (
 // netOutputCap, on a failure too (a porcelain push reports its rejections
 // there); a failure's error carries git's bounded stderr.
 func Net(dir string, args ...string) (string, error) {
+	return runHooked(dir, true, args)
+}
+
+// LocalGit runs one git command that reaches no remote (a commit, a read of
+// origin's URLs) from the checkout at dir, with the repository's hooks running
+// under the developer's own configuration exactly as their own git runs them:
+// ScrubbedEnv, GIT_TERMINAL_PROMPT=0 and core.quotePath=false, and nothing
+// else, so none of Net's network settings (its low-speed bounds, which reach a
+// hook through GIT_CONFIG_PARAMETERS, and its batch-mode ssh command) changes
+// how a hook of the repository's runs. Its bounds and its output are Net's.
+func LocalGit(dir string, args ...string) (string, error) {
+	return runHooked(dir, false, args)
+}
+
+// runHooked is Net (network true) and LocalGit (false).
+func runHooked(dir string, network bool, args []string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), NetTimeout)
 	defer cancel()
-	full := append([]string{"-c", "core.quotePath=false",
-		"-c", "http.lowSpeedLimit=" + netLowSpeedLimit, "-c", "http.lowSpeedTime=" + netLowSpeedTime, "-C", dir}, args...)
+	full := []string{"-c", "core.quotePath=false"}
+	if network {
+		full = append(full, "-c", "http.lowSpeedLimit="+netLowSpeedLimit, "-c", "http.lowSpeedTime="+netLowSpeedTime)
+	}
+	full = append(append(full, "-C", dir), args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
-	if ssh := netSSHCommand(dir); ssh != "" {
-		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
+	if network {
+		if ssh := netSSHCommand(dir); ssh != "" {
+			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
+		}
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

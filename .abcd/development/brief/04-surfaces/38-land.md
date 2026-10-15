@@ -30,21 +30,31 @@ has it checked out, because the preflight runs in the branch's own checkout.
 Every step is idempotent, so running the verb again resumes where it stopped.
 The preflight is the branch's own `make preflight`, run with the person's
 environment and credentials, so the verb is for branches whose content the
-person trusts. With `land.push` and `land.enqueue` both off nothing runs.
+person trusts. With `land.push` and `land.enqueue` both off nothing runs. With
+`land.push` off and `land.enqueue` on the gate still runs, by design: arming a
+pull request says its head is ready to merge, and readiness is the gate.
 
 Before the steps, the origin and the forge's default branch are checked (see
-the trust boundaries), and then `origin`'s default branch is fetched: a head
-already on it has landed, and the verb reports one step, `land`, with status
-`landed`, gating, pushing and queueing nothing, so a re-run after the merge
-never recreates the branch the merge deleted. The check is the implement
-loop's own ancestor check (`landing.Landed`).
+the trust boundaries), and then `origin`'s default branch is fetched. A head
+already on it has landed (the implement loop's own ancestor check,
+`landing.Landed`). A squash or rebase merge leaves no such ancestry, so when
+the ancestor check says no the forge is asked for a merged pull request from
+this repository's branch whose head was the head (`landing.MergedAt`); one
+there has landed too. Either way the verb reports one step, `land`, with
+status `landed` (naming the pull request the forge listed), gating, pushing
+and queueing nothing, so a re-run after the merge never recreates the branch
+the merge deleted, whichever method the queue merged by. A pull request merged
+at another head proves nothing, and a forge that cannot be asked is a
+refusal: no gate and no push.
 
 1. **Gate.** When a preflight receipt names the head in any worktree of the
    repository, the lookup the pre-push hook makes, the gate is skipped.
    Otherwise `make preflight` runs in the branch's checkout. It is run
    directly, never wrapped in a second load wait, because the target already
    waits on the machine's load waiter. After it the head must be
-   unchanged and a receipt must name it. A repository whose make file declares
+   unchanged, a receipt must name it, and `origin`'s fetch and push URLs must
+   read exactly as they were checked: the preflight is the branch's own and
+   could add a push URL or a `pushInsteadOf`. A repository whose make file declares
    no `preflight` target has no gate that mints a receipt, and gets no push.
    The receipt is a convenience check, not a security boundary: CI re-runs
    every gate on the pushed commit.
@@ -61,8 +71,12 @@ loop's own ancestor check (`landing.Landed`).
    head: a pull request the forge reports CLEAN and unqueued has the auto-merge
    land made toggled once, and any other state is named. An arming someone
    else made is left as it is and reported, and a toggle whose re-arming fails
-   says the pull request is now disarmed and gives the command that arms it. With no pull request the step stops with the `gh pr
-   create` command; the verb never opens one (ruling R2), and the next run
+   says the pull request is now disarmed and gives the command that arms it.
+   A re-run never toggles an arming again (its own earlier one included, and
+   never one land did not make), so a pull request still CLEAN and unqueued is
+   reported with the person's way on: wait for the forge, or withdraw and
+   re-arm it with the exact `gh pr merge` commands the note gives. With no
+   pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
    queues it.
 
 ## The merge gate
@@ -79,8 +93,13 @@ this one code path (ruling R3).
 ## Trust boundaries
 
 - The remote is `origin` alone, and its every fetch and push URL must be the
-  repository the forge client resolves for the checkout. An SSH host alias is
-  refused by name: the verb does not read ssh config.
+  repository the forge client resolves for the checkout. An SSH host alias (a
+  host of one label, no dot) is refused by name, with the `insteadOf` rule
+  that maps it in the URL's own form (scp-like or `ssh://`): the verb does not
+  read ssh config. A URL on another real host is refused as a different host,
+  and the only advice is `git remote set-url`, never a rule that reroutes that
+  host's traffic. The URLs are read again after the preflight, and a change
+  is refused.
 - The default branch the verb never pushes is the forge's own, asked in the
   same call, and it must match the one `origin/HEAD` names locally, which can
   be stale; a forge that cannot be asked gets no gate and no push.
@@ -92,7 +111,12 @@ this one code path (ruling R3).
   reach as the merge base, and fresher, so the branch cannot change the rule
   it lands by. (The implement loop reads it at the lane's base.)
 - The forge client's and git's environments are scrubbed of `GIT_DIR` and
-  `GIT_CONFIG_*`, as the networked git runner's are.
+  `GIT_CONFIG_*`, as the networked git runner's are. A local git command (the
+  read of `origin`'s URLs) runs through `gitutil.LocalGit`, which adds none of the
+  networked runner's settings.
+- A credential in a URL that git or the forge client quotes
+  (`scheme://user:token@`, `https://token@`) is dropped from every note and
+  refusal.
 - Nothing is written to the repository's or the queue's settings.
 
 ## Configuration
@@ -116,8 +140,9 @@ Exit 0 when every step did its act or said why it stopped or left the merge
 to a person. Exit 2 on a refusal, which names the steps done before it. The
 JSON document carries `branch`, `head`, `checkout`, `default_branch`, `push`
 and `enqueue` (each `key`, `on`, `layer`, `origin`), `pull_request` and
-`pull_request_url` when one was found, `pushed` when the push sent a commit,
-`landed` when the head was already on the default branch, and `steps`, each
+`pull_request_url` when one was found (or the forge proved the head merged),
+`pushed` when the push sent a commit, `landed` when the head had already
+landed, and `steps`, each
 with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
 `landed`), `note` and an optional `command`.
 

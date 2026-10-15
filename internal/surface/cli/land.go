@@ -11,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -39,12 +40,14 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"     client resolves, and the forge's default branch must be the one origin/HEAD\n" +
 			"     names here and not the branch; checked before anything runs.\n" +
 			"  2. Landed: origin's default branch is fetched; a head already on it has landed,\n" +
-			"     and land says so and stops, pushing, gating and queueing nothing.\n" +
+			"     and so has one the forge lists a merged pull request of this repository's\n" +
+			"     branch at (a squash or rebase merge): land says so and stops, pushing,\n" +
+			"     gating and queueing nothing. A forge that cannot be asked gets no push.\n" +
 			"  3. Gate: when a preflight receipt already names the branch's head (in any\n" +
 			"     worktree, as the pre-push hook looks), the gate is skipped; otherwise\n" +
 			"     `make preflight` runs in the branch's checkout, its output on stderr, and the\n" +
-			"     head must be unchanged and a receipt present after it. A repository whose\n" +
-			"     make file declares no preflight target gets no push.\n" +
+			"     head must be unchanged, a receipt present and origin's URLs as checked after\n" +
+			"     it. A repository whose make file declares no preflight target gets no push.\n" +
 			"  4. Push (land.push): a plain push of the gated commit to the branch's name on\n" +
 			"     origin, with the repository's hooks running, never forced, never the default\n" +
 			"     branch.\n" +
@@ -58,7 +61,9 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"directory's checkout and the branch's own) and " + abcdhome.Display("config.json") + ",\n" +
 			"default true, and off wins from any layer: any file can turn an act off and none\n" +
 			"can turn it back on. --no-push and --no-enqueue turn one off for this run. An act\n" +
-			"that is off says which layer turned it off; with both off nothing runs.\n\n" +
+			"that is off says which layer turned it off; with both off nothing runs. With\n" +
+			"land.push off and land.enqueue on the gate still runs: arming says the head is\n" +
+			"ready, and readiness is the gate.\n\n" +
 			"Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an\n" +
 			"origin that is not the repository the forge client resolves (an SSH host alias\n" +
 			"included), and a pull request only another repository opened. Exit 0 when every\n" +
@@ -99,7 +104,7 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 
 // landRefusal is a refused landing as exit 2, naming the steps done before it.
 func landRefusal(res landing.Result, err error) error {
-	msg := "abcd land: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	msg := "abcd land: " + termsafe.Sanitize(gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())))
 	var r *landing.Refusal
 	if !errors.As(err, &r) {
 		msg += "; nothing more was done"

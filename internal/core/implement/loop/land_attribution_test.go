@@ -298,3 +298,30 @@ func TestAPullRequestWhoseReceiptsNameNoModelIsNotOpened(t *testing.T) {
 		}
 	}
 }
+
+// TestTheRecordsCommitRunsHooksUnderTheRepositorysOwnSettings: the records
+// commit is a local command, so a hook of the repository's runs under the
+// settings the person's own git gives it: none of the networked runner's
+// low-speed bounds reach it through GIT_CONFIG_PARAMETERS, and no ssh command
+// is injected (abcd never changes how a repository works).
+func TestTheRecordsCommitRunsHooksUnderTheRepositorysOwnSettings(t *testing.T) {
+	t.Setenv("GIT_SSH_COMMAND", "")
+	os.Unsetenv("GIT_SSH_COMMAND")
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	l := f.validated(t)
+	head := l.HeadSHA
+	env := filepath.Join(t.TempDir(), "env")
+	installHook(t, f, "post-commit", "#!/bin/sh\n{ printf 'ssh=%s\\n' \"$GIT_SSH_COMMAND\"; printf 'params=%s\\n' \"$GIT_CONFIG_PARAMETERS\"; } > '"+env+"'\n")
+	f.step(t) // prepare
+	f.step(t) // records
+	if l = currentLane(t, f.repo, f.runID); l.HeadSHA == head || !l.Landing.RecordsDone {
+		t.Fatalf("no records commit was made: %+v", l.Landing)
+	}
+	b, err := os.ReadFile(env)
+	if err != nil {
+		t.Fatalf("the post-commit hook did not run for the records commit: %v", err)
+	}
+	if got := string(b); !strings.Contains(got, "ssh=\n") || strings.Contains(strings.ToLower(got), "lowspeed") {
+		t.Fatalf("the records commit's hook saw %q; want no ssh command and no low-speed bounds", got)
+	}
+}

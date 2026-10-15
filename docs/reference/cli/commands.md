@@ -2893,12 +2893,14 @@ credentials, so run it only on a branch whose content you trust.
      client resolves, and the forge's default branch must be the one origin/HEAD
      names here and not the branch; checked before anything runs.
   2. Landed: origin's default branch is fetched; a head already on it has landed,
-     and land says so and stops, pushing, gating and queueing nothing.
+     and so has one the forge lists a merged pull request of this repository's
+     branch at (a squash or rebase merge): land says so and stops, pushing,
+     gating and queueing nothing. A forge that cannot be asked gets no push.
   3. Gate: when a preflight receipt already names the branch's head (in any
      worktree, as the pre-push hook looks), the gate is skipped; otherwise
      `make preflight` runs in the branch's checkout, its output on stderr, and the
-     head must be unchanged and a receipt present after it. A repository whose
-     make file declares no preflight target gets no push.
+     head must be unchanged, a receipt present and origin's URLs as checked after
+     it. A repository whose make file declares no preflight target gets no push.
   4. Push (land.push): a plain push of the gated commit to the branch's name on
      origin, with the repository's hooks running, never forced, never the default
      branch.
@@ -2913,7 +2915,9 @@ land.push and land.enqueue are read from .abcd/config.json (in the working
 directory's checkout and the branch's own) and ~/.abcd.noindex/config.json,
 default true, and off wins from any layer: any file can turn an act off and none
 can turn it back on. --no-push and --no-enqueue turn one off for this run. An act
-that is off says which layer turned it off; with both off nothing runs.
+that is off says which layer turned it off; with both off nothing runs. With
+land.push off and land.enqueue on the gate still runs: arming says the head is
+ready, and readiness is the gate.
 
 Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an
 origin that is not the repository the forge client resolves (an SSH host alias

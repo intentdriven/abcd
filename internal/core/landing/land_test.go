@@ -43,10 +43,14 @@ type fakeForge struct {
 	def string
 	// head replaces @HEAD@ in a view, so a view reports the pull request's
 	// head on the forge.
-	head  string
-	prs   string
-	views []string
-	calls [][]string
+	head string
+	prs  string
+	// merged answers the listing of the branch's merged pull requests; ""
+	// is none. mergedErr fails that listing alone.
+	merged    string
+	mergedErr error
+	views     []string
+	calls     [][]string
 	// onRepoView runs when the repository is viewed, before the answer.
 	onRepoView func()
 	// failArm fails the arm call with this ordinal (1 is the first), 0 none.
@@ -75,6 +79,15 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		}
 		return `{"nameWithOwner":"o/r","url":"` + f.repoURL + `","sshUrl":"` + ssh + `","defaultBranchRef":{"name":"` + def + `"}}`, nil
 	case "pr list":
+		if slices.Contains(args, "--state=merged") {
+			if f.mergedErr != nil {
+				return "", f.mergedErr
+			}
+			if f.merged == "" {
+				return "[]", nil
+			}
+			return f.merged, nil
+		}
 		if f.prs == "" {
 			return "[]", nil
 		}
@@ -171,6 +184,9 @@ func (f *fixture) options() Options {
 		Forge: f.forge.run,
 		Git: func(dir string, args ...string) (string, error) {
 			f.gitCalls = append(f.gitCalls, args)
+			if f.beforeGit != nil {
+				f.beforeGit(args)
+			}
 			return gitutil.Net(dir, args...)
 		},
 		Gate: func(dir string) error {

@@ -13,6 +13,7 @@ package landing
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -135,14 +136,52 @@ func FetchDefault(git GitFunc, dir, def string) (string, error) {
 }
 
 // Landed fetches the default branch def and reports whether sha is on it as
-// origin holds it (an ancestor of, or equal to, its tip): the one check by
-// which a landing proves a head merged, the implement loop's and `abcd
-// land`'s. A refused fetch is a *FetchError; any other error is git unable to
-// answer, which is not a no.
+// origin holds it (an ancestor of, or equal to, its tip): the one ancestry
+// check by which a landing proves a head merged, the implement loop's and
+// `abcd land`'s. A squash or rebase merge leaves no such ancestry; MergedAt is
+// the forge's half of the proof for it. A refused fetch is a *FetchError; any
+// other error is git unable to answer, which is not a no.
 func Landed(git GitFunc, dir, def, sha string) (tracking string, on bool, err error) {
 	if tracking, err = FetchDefault(git, dir, def); err != nil {
 		return tracking, false, err
 	}
 	on, err = gitutil.IsAncestor(dir, sha, tracking)
 	return tracking, on, err
+}
+
+// maxMergedListed bounds the forge's listing of a branch's merged pull
+// requests: a fork's from a branch of the same name are listed too.
+const maxMergedListed = 20
+
+// mergedPR is a merged pull request as the forge lists it.
+type mergedPR struct {
+	Number            int    `json:"number"`
+	HeadRefOid        string `json:"headRefOid"`
+	IsCrossRepository bool   `json:"isCrossRepository"`
+	MergedAt          string `json:"mergedAt"`
+}
+
+// MergedAt asks the forge, through ask (the forge client's arguments), for a
+// pull request from this repository's own branch that MERGED with sha as its
+// head, and returns its number, or 0 when none did: the proof a squash or a
+// rebase merge leaves where the ancestor check (Landed) finds none, since the
+// merged commit on the default branch is not sha. A pull request from another
+// repository, or one merged at another head, proves nothing about sha. An
+// error is the forge unable to answer, which is not a no.
+func MergedAt(ask func(args ...string) (string, error), branch, sha string) (int, error) {
+	out, err := ask("pr", "list", "--head="+branch, "--state=merged",
+		"--json=number,headRefOid,isCrossRepository,mergedAt", fmt.Sprintf("--limit=%d", maxMergedListed))
+	if err != nil {
+		return 0, err
+	}
+	var prs []mergedPR
+	if json.Unmarshal([]byte(out), &prs) != nil {
+		return 0, errors.New("the forge's listing of " + branch + "'s merged pull requests does not parse")
+	}
+	for _, pr := range prs {
+		if !pr.IsCrossRepository && pr.Number > 0 && pr.HeadRefOid == sha {
+			return pr.Number, nil
+		}
+	}
+	return 0, nil
 }

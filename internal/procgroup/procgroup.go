@@ -5,6 +5,7 @@
 package procgroup
 
 import (
+	"os"
 	"os/exec"
 	"syscall"
 	"time"
@@ -36,7 +37,12 @@ func Lead(cmd *exec.Cmd) {
 
 // Kill sends SIGKILL to the process group cmd leads (Lead), addressed through
 // the pid cmd's handle holds. Call it only after cmd started and before Wait
-// has reaped it, so the group id is still its own.
+// has reaped it, so the group id is still its own. A command that never
+// started has no group: Kill returns os.ErrProcessDone for it, as a Cancel
+// does for a process that is gone.
 func Kill(cmd *exec.Cmd) error {
+	if cmd.Process == nil {
+		return os.ErrProcessDone
+	}
 	return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 }

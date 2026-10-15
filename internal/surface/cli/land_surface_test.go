@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -133,6 +134,9 @@ func TestLandRefusalNamesTheStepsBeforeIt(t *testing.T) {
 	landSeams.Forge = func(_ string, args ...string) (string, error) {
 		if len(args) > 1 && args[0] == "repo" && args[1] == "view" {
 			return `{"nameWithOwner":"o/r","url":"` + origin + `","sshUrl":"","defaultBranchRef":{"name":"main"}}`, nil
+		}
+		if slices.Contains(args, "--state=merged") {
+			return "[]", nil // no pull request merged at the head
 		}
 		return "", errors.New("no other forge call in this test")
 	}

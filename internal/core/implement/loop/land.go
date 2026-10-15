@@ -339,9 +339,10 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	msg := landSubject(st, *lane) + "\n\n" +
 		fmt.Sprintf("The implement loop's landing for %s: %s.\n\n", what, strings.Join(done, "; ")) +
 		strings.Join(append(trailers, assisted...), "\n") + "\n"
-	// gitutil.Net is the one runner of a git command under the developer's own
-	// configuration with the repository's hooks running.
-	if _, err := gitutil.Net(wt, "commit", "-q", "-m", msg); err != nil {
+	// gitutil.LocalGit runs a local git command under the developer's own
+	// configuration with the repository's hooks running, and none of the
+	// networked runner's settings.
+	if _, err := gitutil.LocalGit(wt, "commit", "-q", "-m", msg); err != nil {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID,
 			"git could not commit the landing's records (a repository hook refused it, or no git identity is configured): "+fsutil.RedactHome(err.Error()),
 			"settle what git or the hook reports (the records stay staged in the lane's worktree), then run `abcd implement step` again; the loop never skips a hook")
@@ -454,7 +455,7 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 		if r := netFailure(StageLand, lane.ID, "git push "+lane.Branch, err); r != nil {
 			return Outcome{}, r
 		}
-		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not push "+lane.Branch+" to "+Remote+": "+fsutil.RedactHome(err.Error()),
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not push "+lane.Branch+" to "+Remote+": "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
 			"settle what git or the pre-push hook reports, then run `abcd implement step` again")
 	}
 	note := "pushed " + lane.Branch + " at " + shortSHA(lane.HeadSHA) + " to " + Remote + " on its preflight receipt"
@@ -478,7 +479,7 @@ func forge(c Context, lane Lane, args ...string) (string, error) {
 		if r := netFailure(StageLand, lane.ID, what, err); r != nil {
 			return "", r
 		}
-		return "", refuse(string(StageLand), "", lane.ID, fsutil.RedactHome(err.Error()),
+		return "", refuse(string(StageLand), "", lane.ID, gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
 			"settle what the forge client reports, then run `abcd implement step` again")
 	}
 	return out, nil
@@ -843,7 +844,7 @@ func fetchRefusal(lane Lane, def string, err error) error {
 	if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
 		return r
 	}
-	return refuse(string(StageLand), "", lane.ID, "git could not fetch "+def+" from "+Remote+": "+fsutil.RedactHome(err.Error()),
+	return refuse(string(StageLand), "", lane.ID, "git could not fetch "+def+" from "+Remote+": "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
 		"settle what git reports, then run `abcd implement step` again")
 }
 
