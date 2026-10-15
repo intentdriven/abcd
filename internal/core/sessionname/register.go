@@ -580,7 +580,9 @@ func hold(m Machine, req Request) Outcome {
 				return true, nil
 			case i >= 0:
 				reg.Given.move(reg.Live[i].SessionID, req.SessionID)
-			case reg.Given.inherits(req.SessionID, req.Title):
+			// A clear is never a fork: it is this session under a new id, so
+			// a title no entry on this host accounts for is the person's own.
+			case req.Source != "clear" && reg.Given.inherits(req.SessionID, req.Title):
 				inherited = true
 			default:
 				return false, nil

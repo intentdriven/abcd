@@ -939,6 +939,44 @@ func TestAPersonaNameThePersonGaveIsNeverReplaced(t *testing.T) {
 	}
 }
 
+// TestAClearOfAPersonsNameIsNeverAFork: a clear gives the session a new id in
+// the same process, so the new id has no record of its own; a person's own
+// title must not then be read as a name inherited from another session, even
+// while abcd's session of that name runs elsewhere (C4). Found by the final
+// review of 2026-10-16.
+func TestAClearOfAPersonsNameIsNeverAFork(t *testing.T) {
+	for name, arrange := range map[string]func(m *machine, root string){
+		"started with --name": func(m *machine, root string) {
+			if out := Start(m.at(m.launch(100)), Request{Root: root, SessionID: "p", Source: "startup", Title: "Bob"}); out.Name != "" {
+				t.Fatalf("a session the person named was named %q", out.Name)
+			}
+			// abcd's Alice, so that abcd's next name is Bob.
+			mustName(t, m.start(200, root, "a"), "Alice")
+			resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
+		},
+		"renamed by hand": func(m *machine, root string) {
+			mustName(t, m.start(100, root, "p"), "Alice")
+			resends(t, m, []struct{ sid, title, want string }{{"p", "", "Alice"}, {"p", "Bob", ""}})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := newMachine(t)
+			root := t.TempDir()
+			arrange(m, root)
+			// abcd's own Bob, running in another process.
+			mustName(t, m.start(300, root, "b"), "Bob")
+			resends(t, m, []struct{ sid, title, want string }{{"b", "", "Bob"}})
+			// The person clears their Bob: a new id, the same process (the
+			// hook shell under host 100 is 101).
+			out := Start(m.at(101), Request{Root: root, SessionID: "p2", Source: "clear", Title: "Bob"})
+			if out.Name != "" {
+				t.Fatalf("clearing the person's Bob reserved %q, want nothing", out.Name)
+			}
+			resends(t, m, []struct{ sid, title, want string }{{"p2", "Bob", ""}})
+		})
+	}
+}
+
 // TestResumeHoldsANameFromAnEarlierPersonaList: the name abcd gave is held on
 // resume even when the repository's persona list no longer has it, because
 // what makes the title abcd's is the record of the names it gave, not the
