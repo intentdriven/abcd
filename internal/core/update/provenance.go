@@ -40,21 +40,25 @@ import (
 // resolved to its commit through GitHub's git API, over the same pinned
 // client, and both the certificate's source-repository digest (which Fulcio
 // takes from the run's OIDC token, so no workflow step can write it) and the
-// SLSA statement's resolved source dependency must name that commit. A
-// certificate whose ref is exactly refs/tags/<tag> is not accepted as a
-// substitute: release.yml also runs from main (auto-release), whose builds
-// carry refs/heads/main, and a tag can be moved after a tag-push build, so
-// the commit is the one proof both release paths share.
+// SLSA statement's resolved source dependency must name that commit.
+//
+// Releases are cut from main: auto-release calls release.yml on every push to
+// main, so the certificate the policy accepts names release.yml at
+// refs/heads/main, a source ref of refs/heads/main and a GitHub-hosted runner,
+// the same values `gh attestation verify` is given (--cert-identity,
+// --source-ref, --deny-self-hosted-runners) wherever abcd prints or runs it.
 
-// provenancePolicy is who must have signed the provenance: the repository and
-// the workflow file inside it.
+// provenancePolicy is who must have signed the provenance: the repository,
+// the workflow file inside it, and the ref that workflow ran from.
 type provenancePolicy struct {
 	repo     string // owner/name
 	workflow string // path of the signing workflow inside the repository
+	ref      string // the git ref the signing workflow and its source ran from
 }
 
-// releasePolicy pins the provenance to this repository's release workflow.
-var releasePolicy = provenancePolicy{repo: "intentdriven/abcd", workflow: ".github/workflows/release.yml"}
+// releasePolicy pins the provenance to this repository's release workflow on
+// main.
+var releasePolicy = provenancePolicy{repo: "intentdriven/abcd", workflow: ".github/workflows/release.yml", ref: "refs/heads/main"}
 
 const (
 	// githubActionsIssuer is the OIDC issuer Fulcio records for a GitHub
@@ -83,11 +87,14 @@ var gitCommitShape = regexp.MustCompile(`^[0-9a-f]{40}$`)
 // this is refused rather than followed.
 const maxTagDepth = 4
 
-// signerSAN is the certificate identity the policy requires: the workflow file
-// at the repository's main branch (auto-release's call) or at a vX tag (a tag
-// push), the two ways release.yml runs to publish.
+// githubHostedRunner is the runner environment Fulcio records for a job that
+// ran on a GitHub-hosted runner.
+const githubHostedRunner = "github-hosted"
+
+// signerSAN is the certificate identity the policy requires, exactly: the
+// workflow file at the policy's ref.
 func (p provenancePolicy) signerSAN() string {
-	return "^" + regexp.QuoteMeta("https://github.com/"+p.repo+"/"+p.workflow) + `@refs/(heads/main|tags/v[0-9][^@]*)$`
+	return "https://github.com/" + p.repo + "/" + p.workflow + "@" + p.ref
 }
 
 // provenanceVerifier checks a release asset's build provenance by its sha256,
@@ -312,21 +319,7 @@ func verifyBundle(raw []byte, digest []byte, commit string, tm root.TrustedMater
 	if err != nil {
 		return "", err
 	}
-	san, err := verify.NewSANMatcher("", p.signerSAN())
-	if err != nil {
-		return "", err
-	}
-	issuer, err := verify.NewIssuerMatcher(githubActionsIssuer, "")
-	if err != nil {
-		return "", err
-	}
-	if !gitCommitShape.MatchString(commit) {
-		return "", fmt.Errorf("no release commit %q to bind the provenance to", commit)
-	}
-	id, err := verify.NewCertificateIdentity(san, issuer, certificate.Extensions{
-		SourceRepositoryURI:    "https://github.com/" + p.repo,
-		SourceRepositoryDigest: commit,
-	})
+	id, err := p.identity(commit)
 	if err != nil {
 		return "", err
 	}
@@ -352,6 +345,29 @@ func verifyBundle(raw []byte, digest []byte, commit string, tm root.TrustedMater
 		return "", errors.New("the verified attestation names no signing certificate")
 	}
 	return res.Signature.Certificate.SubjectAlternativeName, nil
+}
+
+// identity is the certificate identity a release's provenance must carry:
+// the policy's signer under GitHub Actions' OIDC issuer, built on a
+// GitHub-hosted runner from this repository's ref at commit.
+func (p provenancePolicy) identity(commit string) (verify.CertificateIdentity, error) {
+	san, err := verify.NewSANMatcher(p.signerSAN(), "")
+	if err != nil {
+		return verify.CertificateIdentity{}, err
+	}
+	issuer, err := verify.NewIssuerMatcher(githubActionsIssuer, "")
+	if err != nil {
+		return verify.CertificateIdentity{}, err
+	}
+	if !gitCommitShape.MatchString(commit) {
+		return verify.CertificateIdentity{}, fmt.Errorf("no release commit %q to bind the provenance to", commit)
+	}
+	return verify.NewCertificateIdentity(san, issuer, certificate.Extensions{
+		SourceRepositoryURI:    "https://github.com/" + p.repo,
+		SourceRepositoryDigest: commit,
+		SourceRepositoryRef:    p.ref,
+		RunnerEnvironment:      githubHostedRunner,
+	})
 }
 
 // predicateNamesCommit checks the SLSA v1 predicate's resolved dependencies

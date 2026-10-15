@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sigstore/sigstore-go/pkg/fulcio/certificate"
 	"github.com/sigstore/sigstore-go/pkg/root"
 	"github.com/theupdateframework/go-tuf/v2/metadata"
 )
@@ -293,6 +294,30 @@ func TestApplyRefusesWhenNoAttestationExists(t *testing.T) {
 	}
 }
 
+// TestTheHandInstallRemedyVerifiesTheSamePolicy: the command the refusal
+// advises holds the asset to the policy the in-process check holds it to.
+func TestTheHandInstallRemedyVerifiesTheSamePolicy(t *testing.T) {
+	u, target, _ := releaseWithProvenance(t, []byte("new-binary-bytes"), nil)
+	rep, err := u.Apply(target, "v0.6.2", nil)
+	if err != nil || rep.Refusal == nil {
+		t.Fatalf("want a refusal, got %+v (%v)", rep, err)
+	}
+	for _, want := range []string{
+		" --repo intentdriven/abcd ",
+		" --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main ",
+		" --source-ref refs/heads/main ",
+		" --deny-self-hosted-runners ",
+		" --source-digest $(gh api repos/intentdriven/abcd/commits/v0.6.2 ",
+	} {
+		if !strings.Contains(rep.Refusal.Remedy, want) {
+			t.Errorf("the remedy must carry %q: %s", strings.TrimSpace(want), rep.Refusal.Remedy)
+		}
+	}
+	if strings.Contains(rep.Refusal.Remedy, "--signer-workflow") {
+		t.Errorf("the remedy must name the exact certificate identity with --cert-identity: %s", rep.Refusal.Remedy)
+	}
+}
+
 func TestApplyRefusesAnotherWorkflowsProvenance(t *testing.T) {
 	u, target, oldBin := releaseWithProvenance(t, []byte("new-binary-bytes"), map[string][]byte{"*": fixture(t, "abcd-v0.13.4-site.attestations.json")})
 	rep, err := u.Apply(target, "v0.6.2", nil)
@@ -557,6 +582,51 @@ func TestStatementNamesCommit(t *testing.T) {
 	}
 	if err := predicateNamesCommit(json.RawMessage(`{"buildDefinition":{}}`), releasePolicy.repo, commitV0134); err == nil {
 		t.Fatal("a predicate naming no source commit binds nothing")
+	}
+}
+
+// TestReleaseIdentityIsReleaseYMLOnMain holds the certificate half of the
+// policy to its exact values, against certificate summaries rather than
+// recorded bundles: release.yml at refs/heads/main, built from refs/heads/main
+// at the release's commit, on a GitHub-hosted runner. Each case differs from
+// the accepted certificate in one field and must be refused.
+func TestReleaseIdentityIsReleaseYMLOnMain(t *testing.T) {
+	const signer = "https://github.com/intentdriven/abcd/.github/workflows/release.yml"
+	accepted := func() certificate.Summary {
+		return certificate.Summary{
+			CertificateIssuer:      githubActionsIssuer,
+			SubjectAlternativeName: signer + "@refs/heads/main",
+			Extensions: certificate.Extensions{
+				Issuer:                 githubActionsIssuer,
+				SourceRepositoryURI:    "https://github.com/intentdriven/abcd",
+				SourceRepositoryDigest: commitV0134,
+				SourceRepositoryRef:    "refs/heads/main",
+				RunnerEnvironment:      "github-hosted",
+			},
+		}
+	}
+	id, err := releasePolicy.identity(commitV0134)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := id.Verify(accepted()); err != nil {
+		t.Fatalf("release.yml on main, at the release's commit, must verify: %v", err)
+	}
+	for name, edit := range map[string]func(*certificate.Summary){
+		"the workflow at a tag":          func(c *certificate.Summary) { c.SubjectAlternativeName = signer + "@refs/tags/v0.13.4" },
+		"the workflow on another branch": func(c *certificate.Summary) { c.SubjectAlternativeName = signer + "@refs/heads/release" },
+		"a source ref that is a tag":     func(c *certificate.Summary) { c.SourceRepositoryRef = "refs/tags/v0.13.4" },
+		"a source ref on another branch": func(c *certificate.Summary) { c.SourceRepositoryRef = "refs/heads/release" },
+		"a self-hosted runner":           func(c *certificate.Summary) { c.RunnerEnvironment = "self-hosted" },
+		"another commit":                 func(c *certificate.Summary) { c.SourceRepositoryDigest = commitV0133 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := accepted()
+			edit(&c)
+			if err := id.Verify(c); err == nil {
+				t.Errorf("a certificate with %s must not verify", name)
+			}
+		})
 	}
 }
 
