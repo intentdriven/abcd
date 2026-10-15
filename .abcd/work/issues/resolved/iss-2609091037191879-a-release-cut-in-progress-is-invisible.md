@@ -9,8 +9,6 @@ found_during: "manual-capture"
 origin: researcher-authored
 production_mode: hand-written
 remedy: "Waits on ruling H (the cut lease inside the session register itd-2609150819440345, or its own intent): have `launch ship` take a cut lease in the machine-scoped run store (the claim-lease primitive: holder session, anchor tag, expiry) and release it at the tag, and have `capture resolve`, `spec close` and the pre-merge-commit hook print which cut a change would join and who holds it, without refusing, so the cutting session rules; prove it with a test that a resolve during a live lease names the holder and one after release prints nothing."
-deferred_after: "v0.11.1"
-deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed H): Plan the cut lease inside the session register (itd-2609150819440345), or as its own intent?"
 related_intents: [itd-2609151838312703]
 resolution: "a release cut is now held by a reservation of the release, rel-vX.Y.Z, which every other session's land step reads and refuses on, and abcd peers shows"
 impact: additive
@@ -31,3 +29,7 @@ A release cut in progress is invisible to every other session, so a change landi
 ## Grounds
 
 - pursued: a session cutting a release holds every other session's merge until its tag; shown wrong if a land step arms a merge while another session's release reservation is live
+
+## Resolution (2026-10-15)
+
+- The remedy above predates the ruling it waited on and is kept as written. It was replaced by decision 11 on itd-2609151838312703: the hold is a reservation of the release, `rel-vX.Y.Z`, read by every other session's land step, not a cut lease taken by `launch ship`. The deferral it carried no longer applies and was removed.
