@@ -43,7 +43,7 @@
 #
 #      The exemptions are the receipt-less prefixes, declared in the table
 #      below, one row per prefix, each with the shape check a push under it
-#      must pass and the record that rules it. There is one: a reservation
+#      must pass and the record that rules it. There are two. The first: a reservation
 #      (`abcd reserve`, itd-2609091034175565) is a
 #      branch under refs/heads/abcd-reserved/ holding a chain of commits whose
 #      tree is the empty tree. They change no file, so there is nothing for a
@@ -58,6 +58,22 @@
 #      refused outright: a reservation ends with a tombstone
 #      (`abcd reserve <id> --release`), and a deleted tip would let the next
 #      reserve take the record with no lease judgement.
+#
+#      The second: a status branch (`abcd announce`, itd-2609151838312703,
+#      adr-2610150729333337), refs/heads/abcd-status/<username>, one per
+#      person, holding that person's announcements as a chain of empty-tree
+#      commits. It passes the same reservation_shape check, so it admits
+#      nothing the reservation row does not: a fast-forward of commits that
+#      change no file. A push under it that changes a file or rewrites the
+#      branch is gated as any branch is, and a deletion is refused outright:
+#      a status branch is kept for ever.
+#
+#      This hook runs only where core.hooksPath points at it. A hosted cloud
+#      session runs no hook at all, so there the server's rulesets (deletion
+#      and non-fast-forward refused under both prefixes, mirrored in
+#      .abcd/work/rulesets/) and abcd's own reader, which shows a status
+#      commit that changes a file as doubtful, are the guards; nothing on the
+#      forge refuses a file-changing push to a status branch.
 #
 # `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
 # every gate on the pushed commit and is the authority either way.
@@ -122,8 +138,8 @@ shape_check() {
 # succeeds only for a push of the prefix's own shape, with its own arm in
 # shape_check. The last field is named
 # when a delete under the prefix is refused, with <name> standing for the
-# branch's name after the prefix: a ref under a receipt-less prefix is never
-# deleted by a push.
+# branch's name after the prefix, or is "never" for a branch kept for ever: a
+# ref under a receipt-less prefix is never deleted by a push.
 #
 # A new row needs its own ruling record and its own shape check. A prefix with
 # no shape check, or one naming a check shape_check has no arm for, is never
@@ -134,6 +150,7 @@ shape_check() {
 # own shape check by the spec that delivers it, not here.
 receiptless_prefixes=(
   "abcd-reserved/|reservation_shape|adr-2610031352212697|abcd reserve <name> --release"
+  "abcd-status/|reservation_shape|adr-2610150729333337|never"
 )
 
 # receiptless_row finds the row whose prefix the branch is under and whose
@@ -171,6 +188,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   # the next reserve takes the record with no lease judgement at all.
   if is_null_id "$local_sha"; then
     if receiptless_row "$branch"; then
+      if [ "$row_end" = "never" ]; then
+        echo "pre-push: refusing to delete '$branch': a branch under $row_prefix is kept for ever and never deleted ($row_ruling)." >&2
+        exit 1
+      fi
       echo "pre-push: refusing to delete '$branch': a branch under $row_prefix ends by a push, never a deletion ($row_ruling);" >&2
       echo "          end it with \`${row_end//<name>/${branch#"$row_prefix"}}\`." >&2
       exit 1

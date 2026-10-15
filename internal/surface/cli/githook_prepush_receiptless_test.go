@@ -54,13 +54,15 @@ func receiptlessRows(t *testing.T, hook string) [][]string {
 
 // TestPrePushReceiptlessPrefixesAreDeclaredWithARulingAndAShapeCheck: every
 // row names a prefix ending in a slash, a shape check the hook defines, a
-// ruling record that exists, and the act that ends a ref there; the
-// reservation prefix is the only row.
+// ruling record that exists, and the act that ends a ref there, or "never" for
+// a branch kept for ever; the rows are the reservation prefix and the status
+// prefix (adr-2610150729333337), both checked by the reservation's shape.
 func TestPrePushReceiptlessPrefixesAreDeclaredWithARulingAndAShapeCheck(t *testing.T) {
 	root, hook := committedHook(t)
 	rows := receiptlessRows(t, hook)
-	if len(rows) != 1 || len(rows[0]) != 4 || rows[0][0] != "abcd-reserved/" {
-		t.Fatalf("the receipt-less table is %q; want the reservation prefix as its only row, in four fields", rows)
+	if len(rows) != 2 || len(rows[0]) != 4 || rows[0][0] != "abcd-reserved/" ||
+		len(rows[1]) != 4 || strings.Join(rows[1], "|") != "abcd-status/|reservation_shape|adr-2610150729333337|never" {
+		t.Fatalf("the receipt-less table is %q; want the reservation row, then the status row, each in four fields", rows)
 	}
 	for _, row := range rows {
 		prefix, shape, ruling, end := row[0], row[1], row[2], row[3]
@@ -80,7 +82,7 @@ func TestPrePushReceiptlessPrefixesAreDeclaredWithARulingAndAShapeCheck(t *testi
 		if !strings.HasPrefix(ruling, "adr-") || len(matches) != 1 {
 			t.Errorf("prefix %q names the ruling %q, which is no ADR in the decisions store", prefix, ruling)
 		}
-		if !strings.Contains(end, "<name>") {
+		if !strings.Contains(end, "<name>") && end != "never" {
 			t.Errorf("prefix %q names %q as the act that ends a ref there, without the <name> it ends", prefix, end)
 		}
 	}
