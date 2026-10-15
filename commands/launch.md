@@ -181,7 +181,10 @@ Six failures are worth recognising, because each looks like something else.
   previous release. Re-run the failed jobs of the same run (**Re-run failed
   jobs** on its page, or `gh run rerun <run-id> --failed`): the render attaches
   the website's archive to the draft and `publish` publishes it. The dispatch
-  below does not help here, because it deploys published releases only.
+  below does not help here, because it deploys published releases only, and
+  neither does a later push to `main`: `auto-release` then fails its `detect`
+  job and names this same remedy, since only the run of the tagged commit can
+  finish its Release.
 - **The release succeeded but `site / deploy` failed.** Known, recorded as
   iss-2608231912566984, and not a release failure: the binaries, checksums and
   attestation are published and correct, and only the website is behind. Deploy

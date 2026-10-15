@@ -74,17 +74,21 @@ audit, dependency review, `govulncheck`, the attribution gate and the external
 review. The normal release path (`auto-release` tagging the main tip) re-checks
 nothing those gates have not already passed on the exact tagged commit; a
 hand-pushed tag on a commit outside `main` forgoes them, which is one more
-reason the runbook's branch → PR → merge path is the supported one. On a public
-repository it is also the only path that publishes: every provenance check
-verifies release provenance against `release.yml` on `main` and the tagged
-commit, so a run started by a hand-pushed tag stops at the release job's first
-check and leaves no published Release.
+reason the runbook's branch → PR → merge path is the supported one. It is also
+the only path that publishes: every provenance check verifies release
+provenance against `release.yml` on `main` and the released commit, which only
+auto-release's call provides, so a run started by a hand-pushed tag is refused
+by its first job (`pushed-tag`) before anything is checked out, built or
+signed. A pre-release tag (`vX.Y.Z-…`) is refused by the release job's tag
+check, since the site run publishes full releases only.
 
 The Release is created as a draft holding the binaries, the plugin archive and
 `checksums.txt`; the site run attaches `site.tar.gz` and then publishes it, so
 a Release is public only once every asset is attached and no asset is added
 after publication. A run that stops before that leaves a draft and nothing
-public: re-run the failed jobs of that run.
+public: re-run the failed jobs of that run. A later push to `main` does not
+re-cut it, because a run started by that push releases a different commit:
+`auto-release`'s `detect` fails and names this remedy instead.
 
 ## Semantic gates (host-run, before the tag)
 
