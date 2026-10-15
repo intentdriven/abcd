@@ -1,7 +1,7 @@
 ---
 id: adr-2610031352212697
 slug: claims-are-branches-on-the-shared-remote
-status: proposed
+status: accepted
 date: 2026-10-03
 supersedes: null
 superseded_by: null
@@ -24,12 +24,12 @@ the sibling-worktree listing, and notes the sessions left each other. None of
 it reaches the second person or the cloud session, so their agents and ours
 could each start the same item, and the first anyone would hear of it is the
 collision at merge
-([iss-2609020716570699](../../../work/issues/open/iss-2609020716570699-nothing-tells-an-agent-that-a-record-it.md)).
+([iss-2609020716570699](../../../work/issues/resolved/iss-2609020716570699-nothing-tells-an-agent-that-a-record-it.md)).
 
 The product thinker ruled the same day that coordination must be visible to
 every participant, that a claim is a marker on the shared remote which abcd
 lists, and that reserving one item is built first
-([itd-2609091034175565](../../intents/planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md),
+([itd-2609091034175565](../../intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md),
 decisions 1 to 4;
 [itd-2609150819440345](../../intents/drafts/itd-2609150819440345-which-session-holds-which-worktree.md),
 decision 4). The state of the art and the run lessons behind those rulings
