@@ -4,10 +4,11 @@ package site
 //
 // The order is: read the committed inputs (manifest, allowlist, baseline,
 // package metadata), read the record ONCE through the lint engine's own scan,
-// walk git history ONCE, then compose. Nothing here reaches the network, and
-// nothing writes outside the output directory: every write goes through an
-// os.Root opened at the destination, so a path arriving from a manifest cannot
-// escape it even by construction.
+// walk git history ONCE (the composed route only: a project site reads none),
+// then compose. Nothing here reaches the network, and nothing writes outside
+// the output directory: every write goes through an os.Root opened at the
+// destination, so a path arriving from a manifest cannot escape it even by
+// construction.
 //
 // The build is transport-agnostic. It returns a Result describing what it wrote;
 // the front door prints it.
@@ -505,9 +506,16 @@ func build(req Request, written *labelsAdded) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	hist, err := LoadHistory(repoRoot)
-	if err != nil {
-		return Result{}, err
+	// A project site shows nothing read from git history (project.go), so
+	// the project route does not walk it at all: hist stays nil, and every
+	// page and record.json are built without it.
+	var hist *History
+	if !manifest.Project() {
+		h, err := LoadHistory(repoRoot)
+		if err != nil {
+			return Result{}, err
+		}
+		hist = &h
 	}
 
 	stamp := req.Stamp
@@ -549,9 +557,12 @@ func build(req Request, written *labelsAdded) (Result, error) {
 
 	c := &composer{
 		repoRoot: repoRoot, root: srcRoot, manifest: manifest, ui: ui, repo: repo,
-		assets: newAssetPipe(repoRoot, srcRoot, base), graph: graph, history: hist, stamp: stamp,
+		assets: newAssetPipe(repoRoot, srcRoot, base), graph: graph, stamp: stamp,
 		beta: isPreOne(version), version: version, releaseDate: releaseDate, base: base,
 		identityLoc: manifest.Identity,
+	}
+	if hist != nil {
+		c.history = *hist
 	}
 	compose := c.ComposeLanding
 	if manifest.Project() {
@@ -575,7 +586,7 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		return Result{}, err
 	}
 
-	export, err := BuildRecordExport(repoRoot, manifest.Checks.UnresolvedReferenceBaseline, graph, principles, hist, stamp, manifest.Record)
+	export, err := buildRecordExport(repoRoot, manifest.Checks.UnresolvedReferenceBaseline, graph, principles, hist, stamp, manifest.Record)
 	if err != nil {
 		return Result{}, err
 	}

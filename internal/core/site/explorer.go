@@ -117,6 +117,12 @@ func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot
 		glossaryByPath: map[string]glossaryEntry{},
 		pages:          c.manifest.Pages.resolve(),
 	}
+	// A project site has no timeline: it places most records at the day git
+	// first saw their file, and a project site reads no git history
+	// (project.go). The panel and its heading go together.
+	if c.project {
+		e.pages.timeline = false
+	}
 	// A glossary switched off is a glossary the explorer never loads: no pages,
 	// no navigation entry and no term links, the same graceful absence a
 	// repository that keeps none gets.
@@ -748,7 +754,7 @@ func (e *explorer) foundationsPage() (string, error) {
 // where a model name may appear, under the declared attribution escape
 // (adr-47 decision 3).
 func (e *explorer) contributorsPage() (string, error) {
-	a := e.export.Authorship
+	a := e.export.authorship()
 	ui := e.c.ui
 	var b strings.Builder
 	b.WriteString(`<div class="dash">`)

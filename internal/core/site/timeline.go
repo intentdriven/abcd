@@ -157,7 +157,7 @@ func (e *explorer) genealogySVG() (string, map[string]tlPoint) {
 
 	// The first commit: everything dated before it was designed on paper.
 	marker := ""
-	if fc := e.export.History.FirstCommit; fc != "" && dayNumber(fc) >= first && dayNumber(fc) <= last {
+	if fc := e.export.firstCommit(); fc != "" && dayNumber(fc) >= first && dayNumber(fc) <= last {
 		fx := f1(x(fc))
 		marker = `<line x1="` + fx + `" y1="` + strconv.Itoa(tlTopPad) + `" x2="` + fx + `" y2="` +
 			f1(y) + `" stroke="var(--hazard)" stroke-width="1.5" stroke-dasharray="5 4"/>` +
@@ -208,7 +208,7 @@ func (e *explorer) axisRange() (int, int) {
 	for _, r := range e.export.Releases {
 		note(r.Date)
 	}
-	note(e.export.History.FirstCommit)
+	note(e.export.firstCommit())
 	if first == 0 && last == 0 {
 		return 0, 1
 	}
