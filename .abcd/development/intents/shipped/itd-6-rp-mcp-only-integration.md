@@ -21,7 +21,7 @@ impact: additive
 
 > **abcd has exactly one integration with RepoPrompt: the MCP API.** abcd never picks an `oracle`, never reads RP's preset selection, never spawns its own subprocess for code review. It calls RP via MCP and RP uses whatever `oracle` the persona has configured for whatever task — Claude via the persona's subscription, Codex via the persona's subscription, Gemini, any preset RP knows. The persona configures `oracle` backends inside RP once; abcd uses them forever. Zero abcd-side `oracle` logic, zero "which preset?" prompts, zero hard-coded routing.
 >
-> **Status: no part of the RP MCP route is built.** The `RPUnavailable` error, the `MCPBridge` and the `oracle.py` audit-fix loop this record names belong to an earlier Python lineage: its spec `spc-5-rp-mcp-integration-declare` (predecessor store; not the `spc-5` in this repository's spec store) and its ADR-02 and ADR-03 (not this repository's adr-2 and adr-3). None of them is in this binary, and `go.mod` carries no MCP dependency. The re-filed scope, [spc-2609211950427074](../../specs/open/spc-2609211950427074-rp-mcp-only-integration.md), builds the route from nothing. See the Implementation status section.
+> **Status: built as the re-filed route, on 2026-10-12.** The re-filed scope, [spc-2609211950427074](../../specs/closed/spc-2609211950427074-rp-mcp-only-integration.md), built it from nothing: `oracle.review = rp` opts a lane's reviews in, and `internal/adapter/repoprompt` speaks MCP, with the standard library alone, to the server the person names. The `RPUnavailable` error, the `MCPBridge` and the `oracle.py` audit-fix loop this record names belong to an earlier Python lineage: its spec `spc-5-rp-mcp-integration-declare` (predecessor store; not the `spc-5` in this repository's spec store) and its ADR-02 and ADR-03 (not this repository's adr-2 and adr-3). None of them is in this binary, and `go.mod` carries no MCP dependency. See the Implementation status section.
 >
 > "I had wired up Claude, Codex, and Gemini in RP with task-specific presets," said Bob, staff engineer. "I'd worried abcd would keep asking me which to use. The RP MCP bridge just calls RP; when RP is not reachable it raises a typed `RPUnavailable` so the tooling can react cleanly instead of guessing. RP picks the `oracle`. I don't think about it."
 
@@ -129,20 +129,27 @@ behind them:
 The readiness gate does not read `builds_on`, so these edges inform a reader
 and a run that picks this record; they do not change the gate's verdict.
 
-_Nothing of this intent is built._ A grep for `MCPBridge`, `RPUnavailable` and `RepoPrompt`
-over `internal/` and `cmd/` finds only the scanner's RepoPrompt session-key pattern
+_Built on 2026-10-12_ by
+[spc-2609211950427074](../../specs/closed/spc-2609211950427074-rp-mcp-only-integration.md),
+from nothing: the validate stage and the command-line runner had landed, the
+`oracle.review` key is read through `internal/core/layered` by the delivery's own
+reader, and the MCP client is the standard library's, so `go.mod` still carries no
+MCP dependency. Before it, a grep for `MCPBridge`, `RPUnavailable` and `RepoPrompt`
+over `internal/` and `cmd/` found only the scanner's RepoPrompt session-key pattern
 (`internal/adapter/scanner/patterns.go`), a guard corpus line, and the doc comment of the
-configuration layer (`internal/core/layered`) naming `oracle.review` as a consumer it serves;
-`go.mod` carries no MCP dependency. The bridge, the typed error
+configuration layer (`internal/core/layered`) naming `oracle.review` as a consumer it serves.
+The bridge, the typed error
 and the host-reuse path an earlier Python lineage's `spc-5-rp-mcp-integration-declare` (predecessor store) describes
-belong to that lineage, not to this binary, so no part of the route is a foundation to build on.
+belong to that lineage, not to this binary, so no part of the route was a foundation to build on.
 The four acceptance criteria above are the re-filed set, and
-[spc-2609211950427074](../../specs/open/spc-2609211950427074-rp-mcp-only-integration.md)
+[spc-2609211950427074](../../specs/closed/spc-2609211950427074-rp-mcp-only-integration.md)
 carries all of them.
 
 ## Audit Notes
 
-_Empty. Populated by intent-fidelity-reviewer when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-d270e2e0acfb -->
+Fidelity review OWED (receipt rcp-d270e2e0acfb).
+<!-- abcd-review-end receipt=rcp-d270e2e0acfb -->
 
 ### Linkage note (2026-09-30)
 

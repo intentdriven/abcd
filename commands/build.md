@@ -336,6 +336,28 @@ that runs it): start the agent yourself as above. Every fallback is recorded;
 `implement status` and `implement record` count them per runner and per role.
 Tell the user each fallback's reason.
 
+A build lane's reviews can go to RepoPrompt over MCP instead of a reviewer you
+start. This is an opt-in: `oracle.review` set to `rp` in the repository's
+`.abcd/config.json` or in `~/.abcd.noindex/config.json` (the repository's file wins a
+key both set), with the MCP server's address, `oracle.rp.url`, in
+`~/.abcd.noindex/config.json` alone (http or https to this machine; an optional
+`oracle.rp.tool` names the tool, `oracle_send` by default). When a step hands
+out the ruthless or the security review, and no runner took it, `implement
+step` sends the review there itself, writes the answer to the review's return
+path and verifies it as yours would be, so the payload's `route` names `rp` and
+there is no agent to start. The review can take many minutes (the route's bound
+is thirty), so give that `implement step` a timeout above it or run it in the
+background; a step you stop early falls back. A review the route does not
+return (no server named on this machine, a refused connection, a timeout, the
+server's error, an answer with no verdict, a request too large to compose, or
+an interrupted step) is handed to you as usual, with `fallback` (the `role`,
+`asked: rp`, the `reason`, `ran: host`): start the reviewer yourself, and tell
+the user the reason. If a reviewer you started for the same review wrote its
+return first, that return stands and the route's answer is kept aside as
+`rp-return.md`; hand yours back as usual. The intent-auditor always stays with
+you. Unset, or set to `host`, nothing changes, and abcd never starts, installs
+or configures RepoPrompt.
+
 A runner that answers with a rate-limit response is the one failure not handed
 to you: every lane spends the same budget, so the run's window ends early. The
 step exits 0 with `next_eligible_at` (now plus the run's pause) and
