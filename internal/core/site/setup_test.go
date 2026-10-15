@@ -683,7 +683,7 @@ func TestAnUnsafeNameOrDomainIsRefused(t *testing.T) {
 // run block is spliced into the script before the shell parses it, which is
 // the injection shape; every value reaches the shell through env instead.
 func TestTheWorkflowInterpolatesNothingIntoAShell(t *testing.T) {
-	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"})
+	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -720,7 +720,7 @@ func TestTheWorkflowPinsFollowAbcdsOwn(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"})
+	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -766,7 +766,7 @@ func TestTheSeedSourcesAreAbcdsOwn(t *testing.T) {
 // successful run of this repository's own release workflow, never a pull
 // request's and never a fork's.
 func TestAWorkflowRunFromAForkNeverRenders(t *testing.T) {
-	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"})
+	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -789,7 +789,7 @@ func TestAWorkflowRunFromAForkNeverRenders(t *testing.T) {
 // workflows, filters no branch in the trigger (a branch filter drops the tag),
 // and admits the default branch or a v-tag inside the render job's gate.
 func TestTheWorkflowFiresOnEveryReleasePath(t *testing.T) {
-	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{}, hosting.Site{Name: "x"})
+	wf, err := renderSiteWorkflow("trunk", cloudflare.Adapter{}, hosting.Site{Name: "x"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

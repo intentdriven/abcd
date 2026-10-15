@@ -64,12 +64,10 @@ func (h *pagesHarness) run(t *testing.T, mutate ...func(*SetupRequest)) SetupRes
 }
 
 // pagesFiles is the whole repository half for the github-pages provider: the
-// project's abcd site settings (the composition holding the switch, and the
-// site's inputs setup writes for every provider) and the release workflow.
-var pagesFiles = []string{
-	ManifestRelPath, "site-src/ui.json", "site-src/site.css", "site-src/site.js", "site-src/record.js",
-	"site-src/headers", SiteWorkflowRelPath,
-}
+// project site's settings, holding the switch, and the release workflow.
+// Nothing is written for the website (the product thinker's ruling of
+// 2026-10-15): no composition and no site sources.
+var pagesFiles = []string{ManifestRelPath, SiteWorkflowRelPath}
 
 func changedPaths(t *testing.T, h *harness) []string {
 	t.Helper()
@@ -103,13 +101,23 @@ func TestSwitchingOnAProjectSiteSetsTheSwitchAndAddsTheWorkflowOnly(t *testing.T
 	if m.Hosting == nil || m.Hosting.Provider != "github-pages" || !m.Hosting.On() {
 		t.Fatalf("hosting = %+v, want github-pages switched on", m.Hosting)
 	}
-	if !strings.Contains(string(mustRead(t, h.repo.Root(), ManifestRelPath)), `"publish": true`) {
-		t.Fatal("the composition does not carry the switch")
+	settings := string(mustRead(t, h.repo.Root(), ManifestRelPath))
+	if !strings.Contains(settings, `"publish": true`) {
+		t.Fatal("the settings do not carry the switch")
+	}
+	if !m.Project() {
+		t.Fatalf("setup wrote a composition, not a project site's settings:\n%s", settings)
+	}
+	for _, key := range []string{`"identity"`, `"home"`, `"ui_strings"`, `"docs"`, `"chapters"`} {
+		if strings.Contains(settings, key) {
+			t.Errorf("the settings carry the composition key %s:\n%s", key, settings)
+		}
 	}
 
 	wf := string(mustRead(t, h.repo.Root(), SiteWorkflowRelPath))
 	for _, s := range []string{"environment: github-pages\n", "      pages: write\n", "      id-token: write\n",
-		"--base-path /example-site/", "jq -e '.hosting.publish == true' .abcd/site.json"} {
+		"--base-path /example-site/", "jq -e '.hosting.publish == true' .abcd/site.json",
+		"site build --project --out site", "lint site --project --out site"} {
 		if !strings.Contains(wf, s) {
 			t.Errorf("the workflow lacks %q", s)
 		}
@@ -138,20 +146,28 @@ func TestSwitchingOnAProjectSiteSetsTheSwitchAndAddsTheWorkflowOnly(t *testing.T
 		t.Fatalf("status = %q", res.Status)
 	}
 
-	// The site the composition declares builds below the project's path.
+	// The project site builds below the project's path from the settings
+	// alone, and the gate passes it.
 	out := t.TempDir()
-	if _, err := Build(Request{RepoRoot: h.repo.Root(), OutDir: out, Stamp: fixtureStamp, BasePath: "/example-site/"}); err != nil {
-		t.Fatalf("the switched-on composition does not build: %v", err)
+	if _, err := Build(Request{RepoRoot: h.repo.Root(), OutDir: out, Stamp: fixtureStamp, BasePath: "/example-site/", Project: true}); err != nil {
+		t.Fatalf("the switched-on project site does not build: %v", err)
 	}
-	if res, err := Check(CheckRequest{RepoRoot: h.repo.Root(), OutDir: out, BasePath: "/example-site/"}); err != nil {
+	if res, err := Check(CheckRequest{RepoRoot: h.repo.Root(), OutDir: out, BasePath: "/example-site/", Project: true}); err != nil {
 		t.Fatal(err)
-	} else {
-		for _, f := range res.Findings {
-			if f.Check == CheckBasePath {
-				t.Errorf("the Pages build links outside its path: %+v", f)
-			}
-		}
+	} else if !res.OK() {
+		t.Errorf("the project site fails its gate: %+v", res.Findings)
 	}
+}
+
+// A repository holding nothing abcd writes that a project site is built from
+// is refused before anything is asked or written: the site would be empty.
+func TestAProjectSiteWithNothingAbcdWroteIsRefused(t *testing.T) {
+	h := newPagesHarness(t)
+	h.repo.Git("rm", "-q", "-r", ".abcd/positioning.json", ".abcd/development/IDENTITY.md")
+	h.repo.Write("README.md", "# Example\n\nA person's own words.\n")
+	h.repo.Commit("nothing abcd wrote but the record's scaffolding")
+	_, err := Setup(pagesRequest(t, h))
+	refusedBeforeAnything(t, h, err, "the site would be empty")
 }
 
 func TestDecliningTheSwitchChangesNothing(t *testing.T) {
@@ -293,7 +309,7 @@ func TestDecliningTheRemovalKeepsTheWorkflow(t *testing.T) {
 }
 
 func TestThePagesWorkflowHoldsNoSecretAndInterpolatesNothingIntoAShell(t *testing.T) {
-	wf, err := renderSiteWorkflow("main", githubpages.Adapter{}, hosting.Site{Name: "widgets", Repo: "acme/widgets"})
+	wf, err := renderSiteWorkflow("main", githubpages.Adapter{}, hosting.Site{Name: "widgets", Repo: "acme/widgets"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

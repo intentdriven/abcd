@@ -118,25 +118,24 @@ var hostingBlockRe = regexp.MustCompile("`\"hosting\": (\\{[^`]*\\})`")
 // A composition with no hosting block is not rewritten; setup names the block
 // to add. A block added that way, switch on, is still put to the person as the
 // switch question before the workflow is written: the switch is asked at setup
-// whoever wrote it.
+// whoever wrote it. (A composition is the composed route, a repository's own
+// declaration; setup itself writes a project site's settings instead.)
 func TestAHostingBlockAddedByHandIsStillAskedTheSwitch(t *testing.T) {
 	h := newPagesHarness(t)
-	h.run(t)
-	// Back to a repository with a composition but no hosting block, no
-	// workflow and no Pages site.
-	var m map[string]any
-	if err := json.Unmarshal(mustRead(t, h.repo.Root(), ManifestRelPath), &m); err != nil {
-		t.Fatal(err)
+	// A repository with a composition but no hosting block, no workflow and
+	// no Pages site.
+	m := map[string]any{
+		"schema_version": 1,
+		"purpose":        "A composition written by hand.",
+		"identity":       map[string]any{"file": ".abcd/development/IDENTITY.md", "heading": "Identity (canonical)"},
+		"ui_strings":     "site-src/ui.json",
+		"home": map[string]any{
+			"hero":     map[string]any{"page": "docs/README.md", "figure": "first-image"},
+			"chapters": []any{map[string]any{"letter": "a", "page": "docs/README.md", "layout": "prose"}},
+		},
 	}
-	delete(m, "hosting")
 	raw, _ := json.MarshalIndent(m, "", "  ")
-	if err := os.WriteFile(filepath.Join(h.repo.Root(), ManifestRelPath), append(raw, '\n'), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Remove(filepath.Join(h.repo.Root(), SiteWorkflowRelPath)); err != nil {
-		t.Fatal(err)
-	}
-	h.pages.Repos["example-owner/example-site"].Pages = nil
+	h.repo.Write(ManifestRelPath, string(raw)+"\n")
 	h.repo.Git("add", "-A")
 	h.repo.Git("commit", "-q", "-m", "a composition with no hosting block")
 
