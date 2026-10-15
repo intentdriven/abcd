@@ -20,6 +20,9 @@ type Options struct {
 	// Version is the binary's version the Assisted-by label names; "" means
 	// the running binary's (core.Version).
 	Version string
+	// Embargo is the embargo check an announcement is held to (C5); nil
+	// refuses every announcement, since an unchecked one is never let through.
+	Embargo EmbargoCheck
 }
 
 func (o Options) now() time.Time {

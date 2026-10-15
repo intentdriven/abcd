@@ -102,7 +102,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if err := originPresent(root); err != nil {
+	if err := originPresent(root, "reservations"); err != nil {
 		return Result{}, err
 	}
 	tree, err := emptyTree(root)
@@ -423,8 +423,8 @@ func originDefault(root string) string {
 }
 
 // originPresent refuses a checkout with no remote named origin, naming the
-// remotes it has.
-func originPresent(root string) error {
+// remotes it has; what names what lives there ("reservations").
+func originPresent(root, what string) error {
 	out, err := localGit(root, 64<<10, "remote")
 	if err != nil {
 		return refuse("could not list this checkout's remotes: %s; %s", redacted(err), nothingPushed)
@@ -434,14 +434,14 @@ func originPresent(root string) error {
 		return nil
 	}
 	if len(names) == 0 {
-		return refuse("reservations live on the remote named %s, and this checkout has no remote; %s", Remote, nothingPushed)
+		return refuse("%s live on the remote named %s, and this checkout has no remote; %s", what, Remote, nothingPushed)
 	}
 	quoted := make([]string, len(names))
 	for i, n := range names {
 		quoted[i] = echoName(n)
 	}
-	return refuse("reservations live on the remote named %s, and this checkout's remotes are: %s; %s",
-		Remote, strings.Join(quoted, ", "), nothingPushed)
+	return refuse("%s live on the remote named %s, and this checkout's remotes are: %s; %s",
+		what, Remote, strings.Join(quoted, ", "), nothingPushed)
 }
 
 // echoName renders a remote's name bare when it is a plain name, quoted

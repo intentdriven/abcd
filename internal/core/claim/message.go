@@ -226,6 +226,12 @@ type trailers struct {
 	vals map[string][]string
 	// other is the final paragraph's lines that carry no known key, verbatim.
 	other []string
+	// inexact is the final paragraph's lines that carry a known key but are
+	// not written exactly `Key: value` in its canonical spelling: indented,
+	// spaced around the colon or the value, or the key in another case. The
+	// collector reads them as the key's (a reservation tolerates them); a
+	// family that admits only its own trailers refuses on them.
+	inexact []string
 	// lead is the message before its final paragraph (the subject, and any
 	// paragraph after it), "" when the message is one paragraph.
 	lead string
@@ -254,7 +260,11 @@ func collectTrailers(text string, keys []string) trailers {
 			t.other = append(t.other, l)
 			continue
 		}
-		t.vals[known] = append(t.vals[known], strings.TrimSpace(v))
+		val := strings.TrimSpace(v)
+		if l != known+": "+val || val == "" {
+			t.inexact = append(t.inexact, l)
+		}
+		t.vals[known] = append(t.vals[known], val)
 	}
 	return t
 }
