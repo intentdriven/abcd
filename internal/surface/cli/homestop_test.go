@@ -302,3 +302,28 @@ func TestBothHomesStopAndNameBoth(t *testing.T) {
 		t.Fatalf("statusline: exit %d, stdout %q", code, out)
 	}
 }
+
+// TestOldHomeStopsLintOutboundAsCouldNotRun: `lint outbound` answers a stop
+// with exit 2, its "the check could not run" status, never the exit 1 its
+// callers read as a refusal of the text. The scaffolded commit-msg gate fails
+// open on any status but 0 and a refusal, so a standing legacy home must not
+// make it block every commit.
+func TestOldHomeStopsLintOutboundAsCouldNotRun(t *testing.T) {
+	home, _, _ := stoppedHome(t, false)
+	stop := expectedStop(t, home, false)
+	code, out, errOut := stopRun(t, home, "a clean message\n", "lint", "outbound", "--label", "commit message")
+	if code != 2 || out != "" || errOut != "abcd: "+stop.Line+"\n" {
+		t.Fatalf("exit %d\nstdout %q\nstderr %q\nwant exit 2, nothing on stdout and the stop line on stderr", code, out, errOut)
+	}
+	code, out, errOut = stopRun(t, home, "a clean message\n", "lint", "outbound", "--json")
+	var env struct {
+		Error    string `json:"error"`
+		ExitCode int    `json:"exit_code"`
+	}
+	if err := json.Unmarshal([]byte(out), &env); err != nil {
+		t.Fatalf("stdout is not the error envelope (%v): %q", err, out)
+	}
+	if code != 2 || env.Error != stop.Line || env.ExitCode != 2 || errOut != "" {
+		t.Fatalf("exit %d, envelope %+v, stderr %q; want exit 2 and the stop line in the envelope", code, env, errOut)
+	}
+}

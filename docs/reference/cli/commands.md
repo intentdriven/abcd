@@ -125,6 +125,8 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
+      --outbound-forge          opt this repo into the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which it refuses when they carry a live agent-session URL or a tool attribution footer; it writes no hook and names no binary, and the choice is recorded in .abcd/config.json as outbound.forge, so a later install without the flag keeps it
+      --outbound-hook           opt this repo into the committed commit-msg hook that refuses a commit message carrying a live agent-session URL or a tool attribution footer; it runs only the abcd named by git config --local abcd.binary and lets the commit through with one warning when none is set; the choice is recorded, so a later install without the flag keeps the hook
       --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
@@ -378,8 +380,8 @@ rounds falsifies the pick: the run record (`abcd implement record`) carries the 
 score table and says so, and the intent's entry is not edited.
 
 No candidate for a first pick is refused, naming each excluded intent and the check that
-excluded it, and nothing is written. Refused too, writing nothing: a negative --max,
---max with --until-empty, and, while a series is in progress, a count or pace other than
+excluded it, and nothing is written. Refused too, writing nothing: --max 0 or a negative
+--max, --max with --until-empty, and, while a series is in progress, a count or pace other than
 the one it began with, and, until it is restored or removed, a series state that cannot be
 read, does not parse, or names a count, a pick, an outcome, pace flags or a pace the series
 never writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.
@@ -1556,7 +1558,7 @@ List the ended transcripts not yet redacted into the store: Writes only a missin
 
 ### `abcd ideate`
 
-Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.
+Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.
 
 **Usage:** `abcd ideate`
 
@@ -1569,20 +1571,22 @@ verb requires it, and skipping it is never warned about.
 
 #### `abcd ideate record`
 
-Validate a host-composed gauntlet verdict: Writes the dated research record; refuses without an idea slug or --verdict-json.
+Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.
 
-**Usage:** `abcd ideate record <idea-slug> --verdict-json <file|-> [flags]`
+**Usage:** `abcd ideate record <idea-slug> --private|--public --verdict-json <file|-> [flags]`
 
 **Flags:**
 
 ```
+      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision-log line (exclusive with --public)
+      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ with its decision-log line (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
 ```
 
 **Example:**
 
 ```
-abcd ideate record widen-the-public-api --verdict-json verdict.json
+abcd ideate record widen-the-public-api --public --verdict-json verdict.json
 ```
 
 ### `abcd identity`
@@ -2533,6 +2537,7 @@ Emit the consistency request over the brief and every intent, or one intent agai
 **Flags:**
 
 ```
+      --max-chunks int      on a provider route, the most chunks of an overflowing corpus sent in one run; a plan of more is refused, naming its count and bytes (default 8)
       --route stringArray   route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
@@ -2540,13 +2545,13 @@ Emit the consistency request over the brief and every intent, or one intent agai
 
 Ingest consistency findings as a dated review and a capture per finding: Writes the report and the ledger records; refuses without --findings-json.
 
-**Usage:** `abcd intent consistency ingest --findings-json <path> [flags]`
+**Usage:** `abcd intent consistency ingest --findings-json <path> [--findings-json <path>...] [flags]`
 
 **Flags:**
 
 ```
-      --findings-json string   path to the consistency findings JSON the intent-auditor returned
-      --route stringArray      route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
+      --findings-json stringArray   path to the consistency findings JSON the intent-auditor returned; give it once per chunk of an overflowing corpus
+      --route stringArray           route one agent for this run: <agent>=<tier>[@<connection>][?k=v,...], tier one of local | economy | frontier | host-decides (one per agent this invocation dispatches, and each invocation dispatches one; wins over every accepted routing table for this run alone, and the receipt records it verbatim)
 ```
 
 **Example:**
@@ -3353,7 +3358,7 @@ and nothing is written on any of them.
 
 ### `abcd peers`
 
-List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout.
+List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.
 
 **Usage:** `abcd peers`
 
@@ -3371,10 +3376,20 @@ whose common dir is another repository's, or one whose ledger holds an id in
 two status folders is named with the reason and not read; a gone or refused
 worktree's branch is then read from the object store instead.
 
-Strictly read-only: it writes nothing, takes no lock, and fetches nothing.
+Then the reservations on the shared remote: one fetch from origin of every
+abcd-reserved/ branch, with pruning, and of the default branch, then every
+reservation with its record, holder, footprint, effective expiry and state
+(live, expired, released, or unreadable with its reason and the end of its
+hold), and each person's count of live reservations. The fetch is the only
+network act; it updates the remote-tracking reservation branches and stamps
+when it ran in the local tier, and nothing else is written. A checkout with no
+remote named origin lists no reservations. When the fetch fails, the
+reservations are listed as last fetched, with that view's age, and the failure
+is named on stderr and in fetch_error.
+
 A worktree is named home-relative (~/...), or by its directory name when it
-sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 2
-outside a git checkout.
+sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
+the reservations could not be fetched; exit 2 outside a git checkout.
 
 ### `abcd reading`
 
@@ -3589,6 +3604,57 @@ nothing filed. After the editor ran, both name where what was written is kept.
 
 ```
       --template   print the report skeleton to fill (writes nothing)
+```
+
+### `abcd reserve`
+
+Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.
+
+**Usage:** `abcd reserve <record-id> [flags]`
+
+abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
+abcd reserve <record-id> --release
+
+Reserve an issue or an intent on the shared remote before starting work on it, so
+every other participant sees it is taken. The reservation is the branch
+abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits
+naming the record, the holder (your GitHub username), this working copy, the files
+the work will change (--footprint, once per repository-relative path) and the
+lease (--lease, default 2h, from 1m to 24h).
+
+Every act fetches the reservations from origin, judges the tip, writes one
+commit and makes one plain fast-forward push, with the repository's hooks
+running: a reservation, a renewal by the same person and copy, a take-over of
+a reservation lapsed past its expiry by five minutes, or a release (--release),
+which pushes a tombstone. --take-over moves your own live reservation from
+another copy to this one; it never moves another person's. A record already
+resolved, won't-fixed, shipped or superseded on origin's default branch counts
+as released whatever its reservation says.
+
+The holder is read from user.email when it is a GitHub no-reply address, or from
+reservation.github_username in the machine configuration; the repository's
+own configuration is never read for it. The checkout must have its local tier
+(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every
+reservation.
+
+Exit 0 when the act reached origin (or a release was already made); exit 3 when
+the record is held by someone else or by your other copy, so back off; exit 2
+on every other refusal and failure. Nothing is pushed on a refusal, and a failed
+push leaves no reservation and nothing in the checkout.
+
+**Flags:**
+
+```
+      --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
+      --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
+      --release                 release your reservation from this copy by pushing a tombstone
+      --take-over               move your own live reservation from another copy to this one
+```
+
+**Example:**
+
+```
+abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go
 ```
 
 ### `abcd rules`

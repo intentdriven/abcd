@@ -11,6 +11,9 @@
   "oracle": {
     "backend": "host-delegated"
   },
+  "outbound": {
+    "forge": true
+  },
   "repo": {
     "visibility": "public"
   }

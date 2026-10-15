@@ -223,21 +223,27 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 11. Version 11
+under a run id it does not name. The state is schema version 12. Version 12
 added an await's `answered` (itd-6): the reviewer route and the SHA-256 of the
 answer its step placed at the review's return path, written under the run's
 lock with the answer, so a hand-back of that answer is recorded as the route's.
-Version 10 is its strict subset, read as a run no route placed an answer for; a
-file of version 10 or lower carrying `answered` is refused. An abcd that writes
-version 10 (v0.14.0 and v0.14.1) decodes a newer file strictly before it checks
-the version, so a version-11 file carrying `answered` reaches it as a file that
-does not parse, with a remedy to restore it or remove the run directory. That
-remedy would throw the run away: the run is intact, so run the newer abcd that
-wrote it instead (`abcd update`), and do not remove the run directory. A
-version-11 file without `answered` reaches it as a version it does not know.
-From version 11 on, the reader refuses a version above its own before any strict
-decode, naming it as a newer abcd's file, whatever that version added.
-Version 10
+Version 11 is its strict subset, read as a run no route placed an answer for,
+its `reserved_at` kept; a file of version 11 or lower carrying `answered` is
+refused. An abcd that writes version 10 (v0.14.0 and v0.14.1), or a build that
+writes version 11, decodes a newer file strictly before it checks the version,
+so a version-12 file carrying `answered` or `reserved_at` reaches it as a file
+that does not parse, with a remedy to restore it or remove the run directory.
+That remedy would throw the run away: the run is intact, so run the newer abcd
+that wrote it instead (`abcd update`), and do not remove the run directory. A
+version-12 file carrying neither reaches it as a version it does not know. From
+version 12 on, the reader refuses a version above its own before any strict
+decode, naming it as a newer abcd's file, whatever that version added. Version 11
+added the run's reservation on the shared remote (itd-2609091034175565): the
+run's `reserved_at`, the reservation each step of the run renews at half its
+lease, fences before the landing arms a merge, and tombstones once the run's
+last lane has landed. Version 10 is its strict subset, read as a run that holds
+no reservation; a file of version 10 or lower carrying `reserved_at` is
+refused. Version 10
 added an await's `kept` (iss-2610100913086397): why a rate-limit checkpoint
 kept the await when it could not save the gone agent's return aside, which a
 restart of the lane re-tells. Version 9 is its strict subset, read as a run no rate
@@ -259,7 +265,7 @@ receipt per role a routed runner did not run, and the `route` a verified receipt
 or a validator's recorded return names when a runner ran its agent. A review the
 reviewer route (itd-6) did not return is one more receipt in the same
 `fallbacks`, asked `rp`, and a review it ran names `rp` as its `route`;
-neither changes the file's shape, and the answer it placed is version 11's
+neither changes the file's shape, and the answer it placed is version 12's
 `answered`. Version 7
 added the landing (a lane's `landing`, the implementers' `receipts` it verified
 with the model each runner reported, and the captures its receipts declared
@@ -269,7 +275,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 11 by its next mutation; an earlier version carrying what
+written back at version 12 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,

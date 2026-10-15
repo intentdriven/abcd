@@ -281,6 +281,20 @@
           "hidden": false
         },
         {
+          "name": "outbound-forge",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "outbound-hook",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "readme-parts",
           "shorthand": "",
           "type": "string",
@@ -1589,15 +1603,29 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
+      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd ideate record",
       "hidden": false,
       "block": "agents",
-      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated research record; refuses without an idea slug or --verdict-json.",
+      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.",
       "flags": [
+        {
+          "name": "private",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "public",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "verdict-json",
           "shorthand": "",
@@ -2252,6 +2280,13 @@
       "sentence": "Emit the consistency request over the brief and every intent, or one intent against them: Writes the request locally; refuses a superseded intent.",
       "flags": [
         {
+          "name": "max-chunks",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "route",
           "shorthand": "",
           "type": "stringArray",
@@ -2269,7 +2304,7 @@
         {
           "name": "findings-json",
           "shorthand": "",
-          "type": "string",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         },
@@ -3080,7 +3115,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.",
       "flags": []
     },
     {
@@ -3220,6 +3255,43 @@
       "flags": [
         {
           "name": "template",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd reserve",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
+      "flags": [
+        {
+          "name": "footprint",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "lease",
+          "shorthand": "",
+          "type": "duration",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take-over",
           "shorthand": "",
           "type": "bool",
           "required": false,

@@ -1035,6 +1035,14 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 		scopes[s.carrier] = next
 	}
 
+	// The text a posting gh command hands the forge, in a repository that
+	// opted in (forge.go). Read here, where each segment's states are known,
+	// so a body file resolves where the command runs; never inside a script
+	// the line runs, which a front door does not hand the guard as typed.
+	if run == nil {
+		signals = append(signals, r.forgeText(rc, segs, recs)...)
+	}
+
 	// The targets each segment points a shell at, in every state it can run
 	// in, and only then the writes: most lines run no script, and pay for
 	// nothing more.

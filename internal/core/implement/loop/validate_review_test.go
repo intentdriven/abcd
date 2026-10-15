@@ -848,13 +848,13 @@ func TestAForgedAnswerFileBesideAReturnLeavesItTheHosts(t *testing.T) {
 	}
 }
 
-// TestTheRoutesAnswerIsVersion11sAndLeavesNothingBehind: an await's
-// `answered` is state version 11's. Version 10 is its strict subset and reads
-// as the current version; a file of version 10 or lower carrying it is
+// TestTheRoutesAnswerIsVersion12sAndLeavesNothingBehind: an await's
+// `answered` is state version 12's. Version 11 is its strict subset and reads
+// as the current version; a file of version 11 or lower carrying it is
 // refused naming the version and the key. Once the hand-back verifies the
 // review, its await, and the answer recorded on it, are gone, and nothing but
 // the return and the request stands in the review's directory.
-func TestTheRoutesAnswerIsVersion11sAndLeavesNothingBehind(t *testing.T) {
+func TestTheRoutesAnswerIsVersion12sAndLeavesNothingBehind(t *testing.T) {
 	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
 	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
 	aw := *res.Awaiting
@@ -886,7 +886,7 @@ func TestTheRoutesAnswerIsVersion11sAndLeavesNothingBehind(t *testing.T) {
 		}
 		editState(t, repo.Root(), id, func(doc map[string]any) { doc["schema_version"] = version })
 	}
-	for _, version := range []int{schemaVersionUnanswered, schemaVersionUnkept} {
+	for _, version := range []int{schemaVersionUnanswered, schemaVersionUnreserved, schemaVersionUnkept} {
 		as(version)
 		_, err := ReadState(repo.Root(), id)
 		r := mustRefusal(t, err)
@@ -906,7 +906,7 @@ func TestTheRoutesAnswerIsVersion11sAndLeavesNothingBehind(t *testing.T) {
 		}
 	})
 	if st, err := ReadState(repo.Root(), id); err != nil || st.SchemaVersion != SchemaVersion {
-		t.Fatalf("a version-10 file without `answered` reads as the current version: %v %v", st.SchemaVersion, err)
+		t.Fatalf("a version-11 file without `answered` reads as the current version: %v %v", st.SchemaVersion, err)
 	}
 	if err := os.WriteFile(statePath, current, 0o600); err != nil {
 		t.Fatal(err)
@@ -1233,5 +1233,76 @@ func TestATakeBackThatCannotReadSaysTheReturnStands(t *testing.T) {
 				t.Fatalf("the answer recorded on the await stays with the return: %+v", a)
 			}
 		})
+	}
+}
+
+// TestAVersion11ReservationReadsAsVersion12: version 11, the run's
+// reservation, is version 12's strict subset. A version-11 file carrying
+// `reserved_at` reads as the current version and is written back at 12 with
+// its reservation kept; a version-12 file carrying both the reservation and
+// the route's answer reads with both.
+func TestAVersion11ReservationReadsAsVersion12(t *testing.T) {
+	repo, id, stages, _ := startAtValidate(t, "one.txt", "")
+	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
+	aw := *res.Awaiting
+	reserved := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
+	if schemaVersionUnanswered != 11 || SchemaVersion != 12 {
+		t.Fatalf("the route's answer is version 12's, after the reservation's 11: %d %d", schemaVersionUnanswered, SchemaVersion)
+	}
+	editState(t, repo.Root(), id, func(doc map[string]any) {
+		doc["schema_version"] = schemaVersionUnanswered
+		doc["reserved_at"] = reserved.Format(time.RFC3339)
+	})
+	st, err := ReadState(repo.Root(), id)
+	if err != nil || st.SchemaVersion != SchemaVersion || st.ReservedAt == nil || !st.ReservedAt.Equal(reserved) {
+		t.Fatalf("a version-11 file carrying a reservation reads as the current version with it: %+v %v", st.ReservedAt, err)
+	}
+	// The next mutation writes it back at version 12, the reservation kept.
+	if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err == nil {
+		t.Fatal("no return stands yet, so the hand-back is refused and nothing is written")
+	}
+	if err := os.WriteFile(filepath.Join(repo.Root(), filepath.FromSlash(aw.Receipt)), []byte(reviewerReturn("SHIP")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Receipt(repo.Root(), id, aw.Receipt, stages, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	written, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(id))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(written, &doc); err != nil {
+		t.Fatal(err)
+	}
+	if doc["schema_version"] != float64(SchemaVersion) || doc["reserved_at"] == nil {
+		t.Fatalf("the next write is version %d with the reservation kept:\n%s", SchemaVersion, written)
+	}
+	if st, err := ReadState(repo.Root(), id); err != nil || st.ReservedAt == nil || !st.ReservedAt.Equal(reserved) {
+		t.Fatalf("the reservation written back is the one read: %+v %v", st.ReservedAt, err)
+	}
+
+	res = reviewOut(t, repo.Root(), id, stages, RoleSecurity)
+	both := *res.Awaiting
+	answer := &RouteAnswer{Route: "rp", SHA256: answerDigest([]byte(reviewerReturn("APPROVE")))}
+	editState(t, repo.Root(), id, func(doc map[string]any) {
+		for _, a := range doc["lanes"].([]any)[0].(map[string]any)["awaits"].([]any) {
+			if a.(map[string]any)["receipt"] == both.Receipt {
+				a.(map[string]any)["answered"] = map[string]any{"route": answer.Route, "sha256": answer.SHA256}
+			}
+		}
+	})
+	st, err = ReadState(repo.Root(), id)
+	if err != nil || st.SchemaVersion != SchemaVersion || st.ReservedAt == nil {
+		t.Fatalf("a version-12 file carrying both fields reads: %v", err)
+	}
+	var got *RouteAnswer
+	for _, a := range st.Lanes[0].Awaits {
+		if a.Receipt == both.Receipt {
+			got = a.Answered
+		}
+	}
+	if got == nil || *got != *answer {
+		t.Fatalf("the route's answer reads beside the reservation: %+v", got)
 	}
 }

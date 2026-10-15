@@ -1,6 +1,6 @@
 ---
 name: ideate
-description: "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb."
+description: "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb."
 argument-hint: "<the idea, in one or two sentences>"
 block: people
 ---
@@ -20,6 +20,23 @@ being wrong about it would be expensive.
 ideate record` validates what they produced, proves every citation names a real
 record, and writes the durable verdict. It never fetches a source and never
 forms an opinion.
+
+## First, ask: private or public?
+
+Before the first leg, ask the product thinker whether the idea is **private**
+or **public**, under a `Product` chip, and carry the answer to the record. Ask it as its own question,
+never assume it, and never infer it from the idea or the repository: the answer
+decides who can ever read the verdict.
+
+- **Private** — the verdict stays on this machine, in
+  `~/.abcd.noindex/ideas/<root-sha>/`, readable by the person's account alone,
+  with no line in the decision log. Name no source behind the idea anywhere
+  public while it is private.
+- **Public** — the verdict is written into the repository, under
+  `.abcd/development/research/ideas/<root-sha>/`, with a dated pointer in
+  `.abcd/work/DECISIONS.md`, and is public once pushed, sources included.
+
+`<root-sha>` is the repository's root commit, which the binary resolves itself.
 
 ## The three legs, in order
 
@@ -48,8 +65,11 @@ refuses a claim that names none.
 Read the existing record before anything else is decided — the brief, the
 intents in **every** bucket (`drafts/`, `planned/`, `shipped/`, `disciplines/`,
 `superseded/`), the ADRs, the principles, the research notes under
-`.abcd/development/research/notes/`, and the decision log
-`.abcd/work/DECISIONS.md`. Answer one question: does an entry already
+`.abcd/development/research/notes/`, the public verdicts under
+`.abcd/development/research/ideas/`, and the decision log
+`.abcd/work/DECISIONS.md`. Read this machine's private verdicts in
+`~/.abcd.noindex/ideas/<root-sha>/` too, but never quote one into a public
+verdict. Answer one question: does an entry already
 **cover**, **contradict**, or **supersede** this idea?
 
 Every hit is **cited by record id** (`itd-N`, `spc-N`, `iss-N`, `adr-N`), and
@@ -85,10 +105,12 @@ Ask it for concrete **kill attempts**, each with an outcome: `survived`,
 
 ## Record the verdict
 
-Compose the verdict document and hand it to the binary:
+Compose the verdict document and hand it to the binary with the product
+thinker's answer: exactly one of `--private` or `--public`. The verb has no default and
+refuses a run with neither or both, writing nothing.
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ideate record <idea-slug> --verdict-json <path>   # or - for stdin
+"${CLAUDE_PLUGIN_ROOT}/abcd" ideate record <idea-slug> --private --verdict-json <path>   # or --public; - for stdin
 ```
 
 `<idea-slug>` is lower-case kebab-case (it becomes a filename). The document:
@@ -127,11 +149,25 @@ weighed nothing" are indistinguishable to a later reader.
 
 ## What the binary does with it
 
-It writes `.abcd/development/research/notes/<date>-ideate-<slug>.md` — the idea, the
-three legs, the verdict, and the rejected alternatives, rendered for a human —
-and appends one dated pointer line to `.abcd/work/DECISIONS.md`.
+It writes one record, `<date>-ideate-<slug>.md` — the idea, the three legs, the
+verdict, and the rejected alternatives, rendered for a human — to the store the
+answer names:
 
-**Both paths are relative to the checkout root, from anywhere in the tree.** The
+| Answer | Record | Decision log |
+|---|---|---|
+| `--private` | `~/.abcd.noindex/ideas/<root-sha>/`, owner-only | untouched |
+| `--public` | `.abcd/development/research/ideas/<root-sha>/` | one dated pointer line appended to `.abcd/work/DECISIONS.md` |
+
+A private record is refused when the home directory lies inside a git working
+tree that is not the account's own, because a commit there could carry it.
+Before writing one, the verb makes sure `~/.abcd.noindex/.gitignore` has been
+laid, so a git repository in the home folder passes the record by; where that
+file cannot be laid, the private record is refused and nothing is written. A
+repository with no commit yet has no root commit to key either store on, and a
+shallow clone names its graft in place of the root, so both are refused; fetch
+the full history (`git fetch --unshallow`) and record again.
+
+**The public paths are relative to the checkout root, from anywhere in the tree.** The
 verb resolves the repository root before it validates anything, so the grill
 reads the checkout's own record — a hit citing `itd-104` resolves from a package
 directory exactly as it does from the root — and both artefacts land in the
@@ -139,11 +175,12 @@ checkout's store. Outside a repository there is no research store to write into,
 and the verb refuses (exit 2) rather than laying one where it stands: a verdict
 filed outside every checkout reaches no gate and no reader, and a killed idea
 nobody can find is an idea that gets proposed again. If a research store also
-exists below the repository root, the verb names it on stderr and leaves it
+exists between the working directory and the repository root, the verb names it on stderr and leaves it
 alone; relay that line.
 
-Both are committed, so every free-text field of the verdict is scanned and
-redacted before either is written: a token, an email, or an absolute home path in
+A public verdict is committed, and a private one is a file on disk, so in both
+stores every free-text field of the verdict is scanned and redacted before
+anything is written: a token, an email, or an absolute home path in
 the idea, a claim, a note, a kill attempt, or a rejected alternative is rewritten
 to a placeholder, and the count comes back as `redactions`. A repository whose
 scanner config cannot be read refuses the run outright rather than record under a
@@ -152,12 +189,14 @@ the config is repaired.
 
 Exit codes:
 
-- **0** — recorded. Report the `verdict`, the `path`, and the `cited_records`
+- **0** — recorded. Report the `visibility`, the `verdict`, the `path`, and the `cited_records`
   (the ids the grill cited, every one proved to resolve). Show the user the
   written record. If `redactions` is non-zero, say so — the record no longer
   matches what was composed, and whoever composed it needs to know a credential
   or an identity was in the text.
-- **2** — refused, and **nothing was written**. Relay the diagnostic: an
+- **2** — refused, and **nothing was written**. Relay the diagnostic: a run
+  with neither `--private` nor `--public`, or both, is refused (ask the product
+  thinker, then re-run with the answer), an
   unresolvable citation names the id, a payload fault names the field, a
   verdict record that already exists under today's date is refused rather than
   overwritten (give the re-run its own slug, or keep the first record), and a

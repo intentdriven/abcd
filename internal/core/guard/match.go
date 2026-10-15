@@ -69,6 +69,62 @@ var wrappers = map[string]bool{
 	// is the directory change `command cd` is, and fails the same way
 	// (review2-guard finding 7). It takes no options.
 	"builtin": true,
+
+	// Node package runners: `npx <pkg> [args]` runs the program its first
+	// operand names, fetching the package when it is not installed
+	// (iss-2610112232319827). Not a util-linux shim like those above; its
+	// value flags come from npm's documented grammar (wrappersWithoutProbes).
+	// Its siblings are two words, `npm exec`, `pnpm dlx` and `yarn dlx`, and
+	// are read by runnerSubcommands.
+	"npx": true,
+}
+
+// packageRunners names the one-word package runners among the wrappers. The
+// walk steps them as wrappers, and arrives at the word itself as a command as
+// well, so an entry naming the runner still matches it (walkToCommand).
+var packageRunners = map[string]bool{"npx": true}
+
+// runnerSubcommands names the package managers whose subcommand makes them a
+// runner as npx is, and the wrapper each subcommand is read as: `npm exec`
+// (and its alias `npm x`), `pnpm dlx`, `yarn dlx`. A subcommand the line does
+// not fix can be the runner's.
+var runnerSubcommands = map[string]map[string]string{
+	"npm":  {"exec": "npm exec", "x": "npm exec"},
+	"pnpm": {"dlx": "pnpm dlx"},
+	"yarn": {"dlx": "yarn dlx"},
+}
+
+// runnerAt reports the runner wrapper the word at pos of tokens starts, when
+// name, its lower-cased basename, is a package manager whose next word is a
+// runner subcommand, or a word the line does not fix.
+func runnerAt(name string, tokens []string, pos int) (string, bool) {
+	subs, ok := runnerSubcommands[name]
+	if !ok || pos+1 >= len(tokens) {
+		return "", false
+	}
+	next := tokens[pos+1]
+	if w, ok := subs[next]; ok {
+		return w, true
+	}
+	if isUnknown(next) {
+		for _, w := range subs {
+			return w, true
+		}
+	}
+	return "", false
+}
+
+// packageName is a package runner's operand without its version: npx runs the
+// program `kill-port` for `kill-port@latest`, and `@scope/pkg@1` for `pkg`.
+// An `@` before a substitution's output is not a version the line fixes, and
+// the word is returned as it is.
+func packageName(tok string) string {
+	base := path.Base(tok)
+	at := strings.LastIndexByte(base, '@')
+	if at <= 0 || at < strings.LastIndexByte(base, unknownMark) {
+		return tok
+	}
+	return base[:at]
 }
 
 // wrapperValueFlags names, per wrapper, that wrapper's OWN flags which consume
@@ -123,6 +179,14 @@ var wrapperValueFlags = map[string][]string{
 	"chroot":  {"--userspec", "--groups"},
 	"flock":   {"-w", "-E", "--timeout", "--wait", "--conflict-exit-code"},
 	"runuser": {"-u", "-g", "-G", "-s", "-w", "--user", "--group", "--supp-group", "--shell", "--whitelist-environment"},
+	// npm's documented exec grammar (`npm help exec`), for npx and `npm
+	// exec` alike: the package to install and the workspace to run in. NOT
+	// -c/--call, whose value is a command string a shell runs: listing it
+	// would step that string over unread.
+	"npx":      {"-p", "--package", "-w", "--workspace"},
+	"npm exec": {"-p", "--package", "-w", "--workspace"},
+	"pnpm dlx": {"--package"},
+	"yarn dlx": {"-p", "--package"},
 	// `setsid`, `eatmydata`, `proxychains` and `taskset` take no value flags.
 }
 

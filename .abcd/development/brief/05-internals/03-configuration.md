@@ -2,8 +2,9 @@
 
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
 questions, records the answers, and gets on with it; `ahoy install
---attribution` writes one more key, and four further keys can be hand-set and
-are read but never written. Beyond those nine, the binary reads only keys a
+--attribution`, `ahoy install --outbound-hook` and `ahoy install
+--outbound-forge` write one more key each, and four further keys can be hand-set
+and are read but never written. Beyond those eleven, the binary reads only keys a
 person opts into: the provider adapter's `oracle` keys and the interview's list
 style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
@@ -19,10 +20,12 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Nine keys plus a `meta` block. Install asks about visibility, the docs target,
+Eleven keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, and the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and writes exactly those four values back.
-`attribution.hook` is written by `ahoy install --attribution`. The remaining four —
+`attribution.hook` is written by `ahoy install --attribution`, and
+`outbound.hook` by `ahoy install --outbound-hook`, and `outbound.forge` by
+`ahoy install --outbound-forge`, which the shell guard reads. The remaining four —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, and the filing-time match's threshold and compared fields —
 are hand-set: the binary reads them and never writes them.
@@ -58,6 +61,12 @@ are hand-set: the binary reads them and never writes them.
   "attribution": {
     "hook": true                        // the committed prepare-commit-msg prompt asking each commit to
                                         //   declare whether a tool assisted it
+  },
+  "outbound": {
+    "hook": true,                       // the committed commit-msg gate refusing a session URL or a tool
+                                        //   footer; runs only the abcd `git config --local abcd.binary` names
+    "forge": true                       // the shell guard refuses a posting gh pr/issue command whose title,
+                                        //   body or body file carries either shape (forge-text-outbound)
   },
   "rules": {
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is
@@ -585,6 +594,23 @@ wrapper blocks every command, the rename included, so the rename is the
 person's, in a plain terminal (spc-2610031309233367).
 abcd never moves the folder itself, and a managed project's block keeps naming
 the old paths until setup runs in that project again.
+
+**`~/.abcd.noindex` ignores itself, once (itd-2610140858048004, adr-2610140859394097).**
+A home folder that is a git repository would stage everything the user scope
+holds. So the CLI front door, before every command and again after it (the status
+line excepted, which writes nothing at all), makes sure an existing `~/.abcd.noindex` carries `.gitignore` holding `*`, owner-only,
+with a marker `gitignore-laid` beside it (`internal/core/homeignore`). It never
+creates the folder, never overwrites a file, never writes through a link, and
+reads or runs nothing of any repository. While the marker stands it writes
+nothing, so a deleted `.gitignore` is the person's deliberate opt-in and stays
+deleted. A symlinked `~/.abcd.noindex` reads as absent and is never laid. A
+failed lay says so once per command on stderr (never under `--json` or in a
+hook call, where a machine reads stderr) and never fails the command; the
+old home's stop lays nothing. The lay is the front door's, not any verb's, so
+a verb whose sentence says it writes nothing may still be the command that
+lays the file in a home that lacks it. **Invariant:** the credential store's abcd home
+stays refused inside any git working tree, the account's own included, whatever
+`.gitignore` says.
 
 **A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
 scope whose contents abcd acts on — `rules.json`, `trusted-roots`,

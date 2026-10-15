@@ -125,7 +125,7 @@ choice, recorded for review; none changes a criterion.
   FUSE mounts) it is created and written at its name directly instead, so it
   is still kept aside rather than dropped (refined on review 2026-10-14). The loop places the answer and records it on the review's await in
   the run's state, in one write under the run's lock: the route and the
-  answer's SHA-256 (`answered`, state schema version 11). A return the step's
+  answer's SHA-256 (`answered`, state schema version 12). A return the step's
   own receipt could not verify, because another invocation held the run's
   lock, and that the person hands back with `abcd implement receipt` is
   recorded as the route's when the bytes the receipt's verifier reads, in its
@@ -178,7 +178,7 @@ choice, recorded for review; none changes a criterion.
   `asked: rp`, the reason, abcd's own detail, `ran: host`), which `implement
   status` and `implement record` count per route and per role. No state field
   is added for a fallback, so it leaves the run-state schema as it was (the
-  route's placed answer is version 11's `answered`, above). The host is handed the same
+  route's placed answer is version 12's `answered`, above). The host is handed the same
   brief and return path the step named, and no return is written for the
   route, so nothing stands where the host's agent writes.
 - 2026-10-12 (agent's choice, for review): **Every review the route does not

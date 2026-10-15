@@ -2,9 +2,11 @@ package ideate
 
 // redact.go is ideate's store-before-commit gate.
 //
-// `ideate record` writes host-composed free text into TWO committed tiers: the
-// dated research note under `.abcd/development/research/notes/`, and the dated
-// pointer in `.abcd/work/DECISIONS.md`. Until this ran the package imported no
+// A public `ideate record` writes host-composed free text into TWO committed
+// tiers: the dated verdict under `.abcd/development/research/ideas/<root-sha>/`,
+// and the dated pointer in `.abcd/work/DECISIONS.md`; a private one writes the
+// verdict alone, into `~/.abcd.noindex/ideas/<root-sha>/`, through the same
+// gate. Until this ran the package imported no
 // scanner at all — termsafe neutralises terminal escapes and markdown/HTML
 // structure, which is a different job from finding a credential — so a `ghp_`
 // token or an absolute home path in the verdict JSON reached the durable record

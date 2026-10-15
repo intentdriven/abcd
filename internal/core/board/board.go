@@ -359,7 +359,8 @@ func statusRow(r statusblock.Row) string {
 
 // rowTag is what places a row where it is, in words: its lane state or
 // "next up", "in flight" for a lane whose branch exists and whose spec is
-// open, then the release the intent targets.
+// open, then the release the intent targets, then the reservation another
+// copy holds on it.
 func rowTag(r statusblock.Row) string {
 	var parts []string
 	switch {
@@ -384,6 +385,9 @@ func rowTag(r statusblock.Row) string {
 	}
 	if r.Target != "" {
 		parts = append(parts, "target "+termsafe.Sanitize(r.Target))
+	}
+	if r.Reserved != "" {
+		parts = append(parts, termsafe.Sanitize(r.Reserved))
 	}
 	return strings.Join(parts, "; ")
 }

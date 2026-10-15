@@ -589,7 +589,11 @@ commits)
 			IFS= read -r author_email
 			IFS= read -r committer_name
 			IFS= read -r committer_email
-			IFS= read -r parents
+			# A root commit's %P is empty, and the here-string drops the
+			# trailing newline, so this read meets end of input: `|| true`
+			# keeps `set -e` from ending the gate silently on a parentless
+			# commit (a reservation's create is one).
+			IFS= read -r parents || true
 		} <<<"$(git show -s --format='%an%n%ae%n%cn%n%ce%n%P' "$sha")"
 		# The outbound check runs on EVERY commit in the range, before both
 		# `continue`s below, and that reach is deliberate on both counts.

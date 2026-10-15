@@ -189,7 +189,7 @@ nowhere else (`claim.Holder`):
    `internal/core/claim` and called by both, so the forge's two forms are
    spelled once (C17).
 2. The key `reservation.github_username` in the machine layer of
-   `layered.Config`, that is `~/.abcd/config.json`, read through
+   `layered.Config`, that is `~/.abcd.noindex/config.json`, read through
    `layered.Load` and taken only from a `Found` whose layer is `Machine`
    (C18). The `reservation` namespace is claimed by this reader, so an unknown
    key under it is refused by the resolver as for every other namespace.
@@ -214,7 +214,7 @@ reservation (the precedent of `loop.tierPresent`): A checkout without
 
 ### Reading the remote, and the view
 
-Every reservation write first fetches, in one command:
+Every reservation write first fetches, in one command when it can:
 
 ```text
 git fetch --prune --no-tags origin \
@@ -224,12 +224,20 @@ git fetch --prune --no-tags origin \
 
 so the tip it judges, the cap and the overlap it counts, and the derived
 release it applies are all read from the view fetched just before the push
-(scope condition 9). The default branch is the one `gitutil.DefaultRef`
+(scope condition 9). The default branch is the one this clone last knew as
+origin's, and that name can be stale (a remote whose `main` was renamed), when
+git refuses the whole command for want of the one ref. The reservations are
+then fetched alone, and the act goes on without the derived release, saying
+the check was skipped (`derived_unchecked`); a failed fetch of the
+reservations themselves refuses the act. The default branch is the one `gitutil.DefaultRef`
 resolves under `refs/remotes/origin/`. A fetch is a git command that reaches the
 remote; it is lifted from the land stage's `netGit` into one runner,
 `gitutil.Net`, which both the loop and the claim package call: hooks run, the
 developer's own configuration less any injected `GIT_DIR` or `GIT_CONFIG_*`,
-`GIT_TERMINAL_PROMPT=0` so a credential prompt can never hang a session, a
+`GIT_TERMINAL_PROMPT=0` so git's own credential prompt cannot hang a
+session, ssh in batch mode where abcd composes the ssh command (ssh reads the
+terminal itself, so a first host-key question would otherwise wait; a
+developer's own `GIT_SSH_COMMAND` or `core.sshCommand` is left as it is), a
 timeout, and capped output.
 
 After every successful fetch the verb writes the time to
@@ -323,10 +331,13 @@ Refused, nothing pushed:
 the new tip. If the branch now holds a reservation it cannot take (the parentless
 create met an existing branch, or another child landed first), it refuses with
 the back-off exit naming that holder, and says the reservation was taken while
-this push was on its way (C3). This covers both ways the race shows: the
-remote's non-fast-forward rejection, and this repository's pre-push hook
-refusing a non-fast-forward when the remote tip is already in the local object
-store. Otherwise the push failure is reported as itself.
+this push was on its way (C3). This covers both ways the race shows: git's
+own client refusing the push as a non-fast-forward once the remote's
+advertisement shows the moved tip, and the remote's own compare-and-swap
+refusing the update when the other push lands after the advertisement, while
+this one is being received. A pre-push hook is never asked in a lost race:
+git rejects the ref before it runs the hook. Otherwise the push failure is
+reported as itself.
 
 **Failure writes nothing locally.** A missing `origin`, an `origin` path that
 does not exist, no write permission, offline, or a remote or proxy that rejects
@@ -359,8 +370,15 @@ is refused, naming the remotes found, or saying there are none (C21).
 ### The verbs
 
 **`abcd reserve`** is a new top-level verb, the front door onto
-`internal/core/claim` for hand work, filed in the people's records help group
-beside `build` and `capture`, with its sentence in `sentences.go`:
+`internal/core/claim` for the work no build or drain starts. It is an agent's
+verb (the product thinker's ruling of 2026-10-12, under "Settled here"): it is
+listed in the agents-and-hosts block `abcd --help --agent` renders
+(`internal/surface/cli/helpgroups.go`), naming `commands/reserve.md` as the
+page to read next, its sentence is in `sentences.go`, and its plugin page
+carries `user-invocable: false`, which keeps it out of a person's `/abcd:`
+menu. It stays runnable from the CLI. A person sees reservations on the board
+and a record's page, the spec-2 renders (`abcd peers`, which lists them, is
+an agent's verb as well), not through the verb:
 
 ```text
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>] [--json]
@@ -489,7 +507,7 @@ and each ends by saying nothing was pushed or no reservation was made.
 | Lease out of bounds | 2 | `lease <d> is outside 1m0s to 24h0m0s; nothing was pushed` |
 | Message over the cap | 2 | `the reservation message would be <n> bytes, over the 4096-byte cap: name fewer or shorter footprint paths; nothing was pushed` |
 | Outbound finding | 2 | `the reservation message carries <class>, which public text may not carry; nothing was pushed` |
-| No username | 2 | `cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and ~/.abcd/config.json sets no reservation.github_username; set one of them (the repository's own configuration is never read for this); nothing was pushed` |
+| No username | 2 | `cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and ~/.abcd.noindex/config.json sets no reservation.github_username; set one of them (the repository's own configuration is never read for this); nothing was pushed` |
 | No git identity | 2 | `git has no user.name or user.email to author the reservation; set them, then retry; nothing was pushed` |
 | No local tier | 2 | `.abcd/.work.local/ is not a directory in this checkout, so there is nowhere to keep this copy's key; run abcd ahoy to set it up; nothing was pushed` |
 | No `origin` | 2 | `reservations live on the remote named origin, and this checkout's remotes are: <names>; nothing was pushed` (or `this checkout has no remote`) |
@@ -502,7 +520,7 @@ and each ends by saying nothing was pushed or no reservation was made.
 | Another copy of yours | 3 | `you are already building <id> on another computer, until <expiry>; pass --take-over to continue here` |
 | Release of another's | 2 | `<id> is reserved by <holder>, not by you; nothing was pushed` |
 | Release from another copy | 2 | `<id> is held by your copy on another computer; release it there, or take it over here first; nothing was pushed` |
-| Footprint overlap | 3 | `<path> is in the footprint of <other-id>, reserved by <holder> until <expiry>; take other work; nothing was pushed` |
+| Footprint overlap | 3 | `"<path>" is in the footprint of <other-id>, reserved by <holder> until <expiry>; take other work; nothing was pushed` |
 | Over the cap | 2 | `you hold 10 live reservations, the most one person may hold: <ids>; release one (abcd reserve <id> --release) first; nothing was pushed` |
 | Build with no footprint | 2 | `<spc-N> has no footprint under ## Footprint to reserve <itd-N> with; fill its packages line, then run abcd build again; nothing was started` |
 | Drain issue with no `found_at` | handed back | `<iss-N> has no found_at path to reserve it with; handed back` |
@@ -524,7 +542,7 @@ the test that proves the criterion, in the package the step lands in.
 |---|---|---|
 | C1 | 3 | `claim.TestAReservationIsAParentlessEmptyTreeCommitAndLeavesTheCheckoutAlone` |
 | C2 | 3 | `claim.TestAnotherPersonsLiveReservationIsRefusedWithTheBackOffExit` |
-| C3 | 3 | `claim.TestAStaleViewLosesTheRaceAndNamesTheWinner` |
+| C3 | 3 | `claim.TestAStaleViewLosesTheRaceAndNamesTheWinner` (the advertised tip, and the push landed while this one is received) |
 | C4 | 3 | `claim.TestAFreshAgentInTheSameCopyRenews` |
 | C5 | 3 | `claim.TestReleasingAnotherPersonsReservationPushesNothing` |
 | C6 | 3 | `claim.TestReleasePushesATombstoneAndDeletesNothing` |
@@ -606,6 +624,335 @@ These are the facilitator's design calls; none changes a criterion.
   the stage; the fence stops the run.
 - `abcd peers` exits 1 when its fetch fails, after rendering the last view.
 - `build --release` changes nothing in the run's state.
+- **`abcd reserve` is an agent's verb** (the product thinker's ruling,
+  2026-10-12, in their words: "I suggest /abcd:reserve becomes an agent-only
+  verb"). It is listed in the agents-and-hosts block, not in a person's
+  group, and `commands/reserve.md` carries `user-invocable: false`; the page is
+  still the plugin surface, so the verb is wired on both surfaces. It stays
+  runnable from the CLI, and a person sees reservations through the record
+  and board renders; `abcd peers` is an agent's verb too.
+- **What steps 1 to 3 settled** (lane 1's build, recorded with step 7):
+  - The machine layer is `~/.abcd.noindex/config.json` (the intent has it
+    right; this spec said `~/.abcd/config.json`). Every message naming it
+    takes the path from `layered.Config.MachineOrigin()`.
+  - A renewal resets `Abcd-Claimed-At` to now, so spec 2's half-lease rule
+    and the 24-hour clamp count from the renewal, not from the first
+    reservation.
+  - A tombstone's `Abcd-Claimed-At`, `Abcd-Expires-At` and `Abcd-Released-At`
+    are all the release's time, and it keeps the tip's footprint.
+  - The same person's other copy, past its effective expiry plus the
+    five-minute margin, is taken over without `--take-over`, as another
+    person's lapsed reservation would be.
+  - Two release refusals the table had no row for: with no tip, "`<id>` holds
+    no reservation on origin to release; nothing was pushed"; with an
+    unreadable tip, "the reservation on `<id>` is unreadable (`<reason>`), so
+    nobody holds it to release; nothing was pushed". A release over any
+    tombstone, whoever wrote it, exits 0 as `already_released`.
+  - The derived release applies to an unreadable tip too: a record finished
+    on the default branch releases its reservation whatever its tip says or
+    fails to say.
+  - C30's "before any git": the size check runs after `git config user.name`
+    and `user.email` are read, because the holder's length is part of the
+    message; it still runs before any write, fetch or push, and the test
+    checks that only config reads came first.
+  - `commit-tree` runs with `gitutil.ExecPins()`, so no signing program or
+    hook starts, with author and committer set from the person's `user.name`
+    and `user.email` and dated by the injected clock. `gitutil.Net` returns
+    stdout on a failure too, where a porcelain push reports its rejections.
+  - The in-run claim reads a claim file with no `claimed_at` as unreadable,
+    since the 24-hour clamp needs a starting point.
+  - `peers` names the ledger directory through `recordid` rather than
+    `capture`, which breaks the import cycle `site → claim → peers → capture →
+    site`.
+- **What the review of steps 1 to 3 and steps 4 to 7 settled** (2026-10-12):
+  - The size cap measures a reservation's tombstone too (about 48 bytes
+    longer), so a reservation the writer accepts can always be released.
+  - An unreadable tip too big to read whole takes its committer date from git.
+    One whose date cannot be read at all (an object that is not a commit, or a
+    committer line that does not parse) is held from when this copy first
+    fetched it, kept in the local tier at
+    `.abcd/.work.local/reservation/undated/<commit>` so a later fetch does not
+    restart the hold, and the refusal says the hold is counted from then.
+    `claim.View`, being a reader, reads that time and records none.
+  - The networked runner's ssh runs in batch mode where abcd composes the ssh
+    command, so a host-key question is a failure, not a ten-minute wait.
+  - The attribution gate read a commit with no parent as a silent exit 1 (its
+    last identity read met end of input under `set -e`); a reservation's
+    create is such a commit, so the gate was fixed and its case corpus holds a
+    parentless commit both ways.
+  - The brief chapter is `37-reserve.md`, because `36-dashboard.md` took 36.
+  - `abcd peers` in a checkout with no remote named `origin` lists no
+    reservations and exits 0, as before: there is nothing to fetch, which is
+    not a failed fetch. In a checkout without its local tier, the fetch is
+    made but not stamped, so the view's age is unknown. Its sentence now says
+    it writes the fetched reservations.
+  - The pre-push hook's create range is every commit reachable from the
+    pushed tip, as written.
+- **What the security review of steps 4 to 7 settled** (2026-10-12):
+  - The hook reads git's null object id by what it is made of, all zeros of
+    any length, so a SHA-256 repository's sixty-four zeros are read as SHA-1's
+    forty are: a reservation create there passes without a receipt, and a
+    delete there, of a reservation or of the protected branch, is read as a
+    delete. The protected-branch delete check had the same forty-zero
+    constant, so a SHA-256 delete of it was refused under the wrong reason.
+  - The hook refuses a deletion of any ref under the reservation prefix,
+    naming `abcd reserve <id> --release`, so "no deletion" holds for a push
+    made through the hooks. A push with `--no-verify`, or from a checkout
+    without them, is held by the server: the ruleset "reservations
+    protection" on `refs/heads/abcd-reserved/**` refuses deletion and
+    non-fast-forward with no bypass actors. It is applied, ruled by the
+    product thinker on 2026-10-12, and mirrored in
+    `.abcd/work/rulesets/reservations-protection.json`. A later sweep that
+    deletes reservation branches (itd-118, out of scope here) needs that
+    ruleset amended first. No hazard-registry entry was added: the registry's operand
+    prefixes are all-of, so one entry per spelling (two colon refspecs, two
+    `--delete` operands) would be needed, each taught as its own lesson, and a
+    deletion by `--prune` or `--mirror` cannot be named at all; the hook sees
+    every deletion however it was spelled.
+  - The hook's exemption is a declared table of receipt-less prefixes, one
+    row per prefix: the prefix, the shape check a push under it must pass,
+    the record that rules it, and the act that ends a ref there, named when
+    a delete is refused. The reservation prefix is its only row, ruled by
+    adr-2610031352212697, with the empty-tree walk plus the fast-forward the
+    non-fast-forward guard already demands as its shape check. A new row
+    needs its own ruling record and its own shape check, run through its own
+    arm in the hook's `shape_check`, so no command runs under a name read
+    from the table; a row without a shape check, or naming one with no arm,
+    exempts nothing, and a prefix the table does not name needs a receipt.
+    The next row expected is cloud sessions' work-in-progress branches,
+    ruled by adr-2610120937435856, which spc-2610120941441282 adds. <!-- record-lint: forward-looking -->
+- **What step 10 settled** (the cap and the overlap, 2026-10-12):
+  - Both are judged after the push table has chosen the act and before the
+    commit is written, on the view the act just fetched, read by the same
+    reader as `claim.View`; the derived release is left out when the act's
+    fetch could not read the default branch, as the act's own judgement
+    leaves it out. The cap is checked first: taking other work does not lift
+    it.
+  - The cap counts the holder's live reservations on every other record. An
+    act over a tip this person already holds, readable, unreleased and live
+    (a renewal, or a take-over of their own other copy), adds none and is
+    never refused by it. Reviving one's own lapsed tip adds one, since the
+    cap does not count it while it is lapsed: ten live and a revived one
+    would otherwise make eleven (the review of 2026-10-14; this line first
+    said "lapsed or not"). A holder past ten, which only a race
+    between two of their copies can make, is told "past the 10 one person
+    may hold" rather than the table's "the most one person may hold".
+  - The overlap counts every other live reservation but this copy's own on
+    another record: the holder's from another copy is counted. (This line
+    first counted the holder's own from this copy too; the review of
+    2026-10-14 exempted it, since a drain then passed over its own next
+    issue when two issues named one `found_at`.) The path named is the deeper of the two shared
+    paths, the one in both footprints: a request for `commands` over a
+    reservation of `commands/reserve.md` names `commands/reserve.md`.
+  - An unreadable reservation is counted by neither: it has no holder and no
+    footprint that can be read. It still holds its own record.
+- **What step 11 settled** (the record and board renders, 2026-10-12):
+  - The board's reservation text is shown and never judged: a row's
+    `reserved` member is added from disk after the block is read, and it does
+    not move the head. The head follows the build's peers check
+    (`loop.StatusPeers`), which gains the reservation in step 12, so the head
+    and `build next`'s pick stay one between the two steps (ruling CC1). The
+    board therefore reads `claim.View` in `board_status.go`, and step 11
+    changes nothing in `internal/core/implement/loop`.
+  - The board marks every row, Now, Next and Later, a run's issue row
+    included, with the reservation another copy holds on its record: a live
+    one, or an unreadable one within its hold. This copy's own is never
+    marked. The board does not resolve the reader's username, so the
+    reader's other copy is marked as any holder is, by name.
+  - `abcd <record-id>` carries the line for an issue or an intent only, and
+    only in a checkout with a remote named `origin`: with no such remote
+    there are no reservations to show, and no line rather than `unknown`.
+    Its `copy` is `this copy`, or `another copy` when the holder is the
+    username the reader resolves to by the reservation verb's own rule; a
+    view that cannot be read renders `unknown` with the reason.
+  - The view's age is worded in whole units: under a minute, minutes below
+    two hours, hours below two days, then days.
+- **Reservations are a cooperative model, not an access control** (the
+  reviewers' reading of 2026-10-14, stated here plainly): they coordinate
+  people who share push access in good faith. Any writer with push access
+  can append a commit to another holder's reservation branch, and the holder
+  is read from a self-declared trailer, set from the writer's `user.email` or
+  machine configuration. The forge's push permissions are the only boundary;
+  the pre-push hook's checks and the reservations ruleset keep honest tools
+  to the protocol and refuse deletion and force, but prove nobody's identity.
+- **What the review of steps 8 to 11 and 14 settled** (2026-10-14):
+  - A footprint path is a value a writer chose, so the overlap refusal names
+    the shared path quoted (`%q` after `termsafe.Sanitize`, as every other
+    remote value is echoed), and the drain sanitises the reason it passes an
+    issue over with, since the agent driving it reads it. A footprint must be
+    printing runes only, with no C1 control, bidi mark or zero-width rune:
+    the writer refuses another, and the reader reads a tip carrying one as
+    unreadable, which neither the cap nor the overlap counts.
+  - A renew-only act (the loop's renewal and its fence) over a live tip is
+    not checked for overlap (one over its own lapsed tip is, since the
+    lapsed reservation held nothing and another may have reserved its paths
+    since; the final review of 2026-10-14): it keeps the tip's own footprint and cannot widen it, and the
+    overlap is not compared-and-swapped, so two people racing can each pass
+    it with overlapping footprints; were renewals checked, both would then
+    fail, and both land fences refuse, until one lapsed. A reserve naming its
+    footprint, a renewal by the verb among them, is still checked, so a
+    footprint is never widened onto another.
+  - A lane parked at land waiting on a person's merge (the final review,
+    2026-10-14, a blocking finding): nothing stepped a drain's parked run,
+    so its reservation lapsed about two hours after the fence and another
+    account's drain could take the issue while it was still open on main.
+    Every drain move now renews, at half its lease, the reservation of each
+    issue run parked at land (`finishMerged`, logged in the run's record),
+    and the fence renews for `lease.Max` under a ruleset mirror (below). Past the fence a reservation holds
+    only while something renews it: a step of the run, whatever its stage, an
+    implementer's long stage included, or a drain move over its parked lane.
+    A run neither stepped nor drained over for longer than its lease loses
+    it; that limit stands and is stated on the implement page.
+  - The fence's lease is `lease.Max` wherever a ruleset mirror exists at the
+    lane's base, and the default lease with none (decision 29, C44). Under a
+    mirror every landing the loop makes waits on a person: it arms a merge
+    only behind a required approval, and otherwise leaves the pull request
+    open for a person to merge, and either can wait overnight (the last
+    review, 2026-10-14). A day is past any `check_response_timeout_minutes`
+    and its margin, so C43 holds; the queue's timeout no longer decides the
+    lease, and the mirror's timeout is not read. The no-mirror case keeps
+    decision 29's default rather than the day the reviewers asked for every
+    unarmed pull request, since decision 29 is the intent's and changing it
+    is its owner's call; such a run's pull request holds by the renewals.
+  - A renewal keeps the tip's own term, `min(max(lease.Default, effective
+    expiry − Abcd-Claimed-At), lease.Max)`, never the default alone: a
+    renewal at half a day-long fence lease would otherwise cut the hold to
+    two hours, and a pull request waiting overnight would be lost two hours
+    after this account's drain stopped (the last review, 2026-10-14).
+  - Renewing a drain's parked lanes reads the view once per drain move, from
+    disk and outside the run lock (`claim.View` reads no remote), and locks
+    and renews only a run it shows due or held by another; only a due run's
+    renewal fetches and pushes. A failed renewal is logged once until a
+    renewal succeeds, so an offline spell does not grow the run record a line
+    per step or drain move; every answer still names it.
+  - `implement receipt` renews as a step does, so an implementer working past
+    half the lease with no step between keeps the reservation. A step or a
+    receipt whose view shows the reservation held by another person or copy
+    no longer passes over it in silence: its answer names the holder, and the
+    run record logs `reservation_lost` once until something else about the
+    reservation is logged (the last review, 2026-10-14).
+  - Clock skew is bounded by the take-over margin and documented, not
+    corrected. The expiry is the holder's clock judged by the reader's; the
+    committer date is written by the same clock, so it bounds nothing. A
+    reader-side bound was weighed: holding a tip at least a lease (or
+    `lease.Min`) from when this copy first saw its commit. It cannot tell a
+    holder's slow clock from a late fetch, so the lease-length form would
+    revive, for a copy fetching for the first time, every reservation that
+    lapsed long ago, and the `lease.Min` form protects a skewed holder for six
+    minutes at the cost of a stamp per tip commit in the local tier, every
+    renewal a new one. Neither was built. The bound, stated on the reserve
+    page and its chapter: a holder whose clock runs behind by more than half
+    its lease plus the margin (65 minutes for the default) can be taken over
+    between its own renewals, and a reservation never renewed is open to a
+    take-over once its holder's clock is behind by more than its lease; a
+    clock ahead is clamped to a day from the reader's now.
+  - The cap and the overlap are best-effort under a race: each is judged on
+    the view fetched just before the push, and each reservation is its own
+    ref, so two pushes for two records cannot see each other. A collision on
+    one record is atomic: the plain push is the compare-and-swap.
+- **What step 8 settled** (renewal and the land fence, 2026-10-14):
+  - The run records its reservation in its state, `reserved_at` (the state's
+    schema version 11; version 10 is read as a run holding none). A run whose
+    state records none, one started before this build or in a checkout with
+    no remote named `origin`, is neither renewed, fenced nor tombstoned. Until
+    step 13 makes `abcd build` reserve at start, only a drain's run (step 14)
+    holds one.
+  - The renewal and the fence are a renew-only act of `claim.Reserve`
+    (`Request.Renew`): it renews this person's reservation from this copy and
+    refuses every other tip with a `*claim.NotHeld` naming why (absent,
+    unreadable, released, another person's, another copy's), so a run's
+    renewal never reserves a released record again, which keeps `build
+    --release` a release (C36), and never takes one over. It keeps the tip's
+    footprint and is never counted by the cap. It was first also checked for
+    overlap; the review of 2026-10-14 dropped that (below): it cannot widen
+    the footprint, and an overlap a race let in would stop both renewals and
+    both fences until one lapsed.
+  - The step's renewal renews one's own lapsed reservation too, since half its
+    lease has passed. The fence requires a live one (`Request.Live`) and
+    refuses a lapsed one; a step meets that only when its own renewal, which
+    runs first in the same step, failed.
+  - Half the lease is counted on the effective lease, `Abcd-Claimed-At` plus
+    half the time from it to the effective expiry.
+  - "The run log" is the run's own record (`State.Record`): the entry's stage
+    is `reservation_renewed`, and `reservation_renew_failed` for a renewal
+    that failed, since a run need not belong to a joined session of the
+    shared run log. A step that renewed, or failed to, writes its state even
+    when its stage waits or is refused, and the renewal's note is added to
+    the step's next move or to the refusal's remedy.
+  - The fence's refusals the table had no row for: the reservation gone from
+    `origin`, unreadable, lapsed, released by the default branch (the record
+    finished there), and an overlap met at the renewal, each contention; any
+    other refusal of the renewal (no username) is an exit-2 refusal naming
+    it. A fetch that fails at the fence is contention, not an outage. The
+    fence runs where the pull request is left open for a person too, since it
+    runs before the rule decides, and the arming's note names the renewed
+    expiry.
+  - The queue's timeout was read as the longest
+    `check_response_timeout_minutes` a merge-queue rule on the default branch
+    states in the mirror at the lane's base (90 here, not 45); since the last
+    review of 2026-10-14 the fence takes a day under any mirror and the
+    timeout is no longer read (below).
+- **What step 9 settled** (the tidy-up after the merge, 2026-10-14):
+  - Only the landing of the lane that completes the run, with no step
+    pending and every other lane done, tombstones the run's reservation: an
+    intent's earlier lanes land while their siblings still need it.
+  - The tidy-up is the landing's last step itself, after the worktree and
+    the lane branch are removed, so the drain's finishing of merged lanes
+    tombstones too, and a killed step that repeats it finds the tombstone and
+    says it was already released.
+  - Its outcome is a clause of the landing's record note: the tombstone
+    pushed, the reservation already released, left as it stands with its
+    holder named (another person, or your copy on another computer), left
+    with the refusal named (absent or unreadable), or a fetch or push that
+    failed, which says the reservation counts as released while the record
+    is finished on the default branch. `claim.PushError` and
+    `claim.FetchError` tell a failure reaching origin from a refusal judged
+    on the tip.
+- **What step 14 settled** (the drain's reservation per issue, 2026-10-14):
+  - The drain reserves only in a checkout with a remote named `origin`; with
+    none there is nowhere to reserve, the lane opens as before, nothing is
+    handed back for want of a `found_at`, and the run records no
+    reservation, as `abcd <record-id>` shows no line there.
+  - The footprint is the path `found_at` names as the capture verb reads a
+    path from it (`capture.FoundAtPath`): a `:line` locator dropped, then
+    cleaned and held to `fsutil.ValidRelPath`. A `found_at` that is empty, a
+    conceptual location in words, or not a repository-relative path is the
+    hand-back.
+  - The `found_at` hand-back is made before the host judgement is asked over
+    the issue, so no judgement is spent on an issue that cannot be reserved.
+    It is a flag routed home to the issue's record (`from` `reservation`,
+    kind `no-found-at`), kept in the drain's hand-backs so the same drain
+    does not meet it again.
+  - The reservation is taken inside the run's start, after its checks and the
+    budget check pass and before the run is created (an unexported start
+    option carries the footprint, the seam step 13 fills from the spec), and
+    the run's record names it (stage `reservation`). A start that then does
+    not create its run releases a reservation it made fresh (reserved or
+    taken over), never one this copy already held and renewed, nor one a
+    racing start's run in this checkout now holds.
+  - Another's hold (live, lapsed under the margin, unreadable within its
+    hold, an overlapping footprint, a lost race) passes over the issue with
+    the check `reservation`; every other refusal (no username, no local tier,
+    `origin` not answering) refuses the drain's move, since it would refuse
+    every issue alike.
+  - A lane handed back has its reservation released: the drain pushes the
+    tombstone as it routes the lane's hand-back, and the route's `wrote`
+    names the outcome (released, left as it stands with its holder, or a
+    push that failed, which leaves it to lapse). This line first left it to
+    lapse with its lease; the review of 2026-10-14 had it released, since it
+    held every other person off for up to two hours. A run `abcd build
+    <iss-N>` starts holds no reservation until step 13, which must release
+    its hand-back too, outside the drain.
+- **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
+  is clamped from the reader's clock as well as its own: `lease.Judge` takes
+  the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an
+  unreadable stamp's hold as `min(WrittenAt, now) + grace`. This strengthens
+  "neither a far-ahead clock nor a hand-edited expiry can hold a record past a
+  day": no single reading promises more than a day from the reader's now, so
+  a laptop whose clock reads next year shows a day's hold, not a year's. The
+  clamp is applied at every reading, so such a claim keeps holding while its
+  writer's clock stays ahead; the in-run claim shares the judgement and its
+  tests pass unchanged.
 
 ## Open point
 
@@ -623,7 +970,7 @@ the cross-cutting ones.
 | Record | Step |
 |---|---|
 | `commands/reserve.md` (new), with the push as its documented meaning | 5 |
-| `.abcd/development/brief/04-surfaces/36-reserve.md` (new) and its row and help-group entry in `04-surfaces/README.md` | 5 |
+| `.abcd/development/brief/04-surfaces/37-reserve.md` (new; 36 is the dashboard's) and its row and help-group entry in `04-surfaces/README.md` | 5 |
 | Generated `docs/reference/cli/commands.md` | 5, 6, 13 |
 | `commands/peers.md` and `04-surfaces/08-abcd.md`'s peers section: the fetch and the reservation rows | 6 |
 | `.githooks/pre-push` header: the exemption and its reason | 4 |
@@ -662,7 +1009,7 @@ the cross-cutting ones.
 3. Spec 1: Reserve, renew, take over and release against the remote
    - criteria: C1, C2, C3, C4, C5, C6, C7, C8, C9, C13, C15, C20, C21, C22, C23, C52
    - packages: internal/core/claim, internal/core/peers, internal/gitutil, internal/core/implement/loop
-   - tests: a bare origin and clones for P, Q, P's second computer and P's cloud session, with an injected clock; the parentless create leaving HEAD, index and `git status --porcelain` unchanged on a detached HEAD; every row of the push table; the margin on both sides; the unreadable hold and its takeover; the lost race through both the remote's rejection and the hook's; the derived release from `resolved/` on `origin/main`; `upstream`-only, missing-path and `pre-receive`-rejecting remotes each making no reservation; `gitutil.Net` serving the land stage's existing tests unchanged
+   - tests: a bare origin and clones for P, Q, P's second computer and P's cloud session, with an injected clock; the parentless create leaving HEAD, index and `git status --porcelain` unchanged on a detached HEAD; every row of the push table; the margin on both sides; the unreadable hold and its takeover; the lost race through both git's rejection of an advertised tip and the remote's refusal of a push that landed while this one was received; the derived release from `resolved/` on `origin/main`; `upstream`-only, missing-path and `pre-receive`-rejecting remotes each making no reservation; `gitutil.Net` serving the land stage's existing tests unchanged
 4. Spec 1: The pre-push exemption and the registry
    - criteria: C24, C25, C26, C33
    - packages: .githooks, internal/core/guard/defaults, internal/surface/cli, internal/core/claim
@@ -672,7 +1019,7 @@ the cross-cutting ones.
    - criteria: C27, C28, C52
    - packages: internal/surface/cli, commands/, .abcd/development/brief/04-surfaces, docs/reference
    - tests: the verb's flags, usage errors and exit codes (0, 2 and 3); `--json` for each act; no footprint refused; take-over naming the copy replaced; renders carrying no host or home path; the surface-parity, help-group, sentence and command-reference tests regenerated and passing
-   - records: `commands/reserve.md`; `04-surfaces/36-reserve.md` and its register row
+   - records: `commands/reserve.md`; `04-surfaces/37-reserve.md` and its register row
 6. Spec 1: `abcd peers` lists the reservations
    - criteria: C12, C16
    - packages: internal/surface/cli, internal/core/claim, commands/, .abcd/development/brief/04-surfaces

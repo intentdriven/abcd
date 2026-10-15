@@ -181,10 +181,13 @@ Refusals, each writing nothing:
 - no candidate for a single pick or a series' first: refused at the `pick`
   stage, exit 2; `refusal.excluded` names every planned intent and the check
   that excluded it. Tell the user each one and do not work around it.
-- a negative `--max`, or `--max` with `--until-empty`: refused at the `pick`
-  stage, exit 2.
-- while a series is in progress, a count other than the one it began with:
-  refused at the `pick` stage, exit 2; run `build next` without a count. A
+- `--max 0` or a negative `--max`, which name no run count (it is 1 or
+  more), or `--max` with `--until-empty`: refused at the `pick` stage, exit 2.
+  An explicit `--max 0` is not read as no count: it neither gives a single
+  pick nor continues a live series.
+- while a series is in progress, a count other than the one it began with,
+  `--max 1` included: refused at the `pick` stage, exit 2; run `build next`
+  without a count. A
   pace flag naming another pace than the series' is refused at the `pace`
   stage.
 - another `build next` moving the series at the same time, one that began a
@@ -209,8 +212,31 @@ Refusals, each writing nothing:
 - a refusal of `build <itd-N>` itself (the pace, the claim stage) comes as that
   verb's refusal.
 
-The pick commit is made with the git identity the repository's commits are
-made with; with none configured the `worktree` stage is refused naming it.
+The pick commit is made in the first lane's `worktree` stage, on the
+`implement step` that drives it, and each of these refuses that stage, exit 2,
+naming the lane and making no commit:
+
+- no git identity configured: the pick commit is made with the identity the
+  repository's commits are made with, and git could not make it, so the
+  refusal asks whether one is configured and carries what git reported.
+  Settle what git reports, then run `implement step` again.
+- the picked intent is not planned in the lane's worktree: the worktree is cut
+  from the default branch, and there the intent is not in `planned/`, so the
+  pick's entry has no record to land on. Land the intent's planning on the
+  default branch, then run `implement step` again.
+- the lane branch carries commits past its base and the first is not the
+  pick's record commit: its parent is not the base, its subject is not the
+  pick's, it changes a path other than the intent's record, or that record is
+  not the base's with this run's one entry appended. The pick's entry is the
+  lane's first commit, so nothing is built over another. Tell the user; the
+  way out is to remove the lane's worktree and branch, then run
+  `implement step` again.
+- the lane's worktree holds changes the pick did not make: its record-only
+  commit is not made over them. Clean the lane's worktree, then run
+  `implement step` again. A change to the intent's record alone, left by a
+  step stopped before it committed, is taken when it is exactly the base's
+  record with this run's entry appended, and refused otherwise: restore the
+  file with `git restore`, then run `implement step` again.
 
 ## The pace
 
