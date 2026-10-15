@@ -36,15 +36,17 @@ name: site
 # binary — the same bytes the README install one-liner hands a user — so abcdev.app is
 # one verifiable statement: this is abcd at that tag (adr-48 1). Every production run
 # is idempotent per tag: re-running deploys the same tag over itself, and site.tar.gz
-# is attached only while the Release is still a draft (--clobber replaces it on a
-# re-run), so re-running is the safe response to a failure — with ONE exception. A tag released before the `abcd site` verbs existed can never render,
+# is attached only while the Release is still a draft (a re-run replaces it), so
+# re-running is the safe response to a failure — with ONE exception. A tag released before the `abcd site` verbs existed can never render,
 # and the render job refuses it in one line rather than crashing mid-job; re-running
 # that cannot help, and the fix is to dispatch a tag that has the verbs.
 #
 # PUBLICATION. On the release chain this workflow publishes the Release: release.yml
-# leaves it a DRAFT holding the binaries, the plugin archive and checksums.txt,
-# `render` attaches site.tar.gz, and `publish` checks every asset is attached and then
-# publishes it, before `deploy` moves abcdev.app. So a Release is visible only once all
+# leaves it a DRAFT holding the binaries, the plugin archive and checksums.txt and
+# hands this workflow the draft's numeric id, `render` attaches site.tar.gz, and
+# `publish` verifies every asset and then publishes it, before `deploy` moves
+# abcdev.app. Both jobs address the Release by that id alone, never by its tag, and
+# refuse when more than one Release carries the tag. So a Release is visible only once all
 # of its assets are attached, no asset is ever added to a published Release (the flow
 # immutable releases require), and the site never describes a release that is not
 # published. A failed render leaves the Release an unpublished draft: re-run the
@@ -117,6 +119,13 @@ on:
         description: production (render from the released tag) or preview.
         required: true
         type: string
+      release_id:
+        # The numeric id of the draft Release release.yml created for the tag. On
+        # the release chain every read and write of that Release names this id,
+        # never the tag, so a second Release of the same tag is never the one read.
+        description: The numeric id of the draft Release created for the tag.
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -161,6 +170,7 @@ jobs:
       chain: ${{ steps.resolve.outputs.chain }}
       tag: ${{ steps.resolve.outputs.tag }}
       sha: ${{ steps.resolve.outputs.sha }}
+      release_id: ${{ steps.resolve.outputs.release_id }}
       deploy: ${{ steps.resolve.outputs.deploy }}
     steps:
       - name: Resolve the deploy mode, the tag, and the tagged commit
@@ -179,6 +189,7 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
           CALL_MODE: ${{ inputs.mode }}
           INPUT_TAG: ${{ inputs.tag }}
+          INPUT_RELEASE_ID: ${{ inputs.release_id }}
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
@@ -212,6 +223,7 @@ jobs:
           if [ "$mode" = preview ]; then
             echo "tag=" >> "$GITHUB_OUTPUT"
             echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "release_id=" >> "$GITHUB_OUTPUT"
             echo "deploy=false" >> "$GITHUB_OUTPUT"
             echo "preview: building main from source; production is not touched."
             exit 0
@@ -309,17 +321,35 @@ jobs:
           if [[ $tag =~ $pre_re ]]; then
             prerelease=true
           fi
-          # --repo is required, not optional: this job deliberately does not check out
-          # the repository, so gh has no git remote to infer the repo from.
-          #
-          # On the release chain the Release is a DRAFT, which this job's read-only
-          # token may not be able to see, so its flags are read by `render` instead,
-          # whose token can: there a pre-release refuses and a draft is attached to.
-          if [ "$prerelease" = false ] && [ "$chain" = false ]; then
-            prerelease="$(gh release view "$tag" --repo "${GITHUB_REPOSITORY}" \
-              --json isPrerelease,isDraft \
-              --jq 'if (.isPrerelease or .isDraft) then "true" else "false" end')"
+          # The Release every later job reads and writes, by its numeric id. On the
+          # release chain it is the draft release.yml created, whose id the caller
+          # passed in: this job's read-only token may not be able to see a draft, so
+          # its flags are read by `render` instead, whose token can, and there a
+          # pre-release refuses and a draft is attached to. On the emergency
+          # redeploy it is the tag's PUBLISHED Release: releases/tags/<tag> returns
+          # no draft, and a tag without a published Release refuses here.
+          id_re='^[0-9]+$'
+          release_id=""
+          if [ "$prerelease" = false ]; then
+            if [ "$chain" = true ]; then
+              release_id="$INPUT_RELEASE_ID"
+            else
+              if ! row="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${tag}" \
+                  --jq '[.id, .prerelease, .draft] | @tsv')"; then
+                echo "::error::$tag has no published Release to redeploy." >&2
+                exit 1
+              fi
+              IFS=$'\t' read -r release_id is_pre is_draft <<<"$row"
+              if [ "$is_pre" != false ] || [ "$is_draft" != false ]; then
+                prerelease=true
+              fi
+            fi
+            if [[ ! $release_id =~ $id_re ]]; then
+              echo "refusing '$tag': no numeric Release id to read it by (got '$release_id')" >&2
+              exit 1
+            fi
           fi
+          echo "release_id=$release_id" >> "$GITHUB_OUTPUT"
           if [ "$prerelease" = true ]; then
             echo "::notice::$tag is a pre-release or draft; abcdev.app is not deployed (adr-48)."
             echo "deploy=false" >> "$GITHUB_OUTPUT"
@@ -362,8 +392,12 @@ jobs:
       # true while the Release is a draft on the release chain: site.tar.gz was
       # attached to it, and `publish` publishes it.
       draft: ${{ steps.state.outputs.draft }}
+      # The sha256 of the site.tar.gz this job packed and attached: `publish`
+      # holds the attached archive to it.
+      site_digest: ${{ steps.pack.outputs.digest }}
     env:
       TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_ID: ${{ needs.resolve.outputs.release_id }}
     steps:
       - name: Check out the tagged commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -382,16 +416,32 @@ jobs:
 
       - name: Download the released binary and checksums.txt
         # The site is rendered by the bytes users actually run. Both files come from
-        # the release itself, so nothing here is rebuilt from source.
+        # the release itself, so nothing here is rebuilt from source. The Release is
+        # read by the id `resolve` handed on, and must be the one Release that
+        # carries the tag; each file is downloaded by its asset id.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          gh release download "${TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern 'abcd-linux-amd64' \
-            --pattern 'checksums.txt' \
-            --dir "$RUNNER_TEMP"
+          id_re='^[0-9]+$'
+          rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            --jq '.[] | [.id, .draft, .prerelease, .tag_name] | @tsv')"
+          ids="$(awk -F '\t' -v tag="$TAG" '$4 == tag {print $1}' <<<"$rows")"
+          if [ "$ids" != "$RELEASE_ID" ]; then
+            echo "::error::${TAG} must be carried by one Release, ${RELEASE_ID}; the repository lists: $(tr '\n' ' ' <<<"$ids")"
+            exit 1
+          fi
+          assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" --paginate \
+            --jq '.[] | [.id, .name] | @tsv')"
+          for name in abcd-linux-amd64 checksums.txt; do
+            aid="$(awk -F '\t' -v n="$name" '$2 == n {print $1}' <<<"$assets")"
+            if [[ ! $aid =~ $id_re ]]; then
+              echo "::error::Release ${RELEASE_ID} of ${TAG} has no $name attached."
+              exit 1
+            fi
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/${GITHUB_REPOSITORY}/releases/assets/${aid}" > "${RUNNER_TEMP}/${name}"
+          done
 
       - name: Verify the binary's SHA-256 against the release manifest
         # LAYER 1, the floor: byte-for-byte the install one-liner's check (README.md).
@@ -543,35 +593,45 @@ jobs:
         # once site.tar.gz is attached — so on the chain it is attached to, and the
         # `publish` job publishes it. A draft reached by the emergency redeploy is a
         # release someone has withdrawn, and refuses as before. A published Release
-        # is never modified: the site deploys from the in-run artefact alone.
+        # is never modified: the site deploys from the in-run artefact alone. The
+        # Release is read by its id, and must carry the tag this run renders.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CHAIN: ${{ needs.resolve.outputs.chain }}
         run: |
           set -euo pipefail
-          state="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
-            --json isPrerelease,isDraft \
-            --jq '"\(.isPrerelease) \(.isDraft)"')"
+          state="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            --jq '[.tag_name, .prerelease, .draft] | @tsv')"
           case "$state" in
-            "false false")
+            "${TAG}"$'\t'"false"$'\t'"false")
               draft=false
               ;;
-            "false true")
+            "${TAG}"$'\t'"false"$'\t'"true")
               if [ "$CHAIN" != true ]; then
                 echo "::error::${TAG} is a draft; the emergency redeploy publishes a site only for a published release."
                 exit 1
               fi
               draft=true
               ;;
-            *)
+            "${TAG}"$'\t'*)
               echo "::error::${TAG} is a pre-release; refusing to publish a site for it."
+              exit 1
+              ;;
+            *)
+              echo "::error::Release ${RELEASE_ID} does not carry ${TAG}; refusing to attach to it."
               exit 1
               ;;
           esac
           echo "draft=$draft" >> "$GITHUB_OUTPUT"
 
       - name: Pack the rendered site
-        run: tar -czf site.tar.gz -C site .
+        id: pack
+        # The archive's sha256 is a job output: `publish` holds the site.tar.gz
+        # attached to the Release to exactly these bytes.
+        run: |
+          set -euo pipefail
+          tar -czf site.tar.gz -C site .
+          echo "digest=$(sha256sum site.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
 
       - name: Attest build provenance for site.tar.gz
         # Signed SLSA provenance over the exact bytes `deploy` will serve, so what
@@ -592,13 +652,23 @@ jobs:
 
       - name: Attach site.tar.gz to the draft release
         # Only while the Release is a draft on the release chain: a published Release
-        # gets no new asset (immutable releases refuse one). --clobber makes a re-run
-        # against the same draft replace the asset instead of erroring, so the whole
-        # production path stays idempotent per tag.
+        # gets no new asset (immutable releases refuse one). The upload names the
+        # Release by its id. A re-run against the same draft first deletes, by asset
+        # id, the site.tar.gz an earlier attempt attached, so the whole production
+        # path stays idempotent per tag.
         if: steps.state.outputs.draft == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release upload "${TAG}" site.tar.gz --repo "${GITHUB_REPOSITORY}" --clobber
+        run: |
+          set -euo pipefail
+          assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" --paginate \
+            --jq '.[] | [.id, .name] | @tsv')"
+          while IFS=$'\t' read -r aid name; do
+            [ "$name" = site.tar.gz ] || continue
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${aid}"
+          done <<<"$assets"
+          gh api -X POST "https://uploads.github.com/repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?name=site.tar.gz" \
+            -H 'Content-Type: application/octet-stream' --input site.tar.gz --jq '.id'
 
       - name: Hand site.tar.gz to the deploy job
         # The same file, passed in-run rather than re-downloaded, so `deploy` serves
@@ -613,54 +683,214 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Publish the draft Release once every asset is attached. Release chain only: the
-  # Release is a draft exactly when `render` attached site.tar.gz to it, so this runs
-  # then and never on the emergency redeploy. It runs no build code and holds no
-  # credential but the job token. It checks every file checksums.txt names, the
-  # manifest itself and site.tar.gz are attached with their uploads complete
-  # (asset state `uploaded`), publishes, and confirms the Release is no longer a
-  # draft. It runs before `deploy`, so abcdev.app never describes a release that
-  # is not published.
+  # Publish the draft Release once every asset is attached and verified. Release
+  # chain only: the Release is a draft exactly when `render` attached site.tar.gz to
+  # it, so this runs then and never on the emergency redeploy. It runs no build code
+  # and holds no credential but the job token. It addresses the Release only by the
+  # id release.yml handed on, and immediately before publishing it:
+  #
+  #   1. requires that id to be the one Release carrying the tag, and a draft;
+  #   2. requires every file checksums.txt names, the manifest itself and
+  #      site.tar.gz to be attached with their uploads complete (asset state
+  #      `uploaded`), and nothing else;
+  #   3. downloads each by its asset id and checks it against checksums.txt and
+  #      the digest the forge records for it, and site.tar.gz against the digest
+  #      `render` computed for the archive it attached;
+  #   4. verifies each attested file against the release provenance policy:
+  #      release.yml on main, the tagged commit, a GitHub-hosted runner;
+  #   5. publishes by id, marked latest only when no published release carries a
+  #      higher version;
+  #   6. re-reads the assets and fails when any differs from the set verified.
+  #
+  # It runs before `deploy`, so abcdev.app never describes a release that is not
+  # published.
   publish:
     needs: [resolve, render]
     if: ${{ needs.render.outputs.draft == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     # The same {main, v*} gate as `render`: this job writes to a Release.
     environment: site-render
     permissions:
       contents: write       # publish the draft Release (no branch push)
     env:
       TAG: ${{ needs.resolve.outputs.tag }}
+      RELEASE_ID: ${{ needs.resolve.outputs.release_id }}
+      RELEASE_COMMIT: ${{ needs.resolve.outputs.sha }}
+      SITE_DIGEST: ${{ needs.render.outputs.site_digest }}
+      REPO_PRIVATE: ${{ github.event.repository.private }}
     steps:
-      - name: Publish the release once every asset is attached
+      - name: Verify every asset of the draft by id, then publish it
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          id_re='^[0-9]+$'
+          sha_re='^[0-9a-f]{64}$'
+          name_re='^[A-Za-z0-9][A-Za-z0-9._+-]*$'
+          ver_re='^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if [[ ! $RELEASE_ID =~ $id_re ]]; then
+            echo "::error::no numeric Release id to publish ${TAG} by (got '${RELEASE_ID}')."
+            exit 1
+          fi
+          if [[ ! $SITE_DIGEST =~ $sha_re ]]; then
+            echo "::error::the render handed on no sha256 of the site.tar.gz it attached."
+            exit 1
+          fi
+          if [[ ! $TAG =~ $ver_re ]]; then
+            echo "::error::refusing '${TAG}': not a vX.Y.Z release tag."
+            exit 1
+          fi
+          mine=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}")
+
+          # 1. The one Release carrying the tag is the draft this run created.
+          rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            --jq '.[] | [.id, .draft, .prerelease, .tag_name] | @tsv')"
+          ours="$(awk -F '\t' -v tag="$TAG" '$4 == tag' <<<"$rows")"
+          if [ "$ours" != "${RELEASE_ID}"$'\t'"true"$'\t'"false"$'\t'"${TAG}" ]; then
+            echo "::error::refusing to publish ${TAG}: the one Release carrying it must be the draft ${RELEASE_ID}; the repository lists:"
+            printf '%s\n' "${ours:-(none)}"
+            exit 1
+          fi
+
+          # 2. Its assets, by id: every file checksums.txt names, checksums.txt
+          # and site.tar.gz, each uploaded, and nothing else.
+          list_assets() {
+            gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" --paginate \
+              --jq '.[] | [.id, .name, .state, (.digest // "")] | @tsv' | sort
+          }
+          assets="$(list_assets)"
           dl="${RUNNER_TEMP}/publish"
           mkdir -p "$dl"
-          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" \
-            --pattern 'checksums.txt' --dir "$dl"
-          attached="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
-            --json assets --jq '.assets[] | select(.state == "uploaded") | .name')"
-          want="$(awk '{print $2}' "$dl/checksums.txt"; printf '%s\n' checksums.txt site.tar.gz)"
+          fetch() {
+            local aid
+            aid="$(awk -F '\t' -v n="$1" '$2 == n && $3 == "uploaded" {print $1}' <<<"$assets")"
+            if [[ ! $aid =~ $id_re ]]; then
+              echo "::error::${TAG} has no uploaded $1 attached; refusing to publish it."
+              exit 1
+            fi
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/${GITHUB_REPOSITORY}/releases/assets/${aid}" > "$dl/$1"
+          }
+          fetch checksums.txt
+          want=(checksums.txt site.tar.gz)
+          while read -r sum name rest; do
+            [ -n "${sum}${name}" ] || continue
+            if [[ ! $sum =~ $sha_re ]] || [[ ! $name =~ $name_re ]] || [ -n "$rest" ]; then
+              echo "::error::checksums.txt carries a line that is not '<sha256>  <asset name>': ${sum} ${name} ${rest}"
+              exit 1
+            fi
+            want+=("$name")
+          done < "$dl/checksums.txt"
+          wanted() {
+            local w
+            for w in "${want[@]}"; do
+              [ "$w" != "$1" ] || return 0
+            done
+            return 1
+          }
           missing=0
-          while IFS= read -r name; do
-            [ -n "$name" ] || continue
-            if ! grep -Fxq -- "$name" <<<"$attached"; then
+          for name in "${want[@]}"; do
+            if ! awk -F '\t' -v n="$name" '$2 == n && $3 == "uploaded" {found = 1} END {exit !found}' <<<"$assets"; then
               echo "::error::${TAG} has no uploaded $name attached; refusing to publish it."
               missing=1
             fi
-          done <<<"$want"
-          [ "$missing" = 0 ]
-          gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false
-          draft="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+          done
+          while IFS=$'\t' read -r _ name _; do
+            [ -n "$name" ] || continue
+            if ! wanted "$name"; then
+              echo "::error::${TAG} carries $name, which checksums.txt does not name; refusing to publish it."
+              missing=1
+            fi
+          done <<<"$assets"
+          [ "$missing" = 0 ] || exit 1
+
+          # 3. Each file, downloaded by its asset id, against checksums.txt, the
+          # digest the forge records for it and, for site.tar.gz, the digest of
+          # the archive the render attached.
+          for name in "${want[@]}"; do
+            if [ "$name" != checksums.txt ]; then
+              fetch "$name"
+            fi
+          done
+          bad=0
+          while read -r sum name; do
+            [ -n "$name" ] || continue
+            if [ "$(sha256sum "$dl/$name" | awk '{print $1}')" != "$sum" ]; then
+              echo "::error::$name on ${TAG} does not match checksums.txt; refusing to publish it."
+              bad=1
+            fi
+          done < "$dl/checksums.txt"
+          if [ "$(sha256sum "$dl/site.tar.gz" | awk '{print $1}')" != "$SITE_DIGEST" ]; then
+            echo "::error::site.tar.gz on ${TAG} is not the archive the render attached; refusing to publish it."
+            bad=1
+          fi
+          while IFS=$'\t' read -r _ name _ digest; do
+            [ -n "$name" ] || continue
+            if [ -n "$digest" ] && [ "$digest" != "sha256:$(sha256sum "$dl/$name" | awk '{print $1}')" ]; then
+              echo "::error::the digest recorded for $name on ${TAG} is not that of its bytes; refusing to publish it."
+              bad=1
+            fi
+          done <<<"$assets"
+          [ "$bad" = 0 ] || exit 1
+
+          # 4. Provenance: every file checksums.txt names, and checksums.txt,
+          # held to the policy every installer verifies. A private repository
+          # has no attestations; the checks above stand alone there.
+          if [ "$REPO_PRIVATE" != true ]; then
+            for name in "${want[@]}"; do
+              [ "$name" != site.tar.gz ] || continue
+              gh attestation verify "$dl/$name" \
+                --repo "${GITHUB_REPOSITORY}" \
+                --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/main" \
+                --source-ref refs/heads/main \
+                --source-digest "${RELEASE_COMMIT}" \
+                --deny-self-hosted-runners
+            done
+          fi
+
+          # 5. Latest only when no published release carries a higher version,
+          # so a re-released older tag does not become the latest.
+          latest=true
+          while IFS=$'\t' read -r _ draft pre tag; do
+            [ "$draft" = false ] && [ "$pre" = false ] && [[ $tag =~ $ver_re ]] || continue
+            higher=false
+            for i in 1 2 3; do
+              a=$((10#${BASH_REMATCH[i]}))
+              b=$((10#${mine[i-1]}))
+              if [ "$a" -ne "$b" ]; then
+                [ "$a" -lt "$b" ] || higher=true
+                break
+              fi
+              if [ "$i" = 3 ] && [ -n "${mine[3]}" ] && [ -z "${BASH_REMATCH[4]}" ]; then
+                higher=true
+              fi
+            done
+            if [ "$higher" = true ]; then
+              echo "${tag} is a higher published version; ${TAG} is published without becoming the latest release."
+              latest=false
+              break
+            fi
+          done <<<"$rows"
+
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
+            -F draft=false -f make_latest="$latest" --jq '.draft' >/dev/null
+
+          # 6. The Release as published carries exactly the assets verified.
+          after="$(list_assets)"
+          if [ "$after" != "$assets" ]; then
+            echo "::error::${TAG}'s assets changed after they were verified. Verified (id, name, state, digest):"
+            printf '%s\n' "$assets"
+            echo "Now attached:"
+            printf '%s\n' "$after"
+            exit 1
+          fi
+          draft="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq '.draft')"
           if [ "$draft" != false ]; then
             echo "::error::${TAG} is still a draft after publishing it."
             exit 1
           fi
-          echo "published ${TAG} with every asset attached."
+          echo "published ${TAG} (Release ${RELEASE_ID}, latest: ${latest}) with every asset verified."
 
   # Deploy production. The ONLY job that holds a Cloudflare credential, and it runs no
   # build code: it checks out the tagged commit for wrangler.jsonc alone, unpacks the

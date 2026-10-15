@@ -508,6 +508,10 @@ jobs:
       contents: write       # create the Release and upload its assets (no branch push)
       id-token: write       # mint the OIDC token actions/attest signs with
       attestations: write   # publish the build-provenance attestations (public repo)
+    outputs:
+      # The numeric id of the draft Release this job creates. site.yml reads,
+      # attaches to and publishes that Release by this id, never by its tag.
+      release_id: ${{ steps.draft.outputs.id }}
 <%- else %>
       contents: write       # create the Release (no branch push, no attestation)
 <%- end %>
@@ -792,16 +796,37 @@ jobs:
         # cannot be closed from this side (the pin must be in the tagged tree, so
         # it lands before the tag), so it is kept short: approve the release
         # deployment promptly once the ship merges.
-        run: gh release create "${TAG}" bin/abcd-* bin/checksums.txt --draft --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
+        #
+        # The draft's numeric id is read back straight after it is created: the
+        # one Release carrying the tag must be this draft, and every later read
+        # and write of it, here and in site.yml, names that id, never the tag.
+        id: draft
+        run: |
+          set -euo pipefail
+          gh release create "${TAG}" bin/abcd-* bin/checksums.txt --draft --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
+          id_re='^[0-9]+$'
+          rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            --jq '.[] | [.id, .draft, .tag_name] | @tsv')"
+          ours="$(awk -F '\t' -v tag="$TAG" '$3 == tag' <<<"$rows")"
+          id="${ours%%$'\t'*}"
+          if [[ ! $id =~ $id_re ]] || [ "$ours" != "${id}"$'\t'"true"$'\t'"${TAG}" ]; then
+            printf "refusing to release '%s': the one Release carrying it must be the draft just created; the repository lists:\n%s\n" "$TAG" "$ours" >&2
+            exit 1
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "created draft Release ${id} of ${TAG}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: "The plugin installs from this release's pinned archive and needs Claude Code v2.1.224 or later; the binaries have no harness requirement."
 
       - name: Verify the draft's attestation against a freshly downloaded binary
         # Pre-publication gate: prove the attestation is real and retrievable for
-        # the bytes users will download. Download one binary FRESH from the draft
-        # Release (the job token can read a draft; publishing changes no asset)
-        # and verify it against provenance signed by this release workflow on
+        # the bytes users will download. Download every asset FRESH from the
+        # draft, by the draft's id and each asset's id (the job token can read a
+        # draft; publishing changes no asset), require each to be byte-identical
+        # to the file this job built and the draft to carry nothing else, and
+        # verify the binary and the plugin archive against provenance signed by
+        # this release workflow on
         # <% .DefaultBranch %>, on a GitHub-hosted runner, from RELEASE_COMMIT, the
         # commit this run releases — the policy every installer verifies. A
         # failure here leaves the Release an unpublished draft. Skipped on a
@@ -812,10 +837,26 @@ jobs:
           set -euo pipefail
           DL="$RUNNER_TEMP/attest-verify"
           mkdir -p "$DL"
-          gh release download "${TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern 'abcd-linux-amd64' \
-            --dir "$DL"
+          id_re='^[0-9]+$'
+          assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" --paginate \
+            --jq '.[] | [.id, .name] | @tsv')"
+          built=0
+          for f in bin/abcd-* bin/checksums.txt; do
+            name="${f##*/}"
+            aid="$(awk -F '\t' -v n="$name" '$2 == n {print $1}' <<<"$assets")"
+            if [[ ! $aid =~ $id_re ]]; then
+              printf "the draft Release %s has no %s attached\n" "$RELEASE_ID" "$name" >&2
+              exit 1
+            fi
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/${GITHUB_REPOSITORY}/releases/assets/${aid}" > "$DL/$name"
+            cmp "$DL/$name" "$f"
+            built=$((built + 1))
+          done
+          if [ "$(awk 'NF {n++} END {print n + 0}' <<<"$assets")" != "$built" ]; then
+            printf "the draft Release %s carries an asset this job did not build:\n%s\n" "$RELEASE_ID" "$assets" >&2
+            exit 1
+          fi
           gh attestation verify "$DL/abcd-linux-amd64" \
             --repo "${GITHUB_REPOSITORY}" \
             --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>@refs/heads/<% .DefaultBranch %>" \
@@ -824,20 +865,16 @@ jobs:
             --deny-self-hosted-runners
           # The plugin archive too: fresh from the draft, attested by this
           # workflow, and byte-identical to the archive verified against the pin.
-          gh release download "${TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern "abcd-plugin-${TAG}.zip" \
-            --dir "$DL"
           gh attestation verify "$DL/abcd-plugin-${TAG}.zip" \
             --repo "${GITHUB_REPOSITORY}" \
             --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>@refs/heads/<% .DefaultBranch %>" \
             --source-ref refs/heads/<% .DefaultBranch %> \
             --source-digest "${RELEASE_COMMIT}" \
             --deny-self-hosted-runners
-          cmp "$DL/abcd-plugin-${TAG}.zip" "bin/abcd-plugin-${TAG}.zip"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_COMMIT: ${{ inputs.ref || github.sha }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
 <%- else %>
       - name: Receive the build job's dist/
         if: needs.build.outputs.assets == 'true'
@@ -908,8 +945,9 @@ jobs:
   # the site workflow reads: `gh release create` has already returned.
   #
   # PUBLICATION happens here. The `release` job leaves the Release a DRAFT holding
-  # the binaries, the plugin archive and checksums.txt; site.yml's render attaches
-  # site.tar.gz to that draft, and its `publish` job then publishes the Release,
+  # the binaries, the plugin archive and checksums.txt and hands on its numeric id;
+  # site.yml's render attaches site.tar.gz to that draft, and its `publish` job
+  # checks every asset again and then publishes the Release, both by that id,
   # before its `deploy` job moves abcdev.app. So the Release becomes visible only
   # once every asset is attached, and no asset is added after publication — the
   # flow immutable releases require. A failed render therefore leaves the Release
@@ -950,6 +988,9 @@ jobs:
       # The same expression the workflow-level TAG env uses: inputs.tag on the
       # workflow_call path, the pushed tag ref name on the tag-push path.
       tag: ${{ inputs.tag || github.ref_name }}
+      # The draft Release the release job created, by its numeric id: site.yml
+      # reads, attaches to and publishes that Release by this id alone.
+      release_id: ${{ needs.release.outputs.release_id }}
       # Explicit, never defaulted: site.yml refuses any other value, so its production
       # path can only be reached by a caller that asked for it by name.
       mode: production
