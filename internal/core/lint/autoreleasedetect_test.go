@@ -159,9 +159,13 @@ func runDetect(t *testing.T, workflow string, c detectCase) (string, int, string
 // autoReleaseSource is one rendering of auto-release.yml. attested reports
 // that the release workflow it calls verifies build provenance on a public
 // repository (abcd's own profile, or one with a semantic gate configured).
+// pushVerifies reports that a run of that workflow started by a pushed
+// version tag runs verify: it has a tag-push trigger and does not refuse such
+// a run (the bare profile; not the gate workflow, which has no such trigger).
 type autoReleaseSource struct {
-	wf       string
-	attested bool
+	wf           string
+	attested     bool
+	pushVerifies bool
 }
 
 // autoReleaseSources is the committed workflow and the template profiles'
@@ -178,12 +182,15 @@ func autoReleaseSources(t *testing.T) map[string]autoReleaseSource {
 		"auto-release.yml.tmpl (abcd)":          scaffold.AbcdSubstitutions(),
 		"auto-release.yml.tmpl (bare)":          scaffold.BareSubstitutions("main"),
 		"auto-release.yml.tmpl (bare+semantic)": semantic,
+		"auto-release.yml.tmpl (gate)":          scaffold.GateSubstitutions("main", ""),
 	} {
 		rendered, err := scaffold.Render(subs)
 		if err != nil {
 			t.Fatal(err)
 		}
-		sources[name] = autoReleaseSource{wf: string(rendered.AutoReleaseYML), attested: subs.Abcd || len(subs.SemanticGates) > 0}
+		attested := subs.Abcd || len(subs.SemanticGates) > 0
+		sources[name] = autoReleaseSource{wf: string(rendered.AutoReleaseYML), attested: attested,
+			pushVerifies: !attested && !subs.Gate}
 	}
 	return sources
 }
@@ -191,9 +198,10 @@ func autoReleaseSources(t *testing.T) map[string]autoReleaseSource {
 // TestAutoReleaseRefusesToRebuildATagItsVerifyRefused is iss-2609251125599536.
 // A tag whose Release is missing is healed by rebuilding the tagged commit,
 // which is right after a transient publish failure and wrong after a refused
-// gate: a hand-pushed tag runs release.yml on its own push, and when that run's
-// verify refused it, the tagged commit fails the same way on every later push
-// to main. detect tells the two apart by the verify job of the tag's newest
+// gate: in a profile whose release workflow verifies a pushed tag, a
+// hand-pushed tag runs release.yml on its own push, and when that run's verify
+// refused it, the tagged commit fails the same way on every later push to
+// main. detect tells the two apart by the verify job of the tag's newest
 // release.yml push run, and refuses loudly on a failure, naming the re-cut.
 func TestAutoReleaseRefusesToRebuildATagItsVerifyRefused(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
@@ -203,6 +211,9 @@ func TestAutoReleaseRefusesToRebuildATagItsVerifyRefused(t *testing.T) {
 		t.Skip("jq not on PATH; the fake gh needs it to apply the step's --jq filters")
 	}
 	for where, src := range autoReleaseSources(t) {
+		if !src.pushVerifies {
+			continue // no pushed tag's run carries a verify there; see the test below
+		}
 		wf := src.wf
 		// The run listing reads the Actions API, which a job granted contents
 		// alone cannot.
@@ -297,6 +308,46 @@ func TestAutoReleaseRefusesToRebuildATagItsVerifyRefused(t *testing.T) {
 				t.Errorf("detect did not ask for a tag and a release (rc=%d):\n%s\n%s", code, out, got)
 			}
 		})
+	}
+}
+
+// TestAutoReleaseReadsNoPushRunsWhereAPushedTagRunsNoVerify holds detect in a
+// profile whose release workflow runs no verify for a pushed version tag: it
+// refuses such a run before verify (abcd's own profile and one with semantic
+// gates), or has no tag-push trigger at all (the gate workflow). No push run
+// of a tag carries a verify conclusion there, so detect lists no runs, and its
+// job is granted no actions scope: a tag with no published Release takes the
+// re-release path whatever the Actions API would answer.
+func TestAutoReleaseReadsNoPushRunsWhereAPushedTagRunsNoVerify(t *testing.T) {
+	if _, err := exec.LookPath("jq"); err != nil {
+		if os.Getenv("CI") != "" {
+			t.Fatal("jq is required to fake gh's --jq and is missing on a CI runner")
+		}
+		t.Skip("jq not on PATH; the fake gh needs it to apply the step's --jq filters")
+	}
+	for where, src := range autoReleaseSources(t) {
+		if src.pushVerifies {
+			continue
+		}
+		wf := src.wf
+		detect := wf[strings.Index(wf, "\n  detect:\n"):strings.Index(wf, "\n  release:\n")]
+		for _, absent := range []string{"actions: read", "gh run list", "gh run view"} {
+			if strings.Contains(detect, absent) {
+				t.Errorf("%s: detect must not carry %q", where, absent)
+			}
+		}
+		for name, c := range map[string]detectCase{
+			"a failed run listing":           {tagged: true, listFail: true},
+			"a failed read of a run's jobs":  {tagged: true, runs: []string{"802"}, verify: map[string]string{"802": "failure"}, viewFail: true},
+			"a push run whose verify failed": {tagged: true, runs: []string{"802"}, verify: map[string]string{"802": "failure"}},
+		} {
+			t.Run(where+": "+name, func(t *testing.T) {
+				out, code, got := runDetect(t, wf, c)
+				if code != 0 || !strings.Contains(got, "need_release=true") || !strings.Contains(got, "release_ref=") {
+					t.Errorf("detect did not re-release a tag with no Release (rc=%d):\n%s\n%s", code, out, got)
+				}
+			})
+		}
 	}
 }
 

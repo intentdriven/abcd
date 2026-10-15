@@ -34,9 +34,11 @@ repository only the release run of the tagged commit can finish it, because
 provenance is verified against the commit a run is started for: re-run that
 run's failed jobs. A later push to `<% .DefaultBranch %>` refuses and names that
 remedy rather than re-cutting<% end %>).
+<%- if .VerifiesPushedTag %>
 The one tag it does not heal is a hand-pushed tag its own `verify` refused:
 rebuilding that commit would fail the same way, so `auto-release.yml` refuses
 loudly and names the re-cut, a new dated version.
+<%- end %>
 <%- end %>
 
 ## Before the first real release: run the rehearsal

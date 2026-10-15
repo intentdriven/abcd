@@ -113,6 +113,14 @@ func (s Substitutions) RefusesPushedTag() bool {
 	return !s.Gate && (s.Abcd || len(s.SemanticGates) > 0)
 }
 
+// VerifiesPushedTag reports that a run started by a pushed version tag runs
+// verify and can release: the release workflow has a tag-push trigger and does
+// not refuse such a run. Only then does a tag's own push run carry a verify
+// conclusion for auto-release's detect step to read.
+func (s Substitutions) VerifiesPushedTag() bool {
+	return !s.Gate && !s.RefusesPushedTag()
+}
+
 // ExtraBase is the number the runbook gives the first extra gate: it follows
 // the five Go gates when the repository is a Go module, and leads otherwise.
 func (s Substitutions) ExtraBase() int {

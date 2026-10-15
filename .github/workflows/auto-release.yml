@@ -31,10 +31,9 @@ name: auto-release
 # `detect` then fails and names the remedy instead: re-run the failed jobs of
 # the release run of the tagged commit. A private repository's releases carry
 # no attestation, so any later push re-releases.
-# A tag its own verify refused is the exception:
-# a hand-pushed tag runs release.yml before verify, and when that run's verify
-# failed, `detect` refuses loudly and names the re-cut (a new dated version)
-# rather than rebuilding the refused commit on every push.
+# A run release.yml starts for a pushed version tag runs no verify
+# and releases nothing, so `detect` treats such a tag like any other tag with
+# no published Release.
 on:
   push:
     branches: [main]
@@ -54,13 +53,12 @@ permissions:
 jobs:
   # Decide whether the newest dated CHANGELOG version still needs a tag. Pure
   # read: no writes, no pushes. contents: read for the checkout and the Release
-  # lookup; actions: read to list release.yml's runs for a tag with no Release.
+  # lookup.
   detect:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: read
-      actions: read
     outputs:
       version: ${{ steps.detect.outputs.version }}
       need_tag: ${{ steps.detect.outputs.need_tag }}
@@ -121,31 +119,6 @@ jobs:
               echo "$tag is tagged and released; nothing to do."
               echo "need_release=false" >> "$GITHUB_OUTPUT"
             else
-              # A refused gate is not healed. A hand-pushed tag runs release.yml
-              # on its own push, before verify; when the newest such run's verify
-              # job failed, the tagged commit is the one the gate refused, and
-              # rebuilding it fails the same way on every later push
-              # (iss-2609251125599536). The version is consumed: refuse loudly
-              # and name the re-cut. The tag auto-release asks release.yml to
-              # make is made only after verify is green and fires no push run,
-              # so a heal on that path finds none and proceeds. A listing that
-              # errors refuses too: guessing past it is the loop this closes.
-              if ! run_id="$(gh run list --workflow release.yml --event push --branch "$tag" \
-                  --limit 1 --json databaseId --jq '.[0].databaseId // ""')"; then
-                echo "::error::cannot list release.yml's push runs for $tag, so cannot tell a refused verify from a failed publish; not rebuilding it."
-                exit 1
-              fi
-              if [ -n "$run_id" ]; then
-                if ! verify="$(gh run view "$run_id" --json jobs \
-                    --jq '[.jobs[] | select(.name == "verify") | .conclusion] | first // ""')"; then
-                  echo "::error::cannot read the jobs of release.yml run $run_id for $tag; not rebuilding it."
-                  exit 1
-                fi
-                if [ "$verify" = failure ]; then
-                  echo "::error::$tag was refused by its own verify gate (release.yml run $run_id), so rebuilding the tagged commit would fail the same way. The version is consumed: roll a new dated CHANGELOG version on a commit that carries the fix, and its push cuts that release."
-                  exit 1
-                fi
-              fi
               commit="$(git rev-parse --verify "$tag^{commit}")"
               # On a public repository release.yml verifies build provenance
               # against the commit a run is started for, so only the release run
