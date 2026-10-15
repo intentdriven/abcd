@@ -60,16 +60,25 @@ never `rel-0.16.0` or `rel-v0.16.0-rc1`). It takes no footprint (one is
 refused, exit 2), and it does not count toward the cap of ten. With no
 `--lease` it holds for `24h`, so a cut that waits on checks and an approval
 outlasts it; running the same command again from the same copy renews it for
-another day, and nothing holds past a day. It ends by itself once the tag
+another day, and without a renewal it holds no longer than a day (see
+**Clocks** for one claimed ahead of this copy's clock). It ends by itself once the tag
 `v0.16.0` is on `origin` (the listing shows it `released`, `released_by:
 tag`), or with `--release` from the copy that holds it. Reserving a release
 already tagged on `origin` is refused (exit 2). While it is live, an
 `implement step` at the land fence in any other copy, the user's own other
 computer included, exits 3 naming the release and its holder and arms nothing;
-this copy's own landings are not held. `/abcd:peers` shows the line "release
+this copy's own landings are not held. The hold stops a merge from being armed
+and nothing more: a pull request whose auto-merge was on, or that was in the
+merge queue, before the release was reserved still merges when its checks
+pass, so the cutting session checks for armed pull requests and merge-queue
+entries after reserving and again before merging the release pull request
+(`/abcd:launch`, "Before step 1"), and tells people working in the repository
+by hand to hold. `/abcd:peers` shows the line "release
 v0.16.0 being cut by @octo: merges are held". The fetch every act makes reads
 `origin`'s release tags with the reservations, into `refs/abcd/release-tags/`,
-and never touches this checkout's own tags.
+and never touches this checkout's own tags. Those are ordinary refs in this
+checkout, so `git log --all` lists the commits they name and `git push
+--mirror` would push them.
 
 ## When it refuses
 
@@ -128,9 +137,13 @@ absorbs. A holder whose clock runs behind loses that much of each lease: one
 behind by more than half the lease plus the margin (65 minutes for the
 default two hours) can be taken over between its own renewals, and a
 reservation made once and never renewed by a clock behind by more than its
-lease is open to a take-over as soon as another copy fetches it. A clock
-running ahead is clamped to a day from the reader's own now. Keep the machines
-that reserve on network time.
+lease is open to a take-over as soon as another copy fetches it. A
+reservation claimed more than five minutes ahead of the reader's clock is
+counted from when this copy first fetched it, kept in the local tier, so it
+holds at most a day from that first fetch however far ahead it is dated, and
+an unreadable one whose commit date is that far ahead holds its two hours from
+the first fetch in the same way; one dated less than five minutes ahead is
+judged by its own times. Keep the machines that reserve on network time.
 
 **The holder** is the user's GitHub username, read from `git config
 user.email` when it is a GitHub no-reply address, or from

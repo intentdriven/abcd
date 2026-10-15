@@ -729,8 +729,17 @@ Three facts decided that, with the least change:
 
 The hold lasts a day unless a shorter lease is named, and the cutting session
 renews it by running the same command again from the same copy at each stage
-of a slow cut; nothing holds past a day. A cut abandoned before its tag is
-released by its holder, or lapses within the day.
+of a slow cut; without a renewal nothing holds past a day from its claim, or
+from a copy's first fetch of one claimed ahead of that copy's clock. A cut
+abandoned before its tag is released by its holder, or lapses within the day.
+
+The hold stops a merge from being armed; it does not stop a merge armed, or
+queued, before the release was reserved: a pull request with auto-merge
+already on, or already in the merge queue, lands when its checks pass. So the
+cut's runbook (`commands/launch.md`, "Before step 1") has the cutting session
+check for pull requests with auto-merge on and for merge-queue entries once it
+has reserved, and again just before it merges the release pull request, and
+still tell people working in the repository by hand to hold.
 
 Every preview, and every cut that renders a payload, writes a pre-flight report:
 `preflight.json` and `preflight.md` in a directory of its own under

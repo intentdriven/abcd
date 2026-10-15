@@ -90,10 +90,18 @@ Expiry is the holder's clock judged by the reader's, and the five-minute
 take-over margin is the only skew it absorbs: a holder whose clock runs behind
 by more than half its lease plus the margin can be taken over between its own
 renewals, and a reservation never renewed is open to a take-over once the
-holder's clock is behind by more than its lease. A clock ahead is clamped to a
-day from the reader's now. No bound read on the reader's side holds: the
-commit date is written by the same clock, and the time this copy first saw a
-tip cannot tell a holder's slow clock from a late fetch.
+holder's clock is behind by more than its lease. No bound read on the
+reader's side holds for a clock behind: the commit date is written by the same
+clock, and the time this copy first saw a tip cannot tell a holder's slow
+clock from a late fetch. A clock ahead is bounded on the reader's side: a
+claim dated more than `lease.Skew` (five minutes, the take-over margin) ahead
+of the reader's now is counted from when this copy first fetched its commit,
+kept per commit in the local tier beside the undated tips' times, so it holds
+at most a day from that first fetch rather than a day from every reading; an
+unreadable tip whose commit date is that far ahead holds its two hours from
+the first fetch in the same way. The reservations' fetch records the time for
+every tip that needs one, so the view, which writes nothing, counts from it
+too. A claim dated within the five minutes is judged by its own times.
 
 ## The release hold
 
@@ -114,14 +122,17 @@ never makes two branches. It differs from a record's reservation in four ways:
   for two. A cut waits on its checks, on a reviewer and on an approval, and
   the release tag is pushed by the release workflow after the merge, so a
   two-hour hold could lapse in the middle of a cut. A slower cut renews it by
-  reserving it again from the same copy, which pushes a fresh day; nothing
-  holds past 24 hours, the one bound every reservation has.
+  reserving it again from the same copy, which pushes a fresh day; without a
+  renewal nothing holds past 24 hours from its claim, or from this copy's
+  first fetch of one claimed ahead, the one bound every reservation has.
 - It ends by itself when the tag `vX.Y.Z` is on origin as last fetched, as a
   record's ends when the record is finished on the default branch, or earlier
   when its holder releases it. A reservation of a release already tagged on
   origin is refused. The tags are read by the same fetch as the reservations,
   into `refs/abcd/release-tags/`, so the fetch never makes, moves or deletes
-  a tag of the person's own and never lists a tag as a remote branch.
+  a tag of the person's own and never lists a tag as a remote branch. Those
+  are ordinary refs of the checkout all the same: a git log of every ref lists
+  the commits they name, and a mirror push would push them.
 
 The hold binds sessions, not people. The copy that holds it is not held, since
 under the concurrent-sessions rule a session cutting a release has the final
@@ -137,9 +148,18 @@ record, named as unreadable and never by its writer's text.
 
 The release cut's ship sub-verb does not take or release the hold: the cutting session runs
 this verb before the cut and the hold ends at the tag without it (the reasons
-are in [`04-launch.md`](04-launch.md)). The one reader of the hold is
-`claim.ReleaseHolds`, from disk alone, which the land fence calls after its
-fetch and every render of the hold line shares.
+are in [`04-launch.md`](04-launch.md)). The land fence reads the hold through
+`claim.ReleaseHolds`, from disk alone, after its fetch; `abcd peers` renders
+it from its own view through `Snapshot.Holds`, with the same line; `abcd
+status` and the prompt hook are to render it in step 3 of the spec and do not
+yet.
+
+The hold stops a merge from being armed and nothing more. A merge armed, or
+queued, before the release was reserved (a pull request with auto-merge on,
+or an entry already in the merge queue) is not stopped by it and lands when
+its checks pass. The cutting session checks for armed pull requests and
+merge-queue entries after reserving and again before merging the release pull
+request, and tells people working in the repository by hand to hold.
 
 ## Exits
 
