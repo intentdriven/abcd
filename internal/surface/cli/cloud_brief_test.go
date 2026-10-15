@@ -135,6 +135,8 @@ func TestBriefNamesEveryPart(t *testing.T) {
 		{"the item", fixtureIssue},
 		{"its record path", issueRecord(fixtureIssue)},
 		{"the first step", "scripts/cloud/begin.sh"},
+		{"the off-cloud stop, which does nothing else", "do nothing else, not even a hand-back"},
+		{"the other stops, which hand back", "If it stops for any other reason"},
 		{"the author rule (the identity the setup took from the forge token)", "forge token"},
 		{"the no-skip rule", "--no-verify"},
 		{"the go-run rule", "go run ./cmd/abcd"},

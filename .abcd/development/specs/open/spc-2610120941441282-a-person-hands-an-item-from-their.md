@@ -219,8 +219,10 @@ turns the hook's reservation exception into a declared list of receipt-less
 prefixes, each entry naming the prefix, the commit shape a push under it must
 have, and the record that rules it. This spec adds one entry and no special
 case: its prefixes are those the connector declarations name (read through the
-same validation as `connector.sh`; a declaration that fails it makes the hook
-refuse the push, naming the file); its shape is (a) the branch is the prefix
+same validation as `connector.sh`, over the declarations HEAD commits; a
+declaration that fails it adds no row, and the hook refuses a push to any
+branch holding the segment `abcd-wip`, naming the file, while every other push
+is judged as if no connector existed); its shape is (a) the branch is the prefix
 followed by exactly one record id (`iss-`, `itd-` or `spc-` followed by sixteen
 digits, or an ordinal `itd-`/`iss-` id) and nothing else, and (b)
 `scripts/check-attribution.sh commits <base> <local_sha>` passes over the
@@ -259,8 +261,13 @@ sections), runs `go run ./cmd/abcd lint outbound --label report` over it and
 refuses to send a report that fails (it prints the finding so the session can
 fix its text), commits it alone as the branch's last commit (attribution-clean,
 `Assisted-by:`), and pushes `HEAD:refs/heads/<wip_prefix><item-id>` through the
-committed hook (never `--no-verify`). When the push fails, it posts the same
-report with `channel: issue-comment` and the push's error as a comment on the
+committed hook (never `--no-verify`). Its first act is the connector's
+`is_remote` check: off the cloud it prints the report and commits, pushes and
+posts nothing. It judges the checkout's identity before it commits, and never
+repeats raw git or hook output, so a refused identity is shown nowhere. When
+the push fails, it posts the same report with `channel: issue-comment` and why
+the push failed (a fixed reason, with only the hook's and the remote's own
+lines, identities replaced) as a comment on the
 tracking issue (`cloud.conf`'s `tracking_issue`) through `gh api
 repos/{owner}/{repo}/issues/{n}/comments --input -`, after the same outbound
 check. When both fail it exits 1 and prints the report, so the transcript still
@@ -291,7 +298,17 @@ on the machine; on a pass, print the branch, the receipt and the push command
 for the person, and push nothing; on a failure, print the failures, keep the
 worktree for inspection, and push nothing. Any receipt the cloud session made
 is ignored: receipts live in the local tier and never travel, and collect never
-reads one from the branch (decision 9).
+reads one from the branch (decision 9). Earlier report commits (one per
+earlier hand-back, each changing only this item's report) are left out as the
+last one is. Before anything is made, collect refuses work that changes the
+build file, `scripts/`, `go.mod`, `go.sum` or any top-level hidden directory
+but `.abcd/` (`.githooks/`, `.github/`, `.claude/`; matched by shape, so the
+script names no host), printing their diffstat, unless
+`--allow-tooling-changes` is passed,
+and it cherry-picks with the person's own checkout's hooks, never the
+worktree's. Preflight on a copy runs that copy's code as the person; with
+tooling changes refused by default, the gates that run are the default
+branch's own.
 
 ## Steps
 

@@ -834,6 +834,10 @@ jobs:
   # whose source branch holds the path segment `abcd-wip`, or whose diff adds a
   # cloud report (scripts/check-wip-source.sh). That work reaches the default
   # branch only through the person's own collect, on a branch of its own.
+  # The check run is the BASE commit's copy of the script, fetched when the
+  # clone lacks the base, so a change cannot edit the check it is judged by.
+  # Only on the first landing, when the base holds no copy yet, does the
+  # change's own copy run, and never for a source branch holding abcd-wip.
   #
   # It runs on EVERY event, like cold-reading-evals and for the same reason: it
   # is a required status check (the ruleset mirror names it), and a stood-down
@@ -897,7 +901,31 @@ jobs:
             echo "::error title=wip-guard::the $EVENT_NAME event names no usable base, so the change's diff cannot be judged; refusing."
             exit 1
           fi
-          bash scripts/check-wip-source.sh "$source" "$BASE_SHA" HEAD
+          # The check that judges the change is the BASE commit's copy, never
+          # the change's own: a pull request could otherwise edit it to exit 0.
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch -q --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          fi
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "::error title=wip-guard::the base commit cannot be read in this clone, so the check it holds cannot be run; refusing."
+            exit 1
+          fi
+          check="$RUNNER_TEMP/check-wip-source.sh"
+          if git cat-file -e "$BASE_SHA:scripts/check-wip-source.sh" 2>/dev/null; then
+            git show "$BASE_SHA:scripts/check-wip-source.sh" >"$check"
+          else
+            # The first landing: the base holds no check yet, so the change's
+            # own copy runs, and only for a source branch without the segment.
+            lowered="$(printf '%s' "$source" | tr '[:upper:]' '[:lower:]')"
+            case "/${lowered#refs/heads/}/" in
+            */abcd-wip/*)
+              echo "::error title=wip-guard::the base holds no work-in-progress guard yet, and the source branch holds the segment abcd-wip; refusing."
+              exit 1
+              ;;
+            esac
+            cat scripts/check-wip-source.sh >"$check"
+          fi
+          bash "$check" "$source" "$BASE_SHA" HEAD
 
   # The one supply-chain vector unreadable by eye: a dependency swap. Diffs the
   # PR's dependency changes against the advisory databases and fails on a known

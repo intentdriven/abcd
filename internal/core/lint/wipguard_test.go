@@ -3,11 +3,14 @@ package lint_test
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The wip-guard required check (spc-2610120941441282 step 7,
@@ -21,7 +24,7 @@ const (
 	wipGuardJob      = "wip-guard"
 	ciWorkflow       = ".github/workflows/ci.yml"
 	mainProtection   = ".abcd/work/rulesets/main-protection.json"
-	wipGuardStepHint = "scripts/check-wip-source.sh \"$source\""
+	wipGuardStepHint = "bash \"$check\" \"$source\" \"$BASE_SHA\" HEAD"
 )
 
 // wipGuardBlock is the job's block in ci.yml, failing when there is none.
@@ -180,70 +183,120 @@ func TestMainProtectionRequiresWIPGuard(t *testing.T) {
 	}
 }
 
-// TestWIPGuardReadsEachEventsSourceBranch runs the step's own script against a
-// fake gh and a stand-in check that records what it was handed: a pull
-// request's source branch arrives verbatim and is never run as shell; a queue
-// entry's comes from its pull request through the API; and a queue ref with
-// no pull-request number, an API that fails or answers nothing, or an event
-// with no usable base refuses without judging anything.
+// TestWIPGuardReadsEachEventsSourceBranch runs the step's own script in a
+// scratch clone whose base commit holds a stand-in check that records what it
+// was handed, and whose working tree (the change) holds a different one: a
+// pull request's source branch arrives verbatim and is never run as shell; a
+// queue entry's comes from its pull request through the API; and a queue ref
+// with no pull-request number, an API that fails or answers nothing, or an
+// event with no usable base refuses without judging anything. The check that
+// runs is always the BASE commit's copy, so a change cannot edit the check it
+// is judged by; only when the base holds none yet (the first landing) does the
+// change's own copy run, and never for a source branch holding abcd-wip.
 func TestWIPGuardReadsEachEventsSourceBranch(t *testing.T) {
 	script := stepScript(t, wipGuardStep(t))
-	const (
-		base  = "9f1b7c4e2a6d8035b1e4c7a92f6d0b3e8c5a1d7f"
-		queue = "refs/heads/gh-readonly-queue/main/pr-42-3e5d9a1c7f2b4086d3a5c9e1b7f4d2a6c8e0b5d9"
-	)
+	const queue = "refs/heads/gh-readonly-queue/main/pr-42-3e5d9a1c7f2b4086d3a5c9e1b7f4d2a6c8e0b5d9"
+	// recorder is a stand-in check that records who it is and what it was
+	// handed; the change's copy also exits 0 whatever it is given, as a
+	// pull request that edited the check to pass would.
+	recorder := func(who string) string {
+		return "printf '" + who + " ' >\"$PWD/handed\"; printf '%s ' \"$@\" >>\"$PWD/handed\"; exit 0\n"
+	}
 	type run struct {
-		name     string
-		env      map[string]string
-		gh       string
-		wantCode int
-		wantArgs string // what the check was handed; "" when it must not run
+		name       string
+		env        map[string]string // "BASE" in a value is the base commit
+		gh         string
+		noBaseCopy bool // the base commit holds no check (the first landing)
+		wantCode   int
+		wantArgs   string // who ran and what it was handed; "" when nothing must run
 	}
 	runs := []run{
-		{"a pull request", map[string]string{"EVENT_NAME": "pull_request", "HEAD_REF": "test/abcd-wip/iss-0000000000000000", "BASE_SHA": base},
-			"exit 3", 0, "test/abcd-wip/iss-0000000000000000 " + base + " HEAD"},
-		{"a pull request whose branch is shell", map[string]string{"EVENT_NAME": "pull_request", "HEAD_REF": "x/$(touch pwned)`touch pwned`", "BASE_SHA": base},
-			"exit 3", 0, "x/$(touch pwned)`touch pwned` " + base + " HEAD"},
-		{"a queue entry", map[string]string{"EVENT_NAME": "merge_group", "QUEUE_REF": queue, "BASE_SHA": base, "REPO": "o/r"},
-			`[ "$*" = "api repos/o/r/pulls/42 --jq .head.ref" ] || exit 4; echo x/abcd-wip/iss-0000000000000000`, 0,
-			"x/abcd-wip/iss-0000000000000000 " + base + " HEAD"},
-		{"a queue ref with no pull-request number", map[string]string{"EVENT_NAME": "merge_group", "QUEUE_REF": "refs/heads/main", "BASE_SHA": base, "REPO": "o/r"},
-			"echo feat/x", 1, ""},
-		{"an API that fails", map[string]string{"EVENT_NAME": "merge_group", "QUEUE_REF": queue, "BASE_SHA": base, "REPO": "o/r"},
-			"exit 1", 1, ""},
-		{"an API that answers nothing", map[string]string{"EVENT_NAME": "merge_group", "QUEUE_REF": queue, "BASE_SHA": base, "REPO": "o/r"},
-			"echo", 1, ""},
+		{"a pull request", map[string]string{"EVENT_NAME": "pull_request", "HEAD_REF": "test/abcd-wip/iss-0000000000000000", "BASE_SHA": "BASE"},
+			"exit 3", false, 0, "base test/abcd-wip/iss-0000000000000000 BASE HEAD"},
+		{"a pull request whose branch is shell", map[string]string{"EVENT_NAME": "pull_request", "HEAD_REF": "x/$(touch pwned)`touch pwned`", "BASE_SHA": "BASE"},
+			"exit 3", false, 0, "base x/$(touch pwned)`touch pwned` BASE HEAD"},
+		{"a queue entry", map[string]string{"EVENT_NAME": "merge_group", "QUEUE_REF": queue, "BASE_SHA": "BASE", "REPO": "o/r"},
+			`[ "$*" = "api repos/o/r/pulls/42 --jq .head.ref" ] || exit 4; echo x/abcd-wip/iss-0000000000000000`, false, 0,
+			"base x/abcd-wip/iss-0000000000000000 BASE HEAD"},
+		{"the first landing: the base holds no check yet", map[string]string{"EVENT_NAME": "pull_request", "HEAD_REF": "feat/x", "BASE_SHA": "BASE"},
+			"exit 3", true, 0, "change feat/x BASE HEAD"},
+		{"the first landing from a work-in-progress branch", map[string]string{"EVENT_NAME": "pull_request", "HEAD_REF": "x/abcd-wip/iss-0000000000000000", "BASE_SHA": "BASE"},
+			"exit 3", true, 1, ""},
+		{"the first landing from an upper-case work-in-progress branch", map[string]string{"EVENT_NAME": "pull_request", "HEAD_REF": "Testhost/ABCD-WIP/x", "BASE_SHA": "BASE"},
+			"exit 3", true, 1, ""},
+		{"a base this clone does not hold", map[string]string{"EVENT_NAME": "pull_request", "HEAD_REF": "feat/x", "BASE_SHA": "9f1b7c4e2a6d8035b1e4c7a92f6d0b3e8c5a1d7f"},
+			"exit 3", false, 1, ""},
+		{"a queue ref with no pull-request number", map[string]string{"EVENT_NAME": "merge_group", "QUEUE_REF": "refs/heads/main", "BASE_SHA": "BASE", "REPO": "o/r"},
+			"echo feat/x", false, 1, ""},
+		{"an API that fails", map[string]string{"EVENT_NAME": "merge_group", "QUEUE_REF": queue, "BASE_SHA": "BASE", "REPO": "o/r"},
+			"exit 1", false, 1, ""},
+		{"an API that answers nothing", map[string]string{"EVENT_NAME": "merge_group", "QUEUE_REF": queue, "BASE_SHA": "BASE", "REPO": "o/r"},
+			"echo", false, 1, ""},
 		{"a pull request with no base", map[string]string{"EVENT_NAME": "pull_request", "HEAD_REF": "feat/x", "BASE_SHA": ""},
-			"exit 3", 1, ""},
+			"exit 3", false, 1, ""},
 		{"a queue entry with the placeholder base", map[string]string{"EVENT_NAME": "merge_group", "QUEUE_REF": queue, "BASE_SHA": "0000000000000000000000000000000000000000", "REPO": "o/r"},
-			"echo feat/x", 1, ""},
+			"echo feat/x", false, 1, ""},
 		{"the nightly run", map[string]string{"EVENT_NAME": "schedule", "BASE_SHA": ""},
-			"exit 3", 0, ""},
+			"exit 3", false, 0, ""},
 	}
 	for _, r := range runs {
 		t.Run(r.name, func(t *testing.T) {
 			dir := t.TempDir()
 			bin := t.TempDir()
 			fakeTool(t, bin, "gh", r.gh+"\n")
-			if err := os.MkdirAll(filepath.Join(dir, "scripts"), 0o755); err != nil {
+			git := func(args ...string) string {
+				t.Helper()
+				cmd := exec.Command("git", args...)
+				cmd.Dir = dir
+				cmd.Env = append(gittest.Env(t),
+					"GIT_AUTHOR_NAME=Test Person", "GIT_AUTHOR_EMAIL=person@example.com",
+					"GIT_COMMITTER_NAME=Test Person", "GIT_COMMITTER_EMAIL=person@example.com")
+				out, err := cmd.CombinedOutput()
+				if err != nil {
+					t.Fatalf("git %v: %v\n%s", args, err, out)
+				}
+				return strings.TrimSpace(string(out))
+			}
+			git("init", "-q")
+			check := filepath.Join(dir, "scripts", "check-wip-source.sh")
+			if err := os.MkdirAll(filepath.Dir(check), 0o755); err != nil {
 				t.Fatal(err)
 			}
-			if err := os.WriteFile(filepath.Join(dir, "scripts", "check-wip-source.sh"),
-				[]byte("printf '%s ' \"$@\" >\"$PWD/handed\"\n"), 0o755); err != nil {
+			if err := os.WriteFile(filepath.Join(dir, "seed.md"), []byte("seed\n"), 0o644); err != nil {
 				t.Fatal(err)
 			}
-			out, code := runScript(t, script, dir, bin, r.env)
+			if !r.noBaseCopy {
+				if err := os.WriteFile(check, []byte(recorder("base")), 0o755); err != nil {
+					t.Fatal(err)
+				}
+			}
+			git("add", "-A")
+			git("commit", "-q", "-m", "base")
+			base := git("rev-parse", "HEAD")
+			// The change edits the check (or adds it) and leaves it in the tree.
+			if err := os.WriteFile(check, []byte(recorder("change")), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			git("add", "-A")
+			git("commit", "-q", "-m", "the change")
+			env := map[string]string{}
+			for k, v := range r.env {
+				env[k] = strings.ReplaceAll(v, "BASE", base)
+			}
+			want := strings.ReplaceAll(r.wantArgs, "BASE", base)
+
+			out, code := runScript(t, script, dir, bin, env)
 			if code != r.wantCode {
 				t.Fatalf("exit %d, want %d\n%s", code, r.wantCode, out)
 			}
 			handed, err := os.ReadFile(filepath.Join(dir, "handed"))
 			switch {
-			case r.wantArgs == "" && err == nil:
-				t.Errorf("the check ran with %q, though the step should not have judged anything\n%s", handed, out)
-			case r.wantArgs != "" && err != nil:
+			case want == "" && err == nil:
+				t.Errorf("a check ran with %q, though the step should not have judged anything\n%s", handed, out)
+			case want != "" && err != nil:
 				t.Errorf("the check never ran\n%s", out)
-			case r.wantArgs != "" && strings.TrimSpace(string(handed)) != r.wantArgs:
-				t.Errorf("the check was handed %q, want %q", strings.TrimSpace(string(handed)), r.wantArgs)
+			case want != "" && strings.TrimSpace(string(handed)) != want:
+				t.Errorf("the check run was %q, want %q", strings.TrimSpace(string(handed)), want)
 			}
 			if _, err := os.Stat(filepath.Join(dir, "pwned")); err == nil {
 				t.Errorf("the source branch's text ran as a command")

@@ -25,11 +25,13 @@ const (
 )
 
 // cloudCommit is one commit a cloud session made: the files it writes and its
-// message. author, when set, is "Name <mail>"; otherwise the person's.
+// message. author, when set, is "Name <mail>"; otherwise the person's. exec
+// commits its files executable.
 type cloudCommit struct {
 	files  map[string]string
 	msg    string
 	author string
+	exec   bool
 }
 
 func workCommit(rel, subject string) cloudCommit {
@@ -86,7 +88,14 @@ func (c *cloudCase) pushCloud(item string, commits ...cloudCommit) string {
 	c.git("checkout", "-q", "-B", "cloud-"+item, "origin/main")
 	for _, cc := range commits {
 		for rel, body := range cc.files {
-			c.write(rel, body, 0o644)
+			mode := os.FileMode(0o644)
+			if cc.exec {
+				mode = 0o755
+			}
+			c.write(rel, body, mode)
+			if err := os.Chmod(filepath.Join(c.dir, filepath.FromSlash(rel)), mode); err != nil {
+				c.t.Fatal(err)
+			}
 			c.git("add", "-f", "--", rel)
 		}
 		author := cloudAuthor + " <" + cloudMail + ">"
@@ -372,4 +381,142 @@ func TestCollectIgnoresAnyCloudReceipt(t *testing.T) {
 		}
 		c.madeNothing(t, collectItem)
 	})
+}
+
+// toolingPaths are the paths whose change on a cloud branch would let the
+// cloud's own code decide what collect runs as the person: the build file
+// preflight runs, the hooks, the scripts, the workflows, the module files and
+// any top-level hidden directory, a host's settings among them (matched by
+// shape, so the made-up host's directory stands in for every one).
+var toolingPaths = []string{
+	"Makefile", "GNUmakefile", ".githooks/pre-push", "scripts/preflight-receipt.sh", ".github/workflows/ci.yml",
+	".testhost/settings.json", "go.mod", "go.sum",
+}
+
+// TestCollectRefusesToolingChangesByDefault: before anything is made, collect
+// refuses a branch whose commits change the tooling, printing the diffstat of
+// those paths, unless --allow-tooling-changes is passed. With tooling changes
+// refused, the gates that run are the default branch's own.
+func TestCollectRefusesToolingChangesByDefault(t *testing.T) {
+	for _, rel := range toolingPaths {
+		t.Run(rel, func(t *testing.T) {
+			c := newCollectCase(t)
+			c.pushCloud(collectItem, workCommit("one.md", "fix: one"), workCommit(rel, "chore: tooling"),
+				reportCommit(collectItem, "Did it."))
+			out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
+			if code == 0 {
+				t.Fatalf("collect accepted a branch changing %s\n%s%s", rel, out, errOut)
+			}
+			if !strings.Contains(errOut, "--allow-tooling-changes") {
+				t.Errorf("the refusal does not name --allow-tooling-changes\n%s", errOut)
+			}
+			if !strings.Contains(errOut, rel) || !strings.Contains(errOut, "changed") {
+				t.Errorf("the refusal does not print the diffstat naming %s\n%s", rel, errOut)
+			}
+			c.madeNothing(t, collectItem)
+		})
+	}
+}
+
+// TestCollectAllowsToolingChangesWithFlag: --allow-tooling-changes is the
+// person's deliberate yes, and the collect goes ahead.
+func TestCollectAllowsToolingChangesWithFlag(t *testing.T) {
+	c := newCollectCase(t)
+	c.pushCloud(collectItem, workCommit("one.md", "fix: one"), workCommit("scripts/new.sh", "chore: tooling"),
+		reportCommit(collectItem, "Did it."))
+	out, errOut, code := c.scriptSplit(nil, collectScript, collectItem, "--allow-tooling-changes")
+	if code != 0 {
+		t.Fatalf("collect --allow-tooling-changes exited %d\n%s%s", code, out, errOut)
+	}
+	if got := c.git("diff", "--name-only", "origin/main", "collect/"+collectItem); got != "one.md\nscripts/new.sh" {
+		t.Errorf("the landing branch changes %q, want the work and the tooling change", got)
+	}
+}
+
+// TestCollectSkipsEarlierReportCommits: a session that stopped and was later
+// handed back leaves two report commits for its item. Each commit changing
+// only this item's report is left out, and the work around them is collected.
+func TestCollectSkipsEarlierReportCommits(t *testing.T) {
+	c := newCollectCase(t)
+	stopped := reportCommit(collectItem, "Stopped.")
+	stopped.files[reportPath(collectItem)] = reportText(collectItem, "stopped", "branch", "Stopped.")
+	c.pushCloud(collectItem, workCommit("one.md", "fix: one"), stopped, workCommit("two.md", "fix: two"),
+		reportCommit(collectItem, "Did it."))
+	out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
+	if code != 0 {
+		t.Fatalf("collect of a branch with two report commits exited %d\n%s%s", code, out, errOut)
+	}
+	if got := c.git("log", "--reverse", "--format=%s", "origin/main..collect/"+collectItem); got != "fix: one\nfix: two" {
+		t.Errorf("the landing branch carries %q, want the two work commits and no report commit", got)
+	}
+}
+
+// TestCollectRefusesAnotherItemsReportCommit: only this item's report commits
+// are left out; a commit changing another item's report alone is refused.
+func TestCollectRefusesAnotherItemsReportCommit(t *testing.T) {
+	c := newCollectCase(t)
+	other := reportCommit("iss-2610150000000099", "Not this item.")
+	c.pushCloud(collectItem, workCommit("one.md", "fix: one"), other, reportCommit(collectItem, "Did it."))
+	out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
+	if code == 0 || !strings.Contains(errOut, "cloud-reports") {
+		t.Fatalf("collect accepted a commit changing another item's report (exit %d)\n%s%s", code, out, errOut)
+	}
+	c.madeNothing(t, collectItem)
+}
+
+// TestCollectRefusesSymlinkedMachineStore: the machine store is never read or
+// written through a symlink, at any level: ~/.abcd.noindex, its worktrees/,
+// and worktrees/<root-sha>/.
+func TestCollectRefusesSymlinkedMachineStore(t *testing.T) {
+	for _, level := range []string{".abcd.noindex", ".abcd.noindex/worktrees", ".abcd.noindex/worktrees/<root>"} {
+		t.Run(level, func(t *testing.T) {
+			c := newCollectCase(t)
+			c.pushCloud(collectItem, workCommit("one.md", "fix: one"), reportCommit(collectItem, "Did it."))
+			root := c.git("rev-list", "-n", "1", "--max-parents=0", "HEAD")
+			link := filepath.Join(c.home(), filepath.FromSlash(strings.Replace(level, "<root>", root, 1)))
+			if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(t.TempDir(), link); err != nil {
+				t.Fatal(err)
+			}
+			out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
+			if code == 0 {
+				t.Fatalf("collect went ahead through a symlink at %s\n%s%s", level, out, errOut)
+			}
+			if !strings.Contains(errOut, "symlink") {
+				t.Errorf("the refusal does not name the symlink\n%s", errOut)
+			}
+			if strings.Contains(c.callLog(), "make ") || strings.Contains(c.callLog(), "worktree add") {
+				t.Errorf("a refused collect made a worktree or ran make:\n%s", c.callLog())
+			}
+		})
+	}
+}
+
+// TestCollectCherryPickUsesThePersonsHooks: the person's checkout names its
+// hooks by a relative core.hooksPath, which git resolves inside whichever
+// worktree a command runs in. The cherry-pick into the collect worktree runs
+// with the person's own checkout's .githooks, by absolute path, never the
+// hooks a collected commit put in the worktree.
+func TestCollectCherryPickUsesThePersonsHooks(t *testing.T) {
+	c := newCollectCase(t)
+	cloudHook := cloudCommit{
+		files: map[string]string{".githooks/post-commit": "#!/bin/sh\necho 'cloud hook ran' >>\"$CALLS\"\n"},
+		msg:   "chore: a hook\n\n" + sessionTrailer,
+		exec:  true,
+	}
+	c.pushCloud(collectItem, cloudHook, workCommit("one.md", "fix: one"), reportCommit(collectItem, "Did it."))
+	c.write(".githooks/post-commit", "#!/bin/sh\necho 'person hook ran' >>\"$CALLS\"\n", 0o755)
+	out, errOut, code := c.scriptSplit(nil, collectScript, collectItem, "--allow-tooling-changes")
+	if code != 0 {
+		t.Fatalf("collect exited %d\n%s%s", code, out, errOut)
+	}
+	log := c.callLog()
+	if strings.Contains(log, "cloud hook ran") {
+		t.Errorf("the cherry-pick ran a hook a collected commit carries:\n%s", log)
+	}
+	if !strings.Contains(log, "person hook ran") {
+		t.Errorf("the cherry-pick did not run the person's own hooks:\n%s", log)
+	}
 }

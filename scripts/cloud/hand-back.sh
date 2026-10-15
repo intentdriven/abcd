@@ -2,6 +2,9 @@
 # The last step of every cloud session, finished or stopped
 # (spc-2610120941441282 step 8, itd-2610120738075547 C6, decision 4). In order:
 #
+#   0. the place, before anything else: the connector's is_remote check. Off
+#      the cloud (a brief started on the person's own computer) it prints the
+#      report text, commits, pushes and posts nothing, and exits 1;
 #   1. refuse, writing nothing, unless the item is one record id, the state is
 #      handed-back or stopped, and the three texts are given;
 #   2. compose the report: a short frontmatter (item, state, channel,
@@ -10,7 +13,11 @@
 #      `go run ./cmd/abcd lint outbound --label report` or nothing is written:
 #      the finding is printed, so the session can fix its text and run this
 #      again;
-#   3. write it as <report_dir>/<item-id>.md (cloud.conf) and commit it ALONE,
+#   3. judge the checkout's author and committer identity first, as begin.sh
+#      does (scripts/check-attribution.sh identity, its output discarded).
+#      When either is unset or not a person's, nothing is committed and the
+#      report goes straight to the fallback (5) with a fixed reason. Otherwise
+#      write it as <report_dir>/<item-id>.md (cloud.conf) and commit it ALONE,
 #      as the branch's last commit: the session's other changes, staged or
 #      not, stay out of it. The commit carries `Assisted-by: <value>`, the
 #      value --assisted-by gives or, without it, the one the session's own
@@ -21,8 +28,9 @@
 #      hooks: never --no-verify, and only while core.hooksPath names the
 #      checkout's .githooks, since a push the hook never sees is a skipped
 #      hook. The connector's prefix is read through connector.sh (C12);
-#   5. only when that fails (the commit, the hooks or the push), post the same
-#      report, with `channel: issue-comment` and why the push failed, as a
+#   5. only when that fails (the identity, the commit, the hooks or the push),
+#      post the same report, with `channel: issue-comment` and why the push
+#      failed, as a
 #      comment on cloud.conf's tracking_issue through the forge's REST
 #      interface: `gh api --method POST repos/<owner>/<name>/issues/<n>/comments
 #      --input -`, after the same outbound check. Owner and name come from
@@ -31,6 +39,13 @@
 #      issue configured"); it never posts anywhere else;
 #   6. when neither channel takes the report, print it on standard output, so
 #      the session's transcript holds it as a last resort, and exit 1.
+#
+# Why is a fixed sentence per failure class. Raw git or hook output never goes
+# in it, nor on standard output or error: a commit hook or the attribution
+# gate prints the identity it refuses, and a refused identity is shown nowhere
+# (decision 18). Of a failed push's output only the hook's own `pre-push:`
+# lines and the remote's `remote:` lines are kept, with every name and address
+# the checkout or the pushed commits carry replaced (shown()).
 #
 # The channel field says where the report went: `branch` in the committed
 # file, `issue-comment` in the comment.
@@ -100,6 +115,42 @@ for flag in --item --state --did --failed --needs; do
 	esac
 done
 
+# --- 0. The place: the first act ---------------------------------------------
+#
+# The connector's is_remote check comes before anything else. A brief started
+# on the person's own computer stops at begin.sh, and a hand-back run there
+# would commit onto the person's own branch and push their unpushed, unchecked
+# commits to the public work-in-progress branch. Off-cloud it prints the report
+# text on standard output, so the transcript holds it, commits nothing, pushes
+# and posts nothing, and exits 1.
+
+finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+# compose <channel> [<why the push failed>] writes the report on standard output.
+compose() {
+	printf -- '---\nitem: %s\nstate: %s\nchannel: %s\nfinished_at: %s\n---\n\n' "$item" "$state" "$1" "$finished"
+	printf '# Cloud session report: %s\n\n' "$item"
+	printf '## What it did\n\n%s\n\n' "$did"
+	printf '## What failed\n\n%s\n\n' "$failed"
+	printf '## What it needs from the person\n\n%s\n' "$needs"
+	if [ $# -ge 2 ]; then
+		printf '\n## Why the push failed\n\n'
+		printf '%s\n' "$2" | sed 's/^/    /'
+	fi
+}
+
+if [ -z "$connector" ]; then
+	connector="$(bash "$here/connector.sh" default)" || exit 1
+fi
+is_remote="$(bash "$here/connector.sh" get "$connector" is_remote)" || exit 1
+if ! "$is_remote" </dev/null >/dev/null 2>&1; then
+	item="$(clean "$item")" state="$(clean "$state")"
+	did="$(clean "$did")" failed="$(clean "$failed")" needs="$(clean "$needs")"
+	echo "hand-back: STOPPING: this is not running in the environment the brief was written for, so nothing was committed, pushed or posted. The report follows, so this transcript holds it." >&2
+	compose transcript
+	exit 1
+fi
+
 # --- 1. What is handed back --------------------------------------------------
 
 [[ "$item" =~ $ITEM_RE ]] ||
@@ -119,9 +170,6 @@ done
 cd "$root"
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || refuse "this is not a git checkout."
 
-if [ -z "$connector" ]; then
-	connector="$(bash "$here/connector.sh" default)" || exit 1
-fi
 prefix="$(bash "$here/connector.sh" get "$connector" wip_prefix)" || exit 1
 branch="$prefix$item"
 
@@ -163,20 +211,6 @@ esac
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/abcd-hand-back.XXXXXX")"
 trap '/bin/rm -rf -- "$tmp"' EXIT
-finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-
-# compose <channel> [<why the push failed>] writes the report on standard output.
-compose() {
-	printf -- '---\nitem: %s\nstate: %s\nchannel: %s\nfinished_at: %s\n---\n\n' "$item" "$state" "$1" "$finished"
-	printf '# Cloud session report: %s\n\n' "$item"
-	printf '## What it did\n\n%s\n\n' "$did"
-	printf '## What failed\n\n%s\n\n' "$failed"
-	printf '## What it needs from the person\n\n%s\n' "$needs"
-	if [ $# -ge 2 ]; then
-		printf '\n## Why the push failed\n\n'
-		printf '%s\n' "$2" | sed 's/^/    /'
-	fi
-}
 
 # outbound <file> runs the outbound check; its output is in $lint.
 lint=""
@@ -205,8 +239,70 @@ esac
 
 # --- 3. Commit it alone, 4. push it through the hooks -------------------------
 
+# person_identity succeeds when the checkout's author and committer identity
+# are both set and both a person's, judged as begin.sh judges them: git's own
+# resolution with guessing off, then the attribution gate's identity mode. The
+# gate prints what it refuses, so its output is discarded unread: a refused
+# identity is shown nowhere (decision 18).
+person_identity() {
+	local var line name mail
+	for var in GIT_AUTHOR_IDENT:author GIT_COMMITTER_IDENT:committer; do
+		line="$(git -c user.useConfigOnly=true var "${var%%:*}" 2>/dev/null)" || return 1
+		name="$(printf '%s\n' "$line" | sed -n 's/^\(.*\) <[^<>]*> [0-9][0-9]* [-+][0-9][0-9]*$/\1/p')"
+		mail="$(printf '%s\n' "$line" | sed -n 's/^.* <\([^<>]*\)> [0-9][0-9]* [-+][0-9][0-9]*$/\1/p')"
+		[ -n "$name" ] && [ -n "$mail" ] || return 1
+		bash "$root/scripts/check-attribution.sh" identity "${var#*:}" "$name" "$mail" >/dev/null 2>&1 || return 1
+	done
+}
+
+# shown <text> prints the part of git's output that may be shown: the lines
+# the committed pre-push hook writes itself (`pre-push:`), the remote's own
+# (`remote:`) and git's one-line verdicts (` ! [...]`). Every other line, the
+# attribution gate's findings among them, is dropped unread, since those name
+# identities. In what is kept, every name and address the checkout is
+# configured with or the pushed commits carry is replaced, and so is anything
+# shaped like an address: no identity, refused or not, is shown (decision 18).
+shown() {
+	local text
+	text="$(printf '%s\n' "$1" | grep -E '^(pre-push:|remote:| ! \[)' || true)"
+	[ -z "$text" ] || scrub "$text"
+}
+
+# scrub <text> prints text with every identity shown() names, and anything
+# shaped like an address, replaced.
+scrub() {
+	local text="$1" who
+	{
+		git -c user.useConfigOnly=true var GIT_AUTHOR_IDENT 2>/dev/null || true
+		git -c user.useConfigOnly=true var GIT_COMMITTER_IDENT 2>/dev/null || true
+		git config --get user.name 2>/dev/null || true
+		git config --get user.email 2>/dev/null || true
+		if [ -n "$fork" ]; then
+			git log --format='%an%n%ae%n%cn%n%ce' "$fork..HEAD" 2>/dev/null || true
+		fi
+	} | sed -e 's/ [0-9][0-9]* [-+][0-9][0-9]*$//' -e 's/^\(.*\) <\([^<>]*\)>$/\1\
+\2/' | awk 'length($0) > 0' | sort -u >"$tmp/identities"
+	while IFS= read -r who; do
+		[ -n "$who" ] || continue
+		text="${text//"$who"/<identity>}"
+	done <"$tmp/identities"
+	printf '%s\n' "$text" | sed -E 's/[^[:space:]<>()"'"'"']+@[^[:space:]<>()"'"'"']+/<address>/g'
+}
+
+# Where the session's own commits leave the default branch, for the identities
+# shown() replaces; empty when it cannot be read.
+fork=""
+if base="$(bash "$here/default-branch.sh" 2>/dev/null)"; then
+	fork="$(git merge-base "refs/remotes/origin/$base" HEAD 2>/dev/null)" || fork=""
+fi
+
+# Every reason below is a fixed sentence: raw git or hook output never goes in
+# it, since a commit hook or the attribution gate prints the identity it
+# refuses. Only shown()'s part of a failed push's output follows it.
 why=""
-if [ -L "$report_dir" ] || [ -L "$report" ]; then
+if ! person_identity; then
+	why="no person's identity is set in this checkout, so nothing was committed"
+elif [ -L "$report_dir" ] || [ -L "$report" ]; then
 	why="the report's path, $report, is a symlink; it is never written through"
 fi
 if [ -z "$why" ]; then
@@ -214,8 +310,10 @@ if [ -z "$why" ]; then
 	cat "$tmp/report.md" >"$report"
 	printf 'chore(cloud): hand back the report on %s\n\nThe session %s; the report alone, after its work.\n\nAssisted-by: %s\n' \
 		"$item" "$([ "$state" = stopped ] && echo stopped || echo handed its work back)" "$assisted" >"$tmp/message"
-	if ! out="$(git add -- "$report" 2>&1 && git commit -q --only -F "$tmp/message" -- "$report" 2>&1)"; then
-		why="the report could not be committed: $out"
+	if ! git add -- "$report" >/dev/null 2>&1 || ! git commit -q --only -F "$tmp/message" -- "$report" >/dev/null 2>&1; then
+		# The report is left in the tree, unstaged, as the session wrote it.
+		git reset -q -- "$report" >/dev/null 2>&1 || true
+		why="the report could not be committed (git or a commit hook refused the commit)"
 	fi
 fi
 
@@ -230,13 +328,18 @@ fi
 if [ -z "$why" ]; then
 	rc=0
 	out="$(GIT_TERMINAL_PROMPT=0 git push origin "HEAD:refs/heads/$branch" 2>&1)" || rc=$?
+	out="$(shown "$out")"
 	if [ "$rc" -eq 0 ]; then
 		[ -z "$out" ] || printf '%s\n' "$out" >&2
 		echo "hand-back: the report is committed as $(git rev-parse --short HEAD) and pushed with the work to $branch."
 		exit 0
 	fi
-	printf '%s\n' "$out" >&2
-	why="the push to $branch failed (exit $rc): $out"
+	why="the push to $branch failed (exit $rc)"
+	if printf '%s\n' "$out" | grep -q '^pre-push:'; then
+		why="$why: the committed pre-push hook refused it"
+	fi
+	[ -z "$out" ] || why="$why; what git and the remote said:
+$out"
 fi
 
 # --- 5. The fallback: the tracking issue -------------------------------------
@@ -283,7 +386,7 @@ fi
 rc=0
 out="$(gh api --method POST "repos/$repo/issues/$tracking/comments" --input - <"$tmp/comment.json" 2>&1)" || rc=$?
 if [ "$rc" -ne 0 ]; then
-	printf '%s\n' "$out" | tail -n 5 >&2
+	scrub "$out" | tail -n 5 >&2
 	neither "the comment on the tracking issue, #$tracking, was not posted (gh exited $rc)"
 fi
 echo "hand-back: the push failed, so the report was posted as a comment on the tracking issue, #$tracking, instead."

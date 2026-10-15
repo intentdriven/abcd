@@ -9,7 +9,8 @@
 # default branch's ruleset and run by ci.yml's wip-guard job on every pull
 # request and every merge-queue entry. It refuses a change when:
 #
-#   - its source branch holds the path segment `abcd-wip` anywhere. The
+#   - its source branch holds the path segment `abcd-wip` anywhere, in any
+#     case. The
 #     segment, not any one host's prefix, so the check names no host: every
 #     connector's prefix ends in that segment (connector.sh refuses one that
 #     does not). A longer word (`abcd-wipe`) or the word inside a segment is
@@ -21,8 +22,12 @@
 #     add; editing or removing a report already there does not.
 #
 # The directory is named here, not read from scripts/cloud/cloud.conf in the
-# tree being judged, so a change cannot move the guard by editing the setting;
-# check-wip-source-cases.sh holds the two equal.
+# tree being judged, so editing the setting does not move the guard;
+# check-wip-source-cases.sh holds the two equal. Nor can a change edit this
+# script to pass itself: ci.yml's wip-guard job runs the copy the change's
+# BASE commit holds, never the change's own. The one exception is the first
+# landing, when the base holds no copy yet: the job then runs the change's
+# copy, and only for a source branch that does not hold the segment.
 #
 # Usage: check-wip-source.sh <source-ref> <base> <head>
 #
@@ -37,7 +42,10 @@ if [ $# -ne 3 ] || [ -z "$1" ] || [ -z "$2" ] || [ -z "$3" ]; then
 	echo "usage: check-wip-source.sh <source-ref> <base> <head>   (none of them empty)" >&2
 	exit 2
 fi
-source_ref="${1#refs/heads/}"
+# The segment is matched in any case: a forge treats `ABCD-WIP` as a branch
+# name like any other, and the guard must not be stepped round by a capital.
+source_ref="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+source_ref="${source_ref#refs/heads/}"
 base="$2"
 head="$3"
 

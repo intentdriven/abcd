@@ -239,21 +239,34 @@ func TestPrePushRefusesWIPFailingAttribution(t *testing.T) {
 	}
 }
 
-// TestPrePushRefusesOnBadDeclaration: the prefixes come from the connector
-// declarations through connector.sh's own validation, so a declaration that
-// fails it refuses the push outright, naming the file, rather than leaving the
-// hook to act on a partial list.
+// badDeclarations are connector declarations connector.sh refuses.
+var badDeclarations = map[string]string{
+	"a bare host namespace": "name=" + wipHost + "\nwip_prefix=" + wipHost + "/\nis_remote=is-remote.sh\n",
+	"the default branch":    "name=" + wipHost + "\nwip_prefix=main\nis_remote=is-remote.sh\n",
+	"two segments before":   "name=" + wipHost + "\nwip_prefix=a/b/abcd-wip/\nis_remote=is-remote.sh\n",
+	"an unknown key":        "name=" + wipHost + "\nwip_prefix=" + wipPrefix + "\nis_remote=is-remote.sh\nexempt=all\n",
+}
+
+// commitDeclaration commits conf as the test connector's declaration: the
+// hook reads the declarations from the committed tree, never the working one.
+func (c *prePushCase) commitDeclaration(conf string) {
+	c.t.Helper()
+	c.write(wipConf, conf, 0o644)
+	c.git("add", wipConf)
+	c.git("commit", "-q", "-m", "chore: a declaration\n\n"+assisted)
+}
+
+// TestPrePushRefusesOnBadDeclaration: the prefixes come from the committed
+// connector declarations through connector.sh's own validation. A declaration
+// that fails it adds no work-in-progress row, and a push to a branch holding
+// the segment abcd-wip is refused, naming the file; every other push is judged
+// as if no connector existed, so one with a receipt goes ahead.
 func TestPrePushRefusesOnBadDeclaration(t *testing.T) {
-	for name, conf := range map[string]string{
-		"a bare host namespace": "name=" + wipHost + "\nwip_prefix=" + wipHost + "/\nis_remote=is-remote.sh\n",
-		"the default branch":    "name=" + wipHost + "\nwip_prefix=main\nis_remote=is-remote.sh\n",
-		"two segments before":   "name=" + wipHost + "\nwip_prefix=a/b/abcd-wip/\nis_remote=is-remote.sh\n",
-		"an unknown key":        "name=" + wipHost + "\nwip_prefix=" + wipPrefix + "\nis_remote=is-remote.sh\nexempt=all\n",
-	} {
+	for name, conf := range badDeclarations {
 		t.Run(name, func(t *testing.T) {
 			c := newWIPCase(t)
 			c.attributed("one.md")
-			c.write(wipConf, conf, 0o644)
+			c.commitDeclaration(conf)
 			out, err := c.push("origin", "HEAD:"+wipRef)
 			if err == nil {
 				t.Fatalf("a push passed the hook with a declaration that fails validation\n%s", out)
@@ -269,15 +282,106 @@ func TestPrePushRefusesOnBadDeclaration(t *testing.T) {
 	t.Run("an ordinary branch with a receipt", func(t *testing.T) {
 		c := newWIPCase(t)
 		c.attributed("one.md")
-		c.write(wipConf, "name="+wipHost+"\nwip_prefix=main\nis_remote=is-remote.sh\n", 0o644)
-		c.git("add", wipConf)
-		c.git("commit", "-q", "-m", "a bad declaration\n\n"+assisted)
+		c.commitDeclaration("name=" + wipHost + "\nwip_prefix=main\nis_remote=is-remote.sh\n")
 		c.preflight(c.dir)
 		out, err := c.push("origin", "feature")
-		if err == nil || !strings.Contains(out, wipConf) {
-			t.Fatalf("a push went ahead under a declaration that fails validation (err %v)\n%s", err, out)
+		if err != nil {
+			t.Fatalf("an ordinary push with a receipt was refused for a bad declaration it does not use\n%s", out)
+		}
+		if !strings.Contains(out, wipConf) {
+			t.Errorf("the hook did not report the declaration that fails validation\n%s", out)
 		}
 	})
+	t.Run("an ordinary branch without a receipt", func(t *testing.T) {
+		c := newWIPCase(t)
+		c.attributed("one.md")
+		c.commitDeclaration("name=" + wipHost + "\nwip_prefix=main\nis_remote=is-remote.sh\n")
+		out, err := c.push("origin", "feature")
+		if err == nil || !strings.Contains(out, "no passing preflight") {
+			t.Fatalf("an ordinary push with no receipt passed under a bad declaration (err %v)\n%s", err, out)
+		}
+	})
+}
+
+// TestPrePushStrayConnectorDirDoesNotBlockOrdinaryPush: a directory under
+// scripts/cloud/connectors/ with no connector.conf, or a connector script that
+// lost its exec bit, fails the declarations' validation. That costs the
+// work-in-progress rows and nothing else: an ordinary push with its receipt,
+// and a reservation, still go ahead.
+func TestPrePushStrayConnectorDirDoesNotBlockOrdinaryPush(t *testing.T) {
+	for name, damage := range map[string]func(c *prePushCase){
+		"a stray directory": func(c *prePushCase) {
+			c.write("scripts/cloud/connectors/stray/notes.md", "notes\n", 0o644)
+			c.git("add", "scripts/cloud/connectors/stray/notes.md")
+		},
+		"a lost exec bit": func(c *prePushCase) {
+			c.git("update-index", "--chmod=-x", "scripts/cloud/connectors/"+wipHost+"/is-remote.sh")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newWIPCase(t)
+			c.attributed("one.md")
+			damage(c)
+			c.git("commit", "-q", "-m", "chore: damage\n\n"+assisted)
+			c.git("checkout", "-q", "--", ".")
+			c.preflight(c.dir)
+			out, err := c.push("origin", "feature")
+			if err != nil {
+				t.Fatalf("an ordinary push with its receipt was refused for a bad declaration\n%s", out)
+			}
+			if !strings.Contains(out, "scripts/cloud/connectors/") {
+				t.Errorf("the hook did not report the declaration that fails validation\n%s", out)
+			}
+			empty := c.emptyTreeCommit("", "reserve")
+			if out, err := c.push("origin", empty+":"+reservedRef); err != nil {
+				t.Errorf("a reservation was refused for a bad declaration\n%s", out)
+			}
+		})
+	}
+}
+
+// TestPrePushBadDeclarationStillRefusesWIPName: under a declaration that fails
+// validation, a push to any branch holding the segment abcd-wip, in any case,
+// is refused naming the bad declaration, even when it carries a receipt.
+func TestPrePushBadDeclarationStillRefusesWIPName(t *testing.T) {
+	for _, ref := range []string{wipRef, "refs/heads/other/abcd-wip/" + wipItem, "refs/heads/Other/ABCD-WIP/" + wipItem} {
+		t.Run(ref, func(t *testing.T) {
+			c := newWIPCase(t)
+			c.attributed("one.md")
+			c.commitDeclaration("name=" + wipHost + "\nwip_prefix=main\nis_remote=is-remote.sh\n")
+			c.preflight(c.dir)
+			out, err := c.push("origin", "HEAD:"+ref)
+			if err == nil {
+				t.Fatalf("a push to %s passed under a declaration that fails validation\n%s", ref, out)
+			}
+			if !strings.Contains(out, wipConf) || !strings.Contains(out, "abcd-wip") {
+				t.Errorf("the refusal does not name the bad declaration and the segment\n%s", out)
+			}
+			if got := c.remoteRef(ref); got != "" {
+				t.Errorf("the remote moved to %s although the push was refused", got)
+			}
+		})
+	}
+}
+
+// TestPrePushReadsCommittedDeclarations: an uncommitted edit to a declaration
+// cannot widen the exemption, and an untracked connector directory cannot add
+// one: the hook reads the declarations HEAD commits.
+func TestPrePushReadsCommittedDeclarations(t *testing.T) {
+	c := newWIPCase(t)
+	c.attributed("one.md")
+	c.write(wipConf, "name="+wipHost+"\nwip_prefix=other/abcd-wip/\nis_remote=is-remote.sh\n", 0o644)
+	c.write("scripts/cloud/connectors/extra/connector.conf", "name=extra\nwip_prefix=extra/abcd-wip/\nis_remote=is-remote.sh\n", 0o644)
+	c.write("scripts/cloud/connectors/extra/is-remote.sh", "#!/usr/bin/env bash\nexit 1\n", 0o755)
+	for _, branch := range []string{"other/abcd-wip/" + wipItem, "extra/abcd-wip/" + wipItem} {
+		out, err := c.push("origin", "HEAD:refs/heads/"+branch)
+		if err == nil || !strings.Contains(out, "no passing preflight") {
+			t.Errorf("%s passed without a receipt on a declaration HEAD does not commit (err %v)\n%s", branch, err, out)
+		}
+	}
+	if out, err := c.push("origin", "HEAD:"+wipRef); err != nil {
+		t.Errorf("the committed prefix was refused while the working tree's declaration differs\n%s", out)
+	}
 }
 
 // TestPrePushWIPStillRefusesForcePush: the entry sits after the
@@ -333,5 +437,38 @@ func TestPrePushRefusesDeletingAWIPBranch(t *testing.T) {
 	}
 	if got := c.remoteRef(wipRef); got != first {
 		t.Errorf("the remote holds %q, want %s untouched", got, first)
+	}
+}
+
+// TestPrePushWIPRefDoesNotLaunderAReceipt: a commit is "already on a remote",
+// and so needs no receipt, only when a remote-tracking ref OUTSIDE every
+// receipt-less prefix holds it. A work-in-progress push needs no receipt and
+// leaves such a ref behind, so pushing a commit there first and then to an
+// ordinary branch must still be refused for want of a receipt.
+func TestPrePushWIPRefDoesNotLaunderAReceipt(t *testing.T) {
+	c := newWIPCase(t)
+	commit := c.attributed("one.md")
+	if out, err := c.push("origin", "HEAD:"+wipRef); err != nil {
+		t.Fatalf("the work-in-progress create was refused\n%s", out)
+	}
+	if got := c.git("for-each-ref", "--format=%(refname)", "--contains", commit, "refs/remotes"); got == "" {
+		t.Fatalf("the work-in-progress push left no remote-tracking ref holding %s; the scenario needs one", commit)
+	}
+	out, err := c.push("origin", "HEAD:refs/heads/feat/x")
+	if err == nil || !strings.Contains(out, "no passing preflight") {
+		t.Fatalf("a commit first pushed under the work-in-progress prefix then reached feat/x with no receipt (err %v)\n%s", err, out)
+	}
+	if got := c.remoteRef("refs/heads/feat/x"); got != "" {
+		t.Errorf("the remote moved feat/x to %s although the push was refused", got)
+	}
+
+	// The same holds for a reservation-shaped commit: the reservation prefix
+	// launders nothing either.
+	empty := c.emptyTreeCommit("", "reserve")
+	if out, err := c.push("origin", empty+":refs/heads/abcd-reserved/"+wipItem); err != nil {
+		t.Fatalf("the reservation push was refused\n%s", out)
+	}
+	if out, err := c.push("origin", empty+":refs/heads/feat/y"); err == nil || !strings.Contains(out, "no passing preflight") {
+		t.Errorf("a commit reached feat/y with no receipt because a reservation ref holds it (err %v)\n%s", err, out)
 	}
 }

@@ -77,6 +77,9 @@ func newForgeCase(t *testing.T, tracking string) *cloudCase {
 	c.git("fetch", "-q", "origin")
 	c.git("config", "core.hooksPath", ".githooks")
 	c.git("checkout", "-q", "-b", "session")
+	// A hand-back runs inside a cloud session; a test of the person's own
+	// computer overrides the marker with its own value.
+	c.env = append(c.env, remoteMarker)
 
 	c.fake("go", `echo "go $*" >>"$CALLS"
 if [ "${1:-}" = run ] && [ "${2:-}" = ./cmd/abcd ]; then shift 2; exec "$ABCD_BIN" "$@"; fi
@@ -438,5 +441,148 @@ func TestHandBackRefusesWithoutTrackingIssue(t *testing.T) {
 	}
 	if calls := c.forgeCalls(); calls != nil {
 		t.Errorf("with no tracking issue the hand-back still called the forge: %+v", calls)
+	}
+}
+
+// TestHandBackOffCloudCommitsAndPushesNothing: the hand-back's first act is
+// the connector's is_remote check. A brief started on the person's own
+// computer must never commit onto their branch or push their unchecked
+// commits to the public work-in-progress branch: off-cloud the hand-back
+// prints the report, commits nothing, pushes and posts nothing, and exits 1.
+func TestHandBackOffCloudCommitsAndPushesNothing(t *testing.T) {
+	for _, marker := range []string{"CLAUDE_CODE_REMOTE=", "CLAUDE_CODE_REMOTE=false"} {
+		t.Run(marker, func(t *testing.T) {
+			c := newForgeCase(t, trackingIssue)
+			c.work("one.md")
+			head := c.git("rev-parse", "HEAD")
+			out, errOut, code := c.handBack([]string{marker}, "--item", handBackItem, "--state", "stopped",
+				"--assisted-by", "Claude:claude-opus-5")
+			if code != 1 {
+				t.Fatalf("an off-cloud hand-back exited %d, want 1\n%s%s", code, out, errOut)
+			}
+			for _, w := range []string{"item: " + handBackItem, "Fixed the walk over the readings folder.", "Nothing failed.", "A review of the walk."} {
+				if !strings.Contains(out, w) {
+					t.Errorf("the off-cloud hand-back did not print the report's %q\nstdout:\n%s\nstderr:\n%s", w, out, errOut)
+				}
+			}
+			if !strings.Contains(errOut, "not running in the environment the brief was written for") {
+				t.Errorf("the off-cloud hand-back does not say why it stopped\n%s", errOut)
+			}
+			if got := c.git("rev-parse", "HEAD"); got != head {
+				t.Errorf("the off-cloud hand-back committed %s", got)
+			}
+			if got := c.git("status", "--porcelain"); got != "" {
+				t.Errorf("the off-cloud hand-back changed the tree:\n%s", got)
+			}
+			if c.originRef("refs/heads/"+hostWIPPrefix+handBackItem) != "" {
+				t.Errorf("the off-cloud hand-back pushed the work-in-progress branch")
+			}
+			log := c.callLog()
+			for _, line := range strings.Split(log, "\n") {
+				if strings.HasPrefix(line, "git ") && (strings.Contains(" "+line+" ", " push ") ||
+					strings.Contains(" "+line+" ", " commit ") || strings.Contains(" "+line+" ", " add ")) {
+					t.Errorf("the off-cloud hand-back ran %s", line)
+				}
+			}
+			if c.forgeCalls() != nil {
+				t.Errorf("the off-cloud hand-back posted to the forge: %+v", c.forgeCalls())
+			}
+		})
+	}
+}
+
+// TestHandBackNeverShowsARefusedIdentity (the vendor identity is
+// cloud_setup_test.go's vendorName and vendorMail): the product thinker ruled that a
+// refused identity is shown nowhere. The hand-back judges the checkout's
+// identity before it commits, and never puts raw git or hook output in what it
+// prints or posts: neither standard output, standard error nor the comment on
+// the tracking issue carries the vendor's name or address, whether the commit
+// is what is blocked (the checkout's identity is the vendor's) or the push (a
+// work commit carries it, and the hook's attribution gate prints it).
+func TestHandBackNeverShowsARefusedIdentity(t *testing.T) {
+	check := func(t *testing.T, c *cloudCase, out, errOut string) {
+		t.Helper()
+		calls := c.forgeCalls()
+		if len(calls) != 1 {
+			t.Fatalf("the fallback called the forge %d times, want once\nstdout:\n%s\nstderr:\n%s", len(calls), out, errOut)
+		}
+		var payload map[string]string
+		if err := json.Unmarshal([]byte(calls[0].stdin), &payload); err != nil {
+			t.Fatalf("the comment's request body is not JSON: %v\n%s", err, calls[0].stdin)
+		}
+		for where, text := range map[string]string{"stdout": out, "stderr": errOut, "the comment": payload["body"]} {
+			for _, s := range []string{vendorName, vendorMail, vendorMail[strings.Index(vendorMail, "@")+1:]} {
+				if strings.Contains(text, s) {
+					t.Errorf("%s shows the refused identity's %q:\n%s", where, s, text)
+				}
+			}
+		}
+	}
+
+	t.Run("the commit is blocked", func(t *testing.T) {
+		c := newForgeCase(t, trackingIssue)
+		c.work("one.md")
+		head := c.git("rev-parse", "HEAD")
+		c.git("config", "user.name", vendorName)
+		c.git("config", "user.email", vendorMail)
+		out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "stopped", "--assisted-by", "Claude:claude-opus-5")
+		if code != 0 {
+			t.Fatalf("hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+		}
+		check(t, c, out, errOut)
+		if got := c.git("rev-parse", "HEAD"); got != head {
+			t.Errorf("the hand-back committed %s under an identity that is not a person's", got)
+		}
+		if got := c.git("status", "--porcelain"); got != "" {
+			t.Errorf("the hand-back left the tree changed:\n%s", got)
+		}
+		if strings.Contains(c.callLog(), "git push") {
+			t.Errorf("the hand-back pushed under an identity that is not a person's:\n%s", c.callLog())
+		}
+		var payload map[string]string
+		_ = json.Unmarshal([]byte(c.forgeCalls()[0].stdin), &payload)
+		if !strings.Contains(payload["body"], "no person's identity is set in this checkout, so nothing was committed") {
+			t.Errorf("the comment does not give the fixed reason:\n%s", payload["body"])
+		}
+	})
+
+	t.Run("the push is blocked", func(t *testing.T) {
+		c := newForgeCase(t, trackingIssue)
+		c.write("one.md", "one\n", 0o644)
+		c.git("add", "one.md")
+		c.git("-c", "user.name="+vendorName, "-c", "user.email="+vendorMail, "commit", "-q", "-m", "fix: one.md\n\n"+sessionTrailer)
+		out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back", "--assisted-by", "Claude:claude-opus-5")
+		if code != 0 {
+			t.Fatalf("hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+		}
+		if c.originRef("refs/heads/"+hostWIPPrefix+handBackItem) != "" {
+			t.Fatalf("the push of a vendor-authored commit went ahead; the scenario needs the hook to refuse it")
+		}
+		check(t, c, out, errOut)
+	})
+}
+
+// TestHandBackUnstagesReportWhenCommitFails: a commit hook that refuses the
+// report commit leaves nothing staged, and its output is not repeated.
+func TestHandBackUnstagesReportWhenCommitFails(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.work("one.md")
+	head := c.git("rev-parse", "HEAD")
+	c.write(".githooks/pre-commit", "#!/bin/sh\necho 'hook says: secret-hook-text' >&2\nexit 1\n", 0o755)
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "stopped", "--assisted-by", "Claude:claude-opus-5")
+	if code != 0 {
+		t.Fatalf("hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+	}
+	if got := c.git("rev-parse", "HEAD"); got != head {
+		t.Errorf("the refused commit moved HEAD to %s", got)
+	}
+	if got := c.git("diff", "--cached", "--name-only"); got != "" {
+		t.Errorf("the report is left staged after the commit failed: %s", got)
+	}
+	if strings.Contains(out+errOut, "secret-hook-text") {
+		t.Errorf("the hand-back repeated the commit hook's raw output:\n%s%s", out, errOut)
+	}
+	if !strings.Contains(errOut, "could not be committed") {
+		t.Errorf("the hand-back does not say the commit failed:\n%s", errOut)
 	}
 }

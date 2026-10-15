@@ -9,8 +9,12 @@ nothing else: {{ITEM}}, whose record is `{{RECORD}}` on the default branch,
 Run `scripts/cloud/begin.sh` before anything else. It checks that this is the
 environment the brief was written for, that you are not running as root, that
 the checkout's author identity is a person's, and that the machine has every
-tool the final checks need. If it stops, do no work on the item: hand back
-with `--state stopped` (below), saying what it reported.
+tool the final checks need.
+
+If it stops because this is not the environment the brief was written for,
+do nothing else, not even a hand-back: end the session there, having changed,
+committed and pushed nothing. If it stops for any other reason, do no work on
+the item: hand back with `--state stopped` (below), saying what it reported.
 
 ## Whose name the work goes out under
 
@@ -41,7 +45,9 @@ pushes it; push nowhere else, and never to `{{BASE}}`.
 
 ## The hand-back
 
-End every session, finished or stopped, with
+End every session, finished or stopped, with the one exception above (a
+stop because this is not the environment the brief was written for, which
+ends with nothing at all):
 
     scripts/cloud/hand-back.sh --state <handed-back|stopped> --item {{ITEM}} \
       --assisted-by <Vendor>:<model-version> \
