@@ -59,6 +59,28 @@
 #      (`abcd reserve <id> --release`), and a deleted tip would let the next
 #      reserve take the record with no lease judgement.
 #
+#      A cloud session's work-in-progress branch (itd-2610120738075547 C7,
+#      adr-2610120937435856, brief invariant 23) is the other exemption, one
+#      row per prefix a host connector declares, added to the table when the
+#      hook runs. A cloud session cannot earn a receipt where it runs, and no
+#      receipt minted there is trusted anyway (the intent's decision 9: every
+#      cloud result is re-checked by the person's own collect), so its work
+#      goes to <prefix><item-id> without one rather than staying trapped on the
+#      hosted machine. The prefixes are read from the declarations under
+#      scripts/cloud/connectors/ through scripts/cloud/connector.sh, the one
+#      validation every cloud script uses, so the hook names no host; a
+#      declaration that fails it refuses the push, naming the file, rather than
+#      leave the hook acting on a partial list. A push under a prefix passes
+#      without a receipt only when the branch is the prefix and exactly one
+#      record id, and every commit it moves passes the attribution gate
+#      (scripts/check-attribution.sh): <remote>..<local> on an update, and from
+#      the merge base with origin's default branch on a create. Anything else
+#      under the prefix is gated as any branch is, and the default-branch and
+#      non-fast-forward refusals still come first. A deletion under it is
+#      refused: the branch ends by its collect, and a spent one is swept later
+#      from an ordinary machine. The hook is not what keeps this work off the
+#      default branch; the wip-guard required check and the ruleset are.
+#
 # `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
 # every gate on the pushed commit and is the authority either way.
 set -euo pipefail
@@ -101,6 +123,45 @@ reservation_shape() {
   fi
 }
 
+# wip_id_re is the one record id a work-in-progress branch carries after its
+# prefix: an iss-, itd- or spc- id of sixteen digits, or an ordinal itd- or
+# iss- id, and nothing else.
+wip_id_re='^((iss|itd|spc)-[0-9]{16}|(iss|itd)-[0-9]{1,4})$'
+
+# wip_shape is the work-in-progress branches' shape check, for the branch the
+# loop is on and the row receiptless_row found ($branch, $row_prefix): the
+# branch is the prefix and one record id, and every commit the push moves
+# passes the attribution gate. The range is <remote>..<local> on an update, a
+# fast-forward; on a create it starts at the merge base with origin's default
+# branch. A remote tip this clone does not hold, or a default branch it cannot
+# name, fails the check, so the push is gated. It says why on a failure, since
+# the refusal that follows names only the missing receipt.
+wip_shape() {
+  local remote_sha="$1" local_sha="$2" id default base
+  id="${branch#"$row_prefix"}"
+  if ! [[ "$id" =~ $wip_id_re ]]; then
+    echo "pre-push: '$branch' is under $row_prefix but is not that prefix and one record id ($row_ruling);" >&2
+    echo "          it is gated as any branch is." >&2
+    return 1
+  fi
+  if is_null_id "$remote_sha"; then
+    if ! default="$(bash scripts/cloud/default-branch.sh </dev/null 2>/dev/null)" ||
+      ! base="$(git merge-base "refs/remotes/origin/$default" "$local_sha" 2>/dev/null)"; then
+      echo "pre-push: cannot find where '$branch' leaves origin's default branch, so its commits cannot be judged;" >&2
+      echo "          it is gated as any branch is." >&2
+      return 1
+    fi
+  else
+    git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null || return 1
+    base="$remote_sha"
+  fi
+  if ! bash scripts/check-attribution.sh commits "$base" "$local_sha" </dev/null >&2; then
+    echo "pre-push: a commit '$branch' would move fails the attribution gate ($row_ruling);" >&2
+    echo "          it is gated as any branch is." >&2
+    return 1
+  fi
+}
+
 # shape_check runs the shape check a row names on <remote_sha> <local_sha>,
 # or, given the name alone, succeeds when it is a shape check at all. Each one
 # is spelled here by name, so no command ever runs under a name read from the
@@ -108,6 +169,7 @@ reservation_shape() {
 shape_check() {
   case "$1" in
   reservation_shape) [ "$#" -eq 1 ] || reservation_shape "$2" "$3" ;;
+  wip_shape) [ "$#" -eq 1 ] || wip_shape "$2" "$3" ;;
   *) return 1 ;;
   esac
 }
@@ -127,11 +189,11 @@ shape_check() {
 #
 # A new row needs its own ruling record and its own shape check. A prefix with
 # no shape check, or one naming a check shape_check has no arm for, is never
-# receipt-less: its pushes are gated as any branch is. The next row expected is
-# cloud sessions' work-in-progress branches, ruled by adr-2610120937435856: a
-# prefix ending in abcd-wip/ with at most one segment before it, matched by
-# that suffix shape alone so the hook never names a host. It is added with its
-# own shape check by the spec that delivers it, not here.
+# receipt-less: its pushes are gated as any branch is. Cloud sessions'
+# work-in-progress rows, ruled by adr-2610120937435856, are not written here:
+# their prefixes belong to the host connectors, so the block after
+# receiptless_row appends one row per declared prefix when the hook runs, each
+# with the wip_shape check.
 receiptless_prefixes=(
   "abcd-reserved/|reservation_shape|adr-2610031352212697|abcd reserve <name> --release"
 )
@@ -151,6 +213,26 @@ receiptless_row() {
   done
   return 1
 }
+
+# The work-in-progress rows: one per prefix the host connectors declare, read
+# through scripts/cloud/connector.sh and never parsed here, so every rule of a
+# declaration (the prefix ends in the segment abcd-wip/ with at most one
+# segment before it, no two connectors share one) is that script's alone. A
+# declaration it refuses refuses the push, naming the file. A checkout without
+# the loader declares no prefix, and its pushes are gated as before. Each row
+# ends by the person's collect of the item; the spent branch is swept later
+# from an ordinary machine, never deleted by a push through this hook.
+if [ -f scripts/cloud/connector.sh ]; then
+  if ! wip_prefixes="$(bash scripts/cloud/connector.sh prefixes </dev/null)"; then
+    echo "pre-push: refusing the push: a host connector declaration fails its validation (named above)," >&2
+    echo "          so the work-in-progress prefixes cannot be read (adr-2610120937435856)." >&2
+    exit 1
+  fi
+  while IFS= read -r wip_prefix; do
+    [ -n "$wip_prefix" ] || continue
+    receiptless_prefixes+=("$wip_prefix|wip_shape|adr-2610120937435856|scripts/cloud/collect.sh <name>")
+  done <<<"$wip_prefixes"
+fi
 
 missing=""
 while read -r local_ref local_sha remote_ref remote_sha; do
