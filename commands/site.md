@@ -112,7 +112,8 @@ built as they always are, from the stores `.abcd/record-lint.json` names or,
 where the repository carries no such file, from abcd's standard layout under
 `.abcd/development/` (intents, specs, ADRs and principles), and the issue
 ledger under `.abcd/work/issues`, so an intent's typed link to an issue
-resolves; an issue is published only where the settings opt in to it. The
+resolves; an issue is published only where the settings opt in to it, with
+`"record": {"issue_ledger": true}` in `.abcd/site.json`. The
 references page (which quotes `ACKNOWLEDGEMENTS.md`), the contributors page
 (whose names and declared tools are read out of git history), and every
 picture (which lives under `docs/`) are left out, and so is a hand-written

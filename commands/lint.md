@@ -152,7 +152,7 @@ currency-clean.
 "${CLAUDE_PLUGIN_ROOT}/abcd" lint site --out site
 ```
 
-reads the built output directory and the repository it came from, and runs seven
+reads the built output directory and the repository it came from, and runs eight
 independent gates. Each reports EVERY failure it finds rather than the first, so
 one run is one review round. An output directory with no `index.html` is
 rendered first: a caller who has not built yet is asking the same question as
@@ -169,8 +169,10 @@ one who has. It writes nothing except that render, and reaches no network.
   every page, the record's own pages included, must also name a file abcd
   writes: anything under `.abcd/` but the local tier, or `CHANGELOG.md`. A
   span from `docs/`, `README.md` or any other file a person wrote fails, and
-  the interface strings are the binary's own. A gate whose `--project` and
-  `.abcd/site.json` disagree is refused, both ways.
+  the interface strings are the binary's own. A project site with no title,
+  because it has neither an identity block abcd wrote nor a GitHub origin to
+  name it, fails here too. A gate whose `--project` and `.abcd/site.json`
+  disagree is refused, both ways.
 - `hero` — the rendered hero's eyebrow, tagline and pitch equal the Identity
   block, read through the same parser the positioning surfaces use.
 - `banned-tokens` — the documentation lint's banned tokens, over the text every

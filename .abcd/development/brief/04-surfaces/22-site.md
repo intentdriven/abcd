@@ -122,8 +122,9 @@ since its site would be empty. The repository's address and name come from the
 origin remote alone, never from the package manifest, which is a person's file.
 The record pages are built exactly as for any site, from the record's lint
 configuration or, where a managed repository carries none, from abcd's standard
-layout under `.abcd/development/` (the issue ledger only where the settings opt
-in). The references page, the contributors page and every picture are left
+layout under `.abcd/development/`. The issue ledger is always read, so an
+intent's typed link to an issue resolves, and an issue is published only where
+the settings opt in with `"record": {"issue_ledger": true}`. The references page, the contributors page and every picture are left
 out, because each comes from a person's own files or from git history rather
 than from what abcd writes (pictures are a later intent, iss-2610150529485165).
 
@@ -133,7 +134,8 @@ abcd carries the project flag. Setup states this in a note on every project
 setup, since it asks the network nothing to learn which release is latest.
 
 The gate holds the line: on a project site, a rendered span whose source file
-abcd does not write fails the build, on every page, the record's own included.
+abcd does not write fails `lint site`, on every page, the record's own included,
+and so does a site with no title.
 Files under `.abcd/` (but the local tier) and `CHANGELOG.md` are abcd's; `docs/`,
 `README.md` and every other file are not. The build and the gate name the route
 explicitly, and refuse settings of the other shape. abcd's own composed site is

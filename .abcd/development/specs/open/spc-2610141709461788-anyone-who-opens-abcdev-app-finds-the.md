@@ -173,4 +173,4 @@ matched only as a whole piece.
    - packages: internal/adapter/hosting, internal/adapter/hosting/githubpages, internal/core/repolint, internal/core/site, internal/surface/cli
    - tests: project_test.go, setup_pages_test.go, setup_pages_takeover_test.go, the updated github-pages workflow golden, check_test.go, site_basepath_test.go, githubpages_test.go, rule_site_test.go, the unchanged composed golden files
    - landed: 54f5060ad
-   - The step landed in five commits, 8fbb2f3c5, 19a41f006, 916ff24cc, c22868d2f and 54f5060ad, the last named above; the review's fixes followed on the same branch in 6388e1a56, 364470574, 13991c426, dbc8d4384, 7bc9fecff, 063b04710, eafdefac5 and 38d66d63d.
+   - The step landed in five commits, 8fbb2f3c5, 19a41f006, 916ff24cc, c22868d2f and 54f5060ad, the last named above; the review's fixes followed on the same branch in 6388e1a56, 364470574, 13991c426, dbc8d4384, 7bc9fecff, 063b04710, eafdefac5 and 38d66d63d, and a second round in 3c6ca3d96, 9871ce11e and 3885b24e1.
