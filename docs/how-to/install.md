@@ -288,7 +288,7 @@ update.
 Where the agent harness renders a status line by running a command, `abcd ahoy
 install` offers to make that line abcd's own in the repositories abcd manages.
 It explains the offer, asks once, and lets you switch each element after the
-badge on or off. On consent the line leads with a badge saying whether abcd is
+badge on or off, all but the session name. On consent the line leads with a badge saying whether abcd is
 here and whose answer the loop is waiting on, followed by the repository, the
 branch, the model, the context and usage figures, and the record's intent and
 issue counts; in every other repository the status command you had before runs
@@ -341,15 +341,18 @@ first prompt: in its prompt border, in the status line directly after the
 badge, and in the harness's session list.
 
 - **Your own name wins.** A session you name yourself, when you start it or
-  at any point after, keeps your name, and abcd sets none.
+  at any point after, keeps your name, and abcd sets none. The one exception
+  is a fork of it made while a session abcd gave that same name is running:
+  the fork takes the next free name at its first prompt.
 - **A name lasts the session.** A compacted or resumed session keeps its name.
   The one exception: if every named session had ended and a new one has since
   been given that name, the resumed session takes the next free name at its
   first prompt, so two running sessions never share one. A forked session
   starts with the name of the session it came from; while that session is
   still running, the fork takes the next free name at its own first prompt.
-- **No two running sessions share a name**, across every repository on the
-  machine. A name is not handed out again while any named session is still
+- **abcd never gives two running sessions the same name**, across every
+  repository on the machine; a name you type yourself is not checked against
+  the names abcd gave, so it can match one. A name is not handed out again while any named session is still
   running, and naming starts again at Alice once every named session has
   ended, by exit or by a crash.
 - **The repository chooses the names.** They come from the `personas` list in
