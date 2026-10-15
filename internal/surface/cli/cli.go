@@ -1556,6 +1556,10 @@ type hookInput struct {
 	Prompt    string `json:"prompt"`
 	Source    string `json:"source"`
 	Event     string `json:"hook_event_name"`
+	// SessionTitle is the session's custom title on the session-start and
+	// prompt payloads: a name the person gave it or one a hook set earlier,
+	// never a generated one. Read by session naming (hook_session_name.go).
+	SessionTitle string `json:"session_title"`
 	// ToolName is supplied by the PostToolUse hook; read by `hook
 	// question-answered` only.
 	ToolName string `json:"tool_name"`
@@ -1643,6 +1647,9 @@ type routerView struct {
 	Recalled []string  `json:"recalled"`
 	Active   *[]string `json:"active,omitempty"`
 	Error    string    `json:"error,omitempty"`
+	// SessionTitle is the session's title when this prompt set it again
+	// (hook_session_name.go), and absent on every other prompt.
+	SessionTitle string `json:"session_title,omitempty"`
 }
 
 // routerRefused is the prompt router's fail-open exit when it cannot evaluate
@@ -1700,7 +1707,16 @@ force this turn, so a name missing from it has stopped. error is present only
 when the prompt could not be evaluated, and then active is absent: the set is
 unknown. A memory.json that cannot be read is named on stderr and recalls
 nothing, and the rules still inject. Every outcome, an error included,
-exits 0, so the hook can never wedge a session.`,
+exits 0, so the hook can never wedge a session.
+
+On the first prompt of a session abcd named at its start, while the session
+still carries that name, plain stdout is instead one object that sets the
+title again, with the text above as its additional context:
+
+  {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+   "additionalContext": ..., "sessionTitle": ...}}
+
+and the --json envelope carries the name as session_title.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
@@ -1786,6 +1802,9 @@ exits 0, so the hook can never wedge a session.`,
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
 			text := res.Text + mem.Text
+			// The title abcd gave this session at start, owed once so the
+			// session list shows it (hook_session_name.go).
+			title := resendSessionTitle(cmd, in)
 			if *asJSON {
 				injected := res.Injected
 				if injected == nil {
@@ -1795,7 +1814,11 @@ exits 0, so the hook can never wedge a session.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active})
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title})
+			}
+			if title != "" {
+				emitTitled(cmd, "UserPromptSubmit", text, title)
+				return nil
 			}
 			if text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), text)
@@ -1995,6 +2018,12 @@ exits 0, so the hook can never wedge a session.`,
 					cwd = wd
 				}
 			}
+			// Naming first, before the drain's time budget (hook_session_name.go):
+			// when the session is named, everything below writes to out, which
+			// is wrapped into the one object that sets the title as the hook
+			// returns; otherwise out is stdout and nothing changes.
+			out, flush := sessionStartOut(cmd, startSessionName(cmd, in, cwd))
+			defer flush()
 			var notices []string
 			// currentSHA is remembered so the cross-repository survey below can
 			// leave this repository out: the drain reports it entry by entry,
@@ -2125,7 +2154,7 @@ exits 0, so the hook can never wedge a session.`,
 			// An inbox that cannot be counted says so among the notices, on
 			// stderr: the reason names a path, and stdout carries counts only.
 			if g, n := inboxGreeting(); g != "" {
-				fmt.Fprintln(cmd.OutOrStdout(), g)
+				fmt.Fprintln(out, g)
 			} else if n != "" {
 				notices = append(notices, n)
 			}
@@ -2171,7 +2200,7 @@ exits 0, so the hook can never wedge a session.`,
 			// gap COUNT and says nothing about a staged transcript or a failed
 			// drain — so the one notice naming a privacy artefact was the one it
 			// lost. `abcd history staged` is where that lives.
-			fmt.Fprintf(cmd.OutOrStdout(),
+			fmt.Fprintf(out,
 				"abcd: %d session-start notice(s) on this hook's stderr; "+
 					"run `abcd history staged` for transcript backlog or `abcd ahoy` for install state.\n",
 				len(notices))

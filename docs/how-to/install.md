@@ -330,6 +330,35 @@ untrusted.
 Run `abcd ahoy uninstall` before you remove abcd. It puts back the status
 command you had before, keeping a copy of the file first.
 
+### Session names
+
+Each session abcd's hooks run in names itself when it starts, so you can tell
+sessions apart and address one by name. The names are the repository's
+personas in order (Alice, Bob, Carol and on through the list), then the same
+names again as Alice Two, Bob Two and so on. A name shows in the session's
+prompt border and in the status line, directly after the badge, from the
+start, and in the harness's session list from the session's first prompt.
+
+- **Your own name wins.** A session you name yourself, when you start it or
+  at any point after, keeps your name, and abcd sets none.
+- **A name lasts the session.** A compacted or resumed session keeps its name.
+- **No two running sessions share a name**, across every repository on the
+  machine. A name is not handed out again while any named session is still
+  running, and naming starts again at Alice once every named session has
+  ended, by exit or by a crash.
+- **The repository chooses the names.** They come from the `personas` list in
+  `.abcd/development/personas.json`. Every name there must be one capitalised
+  word of letters, at most sixteen characters, with none repeated; otherwise
+  abcd uses its own list (Alice to Nia) for the whole repository and says so
+  in one line on the hook's error output.
+- **Where it is kept.** The names in use are recorded in
+  `~/.abcd.noindex/sessions/names.json`, readable and writable by your account
+  alone. abcd tells a running session from an ended one by its process, which
+  it reads on macOS and Linux; elsewhere sessions are not named.
+- **Naming never holds a session up.** If the record cannot be read or written
+  within two seconds, or the process list cannot be read, the session starts
+  unnamed and one line on the hook's error output says why.
+
 ## Where your session transcripts are kept
 
 Session transcripts go into one store on your machine, at

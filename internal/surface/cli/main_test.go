@@ -8,6 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 )
 
@@ -65,6 +66,11 @@ func TestMain(m *testing.M) {
 	// No install run here starts the machine's own agent tool to read its
 	// version; the one test of that warning swaps in a stub reading.
 	ahoy.NoHostVersionForTest()
+	// No hook run here names a session unless its test asks: naming reads
+	// the machine's process table and writes a register into the home, and a
+	// test that did not ask for either must see stdout exactly as before.
+	// The naming tests swap in a fixture machine (hook_session_name_test.go).
+	sessionNameMachine = func() (sessionname.Machine, bool) { return sessionname.Machine{}, false }
 	real := os.Getenv("HOME")
 	// The machine's own home is out of reach of every test that did not set
 	// HOME itself: its rules.json (the rules loader) and its layered files,
