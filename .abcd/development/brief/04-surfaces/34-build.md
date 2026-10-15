@@ -93,7 +93,17 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   ledger holds one id in two folders) and an unreadable claim file each count
   as a holding, naming why. A peer of another repository, or one holding no
   records at the committed layout, holds nothing of this checkout's and does
-  not count.
+  not count. For an intent, a reservation on `origin` another copy holds is a
+  holding too (itd-2609091034175565): another person's live one, or an
+  unreadable one within its hold, named with its holder, its expiry and the
+  view's age, and this person's own from another computer, named as theirs.
+  The reservations are read as this checkout last fetched them
+  (`claim.View`), from disk alone, so the check makes no network act; this
+  copy's own reservation is never a holding, and a view that cannot be read
+  fails closed. The pick excludes such an intent at `peers` with that
+  reason, and the board's next-up head passes over it, through the same check.
+  An issue key's peers row does not read them: its run's reservation, fetched
+  afresh at the start, judges it.
 
 A build started for a named session, one joined to the shared run, claims its intent in the shared run state when it creates the run, with
 the run id as the lane and the longest lease a claim takes, so a build of the

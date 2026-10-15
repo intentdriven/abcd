@@ -26,10 +26,24 @@ func reservedRecords(t *testing.T, w *reserveWorld) {
 	writeRel(t, seed, ".abcd/work/issues/open/iss-5-a-reserved-finding.md", peerIssue("iss-5", "a-reserved-finding", "A reserved finding"))
 	writeRel(t, seed, ".abcd/work/issues/open/iss-6-a-later-finding.md", peerIssue("iss-6", "a-later-finding", "A later finding"))
 	writeRel(t, seed, ".abcd/development/intents/drafts/itd-7-x.md", peerIntent("itd-7", "A reserved draft"))
+	writeRel(t, seed, ".abcd/development/intents/planned/itd-8-ready.md", readyReservedIntent)
+	writeRel(t, seed, ".abcd/development/specs/open/spc-8-ready.md", readyReservedSpec)
 	gitCmd(t, seed, "add", "-A")
 	gitCommit(t, seed, "commit", "-q", "-m", "records")
 	gitCmd(t, seed, "push", "-q", "origin", "main")
 }
+
+// readyReservedIntent is a planned intent every other check `abcd build` runs
+// passes, and readyReservedSpec its spec, so only a reservation can refuse it.
+const (
+	readyReservedIntent = "---\nid: itd-8\nslug: ready\nspec_id: spc-8\nkind: standalone\n---\n# ready\n\n" +
+		"## Mechanism\n\nWe expect it to work because it is small; shown wrong if it is not.\n\n" +
+		"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- Given x, when y, then z.\n\n" +
+		"## Open Questions\n\n_None open._\n\n" +
+		"## Grounds\n\n- pursued: we expect a reservation to hold it; shown wrong if a build starts it\n"
+	readyReservedSpec = "---\nid: spc-8\nslug: ready\nintent: itd-8\n---\n# ready\n\n## Summary\n\nA written design record.\n\n" +
+		"## Footprint\n\n- packages: d.go\n- tests: none\n"
+)
 
 // recordJSON is the reservation half of `abcd <record-id> --json`.
 type recordJSON struct {
@@ -54,7 +68,8 @@ type boardStatusJSON struct {
 
 // TestReservationRendersTouchNoNetwork is C49: after Q's checkout fetched the
 // reservations, the record render and the board show P's reservations and
-// the view's age from disk alone. A reservation P makes after that fetch is
+// the view's age from disk alone, and `abcd build <itd-N>` and `abcd build
+// next` refuse P's reserved intent at their peers check from disk alone. A reservation P makes after that fetch is
 // not seen, the fetch stamp is not moved, the origin can be gone, and no HTTP
 // request is made.
 func TestReservationRendersTouchNoNetwork(t *testing.T) {
@@ -65,6 +80,7 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	for _, args := range [][]string{
 		{"reserve", "iss-5", "--footprint", "a.go"},
 		{"reserve", "itd-7", "--footprint", "b.go"},
+		{"reserve", "itd-8", "--footprint", "d.go"},
 	} {
 		if code, out, errOut := reserveRun(t, p, args...); code != 0 {
 			t.Fatalf("%v: exit %d\n%s%s", args, code, out, errOut)
@@ -146,6 +162,18 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	code, raw, _ = reserveRun(t, p, "--json")
 	if code != 0 || strings.Contains(raw, `"reserved"`) {
 		t.Fatalf("the holder's own board names its reservation as another's: exit %d\n%s", code, raw)
+	}
+
+	// The build's peers check reads the same view: P's reserved intent is
+	// refused, and `build next` excludes it, with no fetch and no push.
+	code, raw, errOut = reserveRun(t, q, "build", "itd-8", "--json")
+	if code != 3 || !strings.Contains(raw, `"check": "peers"`) || !strings.Contains(raw, "reserved by octo until ") ||
+		!strings.Contains(raw, "as of the last fetch") {
+		t.Fatalf("abcd build itd-8: exit %d, want the peers check naming P's reservation\n%s%s", code, raw, errOut)
+	}
+	code, raw, errOut = reserveRun(t, q, "build", "next", "--json")
+	if code != 2 || !strings.Contains(raw, `"id": "itd-8"`) || !strings.Contains(raw, "reserved by octo until ") {
+		t.Fatalf("abcd build next: exit %d, want itd-8 excluded naming P's reservation\n%s%s", code, raw, errOut)
 	}
 
 	if now, err := os.ReadFile(stampPath); err != nil || string(now) != string(stamped) {

@@ -71,10 +71,17 @@ pass:
   settled chain is named in the passing row.
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
-  it in another bucket, and no session other than `--session` holds a live
-  claim on it. A peer that
+  it in another bucket, no session other than `--session` holds a live
+  claim on it, and no other copy holds a reservation on it on `origin`. A peer that
   cannot be read (a worktree git will not answer for, a ledger holding one id
   twice) and an unreadable claim count as holding it: what they hold is unknown.
+  The reservations are read as this checkout last fetched them, from disk
+  alone, with no fetch and no push: another person's live reservation (or an
+  unreadable one within its hold) is named with its holder, its expiry and the
+  view's age, `reserved by octo until 2026-10-03T15:00:00Z, as of the last
+  fetch 12 minutes ago`, and so is yours from another computer. This copy's own
+  reservation is never a holder. `/abcd:peers` fetches them afresh; a view
+  nothing here fetched holds none.
 
 A refusal writes nothing. It exits 2, or 3 when a peer holds the intent or the
 run state is locked (back off and take other work). Under `--json` the refusal comes as its own document
@@ -136,7 +143,8 @@ most recent conjecture.
 
 The payload carries `candidates` (each with its `score` parts and `total`),
 `excluded` (each planned intent a check excluded, with the `check` and the
-`reason`), `pick` (`chosen`, `runner_up`, `tie_broken_by_age`, `rule`,
+`reason`; an intent another copy reserved is excluded at `peers`, its reason
+naming the holder, the expiry and the view's age as last fetched), `pick` (`chosen`, `runner_up`, `tie_broken_by_age`, `rule`,
 `falsifier`), `entry` (the reason's text), `start`, the run as
 `build <itd-N>` reports it, `series` (below; `null` for a single pick) and
 `next`, the move to make. Tell the user which intent was picked and why, then

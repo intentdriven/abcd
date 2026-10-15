@@ -331,7 +331,11 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		shared = run
 	}
-	chk, err := check(repoRoot, key, o.Session, nil)
+	snap, err := readPeers(repoRoot, o.now())
+	if err != nil {
+		return StartResult{}, err
+	}
+	chk, err := check(repoRoot, key, o.Session, snap)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -1141,12 +1145,12 @@ func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
 // fails closed on each record, as it does for the pick. It is a
 // statusblock.PeerReader.
 func StatusPeers(repoRoot string) (statusblock.HeldBy, error) {
-	snap, err := readPeers(repoRoot)
+	snap, err := readPeers(repoRoot, time.Now())
 	if err != nil {
 		return nil, err
 	}
 	return func(r intent.ReadyResult) string {
-		if row := peersCheck(r.IntentID, r.Bucket, "", snap); !row.OK {
+		if row := peersCheck(r.IntentID, r.Bucket, "", snap, true); !row.OK {
 			return row.Detail
 		}
 		return ""

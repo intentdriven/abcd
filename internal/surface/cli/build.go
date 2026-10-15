@@ -102,8 +102,11 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"the intent is READY (planned, criteria written, its spec linked and written), asks no\n" +
 			"open question, has no unanswered claim section, is not held, names no unsettled blocker\n" +
 			"in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling\n" +
-			"worktree or local branch holds it in another bucket, and no session holds a live claim\n" +
-			"on it; a peer or claim that cannot be read counts as holding it). A refusal names the\n" +
+			"worktree or local branch holds it in another bucket, no session holds a live claim on\n" +
+			"it, and no other copy holds a reservation on it on origin, as this checkout last fetched\n" +
+			"the reservations; a peer, claim or view that cannot be read counts as holding it). The\n" +
+			"check reads the reservations from disk alone, and names another copy's with its holder,\n" +
+			"its expiry and the view's age; this copy's own is never a holder. A refusal names the\n" +
 			"check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent\n" +
 			"instead of taking one named.\n\n" +
 			"When the checks pass, the run is created in this checkout's local tier,\n" +

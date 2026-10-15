@@ -21,6 +21,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -94,6 +95,11 @@ type NextResult struct {
 // the ones that pass. It writes nothing. A fault in reading the checkout is an
 // error; an intent that may not start is an exclusion.
 func candidates(repoRoot, session string) (CandidateSet, error) {
+	return candidatesAt(repoRoot, session, time.Now())
+}
+
+// candidatesAt is candidates, judging the reservations as last fetched at now.
+func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error) {
 	set := CandidateSet{Candidates: []intent.PickCandidate{}, Excluded: []Excluded{}}
 	corpus, err := intent.Load(repoRoot)
 	if err != nil {
@@ -130,7 +136,7 @@ func candidates(repoRoot, session string) (CandidateSet, error) {
 	if err != nil {
 		return set, err
 	}
-	snap, err := readPeers(repoRoot)
+	snap, err := readPeers(repoRoot, now)
 	if err != nil {
 		return set, err
 	}
@@ -233,7 +239,7 @@ func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 // choose reads the candidate set, less every intent the series has picked
 // when ser is not nil, and takes the readiest; ok is false when none is left.
 func choose(repoRoot string, o Options, ser *NextSeries) (CandidateSet, intent.Pick, bool, error) {
-	set, err := candidates(repoRoot, o.Session)
+	set, err := candidatesAt(repoRoot, o.Session, o.now())
 	if err != nil {
 		return set, intent.Pick{}, false, err
 	}

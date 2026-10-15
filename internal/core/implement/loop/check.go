@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -113,7 +115,9 @@ const maxIntentBytes = 256 * 1024
 //     2026-09-29).
 //   - steps: the spec's `## Steps` reads, and leaves a step to build.
 //   - peers: no peer holds the record — no sibling worktree or local branch
-//     holds it in another bucket, and no session holds a live claim on it.
+//     holds it in another bucket, no session holds a live claim on it, and,
+//     for an intent, no other copy holds a reservation on it on origin as
+//     this checkout last fetched them (read from disk alone).
 func Check(repoRoot, key string) (CheckResult, error) { return check(repoRoot, key, "", nil) }
 
 // check is Check on behalf of session: a live claim session itself holds on the
@@ -167,11 +171,11 @@ func check(repoRoot, key, session string, snap *peerSnapshot) (CheckResult, erro
 	}
 
 	if snap == nil {
-		if snap, err = readPeers(repoRoot); err != nil {
+		if snap, err = readPeers(repoRoot, time.Now()); err != nil {
 			return res, err
 		}
 	}
-	peersRow := peersCheck(ready.IntentID, ready.Bucket, session, snap)
+	peersRow := peersCheck(ready.IntentID, ready.Bucket, session, snap, true)
 	res.Checks = append(res.Checks, peersRow)
 
 	res.OK = true
@@ -243,11 +247,13 @@ func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnap
 		return res, nil
 	}
 	if snap == nil {
-		if snap, err = readPeers(repoRoot); err != nil {
+		if snap, err = readPeers(repoRoot, time.Now()); err != nil {
 			return res, err
 		}
 	}
-	res.Checks = append(res.Checks, peersCheck(res.Key, string(capture.StateOpen), session, snap))
+	// An issue's reservation is judged by the reservation its run takes,
+	// fetched fresh at the start, not by the view as last fetched.
+	res.Checks = append(res.Checks, peersCheck(res.Key, string(capture.StateOpen), session, snap, false))
 	res.OK = true
 	for _, c := range res.Checks {
 		if !c.OK {
@@ -306,21 +312,39 @@ func readyRow(r intent.ReadyResult) CheckRow {
 	return row
 }
 
-// peerSnapshot is what the peers check reads: the peer listing and the run's
-// claims, read once and judged for any number of records.
+// peerSnapshot is what the peers check reads: the peer listing, the run's
+// claims and the reservations as last fetched, read once and judged for any
+// number of records.
 type peerSnapshot struct {
 	rep    peers.Report
 	claims []implement.ClaimState
+	// reserved is the reservations on origin as this checkout last fetched
+	// them, read from disk alone (claim.View): no fetch and no push. It is nil
+	// in a checkout with no remote named origin, where there are none.
+	reserved *claim.Snapshot
+	// reservedErr is why the reservations could not be read; the check then
+	// fails closed on every intent, as it does on a peer it cannot read.
+	reservedErr string
+	// reader is the username the person resolves to, read only when a
+	// reservation another copy holds is in the view; "" when it cannot be
+	// told, and every other copy's reservation is then named by its holder.
+	reader string
+	// now is when the reservations are judged.
+	now time.Time
 }
 
-// readPeers reads the peer listing and, when the checkout has a root commit,
-// the shared run's claims.
-func readPeers(repoRoot string) (*peerSnapshot, error) {
+// readPeers reads the peer listing, the shared run's claims when the
+// checkout has a root commit, and the reservations as last fetched, judged at
+// now, when it has a remote named origin.
+func readPeers(repoRoot string, now time.Time) (*peerSnapshot, error) {
 	rep, err := peers.Scan(repoRoot)
 	if err != nil {
 		return nil, err
 	}
-	snap := &peerSnapshot{rep: rep}
+	snap := &peerSnapshot{rep: rep, now: now}
+	if err := snap.readReservations(repoRoot); err != nil {
+		return nil, err
+	}
 	if sha := gitutil.RootCommit(repoRoot); gitutil.IsFullSHA(sha) {
 		run, err := implement.Peek(sha)
 		if err != nil {
@@ -333,14 +357,56 @@ func readPeers(repoRoot string) (*peerSnapshot, error) {
 	return snap, nil
 }
 
-// peersCheck refuses a record a peer holds, from the two places a holding is
+// readReservations reads the reservations as last fetched into snap, from
+// disk alone, when the checkout has a remote named origin.
+func (snap *peerSnapshot) readReservations(repoRoot string) error {
+	ok, err := claim.HasOrigin(repoRoot)
+	if err != nil || !ok {
+		return err
+	}
+	view, err := claim.View(repoRoot, snap.now)
+	if err != nil {
+		snap.reservedErr = fsutil.RedactHome(err.Error())
+		return nil
+	}
+	snap.reserved = &view
+	for _, r := range view.Reservations {
+		if r.State == claim.StateLive && r.Copy != claim.CopyThis {
+			snap.reader = claim.ReaderHolder(repoRoot, claim.Options{})
+			break
+		}
+	}
+	return nil
+}
+
+// reservationHolder names the reservation another copy holds on id in the
+// view as last fetched, with the view's age: another person's, this person's
+// on another computer, or an unreadable one within its hold. This copy's own
+// is never a holder. "" when nothing but this copy holds it.
+func (snap *peerSnapshot) reservationHolder(id string) string {
+	if snap.reservedErr != "" {
+		return "the reservations as last fetched could not be read, so whether another copy reserved it is unknown (" + snap.reservedErr + ")"
+	}
+	if snap.reserved == nil {
+		return ""
+	}
+	r, ok := snap.reserved.Lookup(id)
+	if ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && claim.SameHolder(r.Holder, snap.reader) {
+		return fmt.Sprintf("your copy on another computer reserved it until %s, %s", stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now))
+	}
+	return snap.reserved.HeldBy(id, snap.now)
+}
+
+// peersCheck refuses a record a peer holds, from the places a holding is
 // visible from this checkout: the peer listing (a sibling worktree or a local
 // branch holding the intent in another bucket than this checkout's — a lane
-// that shipped or re-drafted it), and the run's claim store (a session holding
-// a live claim on it). A peer holding the record in the same bucket holds a
+// that shipped or re-drafted it), the run's claim store (a session holding
+// a live claim on it), and, when reservations is true, the reservations on
+// origin as last fetched (another copy's reservation on it). A peer holding the record in the same bucket holds a
 // copy, not the record: every branch cut from the default branch does. A live
-// claim held by session — the one the build is started for — is its own.
-func peersCheck(id, bucket, session string, snap *peerSnapshot) CheckRow {
+// claim held by session — the one the build is started for — is its own, and
+// so is this copy's reservation.
+func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations bool) CheckRow {
 	row := CheckRow{Name: CheckPeers}
 	var holders []string
 	for _, l := range snap.rep.Locate(id) {
@@ -364,6 +430,11 @@ func peersCheck(id, bucket, session string, snap *peerSnapshot) CheckRow {
 				continue
 			}
 			holders = append(holders, fmt.Sprintf("session %s claims it for lane %s", c.Session, c.Lane))
+		}
+	}
+	if reservations {
+		if h := snap.reservationHolder(id); h != "" {
+			holders = append(holders, h)
 		}
 	}
 	if len(holders) == 0 {

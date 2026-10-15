@@ -169,3 +169,13 @@ func readerHolder(root string, o Options) string {
 	}
 	return u
 }
+
+// ReaderHolder is the GitHub username the person reading resolves to, read as
+// a reservation verb reads it, with no network act; "" when it cannot be
+// told. A render that tells this person's other copy apart from another
+// person reads it.
+func ReaderHolder(root string, o Options) string { return readerHolder(root, o) }
+
+// SameHolder reports whether two usernames name one person, compared without
+// regard to case, as the forge compares them.
+func SameHolder(a, b string) bool { return a != "" && sameHolder(a, b) }
