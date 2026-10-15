@@ -65,11 +65,22 @@ composition and no site sources.
   the brief↔lifeboat contract, `internal/core/lifeboat/mapping.go`); the press
   releases of the three newest shipped intents whose audit was met (the
   `shipped-intent-press-release` feature's pick, applied to more than one);
-  and the release list in `CHANGELOG.md`. Anything absent is left out. Setup
-  refuses a repository holding none of the four: the site would be empty. The
-  record pages render as on every site; the references page (it quotes
-  `ACKNOWLEDGEMENTS.md`), the contributors policy and every picture (pictures
-  live under `docs/`; asking for them is iss-2610150529485165) are left out.
+  and the release list in `CHANGELOG.md`. Anything absent is left out; with
+  no identity block the page is headed and titled by the repository's name
+  on GitHub. Setup, and `site build --project` before it writes anything,
+  refuse a repository holding none of the four: the site would be empty. The
+  repository's address and name come from the origin remote alone, never from
+  `.claude-plugin/plugin.json`, a person's file. The record pages render as on
+  every site, from `.abcd/record-lint.json` or, where a managed repository
+  carries none, from abcd's standard layout under `.abcd/development/` (the
+  issue ledger only where the settings opt in). The references page (it
+  quotes `ACKNOWLEDGEMENTS.md`), the contributors page (its names and
+  declared tools come from git history, which abcd does not write; recorded
+  by the facilitator as owed to the product thinker for confirmation) and
+  every picture (pictures live under `docs/`; asking for them is
+  iss-2610150529485165) are left out. The workflow builds with abcd's latest
+  release, so a project site cannot build until a release carries
+  `--project`; setup says so in a note on every project run.
   The interface words, stylesheet, scripts and headers policy are the binary's
   (`setupsrc/`), so the repository carries no site sources. A build or gate
   whose `--project` and settings disagree is refused, both ways.
@@ -93,9 +104,9 @@ composition and no site sources.
 - **The managed-repository line (criterion 4).** Every page opens with "This is
   the record of an abcd-managed repository", linking to the repository. The
   words are a new `managed_record` interface string in the closed `ui.json`
-  allowlist; a project site reads it from the binary's allowlist. A
-  repository with no package manifest takes its address from the origin
-  remote on github.com.
+  allowlist; a project site reads it from the binary's allowlist. A composed
+  site with no package manifest takes its address from the origin remote on
+  github.com, and a project site always does.
 - **The provenance gate (criterion 5).** The gate still fails a build on any
   word no source or interface string accounts for. With `--project` it also
   fails any `data-src` span, on any page, the record's own included, whose
@@ -137,8 +148,8 @@ matched only as a whole piece.
 
 ## Footprint
 
-- packages: internal/adapter/hosting, internal/adapter/hosting/cloudflare, internal/adapter/hosting/githubpages, internal/adapter/hosting/githubpages/githubpagestest, internal/core/site, internal/surface/cli
-- tests: the project route (settings only and refused composition keys, the about page from its four parts and each left out when absent, no person's words on any page, the binary's static files, the gate refusing a span from `docs/` or the README on the about page and a record page, the route named both ways, the managed line on every project page, the base path); setup writing exactly the settings and the workflow, and refusing a repository with nothing abcd wrote; a two-word author beside the footer's year; the base path (normalising, every root-absolute URL prefixed, default output unchanged, the gate against the prefixed root, both verbs' flag); the managed-repository line on every page and its origin fallback; the github-pages adapter over its in-process fake (profile, create, route, address, refusals, every forge failure); setup switched on, declined, private, visibility unreadable, switched off with the workflow removed, kept when hand-edited, kept when the removal is declined; the Pages workflow holding no secret and gated on the switch and on a public repository, pinned by a golden file, and its switch step run with bash against a checkout (switched off at the head, missing or malformed there, made private); a live custom domain without --domain, a site served below another path and an existing site named before it is published over; the base-path gate denied a pass on an unparsed page; the cloudflare workflow pinned byte for byte by a golden file; the forge's visibility read and the `gh api` transport
+- packages: internal/adapter/hosting, internal/adapter/hosting/cloudflare, internal/adapter/hosting/githubpages, internal/adapter/hosting/githubpages/githubpagestest, internal/core/repolint, internal/core/site, internal/surface/cli
+- tests: the project route (settings only and refused composition keys, the about page from its four parts and each left out when absent, no person's words on any page, the binary's static files, the gate refusing a span from `docs/` or the README on the about page and a record page, the route named both ways, the managed line on every project page, the base path, a hostile package manifest reaching no page while the managed line links the origin remote, the repository's name heading and titling a site with no identity block, the standard record layout read with no record-lint config and its issue ledger only when opted in, no contributors page, an empty build refused before it writes); bare `abcd lint` gating a project site on its own route; setup writing exactly the settings and the workflow, refusing a repository with nothing abcd wrote, and noting the release a project workflow needs; a two-word author beside the footer's year; the base path (normalising, every root-absolute URL prefixed, default output unchanged, the gate against the prefixed root, both verbs' flag); the managed-repository line on every page and its origin fallback; the github-pages adapter over its in-process fake (profile, create, route, address, refusals, every forge failure); setup switched on, declined, private, visibility unreadable, switched off with the workflow removed, kept when hand-edited, kept when the removal is declined; the Pages workflow holding no secret and gated on the switch and on a public repository, pinned by a golden file, and its switch step run with bash against a checkout (switched off at the head, missing or malformed there, made private); a live custom domain without --domain, a site served below another path and an existing site named before it is published over; the base-path gate denied a pass on an unparsed page; the cloudflare workflow pinned byte for byte by a golden file; the forge's visibility read and the `gh api` transport
 
 ## Steps
 
@@ -159,6 +170,7 @@ matched only as a whole piece.
    - tests: setup_pages_test.go, setup_workflow_golden_test.go, forge_pages_test.go, site_setup_test.go
    - landed: 862ace7f8
 5. Single-source project site
-   - packages: internal/adapter/hosting, internal/adapter/hosting/githubpages, internal/core/site, internal/surface/cli
-   - tests: project_test.go, setup_pages_test.go, setup_pages_takeover_test.go, the updated github-pages workflow golden, check_test.go, site_basepath_test.go, githubpages_test.go, the unchanged composed golden files
+   - packages: internal/adapter/hosting, internal/adapter/hosting/githubpages, internal/core/repolint, internal/core/site, internal/surface/cli
+   - tests: project_test.go, setup_pages_test.go, setup_pages_takeover_test.go, the updated github-pages workflow golden, check_test.go, site_basepath_test.go, githubpages_test.go, rule_site_test.go, the unchanged composed golden files
    - landed: 54f5060ad
+   - The step landed in five commits, 8fbb2f3c5, 19a41f006, 916ff24cc, c22868d2f and 54f5060ad, the last named above; the review's fixes followed on the same branch in 6388e1a56, 364470574, 13991c426, dbc8d4384, 7bc9fecff, 063b04710, eafdefac5 and 38d66d63d.
