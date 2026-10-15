@@ -12,6 +12,12 @@ remedy: "Waits on ruling H (the cut lease inside the session register itd-260915
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed H): Plan the cut lease inside the session register (itd-2609150819440345), or as its own intent?"
 related_intents: [itd-2609151838312703]
+resolution: "a release cut is now held by a reservation of the release, rel-vX.Y.Z, which every other session's land step reads and refuses on, and abcd peers shows"
+impact: additive
+resolved_by:
+  intent: "itd-2609151838312703"
+  spec: "spc-2610150728396006"
+  commit: "2653a0e23"
 ---
 
 A release cut in progress is invisible to every other session, so a change landing on main during a cut is discovered in the changelog rather than chosen. abcd should let launch declare a cut lease that peer sessions, merges and record closes can see: a session about to merge or close a record during a lease is told which cut it would join and who is cutting, and the cutting session rules on the ordering. The convention is in AGENTS.md (concurrent sessions); this seeds the mechanical form, alongside session presence (iss-2608220750029993) and itd-33.
@@ -21,3 +27,7 @@ A release cut in progress is invisible to every other session, so a change landi
 - SOTA check: the Kubernetes release phases (https://github.com/kubernetes/sig-release/blob/master/releases/release_phases.md, read 2026-09-29) announce code freeze ahead through the release calendar, let only release-blocking changes proceed past it, and leave exceptions to the owning SIG: an announced window plus an owner's ruling, the shape of the AGENTS.md convention.
 - The implement run already refuses a second session's release step (`commands/implement.md`), so the lease generalises a shipped primitive to sessions outside a run.
 - Rejected: a forge branch lock for the cut, which blocks the prose fixes a cut needs and is a remote mutation adr-44 keeps behind an explicit verb.
+
+## Grounds
+
+- pursued: a session cutting a release holds every other session's merge until its tag; shown wrong if a land step arms a merge while another session's release reservation is live
