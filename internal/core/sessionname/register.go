@@ -36,6 +36,12 @@ const registerSchema = 1
 // planted device or an endless file.
 const maxRegisterBytes = 256 << 10
 
+// maxReadTook is the longest a process-table read may take and still be used
+// to judge which sessions have ended (prune). A start time read from the table
+// is early by at most the read's length, and two readings of one process,
+// each early by up to a second, stay within startTolerance of each other.
+const maxReadTook = time.Second
+
 // lockTimeout is the spec's two seconds: the longest a session start waits
 // for another session's turn at the register before it starts unnamed (C11).
 const lockTimeout = 2 * time.Second
@@ -68,18 +74,31 @@ func Live() Machine {
 	return Machine{Home: home, From: os.Getppid(), ReadTable: readLiveTable, LockTimeout: lockTimeout}
 }
 
-// readLiveTable reads the machine's process table and notes when it was read,
-// which is what each process's age is measured back from.
-func readLiveTable() (Table, error) {
-	snap, err := machineload.Read()
-	at := time.Now()
+// readLiveTable reads the machine's process table and notes when the read
+// began, which is what each process's age is measured back from, and how long
+// it took.
+func readLiveTable() (Table, error) { return readTable(machineload.Read, time.Now) }
+
+// readTable is readLiveTable with its reader and clock passed in.
+//
+// The moment is taken BEFORE the read. Under load a read can take seconds,
+// and a moment taken after it would put every start time computed from the
+// table that much later than it was: a session that started while the table
+// was being read would look started before the read, so absent from a table
+// that should have held it, and ended. Measured from before the read, a start
+// time can only come out early, by at most the read's length, which Took
+// records so prune can refuse to judge a slow read.
+func readTable(read func() (machineload.Snapshot, error), now func() time.Time) (Table, error) {
+	before := now()
+	snap, err := read()
+	took := now().Sub(before)
 	if err != nil {
 		return Table{}, err
 	}
 	if !snap.HasProcs {
 		return Table{}, errors.New("the process table was not read")
 	}
-	return Table{Procs: snap.Procs, ReadAt: at}, nil
+	return Table{Procs: snap.Procs, ReadAt: before, Took: took}, nil
 }
 
 // Request is what a session-start hook's payload says about the session.
@@ -100,8 +119,9 @@ type Request struct {
 	AgentID string
 }
 
-// Outcome is what a hook does with naming: the title to set ("" for none) and
-// the notes for stderr, raw (the front door masks them as it prints).
+// Outcome is what a hook does with naming: the name (from Start, the name
+// reserved; from Resend, the title to set on this prompt; "" for none) and the
+// notes for stderr, raw (the front door masks them as it prints).
 type Outcome struct {
 	Name  string
 	Notes []string
@@ -114,9 +134,15 @@ type entry struct {
 	// HostPID and HostStartUnix are the host process (Host).
 	HostPID       int   `json:"host_pid"`
 	HostStartUnix int64 `json:"host_start_unix"`
-	// Resent records that the prompt hook has set the title again, which is
-	// what puts it in the session list (C3); it is owed once.
-	Resent bool `json:"resent"`
+	// Sent records that the prompt hook has dealt with the title: set it,
+	// found it already set, or found the person's own name there. Session
+	// start reserves the name and sets no title (decision 9); the title is
+	// owed once, at the first prompt.
+	Sent bool `json:"sent"`
+	// Replaces is the title a resumed session carried that a running session
+	// now holds (decision 10): the one title the prompt hook replaces with
+	// Name. Empty on every other entry.
+	Replaces string `json:"replaces,omitempty"`
 }
 
 // register is the file's shape.
@@ -132,12 +158,19 @@ type register struct {
 
 // Start is the session-start hook's naming.
 //
+// Start reserves; it never sets a title. The host ignores a prompt-hook title
+// equal to the one a session already has, so a title set here would never
+// reach the session list (decision 9). The returned Name is the name reserved,
+// which the prompt hook sets at the session's first prompt (Resend).
+//
 // A sub-agent is never named, nor a payload with no session id. A new session
-// (startup, or a fork) with no title takes the next free name. A resumed or
+// (startup, or a fork) with no title reserves the next free name. A resumed or
 // cleared session whose title is one of this repository's persona names keeps
 // it, and the register holds the name for the process now running it, so no
-// other session is given it (C5); no title is set. A compaction changes
-// nothing: the host keeps the title through it.
+// other session is given it (C5); unless a running session on another host
+// now holds that name, when the resumed session reserves the next free name
+// instead (decision 10). A compaction changes nothing: the host keeps the
+// title through it.
 func Start(m Machine, req Request) Outcome {
 	if !Acts(req) {
 		return Outcome{}
@@ -166,40 +199,52 @@ func Acts(req Request) bool {
 	return false
 }
 
-// name hands the session the first name of its persona sequence that is not
-// already handed out.
+// name reserves for the session the first name of its persona sequence that
+// is not already handed out.
 func name(m Machine, req Request) Outcome {
 	personas, note := Personas(req.Root)
 	var out Outcome
 	if note != "" {
 		out.Notes = append(out.Notes, note)
 	}
-	var chosen string
 	err := m.update(func(reg *register, tab Table, host Host) (bool, error) {
 		reg.prune(tab)
-		for _, n := range Sequence(personas) {
-			if slices.Contains(reg.Handed, n) {
-				continue
-			}
-			chosen = n
-			reg.Handed = append(reg.Handed, n)
-			reg.Live = slices.DeleteFunc(reg.Live, func(e entry) bool { return e.SessionID == req.SessionID })
-			reg.Live = append(reg.Live, entry{Name: n, SessionID: req.SessionID, HostPID: host.PID, HostStartUnix: host.StartUnix})
-			return true, nil
-		}
-		return false, errors.New("every name of this repository's persona sequence, through its ninth round, is held while a named session runs")
+		var err error
+		out.Name, err = reg.reserve(personas, req.SessionID, host, "")
+		return err == nil, err
 	})
 	if err != nil {
+		out.Name = ""
 		out.Notes = append(out.Notes, failed(err))
-		return out
 	}
-	out.Name = chosen
 	return out
+}
+
+// reserve hands the session the first name of the persona sequence not
+// already handed out, and records it live for this session's host, owed to the
+// first prompt. replaces is the title it stands in for (decision 10), or "".
+func (reg *register) reserve(personas []string, sessionID string, host Host, replaces string) (string, error) {
+	for _, n := range Sequence(personas) {
+		if slices.Contains(reg.Handed, n) {
+			continue
+		}
+		reg.Handed = append(reg.Handed, n)
+		reg.Live = slices.DeleteFunc(reg.Live, func(e entry) bool { return e.SessionID == sessionID })
+		reg.Live = append(reg.Live, entry{Name: n, SessionID: sessionID, HostPID: host.PID, HostStartUnix: host.StartUnix, Replaces: replaces})
+		return n, nil
+	}
+	return "", errors.New("every name of this repository's persona sequence, through its ninth round, is held while a named session runs")
 }
 
 // hold keeps a resumed session's name held for the process now running it.
 // Only a name this repository's sequence hands out is held: any other title is
 // the person's own, and abcd neither records nor guards it.
+//
+// When a running session on another host holds the name, which happens once
+// every named session had ended and naming restarted while this one was away,
+// the resumed session reserves the next free name instead, which its first
+// prompt sets in place of the title it carries (decision 10): two running
+// sessions never share a name.
 func hold(m Machine, req Request) Outcome {
 	personas, note := Personas(req.Root)
 	var out Outcome
@@ -211,41 +256,56 @@ func hold(m Machine, req Request) Outcome {
 	}
 	err := m.update(func(reg *register, tab Table, host Host) (bool, error) {
 		reg.prune(tab)
+		// An entry under this same host is this session before a clear gave
+		// it a new id: the same process, so the same session.
 		reg.Live = slices.DeleteFunc(reg.Live, func(e entry) bool {
 			return e.SessionID == req.SessionID ||
-				(e.Name == req.Title && e.HostPID == host.PID && e.HostStartUnix == host.StartUnix)
+				(e.Name == req.Title && sameHost(Host{PID: e.HostPID, StartUnix: e.HostStartUnix}, host))
 		})
-		// Resent: the host kept the title as the session's own, so the
-		// session list already shows it and the prompt hook owes nothing.
+		if slices.ContainsFunc(reg.Live, func(e entry) bool { return e.Name == req.Title }) {
+			var err error
+			out.Name, err = reg.reserve(personas, req.SessionID, host, req.Title)
+			return err == nil, err
+		}
+		// Sent: the host kept the title as the session's own, so the session
+		// list already shows it and the prompt hook owes nothing.
 		reg.Live = append(reg.Live, entry{Name: req.Title, SessionID: req.SessionID,
-			HostPID: host.PID, HostStartUnix: host.StartUnix, Resent: true})
+			HostPID: host.PID, HostStartUnix: host.StartUnix, Sent: true})
 		if !slices.Contains(reg.Handed, req.Title) {
 			reg.Handed = append(reg.Handed, req.Title)
 		}
 		return true, nil
 	})
 	if err != nil {
+		out.Name = ""
 		out.Notes = append(out.Notes, failed(err))
 	}
 	return out
 }
 
-// Resend is the prompt hook's naming: the title to set again on this prompt,
-// or "". It is owed once, to the session abcd named, while its title is still
-// the name abcd gave it (C3); a session the person renamed is owed nothing
-// (C4), because its title no longer equals the entry's name.
+// Resend is the prompt hook's naming: the title to set on this prompt, or "".
+// title is the session's current title from the prompt's payload.
 //
-// A prompt with no title, or on a machine with no register, touches nothing.
-// The register is first read without the lock, which is enough to learn that
-// nothing is owed, the answer on every prompt but one: the file is only ever
-// replaced by a rename, so an unlocked read sees one whole version of it. The
-// lock is taken only to mark the title sent.
+// The name session start reserved is owed once, at the first prompt (C1, C3,
+// decision 9), and only to a session that has no title yet: a title equal to
+// the name is already set, and any other title is the person's own, which
+// always wins (C4). Either way the entry is marked sent, and no later prompt
+// sets anything. The one title replaced is the persona name a resumed session
+// carried that a running session now holds (decision 10).
+//
+// A machine with no register touches nothing, nor does one whose sessions
+// folder is a symlink: session start refuses that with its note, and the
+// prompt hook does not repeat it on every prompt. The register is first read
+// without the lock, which is enough to learn that nothing is owed, the answer
+// on every prompt but one: the file is only ever replaced by a rename, so an
+// unlocked read sees one whole version of it. The lock is taken only to mark
+// the title sent.
 func Resend(m Machine, sessionID, title string) Outcome {
-	if title == "" || sessionID == "" || m.Home == "" || !filepath.IsAbs(m.Home) {
+	if sessionID == "" || m.Home == "" || !filepath.IsAbs(m.Home) {
 		return Outcome{}
 	}
 	dir, err := fsutil.OpenHomeScope(m.Home, abcdhome.Rel(registerDir))
-	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
 		return Outcome{}
 	}
 	if err != nil {
@@ -259,43 +319,44 @@ func Resend(m Machine, sessionID, title string) Outcome {
 	if err != nil {
 		return Outcome{Notes: []string{failed(err)}}
 	}
-	if reg.owed(sessionID, title) < 0 {
+	if i, _ := reg.owed(sessionID, title); i < 0 {
 		return Outcome{}
 	}
-	sent := false
+	var send string
 	err = lockRegister(dir, m.LockTimeout, func() error {
 		reg, err := readRegister(dir, m.Home)
 		if err != nil {
 			return err
 		}
-		i := reg.owed(sessionID, title)
+		i, owed := reg.owed(sessionID, title)
 		if i < 0 {
 			return nil
 		}
-		reg.Live[i].Resent = true
+		reg.Live[i].Sent = true
 		if err := writeRegister(dir, reg); err != nil {
 			return err
 		}
-		sent = true
+		if owed {
+			send = reg.Live[i].Name
+		}
 		return nil
 	})
 	if err != nil {
 		return Outcome{Notes: []string{failed(err)}}
 	}
-	if !sent {
-		return Outcome{}
-	}
-	return Outcome{Name: title}
+	return Outcome{Name: send}
 }
 
-// owed is the index of the live entry that is owed a re-sent title, or -1.
-func (reg *register) owed(sessionID, title string) int {
+// owed finds this session's live entry not yet marked sent (-1 when there is
+// none) and reports whether its name is to be set on this prompt: when the
+// session has no title yet, or carries the title the entry replaces.
+func (reg *register) owed(sessionID, title string) (int, bool) {
 	for i, e := range reg.Live {
-		if e.SessionID == sessionID && e.Name == title && !e.Resent {
-			return i
+		if e.SessionID == sessionID && !e.Sent {
+			return i, title == "" || (e.Replaces != "" && title == e.Replaces)
 		}
 	}
-	return -1
+	return -1, false
 }
 
 // prune drops every entry whose session has ended, and empties Handed when
@@ -308,7 +369,14 @@ func (reg *register) owed(sessionID, title string) int {
 // be read before the register's lock is taken, so a platform or a process
 // table abcd cannot read costs no write to the home, without two sessions
 // starting together pruning each other.
+//
+// A table that took longer than maxReadTook to read judges nothing: every
+// start time computed from it may be early by that long, more than the
+// tolerance allows for, so a running session could read as ended.
 func (reg *register) prune(tab Table) {
+	if tab.Took > maxReadTook {
+		return
+	}
 	reg.Live = slices.DeleteFunc(reg.Live, func(e entry) bool {
 		if e.HostStartUnix >= tab.ReadAt.Unix()-startTolerance {
 			return false

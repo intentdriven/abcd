@@ -3,10 +3,12 @@ package sessionname
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -223,9 +225,9 @@ func TestResumeHoldsTheNameForTheResumedProcess(t *testing.T) {
 	m.end(100)
 	mustName(t, m.start(400, root, "c"), "Carol")
 	mustName(t, m.start(500, root, "d"), "Dave")
-	// The resumed session is not owed a re-sent title: the host kept it.
+	// The resumed session is owed no title at its prompt: the host kept it.
 	if got := Resend(m.at(301), "b", "Bob"); got.Name != "" {
-		t.Fatalf("the resumed session was re-sent %q", got.Name)
+		t.Fatalf("the resumed session was sent %q", got.Name)
 	}
 }
 
@@ -253,28 +255,223 @@ func TestResumeOfAPersonsOwnNameHoldsNothing(t *testing.T) {
 	}
 }
 
-// TestResendCarriesTheTitleOnce is C3's register half: the first prompt of a
-// session abcd named is owed the title once, so the session list catches up;
-// later prompts, a renamed session and another session are owed nothing.
-func TestResendCarriesTheTitleOnce(t *testing.T) {
+// resends runs the prompt hook's naming for each prompt in turn and fails on
+// the first whose title is not the one wanted.
+func resends(t *testing.T, m *machine, prompts []struct{ sid, title, want string }) {
+	t.Helper()
+	for i, c := range prompts {
+		got := Resend(m.at(0), c.sid, c.title)
+		if got.Name != c.want || len(got.Notes) != 0 {
+			t.Fatalf("prompt %d: Resend(%q, %q) = %+v, want %q\nregister:\n%s", i+1, c.sid, c.title, got, c.want, m.register())
+		}
+	}
+}
+
+// TestResendSendsTheReservedNameAtTheFirstPrompt is C1 and C3's register half
+// (decision 9): session start reserves a name and sets no title, and the first
+// prompt of a session with no title yet sets it, once. The order of the names
+// is the order the sessions started in, whichever prompts first.
+func TestResendSendsTheReservedNameAtTheFirstPrompt(t *testing.T) {
 	m := newMachine(t)
 	root := t.TempDir()
 	mustName(t, m.start(100, root, "s1"), "Alice")
 	mustName(t, m.start(200, root, "s2"), "Bob")
-	for _, c := range []struct {
-		sid, title, want string
-	}{
+	resends(t, m, []struct{ sid, title, want string }{
+		{"s2", "", "Bob"},   // the second session prompts first, and is still Bob
+		{"s2", "Bob", ""},   // the host now carries it: never again
+		{"s2", "", ""},      // nor on a prompt that somehow lost it
+		{"s1", "", "Alice"}, // the first session's first prompt
+		{"s1", "Alice", ""},
+		{"s3", "", ""}, // a session abcd reserved nothing for
+	})
+}
+
+// TestResendTakesAMatchingTitleAsSent: a session whose title is already the
+// name reserved for it is owed nothing (the host ignores a title equal to the
+// one it has), and the entry is marked sent so no later prompt sends it.
+func TestResendTakesAMatchingTitleAsSent(t *testing.T) {
+	m := newMachine(t)
+	mustName(t, m.start(100, t.TempDir(), "s1"), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{
+		{"s1", "Alice", ""},
 		{"s1", "", ""},
-		{"s1", "Zed", ""},   // renamed by the person: their name wins (C4)
-		{"s2", "Alice", ""}, // another session's name
-		{"s1", "Alice", "Alice"},
-		{"s1", "Alice", ""}, // once
-		{"s2", "Bob", "Bob"},
-	} {
-		got := Resend(m.at(0), c.sid, c.title)
-		if got.Name != c.want || len(got.Notes) != 0 {
-			t.Fatalf("Resend(%q, %q) = %+v, want %q", c.sid, c.title, got, c.want)
+	})
+	if !bytes.Contains(m.register(), []byte(`"sent": true`)) {
+		t.Fatalf("the matching title was not marked sent:\n%s", m.register())
+	}
+}
+
+// TestResendNeverReplacesAPersonsName is C4 at the prompt: a session the
+// person renamed before its first prompt keeps their name, on that prompt and
+// every later one.
+func TestResendNeverReplacesAPersonsName(t *testing.T) {
+	m := newMachine(t)
+	mustName(t, m.start(100, t.TempDir(), "s1"), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{
+		{"s1", "Zed", ""},
+		{"s1", "", ""},
+		{"s1", "Zed", ""},
+	})
+}
+
+// TestResendTreatsASymlinkedFolderAsAbsent: a symlinked sessions folder is
+// refused at session start, with its one note there; the prompt hook reads it
+// as no register at all, rather than repeating the note on every prompt.
+func TestResendTreatsASymlinkedFolderAsAbsent(t *testing.T) {
+	m := newMachine(t)
+	if err := os.MkdirAll(abcdhome.Path(m.home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(t.TempDir(), abcdhome.Path(m.home, "sessions")); err != nil {
+		t.Fatal(err)
+	}
+	if got := Resend(m.at(0), "s1", ""); got.Name != "" || len(got.Notes) != 0 {
+		t.Fatalf("Resend through a symlinked folder = %+v, want nothing", got)
+	}
+}
+
+// TestResumeOfANameARunningSessionNowHoldsTakesTheNextFreeName is C5's one
+// exception (decision 10): every named session ended, so naming restarted and
+// a new session was given Alice; the first Alice, resumed, would make two.
+// It is given the next free name, and its first prompt sets that name even
+// though the session carries a title, because the title is a persona name a
+// running session now holds.
+func TestResumeOfANameARunningSessionNowHoldsTakesTheNextFreeName(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(100, root, "a"), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
+	m.end(100)
+	mustName(t, m.start(200, root, "b"), "Alice")
+	resumed := Start(m.at(m.launch(300)), Request{Root: root, SessionID: "a", Source: "resume", Title: "Alice"})
+	mustName(t, resumed, "Bob")
+	resends(t, m, []struct{ sid, title, want string }{
+		{"b", "", "Alice"},
+		{"a", "Alice", "Bob"}, // replaced: the one case a title is
+		{"a", "Bob", ""},
+		{"a", "Alice", ""}, // once only
+	})
+	// Bob is held by the resumed session: the next session is Carol.
+	mustName(t, m.start(400, root, "c"), "Carol")
+}
+
+// TestResumeHoldsTheNameAcrossAClearInTheSameProcess: a clear can give the
+// session a new id under the same host process, whose start this reading puts
+// a second from the last one. It is the same host, within the tolerance
+// liveness uses, so the name is held, not treated as another session's.
+func TestResumeHoldsTheNameAcrossAClearInTheSameProcess(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	from := m.launch(100)
+	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+	for i := range m.procs {
+		if m.procs[i].PID == 100 {
+			m.procs[i].Age -= time.Second
 		}
+	}
+	out := Start(m.at(from), Request{Root: root, SessionID: "a2", Source: "clear", Title: "Alice"})
+	if out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("clear in the same process: %+v, want the name held", out)
+	}
+	if reg := m.register(); bytes.Count(reg, []byte(`"session_id"`)) != 1 || !bytes.Contains(reg, []byte(`"a2"`)) {
+		t.Fatalf("the register does not hold Alice once, for a2:\n%s", reg)
+	}
+}
+
+// TestPruneKeepsAnEntryTooRecentToJudge: an entry whose host started after
+// the table was read, or within the tolerance before it, is absent from that
+// table only because it is too new to be in it. It is a running session, and
+// it survives the next start.
+func TestPruneKeepsAnEntryTooRecentToJudge(t *testing.T) {
+	for name, age := range map[string]time.Duration{
+		"after the read":           -5 * time.Second,
+		"a second before the read": time.Second,
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := newMachine(t)
+			root := t.TempDir()
+			m.procs = append(m.procs, proc(100, 1, "claude", age), proc(101, 100, "sh", 0))
+			mustName(t, Start(m.at(101), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+			m.end(100)
+			mustName(t, m.start(200, root, "b"), "Bob")
+			if !bytes.Contains(m.register(), []byte(`"session_id": "a"`)) {
+				t.Fatalf("the entry too recent to judge was pruned:\n%s", m.register())
+			}
+		})
+	}
+}
+
+// TestPruneNothingOnASlowRead: a process table that took more than a second
+// to read stamps every process's start time with that much doubt, so no entry
+// is judged ended on it.
+func TestPruneNothingOnASlowRead(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(100, root, "a"), "Alice")
+	m.end(100)
+	slow := m.at(m.launch(200))
+	read := slow.ReadTable
+	slow.ReadTable = func() (Table, error) {
+		tab, err := read()
+		tab.Took = 1500 * time.Millisecond
+		return tab, err
+	}
+	mustName(t, Start(slow, Request{Root: root, SessionID: "b", Source: "startup"}), "Bob")
+	if !bytes.Contains(m.register(), []byte(`"session_id": "a"`)) {
+		t.Fatalf("a slow read pruned an entry:\n%s", m.register())
+	}
+	// A read within the second judges as before: Alice has ended, Bob runs.
+	mustName(t, m.start(300, root, "c"), "Carol")
+	if bytes.Contains(m.register(), []byte(`"session_id": "a"`)) {
+		t.Fatalf("a fast read kept the ended entry:\n%s", m.register())
+	}
+}
+
+// TestReadTableStampsTheMomentBeforeTheRead: a process's age is measured back
+// from the moment the read began, not the moment it returned, so the time the
+// read took under load never moves a start time later than it was; and how
+// long it took is kept, for prune to judge.
+func TestReadTableStampsTheMomentBeforeTheRead(t *testing.T) {
+	t0 := time.Unix(1_800_000_000, 0)
+	clock := t0
+	tab, err := readTable(func() (machineload.Snapshot, error) {
+		clock = clock.Add(3 * time.Second)
+		return machineload.Snapshot{HasProcs: true, Procs: []machineload.Proc{proc(100, 1, "claude", time.Hour)}}, nil
+	}, func() time.Time { return clock })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !tab.ReadAt.Equal(t0) || tab.Took != 3*time.Second {
+		t.Fatalf("ReadAt %s, Took %s; want %s and 3s", tab.ReadAt, tab.Took, t0)
+	}
+}
+
+// TestStartHandsDistinctNamesToConcurrentSessions: twenty sessions starting at
+// once, each under its own host, against one register and its real lock, are
+// given twenty different names.
+func TestStartHandsDistinctNamesToConcurrentSessions(t *testing.T) {
+	const n = 20
+	m := newMachine(t)
+	m.timeout = 30 * time.Second
+	root := t.TempDir()
+	froms := make([]int, n)
+	for i := range froms {
+		froms[i] = m.launch(100 * (i + 1))
+	}
+	names := make([]Outcome, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			names[i] = Start(m.at(froms[i]), Request{Root: root, SessionID: fmt.Sprintf("s%d", i), Source: "startup"})
+		})
+	}
+	wg.Wait()
+	seen := map[string]bool{}
+	for i, out := range names {
+		if out.Name == "" || seen[out.Name] {
+			t.Fatalf("session %d: %+v; names so far %v", i, out, seen)
+		}
+		seen[out.Name] = true
 	}
 }
 

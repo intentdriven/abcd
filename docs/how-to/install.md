@@ -332,16 +332,20 @@ command you had before, keeping a copy of the file first.
 
 ### Session names
 
-Each session abcd's hooks run in names itself when it starts, so you can tell
-sessions apart and address one by name. The names are the repository's
-personas in order (Alice, Bob, Carol and on through the list), then the same
-names again as Alice Two, Bob Two and so on. A name shows in the session's
-prompt border and in the status line, directly after the badge, from the
-start, and in the harness's session list from the session's first prompt.
+Each session abcd's hooks run in takes a name, so you can tell sessions apart
+and address one by name. The names are the repository's personas in order
+(Alice, Bob, Carol and on through the list), then the same names again as
+Alice Two, Bob Two and so on. The name is chosen when the session starts, so
+the order is the order sessions start in, and it appears from the session's
+first prompt: in its prompt border, in the status line directly after the
+badge, and in the harness's session list.
 
 - **Your own name wins.** A session you name yourself, when you start it or
   at any point after, keeps your name, and abcd sets none.
 - **A name lasts the session.** A compacted or resumed session keeps its name.
+  The one exception: if every named session had ended and a new one has since
+  been given that name, the resumed session takes the next free name at its
+  first prompt, so two running sessions never share one.
 - **No two running sessions share a name**, across every repository on the
   machine. A name is not handed out again while any named session is still
   running, and naming starts again at Alice once every named session has

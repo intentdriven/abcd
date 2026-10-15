@@ -4,13 +4,17 @@ package cli
 // (itd-2610111707085098, spc-2610152057143798). internal/core/sessionname
 // decides the name and keeps the machine's register; this file reads what the
 // hook payload says about the session, prints the core's notes on stderr, and
-// shapes stdout into the one object that sets a title.
+// shapes the prompt hook's stdout into the one object that sets a title.
 //
-// The host takes a title from a hook only as a JSON object on stdout, so a
-// named outcome turns the hook's plain stdout into that object's
-// additionalContext, which the host injects exactly as it injects plain
-// stdout. Every outcome that names nothing leaves stdout byte for byte as it
-// was: the plain form is the default and the object is the exception.
+// Session start reserves a name and sets no title, so its stdout is byte for
+// byte what it was before naming: the host ignores a prompt-hook title equal
+// to the one a session already has, so a title set at start never reached the
+// session list (the intent's decision 9). The first prompt sets it. The host
+// takes a title from a hook only as a JSON object on stdout, so on that one
+// prompt the router's plain stdout becomes that object's additionalContext,
+// which the host injects exactly as it injects plain stdout. Every other
+// prompt leaves stdout as it was: the plain form is the default and the object
+// is the exception.
 
 import (
 	"bytes"
@@ -30,12 +34,13 @@ import (
 // a test that does ask swaps in a fixture machine.
 var sessionNameMachine = func() (sessionname.Machine, bool) { return sessionname.Live(), true }
 
-// startSessionName is the session-start hook's naming: the title to set, or
-// "". Its notes go to stderr, masked, one line each; it never fails the hook.
-func startSessionName(cmd *cobra.Command, in hookInput, cwd string) string {
+// startSessionName is the session-start hook's naming: it reserves the name
+// the first prompt sets, and writes nothing to stdout. Its notes go to
+// stderr, masked, one line each; it never fails the hook.
+func startSessionName(cmd *cobra.Command, in hookInput, cwd string) {
 	m, ok := sessionNameMachine()
 	if !ok {
-		return ""
+		return
 	}
 	req := sessionname.Request{SessionID: in.SessionID, Source: in.Source, Title: in.SessionTitle, AgentID: in.AgentID}
 	// The persona list is read from the repository the rules loader reads,
@@ -44,19 +49,14 @@ func startSessionName(cmd *cobra.Command, in hookInput, cwd string) string {
 	if sessionname.Acts(req) {
 		req.Root = rules.ResolveRoot(cwd)
 	}
-	out := sessionname.Start(m, req)
-	for _, n := range out.Notes {
+	for _, n := range sessionname.Start(m, req).Notes {
 		diagnosticLine(cmd.ErrOrStderr(), "%s", n)
 	}
-	return out.Name
 }
 
 // resendSessionTitle is the prompt hook's naming: the title owed on this
 // prompt, or "". Its notes go to stderr; it never fails the hook.
 func resendSessionTitle(cmd *cobra.Command, in hookInput) string {
-	if in.SessionTitle == "" {
-		return "" // the common case touches nothing
-	}
 	m, ok := sessionNameMachine()
 	if !ok {
 		return ""
@@ -80,17 +80,18 @@ type titledFields struct {
 	SessionTitle      string `json:"sessionTitle"`
 }
 
-// emitTitled writes the one object that sets title, carrying context, the
-// text the hook would otherwise have printed. A write that fails is named on
-// stderr and the hook still exits 0, as every hook verb does.
-func emitTitled(cmd *cobra.Command, event, context, title string) {
+// emitTitled writes the one object that sets title from the prompt hook,
+// carrying context, the text the hook would otherwise have printed. A write
+// that fails is named on stderr and the hook still exits 0, as every hook verb
+// does.
+func emitTitled(cmd *cobra.Command, context, title string) {
 	var b bytes.Buffer
 	enc := json.NewEncoder(&b)
 	// The context is the hook's own text, and the host decodes it whole; HTML
 	// escaping would only make the object harder for a person to read.
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(titledOutput{HookSpecificOutput: titledFields{
-		HookEventName: event, AdditionalContext: context, SessionTitle: title,
+		HookEventName: "UserPromptSubmit", AdditionalContext: context, SessionTitle: title,
 	}}); err != nil {
 		diagnosticLine(cmd.ErrOrStderr(), "abcd session name: the title was not written (%s)", err.Error())
 		return
@@ -98,15 +99,4 @@ func emitTitled(cmd *cobra.Command, event, context, title string) {
 	if _, err := io.Copy(cmd.OutOrStdout(), &b); err != nil {
 		diagnosticLine(cmd.ErrOrStderr(), "abcd session name: the title was not written (%s)", err.Error())
 	}
-}
-
-// sessionStartOut is where session start writes its plain stdout: the real
-// stdout when nothing is named, or a buffer the returned flush wraps into the
-// titled object once the hook is done.
-func sessionStartOut(cmd *cobra.Command, title string) (io.Writer, func()) {
-	if title == "" {
-		return cmd.OutOrStdout(), func() {}
-	}
-	var held bytes.Buffer
-	return &held, func() { emitTitled(cmd, "SessionStart", held.String(), title) }
 }

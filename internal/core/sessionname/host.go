@@ -22,11 +22,14 @@ type Host struct {
 	StartUnix int64
 }
 
-// Table is one reading of the process table and the moment it was read, which
-// is what a process's age is measured from.
+// Table is one reading of the process table and the moment the read began,
+// which is what a process's age is measured from.
 type Table struct {
 	Procs  []machineload.Proc
 	ReadAt time.Time
+	// Took is how long the read took: how far, at most, a start time computed
+	// from the table is early.
+	Took time.Duration
 }
 
 // startTolerance is how far two readings of one process's start time may
@@ -91,8 +94,14 @@ func (t Table) Alive(h Host) bool {
 		if p.PID != h.PID {
 			continue
 		}
-		d := t.ReadAt.Add(-p.Age).Unix() - h.StartUnix
-		return d >= -startTolerance && d <= startTolerance
+		return sameHost(Host{PID: p.PID, StartUnix: t.ReadAt.Add(-p.Age).Unix()}, h)
 	}
 	return false
+}
+
+// sameHost reports whether two readings name one process: the same id, and
+// start times within startTolerance of each other.
+func sameHost(a, b Host) bool {
+	d := a.StartUnix - b.StartUnix
+	return a.PID == b.PID && d >= -startTolerance && d <= startTolerance
 }

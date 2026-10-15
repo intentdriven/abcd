@@ -48,7 +48,7 @@ type Payload struct {
 	// sanitised and its tag keeps it out of every JSON envelope.
 	Cwd string `json:"-"`
 	// SessionName is the session's title: one the person gave it, or the
-	// persona name abcd's session-start hook set (itd-2610111707085098). The
+	// persona name abcd's prompt hook set (itd-2610111707085098). The
 	// harness supplies it only when the session has one. Sanitized, trimmed
 	// and cut to maxSessionNameRunes.
 	SessionName string `json:"session_name,omitempty"`

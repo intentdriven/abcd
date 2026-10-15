@@ -1647,7 +1647,7 @@ type routerView struct {
 	Recalled []string  `json:"recalled"`
 	Active   *[]string `json:"active,omitempty"`
 	Error    string    `json:"error,omitempty"`
-	// SessionTitle is the session's title when this prompt set it again
+	// SessionTitle is the session's title when this prompt set it
 	// (hook_session_name.go), and absent on every other prompt.
 	SessionTitle string `json:"session_title,omitempty"`
 }
@@ -1709,9 +1709,10 @@ unknown. A memory.json that cannot be read is named on stderr and recalls
 nothing, and the rules still inject. Every outcome, an error included,
 exits 0, so the hook can never wedge a session.
 
-On the first prompt of a session abcd named at its start, while the session
-still carries that name, plain stdout is instead one object that sets the
-title again, with the text above as its additional context:
+On the first prompt of a session whose start reserved it a name, when the
+session has no title yet, plain stdout is instead one object that sets the
+title, with the text above as its additional context (empty when the rules
+could not be loaded):
 
   {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
    "additionalContext": ..., "sessionTitle": ...}}
@@ -1762,6 +1763,15 @@ and the --json envelope carries the name as session_title.`,
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
+				// The title owed on this prompt is set even so: naming does
+				// not depend on the rules (hook_session_name.go).
+				if title := resendSessionTitle(cmd, in); title != "" {
+					if *asJSON {
+						return routerEmit(cmd, routerView{Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title})
+					}
+					emitTitled(cmd, "", title)
+					return nil
+				}
 				return routerRefused(cmd, *asJSON, err.Error())
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
@@ -1802,8 +1812,8 @@ and the --json envelope carries the name as session_title.`,
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
 			text := res.Text + mem.Text
-			// The title abcd gave this session at start, owed once so the
-			// session list shows it (hook_session_name.go).
+			// The name this session's start reserved, set once at its first
+			// prompt (hook_session_name.go).
 			title := resendSessionTitle(cmd, in)
 			if *asJSON {
 				injected := res.Injected
@@ -1817,7 +1827,7 @@ and the --json envelope carries the name as session_title.`,
 				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title})
 			}
 			if title != "" {
-				emitTitled(cmd, "UserPromptSubmit", text, title)
+				emitTitled(cmd, text, title)
 				return nil
 			}
 			if text != "" {
@@ -2018,12 +2028,10 @@ and the --json envelope carries the name as session_title.`,
 					cwd = wd
 				}
 			}
-			// Naming first, before the drain's time budget (hook_session_name.go):
-			// when the session is named, everything below writes to out, which
-			// is wrapped into the one object that sets the title as the hook
-			// returns; otherwise out is stdout and nothing changes.
-			out, flush := sessionStartOut(cmd, startSessionName(cmd, in, cwd))
-			defer flush()
+			// Naming first, before the drain's time budget: it reserves the
+			// name the first prompt sets, and writes nothing to stdout
+			// (hook_session_name.go).
+			startSessionName(cmd, in, cwd)
 			var notices []string
 			// currentSHA is remembered so the cross-repository survey below can
 			// leave this repository out: the drain reports it entry by entry,
@@ -2154,7 +2162,7 @@ and the --json envelope carries the name as session_title.`,
 			// An inbox that cannot be counted says so among the notices, on
 			// stderr: the reason names a path, and stdout carries counts only.
 			if g, n := inboxGreeting(); g != "" {
-				fmt.Fprintln(out, g)
+				fmt.Fprintln(cmd.OutOrStdout(), g)
 			} else if n != "" {
 				notices = append(notices, n)
 			}
@@ -2200,7 +2208,7 @@ and the --json envelope carries the name as session_title.`,
 			// gap COUNT and says nothing about a staged transcript or a failed
 			// drain — so the one notice naming a privacy artefact was the one it
 			// lost. `abcd history staged` is where that lives.
-			fmt.Fprintf(out,
+			fmt.Fprintf(cmd.OutOrStdout(),
 				"abcd: %d session-start notice(s) on this hook's stderr; "+
 					"run `abcd history staged` for transcript backlog or `abcd ahoy` for install state.\n",
 				len(notices))
