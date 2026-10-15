@@ -1,5 +1,5 @@
 {
-  "_comment": "Example semantic-pass receipt (a Verification Summary Attestation). One file per gate, stored at .abcd/work/reviews/<commit-sha>/<gate>.json. The receipt_gate record-lint rule verifies, at release time, that subject.digest.gitCommit matches the target commit, verificationResult is PROMOTE, judgeModel is a pinned snapshot (never a floating alias), and policy.detector names this gate. Once the pinned input manifest (manifest.json) exists in the release's content tree — the era marker — three further PROCEDURAL checks arm: manifestHash must equal manifest.json's actual sha256; tier must be sufficient for the release's impact class (a shallow receipt is refused on a feature/breaking release); and every entry in failing must carry a disposition. From manifest schemaVersion 2 that disposition is exactly fixed, invalid or deferred, and a deferred entry also carries \"record\": \"iss-<id>\", the open issue record it is captured as, which no other deferred entry of the release names; for example {\"where\": \"04-surfaces/16-lint.md:12\", \"disposition\": \"deferred\", \"record\": \"iss-2610150900000001\"}. The gate never judges a finding's content or severity — confirmed findings route to the maintainer, whose PROMOTE with recorded dispositions is the gate. A missing, mismatched, malformed, HOLD, or model-less receipt fails the release closed. In phase 4 the receipt is cosign-signed and the signature verified in-Go.",
+  "_comment": "Example semantic-pass receipt (a Verification Summary Attestation). One file per gate, stored at .abcd/work/reviews/<commit-sha>/<gate>.json. The receipt_gate record-lint rule verifies, at release time, that subject.digest.gitCommit matches the target commit, verificationResult is PROMOTE, judgeModel is a pinned snapshot (never a floating alias), and policy.detector names this gate. Once the pinned input manifest (manifest.json) exists in the release's content tree — the era marker — three further PROCEDURAL checks arm: manifestHash must equal manifest.json's actual sha256, which the receipt writer computes at the reviewed commit (`printf 'sha256:'; shasum -a 256 .abcd/development/release-gate/manifest.json | cut -d' ' -f1`) — this example carries a placeholder there, never a literal, because the manifest changes with every surface a branch adds and a literal copy made every two such branches conflict (iss-2610150526192138), and receipt_gate refuses the placeholder like any other mismatch; tier must be sufficient for the release's impact class (a shallow receipt is refused on a feature/breaking release); and every entry in failing must carry a disposition. From manifest schemaVersion 2 that disposition is exactly fixed, invalid or deferred, and a deferred entry also carries \"record\": \"iss-<id>\", the open issue record it is captured as, which no other deferred entry of the release names; for example {\"where\": \"04-surfaces/16-lint.md:12\", \"disposition\": \"deferred\", \"record\": \"iss-2610150900000001\"}. The gate never judges a finding's content or severity — confirmed findings route to the maintainer, whose PROMOTE with recorded dispositions is the gate. A missing, mismatched, malformed, HOLD, or model-less receipt fails the release closed. In phase 4 the receipt is cosign-signed and the signature verified in-Go.",
   "subject": {
     "digest": { "gitCommit": "0123456789abcdef0123456789abcdef01234567" }
   },
@@ -8,11 +8,11 @@
   "verificationResult": "PROMOTE",
   "judgeModel": "claude-opus-4-8",
   "tier": "full",
-  "manifestHash": "sha256:127249df65ab6ed7c7e23d08a1667a5bc1786996d6b8deeff65c261bfbc5b1f1",
+  "manifestHash": "sha256:<computed: the sha256 of manifest.json at subject.digest.gitCommit>",
   "policy": {
     "detector": "iss35-brief-surface-crosscheck",
     "version": "1",
-    "promptHash": "sha256:d6c104306721c7f537f03b3e630fba2a88b977d78e204436939dfdcfc1aa8c6d",
+    "promptHash": "sha256:<computed: manifest.json promptHash at subject.digest.gitCommit>",
     "briefVersion": "…"
   },
   "categories": { "false-claim": 0, "undocumented-surface": 0, "fictional-layout": 0, "criterion-violation": 0, "stale-count": 0 },
