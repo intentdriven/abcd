@@ -702,6 +702,9 @@ jobs:
   #      higher version;
   #   6. re-reads the assets and fails when any differs from the set verified.
   #
+  # The asset list is read again just before publishing and once after, because
+  # publishing cannot be made conditional on it.
+  #
   # It runs before `deploy`, so abcdev.app never describes a release that is not
   # published.
   publish:
@@ -873,6 +876,16 @@ jobs:
             fi
           done <<<"$rows"
 
+          # The assets as they stand immediately before publishing are exactly
+          # the set verified.
+          before="$(list_assets)"
+          if [ "$before" != "$assets" ]; then
+            echo "::error::${TAG}'s assets changed before publishing; refusing to publish it. Verified (id, name, state, digest):"
+            printf '%s\n' "$assets"
+            echo "Now attached:"
+            printf '%s\n' "$before"
+            exit 1
+          fi
           gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" \
             -F draft=false -f make_latest="$latest" --jq '.draft' >/dev/null
 

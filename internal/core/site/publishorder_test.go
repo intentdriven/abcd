@@ -146,7 +146,9 @@ func TestTheReleaseIsPublishedOnlyOnceEveryAssetIsAttached(t *testing.T) {
 // and assets in JSON files, applies the step's own --jq filters to them, and
 // answers only the id-addressed REST calls and `gh attestation verify` held to
 // the release policy; a call by tag (gh release view/download/edit/upload) is
-// refused. It logs every call, and every PATCH with its fields.
+// refused. It logs every call, and every PATCH with its fields. A fixture can
+// have the forge replace one asset as the Release is published, or once every
+// asset has been downloaded.
 const publishFakeGH = `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$FAKE_DIR/calls"
@@ -182,7 +184,14 @@ case "$method $path" in
   jq -r "$expr" "$rel" ;;
 "GET repos/$R/releases/assets/"*)
   [ "$accept" = "Accept: application/octet-stream" ] || { echo "fake gh: an asset read without the octet-stream accept" >&2; exit 95; }
-  cat "$FAKE_DIR/files/${path##*/}" ;;
+  cat "$FAKE_DIR/files/${path##*/}"
+  printf '%s\n' "${path##*/}" >> "$FAKE_DIR/downloads"
+  if [ -f "$FAKE_DIR/replaced-after-downloads" ] &&
+    [ "$(wc -l < "$FAKE_DIR/downloads")" -eq "$(jq length "$assets")" ]; then
+    jq --arg n "$(cat "$FAKE_DIR/replaced-after-downloads")" \
+      'map(if .name == $n then .id = 9998 | .digest = "sha256:1111" else . end)' "$assets" > "$assets.next"
+    mv "$assets.next" "$assets"
+  fi ;;
 "GET repos/$R/releases/"*"/assets?per_page=100")
   [ "$paginate" = 1 ] || { echo "fake gh: an asset listing without --paginate" >&2; exit 95; }
   id="${path#repos/$R/releases/}"; id="${id%%/*}"
@@ -262,6 +271,9 @@ type publishFixture struct {
 	attested map[string]bool
 	env      map[string]string
 	replaced string // the asset replaced on the forge as the Release is published
+	// replacedAfterDownloads is the asset replaced on the forge once the step
+	// has downloaded every asset, before it publishes.
+	replacedAfterDownloads string
 }
 
 func sha256Hex(b []byte) string {
@@ -342,6 +354,9 @@ func (f *publishFixture) run(t *testing.T, script string) (out string, err error
 	if f.replaced != "" {
 		write(filepath.Join(dir, "replaced-on-publish"), []byte(f.replaced))
 	}
+	if f.replacedAfterDownloads != "" {
+		write(filepath.Join(dir, "replaced-after-downloads"), []byte(f.replacedAfterDownloads))
+	}
 	write(filepath.Join(bin, "gh"), []byte(publishFakeGH))
 	cmd := exec.Command("bash", "-c", script)
 	cmd.Env = []string{"PATH=" + bin + string(os.PathListSeparator) + os.Getenv("PATH"),
@@ -367,7 +382,8 @@ func jsonInt(i int) string {
 // id, checks each against the manifest, the forge's recorded digest and the
 // release provenance policy, checks site.tar.gz against the digest the render
 // computed, publishes by id with make_latest set only for the highest
-// version, and re-reads the assets afterwards.
+// version, and re-reads the assets immediately before publishing and again
+// afterwards.
 func TestPublishVerifiesTheDraftByIdBeforePublishingIt(t *testing.T) {
 	if _, err := exec.LookPath("jq"); err != nil {
 		if os.Getenv("CI") != "" {
@@ -483,6 +499,11 @@ func TestPublishVerifiesTheDraftByIdBeforePublishingIt(t *testing.T) {
 				a.Digest = "sha256:" + sha256Hex(f.files[a.ID])
 			},
 			fails: true, mention: "../escape",
+		},
+		{
+			name:  "an asset replaced between the last download and the publish",
+			edit:  func(f *publishFixture) { f.replacedAfterDownloads = "abcd-linux-amd64" },
+			fails: true, mention: "changed before publishing",
 		},
 		{
 			name:   "an asset replaced as the Release is published",
