@@ -24,6 +24,8 @@ var bareRenderExceptions = map[string]string{
 		"add it, and writes nothing; what a drain would do renders with --dry-run",
 	"docs": "a parent holding the citation-baseline writer alone; the documentation's " +
 		"state is `abcd lint docs`, so bare prints its sub-verb",
+	"embargo": "a parent whose sub-verbs each take one step of an advisory's embargo; " +
+		"its store holds private advisories, which no bare listing shows, so bare prints its sub-verbs",
 	"embark": "a parent whose sub-verbs act on a named lifeboat; with no operand there " +
 		"is no state to render, so bare prints its sub-verbs",
 	"guard": "it judges one command handed to it and keeps no standing state to " +

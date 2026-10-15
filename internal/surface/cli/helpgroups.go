@@ -122,6 +122,9 @@ var helpPlacements = map[string]helpPlacement{
 	"disembark": {group: groupPortability},
 	"embark":    {group: groupPortability},
 	"launch":    {group: groupRelease},
+	// embargo is a person's verb under release (spc-2610120557432880, step
+	// 10): the person decides every verdict and approves every act on GitHub.
+	"embargo": {group: groupRelease},
 
 	// The agents-and-hosts block. rules names the page that installs the rule
 	// loader, and spec the user-facing half of the spec lifecycle (the spec's
