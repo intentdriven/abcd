@@ -1228,7 +1228,7 @@ func keepAside(repoRoot string, aw Await, rr *ReviewRoute, ret string) (string, 
 	defer func() { _ = root.Remove(tmp) }()
 	_, werr := f.WriteString(ret)
 	if werr == nil {
-		werr = f.Sync()
+		werr = fsutil.Flush(f)
 	}
 	if cerr := f.Close(); werr == nil {
 		werr = cerr
@@ -1278,7 +1278,7 @@ func createAside(root *os.Root, dir, route, ret string, from int) (string, error
 		}
 		_, werr := f.WriteString(ret)
 		if werr == nil {
-			werr = f.Sync()
+			werr = fsutil.Flush(f)
 		}
 		if cerr := f.Close(); werr == nil {
 			werr = cerr
