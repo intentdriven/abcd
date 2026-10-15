@@ -1,0 +1,27 @@
+# Which tool each preflight gate needs, read by scripts/cloud/env-check.sh
+# (spc-2610120941441282, itd-2610120738075547 C2 and decision 5). A cloud session
+# stops before any work only when a tool a gate needs is missing, because its
+# hand-back would then fail; a tool no gate needs is a warning.
+#
+# One tool per line, three TAB-separated fields:
+#   tool    the command, as `command -v` finds it
+#   gates   the preflight gates that need it, comma-separated, by their Makefile
+#           target names; `preflight` is the steps its own recipe runs (build,
+#           vet, test, race); `-` when no gate needs it
+#   setup   what puts it on the machine: a step of the connector's setup, or the
+#           image the session starts from
+#
+# TestGateToolsNamesOnlyRealPreflightGates holds every gate named here to the
+# Makefile's preflight prerequisites, so a renamed gate fails there rather than
+# leaving this list naming nothing. A tool a gate starts needing is added here by
+# hand; that is the cost decision 5 accepted.
+#
+# go is also checked against the toolchain go.mod declares, which the setup
+# resolves through scripts/pinned-toolchain.sh.
+go	preflight,fmt-check,lint-issues,lint-decisions,record-lint,issue-drift,docs-lint,check-attribution,site-render,smoke,evals-cold-reading	the setup's toolchain step (the toolchain go.mod declares)
+git	preflight,lint-reviews,lint-issues,lint-decisions,record-lint,check-attribution,smoke	the image
+bash	lint-reviews,lint-issues,check-attribution	the image
+make	preflight	the image
+python3	lint-issues	the image
+gitleaks	-	the setup's gitleaks step (the version ci.yml pins)
+jq	-	the image
