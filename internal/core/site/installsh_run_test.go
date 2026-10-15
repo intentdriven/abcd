@@ -33,7 +33,7 @@ const (
 	// must be held to it (--source-digest), because the release workflow's
 	// signature alone passes any release's genuine build under any tag.
 	releaseCommit = "0123456789abcdef0123456789abcdef01234567"
-	ghPolicyFlags = "--hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml"
+	ghPolicyFlags = "--hostname github.com --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners"
 )
 
 type ghBehaviour int
@@ -49,6 +49,10 @@ const (
 	// ghNoSourceDigest: a gh whose attestation verify predates
 	// --source-digest, so it cannot bind the check to the release commit.
 	ghNoSourceDigest
+	// ghNoSourceRef: a gh whose attestation verify has --source-digest but
+	// no --source-ref, so it cannot hold the check to the ref the release
+	// was built from.
+	ghNoSourceRef
 )
 
 // installerRun is one run of the template under a sandbox.
@@ -144,9 +148,12 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 		case ghSignedOut:
 			verdict = "echo 'To get started with GitHub CLI, please run:  gh auth login' >&2; exit 4"
 		}
-		help := "printf '%s\\n' '      --signer-workflow string' '      --source-digest string'"
-		if gh == ghNoSourceDigest {
+		help := "printf '%s\\n' '      --cert-identity string' '      --deny-self-hosted-runners' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
+		switch gh {
+		case ghNoSourceDigest:
 			help = "printf '%s\\n' '      --signer-workflow string'"
+		case ghNoSourceRef:
+			help = "printf '%s\\n' '      --signer-workflow string' '      --source-digest string'"
 		}
 		script := "#!/bin/sh\n" +
 			"[ \"$1 $2 $3\" = 'attestation verify --help' ] && { " + help + "; exit 0; }\n" +
@@ -296,6 +303,22 @@ func TestInstallerWarnsWhenGhCannotBindTheCommit(t *testing.T) {
 	assertInstallerWarning(t, r.out, "--source-digest")
 }
 
+// TestInstallerWarnsWhenGhCannotPinTheSourceRef: a gh without --source-ref
+// counts as one that cannot verify.
+func TestInstallerWarnsWhenGhCannotPinTheSourceRef(t *testing.T) {
+	r := runInstaller(t, ghNoSourceRef, nil)
+	if r.err != nil {
+		t.Fatalf("a gh that cannot pin the source ref counts as no gh: %v\n%s", r.err, r.out)
+	}
+	if !r.installed(t) {
+		t.Fatalf("the checksum-verified binary must be installed:\n%s", r.out)
+	}
+	if calls := r.ghCalls(t); len(calls) != 0 {
+		t.Errorf("a gh that cannot pin the source ref must not be asked to verify: %q", calls)
+	}
+	assertInstallerWarning(t, r.out, "--source-ref")
+}
+
 func TestInstallerRefusesADownloadGhCannotVerify(t *testing.T) {
 	r := runInstaller(t, ghRefuses, nil)
 	if r.err == nil {
@@ -339,7 +362,7 @@ func TestInstallerWarnsWhenGhIsNotSignedIn(t *testing.T) {
 func assertInstallerWarning(t *testing.T, out, why string) {
 	t.Helper()
 	flat := strings.Join(strings.Fields(out), " ")
-	for _, want := range []string{"WARNING", "not checked against the signed build record", why, "gh attestation verify", "--repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml"} {
+	for _, want := range []string{"WARNING", "not checked against the signed build record", why, "gh attestation verify", "--repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners"} {
 		if !strings.Contains(flat, want) {
 			t.Errorf("the warning must say %q:\n%s", want, out)
 		}

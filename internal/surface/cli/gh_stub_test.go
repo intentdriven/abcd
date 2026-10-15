@@ -24,6 +24,7 @@ const (
 	ghFails                         // exit 1 with gh's own failure line
 	ghUnauthenticated               // exit 4, gh's "authentication required"
 	ghNoSourceDigest                // a gh whose attestation verify predates --source-digest
+	ghNoSourceRef                   // a gh whose attestation verify has --source-digest but no --source-ref
 )
 
 // ghStub is a stub gh in its own directory, recording every verify call.
@@ -53,9 +54,12 @@ func newGhStub(t *testing.T, mode ghMode) *ghStub {
 	case ghUnauthenticated:
 		verdict = "echo 'To get started with GitHub CLI, please run:  gh auth login' >&2; exit 4"
 	}
-	help := "printf '%s\\n' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
-	if mode == ghNoSourceDigest {
+	help := "printf '%s\\n' '      --cert-identity string' '      --deny-self-hosted-runners' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
+	switch mode {
+	case ghNoSourceDigest:
 		help = "printf '%s\\n' '      --signer-workflow string'"
+	case ghNoSourceRef:
+		help = "printf '%s\\n' '      --signer-workflow string' '      --source-digest string'"
 	}
 	script := "#!/bin/sh\n" +
 		"[ \"$1 $2 $3\" = 'attestation verify --help' ] && { " + help + "; exit 0; }\n" +
