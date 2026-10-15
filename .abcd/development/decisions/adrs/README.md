@@ -110,11 +110,12 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 > **Index maintenance:** the table between the two markers below is generated
 > from the records in this directory: the title is each record's H1, any
 > supersession is read from its `supersedes` and `superseded_by` fields, and
-> status and date are its frontmatter. Never edit it by hand. After `abcd decide`
-> or a status change, run `go generate ./internal/surface/cli`; a merge conflict
-> inside the markers is resolved the same way, by rerunning it on the merged
-> tree. The `index_drift` record-lint rule fails while the table differs from
-> what the records derive.
+> status and date are its frontmatter. Never edit it by hand: a wrong title,
+> status or date is fixed in the record (its H1 or its frontmatter) and then
+> regenerated, not in the table. After `abcd decide` or a status change, run
+> `go generate ./internal/surface/cli`; a merge conflict inside the markers is
+> resolved the same way, by rerunning it on the merged tree. The `index_drift`
+> record-lint rule fails while the table differs from what the records derive.
 
 <!-- index: adr-index -->
 | ID | Title | Status | Date |

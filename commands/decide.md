@@ -88,7 +88,9 @@ Exit codes:
 - Bring the index table in the store README up to date — a decision missing
   from it is a decision a reader does not find. Where the table sits between
   `<!-- index: ... -->` markers it is generated: rerun the generator the README
-  names rather than editing the rows. Otherwise add the row by hand.
+  names rather than editing the rows. A row's title is the record's H1 and its
+  status and date its frontmatter, so a wrong row is fixed in the record, then
+  regenerated. Otherwise add the row by hand.
 - Link it both ways: a supersession declares `supersedes` on the successor and
   `superseded_by` on the predecessor, and the record gate refuses a one-way pair.
 

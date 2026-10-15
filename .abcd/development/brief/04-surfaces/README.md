@@ -347,7 +347,8 @@ The listing is generated, not hand-edited: `go generate ./internal/surface/cli`
 writes the marked region from the contents of `commands/`, and the `index_drift`
 record-lint rule fails while it differs, so a verb file added, renamed or
 removed is followed by rerunning the generator, and a merge conflict inside the
-markers is resolved the same way.
+markers is resolved the same way. Each entry is a file's name in `commands/`, so
+a wrong entry is fixed by renaming the file, never by editing the list.
 
 **This documentation lives here rather than in `commands/README.md` because the
 loader registers every markdown file under `commands/` as a slash command** — with

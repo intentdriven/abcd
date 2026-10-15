@@ -27,8 +27,9 @@ record with its id and its own title, in id order. The `index_drift` record-lint
 rule fails while the region differs from what `drafts/` derives, so a capture, a
 promotion or a supersession is followed by rerunning the generator, and two
 branches that each conflict here are reconciled the same way, by rerunning it on
-the merged tree. That is what keeps "not hand-counted" true after the day it was
-written.
+the merged tree. Each line's text is the record's own H1, so a wrong or stale
+line is fixed in the record under `drafts/` and regenerated, never edited here.
+That is what keeps "not hand-counted" true after the day it was written.
 
 <!-- index: later-phase-intents -->
 - `itd-8` — Lifeboats Carry Source Code, Not Just Lessons
