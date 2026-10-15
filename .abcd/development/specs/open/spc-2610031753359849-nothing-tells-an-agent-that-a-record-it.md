@@ -1044,7 +1044,7 @@ the cross-cutting ones.
 8. Spec 2: Renewal and the land fence in `implement step`
    - criteria: C40, C41, C42, C43, C44, C53
    - packages: internal/core/implement/loop, internal/core/claim, commands/, .abcd/development/brief/04-surfaces
-   - tests: a step at half-lease renewing and logging it; one under half pushing nothing; the fence refusing a tip now another person's and one moved to the other copy, arming nothing; the fence renewing past a mirror's 45-minute timeout plus the margin, and with the default lease where no mirror exists; a renewal failure outside land named and not stopping the stage
+   - tests: a step at half-lease renewing and logging it; one under half pushing nothing; the fence refusing a tip now another person's and one moved to the other copy, arming nothing; the fence renewing past a mirror's 45-minute timeout plus the margin, and, since decision 40 (2026-10-15), for a day where no mirror exists as well; a renewal failure outside land named and not stopping the stage
    - records: `commands/implement.md` and `04-surfaces/27-implement.md`
 9. Spec 2: The tidy-up after the merge
    - criteria: C45, C46, C51
