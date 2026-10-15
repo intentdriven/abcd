@@ -281,6 +281,20 @@
           "hidden": false
         },
         {
+          "name": "outbound-forge",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "outbound-hook",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "readme-parts",
           "shorthand": "",
           "type": "string",
@@ -3170,7 +3184,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.",
       "flags": []
     },
     {
@@ -3310,6 +3324,43 @@
       "flags": [
         {
           "name": "template",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd reserve",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
+      "flags": [
+        {
+          "name": "footprint",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "lease",
+          "shorthand": "",
+          "type": "duration",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take-over",
           "shorthand": "",
           "type": "bool",
           "required": false,

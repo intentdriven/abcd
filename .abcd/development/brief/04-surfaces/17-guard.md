@@ -94,8 +94,11 @@ still taught the safe form and a host with hooks is taught it before the guard
 would have to refuse. An entry added to the registry is taught and enforced from
 the same release, with no second edit. A hazard the guard reads in code rather
 than from the registry, such as `git-stash-shared-stack` (a bare `git stash` in
-a checkout with more than one worktree) or `interpreter-reads-stream` (a shell
-handed its script through a pipe, as in `cat x | sh`), is enforced but not
+a checkout with more than one worktree), `interpreter-reads-stream` (a shell
+handed its script through a pipe, as in `cat x | sh`) or `forge-text-outbound`
+(a posting `gh pr` or `gh issue` command whose title or body carries a live
+agent-session URL or a tool attribution footer, in a repository that opted into
+the forge-text check, iss-2610142210511831), is enforced but not
 taught; the scripts the guard reads are taught by one rule the generator adds
 after the entries'. The registry taught is the one the guard
 enforces in the repository: an entry the repository adds in its

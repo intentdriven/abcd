@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -23,16 +24,18 @@ import (
 // and the record is claimable again once the lease has passed. The lapse is
 // logged, as is every refused claim with the session holding it.
 
-// DefaultLease is how long a claim holds when the caller names no lease: long
-// enough for a lane's build-and-gate cycle, short enough that a session that
-// died mid-lane frees its record within the same working window.
-const DefaultLease = 2 * time.Hour
+// DefaultLease is how long a claim holds when the caller names no lease: the
+// shared lease package's default, long enough for a lane's build-and-gate
+// cycle, short enough that a session that died mid-lane frees its record within
+// the same working window.
+const DefaultLease = lease.Default
 
-// Lease bounds. A lease shorter than a minute lapses under its own gate run; a
-// lease longer than a day outlives any window the run keeps.
+// Lease bounds, the shared lease package's. A lease shorter than a minute
+// lapses under its own gate run; a lease longer than a day outlives any window
+// the run keeps.
 const (
-	MinLease = time.Minute
-	MaxLease = 24 * time.Hour
+	MinLease = lease.Min
+	MaxLease = lease.Max
 )
 
 // Claim is one claim file's content.
@@ -132,12 +135,12 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 	if err := validName("lane", req.Lane); err != nil {
 		return ClaimResult{}, err
 	}
-	lease := req.Lease
-	if lease == 0 {
-		lease = DefaultLease
+	term := req.Lease
+	if term == 0 {
+		term = DefaultLease
 	}
-	if lease < MinLease || lease > MaxLease {
-		return ClaimResult{}, refusal("lease %s is outside %s to %s", lease, MinLease, MaxLease)
+	if term < MinLease || term > MaxLease {
+		return ClaimResult{}, refusal("lease %s is outside %s to %s", term, MinLease, MaxLease)
 	}
 	for _, p := range req.Paths {
 		if !fsutil.ValidRelPath(p) {
@@ -162,7 +165,7 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 			}
 		}
 		now := r.now()
-		c := Claim{Record: req.Record, Session: req.Session, Lane: req.Lane, ClaimedAt: now, ExpiresAt: now.Add(lease)}
+		c := Claim{Record: req.Record, Session: req.Session, Lane: req.Lane, ClaimedAt: now, ExpiresAt: now.Add(term)}
 		data, err := encodeClaim(c)
 		if err != nil {
 			return err
@@ -180,7 +183,7 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 			if errors.As(rerr, &bad) {
 				// Nobody can say who holds it. Within the grace it is contention;
 				// after it the file has lapsed, and the lapse is logged as one.
-				if now.Before(bad.LapsesAt) {
+				if lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: bad.writtenAt}, UnreadableClaimGrace, now).Live {
 					if err := r.logBackoff(req.Session, "", "claim", "unreadable claim file within its grace",
 						time.Since(start), map[string]any{"record": req.Record}); err != nil {
 						return err
@@ -212,7 +215,7 @@ func (r *Run) Claim(req ClaimRequest) (ClaimResult, error) {
 				out.Claim = c
 				_, err := r.append(req.Session, EventClaim, claimFields(c, map[string]any{"renewed": true}))
 				return err
-			case !now.Before(held.ExpiresAt):
+			case !judge(held, now).Live:
 				if _, err := r.append(req.Session, EventClaimLapsed, map[string]any{
 					"record": held.Record, "lane": held.Lane, "holder": held.Session, "reason": "expired",
 					"expired_at": held.ExpiresAt.Format(time.RFC3339),
@@ -256,7 +259,7 @@ func (r *Run) secondClaimBounds(root *os.Root, req ClaimRequest) error {
 	}
 	now := r.now()
 	for _, c := range claims {
-		if c.Claim.Session == req.Session && c.Claim.Record != req.Record && now.Before(c.Claim.ExpiresAt) {
+		if c.Claim.Session == req.Session && c.Claim.Record != req.Record && judge(c.Claim, now).Live {
 			return r.refuseLogged(req.Session, "second_session_lane_cap",
 				map[string]any{"record": req.Record, "held": c.Claim.Record},
 				fmt.Sprintf("the second session holds at most one lane, and it holds %s (release it first)", c.Claim.Record))
@@ -360,14 +363,15 @@ func (r *Run) listClaims(root *os.Root) ([]ClaimState, error) {
 		if errors.As(err, &bad) {
 			// Listed, never fatal: one torn file must not stop the status, leave
 			// or another record's claim from reading every other claim.
-			out = append(out, ClaimState{Claim: Claim{Record: record, ExpiresAt: bad.LapsesAt},
-				Live: now.Before(bad.LapsesAt), Unreadable: true})
+			v := lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: bad.writtenAt}, UnreadableClaimGrace, now)
+			out = append(out, ClaimState{Claim: Claim{Record: record, ExpiresAt: v.EffectiveExpiry},
+				Live: v.Live, Unreadable: true})
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, ClaimState{Claim: c, Live: now.Before(c.ExpiresAt)})
+		out = append(out, ClaimState{Claim: c, Live: judge(c, now).Live})
 	}
 	return out, nil
 }
@@ -379,6 +383,9 @@ type UnreadableClaimError struct {
 	Record   string
 	Path     string
 	LapsesAt time.Time
+	// writtenAt is the file's modification time, the stamp the grace is
+	// counted from.
+	writtenAt time.Time
 }
 
 func (e *UnreadableClaimError) Error() string {
@@ -398,17 +405,26 @@ func (r *Run) readClaim(root *os.Root, record string) (Claim, error) {
 	// The session and the lane reach a refusal printed to the operator, so each
 	// must be a name, as the claim verb wrote it: a hand-edited file carrying a
 	// terminal escape or a path reads as unreadable, never as a holder.
-	if err := json.Unmarshal(data, &c); err != nil || c.Record != record || c.ExpiresAt.IsZero() ||
+	// A claim with no claimed_at cannot be held to the day's ceiling the shared
+	// judgement counts from it, so it is unreadable too.
+	if err := json.Unmarshal(data, &c); err != nil || c.Record != record || c.ExpiresAt.IsZero() || c.ClaimedAt.IsZero() ||
 		validName("session", c.Session) != nil || validName("lane", c.Lane) != nil {
 		bad := &UnreadableClaimError{Record: record, Path: filepath.Join(r.Dir, filepath.FromSlash(rel))}
 		fi, serr := root.Stat(rel)
 		if serr != nil {
 			return Claim{}, fmt.Errorf("%v, and its age cannot be read: %w", bad, serr)
 		}
-		bad.LapsesAt = fi.ModTime().UTC().Add(UnreadableClaimGrace)
+		bad.writtenAt = fi.ModTime().UTC()
+		bad.LapsesAt = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: bad.writtenAt}, UnreadableClaimGrace, r.now()).EffectiveExpiry
 		return Claim{}, bad
 	}
 	return c, nil
+}
+
+// judge is a readable claim's liveness at now, through the one judgement the
+// reservation on the shared remote reads its tips with (lease.Judge).
+func judge(c Claim, now time.Time) lease.Verdict {
+	return lease.Judge(lease.Stamp{ClaimedAt: c.ClaimedAt, ExpiresAt: c.ExpiresAt}, UnreadableClaimGrace, now)
 }
 
 // encodeClaim renders a claim file.

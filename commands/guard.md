@@ -669,6 +669,48 @@ one stash stack for the whole repository, so a bare pop can take another
 worktree's work. A stash with a message and a pop by entry (`stash@{N}`) are not
 warned about, and neither is anything in a single-worktree clone.
 
+In a repository that opted in with `ahoy install --outbound-forge`
+(`outbound.forge: true` in `.abcd/config.json`), the text a posting forge
+command hands the forge is judged against the outbound policy before the
+command runs, with the same check `abcd lint outbound` applies. A
+`gh pr create`, `gh pr new`, `gh pr edit`, `gh pr comment`, `gh issue create`,
+`gh issue new`, `gh issue edit` or `gh issue comment` whose title or body
+carries a live agent-session URL or a tool attribution footer is a **block**
+(`forge-text-outbound`). The refusal names which text it was (the title, the
+body or the body file), the kind of finding and its line, never the text, and
+teaches the safe form: remove the session URL, and
+replace a tool footer with the repository's own disclosure trailer
+(`Assisted-by: <Vendor>:<model-version>`). It reads `--title`/`-t`,
+`--body`/`-b` and `--body-file`/`-F` in every spelling (`--body x`,
+`--body=x`, `-b x`, `-bx`, `-b=x`), a value written out in full on the line, and
+a `"$(cat <<'EOF' … EOF)"` body, read as the document it prints. A body file is
+read through the guard's guarded read, from the directory the command runs in:
+regular files only, no symlinked leaf (a symlink to a file is followed first),
+at most 256 KiB, opened without waiting, so a named pipe can never hang the
+check. A body file it cannot read is a **warn** (`forge-text-unread`), and the
+command runs: one that does not exist, is a pipe, a directory or a file this
+account may not read, is over 256 KiB, sits relative to a directory the line
+leaves unknown, or is written earlier on the same line (the file the guard could
+read is not the one gh will post). So is a `.abcd/config/pii.json` that does not
+load, and a line handing the forge more than sixteen texts. A warn never stops a
+command, and it never passes one in silence.
+
+It does not see: a body or a path the line does not fix (`--body "$BODY"`,
+`--body-file "$F"`, a substitution other than the `cat` document above), a body
+on standard input (`--body-file -`), a flag spelled by a substitution
+(`--$(echo body)`), a short flag bundled behind another (`-db x`), text typed
+into an editor or a browser (`--editor`, `--web`), text gh takes from the
+commits (`--fill`) or a template (`--template`), a posting command inside a
+script the line runs, and every other posting path: `gh api`, `gh pr review`,
+`gh release`, `gh pr merge --body`, `gh pr close --comment`,
+`gh issue close --comment`, and any forge client but gh. The re-read
+after posting stays the control for those.
+
+Nothing changes in a repository that did not opt in. To turn the check off,
+remove `outbound.forge` from `.abcd/config.json` (or set it to `false`); the
+opt-in is read from the working tree on each check, and a later
+`ahoy install` without the flag leaves it as it is.
+
 A candidate too long to read is refused (exit 2), not answered on the part that
 fitted.
 

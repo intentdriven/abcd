@@ -338,8 +338,11 @@ var sentences = map[string]string{
 	"abcd mode": "Print or set whose answer the agent loop is waiting on: " +
 		"Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.",
 
-	"abcd peers": "List the records sibling worktrees and local branches hold that this checkout does not: " +
-		"Writes nothing; refuses outside a git checkout.",
+	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
+		"Writes the fetched reservations; refuses outside a git checkout.",
+
+	"abcd reserve": "Reserve an issue or intent on the shared remote, or release it: " +
+		"Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
 
 	"abcd reading": "Render the cold-reading assembler's state: " +
 		"Writes nothing; refuses any argument.",

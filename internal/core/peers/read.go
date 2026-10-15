@@ -11,7 +11,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -27,7 +26,7 @@ var families = []struct {
 	rel     string
 	folders []string
 }{
-	{"iss", capture.LedgerRelPath, issueschema.StatusDirs},
+	{"iss", recordid.IssuesRelDir, issueschema.StatusDirs},
 	{"itd", intent.IntentsRelDir, intent.Buckets},
 }
 
@@ -228,7 +227,7 @@ func readBranch(root, branch string) Peer {
 // record commonly split others the check cannot tell from legitimate rows.
 func judgeHoldings(h holdings, present bool) string {
 	if !present {
-		return "it holds no records at the committed layout (" + capture.LedgerRelPath + "/, " +
+		return "it holds no records at the committed layout (" + recordid.IssuesRelDir + "/, " +
 			intent.IntentsRelDir + "/); a checkout from before that layout contributes nothing"
 	}
 	var split []string
@@ -439,6 +438,25 @@ func isRealDirChain(root, rel string) bool {
 		}
 	}
 	return true
+}
+
+// FoldersAt is the folder each record sits in on ref, read from the object
+// store by filename (no checkout, no network): record id to every folder a
+// file claiming it sits in (open, resolved, wontfix, or an intent bucket). It
+// is the peers reader's own tree read, exported so the reservation's derived
+// release decides which folder a record is in by the same reader.
+func FoldersAt(root, ref string) (map[string][]string, error) {
+	h, _, err := scanTree(root, ref)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]string, len(h))
+	for id, hs := range h {
+		for _, x := range hs {
+			out[id] = append(out[id], x.folder)
+		}
+	}
+	return out, nil
 }
 
 // scanTree reads a ref's holdings from the object store by filename.
