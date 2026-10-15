@@ -191,8 +191,21 @@ func checkGeneratedIndex(repoRoot string, spec IndexSpec, i int, cfg RuleConfig)
 	return nil, nil
 }
 
-// renderIndex composes a generated region's lines from the directory.
+// renderIndex composes a generated region's lines from the directory. A source
+// directory that does not exist is a refusal naming it, never an empty
+// listing: a moved or misnamed directory would otherwise empty the region and
+// the region would still equal its rendering, so the gate would stay green over
+// an index that lists nothing.
 func renderIndex(repoRoot string, spec IndexSpec) ([]string, error) {
+	if st, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(spec.Dir))); err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("%s does not exist; point the index's dir at where the records now live, "+
+				"or delete the config entry when the enumeration goes", spec.Dir)
+		}
+		return nil, err
+	} else if !st.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", spec.Dir)
+	}
 	var dirEntryRe *regexp.Regexp
 	if spec.DirEntry != "" {
 		dirEntryRe = regexp.MustCompile(spec.DirEntry) // compiled once in validateGeneratedSpec
@@ -269,9 +282,6 @@ func indexRecords(repoRoot string, spec IndexSpec, dirEntryRe *regexp.Regexp) ([
 	dir := filepath.Join(repoRoot, filepath.FromSlash(spec.Dir))
 	ents, err := os.ReadDir(dir)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
 		return nil, err
 	}
 	var recs []indexRecord

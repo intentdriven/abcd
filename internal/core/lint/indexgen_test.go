@@ -291,3 +291,40 @@ func TestGeneratedIndexesMatchTree(t *testing.T) {
 		t.Fatalf("repo root not found from the test: %v", err)
 	}
 }
+
+// TestGeneratedIndexMissingDirectoryFailsClosed: a generated index whose source
+// directory is gone — moved, or misnamed in the config — must not render as an
+// empty listing. Each renderer is first generated over an existing empty
+// directory, then the config is pointed at a directory that does not exist: lint
+// must name the directory in a finding and the generator must refuse, naming
+// it, rather than the region silently staying (or becoming) empty while the
+// gate stays green.
+func TestGeneratedIndexMissingDirectoryFailsClosed(t *testing.T) {
+	for _, spec := range []IndexSpec{namesGenSpec(), draftsGenSpec(), adrGenSpec()} {
+		t.Run(spec.Render, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.MkdirAll(filepath.Join(root, spec.Dir), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, root, spec.Doc, genDoc(spec.ID, ""))
+			rw, err := RegenerateIndexes(root, indexCfg(spec))
+			if err != nil {
+				t.Fatal(err)
+			}
+			writeFile(t, root, spec.Doc, rw[0].Want)
+
+			moved := spec
+			moved.Dir = spec.Dir + "-moved"
+			fs, err := Lint(indexCfg(moved), root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n := countRule(fs, "index_drift"); n != 1 || !messageContains(fs, moved.Dir+" does not exist") {
+				t.Fatalf("a missing source directory must be one finding naming %s; got %+v", moved.Dir, fs)
+			}
+			if _, err := RegenerateIndexes(root, indexCfg(moved)); err == nil || !strings.Contains(err.Error(), moved.Dir+" does not exist") {
+				t.Fatalf("the generator must refuse a missing source directory, naming %s; got %v", moved.Dir, err)
+			}
+		})
+	}
+}
