@@ -146,9 +146,9 @@ type entry struct {
 	// start reserves the name and sets no title (decision 9); the title is
 	// owed once, at the first prompt.
 	Sent bool `json:"sent"`
-	// Replaces is the title a resumed session carried that a running session
-	// now holds (decision 10): the one title the prompt hook replaces with
-	// Name. Empty on every other entry.
+	// Replaces is the title a resumed session or a fork carried that a
+	// running session now holds (decision 10): the one title the prompt hook
+	// replaces with Name. Empty on every other entry.
 	Replaces string `json:"replaces,omitempty"`
 }
 
@@ -173,9 +173,12 @@ type register struct {
 	// Live is one entry per running named session.
 	Live []entry `json:"live"`
 	// Given is the name abcd's prompt hook set as each session's title, by
-	// session id. It is what tells abcd's title from the person's on resume
-	// and clear (C4, decision 10): a title is abcd's only when it is the name
-	// given to that session id. It is not emptied with Handed, since a
+	// session id, and "" for a session abcd found carrying the person's own
+	// name (given on the command line, or before its first prompt). It is
+	// what tells abcd's title from the person's on resume, clear and fork
+	// (C4, decision 10): a title is abcd's when it is the name given to that
+	// session id, or, for a session id with no record of its own (a fork), a
+	// name given to another session. It is not emptied with Handed, since a
 	// session resumed after every session ended still carries abcd's name,
 	// and it is bounded at maxGiven. A register written before it existed
 	// reads as having given nothing.
@@ -215,6 +218,18 @@ func (g givenNames) of(sessionID string) (string, bool) {
 func (g givenNames) gave(sessionID, title string) bool {
 	name, ok := g.of(sessionID)
 	return ok && name == title
+}
+
+// inherits reports whether title is a name abcd gave another session while
+// sessionID has no record of its own: a fork, which the host starts as a new
+// session id carrying its parent's title. A session with a record of its own
+// is never read as inheriting, so a title the person gave a session abcd knows
+// stays theirs.
+func (g givenNames) inherits(sessionID, title string) bool {
+	if _, own := g.of(sessionID); own || title == "" {
+		return false
+	}
+	return slices.ContainsFunc(g, func(n givenName) bool { return n.SessionID != sessionID && n.Name == title })
 }
 
 // give records name as given to sessionID, newest, and drops the oldest past
@@ -302,14 +317,19 @@ func (g *givenNames) UnmarshalJSON(raw []byte) error {
 // which the prompt hook sets at the session's first prompt (Resend).
 //
 // A sub-agent is never named, nor a payload with no session id. A new session
-// (startup, or a fork) with no title reserves the next free name. A resumed or
-// cleared session whose title is the name abcd gave it (Given) keeps it, and
-// the register holds the name for the process now running it, so no other
-// session is given it (C5); unless a running session on another host now
-// holds that name, when the resumed session reserves the next free name
-// instead (decision 10). Any other title is the person's, persona name or not,
-// and is neither held nor replaced (C4). A compaction of a titled session
-// changes nothing: the host keeps the title through it.
+// (startup, or a fork) with no title reserves the next free name. A startup
+// with a title is the person's own name: it is not named, and the register
+// records that abcd gave it nothing (keep). A resumed or cleared session whose
+// title is the name abcd gave it (Given) keeps it, and the register holds the
+// name for the process now running it, so no other session is given it (C5).
+// A fork, which the host starts as a new session id carrying its parent's
+// title with source fork or resume, inherits the name abcd gave the parent,
+// and is held the same way. Either way, when a running session on another
+// host holds that name, the session reserves the next free name instead, which
+// its first prompt sets in place of the title (decision 10). Any other title
+// is the person's, persona name or not, and is neither held nor replaced (C4).
+// A compaction of a titled session changes nothing: the host keeps the title
+// through it.
 //
 // A resume, clear or compaction with no title is a session whose first prompt
 // has not set its name yet (rejoin): its entry is re-keyed to the process now
@@ -320,6 +340,8 @@ func Start(m Machine, req Request) Outcome {
 		return Outcome{}
 	}
 	switch {
+	case req.Title != "" && req.Source == "startup":
+		return keep(m, req)
 	case req.Title != "":
 		return hold(m, req)
 	case req.Source == "startup" || req.Source == "fork":
@@ -330,20 +352,38 @@ func Start(m Machine, req Request) Outcome {
 
 // Acts reports whether Start can do anything for req, so a front door can skip
 // resolving the repository root for a payload naming never acts on: a
-// sub-agent's (C12), one with no session id, a new session that already has a
-// title (the person's own name wins, C4), and the compaction of a titled
-// session, through which the host keeps the title (C5).
+// sub-agent's (C12), one with no session id, and the compaction of a titled
+// session, through which the host keeps the title (C5). A startup with a title
+// acts only to record that the title is the person's (keep).
 func Acts(req Request) bool {
 	if req.AgentID != "" || req.SessionID == "" {
 		return false
 	}
 	switch req.Source {
-	case "startup", "fork", "compact":
+	case "compact":
 		return req.Title == ""
-	case "resume", "clear":
+	case "startup", "fork", "resume", "clear":
 		return true
 	}
 	return false
+}
+
+// keep is session start for a new session that starts with a title: a name
+// the person gave on the command line, which wins (C4). It is never named. The
+// register records that abcd gave this session no name (an empty given
+// record), so that a later resume never reads the title as one inherited from
+// another session that abcd did give it. No process table is read. A failure
+// writes no note: the session is not named either way, and the next session
+// start that names one names the refusal.
+func keep(m Machine, req Request) Outcome {
+	_ = m.locked(func(reg *register) (bool, error) {
+		if _, own := reg.Given.of(req.SessionID); own {
+			return false, nil
+		}
+		reg.Given.give(req.SessionID, "")
+		return true, nil
+	})
+	return Outcome{}
 }
 
 // name reserves for the session the first name of its persona sequence that
@@ -404,15 +444,7 @@ func rejoin(m Machine, req Request) Outcome {
 			if req.Source == "compact" {
 				return false, nil
 			}
-			reg.Given.move(e.SessionID, req.SessionID)
-			rekeyed := newEntry(e.Name, req.SessionID, host)
-			rekeyed.Sent, rekeyed.Replaces = e.Sent, e.Replaces
-			// Moved to the end: the newest entry on a host is the session it
-			// runs now (onHost).
-			reg.Live = append(slices.Delete(reg.Live, i, i+1), rekeyed)
-			if !slices.Contains(reg.Handed, e.Name) {
-				reg.Handed = append(reg.Handed, e.Name)
-			}
+			reg.rekey(i, req.SessionID, host)
 			reg.prune(tab)
 			return true, nil
 		}
@@ -426,6 +458,45 @@ func rejoin(m Machine, req Request) Outcome {
 		out.Notes = append(out.Notes, failed(err))
 	}
 	return out
+}
+
+// rekey moves the live entry at i to sessionID under host, keeping its name,
+// whether its title is still owed and the title it replaces, and carries its
+// given record over to the new id. It returns the name still owed to the first
+// prompt, or "". The entry moves to the end: the newest entry on a host is the
+// session it runs now (onHost).
+func (reg *register) rekey(i int, sessionID string, host Host) string {
+	e := reg.Live[i]
+	reg.Given.move(e.SessionID, sessionID)
+	r := newEntry(e.Name, sessionID, host)
+	r.Sent, r.Replaces = e.Sent, e.Replaces
+	reg.Live = append(slices.Delete(reg.Live, i, i+1), r)
+	if !slices.Contains(reg.Handed, e.Name) {
+		reg.Handed = append(reg.Handed, e.Name)
+	}
+	if e.Sent {
+		return ""
+	}
+	return e.Name
+}
+
+// beforeClear is the index of the live entry that was req's session before a
+// clear gave it a new id, or -1; always -1 when req is not a clear. A clear
+// keeps the host process, so that entry is on this same host: either it holds
+// the title, given to its id, or it is a name reserved to replace the title
+// (decision 10, or a fork's inherited name) that the first prompt has not set
+// yet.
+func (reg *register) beforeClear(req Request, host Host) int {
+	if req.Source != "clear" {
+		return -1
+	}
+	return slices.IndexFunc(reg.Live, func(e entry) bool {
+		if !sameHost(e.host(), host) {
+			return false
+		}
+		return (e.Name == req.Title && reg.Given.gave(e.SessionID, req.Title)) ||
+			(!e.Sent && e.Replaces == req.Title)
+	})
 }
 
 // onHost is the index of the live entry recorded for host (sameHost, with
@@ -459,22 +530,35 @@ func (reg *register) reserve(personas []string, sessionID string, host Host, rep
 }
 
 // hold keeps a resumed session's name held for the process now running it.
-// Only the name abcd gave this session is held, which Given records by session
-// id: any other title is the person's own, a persona name the person typed
-// included, and abcd neither records nor guards it (C4). Given, not this
-// repository's persona sequence, is the test, so a name given before the
-// sequence changed is still held. A clear gives the session a new id in the
-// same process, so on a clear the name given to the entry on this same host
-// counts, and is carried over to the new id.
+// Only a name abcd gave is held, which Given records by session id: any other
+// title is the person's own, a persona name the person typed included, and
+// abcd neither records nor guards it (C4). Given, not this repository's
+// persona sequence, is the test, so a name given before the sequence changed
+// is still held.
+//
+// A clear gives the session a new id in the same process, so on a clear the
+// session before it is the live entry on this same host (beforeClear): its
+// name, given to its id, counts and is carried over to the new id; or, when
+// that entry is a name reserved to replace the title and not set yet, the
+// entry itself follows the clear, still owed. A clear is matched first, so the
+// same session is never read as a fork of itself.
+//
+// A fork is a new session id carrying its parent's title, so a session id with
+// no record of its own whose title is a name given to another session has
+// inherited it (inherits). It is held like a resumed name, and recorded as
+// given to the fork too. A session id with a record of its own is never read
+// as inheriting: abcd records the person's own name as "" (keep, Resend), so
+// a session the person named is not mistaken for a fork when another session
+// is given the same name.
 //
 // The register is first read without the lock, as the prompt hook reads it:
 // a title abcd never gave costs no process-table read and writes nothing.
 //
 // When a running session on another host holds the name, which happens once
 // every named session had ended and naming restarted while this one was away,
-// the resumed session reserves the next free name instead, which its first
-// prompt sets in place of the title it carries (decision 10): two running
-// sessions never share a name.
+// or when a fork's parent is still running, the session reserves the next free
+// name instead, which its first prompt sets in place of the title it carries
+// (decision 10): two running sessions never share a name.
 func hold(m Machine, req Request) Outcome {
 	personas, note := Personas(req.Root)
 	var out Outcome
@@ -485,17 +569,22 @@ func hold(m Machine, req Request) Outcome {
 		return out
 	}
 	err := m.update(func(reg *register, tab Table, host Host) (bool, error) {
+		inherited := false
 		if !reg.Given.gave(req.SessionID, req.Title) {
-			if req.Source != "clear" {
+			switch i := reg.beforeClear(req, host); {
+			case i >= 0 && reg.Live[i].Name != req.Title:
+				// A name reserved to replace this title, not set yet: it
+				// follows the clear to the new id, still owed.
+				out.Name = reg.rekey(i, req.SessionID, host)
+				reg.prune(tab)
+				return true, nil
+			case i >= 0:
+				reg.Given.move(reg.Live[i].SessionID, req.SessionID)
+			case reg.Given.inherits(req.SessionID, req.Title):
+				inherited = true
+			default:
 				return false, nil
 			}
-			i := slices.IndexFunc(reg.Live, func(e entry) bool {
-				return e.Name == req.Title && sameHost(e.host(), host) && reg.Given.gave(e.SessionID, req.Title)
-			})
-			if i < 0 {
-				return false, nil
-			}
-			reg.Given.move(reg.Live[i].SessionID, req.SessionID)
 		}
 		reg.prune(tab)
 		// An entry under this same host is this session before a clear gave
@@ -517,6 +606,14 @@ func hold(m Machine, req Request) Outcome {
 		if !slices.Contains(reg.Handed, req.Title) {
 			reg.Handed = append(reg.Handed, req.Title)
 		}
+		// An inherited name the fork now holds is recorded as given to the
+		// fork as well, so a later resume of the fork holds it under its own
+		// id. The parent's record is copied, not moved: the parent still
+		// carries the name and may be resumed, and its own record is what
+		// makes that resume abcd's.
+		if inherited {
+			reg.Given.give(req.SessionID, req.Title)
+		}
 		return true, nil
 	})
 	if err != nil {
@@ -528,8 +625,9 @@ func hold(m Machine, req Request) Outcome {
 
 // mayHold reads the register without the lock and reports whether abcd may
 // have given req's title to its session: the name given to its id, or, on a
-// clear (a new id), to any session. A register that cannot be read answers
-// yes, so the locked read names the refusal; no register answers no.
+// clear or for an id with no record of its own (a new id), to any session. A
+// register that cannot be read answers yes, so the locked read names the
+// refusal; no register answers no.
 func (m Machine) mayHold(req Request) bool {
 	dir, reg, err := m.peek()
 	if err != nil {
@@ -542,7 +640,8 @@ func (m Machine) mayHold(req Request) bool {
 	if reg.Given.gave(req.SessionID, req.Title) {
 		return true
 	}
-	return req.Source == "clear" && slices.ContainsFunc(reg.Given, func(n givenName) bool { return n.Name == req.Title })
+	_, own := reg.Given.of(req.SessionID)
+	return (req.Source == "clear" || !own) && slices.ContainsFunc(reg.Given, func(n givenName) bool { return n.Name == req.Title })
 }
 
 // peek opens the sessions folder without creating it and reads the register
@@ -581,9 +680,11 @@ func (m Machine) peek() (*os.Root, register, error) {
 // decision 9), and only to a session that has no title yet: a title equal to
 // the name is already set, and any other title is the person's own, which
 // always wins (C4). Either way the entry is marked sent, and no later prompt
-// sets anything. The one title replaced is the name abcd gave a resumed
-// session that a running session now holds (decision 10). A name set is
-// recorded in Given, so a later resume or clear knows the title is abcd's.
+// sets anything. The one title replaced is a name abcd gave that a running
+// session now holds, carried by a resumed session or a fork (decision 10). A
+// name set is recorded in Given, so a later resume or clear knows the title is
+// abcd's; the person's own name is recorded as "", so a later resume never
+// reads it as inherited.
 //
 // A machine with no register touches nothing, nor does one whose sessions
 // folder is a symlink: session start refuses that with its note, and the
@@ -618,9 +719,15 @@ func Resend(m Machine, sessionID, title string) Outcome {
 			return nil
 		}
 		reg.Live[i].Sent = true
-		if owed {
+		switch {
+		case owed:
 			send = reg.Live[i].Name
 			reg.Given.give(sessionID, send)
+		case title != reg.Live[i].Name:
+			// The person's own name, given before this first prompt: abcd
+			// gave this session nothing, so a later resume never reads the
+			// title as inherited.
+			reg.Given.give(sessionID, "")
 		}
 		if err := writeRegister(dir, reg); err != nil {
 			return err
@@ -696,6 +803,16 @@ func (m Machine) update(fn func(reg *register, tab Table, host Host) (bool, erro
 	if err != nil {
 		return err
 	}
+	return m.locked(func(reg *register) (bool, error) { return fn(reg, tab, host) })
+}
+
+// locked reads, changes and writes the register under its lock, reading no
+// process table. fn reports whether it changed the register; an error from fn
+// is returned and nothing is written.
+func (m Machine) locked(fn func(reg *register) (bool, error)) error {
+	if m.Home == "" || !filepath.IsAbs(m.Home) {
+		return errors.New("there is no home folder to keep the name register in")
+	}
 	// The folder is created, judged and opened in one walk from home, and the
 	// lock and the file are reached through it, so a link swapped in after the
 	// judgement is refused rather than written through.
@@ -712,7 +829,7 @@ func (m Machine) update(fn func(reg *register, tab Table, host Host) (bool, erro
 		if err != nil {
 			return err
 		}
-		changed, err := fn(&reg, tab, host)
+		changed, err := fn(&reg)
 		if err != nil || !changed {
 			return err
 		}

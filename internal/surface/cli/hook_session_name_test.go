@@ -324,6 +324,38 @@ func TestPromptRouterReplacesAResumedNameARunningSessionHolds(t *testing.T) {
 	}
 }
 
+// TestPromptRouterRenamesAForkOfARunningSession is the live sequence of
+// 2026-10-16 through the hooks: Alice runs, and a fork of it starts as a new
+// session id carrying Alice's title, with source fork or resume. The fork's
+// first prompt sets Bob in place of the inherited title, and Alice keeps
+// Alice.
+func TestPromptRouterRenamesAForkOfARunningSession(t *testing.T) {
+	for _, source := range []string{"fork", "resume"} {
+		t.Run(source, func(t *testing.T) {
+			f := newNameFixture(t)
+			f.launch(1000)
+			runSessionStart(startJSON(t, "p", f.cwd, map[string]string{"source": "startup"}), "hook", "session-start")
+			runHook(t, promptJSON(t, "p", f.cwd, "paint a landscape", ""), "hook", "prompt-router")
+			f.launch(2000)
+			f.procs = append(f.procs, machineload.Proc{PID: 1000, PPID: 1, Name: "claude", Age: time.Hour})
+			stdout, _, _ := runSessionStart(startJSON(t, "f", f.cwd, map[string]string{"source": source, "session_title": "Alice"}), "hook", "session-start")
+			if strings.HasPrefix(stdout, "{") {
+				t.Fatalf("the fork set a title at start: %q", stdout)
+			}
+			out, _ := runHook(t, promptJSON(t, "f", f.cwd, "paint a landscape", "Alice"), "hook", "prompt-router")
+			if !strings.HasPrefix(out, "{") {
+				t.Fatalf("the fork's first prompt set no title: %q", out)
+			}
+			if got := decodeTitled(t, out).HookSpecificOutput.SessionTitle; got != "Bob" {
+				t.Fatalf("the fork was titled %q, want Bob", got)
+			}
+			if out, _ := runHook(t, promptJSON(t, "p", f.cwd, "paint a landscape", "Alice"), "hook", "prompt-router"); strings.HasPrefix(out, "{") {
+				t.Fatalf("the parent was retitled: %q", out)
+			}
+		})
+	}
+}
+
 // TestPromptRouterLeavesARenamedSessionAlone is C4 at the prompt: a session the
 // person renamed before its first prompt is owed nothing, and its output is
 // the plain text.

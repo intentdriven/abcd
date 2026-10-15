@@ -160,18 +160,25 @@ func TestStartCountsAReusedProcessIDAsEnded(t *testing.T) {
 }
 
 // TestStartLeavesAPersonsOwnNameAlone is C4 at session start: a session that
-// arrives with a title (a name given on the command line) is not named, and
-// nothing is written.
+// arrives with a title is not named. A startup's title is a name given on the
+// command line, and the register records the session as the person's, with no
+// name given and nothing held, so a later resume never reads the title as one
+// inherited from another session. A fork's title abcd never gave is the
+// person's too, and writes nothing.
 func TestStartLeavesAPersonsOwnNameAlone(t *testing.T) {
 	m := newMachine(t)
-	for _, source := range []string{"startup", "fork"} {
-		out := Start(m.at(m.launch(100)), Request{Root: t.TempDir(), SessionID: "z", Source: source, Title: "Zed"})
-		if out.Name != "" || len(out.Notes) != 0 {
-			t.Fatalf("%s with a title: %+v, want nothing", source, out)
-		}
+	out := Start(m.at(m.launch(100)), Request{Root: t.TempDir(), SessionID: "z", Source: "startup", Title: "Zed"})
+	if out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("startup with a title: %+v, want nothing", out)
 	}
-	if m.register() != nil {
-		t.Fatal("a session the person named wrote the register")
+	reg := m.register()
+	if !bytes.Contains(reg, []byte(`"z": ""`)) || bytes.Contains(reg, []byte(`"session_id"`)) || bytes.Contains(reg, []byte(`"Zed"`)) {
+		t.Fatalf("startup with a title: the register does not record z as the person's alone:\n%s", reg)
+	}
+	f := newMachine(t)
+	out = Start(f.at(f.launch(100)), Request{Root: t.TempDir(), SessionID: "f", Source: "fork", Title: "Zed"})
+	if out.Name != "" || len(out.Notes) != 0 || f.register() != nil {
+		t.Fatalf("fork with the person's title: %+v, register %s; want nothing", out, f.register())
 	}
 }
 
@@ -881,7 +888,10 @@ func TestACompactionBeforeTheFirstPromptKeepsItsEntry(t *testing.T) {
 // TestAPersonaNameThePersonGaveIsNeverReplaced is C4 and decision 10's last
 // sentence on resume: a title that happens to be a persona name, but that abcd
 // did not give this session, is the person's. Resumed while a running session
-// holds that name, it is neither held nor replaced, and no name is reserved.
+// holds that name, it is neither held nor replaced, and no name is reserved:
+// before that session's first prompt, and after it, when the record of given
+// names holds Bob for that other session, which is what a fork's inherited
+// name looks like.
 func TestAPersonaNameThePersonGaveIsNeverReplaced(t *testing.T) {
 	for name, arrange := range map[string]func(m *machine, root string){
 		// The person started the session with --name Bob: abcd never named it.
@@ -896,25 +906,36 @@ func TestAPersonaNameThePersonGaveIsNeverReplaced(t *testing.T) {
 			mustName(t, m.start(100, root, "p"), "Alice")
 			resends(t, m, []struct{ sid, title, want string }{{"p", "", "Alice"}, {"p", "Bob", ""}})
 		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			m := newMachine(t)
-			root := t.TempDir()
-			arrange(m, root)
-			m.end(100)
-			mustName(t, m.start(200, root, "a"), "Alice")
-			mustName(t, m.start(300, root, "b"), "Bob")
-			before := m.register()
-			out := Start(m.at(m.launch(400)), Request{Root: root, SessionID: "p", Source: "resume", Title: "Bob"})
-			if out.Name != "" || len(out.Notes) != 0 {
-				t.Fatalf("resuming the person's Bob: %+v, want nothing", out)
-			}
-			if !bytes.Equal(m.register(), before) {
-				t.Fatalf("resuming the person's Bob changed the register:\n%s\nwant\n%s", m.register(), before)
-			}
+		// abcd reserved Alice, and the person renamed it Bob before its
+		// first prompt set Alice.
+		"renamed before the first prompt": func(m *machine, root string) {
+			mustName(t, m.start(100, root, "p"), "Alice")
 			resends(t, m, []struct{ sid, title, want string }{{"p", "Bob", ""}})
-			mustName(t, m.start(500, root, "c"), "Carol")
-		})
+		},
+	} {
+		for _, prompted := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s, Bob prompted %v", name, prompted), func(t *testing.T) {
+				m := newMachine(t)
+				root := t.TempDir()
+				arrange(m, root)
+				m.end(100)
+				mustName(t, m.start(200, root, "a"), "Alice")
+				mustName(t, m.start(300, root, "b"), "Bob")
+				if prompted {
+					resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}, {"b", "", "Bob"}})
+				}
+				before := m.register()
+				out := Start(m.at(m.launch(400)), Request{Root: root, SessionID: "p", Source: "resume", Title: "Bob"})
+				if out.Name != "" || len(out.Notes) != 0 {
+					t.Fatalf("resuming the person's Bob: %+v, want nothing", out)
+				}
+				if !bytes.Equal(m.register(), before) {
+					t.Fatalf("resuming the person's Bob changed the register:\n%s\nwant\n%s", m.register(), before)
+				}
+				resends(t, m, []struct{ sid, title, want string }{{"p", "Bob", ""}})
+				mustName(t, m.start(500, root, "c"), "Carol")
+			})
+		}
 	}
 }
 
@@ -1015,4 +1036,100 @@ func TestGivenKeepsTheNewestNames(t *testing.T) {
 	if name, ok := back.Given.of("s1"); !ok || name != "Bob" {
 		t.Fatalf("Given.of(s1) = %q, %v; want Bob", name, ok)
 	}
+}
+
+// forkSources are the sources a fork's session start can arrive with: the host
+// documents "fork", and a fork made with --resume and --fork-session can
+// arrive as "resume".
+var forkSources = []string{"fork", "resume"}
+
+// TestAForkOfARunningSessionTakesTheNextFreeName is the live sequence of
+// 2026-10-16: Alice is named at its first prompt and, while it runs, is forked
+// into a new session id that the host starts with Alice's title. The title is
+// abcd's, given to the parent, so the fork does not share it while the parent
+// runs (C6, C7): it reserves the next free name, which its first prompt sets
+// in place of the inherited title, once. The parent keeps Alice.
+func TestAForkOfARunningSessionTakesTheNextFreeName(t *testing.T) {
+	for _, source := range forkSources {
+		t.Run(source, func(t *testing.T) {
+			m := newMachine(t)
+			root := t.TempDir()
+			mustName(t, m.start(100, root, "p"), "Alice")
+			resends(t, m, []struct{ sid, title, want string }{{"p", "", "Alice"}})
+			mustName(t, Start(m.at(m.launch(200)), Request{Root: root, SessionID: "f", Source: source, Title: "Alice"}), "Bob")
+			resends(t, m, []struct{ sid, title, want string }{
+				{"f", "Alice", "Bob"},
+				{"f", "Bob", ""},
+				{"f", "Alice", ""}, // once only
+				{"p", "Alice", ""},
+			})
+			mustName(t, m.start(300, root, "c"), "Carol")
+		})
+	}
+}
+
+// TestAForkOfAnEndedSessionKeepsTheInheritedName: the parent has ended, so no
+// running session holds Alice and the fork keeps it. The fork holds Alice for
+// its own process, so no new session is given Alice while it runs, and the
+// record of given names gains the fork's id beside the parent's: the parent's
+// is kept, because the parent still carries Alice and may be resumed. Resumed
+// while the fork runs, the parent is the one that takes the next free name
+// (decision 10).
+func TestAForkOfAnEndedSessionKeepsTheInheritedName(t *testing.T) {
+	for _, source := range forkSources {
+		t.Run(source, func(t *testing.T) {
+			m := newMachine(t)
+			root := t.TempDir()
+			mustName(t, m.start(100, root, "p"), "Alice")
+			resends(t, m, []struct{ sid, title, want string }{{"p", "", "Alice"}})
+			m.end(100)
+			out := Start(m.at(m.launch(200)), Request{Root: root, SessionID: "f", Source: source, Title: "Alice"})
+			if out.Name != "" || len(out.Notes) != 0 {
+				t.Fatalf("fork of an ended session: %+v, want the name held", out)
+			}
+			reg := m.register()
+			if !bytes.Contains(reg, []byte(`"p": "Alice"`)) || !bytes.Contains(reg, []byte(`"f": "Alice"`)) || bytes.Count(reg, []byte(`"session_id"`)) != 1 {
+				t.Fatalf("the fork does not hold Alice beside the parent's record:\n%s", reg)
+			}
+			resends(t, m, []struct{ sid, title, want string }{{"f", "Alice", ""}})
+			mustName(t, m.start(300, root, "c"), "Bob")
+			mustName(t, Start(m.at(m.launch(400)), Request{Root: root, SessionID: "p", Source: "resume", Title: "Alice"}), "Carol")
+			// The fork, resumed later, is held under its own record.
+			m.end(200)
+			if out := Start(m.at(m.launch(500)), Request{Root: root, SessionID: "f", Source: "resume", Title: "Alice"}); out.Name != "" || len(out.Notes) != 0 {
+				t.Fatalf("resuming the fork: %+v, want the name held", out)
+			}
+		})
+	}
+}
+
+// TestAClearIsNotAFork: a clear gives the session a new id in the same host
+// process with the name abcd gave the old id, which is what an inherited name
+// looks like. It is the same session, so it keeps its name even while a fork
+// of it runs elsewhere, and a clear of a fork before its first prompt keeps the
+// name the fork reserved rather than reserving a second one.
+func TestAClearIsNotAFork(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	from := m.launch(100)
+	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "p", Source: "startup"}), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"p", "", "Alice"}})
+	forkFrom := m.launch(200)
+	mustName(t, Start(m.at(forkFrom), Request{Root: root, SessionID: "f", Source: "fork", Title: "Alice"}), "Bob")
+
+	// The fork is cleared before its first prompt: still Bob, owed to the
+	// first prompt under the new id.
+	mustName(t, Start(m.at(forkFrom), Request{Root: root, SessionID: "f2", Source: "clear", Title: "Alice"}), "Bob")
+	// The parent is cleared: still Alice, nothing owed.
+	if out := Start(m.at(from), Request{Root: root, SessionID: "p2", Source: "clear", Title: "Alice"}); out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("clearing the parent: %+v, want the name held", out)
+	}
+	if reg := m.register(); bytes.Count(reg, []byte(`"session_id"`)) != 2 {
+		t.Fatalf("the clears left other than one entry each:\n%s", reg)
+	}
+	resends(t, m, []struct{ sid, title, want string }{
+		{"f2", "Alice", "Bob"},
+		{"p2", "Alice", ""},
+	})
+	mustName(t, m.start(300, root, "c"), "Carol")
 }
