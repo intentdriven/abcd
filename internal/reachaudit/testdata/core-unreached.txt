@@ -14,7 +14,6 @@
 #
 # One "<package dir>.<Name>" per line, sorted and unique.
 
-internal/core/banlist.PrimaryWorktreeRoot
 internal/core/capture.ComparativeRunFor
 internal/core/capture.ConstrualFingerprint
 internal/core/capture.GlossaryFingerprint

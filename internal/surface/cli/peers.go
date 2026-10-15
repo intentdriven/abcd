@@ -210,7 +210,7 @@ func skippedNote(sk []peers.Skipped) string {
 		counts[s.Reason]++
 	}
 	var parts []string
-	for _, reason := range []string{peers.SkipMerged, peers.SkipGone} {
+	for _, reason := range []string{peers.SkipMerged, peers.SkipGone, peers.SkipEmbargo} {
 		if n := counts[reason]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, reason))
 		}
