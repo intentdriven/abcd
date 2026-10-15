@@ -18,7 +18,7 @@ related_adrs: [adr-47, adr-48, adr-2610091016270711]
 adr-48 deploys abcdev.app to a Cloudflare Worker from released bytes at each release, record and docs together, with a preview of `main` on every push. itd-2610091010348892 gives every opted-in project a record built onto its own GitHub Pages by a workflow abcd writes. The product thinker made three rulings:
 - On 2026-10-14, that abcd's own repository moves to that route ("so that it no longer has to deploy to cloudflare").
 - On 2026-10-15, that a site renders only what abcd writes to a repository anyway, with docs read on GitHub by default.
-- Also on 2026-10-15, that for abcd itself "docs are rendered in high-quality, easily accessible way at abcdev.app for now", and that "abcdev.app is the abcd docs, abcdesign.app is the team-brief edits for any abcd-managed repos".
+- Also on 2026-10-15, that abcd's own docs are rendered in high quality on abcdev.app until a community site arrives, and that abcdev.app is abcd's docs site while abcdesign.app is where a team edits its brief, for any abcd-managed repository.
 
 The move is planned in itd-2610142145236613 and built later.
 
