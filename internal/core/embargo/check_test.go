@@ -507,3 +507,44 @@ func TestCheckLineJoinOnlyJoinsWrappedTokens(t *testing.T) {
 	cf := newCheckFixture(t)
 	wantKinds(t, cf.text(t, "a list -\nsample overflow in the parser\nwell-\nknown\n"))
 }
+
+// TestCheckRefusesARecordTheStoreHoldsUnderEmbargo: a record id a caller is
+// about to name in public (an announcement's item, itd-2609151838312703 C5)
+// is refused when the store holds it for an advisory not yet published,
+// closed or public-track ones included, as their advisory ids are; a
+// published advisory's record, and a record the store does not hold, pass.
+// The finding names the record by its place among those asked, never by the
+// id. A record that is not a record id refuses the check, and records alone
+// are something to check.
+func TestCheckRefusesARecordTheStoreHoldsUnderEmbargo(t *testing.T) {
+	cf := newCheckFixture(t)
+	records := func(ids ...string) (CheckResult, error) {
+		return Check(CheckRequest{Home: cf.f.home, RepoRoot: cf.f.repo.Root(), Records: ids,
+			Now: func() time.Time { return fixedNow.Add(time.Hour) }})
+	}
+	for _, id := range []string{"iss-2610120000000001", "iss-2610120000000002", "iss-2610120000000004"} {
+		res, err := records("itd-7", id)
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		wantKinds(t, res, KindEmbargoedRecord)
+		if f := res.Findings[0]; f.Source != "record 2" || strings.Contains(f.Source+f.Where+f.Snippet, id) {
+			t.Fatalf("%s: finding %+v; want it named as the second record, without the id", id, f)
+		}
+	}
+	for _, id := range []string{"iss-2610120000000003", "iss-5", "itd-2610120000000001"} {
+		res, err := records(id)
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		wantKinds(t, res)
+	}
+	_, err := records("not-a-record")
+	mustRefuse(t, err, "record id")
+
+	f := newFixture(t)
+	res, err := Check(CheckRequest{Home: f.home, RepoRoot: f.repo.Root(), Records: []string{"iss-2610120000000001"}})
+	if err != nil || !res.NoStore || !res.Clean() {
+		t.Fatalf("with no store: %+v, %v; want a clean check saying there is none", res, err)
+	}
+}

@@ -17,6 +17,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"golang.org/x/text/unicode/norm"
@@ -30,6 +31,7 @@ const (
 	KindAdvisoryTitle      = "advisory_title"       // its title, unless it was moved to the public track
 	KindStorePath          = "store_path"           // where the private records live
 	KindUnlistedAdvisoryID = "unlisted_advisory_id" // an advisory id the store does not hold, not --allow'ed
+	KindEmbargoedRecord    = "embargoed_record"     // a record the store holds for an advisory not yet published
 )
 
 // maxCheckText caps one text the check reads (a file, stdin, a commit
@@ -79,7 +81,10 @@ func placeholderGHSA(id string) bool {
 // CheckRequest is one outbound check. Range is a commit range `<a>..<b>`
 // whose messages and added lines are read; each of Files is a path, or "-"
 // for Stdin. Allow names advisory ids of other projects, already public, that
-// may appear. Now is the clock; nil is the system clock.
+// may appear. Records are record ids a caller is about to name in public (an
+// announcement's item, itd-2609151838312703 C5): each the store holds for an
+// advisory not yet published is refused. Now is the clock; nil is the system
+// clock.
 type CheckRequest struct {
 	Home     string
 	RepoRoot string
@@ -87,6 +92,7 @@ type CheckRequest struct {
 	Files    []string
 	Stdin    io.Reader
 	Allow    []string
+	Records  []string
 	Now      func() time.Time
 }
 
@@ -146,8 +152,13 @@ type denySet struct {
 // this machine nothing is under embargo, and the check passes saying so.
 func Check(req CheckRequest) (CheckResult, error) {
 	now := clock(req.Now)
-	if strings.TrimSpace(req.Range) == "" && len(req.Files) == 0 {
+	if strings.TrimSpace(req.Range) == "" && len(req.Files) == 0 && len(req.Records) == 0 {
 		return CheckResult{}, refuse("there is nothing to check", "name a commit range with --range <a>..<b>, or a text with --file <path> (- for stdin)")
+	}
+	for _, id := range req.Records {
+		if !recordid.CitedIDRe.MatchString(id) {
+			return CheckResult{}, refuse("a record to check is not a record id", "pass each as its id in canonical form, such as iss-N")
+		}
 	}
 	top, err := gitutil.Toplevel(req.RepoRoot)
 	if err != nil {
@@ -205,6 +216,13 @@ func Check(req CheckRequest) (CheckResult, error) {
 			res.Findings = append(res.Findings, named...)
 		}
 	}
+	// A record is named by its place among those asked, never by its id: the
+	// caller holds the id, and a finding repeats nothing it matched.
+	for i, id := range req.Records {
+		if embargoedRecord(st, id) {
+			res.Findings = append(res.Findings, CheckFinding{Kind: KindEmbargoedRecord, Source: "record " + strconv.Itoa(i+1)})
+		}
+	}
 	for i, t := range texts {
 		src := "stdin"
 		if t.name != "-" {
@@ -213,6 +231,18 @@ func Check(req CheckRequest) (CheckResult, error) {
 		res.Findings = append(res.Findings, ds.scan(t.body, src, "", 1)...)
 	}
 	return res, nil
+}
+
+// embargoedRecord reports whether the store links id to an advisory not yet
+// published: the records whose advisory ids the deny set refuses, a closed or
+// public-track advisory's included.
+func embargoedRecord(st State, id string) bool {
+	for _, a := range st.Advisories {
+		if a.PublishedAt == nil && a.IssueID == id {
+			return true
+		}
+	}
+	return false
 }
 
 // canonGHSA is an advisory id in GitHub's own spelling, however it was
