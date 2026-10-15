@@ -152,7 +152,7 @@ var excludedFamilies = []excludedFamily{
 			"rewrite of the frame, warm at every position; its directory joins the ledger's " +
 			"list and so the comparative rows by derivation",
 	},
-	{Path: ".abcd/work/DECISIONS.md", Source: "itd-183 assembler rule 1: .abcd/ is excluded but for what the include list names"},
+	{Path: ".abcd/work/decisions", Source: "itd-183 assembler rule 1: .abcd/ is excluded but for what the include list names"},
 	{
 		Path:   ".abcd/development/readings",
 		Source: "itd-183: manifests are warm on the next run, so the instrument's own output is never its input",

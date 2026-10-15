@@ -330,7 +330,7 @@ func TestAssembleRefusesDirtyIncludedPath(t *testing.T) {
 // proportionate: an edit the reading can never see does not block a run.
 func TestAssembleIgnoresDirtinessOutsideTheIncludeTable(t *testing.T) {
 	root := fixtureRepo(t)
-	writeFile(t, root, ".abcd/work/DECISIONS.md", "# Decisions\n\nedited, uncommitted.\n")
+	writeFile(t, root, ".abcd/work/decisions/dcn-2608300000000001-a-recorded-decision.md", "edited, uncommitted.\n")
 
 	if _, err := Assemble(AssembleRequest{
 		RepoRoot: root, Position: PositionWidening, Target: "HEAD", DryRun: true,

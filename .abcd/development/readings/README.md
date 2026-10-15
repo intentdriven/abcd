@@ -162,7 +162,7 @@ disclosed as residue.
 | `.abcd/development/plans` | directory | absent from the positive walk | every position |
 | `.abcd/development/research/notes` | directory | absent from the positive walk | every position |
 | `.abcd/work/issues` | directory | no include names a directory containing a record family | widening, entailment, detection |
-| `.abcd/work/DECISIONS.md` | file | absent from the positive walk | every position |
+| `.abcd/work/decisions` | directory | absent from the positive walk | every position |
 | `record handles and links in a principle` | citation | the statement is knowledge and the citations are genealogy | every position |
 | `.abcd/.work.local` | directory | no reading consumes the local ledger side, unconditionally and under no flag (brief invariant 14) | every position |
 | `the lapse log` | record type in a denied path | absent from the positive walk | every position |

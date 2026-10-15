@@ -18,6 +18,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
 )
@@ -86,7 +87,12 @@ import (
 // refusal enforces. A source admitted, a vocabulary member and refusals a
 // reader can now check are each MINOR by this constant's own rule
 // (adr-2609021016270132, spc-2609020626042471).
-const AssemblerVersionCore = "1.11.0"
+// It goes 1.11.0 to 1.12.0 with the decisions folder: the exclusion floor's
+// entry for the single decision log becomes one for the folder of decision
+// records that replaces it, and assertExclusions now refuses any item under
+// that folder — a refusal a reader can check and previously could not, MINOR
+// by this constant's own rule (adr-2610110925465593, spc-2610110931381316).
+const AssemblerVersionCore = "1.12.0"
 
 // AssemblerVersion is the core semver with the rendered include table's digest
 // as semver build metadata. The digest is computed, not declared, so a table
@@ -685,7 +691,7 @@ var Exclusions = []Exclusion{
 		Detail:    capture.LedgerRelPath,
 		Positions: coldPositions,
 	},
-	{Rule: "absent from the positive walk", Signal: "file", Detail: ".abcd/work/DECISIONS.md"},
+	{Rule: "absent from the positive walk", Signal: "directory", Detail: decisions.RelDir},
 	// A principle's citations. The projection keeps the statement and unwraps a
 	// labelled link, inline or reference-style, to its label, and
 	// verifyPrincipleItem refuses the assembly if a record handle or a link of
