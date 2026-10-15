@@ -189,12 +189,18 @@ func adoptSemanticProfile(t *testing.T, f *fakeForge, goEnv []string) {
 }
 
 // TestScaffoldedGateRefusesATagNamingAnotherVersion is iss-2609251945586202 on a
-// scaffolded profile: a hand-pushed tag naming a version other than the released
-// tree's newest dated CHANGELOG heading must not publish under the receipts of
-// the CHANGELOG's version. The rendered release.yml runs on the tag push; verify
-// refuses at the tag binding, BEFORE the receipts gate, and nothing publishes.
-// The tag the tree names publishes from the same commit, so the refusal is the
-// binding and not a broken fixture.
+// scaffolded profile with a semantic gate: a release tag naming a version other
+// than the released tree's newest dated CHANGELOG heading must not publish under
+// the receipts of the CHANGELOG's version.
+//
+// The profile's provenance is verified against release.yml on the default
+// branch, so it releases only through auto-release's call: a run started by a
+// pushed version tag is refused by its first job, whatever the tag names, and
+// verify, the receipts gate and the release are skipped, with nothing signed.
+// On the call path verify refuses a tag naming another version at the tag
+// binding, BEFORE the receipts gate, and nothing publishes. The tag the tree
+// names publishes from the same commit through auto-release, so the refusal is
+// the binding and not a broken fixture.
 func TestScaffoldedGateRefusesATagNamingAnotherVersion(t *testing.T) {
 	if testing.Short() {
 		t.Skip("drives the release workflows end to end")
@@ -216,7 +222,8 @@ func TestScaffoldedGateRefusesATagNamingAnotherVersion(t *testing.T) {
 	r.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-09-25\n\n### Added\n\n- the first release.\n")
 	r.Commit("release: roll the changelog to 0.1.0")
 	content := r.Git("rev-parse", "HEAD")
-	r.Write(".abcd/work/reviews/"+content+"/docs-currency-reviewer.json",
+	receipt := ".abcd/work/reviews/" + content + "/docs-currency-reviewer.json"
+	r.Write(receipt,
 		`{"subject":{"digest":{"gitCommit":"`+content+`"}},"verificationResult":"PROMOTE",`+
 			`"policy":{"detector":"docs-currency-reviewer"},"judgeModel":"claude-opus-4-8"}`+"\n")
 	r.Commit("release: receipts for the roll")
@@ -227,11 +234,37 @@ func TestScaffoldedGateRefusesATagNamingAnotherVersion(t *testing.T) {
 		bindStep     = "The release tag names the released CHANGELOG version (fail-closed)"
 		receiptsStep = "Semantic-gate receipts (fail-closed, before tag)"
 	)
-	for _, tag := range []string{"v0.1.1", "v0.2.0", "v0.1.0-rc.1"} {
-		r.Git("tag", "-a", tag, "-m", "hand-pushed "+tag, released)
+	mismatched := []string{"v0.1.1", "v0.2.0", "v0.1.0-rc.1"}
+
+	// 1. A pushed version tag is refused by the pushed-tag job, whatever it
+	// names: nothing is verified, signed or published.
+	for _, tag := range append(append([]string{}, mismatched...), "v0.1.0") {
+		r.Git("tag", "-a", tag, "-m", "pushed "+tag, released)
 		r.Git("push", "-q", "origin", "refs/tags/"+tag)
 		f.log.Reset()
-		runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: tag})
+		runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: tag, refType: "tag"})
+		for job, want := range map[string]string{"pushed-tag": "failure", "verify": "skipped", "tag": "skipped", "build": "skipped", "release": "skipped"} {
+			if got := runs[job].result; got != want {
+				t.Errorf("pushed tag %s: job %s = %s, want %s\n%s", tag, job, got, want, f.log.String())
+			}
+		}
+		if !strings.Contains(f.log.String(), "refusing to release '"+tag+"' from a pushed tag") {
+			t.Errorf("pushed tag %s: the refusal does not name the tag\n%s", tag, f.log.String())
+		}
+	}
+	if rel := f.releases(); len(rel) != 0 {
+		t.Fatalf("a pushed tag published %v", rel)
+	}
+	if f.attested(receipt) {
+		t.Fatal("a pushed tag's run signed the receipts")
+	}
+
+	// 2. On auto-release's call, a tag naming another version is refused by the
+	// binding before the receipts gate.
+	for _, tag := range mismatched {
+		f.log.Reset()
+		runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: "main",
+			inputs: map[string]any{"tag": tag, "ref": released, "create_tag": false}})
 		if got := runs["verify"].result; got != "failure" {
 			t.Fatalf("tag %s on a 0.1.0 tree: verify = %s, want failure\n%s", tag, got, f.log.String())
 		}
@@ -253,16 +286,19 @@ func TestScaffoldedGateRefusesATagNamingAnotherVersion(t *testing.T) {
 		t.Fatalf("a mismatched tag published %v", rel)
 	}
 
-	// The tag the released tree names passes the binding and publishes.
-	r.Git("tag", "-a", "v0.1.0", "-m", "v0.1.0", released)
-	r.Git("push", "-q", "origin", "refs/tags/v0.1.0")
+	// 3. The tag the released tree names passes the binding and publishes,
+	// released by auto-release on the push of the tagged commit.
 	f.log.Reset()
-	runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: "v0.1.0"})
-	if runs["verify"].result != "success" || runs["release"].result != "success" {
-		t.Fatalf("v0.1.0 on a 0.1.0 tree: verify=%s release=%s\n%s", runs["verify"].result, runs["release"].result, f.log.String())
+	runs := f.run(AutoReleaseYMLPath, event{name: "push", sha: released, refName: "main"})
+	if runs["detect"].result != "success" || runs["release/verify"].result != "success" || runs["release/release"].result != "success" {
+		t.Fatalf("v0.1.0 on a 0.1.0 tree: detect=%s verify=%s release=%s\n%s", runs["detect"].result,
+			runs["release/verify"].result, runs["release/release"].result, f.log.String())
 	}
 	if got := f.releases()["v0.1.0"]; got != released {
 		t.Errorf("published releases %v: want v0.1.0 from %s", f.releases(), released)
+	}
+	if !f.attested(receipt) {
+		t.Error("the release did not sign the receipts of the commit the gate admitted")
 	}
 }
 
@@ -273,6 +309,7 @@ type event struct {
 	name    string
 	sha     string
 	refName string
+	refType string // "tag" for a pushed tag; empty reads as "branch"
 	inputs  map[string]any
 }
 
@@ -529,7 +566,7 @@ func (f *fakeForge) callWorkflow(job *ynode, uses string, ev event, ctx map[stri
 		}
 	}
 	sub := map[string]jobRun{}
-	f.runWorkflow(called, event{name: ev.name, sha: ev.sha, refName: ev.refName, inputs: inputs}, prefix, sub)
+	f.runWorkflow(called, event{name: ev.name, sha: ev.sha, refName: ev.refName, refType: ev.refType, inputs: inputs}, prefix, sub)
 	res := jobRun{result: "success"}
 	for k, v := range sub {
 		results[k] = v
@@ -541,8 +578,12 @@ func (f *fakeForge) callWorkflow(job *ynode, uses string, ev event, ctx map[stri
 }
 
 func (f *fakeForge) baseContext(ev event) map[string]any {
+	refType := ev.refType
+	if refType == "" {
+		refType = "branch"
+	}
 	ctx := map[string]any{
-		"github.sha": ev.sha, "github.ref_name": ev.refName, "github.event_name": ev.name,
+		"github.sha": ev.sha, "github.ref_name": ev.refName, "github.ref_type": refType, "github.event_name": ev.name,
 		"github.repository": "example/fixture", "github.token": "fake-token", "secrets.GITHUB_TOKEN": "fake-token",
 		"github.event.repository.default_branch": "main", "github.event.repository.private": false,
 	}
@@ -596,7 +637,8 @@ func (f *fakeForge) evalAny(raw string, ctx map[string]any) any {
 func (f *fakeForge) runJob(id string, job, wf *ynode, ev event, ctx map[string]any) jobRun {
 	f.t.Helper()
 	ws := f.t.TempDir()
-	jobEnv := map[string]string{}
+	// GITHUB_SHA is in every step's environment on a runner.
+	jobEnv := map[string]string{"GITHUB_SHA": ev.sha}
 	if we := wf.get("env"); we != nil {
 		for _, k := range we.keys {
 			jobEnv[k] = f.eval(we.m[k].scalar, ctx)

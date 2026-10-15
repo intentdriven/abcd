@@ -1083,10 +1083,12 @@ For **`kind: plugin`**, four files:
   gates configured, `verify` arms the receipt gate against the reviewed
   **content** commit it derives from the receipts directory of the released
   tree, so the first public release cannot hit the receipt-vs-tag
-  self-reference, and on a tag push it first refuses a tag that is not `v` plus
-  the released tree's newest dated CHANGELOG version (`record-lint
-  --released-version`, the reader the receipts are bound with), so a hand-pushed
-  tag cannot publish under another version's receipts.
+  self-reference, and it first refuses a release tag that is not `v` plus the
+  released tree's newest dated CHANGELOG version (`record-lint
+  --released-version`, the reader the receipts are bound with), so a tag cannot
+  publish under another version's receipts. A run started by a pushed version
+  tag is then refused by its first job, `pushed-tag`, before anything is built:
+  releases are made by `auto-release.yml` from the default branch.
 - `.github/workflows/auto-release.yml` — newest dated CHANGELOG heading → tag that
   commit → call `release.yml`. `GITHUB_TOKEN`-only, no personal access token.
 - `.abcd/development/release-gate/README.md` — the adr-37 runbook, including the

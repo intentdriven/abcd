@@ -206,14 +206,13 @@ jobs:
 
       # --- The release tag names the released version (iss-2609251945586202) ---
       # The receipts gate below binds the receipts to the version the released
-      # tree's CHANGELOG names, not to the tag. A hand-pushed tag naming another
-      # version (v0.9.1 on a tree whose newest dated heading is 0.9.0, or a
-      # v0.9.0-rc.1) would otherwise publish under a version nobody reviewed,
-      # admitted by the receipts of the CHANGELOG's. So the tag must be exactly
-      # "v" plus that version, read by record-lint's strict reader, the one the
-      # receipts are bound with; this step compares the two and reads no heading
-      # itself. It refuses before the receipts gate and before the tag job, so
-      # nothing is built, tagged or published. Skipped on the rehearsal path,
+      # tree's CHANGELOG names, not to the tag, so the release tag must be
+      # exactly "v" plus that version, read by record-lint's strict reader, the
+      # one the receipts are bound with; this step compares the two and reads
+      # no heading itself. A tag naming another version (v0.9.1 on a tree whose
+      # newest dated heading is 0.9.0, or a v0.9.0-rc.1) is refused before the
+      # receipts gate and before the tag job, so nothing is built, tagged or
+      # published. Skipped on the rehearsal path,
       # where TAG is the branch name. TAG reaches the script through the
       # workflow env (injection-safe).
       - name: The release tag names the released CHANGELOG version (fail-closed)

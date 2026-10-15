@@ -10,23 +10,32 @@ import (
 	"github.com/intentdriven/abcd/internal/actionsexpr"
 )
 
-// TestAbcdReleasesOnlyThroughAutoRelease holds abcd's release workflow to one
-// entry point that publishes: auto-release's call from main. Release
-// provenance is verified against release.yml on main, which only that call
-// signs with, so a run started by a pushed version tag could build and sign
-// but never publish. The workflow keeps its tag-push trigger, and such a run
-// is refused by its first job, which checks out, builds and signs nothing,
-// while verify — and so every job after it — is skipped. auto-release's call
-// (its event is the push to main) and the rehearsal run as before.
+// TestPinnedProvenanceReleasesOnlyThroughAutoRelease holds a release
+// workflow whose provenance is verified against release.yml on the default
+// branch to one entry point that publishes: auto-release's call from that
+// branch. A run started by a pushed version tag is refused before anything is
+// built; releases are made by auto-release from the default branch. The
+// workflow keeps its tag-push trigger, and such a run is refused by its first
+// job, which checks out, builds and signs nothing, while verify — and so every
+// job after it — is skipped. auto-release's call (its event is the push to the
+// default branch) and the rehearsal run as before.
 //
-// A managed repository's scaffold is untouched: its tag-push run still
+// That is abcd's own profile and a managed repository's with semantic gates,
+// whose receipts verify step holds the same identity. A managed repository
+// without semantic gates verifies no provenance, and its tag-push run still
 // verifies and releases.
-func TestAbcdReleasesOnlyThroughAutoRelease(t *testing.T) {
+func TestPinnedProvenanceReleasesOnlyThroughAutoRelease(t *testing.T) {
 	committed, err := os.ReadFile(filepath.Join(repoRoot(t), filepath.FromSlash(ReleaseYMLPath)))
 	if err != nil {
 		t.Fatalf("read committed %s: %v", ReleaseYMLPath, err)
 	}
 	abcd, err := Render(AbcdSubstitutions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	semanticSubs := BareSubstitutions("main")
+	semanticSubs.SemanticGates = []string{"docs-currency-reviewer"}
+	semantic, err := Render(semanticSubs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +50,11 @@ func TestAbcdReleasesOnlyThroughAutoRelease(t *testing.T) {
 		{name: "auto-release's call from main", ctx: map[string]any{"github.event_name": "push", "github.ref_type": "branch"}},
 		{name: "the rehearsal", ctx: map[string]any{"github.event_name": "workflow_dispatch", "github.ref_type": "branch"}},
 	}
-	for where, wf := range map[string]string{ReleaseYMLPath: string(committed), "release.yml.tmpl (abcd)": string(abcd.ReleaseYML)} {
+	for where, wf := range map[string]string{
+		ReleaseYMLPath:                     string(committed),
+		"release.yml.tmpl (abcd)":          string(abcd.ReleaseYML),
+		"release.yml.tmpl (bare+semantic)": string(semantic.ReleaseYML),
+	} {
 		// The refusing job is the first job, so it reads first.
 		jobs := wf[strings.Index(wf, "\njobs:\n"):]
 		first := indexOf(t, jobs, "\n  pushed-tag:\n", where)
@@ -95,7 +108,7 @@ func TestAbcdReleasesOnlyThroughAutoRelease(t *testing.T) {
 			t.Fatal(err)
 		}
 		if strings.Contains(string(rendered.ReleaseYML), "\n  pushed-tag:\n") {
-			t.Errorf("a managed repository's release workflow keeps its own entry points (Gate=%v)", subs.Gate)
+			t.Errorf("a release workflow that verifies no provenance keeps its tag-push entry point (Gate=%v)", subs.Gate)
 		}
 	}
 }

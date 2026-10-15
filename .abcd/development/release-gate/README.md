@@ -370,11 +370,11 @@ where `<sha>` is `record-lint --derive-content-sha`. That trust root has an edge
 `verify` builds `record-lint` from the tree it gates, so a release cannot disarm
 the gate short of editing `release.yml` or the gate code (`internal/core/lint`,
 `cmd/record-lint`), both reviewed in the pull request and nothing more
-(iss-2610142152501415). Before it, on a tag push,
-`verify` requires the tag to be `v` plus the version `record-lint
---released-version` reads from the released tree — the strict reader the
-receipts are bound with — so a hand-pushed tag naming another version cannot
-publish under the receipts of the CHANGELOG's version (iss-2609251945586202).
+(iss-2610142152501415). Before it, `verify` requires the release tag to be `v`
+plus the version `record-lint --released-version` reads from the released
+tree — the strict reader the receipts are bound with — so a tag naming another
+version cannot publish under the receipts of the CHANGELOG's version
+(iss-2609251945586202).
 On abcd's own profile `launch archive --tag` refuses such a tag earlier still.
 The rule is skipped on the
 rehearsal path (`workflow_dispatch`), where no real receipts exist. Once `verify`
