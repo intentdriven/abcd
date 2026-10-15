@@ -11,6 +11,7 @@ package loop
 // pace does not hold it.
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -119,9 +121,9 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, error) {
 		}
 		return out, nil
 	}
-	tracking := "refs/remotes/" + Remote + "/" + def
-	if _, err := gitutil.Net(repoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
-		r := refuse(StageDrain, "", "", "git could not fetch "+def+" from "+Remote+" to find the merged lanes: "+err.Error(),
+	tracking, err := landing.FetchDefault(gitutil.Net, repoRoot, def)
+	if err != nil {
+		r := refuse(StageDrain, "", "", "git could not fetch "+def+" from "+Remote+" to find the merged lanes: "+errors.Unwrap(err).Error(),
 			"the next `abcd drain` looks again")
 		for _, run := range parked {
 			out = append(out, refused(run, r))

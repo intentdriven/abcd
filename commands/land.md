@@ -15,12 +15,18 @@ branch, a build lane's or not: a hand-built branch, a release branch, a
 record-only chore. It never opens a pull request and never changes the
 repository's settings or its merge queue's.
 
+**It runs the branch's own code.** The gate is the branch's own `make
+preflight`, run with the user's environment and credentials, so run land only
+on a branch whose content the user trusts; a branch from someone else is
+reviewed before it is landed.
+
 **What it does to the remote.** The push is a plain
-`git push origin refs/heads/<branch>:refs/heads/<branch>` from the branch's
-own checkout, with the repository's hooks running, never forced and never with
-`--no-verify`, and never of the default branch. Arming is `gh pr merge <n>
---auto` with the merge queue's method, through the forge client already signed
-in with the user's own identity.
+`git push origin <head>:refs/heads/<branch>` of the commit the gate checked,
+from the branch's own checkout, with the repository's hooks running, never
+forced and never with `--no-verify`, and never of the default branch. Arming
+is `gh pr merge <n> --auto` with the merge queue's method and
+`--match-head-commit=<head>`, through the forge client already signed in with
+the user's own identity.
 
 ## Run it
 
@@ -33,8 +39,18 @@ From the branch's checkout, with everything committed:
 `abcd land <branch>` lands a branch checked out in another worktree. Each step
 reports a `status`: `done`, `skipped` (already done), `off` (a key or flag
 turned it off), `stopped` (it cannot act yet: its `note` says what to do, and
-running the command again resumes) or `left` (the act is a person's). A step
-that prints a `command` gives the exact command to run by hand.
+running the command again resumes), `left` (the act is a person's) or
+`landed` (the head is already on the default branch). A step that prints a
+`command` gives the exact command to run by hand. With `land.push` and
+`land.enqueue` both off nothing runs, the gate included.
+
+Before any step, `origin`'s every fetch and push URL must be the repository
+the forge client resolves here (an SSH host alias is refused, naming it: land
+does not read ssh config), and the forge's own default branch must be the one
+`origin/HEAD` names here and not the branch. Then `origin`'s default branch is
+fetched: a head already on it has landed, and the one step reported is
+`land` with status `landed`; nothing is gated, pushed or queued, so a re-run
+after the merge never recreates the deleted branch.
 
 1. **gate**: skipped when a preflight receipt already names the branch's head,
    in any worktree, as the pre-push hook looks for one. Otherwise `make
@@ -43,40 +59,49 @@ that prints a `command` gives the exact command to run by hand.
    present after it. A repository whose make file declares no `preflight`
    target gets no push. The receipt is a convenience check, not a security
    boundary: CI re-runs every gate on the pushed commit.
-2. **push** (`land.push`): the plain push above. Before it, `origin`'s fetch
-   and push URLs must both be the repository the forge client resolves here.
-3. **enqueue** (`land.enqueue`): the branch's one open pull request, from this
-   repository (a fork's is refused), whose head on the forge is the pushed
-   head. The merge rule is read from the ruleset mirror
-   (`.abcd/work/rulesets/`) at the merge base with `origin`'s default branch,
+2. **push** (`land.push`): the plain push above, of the gated commit whatever
+   the branch names by then. A push git refuses carries git's own per-ref
+   report.
+3. **enqueue** (`land.enqueue`): the branch's one open pull request from this
+   repository (a fork's pull request from a branch of the same name is set
+   aside, and refused only when it is the only one), whose head on the forge
+   is the pushed head. The merge rule is read from the ruleset mirror
+   (`.abcd/work/rulesets/`) at `origin`'s default branch as just fetched,
    never at the branch's tip. Today every repository runs in human mode, so
    auto-merge is armed only where a merge queue gates the default branch and a
    ruleset requires a person's approval (ruling AM1); anywhere else the step
-   is `left` and says why. After arming it confirms the pull request is in the
-   queue, toggling auto-merge once when the forge reports it CLEAN and
-   unqueued, and otherwise names what holds it. With no pull request the step
-   is `stopped` with the `gh pr create` command: relay it to the user, who
-   opens the pull request; the next `abcd land` queues it.
+   is `left` and says why. A pull request someone else already armed is left
+   as it is and its queue state reported. After arming it confirms the pull
+   request is in the queue at the head it armed, toggling auto-merge once when
+   the forge reports it CLEAN and unqueued, and otherwise names what holds it;
+   a toggle whose re-arming fails says the pull request is now disarmed and
+   gives the command that arms it again. With no pull request the step is
+   `stopped` with the `gh pr create` command: relay it to the user, who opens
+   the pull request; the next `abcd land` queues it.
 
 The payload carries `branch`, `head`, `checkout` (home-relative),
 `default_branch`, `push` and `enqueue` (each `key`, `on`, and the `layer` and
 `origin` that decided it), `pull_request` and `pull_request_url` when one was
-found, and `steps`, each with `name`, `status`, `note` and, when it prints
+found, `pushed` (the commit the push sent) when it pushed, `landed` when the
+head was already on the default branch, and `steps`, each with `name`, `status`, `note` and, when it prints
 one, `command`.
 
 Tell the user what was pushed and where the pull request stands.
 
 ## Turning an act off
 
-`land.push` and `land.enqueue` are booleans in `.abcd/config.json` and
+`land.push` and `land.enqueue` are booleans in `.abcd/config.json` (read in
+the working directory's checkout and in the landed branch's own) and
 `~/.abcd.noindex/config.json`, both on by default:
 
 ```json
 { "land": { "push": true, "enqueue": false } }
 ```
 
-Off wins from any layer: either file can turn an act off, and neither can
-turn it back on. `--no-push` and `--no-enqueue` turn one off for this run, and
+Off wins from any layer: any of the files can turn an act off, and none can
+turn it back on. When the home directory is refused (it lies inside a git
+working tree that is not the account's), the machine's file cannot be read,
+so both acts are off and say why. `--no-push` and `--no-enqueue` turn one off for this run, and
 no flag turns one on. A step that is off names the layer and file that turned
 it off, and the push step prints the push command to run by hand.
 
@@ -85,11 +110,13 @@ it off, and the push step prints the push command to run by hand.
 Exit 2, naming what was done before the refusal: the default branch, a
 detached HEAD, uncommitted changes (staged, unstaged or untracked), a branch
 checked out in no worktree, a preflight that failed or minted no receipt, a
-head that moved while the preflight ran, an `origin` that is not the forge's
-repository, a push git or the pre-push hook refused, more than one open pull
-request, a fork's pull request, a pull request that conflicts with the default
-branch, an unreadable ruleset mirror, and the forge client missing while an act
-needs it. Relay the refusal; never retry it with `--no-verify`, a force, or a
+head that moved while the preflight ran, an `origin` URL that is not the
+forge's repository, a forge default branch that differs from the local one or
+is the branch, a forge that cannot be asked, a push git or the pre-push hook
+refused, more than one open pull request from this repository, only a fork's
+pull request, a pull request that conflicts with the default branch, a head
+that moved on the forge after arming, an unreadable ruleset mirror, and the
+forge client missing while an act needs it. Relay the refusal; never retry it with `--no-verify`, a force, or a
 hand-run `gh pr merge` the merge gate did not allow.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install

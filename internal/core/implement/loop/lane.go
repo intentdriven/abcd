@@ -40,9 +40,6 @@ const BranchPrefix = "build/"
 // storeDirPerm is the mode a store level is created with.
 const storeDirPerm = abcdhome.DirMode
 
-// maxWorktreeListing caps `git worktree list`.
-const maxWorktreeListing = 16 << 20
-
 // laneIDRe is the shape of a lane id the loop opens (openNextLane).
 var laneIDRe = regexp.MustCompile(`^lane-[1-9][0-9]{0,3}$`)
 
@@ -308,7 +305,7 @@ func ensureStore(home, rel, laneID string) error {
 // adoptWorktree reports whether git already lists a worktree at the lane's
 // path on the lane's branch. One at that path on any other branch is refused.
 func adoptWorktree(repoRoot string, lw LaneWorktree, laneID string) (bool, error) {
-	wts, err := gitutil.ListWorktrees(repoRoot, maxWorktreeListing)
+	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return false, fmt.Errorf("listing the repository's worktrees: %w", err)
 	}

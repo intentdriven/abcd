@@ -10,11 +10,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/cienv"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/procgroup"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -305,7 +305,7 @@ func runArgv(ctx context.Context, argv []string) ([]byte, error) {
 	w := &capped{w: &buf, remaining: maxOutput}
 	cmd.Stdout = w
 	cmd.Stderr = w
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	procgroup.Lead(cmd)
 	cmd.WaitDelay = pipeGrace
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -322,7 +322,7 @@ func runArgv(ctx context.Context, argv []string) ([]byte, error) {
 	case <-ctx.Done():
 		// The group is the one this child leads (Setpgid), addressed through
 		// the pid this handle holds: never a pattern, never another process.
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = procgroup.Kill(cmd)
 		<-done
 		return buf.Bytes(), fmt.Errorf("did not finish within the time allowed (%w)", ctx.Err())
 	}

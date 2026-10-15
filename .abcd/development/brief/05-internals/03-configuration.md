@@ -105,7 +105,10 @@ holds a key is decoded and the values are ANDed, so off wins from any layer.
 repository on the machine and no repository's file switches it back on, as the
 rules loader's kill switch holds against a repository. `--no-push` and
 `--no-enqueue` add a flag-layer off for one run; no flag turns a key on. The
-verb names the layer and file that turned an act off.
+repository layer is read in the working directory's checkout and in the landed
+branch's own, and both are ANDed; a home the reader refuses hides the machine
+layer and its offs, so both acts read as off. The verb names the layer and file
+that turned an act off.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
 block. This repository's own config carries four of these blocks — `docs`, `meta`,

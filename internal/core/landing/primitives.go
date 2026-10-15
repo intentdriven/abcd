@@ -24,13 +24,17 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
+// TierRelDir is the local-ephemeral tier of a checkout, repo-relative and
+// slash-separated: gitignored, per worktree.
+const TierRelDir = ".abcd/.work.local"
+
 // ReceiptsRelDir is where the preflight mints its receipts, one file named by
 // the full commit id, in any worktree of the repository
 // (scripts/preflight-receipt.sh). A receipt is a convenience check, not a
 // security boundary: CI re-runs every gate on the pushed commit and is the
 // authority, and the receipt says only that a preflight passed on a tree that
 // matched the commit.
-const ReceiptsRelDir = ".abcd/.work.local/preflight-receipts"
+const ReceiptsRelDir = TierRelDir + "/preflight-receipts"
 
 // Bounds on what the landing runs.
 const (
@@ -40,8 +44,6 @@ const (
 	MaxOutput = 1 << 20
 	// maxStderr bounds how much of a failed command's stderr its error carries.
 	maxStderr = 2048
-	// maxWorktreeListing bounds `git worktree list`.
-	maxWorktreeListing = 16 << 20
 )
 
 // Receipt finds the preflight receipt for sha in any worktree git lists for
@@ -49,7 +51,7 @@ const (
 // its path, or "" when none names sha. A receipt must be a regular file, never
 // a symlink.
 func Receipt(repoRoot, sha string) (string, error) {
-	wts, err := gitutil.ListWorktrees(repoRoot, maxWorktreeListing)
+	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return "", fmt.Errorf("listing the repository's worktrees: %w", err)
 	}
@@ -104,4 +106,43 @@ func GH(dir string, args ...string) (string, error) {
 	cmd.Dir = dir
 	cmd.Env = append(gitutil.ScrubbedEnv(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1")
 	return RunCapped(cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
+}
+
+// GitFunc runs one networked git command (a fetch or a push) from dir:
+// gitutil.Net, or a test's seam.
+type GitFunc func(dir string, args ...string) (string, error)
+
+// FetchError is a fetch of the default branch git refused.
+type FetchError struct {
+	Def string
+	Err error
+}
+
+func (e *FetchError) Error() string {
+	return "git could not fetch " + e.Def + " from " + Remote + ": " + e.Err.Error()
+}
+func (e *FetchError) Unwrap() error { return e.Err }
+
+// FetchDefault fetches the default branch def from origin into its
+// remote-tracking ref through git, and returns the ref. A refused fetch is a
+// *FetchError.
+func FetchDefault(git GitFunc, dir, def string) (string, error) {
+	tracking := "refs/remotes/" + Remote + "/" + def
+	if _, err := git(dir, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
+		return tracking, &FetchError{Def: def, Err: err}
+	}
+	return tracking, nil
+}
+
+// Landed fetches the default branch def and reports whether sha is on it as
+// origin holds it (an ancestor of, or equal to, its tip): the one check by
+// which a landing proves a head merged, the implement loop's and `abcd
+// land`'s. A refused fetch is a *FetchError; any other error is git unable to
+// answer, which is not a no.
+func Landed(git GitFunc, dir, def, sha string) (tracking string, on bool, err error) {
+	if tracking, err = FetchDefault(git, dir, def); err != nil {
+		return tracking, false, err
+	}
+	on, err = gitutil.IsAncestor(dir, sha, tracking)
+	return tracking, on, err
 }

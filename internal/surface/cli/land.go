@@ -33,26 +33,37 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"Land a branch whose work is committed: the checkout's current branch, or the one\n" +
 			"named, from the worktree that has it checked out. Each step can be resumed by\n" +
 			"running abcd land again.\n\n" +
-			"  1. Gate: when a preflight receipt already names the branch's head (in any\n" +
+			"land runs the branch's own `make preflight` with your environment and\n" +
+			"credentials, so run it only on a branch whose content you trust.\n\n" +
+			"  1. Origin: every fetch and push URL of origin must be the repository the forge\n" +
+			"     client resolves, and the forge's default branch must be the one origin/HEAD\n" +
+			"     names here and not the branch; checked before anything runs.\n" +
+			"  2. Landed: origin's default branch is fetched; a head already on it has landed,\n" +
+			"     and land says so and stops, pushing, gating and queueing nothing.\n" +
+			"  3. Gate: when a preflight receipt already names the branch's head (in any\n" +
 			"     worktree, as the pre-push hook looks), the gate is skipped; otherwise\n" +
 			"     `make preflight` runs in the branch's checkout, its output on stderr, and the\n" +
 			"     head must be unchanged and a receipt present after it. A repository whose\n" +
 			"     make file declares no preflight target gets no push.\n" +
-			"  2. Push (land.push): a plain push of the branch to the same name on origin,\n" +
-			"     with the repository's hooks running, never forced, never the default branch.\n" +
-			"  3. Enqueue (land.enqueue): the branch's open pull request, armed for the merge\n" +
+			"  4. Push (land.push): a plain push of the gated commit to the branch's name on\n" +
+			"     origin, with the repository's hooks running, never forced, never the default\n" +
+			"     branch.\n" +
+			"  5. Enqueue (land.enqueue): the branch's open pull request, armed for the merge\n" +
 			"     queue where the merge gate allows it (today: only where a merge queue gates the\n" +
-			"     default branch and a ruleset requires a person's approval), then confirmed in\n" +
-			"     the queue. With no pull request it prints the `gh pr create` command and stops;\n" +
-			"     it never opens one.\n\n" +
-			"land.push and land.enqueue are read from .abcd/config.json and\n" +
-			abcdhome.Display("config.json") + ", default true, and off wins from any layer: either file\n" +
-			"can turn an act off and neither can turn it back on. --no-push and --no-enqueue turn\n" +
-			"one off for this run. An act that is off says which layer turned it off.\n\n" +
+			"     default branch and a ruleset requires a person's approval), pinned to the\n" +
+			"     head, then confirmed in the queue. An arming someone else made is left as it\n" +
+			"     is. With no pull request it prints the `gh pr create` command and stops; it\n" +
+			"     never opens one.\n\n" +
+			"land.push and land.enqueue are read from .abcd/config.json (in the working\n" +
+			"directory's checkout and the branch's own) and " + abcdhome.Display("config.json") + ",\n" +
+			"default true, and off wins from any layer: any file can turn an act off and none\n" +
+			"can turn it back on. --no-push and --no-enqueue turn one off for this run. An act\n" +
+			"that is off says which layer turned it off; with both off nothing runs.\n\n" +
 			"Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an\n" +
-			"origin that is not the repository the forge client resolves, and a pull request\n" +
-			"from another repository. Exit 0 when every step did its act or said why it\n" +
-			"stopped; exit 2 on a refusal, which names what was done before it.",
+			"origin that is not the repository the forge client resolves (an SSH host alias\n" +
+			"included), and a pull request only another repository opened. Exit 0 when every\n" +
+			"step did its act or said why it stopped; exit 2 on a refusal, which names what\n" +
+			"was done before it.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return &exitError{Code: 2, Msg: "abcd land: takes at most one branch, not " + fmt.Sprint(len(args)) + "; nothing was pushed"}

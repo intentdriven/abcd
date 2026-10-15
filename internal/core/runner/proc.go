@@ -43,6 +43,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/procgroup"
 )
 
 // Output bounds. A transcript is the whole event stream of one role's run;
@@ -171,7 +172,7 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	ew := &bounded{w: &errb, remaining: l.maxStderr}
 	cmd.Stdout = ow
 	cmd.Stderr = ew
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	procgroup.Lead(cmd)
 	cmd.WaitDelay = pipeGrace
 	if err := cmd.Start(); err != nil {
 		return procResult{}, failAt(ErrNotStarted, runner, ReasonFailed, "%s could not be started", filepath.Base(bin))
@@ -192,7 +193,7 @@ func (l launcher) run(ctx context.Context, runner, bin string, args, seal []stri
 	if killed != "" {
 		// The group this child leads (Setpgid), through the pid this handle
 		// holds; the leader is not yet reaped, so the group id is still its.
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		_ = procgroup.Kill(cmd)
 		<-done
 	}
 	res := procResult{stdout: out.Bytes(), stderr: errb.Bytes()}

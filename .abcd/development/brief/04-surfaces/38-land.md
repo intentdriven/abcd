@@ -28,6 +28,16 @@ The verb takes at most one operand, the branch, and lands the checkout's
 current branch without one. A named branch is landed from the worktree that
 has it checked out, because the preflight runs in the branch's own checkout.
 Every step is idempotent, so running the verb again resumes where it stopped.
+The preflight is the branch's own `make preflight`, run with the person's
+environment and credentials, so the verb is for branches whose content the
+person trusts. With `land.push` and `land.enqueue` both off nothing runs.
+
+Before the steps, the origin and the forge's default branch are checked (see
+the trust boundaries), and then `origin`'s default branch is fetched: a head
+already on it has landed, and the verb reports one step, `land`, with status
+`landed`, gating, pushing and queueing nothing, so a re-run after the merge
+never recreates the branch the merge deleted. The check is the implement
+loop's own ancestor check (`landing.Landed`).
 
 1. **Gate.** When a preflight receipt names the head in any worktree of the
    repository, the lookup the pre-push hook makes, the gate is skipped.
@@ -39,14 +49,19 @@ Every step is idempotent, so running the verb again resumes where it stopped.
    The receipt is a convenience check, not a security boundary: CI re-runs
    every gate on the pushed commit.
 2. **Push** (`land.push`). A plain `git push --porcelain origin
-   refs/heads/<branch>:refs/heads/<branch>` from the branch's checkout, through
-   the networked git runner, with the repository's hooks running: never forced,
-   never `--no-verify`, never the default branch. The push of a branch other
+   <head>:refs/heads/<branch>` from the branch's checkout, through the
+   networked git runner, with the repository's hooks running: never forced,
+   never `--no-verify`, never the default branch. The source is the commit the
+   gate checked, never the branch's ref and never its configured upstream, so a
+   branch that moves after the gate cannot change what is pushed. The push of a branch other
    than the default is not a merge, so it does not wait on the facilitator.
-3. **Enqueue** (`land.enqueue`). The branch's one open pull request is armed
-   by the merge gate and then confirmed in the merge queue: a pull request the
-   forge reports CLEAN and unqueued has its auto-merge toggled once, and any
-   other state is named. With no pull request the step stops with the `gh pr
+3. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
+   repository is armed by the merge gate, pinned to the head
+   (`--match-head-commit`), and then confirmed in the merge queue at that
+   head: a pull request the forge reports CLEAN and unqueued has the auto-merge
+   land made toggled once, and any other state is named. An arming someone
+   else made is left as it is and reported, and a toggle whose re-arming fails
+   says the pull request is now disarmed and gives the command that arms it. With no pull request the step stops with the `gh pr
    create` command; the verb never opens one (ruling R2), and the next run
    queues it.
 
@@ -63,13 +78,19 @@ this one code path (ruling R3).
 
 ## Trust boundaries
 
-- The remote is `origin` alone, and both its fetch and its push URL must be
-  the repository the forge client resolves for the checkout.
-- A pull request from another repository is refused, and one whose head on
-  the forge is not the landed head is not armed.
-- The merge rule is read from the ruleset mirror at the merge base with
-  `origin`'s default branch, never at the branch's tip, so the branch cannot
-  change the rule it lands by.
+- The remote is `origin` alone, and its every fetch and push URL must be the
+  repository the forge client resolves for the checkout. An SSH host alias is
+  refused by name: the verb does not read ssh config.
+- The default branch the verb never pushes is the forge's own, asked in the
+  same call, and it must match the one `origin/HEAD` names locally, which can
+  be stale; a forge that cannot be asked gets no gate and no push.
+- A pull request from another repository is never armed (it is set aside
+  when this repository's own is listed beside it), and one whose head on the
+  forge is not the landed head is not armed.
+- The merge rule is read from the ruleset mirror at `origin`'s default branch
+  as just fetched, never at the branch's tip: equally out of the branch's
+  reach as the merge base, and fresher, so the branch cannot change the rule
+  it lands by. (The implement loop reads it at the lane's base.)
 - The forge client's and git's environments are scrubbed of `GIT_DIR` and
   `GIT_CONFIG_*`, as the networked git runner's are.
 - Nothing is written to the repository's or the queue's settings.
@@ -80,9 +101,12 @@ this one code path (ruling R3).
 through the layered configuration reader from `.abcd/config.json` and
 `~/.abcd.noindex/config.json`
 ([`../05-internals/03-configuration.md`](../05-internals/03-configuration.md)).
-The precedence is deliberately asymmetric: off wins from any layer, so the
-machine's file can switch an outward act off for every repository and no
-repository's file switches it back on. A flag turns either act off for one
+The repository layer is read in the working directory's checkout and in the
+landed branch's own, and both count. The precedence is deliberately
+asymmetric: off wins from any layer, so the machine's file can switch an
+outward act off for every repository and no repository's file switches it
+back on. A home the reader refuses hides the machine's file, and with it any
+off there, so both acts read as off and say why. A flag turns either act off for one
 run (the appendix lists them); no flag turns one on. A step that is off names the layer and
 file that turned it off.
 
@@ -92,9 +116,10 @@ Exit 0 when every step did its act or said why it stopped or left the merge
 to a person. Exit 2 on a refusal, which names the steps done before it. The
 JSON document carries `branch`, `head`, `checkout`, `default_branch`, `push`
 and `enqueue` (each `key`, `on`, `layer`, `origin`), `pull_request` and
-`pull_request_url` when one was found, and `steps`, each with `name`, `status`
-(`done`, `skipped`, `off`, `stopped` or `left`), `note` and an optional
-`command`.
+`pull_request_url` when one was found, `pushed` when the push sent a commit,
+`landed` when the head was already on the default branch, and `steps`, each
+with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
+`landed`), `note` and an optional `command`.
 
 ## Where this sits
 

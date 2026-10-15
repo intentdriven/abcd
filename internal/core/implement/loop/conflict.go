@@ -20,6 +20,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -80,8 +81,8 @@ func conflictRefusal(c Context, lane Lane, def, tracking string, m mergeability)
 	switch {
 	case ld.Armed:
 		rearm := "`gh pr merge " + n + " --auto` with the queue's method"
-		if method, _, err := mergeRule(c, lane, def); err == nil && mergeMethods[method] != "" {
-			rearm = "`gh pr merge " + n + " --auto " + mergeMethods[method] + "`"
+		if rule, err := readMergeRule(c, lane, def); err == nil && landing.MergeMethods[rule.Method] != "" {
+			rearm = "`gh pr merge " + n + " --auto " + landing.MergeMethods[rule.Method] + "`"
 		}
 		reason = "pull request #" + n + " is armed but conflicts with " + def + " as the forge computes it " + verdict +
 			", and the merge queue never takes a conflicting pull request, so it will not merge; " + local

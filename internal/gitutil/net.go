@@ -29,7 +29,10 @@ const (
 
 // Net runs one git command that reaches the remote, from the checkout at dir:
 // a fetch or a push. It is the one networked git runner, shared by the
-// implement loop's landing and the reservation on the shared remote.
+// implement loop's landing, `abcd land` and the reservation on the shared
+// remote, and the one runner of a git command that must read the developer's
+// own configuration with the repository's hooks running (the loop's records
+// commit, `abcd land`'s read of origin's URLs, insteadOf rewrites applied).
 //
 // The repository's hooks run (the pre-push gate is the point), under the
 // developer's own configuration less any injected GIT_DIR or GIT_CONFIG_*

@@ -33,7 +33,7 @@ func configRoots(t *testing.T, repo, machine string) layered.Roots {
 }
 
 func TestBothSwitchesAreOnByDefault(t *testing.T) {
-	push, enqueue, err := readSwitches(configRoots(t, "", ""), false, false)
+	push, enqueue, err := readSwitches(configRoots(t, "", ""), "", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestBothSwitchesAreOnByDefault(t *testing.T) {
 // file, which ordinarily wins, says on: off wins from any layer.
 func TestOffInTheMachineLayerWinsOverOnInTheRepo(t *testing.T) {
 	r := configRoots(t, `{"land":{"push":true,"enqueue":true}}`, `{"land":{"push":false}}`)
-	push, enqueue, err := readSwitches(r, false, false)
+	push, enqueue, err := readSwitches(r, "", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestOffInTheMachineLayerWinsOverOnInTheRepo(t *testing.T) {
 
 func TestOffInTheRepoWinsOverOnInTheMachineLayer(t *testing.T) {
 	r := configRoots(t, `{"land":{"enqueue":false}}`, `{"land":{"enqueue":true,"push":true}}`)
-	push, enqueue, err := readSwitches(r, false, false)
+	push, enqueue, err := readSwitches(r, "", false, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestOffInTheRepoWinsOverOnInTheMachineLayer(t *testing.T) {
 // A flag turns a key off for one invocation; no flag turns one on against a
 // layer's off.
 func TestTheNoFlagsTurnTheKeysOffForOneRun(t *testing.T) {
-	push, enqueue, err := readSwitches(configRoots(t, "", ""), true, true)
+	push, enqueue, err := readSwitches(configRoots(t, "", ""), "", true, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,15 +93,31 @@ func TestTheNoFlagsTurnTheKeysOffForOneRun(t *testing.T) {
 }
 
 func TestAnUnknownKeyUnderLandIsRefused(t *testing.T) {
-	_, _, err := readSwitches(configRoots(t, `{"land":{"psuh":false}}`, ""), false, false)
+	_, _, err := readSwitches(configRoots(t, `{"land":{"psuh":false}}`, ""), "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "land.psuh") || !strings.Contains(err.Error(), ".abcd/config.json") {
 		t.Fatalf("err = %v, want the misspelt key refused naming its file", err)
 	}
 }
 
 func TestANonBooleanValueIsRefusedNamingItsLayer(t *testing.T) {
-	_, _, err := readSwitches(configRoots(t, "", `{"land":{"push":"no"}}`), false, false)
+	_, _, err := readSwitches(configRoots(t, "", `{"land":{"push":"no"}}`), "", false, false)
 	if err == nil || !strings.Contains(err.Error(), "land.push") || !strings.Contains(err.Error(), "machine") {
 		t.Fatalf("err = %v, want the value refused naming the machine layer", err)
+	}
+}
+
+// m4: a home RootsFor refused hides the machine layer, and with it any
+// machine-wide off, so both acts read as off and say why.
+func TestARefusedHomeTurnsBothActsOff(t *testing.T) {
+	r := configRoots(t, `{"land":{"push":true}}`, "")
+	r.Home, r.HomeRefused = "", true
+	push, enqueue, err := readSwitches(r, "", false, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range []Switch{push, enqueue} {
+		if s.On || s.Layer != "machine" || !strings.Contains(s.Origin, "home") {
+			t.Errorf("%s = %+v, want off from the refused machine layer, saying why", s.Key, s)
+		}
 	}
 }

@@ -314,8 +314,8 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 
 	// Armed by the ruleset's method.
 	f.step(t)
-	if log := f.ghLog(t); !strings.Contains(log, "pr merge 7 --auto --merge") {
-		t.Fatalf("the merge is armed by the ruleset's merge-queue method:\n%s", log)
+	if log := f.ghLog(t); !strings.Contains(log, "pr merge 7 --auto --merge --match-head-commit="+l.HeadSHA) {
+		t.Fatalf("the merge is armed by the ruleset's merge-queue method, pinned to the pushed head %s:\n%s", l.HeadSHA, log)
 	}
 
 	// Not merged yet: the loop waits, and cleans nothing up.

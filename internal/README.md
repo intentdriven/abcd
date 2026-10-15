@@ -329,6 +329,13 @@ plugin surface, and a future MCP server share one engine.
   reopened, for every command abcd prints for a person to paste or writes into
   a script. A standard-library leaf outside `core/` so `abcdhome/` can use it;
   `TestOnlySingleQuotesForTheShell` refuses a private copy anywhere else.
+- **`procgroup/`** — the one way a command is bounded together with what it
+  starts: `Bound` makes it lead its own process group and makes its context's
+  end kill that group through the pid its own handle holds, never by a
+  pattern; `Lead` and `Kill` are the same two halves for a caller that keeps
+  its own timer and select. The `abcd land` preflight and the status line's
+  previous command use `Bound`; the runner's launcher and the tool installer
+  use `Lead` and `Kill`.
 - **`textwidth/`** — the one display-width measure, word wrap, fit to width
   and break by width (East Asian wide runes count two), a pure leaf with no
   terminal I/O. It sits outside

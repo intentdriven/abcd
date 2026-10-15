@@ -8,12 +8,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/statusline"
+	"github.com/intentdriven/abcd/internal/procgroup"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -331,11 +331,8 @@ func runPreviousStatusCommand(cmd *cobra.Command, previous string, stdin []byte,
 	// The command leads its own process group, and the bound kills the group
 	// through the pid this handle holds — never a pattern, never another
 	// process — so a pipeline or a background child it started ends with it
-	// rather than outliving the refresh (internal/core/tools' runArgv, the
-	// same shape).
-	sh.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	sh.Cancel = func() error { return syscall.Kill(-sh.Process.Pid, syscall.SIGKILL) }
-	sh.WaitDelay = previousCommandWaitDelay
+	// rather than outliving the refresh.
+	procgroup.Bound(sh, previousCommandWaitDelay)
 	err := sh.Run()
 	var exit *exec.ExitError
 	switch {

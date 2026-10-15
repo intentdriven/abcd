@@ -6,29 +6,41 @@ package landing
 // step is idempotent, so a re-run resumes where the last one stopped:
 //
 //  1. resolve: the branch (the checkout's current one, or the one named, in
-//     the worktree that has it checked out); refused on the default branch, a
-//     detached HEAD and a tree with uncommitted changes.
-//  2. gate: skipped when a preflight receipt already names HEAD (in any
+//     the worktree that has it checked out) and its head; refused on the
+//     default branch, a detached HEAD and a tree with uncommitted changes.
+//     With land.push and land.enqueue both off nothing else runs.
+//  2. origin: origin's every fetch and push URL must be the repository the
+//     forge client resolves here, and the forge's default branch must be the
+//     one origin/HEAD names here and not the branch; checked before the gate,
+//     so a landing the forge refuses never runs the preflight.
+//  3. landed: origin's default branch is fetched, and a head already on it
+//     has landed: the verb says so and stops, pushing, gating and queueing
+//     nothing (a re-run after the merge never recreates the deleted branch).
+//  4. gate: skipped when a preflight receipt already names the head (in any
 //     worktree, as the pre-push hook looks); otherwise `make preflight` runs in
 //     the branch's checkout (it waits on the machine load waiter itself), and
 //     HEAD must be unchanged and a receipt present after it.
-//  3. push (land.push): a plain `git push --porcelain origin
-//     refs/heads/B:refs/heads/B` from the branch's checkout, the repository's
-//     hooks running, never forced, never the default branch. Off, it prints
-//     the command and names the layer that turned it off.
-//  4. enqueue (land.enqueue): the open pull request for the branch, armed by
-//     the merge gate (mergeGate) and confirmed in the merge queue; with no
-//     pull request it prints the `gh pr create` command and stops. It never
-//     opens a pull request and never edits the repository's settings.
+//  5. push (land.push): a plain `git push --porcelain origin
+//     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
+//     the one the gate checked whatever the branch names by then, the
+//     repository's hooks running, never forced, never the default branch.
+//     Off, it prints the command and names the layer that turned it off.
+//  6. enqueue (land.enqueue): the open pull request for the branch, armed by
+//     the merge gate (mergeGate), pinned to the head, and confirmed in the
+//     merge queue; with no pull request it prints the `gh pr create` command
+//     and stops. It never opens a pull request, never overrides an arming
+//     someone else made, and never edits the repository's settings.
 //
-// The trust boundaries: the remote is `origin` only, and both its fetch and
-// its push URL must be the repository the forge client resolves here; a pull
-// request from another repository is refused; the merge rule is read from the
-// ruleset mirror at the merge base with origin's default branch, never at the
+// The trust boundaries: the remote is `origin` only, and its every fetch and
+// push URL must be the repository the forge client resolves here; a pull
+// request from another repository is never armed; the merge rule is read from
+// the ruleset mirror at origin's default branch as just fetched, never at the
 // branch's tip, so the branch cannot change the rule it lands by; the forge
 // client's and git's environments are scrubbed of GIT_DIR and GIT_CONFIG_*.
 // The receipt is a convenience check, not a security boundary: CI re-runs
-// every gate on the pushed commit.
+// every gate on the pushed commit. The preflight is the branch's own `make
+// preflight`, run with the person's environment, so land is for branches the
+// person trusts.
 
 import (
 	"context"
@@ -39,15 +51,20 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/procgroup"
 	"github.com/intentdriven/abcd/internal/shellquote"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // Remote is the one remote a branch lands through.
@@ -66,11 +83,18 @@ const (
 	StatusStopped = "stopped"
 	// StatusLeft: the act is a person's, and land leaves it to them.
 	StatusLeft = "left"
+	// StatusLanded: the branch's head is already on the default branch.
+	StatusLanded = "landed"
 )
 
 // gateTimeout bounds one preflight run: the load waiter it starts with gives
-// up after two hours, and the gates after it take well under one.
-const gateTimeout = 4 * time.Hour
+// up after two hours, and the gates after it take well under one. A var so a
+// test can shorten it.
+var gateTimeout = 4 * time.Hour
+
+// gateWaitDelay bounds the wait for the preflight's output once it has exited
+// or been killed (procgroup.Bound).
+const gateWaitDelay = 10 * time.Second
 
 // Options are one landing's inputs and its seams. A nil seam takes the real
 // one: Forge is GH, Git is gitutil.Net (the networked git runner, hooks
@@ -81,12 +105,14 @@ type Options struct {
 	// NoPush and NoEnqueue are --no-push and --no-enqueue.
 	NoPush    bool
 	NoEnqueue bool
-	// Roots are where land.push and land.enqueue are read.
+	// Roots are where land.push and land.enqueue are read: the working
+	// directory's repository layer and the machine layer. The landed branch's
+	// own checkout is read as a repository layer beside them.
 	Roots layered.Roots
 	// Forge runs the forge client with args from dir.
 	Forge func(dir string, args ...string) (string, error)
 	// Git runs one networked git command (a push or a fetch) from dir.
-	Git func(dir string, args ...string) (string, error)
+	Git GitFunc
 	// Gate runs the preflight in the branch's checkout at dir.
 	Gate func(dir string) error
 	// GateOutput receives the preflight's output; nil discards it.
@@ -112,7 +138,11 @@ type Result struct {
 	Enqueue  Switch `json:"enqueue"`
 	PR       int    `json:"pull_request,omitempty"`
 	PRURL    string `json:"pull_request_url,omitempty"`
-	Steps    []Step `json:"steps"`
+	// Pushed is the commit the push step sent, the head the gate checked.
+	Pushed string `json:"pushed,omitempty"`
+	// Landed is set when the head was already on the default branch.
+	Landed bool   `json:"landed,omitempty"`
+	Steps  []Step `json:"steps"`
 }
 
 func (r *Result) add(name, status, note, command string) {
@@ -185,28 +215,55 @@ func Land(cwd string, o Options) (Result, error) {
 		return res, refuse(fsutil.RedactHome(dir)+" holds uncommitted changes (staged, unstaged or untracked), and the preflight vouches only for a clean tree",
 			"commit or remove them, then run abcd land again; nothing was pushed")
 	}
-	if res.Push, res.Enqueue, err = readSwitches(o.Roots, o.NoPush, o.NoEnqueue); err != nil {
+	if res.Push, res.Enqueue, err = readSwitches(o.Roots, branchRepoRoot(o.Roots, dir), o.NoPush, o.NoEnqueue); err != nil {
 		return res, refuse("the land configuration cannot be read: "+fsutil.RedactHome(err.Error()), "correct the file it names; nothing was pushed")
 	}
 
-	if err := gate(&res, o, dir, head); err != nil {
+	if !res.Push.On && !res.Enqueue.On {
+		res.add("gate", StatusSkipped, "land.push and land.enqueue are both off, so nothing would land: the preflight did not run", "")
+		addPushOff(&res)
+		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
+		return res, nil
+	}
+	if err := checkOrigin(o, dir, branch, def); err != nil {
 		return res, err
 	}
-	if res.Push.On || res.Enqueue.On {
-		if err := checkOrigin(o, dir); err != nil {
-			return res, err
-		}
+	tracking, on, err := Landed(o.Git, dir, def, head)
+	var fe *FetchError
+	switch {
+	case errors.As(err, &fe):
+		return res, refuse(fsutil.RedactHome(fe.Error()), "settle what git reports, then run abcd land again; nothing was pushed")
+	case err != nil:
+		return res, fmt.Errorf("placing %s on %s: %w", short(head), tracking, err)
+	case on:
+		res.Landed = true
+		res.add("land", StatusLanded, short(head)+" is already on "+Remote+"/"+def+", so "+branch+" has landed: nothing was gated, pushed or queued", "")
+		return res, nil
+	}
+	if err := gate(&res, o, dir, head); err != nil {
+		return res, err
 	}
 	if err := push(&res, o, dir); err != nil {
 		return res, err
 	}
-	return res, enqueue(&res, o, dir)
+	return res, enqueue(&res, o, dir, tracking)
+}
+
+// branchRepoRoot is the repository layer's root for the landed branch's own
+// checkout at dir, or "" when it is the working directory's own, so its
+// .abcd/config.json is read beside the working directory's.
+func branchRepoRoot(r layered.Roots, dir string) string {
+	b, _ := layered.RootsFor(dir)
+	if b.Repo == "" || fsutil.RealExistingPath(b.Repo) == fsutil.RealExistingPath(r.Repo) {
+		return ""
+	}
+	return b.Repo
 }
 
 // resolveBranch finds the checkout to land from: the one at root on its
 // current branch, or the worktree that has branch checked out.
 func resolveBranch(root, branch string) (dir, name string, err error) {
-	wts, err := gitutil.ListWorktrees(root, maxWorktreeListing)
+	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return "", "", fmt.Errorf("listing the repository's worktrees: %w", err)
 	}
@@ -259,7 +316,7 @@ func dirtyTree(dir string) (bool, error) {
 	return strings.TrimSpace(string(out)) != "", nil
 }
 
-// gate is step 2.
+// gate is step 4.
 func gate(res *Result, o Options, dir, head string) error {
 	rcp, err := Receipt(dir, head)
 	if err != nil {
@@ -311,13 +368,22 @@ func makePreflight(out io.Writer) func(dir string) error {
 		if err != nil {
 			return refuse("make is not installed, and the preflight runs through it", "install make, then run abcd land again; nothing was pushed")
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), gateTimeout)
+		// The preflight leads its own process group, so the bound, or an
+		// interrupt at the terminal (which a group of its own does not
+		// receive), stops every process it started, not make alone.
+		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+		defer stop()
+		ctx, cancel := context.WithTimeout(ctx, gateTimeout)
 		defer cancel()
 		cmd := exec.CommandContext(ctx, bin, "preflight")
 		cmd.Dir = dir
 		cmd.Env = gitutil.ScrubbedEnv()
 		cmd.Stdout, cmd.Stderr = out, out
+		procgroup.Bound(cmd, gateWaitDelay)
 		if err := cmd.Run(); err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("make preflight was stopped (%v), and its process group with it", context.Cause(ctx))
+			}
 			return fmt.Errorf("make preflight: %v", err)
 		}
 		return nil
@@ -345,19 +411,32 @@ func hasPreflightTarget(dir string) bool {
 	return false
 }
 
-// checkOrigin refuses unless origin's fetch and push URLs are both the
+// forgeRepo is the forge client's view of the repository.
+type forgeRepo struct {
+	NameWithOwner    string `json:"nameWithOwner"`
+	URL              string `json:"url"`
+	SSHURL           string `json:"sshUrl"`
+	DefaultBranchRef struct {
+		Name string `json:"name"`
+	} `json:"defaultBranchRef"`
+}
+
+// checkOrigin refuses unless every fetch and push URL of origin is the
 // repository the forge client resolves here, so the push and the pull request
-// land in the same place.
-func checkOrigin(o Options, dir string) error {
-	out, err := forge(o, dir, "repo", "view", "--json", "nameWithOwner,url,sshUrl")
+// land in the same place, and unless the forge's default branch is def, the
+// one origin/HEAD names here, and is not branch: a local origin/HEAD can be
+// stale (the forge's default renamed after the clone), and the forge is the
+// authority on which branch land must never push. One forge call asks both.
+func checkOrigin(o Options, dir, branch, def string) error {
+	out, err := o.Forge(dir, "repo", "view", "--json", "nameWithOwner,url,sshUrl,defaultBranchRef")
 	if err != nil {
-		return err
+		if errors.Is(err, ErrNoForgeClient) {
+			return noForgeClient()
+		}
+		return refuse("the forge client could not say which repository origin is and which branch is its default, so land cannot prove the push is safe: "+fsutil.RedactHome(err.Error()),
+			"settle what the forge client reports (gh auth status), then run abcd land again; nothing was gated or pushed")
 	}
-	var repo struct {
-		NameWithOwner string `json:"nameWithOwner"`
-		URL           string `json:"url"`
-		SSHURL        string `json:"sshUrl"`
-	}
+	var repo forgeRepo
 	if json.Unmarshal([]byte(out), &repo) != nil {
 		return refuse("the forge client's view of the repository does not parse", "check the forge client (gh --version), then run abcd land again; nothing was pushed")
 	}
@@ -368,21 +447,77 @@ func checkOrigin(o Options, dir string) error {
 		}
 	}
 	for _, push := range []bool{false, true} {
-		args := []string{"remote", "get-url"}
+		args := []string{"remote", "get-url", "--all"}
 		what := "fetch URL"
 		if push {
 			args, what = append(args, "--push"), "push URL"
 		}
-		u, err := userGit(dir, append(args, Remote)...)
-		if err != nil {
+		out, err := gitutil.Net(dir, append(args, Remote)...)
+		urls := strings.Fields(out)
+		if err != nil || len(urls) == 0 {
 			return refuse("the repository has no remote named "+Remote+", the one remote land pushes to", "add it, then run abcd land again; nothing was pushed")
 		}
-		if k := repoKey(u); k == "" || !keys[k] {
+		for _, u := range urls {
+			k := repoKey(u)
+			if k != "" && keys[k] {
+				continue
+			}
+			if alias, real := sshAlias(u, k, keys); alias != "" {
+				return refuse(fmt.Sprintf("%s's %s names the host %s, but the forge's repository is on %s: %s looks like an SSH host alias (a Host entry in ssh config), which land does not resolve, so it cannot prove the push reaches the forge's repository",
+					Remote, what, alias, real, alias),
+					fmt.Sprintf("point %s at the forge's own host (git remote set-url %s %s, choosing the key with core.sshCommand), or map the alias for git with an insteadOf rule (git config url.%s.insteadOf %s), then run abcd land again; nothing was pushed",
+						Remote, Remote, shellQuote(repo.SSHURL), shellQuote(sshPrefix(u, real)), shellQuote(sshPrefix(u, alias))))
+			}
 			return refuse(fmt.Sprintf("%s's %s (%s) is not the repository the forge client resolves here (%s)", Remote, what, display(k), display(repoKey(repo.URL))),
-				"point "+Remote+" at the forge's repository, or the forge client at "+Remote+" (gh repo set-default), then run abcd land again; nothing was pushed")
+				"point every "+Remote+" URL at the forge's repository, or the forge client at "+Remote+" (gh repo set-default), then run abcd land again; nothing was pushed")
 		}
 	}
+	fdef := repo.DefaultBranchRef.Name
+	switch {
+	case fdef == "":
+		return refuse("the forge client reports no default branch for the repository, so land cannot prove "+branch+" is not it",
+			"check the forge client (gh repo view), then run abcd land again; nothing was gated or pushed")
+	case fdef == branch:
+		return refuse(branch+" is the forge's default branch, and land never pushes the default branch",
+			"land a branch of your own and merge it through a pull request; refresh the local default with git remote set-head "+Remote+" --auto")
+	case fdef != def:
+		return refuse("the forge's default branch is "+fdef+", but "+Remote+"/HEAD here names "+def+" (a stale or missing origin/HEAD), so land cannot trust which branch is the default",
+			"refresh it (git fetch "+Remote+" && git remote set-head "+Remote+" --auto), then run abcd land again; nothing was gated or pushed")
+	}
 	return nil
+}
+
+// sshAlias reports, for an origin URL u in ssh form (scp-like or ssh://)
+// whose key k names a path one of the forge's keys names on another host, the
+// host u names and the forge's: the shape of an ssh config host alias.
+func sshAlias(u, k string, keys map[string]bool) (alias, real string) {
+	scp := !strings.Contains(u, "://") && strings.Contains(u, ":")
+	if !scp && !strings.HasPrefix(strings.ToLower(u), "ssh://") {
+		return "", ""
+	}
+	host, path := splitKey(k)
+	if host == "" {
+		return "", ""
+	}
+	for fk := range keys {
+		if fh, fp := splitKey(fk); fp == path && fh != "" && fh != host {
+			return host, fh
+		}
+	}
+	return "", ""
+}
+
+// sshPrefix is the scp-like prefix of u (its user, if any, and host) with the
+// host named host: "git@github.com:" for git@github-work:o/r.git.
+func sshPrefix(u, host string) string {
+	user := ""
+	if s, ok := strings.CutPrefix(u, "ssh://"); ok {
+		u = s
+	}
+	if at := strings.Index(u, "@"); at >= 0 && at < strings.IndexAny(u+":", ":/") {
+		user = u[:at+1]
+	}
+	return user + host + ":"
 }
 
 func display(k string) string {
@@ -392,20 +527,13 @@ func display(k string) string {
 	return strings.TrimPrefix(k, ":")
 }
 
-// userGit runs one git read under the person's own configuration (an
-// insteadOf rewrite included, as the push will see it), less any injected
-// GIT_DIR or GIT_CONFIG_*.
-func userGit(dir string, args ...string) (string, error) {
-	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
-	cmd.Env = append(gitutil.ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
-	out, err := RunCapped(cmd, "git "+args[0])
-	return strings.TrimSpace(out), err
-}
+// defaultPorts are the ports a URL scheme takes when it names none.
+var defaultPorts = map[string]string{"ssh": "22", "git+ssh": "22", "https": "443", "http": "80", "git": "9418"}
 
-// repoKey is a repository URL's comparable form, "host:/path" with the host
-// and (on a host) the path lower-cased, any user, port, trailing slash and
-// .git suffix dropped; a local path or file URL has an empty host. "" when the
-// URL cannot be read.
+// repoKey is a repository URL's comparable form, "host[:port]:/path" with the
+// host and (on a host) the path lower-cased, any user, trailing slash and .git
+// suffix dropped, and a port kept unless it is the scheme's own; a local path
+// or file URL has an empty host. "" when the URL cannot be read.
 func repoKey(u string) string {
 	u = strings.TrimSpace(u)
 	var host, path string
@@ -418,6 +546,9 @@ func repoKey(u string) string {
 			return ""
 		}
 		host, path = strings.ToLower(p.Hostname()), p.Path
+		if port := p.Port(); port != "" && port != defaultPorts[strings.ToLower(p.Scheme)] {
+			host += ":" + port
+		}
 		if p.Scheme == "file" {
 			host = ""
 		}
@@ -444,12 +575,28 @@ func repoKey(u string) string {
 	return host + ":" + path
 }
 
+// splitKey splits a repoKey into its host (with any port) and its path.
+func splitKey(k string) (host, path string) {
+	if p, ok := strings.CutPrefix(k, ":"); ok {
+		return "", p
+	}
+	if i := strings.Index(k, ":/"); i >= 0 {
+		return k[:i], k[i+1:]
+	}
+	return "", k
+}
+
+// noForgeClient is the refusal when the forge client is not installed.
+func noForgeClient() error {
+	return refuse("the forge client `gh` is not installed, and land reads the repository and its pull request through it",
+		"install gh and sign in with your own identity (gh auth login), or turn land.push and land.enqueue off")
+}
+
 // forge runs the forge client through the seam, its failures as refusals.
 func forge(o Options, dir string, args ...string) (string, error) {
 	out, err := o.Forge(dir, args...)
 	if errors.Is(err, ErrNoForgeClient) {
-		return "", refuse("the forge client `gh` is not installed, and land reads the repository and its pull request through it",
-			"install gh and sign in with your own identity (gh auth login), or turn land.push and land.enqueue off")
+		return "", noForgeClient()
 	}
 	if err != nil {
 		return "", refuse(fsutil.RedactHome(err.Error()), "settle what the forge client reports, then run abcd land again")
@@ -457,26 +604,61 @@ func forge(o Options, dir string, args ...string) (string, error) {
 	return out, nil
 }
 
-// pushArgs is the push, plain: no force, no hook skipped, the branch to the
-// same name on origin.
-func pushArgs(branch string) []string {
-	ref := "refs/heads/" + branch
-	return []string{"push", "--porcelain", Remote, ref + ":" + ref}
+// pushArgs is the push, plain: no force, no hook skipped, the commit head
+// (the one the gate checked) to the branch's name on origin. A sha, not the
+// branch's ref, so a branch that moves after the gate cannot change what is
+// pushed.
+func pushArgs(head, branch string) []string {
+	return []string{"push", "--porcelain", Remote, head + ":refs/heads/" + branch}
 }
 
-// push is step 3.
-func push(res *Result, o Options, dir string) error {
+// addPushOff is the push step when land.push is off.
+func addPushOff(res *Result) {
 	ref := "refs/heads/" + res.Branch
+	res.add("push", StatusOff, res.Push.offText()+": nothing was pushed; push it yourself with the command", "git push "+Remote+" "+shellQuote(ref+":"+ref))
+}
+
+// maxPushReport bounds how much of a failed push's porcelain report its
+// refusal carries.
+const maxPushReport = 2048
+
+// push is step 5.
+func push(res *Result, o Options, dir string) error {
 	if !res.Push.On {
-		res.add("push", StatusOff, res.Push.offText()+": nothing was pushed; push it yourself with the command", "git push "+Remote+" "+shellQuote(ref+":"+ref))
+		addPushOff(res)
 		return nil
 	}
-	if _, err := o.Git(dir, pushArgs(res.Branch)...); err != nil {
-		return refuse("git could not push "+res.Branch+" to "+Remote+": "+fsutil.RedactHome(err.Error()),
-			"settle what git or the pre-push hook reports, then run abcd land again; land never forces a push or skips a hook")
+	out, err := o.Git(dir, pushArgs(res.Head, res.Branch)...)
+	if err != nil {
+		reason := "git could not push " + res.Branch + " at " + short(res.Head) + " to " + Remote + ": " + fsutil.RedactHome(err.Error())
+		if report := pushReport(out); report != "" {
+			reason += "; git reports: " + report
+		}
+		return refuse(reason, "settle what git or the pre-push hook reports, then run abcd land again; land never forces a push or skips a hook")
 	}
-	res.add("push", StatusDone, "pushed "+res.Branch+" at "+short(res.Head)+" to "+Remote, "")
+	res.Pushed = res.Head
+	note := "pushed " + res.Branch + " at " + short(res.Head) + " to " + Remote
+	if strings.Contains(out, "\n=\t") || strings.HasPrefix(out, "=\t") {
+		note = Remote + " already held " + res.Branch + " at " + short(res.Head) + "; the push changed nothing"
+	}
+	res.add("push", StatusDone, note, "")
 	return nil
+}
+
+// pushReport is a failed porcelain push's per-ref lines (git's own reasons
+// for each rejection), one line, bounded and free of control characters.
+func pushReport(out string) string {
+	var lines []string
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" && l != "Done" && !strings.HasPrefix(l, "To ") {
+			lines = append(lines, strings.Join(strings.Fields(l), " "))
+		}
+	}
+	r := termsafe.Sanitize(fsutil.RedactHome(strings.Join(lines, "; ")))
+	if len(r) > maxPushReport {
+		r = r[:maxPushReport]
+	}
+	return r
 }
 
 // openPR is the branch's open pull request as the forge lists it.
@@ -494,6 +676,7 @@ type prState struct {
 	MergeStateStatus string          `json:"mergeStateStatus"`
 	IsInMergeQueue   bool            `json:"isInMergeQueue"`
 	AutoMergeRequest json.RawMessage `json:"autoMergeRequest"`
+	HeadRefOid       string          `json:"headRefOid"`
 }
 
 func (s prState) armed() bool {
@@ -501,28 +684,43 @@ func (s prState) armed() bool {
 	return t != "" && t != "null"
 }
 
-// enqueue is step 4.
-func enqueue(res *Result, o Options, dir string) error {
+// maxListedPRs bounds the forge's listing of a branch's open pull requests:
+// a fork's pull requests from a branch of the same name are listed too.
+const maxListedPRs = 20
+
+// enqueue is step 6. tracking is origin's default branch as just fetched.
+func enqueue(res *Result, o Options, dir, tracking string) error {
 	if !res.Enqueue.On {
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
 		return nil
 	}
 	out, err := forge(o, dir, "pr", "list", "--head="+res.Branch, "--state=open",
-		"--json=number,url,isCrossRepository,headRefOid,baseRefName", "--limit=2")
+		"--json=number,url,isCrossRepository,headRefOid,baseRefName", fmt.Sprintf("--limit=%d", maxListedPRs))
 	if err != nil {
 		return err
 	}
-	var prs []openPR
-	if json.Unmarshal([]byte(out), &prs) != nil {
+	var listed []openPR
+	if json.Unmarshal([]byte(out), &listed) != nil {
 		return refuse("the forge's listing of "+res.Branch+"'s pull requests does not parse", "check the forge client (gh --version), then run abcd land again")
 	}
+	// A fork's pull request from a branch of the same name is not this
+	// branch's: it is set aside, and refused only when it is all there is.
+	var prs []openPR
+	for _, pr := range listed {
+		if !pr.IsCrossRepository {
+			prs = append(prs, pr)
+		}
+	}
 	switch {
+	case len(prs) == 0 && len(listed) > 0:
+		return refuse("pull request #"+fmt.Sprint(listed[0].Number)+" for "+res.Branch+" comes from another repository (a fork), and land arms only a pull request from this repository's own branch",
+			"merge it by hand on the forge, or open one from this repository's branch, then run abcd land again")
 	case len(prs) == 0:
 		res.add("enqueue", StatusStopped, "no open pull request for "+res.Branch+"; land opens none: open it with the command, then run abcd land again to queue it",
 			"gh pr create --base "+shellQuote(res.Default)+" --head "+shellQuote(res.Branch))
 		return nil
 	case len(prs) > 1:
-		return refuse("the forge lists more than one open pull request for "+res.Branch, "close all but one, then run abcd land again")
+		return refuse("the forge lists more than one open pull request for "+res.Branch+" from this repository", "close all but one, then run abcd land again")
 	}
 	pr := prs[0]
 	if pr.Number <= 0 {
@@ -530,10 +728,6 @@ func enqueue(res *Result, o Options, dir string) error {
 	}
 	res.PR, res.PRURL = pr.Number, pr.URL
 	n := fmt.Sprint(pr.Number)
-	if pr.IsCrossRepository {
-		return refuse("pull request #"+n+" comes from another repository (a fork), and land arms only a pull request from this repository's own branch",
-			"merge it by hand on the forge")
-	}
 	if pr.HeadRefOid != res.Head {
 		res.add("enqueue", StatusStopped, fmt.Sprintf("pull request #%s's head on the forge is %s, not %s's head %s, so nothing was armed: push the branch (or let the forge see the push), then run abcd land again",
 			n, short(pr.HeadRefOid), res.Branch, short(res.Head)), "")
@@ -543,15 +737,13 @@ func enqueue(res *Result, o Options, dir string) error {
 		res.add("enqueue", StatusLeft, "pull request #"+n+" merges into "+pr.BaseRefName+", not the default branch "+res.Default+", whose ruleset land reads; its merge is left to a person", "")
 		return nil
 	}
-	tracking := "refs/remotes/" + Remote + "/" + res.Default
-	if _, err := o.Git(dir, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+res.Default+":"+tracking); err != nil {
-		return refuse("git could not fetch "+res.Default+" from "+Remote+": "+fsutil.RedactHome(err.Error()), "settle what git reports, then run abcd land again")
+	// The rule is read at the default branch's tip as just fetched: out of
+	// the branch's reach as the merge base is, and fresher.
+	tip, err := gitutil.Run(dir, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
+	if err != nil || !gitutil.IsFullSHA(tip) {
+		return refuse(Remote+"/"+res.Default+" cannot be read after the fetch, so the merge rule cannot be read", "fetch it (git fetch "+Remote+"), then run abcd land again")
 	}
-	base, err := gitutil.Run(dir, "merge-base", res.Head, tracking)
-	if err != nil || !gitutil.IsFullSHA(base) {
-		return refuse(res.Branch+" shares no history with "+Remote+"/"+res.Default+", so the merge rule cannot be read", "rebase the branch on "+res.Default+", then run abcd land again")
-	}
-	rule, err := ReadMergeRule(dir, base, res.Default, "the merge base with "+res.Default)
+	rule, err := ReadMergeRule(dir, tip, res.Default, Remote+"/"+res.Default)
 	var me *MirrorError
 	switch {
 	case errors.As(err, &me):
@@ -565,7 +757,7 @@ func enqueue(res *Result, o Options, dir string) error {
 		return nil
 	}
 	view := func() (prState, error) {
-		out, err := forge(o, dir, "pr", "view", n, "--json", "mergeable,mergeStateStatus,isInMergeQueue,autoMergeRequest")
+		out, err := forge(o, dir, "pr", "view", n, "--json", "mergeable,mergeStateStatus,isInMergeQueue,autoMergeRequest,headRefOid")
 		if err != nil {
 			return prState{}, err
 		}
@@ -575,8 +767,11 @@ func enqueue(res *Result, o Options, dir string) error {
 		}
 		return s, nil
 	}
+	// The arming is pinned to the head land checked: the forge refuses it when
+	// the pull request's head is another commit.
+	armArgs := []string{"pr", "merge", n, "--auto", MergeMethods[rule.Method], "--match-head-commit=" + res.Head}
 	arm := func() error {
-		_, err := forge(o, dir, "pr", "merge", n, "--auto", MergeMethods[rule.Method])
+		_, err := forge(o, dir, armArgs...)
 		return err
 	}
 	s, err := view()
@@ -592,15 +787,20 @@ func enqueue(res *Result, o Options, dir string) error {
 		res.add("enqueue", StatusDone, note+"; it is already in the merge queue", "")
 		return nil
 	}
-	if !s.armed() {
-		if err := arm(); err != nil {
-			return err
-		}
+	if s.armed() {
+		// An arming land did not make is someone's decision: it is left as
+		// it is, never re-armed or toggled, and its queue state reported.
+		res.add("enqueue", StatusDone, "pull request #"+n+" is already armed ("+armedMethod(s)+"), an arming land leaves as it is; it is not in the merge queue yet: the forge reports "+holdText(s), "")
+		return nil
+	}
+	if err := arm(); err != nil {
+		return err
 	}
 	// The confirmation (iss-2610090642376032): an armed pull request the
 	// forge reports CLEAN can still sit outside the queue; toggling auto-merge
-	// once has queued it where the forge's enqueue call failed.
-	if s, err = view(); err != nil {
+	// once has queued it where the forge's enqueue call failed. The toggle
+	// touches only the arming land just made.
+	if s, err = confirmView(view, n, res.Head); err != nil {
 		return err
 	}
 	if !s.IsInMergeQueue && s.MergeStateStatus == "CLEAN" {
@@ -608,10 +808,15 @@ func enqueue(res *Result, o Options, dir string) error {
 			return err
 		}
 		if err := arm(); err != nil {
-			return err
+			why := err.Error()
+			if r := (*Refusal)(nil); errors.As(err, &r) {
+				why = r.Reason
+			}
+			return refuse("pull request #"+n+" is now DISARMED: land withdrew its auto-merge to queue it again and the forge refused the new arming ("+why+")",
+				"arm it again yourself with: gh "+strings.Join(shellWords(armArgs), " ")+" (or run abcd land again)")
 		}
 		note += "; it sat CLEAN outside the queue, so auto-merge was toggled once"
-		if s, err = view(); err != nil {
+		if s, err = confirmView(view, n, res.Head); err != nil {
 			return err
 		}
 	}
@@ -621,6 +826,41 @@ func enqueue(res *Result, o Options, dir string) error {
 	}
 	res.add("enqueue", StatusDone, note+"; it is not in the merge queue yet: the forge reports "+holdText(s), "")
 	return nil
+}
+
+// confirmView views the pull request after an arming and refuses when its
+// head on the forge is no longer head: the arming would merge a commit land
+// did not check.
+func confirmView(view func() (prState, error), n, head string) (prState, error) {
+	s, err := view()
+	if err != nil {
+		return s, err
+	}
+	if s.HeadRefOid != head {
+		return s, refuse(fmt.Sprintf("pull request #%s's head on the forge moved from %s to %s after land armed it, so the arming may merge a commit land did not check", n, short(head), short(s.HeadRefOid)),
+			"withdraw the arming (gh pr merge "+n+" --disable-auto), then run abcd land again to gate and arm the new head")
+	}
+	return s, nil
+}
+
+// armedMethod is the merge method of the arming the forge reports.
+func armedMethod(s prState) string {
+	var a struct {
+		MergeMethod string `json:"mergeMethod"`
+	}
+	if json.Unmarshal(s.AutoMergeRequest, &a) == nil && a.MergeMethod != "" {
+		return strings.ToLower(a.MergeMethod)
+	}
+	return "auto-merge"
+}
+
+// shellWords quotes each word for a POSIX shell where it needs it.
+func shellWords(ws []string) []string {
+	out := slices.Clone(ws)
+	for i, w := range out {
+		out[i] = shellQuote(w)
+	}
+	return out
 }
 
 // holdText says what the forge reports holds a pull request out of the queue.
@@ -635,7 +875,7 @@ func holdText(s prState) string {
 		"UNSTABLE": "a check is failing",
 		"UNKNOWN":  "the forge has not computed it yet",
 		"DRAFT":    "the pull request is a draft",
-		"CLEAN":    "it is mergeable; run abcd land again to check the queue",
+		"CLEAN":    "it is mergeable; run abcd land again to check the queue (once merged, it reports the branch landed)",
 	}[st]
 	if why == "" {
 		return st
