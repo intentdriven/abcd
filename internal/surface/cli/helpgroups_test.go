@@ -84,13 +84,14 @@ func TestRootHelpListsThePersonsGroups(t *testing.T) {
 	}
 
 	// The product thinker's placements of 2026-10-09 (P1 to P6 in
-	// spc-2610100613109045's audit) and the spec's decision 1 on the groups.
+	// spc-2610100613109045's audit) and the spec's decision 1 on the groups;
+	// embargo joins release by spc-2610120557432880's step 10.
 	for group, want := range map[string][]string{
 		"Set-up:":      {"ahoy", "completion", "dashboard", "help", "update"},
 		"Records:":     {"build", "capture", "decide", "ideate", "intent", "library"},
 		"Checks:":      {"lab", "reading"},
 		"Portability:": {"disembark", "embark"},
-		"Release:":     {"launch"},
+		"Release:":     {"embargo", "launch"},
 	} {
 		if strings.Join(entries[group], " ") != strings.Join(want, " ") {
 			t.Errorf("%s lists %v, want %v", group, entries[group], want)

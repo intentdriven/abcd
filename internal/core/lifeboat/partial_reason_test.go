@@ -29,9 +29,14 @@ func partialReasonFixtures(t *testing.T) map[string]string {
 func TestProbeEveryPartialCarriesAReason(t *testing.T) {
 	sawPartial := false
 	for name, dir := range partialReasonFixtures(t) {
-		cov, err := Probe(dir)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
+		var cov Coverage
+		if name == "repo" {
+			cov = probeThisRepo(t)
+		} else {
+			var err error
+			if cov, err = Probe(dir); err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
 		}
 		for _, s := range cov.Sections {
 			if s.Status != StatusPartial {
@@ -116,14 +121,18 @@ func TestPartialIsBuiltOnlyThroughTheConstructor(t *testing.T) {
 func TestPackSectionFileStatesWhyPartial(t *testing.T) {
 	sawPartial := false
 	for name, dir := range partialReasonFixtures(t) {
-		cov, err := Probe(dir)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
+		var lb Lifeboat
+		if name == "repo" {
+			lb = planThisRepo(t)
+		} else {
+			var err error
+			if lb, err = Plan(dir); err != nil {
+				t.Fatalf("%s: plan: %v", name, err)
+			}
 		}
-		lb, err := Plan(dir)
-		if err != nil {
-			t.Fatalf("%s: plan: %v", name, err)
-		}
+		// The coverage the plan packed from, rather than a second probe of
+		// the same tree: it is the report each brief file was written against.
+		cov := lb.Coverage
 		for _, s := range cov.Sections {
 			leaf, ok := briefLeaf(s.Name)
 			if !ok || s.Status == StatusBlank {
