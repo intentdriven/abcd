@@ -206,7 +206,7 @@ plugin surface, and a future MCP server share one engine.
   `core/reading`'s one durable-tier writer. It is not inside `core/reading`
   because the two contexts must never share a front door, and a package that
   built both would be one.
-- **`core/decide/`** — the decision record's WRITE side: `abcd decide "<title>"`
+- **`core/decide/`** — the ADR's WRITE side: `abcd decide --adr "<title>"`
   mints an `adr-<stamp>` through `core/recordid` and lays the ADR skeleton under
   `.abcd/development/decisions/adrs/`. It is the last record family to reach that
   seam (the 2026-09-01 ruling, the turn adr-45 ruling 3 deferred), and it adopts it
@@ -217,6 +217,13 @@ plugin surface, and a future MCP server share one engine.
   already resolves. It owns the id, the date, the filename and the four sections,
   and states nothing: the decision is a human's to write, so the record lands
   `proposed` and the skeleton carries questions rather than answers.
+- **`core/decisions/`** — the decision records' folder, `.abcd/work/decisions/`:
+  one `dcn-<id>-<slug>.md` file per decision (adr-2610110925465593). `Record` is
+  its one writer, behind `abcd decide "<text>"`: it mints through
+  `core/recordid` and creates one file exclusively, touching no other path, so two
+  branches that each record a decision merge with nothing to reconcile. `Parse`
+  and `List` read the folder in id order, and `ReadListing` is bare
+  `abcd decide`'s listing.
 - **`core/glossary/`** — the brief glossary's index, derived. The term files under
   `.abcd/development/brief/glossary/` are the source of truth for what terms exist
   and in which bounded context; this package renders the directory tree and the

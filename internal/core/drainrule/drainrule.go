@@ -146,7 +146,7 @@ var (
 const HowToAdd = "add it: run `abcd ahoy install` at a terminal and accept the drain rule it offers, " +
 	"which writes abcd's strict baseline as an accepted decision record; or give an accepted decision record " +
 	"in " + ADRsRelDir + "/ the four fields " + FieldCategories + ", " + FieldSeverities + ", " +
-	FieldSecurity + " and " + FieldRemedy + " (mint one with `abcd decide \"<title>\"`)"
+	FieldSecurity + " and " + FieldRemedy + " (mint one with `abcd decide --adr \"<title>\"`)"
 
 // Load reads the repository's drain eligibility rule from its decision store.
 // It refuses, with ErrUnrecorded, a repository whose store holds no accepted

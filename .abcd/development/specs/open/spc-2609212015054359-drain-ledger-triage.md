@@ -49,7 +49,7 @@ under the pace rule.
    every cap, in text and `--json`; a run without a merge exits 0
    (criterion 8).
 9. **The decision record**: the spec's first delivery mints the ADR for the
-   eligibility rule with `abcd decide` from decision 4 and scope 2, adds
+   eligibility rule with `abcd decide --adr` from decision 4 and scope 2, adds
    the brief invariant, and the run refuses to start unattended without
    them (criterion 11).
 10. **Safety and pages**: issue ids validated by shape; the command page

@@ -228,7 +228,7 @@ func TestTheProposalIsTheBaseline(t *testing.T) {
 }
 
 // TestTheStoreIsTheDecisionStore pins the store the rule is read from to the
-// one `abcd decide` mints into, so the setup offer and the reader agree.
+// one `abcd decide --adr` mints into, so the setup offer and the reader agree.
 func TestTheStoreIsTheDecisionStore(t *testing.T) {
 	if ADRsRelDir != decide.ADRsRelDir {
 		t.Fatalf("drainrule reads %s, decide mints into %s", ADRsRelDir, decide.ADRsRelDir)

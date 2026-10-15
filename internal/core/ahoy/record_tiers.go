@@ -49,7 +49,7 @@ const decisionsLedgerSeed = `# DECISIONS
 Append-only, one line per decision, newest last, each line starting with its
 date (YYYY-MM-DD). Correct an earlier entry by adding a new dated line, never
 by editing the old one. Architecture-shaping decisions graduate to an ADR under
-../development/decisions/adrs/ (abcd decide).
+../development/decisions/adrs/ (abcd decide --adr).
 `
 
 // developmentReadmeSeed is the durable-record tier's starter text: what the

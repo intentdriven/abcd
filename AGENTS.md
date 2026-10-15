@@ -285,7 +285,7 @@ with `*CONCURRENCY` to force it).
   request and merged or held on the cutting session's ruling.
 - **Record ids need no coordination between checkouts.** Captures, intents,
   specs and ADRs mint timestamp-numeric ids through one allocator (adr-45):
-  `abcd decide "<title>"` allocates `adr-<yymmddHHMMSS><rrrr>`, and the
+  `abcd decide --adr "<title>"` allocates `adr-<yymmddHHMMSS><rrrr>`, and the
   ordinals `0001`–`0058` keep their ids, so no record family needs a word
   first — mint the ADR.
 - **A record is resolved on the branch that carries it**, never re-added to the

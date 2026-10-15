@@ -1,6 +1,8 @@
-// Package decide is the WRITE side of the decision record: `abcd decide
-// "<title>"` mints an ADR id and lays the skeleton the store's existing files
-// carry, under `.abcd/development/decisions/adrs/`.
+// Package decide is the WRITE side of the architecture decision record: `abcd
+// decide --adr "<title>"` mints an ADR id and lays the skeleton the store's
+// existing files carry, under `.abcd/development/decisions/adrs/`. A decision
+// that is not an ADR is recorded by bare `abcd decide "<text>"` through
+// internal/core/decisions instead.
 //
 // It exists because ADRs were the last record family allocating by hand. Two
 // branches minted `0055` and `0056` on the same day for different decisions —
