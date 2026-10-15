@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/release-gate/manifest.json"
 remedy: "Store no derived value a surface addition changes: the example receipt carries a placeholder manifestHash that receipt_gate refuses, checkerCount is computed from briefDocs and surfaces, the rosters move out of the hashed prompt text into sorted one-per-line arrays, and briefDocs is ordered by chapter slug, each order and equality held by TestReleaseGateManifestIsCurrent."
+resolution: "The release-gate manifest stores no derived value a surface addition rewrites on a shared line: the example receipt's manifestHash is a placeholder receipt_gate refuses, checkerCount is computed, the rosters are sorted arrays the detector fills into the prompt, and briefDocs is in chapter-slug order, all held by TestReleaseGateManifestIsCurrent and proved by TestSurfaceAdditionsMergeCleanly."
+impact: internal
+resolved_by:
+  commit: "287dc2d5994f86fc56c8a6b5857b919a3d9f83cc"
 ---
 
 Derived values and append-at-end lists in the release-gate manifest and surface registers conflict on every surface-adding branch. Every branch that adds a command page, agent prompt or surface chapter rewrites the same lines of .abcd/development/release-gate/manifest.json (checkerCount, promptHash, and the one-line prompt context that carries the command and agent rosters) and the manifestHash literal in receipt.example.json, which is the sha256 of the manifest, so two such branches always conflict and the second must merge main and run a fresh preflight before it can queue again.
