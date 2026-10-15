@@ -3,7 +3,7 @@ package ideate
 // visibility_test.go pins iss-2610090740139804: every verdict is private or
 // public by the person's answer, and the answer decides the one store it is
 // written to. A public verdict is committed under the research store keyed on
-// the repository's root commit, with its decision-log pointer; a private one
+// the repository's root commit, with a decision pointing at it; a private one
 // lands owner-only in ~/.abcd.noindex/ideas/<root-sha>/ and the repository is
 // left exactly as it was.
 
@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/homeignore"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -30,7 +31,7 @@ var publicStore = Store{Visibility: VisibilityPublic, RootSHA: testRootSHA}
 
 // TestRecordPublicLandsUnderTheRootSHA proves a public verdict lands at
 // .abcd/development/research/ideas/<root-sha>/<date>-ideate-<slug>.md and that
-// the decision-log pointer names that path.
+// the decision record pointing at it names that path.
 func TestRecordPublicLandsUnderTheRootSHA(t *testing.T) {
 	root := seedRepo(t)
 	res, err := Record(root, "a-public-idea", publicStore, encode(t, validPayload()), at)
@@ -46,24 +47,23 @@ func TestRecordPublicLandsUnderTheRootSHA(t *testing.T) {
 	if res.Visibility != VisibilityPublic {
 		t.Errorf("Visibility = %q, want public", res.Visibility)
 	}
-	if res.DecisionPath != DecisionsRelDir {
-		t.Errorf("DecisionPath = %q, want %q", res.DecisionPath, DecisionsRelDir)
+	if !strings.HasPrefix(res.DecisionPath, decisions.RelDir+"/dcn-") {
+		t.Errorf("DecisionPath = %q, want a decision record under %s", res.DecisionPath, decisions.RelDir)
 	}
 	if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(want))); err != nil {
 		t.Errorf("the public record is not on disk: %v", err)
 	}
-	if log := readFile(t, root, DecisionsRelDir); !strings.Contains(log, want) {
-		t.Errorf("the decision log does not point at %s:\n%s", want, log)
+	if log := readFile(t, root, res.DecisionPath); !strings.Contains(log, want) {
+		t.Errorf("the decision record does not point at %s:\n%s", want, log)
 	}
 }
 
 // TestRecordPrivateLandsInTheHomeStoreOnly proves a private verdict lands in
 // the person's home store, owner-only, and that the repository is untouched:
-// no record in the research store and no line in the committed decision log.
+// no record in the research store and no committed decision.
 func TestRecordPrivateLandsInTheHomeStoreOnly(t *testing.T) {
 	root := seedRepo(t)
 	home := t.TempDir()
-	logBefore := readFile(t, root, DecisionsRelDir)
 
 	store := Store{Visibility: VisibilityPrivate, RootSHA: testRootSHA, Home: home}
 	res, err := Record(root, "a-private-idea", store, encode(t, validPayload()), at)
@@ -105,8 +105,8 @@ func TestRecordPrivateLandsInTheHomeStoreOnly(t *testing.T) {
 		t.Errorf("the private record is not the rendered verdict:\n%s", body)
 	}
 
-	if got := readFile(t, root, DecisionsRelDir); got != logBefore {
-		t.Errorf("a private verdict changed the committed decision log:\n%s", got)
+	if _, err := os.Lstat(filepath.Join(root, filepath.FromSlash(decisions.RelDir))); !os.IsNotExist(err) {
+		t.Errorf("a private verdict recorded a committed decision: %v", err)
 	}
 	assertNothingWritten(t, root)
 }

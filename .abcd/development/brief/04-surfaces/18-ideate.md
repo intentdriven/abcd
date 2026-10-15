@@ -52,9 +52,10 @@ leg changes what the next one is looking at, so running them out of order
 produces a different and weaker result.
 
 Only records carry citable ids, and leg 2's citations are held to that: the
-brief, the principles, the research notes and the decision log have no id to
-cite, so a hit on one of those rides in the `note` field of the nearest citable
-record.
+brief, the principles, the research notes and the lines of a repository's
+frozen decisions log have no id to cite, so a hit on one of those rides in the
+`note` field of the nearest citable record. A decision record is cited by its
+`dcn-` id like any other record.
 
 Leg 3 is defined by its **conduct**: fresh context, off policy, unknown
 authorship. The evaluator did not conduct the research and receives the idea as
@@ -80,10 +81,12 @@ for three of `disembark`'s four synthesis verbs, because there is no evidence-on
 verdict an idea could have: a binary that invented one would be doing the judging.
 
 A **public** verdict is written as a dated record under
-`.abcd/development/research/ideas/<root-sha>/`, with one dated pointer line in
-`.abcd/work/DECISIONS.md`. A **private** verdict is written owner-only under
-`~/.abcd.noindex/ideas/<root-sha>/` and nothing else: no pointer, because the
-decision log is committed. Both stores are keyed on the repository's root commit,
+`.abcd/development/research/ideas/<root-sha>/`, with one decision record
+pointing at it, written into `.abcd/work/decisions/` by the same writer as
+`abcd decide "<text>"`. Recording the pointer adds a file and appends to
+nothing. A **private** verdict is written owner-only under
+`~/.abcd.noindex/ideas/<root-sha>/` and nothing else: no decision points at it,
+because the decisions folder is committed. Both stores are keyed on the repository's root commit,
 so a repository with no commit yet is refused, and so is a shallow clone, whose
 graft would stand in for the root and file the verdict where no full clone
 looks. A private verdict is also refused when the home directory lies inside a git working tree that is not the account's
@@ -100,7 +103,7 @@ recordable or it is not.
 
 ## Every write is redacted first
 
-A public verdict and its pointer are committed, and a private verdict is a file
+A public verdict and the decision pointing at it are committed, and a private verdict is a file
 on disk that may be published by hand later, so one redaction path serves both
 stores. The verb takes intent's fail-closed posture rather than capture's
 redact-and-report one: a repository whose scanner configuration cannot be read
@@ -110,7 +113,7 @@ trust is worse than not recording.
 The gate is two-stage. Stage one redacts the free-text fields before the renderer
 sees them, so the redaction applies to the inputs and the markdown escape stays
 the last transformation. Stage two re-scans the rendered record and its pointer
-line, and a span that survives is a whole refusal with nothing written, naming
+text, and a span that survives is a whole refusal with nothing written, naming
 the kinds it found and never the text. The redaction count comes back on the
 result, and a non-zero count is reported to the caller: a record that no longer
 says what its author wrote is a fact the author needs, and redacting in silence
@@ -147,8 +150,9 @@ something a later reader depends on:
   picks one.
 - **The write is not safely containable**: a slug that is not lower-case
   kebab-case, a component under the research directory symlinked out of the
-  repository, a repository with no `.abcd/work/DECISIONS.md` for a public
-  verdict's pointer line to land in, or a private verdict whose home lies inside
+  repository, a repository with no shared tier (`.abcd/work/`, which
+  installing abcd lays) for a public verdict's decision to land in, or a
+  private verdict whose home lies inside
   a git working tree that is not the account's own or where abcd's home
   ignore file cannot be laid.
 - **There is no store to address**: a working directory with no repository above
@@ -169,9 +173,11 @@ about, and stepping over it in silence is how they stay lost. Relay the line.
 The research directory itself is created when absent: nothing else in abcd
 establishes it, so refusing would fail the first run in every repository, after
 the three host legs have already been paid for. The create is exclusive, which is
-the no-overwrite guarantee, and the decision log's read-modify-write runs under
-an advisory lock of its own, `.abcd/work/.decisions.lock`, taken through the
-same flock primitive the ledger allocators use.
+the no-overwrite guarantee. The pointer is a new file of its own, so there is
+no shared file to read, modify and write, and no lock beyond the decision
+writer's own mint lock. If the decision cannot be recorded after the verdict
+landed, the verdict is removed again, so a run never leaves a verdict nothing
+points at.
 
 ## References
 

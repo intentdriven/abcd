@@ -44,9 +44,11 @@ const MaxPayloadBytes = 1 << 20 // 1 MiB
 const MaxSlugLen = 64
 
 // ResearchRelDir is the one directory a PUBLIC verdict record is ever written
-// under, and DecisionsRelDir is the log its dated pointer is appended to. Both
-// are constants rather than parameters: a configurable target would let a
-// verdict land somewhere no future session looks.
+// under. It is a constant rather than a parameter: a configurable target would
+// let a verdict land somewhere no future session looks. A public verdict's
+// pointer is a decision record, written through decisions.Record into the
+// decisions folder (spc-2610110931381316, step 3), so ideate names no log path
+// of its own.
 //
 // A public verdict lands in ResearchRelDir/<root-sha>/, beside a private one's
 // ~/.abcd.noindex/ideas/<root-sha>/ (PrivateRel), so the two stores share one
@@ -54,15 +56,12 @@ const MaxSlugLen = 64
 // thinker's ruling of 2026-10-14 (iss-2610090740139804) set both paths: every
 // idea put through ideate is private or public by the person's answer, asked
 // before anything is written, and only a public one reaches the repository.
-const (
-	ResearchRelDir  = ".abcd/development/research/ideas"
-	DecisionsRelDir = ".abcd/work/DECISIONS.md"
-)
+const ResearchRelDir = ".abcd/development/research/ideas"
 
 // PrivateRel is the private store's folder under abcd's home, in slash form
 // relative to the person's home directory: ~/.abcd.noindex/ideas. A private
-// verdict lands in PrivateRel/<root-sha>/, owner-only, and writes no
-// decision-log pointer, because the log is committed.
+// verdict lands in PrivateRel/<root-sha>/, owner-only, and records no
+// decision pointing at it, because the decisions folder is committed.
 var PrivateRel = abcdhome.Rel("ideas")
 
 // Visibility is the person's answer to "is this idea private or public?". It
@@ -88,17 +87,6 @@ type Store struct {
 	Home       string
 }
 
-// decisionsLockRel is the advisory lock serialising the decision log's
-// read-modify-write across concurrent abcd processes in one worktree. It is a
-// runtime artefact beside the log it guards, named like capture's allocator lock
-// and gitignored on the same footing.
-const decisionsLockRel = ".abcd/work/.decisions.lock"
-
-// decisionsLockTimeout bounds the wait for that lock. A verdict record is a
-// once-per-idea act, so contention is brief when it happens at all; waiting
-// longer than this means something is wedged, and saying so beats hanging.
-const decisionsLockTimeout = 5 * time.Second
-
 const (
 	// maxClaims caps the research leg's claims table.
 	maxClaims = 200
@@ -121,9 +109,6 @@ const (
 	// megabyte of zeros is legal, fails resolution, and is echoed whole into the
 	// operator's terminal.
 	maxRecordIDBytes = 32
-	// maxDecisionsBytes caps the read of the decision log before its line is
-	// appended.
-	maxDecisionsBytes = 4 << 20 // 4 MiB
 )
 
 var (
@@ -321,8 +306,9 @@ type Result struct {
 	// Path is the verdict record: repo-relative for a public verdict, and
 	// ~/-relative for a private one, so no absolute home path is ever echoed.
 	Path string `json:"path"`
-	// DecisionPath is the log the dated pointer was appended to, repo-relative;
-	// empty for a private verdict, which writes no pointer.
+	// DecisionPath is the decision record that points at a public verdict,
+	// repo-relative under the decisions folder; empty for a private verdict,
+	// which records no decision.
 	DecisionPath string `json:"decision_path"`
 	// Claims tallies the research leg.
 	Claims ClaimTally `json:"claims"`

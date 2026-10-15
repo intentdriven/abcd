@@ -88,9 +88,9 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	recordCmd.Flags().BoolVar(&private, "private", false,
-		"the idea is private: record the verdict in "+abcdhome.Display("ideas")+"/<root-sha>/, owner-only, with no decision-log line (exclusive with --public)")
+		"the idea is private: record the verdict in "+abcdhome.Display("ideas")+"/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)")
 	recordCmd.Flags().BoolVar(&public, "public", false,
-		"the idea is public: commit the verdict under "+ideate.ResearchRelDir+"/<root-sha>/ with its decision-log line (exclusive with --private)")
+		"the idea is public: commit the verdict under "+ideate.ResearchRelDir+"/<root-sha>/ and record a decision pointing at it (exclusive with --private)")
 	recordCmd.Flags().StringVar(&verdictJSON, "verdict-json", "",
 		"path to the host-composed verdict JSON (or - for stdin)")
 
@@ -99,15 +99,15 @@ func newIdeateCommand(asJSON *bool) *cobra.Command {
 }
 
 // ideateStoreRoot is the front door's first step: the checkout whose research
-// store the verdict is written into and whose decision log its pointer is
-// appended to, resolved from the working directory rather than taken to BE it.
+// store the verdict is written into and whose decisions folder its pointer is
+// recorded in, resolved from the working directory rather than taken to BE it.
 //
 // The verb used to hand os.Getwd() straight to ideate.Record, which joins both
 // relative paths onto whatever it is given. Run from a subdirectory the grill
 // then read a record that was not there and reported the cited ids as records
 // that "do not exist in this repository" — a plausible wrong answer that blames
 // the operator's grill for the verb's own misaddressing — and where the caller's
-// directory happened to carry a decision log, the verdict and its pointer landed
+// directory happened to carry a decisions store, the verdict and its pointer landed
 // in a store below the checkout root. Outside every repository it did the same
 // in a plain directory (iss-2609091729516940). A verdict filed that way reaches
 // no gate, no release cut and no reader, which for this family is the whole
@@ -208,7 +208,7 @@ func renderIdeateResult(res ideate.Result) string {
 	out += fmt.Sprintf("  stored:    %s\n", res.Visibility)
 	out += fmt.Sprintf("  record:    %s\n", res.Path)
 	if res.DecisionPath == "" {
-		out += "  pointer:   none — a private verdict writes no decision-log line\n"
+		out += "  pointer:   none — a private verdict records no decision\n"
 	} else {
 		out += fmt.Sprintf("  pointer:   %s\n", res.DecisionPath)
 	}

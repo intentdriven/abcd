@@ -10,6 +10,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/ideate"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -41,7 +42,7 @@ func ideateRepo(t *testing.T) string {
 	if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(ideate.ResearchRelDir)), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	write(ideate.DecisionsRelDir, "# Decisions\n")
+	write(decisions.SharedTierRel+"/CONTEXT.md", "# Context\n")
 	write(".abcd/development/intents/planned/itd-104-ideate.md",
 		"---\nid: itd-104\nslug: ideate\nspec_id: spc-18\nimpact: additive\n---\n\n# itd-104\n")
 	return root
@@ -281,10 +282,6 @@ func TestIdeateRecordRefusesWithoutTheAnswer(t *testing.T) {
 func TestIdeateRecordPrivateFromTheCLI(t *testing.T) {
 	repo := ideateRepo(t)
 	t.Chdir(repo)
-	logBefore, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(ideate.DecisionsRelDir)))
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	out := runCLI(t, "ideate", "record", "a-private-idea", "--private",
 		"--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")), "--json")
@@ -304,12 +301,8 @@ func TestIdeateRecordPrivateFromTheCLI(t *testing.T) {
 	} else if fi.Mode().Perm() != 0o600 {
 		t.Errorf("private record mode = %o, want 600", fi.Mode().Perm())
 	}
-	logAfter, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(ideate.DecisionsRelDir)))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(logAfter) != string(logBefore) {
-		t.Errorf("a private verdict changed the committed decision log:\n%s", logAfter)
+	if log := decisionTexts(t, repo); log != "" {
+		t.Errorf("a private verdict recorded a committed decision:\n%s", log)
 	}
 	entries, err := os.ReadDir(filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir)))
 	if err != nil && !os.IsNotExist(err) {

@@ -30,11 +30,12 @@ decides who can ever read the verdict.
 
 - **Private** — the verdict stays on this machine, in
   `~/.abcd.noindex/ideas/<root-sha>/`, readable by the person's account alone,
-  with no line in the decision log. Name no source behind the idea anywhere
+  and no decision points at it. Name no source behind the idea anywhere
   public while it is private.
 - **Public** — the verdict is written into the repository, under
-  `.abcd/development/research/ideas/<root-sha>/`, with a dated pointer in
-  `.abcd/work/DECISIONS.md`, and is public once pushed, sources included.
+  `.abcd/development/research/ideas/<root-sha>/`, with a decision record in
+  `.abcd/work/decisions/` pointing at it, and is public once pushed, sources
+  included.
 
 `<root-sha>` is the repository's root commit, which the binary resolves itself.
 
@@ -66,19 +67,21 @@ Read the existing record before anything else is decided — the brief, the
 intents in **every** bucket (`drafts/`, `planned/`, `shipped/`, `disciplines/`,
 `superseded/`), the ADRs, the principles, the research notes under
 `.abcd/development/research/notes/`, the public verdicts under
-`.abcd/development/research/ideas/`, and the decision log
-`.abcd/work/DECISIONS.md`. Read this machine's private verdicts in
+`.abcd/development/research/ideas/`, and the decisions in
+`.abcd/work/decisions/` (`abcd decide` lists them, oldest first), with a
+repository's frozen `.abcd/work/DECISIONS.md` where one remains from before
+the folder. Read this machine's private verdicts in
 `~/.abcd.noindex/ideas/<root-sha>/` too, but never quote one into a public
 verdict. Answer one question: does an entry already
 **cover**, **contradict**, or **supersede** this idea?
 
-Every hit is **cited by record id** (`itd-N`, `spc-N`, `iss-N`, `adr-N`), and
-`abcd ideate record` refuses the whole verdict if an id does not resolve in this
-repository. Check the id before you write it down. The brief, the principles,
-the research notes, and the decision log carry no per-entry id, so a hit that
-rests on one goes in the `note` field of the nearest citable record. A standing
-verdict on the submitted idea — recorded in a research note or a decision
-line — is precisely the hit this leg exists to surface; missing it re-opens a
+Every hit is **cited by record id** (`itd-N`, `spc-N`, `iss-N`, `adr-N`,
+`dcn-N`), and `abcd ideate record` refuses the whole verdict if an id does not
+resolve in this repository. Check the id before you write it down. The brief, the principles,
+the research notes, and a frozen log's lines carry no per-entry id, so a hit
+that rests on one goes in the `note` field of the nearest citable record. A
+standing verdict on the submitted idea — recorded in a research note or a
+decision — is precisely the hit this leg exists to surface; missing it re-opens a
 decided question.
 
 Finding **nothing** is a legitimate and common outcome — say so; do not
@@ -153,10 +156,10 @@ It writes one record, `<date>-ideate-<slug>.md` — the idea, the three legs, th
 verdict, and the rejected alternatives, rendered for a human — to the store the
 answer names:
 
-| Answer | Record | Decision log |
+| Answer | Record | Decision |
 |---|---|---|
-| `--private` | `~/.abcd.noindex/ideas/<root-sha>/`, owner-only | untouched |
-| `--public` | `.abcd/development/research/ideas/<root-sha>/` | one dated pointer line appended to `.abcd/work/DECISIONS.md` |
+| `--private` | `~/.abcd.noindex/ideas/<root-sha>/`, owner-only | none |
+| `--public` | `.abcd/development/research/ideas/<root-sha>/` | one new record in `.abcd/work/decisions/`, pointing at the verdict |
 
 A private record is refused when the home directory lies inside a git working
 tree that is not the account's own, because a commit there could carry it.
@@ -199,7 +202,9 @@ Exit codes:
   thinker, then re-run with the answer), an
   unresolvable citation names the id, a payload fault names the field, a
   verdict record that already exists under today's date is refused rather than
-  overwritten (give the re-run its own slug, or keep the first record), and a
+  overwritten (give the re-run its own slug, or keep the first record), a
+  public verdict in a repository with no shared tier (`.abcd/work/`) is
+  refused because its decision has nowhere to land (run `ahoy install`), and a
   working directory with no repository above it — or one git will not answer
   for — is refused because there is no research store to address.
 

@@ -4,11 +4,11 @@ package ideate
 //
 // A public `ideate record` writes host-composed free text into TWO committed
 // tiers: the dated verdict under `.abcd/development/research/ideas/<root-sha>/`,
-// and the dated pointer in `.abcd/work/DECISIONS.md`; a private one writes the
-// verdict alone, into `~/.abcd.noindex/ideas/<root-sha>/`, through the same
-// gate. Until this ran the package imported no
-// scanner at all — termsafe neutralises terminal escapes and markdown/HTML
-// structure, which is a different job from finding a credential — so a `ghp_`
+// and the decision record pointing at it in `.abcd/work/decisions/`; a private
+// one writes the verdict alone, into `~/.abcd.noindex/ideas/<root-sha>/`,
+// through the same gate. Until this ran the package imported no scanner at all
+// — termsafe neutralises terminal escapes and markdown/HTML structure, which is
+// a different job from finding a credential — so a `ghp_`
 // token or an absolute home path in the verdict JSON reached the durable record
 // verbatim, with every lint gate green and the verb reporting success
 // (iss-2609020127281995, iss-2608291817368607).
@@ -137,20 +137,20 @@ func (r *recordRedactor) field(text string) (string, int) {
 // verify is stage two: re-scan the finished artefacts and refuse the write if a
 // blocking span survived.
 //
-// It judges the rendered record AND the decision-log pointer line together,
-// before either is written, because the two land in one indivisible act: a
-// pointer refused after the record landed would force the rollback path, and a
-// record refused after the pointer was appended would leave the log naming a file
-// that does not exist. Refusing both up front makes the leak-free property a
+// It judges the rendered record AND the text of the decision that points at it
+// together, before either is written, because the two land in one indivisible
+// act: a pointer refused after the record landed would force the rollback path,
+// and a record refused after the pointer was recorded would leave a decision
+// naming a file that does not exist. Refusing both up front makes the leak-free property a
 // precondition of the write rather than something recovered from afterwards.
 //
-// The pointer line is composed only from core-owned values — the date, the
-// validated slug, the registered verdict, and the path this core built — so today
+// The pointer text is composed only from core-owned values — the validated
+// slug, the registered verdict, and the path this core built — so today
 // it can carry a leak only through the slug, which validateSlug constrains to
 // lower-case kebab-case and which this verb deliberately does NOT rewrite (the
 // slug reaches a committed FILENAME, and rewriting it there is the open question
 // iss-2609020321100138 holds). Scanning it anyway is what keeps the guarantee
-// true of the line rather than of today's format string: a field added to the
+// true of the text rather than of today's format string: a field added to the
 // pointer later cannot quietly relocate the leak this file closed.
 func (r *recordRedactor) verify(artefacts ...string) error {
 	var residual []scanner.Finding

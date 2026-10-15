@@ -17,8 +17,8 @@ package ideate
 //	                 of every finding, and the verdict itself.
 //	the core owns  — the DATE, the FILENAME, the record's structure, the citation
 //	                 gate, the containment, the redaction of the host's prose
-//	                 before it is committed (redact.go), and the pointer in the
-//	                 decision log.
+//	                 before it is committed (redact.go), and the decision record
+//	                 that points at a public verdict.
 
 import (
 	"bytes"
@@ -34,6 +34,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/homeignore"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/update"
@@ -96,27 +97,16 @@ func (e *VisibilityError) Error() string {
 		"ask the person whether the idea is private or public, and record it with that answer"
 }
 
-// MissingDecisionsError is the refusal for a repository with no decision log. The
-// pointer is not decoration: the log is where a session looks for what was already
-// decided, and a verdict record nothing points at is a record nobody finds.
-type MissingDecisionsError struct {
-	Path string
-}
-
-func (e *MissingDecisionsError) Error() string {
-	return "this repository has no " + e.Path +
-		" — the verdict record's dated pointer has nowhere to land, so nothing was written; create the decision log first"
-}
-
 // Record validates the host-composed verdict for slug and writes it.
 //
 // at is the clock, passed in rather than read: the date lands in a durable
-// filename and in a durable log line, so it is an input a test can pin instead of
-// a wall-clock read buried in a writer.
+// filename, so it is an input a test can pin instead of a wall-clock read buried
+// in a writer. The decision record that points at the verdict takes its date
+// from its own minted id, as every decision does.
 //
 // Every refusal returns BEFORE the first write, with one exception that is handled
-// rather than accepted: if appending the pointer fails after the record landed,
-// the record is removed again, so a run never leaves half a decision behind.
+// rather than accepted: if recording the pointer fails after the verdict landed,
+// the verdict is removed again, so a run never leaves half a decision behind.
 //
 // store carries the person's answer, private or public, and the root commit
 // both stores are keyed on (iss-2610090740139804); it is checked beside the
@@ -127,9 +117,9 @@ func (e *MissingDecisionsError) Error() string {
 // A public verdict's artefacts are COMMITTED, so both go through the
 // store-before-commit redactor (redact.go): the verdict's free text is redacted
 // field by field on the way into the validated document, the rendered record and
-// its decision-log pointer are re-scanned before either is written, and a scanner
-// that cannot be trusted refuses the run rather than recording under it. A
-// private verdict takes the same gate.
+// the text of the decision that points at it are re-scanned before either is
+// written, and a scanner that cannot be trusted refuses the run rather than
+// recording under it. A private verdict takes the same gate.
 func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Result, error) {
 	if err := validateSlug(slug); err != nil {
 		return Result{}, err
@@ -160,7 +150,8 @@ func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Resul
 		return recordPrivate(v, red, store, name, at)
 	}
 
-	// ONE os.Root at the repository root, used for every path this verb touches.
+	// ONE os.Root at the repository root, used for every path this function
+	// writes (the decision writer contains its own write the same way).
 	// It is the containment boundary: os.Root resolves every component, ancestors
 	// included, and refuses any path that would ESCAPE the root, so a repository
 	// whose `.abcd/development` is a symlink pointing outside the tree cannot
@@ -176,89 +167,69 @@ func Record(repoRoot, slug string, store Store, raw []byte, at time.Time) (Resul
 	}
 	defer root.Close()
 
-	// The decision log is read BEFORE the record is written, so the commonest
-	// reason the pointer cannot land is a refusal rather than a rollback. The
-	// through-the-Root Lstat is what refuses an ancestor symlinked OUT of the tree
-	// (an in-tree one is followed); ReadGuarded's O_NOFOLLOW refuses a symlinked
-	// leaf. The gap between them is the benign
-	// TOCTOU of the trusted-worktree model.
-	if _, err := root.Lstat(DecisionsRelDir); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return Result{}, &MissingDecisionsError{Path: DecisionsRelDir}
-		}
-		return Result{}, fmt.Errorf("reading %s: %w", DecisionsRelDir, err)
+	// The shared tier the pointer is recorded in is checked BEFORE the verdict is
+	// written, so the commonest reason the pointer cannot land (a repository
+	// with no shared tier, which `ahoy install` lays) is a refusal rather than a
+	// rollback. The refusal is the decision writer's own (spc-2610110931381316,
+	// step 3): ideate keeps no separate missing-log error, because there is no
+	// log to be missing.
+	if err := decisions.RequireSharedTier(repoRoot); err != nil {
+		return Result{}, err
 	}
-	decisionsAbs := filepath.Join(repoRoot, filepath.FromSlash(DecisionsRelDir))
 	dir := path.Join(ResearchRelDir, store.RootSHA)
 	rel := path.Join(dir, name)
 	res := v.result(slug, rel)
 	res.Visibility = VisibilityPublic
-	res.DecisionPath = DecisionsRelDir
 
 	// BOTH committed artefacts are composed and re-scanned here, before either is
-	// written: the record body, and the one dated line that will be appended to the
-	// decision log. Stage two is fail-closed, so a blocking span that survived the
-	// field pass refuses the whole run — and because the record write is a one-shot
+	// written: the record body, and the text of the decision that will point at
+	// it. Stage two is fail-closed, so a blocking span that survived the field
+	// pass refuses the whole run — and because the record write is a one-shot
 	// exclusive create, a refusal at this point cannot leave a partial document
 	// behind. There is nothing to roll back because nothing was begun.
 	body := render(v, at)
-	pointer := pointerLine(res, at)
+	pointer := pointerText(res)
 	if err := red.verify(body, pointer); err != nil {
 		return Result{}, err
 	}
 
-	// Read the log, write the record, and append the pointer under ONE exclusive
-	// lock. The decision log is a read-modify-write over a shared file, which is
-	// the house rule's case: without the lock two concurrent runs both read the
-	// same log, both append, and the second write erases the first's pointer —
-	// leaving a verdict record that nothing points at, the exact state the
-	// rollback below exists to prevent.
-	err = fsutil.WithFileLock(filepath.Join(repoRoot, filepath.FromSlash(decisionsLockRel)), decisionsLockTimeout, func() error {
-		log, err := fsutil.ReadGuarded(decisionsAbs, maxDecisionsBytes)
-		if err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				return &MissingDecisionsError{Path: DecisionsRelDir}
-			}
-			return fmt.Errorf("reading %s: %w", DecisionsRelDir, err)
+	// The research directory is CREATED when absent rather than demanded.
+	// Nothing in abcd establishes it and no convention check requires it, so
+	// refusing here would fail the first run in any repository — after the three
+	// host legs have already been paid for, and with the verdict unrecoverable
+	// when it arrived on stdin. Through the Root, a component symlinked out of
+	// the tree still refuses.
+	if err := root.MkdirAll(dir, 0o755); err != nil {
+		return Result{}, fmt.Errorf("preparing %s: %w", dir, err)
+	}
+	// The EXCLUSIVE create is the no-overwrite guarantee, and it is one syscall
+	// rather than a check followed by a write, so it holds against a concurrent
+	// run for the same slug without a lock. Nothing else here is shared: the
+	// pointer is a new file of its own, so two runs never contend for one.
+	if err := fsutil.CreateExclusiveIn(root, rel, []byte(body), 0o644); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return Result{}, &ExistsError{Path: rel}
 		}
-		// The research directory is CREATED when absent rather than demanded.
-		// Nothing in abcd establishes it and no convention check requires it, so
-		// refusing here would fail the first run in any repository — after the three
-		// host legs have already been paid for, and with the verdict unrecoverable
-		// when it arrived on stdin. Through the Root, a component symlinked out of
-		// the tree still refuses.
-		if err := root.MkdirAll(dir, 0o755); err != nil {
-			return fmt.Errorf("preparing %s: %w", dir, err)
-		}
-		// The EXCLUSIVE create is the no-overwrite guarantee, and it is one syscall
-		// rather than a check followed by a write, so it holds even against a writer
-		// that is not taking this lock.
-		if err := fsutil.CreateExclusiveIn(root, rel, []byte(body), 0o644); err != nil {
-			if errors.Is(err, os.ErrExist) {
-				return &ExistsError{Path: rel}
-			}
-			return err
-		}
-		if err := appendPointer(decisionsAbs, log, pointer); err != nil {
-			// The record landed but its pointer did not. Roll the record back rather
-			// than leave a verdict no session will find, and say the rollback failed
-			// if it does, because that is the one case a human must fix by hand.
-			if rmErr := root.Remove(rel); rmErr != nil {
-				return fmt.Errorf("%w; THE ROLLBACK FAILED — remove %s by hand", err, rel)
-			}
-			return err
-		}
-		return nil
-	})
-	if err != nil {
 		return Result{}, err
 	}
+	d, err := decisions.Record(repoRoot, pointer)
+	if err != nil {
+		// The verdict landed but its pointer did not. Roll the verdict back rather
+		// than leave one no session will find, and say the rollback failed if it
+		// does, because that is the one case a human must fix by hand.
+		if rmErr := root.Remove(rel); rmErr != nil {
+			return Result{}, fmt.Errorf("%w; THE ROLLBACK FAILED — remove %s by hand", err, rel)
+		}
+		return Result{}, err
+	}
+	res.DecisionPath = d.Path
 	return res, nil
 }
 
 // recordPrivate writes a private verdict into the person's home store,
-// ~/.abcd.noindex/ideas/<root-sha>/, and nothing else: no decision-log pointer,
-// because the log is committed and the pointer would publish the idea's slug.
+// ~/.abcd.noindex/ideas/<root-sha>/, and nothing else: no decision points at
+// it, because the decisions folder is committed and the pointer would publish
+// the idea's slug.
 //
 // The folder is created and opened through the home-scope walk every writer
 // into abcd's home uses (fsutil.EnsureHomeScope), so a level symlinked out of
@@ -681,34 +652,26 @@ func (v verdictDoc) result(slug, rel string) Result {
 	return res
 }
 
-// pointerLine composes the one dated line that makes the verdict findable. It is
-// a single line by design: the decision log is a scannable index, and the record
-// it points at is where the reasoning lives.
+// pointerText composes the text of the decision that makes a public verdict
+// findable. It is one line by design: a decision is a scannable entry, and the
+// verdict it points at is where the reasoning lives. decisions.Record opens it
+// with the decision's date, so it carries none of its own.
 //
-// Only core-owned values reach the line: the date, the validated slug, the
-// registered verdict, and the path this core built. No untrusted prose lands in
-// the decision log at all — the idea's own words live in the record the line
-// points at, where the renderer's escaping applies.
+// Only core-owned values reach the text: the validated slug, the registered
+// verdict, and the path this core built. No untrusted prose lands in the
+// decision at all — the idea's own words live in the record it points at, where
+// the renderer's escaping applies.
 //
 // That is a property of today's format string, not a guarantee, which is why the
-// line is composed HERE rather than inside the append: composing it early is what
+// text is composed HERE rather than inside the write: composing it early is what
 // lets stage two re-scan it alongside the record body, before either is written
 // (redact.go). The values it does carry are not rewritten — a redacted path would
-// name a record that does not exist — so a span surviving in this line is a
+// name a record that does not exist — so a span surviving in this text is a
 // refusal, and the free text that a later field might pull in from Result was
 // already redacted at the source by stage one.
-func pointerLine(res Result, at time.Time) string {
-	return fmt.Sprintf("- %s — ideate: %s — verdict %s. The idea, the three legs, and the rejected alternatives: %s\n",
-		recordDate(at), res.Slug, res.Verdict, res.Path)
-}
-
-// appendPointer appends the already-composed, already-verified pointer line.
-func appendPointer(decisionsAbs string, existing []byte, line string) error {
-	body := string(existing)
-	if body != "" && !strings.HasSuffix(body, "\n") {
-		body += "\n"
-	}
-	return fsutil.WriteFileAtomicPreserveMode(decisionsAbs, []byte(body+line))
+func pointerText(res Result) string {
+	return fmt.Sprintf("ideate: %s — verdict %s. The idea, the three legs, and the rejected alternatives: %s",
+		res.Slug, res.Verdict, res.Path)
 }
 
 // legList renders the required leg order for an error message, written from

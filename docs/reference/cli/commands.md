@@ -1755,8 +1755,8 @@ Validate a host-composed gauntlet verdict: Writes the dated record to the privat
 **Flags:**
 
 ```
-      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision-log line (exclusive with --public)
-      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ with its decision-log line (exclusive with --private)
+      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
+      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
 ```
 

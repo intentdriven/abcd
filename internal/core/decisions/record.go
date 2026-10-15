@@ -78,7 +78,7 @@ func Record(dir, text string) (Decision, error) {
 	if slug == "" {
 		return Decision{}, fmt.Errorf("decisions: %w", ErrNoSlug)
 	}
-	if err := requireSharedTier(root); err != nil {
+	if err := RequireSharedTier(root); err != nil {
 		return Decision{}, err
 	}
 	if err := fsutil.EnsureRealDirAll(root, RelDir, 0o755); err != nil {
@@ -122,10 +122,12 @@ func Record(dir, text string) (Decision, error) {
 	return made, nil
 }
 
-// requireSharedTier refuses a repository whose shared tier is absent, and one
+// RequireSharedTier refuses a repository whose shared tier is absent, and one
 // whose tier is not a real directory: a link there would carry the record out of
-// the checkout.
-func requireSharedTier(root string) error {
+// the checkout. Record runs it first; a writer that must know before its own
+// write whether a decision can land after it (ideate's verdict, whose pointer is
+// a decision) runs it too, so the refusal comes before anything is written.
+func RequireSharedTier(root string) error {
 	abs := filepath.Join(root, filepath.FromSlash(SharedTierRel))
 	fi, err := os.Lstat(abs)
 	switch {
