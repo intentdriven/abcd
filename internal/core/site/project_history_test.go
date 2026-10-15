@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The project history fixture's distinctive git facts: an author, the same
@@ -54,7 +56,7 @@ func (f *fixture) commitAs(date, name, email, subject, assistedBy string) {
 	f.git(date, "add", "-A")
 	cmd := exec.Command("git", "-C", f.root, "-c", "commit.gpgsign=false",
 		"commit", "--allow-empty", "-m", subject+"\n\nAssisted-by: "+assistedBy)
-	cmd.Env = append(append([]string{}, f.repo.Env()...),
+	cmd.Env = append(gittest.Env(f.t),
 		"GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date,
 		"GIT_AUTHOR_NAME="+name, "GIT_AUTHOR_EMAIL="+email,
 		"GIT_COMMITTER_NAME="+name, "GIT_COMMITTER_EMAIL="+email)
