@@ -28,9 +28,13 @@ The following are non-negotiable invariants — any architectural choice that vi
    The reservations on the shared remote (itd-2609091034175565) are fetched
    and pushed only by verbs whose documented meaning says so: `reserve`, whose
    meaning is one fetch of the reservations and one push to the record's
-   `abcd-reserved/` branch, and `peers`, whose meaning includes one fetch of
-   the reservations; every render of a reservation reads the view as last
-   fetched, from disk.
+   `abcd-reserved/` branch, `peers`, whose meaning includes one fetch of
+   the reservations, and the land step of `implement step`, whose meaning
+   includes one fetch of the reservations before it judges a release hold
+   (itd-2609151838312703 C7; for a run holding a reservation, the fetch its
+   renewal makes); each such fetch reads origin's release tags with them,
+   which end a release hold. Every render of a reservation or a hold reads the
+   view as last fetched, from disk.
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it
    listens on this computer's own Tailscale addresses alone, never every

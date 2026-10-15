@@ -7,7 +7,7 @@ import (
 
 // MaxLive is the most live reservations one person may hold, counted by
 // username across every record in the view: a laptop and a cloud session that
-// resolve to one username are one person.
+// resolve to one username are one person. A release subject is not counted.
 const MaxLive = 10
 
 // crowding refuses an act the rest of the view forbids, judged on the view
@@ -34,10 +34,12 @@ func crowding(p *prepared, j judged, res Result) error {
 			others = append(others, r)
 		}
 	}
-	if addsOne(j) {
+	// A release subject sits outside the cap: it neither counts toward a
+	// person's ten nor is refused by them (release.go).
+	if !IsRelease(p.id) && addsOne(j) {
 		var mine []string
 		for _, r := range others {
-			if sameHolder(r.Holder, p.holder) {
+			if sameHolder(r.Holder, p.holder) && !IsRelease(r.Record) {
 				mine = append(mine, r.Record)
 			}
 		}

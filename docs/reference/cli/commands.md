@@ -3629,12 +3629,15 @@ Then the reservations on the shared remote: one fetch from origin of every
 abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
-hold), and each person's count of live reservations. The fetch is the only
-network act; it updates the remote-tracking reservation branches and stamps
-when it ran in the local tier, and nothing else is written. A checkout with no
-remote named origin lists no reservations. When the fetch fails, the
-reservations are listed as last fetched, with that view's age, and the failure
-is named on stderr and in fetch_error.
+hold), each person's count of live reservations, and a line for each release
+being cut (a live rel-vX.Y.Z reservation, which holds every other session's
+merge until its tag is on origin). The fetch is the only network act, and it
+reads origin's release tags with the reservations; it updates the
+remote-tracking reservation branches and the release tags abcd keeps under
+refs/abcd/release-tags/, stamps when it ran in the local tier, and nothing else
+is written. A checkout with no remote named origin lists no reservations.
+When the fetch fails, the reservations are listed as last fetched, with that
+view's age, and the failure is named on stderr and in fetch_error.
 
 A worktree is named home-relative (~/...), or by its directory name when it
 sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
@@ -3871,6 +3874,12 @@ naming the record, the holder (your GitHub username), this working copy, the fil
 the work will change (--footprint, once per repository-relative path) and the
 lease (--lease, default 2h, from 1m to 24h).
 
+A session cutting a release reserves the release instead, rel-vX.Y.Z, with no
+footprint: while it is live every other session's land step holds its merge.
+It holds for 24h unless --lease names less, sits outside the cap of ten, and
+ends when the tag vX.Y.Z is on origin or its holder releases it; running the
+same command again from the same copy renews it.
+
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks
 running: a reservation, a renewal by the same person and copy, a take-over of
@@ -3878,7 +3887,8 @@ a reservation lapsed past its expiry by five minutes, or a release (--release),
 which pushes a tombstone. --take-over moves your own live reservation from
 another copy to this one; it never moves another person's. A record already
 resolved, won't-fixed, shipped or superseded on origin's default branch counts
-as released whatever its reservation says.
+as released whatever its reservation says, and so does a release whose tag is
+on origin.
 
 The holder is read from user.email when it is a GitHub no-reply address, or from
 reservation.github_username in the machine configuration; the repository's

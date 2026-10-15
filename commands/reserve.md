@@ -46,6 +46,31 @@ act went on, but whether the record is already finished there was not checked.
 
 Tell the user what was reserved and until when.
 
+## Reserve a release before cutting it
+
+A session cutting a release reserves the release itself, so every other
+session's land step holds its merge until the cut is done:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-v0.16.0 --json
+```
+
+The subject is `rel-v` and the version, three plain numbers (`rel-v0.16.0`,
+never `rel-0.16.0` or `rel-v0.16.0-rc1`). It takes no footprint (one is
+refused, exit 2), and it does not count toward the cap of ten. With no
+`--lease` it holds for `24h`, so a cut that waits on checks and an approval
+outlasts it; running the same command again from the same copy renews it for
+another day, and nothing holds past a day. It ends by itself once the tag
+`v0.16.0` is on `origin` (the listing shows it `released`, `released_by:
+tag`), or with `--release` from the copy that holds it. Reserving a release
+already tagged on `origin` is refused (exit 2). While it is live, an
+`implement step` at the land fence in any other copy, the user's own other
+computer included, exits 3 naming the release and its holder and arms nothing;
+this copy's own landings are not held. `/abcd:peers` shows the line "release
+v0.16.0 being cut by @octo: merges are held". The fetch every act makes reads
+`origin`'s release tags with the reservations, into `refs/abcd/release-tags/`,
+and never touches this checkout's own tags.
+
 ## When it refuses
 
 **Exit 3 means back off: take other work.** The record is reserved by someone
@@ -81,8 +106,9 @@ is refused, naming the ten; a renewal, and a take-over of the user's own other
 copy, of a reservation still live are never refused by the cap, while renewing
 one that has lapsed counts as a new one. Release one first, if the user agrees.
 
-**Exit 2 is every other refusal**: an id that is not an issue or intent, no
-footprint, a path that is not repository-relative, a lease out of bounds, a
+**Exit 2 is every other refusal**: an id that is not an issue, an intent or a
+release (`rel-vX.Y.Z`), no footprint for a record or one for a release, a
+release already tagged on `origin`, a path that is not repository-relative, a lease out of bounds, a
 message over the 4096-byte cap, no GitHub username, no git identity, no local
 tier (`.abcd/.work.local/`, which `/abcd:ahoy install` creates), no remote
 named `origin`, a fetch or a push origin refused. Each refusal ends by saying
@@ -123,7 +149,7 @@ take-over or lease. Only the holder's own reservation from this copy is
 released (exit 2 otherwise); a release already made exits 0 as
 `already_released` and pushes nothing. A record that is resolved, won't-fixed,
 shipped or superseded on origin's default branch counts as released whatever
-its reservation says.
+its reservation says, and so does a release whose tag is on `origin`.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

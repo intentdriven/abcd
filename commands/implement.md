@@ -539,7 +539,14 @@ on a person, either the approval the armed merge needs (an approving review,
 or a code owner's) or the merge of a pull request left open for one, and
 either can wait overnight; a day is also past any merge queue's
 `check_response_timeout_minutes`. With no mirror at all the lease is the
-default two hours. Past the fence the reservation holds only
+default two hours. The fence then reads the **release hold** from the
+reservations it just fetched (a run holding no reservation fetches them for
+it): while a release reservation (`rel-vX.Y.Z`, `/abcd:reserve`) is live and
+not this copy's own, it arms nothing, naming the release, its holder or "your
+copy on another computer", and that a session cutting a release has the final
+say on what merges before its tag, as contention (exit 3); the pull request
+stays open for the cutting session to merge or hold. A release whose tag is on
+`origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
 whatever its stage, an implementer's long stage included, so does handing an
 agent's receipt back with `receipt`, and each `abcd drain` move does for a

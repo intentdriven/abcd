@@ -24,10 +24,15 @@ type namespace struct {
 	stateDir string
 	// noun names the branches in a refusal: "the reservations".
 	noun string
+	// also is every further refspec the namespace's branches are read with,
+	// fetched in the same command: the reservations' release tags, which end
+	// a release subject (release.go).
+	also []string
 }
 
 // reservations is the reservation branches' namespace.
-var reservations = namespace{remote: RefPrefix, tracking: TrackingPrefix, stateDir: stateRelDir, noun: "the reservations"}
+var reservations = namespace{remote: RefPrefix, tracking: TrackingPrefix, stateDir: stateRelDir, noun: "the reservations",
+	also: []string{releaseTagsRefspec}}
 
 // refspec is the namespace's forced, globbed refspec: every branch under the
 // prefix on origin to the same name under the tracking prefix.

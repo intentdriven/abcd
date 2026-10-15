@@ -22,8 +22,9 @@ const (
 	StateUnreadable = "unreadable"
 )
 
-// What released a reservation: its own tombstone, or the record finished on
-// origin's default branch (the derived release).
+// What released a reservation: its own tombstone, the record finished on
+// origin's default branch (the derived release), or for a release subject its
+// tag on origin (ReleasedByTag, release.go).
 const (
 	ReleasedByTombstone     = "tombstone"
 	ReleasedByDefaultBranch = "default-branch"
@@ -66,13 +67,14 @@ type Snapshot struct {
 	Reservations []Reservation
 }
 
-// LiveByHolder counts each person's live reservations, usernames compared
-// without regard to case and named as first listed.
+// LiveByHolder counts each person's live reservations of records, as the cap
+// counts them: usernames compared without regard to case and named as first
+// listed, and a release subject, which sits outside the cap, not counted.
 func (s Snapshot) LiveByHolder() map[string]int {
 	out := map[string]int{}
 	names := map[string]string{}
 	for _, r := range s.Reservations {
-		if r.State != StateLive {
+		if r.State != StateLive || IsRelease(r.Record) {
 			continue
 		}
 		key := strings.ToLower(r.Holder)
@@ -138,6 +140,13 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 			return snap, fmt.Errorf("reading %s: %s", gitutil.ShortRef(ref), redacted(err))
 		}
 	}
+	// The release tags are read only when a release subject is there to end.
+	var tagged map[string]bool
+	if slices.ContainsFunc(refs, func(ref string) bool { return IsRelease(strings.TrimPrefix(ref, TrackingPrefix)) }) {
+		if tagged, err = releaseTags(root); err != nil {
+			return snap, fmt.Errorf("reading the release tags: %s", redacted(err))
+		}
+	}
 	own := ownCopyKey(root)
 	dated := snap.FetchedAt
 	if dated.IsZero() {
@@ -152,13 +161,22 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 		if !ok {
 			continue
 		}
-		snap.Reservations = append(snap.Reservations, listed(t, id, terminal(finished, id), own, now))
+		by := ""
+		switch {
+		case IsRelease(id) && tagged[releaseTag(id)]:
+			by = ReleasedByTag
+		case !IsRelease(id) && terminal(finished, id):
+			by = ReleasedByDefaultBranch
+		}
+		snap.Reservations = append(snap.Reservations, listed(t, id, by, own, now))
 	}
 	return snap, nil
 }
 
-// listed is one tip as the view shows it, judged at now.
-func listed(t tip, id string, derived bool, own string, now time.Time) Reservation {
+// listed is one tip as the view shows it, judged at now. derivedBy is what
+// released it outside its own tip (ReleasedByDefaultBranch or ReleasedByTag),
+// "" when nothing did.
+func listed(t tip, id, derivedBy, own string, now time.Time) Reservation {
 	r := Reservation{Record: id, Commit: t.Commit, Unreadable: t.Unreadable, HeldFromFetch: t.DatedFromFetch}
 	if t.Unreadable != "" {
 		r.EffectiveExpiry = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt}, lease.Default, now).EffectiveExpiry
@@ -178,10 +196,23 @@ func listed(t tip, id string, derived bool, own string, now time.Time) Reservati
 			r.State = StateExpired
 		}
 	}
-	if derived && r.ReleasedBy == "" {
-		r.State, r.ReleasedBy = StateReleased, ReleasedByDefaultBranch
+	if derivedBy != "" && r.ReleasedBy == "" {
+		r.State, r.ReleasedBy = StateReleased, derivedBy
 	}
 	return r
+}
+
+// releaseTags is the set of release tags on origin as last fetched, by tag.
+func releaseTags(root string) (map[string]bool, error) {
+	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", ReleaseTagsTracking)
+	if err != nil {
+		return nil, err
+	}
+	tags := map[string]bool{}
+	for _, ref := range strings.Fields(out) {
+		tags[strings.TrimPrefix(ref, ReleaseTagsTracking)] = true
+	}
+	return tags, nil
 }
 
 // terminal reports whether id sits in a terminal folder in finished, the

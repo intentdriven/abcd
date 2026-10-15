@@ -74,7 +74,7 @@ func TestAnInvalidIDIsRefusedBeforeAnyRefName(t *testing.T) {
 	for _, arg := range []string{"", "ISS-5", "adr-5", "spc-5", "iss-", "iss-0", "itd-5 ", "iss-5/../main",
 		"iss-5:refs/heads/main", "+iss-5", "\x1b[31miss-5"} {
 		_, err := prepare(t.TempDir(), Request{Record: arg, Footprint: []string{"a.go"}}, Options{})
-		if !errors.Is(err, ErrRefused) || !strings.HasSuffix(err.Error(), " is not an issue or intent id (iss-N or itd-N); nothing was pushed") {
+		if !errors.Is(err, ErrRefused) || !strings.HasSuffix(err.Error(), " is not an issue or intent id (iss-N or itd-N), nor a release (rel-vX.Y.Z); nothing was pushed") {
 			t.Fatalf("%q: %v; want the not-an-id refusal", arg, err)
 		}
 		if strings.ContainsRune(err.Error(), 0x1b) {

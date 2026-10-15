@@ -47,7 +47,9 @@ type reserveReplaced struct {
 // internal/core/claim (itd-2609091034175565, spc-2610031753359849): before an
 // agent starts on an issue or an intent, it reserves the record on the shared
 // remote as a branch nobody merges, so a second person, a second computer or a
-// hosted session sees it before starting the same item. The verb is an
+// hosted session sees it before starting the same item, and a session
+// cutting a release reserves the release, which holds every other session's
+// merge (itd-2609151838312703 C7). The verb is an
 // agent's (the product thinker's ruling of 2026-10-12): a person sees
 // reservations through `abcd peers`, never by typing this.
 func newReserveCommand(asJSON *bool) *cobra.Command {
@@ -67,6 +69,11 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"naming the record, the holder (your GitHub username), this working copy, the files\n" +
 			"the work will change (--footprint, once per repository-relative path) and the\n" +
 			"lease (--lease, default 2h, from 1m to 24h).\n\n" +
+			"A session cutting a release reserves the release instead, rel-vX.Y.Z, with no\n" +
+			"footprint: while it is live every other session's land step holds its merge.\n" +
+			"It holds for 24h unless --lease names less, sits outside the cap of ten, and\n" +
+			"ends when the tag vX.Y.Z is on origin or its holder releases it; running the\n" +
+			"same command again from the same copy renews it.\n\n" +
 			"Every act fetches the reservations from origin, judges the tip, writes one\n" +
 			"commit and makes one plain fast-forward push, with the repository's hooks\n" +
 			"running: a reservation, a renewal by the same person and copy, a take-over of\n" +
@@ -74,7 +81,8 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"which pushes a tombstone. --take-over moves your own live reservation from\n" +
 			"another copy to this one; it never moves another person's. A record already\n" +
 			"resolved, won't-fixed, shipped or superseded on origin's default branch counts\n" +
-			"as released whatever its reservation says.\n\n" +
+			"as released whatever its reservation says, and so does a release whose tag is\n" +
+			"on origin.\n\n" +
 			"The holder is read from user.email when it is a GitHub no-reply address, or from\n" +
 			"reservation.github_username in the machine configuration; the repository's\n" +
 			"own configuration is never read for it. The checkout must have its local tier\n" +

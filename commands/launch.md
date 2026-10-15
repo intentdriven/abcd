@@ -101,6 +101,28 @@ with it. The Release stays an unpublished draft until step 6 has attached the
 website's archive to it, so it becomes public with every asset already
 attached; there is nothing extra to click.
 
+### Before step 1 — hold everyone else's merges
+
+Reserve the release before anything else, from the copy that will cut it:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-vX.Y.Z --json
+```
+
+While that reservation is live, every other session's land step (an
+`implement step` arming a merge, under any account, on any computer) refuses
+to arm, names you and the release, and leaves its pull request open for you to
+merge or hold; `/abcd:peers` shows "release vX.Y.Z being cut by @you: merges
+are held". It takes no footprint and holds for a day. If the cut runs longer,
+run the same command again from the same copy to renew it for another day. It
+ends by itself once the release workflow pushes the tag `vX.Y.Z`; if you
+abandon the cut before then, release it with
+`"${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-vX.Y.Z --release --json`. `launch
+ship` does not take or release it for you: the tag is pushed by the release
+workflow, not by abcd, and the ship steps run many times in one cut. The hold
+binds abcd's own land step; a person merging by hand on the forge is not
+stopped by it, which is why step 3 still says to tell people.
+
 ### Step 3 — merging, and the one hazard
 
 Merge the release PR the normal way, from the PR page's **Merge pull request**
@@ -110,8 +132,9 @@ button (or the merge queue if the repository uses one).
 release day with a trap in it. The release workflow works out which commit the
 reviewers actually read by walking back from the merge, so another PR landing in
 the gap makes it read the wrong commit, and the receipts you just recorded no
-longer match. The window is a minute or two. Tell anyone else working in the
-repository to hold.
+longer match. The window is a minute or two. The release reservation you took
+before step 1 holds every other session's land step until the tag exists; tell
+anyone else working in the repository by hand to hold too.
 
 ### Step 5 — the approval gate, in detail
 

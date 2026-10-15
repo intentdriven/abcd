@@ -67,7 +67,8 @@ var testNamespace = namespace{
 }
 
 // TestOneFetchReadsEveryNamespaceAndStampsEach: the namespaces given are read
-// in one command beside the default branch, and each keeps its own stamp.
+// in one command beside the default branch, with each namespace's further
+// refspecs, and each keeps its own stamp.
 func TestOneFetchReadsEveryNamespaceAndStampsEach(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -86,7 +87,9 @@ func TestOneFetchReadsEveryNamespaceAndStampsEach(t *testing.T) {
 			fetches = append(fetches, c)
 		}
 	}
-	want := []string{"fetch", "--prune", "--no-tags", "origin", reservations.refspec(), testNamespace.refspec(),
+	// The reservations carry their release tags in the same command
+	// (release.go): the one fetch still reads everything.
+	want := []string{"fetch", "--prune", "--no-tags", "origin", reservations.refspec(), releaseTagsRefspec, testNamespace.refspec(),
 		"+refs/heads/main:refs/remotes/origin/main"}
 	if len(fetches) != 1 || !slices.Equal(fetches[0], want) {
 		t.Fatalf("fetches = %q; want the one command %q", fetches, want)
