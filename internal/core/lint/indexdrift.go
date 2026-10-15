@@ -66,9 +66,15 @@ func checkIndexDrift(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 }
 
 func checkOneIndex(repoRoot string, spec IndexSpec, i int, cfg RuleConfig) ([]Finding, error) {
+	if spec.Mode == indexModeGenerated {
+		return checkGeneratedIndex(repoRoot, spec, i, cfg)
+	}
 	who := spec.ID
 	if who == "" {
 		who = "index " + fmt.Sprint(i)
+	}
+	if spec.Render != "" {
+		return nil, &configError{"index_drift entry " + who + " sets render outside " + indexModeGenerated + " mode, where nothing renders the region"}
 	}
 	if spec.Doc == "" || spec.Dir == "" || spec.Entry == "" {
 		return nil, &configError{"index_drift entry " + who + " needs doc, dir, and entry"}
@@ -78,7 +84,7 @@ func checkOneIndex(repoRoot string, spec IndexSpec, i int, cfg RuleConfig) ([]Fi
 		mode = indexModeExact
 	}
 	if mode != indexModeExact && mode != indexModeAbsent {
-		return nil, &configError{"index_drift entry " + who + " has unknown mode " + mode + " (want " + indexModeExact + "|" + indexModeAbsent + ")"}
+		return nil, &configError{"index_drift entry " + who + " has unknown mode " + mode + " (want " + indexModeExact + "|" + indexModeAbsent + "|" + indexModeGenerated + ")"}
 	}
 	entryRe, err := regexp.Compile(spec.Entry)
 	if err != nil {

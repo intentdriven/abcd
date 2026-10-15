@@ -21,7 +21,9 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -35,6 +37,11 @@ const StagePick = "pick"
 // CheckRun is the exclusion of a planned intent this checkout already has a
 // run in progress for: the pick starts a run, never resumes one.
 const CheckRun = "run"
+
+// CheckFootprint is the exclusion of a planned intent whose spec names no
+// footprint packages to reserve it with, in a checkout with a remote named
+// origin: its start would be refused at the reservation.
+const CheckFootprint = "footprint"
 
 // Excluded is a planned intent the pick did not consider, with the first
 // check that excluded it.
@@ -94,6 +101,11 @@ type NextResult struct {
 // the ones that pass. It writes nothing. A fault in reading the checkout is an
 // error; an intent that may not start is an exclusion.
 func candidates(repoRoot, session string) (CandidateSet, error) {
+	return candidatesAt(repoRoot, session, time.Now())
+}
+
+// candidatesAt is candidates, judging the reservations as last fetched at now.
+func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error) {
 	set := CandidateSet{Candidates: []intent.PickCandidate{}, Excluded: []Excluded{}}
 	corpus, err := intent.Load(repoRoot)
 	if err != nil {
@@ -130,7 +142,13 @@ func candidates(repoRoot, session string) (CandidateSet, error) {
 	if err != nil {
 		return set, err
 	}
-	snap, err := readPeers(repoRoot)
+	snap, err := readPeers(repoRoot, now)
+	if err != nil {
+		return set, err
+	}
+	// With a remote named origin the start reserves the intent with its
+	// spec's footprint packages, so one that names none is no candidate.
+	reserves, err := claim.HasOrigin(repoRoot)
 	if err != nil {
 		return set, err
 	}
@@ -156,6 +174,16 @@ func candidates(repoRoot, session string) (CandidateSet, error) {
 				}
 			}
 			continue
+		}
+		if reserves {
+			fp, err := specPackages(repoRoot, chk.Spec)
+			if err != nil {
+				return set, err
+			}
+			if len(fp) == 0 {
+				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckFootprint, Reason: noFootprint(chk.Spec, id)})
+				continue
+			}
 		}
 		score, err := readiness(repoRoot, corpus, store, id, chk.Spec)
 		if err != nil {
@@ -233,7 +261,7 @@ func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 // choose reads the candidate set, less every intent the series has picked
 // when ser is not nil, and takes the readiest; ok is false when none is left.
 func choose(repoRoot string, o Options, ser *NextSeries) (CandidateSet, intent.Pick, bool, error) {
-	set, err := candidates(repoRoot, o.Session)
+	set, err := candidatesAt(repoRoot, o.Session, o.now())
 	if err != nil {
 		return set, intent.Pick{}, false, err
 	}

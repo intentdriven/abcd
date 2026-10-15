@@ -121,6 +121,12 @@ func cutFirstRelease(t *testing.T, profile string) {
 	r.Git("push", "-q", "origin", "main")
 	merged := r.Git("rev-parse", "HEAD")
 
+	// An earlier attempt's unfinished draft of the tag, which the release job
+	// clears before it creates the Release afresh.
+	if profile == "bare" {
+		mustWrite(t, filepath.Join(f.state, "drafts", "v0.1.0"), "0000000000000000000000000000000000000000\n")
+	}
+
 	// 4. The push to main runs auto-release, which calls release.yml.
 	runs := f.run(AutoReleaseYMLPath, event{name: "push", sha: merged, refName: "main"})
 	if runs["detect"].result != "success" || runs["release"].result != "success" {
@@ -128,10 +134,24 @@ func cutFirstRelease(t *testing.T, profile string) {
 			runs["detect"].result, runs["release"].result, f.log.String())
 	}
 
-	// The release PUBLISHED, from the merged commit, under the tag the chain made.
+	// The release PUBLISHED, from the merged commit, under the tag the chain made,
+	// and no draft is left behind.
+	if drafts, _ := os.ReadDir(filepath.Join(f.state, "drafts")); len(drafts) != 0 {
+		t.Errorf("the cut left %d unpublished draft(s)", len(drafts))
+	}
 	rel := f.releases()
 	if got := rel["v0.1.0"]; got != merged {
 		t.Fatalf("published releases %v: want v0.1.0 built from the merged commit %s\n%s", rel, merged, f.log.String())
+	}
+	// It was published by the id the forge assigned the draft, as the latest
+	// release: no published release carries a higher version.
+	id, err := os.ReadFile(filepath.Join(f.state, "ids", "v0.1.0"))
+	if err != nil {
+		t.Fatalf("the forge assigned the release no id: %v", err)
+	}
+	patches, _ := os.ReadFile(filepath.Join(f.state, "patches"))
+	if want := strings.TrimSpace(string(id)) + " draft=false make_latest=true\n"; string(patches) != want {
+		t.Errorf("the release was published by %q, want %q", patches, want)
 	}
 	if tagged := r.Git("ls-remote", "origin", "refs/tags/v0.1.0^{}"); !strings.HasPrefix(tagged, merged) {
 		t.Errorf("tag v0.1.0 = %q, want it at the merged commit %s", tagged, merged)
@@ -179,12 +199,18 @@ func adoptSemanticProfile(t *testing.T, f *fakeForge, goEnv []string) {
 }
 
 // TestScaffoldedGateRefusesATagNamingAnotherVersion is iss-2609251945586202 on a
-// scaffolded profile: a hand-pushed tag naming a version other than the released
-// tree's newest dated CHANGELOG heading must not publish under the receipts of
-// the CHANGELOG's version. The rendered release.yml runs on the tag push; verify
-// refuses at the tag binding, BEFORE the receipts gate, and nothing publishes.
-// The tag the tree names publishes from the same commit, so the refusal is the
-// binding and not a broken fixture.
+// scaffolded profile with a semantic gate: a release tag naming a version other
+// than the released tree's newest dated CHANGELOG heading must not publish under
+// the receipts of the CHANGELOG's version.
+//
+// The profile's provenance is verified against release.yml on the default
+// branch, so it releases only through auto-release's call: a run started by a
+// pushed version tag is refused by its first job, whatever the tag names, and
+// verify, the receipts gate and the release are skipped, with nothing signed.
+// On the call path verify refuses a tag naming another version at the tag
+// binding, BEFORE the receipts gate, and nothing publishes. The tag the tree
+// names publishes from the same commit through auto-release, so the refusal is
+// the binding and not a broken fixture.
 func TestScaffoldedGateRefusesATagNamingAnotherVersion(t *testing.T) {
 	if testing.Short() {
 		t.Skip("drives the release workflows end to end")
@@ -206,7 +232,8 @@ func TestScaffoldedGateRefusesATagNamingAnotherVersion(t *testing.T) {
 	r.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-09-25\n\n### Added\n\n- the first release.\n")
 	r.Commit("release: roll the changelog to 0.1.0")
 	content := r.Git("rev-parse", "HEAD")
-	r.Write(".abcd/work/reviews/"+content+"/docs-currency-reviewer.json",
+	receipt := ".abcd/work/reviews/" + content + "/docs-currency-reviewer.json"
+	r.Write(receipt,
 		`{"subject":{"digest":{"gitCommit":"`+content+`"}},"verificationResult":"PROMOTE",`+
 			`"policy":{"detector":"docs-currency-reviewer"},"judgeModel":"claude-opus-4-8"}`+"\n")
 	r.Commit("release: receipts for the roll")
@@ -217,11 +244,37 @@ func TestScaffoldedGateRefusesATagNamingAnotherVersion(t *testing.T) {
 		bindStep     = "The release tag names the released CHANGELOG version (fail-closed)"
 		receiptsStep = "Semantic-gate receipts (fail-closed, before tag)"
 	)
-	for _, tag := range []string{"v0.1.1", "v0.2.0", "v0.1.0-rc.1"} {
-		r.Git("tag", "-a", tag, "-m", "hand-pushed "+tag, released)
+	mismatched := []string{"v0.1.1", "v0.2.0", "v0.1.0-rc.1"}
+
+	// 1. A pushed version tag is refused by the pushed-tag job, whatever it
+	// names: nothing is verified, signed or published.
+	for _, tag := range append(append([]string{}, mismatched...), "v0.1.0") {
+		r.Git("tag", "-a", tag, "-m", "pushed "+tag, released)
 		r.Git("push", "-q", "origin", "refs/tags/"+tag)
 		f.log.Reset()
-		runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: tag})
+		runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: tag, refType: "tag"})
+		for job, want := range map[string]string{"pushed-tag": "failure", "verify": "skipped", "tag": "skipped", "build": "skipped", "release": "skipped"} {
+			if got := runs[job].result; got != want {
+				t.Errorf("pushed tag %s: job %s = %s, want %s\n%s", tag, job, got, want, f.log.String())
+			}
+		}
+		if !strings.Contains(f.log.String(), "refusing to release '"+tag+"' from a pushed tag") {
+			t.Errorf("pushed tag %s: the refusal does not name the tag\n%s", tag, f.log.String())
+		}
+	}
+	if rel := f.releases(); len(rel) != 0 {
+		t.Fatalf("a pushed tag published %v", rel)
+	}
+	if f.attested(receipt) {
+		t.Fatal("a pushed tag's run signed the receipts")
+	}
+
+	// 2. On auto-release's call, a tag naming another version is refused by the
+	// binding before the receipts gate.
+	for _, tag := range mismatched {
+		f.log.Reset()
+		runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: "main",
+			inputs: map[string]any{"tag": tag, "ref": released, "create_tag": false}})
 		if got := runs["verify"].result; got != "failure" {
 			t.Fatalf("tag %s on a 0.1.0 tree: verify = %s, want failure\n%s", tag, got, f.log.String())
 		}
@@ -243,16 +296,19 @@ func TestScaffoldedGateRefusesATagNamingAnotherVersion(t *testing.T) {
 		t.Fatalf("a mismatched tag published %v", rel)
 	}
 
-	// The tag the released tree names passes the binding and publishes.
-	r.Git("tag", "-a", "v0.1.0", "-m", "v0.1.0", released)
-	r.Git("push", "-q", "origin", "refs/tags/v0.1.0")
+	// 3. The tag the released tree names passes the binding and publishes,
+	// released by auto-release on the push of the tagged commit.
 	f.log.Reset()
-	runs := f.run(ReleaseYMLPath, event{name: "push", sha: released, refName: "v0.1.0"})
-	if runs["verify"].result != "success" || runs["release"].result != "success" {
-		t.Fatalf("v0.1.0 on a 0.1.0 tree: verify=%s release=%s\n%s", runs["verify"].result, runs["release"].result, f.log.String())
+	runs := f.run(AutoReleaseYMLPath, event{name: "push", sha: released, refName: "main"})
+	if runs["detect"].result != "success" || runs["release/verify"].result != "success" || runs["release/release"].result != "success" {
+		t.Fatalf("v0.1.0 on a 0.1.0 tree: detect=%s verify=%s release=%s\n%s", runs["detect"].result,
+			runs["release/verify"].result, runs["release/release"].result, f.log.String())
 	}
 	if got := f.releases()["v0.1.0"]; got != released {
 		t.Errorf("published releases %v: want v0.1.0 from %s", f.releases(), released)
+	}
+	if !f.attested(receipt) {
+		t.Error("the release did not sign the receipts of the commit the gate admitted")
 	}
 }
 
@@ -263,6 +319,7 @@ type event struct {
 	name    string
 	sha     string
 	refName string
+	refType string // "tag" for a pushed tag; empty reads as "branch"
 	inputs  map[string]any
 }
 
@@ -312,30 +369,139 @@ const fakeGH = `#!/usr/bin/env bash
 set -euo pipefail
 case "${1:-} ${2:-}" in
 "release view")
-  [ -f "$FORGE_STATE/releases/$3" ] ;;
-"release create")
+  # A published release reads isDraft false, a draft true; --json/--jq are
+  # answered only for that field, the one the workflows read.
   tag="$3"; shift 3
-  verify=0
+  json=0
   while [ $# -gt 0 ]; do
-    case "$1" in --verify-tag) verify=1 ;; --title) shift ;; *) ;; esac
+    case "$1" in
+      --json) [ "$2" = isDraft ] || { echo "fake gh: release view --json $2" >&2; exit 97; }; json=1; shift ;;
+      --jq) [ "$2" = .isDraft ] || { echo "fake gh: release view --jq $2" >&2; exit 97; }; shift ;;
+      *) echo "fake gh: release view $1" >&2; exit 97 ;;
+    esac
+    shift
+  done
+  if [ -f "$FORGE_STATE/releases/$tag" ]; then [ "$json" = 0 ] || echo false
+  elif [ -f "$FORGE_STATE/drafts/$tag" ]; then [ "$json" = 0 ] || echo true
+  else echo "release not found" >&2; exit 1
+  fi ;;
+"release create")
+  # A release is created as a draft and published once its assets are
+  # attached; a create that would publish in one step is refused.
+  tag="$3"; shift 3
+  verify=0 draft=0 files=()
+  while [ $# -gt 0 ]; do
+    case "$1" in --verify-tag) verify=1 ;; --draft) draft=1 ;; --title|--notes) shift ;; -*) ;; *) files+=("$1") ;; esac
     shift
   done
   [ "$verify" = 1 ] || { echo "fake gh: release create without --verify-tag" >&2; exit 98; }
+  [ "$draft" = 1 ] || { echo "fake gh: release create without --draft publishes before its assets are attached" >&2; exit 98; }
   [ ! -f "$FORGE_STATE/releases/$tag" ] || { echo "release $tag already exists" >&2; exit 1; }
+  [ ! -f "$FORGE_STATE/drafts/$tag" ] || { echo "fake gh: a second draft of $tag" >&2; exit 98; }
   commit="$(git --git-dir="$FORGE_ORIGIN" rev-parse -q --verify "refs/tags/$tag^{commit}")" || {
     echo "tag $tag does not exist on the forge" >&2; exit 1; }
-  mkdir -p "$FORGE_STATE/releases"
-  printf '%s\n' "$commit" > "$FORGE_STATE/releases/$tag" ;;
+  mkdir -p "$FORGE_STATE/drafts" "$FORGE_STATE/ids" "$FORGE_STATE/assets"
+  printf '%s\n' "$commit" > "$FORGE_STATE/drafts/$tag"
+  # The id the forge assigns the created Release, kept when it is published.
+  printf 'created/%s' "$tag" | cksum | cut -d' ' -f1 > "$FORGE_STATE/ids/$tag"
+  : > "$FORGE_STATE/assets/$tag"
+  n=0
+  for f in ${files[@]+"${files[@]}"}; do
+    n=$((n + 1))
+    printf '%s\t%s\tuploaded\tsha256:%s\n' "$n" "${f##*/}" "$(sha256sum "$f" | cut -d' ' -f1)" >> "$FORGE_STATE/assets/$tag"
+  done ;;
+"release edit")
+  echo "fake gh: a Release is published by its id, never edited by tag: $*" >&2; exit 98 ;;
 "run list")
   printf '\n' ;;
 "attestation verify")
   digest="$(git hash-object "$3")"
   [ -f "$FORGE_STATE/attestations/$digest" ] || { echo "no attestation for $3" >&2; exit 1; } ;;
 "api "*)
-  case "$2" in
-  repos/*/git/ref/heads/*)
-    git --git-dir="$FORGE_ORIGIN" rev-parse "refs/heads/${2##*/heads/}" ;;
-  *) echo "fake gh: unsupported api $2" >&2; exit 97 ;;
+  # A created Release keeps the id the forge assigned it; one seeded by the
+  # test is identified by the checksum of its state and tag, so a seeded draft
+  # and a published release of one tag never share one.
+  relid() {
+    if [ -f "$FORGE_STATE/ids/$2" ]; then cat "$FORGE_STATE/ids/$2"
+    else printf '%s/%s' "$1" "$2" | cksum | cut -d' ' -f1
+    fi
+  }
+  # bytag prints the state and tag of the Release with id $1, or fails.
+  bytag() {
+    for state in drafts releases; do
+      for f in "$FORGE_STATE/$state"/*; do
+        [ -e "$f" ] || continue
+        if [ "$(relid "$state" "${f##*/}")" = "$1" ]; then printf '%s %s\n' "$state" "${f##*/}"; return 0; fi
+      done
+    done
+    echo "gh: Not Found (HTTP 404)" >&2; return 1
+  }
+  shift
+  method=GET path="" expr="" paginate=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --method|-X) method="$2"; shift 2 ;;
+      --paginate) paginate=1; shift ;;
+      --jq) expr="$2"; shift 2 ;;
+      -F|-f) fields="${fields:-} $2"; shift 2 ;;
+      -*) echo "fake gh: api $1" >&2; exit 97 ;;
+      *) path="$1"; shift ;;
+    esac
+  done
+  case "$method $path" in
+  "GET repos/"*/git/ref/heads/*)
+    git --git-dir="$FORGE_ORIGIN" rev-parse "refs/heads/${path##*/heads/}" ;;
+  "GET repos/"*"/releases?per_page=100")
+    # The listing, already filtered one of the two ways the workflows read it.
+    [ "$paginate" = 1 ] || { echo "fake gh: release listing without --paginate" >&2; exit 97; }
+    case "$expr" in
+      '.[] | [.id, .draft, .tag_name] | @tsv') cols=3 ;;
+      '.[] | [.id, .draft, .prerelease, .tag_name] | @tsv') cols=4 ;;
+      *) echo "fake gh: release listing jq=$expr" >&2; exit 97 ;;
+    esac
+    for state in drafts releases; do
+      [ -d "$FORGE_STATE/$state" ] || continue
+      for f in "$FORGE_STATE/$state"/*; do
+        [ -e "$f" ] || continue
+        tag="${f##*/}"
+        draft=false; [ "$state" = drafts ] && draft=true
+        if [ "$cols" = 3 ]; then
+          printf '%s\t%s\t%s\n' "$(relid "$state" "$tag")" "$draft" "$tag"
+        else
+          printf '%s\t%s\tfalse\t%s\n' "$(relid "$state" "$tag")" "$draft" "$tag"
+        fi
+      done
+    done ;;
+  "GET repos/"*/releases/*/"assets?per_page=100")
+    [ "$paginate" = 1 ] && [ "$expr" = '.[] | [.id, .name, .state, (.digest // "")] | @tsv' ] || {
+      echo "fake gh: asset listing paginate=$paginate jq=$expr" >&2; exit 97; }
+    id="${path%/assets*}"; id="${id##*/}"
+    read -r _ tag <<<"$(bytag "$id")"
+    cat "$FORGE_STATE/assets/$tag" ;;
+  "GET repos/"*/releases/*)
+    [ "$expr" = .draft ] || { echo "fake gh: release read jq=$expr" >&2; exit 97; }
+    read -r state _ <<<"$(bytag "${path##*/}")"
+    if [ "$state" = drafts ]; then echo true; else echo false; fi ;;
+  "PATCH repos/"*/releases/*)
+    id="${path##*/}"
+    read -r state tag <<<"$(bytag "$id")"
+    [ "$state" = drafts ] || { echo "fake gh: publishing a published release" >&2; exit 98; }
+    printf '%s%s\n' "$id" "${fields:-}" >> "$FORGE_STATE/patches"
+    mkdir -p "$FORGE_STATE/releases"
+    mv "$FORGE_STATE/drafts/$tag" "$FORGE_STATE/releases/$tag"
+    echo false ;;
+  "DELETE repos/"*/releases/*)
+    id="${path##*/}"
+    for f in "$FORGE_STATE/releases"/*; do
+      [ -e "$f" ] || continue
+      [ "$(relid releases "${f##*/}")" != "$id" ] || { echo "fake gh: delete of a published release" >&2; exit 98; }
+    done
+    for f in "$FORGE_STATE/drafts"/*; do
+      [ -e "$f" ] || continue
+      if [ "$(relid drafts "${f##*/}")" = "$id" ]; then rm -f "$f" "$FORGE_STATE/ids/${f##*/}"; exit 0; fi
+    done
+    echo "release $id not found" >&2; exit 1 ;;
+  *) echo "fake gh: unsupported api $method $path" >&2; exit 97 ;;
   esac ;;
 *)
   echo "fake gh: unsupported: $*" >&2; exit 97 ;;
@@ -456,7 +622,7 @@ func (f *fakeForge) callWorkflow(job *ynode, uses string, ev event, ctx map[stri
 		}
 	}
 	sub := map[string]jobRun{}
-	f.runWorkflow(called, event{name: ev.name, sha: ev.sha, refName: ev.refName, inputs: inputs}, prefix, sub)
+	f.runWorkflow(called, event{name: ev.name, sha: ev.sha, refName: ev.refName, refType: ev.refType, inputs: inputs}, prefix, sub)
 	res := jobRun{result: "success"}
 	for k, v := range sub {
 		results[k] = v
@@ -468,8 +634,12 @@ func (f *fakeForge) callWorkflow(job *ynode, uses string, ev event, ctx map[stri
 }
 
 func (f *fakeForge) baseContext(ev event) map[string]any {
+	refType := ev.refType
+	if refType == "" {
+		refType = "branch"
+	}
 	ctx := map[string]any{
-		"github.sha": ev.sha, "github.ref_name": ev.refName, "github.event_name": ev.name,
+		"github.sha": ev.sha, "github.ref_name": ev.refName, "github.ref_type": refType, "github.event_name": ev.name,
 		"github.repository": "example/fixture", "github.token": "fake-token", "secrets.GITHUB_TOKEN": "fake-token",
 		"github.event.repository.default_branch": "main", "github.event.repository.private": false,
 	}
@@ -523,7 +693,8 @@ func (f *fakeForge) evalAny(raw string, ctx map[string]any) any {
 func (f *fakeForge) runJob(id string, job, wf *ynode, ev event, ctx map[string]any) jobRun {
 	f.t.Helper()
 	ws := f.t.TempDir()
-	jobEnv := map[string]string{}
+	// GITHUB_SHA is in every step's environment on a runner.
+	jobEnv := map[string]string{"GITHUB_SHA": ev.sha}
 	if we := wf.get("env"); we != nil {
 		for _, k := range we.keys {
 			jobEnv[k] = f.eval(we.m[k].scalar, ctx)

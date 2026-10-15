@@ -273,7 +273,12 @@ with `*CONCURRENCY` to force it).
   session sees only what reaches `origin`: before working an issue or an
   intent, reserve it with `go run ./cmd/abcd reserve <id> --footprint <path>`
   (once per path the work will change), back off on exit 3, and release it
-  with `--release` when done.
+  with `--release` when done. A build and a drain reserve as they start:
+  `go run ./cmd/abcd build <id>` reserves with the spec's footprint (an
+  issue's `found_at`), `drain` each issue as its lane opens, and the run
+  renews, fences and releases it; reserve by hand only for work neither
+  starts. Each worktree is its own copy: two builds in sibling worktrees
+  whose footprints overlap back off, and the second is refused (exit 3).
 - **A diff you did not make is a peer's work.** Never commit it, revert it, or
   stash it away silently; uncommitted peer work is untouchable.
 - **A verifier works on a copy** (`git -C <wt> archive HEAD | tar -x -C

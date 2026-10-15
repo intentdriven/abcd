@@ -333,8 +333,8 @@ type RuleConfig struct {
 	DiffRange string `json:"-"`
 }
 
-// IndexSpec is one index_drift pair — a hand-written enumeration of a
-// directory's contents, and the directory it must agree with.
+// IndexSpec is one index_drift pair — an enumeration of a directory's contents,
+// hand-written or generated, and the directory it must agree with.
 type IndexSpec struct {
 	// ID names the region: the document fences it with `<!-- index: <id> -->`
 	// and `<!-- /index -->`.
@@ -359,9 +359,17 @@ type IndexSpec struct {
 	// Suffix is the file extension an exact index enumerates (".md" lists file
 	// stems); empty enumerates the directory's immediate subdirectories.
 	Suffix string `json:"suffix"`
-	// Mode is "exact" (default — the listing and the directory must agree) or
-	// "absent" (every listed path must NOT exist, the planned-seams shape).
+	// Mode is "exact" (default — the listing and the directory must agree),
+	// "absent" (every listed path must NOT exist, the planned-seams shape), or
+	// "generated" (the region is written by the generator from the directory and
+	// must equal its rendering byte for byte; iss-2608220150157511).
 	Mode string `json:"mode"`
+	// Render names how a generated region is composed from the directory:
+	// "names" (a backticked, comma-separated list of entry names), "titles" (one
+	// bullet per record, its id and its H1 title) or "adr-table" (the ADR
+	// store's ID/Title/Status/Date table read from each record's frontmatter).
+	// Required in generated mode and refused in the others.
+	Render string `json:"render"`
 }
 
 // ArmReceiptGate returns cfg with the receipt_gate rule armed for a release: it

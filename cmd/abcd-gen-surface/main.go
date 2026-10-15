@@ -15,6 +15,13 @@
 // naming it — is refused by name and left untouched, every other chapter is
 // still written, and the run then exits 1 with each refusal, so a lane landing
 // behind another never has its whole regeneration blocked by one chapter.
+//
+// It also writes the record's generated index regions (iss-2608220150157511):
+// every index the index_drift rule in .abcd/record-lint.json declares in
+// generated mode — the command list in the surfaces register, the drafts bench
+// in the out-of-scope chapter, the ADR index — rendered by lint.RegenerateIndexes,
+// the same function the rule compares against, so a conflicted region is
+// resolved by rerunning this generator over the merged tree.
 package main
 
 import (
@@ -23,6 +30,7 @@ import (
 	"path"
 	"path/filepath"
 
+	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/surface"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/surface/cli"
@@ -76,6 +84,13 @@ func run() error {
 		fmt.Println("wrote", p.File)
 	}
 
+	// The record's generated index regions are derived from the filesystem, not
+	// the command tree, and written before the chapters so a refused chapter
+	// never leaves them stale.
+	if err := writeIndexes(root); err != nil {
+		return err
+	}
+
 	chapters, refused := cli.SurfaceChapters(root)
 	if chapters == nil && refused != nil {
 		return refused
@@ -91,4 +106,27 @@ func run() error {
 		fmt.Println("wrote", rel)
 	}
 	return refused
+}
+
+// writeIndexes rewrites every generated index region the record-lint config
+// declares, and only the documents whose bytes change.
+func writeIndexes(root string) error {
+	cfg, err := lint.LoadConfig(filepath.Join(root, ".abcd", "record-lint.json"))
+	if err != nil {
+		return err
+	}
+	rewrites, err := lint.RegenerateIndexes(root, cfg)
+	if err != nil {
+		return err
+	}
+	for _, rw := range rewrites {
+		if rw.Committed == rw.Want {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(rw.Doc)), []byte(rw.Want), 0o644); err != nil {
+			return err
+		}
+		fmt.Println("wrote", rw.Doc)
+	}
+	return nil
 }

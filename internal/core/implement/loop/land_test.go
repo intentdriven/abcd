@@ -132,7 +132,9 @@ func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 	}
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	// The fixture's run holds no reservation: a test that wants one takes it
+	// (reserveRun), at the time it chooses.
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
 	if err != nil {
 		t.Fatal(err)
 	}

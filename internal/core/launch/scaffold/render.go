@@ -103,6 +103,24 @@ type Substitutions struct {
 	CIChecks []string
 }
 
+// RefusesPushedTag reports that the release workflow refuses a run started by
+// a pushed version tag, in a first job, and skips verify on it: its release
+// provenance is verified against the release workflow on DefaultBranch, which
+// only auto-release's call provides. That is abcd's own profile and any
+// profile with semantic gates, whose receipts verify step holds that identity.
+// The gate workflow has no tag-push trigger of its own and is excluded.
+func (s Substitutions) RefusesPushedTag() bool {
+	return !s.Gate && (s.Abcd || len(s.SemanticGates) > 0)
+}
+
+// VerifiesPushedTag reports that a run started by a pushed version tag runs
+// verify and can release: the release workflow has a tag-push trigger and does
+// not refuse such a run. Only then does a tag's own push run carry a verify
+// conclusion for auto-release's detect step to read.
+func (s Substitutions) VerifiesPushedTag() bool {
+	return !s.Gate && !s.RefusesPushedTag()
+}
+
 // ExtraBase is the number the runbook gives the first extra gate: it follows
 // the five Go gates when the repository is a Go module, and leads otherwise.
 func (s Substitutions) ExtraBase() int {
