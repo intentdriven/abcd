@@ -1,12 +1,27 @@
-# `/abcd:decide` — File a Decision Record
+# `/abcd:decide` — Record a Decision, List Them, or File an ADR
 
-`/abcd:decide` mints an architecture decision record: it allocates the id,
-derives the slug and the date, and writes the store's skeleton into
-`.abcd/development/decisions/adrs/`. It is the ADR store's **minting** verb, the
-counterpart of the read-only `abcd adr-N` dispatch the
-[`08-abcd.md`](08-abcd.md) chapter describes. It is not the store's only writer:
-[`/abcd:embark`](03-embark.md) unpacks a lifeboat's decision records into the same
-store, which is a restore rather than a mint.
+`/abcd:decide` is the verb for both decision stores
+([spc-2610110931381316](../../specs/open/spc-2610110931381316-append-only-logs-conflict-on-every-merge.md),
+decision 17):
+
+- `abcd decide "<text>"` **records a decision**: one new file,
+  `.abcd/work/decisions/dcn-<id>-<slug>.md`, in the flat folder that holds the
+  repository's decision log
+  ([adr-2610110925465593](../../decisions/adrs/2610110925465593-decisions-are-one-flat-file-each-and-the.md)).
+- `abcd decide`, with no operand, **lists the decisions** recorded, oldest
+  first. It is the verb's bare render, and it writes nothing.
+- `abcd decide` given its ADR flag and a quoted title **mints an architecture
+  decision record**: it allocates the id, derives the slug and the date, and
+  writes the store's skeleton into `.abcd/development/decisions/adrs/`. It is the ADR store's
+  **minting** verb, the counterpart of the read-only `abcd adr-N` dispatch the
+  [`08-abcd.md`](08-abcd.md) chapter describes. It is not the store's only
+  writer: [`/abcd:embark`](03-embark.md) unpacks a lifeboat's decision records
+  into the same store, which is a restore rather than a mint.
+
+Decisions outnumber ADRs about eight to one, so the common act takes the short
+form. A binary from 0.14.x or earlier still mints an ADR from bare
+`abcd decide "<title>"`, which is why the command page has an agent check the
+version before it records.
 
 ## Sub-verbs
 
@@ -21,19 +36,63 @@ store, which is a restore rather than a mint.
 | Verb | Bucket | Status |
 |---|---|---|
 
-The table is empty: the verb registers no sub-command. Its one argument is the
-decision's title.
+The table is empty: the verb registers no sub-command. It takes at most one
+operand: the decision's text, or with the ADR flag the ADR's title.
 
-## Behaviour
+## Recording a decision
 
-Given the quoted title as its one operand, the JSON form emits
+Given the quoted text as its one operand, the verb calls `decisions.Record`, the
+folder's one writer (`internal/core/decisions`), and the JSON form emits
+`{ "id": "dcn-<stamp>", "slug": "<kebab-case>", "date": "YYYY-MM-DD",
+"path": ".abcd/work/decisions/dcn-<stamp>-<slug>.md", "text": "<date> — <text>" }`.
+The record is:
+
+```markdown
+---
+id: dcn-<yymmddHHMMSS><rrrr>
+slug: <at most 40 characters>
+date: <YYYY-MM-DD>
+---
+<YYYY-MM-DD> — <the decision, in the words it was recorded in>
+```
+
+The id comes from the same mint as every other family, the date from its stamp,
+and the slug is `recordid.Slug` over the text, cut at 40. The text is collapsed
+to one line and passes the canonical scanner first, failing closed on a
+degraded one, because it becomes committed prose and, through the slug, a
+filename. The file is created exclusively under a lock on the folder itself, so
+it is the only path a recording touches: nothing is appended anywhere, and two
+branches that each record a decision merge with nothing to reconcile and no
+merge attribute or driver. A record is never edited; a correction is a new
+record.
+
+The writer resolves the checkout root as the ADR form does, and refuses, exit
+**2** with nothing written, outside a checkout, in a repository without the
+shared tier `.abcd/work/` (naming ahoy's install, which lays it; the writer
+creates `decisions/` inside an existing tier and never the tier itself), and for
+a text with nothing slug-able in it.
+
+## Listing the decisions
+
+Bare `abcd decide` reads the folder and prints every record oldest first, one
+block per record: the id, then the body. The JSON form is `[{id, date, slug,
+path, text}]`, an empty array for an empty folder. A file in the folder the
+reader cannot take as a record is named on stderr with its reason. Where a
+frozen `.abcd/work/DECISIONS.md` also exists (a managed repository adopted
+before the folder), the text form ends with one line naming it as earlier
+history the listing does not list. The listing reads only the folder, keeps no
+index file, and writes nothing; exit **1** when the folder cannot be read.
+
+## Minting an ADR
+
+Given the ADR flag and the quoted title as its one operand, the JSON form emits
 `{ "id": "adr-<stamp>", "slug": "<kebab-case>", "title": "<title>",
 "date": "YYYY-MM-DD", "path": ".abcd/development/decisions/adrs/<stamp>-<slug>.md" }`
 and writes that one file, laying the store's directories down first where the
 checkout does not already hold them. Nothing else lands on disk. The plain render
 names the same four values and the status the record lands with. Exit 0 when the record lands, exit 2 for
-an operand fault — no title, or a title with nothing slug-able in it — with
-nothing written.
+an operand fault — the ADR flag with no title, or a title with nothing slug-able in
+it — with nothing written.
 
 **The path is relative to the repository root, from anywhere in the tree.** The
 front door resolves the checkout root before it builds the request, so a mint
@@ -123,6 +182,8 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 Sub-verbs: none.
 
-Flags: none.
+| Flag | Type |
+|---|---|
+| `--adr` | bool |
 
 <!-- surface-appendix:end -->

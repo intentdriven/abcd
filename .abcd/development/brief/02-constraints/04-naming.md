@@ -98,8 +98,8 @@ are **forbidden** at design time rather than argued about in review. Lint code
 held by review.
 
 **Conformance is partial, and the gap is the shipped surface's rather than the
-discipline's.** Several parents print usage with no state, three verbs
-(`launch`, `decide` and `build`) refuse instead of rendering, and `history`
+discipline's.** Several parents print usage with no state, two verbs
+(`launch` and `build`) refuse instead of rendering, and `history`
 breaks the rule from both ends at once: bare `abcd history` renders nothing
 while `history list` and `history show` exist, which is exactly the shape the
 rule forbids. The one enumeration of where the

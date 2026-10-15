@@ -843,26 +843,39 @@ nothing signalled. It never stops anything by name.
 
 ### `abcd decide`
 
-Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.
+Record a decision, list them bare, or mint an ADR with --adr: Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.
 
-**Usage:** `abcd decide "<title>"`
+**Usage:** `abcd decide ["<text>" | --adr "<title>"] [flags]`
 
-Mint an architecture decision record: allocate its id through the shared record-id
-seam and write the store's skeleton under .abcd/development/decisions/adrs/.
+Record a decision, list the decisions recorded, or mint an architecture decision record.
 
-The id is `adr-<yymmddHHMMSS><rrrr>` and the filename is ordered by that stamp, so two
-branches deciding on the same day cannot allocate the same number — the collision a
-hand-numbered ordinal has by construction. The hand-numbered records 0001-0058 keep
-their ids and their filenames; nothing is renumbered, and every reader admits both.
+abcd decide "<text>" records a decision: one new file, .abcd/work/decisions/dcn-<id>-<slug>.md,
+whose id is minted through the shared record-id seam and whose body is `<date> — <text>`.
+Nothing is appended anywhere, so two branches that each record a decision merge with nothing
+to reconcile. It needs the shared tier .abcd/work/, which `abcd ahoy install` lays.
 
-The verb writes an EMPTY record: it owns the id, the date, the filename and the four
-sections, and states nothing. The decision is the author's to write, and the status it
-lands with is `proposed` until the author sets `accepted`.
+abcd decide with no operand lists every decision recorded, oldest first, read from the folder
+each time: the id, then the decision. Where a frozen .abcd/work/DECISIONS.md also exists, the
+listing ends by naming it as earlier history it does not list. It writes nothing.
+
+abcd decide --adr "<title>" mints an architecture decision record: its id is
+`adr-<yymmddHHMMSS><rrrr>` and the store's skeleton lands under
+.abcd/development/decisions/adrs/, with the filename ordered by the stamp, so two branches
+deciding on the same day cannot allocate the same number. The hand-numbered records
+0001-0058 keep their ids and their filenames. The ADR is EMPTY: the verb owns the id, the
+date, the filename and the four sections, and states nothing; it lands `proposed` until the
+author sets `accepted`.
+
+**Flags:**
+
+```
+      --adr   mint an architecture decision record from the operand as its title, instead of recording a decision
+```
 
 **Example:**
 
 ```
-abcd decide "Record ids are minted from a timestamp"
+abcd decide "Decisions are one flat file each"
 ```
 
 ### `abcd disembark`
