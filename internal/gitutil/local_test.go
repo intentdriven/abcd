@@ -20,6 +20,11 @@ func TestLocalGitRunsHooksUnderTheRepositorysOwnSettings(t *testing.T) {
 	os.Unsetenv("GIT_SSH_COMMAND")
 	r := gittest.NewRepo(t)
 	r.Commit("seed")
+	// LocalGit runs with the scrubbed environment, so the commit takes its
+	// identity from the repository, as the person's own git would: a CI
+	// runner's account has no name for git to fall back on.
+	r.Git("config", "user.name", "t")
+	r.Git("config", "user.email", "t@example.invalid")
 	hooks := t.TempDir()
 	env := filepath.Join(t.TempDir(), "env")
 	hook := "#!/bin/sh\n{ printf 'prompt=%s\\n' \"$GIT_TERMINAL_PROMPT\"; printf 'ssh=%s\\n' \"$GIT_SSH_COMMAND\"; printf 'params=%s\\n' \"$GIT_CONFIG_PARAMETERS\"; } > '" + env + "'\n"
