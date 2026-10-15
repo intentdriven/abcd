@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2609091034175565](../../intents/planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md):
+[itd-2609091034175565](../../intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md):
 Before an agent starts on an item, abcd reserves it on the shared remote as a
 branch nobody merges, and every participant (a second person, a second computer,
 a hosted cloud session) sees the reservation before starting the same item or
@@ -51,7 +51,7 @@ uses (the intent's "On words").
 ## Scope
 
 In, as the intent's
-[What's In Scope](../../intents/planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md#whats-in-scope)
+[What's In Scope](../../intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md#whats-in-scope)
 draws it:
 
 - **Spec 1.** `internal/core/lease` (new: the lease bounds and the one
@@ -78,7 +78,7 @@ draws it:
   `commands/implement.md` and `commands/abcd.md`.
 
 Out, as the intent's
-[What's Out of Scope](../../intents/planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md#whats-out-of-scope)
+[What's Out of Scope](../../intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md#whats-out-of-scope)
 draws it: The wider session register (itd-2609150819440345); outside
 contributors (itd-2610031259176838); the resolve-time refusal
 (itd-2609091416304128), which reuses this spec's "as of last fetch" reader when
