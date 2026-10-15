@@ -137,10 +137,12 @@ another person's, and the peers check then does not count that copy as a holder.
 run's state records the reservation (`reserved_at`) and its record names it;
 a run that is then not created releases a reservation it made fresh. A
 resumed start reserves too, with its record's footprint: it renews this
-copy's own, keeping the reservation's term so a resume never cuts the day the
-land fence gave a waiting pull request, and reserves anew one a release
-released or a run started before reservations never took, recording it in
-the run's state; a run handed back reserves nothing. A release asked of the
+copy's own while that footprint still covers every path the spec names, and
+reserves it again, judged for overlap, once the spec has widened it; either
+way it keeps the reservation's term, so a resume never cuts the day the land
+fence gave a waiting pull request. It reserves anew one a release released
+or a run started before reservations never took, recording it in the run's
+state; a run handed back reserves nothing. A release asked of the
 verb pushes the tombstone over this copy's reservation on the key and changes
 nothing in the run's state (C36); the run's next step meets it at the land fence. A run whose
 issue lane is handed back releases its reservation as the step hands it back,
