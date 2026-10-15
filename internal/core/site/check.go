@@ -370,6 +370,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	c.checkProvenance()
 	if c.project {
 		c.checkProjectSources()
+		c.checkProjectTitle()
 	}
 	c.checkHero()
 	c.checkBannedTokens()

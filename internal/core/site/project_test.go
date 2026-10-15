@@ -542,3 +542,33 @@ An intent that refines a ledger issue.
 		t.Fatalf("findings: %+v", res.Findings)
 	}
 }
+
+// A project site is titled by its identity block, or failing that by its
+// repository's name on GitHub. With neither, the build renders an empty
+// `<title>` and brand, and the gate refuses it, naming both remedies.
+func TestTheProjectGateRefusesASiteWithNoTitle(t *testing.T) {
+	f := newProjectFixture(t)
+	if err := os.Remove(filepath.Join(f.Root(), ".abcd", "positioning.json")); err != nil {
+		t.Fatal(err)
+	}
+	f.commitAt("2026-03-08T09:00:00+00:00", "chore: no identity pointer", "None")
+	f.git("2026-03-08T09:00:00+00:00", "remote", "remove", "origin")
+	out, files := buildProject(t, f)
+	if !strings.Contains(string(files["index.html"]), "<title></title>") {
+		t.Fatalf("the fixture is not untitled: %s", firstMatch(`<title>[^<]*</title>`, string(files["index.html"])))
+	}
+	res, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, Project: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, fd := range res.Findings {
+		if fd.Check == CheckProvenance && strings.Contains(fd.Detail, "no title") &&
+			strings.Contains(fd.Detail, "identity block") && strings.Contains(fd.Detail, "GitHub origin") {
+			found = true
+		}
+	}
+	if res.OK() || !found {
+		t.Fatalf("the gate passes an untitled project site, or names no remedy: %+v", res.Findings)
+	}
+}

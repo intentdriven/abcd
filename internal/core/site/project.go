@@ -499,6 +499,26 @@ func (c *composer) metIntents() []lint.RecordNode {
 	return nodes
 }
 
+// checkProjectTitle refuses a project site with no title. The composer titles
+// every page, and sets the brand, from the identity block's title, or failing
+// that from the repository's name on its GitHub origin (headWith). With
+// neither, every `<title>` is empty and the brand a link with no words, and
+// the provenance walk passes both, because an empty string carries no word to
+// trace. The composed route is not held to this: its manifest declares its
+// identity.
+func (c *checker) checkProjectTitle() {
+	title := c.repo.Name
+	if c.hasBlock {
+		title = c.identity.Title
+	}
+	if strings.TrimSpace(title) != "" {
+		return
+	}
+	c.fail(CheckProvenance, homePageRel, "",
+		"the site has no title: this repository records no identity block abcd wrote and has no GitHub origin to name it; "+
+			"record an identity block (abcd identity init), or add a GitHub origin remote")
+}
+
 // checkProjectSources is the project route's half of the provenance gate:
 // every span on every page, the record's own pages included, names a file abcd
 // writes. A span from `docs/` or `README.md` is a person's writing, which a
