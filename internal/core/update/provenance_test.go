@@ -613,12 +613,12 @@ func TestReleaseIdentityIsReleaseYMLOnMain(t *testing.T) {
 		t.Fatalf("release.yml on main, at the release's commit, must verify: %v", err)
 	}
 	for name, edit := range map[string]func(*certificate.Summary){
-		"an identity other than release.yml on main": func(c *certificate.Summary) { c.SubjectAlternativeName = signer + "@refs/tags/v0.13.4" },
-		"the workflow on another branch":             func(c *certificate.Summary) { c.SubjectAlternativeName = signer + "@refs/heads/release" },
-		"a source ref other than main":               func(c *certificate.Summary) { c.SourceRepositoryRef = "refs/tags/v0.13.4" },
-		"a source ref on another branch":             func(c *certificate.Summary) { c.SourceRepositoryRef = "refs/heads/release" },
-		"a self-hosted runner":                       func(c *certificate.Summary) { c.RunnerEnvironment = "self-hosted" },
-		"another commit":                             func(c *certificate.Summary) { c.SourceRepositoryDigest = commitV0133 },
+		"the workflow at a tag ref":      func(c *certificate.Summary) { c.SubjectAlternativeName = signer + "@refs/tags/v1.2.3" },
+		"the workflow on another branch": func(c *certificate.Summary) { c.SubjectAlternativeName = signer + "@refs/heads/release" },
+		"a source ref at a tag":          func(c *certificate.Summary) { c.SourceRepositoryRef = "refs/tags/v1.2.3" },
+		"a source ref on another branch": func(c *certificate.Summary) { c.SourceRepositoryRef = "refs/heads/release" },
+		"a self-hosted runner":           func(c *certificate.Summary) { c.RunnerEnvironment = "self-hosted" },
+		"another commit":                 func(c *certificate.Summary) { c.SourceRepositoryDigest = commitV0133 },
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := accepted()
