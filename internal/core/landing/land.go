@@ -797,16 +797,123 @@ type openPR struct {
 
 // prState is what the forge reports of a pull request's way to the merge.
 type prState struct {
-	Mergeable        string          `json:"mergeable"`
-	MergeStateStatus string          `json:"mergeStateStatus"`
-	IsInMergeQueue   bool            `json:"isInMergeQueue"`
-	AutoMergeRequest json.RawMessage `json:"autoMergeRequest"`
-	HeadRefOid       string          `json:"headRefOid"`
+	Mergeable         string          `json:"mergeable"`
+	MergeStateStatus  string          `json:"mergeStateStatus"`
+	IsInMergeQueue    bool            `json:"isInMergeQueue"`
+	AutoMergeRequest  json.RawMessage `json:"autoMergeRequest"`
+	HeadRefOid        string          `json:"headRefOid"`
+	ReviewDecision    string          `json:"reviewDecision"`
+	StatusCheckRollup *checkRollup    `json:"statusCheckRollup"`
+	// viewer is the forge client's own login, from the same answer.
+	viewer string
+}
+
+// checkRollup is the head commit's checks and statuses as the forge rolls
+// them up, each node a check run (name, status, conclusion) or a commit
+// status (context, state), with whether this pull request requires it.
+type checkRollup struct {
+	State    string `json:"state"`
+	Contexts struct {
+		Nodes []checkContext `json:"nodes"`
+	} `json:"contexts"`
+}
+
+type checkContext struct {
+	Name       string `json:"name"`
+	Status     string `json:"status"`
+	Conclusion string `json:"conclusion"`
+	Context    string `json:"context"`
+	State      string `json:"state"`
+	IsRequired bool   `json:"isRequired"`
+}
+
+// passingConclusions are the check-run conclusions a required check passes
+// with (the forge counts a skipped required check as passed).
+var passingConclusions = map[string]bool{"SUCCESS": true, "NEUTRAL": true, "SKIPPED": true}
+
+// maxCheckName bounds one check's name in a report.
+const maxCheckName = 80
+
+// heldChecks are the required checks that have not passed, each named as
+// the forge names it (sanitised and bounded) with its state, in the forge's
+// order.
+func (s prState) heldChecks() []string {
+	if s.StatusCheckRollup == nil {
+		return nil
+	}
+	var held []string
+	for _, c := range s.StatusCheckRollup.Contexts.Nodes {
+		if !c.IsRequired {
+			continue
+		}
+		name, why := c.Name, ""
+		switch {
+		case c.Context != "" || c.State != "":
+			if name = c.Context; c.State != "SUCCESS" {
+				why = c.State
+			}
+		case c.Status != "COMPLETED":
+			why = c.Status
+		case !passingConclusions[c.Conclusion]:
+			why = c.Conclusion
+			if why == "" {
+				why = "no conclusion"
+			}
+		}
+		if why == "" {
+			continue
+		}
+		name = strings.TrimSpace(termsafe.Sanitize(name))
+		if r := []rune(name); len(r) > maxCheckName {
+			name = string(r[:maxCheckName])
+		}
+		if name == "" {
+			name = "an unnamed check"
+		}
+		held = append(held, name+" ("+strings.ToLower(strings.ReplaceAll(termsafe.Sanitize(why), "_", " "))+")")
+	}
+	return held
 }
 
 func (s prState) armed() bool {
 	t := strings.TrimSpace(string(s.AutoMergeRequest))
 	return t != "" && t != "null"
+}
+
+// autoMerge is the forge's arming of a pull request.
+type autoMerge struct {
+	MergeMethod string `json:"mergeMethod"`
+	EnabledAt   string `json:"enabledAt"`
+	EnabledBy   *struct {
+		Login string `json:"login"`
+	} `json:"enabledBy"`
+}
+
+func (s prState) autoMerge() autoMerge {
+	var a autoMerge
+	_ = json.Unmarshal(s.AutoMergeRequest, &a)
+	return a
+}
+
+// ownArming reports whether the forge says the account the forge client
+// signs in as made the arming. The forge cannot tell land's arming from the
+// person's own, so either counts as land's.
+func (s prState) ownArming() bool {
+	a := s.autoMerge()
+	return s.armed() && s.viewer != "" && a.EnabledBy != nil && strings.EqualFold(a.EnabledBy.Login, s.viewer)
+}
+
+// armedFor is how long the arming has been in place, by the forge's
+// enabledAt; false when the forge gives no time that parses.
+func (s prState) armedFor() (time.Duration, bool) {
+	if !s.armed() {
+		return 0, false
+	}
+	t, err := time.Parse(time.RFC3339, s.autoMerge().EnabledAt)
+	if err != nil {
+		return 0, false
+	}
+	return max(now().Sub(t), 0), true
 }
 
 // maxListedPRs bounds the forge's listing of a branch's open pull requests:
@@ -816,7 +923,14 @@ const maxListedPRs = 20
 // PRStateQuery is the forge's GraphQL query for a pull request's way to the
 // merge: `gh pr view --json` has no merge-queue field (gh 2.100.0 refuses
 // isInMergeQueue), so the state is read through the forge's API instead.
-const PRStateQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod} mergeStateStatus mergeable headRefOid}}}`
+//
+// It also reads the viewer's login (whose arming is land's own), the review
+// decision, when and by whom the arming was made, and the head's checks with
+// whether this pull request requires each (isRequired takes the pull
+// request's number; with neither it nor an id the forge refuses the field).
+// Every field is pinned in ghcontract, and testdata/ holds the forge's
+// answers to this query.
+const PRStateQuery = `query($o:String!,$r:String!,$n:Int!){viewer{login} repository(owner:$o,name:$r){pullRequest(number:$n){isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod enabledAt enabledBy{login}} reviewDecision mergeStateStatus mergeable headRefOid statusCheckRollup{state contexts(first:50){nodes{... on CheckRun{name status conclusion isRequired(pullRequestNumber:$n)} ... on StatusContext{context state isRequired(pullRequestNumber:$n)}}}}}}}`
 
 // prStateArgs are the forge client's arguments for PRStateQuery on pull
 // request n of the repository owner/name. The owner and the name go as raw
@@ -830,6 +944,9 @@ func prStateArgs(owner, name, n string) []string {
 // and gh exits 0 on some of them, so Errors is read, never left to gh.
 type prStateAnswer struct {
 	Data struct {
+		Viewer *struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
 		Repository *struct {
 			PullRequest *prState `json:"pullRequest"`
 		} `json:"repository"`
@@ -953,7 +1070,11 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 		if a.Data.Repository == nil || a.Data.Repository.PullRequest == nil {
 			return prState{}, refuse("the forge reports no pull request #"+n+" in "+nameWithOwner, "check the forge client (gh pr view "+n+"), then run abcd land again")
 		}
-		return *a.Data.Repository.PullRequest, nil
+		st := *a.Data.Repository.PullRequest
+		if a.Data.Viewer != nil {
+			st.viewer = a.Data.Viewer.Login
+		}
+		return st, nil
 	}
 	// The arming is pinned to the head land checked: the forge refuses it when
 	// the pull request's head is another commit.
@@ -972,39 +1093,52 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 	}
 	note := "pull request #" + n + ": " + d.why
 	if s.IsInMergeQueue {
-		res.add("enqueue", StatusDone, note+"; it is already in the merge queue", "")
+		res.add("enqueue", StatusDone, note+reviewText(s)+"; it is already in the merge queue", "")
 		return nil
 	}
-	if s.armed() {
-		// An arming land did not make is someone's decision: it is left as
-		// it is, never re-armed or toggled, and its queue state reported.
-		res.add("enqueue", StatusDone, "pull request #"+n+" is already armed ("+armedMethod(s)+"), an arming land leaves as it is; it is not in the merge queue yet: the forge reports "+holdText(s)+
+	// rearm makes the arming again after a toggle: land's own arguments for
+	// an arming it makes now, the forge's method for one already made.
+	rearm := armArgs
+	switch {
+	case s.armed() && !s.ownArming():
+		// An arming another account made is someone's decision: it is left
+		// as it is, never re-armed or toggled, and its queue state reported.
+		res.add("enqueue", StatusDone, "pull request #"+n+" is already armed ("+armedMethod(s)+"), an arming another account made (or one the forge does not attribute), which land leaves as it is"+reviewText(s)+"; it is not in the merge queue yet: "+holdText(s, res.Default)+
 			cleanAdvice(s, "land leaves an arming it did not make as it is, on this run and every re-run", n, rearmArgs(s, n, res.Head)), "")
 		return nil
+	case s.armed():
+		// This account's arming, land's own from an earlier run (the forge
+		// cannot tell land's arming from the person's own): the grace below
+		// decides whether it has sat long enough to toggle.
+		note = "pull request #" + n + " is already armed (" + armedMethod(s) + ") by this account"
+		rearm = rearmArgs(s, n, res.Head)
+	default:
+		if err := arm(); err != nil {
+			return err
+		}
+		if s, err = confirmView(view, n, res.Head); err != nil {
+			return err
+		}
 	}
-	if err := arm(); err != nil {
-		return err
-	}
+	note += reviewText(s)
 	// The confirmation (iss-2610090642376032): an armed pull request the
-	// forge reports CLEAN can still sit outside the queue; toggling auto-merge
-	// once has queued it where the forge's enqueue call failed. The toggle
-	// touches only the arming land just made.
-	if s, err = confirmView(view, n, res.Head); err != nil {
-		return err
-	}
-	if !s.IsInMergeQueue && s.MergeStateStatus == "CLEAN" {
+	// forge reports CLEAN can still sit outside the queue, and toggling
+	// auto-merge once has queued it where the forge's enqueue call failed. It
+	// also queues one by itself, after a wait (round 5), so the toggle waits
+	// out toggleGrace, timed by the forge's own enabledAt.
+	if age, ok := s.armedFor(); ok && age > toggleGrace && s.MergeStateStatus == "CLEAN" && s.HeadRefOid == res.Head {
 		if _, err := forge(o, dir, "pr", "merge", n, "--disable-auto"); err != nil {
 			return err
 		}
-		if err := arm(); err != nil {
+		if _, err := forge(o, dir, rearm...); err != nil {
 			why := err.Error()
 			if r := (*Refusal)(nil); errors.As(err, &r) {
 				why = r.Reason
 			}
 			return refuse("pull request #"+n+" is now DISARMED: land withdrew its auto-merge to queue it again and the forge refused the new arming ("+why+")",
-				"arm it again yourself with: gh "+strings.Join(shellWords(armArgs), " ")+" (or run abcd land again)")
+				"arm it again yourself with: gh "+strings.Join(shellWords(rearm), " ")+" (or run abcd land again)")
 		}
-		note += "; it sat CLEAN outside the queue, so auto-merge was toggled once"
+		note += fmt.Sprintf("; it sat CLEAN outside the queue, armed %d min ago, past the %d-minute grace, so auto-merge was toggled once", int(age/time.Minute), int(toggleGrace/time.Minute))
 		if s, err = confirmView(view, n, res.Head); err != nil {
 			return err
 		}
@@ -1013,9 +1147,48 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 		res.add("enqueue", StatusDone, note+"; it is in the merge queue", "")
 		return nil
 	}
-	res.add("enqueue", StatusDone, note+"; it is not in the merge queue yet: the forge reports "+holdText(s)+
-		cleanAdvice(s, "land toggles only an arming it has just made, once, and a re-run leaves this arming as it is", n, armArgs), "")
+	res.add("enqueue", StatusDone, note+"; it is not in the merge queue yet: "+holdText(s, res.Default)+waitText(s, n, rearm), "")
 	return nil
+}
+
+// toggleGrace is how long this account's arming may sit outside the merge
+// queue before land toggles it. On 2026-10-15 the forge queued pull request
+// #1018 by itself about 15 minutes after it went CLEAN, armed and unqueued
+// (12:59:47Z to 13:15:01Z): a normal wait, which a toggle would only have
+// churned. The grace is twice that.
+const toggleGrace = 30 * time.Minute
+
+// now is land's clock, a var so a test can fix it. An arming's age is read
+// from the forge's enabledAt against it; land keeps no clock state of its own.
+var now = time.Now
+
+// waitText is what the person can do about this account's arming the forge
+// reports CLEAN yet outside the merge queue (rearm arms it again): inside
+// the grace, wait and run land again after it; past it (land has toggled it
+// once on this run) or with no arming time from the forge, wait or toggle it
+// by hand. "" for any other state, which the forge settles itself.
+func waitText(s prState, n string, rearm []string) string {
+	if s.MergeStateStatus != "CLEAN" {
+		return ""
+	}
+	age, ok := s.armedFor()
+	switch {
+	case !ok:
+		return cleanAdvice(s, "the forge gives no time for this arming, so land does not toggle it", n, rearm)
+	case age <= toggleGrace:
+		return fmt.Sprintf("; armed; the forge has not queued it yet (armed %d min ago); run abcd land again after %s if it is still not queued",
+			int(age/time.Minute), ceilMinute(now().Add(toggleGrace-age)).UTC().Format("15:04 UTC"))
+	}
+	return cleanAdvice(s, "land toggles an arming once a run", n, rearm)
+}
+
+// ceilMinute is t rounded up to the minute, so a time to come back after is
+// never inside the grace.
+func ceilMinute(t time.Time) time.Time {
+	if r := t.Truncate(time.Minute); !r.Equal(t) {
+		return r.Add(time.Minute)
+	}
+	return t
 }
 
 // cleanAdvice is what the person can do about an armed pull request the forge
@@ -1057,11 +1230,8 @@ func confirmView(view func() (prState, error), n, head string) (prState, error) 
 
 // armedMethod is the merge method of the arming the forge reports.
 func armedMethod(s prState) string {
-	var a struct {
-		MergeMethod string `json:"mergeMethod"`
-	}
-	if json.Unmarshal(s.AutoMergeRequest, &a) == nil && a.MergeMethod != "" {
-		return strings.ToLower(a.MergeMethod)
+	if m := s.autoMerge().MergeMethod; m != "" {
+		return strings.ToLower(m)
 	}
 	return "auto-merge"
 }
@@ -1075,24 +1245,59 @@ func shellWords(ws []string) []string {
 	return out
 }
 
-// holdText says what the forge reports holds a pull request out of the queue.
-func holdText(s prState) string {
+// maxHeldChecks bounds how many held required checks a report names.
+const maxHeldChecks = 8
+
+// holdText says what holds a pull request out of the queue: the required
+// checks that have not passed, named first, then the forge's merge state.
+// BEHIND is no holder where land arms, since a merge queue gates def and
+// builds each entry on top of it.
+func holdText(s prState, def string) string {
+	var b strings.Builder
+	if held := s.heldChecks(); len(held) > 0 {
+		shown := held[:min(len(held), maxHeldChecks)]
+		b.WriteString("required checks have not passed: " + strings.Join(shown, ", "))
+		if more := len(held) - len(shown); more > 0 {
+			fmt.Fprintf(&b, ", and %d more", more)
+		}
+		b.WriteString("; ")
+	}
 	st := s.MergeStateStatus
 	if st == "" {
 		st = "no merge state"
 	}
 	why := map[string]string{
 		"BLOCKED":  "a required check or review has not passed",
-		"BEHIND":   "the branch is behind the default branch",
+		"BEHIND":   "",
 		"UNSTABLE": "a check is failing",
 		"UNKNOWN":  "the forge has not computed it yet",
 		"DRAFT":    "the pull request is a draft",
 		"CLEAN":    "it is mergeable, but the forge has not queued it",
 	}[st]
-	if why == "" {
-		return st
+	b.WriteString("the forge reports " + termsafe.Sanitize(st))
+	if st == "BEHIND" {
+		b.WriteString(", which does not hold it: the queue tests it on top of " + def)
+	} else if why != "" {
+		b.WriteString(" (" + why + ")")
 	}
-	return st + " (" + why + ")"
+	return b.String()
+}
+
+// reviewText is the forge's review decision on the pull request, as a note
+// clause: the forge's word, never the ruleset mirror's approval rule, which
+// covers only the paths code owners own.
+func reviewText(s prState) string {
+	switch s.ReviewDecision {
+	case "REVIEW_REQUIRED":
+		return "; the forge holds it for a person's approval"
+	case "APPROVED":
+		return "; the forge reports it approved"
+	case "CHANGES_REQUESTED":
+		return "; a reviewer requested changes, which hold it"
+	case "":
+		return "; the forge requires no review for this pull request"
+	}
+	return "; the forge reports the review decision " + termsafe.Sanitize(s.ReviewDecision)
 }
 
 // gateDecision is the merge gate's answer: whether land arms the merge, and
@@ -1118,7 +1323,7 @@ func mergeGate(r MergeRule, def string) gateDecision {
 	case !r.Approval:
 		return gateDecision{why: "the ruleset requires no person's approval on " + def + ", so under ruling AM1 its merge is left for a person to make"}
 	}
-	return gateDecision{arm: true, why: "auto-merge armed through " + def + "'s merge queue (" + strings.ToLower(r.Method) + "), which holds it for a person's approval"}
+	return gateDecision{arm: true, why: "auto-merge armed through " + def + "'s merge queue (" + strings.ToLower(r.Method) + ")"}
 }
 
 func short(sha string) string {

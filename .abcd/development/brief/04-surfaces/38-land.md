@@ -73,14 +73,28 @@ bound: the refusal says so and gives the push to run by hand.
    (`--match-head-commit`), and then confirmed in the merge queue at that
    head, through the forge's GraphQL API (the forge client's pull-request
    view has no merge-queue field), asked of the repository the forge client
-   named when `origin` was checked: a pull request the forge reports CLEAN and unqueued has the auto-merge
-   land made toggled once, and any other state is named. An arming someone
-   else made is left as it is and reported, and a toggle whose re-arming fails
+   named when `origin` was checked. The same query reads the forge's review
+   decision, which the note reports (REVIEW_REQUIRED: held for a person's
+   approval; APPROVED: approved; none: no review required for this pull
+   request), never an approval hold asserted from the ruleset mirror alone,
+   whose approval rule covers only the paths code owners own. A pull request
+   outside the queue is reported with what holds it: the required checks that
+   have not passed (`isRequired` for this pull request; at most eight,
+   sanitised) before the forge's merge state, and BEHIND alone named as no
+   holder, since the queue tests the pull request on top of the default
+   branch. Auto-merge is toggled once a run, and only when this account's
+   arming has sat CLEAN and unqueued for more than 30 minutes by the forge's
+   `enabledAt` (no local clock state): on the first real run the forge queued
+   an armed CLEAN pull request by itself after fifteen minutes, which a toggle
+   would only have churned, and the grace is twice that. Inside it the note
+   says how long ago the arming was made and when to run the verb again if
+   the pull request is still not queued. The forge cannot tell land's arming
+   from the person's own under the same account, so both count as land's; an
+   arming another account made is left as it is and reported, with the
+   person's way on: wait for the forge, or withdraw and re-arm it with the
+   exact `gh pr merge` commands the note gives. A toggle whose re-arming fails
    says the pull request is now disarmed and gives the command that arms it.
-   A re-run never toggles an arming again (its own earlier one included, and
-   never one land did not make), so a pull request still CLEAN and unqueued is
-   reported with the person's way on: wait for the forge, or withdraw and
-   re-arm it with the exact `gh pr merge` commands the note gives. With no
+   With no
    pull request the step stops with the `gh pr create` command; the verb never opens one (ruling R2), and the next run
    queues it.
 

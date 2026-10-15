@@ -120,8 +120,9 @@ func TestAnOriginOnAnotherRealHostIsNotCalledAnAlias(t *testing.T) {
 	}
 }
 
-// r4: an arming land made that still sits CLEAN outside the queue says what
-// the person can do, since a re-run leaves an arming as it is.
+// r4: an arming land made that still sits CLEAN outside the queue, with no
+// arming time from the forge (so no grace can be timed and no toggle made),
+// says what the person can do.
 func TestACleanUnqueuedArmingSaysWhatThePersonCanDo(t *testing.T) {
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())

@@ -4,7 +4,15 @@
 # one per type. One field a line: <Type>.<field> <named type> <kind>.
 # PullRequest, MergeQueueEntry and AutoMergeRequest are listed whole; Query and
 # Repository hold only the field the walk to a pull request takes.
+# Round 5 (read 2026-10-15 the same way, one __type query a type, as the forge
+# allows two introspection fields a query): StatusCheckRollup,
+# StatusCheckRollupContextConnection, CheckRun, StatusContext and Actor are
+# listed whole; Query.viewer and User.login are the walk to the viewer's login.
+# A union's possible types are one line each, "on <Union> <Type>", read by
+# {__type(name:"StatusCheckRollupContext"){possibleTypes{name}}}.
 Query.repository Repository OBJECT
+Query.viewer User OBJECT
+User.login String SCALAR
 Repository.pullRequest PullRequest OBJECT
 PullRequest.activeLockReason LockReason ENUM
 PullRequest.additions Int SCALAR
@@ -135,3 +143,54 @@ AutoMergeRequest.enabledAt DateTime SCALAR
 AutoMergeRequest.enabledBy Actor INTERFACE
 AutoMergeRequest.mergeMethod PullRequestMergeMethod ENUM
 AutoMergeRequest.pullRequest PullRequest OBJECT
+StatusCheckRollup.commit Commit OBJECT
+StatusCheckRollup.contexts StatusCheckRollupContextConnection OBJECT
+StatusCheckRollup.id ID SCALAR
+StatusCheckRollup.state StatusState ENUM
+StatusCheckRollupContextConnection.checkRunCount Int SCALAR
+StatusCheckRollupContextConnection.checkRunCountsByState CheckRunStateCount OBJECT
+StatusCheckRollupContextConnection.edges StatusCheckRollupContextEdge OBJECT
+StatusCheckRollupContextConnection.nodes StatusCheckRollupContext UNION
+StatusCheckRollupContextConnection.pageInfo PageInfo OBJECT
+StatusCheckRollupContextConnection.statusContextCount Int SCALAR
+StatusCheckRollupContextConnection.statusContextCountsByState StatusContextStateCount OBJECT
+StatusCheckRollupContextConnection.totalCount Int SCALAR
+CheckRun.annotations CheckAnnotationConnection OBJECT
+CheckRun.checkSuite CheckSuite OBJECT
+CheckRun.completedAt DateTime SCALAR
+CheckRun.conclusion CheckConclusionState ENUM
+CheckRun.databaseId Int SCALAR
+CheckRun.deployment Deployment OBJECT
+CheckRun.detailsUrl URI SCALAR
+CheckRun.externalId String SCALAR
+CheckRun.id ID SCALAR
+CheckRun.isRequired Boolean SCALAR
+CheckRun.name String SCALAR
+CheckRun.pendingDeploymentRequest DeploymentRequest OBJECT
+CheckRun.permalink URI SCALAR
+CheckRun.repository Repository OBJECT
+CheckRun.resourcePath URI SCALAR
+CheckRun.startedAt DateTime SCALAR
+CheckRun.status CheckStatusState ENUM
+CheckRun.steps CheckStepConnection OBJECT
+CheckRun.summary String SCALAR
+CheckRun.text String SCALAR
+CheckRun.title String SCALAR
+CheckRun.url URI SCALAR
+StatusContext.avatarUrl URI SCALAR
+StatusContext.commit Commit OBJECT
+StatusContext.context String SCALAR
+StatusContext.createdAt DateTime SCALAR
+StatusContext.creator Actor INTERFACE
+StatusContext.description String SCALAR
+StatusContext.id ID SCALAR
+StatusContext.isRequired Boolean SCALAR
+StatusContext.state StatusState ENUM
+StatusContext.targetUrl URI SCALAR
+StatusContext.updatedAt DateTime SCALAR
+Actor.avatarUrl URI SCALAR
+Actor.login String SCALAR
+Actor.resourcePath URI SCALAR
+Actor.url URI SCALAR
+on StatusCheckRollupContext CheckRun
+on StatusCheckRollupContext StatusContext

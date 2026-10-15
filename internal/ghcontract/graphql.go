@@ -7,7 +7,8 @@ import (
 )
 
 // The forge's GraphQL schema, as far as abcd's queries reach into it: one
-// field a line, "<Type>.<field> <named type> <kind>", read by introspection
+// field a line, "<Type>.<field> <named type> <kind>", and one line for each
+// type a union can be, "on <Union> <Type>", read by introspection
 // (graphql-fields.txt says how). Refresh it by running that query again.
 //
 //go:embed graphql-fields.txt
@@ -16,12 +17,20 @@ var graphqlFields string
 // gqlField is one pinned field: its named type and that type's kind.
 type gqlField struct{ named, kind string }
 
-// gqlSchema is graphqlFields by type, then by field.
-var gqlSchema = func() map[string]map[string]gqlField {
-	s := map[string]map[string]gqlField{}
+// gqlSchema is graphqlFields by type, then by field; gqlUnions is each
+// union's possible types.
+var gqlSchema, gqlUnions = func() (map[string]map[string]gqlField, map[string]map[string]bool) {
+	s, u := map[string]map[string]gqlField{}, map[string]map[string]bool{}
 	for _, line := range strings.Split(graphqlFields, "\n") {
 		f := strings.Fields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		if f[0] == "on" && len(f) == 3 {
+			if u[f[1]] == nil {
+				u[f[1]] = map[string]bool{}
+			}
+			u[f[1]][f[2]] = true
 			continue
 		}
 		typ, field, ok := strings.Cut(f[0], ".")
@@ -33,7 +42,7 @@ var gqlSchema = func() map[string]map[string]gqlField {
 		}
 		s[typ][field] = gqlField{f[1], f[2]}
 	}
-	return s
+	return s, u
 }()
 
 // GraphQLField reports the named type of field on the forge's GraphQL type
@@ -47,8 +56,10 @@ func GraphQLField(typ, field string) (string, bool) {
 // have in the pinned schema, as the forge refuses it. It parses the shape
 // abcd's queries take, and refuses any other: an optional `query` keyword,
 // name and variable definitions, then nested selections of plain fields, each
-// with optional arguments. An alias, a fragment, a directive or a mutation is
-// refused as not parsed rather than passed unchecked.
+// with optional arguments, and inline fragments (`... on Type { }`) on a
+// union the type is pinned to be, or on the selection's own type. An alias, a
+// named fragment, a directive or a mutation is refused as not parsed rather
+// than passed unchecked; arguments are not checked.
 func CheckGraphQL(query string) error {
 	p := &gqlParser{s: query}
 	p.skip()
@@ -157,8 +168,8 @@ func (p *gqlParser) selection(typ string) error {
 		return p.unparsed()
 	}
 	p.i++
-	fields := gqlSchema[typ]
-	if fields == nil {
+	fields, union := gqlSchema[typ], gqlUnions[typ]
+	if fields == nil && union == nil {
 		return fmt.Errorf("graphql: the fields of %s are not pinned in ghcontract", typ)
 	}
 	n := 0
@@ -166,7 +177,17 @@ func (p *gqlParser) selection(typ string) error {
 		if p.i >= len(p.s) {
 			return fmt.Errorf("graphql: unclosed selection on %s in %q", typ, p.s)
 		}
+		if strings.HasPrefix(p.s[p.i:], "...") {
+			if err := p.fragment(typ, union); err != nil {
+				return err
+			}
+			n++
+			continue
+		}
 		name := p.name()
+		if union != nil && name != "" {
+			return fmt.Errorf("graphql: %q is selected directly on the union %s, which takes only fragments on its types", name, typ)
+		}
 		if p.skip(); name == "" || p.peek() == ':' {
 			return p.unparsed()
 		}
@@ -200,4 +221,25 @@ func (p *gqlParser) selection(typ string) error {
 		return fmt.Errorf("graphql: an empty selection on %s", typ)
 	}
 	return nil
+}
+
+// fragment reads one inline fragment, `... on T { }`, in a selection on typ
+// (union is typ's possible types when it is a union), and checks its own
+// selection on T. T must be typ itself or, on a union, one of its types.
+func (p *gqlParser) fragment(typ string, union map[string]bool) error {
+	p.i += 3
+	p.skip()
+	if p.name() != "on" {
+		return p.unparsed()
+	}
+	p.skip()
+	on := p.name()
+	if on == "" {
+		return p.unparsed()
+	}
+	if on != typ && !union[on] {
+		return fmt.Errorf("graphql: a fragment on %s can't be spread inside %s (the forge's schema as ghcontract pins it)", on, typ)
+	}
+	p.skip()
+	return p.selection(on)
 }

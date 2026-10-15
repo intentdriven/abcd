@@ -56,7 +56,10 @@ type fakeForge struct {
 	// answer, when set, is the whole answer to the state query, its @HEAD@
 	// replaced as a view's is.
 	answer string
-	calls  [][]string
+	// answers are whole answers to the state query, one a call, the last
+	// repeated, each @HEAD@ replaced as a view's is; they come before views.
+	answers []string
+	calls   [][]string
 	// onRepoView runs when the repository is viewed, before the answer.
 	onRepoView func()
 	// failArm fails the arm call with this ordinal (1 is the first), 0 none.
@@ -118,6 +121,13 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		}
 		if f.answer != "" {
 			return strings.ReplaceAll(f.answer, "@HEAD@", f.head), nil
+		}
+		if len(f.answers) > 0 {
+			a := f.answers[0]
+			if len(f.answers) > 1 {
+				f.answers = f.answers[1:]
+			}
+			return strings.ReplaceAll(a, "@HEAD@", f.head), nil
 		}
 		if len(f.views) == 0 {
 			return "", errors.New("fake forge: no view left")
@@ -517,24 +527,6 @@ func TestAQueueBehindApprovalIsArmedAndConfirmed(t *testing.T) {
 	}
 }
 
-// iss-2610090642376032: an armed pull request the forge reports CLEAN and
-// not in the queue is toggled once, and only once.
-func TestACleanUnqueuedPullRequestIsToggledOnce(t *testing.T) {
-	f := newFixture(t, queueRuleset)
-	f.forge.prs = f.prFor(f.head())
-	f.forge.views = []string{viewBlocked, viewCleanUn, viewQueued}
-	res, err := f.land(f.options())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if f.forge.called("pr", "merge", "7", "--disable-auto") != 1 || f.forge.called("pr", "merge", "7", "--auto", "--merge") != 2 {
-		t.Fatalf("forge calls %v, want one toggle (disable, then arm again)", f.forge.calls)
-	}
-	if s := step(t, res, "enqueue"); s.Status != StatusDone || !strings.Contains(s.Note, "in the merge queue") {
-		t.Fatalf("enqueue step %+v", s)
-	}
-}
-
 func TestAnArmedPullRequestStillOutOfTheQueueSaysWhatHoldsIt(t *testing.T) {
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
@@ -880,18 +872,6 @@ func TestAnArmingSomeoneElseMadeIsLeftAlone(t *testing.T) {
 	if s := step(t, res, "enqueue"); !strings.Contains(s.Note, "already armed") || !strings.Contains(s.Note, "CLEAN") {
 		t.Fatalf("enqueue step %+v, want the arming reported and its queue state named", s)
 	}
-}
-
-// m6: a toggle whose re-arm fails says the pull request is now disarmed and
-// gives the exact command that arms it again.
-func TestAFailedRearmSaysThePullRequestIsDisarmed(t *testing.T) {
-	f := newFixture(t, queueRuleset)
-	f.forge.prs = f.prFor(f.head())
-	f.forge.views = []string{viewBlocked, viewCleanUn}
-	f.forge.failArm = 2
-	_, err := f.land(f.options())
-	wantRefusal(t, err, "DISARMED")
-	wantRefusal(t, err, "gh pr merge 7 --auto --merge --match-head-commit="+f.head())
 }
 
 // m11: a push git refused names git's own per-ref rejection.

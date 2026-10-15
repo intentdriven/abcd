@@ -16,6 +16,19 @@ func TestTheGraphQLFieldsAreTheForgesOwn(t *testing.T) {
 		{"PullRequest", "mergeQueueEntry", "MergeQueueEntry"},
 		{"MergeQueueEntry", "position", "Int"},
 		{"AutoMergeRequest", "mergeMethod", "PullRequestMergeMethod"},
+		// R5: read live 2026-10-15 (graphql-fields.txt says how).
+		{"Query", "viewer", "User"},
+		{"User", "login", "String"},
+		{"Actor", "login", "String"},
+		{"AutoMergeRequest", "enabledAt", "DateTime"},
+		{"AutoMergeRequest", "enabledBy", "Actor"},
+		{"PullRequest", "reviewDecision", "PullRequestReviewDecision"},
+		{"StatusCheckRollup", "contexts", "StatusCheckRollupContextConnection"},
+		{"StatusCheckRollupContextConnection", "nodes", "StatusCheckRollupContext"},
+		{"CheckRun", "isRequired", "Boolean"},
+		{"CheckRun", "conclusion", "CheckConclusionState"},
+		{"StatusContext", "context", "String"},
+		{"StatusContext", "isRequired", "Boolean"},
 	} {
 		if got, ok := ghcontract.GraphQLField(c.typ, c.field); !ok || got != c.named {
 			t.Fatalf("GraphQLField(%s, %s) = %q, %v; want %s", c.typ, c.field, got, ok, c.named)
@@ -39,7 +52,17 @@ func TestCheckGraphQLRefusesAFieldTheForgeLacks(t *testing.T) {
 		{"headRefOid{oid}", "takes no selection"},
 		{"autoMergeRequest", "needs a selection"},
 		{"mergeQueueEntry{headCommit{oid}}", "Commit"},
-		{"...on PullRequest{number}", "not parsed"},
+		{"...on PullRequest{number}", ""},
+		{"...on Commit{oid}", "can't be spread inside PullRequest"},
+		{"...Named", "not parsed"},
+		// The forge's own refusals, read live 2026-10-15: a fragment on a type
+		// the union cannot be, and a field selected on the union itself.
+		{"statusCheckRollup{contexts(first:1){nodes{... on CheckRun{name isRequired(pullRequestNumber:$n)} ... on StatusContext{context state}}}}", ""},
+		{"statusCheckRollup{contexts(first:1){nodes{... on PullRequest{number}}}}", "can't be spread inside StatusCheckRollupContext"},
+		{"statusCheckRollup{contexts(first:1){nodes{name}}}", "directly on the union StatusCheckRollupContext"},
+		{"statusCheckRollup{contexts(first:1){nodes{... on CheckRun{nme}}}}", `"nme"`},
+		{"statusCheckRollup{contexts(first:1){nodes{... on CheckRun}}}", "not parsed"},
+		{"autoMergeRequest{enabledAt enabledBy{login}}", ""},
 		{"a:number", "not parsed"},
 		{"number @include(if:true)", "not parsed"},
 		{"number", ""},
@@ -66,7 +89,8 @@ func TestCheckGraphQLRefusesAFieldTheForgeLacks(t *testing.T) {
 		`{repository(owner:"o",name:"r"){pullRequest(number:1){number}}`,
 		`{repository(owner:"o",name:"r"){pullRequest(number:1){number}}}}`,
 		`mutation{repository{pullRequest{number}}}`,
-		`{viewer{login}}`,
+		`{viewer{email}}`,
+		`{organization(login:"o"){login}}`,
 	} {
 		if err := ghcontract.CheckGraphQL(q); err == nil {
 			t.Fatalf("CheckGraphQL(%q) passed, want a refusal", q)

@@ -82,16 +82,24 @@ that name with none at this head, since the proof may lie past the bound.
    never at the branch's tip. Today every repository runs in human mode, so
    auto-merge is armed only where a merge queue gates the default branch and a
    ruleset requires a person's approval (ruling AM1); anywhere else the step
-   is `left` and says why. A pull request someone else already armed is left
-   as it is and its queue state reported. After arming it confirms the pull
-   request is in the queue at the head it armed, toggling auto-merge once when
-   the forge reports it CLEAN and unqueued, and otherwise names what holds it;
-   a toggle whose re-arming fails says the pull request is now disarmed and
-   gives the command that arms it again. A re-run never toggles an arming
-   again, its own included, so an armed pull request still CLEAN and outside
-   the queue is reported with what the user can do: wait for the forge to
-   queue it, or withdraw and re-arm it with the exact `gh pr merge` commands
-   the note gives. With no pull request the step is
+   is `left` and says why. The note gives the forge's review decision, not
+   the ruleset mirror's: held for a person's approval, approved, or no review
+   required for this pull request. A pull request another account already
+   armed is left as it is and its queue state reported. After arming it
+   confirms the pull request is in the queue at the head it armed, and
+   otherwise names what holds it: required checks that have not passed first
+   (at most eight), then the forge's merge state, where BEHIND alone holds
+   nothing because the queue tests the pull request on top of the default
+   branch. The forge often queues an armed CLEAN pull request by itself after
+   a wait (fifteen minutes on the first real run), so auto-merge is toggled
+   only when this account's arming has sat CLEAN outside the queue for more
+   than 30 minutes, timed by the arming's own time on the forge, and then once
+   a run. Inside that grace the note says how long ago it was armed and when
+   to run `abcd land` again if it is still not queued. The forge cannot tell
+   land's arming from one the user made by hand under the same account, so
+   both count as land's. A toggle whose re-arming fails says the pull request
+   is now disarmed and gives the command that arms it again. With no pull
+   request the step is
    `stopped` with the `gh pr create` command: relay it to the user, who opens
    the pull request; the next `abcd land` queues it.
 
