@@ -2416,3 +2416,30 @@ Verdict: refine, not file. The proposal entered as a new intent; the record gril
 | a private ideate verdict is allowed in the account's own git-tracked home once it ignores itself | refines iss-2610090740139804 | the same branch |
 
 Verdict: SPLIT, confirmed ("Confirm SPLIT"). The routing survived as proposed. The proposal entered from a security review finding on private ideate verdicts in a dotfiles home; the product thinker widened it from ideate alone to the whole of abcd's home, chose a self-ignoring home over refusing every write ("that may break things"), and kept credentials refused regardless.
+
+## 2026-10-15: sessions announce what they are doing across accounts (product thinker, routing confirmed in part)
+
+| part | type | home |
+|---|---|---|
+| making, reading and listing fixed-form announcements on the shared remote, `abcd announce` and `abcd status` | capability | intent itd-2609151838312703 (planned, spc-2610150728396006) |
+| a release cut held by a reservation the land step reads | capability | the same intent; builds on itd-2609091034175565 and would resolve iss-2609091037191879 |
+| a status branch that moves without a preflight receipt, and the ruleset that keeps its history | trust rule | adr-2610150729333337 (proposed); clauses in brief invariants 7 and 10 with the building change |
+| when abcd fetches announcements | trust rule | brief invariant 7 as it stands (the intent's decision 14) |
+| a peer's message informs and never authorises | stance | cited on the intent (decision 4); no new principle |
+| the sub-agent budget | capability | itd-2610100704270254, beside the intent |
+| which sessions are running now | capability | itd-2609150819440345 and iss-2608220750029993, kept apart (decision 16) |
+| a faster carrier on the local network | capability | itd-2609151838327688, kept as a draft to rewrite later (decision 15) |
+| the status board renamed the dashboard | rename | iss-2610150726321422 |
+| `abcd peers` given its future meaning, its duplicate check moved under `abcd status --local` | capability seed | iss-2610150726331622 |
+
+Verdict: SPLIT, routing confirmed in part. The product thinker answered both overlap questions (keep the broker draft and rewrite it later; plan apart from the session register) and signed off the plan, but no question put the table as a whole. The routing moved twice after filing:
+
+- **The pre-pass caught a conflict.** The draft's first delivery path was a background fetch from the prompt hook, which conflicts with invariant 7. The product thinker kept the invariant whole ("Only when a command checks").
+- **The naming changed after the criteria were accepted.** `abcd-notes/` became `abcd-status/`, and the note became an announcement, posted with `abcd announce` and read with `abcd status`. Two follow-up captures fell out of the vocabulary: the dashboard rename and the future of `peers`.
+
+The planning interview added two criteria from the product thinker's pushback on scope conditions, so the criteria count rose from 16 to 18:
+
+- senders checked against the forge's push record;
+- a cap on how many announcements one prompt shows.
+
+A third added criterion, that an announcement names nobody, was struck when the product thinker returned to GitHub usernames.
