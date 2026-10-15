@@ -118,7 +118,6 @@ internal/core/site.LinkDefinitions
 internal/core/site.LoadAuthorship
 internal/core/site.LoadBaseline
 internal/core/site.LoadBibliography
-internal/core/site.LoadManifest
 internal/core/site.LoadPrinciples
 internal/core/site.LoadRepoMeta
 internal/core/site.LoadUI

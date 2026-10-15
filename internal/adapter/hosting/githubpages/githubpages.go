@@ -89,14 +89,15 @@ func (Adapter) DeployStep() string {
 func (Adapter) HostConfig(hosting.Site) (string, []byte) { return "", nil }
 
 // Profile: the `github-pages` environment, the run's token with Pages and
-// OIDC rights, the switch, public repositories only, and the project path
-// GitHub serves the site below.
+// OIDC rights, the switch, public repositories only, a project site built
+// from what abcd writes, and the project path GitHub serves the site below.
 func (Adapter) Profile(s hosting.Site) hosting.Profile {
 	return hosting.Profile{
 		Environment: Environment,
 		Permissions: []string{"contents: read", "pages: write", "id-token: write"},
 		Switched:    true,
 		PublicOnly:  true,
+		Project:     true,
 		BasePath:    basePath(s),
 		Address:     address(s),
 	}

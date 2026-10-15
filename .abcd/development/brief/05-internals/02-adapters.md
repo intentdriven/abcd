@@ -207,8 +207,15 @@ configuration file it deploys from — rendered into files the verb writes. The
 host half connects with the person's credential and creates the host, routes a
 domain to it and reports the address, after a read that writes nothing.
 
-One provider ships: an assets-only Cloudflare Worker, the host abcd's own site
-uses. A second is one implementation of the interface and one entry in the
+Two providers ship: an assets-only Cloudflare Worker, the host abcd's own site
+uses, and GitHub Pages, which publishes a project's site from its own workflow
+with the run's short-lived token and no credential. Each says in its profile
+what the verb and the workflow need beyond the deploy step: the deploy
+environment and its token permissions, whether a publish switch gates it,
+whether it serves public repositories only, the path the site is served below,
+and whether it publishes a project site, built from nothing but what abcd
+writes ([`04-surfaces/22-site.md`](../04-surfaces/22-site.md#a-projects-own-site)).
+Another provider is one implementation of the interface and one entry in the
 site package's provider list; the verb does not change. The credential is
 resolved by name through the credential store (`internal/core/credential`),
 the one reader; the connected adapter holds it, and it is scrubbed from every

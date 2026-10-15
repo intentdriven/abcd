@@ -196,6 +196,14 @@ const (
 // the person who wrote it, from a key that works.
 type Manifest struct {
 	SchemaVersion int `json:"schema_version"`
+	// Mode says which route the file declares. Absent, it is a composition:
+	// every block below names where the site's text comes from. ModeProject
+	// makes it a project site's SETTINGS (itd-2610091010348892, the product
+	// thinker's ruling of 2026-10-15): the hosting block and the switch, and
+	// no composition at all, because a project site renders only what abcd
+	// already writes to the repository (project.go). validate refuses every
+	// composition key in a settings file, so the two shapes never mix.
+	Mode string `json:"mode,omitempty"`
 	// Purpose documents this file for the humans who edit it. It is the one
 	// field with nothing to consume it, by design: it is never rendered, and
 	// the single-source rule would forbid rendering it if it were.
@@ -362,6 +370,13 @@ func (m Manifest) validate() error {
 	}
 	if m.SchemaVersion != 1 {
 		return bad("schema_version is %d, want 1", m.SchemaVersion)
+	}
+	switch m.Mode {
+	case "":
+	case ModeProject:
+		return m.validateProject(bad)
+	default:
+		return bad("mode %q is not a route abcd builds (omit it for a composition, or %q for a project site's settings)", m.Mode, ModeProject)
 	}
 	if m.Identity.File == "" || m.Identity.Heading == "" {
 		return bad("identity.file and identity.heading are both required — the hero renders from the Identity block")

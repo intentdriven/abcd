@@ -53,7 +53,7 @@ func TestTheProfileIsTheRunsOwnTokenOnly(t *testing.T) {
 	want := hosting.Profile{
 		Environment: "github-pages",
 		Permissions: []string{"contents: read", "pages: write", "id-token: write"},
-		Switched:    true, PublicOnly: true, BasePath: "/widgets/", Address: "https://acme.github.io/widgets/",
+		Switched:    true, PublicOnly: true, Project: true, BasePath: "/widgets/", Address: "https://acme.github.io/widgets/",
 	}
 	if !reflect.DeepEqual(p, want) {
 		t.Fatalf("profile = %+v, want %+v", p, want)

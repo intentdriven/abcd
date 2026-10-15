@@ -84,6 +84,13 @@ type composer struct {
 	releaseDate string
 	// base is the build's base path (basepath.go).
 	base string
+	// identityLoc is where the identity block lives: the composition's
+	// identity reference, or on the project route the block
+	// `.abcd/positioning.json` points at (project.go).
+	identityLoc BlockRef
+	// project is the project route: the about page, the binary's assets, and
+	// nothing read from a person's own files (project.go).
+	project bool
 }
 
 // at places the root-absolute site path p under the build's base path. Every
@@ -316,8 +323,11 @@ func (c *composer) managedLine() string {
 // renders the page without it rather than failing: the hero's headline and lede
 // come from the rationale page, and those are what carry the page.
 func (c *composer) identity() (positioning.Block, bool) {
+	if c.identityLoc.File == "" {
+		return positioning.Block{}, false
+	}
 	blk, err := positioning.ParseBlock(c.repoRoot, positioning.BlockLocation{
-		File: c.manifest.Identity.File, Heading: c.manifest.Identity.Heading,
+		File: c.identityLoc.File, Heading: c.identityLoc.Heading,
 	})
 	if err != nil {
 		return positioning.Block{}, false
@@ -327,7 +337,7 @@ func (c *composer) identity() (positioning.Block, bool) {
 
 // identitySrc is the provenance of every span the Identity block supplies.
 func (c *composer) identitySrc() string {
-	return srcAttr(c.manifest.Identity.File, slug(c.manifest.Identity.Heading))
+	return srcAttr(c.identityLoc.File, slug(c.identityLoc.Heading))
 }
 
 // brandName is the short handle the header shows beside the mark: the first word
@@ -356,7 +366,7 @@ func (c *composer) headerFor(active string) string {
 	b.WriteString(`<a class="brand" href="` + escapeAttr(c.at("/")) + `">`)
 	// The mark is a committed asset like any other picture; the stylesheet sizes
 	// it, so its own dimensions ride along unchanged. A repository without one
-	// gets a wordmark.
+	// gets a wordmark, and so does a project site, which renders no picture.
 	if logo, err := c.assets.render("docs/assets/img", "logo.png", "", Source{Path: ManifestRelPath}); err == nil {
 		b.WriteString(logo)
 	}
@@ -374,8 +384,11 @@ func (c *composer) headerFor(active string) string {
 		}
 		return ` class="on" aria-current="page"`
 	}
-	b.WriteString(`<a href="` + escapeAttr(c.at("/#"+c.firstChapterAnchor())) + `">` + escapeText(c.ui.NavStory) + `</a>`)
-	b.WriteString(`<a href="` + escapeAttr(c.at("/#"+c.installChapterAnchor())) + `">` + escapeText(c.ui.NavInstall) + `</a>`)
+	// A project site's about page has no composed chapters to point into.
+	if !c.project {
+		b.WriteString(`<a href="` + escapeAttr(c.at("/#"+c.firstChapterAnchor())) + `">` + escapeText(c.ui.NavStory) + `</a>`)
+		b.WriteString(`<a href="` + escapeAttr(c.at("/#"+c.installChapterAnchor())) + `">` + escapeText(c.ui.NavInstall) + `</a>`)
+	}
 	if c.rendersDocs() {
 		b.WriteString(`<a href="` + escapeAttr(c.at("/docs/")) + `">` + escapeText(c.ui.NavDocs) + `</a>`)
 	}
@@ -1182,6 +1195,11 @@ func (c *composer) featureBlock(f *Feature) (string, error) {
 	if !ok {
 		return "", nil
 	}
+	return c.featureBlockFor(node, f)
+}
+
+// featureBlockFor quotes the parts f names of one shipped intent.
+func (c *composer) featureBlockFor(node lint.RecordNode, f *Feature) (string, error) {
 	data, err := fsutil.ReadGuardedInRoot(c.root, node.Path, maxPageBytes)
 	if err != nil {
 		return "", err

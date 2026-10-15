@@ -55,6 +55,11 @@ type Profile struct {
 	// PublicOnly: the provider serves public repositories only, so setup
 	// refuses a private one before it writes anything.
 	PublicOnly bool
+	// Project: the provider publishes a project site, built from nothing but
+	// what abcd already writes to the repository (itd-2610091010348892):
+	// setup writes the switch and the workflow and no composition or site
+	// sources, and the workflow builds with `abcd site build --project`.
+	Project bool
 	// BasePath is the path the site is served below on the host, with a
 	// leading and a trailing slash; "/" is the root.
 	BasePath string

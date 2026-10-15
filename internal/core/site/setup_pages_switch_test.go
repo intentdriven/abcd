@@ -62,7 +62,7 @@ func TestTheSwitchIsReadAtTheTagAndTheDefaultBranchAndOnlyWhilePublic(t *testing
 	if _, err := exec.LookPath("bash"); err != nil {
 		t.Skip("bash is not installed")
 	}
-	wf, err := renderSiteWorkflow("trunk", githubpages.Adapter{}, hosting.Site{Name: "widgets", Repo: "acme/widgets"})
+	wf, err := renderSiteWorkflow("trunk", githubpages.Adapter{}, hosting.Site{Name: "widgets", Repo: "acme/widgets"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestTheSwitchIsReadAtTheTagAndTheDefaultBranchAndOnlyWhilePublic(t *testing
 // the switch the render job read, and the repository's visibility as the
 // event carries it, compared as JSON so a missing field never reads as public.
 func TestTheDeployJobRunsOnlyForAPublicRepository(t *testing.T) {
-	wf, err := renderSiteWorkflow("main", githubpages.Adapter{}, hosting.Site{Name: "widgets", Repo: "acme/widgets"})
+	wf, err := renderSiteWorkflow("main", githubpages.Adapter{}, hosting.Site{Name: "widgets", Repo: "acme/widgets"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -156,7 +156,7 @@ func TestTheDeployJobRunsOnlyForAPublicRepository(t *testing.T) {
 // TestThePagesWorkflowIsPinned pins the workflow setup writes for the
 // github-pages provider byte for byte.
 func TestThePagesWorkflowIsPinned(t *testing.T) {
-	wf, err := renderSiteWorkflow("main", githubpages.Adapter{}, hosting.Site{Name: "widgets", Repo: "acme/widgets"})
+	wf, err := renderSiteWorkflow("main", githubpages.Adapter{}, hosting.Site{Name: "widgets", Repo: "acme/widgets"}, true)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -164,7 +164,13 @@ one who has. It writes nothing except that render, and reaches no network.
   a file name or an asset name. The `<title>` and `<meta name="description">`
   carry Identity text with no attribute to name it, and are checked against the
   Identity block rather than skipped; a page that names itself reads
-  `<page> · <project>`, and both halves are held up.
+  `<page> · <project>`, and both halves are held up. With `--project` (a
+  project site, built by `abcd site build --project`), every `data-src` on
+  every page, the record's own pages included, must also name a file abcd
+  writes: anything under `.abcd/` but the local tier, or `CHANGELOG.md`. A
+  span from `docs/`, `README.md` or any other file a person wrote fails, and
+  the interface strings are the binary's own. A gate whose `--project` and
+  `.abcd/site.json` disagree is refused, both ways.
 - `hero` — the rendered hero's eyebrow, tagline and pitch equal the Identity
   block, read through the same parser the positioning surfaces use.
 - `banned-tokens` — the documentation lint's banned tokens, over the text every

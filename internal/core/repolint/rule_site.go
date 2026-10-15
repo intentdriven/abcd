@@ -56,7 +56,14 @@ func (siteGates) Eval(ctx Context) ([]Finding, error) {
 	}
 	defer os.RemoveAll(tmp)
 
-	res, err := site.Check(site.CheckRequest{RepoRoot: ctx.RepoRoot, OutDir: filepath.Join(tmp, "site")})
+	// The route is the settings file's: a project site's settings are gated on
+	// the project route, as `abcd lint site --project` gates them. A settings
+	// file that cannot be read is left to Check, whose refusal names it.
+	project := false
+	if m, merr := site.LoadManifest(ctx.RepoRoot); merr == nil {
+		project = m.Project()
+	}
+	res, err := site.Check(site.CheckRequest{RepoRoot: ctx.RepoRoot, OutDir: filepath.Join(tmp, "site"), Project: project})
 	if err != nil {
 		// `abcd lint site` exits 2 when it cannot run at all: a refusal, so an
 		// error here, not one more warning.

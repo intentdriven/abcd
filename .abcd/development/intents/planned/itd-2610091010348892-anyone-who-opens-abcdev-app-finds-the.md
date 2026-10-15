@@ -37,10 +37,11 @@ We expect owners to switch it on because it costs one answer at setup and nothin
 
 _Drafted 2026-10-14 from the product thinker's rulings; accepted as drafted the same day (Decisions)._
 
-- **Given** setup in a public abcd-managed repository, **when** the owner answers yes to a project site, **then** the switch is set in the project's abcd settings and abcd's release workflow is added, and nothing else in the repository changes.
+- **Given** setup in a public abcd-managed repository, **when** the owner answers yes to a project site, **then** the switch is set in the project's abcd settings and abcd's release workflow is added, and nothing else in the repository changes: no file is written for the website.
 - **Given** a project with the switch on, **when** it publishes a release, **then** its about page and development record appear at its own GitHub Pages address, as of that release.
+- **Given** any page of the site, **when** a visitor reads it, **then** every word on it comes from what abcd writes to the repository anyway (its identity block, brief, development record and changelog), and hand-written documentation is not rendered: it is read on GitHub.
 - **Given** any page of the site, **when** a visitor opens it, **then** it opens with a line saying it is the record of an abcd-managed repository, linking to the repository.
-- (technical) **Given** text on a page that cannot be traced to a file in the repository, **when** the workflow builds, **then** the build fails, as the site's single-source rule already requires.
+- (technical) **Given** text on a page that cannot be traced to a file abcd writes, **when** the workflow builds, **then** the build fails, as the site's single-source rule already requires; the site's interface words, styles and scripts come from the abcd binary, never from files in the repository.
 - (technical) **Given** the release workflow, **when** it runs, **then** it uses no secret beyond the short-lived token GitHub gives each run, and abcd runs nothing.
 - (technical) **Given** the owner switches the site off, **when** the next release is published, **then** nothing is published, and abcd's setup can remove the workflow.
 
@@ -74,6 +75,8 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 - 2026-10-14: walked through the rewritten press release above, the product thinker answered "Stands as written".
 - 2026-10-14: offered the criteria walk on the drafted Why This Matters, Mechanism, Scope Conditions and Acceptance Criteria, the product thinker answered, verbatim: "auto-approve all". Every drafted criterion, the technical ones included, is accepted as written.
 - 2026-10-14: the move of abcd's own repository to this route is split out into its own intent, itd-2610142145236613, planned now and built later. The product thinker asked, verbatim: "keep working so that we have this intent planned and ready to implement. We'll have to delay building it but I want it to be ready". The press release's last sentence ("abcd's own record moves to the same route, built exactly the way any other project's is.") and the fourth criterion ("Given abcd's own repository, when it moves to this route and publishes a release, then its record is built the same way as any other project's, and its Cloudflare deploy can be retired.") move to that intent; this intent ships without them.
+- 2026-10-15: the product thinker ruled that a project's site renders only what abcd already writes to the repository, as its single source, and nothing written for the website. Pictures are the exception: abcd is later to ask the person for images, or offer to generate some, depending on the context (captured as iss-2610150529485165). Read as: setup writes no composition and no site sources into the repository; the about page is composed from abcd's own writing; the interface words, styles and scripts ship in the binary. The first and fourth criteria are tightened and a criterion is added to say so.
+- 2026-10-15: asked where hand-written docs live, the product thinker ruled that an abcd-managed repository's docs are read on GitHub by default, and that abcd's own docs are rendered in high quality on abcdev.app until a community site arrives. For this intent: a project's site renders no docs; its docs are read on GitHub.
 
 ## Grounds
 

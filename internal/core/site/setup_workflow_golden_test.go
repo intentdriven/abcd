@@ -12,7 +12,7 @@ import (
 // site up before the github-pages provider existed finds its workflow current
 // and is not asked to replace it.
 func TestTheCloudflareWorkflowIsUnchanged(t *testing.T) {
-	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"})
+	wf, err := renderSiteWorkflow("main", cloudflare.Adapter{}, hosting.Site{Name: "x"}, false)
 	if err != nil {
 		t.Fatal(err)
 	}

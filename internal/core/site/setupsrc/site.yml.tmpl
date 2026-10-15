@@ -11,6 +11,11 @@ name: site
 # repository but the host configuration file (<% .HostConfig %>).
 <% else %># credential, and neither does the deploy job: it deploys with the run's own
 # short-lived token and runs nothing from the repository.
+<% end %><% if .Project %>#
+# A PROJECT SITE (`--project`): every page is built from what abcd already
+# writes to the repository (its identity block, brief, development record and
+# CHANGELOG.md), and its interface words, styles and scripts come from the
+# abcd binary. The repository carries no site sources.
 <% end %><% if .Switched %>#
 # THE SWITCH: the site publishes only while `"publish": true` stands in the
 # hosting block of <% .SwitchFile %> both at the released commit and at the
@@ -178,8 +183,8 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           set -euo pipefail
-          "${RUNNER_TEMP}/abcd" site build --out site --version "${TAG#v}" --commit "$(git rev-parse --verify HEAD)"<% .BaseFlag %>
-          "${RUNNER_TEMP}/abcd" lint site --out site<% .BaseFlag %>
+          "${RUNNER_TEMP}/abcd" site build<% .ProjectFlag %> --out site --version "${TAG#v}" --commit "$(git rev-parse --verify HEAD)"<% .BaseFlag %>
+          "${RUNNER_TEMP}/abcd" lint site<% .ProjectFlag %> --out site<% .BaseFlag %>
 
       - name: Pack the rendered site
 <% .IfOn %>        run: tar -czf site.tar.gz -C site .

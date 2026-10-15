@@ -9,48 +9,49 @@ production_mode: hand-written
 
 ## Summary
 
-abcd's own site moves from its Cloudflare deploy onto abcd's own GitHub Pages. It is built by the workflow `site setup --provider github-pages` writes for any project (itd-2610091010348892, spc-2610141709461788). abcdev.app then forwards every address there. The move is planned now and built after itd-2610091010348892 ships, which it is blocked by.
+abcd's own record moves onto abcd's own GitHub Pages, built by the same workflow `site setup --provider github-pages` writes for any project (itd-2610091010348892), and from what abcd writes to the repository and nothing else (the product thinker's single-source ruling of 2026-10-15). abcdev.app becomes abcd's documentation site until a community site replaces it. abcdesign.app is the team-brief editing page for any abcd-managed repository (itd-2610091016262335). This intent is planned now and built after itd-2610091010348892 ships; it is blocked by that intent.
 
-**What abcd's site has that the project workflow does not yet build.** Each gap is closed in the generic route, never as an abcd special case, because the claim is that abcd runs on the route it offers.
-- **/docs/**, rendered by MkDocs Material from `docs/`. The project workflow gains an opt-in docs step, declared in `.abcd/site.json` (a `docs` block naming the builder and its requirements file). The step installs the requirements with `pip install --require-hashes` and builds into `site/docs`. abcd's `docs/requirements.txt` becomes a fully hashed lock, closing the version-only pin its own comment flags. MkDocs Material's maintenance window (adr-47 point 4) is unchanged by this: whatever replaces it later plugs into the same step.
-- **Security headers.** Cloudflare serves `site-src/headers` as `_headers`; GitHub Pages ignores that file and cannot set response headers (iss-2610142036270003).
-  - Every document the site build renders gains its content policy as a `<meta http-equiv="Content-Security-Policy">` element, generated from the same document policy the headers file holds, so the two cannot drift.
-  - The MkDocs pages get the same element through a theme override.
-  - What a page element cannot carry is recorded in the decision record, not hidden: framing refusal (`frame-ancestors`) and `X-Content-Type-Options: nosniff`.
-  - The github-pages provider stops emitting the Cloudflare files `_headers` and `_redirects`, so they are not served as stray pages. This resolves iss-2610142036270003 for every project, not only abcd.
-- **The moved docs addresses.** `site-src/redirects` 301s the pre-/docs/ paths (`/reference/`, `/tutorials/`, `/how-to/`, `/explanation/` and the CLI reference pages). On the github-pages provider, the build writes a small page at each old path instead. The page carries a canonical link, a zero-second refresh to its new address and a plain link, which is the state-of-the-art pattern for redirects on a static host without redirect support.
-- **The release chain.** abcd's releases are created by `release.yml` with the run's own token, so a `release:` event never fires for them (site.yml's header records why). The generated workflow's `workflow_run` trigger on the release workflow is what deploys abcd. It is checked on abcd's own release chain before the Cloudflare deploy is removed.
-- **The preview.** The Cloudflare preview of `main` on every push has no GitHub Pages equivalent, because a repository has one Pages site. It is dropped. `make site-render` and CI's site-render gate still render and check every change.
+**The three addresses after the move:**
+- **abcd's GitHub Pages address.** It carries abcd's about page and record, built like any project's at each release. No hand-written docs and no file written for the website go into it.
+- **abcdev.app.** It carries abcd's documentation, rendered in high quality from `docs/`, from MkDocs Material. abcdev.app's landing page and docs, today composed through `.abcd/site.json` from `docs/`, stay as they are. They are the documentation's own front page, not a project site.
+- **abcdesign.app.** It is the static brief-session page, published from a repository of its own (spc-2610141709430146).
 
-**abcdev.app forwards.** Per the product thinker's ruling, one dynamic redirect rule at the domain's host sends `abcdev.app/*` and `www.abcdev.app/*` with a 301 to the same path on abcd's Pages address, keeping the query string. This needs no Worker and no deploy. The README's and docs' links to abcdev.app are rewritten to the Pages address in the same change, so they do not depend on the forward. The forward serves links already shared, and leaves abcdev.app free to become the community site later.
+**What changes in abcd's repository:**
+- **abcdev.app's deploy narrows to the documentation.** The existing deploy (adr-48: on release, from released bytes) keeps building the docs and their landing page. It stops building the record explorer: `/record/`, `/contributors/` and `/references/` leave abcdev.app.
+  - Each of those addresses forwards with a 301 to the same path on abcd's GitHub Pages site, query kept. The forwarding goes in the docs host's redirect file (`site-src/redirects`), so no rule is kept outside the repository.
+  - The docs' own 301s for the paths moved under /docs/ stay.
+  - Links in the README and docs to abcd's record point at the Pages address.
+- **abcd's repository switches its record on to the project route.** The switch is set in abcd's settings and the generated workflow is added. Its about page comes from abcd's identity block, the brief, the newest shipped intents' press releases and the changelog, exactly as for any project.
+  - abcd's current `.abcd/site.json` composition and `site-src/` stay as the documentation site's own sources.
+  - The project route reads neither, and its gate fails on any text not from a file abcd writes.
+- **Security headers on GitHub Pages.** GitHub Pages ignores `_headers` (iss-2610142036270003). Every document the project route renders carries its content policy as a page element. Framing refusal and the no-sniff header cannot be carried, and that is named in the decision record. abcdev.app keeps its response headers on its own host.
+- **The preview of `main`.** It stays with the documentation deploy on abcdev.app. The record has no preview, because a repository has one Pages site. The site-render gate still renders and checks every change.
 
-**abcdesign.app needs its own repository.** A GitHub repository has exactly one Pages site, and after the move abcd's is the record. So the static abcdesign.app page (spc-2610141709430146) is published from a repository of its own. That repository's workflow downloads the released abcd and runs `abcd session page`, and its Pages carries the abcdesign.app domain. Creating that repository is an outward act at its own cut, with the product thinker's go.
+**The cut-over is ordered, and each outward step is confirmed by the person first:**
+1. The first Pages release is published and checked at the Pages address.
+2. The forwarding of the record's addresses is switched on, and a sample of old record links is checked.
+3. Only then does the documentation deploy stop building the record.
 
-**The cut-over is ordered, and each outward step is confirmed by the person first.** The order is:
-1. Pages publishes a release and the result is checked at the Pages address.
-2. The forwarding rule is switched on and checked on a sample of old addresses, including a moved docs path.
-3. Only then are the Cloudflare Worker, the `site` and `site-preview` environments and their four Cloudflare secrets removed.
+A failure at any step leaves the record where it was.
 
-A failure at any step leaves the previous host serving.
-
-**Records.** A new decision record supersedes adr-48 in its Cloudflare deploy. adr-48's rule that the site deploys on release, from released bytes, stands and carries over to the Pages route. adr-47's single-source rule, gates and no-Node constraint are unchanged.
+**Records.** A new decision record amends adr-48: abcdev.app's deploy narrows to the documentation, and the record moves to the project route. adr-48's rule that a site deploys on release, from released bytes, stands for both.
 
 ## Footprint
 
-- packages: internal/core/site, internal/core/site/setupsrc, internal/adapter/hosting/githubpages, internal/surface/cli, docs/, .github/workflows, .abcd/site.json
+- packages: internal/core/site, internal/core/site/setupsrc, internal/adapter/hosting/githubpages, site-src, docs/, .github/workflows, .abcd/site.json
 - tests: internal/core/site, internal/adapter/hosting/githubpages, internal/surface/cli
 
 ## Steps
 
-1. The opt-in docs step in the project workflow, and abcd's docs requirements as a hashed lock
-   - packages: internal/core/site, internal/core/site/setupsrc, docs/
-   - tests: internal/core/site
-2. Page-carried content policy, no Cloudflare files on github-pages, and the redirect pages for moved addresses (resolves iss-2610142036270003)
-   - packages: internal/core/site, internal/adapter/hosting/githubpages, docs/
+1. The project route carries its content policy in each page and emits no Cloudflare files (resolves iss-2610142036270003)
+   - packages: internal/core/site, internal/adapter/hosting/githubpages
    - tests: internal/core/site, internal/adapter/hosting/githubpages
-3. abcd's repository switches to the generated github-pages workflow: the manifest's hosting block, the release chain, README and docs links, and the decision record superseding adr-48's Cloudflare deploy
-   - packages: .abcd/site.json, .github/workflows, docs/, internal/surface/cli
+2. abcd's repository switches its record on to the project route, and its README and docs link the record at the Pages address
+   - packages: .abcd/, .github/workflows, docs/
    - tests: internal/core/site, internal/surface/cli
-4. The cut-over, each outward act confirmed by the person: the first Pages release, the abcdev.app forwarding rule, then removing the Cloudflare Worker, environments and secrets, and the files that configured them
-   - packages: .github/workflows, wrangler.jsonc, docs/
+3. abcdev.app's deploy narrows to the documentation and forwards the record's addresses, with the decision record amending adr-48
+   - packages: internal/core/site, site-src, .github/workflows, docs/
+   - tests: internal/core/site
+4. The cut-over, each outward act confirmed by the person: the first Pages release, then the forwarding, then dropping the record from abcdev.app's build
+   - packages: .github/workflows, site-src
    - tests: internal/core/site
