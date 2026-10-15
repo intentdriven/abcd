@@ -406,14 +406,23 @@ jobs:
       - name: Verify the semantic-gate receipt attestation
         if: ${{ !github.event.repository.private }}
         # CONTENT_SHA reaches this step via $GITHUB_ENV (receive step above).
+        # The attestation is held to the release workflow on main
+        # (the exact certificate identity and source ref auto-release's call
+        # signs with), a GitHub-hosted runner, and RELEASE_COMMIT, the commit
+        # this run releases, as the source digest: the same policy every
+        # consumer of the release's attestations verifies.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ inputs.ref || github.sha }}
         run: |
           set -euo pipefail
           for r in .abcd/work/reviews/"$CONTENT_SHA"/*.json; do
             gh attestation verify "$r" \
               --repo "${GITHUB_REPOSITORY}" \
-              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml" \
+              --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/main" \
+              --source-ref refs/heads/main \
+              --source-digest "${RELEASE_COMMIT}" \
+              --deny-self-hosted-runners \
               --predicate-type https://abcd.dev/attestations/semantic-release-gate/v1
           done
 
@@ -511,7 +520,10 @@ jobs:
             --dir "$DL"
           gh attestation verify "$DL/abcd-linux-amd64" \
             --repo "${GITHUB_REPOSITORY}" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"
+            --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/main" \
+            --source-ref refs/heads/main \
+            --source-digest "${RELEASE_COMMIT}" \
+            --deny-self-hosted-runners
           # The plugin archive too: fresh from the Release, attested by this
           # workflow, and byte-identical to the archive verified against the pin.
           gh release download "${TAG}" \
@@ -520,10 +532,14 @@ jobs:
             --dir "$DL"
           gh attestation verify "$DL/abcd-plugin-${TAG}.zip" \
             --repo "${GITHUB_REPOSITORY}" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"
+            --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/main" \
+            --source-ref refs/heads/main \
+            --source-digest "${RELEASE_COMMIT}" \
+            --deny-self-hosted-runners
           cmp "$DL/abcd-plugin-${TAG}.zip" "bin/abcd-plugin-${TAG}.zip"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ inputs.ref || github.sha }}
 
       - name: Assert the release job pushed nothing to the default branch
         # Close the no-branch-commit tripwire opened at job start. Runs last so it

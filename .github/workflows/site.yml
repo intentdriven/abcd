@@ -385,8 +385,11 @@ jobs:
         # which the checksum cannot. Without it, this job downloads an artefact and
         # EXECUTES it — the strongest capability in the whole workflow — on the
         # strength of a manifest sitting in the same place as the file it describes.
-        # release.yml:323-339 runs exactly this check against a freshly downloaded
-        # binary after publishing; this is the same gate on the consuming side.
+        # release.yml's release job runs exactly this check against a freshly
+        # downloaded binary before the release is published; this is the same gate
+        # on the consuming side, with the same policy: release.yml on main (the
+        # exact certificate identity and source ref), a GitHub-hosted runner, and
+        # the tagged commit `resolve` read as the source digest.
         #
         # Skipped on a user-owned private repo, matching release.yml: GitHub gates
         # artifact attestation by repo visibility, so no attestation exists to verify
@@ -394,11 +397,15 @@ jobs:
         if: ${{ !github.event.repository.private }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ needs.resolve.outputs.sha }}
         run: |
           set -euo pipefail
           gh attestation verify "${GITHUB_WORKSPACE}/abcd" \
             --repo "${GITHUB_REPOSITORY}" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/release.yml"
+            --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/release.yml@refs/heads/main" \
+            --source-ref refs/heads/main \
+            --source-digest "${RELEASE_COMMIT}" \
+            --deny-self-hosted-runners
 
       - name: Render the site with the released binary
         run: |
