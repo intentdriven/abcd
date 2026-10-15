@@ -77,23 +77,66 @@ func TestReceiptGateReadsTheManifestGuarded(t *testing.T) {
 	}
 }
 
-func TestReceiptExampleManifestHashIsTheCommittedManifests(t *testing.T) {
+// receiptExampleManifestHash is the value receipt.example.json carries for
+// manifestHash. It is a placeholder rather than a literal hash: the manifest
+// changes with every surface a branch adds, so a literal copy of its sha256 was
+// rewritten on the same line by nearly every such branch and made any two of
+// them conflict (iss-2610150526192138). A placeholder never goes stale, and it
+// can never pass for a real hash, so a receipt copied from the example without
+// computing the hash is refused.
+const receiptExampleManifestHash = "sha256:<computed: the sha256 of manifest.json at subject.digest.gitCommit>"
+
+// TestReceiptExampleManifestHashIsAPlaceholder holds the example to the
+// placeholder, and holds receipt_gate to refusing it: the example dressed as a
+// real receipt for the real manifest is refused on manifestHash, and the same
+// receipt with the computed hash in its place is not. The second half is the
+// control that pins the refusal on the placeholder alone.
+func TestReceiptExampleManifestHashIsAPlaceholder(t *testing.T) {
 	repo := filepath.Join("..", "..", "..")
 	manifest, err := os.ReadFile(filepath.Join(repo, releaseGateManifestPath))
 	if err != nil {
 		t.Fatal(err)
 	}
-	data, err := os.ReadFile(filepath.Join(repo, filepath.Dir(releaseGateManifestPath), "receipt.example.json"))
+	example, err := os.ReadFile(filepath.Join(repo, filepath.Dir(releaseGateManifestPath), "receipt.example.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var ex struct {
+		Subject struct {
+			Digest struct {
+				GitCommit string `json:"gitCommit"`
+			} `json:"digest"`
+		} `json:"subject"`
 		ManifestHash string `json:"manifestHash"`
+		Policy       struct {
+			Detector string `json:"detector"`
+		} `json:"policy"`
 	}
-	if err := json.Unmarshal(data, &ex); err != nil {
+	if err := json.Unmarshal(example, &ex); err != nil {
 		t.Fatal(err)
 	}
-	if want := hashManifest(manifest); ex.ManifestHash != want {
-		t.Fatalf("receipt.example.json manifestHash is %s, the committed manifest hashes to %s; update the example with the manifest", ex.ManifestHash, want)
+	if ex.ManifestHash != receiptExampleManifestHash {
+		t.Fatalf("receipt.example.json manifestHash is %q; it carries the placeholder %q, never a literal hash, "+
+			"because a literal is rewritten by every branch that changes the manifest", ex.ManifestHash, receiptExampleManifestHash)
+	}
+	if ex.ManifestHash == hashManifest(manifest) {
+		t.Fatal("the placeholder equals the manifest's hash")
+	}
+
+	root := t.TempDir()
+	sha, gate := ex.Subject.Digest.GitCommit, ex.Policy.Detector
+	reviews := filepath.Join(".abcd", "work", "reviews")
+	rel := filepath.Join(reviews, sha, gate+".json")
+	writeFile(t, root, releaseGateManifestPath, string(manifest))
+	cfg := RuleConfig{Enabled: true, Severity: severityBlocker, ReceiptsDir: reviews, Commit: sha, RequiredGates: []string{gate}}
+
+	writeFile(t, root, rel, string(example))
+	if !findingWith(runReceiptGate(t, root, cfg), rel, "receipt_gate", "manifestHash") {
+		t.Fatal("the example receipt, copied verbatim, was not refused on its placeholder manifestHash")
+	}
+	computed := strings.Replace(string(example), receiptExampleManifestHash, hashManifest(manifest), 1)
+	writeFile(t, root, rel, computed)
+	if findingWith(runReceiptGate(t, root, cfg), rel, "receipt_gate", "manifestHash") {
+		t.Fatal("the example with the computed hash in place of the placeholder was still refused on manifestHash")
 	}
 }
