@@ -20,11 +20,13 @@ import (
 type ghMode int
 
 const (
-	ghVerified        ghMode = iota // exit 0, as a verified attestation does
-	ghFails                         // exit 1 with gh's own failure line
-	ghUnauthenticated               // exit 4, gh's "authentication required"
-	ghNoSourceDigest                // a gh whose attestation verify predates --source-digest
-	ghNoSourceRef                   // a gh whose attestation verify has --source-digest but no --source-ref
+	ghVerified         ghMode = iota // exit 0, as a verified attestation does
+	ghFails                          // exit 1 with gh's own failure line
+	ghUnauthenticated                // exit 4, gh's "authentication required"
+	ghNoSourceDigest                 // a gh whose attestation verify predates --source-digest
+	ghNoSourceRef                    // a gh whose attestation verify has --source-digest but no --source-ref
+	ghNoCertIdentity                 // a gh whose attestation verify has every policy flag but --cert-identity
+	ghNoDenySelfHosted               // a gh whose attestation verify has every policy flag but --deny-self-hosted-runners
 )
 
 // ghStub is a stub gh in its own directory, recording every verify call.
@@ -60,6 +62,10 @@ func newGhStub(t *testing.T, mode ghMode) *ghStub {
 		help = "printf '%s\\n' '      --signer-workflow string'"
 	case ghNoSourceRef:
 		help = "printf '%s\\n' '      --signer-workflow string' '      --source-digest string'"
+	case ghNoCertIdentity:
+		help = "printf '%s\\n' '      --deny-self-hosted-runners' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
+	case ghNoDenySelfHosted:
+		help = "printf '%s\\n' '      --cert-identity string' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
 	}
 	script := "#!/bin/sh\n" +
 		"[ \"$1 $2 $3\" = 'attestation verify --help' ] && { " + help + "; exit 0; }\n" +

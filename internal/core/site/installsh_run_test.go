@@ -53,6 +53,10 @@ const (
 	// no --source-ref, so it cannot hold the check to the ref the release
 	// was built from.
 	ghNoSourceRef
+	// ghNoCertIdentity and ghNoDenySelfHosted: a gh whose attestation verify
+	// lacks one of the other two policy flags.
+	ghNoCertIdentity
+	ghNoDenySelfHosted
 )
 
 // installerRun is one run of the template under a sandbox.
@@ -154,6 +158,10 @@ func runInstallForm(t *testing.T, argv []string, gh ghBehaviour, prepare func(ho
 			help = "printf '%s\\n' '      --signer-workflow string'"
 		case ghNoSourceRef:
 			help = "printf '%s\\n' '      --signer-workflow string' '      --source-digest string'"
+		case ghNoCertIdentity:
+			help = "printf '%s\\n' '      --deny-self-hosted-runners' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
+		case ghNoDenySelfHosted:
+			help = "printf '%s\\n' '      --cert-identity string' '      --signer-workflow string' '      --source-digest string' '      --source-ref string'"
 		}
 		script := "#!/bin/sh\n" +
 			"[ \"$1 $2 $3\" = 'attestation verify --help' ] && { " + help + "; exit 0; }\n" +
@@ -317,6 +325,27 @@ func TestInstallerWarnsWhenGhCannotPinTheSourceRef(t *testing.T) {
 		t.Errorf("a gh that cannot pin the source ref must not be asked to verify: %q", calls)
 	}
 	assertInstallerWarning(t, r.out, "--source-ref")
+}
+
+// TestInstallerWarnsWhenGhLacksAPolicyFlag: a gh without --cert-identity or
+// --deny-self-hosted-runners counts as one that cannot verify, rather than
+// failing part-way through the check.
+func TestInstallerWarnsWhenGhLacksAPolicyFlag(t *testing.T) {
+	for gh, flag := range map[ghBehaviour]string{ghNoCertIdentity: "--cert-identity", ghNoDenySelfHosted: "--deny-self-hosted-runners"} {
+		t.Run(flag, func(t *testing.T) {
+			r := runInstaller(t, gh, nil)
+			if r.err != nil {
+				t.Fatalf("a gh without %s counts as no gh: %v\n%s", flag, r.err, r.out)
+			}
+			if !r.installed(t) {
+				t.Fatalf("the checksum-verified binary must be installed:\n%s", r.out)
+			}
+			if calls := r.ghCalls(t); len(calls) != 0 {
+				t.Errorf("a gh without %s must not be asked to verify: %q", flag, calls)
+			}
+			assertInstallerWarning(t, r.out, flag)
+		})
+	}
 }
 
 func TestInstallerRefusesADownloadGhCannotVerify(t *testing.T) {

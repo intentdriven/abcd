@@ -215,3 +215,27 @@ func TestBootstrapWarnsWhenGhCannotPinTheSourceRef(t *testing.T) {
 	}
 	assertProvenanceWarning(t, out, "--source-ref")
 }
+
+// TestBootstrapWarnsWhenGhLacksAPolicyFlag: a gh whose attestation verify has
+// no --cert-identity or no --deny-self-hosted-runners cannot apply the
+// release's verification policy, so it counts as a gh that cannot verify
+// rather than failing part-way through the check.
+func TestBootstrapWarnsWhenGhLacksAPolicyFlag(t *testing.T) {
+	for mode, flag := range map[ghMode]string{ghNoCertIdentity: "--cert-identity", ghNoDenySelfHosted: "--deny-self-hosted-runners"} {
+		t.Run(flag, func(t *testing.T) {
+			root := bootstrapRoot(t)
+			body := []byte("#!/bin/sh\nexit 0\n")
+			fx := bootstrapServer(t, body, bootstrapManifest(body))
+			gh := newGhStub(t, mode)
+
+			out, code := runScriptGh(t, bootstrapFixtureScript(t, fx.base), root, fx.env(), "", gh.dir)
+			if code != 0 {
+				t.Fatalf("a gh without %s is no gh, not a failed verification; exit %d, output %q", flag, code, out)
+			}
+			if calls := gh.verifyCalls(t); len(calls) != 0 {
+				t.Errorf("a gh without %s must not be asked to verify: %q", flag, calls)
+			}
+			assertProvenanceWarning(t, out, flag)
+		})
+	}
+}

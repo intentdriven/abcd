@@ -119,7 +119,7 @@ func TestOneLinersRefuseWhenTheReleaseCommitCannotBeResolved(t *testing.T) {
 }
 
 func TestOneLinersWarnWithoutGh(t *testing.T) {
-	for gh, why := range map[ghBehaviour]string{ghAbsent: "gh-absent", ghSignedOut: "gh-signed-out", ghNoSourceDigest: "gh-without-source-digest", ghNoSourceRef: "gh-without-source-ref"} {
+	for gh, why := range map[ghBehaviour]string{ghAbsent: "gh-absent", ghSignedOut: "gh-signed-out", ghNoSourceDigest: "gh-without-source-digest", ghNoSourceRef: "gh-without-source-ref", ghNoCertIdentity: "gh-without-cert-identity", ghNoDenySelfHosted: "gh-without-deny-self-hosted-runners"} {
 		for _, f := range oneLinerForms(t) {
 			t.Run(f.name+"/"+why, func(t *testing.T) {
 				r := runOneLiner(t, f, gh)

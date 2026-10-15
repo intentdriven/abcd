@@ -930,9 +930,10 @@ else
 	#     holds to the commit Fulcio recorded for the signing run), and a gh
 	#     that can verify but whose release commit the API did not answer
 	#     REFUSES rather than ask a question any release's build would pass.
-	#     A gh whose attestation command predates --source-digest or
-	#     --source-ref cannot bind the check, and counts as one that cannot
-	#     verify.
+	#     A gh whose attestation command lacks any flag of the policy
+	#     (--source-digest, --source-ref, --cert-identity,
+	#     --deny-self-hosted-runners) cannot apply it, and counts as one that
+	#     cannot verify.
 	if [ "$release_sha" != unknown ]; then
 		gh_hand_check="gh attestation verify $binary_quoted $gh_policy --source-digest $release_sha"
 	else
@@ -947,6 +948,10 @@ else
 		gh_cannot='the installed gh cannot hold the check to the release commit (its attestation verify has no --source-digest; gh 2.68 or later has it)'
 	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--source-ref'; then
 		gh_cannot='the installed gh cannot hold the check to the ref the release was built from (its attestation verify has no --source-ref; gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--cert-identity'; then
+		gh_cannot='the installed gh cannot hold the check to the release workflow on main (its attestation verify has no --cert-identity; gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--deny-self-hosted-runners'; then
+		gh_cannot='the installed gh cannot hold the check to a GitHub-hosted runner (its attestation verify has no --deny-self-hosted-runners; gh 2.68 or later has it)'
 	elif [ "$release_sha" = unknown ]; then
 		refuse "the commit release $release_tag names could not be resolved through GitHub's API, so the build provenance of the downloaded $asset cannot be bound to that release, and a provenance check not bound to it would pass any release's build; nothing was installed. Retry once the API answers"
 	else
