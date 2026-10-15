@@ -60,12 +60,12 @@ func (b *repoBuilder) dir(rel string) *repoBuilder {
 }
 
 // conforming lays out a repo that satisfies every v1 rule: all three tiers,
-// .work.local gitignored, an AGENTS.md router, and a committed DECISIONS.md.
+// .work.local gitignored, an AGENTS.md router, and a committed decisions folder.
 func (b *repoBuilder) conforming() *repoBuilder {
 	return b.
 		file(".gitignore", ".abcd/.work.local/\n").
 		file(".abcd/development/README.md", "# durable record\n").
-		file(".abcd/work/DECISIONS.md", "# decisions\n- 2026-07-13: a thing.\n").
+		file(".abcd/work/decisions/README.md", "# decisions\n").
 		file(".abcd/.work.local/NEXT.md", "# local handoff\n").
 		file("AGENTS.md", "# conventions\n")
 }
@@ -140,7 +140,7 @@ func TestAC_DecisionsOnlyInGitignoredLayer(t *testing.T) {
 	b := newFixtureRepo(t).
 		file(".gitignore", ".abcd/.work.local/\n").
 		file(".abcd/development/README.md", "x\n").
-		dir(".abcd/work"). // work/ tier present, but no committed DECISIONS.md
+		dir(".abcd/work"). // work/ tier present, but no committed decisions folder
 		file(".abcd/work/CONTEXT.md", "x\n").
 		file(".abcd/.work.local/DECISIONS.md", "- a decision that will not survive a clone\n").
 		file("AGENTS.md", "x\n").
@@ -159,6 +159,46 @@ func TestAC_DecisionsOnlyInGitignoredLayer(t *testing.T) {
 	}
 	if res.ExitCode != 1 {
 		t.Errorf("exit = %d, want 1", res.ExitCode)
+	}
+}
+
+// TestDecisionDurabilityPassesOnTheFolder pins spc-2610110931381316's
+// decision 12: a committed .abcd/work/decisions/ folder is where decisions
+// survive a clone, so it passes the rule with no single log anywhere.
+func TestDecisionDurabilityPassesOnTheFolder(t *testing.T) {
+	res := newFixtureRepo(t).
+		file(".gitignore", ".abcd/.work.local/\n").
+		file(".abcd/development/README.md", "x\n").
+		file(".abcd/work/decisions/README.md", "# Decisions\n").
+		file(".abcd/.work.local/NEXT.md", "x\n").
+		file("AGENTS.md", "x\n").
+		commit().run()
+	if f := findingFor(res, "decision-durability"); f != nil {
+		t.Errorf("a committed decisions folder was flagged: %+v", f)
+	}
+}
+
+// TestDecisionDurabilityWarnsOnAFrozenLogAlone pins decision 12's other half: a
+// repository that keeps only a single DECISIONS.md, adopted before the folder,
+// has its history but nowhere for a new decision to go, so the rule warns and
+// names the install that lays the folder.
+func TestDecisionDurabilityWarnsOnAFrozenLogAlone(t *testing.T) {
+	res := newFixtureRepo(t).
+		file(".gitignore", ".abcd/.work.local/\n").
+		file(".abcd/development/README.md", "x\n").
+		file(".abcd/work/DECISIONS.md", "# decisions\n- 2026-07-13: a thing.\n").
+		file(".abcd/.work.local/NEXT.md", "x\n").
+		file("AGENTS.md", "x\n").
+		commit().run()
+	f := findingFor(res, "decision-durability")
+	if f == nil {
+		t.Fatal("no decision-durability finding for a frozen log with no decisions folder")
+	}
+	if f.Severity != repolint.SeverityWarn {
+		t.Errorf("severity = %q, want warn", f.Severity)
+	}
+	if !strings.Contains(f.Message+" "+f.Fix, "ahoy install") {
+		t.Errorf("the finding does not name ahoy install: %q / %q", f.Message, f.Fix)
 	}
 }
 
@@ -228,7 +268,7 @@ func TestRule_TierPresentButNotADirectory(t *testing.T) {
 }
 
 // The work tier specifically: when .abcd/work is a regular file, decision-durability
-// stats .abcd/work/DECISIONS.md (ENOTDIR). That must read as "not present", not
+// stats .abcd/work/decisions and the frozen log beneath it (ENOTDIR). That must read as "not present", not
 // abort the audit — so the three-tier "must be a directory" finding still surfaces.
 func TestRule_WorkTierIsAFileDoesNotAbort(t *testing.T) {
 	b := newFixtureRepo(t).

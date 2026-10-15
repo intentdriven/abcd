@@ -35,7 +35,7 @@ func lintRepo(t *testing.T, conforming bool) string {
 	write(".abcd/.work.local/NEXT.md", "x\n")
 	write("AGENTS.md", "x\n")
 	if conforming {
-		write(".abcd/work/DECISIONS.md", "# decisions\n")
+		write(".abcd/work/decisions/README.md", "# decisions\n")
 	}
 	runGitT(t, repo, "add", "-A")
 	runGitT(t, repo, "-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "-m", "fixture")
@@ -78,7 +78,7 @@ func TestLintConformingExitsZero(t *testing.T) {
 // A repo missing the committed work tier: exit 2, and the JSON carries the
 // three-tier-layout rule id at error severity.
 func TestLintMissingWorkTierExitsTwo(t *testing.T) {
-	repo := lintRepo(t, false) // no .abcd/work/DECISIONS.md, so no work/ tier
+	repo := lintRepo(t, false) // no .abcd/work/decisions/, so no work/ tier
 	t.Chdir(repo)
 
 	var stdout, stderr bytes.Buffer
