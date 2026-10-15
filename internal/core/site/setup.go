@@ -74,6 +74,12 @@ const (
 	EnvDeploy = "site"
 )
 
+// projectReleaseNote states the project route's dependency on abcd's own
+// releases: the workflow builds with abcd's latest release, and a release made
+// before project sites existed has no `site build --project`.
+const projectReleaseNote = "the workflow builds with abcd's latest release, so its build fails until abcd publishes a release " +
+	"that builds project sites (one whose `abcd site build` takes --project)"
+
 // abcdReleaseRepo is where the workflow downloads the abcd binary it renders
 // with, and whose release workflow must have signed it.
 const abcdReleaseRepo = "intentdriven/abcd"
@@ -494,6 +500,12 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	}
 	res.Notes = append(res.Notes, "the site renders and deploys on the next published release, whether a person or "+
 		"the release workflows publish it; `gh workflow run site.yml` deploys the latest one now")
+	if project {
+		// The workflow downloads abcd's latest release to build with. Which
+		// release is latest is the forge's to say, and setup asks the network
+		// nothing for it, so the dependency is stated on every project setup.
+		res.Notes = append(res.Notes, projectReleaseNote)
+	}
 
 	switch {
 	case refused:
