@@ -171,7 +171,7 @@ jobs:
               # of the tagged commit can finish its Release. When this push is
               # a later commit, ask for no release: fail and name the remedy.
               if [ "$commit" != "$GITHUB_SHA" ] && [ "$REPO_PRIVATE" != true ]; then
-                echo "::error::$tag is tagged at $commit, and its GitHub Release is missing or an unpublished draft. This push ($GITHUB_SHA) cannot finish it: re-run the failed jobs of the auto-release run of $commit (gh run rerun <run-id> --failed). If no such run exists, roll a new dated CHANGELOG version."
+                echo "::error::$tag is tagged at $commit, and its GitHub Release is missing or an unpublished draft. This push ($GITHUB_SHA) cannot finish it: re-run the failed jobs of the auto-release run of $commit (gh run rerun <run-id> --failed). If no such run exists, or if the re-run fails again, roll a new dated CHANGELOG version."
                 exit 1
               fi
 <%- end %>

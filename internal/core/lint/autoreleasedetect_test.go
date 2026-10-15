@@ -387,7 +387,8 @@ func TestAutoReleaseFinishesAnUnpublishedReleaseOnlyFromItsOwnCommit(t *testing.
 				if strings.Contains(got, "need_release=true") {
 					t.Errorf("detect asked for a release of a tag behind the pushed commit:\n%s", got)
 				}
-				for _, want := range []string{"::error::", "re-run the failed jobs"} {
+				for _, want := range []string{"::error::", "re-run the failed jobs",
+					"If no such run exists, or if the re-run fails again, roll a new dated CHANGELOG version"} {
 					if !strings.Contains(out, want) {
 						t.Errorf("the failure must carry %q:\n%s", want, out)
 					}
