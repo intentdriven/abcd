@@ -68,20 +68,22 @@ with a second hosting provider, not a parallel one: one canonical primitive.
   words are a new `managed_record` interface string in the closed `ui.json`
   allowlist, so an older `ui.json` gains it with its default words and the
   provenance gate still fails a build on any word no repository file accounts
-  for (criterion 5). A repository with no package manifest takes its address
+  for (criterion 4). A repository with no package manifest takes its address
   from the origin remote on github.com.
-- **No secret (criterion 6).** The workflow reads no `secrets.` value and
+- **No secret (criterion 5).** The workflow reads no `secrets.` value and
   interpolates no expression into a shell.
-- **Switching off (criterion 7).** With `"publish"` anything but `true` at the
+- **Switching off (criterion 6).** With `"publish"` anything but `true` at the
   released commit or at the head of the default branch (a missing or malformed
   file reads as off), the render job's switch step stops the build and the
   deploy job does not run, so the release publishes nothing, and a later push or
   dispatch rendering an older tag does not undo it. `abcd site setup` then
   touches nothing remote and offers to remove the workflow it added, keeping
   one edited by hand.
-- **abcd's own repository (criterion 4)** is not moved in this change (the
-  product thinker's "at some point"), and the move is more than a composition
-  edit. The workflow setup writes renders the composed site only, and builds
+- **abcd's own repository** is not moved in this change. Its move was this
+  intent's fourth criterion when the spec was drafted; that criterion has
+  since moved to its own planned intent, itd-2610142145236613 (with the
+  proposed adr-2610142147242544), and this intent's six criteria no longer
+  include it. The move is more than a composition edit. The workflow setup writes renders the composed site only, and builds
   no `/docs/` tree; abcd's composition declares a `docs` block, so its header
   links `/docs/`, which abcd's own `site.yml` fills by running MkDocs into
   `site/docs` (with `site_url` set to `https://abcdev.app` in `mkdocs.yml`).

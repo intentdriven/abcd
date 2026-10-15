@@ -9,7 +9,7 @@ builds_on: [itd-2610091010348892]
 severity: minor
 impact: additive
 origin: researcher-authored
-related_adrs: [adr-47, adr-48]
+related_adrs: [adr-47, adr-48, adr-2610142147242544]
 production_mode: hand-written
 blocked_by: [itd-2610091010348892]
 ---

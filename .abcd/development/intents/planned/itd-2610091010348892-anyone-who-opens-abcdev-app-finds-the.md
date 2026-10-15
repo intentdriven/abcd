@@ -9,7 +9,7 @@ builds_on: [itd-135]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
-related_intents: [itd-2610052000411162]
+related_intents: [itd-2610052000411162, itd-2610142145236613]
 related_adrs: [adr-47, adr-2610091010387033]
 ---
 
