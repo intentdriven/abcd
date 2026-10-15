@@ -261,10 +261,9 @@ const standardRecordRoot = ".abcd/development"
 // The record's lint configuration says so where the repository carries one.
 // A managed repository need not: nothing abcd writes for it creates the file,
 // so on the project route an absent one reads as abcd's standard layout
-// (standardRecordConfig), its issue ledger included where the settings opt in
-// to publishing it. On the composed route an absent one stays absent, as it
-// always has.
-func loadRecordConfig(root *os.Root, project, issueLedger bool) (lint.Config, error) {
+// (standardRecordConfig). On the composed route an absent one stays absent, as
+// it always has.
+func loadRecordConfig(root *os.Root, project bool) (lint.Config, error) {
 	cfg, err := lint.LoadConfigInRoot(root, recordLintRelPath)
 	switch {
 	case err == nil:
@@ -272,26 +271,27 @@ func loadRecordConfig(root *os.Root, project, issueLedger bool) (lint.Config, er
 	case !os.IsNotExist(err):
 		return lint.Config{}, err
 	case project:
-		return standardRecordConfig(issueLedger), nil
+		return standardRecordConfig(), nil
 	}
 	return lint.Config{}, nil
 }
 
 // standardRecordConfig is abcd's standard layout: the design record under
 // `.abcd/development/`, its intents, specs, ADRs and principles (the stores the
-// record explorer renders), and the issue ledger under `.abcd/work/issues`
-// only where the settings opt in to publishing it (RecordOpts.IssueLedger).
-// The ledger is working-tier data (adr-32), and no record of the design cites
-// an issue by a typed field, so leaving it unread costs no reference.
-func standardRecordConfig(issueLedger bool) lint.Config {
+// record explorer renders), and the issue ledger under `.abcd/work/issues`.
+// The ledger is always read: an intent cites an issue by a typed field
+// (`refines:` and `duplicates:`, which the filing-time match writes), and an
+// unread ledger would leave each such citation unresolved. Reading it is not
+// publishing it: the ledger is working-tier data (adr-32), and the record
+// export leaves every issue out unless the settings opt in
+// (RecordOpts.IssueLedger).
+func standardRecordConfig() lint.Config {
 	stores := map[string]string{
 		"adr": recordid.ADRsRelDir,
 		"itd": intent.IntentsRelDir,
 		"spc": standardRecordRoot + "/specs",
+		"iss": recordid.IssuesRelDir,
 		"prn": path.Join(standardRecordRoot, principlesDirName),
-	}
-	if issueLedger {
-		stores["iss"] = recordid.IssuesRelDir
 	}
 	return lint.Config{
 		Roots: []string{standardRecordRoot},
@@ -313,8 +313,7 @@ func projectHasContent(root string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	// The about page reads no issue, so the ledger is left unread here.
-	cfg, err := loadRecordConfig(srcRoot, true, false)
+	cfg, err := loadRecordConfig(srcRoot, true)
 	if err != nil {
 		return false, err
 	}
@@ -498,6 +497,26 @@ func (c *composer) metIntents() []lint.RecordNode {
 		nodes[i] = p.node
 	}
 	return nodes
+}
+
+// checkProjectTitle refuses a project site with no title. The composer titles
+// every page, and sets the brand, from the identity block's title, or failing
+// that from the repository's name on its GitHub origin (headWith). With
+// neither, every `<title>` is empty and the brand a link with no words, and
+// the provenance walk passes both, because an empty string carries no word to
+// trace. The composed route is not held to this: its manifest declares its
+// identity.
+func (c *checker) checkProjectTitle() {
+	title := c.repo.Name
+	if c.hasBlock {
+		title = c.identity.Title
+	}
+	if strings.TrimSpace(title) != "" {
+		return
+	}
+	c.fail(CheckProvenance, homePageRel, "",
+		"the site has no title: this repository records no identity block abcd wrote and has no GitHub origin to name it; "+
+			"record an identity block (abcd identity init), or add a GitHub origin remote")
 }
 
 // checkProjectSources is the project route's half of the provenance gate:

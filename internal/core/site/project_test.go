@@ -435,9 +435,9 @@ func TestAProjectSiteReadsTheStandardLayoutWithoutARecordLintConfig(t *testing.T
 	}
 }
 
-// The issue ledger joins the standard layout only where the settings opt in
-// to publishing it, as it does for a declared layout.
-func TestTheStandardLayoutReadsTheIssueLedgerOnlyWhenOptedIn(t *testing.T) {
+// The standard layout publishes the issue ledger only where the settings opt
+// in to publishing it, as a declared layout does.
+func TestTheStandardLayoutPublishesTheIssueLedgerOnlyWhenOptedIn(t *testing.T) {
 	for _, optIn := range []bool{false, true} {
 		f := newProjectFixture(t)
 		if err := os.Remove(filepath.Join(f.Root(), ".abcd", "record-lint.json")); err != nil {
@@ -494,5 +494,81 @@ func TestAProjectBuildWithNothingAbcdWroteIsRefused(t *testing.T) {
 	}
 	if _, serr := os.Stat(out); !os.IsNotExist(serr) {
 		t.Errorf("the refused build wrote its output directory: %v", serr)
+	}
+}
+
+// An intent may cite an issue by a typed field (`refines:`, written by the
+// filing-time match). Without a record-lint config and without the ledger
+// opt-in, the standard layout still reads the issue store, so the reference
+// resolves and the gate passes; the export filter alone keeps the issue off
+// the site.
+func TestTheStandardLayoutResolvesAnIssueAnIntentRefinesWithoutPublishingIt(t *testing.T) {
+	f := newProjectFixture(t)
+	if err := os.Remove(filepath.Join(f.Root(), ".abcd", "record-lint.json")); err != nil {
+		t.Fatal(err)
+	}
+	f.write(".abcd/development/intents/planned/itd-9-refines-an-issue.md", `---
+id: itd-9
+slug: refines-an-issue
+spec_id: null
+kind: standalone
+builds_on: []
+refines: [iss-1]
+severity: minor
+impact: additive
+---
+
+# Refines An Issue
+
+## Press Release
+
+An intent that refines a ledger issue.
+`)
+	f.commitAt("2026-03-08T09:00:00+00:00", "chore: an intent refining an issue", "None")
+	out, files := buildProject(t, f)
+	for rel := range files {
+		if strings.HasPrefix(rel, "record/issue/") {
+			t.Errorf("%s is published without the ledger opt-in", rel)
+		}
+	}
+	if strings.Contains(string(files["record.json"]), `"type":"issue"`) {
+		t.Error("record.json carries an issue without the ledger opt-in")
+	}
+	res, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, Project: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK() {
+		t.Fatalf("findings: %+v", res.Findings)
+	}
+}
+
+// A project site is titled by its identity block, or failing that by its
+// repository's name on GitHub. With neither, the build renders an empty
+// `<title>` and brand, and the gate refuses it, naming both remedies.
+func TestTheProjectGateRefusesASiteWithNoTitle(t *testing.T) {
+	f := newProjectFixture(t)
+	if err := os.Remove(filepath.Join(f.Root(), ".abcd", "positioning.json")); err != nil {
+		t.Fatal(err)
+	}
+	f.commitAt("2026-03-08T09:00:00+00:00", "chore: no identity pointer", "None")
+	f.git("2026-03-08T09:00:00+00:00", "remote", "remove", "origin")
+	out, files := buildProject(t, f)
+	if !strings.Contains(string(files["index.html"]), "<title></title>") {
+		t.Fatalf("the fixture is not untitled: %s", firstMatch(`<title>[^<]*</title>`, string(files["index.html"])))
+	}
+	res, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, Project: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, fd := range res.Findings {
+		if fd.Check == CheckProvenance && strings.Contains(fd.Detail, "no title") &&
+			strings.Contains(fd.Detail, "identity block") && strings.Contains(fd.Detail, "GitHub origin") {
+			found = true
+		}
+	}
+	if res.OK() || !found {
+		t.Fatalf("the gate passes an untitled project site, or names no remedy: %+v", res.Findings)
 	}
 }

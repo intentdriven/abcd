@@ -101,15 +101,18 @@ brief's opening (the first section with text in
 `.abcd/development/brief/01-product/01-press-release.md`), the press releases of
 the three newest shipped intents whose audit was met, and the release list in
 `CHANGELOG.md`. Anything absent is left out, never filled; with no identity
-block, the page is headed and titled by the repository's name on GitHub. A
+block, the page is headed and titled by the repository's name on GitHub. With
+neither an identity block nor a GitHub origin, the site has no title, and the
+gate refuses it until one of the two is recorded. A
 repository holding none of the four parts is refused before anything is
 written, since the site would be empty. The repository's address and name
 come from the origin remote alone: `.claude-plugin/plugin.json` is not read, so
 no name, author or licence written there reaches a page. The record pages are
 built as they always are, from the stores `.abcd/record-lint.json` names or,
 where the repository carries no such file, from abcd's standard layout under
-`.abcd/development/` (intents, specs, ADRs and principles, plus the issue
-ledger under `.abcd/work/issues` where the settings opt in to it). The
+`.abcd/development/` (intents, specs, ADRs and principles), and the issue
+ledger under `.abcd/work/issues`, so an intent's typed link to an issue
+resolves; an issue is published only where the settings opt in to it. The
 references page (which quotes `ACKNOWLEDGEMENTS.md`), the contributors page
 (whose names and declared tools are read out of git history), and every
 picture (which lives under `docs/`) are left out, and so is a hand-written

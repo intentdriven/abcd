@@ -487,7 +487,7 @@ func build(req Request, written *labelsAdded) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	lintCfg, err := loadRecordConfig(lintRoot, manifest.Project(), manifest.Record.IssueLedger)
+	lintCfg, err := loadRecordConfig(lintRoot, manifest.Project())
 	lintRoot.Close()
 	if err != nil {
 		return Result{}, err

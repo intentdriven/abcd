@@ -40,6 +40,9 @@ func TestSiteVerbsTakeProject(t *testing.T) {
 		`"hosting": {"provider": "github-pages", "name": "widgets", "publish": true}}`+"\n")
 	repo.Write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n## [0.1.0] - 2026-01-02\n\n- The first cut.\n")
 	repo.Commit("a project site's settings")
+	// A GitHub origin names the site; with no identity block either, the
+	// gate refuses a site with no title.
+	repo.Git("remote", "add", "origin", "https://github.com/widgets-owner/widgets.git")
 	t.Chdir(repo.Root())
 	for _, verb := range [][]string{{"site", "build"}, {"lint", "site"}} {
 		out := filepath.Join(t.TempDir(), "site")
