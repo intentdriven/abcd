@@ -54,13 +54,15 @@ config; a URL on another real host is refused as on a different host, with the
 branch must be the one `origin/HEAD` names here and not the branch. Then
 `origin`'s default branch is fetched, and the head has landed when it is on
 it, or when the forge lists a merged pull request from this repository's
-branch whose head was this head (a squash or rebase merge puts another commit
-on the default branch). Either way the one step reported is `land` with status
+branch whose head was this head and whose base was the default branch (a
+squash or rebase merge puts another commit on the default branch). Either way the one step reported is `land` with status
 `landed` (naming the pull request when the forge proved it), and nothing is
 gated, pushed or queued, so a re-run after the merge never recreates the
 deleted branch, whichever merge method the queue used. A pull request merged
-at another head proves nothing about this one, and a forge that cannot be
-asked gets no gate and no push.
+at another head, from a fork, or into another base (a stacked pull request)
+proves nothing about this one, and a forge that cannot be asked gets no gate
+and no push; nor does a listing of 20 merged pull requests from branches of
+that name with none at this head, since the proof may lie past the bound.
 
 1. **gate**: skipped when a preflight receipt already names the branch's head,
    in any worktree, as the pre-push hook looks for one. Otherwise `make
@@ -128,7 +130,8 @@ checked out in no worktree, a preflight that failed or minted no receipt, a
 head that moved while the preflight ran, `origin`'s URLs changed while the
 preflight ran, an `origin` URL that is not the forge's repository, a forge
 default branch that differs from the local one or is the branch, a forge that
-cannot be asked (whether the branch already merged included), a push git or the pre-push hook
+cannot be asked (whether the branch already merged included), a merged
+listing full with none at the head, a push git or the pre-push hook
 refused, more than one open pull request from this repository, only a fork's
 pull request, a pull request that conflicts with the default branch, a head
 that moved on the forge after arming, an unreadable ruleset mirror, and the

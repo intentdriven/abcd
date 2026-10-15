@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/ghcontract"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -36,6 +37,8 @@ const noQueueRuleset = `{"conditions":{"ref_name":{"exclude":[],"include":["~DEF
 // every call. It never reaches a network.
 type fakeForge struct {
 	repoURL string
+	// nwo is the forge's owner/name for the repository; "" is o/r.
+	nwo string
 	// sshURL is the forge's ssh URL for the repository; "" is
 	// git@example.com:o/r.git.
 	sshURL string
@@ -65,6 +68,11 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 	if f.err != nil {
 		return "", f.err
 	}
+	// The real forge client refuses a --json field it does not have, and so
+	// does this one, from gh's own lists.
+	if err := ghcontract.Check(args); err != nil {
+		return "", err
+	}
 	switch strings.Join(args[:min(2, len(args))], " ") {
 	case "repo view":
 		if f.onRepoView != nil {
@@ -77,7 +85,7 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		if def == "" {
 			def = "main"
 		}
-		return `{"nameWithOwner":"o/r","url":"` + f.repoURL + `","sshUrl":"` + ssh + `","defaultBranchRef":{"name":"` + def + `"}}`, nil
+		return `{"nameWithOwner":"` + f.owner() + `","url":"` + f.repoURL + `","sshUrl":"` + ssh + `","defaultBranchRef":{"name":"` + def + `"}}`, nil
 	case "pr list":
 		if slices.Contains(args, "--state=merged") {
 			if f.mergedErr != nil {
@@ -92,7 +100,14 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 			return "[]", nil
 		}
 		return f.prs, nil
-	case "pr view":
+	case "api graphql":
+		// The pull request's state is asked of the repository the forge
+		// resolved (o/r), through the one pinned query.
+		n, ok := strings.CutPrefix(args[len(args)-1], "n=")
+		owner, name, _ := strings.Cut(f.owner(), "/")
+		if !ok || !slices.Equal(args, prStateArgs(owner, name, n)) {
+			return "", fmt.Errorf("fake forge: unexpected query %v", args)
+		}
 		if len(f.views) == 0 {
 			return "", errors.New("fake forge: no view left")
 		}
@@ -100,7 +115,7 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		if len(f.views) > 1 {
 			f.views = f.views[1:]
 		}
-		return strings.ReplaceAll(v, "@HEAD@", f.head), nil
+		return `{"data":{"repository":{"pullRequest":` + strings.ReplaceAll(v, "@HEAD@", f.head) + `}}}`, nil
 	case "pr merge":
 		if slices.Contains(args, "--auto") {
 			if f.arms++; f.arms == f.failArm {
@@ -110,6 +125,14 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		return "", nil
 	}
 	return "", fmt.Errorf("fake forge: unexpected call %v", args)
+}
+
+// owner is the forge's owner/name for the repository.
+func (f *fakeForge) owner() string {
+	if f.nwo == "" {
+		return "o/r"
+	}
+	return f.nwo
 }
 
 // called reports whether a call began with prefix.

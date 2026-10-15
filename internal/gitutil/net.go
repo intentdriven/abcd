@@ -47,7 +47,8 @@ const (
 // connect after 30 seconds and a silent connection after four missed
 // keepalives. Stdout is returned within
 // netOutputCap, on a failure too (a porcelain push reports its rejections
-// there); a failure's error carries git's bounded stderr.
+// there); a failure's error carries git's bounded stderr. On a failure both are
+// scrubbed of credential URLs (ScrubURLCredentials) before they are cut.
 func Net(dir string, args ...string) (string, error) {
 	return runHooked(dir, true, args)
 }
@@ -83,11 +84,14 @@ func runHooked(dir string, network bool, args []string) (string, error) {
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	what := "git " + args[0]
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
+		// Scrubbed BEFORE the cut: a cut across a credential URL leaves a
+		// fragment with no host, which the scrubber no longer recognises, and
+		// the token's start would go out with it.
+		msg := ScrubURLCredentials(strings.TrimSpace(stderr.String()))
 		if len(msg) > netStderrCap {
 			msg = msg[:netStderrCap]
 		}
-		out := stdout.String()
+		out := ScrubURLCredentials(stdout.String())
 		if len(out) > netOutputCap {
 			out = out[:netOutputCap]
 		}

@@ -39,13 +39,16 @@ the trust boundaries), and then `origin`'s default branch is fetched. A head
 already on it has landed (the implement loop's own ancestor check,
 `landing.Landed`). A squash or rebase merge leaves no such ancestry, so when
 the ancestor check says no the forge is asked for a merged pull request from
-this repository's branch whose head was the head (`landing.MergedAt`); one
-there has landed too. Either way the verb reports one step, `land`, with
+this repository's branch whose head was the head and whose base was the
+default branch (`landing.MergedAt`); one there has landed too. Either way the verb reports one step, `land`, with
 status `landed` (naming the pull request the forge listed), gating, pushing
 and queueing nothing, so a re-run after the merge never recreates the branch
 the merge deleted, whichever method the queue merged by. A pull request merged
-at another head proves nothing, and a forge that cannot be asked is a
-refusal: no gate and no push.
+at another head, from another repository, or into another base (a stacked
+pull request, whose work is not on the default branch) proves nothing, and a
+forge that cannot be asked is a refusal: no gate and no push. So is a listing
+its bound (20) filled with none at the head, since the proof may lie past the
+bound: the refusal says so and gives the push to run by hand.
 
 1. **Gate.** When a preflight receipt names the head in any worktree of the
    repository, the lookup the pre-push hook makes, the gate is skipped.
@@ -68,7 +71,9 @@ refusal: no gate and no push.
 3. **Enqueue** (`land.enqueue`). The branch's one open pull request from this
    repository is armed by the merge gate, pinned to the head
    (`--match-head-commit`), and then confirmed in the merge queue at that
-   head: a pull request the forge reports CLEAN and unqueued has the auto-merge
+   head, through the forge's GraphQL API (the forge client's pull-request
+   view has no merge-queue field), asked of the repository the forge client
+   named when `origin` was checked: a pull request the forge reports CLEAN and unqueued has the auto-merge
    land made toggled once, and any other state is named. An arming someone
    else made is left as it is and reported, and a toggle whose re-arming fails
    says the pull request is now disarmed and gives the command that arms it.
@@ -140,7 +145,8 @@ Exit 0 when every step did its act or said why it stopped or left the merge
 to a person. Exit 2 on a refusal, which names the steps done before it. The
 JSON document carries `branch`, `head`, `checkout`, `default_branch`, `push`
 and `enqueue` (each `key`, `on`, `layer`, `origin`), `pull_request` and
-`pull_request_url` when one was found (or the forge proved the head merged),
+`pull_request_url` when one was found (or the forge proved the head merged,
+the merged pull request's),
 `pushed` when the push sent a commit, `landed` when the head had already
 landed, and `steps`, each
 with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or

@@ -2,6 +2,7 @@ package landing
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -15,11 +16,17 @@ func (f *fixture) squashOntoMain() {
 }
 
 func mergedListing(sha string, cross bool) string {
+	return "[" + mergedEntry(7, sha, "main", cross) + "]"
+}
+
+// mergedEntry is one merged pull request as the forge lists it: number n,
+// merged at head sha into base.
+func mergedEntry(n int, sha, base string, cross bool) string {
 	c := "false"
 	if cross {
 		c = "true"
 	}
-	return `[{"number":7,"headRefOid":"` + sha + `","isCrossRepository":` + c + `,"mergedAt":"2026-10-15T09:00:00Z"}]`
+	return fmt.Sprintf(`{"number":%d,"url":"https://example.com/o/r/pull/%d","headRefOid":"%s","baseRefName":"%s","isCrossRepository":%s,"mergedAt":"2026-10-15T09:00:00Z"}`, n, n, sha, base, c)
 }
 
 // R2-M1: a squash merge leaves the head off main's ancestry; the forge's
@@ -40,10 +47,10 @@ func TestASquashMergedBranchIsReportedLanded(t *testing.T) {
 	if f.forge.called("pr", "merge") != 0 || f.forge.called("pr", "list", "--head=feat/x", "--state=open") != 0 {
 		t.Fatalf("forge calls %v: want no open pull request asked for or armed", f.forge.calls)
 	}
-	if f.forge.called("pr", "list", "--head=feat/x", "--state=merged", "--json=number,headRefOid,isCrossRepository,mergedAt", "--limit=20") != 1 {
+	if f.forge.called("pr", "list", "--head=feat/x", "--state=merged", "--json=number,url,headRefOid,baseRefName,isCrossRepository,mergedAt", "--limit=20") != 1 {
 		t.Fatalf("forge calls %v: want one merged listing", f.forge.calls)
 	}
-	if !res.Landed || res.PR != 7 || len(res.Steps) != 1 || res.Steps[0].Status != StatusLanded || !strings.Contains(res.Steps[0].Note, "#7") {
+	if !res.Landed || res.PR != 7 || res.PRURL != "https://example.com/o/r/pull/7" || len(res.Steps) != 1 || res.Steps[0].Status != StatusLanded || !strings.Contains(res.Steps[0].Note, "#7") {
 		t.Fatalf("result %+v, want one landed step naming pull request #7", res)
 	}
 }

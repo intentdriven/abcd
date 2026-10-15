@@ -78,13 +78,20 @@ func userinfoCarriesPassword(userinfo string) bool {
 // quote.
 var urlInTextRe = regexp.MustCompile(`[A-Za-z][A-Za-z0-9+.-]*://[^\s'"<>]+`)
 
+// queryTokenRe is a token carried in a URL's query: the value of an
+// access_token or token parameter, any case.
+var queryTokenRe = regexp.MustCompile(`(?i)([?&](?:access_token|token)=)[^&#]*`)
+
 // ScrubURLCredentials applies ScrubURLUserinfo to every scheme-form URL in
 // text (git's or the forge client's message, which can quote a remote URL
 // carrying a token: `https://user:token@host/...`, `https://token@host/...`),
-// so none reaches what abcd prints.
+// and empties the value of an access_token or token query parameter
+// (`https://host/...?access_token=...`), so none reaches what abcd prints.
 func ScrubURLCredentials(text string) string {
 	if !strings.Contains(text, "://") {
 		return text
 	}
-	return urlInTextRe.ReplaceAllStringFunc(text, ScrubURLUserinfo)
+	return urlInTextRe.ReplaceAllStringFunc(text, func(u string) string {
+		return queryTokenRe.ReplaceAllString(ScrubURLUserinfo(u), "${1}")
+	})
 }

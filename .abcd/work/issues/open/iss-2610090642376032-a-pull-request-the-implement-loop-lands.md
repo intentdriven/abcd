@@ -13,3 +13,5 @@ remedy: "After arming auto-merge, the landing confirms the pull request is in th
 ---
 
 A pull request the implement loop lands can leave the merge queue silently. Twice it sat CLEAN with auto-merge armed and never entered the queue (#837, #844; the enqueue mutation then failed with a forge error and only toggling auto-merge queued it), and four times across this run and the v0.13.2 cut a failed merge-group check (the macOS job cap, or a flaky test) dropped it from the queue (#839, #854, #867, #869) with nothing re-queuing it. The loop arms auto-merge and walks away, so a run that trusts it stalls unseen; one drop cost about 45 minutes in this run.
+
+2026-10-15, evidence from #1011: the merge queue removed it for failed_checks at 07:48Z (the ubuntu race step hit its 30-minute limit; run 38697714235), and that removal also cleared auto-merge. So "not armed and not queued" has two causes, a dropped arming and a failed queue run. A watch, or `abcd land` on a re-run, should read the timeline's RemovedFromMergeQueueEvent reason and name it before arming again, rather than re-queue silently into the same failure.

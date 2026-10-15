@@ -156,32 +156,52 @@ const maxMergedListed = 20
 // mergedPR is a merged pull request as the forge lists it.
 type mergedPR struct {
 	Number            int    `json:"number"`
+	URL               string `json:"url"`
 	HeadRefOid        string `json:"headRefOid"`
+	BaseRefName       string `json:"baseRefName"`
 	IsCrossRepository bool   `json:"isCrossRepository"`
 	MergedAt          string `json:"mergedAt"`
 }
 
+// MergedListingFullError is a listing of a branch's merged pull requests that
+// the bound filled with none at the head: the proof may lie past the bound, so
+// the listing cannot say the head has not merged.
+type MergedListingFullError struct {
+	Branch string
+	Listed int
+}
+
+func (e *MergedListingFullError) Error() string {
+	return fmt.Sprintf("the forge lists %d merged pull requests from branches named %s (its bound) and none at this head, so the proof that it merged may lie past the bound", e.Listed, e.Branch)
+}
+
 // MergedAt asks the forge, through ask (the forge client's arguments), for a
-// pull request from this repository's own branch that MERGED with sha as its
-// head, and returns its number, or 0 when none did: the proof a squash or a
-// rebase merge leaves where the ancestor check (Landed) finds none, since the
-// merged commit on the default branch is not sha. A pull request from another
-// repository, or one merged at another head, proves nothing about sha. An
-// error is the forge unable to answer, which is not a no.
-func MergedAt(ask func(args ...string) (string, error), branch, sha string) (int, error) {
+// pull request from this repository's own branch that MERGED into the default
+// branch def with sha as its head, and returns its number and URL, or 0 when
+// none did: the proof a squash or a rebase merge leaves where the ancestor
+// check (Landed) finds none, since the merged commit on the default branch is
+// not sha. A pull request from another repository, one merged into another
+// base (a stacked pull request, whose work is not on def), or one merged at
+// another head proves nothing about sha. A listing the bound filled with none
+// at sha is a *MergedListingFullError, and any other error is the forge
+// unable to answer: neither is a no.
+func MergedAt(ask func(args ...string) (string, error), branch, def, sha string) (int, string, error) {
 	out, err := ask("pr", "list", "--head="+branch, "--state=merged",
-		"--json=number,headRefOid,isCrossRepository,mergedAt", fmt.Sprintf("--limit=%d", maxMergedListed))
+		"--json=number,url,headRefOid,baseRefName,isCrossRepository,mergedAt", fmt.Sprintf("--limit=%d", maxMergedListed))
 	if err != nil {
-		return 0, err
+		return 0, "", err
 	}
 	var prs []mergedPR
 	if json.Unmarshal([]byte(out), &prs) != nil {
-		return 0, errors.New("the forge's listing of " + branch + "'s merged pull requests does not parse")
+		return 0, "", errors.New("the forge's listing of " + branch + "'s merged pull requests does not parse")
 	}
 	for _, pr := range prs {
-		if !pr.IsCrossRepository && pr.Number > 0 && pr.HeadRefOid == sha {
-			return pr.Number, nil
+		if !pr.IsCrossRepository && pr.Number > 0 && pr.HeadRefOid == sha && pr.BaseRefName == def {
+			return pr.Number, pr.URL, nil
 		}
 	}
-	return 0, nil
+	if len(prs) >= maxMergedListed {
+		return 0, "", &MergedListingFullError{Branch: branch, Listed: len(prs)}
+	}
+	return 0, "", nil
 }

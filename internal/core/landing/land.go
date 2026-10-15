@@ -15,10 +15,11 @@ package landing
 //     so a landing the forge refuses never runs the preflight.
 //  3. landed: origin's default branch is fetched, and a head already on it
 //     has landed; so has a head the forge lists a merged pull request from
-//     this repository's branch at (a squash or rebase merge leaves no
-//     ancestry). Either way the verb says so and stops, pushing, gating and
-//     queueing nothing (a re-run after the merge never recreates the deleted
-//     branch), and a forge that cannot be asked gets no push.
+//     this repository's branch into the default branch at (a squash or
+//     rebase merge leaves no ancestry). Either way the verb says so and stops,
+//     pushing, gating and queueing nothing (a re-run after the merge never
+//     recreates the deleted branch), and a forge that cannot be asked, or a
+//     listing its bound filled with none at the head, gets no push.
 //  4. gate: skipped when a preflight receipt already names the head (in any
 //     worktree, as the pre-push hook looks); otherwise `make preflight` runs in
 //     the branch's checkout (it waits on the machine load waiter itself), and
@@ -31,8 +32,9 @@ package landing
 //     Off, it prints the command and names the layer that turned it off.
 //  6. enqueue (land.enqueue): the open pull request for the branch, armed by
 //     the merge gate (mergeGate), pinned to the head, and confirmed in the
-//     merge queue; with no pull request it prints the `gh pr create` command
-//     and stops. It never opens a pull request, never overrides an arming
+//     merge queue (PRStateQuery, asked of the repository the forge client
+//     named when origin was checked); with no pull request it prints the
+//     `gh pr create` command and stops. It never opens a pull request, never overrides an arming
 //     someone else made, and never edits the repository's settings.
 //
 // The trust boundaries: the remote is `origin` only, and its every fetch and
@@ -60,6 +62,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -254,15 +257,19 @@ func Land(cwd string, o Options) (Result, error) {
 	// A squash or rebase merge puts another commit on the default branch, so
 	// the ancestor check says no: the forge's merged pull request at this head
 	// is the proof, and a forge that cannot answer gets no push.
-	pr, err := MergedAt(func(args ...string) (string, error) { return o.Forge(dir, args...) }, branch, head)
+	pr, prURL, err := MergedAt(func(args ...string) (string, error) { return o.Forge(dir, args...) }, branch, def, head)
+	var full *MergedListingFullError
 	switch {
 	case errors.Is(err, ErrNoForgeClient):
 		return res, noForgeClient()
+	case errors.As(err, &full):
+		return res, refuse(full.Error()+", so land cannot prove a push would not recreate merged work",
+			"if "+branch+" has not merged, push it yourself (git push "+Remote+" "+shellQuote("refs/heads/"+branch+":refs/heads/"+branch)+") or land it under a less common name; nothing was gated or pushed")
 	case err != nil:
 		return res, refuse("the forge client could not say whether a pull request for "+branch+" already merged at "+short(head)+" (a squash or rebase merge leaves it off "+Remote+"/"+def+"), so land cannot prove a push would not recreate merged work: "+fsutil.RedactHome(err.Error()),
 			"settle what the forge client reports (gh auth status), then run abcd land again; nothing was gated or pushed")
 	case pr > 0:
-		res.Landed, res.PR = true, pr
+		res.Landed, res.PR, res.PRURL = true, pr, prURL
 		res.add("land", StatusLanded, fmt.Sprintf("pull request #%d merged %s into %s (by a squash or rebase, so the commit itself is not on %s/%s), so %s has landed: nothing was gated, pushed or queued", pr, short(head), def, Remote, def, branch), "")
 		return res, nil
 	}
@@ -278,7 +285,7 @@ func Land(cwd string, o Options) (Result, error) {
 	if err := push(&res, o, dir); err != nil {
 		return res, err
 	}
-	return res, enqueue(&res, o, dir, tracking)
+	return res, enqueue(&res, o, dir, tracking, origin.repo.NameWithOwner)
 }
 
 // branchRepoRoot is the repository layer's root for the landed branch's own
@@ -806,8 +813,31 @@ func (s prState) armed() bool {
 // a fork's pull requests from a branch of the same name are listed too.
 const maxListedPRs = 20
 
-// enqueue is step 6. tracking is origin's default branch as just fetched.
-func enqueue(res *Result, o Options, dir, tracking string) error {
+// PRStateQuery is the forge's GraphQL query for a pull request's way to the
+// merge: `gh pr view --json` has no merge-queue field (gh 2.100.0 refuses
+// isInMergeQueue), so the state is read through the forge's API instead.
+const PRStateQuery = `query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod} mergeStateStatus mergeable headRefOid}}}`
+
+// prStateArgs are the forge client's arguments for PRStateQuery on pull
+// request n of the repository owner/name. The owner and the name go as raw
+// strings (-f), never read as a file or a number; n as a number (-F).
+func prStateArgs(owner, name, n string) []string {
+	return []string{"api", "graphql", "-f", "query=" + PRStateQuery, "-f", "o=" + owner, "-f", "r=" + name, "-F", "n=" + n}
+}
+
+// prStateAnswer is the forge's answer to PRStateQuery.
+type prStateAnswer struct {
+	Data struct {
+		Repository *struct {
+			PullRequest *prState `json:"pullRequest"`
+		} `json:"repository"`
+	} `json:"data"`
+}
+
+// enqueue is step 6. tracking is origin's default branch as just fetched;
+// nameWithOwner is the repository as the forge client resolved it when origin
+// was checked, the one the pull request's state is asked of.
+func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error {
 	if !res.Enqueue.On {
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
 		return nil
@@ -874,16 +904,24 @@ func enqueue(res *Result, o Options, dir, tracking string) error {
 		res.add("enqueue", StatusLeft, "pull request #"+n+": "+d.why, "")
 		return nil
 	}
+	owner, name, ok := strings.Cut(nameWithOwner, "/")
+	if !ok || owner == "" || name == "" || strings.Contains(name, "/") {
+		return refuse("the forge client names the repository "+strconv.Quote(nameWithOwner)+", not owner/name, so land cannot ask the forge for pull request #"+n+"'s state, and nothing was armed",
+			"check the forge client (gh repo view), then run abcd land again")
+	}
 	view := func() (prState, error) {
-		out, err := forge(o, dir, "pr", "view", n, "--json", "mergeable,mergeStateStatus,isInMergeQueue,autoMergeRequest,headRefOid")
+		out, err := forge(o, dir, prStateArgs(owner, name, n)...)
 		if err != nil {
 			return prState{}, err
 		}
-		var s prState
-		if json.Unmarshal([]byte(out), &s) != nil {
+		var a prStateAnswer
+		if json.Unmarshal([]byte(out), &a) != nil {
 			return prState{}, refuse("the forge's view of pull request #"+n+" does not parse", "check the forge client, then run abcd land again")
 		}
-		return s, nil
+		if a.Data.Repository == nil || a.Data.Repository.PullRequest == nil {
+			return prState{}, refuse("the forge reports no pull request #"+n+" in "+nameWithOwner, "check the forge client (gh pr view "+n+"), then run abcd land again")
+		}
+		return *a.Data.Repository.PullRequest, nil
 	}
 	// The arming is pinned to the head land checked: the forge refuses it when
 	// the pull request's head is another commit.
