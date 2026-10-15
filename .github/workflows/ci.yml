@@ -265,16 +265,20 @@ jobs:
   check:
     needs: changes
     if: ${{ !cancelled() }}
-    # The macOS leg's ceiling is equal to the merge queue's check response
-    # timeout (45 minutes, recorded in .abcd/work/rulesets/main-protection.json),
-    # which is the outer ceiling on a merge-group run: the queue fails the group
-    # when this required check has not concluded by then, so a job ceiling above
-    # it is unreachable there. Both are 45 under ruling Z (2026-09-28, the
-    # technical facilitator), because a 30-minute cap cancelled passing macOS
-    # runs of 23 to 30 minutes (iss-2609281514435020). Raising either again is
-    # an admin act on the live ruleset, left to the technical facilitator, and
-    # the remedy for a leg near the cap is a faster suite. The ubuntu leg runs
-    # well inside 30 minutes and keeps that ceiling. The race step's -timeout lifts go test's 10m
+    # The macOS leg's ceiling sits below the merge queue's check response
+    # timeout (90 minutes since 2026-10-11, recorded in
+    # .abcd/work/rulesets/main-protection.json), which is the outer ceiling on a
+    # merge-group run: the queue fails the group when this required check has
+    # not concluded by then, so a job ceiling above it would be unreachable
+    # there. Ruling Z (2026-09-28, the technical facilitator) raised the leg
+    # from 30 to 45 minutes, because a 30-minute cap cancelled passing macOS
+    # runs of 23 to 30 minutes (iss-2609281514435020). The technical
+    # facilitator raised it to 60 on 2026-10-15, when merge-queue macOS runs had
+    # grown from 31-35 to 34-40 minutes (iss-2610142326511964), so on this leg
+    # the job's own ceiling, not the queue's, is the binding one. Raising it
+    # again is the technical facilitator's call, and the remedy for a leg near
+    # the cap is a faster suite. The ubuntu leg runs well inside 30 minutes and
+    # keeps that ceiling. The race step's -timeout lifts go test's 10m
     # per-package default, so a slow package runs on to this ceiling instead of
     # failing at ten minutes. The step names its slowest packages first, so they
     # start with the step rather than behind every faster package; a hang in one
@@ -283,7 +287,7 @@ jobs:
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 45 || 30 }}
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 60 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -397,9 +401,9 @@ jobs:
       # unrelated pull request from the merge queue (iss-2609260319483365). 20m
       # is about twice the slowest passing run, so a real hang still fails with
       # a goroutine dump where the enclosing ceiling leaves room for it: in
-      # release.yml's verify job it does, while this job's own ceiling, held to
-      # the merge queue's response cap, is the binding one on macOS (see the
-      # job header). The Makefile's preflight recipe and release.yml's verify
+      # release.yml's verify job it does, while this job's own ceiling, held
+      # below the merge queue's response cap, is the binding one on macOS (see
+      # the job header). The Makefile's preflight recipe and release.yml's verify
       # job carry the same flag, and so does the macOS step below;
       # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
       #
@@ -517,24 +521,24 @@ jobs:
 
       # Warn before the cap cancels (ruling Z's cancel policy, 2026-09-28). A
       # macOS check that runs past WARN_AFTER_MINUTES is ten minutes from the
-      # merge queue's cap, and a cancellation there carries nothing but the
+      # leg's 60-minute ceiling, and a cancellation there carries nothing but the
       # cancellation. The rule for a cancelled check is to rerun it once; a
       # second cancellation for the same reason stops that pull request and
       # opens a speed lane, never another raise of the timeout. This warning
       # moves that signal ahead of the first cancellation: it is emitted at the
       # job's end, for a run that finished past the line, so a check that
-      # passed between 35 and 45 minutes says so before one is cancelled at
+      # passed between 50 and 60 minutes says so before one is cancelled at
       # the cap. It never fails the
       # job: `always()` runs it however the steps before it ended, and
       # `continue-on-error` holds even a broken script to a warning.
-      # TestCheckJobWarnsBeforeTheQueueCap pins the threshold below the leg's
-      # ceiling.
+      # TestCheckJobWarnsBeforeTheQueueCap pins the threshold ten minutes below
+      # the leg's ceiling.
       - name: Warn when the check nears the queue's cap
         if: always() && matrix.os == 'macos-latest' && github.event_name != 'pull_request'
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
-          WARN_AFTER_MINUTES: 35
+          WARN_AFTER_MINUTES: 50
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)
@@ -546,7 +550,7 @@ jobs:
           minutes=$((elapsed / 60))
           echo "check (macos-latest) has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="check (macos-latest) ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the merge queue's cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
+            msg="check (macos-latest) ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's 60-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
             echo "::warning title=macOS check near the queue's cap::${msg}"
             printf '### macOS check near the merge queue cap\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
           fi
