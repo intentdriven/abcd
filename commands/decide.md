@@ -43,7 +43,9 @@ The verb writes `.abcd/work/decisions/dcn-<id>-<slug>.md`, whose body is
 branches that each record a decision merge with nothing to reconcile. The id is
 minted through the same seam as every other record, the date comes from it, and
 the slug is cut from the text, so a text with no letters or digits in it is
-refused. The text passes the secret scanner before anything is written.
+refused. So is a single bare word (`abcd decide list`), which reads as a
+mistyped sub-verb rather than a decision. The text passes the secret scanner
+before anything is written.
 
 Report the `id` and the `path` from the JSON. A record is never edited: a
 correction is a new decision that says what it corrects.

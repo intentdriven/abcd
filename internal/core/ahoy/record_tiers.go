@@ -57,7 +57,7 @@ const decisionsFolderSeed = `# Decisions
 
 One file per decision, dcn-<id>-<slug>.md, each opening with its date. Record
 one with abcd decide "<text>", which adds a new file and edits nothing else, so
-two branches that each record a decision merge cleanly. List them, oldest
+two branches that each record a decision merge cleanly. List them, newest
 first, with abcd decide. Correct an earlier decision by recording a new one,
 never by editing the old file. Architecture-shaping decisions graduate to an
 ADR under ../../development/decisions/adrs/ (abcd decide --adr).

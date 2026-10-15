@@ -140,7 +140,10 @@ func TestDecideFormRefusalsExitTwo(t *testing.T) {
 	}{
 		{"adr-without-a-title", []string{"decide", "--adr"}, `abcd decide --adr "<title>"`},
 		{"two-operands", []string{"decide", "one", "two"}, "one quoted operand at most"},
-		{"unslugable-text", []string{"decide", "///"}, "no letters or digits"},
+		{"unslugable-text", []string{"decide", "/// ---"}, "no letters or digits"},
+		// One bare word is a mistyped sub-verb, not a decision: `abcd decide list`
+		// must not record a decision called "list".
+		{"one-bare-word", []string{"decide", "list"}, "a single word"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			out, err := runCLIErr(t, tc.args...)

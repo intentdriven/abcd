@@ -60,6 +60,11 @@ func newDecideCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: `decide --adr: one quoted title is required — abcd decide --adr "<title>"`}
 			case len(args) > 1:
 				return &exitError{Code: 2, Msg: `decide: one quoted operand at most — abcd decide "<text>" records a decision, abcd decide lists them`}
+			case !adr && loneBareToken(args):
+				// One bare word reads as a mistyped sub-verb (`abcd decide list`),
+				// and a decision is a sentence, so it is refused rather than
+				// recorded, as capture and intent refuse one.
+				return &exitError{Code: 2, Msg: `decide: a single word is not a decision — record one as a sentence with abcd decide "<text>"; bare abcd decide lists them, abcd decide --adr "<title>" mints an ADR (nothing recorded)`}
 			}
 			return nil
 		},

@@ -68,7 +68,7 @@ intents in **every** bucket (`drafts/`, `planned/`, `shipped/`, `disciplines/`,
 `superseded/`), the ADRs, the principles, the research notes under
 `.abcd/development/research/notes/`, the public verdicts under
 `.abcd/development/research/ideas/`, and the decisions in
-`.abcd/work/decisions/` (`abcd decide` lists them, oldest first), with a
+`.abcd/work/decisions/` (`abcd decide` lists them, newest first), with a
 repository's frozen `.abcd/work/DECISIONS.md` where one remains from before
 the folder. Read this machine's private verdicts in
 `~/.abcd.noindex/ideas/<root-sha>/` too, but never quote one into a public
