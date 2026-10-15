@@ -922,7 +922,9 @@ Run both in the agent harness against commit 1, then commit their receipts:
   and a receipt echoes that file's sha256 as `manifestHash`.
 
 Receipts live at `.abcd/work/reviews/<content-sha>/<gate>.json`. The shape is
-[`.abcd/development/release-gate/receipt.example.json`](../.abcd/development/release-gate/receipt.example.json);
+[`.abcd/development/release-gate/receipt.example.json`](../.abcd/development/release-gate/receipt.example.json),
+whose `manifestHash` is a placeholder: a real receipt carries the hash computed
+at the reviewed commit, and the gate refuses the placeholder;
 the full procedure, including the tiered depth a release's impact class requires,
 is the adr-37 runbook at
 [`.abcd/development/release-gate/README.md`](../.abcd/development/release-gate/README.md).

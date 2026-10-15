@@ -148,7 +148,9 @@ Each semantic pass records its outcome as a **commit-sha-keyed receipt** — a
 Verification Summary Attestation (VSA) shape carrying `verificationResult`
 (PROMOTE / HOLD), the pinned judge-model snapshot, the detector version, and the
 failing categories. Receipts live at `.abcd/work/reviews/<commit-sha>/<gate>.json`;
-[`receipt.example.json`](receipt.example.json) is the concrete shape. The
+[`receipt.example.json`](receipt.example.json) is the concrete shape, with a
+placeholder where a real receipt carries the computed `manifestHash` (see
+below). The
 `receipt_gate` `record-lint` rule verifies, before a tag, that each required gate
 has a PROMOTE receipt whose subject digest is the target commit, whose
 `policy.detector` names that gate, and which pins a judge model; a missing,
@@ -171,12 +173,17 @@ own receipt from its own detector.
 The cross-check runs against a **committed input manifest**,
 [`manifest.json`](manifest.json), which pins the reproducibility inputs: the
 brief-doc list (every `04-surfaces/` chapter plus the constraints, internals
-and delivery chapters that count or enumerate the shipped surface), the two
-directions (A: brief→surface, B: surface→brief), the checker count (one per
-brief doc plus one per surface), and the prompt (context plus both direction
-templates, with the prompt's own `sha256` over the three parts joined by blank
-lines). The context names every `commands/` page and every `agents/` prompt,
-and says that a surface claim found outside the pinned chapters is in scope.
+and delivery chapters that count or enumerate the shipped surface), the
+`commands` and `agents` rosters (every `commands/` page and every `agents/`
+prompt), the two directions (A: brief→surface, B: surface→brief), and the
+prompt (context plus both direction templates, with the prompt's own `sha256`
+over the three parts joined by blank lines). The detector fills the context's
+`${commands}` and `${agents}` from the rosters, as it fills `${doc}` and
+`${s.name}` for each checker, so `promptHash` covers the wording and changes
+only when the wording does; the rosters are pinned with everything else by the
+`manifestHash` a receipt echoes. The context says that a surface claim found
+outside the pinned chapters is in scope. The checker count, one per brief doc
+plus one per surface, follows from the lists and is not stored.
 Two honest runs of the same tier therefore examine the same scope — no run
 chooses its own. The
 [`brief-surface-crosscheck.js`](brief-surface-crosscheck.js) detector consumes
@@ -205,11 +212,26 @@ Pinning makes runs comparable in scope to each other, not to the tree: a surface
 ships without joining the pin is invisible to a run that obeys it, and the
 receipt attests coverage it never had. `TestReleaseGateManifestIsCurrent`
 (`internal/core/lint`) holds the manifest to the tree — every `04-surfaces/`
-chapter pinned, the pinned command and agent rosters equal to `commands/` and
-`agents/` on disk, `checkerCount` equal to the sum of the lists, `promptHash`
-equal to the prompt text — so a new verb, agent or chapter fails the unit
-suite until the manifest names it, and the `manifestHash` a receipt echoes
-changes with it.
+chapter pinned, the `commands` and `agents` rosters equal to `commands/` and
+`agents/` on disk, `promptHash` equal to the prompt text, and no stored
+checker count — so a new verb, agent or chapter fails the unit suite until the
+manifest names it, and the `manifestHash` a receipt echoes changes with it.
+
+The manifest is shaped so that branches adding surfaces at the same time merge
+without a conflict (iss-2610150526192138). Before, each such branch rewrote
+the same lines — the one-line context that carried both rosters, `promptHash`
+over it, a stored `checkerCount`, the line after the highest-numbered chapter
+in `briefDocs`, and the example receipt's literal copy of this file's hash — so
+any two of them conflicted and the second went back for a fresh preflight. Now
+each roster is a sorted array with one name per line, `briefDocs` is ordered by
+directory and then by file name with its leading chapter number removed (so a
+new chapter sits beside its neighbours by name, not after the newest number),
+nothing derived from the lists is stored, and the example receipt carries a
+placeholder. The same test holds both orders, and
+`TestSurfaceAdditionsMergeCleanly` merges two branches that each add a surface
+in a throwaway repository. A new name goes at its sorted place, never at the
+end; two branches can still conflict when their names sort into the same gap,
+and the resolution is to keep both lines.
 
 Depth is **tiered by the release's impact class**:
 
@@ -230,7 +252,13 @@ A manifest-era receipt therefore carries two further fields alongside the ones
 above:
 
 - **`manifestHash`** — the `sha256` of `manifest.json` the run pinned its inputs
-  against.
+  against, as `sha256:<hex>`. The receipt writer computes it at the reviewed
+  commit: `printf 'sha256:'; shasum -a 256 .abcd/development/release-gate/manifest.json | cut -d' ' -f1`.
+  The example receipt carries a placeholder there, never a literal: the hash
+  changes with every edit to the manifest, so a literal in the example went
+  stale with every surface a branch added and made any two such branches
+  conflict. `receipt_gate` refuses the placeholder like any other mismatch, so
+  a receipt copied from the example without computing the hash fails closed.
 - **`tier`** — `full` or `shallow`, the depth the run used.
 
 `receipt_gate` adds three **procedural** refusals once the manifest exists in the
