@@ -82,13 +82,30 @@ bound: the refusal says so and gives the push to run by hand.
    have not passed (`isRequired` for this pull request; at most eight,
    sanitised) before the forge's merge state, and BEHIND alone named as no
    holder, since the queue tests the pull request on top of the default
-   branch. Auto-merge is toggled once a run, and only when this account's
-   arming has sat CLEAN and unqueued for more than 30 minutes by the forge's
-   `enabledAt` (no local clock state): on the first real run the forge queued
-   an armed CLEAN pull request by itself after fifteen minutes, which a toggle
-   would only have churned, and the grace is twice that. Inside it the note
-   says how long ago the arming was made and when to run the verb again if
-   the pull request is still not queued. The forge cannot tell land's arming
+   branch. The checks are read one page at the forge's maximum of 100. BEHIND
+   is never called no holder when land cannot see every holder: when the
+   forge's rollup is PENDING or EXPECTED and no required check land read is
+   pending (a required check with no run yet, just after a push), the note
+   says checks are still pending and names the rollup's state, which is the
+   authority; and when the forge has more checks than the page held, it says
+   the forge lists more checks than land read. Auto-merge is toggled once a
+   run, and only when this account's arming has sat CLEAN and unqueued for
+   more than 30 minutes, timed from the later of the arming's `enabledAt` and
+   the newest time a required check passed (a check run's `completedAt`, a
+   commit status's `createdAt`), all the forge's own times, with no local
+   clock state: on the first real run (pull request #1018) the last required
+   check passed at 12:59:42Z, the pull request was seen CLEAN at 12:59:47Z and
+   the forge queued it by itself at 13:15:01Z, a 15m14s wait which a toggle
+   would only have churned, and the grace is about twice that. Those times
+   are compared with the local clock, and the verb makes no forge call to
+   read the forge's: a local clock running fast shortens the grace by its
+   lead, and the verb never toggles when `enabledAt` or a check's time is
+   later than the local clock. Inside the grace the note says how long ago
+   the arming was made (and how long it has been CLEAN, when its checks
+   passed after the arming) and when to run the verb again if the pull
+   request is still not queued. An arming of this account's on a head other
+   than the one gated is refused, naming both, as after a fresh arming. The
+   forge cannot tell land's arming
    from the person's own under the same account, so both count as land's; an
    arming another account made is left as it is and reported, with the
    person's way on: wait for the forge, or withdraw and re-arm it with the

@@ -29,6 +29,11 @@ func TestTheGraphQLFieldsAreTheForgesOwn(t *testing.T) {
 		{"CheckRun", "conclusion", "CheckConclusionState"},
 		{"StatusContext", "context", "String"},
 		{"StatusContext", "isRequired", "Boolean"},
+		// R6: read live 2026-10-15 (graphql-fields.txt says how).
+		{"CheckRun", "completedAt", "DateTime"},
+		{"StatusContext", "createdAt", "DateTime"},
+		{"StatusCheckRollupContextConnection", "pageInfo", "PageInfo"},
+		{"PageInfo", "hasNextPage", "Boolean"},
 	} {
 		if got, ok := ghcontract.GraphQLField(c.typ, c.field); !ok || got != c.named {
 			t.Fatalf("GraphQLField(%s, %s) = %q, %v; want %s", c.typ, c.field, got, ok, c.named)

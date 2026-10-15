@@ -10,6 +10,8 @@
 # listed whole; Query.viewer and User.login are the walk to the viewer's login.
 # A union's possible types are one line each, "on <Union> <Type>", read by
 # {__type(name:"StatusCheckRollupContext"){possibleTypes{name}}}.
+# Round 6 (read 2026-10-15 the same way): PageInfo, listed whole, for
+# StatusCheckRollupContextConnection.pageInfo{hasNextPage}.
 Query.repository Repository OBJECT
 Query.viewer User OBJECT
 User.login String SCALAR
@@ -194,3 +196,7 @@ Actor.resourcePath URI SCALAR
 Actor.url URI SCALAR
 on StatusCheckRollupContext CheckRun
 on StatusCheckRollupContext StatusContext
+PageInfo.endCursor String SCALAR
+PageInfo.hasNextPage Boolean SCALAR
+PageInfo.hasPreviousPage Boolean SCALAR
+PageInfo.startCursor String SCALAR

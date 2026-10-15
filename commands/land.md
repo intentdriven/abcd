@@ -90,12 +90,21 @@ that name with none at this head, since the proof may lie past the bound.
    otherwise names what holds it: required checks that have not passed first
    (at most eight), then the forge's merge state, where BEHIND alone holds
    nothing because the queue tests the pull request on top of the default
-   branch. The forge often queues an armed CLEAN pull request by itself after
+   branch. When the forge's check rollup is PENDING or EXPECTED with no
+   required check land read still pending (one with no run yet), the note
+   says checks are still pending instead, and when the forge has more than
+   the 100 checks land reads, it says so; BEHIND is then not called no
+   holder. The forge often queues an armed CLEAN pull request by itself after
    a wait (fifteen minutes on the first real run), so auto-merge is toggled
    only when this account's arming has sat CLEAN outside the queue for more
-   than 30 minutes, timed by the arming's own time on the forge, and then once
-   a run. Inside that grace the note says how long ago it was armed and when
-   to run `abcd land` again if it is still not queued. The forge cannot tell
+   than 30 minutes, timed from the later of the arming's time on the forge
+   and the time its last required check passed, and then once a run. Those
+   are the forge's times against the local clock: a fast local clock shortens
+   the grace, and a forge time ahead of the local clock never toggles. Inside
+   that grace the note says how long ago it was armed (and how long it has
+   been CLEAN) and when to run `abcd land` again if it is still not queued.
+   This account's arming on a head other than the one land gated is refused,
+   naming both commits. The forge cannot tell
    land's arming from one the user made by hand under the same account, so
    both count as land's. A toggle whose re-arming fails says the pull request
    is now disarmed and gives the command that arms it again. With no pull

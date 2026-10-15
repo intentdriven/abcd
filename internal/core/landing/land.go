@@ -809,22 +809,70 @@ type prState struct {
 }
 
 // checkRollup is the head commit's checks and statuses as the forge rolls
-// them up, each node a check run (name, status, conclusion) or a commit
-// status (context, state), with whether this pull request requires it.
+// them up, each node a check run (name, status, conclusion, completedAt) or a
+// commit status (context, state, createdAt), with whether this pull request
+// requires it; PageInfo says whether the forge holds more than land read.
 type checkRollup struct {
 	State    string `json:"state"`
 	Contexts struct {
+		PageInfo struct {
+			HasNextPage bool `json:"hasNextPage"`
+		} `json:"pageInfo"`
 		Nodes []checkContext `json:"nodes"`
 	} `json:"contexts"`
 }
 
+// newestRequiredPass is when the last of the required checks that have passed
+// passed: a check run's completedAt, a commit status's createdAt (a status is
+// created in its state, so a passing one's createdAt is when it passed).
+// false when no passing required check gives a time that parses.
+func (r *checkRollup) newestRequiredPass() (time.Time, bool) {
+	var newest time.Time
+	for _, c := range r.Contexts.Nodes {
+		at := ""
+		switch {
+		case !c.IsRequired:
+			continue
+		case c.Context != "" || c.State != "":
+			if c.State == "SUCCESS" {
+				at = c.CreatedAt
+			}
+		case c.Status == "COMPLETED" && passingConclusions[c.Conclusion]:
+			at = c.CompletedAt
+		}
+		if t, err := time.Parse(time.RFC3339, at); err == nil && t.After(newest) {
+			newest = t
+		}
+	}
+	return newest, !newest.IsZero()
+}
+
+// pendingRequiredListed reports whether a required check land read has not
+// finished: a check run not completed, or a commit status pending or expected.
+func (r *checkRollup) pendingRequiredListed() bool {
+	for _, c := range r.Contexts.Nodes {
+		switch {
+		case !c.IsRequired:
+		case c.Context != "" || c.State != "":
+			if c.State == "PENDING" || c.State == "EXPECTED" {
+				return true
+			}
+		case c.Status != "COMPLETED":
+			return true
+		}
+	}
+	return false
+}
+
 type checkContext struct {
-	Name       string `json:"name"`
-	Status     string `json:"status"`
-	Conclusion string `json:"conclusion"`
-	Context    string `json:"context"`
-	State      string `json:"state"`
-	IsRequired bool   `json:"isRequired"`
+	Name        string `json:"name"`
+	Status      string `json:"status"`
+	Conclusion  string `json:"conclusion"`
+	Context     string `json:"context"`
+	State       string `json:"state"`
+	IsRequired  bool   `json:"isRequired"`
+	CompletedAt string `json:"completedAt"`
+	CreatedAt   string `json:"createdAt"`
 }
 
 // passingConclusions are the check-run conclusions a required check passes
@@ -903,17 +951,33 @@ func (s prState) ownArming() bool {
 	return s.armed() && s.viewer != "" && a.EnabledBy != nil && strings.EqualFold(a.EnabledBy.Login, s.viewer)
 }
 
-// armedFor is how long the arming has been in place, by the forge's
-// enabledAt; false when the forge gives no time that parses.
-func (s prState) armedFor() (time.Duration, bool) {
+// armedFor is how long the arming has been in place (armed), by the forge's
+// enabledAt, and how long it has sat armed with every required check
+// passed: from the later of enabledAt and the newest passing required check's
+// time (newestRequiredPass), so checks that take 25 minutes leave a re-run at
+// arming+31 six minutes into the grace. false when the forge gives no arming
+// time that parses.
+//
+// Both compare the forge's clock with the local one, and land makes no forge
+// call to read the forge's: a local clock running fast shortens the grace by
+// its lead, and one running slow lengthens it. A forge time later than the
+// local clock counts as no time elapsed, so land never toggles an arming whose
+// enabledAt, or whose last check's time, is in the future.
+func (s prState) armedFor() (armed, clean time.Duration, ok bool) {
 	if !s.armed() {
-		return 0, false
+		return 0, 0, false
 	}
 	t, err := time.Parse(time.RFC3339, s.autoMerge().EnabledAt)
 	if err != nil {
-		return 0, false
+		return 0, 0, false
 	}
-	return max(now().Sub(t), 0), true
+	start := t
+	if s.StatusCheckRollup != nil {
+		if p, ok := s.StatusCheckRollup.newestRequiredPass(); ok && p.After(start) {
+			start = p
+		}
+	}
+	return max(now().Sub(t), 0), max(now().Sub(start), 0), true
 }
 
 // maxListedPRs bounds the forge's listing of a branch's open pull requests:
@@ -930,7 +994,12 @@ const maxListedPRs = 20
 // request's number; with neither it nor an id the forge refuses the field).
 // Every field is pinned in ghcontract, and testdata/ holds the forge's
 // answers to this query.
-const PRStateQuery = `query($o:String!,$r:String!,$n:Int!){viewer{login} repository(owner:$o,name:$r){pullRequest(number:$n){isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod enabledAt enabledBy{login}} reviewDecision mergeStateStatus mergeable headRefOid statusCheckRollup{state contexts(first:50){nodes{... on CheckRun{name status conclusion isRequired(pullRequestNumber:$n)} ... on StatusContext{context state isRequired(pullRequestNumber:$n)}}}}}}}`
+//
+// The checks are read a page at the forge's maximum (it refuses first:101,
+// "exceeds the `first` limit of 100 records"), with whether more follow, and
+// each with the time it finished (completedAt; a status's createdAt), which
+// times the toggle's grace.
+const PRStateQuery = `query($o:String!,$r:String!,$n:Int!){viewer{login} repository(owner:$o,name:$r){pullRequest(number:$n){isInMergeQueue mergeQueueEntry{state position} autoMergeRequest{mergeMethod enabledAt enabledBy{login}} reviewDecision mergeStateStatus mergeable headRefOid statusCheckRollup{state contexts(first:100){pageInfo{hasNextPage} nodes{... on CheckRun{name status conclusion completedAt isRequired(pullRequestNumber:$n)} ... on StatusContext{context state createdAt isRequired(pullRequestNumber:$n)}}}}}}}`
 
 // prStateArgs are the forge client's arguments for PRStateQuery on pull
 // request n of the repository owner/name. The owner and the name go as raw
@@ -1110,6 +1179,12 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 		// This account's arming, land's own from an earlier run (the forge
 		// cannot tell land's arming from the person's own): the grace below
 		// decides whether it has sat long enough to toggle.
+		// An arming on a head other than the one land gated may merge a commit
+		// land did not check: refused, as after a fresh arming.
+		if s.HeadRefOid != res.Head {
+			return refuse(fmt.Sprintf("pull request #%s is armed by this account, but its head on the forge is %s, not %s, the head land gated, so the arming may merge a commit land did not check", n, short(s.HeadRefOid), short(res.Head)),
+				"withdraw the arming (gh pr merge "+n+" --disable-auto), then run abcd land again to gate and arm the forge's head")
+		}
 		note = "pull request #" + n + " is already armed (" + armedMethod(s) + ") by this account"
 		rearm = rearmArgs(s, n, res.Head)
 	default:
@@ -1125,8 +1200,11 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 	// forge reports CLEAN can still sit outside the queue, and toggling
 	// auto-merge once has queued it where the forge's enqueue call failed. It
 	// also queues one by itself, after a wait (round 5), so the toggle waits
-	// out toggleGrace, timed by the forge's own enabledAt.
-	if age, ok := s.armedFor(); ok && age > toggleGrace && s.MergeStateStatus == "CLEAN" && s.HeadRefOid == res.Head {
+	// out toggleGrace, timed from the later of the forge's enabledAt and its
+	// last required check's pass (armedFor). Both paths here hold the forge's
+	// head at res.Head: confirmView refuses another after a fresh arming, and
+	// the re-run path above refuses it.
+	if _, clean, ok := s.armedFor(); ok && clean > toggleGrace && s.MergeStateStatus == "CLEAN" {
 		if _, err := forge(o, dir, "pr", "merge", n, "--disable-auto"); err != nil {
 			return err
 		}
@@ -1138,7 +1216,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 			return refuse("pull request #"+n+" is now DISARMED: land withdrew its auto-merge to queue it again and the forge refused the new arming ("+why+")",
 				"arm it again yourself with: gh "+strings.Join(shellWords(rearm), " ")+" (or run abcd land again)")
 		}
-		note += fmt.Sprintf("; it sat CLEAN outside the queue, armed %d min ago, past the %d-minute grace, so auto-merge was toggled once", int(age/time.Minute), int(toggleGrace/time.Minute))
+		note += fmt.Sprintf("; it sat CLEAN outside the queue for %d min, armed with its required checks passed, past the %d-minute grace, so auto-merge was toggled once", int(clean/time.Minute), int(toggleGrace/time.Minute))
 		if s, err = confirmView(view, n, res.Head); err != nil {
 			return err
 		}
@@ -1151,11 +1229,12 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 	return nil
 }
 
-// toggleGrace is how long this account's arming may sit outside the merge
-// queue before land toggles it. On 2026-10-15 the forge queued pull request
-// #1018 by itself about 15 minutes after it went CLEAN, armed and unqueued
-// (12:59:47Z to 13:15:01Z): a normal wait, which a toggle would only have
-// churned. The grace is twice that.
+// toggleGrace is how long this account's arming may sit CLEAN outside the
+// merge queue (armedFor's clean time) before land toggles it. On 2026-10-15 pull
+// request #1018, armed at 12:52:16Z, had its last required check pass at
+// 12:59:42Z and was seen CLEAN, armed and unqueued at 12:59:47Z; the forge
+// queued it by itself at 13:15:01Z, a 15m14s pickup: a normal wait, which a
+// toggle would only have churned. The grace is about twice that.
 const toggleGrace = 30 * time.Minute
 
 // now is land's clock, a var so a test can fix it. An arming's age is read
@@ -1171,13 +1250,17 @@ func waitText(s prState, n string, rearm []string) string {
 	if s.MergeStateStatus != "CLEAN" {
 		return ""
 	}
-	age, ok := s.armedFor()
+	armed, clean, ok := s.armedFor()
 	switch {
 	case !ok:
 		return cleanAdvice(s, "the forge gives no time for this arming, so land does not toggle it", n, rearm)
-	case age <= toggleGrace:
-		return fmt.Sprintf("; armed; the forge has not queued it yet (armed %d min ago); run abcd land again after %s if it is still not queued",
-			int(age/time.Minute), ceilMinute(now().Add(toggleGrace-age)).UTC().Format("15:04 UTC"))
+	case clean <= toggleGrace:
+		since := fmt.Sprintf("armed %d min ago", int(armed/time.Minute))
+		if clean < armed {
+			since += fmt.Sprintf(", CLEAN for %d min since its last required check passed", int(clean/time.Minute))
+		}
+		return fmt.Sprintf("; armed; the forge has not queued it yet (%s); run abcd land again after %s if it is still not queued",
+			since, ceilMinute(now().Add(toggleGrace-clean)).UTC().Format("15:04 UTC"))
 	}
 	return cleanAdvice(s, "land toggles an arming once a run", n, rearm)
 }
@@ -1251,7 +1334,10 @@ const maxHeldChecks = 8
 // holdText says what holds a pull request out of the queue: the required
 // checks that have not passed, named first, then the forge's merge state.
 // BEHIND is no holder where land arms, since a merge queue gates def and
-// builds each entry on top of it.
+// builds each entry on top of it, but only when land read every check and
+// the forge's rollup is not waiting on one land did not list: a required
+// check with no run yet (just after a push) or beyond the page land read can
+// hold it too, and the forge's rollup state is the authority on that.
 func holdText(s prState, def string) string {
 	var b strings.Builder
 	if held := s.heldChecks(); len(held) > 0 {
@@ -1261,6 +1347,17 @@ func holdText(s prState, def string) string {
 			fmt.Fprintf(&b, ", and %d more", more)
 		}
 		b.WriteString("; ")
+	}
+	unread := false
+	if r := s.StatusCheckRollup; r != nil {
+		if (r.State == "PENDING" || r.State == "EXPECTED") && !r.pendingRequiredListed() {
+			b.WriteString("checks are still pending (the forge's rollup is " + r.State + "), and no required check land read is pending: one may not have started yet; ")
+			unread = true
+		}
+		if r.Contexts.PageInfo.HasNextPage {
+			b.WriteString("the forge lists more checks than land read (the first 100), so one beyond them may hold it; ")
+			unread = true
+		}
 	}
 	st := s.MergeStateStatus
 	if st == "" {
@@ -1275,9 +1372,12 @@ func holdText(s prState, def string) string {
 		"CLEAN":    "it is mergeable, but the forge has not queued it",
 	}[st]
 	b.WriteString("the forge reports " + termsafe.Sanitize(st))
-	if st == "BEHIND" {
+	switch {
+	case st == "BEHIND" && unread:
+		b.WriteString(" (the queue tests it on top of " + def + ")")
+	case st == "BEHIND":
 		b.WriteString(", which does not hold it: the queue tests it on top of " + def)
-	} else if why != "" {
+	case why != "":
 		b.WriteString(" (" + why + ")")
 	}
 	return b.String()
