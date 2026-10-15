@@ -1089,6 +1089,7 @@ func TestASecondAnswerKeptAsideNeverReplacesTheFirst(t *testing.T) {
 // still recorded on the await. A return the host's agent wrote over the
 // placement is never taken back, and a refused drop then never says it was.
 func TestATakeBackRemovesOnlyTheRoutesAnswerAndNeedsNoLockToDoIt(t *testing.T) {
+	shortLockTimeout(t)
 	for _, tc := range []struct {
 		name              string
 		busy, overwritten bool
