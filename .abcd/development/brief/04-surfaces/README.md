@@ -32,7 +32,7 @@ are wiring rather than user-facing surface are listed separately under
 | 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
 | 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
 | 23 | `/abcd:reading` | shipped | Assemble what a cold reading may see, prove it, and validate what comes back | [`23-reading.md`](23-reading.md) |
-| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision in date order, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |
+| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision newest first, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |
 | 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout (design target — [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
 | 26 | `/abcd:mode` | shipped | Say whose answer the agent loop is waiting on, so the status line and the board show it | [`08-abcd.md`](08-abcd.md) |
 | 27 | `/abcd:implement` | shipped | Share one autonomous run between two sessions: claim a record before its lane, keep the second session inside its bounds, and compare the ways of dividing the work from the run log | [`27-implement.md`](27-implement.md) |

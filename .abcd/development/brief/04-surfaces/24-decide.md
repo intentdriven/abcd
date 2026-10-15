@@ -41,7 +41,9 @@ operand: the decision's text, or with the ADR flag the ADR's title.
 
 ## Recording a decision
 
-Given the quoted text as its one operand, the verb calls `decisions.Record`, the
+A single bare word is refused with exit 2 and nothing written, since it reads
+as a mistyped sub-verb (`abcd decide list`). Given any other quoted text as its
+one operand, the verb calls `decisions.Record`, the
 folder's one writer (`internal/core/decisions`), and the JSON form emits
 `{ "id": "dcn-<stamp>", "slug": "<kebab-case>", "date": "YYYY-MM-DD",
 "path": ".abcd/work/decisions/dcn-<stamp>-<slug>.md", "text": "<date> — <text>" }`.

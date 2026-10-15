@@ -176,6 +176,22 @@
       "evidence": "internal/surface/cli/source.go:642",
       "commit": "7def7acb298da9e5adbe41af45d801ca76be9294",
       "applied": "2026-10-11T16:01:16Z"
+    },
+    {
+      "chapter": "24-decide.md",
+      "sentence": "Given the quoted text as its one operand, the verb calls `decisions.Record`, the",
+      "replacement": "A single bare word is refused with exit 2 and nothing written, since it reads",
+      "evidence": "internal/surface/cli/decide.go:63",
+      "commit": "25ef6d8ec16483c318b233edbff05162d8a7793b",
+      "applied": "2026-10-15T18:41:10Z"
+    },
+    {
+      "chapter": "README.md",
+      "sentence": "| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision in date order, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |",
+      "replacement": "| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision newest first, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |",
+      "evidence": "internal/core/decisions/record.go:226",
+      "commit": "25ef6d8ec16483c318b233edbff05162d8a7793b",
+      "applied": "2026-10-15T18:41:10Z"
     }
   ]
 }
