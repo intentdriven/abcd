@@ -117,6 +117,10 @@ const WORDS = Object.freeze({
   cancel: "Cancel",
   suggestionSent: "Suggestion sent to the team members.",
   suggestTooBig: "That suggestion is too long to send. Choose a shorter passage, or a shorter replacement.",
+  suggestTooFast: "Your suggestion was not sent: suggestions came too fast. Wait a moment, then send it again.",
+  suggestNotSent: "Your suggestion was not sent.",
+  suggestWait: "Your last suggestion is still on its way. Send this one when it has arrived.",
+  suggestLost: "The connection dropped before your last suggestion was confirmed, so it may not have reached the team. Check Your suggestions, and send it again if it is not there.",
   noMembers: "No team member is connected to receive it.",
   mySuggestionsHeading: "Your suggestions",
   submit: "Send to GitHub",
@@ -420,7 +424,10 @@ let rosterSeen = false;
 const unattributed = new Set();
 const mine = [];              // a guest's own suggestions
 const notes = [];             // warnings the page keeps showing
-const awaitingAck = [];       // suggestions sent, waiting for "suggested"
+// The guest's suggestion sent and not yet answered. The relay's answer, a
+// refusal or a rate limit included, does not say which message it answers,
+// so a guest has one suggestion in flight at a time.
+let suggestionInFlight = null;
 let ws = null;
 let retries = 0;
 let retryTimer = 0;
@@ -499,6 +506,11 @@ function socketClosed(ev) {
   session.rejoining = false;
   const quiet = quietClose;
   quietClose = false;
+  // No answer comes on a closed connection.
+  if (suggestionInFlight) {
+    suggestionInFlight = null;
+    toast(WORDS.suggestLost);
+  }
   renderTop();
   if (session.over) return;
   // The relay closes a connection that joined nothing in time; the next
@@ -794,10 +806,19 @@ function onError(msg) {
   }
   if (code === "rejoined-elsewhere" || code === "too-many-tries") forgetRejoin();
   if (code === "suggestion-too-big" || code === "too-many-suggestions" || code === "suggestions-full" || code === "bad-suggestion") {
-    // The relay answers suggestions in the order they were sent: this one
-    // refused the oldest still waiting for its answer.
-    awaitingAck.shift();
-    toast(text);
+    // This refused the one suggestion in flight.
+    suggestionInFlight = null;
+    toast(WORDS.suggestNotSent + " " + text);
+    renderSide();
+    return;
+  }
+  if (code === "rate-limited" && session.role === "guest" && suggestionInFlight) {
+    // The relay dropped a message that came too fast; with a suggestion in
+    // flight it is taken to be that one, as nothing else a guest sends waits
+    // for an answer: the guest is told to send it again.
+    suggestionInFlight = null;
+    toast(WORDS.suggestTooFast);
+    renderSide();
     return;
   }
   if (code === "join-timeout") {
@@ -1560,13 +1581,15 @@ function sendSuggestion(replacement) {
   };
   // The relay refuses a suggestion over its size; say so here instead.
   if (utf8Length(JSON.stringify(body)) > MAX_SUGGEST_BYTES) { toast(WORDS.suggestTooBig); return false; }
-  awaitingAck.push(body);
+  if (suggestionInFlight) { toast(WORDS.suggestWait); return false; }
+  suggestionInFlight = body;
   sendJSON({ type: "suggest", body });
   return true;
 }
 
 function onSuggested(msg) {
-  const body = awaitingAck.shift();
+  const body = suggestionInFlight;
+  suggestionInFlight = null;
   if (!body) return;
   mine.push({ id: String(msg.id || ""), body });
   toast(msg.delivered > 0 ? WORDS.suggestionSent : WORDS.noMembers);

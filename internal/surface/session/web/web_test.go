@@ -1118,8 +1118,55 @@ func TestStoredSuggestionsAreBounded(t *testing.T) {
 			t.Errorf("onError does not answer %s", code)
 		}
 	}
-	if !strings.Contains(on, "awaitingAck.shift()") {
+	if !strings.Contains(on, "suggestionInFlight = null;") {
 		t.Error("a refused suggestion stays waiting for its acknowledgement")
+	}
+}
+
+// The relay's refusal of a suggestion, a rate limit's included, does not say
+// which message it answers, so a guest's page has one suggestion in flight at
+// a time: the next is refused until the relay answers, an answer of either
+// kind clears it, a refusal tells the guest it was not sent, and a connection
+// that closes clears it too, since no answer will come.
+func TestARefusedSuggestionLeavesNothingWaiting(t *testing.T) {
+	js := pageScript(t)
+	if strings.Contains(js, "awaitingAck") {
+		t.Error("session.js still queues suggestions waiting for their answers")
+	}
+	if !strings.Contains(js, "\nlet suggestionInFlight = null;") {
+		t.Fatal("session.js does not track the one suggestion in flight")
+	}
+	send := functionBody(t, js, "sendSuggestion")
+	wait, set, sent := strings.Index(send, "if (suggestionInFlight) { toast(WORDS.suggestWait); return false; }"),
+		strings.Index(send, "suggestionInFlight = body;"), strings.Index(send, `sendJSON({ type: "suggest", body })`)
+	if wait < 0 || set < 0 || sent < 0 || wait > set || set > sent {
+		t.Errorf("sendSuggestion sends a second suggestion while one waits for its answer:\n%s", send)
+	}
+	ok := functionBody(t, js, "onSuggested")
+	if !strings.Contains(ok, "const body = suggestionInFlight;") || !strings.Contains(ok, "suggestionInFlight = null;") {
+		t.Errorf("onSuggested does not take the suggestion in flight:\n%s", ok)
+	}
+	on := functionBody(t, js, "onError")
+	limited := strings.Index(on, `if (code === "rate-limited" && session.role === "guest" && suggestionInFlight) {`)
+	if limited < 0 {
+		t.Fatalf("onError leaves a rate-limited suggestion waiting:\n%s", on)
+	}
+	branch := on[limited:]
+	branch = branch[:strings.Index(branch, "\n  }\n")]
+	if !strings.Contains(branch, "suggestionInFlight = null;") || !strings.Contains(branch, "toast(WORDS.suggestTooFast);") || !strings.Contains(branch, "renderSide();") {
+		t.Errorf("a rate-limited suggestion is not cleared and said:\n%s", branch)
+	}
+	if !strings.Contains(on, "toast(WORDS.suggestNotSent + \" \" + text);") {
+		t.Errorf("a refused suggestion is not said to be unsent:\n%s", on)
+	}
+	for _, want := range []string{"  suggestTooFast: ", "  suggestNotSent: ", "  suggestWait: ", "  suggestLost: "} {
+		if !strings.Contains(js, want) {
+			t.Errorf("the page has no words %s", strings.TrimSpace(want))
+		}
+	}
+	closed := functionBody(t, js, "socketClosed")
+	if !strings.Contains(closed, "suggestionInFlight = null;") || !strings.Contains(closed, "toast(WORDS.suggestLost)") {
+		t.Errorf("a closed connection leaves its suggestion waiting:\n%s", closed)
 	}
 }
 
