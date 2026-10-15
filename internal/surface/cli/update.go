@@ -24,6 +24,13 @@ import (
 // constructs it (the adr-38 seam extended to the update verb, spc-32 AC8).
 var newUpdater = func() updater { return update.NewGitHubUpdater() }
 
+// ahoyReleaseProvenance is the build-provenance check `ahoy install` hands
+// core for promoting the plugin's cached release binary to the PATH copy
+// (iss-2610120617515834): abcd update's own in-process check, so both verbs
+// hold a release binary to one primitive. A variable only so tests can stand
+// in for the network.
+var ahoyReleaseProvenance ahoy.ProvenanceCheck = update.VerifyReleaseProvenance
+
 // updater is what the verb asks of the release client: resolve a tag, then
 // apply it. An interface so a test drives the swap path with no network, the
 // way version.go's newReleaseFetcher hands back a vintage.ReleaseFetcher.
@@ -37,14 +44,24 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "update [tag]",
 		Long: "Fetches the named release (or resolves the latest, naming it before acting),\n" +
-			"verifies the platform binary against the same release's checksums.txt, and\n" +
-			"swaps the PATH-installed copy atomically. The verb is the only ask: abcd\n" +
+			"verifies the platform binary against the same release's checksums.txt and\n" +
+			"against the SLSA build provenance the release workflow signed for it\n" +
+			"(fetched from GitHub's attestations API and checked against the Sigstore\n" +
+			"trusted root, pinned to intentdriven/abcd's release.yml and to the commit\n" +
+			"the release tag names), and swaps the\n" +
+			"PATH-installed copy atomically. A binary whose provenance cannot be\n" +
+			"verified, offline included, is refused with the way to install it by hand;\n" +
+			"nothing is swapped unverified. The verb is the only ask: abcd\n" +
 			"never checks for or applies updates on its own (adr-38). A plugin-root\n" +
 			"binary, the dev shim, and package-manager installs are refused with the\n" +
 			"command that owns them. The file being replaced must be provably abcd's:\n" +
 			"the binary running the command, an install " + abcdhome.Display("path-entry") + " records, or\n" +
 			"a digest a published release still names. Anything else is refused with a\n" +
 			"remedy that reinstalls over it — never one that deletes it.\n\n" +
+			"The release it installs or verifies is recorded as this machine's newest\n" +
+			"(" + abcdhome.Display("release-mark") + "). A bare update whose latest release is older\n" +
+			"than that is refused, since the newer one may have been withdrawn; naming\n" +
+			"the older tag installs it and records it, which is the one way back.\n\n" +
 			"With --check it only asks: it fetches the latest release's tag once, says\n" +
 			"whether this binary is behind and which command takes the update for this\n" +
 			"install's shape, and swaps nothing.",
@@ -77,6 +94,25 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A latest release older than the newest-release mark is a
+			// publisher withdrawal, or a fall back the person did not choose:
+			// refused before anything is fetched. Naming the tag is the one way
+			// to go back on purpose (iss-2609151847117977).
+			if requested == "" {
+				if mark, ok := ahoy.ReadReleaseMark(); ok && ahoy.ReleaseOlder(tag, mark) {
+					return refuseUpdate(cmd.OutOrStdout(), *asJSON, update.Report{
+						Action:     update.ActionRefused,
+						TargetPath: fsutil.RedactHome(tgt.Path),
+						Refusal: &update.Refusal{
+							Shape: "older-than-mark",
+							Detail: "the latest release, " + tag + ", is older than " + mark +
+								", the newest release this machine has installed or verified; the publisher may have withdrawn " + mark,
+							Remedy: "to go back to " + tag + " on purpose, run `" + ahoy.LowerReleaseMarkCommand(tag) +
+								"`, which installs it and records it as the newest release",
+						},
+					})
+				}
+			}
 			// Name the tag before acting. On a TTY the bare form asks; an
 			// explicit tag was already the user's own naming.
 			if requested == "" && !yes && isTTY(os.Stdin) && isTTY(os.Stderr) {
@@ -98,6 +134,14 @@ func newUpdateCommand(asJSON *bool) *cobra.Command {
 			// record names this path (legacy installs, plugin-root refusals).
 			if rep.Action == update.ActionSwapped || rep.Action == update.ActionCurrent {
 				ahoy.RefreshPathEntryDigest(tgt.Path, rep.Digest)
+				// The release this run installed or verified is recorded as the
+				// newest: a bare update only raises the mark, and a tag the
+				// person named records itself, lowering it on purpose
+				// (iss-2609151847117977).
+				if err := ahoy.RecordReleaseMark(tag, requested != ""); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "note: the newest-release mark could not be recorded (%s)\n",
+						termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+				}
 			}
 			if rep.Refusal != nil {
 				return refuseUpdate(cmd.OutOrStdout(), *asJSON, rep)
@@ -194,6 +238,9 @@ func renderUpdateReport(w io.Writer, asJSON bool, rep update.Report) {
 				fmt.Fprintf(w, "  replaced: sha256 %s — in no published release; %s\n", termsafe.Sanitize(rep.OldDigest), rep.Ownership.Prose())
 			}
 			fmt.Fprintf(w, "  verified: sha256 %s (release checksums.txt)\n", termsafe.Sanitize(rep.Digest))
+			if rep.AttestedBy != "" {
+				fmt.Fprintf(w, "  attested: SLSA build provenance signed by %s\n", termsafe.Sanitize(rep.AttestedBy))
+			}
 		case update.ActionCurrent:
 			fmt.Fprintf(w, "already current: %s is %s (verified against the release checksums)\n", termsafe.Sanitize(rep.TargetPath), termsafe.Sanitize(rep.Tag))
 		case update.ActionRefused:

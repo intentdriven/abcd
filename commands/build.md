@@ -124,7 +124,10 @@ and the falsifier (fix rounds past the pace rule's count, or an unachievable
 hand-back). A lane handed back after its fix rounds records the pick as
 falsified in the run record, and the entry is left as written. The lane's `worktree` stage appends it to the intent in the lane's
 own worktree and commits it there as the lane branch's first commit, a
-record-only commit made before the brief. The receipt verifier does not count
+record-only commit made before the brief, as your own git makes a commit: the
+repository's hooks run (one that refuses it refuses the stage), and it is
+signed where your git configuration signs every commit; one still waiting after ten
+minutes on a signing prompt or a hook is stopped and refuses the stage. The receipt verifier does not count
 it: a receipt naming it is refused, so the implementer names only its own
 commits, and so is a receipt over a branch that no longer carries it after a
 rebase or an amend. No existing entry changes, the checkout you run in is not written but
@@ -178,10 +181,13 @@ Refusals, each writing nothing:
 - no candidate for a single pick or a series' first: refused at the `pick`
   stage, exit 2; `refusal.excluded` names every planned intent and the check
   that excluded it. Tell the user each one and do not work around it.
-- a negative `--max`, or `--max` with `--until-empty`: refused at the `pick`
-  stage, exit 2.
-- while a series is in progress, a count other than the one it began with:
-  refused at the `pick` stage, exit 2; run `build next` without a count. A
+- `--max 0` or a negative `--max`, which name no run count (it is 1 or
+  more), or `--max` with `--until-empty`: refused at the `pick` stage, exit 2.
+  An explicit `--max 0` is not read as no count: it neither gives a single
+  pick nor continues a live series.
+- while a series is in progress, a count other than the one it began with,
+  `--max 1` included: refused at the `pick` stage, exit 2; run `build next`
+  without a count. A
   pace flag naming another pace than the series' is refused at the `pace`
   stage.
 - another `build next` moving the series at the same time, one that began a
@@ -191,8 +197,11 @@ Refusals, each writing nothing:
   (not a regular file in a real directory, or past its size cap), that does not
   parse as it (malformed JSON, an unknown or repeated field, another
   `schema_version`), that names no run count a series takes, or that names a
-  pick that is not an intent and a run, or whose `outcome` is not one the
-  series writes: refused at the `pick` stage, exit 2, on every `build next`
+  pick that is not an intent and a run, whose `outcome` is not one the series
+  writes, whose stored pace flags are not in the form `--pace`,
+  `--sub-agents` and `--fix-rounds` take, or whose stored pace names a layer
+  other than `flag`, `repo`, `machine` or `bundled`, or an origin carrying a
+  control, bidi or zero-width character: refused at the `pick` stage, exit 2, on every `build next`
   until the file is restored or removed. `build next` is its only writer: tell
   the user, and do not edit it to get past the refusal.
 - the pick's reason refused by the grounds writer's own gate, asked before the
@@ -203,8 +212,31 @@ Refusals, each writing nothing:
 - a refusal of `build <itd-N>` itself (the pace, the claim stage) comes as that
   verb's refusal.
 
-The pick commit is made with the git identity the repository's commits are
-made with; with none configured the `worktree` stage is refused naming it.
+The pick commit is made in the first lane's `worktree` stage, on the
+`implement step` that drives it, and each of these refuses that stage, exit 2,
+naming the lane and making no commit:
+
+- no git identity configured: the pick commit is made with the identity the
+  repository's commits are made with, and git could not make it, so the
+  refusal asks whether one is configured and carries what git reported.
+  Settle what git reports, then run `implement step` again.
+- the picked intent is not planned in the lane's worktree: the worktree is cut
+  from the default branch, and there the intent is not in `planned/`, so the
+  pick's entry has no record to land on. Land the intent's planning on the
+  default branch, then run `implement step` again.
+- the lane branch carries commits past its base and the first is not the
+  pick's record commit: its parent is not the base, its subject is not the
+  pick's, it changes a path other than the intent's record, or that record is
+  not the base's with this run's one entry appended. The pick's entry is the
+  lane's first commit, so nothing is built over another. Tell the user; the
+  way out is to remove the lane's worktree and branch, then run
+  `implement step` again.
+- the lane's worktree holds changes the pick did not make: its record-only
+  commit is not made over them. Clean the lane's worktree, then run
+  `implement step` again. A change to the intent's record alone, left by a
+  step stopped before it committed, is taken when it is exactly the base's
+  record with this run's entry appended, and refused otherwise: restore the
+  file with `git restore`, then run `implement step` again.
 
 ## The pace
 
@@ -304,6 +336,28 @@ that runs it): start the agent yourself as above. Every fallback is recorded;
 `implement status` and `implement record` count them per runner and per role.
 Tell the user each fallback's reason.
 
+A build lane's reviews can go to RepoPrompt over MCP instead of a reviewer you
+start. This is an opt-in: `oracle.review` set to `rp` in the repository's
+`.abcd/config.json` or in `~/.abcd.noindex/config.json` (the repository's file wins a
+key both set), with the MCP server's address, `oracle.rp.url`, in
+`~/.abcd.noindex/config.json` alone (http or https to this machine; an optional
+`oracle.rp.tool` names the tool, `oracle_send` by default). When a step hands
+out the ruthless or the security review, and no runner took it, `implement
+step` sends the review there itself, writes the answer to the review's return
+path and verifies it as yours would be, so the payload's `route` names `rp` and
+there is no agent to start. The review can take many minutes (the route's bound
+is thirty), so give that `implement step` a timeout above it or run it in the
+background; a step you stop early falls back. A review the route does not
+return (no server named on this machine, a refused connection, a timeout, the
+server's error, an answer with no verdict, a request too large to compose, or
+an interrupted step) is handed to you as usual, with `fallback` (the `role`,
+`asked: rp`, the `reason`, `ran: host`): start the reviewer yourself, and tell
+the user the reason. If a reviewer you started for the same review wrote its
+return first, that return stands and the route's answer is kept aside as
+`rp-return.md`; hand yours back as usual. The intent-auditor always stays with
+you. Unset, or set to `host`, nothing changes, and abcd never starts, installs
+or configures RepoPrompt.
+
 A runner that answers with a rate-limit response is the one failure not handed
 to you: every lane spends the same budget, so the run's window ends early. The
 step exits 0 with `next_eligible_at` (now plus the run's pause) and
@@ -334,8 +388,12 @@ A lane's stages run in order:
 
 1. `worktree` — the loop makes the lane's worktree in the machine-scoped store,
    `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
-   `build/<run-id>-<lane-id>` cut from the default branch. Nothing is made
-   beside the checkout. In a run `build next` started, the first lane's
+   `build/<run-id>-<lane-id>` cut from the default branch, as your own
+   `git worktree add` makes one: the repository's post-checkout hook runs
+   (the one `git lfs install` installs). The checkout's time scales with the
+   tree (a Git LFS download), so it is bounded at sixty minutes, not the ten
+   minutes a commit or a merge in the lane is bounded at; a checkout stopped
+   there refuses the stage, naming the checkout and the bound. Nothing is made beside the checkout. In a run `build next` started, the first lane's
    worktree stage also commits the pick's reason as the branch's first commit.
 2. `brief` — the loop renders the lane's brief from that base: the intent, the
    spec, the conventions of `AGENTS.md` and the decisions the intent cites; the

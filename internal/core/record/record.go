@@ -17,14 +17,17 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // IDRe is the family gate: the only positional shapes the root command routes
@@ -64,7 +67,14 @@ type Description struct {
 	Path      string            `json:"path"`
 	Links     map[string]string `json:"links,omitempty"`
 	NextMoves []string          `json:"next_moves,omitempty"`
+	// Reservation is an issue's or an intent's reservation on the shared
+	// remote as this checkout last fetched it, read from disk alone; nil for
+	// every other family and in a checkout with no remote named origin.
+	Reservation *claim.Line `json:"reservation,omitempty"`
 }
+
+// clock is the time a reservation is judged at; tests fix it.
+var clock = time.Now
 
 // The verb paths a next move may recommend — one closed list, so the
 // anti-drift test can assert every recommended verb resolves to a registered
@@ -122,9 +132,9 @@ func Describe(repoRoot, id string) (Description, error) {
 	}
 	switch m[1] {
 	case "iss":
-		return describeIssue(repoRoot, id)
+		return withReservation(repoRoot, id)(describeIssue(repoRoot, id))
 	case "itd":
-		return describeIntent(repoRoot, id)
+		return withReservation(repoRoot, id)(describeIntent(repoRoot, id))
 	case "spc":
 		return describeSpec(repoRoot, id)
 	case "adm":
@@ -135,6 +145,20 @@ func Describe(repoRoot, id string) (Description, error) {
 		return describeReframe(repoRoot, id)
 	default:
 		return describeADR(repoRoot, id)
+	}
+}
+
+// withReservation attaches id's reservation line to a description that was
+// found: the view as last fetched, no fetch and no push (itd-2609091034175565).
+func withReservation(repoRoot, id string) func(Description, error) (Description, error) {
+	return func(d Description, err error) (Description, error) {
+		if err != nil {
+			return d, err
+		}
+		if l, ok := claim.LineFor(repoRoot, id, clock(), claim.Options{}); ok {
+			d.Reservation = &l
+		}
+		return d, nil
 	}
 }
 
@@ -149,16 +173,22 @@ func describeIssue(repoRoot, id string) (Description, error) {
 		if iss.ID != id {
 			continue
 		}
+		// capture.List returns the record's text as stored (its in-process
+		// callers compare it), so the description masks every record string
+		// it carries itself: both the text answer and `--json` print it, and
+		// encoding/json leaves a bidi override or a tag rune raw
+		// (iss-2610121653499543). PromotedInto below reads the raw issue.
+		shown := capture.ListResult{Issues: []capture.Issue{iss}}.Shown().Issues[0]
 		d := Description{
 			ID:     id,
 			Family: "issue",
-			Title:  firstLine(iss.Body, iss.Slug),
+			Title:  firstLine(shown.Body, shown.Slug),
 			Status: string(iss.Status),
-			Path:   iss.Path,
+			Path:   termsafe.Sanitize(iss.Path),
 			Links:  map[string]string{},
 		}
-		if len(iss.RelatedIntents) > 0 {
-			d.Links["related_intents"] = strings.Join(iss.RelatedIntents, ", ")
+		if len(shown.RelatedIntents) > 0 {
+			d.Links["related_intents"] = strings.Join(shown.RelatedIntents, ", ")
 		}
 		// Promoted is the two-sided join (itd-4 AC3), not the list: an issue may
 		// name an intent it was only related to.
@@ -166,7 +196,7 @@ func describeIssue(repoRoot, id string) (Description, error) {
 		if err != nil {
 			return Description{}, err
 		}
-		if rb := iss.ResolvedBy; rb != nil {
+		if rb := shown.ResolvedBy; rb != nil {
 			if rb.Intent != "" {
 				d.Links["resolved_by.intent"] = rb.Intent
 			}

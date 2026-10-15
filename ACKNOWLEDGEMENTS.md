@@ -78,9 +78,18 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
 - **golang.org/x/term (The Go Authors, BSD-3-Clause)** — the terminal package
   abcd reads a window's size through (`internal/term`), so a question drawn in
   a plain Terminal is laid out at the width the person sees
-  (itd-2610030810370060). It is the one runtime dependency named here rather
-  than in `go.mod` alone, because the intent's decision 5 adopted it by name, a
-  sign-off the record keeps.
+  (itd-2610030810370060). It is named here rather than in `go.mod` alone,
+  because the intent's decision 5 adopted it by name, a sign-off the record
+  keeps.
+- **Sigstore (sigstore-go, The Sigstore Authors, Apache-2.0,
+  <https://github.com/sigstore/sigstore-go>)** — the library `abcd update`
+  verifies a release's build provenance through before it swaps the binary
+  (`internal/core/update/provenance.go`): the SLSA provenance the release
+  workflow signs is checked against the Sigstore public-good trusted root, with
+  the signer pinned to abcd's release workflow and the statement naming the
+  downloaded bytes. Like golang.org/x/term it is named here rather than in
+  `go.mod` alone, because the product thinker signed it and its transitive
+  modules off by name (`.abcd/work/DECISIONS.md`, 2026-10-14).
 - **"20 Must-Know Agentic AI Terms" (Andreas Horn, LinkedIn, 2026)** — the
   practitioner term list whose assessment seeded the terminology crosswalk
   (itd-100, `docs/reference/terminology.md`). Credited as the prompt, not a
@@ -251,6 +260,13 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   trade-off) adopted as adr-7's decision gate; and the `to-prd` PRD section
   shape itd-27's silent synthesis phase follows.
   <https://github.com/mattpocock/skills>
+- **The Model Context Protocol** — the protocol the RepoPrompt reviewer route
+  speaks (`internal/adapter/repoprompt`, itd-6): its Streamable HTTP
+  transport, spoken with the standard library alone (JSON-RPC 2.0 over POST,
+  an answer as one JSON body or as server-sent events, the `Mcp-Session-Id`
+  and `MCP-Protocol-Version` headers), and the initialize, `tools/list` and
+  `tools/call` exchanges one review takes.
+  <https://modelcontextprotocol.io/specification/2025-06-18/basic/transports>
 - **GitLab's documentation-testing severity policy** — the warn-then-promote
   discipline the writing-style guide's preamble adopts: deterministic prose
   checks may block, heuristics stay advisory, and a rule is promoted to
@@ -300,6 +316,11 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   `where` / `fix` / `policyInfo`) the `abcd lint` rule model adapts as data,
   separate from the evaluator (itd-85). The tool itself is archived and is not a
   dependency.
+- **RepoPrompt** — the reviewer the opt-in `oracle.review = rp` route sends a
+  build lane's ruthless and security reviews to, over the MCP server the person
+  runs on their own machine (itd-6, `internal/adapter/repoprompt`): RepoPrompt
+  answers with whichever model the person configured in it, and abcd never
+  starts, installs or configures it. <https://repoprompt.com>
 - **The Rust RFC process** — the required "Prior Art" section on intents.
 - **signulll's post on product thinkers (<https://x.com/signulll/status/2030404483897815089>)** —
   the *product thinker* framing: the person who holds a product's why, who it

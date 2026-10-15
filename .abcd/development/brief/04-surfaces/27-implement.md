@@ -249,8 +249,8 @@ an ancestor's. Other accounts' strays are a count and a CPU total, by type.
 
 The limits live in the caller's machine tier, `~/.abcd.noindex/load-limits`
 (`stray-minutes`, default 30; `extreme-load`, default four times the online core
-count), read through the guarded declaration read and never created; an
-unusable file is reported loudly and both defaults are used. On a CI runner
+count; `wait-load`, default twice it), read through the guarded declaration read
+and never created; an unusable file is reported loudly and every default is used. On a CI runner
 (`GITHUB_ACTIONS=true`, or a `CI` other than empty, `false` or `0`) nothing is
 read and the line says why; each CI job that starts the harness runs the check
 as a step first, so the reason reaches the job log. On another platform, or when
@@ -258,8 +258,32 @@ a read fails, the check says it could not check. Inside a live run (a run state
 with a joined session) a warning is also written as a load event, attributed
 to the first-role session, carrying the verdict's facts so it renders exactly
 as it was printed; the run's hand-written load samples share the name and carry
-no `triggers`. The check exits 0 on every status: it never refuses, waits or
-signals anything.
+no `triggers`. Without its wait flag the check exits 0 on every status: it never
+refuses, waits or signals anything. With its wait flag it is the one waiter
+concurrent sessions gate a preflight or a race run with, and `make preflight`
+runs its own test stages through it: it blocks until the one-minute load is
+below the wait limit, no other `go test -race` run is live, no other
+`make preflight` is running and no other waiter is ahead of it in the queue (a
+lower pid) or running its command, under any account; a waiter beneath a waiter
+running its command takes that ancestor's place, ahead of every queued waiter. All of that is read from
+the process table, which shows every account's processes, judged from each
+candidate's arguments with the waiter's own ancestry excluded
+(iss-2610140638074587): no file another account can write is read; the gate
+reads only the process table. A waiter queued ahead still delays the
+ones behind it, under any account, until it opens or reaches its own timeout,
+even when only its own account's stricter wait limit keeps it shut; there is no
+channel by which it could tell them so without a shared writable file. A waiter
+running its command holds every later gate for the command's length, by design. A look that finds the machine clear does not open the
+gate: the waiter waits a random 15 to 60 seconds and checks everything again,
+and opens only if that re-check is clear too (iss-2610102020442624). Within one
+account it also takes a hold under the abcd home, which a waiter beneath the
+holder ignores. It runs a command given after `--` and exits with its code,
+forwarding an interrupt to it, and gives up after its timeout at exit 1, naming
+what it was still waiting on. Inside `make preflight` each test stage then
+takes a `go test -p` derived from the online cores and the load as the stage
+starts (`machineload.GoTestParallelism`: twice the cores less the load, at most
+the cores, at least a quarter of them), and on a CI runner the gate opens at
+once and go's own default stands.
 
 ## The implement loop
 
@@ -304,6 +328,32 @@ record verb reads a run's record back at the end, and on a complete run captures
 the run's transcripts into the history store, one capture per path; a
 transcript stored without the scanner coverage the repository armed carries its
 scan gap on the record, as the history verb reports it for a capture.
+
+A run that holds a reservation on the shared remote (itd-2609091034175565;
+the state's `reserved_at`) holds it for the copy the run lives in. The step
+verb renews it before a stage once half its lease has passed, as last fetched,
+keeping its own term (at least the default lease, at most a day), and logs
+`reservation_renewed` in the run record; under
+half it pushes nothing, and a renewal that fails is logged and named while the
+stage still runs. A renewal renews only this person's own reservation from
+this copy, never reserving a released record again or taking one over. Before
+the landing's merge rule decides, the land fence fetches the reservation and
+arms nothing unless it is still this person's, from this copy, and live,
+naming the other person, the other copy or the release, as contention; when it
+holds it is renewed for a day wherever a ruleset mirror exists at the
+lane's base, since every landing there waits on a person (the approval an
+armed merge needs, or the merge of a pull request left open), which is also
+past any queue's `check_response_timeout_minutes`; with no mirror, for the
+default lease. Past the fence the hold rests on renewals at half the lease: each step
+of the run, whatever its stage, each receipt handed back, and each drain move
+for a drain lane parked at land. A run neither stepped, given a receipt nor
+drained over for longer than its lease loses its reservation; one that finds
+it held by another person or copy says so and logs `reservation_lost` once. Once the run's last lane has landed, the
+step pushes a tombstone over the reservation while it is still this person's
+from this copy, leaves another's as it stands and names the holder, and a
+tombstone that fails is named without undoing the landing; the lane branch
+removal touches only the lane's `build/` branch. A run holding no reservation
+is neither renewed, fenced nor tombstoned.
 
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
 drain opens for each eligible issue) has one lane. Its brief is the issue's
@@ -524,6 +574,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--accept-config-change` | bool |
 | `--discard` | string |
 | `--release` | string |
 | `--restart` | string |

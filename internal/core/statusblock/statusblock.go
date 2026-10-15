@@ -64,6 +64,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // OrderPick names the order Next and the head are read in: the pick order of
@@ -111,6 +112,11 @@ type Row struct {
 	// Failing names the gating readiness checks a Later planned row fails, in
 	// the gate's own order.
 	Failing []string `json:"failing_checks,omitempty"`
+	// Reserved names the reservation another copy holds on the record, as the
+	// checkout last fetched it, with the view's age (itd-2609091034175565).
+	// Read never sets it: the bare board adds it from disk alone, and the
+	// site's Status page, which shows no other checkout's holdings, never does.
+	Reserved string `json:"reserved,omitempty"`
 }
 
 // Lane is one lane's state as the build's state file records it.
@@ -425,7 +431,9 @@ func issueRow(repoRoot, id string) Row {
 	}
 	r.Bucket = status
 	for _, line := range strings.Split(body, "\n") {
-		t := strings.Join(strings.Fields(line), " ")
+		// The ledger's text reaches `abcd board --json` in the row, so it is
+		// masked here, not only where the text board prints it.
+		t := termsafe.Sanitize(strings.Join(strings.Fields(line), " "))
 		if t == "" {
 			continue
 		}

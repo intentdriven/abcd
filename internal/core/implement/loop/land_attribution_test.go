@@ -86,7 +86,9 @@ func TestAssistedByTrailers(t *testing.T) {
 }
 
 // installHook writes an executable hook of the repository's, in its common git
-// directory, where every worktree's commit runs it.
+// directory, where every worktree's commit runs it, and accepts it for the
+// run as the person who installed it would: a hook added mid-run otherwise
+// stops the next step at the run tripwire (configwatch.go).
 func installHook(t *testing.T, f *landFixture, name, body string) string {
 	t.Helper()
 	common := strings.TrimSpace(f.repo.Git("rev-parse", "--path-format=absolute", "--git-common-dir"))
@@ -98,7 +100,16 @@ func installHook(t *testing.T, f *landFixture, name, body string) string {
 	if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	acceptHook(t, f)
 	return p
+}
+
+// acceptHook accepts the run's changed configuration after a hook was written.
+func acceptHook(t *testing.T, f *landFixture) {
+	t.Helper()
+	if _, err := AcceptConfigChange(f.repo.Root(), f.runID, Options{}); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // TestARefusingCommitMsgHookStopsTheLanding: the records commit runs the
@@ -127,6 +138,7 @@ func TestARefusingCommitMsgHookStopsTheLanding(t *testing.T) {
 	if err := os.WriteFile(hook, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	acceptHook(t, f)
 	f.step(t)
 	l = currentLane(t, f.repo, f.runID)
 	if l.HeadSHA == head || !l.Landing.RecordsDone {

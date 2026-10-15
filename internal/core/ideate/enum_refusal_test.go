@@ -48,7 +48,7 @@ func TestEnumRefusalsDoNotEchoTheValue(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			p := validPayload()
 			tc.mutate(p)
-			_, err := Record(root, "the-ideate-gate", encode(t, p), at)
+			_, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at)
 			if err == nil {
 				t.Fatal("the out-of-set value was accepted")
 			}

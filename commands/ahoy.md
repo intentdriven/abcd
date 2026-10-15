@@ -465,12 +465,28 @@ leave the user's shell profile alone.
 
 The entry install writes is the abcd-owned copy of the verified release binary,
 taken from the persistent plugin data directory a session's hooks provision.
+Before writing it, install verifies that binary's signed build provenance with
+the same in-process check `abcd update` makes, bound to the commit of the
+release the cache attestation names; when the check fails or cannot
+reach GitHub's attestations API or the Sigstore TUF repository, install writes
+no entry and its note names what failed and how to check the release by hand
+with `gh attestation verify`. Relay that note verbatim.
 When no verified copy is there, install writes no entry at all rather than a
 symlink into the plugin root, which stops working at the next plugin update, and
 its note names the command to run first: the install one-liner in the README,
 which downloads the release binary, verifies it against that release's own
 checksums and records it, after which a re-run of `ahoy install` adopts it.
-Relay that note verbatim. A `symlink.legacy` gap is a symlink into the plugin
+Relay that note verbatim. Every install run checks the abcd-owned copy
+already on `PATH` with the same provenance check, read-only, on the copy's own
+bytes, even when nothing else is left to do and even when it holds the cached
+release's bytes (the bootstrap refreshes it from the cache on the checksum
+alone when `gh` cannot verify). It is bound to the release the cache
+attestation names when the copy holds the cache's bytes, and otherwise to the
+release its build metadata names (read, never run). A copy naming a release older than `~/.abcd.noindex/release-mark`, the newest release this machine has installed or verified, fails that check. A copy that fails, or that cannot be checked, is not
+adopted and is left as it is: the run ends `partial`, never `clean` or
+`already_up_to_date`, with a `symlink.unverified` item in `remaining` whose
+summary gives the `gh attestation verify` command for that file. Relay that
+note verbatim too. A `symlink.legacy` gap is a symlink into the plugin
 root that an earlier release wrote: it works until the next plugin update, and
 its fix hint says whether install replaces it now or which command comes first.
 A `symlink.dangling` gap whose detail calls the entry abcd-owned — including an
@@ -696,7 +712,9 @@ and under `--yes`, the pair is never asked, so a piped answer stream keeps its
 order; the result lists `readme.offered` under `optional_skipped`, and its
 summary names the flag. A terminal run whose `.abcd/config.json` does not
 exist (abcd's starter files declined) has nowhere to store the answer, so it
-does not ask the pair either, and lists it the same way.
+does not ask the pair either, and lists it the same way; its summary then
+names the starter files first, since `--readme-parts` is refused until they
+exist.
 
 Through this page, relay the pair with your question tool. While it is open,
 the bare detection (`ahoy --json`) carries a `readme` object (per part its
@@ -885,6 +903,40 @@ value, because which tool assisted is a fact only the committer has. The choice
 is recorded in `.abcd/config.json`, so a later `install` without the flag keeps
 the hook and restores a hand-deleted one; a `prepare-commit-msg` hook abcd did
 not write is reported, never replaced.
+
+`--outbound-hook` opts the repo into the committed `commit-msg` hook, which
+refuses a commit whose message carries a live agent-session URL or a tool's own
+attribution footer, by running `abcd lint outbound` over it. Like
+`--attribution` it is its own approval, it is opt-in and never a default
+(installing a hook changes how the repository's commits work, which is the
+repository's choice), the choice is recorded in `.abcd/config.json`, and a
+`commit-msg` hook abcd did not write is reported, never replaced. The hook finds
+abcd one way only, an absolute path each clone sets once:
+
+```bash
+git config --local abcd.binary /absolute/path/to/abcd
+```
+
+It never searches `PATH`, never reads an environment variable, and never runs a
+file inside the working tree, a symlink that resolves into it included. When no
+usable abcd is configured, or the one configured cannot judge the message (an
+exit 1 without `lint outbound`'s own verdict line counts as that), it prints one
+warning line and the commit proceeds: refusing every commit where
+abcd is absent would change how the repository works. Only a message abcd
+judges and refuses is blocked. Like the guard hooks, it runs once the clone's
+`core.hooksPath` points at `.githooks`.
+
+`--outbound-forge` opts the repo into the shell guard's forge-text check: the
+title, body and body file a posting `gh pr` or `gh issue` command (create, new,
+edit, comment) hands the forge are judged against the same outbound policy
+before the command runs, and a live agent-session URL or a tool attribution
+footer in them is refused (`forge-text-outbound`, in `commands/guard.md`). It is
+opt-in and never a default, on `--outbound-hook`'s terms, and independent of
+it. It writes no hook and needs no `abcd.binary`: the guard is the abcd already
+running in the session, so there is no binary to find and none to be missing.
+The choice is recorded in `.abcd/config.json` as `outbound.forge: true`, which
+is all the guard reads, so a later `install` without the flag keeps it; remove
+the key, or set it to `false`, to turn the check off.
 
 For dogfooding abcd itself, `abcd ahoy install --dev` installs a track-latest
 shim instead of the pinned owned copy: the `PATH` entry rebuilds abcd from
@@ -1201,6 +1253,26 @@ Renders the canonical `DetectionResult` JSON envelope and writes nothing — the
 same pass `install` would apply, shown rather than applied. `--dry-run` always
 emits JSON, so it needs no `--json` flag. Use it when the user wants to see
 exactly what an install would do before letting it run.
+
+## `rules --prompt` — what one prompt brings back
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" rules --prompt "<text>" --json
+```
+
+Shows what the rule loader `install` sets up would bring back for that one
+prompt in a fresh session, and writes nothing. `domains` lists each rule
+domain the prompt matches, with the recall words that hit (`hits`, or
+`*NAME` for a star activation); `notes` lists each memory note it recalls
+from `~/.abcd.noindex/memory.json` or the project's `.abcd/memory.json`, with
+its `layer` (`machine` or `project`) and the recall words that hit. Each
+carries a `form`: `full`, or `over-budget` when it would not fit the
+per-turn budget and would come back on a later prompt instead. `disabled`
+is true under the kill switch, and then nothing comes back; `unreadable`
+names a `memory.json` that could not be read, and why. Use it when someone
+asks why a rule or a note did, or did not, come back on a prompt. A
+positional DOMAIN with `--prompt` is refused, exit 2: `rules <DOMAIN>`
+renders one domain's rules instead.
 
 ## Scoping note: `--identity` is CLI-only
 

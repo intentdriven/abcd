@@ -269,12 +269,25 @@ variable is read as an operand, as a wholly-substituted one is, so `git push
 origin "$branch"` stays allowed and `git push $X origin main` is not seen. A
 string handed to a shell carries its variables for that shell to expand
 (`sh -c "git push --$X …"` is read as that shell reads it), and the string's
-own quotes apply to the value, so `'--$X'` inside it is a flag too. A variable's value
-is not read as what an earlier command carried into it: as a shell's or
-`source`'s script it is not a stream (`bash "$script"`), and as the program's
-name it is not `pkill` or `killall`, whose entries name only the program and an
-operand, nor a bare interpreter inside a string, so `"$GO" build ./...` and
-`$EDITOR notes.md` stay allowed. A variable standing as the program with
+own quotes apply to the value, so `'--$X'` inside it is a flag too. A variable
+the line itself assigns before it uses it is read with that value in place, as
+well as by the rule above: a pid list a search printed (`p=$(pgrep make); kill
+$p`, `pgrep make | while read p; do kill $p; done`, `for p in $(pgrep make)`)
+is a kill by name, a stream path (`f=<(curl …); bash "$f"`) is a shell reading
+a stream, text a string runs (`X='…'; eval "$X"`, `sh -c "$X"`, `bash -c "… $X
+…"`) is judged as the command it holds, and `P=pkill; $P make` is a `pkill`;
+each is a **block** under the entry that names it. A string that runs a value
+the line set from output the guard did not read — a command substitution
+(`X=$(curl …); eval "$X"`) or a `read` — is a **block** as uninspectable. A
+variable the line did not set is not read as what an earlier command carried
+into it: as a shell's or `source`'s script it is not a stream (`bash
+"$script"`), and as the program's name it is not `pkill` or `killall`, whose
+entries name only the program and an operand, nor a bare interpreter inside a
+string, so `"$GO" build ./...`, `$EDITOR notes.md`, `eval "$cmd"` and the
+successor `kill "$pid"` stay allowed; so does a value the line set from a
+source of none of these kinds (`pid=$(cat run.pid); kill "$pid"`, `GO=go;
+"$GO" build`). Which assignment reaches which use is read by order alone, so a
+name the line assigns more than once is read with each of its values. A variable standing as the program with
 another variable as its first operand (`exec "$BIN" "$@"`) can be `git clean`
 and warns, as a substitution there does. Inside double quotes a `${…}` ends at
 its own `}`, and a `"` in it opens a nested string rather than closing the
@@ -327,13 +340,32 @@ A shell reading its script from a pipe, a here-document or a here-string
 what it runs is text the guard read as data. So is a shell handed the stdin
 device behind a pipe (`curl … | bash /dev/stdin`, `/dev/fd/0`), and a shell or
 `source` handed a process substitution as its script (`bash <(curl …)`, `bash <
-<(curl …)`, `source <(curl …)`, `bash --init-file <(…) -i -c true`). A command
+<(curl …)`, `source <(curl …)`, zsh's `source =(…)`, `bash --init-file <(…) -i
+-c true`), and a script the same line downloads to a file and then runs as a
+shell's script or standard input, a `source` or `.` operand, or a path
+(`curl -o i.sh … && bash i.sh`, `curl … > i.sh; source i.sh`, `wget …/i.sh &&
+sh i.sh`, `curl -O …/i.sh && ./i.sh`): the file is one curl's `-o` or `-O`,
+wget's `-O` or saved name, a `tee` a fetch feeds or a redirection of what a
+fetch printed writes, matched by the name the line writes it under, and a
+name the line does not fix can be any file. Download it in one command, read
+it, and run it in the next. A command
 line longer than 64 KiB is a **block** (`command-too-long`), because the guard
 does not read it.
 
 A script file a shell runs is **read and judged** before the command is: a
 shell's script operand (`bash build.sh`), a `source` or `.` operand (searched on
-`PATH` and then in the working directory when it has no slash), the file a
+`PATH` and then in the working directory when it has no slash, as bash does,
+while zsh's `source` looks in the working directory first and its `.` only on
+`PATH`; a `PATH=` prefix
+on the `source` itself is the `PATH` searched, a relative or empty entry resolving
+against the working directory, and an entry of that prefix the line does not fix
+is a **block**, `script-unread`; zsh ties its `path` array to `PATH`, so a
+`path=(dir)` or `path=dir` the line sets is the `PATH` zsh searches and the one
+a child of that zsh is handed, while in bash and the other shells `path` is an
+ordinary variable; where the guard cannot tell which shell runs the line —
+anything but a `zsh -c` string, another shell's string, or a file a named shell
+runs — it reads the line both ways from the command that assigns `path` or
+sources a bare name on, and judges each file either shell would run), the file a
 redirection makes a shell's standard input when it has no `-c` string and no
 script (`bash < s.sh`, `bash -s < s.sh`, `exec 3< s.sh; bash <&3`), and the
 startup files the line selects — `BASH_ENV=f`, `ENV=f` on an interactive shell
@@ -344,15 +376,57 @@ assigned `HOME` (`.bash_profile`, else `.bash_login`, else `.profile`, and
 `.bashrc`), the files a login bash or zsh reads as it exits (`.bash_logout`,
 `.zlogout`), and the other shells' profile (`.profile`, yash's `.yash_profile`)
 and rc file (`.kshrc`, `.mkshrc`, `.yashrc`) under an assigned `HOME`. An
-assignment counts as a prefix, through `env`, or exported earlier
-on the line. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
+assignment counts as a prefix, through `env`, or made earlier on the line,
+exported or not, since a variable the environment exports stays exported when
+the line assigns it (`FPATH=dir; zsh -c 'autoload f; f'` loads `dir/f`), unless
+the line takes the export away (`export -n`, `typeset +x`). A function file `autoload` (or `functions -u`, `typeset -fu`)
+loads is read too: an operand with a slash is that file, and a name is searched
+in the `FPATH` or `fpath` the line sets, where the first directory holding it
+(as `dir.zwc`, `dir/name.zwc` or `dir/name`) is the file read; a compiled
+`.zwc` file is a **block**, and so is a name or a directory searched before the
+file is found that the line does not fix (`script-unread`). A line that leaves
+`FPATH` as the account set it loads the account's own functions, unseen. An
+`fpath` element that is the array itself (`fpath=(~/.zfunc $fpath)`,
+`"${fpath[@]}"`, `$FPATH`) is its value before the assignment, and where the
+line set none, and for `fpath+=(dir)`, that is the account's own directories:
+the search passes over them, the fixed directories around them are read, and
+a name only the account's directories hold stays unseen. A path run directly (`./deploy.sh`) has its first 8 KiB read only to
 classify it: a shell-family shebang, or no shebang and no NUL byte, makes it a
 shell script, read the same way; anything else is a program, allowed unread. A
 relative path resolves against the working directory, and against a `cd` or
 `pushd` earlier on the line only when its target exists and the script is
 chained after it with `&&`; after any other `cd` the path is not resolved, and
 the script is allowed unread, as an operand held in a variable or a substitution
-is. The verdicts:
+is. bash and zsh read some `cd` and `pushd` forms differently, and the reader
+does not know which shell runs the line, so it reads the scripts after such a
+`cd` in the directory each reading enters, and blocks on a hazard in any of
+them. With bash's `-e` or `-@`, bash enters the operand; with `pushd -n`, bash
+stays put; with a second operand or more, an older bash enters the first and
+a newer one refuses the `cd`, so the first is read as entered. zsh reads a second
+operand, or an option word it does not take (`-e`, `-@`, `-n`, or any word
+with a letter other than `L`, `P`, `q` and `s`, which bash refuses), as its
+substitution form: it replaces the first occurrence of the first word in the
+current directory's path with the second and enters the result where that
+directory exists; such an option word alone (`cd -x`) is a directory zsh
+enters by that name where one exists, unless it is a directory-stack word
+(`cd -2`). Only where neither reading names a directory is the directory
+unknown. A `pushd` with no operand swaps the top two directories of the
+stack, never going to `HOME`, so the scripts after it are read in the
+directory the line's own `pushd` left, and the directory is unknown where
+the line did not fix the stack. A `..` in a path resolves the way the kernel opens it, against the directory
+a symlink points at, so after `cd link` the file `../s.sh` is the one beside the
+link's target. A `cd` or `pushd` whose operand the shell searches `CDPATH` (or
+zsh's `cdpath`) for — not absolute, not starting with `./` or `../` — while
+`CDPATH` is set on the line or in the environment the check runs in enters the
+one directory holding the operand when exactly one exists among the current
+directory and each `CDPATH` entry, and the scripts after it are read there;
+where none or two exist, `CDPATH` holds more entries than the guard looks
+through, or an entry or the current directory is not fixed by the line, it is
+a **block** (`script-unread`) whose reason says whether the line set
+`CDPATH` or the environment exported it: name the directory as `./sub` or by
+its absolute path. After `unset CDPATH` on the line (or zsh's `unset cdpath`,
+which in bash is another variable) no `CDPATH` is searched, in that shell or in
+a child it starts. The verdicts:
 
 - a registry blocker at command position in the script is a **block**
   (`script-runs-hazard`), naming the script, the line and the entry, and so is
@@ -370,6 +444,10 @@ is. The verdicts:
   before a script a shell is pointed at is a **warn**;
 - a script that does not exist is allowed with a note naming it (the shell
   refuses it); a startup file that does not exist is skipped, silently;
+- a `BASH_ENV` or `ENV` value holding a `$` or a backquote (`BASH_ENV='$HOME/f'`,
+  a substitution) is a **block** (`script-unread`): the shell expands it before
+  it opens the file, so a substitution in it runs and the file it names is not
+  one the guard can read;
 - a file a shell is handed that holds a NUL byte in its first 8 KiB is a
   **block** (`script-unread`); one the guard cannot read, or a shell script over
   256 KiB, is a **warn** (`script-unread`);
@@ -388,8 +466,8 @@ check and the run; a writer missing from the list above; a variable a sourced
 file exports, or one `set -a` exports; a `ZDOTDIR` a `.zshenv` sets for the
 files after it; a login shell made by its name (`exec -a -bash bash`) or for
 another account (`su -l`, `sudo -i`); the `.profile` a login ksh can read from
-the current directory; `INPUTRC` (key bindings, not commands); ksh's expanded
-`ENV`; a `PROMPT_COMMAND` set as an array; and any spelling not listed here.
+the current directory; `INPUTRC` (key bindings, not commands); a
+`PROMPT_COMMAND` set as an array; and any spelling not listed here.
 
 Startup text a line carries in a variable, rather than in a file, is judged as
 the command it becomes. A `PS0`, `PS1`, `PS2` or `PS4` value is decoded the way
@@ -436,7 +514,16 @@ search prints — `kill $(pgrep -f make)`, `pgrep -f make | xargs kill`, `kill
 $(pidof make)` — is a **block** (`kill-by-search`), because it signals every
 matching process on the machine, as `pkill` does; a kill of a pid you name, one
 you recorded (`kill $(cat pidfile)`), or a search of your own group (`kill
-$(pgrep -g <pgid>)`) is not. The search is followed through a group (`{ pgrep
+$(pgrep -g <pgid>)`) is not. Stopping whatever holds a port or a file is read
+the same way: `fuser -k` (`fuser-kill`), a `kill` handed what `lsof` or
+`fuser` prints (`kill $(lsof -t -i :8080)`, `lsof -ti:8080 | xargs kill`;
+`kill-by-holder`) and `kill-port` (`npx kill-port 3000`; `kill-port`) are a
+**block**, because they signal every process that holds it, another session's
+server included; looking (`lsof -i :8080`, `fuser 8080/tcp`) is not. The Node
+package runners — `npx`, `npm exec` (and `npm x`), `pnpm dlx` and `yarn dlx` —
+are read as wrappers whose first operand is the program they run, a version
+after it (`kill-port@latest`) included, so a blocker behind one is read as
+the blocker; their `-c` string is not read. The search is followed through a group (`{ pgrep
 …; } | xargs kill`) and into one, to every command in it (`pgrep … | { sleep 1;
 xargs kill; }`), through a shell string that runs it (`kill $(sh -c 'pgrep
 …')`), and into a shell string that `xargs` runs or that reads the pipe or a
@@ -456,8 +543,23 @@ against it, as `pkill -tpts/3`) is a **block** too, under `pkill-by-owner`,
 `killall-by-owner` or the entry for a kill by name, because every session under
 the account is among what it selects. `pkill`'s signal is read as a signal
 first, in any case and with or without its `SIG` prefix, as `pkill` reads it,
-so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list carried
-through a variable or a file, or taken from a `ps | grep` chain, is not seen.
+so `pkill -term -g <pgid>` stops a group and stays allowed. A pid list a search
+printed into a variable the same line assigns is read as the search's output
+(`p=$(pgrep make); kill $p`, `p=$(pgrep make); echo "$p" | xargs kill`), and
+so is one written to a file the same line then reads (`pgrep make > p; kill
+$(cat p)`, `xargs kill < p`, `while read q; do kill $q; done < p`): each is a
+**block**. The file is matched by the name the line writes it under, and a
+name the line does not fix can be any file, except a word whose only unfixed
+parts are variables the line does not set: that is a value from before the
+line, so `pgrep -l make > search.log; echo "$pid" | xargs kill` stays allowed,
+though such a word still reads a file the line wrote under a name it does not
+fix (`pgrep make > "$f"; kill $(cat "$f")`). One written under another
+spelling of the path, or by a command that names it as an operand (`tee p`),
+is not followed. A `ps` listing filtered by a name — through `grep`, or an
+`awk` program that matches (`ps aux | grep make | awk '{print $2}' | xargs
+kill`, `ps aux | awk '/make/ {print $2}'`) — is a search as `pgrep` is, and a
+**block** under `kill-by-search`; a `ps` that reports the pid you name (`ps -o
+pid= -p 4242 | xargs kill`) is not.
 Every command of a string a shell is handed with such output in its words is
 read as handed it, so `sh -c 'kill 4242' _ "$(pgrep …)"` is a **block** too.
 
@@ -535,11 +637,13 @@ guard does not name (`sudo -u bob <hazard>` is seen; the bundled short form
 whose API path an entry names by its ROOT
 segment but the host serves under a prefix (a GitHub Enterprise Server install
 mounts the same endpoints under `/api/v3/`; the `https://api.github.com/…` URL
-form **is** read), what a variable carries in from an earlier command — a pid
-list, a stream path, shell text run through `eval "$X"` or a string a shell
-runs, or `pkill` or `killall` as the program a variable names (`$P make`) —
-because reading each would refuse the ordinary commands a variable carries a
-value for, an IFS the shell already holds when
+form **is** read), what a variable the line did not assign carries in from an
+earlier command — a pid list, a stream path, shell text run through `eval "$X"`
+or a string a shell runs, or `pkill` or `killall` as the program a variable
+names (`$P make`) — because reading each would refuse the ordinary commands a
+variable carries a value for (a value the line assigns and then uses **is**
+read; a value a `+=` adds to, or a word the value splits into when it stands
+unquoted, is not), an IFS the shell already holds when
 the line starts or gains during the line through a name the guard does not read
 (a sourced file, a nameref set before the line, or an operator the line does
 not write, such as a command's output an arithmetic context evaluates; every
@@ -564,6 +668,48 @@ that does not name its entry is a **warn** (`git-stash-shared-stack`): git keeps
 one stash stack for the whole repository, so a bare pop can take another
 worktree's work. A stash with a message and a pop by entry (`stash@{N}`) are not
 warned about, and neither is anything in a single-worktree clone.
+
+In a repository that opted in with `ahoy install --outbound-forge`
+(`outbound.forge: true` in `.abcd/config.json`), the text a posting forge
+command hands the forge is judged against the outbound policy before the
+command runs, with the same check `abcd lint outbound` applies. A
+`gh pr create`, `gh pr new`, `gh pr edit`, `gh pr comment`, `gh issue create`,
+`gh issue new`, `gh issue edit` or `gh issue comment` whose title or body
+carries a live agent-session URL or a tool attribution footer is a **block**
+(`forge-text-outbound`). The refusal names which text it was (the title, the
+body or the body file), the kind of finding and its line, never the text, and
+teaches the safe form: remove the session URL, and
+replace a tool footer with the repository's own disclosure trailer
+(`Assisted-by: <Vendor>:<model-version>`). It reads `--title`/`-t`,
+`--body`/`-b` and `--body-file`/`-F` in every spelling (`--body x`,
+`--body=x`, `-b x`, `-bx`, `-b=x`), a value written out in full on the line, and
+a `"$(cat <<'EOF' … EOF)"` body, read as the document it prints. A body file is
+read through the guard's guarded read, from the directory the command runs in:
+regular files only, no symlinked leaf (a symlink to a file is followed first),
+at most 256 KiB, opened without waiting, so a named pipe can never hang the
+check. A body file it cannot read is a **warn** (`forge-text-unread`), and the
+command runs: one that does not exist, is a pipe, a directory or a file this
+account may not read, is over 256 KiB, sits relative to a directory the line
+leaves unknown, or is written earlier on the same line (the file the guard could
+read is not the one gh will post). So is a `.abcd/config/pii.json` that does not
+load, and a line handing the forge more than sixteen texts. A warn never stops a
+command, and it never passes one in silence.
+
+It does not see: a body or a path the line does not fix (`--body "$BODY"`,
+`--body-file "$F"`, a substitution other than the `cat` document above), a body
+on standard input (`--body-file -`), a flag spelled by a substitution
+(`--$(echo body)`), a short flag bundled behind another (`-db x`), text typed
+into an editor or a browser (`--editor`, `--web`), text gh takes from the
+commits (`--fill`) or a template (`--template`), a posting command inside a
+script the line runs, and every other posting path: `gh api`, `gh pr review`,
+`gh release`, `gh pr merge --body`, `gh pr close --comment`,
+`gh issue close --comment`, and any forge client but gh. The re-read
+after posting stays the control for those.
+
+Nothing changes in a repository that did not opt in. To turn the check off,
+remove `outbound.forge` from `.abcd/config.json` (or set it to `false`); the
+opt-in is read from the working tree on each check, and a later
+`ahoy install` without the flag leaves it as it is.
 
 A candidate too long to read is refused (exit 2), not answered on the part that
 fitted.

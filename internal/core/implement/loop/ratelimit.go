@@ -37,6 +37,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // StageRateLimit is the run record's stage for a rate-limit response, and
@@ -145,22 +146,47 @@ func rateLimitWindow(repoRoot, runID, laneID string, aw Await, fl *runner.Failur
 // checkpointLimited checkpoints the lane whose agent met the rate limit: its
 // uncommitted work (an implementer's) and partial receipt saved aside, its
 // worktree reset to the branch's last commit, and its await dropped. A save
-// the loop refuses keeps the await and leaves the worktree, and cp says why.
+// the loop refuses keeps the await, marked with why, and leaves the worktree;
+// cp says why too, and a restart re-tells the marked await.
 func checkpointLimited(repoRoot string, root *os.Root, st *State, lane *Lane, aw Await, fl *runner.Failure, cp *Checkpoint, now time.Time) {
-	k := slices.IndexFunc(lane.Awaits, func(a Await) bool { return samePath(repoRoot, a.Receipt, aw.Receipt) })
+	// A restart keeps the receipt path and re-tells the await from a new
+	// Since, so the await is matched by both.
+	k := slices.IndexFunc(lane.Awaits, func(a Await) bool {
+		return samePath(repoRoot, a.Receipt, aw.Receipt) && a.Since.Equal(aw.Since)
+	})
 	if k < 0 {
 		// The await is gone already: its receipt was handed back, or a
 		// restart re-told it, before the response was read.
 		return
 	}
 	why := fmt.Sprintf("rate limit: the %s runner answered the %s with one", fl.Runner, aw.Role)
-	aside, err := saveAside(repoRoot, root, st.RunID, *lane, lane.Awaits[k], why, aw.Role == RoleImplementer, now)
+	// The save aside runs git in the lane's worktree: a configuration changed
+	// during the run keeps the lane as it is, as a refused save does.
+	if err := configTripwireIn(repoRoot, root, st.RunID); err != nil {
+		reason := fsutil.RedactHome(err.Error())
+		if r, ok := AsRefusal(err); ok {
+			reason = r.Reason + "; " + r.Remedy
+		}
+		cp.Kept = reason
+		return
+	}
+	proved, err := proveAside(repoRoot, root, st.RunID, *lane, lane.Awaits[k], aw.Role == RoleImplementer)
+	var aside RestartAside
+	if err == nil {
+		aside, err = saveAside(repoRoot, root, st.RunID, lane.ID, lane.Awaits[k], proved, why, now)
+	}
 	if err != nil {
 		reason := fsutil.RedactHome(err.Error())
 		if r, ok := AsRefusal(err); ok {
 			reason = r.Reason
 		}
+		// The reason quotes paths and git's own text; the checkpoint shows it
+		// on this call's stream, so it is masked here as the state is
+		// (iss-2610121542240257).
+		reason = termsafe.Sanitize(reason)
 		cp.Kept = reason
+		lane.Awaits = slices.Clone(lane.Awaits)
+		lane.Awaits[k].Kept = reason
 		return
 	}
 	cp.Aside = aside.Path

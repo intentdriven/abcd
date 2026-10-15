@@ -343,12 +343,13 @@ func effectiveUID(status []byte) (uint32, bool) {
 // parseDarwinArgs reads `/bin/ps -o pid=,args= -p <pids>`: a pid, then the
 // process's argv joined by single spaces. ps cannot say where one argument ends
 // and the next begins, so the words are split on whitespace, and the program's
-// own words are dropped through the first whose base name is go (an install path
-// with a space in it is several words). The waiter asks only about processes the
-// kernel records as executing go, and reads only the subcommand and whether an
-// exact -race word follows it, so a split argument can add words but never turn
-// another subcommand into `test`. A line that does not start with a pid is
-// skipped.
+// own words are dropped through the first whose base name is go, make or abcd
+// (an install path with a space in it is several words). The waiter asks only
+// about processes the kernel records as executing one of those, and reads only
+// a go command's subcommand and whether an exact -race word follows it, a
+// make's goals, and abcd's verb path and --wait, so a split argument can add
+// words but never turn another subcommand into `test`. A line that does not
+// start with a pid is skipped.
 func parseDarwinArgs(out []byte) map[int][]string {
 	got := map[int][]string{}
 	for _, line := range strings.Split(string(out), "\n") {
@@ -363,7 +364,7 @@ func parseDarwinArgs(out []byte) map[int][]string {
 		argv := words[1:]
 		cut := 1
 		for i, w := range argv {
-			if path.Base(w) == GoProgram {
+			if isProgramWord(w) {
 				cut = i + 1
 				break
 			}

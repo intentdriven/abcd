@@ -31,9 +31,11 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // DrainStateRel is the drain's state file, beside the runs. Its name is not a
@@ -129,7 +131,9 @@ type DrainLane struct {
 type DrainRoute struct {
 	Issue string `json:"issue"`
 	// From is "lane" for a lane's hand-back, "judgement" for the host
-	// judgement's before any lane opened, "field" for the rule's.
+	// judgement's before any lane opened, "reservation" for an issue the
+	// drain could not reserve (its found_at names no path), "field" for the
+	// rule's.
 	From  string `json:"from"`
 	Kind  string `json:"kind"`
 	Route string `json:"route"`
@@ -423,6 +427,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			if err != nil {
 				return DrainResult{}, err
 			}
+			// The issue is a person's again: its reservation is released
+			// rather than left to hold others off until it lapses.
+			if rel := releaseHandedBack(repoRoot, run, now); rel != "" {
+				r.Wrote += "; " + rel
+			}
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
 		}
@@ -444,6 +453,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 		return DrainResult{}, err
 	}
 	var issues map[string]capture.Issue
+	// In a checkout with a remote named origin, each issue is reserved there
+	// as its lane starts, with its found_at path as the footprint (C37);
+	// without one there is nowhere to reserve, and nothing is.
+	reserving, err := claim.HasOrigin(repoRoot)
+	if err != nil {
+		return DrainResult{}, err
+	}
 	for _, v := range plan.Dispositions {
 		if v.Outcome != capture.DrainEligible {
 			continue
@@ -466,6 +482,17 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 		if !ok {
 			continue
 		}
+		// An issue with no found_at path cannot be reserved: it is handed
+		// back before any judgement is asked over it, and the drain moves on.
+		var footprint []string
+		if reserving {
+			if footprint, ok = issueFootprint(iss); !ok {
+				r := noFoundAtHandBack(v.ID, now)
+				st.HandBacks = append(st.HandBacks, r)
+				res.Routed = append(res.Routed, r)
+				continue
+			}
+		}
 		if j := judgementFor(st, v.ID, remedyDigest(iss.Remedy)); j == nil || j.Answer != JudgementNo {
 			judging, err := requestJudgement(repoRoot, iss, v, st.Judging, now)
 			if err != nil {
@@ -476,13 +503,20 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			return finish(true)
 		}
 		st.Judging = nil
-		started, err := Start(repoRoot, v.ID, o)
+		lane := o
+		lane.reserve = footprint
+		started, err := Start(repoRoot, v.ID, lane)
 		if err != nil {
 			r, ok := AsRefusal(err)
-			if !ok {
+			// A reservation refused for a reason of this checkout's own (no
+			// username, origin not answering) stops the drain's move; another's
+			// hold passes over the issue.
+			if !ok || (r.Stage == StageReservation && !r.Contention) {
 				return DrainResult{}, err
 			}
-			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: r.Reason})
+			// The reason may quote what another writer chose (a reserved
+			// footprint), and the agent driving the drain reads it.
+			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: termsafe.Sanitize(r.Reason)})
 			continue
 		}
 		st.Lanes = append(st.Lanes, DrainLane{Issue: v.ID, RunID: started.RunID, OpenedAt: now, Outcome: DrainLaneInProgress})
@@ -668,6 +702,20 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 			why = err.Error()
 		}
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" does not parse as the drain's state: "+why,
+			"the drain is the file's only writer; restore it or remove it")
+	}
+	// The stored pace names the layers and origins the resolver writes, so no
+	// other text reaches the drain's --json payload or the refusal of a move
+	// typed with another pace (iss-2610121206163414).
+	if st.Pace != nil && !st.Pace.written() {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a pace the drain never writes",
+			"the drain is the file's only writer; restore it or remove it")
+	}
+	// The stored lane, hand-back and judgement text carries no control, bidi
+	// or zero-width rune, so none reaches the drain's --json payload; the
+	// refusal does not echo it (iss-2610121505153157).
+	if !st.textWritten() {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" carries text the drain never writes: a control, bidi or zero-width character in its rule, a lane, a hand-back or a judgement",
 			"the drain is the file's only writer; restore it or remove it")
 	}
 	for _, l := range st.Lanes {

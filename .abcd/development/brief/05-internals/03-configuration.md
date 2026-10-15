@@ -2,8 +2,9 @@
 
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
 questions, records the answers, and gets on with it; `ahoy install
---attribution` writes one more key, and four further keys can be hand-set and
-are read but never written. Beyond those nine, the binary reads only keys a
+--attribution`, `ahoy install --outbound-hook` and `ahoy install
+--outbound-forge` write one more key each, and four further keys can be hand-set
+and are read but never written. Beyond those eleven, the binary reads only keys a
 person opts into: the provider adapter's `oracle` keys and the interview's list
 style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
@@ -19,10 +20,12 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Nine keys plus a `meta` block. Install asks about visibility, the docs target,
+Eleven keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, and the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and writes exactly those four values back.
-`attribution.hook` is written by `ahoy install --attribution`. The remaining four —
+`attribution.hook` is written by `ahoy install --attribution`, and
+`outbound.hook` by `ahoy install --outbound-hook`, and `outbound.forge` by
+`ahoy install --outbound-forge`, which the shell guard reads. The remaining four —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, and the filing-time match's threshold and compared fields —
 are hand-set: the binary reads them and never writes them.
@@ -58,6 +61,12 @@ are hand-set: the binary reads them and never writes them.
   "attribution": {
     "hook": true                        // the committed prepare-commit-msg prompt asking each commit to
                                         //   declare whether a tool assisted it
+  },
+  "outbound": {
+    "hook": true,                       // the committed commit-msg gate refusing a session URL or a tool
+                                        //   footer; runs only the abcd `git config --local abcd.binary` names
+    "forge": true                       // the shell guard refuses a posting gh pr/issue command whose title,
+                                        //   body or body file carries either shape (forge-text-outbound)
   },
   "rules": {
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is
@@ -204,6 +213,48 @@ agent's steps there whatever tier the routing tables name, and only a `--route`
 overrides it for one run. The delegating verb sends such a step through the
 adapter itself and ingests the answer (spc-2609251028149555), and its receipt
 names the provider as the connection used.
+
+### The reviewer route's keys
+
+The RepoPrompt reviewer route (itd-6, spc-2609211950427074) reads two keys
+under `oracle` through the layered resolver, each validated when `implement
+step` reads it and refused loudly, naming the file and the key, rather than
+passed over for the default:
+
+```json
+{
+  "oracle": {
+    "review": "rp",                      // "host" (the bundled default) | "rp"; repo or machine,
+                                         //   the repository's file winning a key both set
+    "rp": {                              // MACHINE LAYER ONLY: ~/.abcd.noindex/config.json
+      "url": "http://127.0.0.1:7777/mcp",  // the MCP server's address: http or https to this
+                                           //   machine, no credentials, query or fragment
+      "tool": "oracle_send"              // optional: the tool a review is sent to
+    }
+  }
+}
+```
+
+- **`oracle.review` selects the route.** `host` keeps a build lane's reviews on
+  the host's own agents; `rp` sends the ruthless and security reviews to
+  RepoPrompt over MCP ([`02-adapters.md`](02-adapters.md)). Any other value is
+  refused. No flag sets it in this build.
+- **The server sits on the machine alone.** `oracle.rp` names the address a
+  review request (the lane's diff and its record) is sent to, so a
+  repository's `.abcd/config.json` declaring it is refused, as a provider block
+  is, and the URL is admitted only to localhost or a loopback address. A
+  refusal never quotes the URL, which could carry a credential. An unknown key
+  under `oracle.rp` is refused, and so is an `oracle.rp` with no `url`.
+- **The server block is read on the rp route alone.** With `oracle.review`
+  unset or `host`, `oracle.rp` is not read, so a fault in it refuses nothing in
+  a repository that never opted in; every refusal above is the rp route's.
+- **A route with no server here is not a fault.** A repository that sets
+  `oracle.review` to `rp` on a machine whose file names no `oracle.rp.url`
+  breaks nothing: each review the step hands out falls back to the host with a
+  receipt whose reason is `absent`.
+
+Unconfigured, nothing changes: every review runs on the host, and abcd never
+starts, installs or configures RepoPrompt, and never writes either key.
 
 ### The interview key
 
@@ -544,9 +595,26 @@ person's, in a plain terminal (spc-2610031309233367).
 abcd never moves the folder itself, and a managed project's block keeps naming
 the old paths until setup runs in that project again.
 
+**`~/.abcd.noindex` ignores itself, once (itd-2610140858048004, adr-2610140859394097).**
+A home folder that is a git repository would stage everything the user scope
+holds. So the CLI front door, before every command and again after it (the status
+line excepted, which writes nothing at all), makes sure an existing `~/.abcd.noindex` carries `.gitignore` holding `*`, owner-only,
+with a marker `gitignore-laid` beside it (`internal/core/homeignore`). It never
+creates the folder, never overwrites a file, never writes through a link, and
+reads or runs nothing of any repository. While the marker stands it writes
+nothing, so a deleted `.gitignore` is the person's deliberate opt-in and stays
+deleted. A symlinked `~/.abcd.noindex` reads as absent and is never laid. A
+failed lay says so once per command on stderr (never under `--json` or in a
+hook call, where a machine reads stderr) and never fails the command; the
+old home's stop lays nothing. The lay is the front door's, not any verb's, so
+a verb whose sentence says it writes nothing may still be the command that
+lays the file in a home that lacks it. **Invariant:** the credential store's abcd home
+stays refused inside any git working tree, the account's own included, whatever
+`.gitignore` says.
+
 **A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
 scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
-`local-transcript-roots`, `path-entry`, `cache-attestation`, `config.json`,
+`local-transcript-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
 `oracle-routing.json`, `statusline.json`, `load-limits`, `credentials.json` and
 `credential-homes.json` — is refused when `~/.abcd.noindex`, or a directory below it on the way to the file, is a
 symlink: the rule the rules loader states for `rules.json`, applied by one check
@@ -678,6 +746,14 @@ in `abcd rules` and in the hook's diagnostic, and `"source": "user"`, `"repo"`
 or `"bundled"` in `abcd rules --json`. A disabled set names every file whose kill
 switch is set.
 
+**An override's words render as text.** Each rule an override domain carries is
+rendered inside a tilde fence under its bullet, one tilde longer than the
+longest run of tildes or backticks in the rule and never shorter than three, so
+a reader that renders the block as markdown shows the rule as written: a `#`
+line, a `===` underline or an `<h2>` in it cannot become a heading that wears
+no override label (iss-2609020219265817). A bundled domain's rules are abcd's
+own and keep their markdown.
+
 **Known limitation.** Replacement is per field, so a user or repo layer cannot
 add one rule to a bundled domain's list: it restates the list. A third layer
 makes that grain more visible; finer-grained merging, detecting a repo file that
@@ -780,7 +856,7 @@ iss-2608261550580260):
 
 ```json
 {
-  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- Widgets are counted twice.\n",
+  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- ~~~\n  Widgets are counted twice.\n  ~~~\n",
   "injected": ["WIDGETS"],
   "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
              "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
@@ -1024,7 +1100,7 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus seven build-time binaries
+├── cmd/                                # the shipped entrypoint plus eight build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
@@ -1032,8 +1108,9 @@ abcd/
 │   ├── asking-sync/                    #   writes the asking rules into the generated blocks of commands/intent.md and agents/question-drafter.md
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
+│   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
 │   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)
-│                                       #   The seven are developer tooling, not user surface: they run
+│                                       #   The eight are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability

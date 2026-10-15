@@ -15,11 +15,10 @@ package loop
 // isolated one less the global-config neutralisers (gitutil.ScrubbedEnv): the
 // commit is authored by the person whose identity git is configured with, as
 // every commit of the repository is, and no inherited GIT_DIR, GIT_WORK_TREE
-// or injected configuration can redirect it. Hooks, the fsmonitor and commit
-// signing are off (gitutil.ExecPins): the message and the entry are computed,
-// the lane's pull request runs every gate over the commit, and a hook
-// dispatcher or a signing program the repository names is code the loop does
-// not run (iss-2610090821520843).
+// or injected configuration can redirect it. The repository's hooks and its
+// commit signing run as they do on the person's own commit (commitGit): they
+// are how the repository commits, and a hook that refuses the commit refuses
+// the stage (iss-2610111729399920).
 // Every argument is derived: the paths come from the intent store's validated
 // ids, after `--`, and the message from the run and intent ids.
 //
@@ -30,10 +29,13 @@ package loop
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
@@ -43,6 +45,35 @@ import (
 
 // maxGitOutput caps what the pick commit reads from git.
 const maxGitOutput = 1 << 20
+
+// commitTimeout bounds one commitGit command: the repository's hooks and its
+// signing program run on it, and one can wait on a person (a GUI pinentry, a
+// hook that prompts) who is not there, as on an unattended resume. A var so a
+// test can shorten it.
+var commitTimeout = 10 * time.Minute
+
+// worktreeAddTimeout bounds the lane's `git worktree add` (worktreeAddGit).
+// Its checkout writes every file of the tree through the repository's content
+// filters, and a Git LFS smudge downloads each object it names, so its time
+// scales with the tree and the network rather than with a person's answer: it
+// is not held to commitTimeout. The bound is there only so an unattended run
+// is never held forever by a post-checkout hook that waits. A var so a test
+// can shorten it.
+var worktreeAddTimeout = 60 * time.Minute
+
+// resetTimeout bounds the lane's reset --hard (resetLaneTree), as
+// worktreeAddTimeout bounds the checkout and for the same reason: the reset
+// rewrites the tree's files through the repository's content filters, a Git
+// LFS smudge downloading what it names, so its time scales with the tree and
+// the network. A var so a test can shorten it.
+var resetTimeout = 60 * time.Minute
+
+// commitStopGrace is how long a commitGit command that ran past commitTimeout
+// and the processes it started have, once told to stop (SIGTERM to git and
+// each of its descendants, on which git removes its lock files), before they
+// are killed and git's output pipes closed; and how long a process a hook or
+// signing program left behind may hold those pipes once git has exited.
+const commitStopGrace = 5 * time.Second
 
 // pickSubject is the pick commit's subject line.
 func pickSubject(st State) string {
@@ -69,15 +100,113 @@ func pickMessage(st State) string {
 // pickGit runs one git command in the lane's worktree and returns its stdout
 // verbatim: a porcelain status line opens with a space when the change is
 // unstaged, and the comparison below is made against the line as git wrote it.
-// It is the loop's one route for a git command that writes or judges a lane's
-// working tree (the pick commit, the land's staging, a sync's merge, the lane's
-// `git worktree add`, a restart's reset and clean), so each sees the
-// repository as the person's own git does: gitutil.WorkingTreeCommand, which
-// keeps the person's global config (a content filter a global `git lfs
-// install` defines, a global ignore file) with the program-starting knobs and
-// automatic maintenance pinned off.
+// It is the loop's one route for a git command that reads or judges a lane's
+// working tree, or writes it where the person's own git runs no hook (the
+// land's staging, a restart's clean, a merge's abort); a command that runs
+// the repository's hooks on the person's own git goes through commitGit (a
+// commit, a merge), resetLaneTree (a reset --hard) or worktreeAddGit (the
+// lane's `git worktree add`). Each sees the repository as the person's own
+// git does: gitutil.WorkingTreeCommand, which keeps the person's global config (a
+// content filter a global `git lfs install` defines, a global ignore file)
+// with the program-starting knobs and automatic maintenance pinned off.
 func pickGit(dir string, args ...string) (string, error) {
 	return runTreeGit(gitutil.WorkingTreeCommand(dir, args...), args)
+}
+
+// commitGit is pickGit for a command that runs the repository's hooks on the
+// person's own git, in a lane's worktree: the pick commit and a sync's merge,
+// and, on the same command with a bound of its own, the reset --hard that a
+// restart and the undo of a stopped sync make (resetLaneTree), which runs the
+// repository's reference-transaction and post-index-change hooks. It runs
+// gitutil.WorkingTreeCommitCommand, so the repository's hooks, its commit
+// signing, its merge's signature check and its merge drivers run as they do
+// on the person's own commit, merge and reset
+// (iss-2610111729399920, iss-2610120640452939). A restart's clean stays on
+// pickGit: `git clean` runs no hook, so the pins change nothing there.
+//
+// Because those programs run, the command is bounded: past commitTimeout git
+// and the processes below it (its hooks, their children, a signing program it
+// ran) are told to stop together (SIGTERM to git and each descendant,
+// stopWithDescendants, so git removes its lock files and a stopped commit
+// leaves no index.lock), killed commitStopGrace later if they have not, and
+// the call is refused naming the deadline (errCommitStalled). A hook's child
+// is stopped with git because it would otherwise go on writing into the
+// lane's worktree after the loop has given up on the command, and after
+// undoStalledSync has reset that worktree; one that has detached (reparented
+// to init) before the stop is out of reach. Git stays in abcd's process
+// group, as the person's own git runs in the shell's, so a prompt on the
+// terminal and an interrupt behave as they do there. A program a hook started
+// that outlives a git which finished in time is not killed (the hook's own
+// children are the repository's), but it cannot hold the call either: its
+// hold on git's output is cut after commitStopGrace. A git that exited 0 is a
+// made commit even then.
+func commitGit(dir string, args ...string) (string, error) {
+	return boundedGit(dir, commitTimeout, errCommitStalled, args)
+}
+
+// worktreeAddGit is commitGit for the lane's `git worktree add`, which runs
+// the repository's post-checkout hook as the person's own does
+// (iss-2610120640452939), bounded by worktreeAddTimeout instead: a checkout's
+// time scales with the tree, and a stop at its bound is refused as a checkout
+// that did not finish (errCheckoutStalled), never as a signing prompt.
+func worktreeAddGit(dir string, args ...string) (string, error) {
+	return boundedGit(dir, worktreeAddTimeout, errCheckoutStalled, args)
+}
+
+// boundedGit runs a gitutil.WorkingTreeCommitCommand in dir, stopped past
+// limit and refused then with stalled, as commitGit describes.
+func boundedGit(dir string, limit time.Duration, stalled error, args []string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), limit)
+	defer cancel()
+	cmd := gitutil.WorkingTreeCommitCommand(ctx, dir, args...)
+	sweep := stopWithDescendants(cmd)
+	cmd.WaitDelay = commitStopGrace
+	out, err := runTreeGit(cmd, args)
+	sweep()
+	switch {
+	case err == nil:
+		return out, nil
+	case cmd.ProcessState != nil && cmd.ProcessState.Success() && errors.Is(err, exec.ErrWaitDelay):
+		// git finished; something it started held the pipes past the grace.
+		return "", nil
+	case ctx.Err() != nil:
+		return "", fmt.Errorf("git %s: %w within %s, so git was stopped", treeGitSub(args), stalled, limit)
+	}
+	return "", err
+}
+
+// errCommitStalled names a commitGit command stopped at its deadline.
+var errCommitStalled = errors.New("a signing prompt or hook did not finish")
+
+// errCheckoutStalled names a worktreeAddGit command stopped at its bound.
+var errCheckoutStalled = errors.New("the checkout (its content filters, such as a Git LFS download, and its post-checkout hook) did not finish")
+
+// errResetStalled names a resetLaneTree stopped at its bound.
+var errResetStalled = errors.New("the reset (its content filters, such as a Git LFS download, and the repository's hooks) did not finish")
+
+// resetLaneTree resets the lane's worktree at dir to head, index and files,
+// as the person's own `git reset --hard` does (commitGit's command): the
+// repository's reference-transaction and post-index-change hooks run, and the
+// files its filters smudge are written through them. It is the one reset
+// --hard the loop makes: a restart's, once the uncommitted work is saved
+// aside, and the undo of a sync's merge stopped at its deadline. It is bounded
+// by resetTimeout rather than commitTimeout, and a stop there is refused as a
+// reset that did not finish (errResetStalled), never as a signing prompt.
+func resetLaneTree(dir, head string) error {
+	_, err := boundedGit(dir, resetTimeout, errResetStalled, []string{"reset", "--hard", "--quiet", head})
+	return err
+}
+
+// treeGitSub is the subcommand args runs, past any `-c` overrides.
+func treeGitSub(args []string) string {
+	sub := args
+	for len(sub) > 2 && sub[0] == "-c" {
+		sub = sub[2:]
+	}
+	if len(sub) == 0 {
+		return ""
+	}
+	return sub[0]
 }
 
 // pickGitIndex is pickGit on a scratch index, for a command that must read the
@@ -106,7 +235,7 @@ func runTreeGit(cmd *exec.Cmd, args []string) (string, error) {
 		if len(msg) > 2048 {
 			msg = msg[:2048]
 		}
-		return "", fmt.Errorf("git %s: %v (%s)", sub[0], err, msg)
+		return "", fmt.Errorf("git %s: %w (%s)", sub[0], err, msg)
 	}
 	if stdout.Len() > maxGitOutput {
 		return "", fmt.Errorf("git %s wrote more than %d bytes", sub[0], maxGitOutput)
@@ -173,9 +302,13 @@ func pickCommit(c Context, lane *Lane, wt, branch, base string) (string, error) 
 			"the lane's worktree holds changes the pick did not make, so its record-only commit is not made over them",
 			"clean the lane's worktree, then run `abcd implement step` again")
 	}
-	if _, err := pickGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); err != nil {
+	if _, err := commitGit(wt, "commit", "-q", "-m", pickMessage(st), "--", rel); errors.Is(err, errCommitStalled) {
 		return "", refuse(string(StageWorktree), "", lane.ID,
-			"git could not make the pick's record commit (is a git identity configured?): "+fsutil.RedactHome(err.Error()),
+			"git could not make the pick's record commit: "+err.Error(),
+			"answer the repository's signing prompt, or settle the hook that waits, then run `abcd implement step` again")
+	} else if err != nil {
+		return "", refuse(string(StageWorktree), "", lane.ID,
+			"git could not make the pick's record commit (a repository hook refused it, or no git identity is configured): "+fsutil.RedactHome(err.Error()),
 			"settle what git reports, then run `abcd implement step` again")
 	}
 	sha, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef+"^{commit}", "--")

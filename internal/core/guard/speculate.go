@@ -109,6 +109,7 @@ var reservedEntryIDs = []string{
 	syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID,
 	gitConfigEntryID, stashEntryID, interpreterStreamEntryID, commandTooLongEntryID, unparsableEntryID,
 	unknownProgramEntryID, ifsSplitEntryID, scriptHazardEntryID, scriptWrittenEntryID, scriptUnreadEntryID,
+	forgeTextEntryID, forgeUnreadEntryID,
 }
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at
@@ -129,7 +130,7 @@ func (r Registry) speculate(segs []segment, matched []bool, ids []string) []payl
 		bytes:  maxSpeculativeExpansionBytes,
 	}
 	for i, s := range segs {
-		if matched[i] {
+		if matched[i] || s.valuesPlaced {
 			continue
 		}
 		// A segment whose payload the guard READ is not an unrecognised launcher,

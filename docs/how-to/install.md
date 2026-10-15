@@ -49,11 +49,29 @@ authenticating the cached hash against the release's published `checksums.txt`
 when online, or noting in its success line that it provisioned from an
 unauthenticated cache when offline. Only an empty, stale, or unavailable cache
 falls back to downloading the release binary and `checksums.txt` and verifying
-the binary's SHA-256 against the manifest. Whenever a run has established that
+the binary's SHA-256 against the manifest. The manifest sits on the same
+release page as the binary, so a download is also checked against its signed
+build provenance when the GitHub CLI, `gh`, is installed and signed in: the
+bootstrap runs `gh attestation verify` on it, held to this repository's release
+workflow on `main` and to the commit the release tag names, and installs nothing if that
+check fails, or if the GitHub API cannot say which commit the tag names. abcd
+does not require `gh`. Without it, with a `gh` older than 2.68, or with a `gh`
+that is not signed in, the download installs
+on the checksum alone, and the success line carries a warning that says so,
+why, and the `gh attestation verify` command that checks the installed binary
+by hand. Whenever a run has established that
 manifest trust — an authenticated cache hit, or a fresh verified download — it
 also writes `~/.abcd.noindex/cache-attestation`, a small home-scoped record naming the
-data directory, the manifest-verified SHA-256, and the trust it rests on; an
-offline run writes nothing there and leaves an existing record as it was. A mismatch, a manifest that doesn't
+data directory, the manifest-verified SHA-256, the release, and the trust it
+rests on; an offline run writes nothing there and leaves an existing record as
+it was, and a run that cannot write a new record removes the old one rather
+than leave it vouching for an earlier release. The same run raises
+`~/.abcd.noindex/release-mark`, the newest release this machine has installed
+or verified, which `abcd update` records too. A release older than that mark is
+not installed: not a cached copy, and not a latest release that has fallen back
+below it because the newer one was withdrawn. Going back is your choice, made by
+naming the tag, `abcd update <tag>`, which installs that release and records it
+as the newest. A mismatch, a manifest that doesn't
 list the platform, or a platform outside the released matrix (darwin and linux
 on amd64 and arm64) installs nothing and says why in plain language. A plugin
 root that already holds the binary costs one file test and no network.
@@ -91,8 +109,17 @@ own install verb — whichever entry it leaves on `PATH`: the copy of the
 verified release binary, the track-latest shim `--dev` writes, and a symlink
 into the plugin root that an earlier release wrote and that still works. The
 copy is made only from a cache that `~/.abcd.noindex/cache-attestation` vouches for —
-the directory it names, holding the hash it names — so a data directory pointed
-at by an environment variable alone is never promoted onto `PATH`. Neither
+the directory it names, holding the hash it names, at a release no older than
+the newest-release mark — so a data directory pointed at by an environment
+variable alone is never promoted onto `PATH`, and neither is an older release's
+copy restored into the attested directory. Before it writes the copy, the
+install verb also verifies the cached binary's signed build provenance, the
+same check `abcd update` makes, bound to the commit of the release the
+attestation names, so it reaches GitHub's attestations and git APIs and the
+Sigstore TUF repository; when that check fails or cannot run, offline
+included, it writes no entry and says what failed. An entry that already holds
+those bytes is not written again, but its provenance is still checked, and
+if that fails it is left as it is and reported as not verified. Neither
 record counts when `~/.abcd.noindex` is a symlink — a dotfiles checkout, say — and
 nothing abcd writes goes through one: the hooks, the install verb and the
 one-liner each refuse it and say so, as the rules loader refuses a
@@ -101,7 +128,12 @@ installing. With no verified copy to make, the install writes no entry rather th
 the plugin root, which the next plugin update would break: it says which record
 is missing or disagrees, and names the command to run first, the
 [install](#cli) one-liner, after which re-running the install adopts the copy
-the one-liner wrote. A symlink into the plugin root that an earlier release
+the one-liner wrote, once that copy passes the same build-provenance check,
+bound to the release its build metadata names. Every later install checks the
+copy again, whether or not the cache is there. A copy that fails, or that cannot be checked, is
+left as it is and not adopted: the install says what failed, gives the
+`gh attestation verify` command for that file, and reports itself only partly
+done rather than set up. A symlink into the plugin root that an earlier release
 wrote is named by `abcd ahoy` as a gap while it still works, and an entry the
 record names that has since stopped resolving is reported as abcd's own and
 replaced by the install. The record is read
@@ -190,12 +222,31 @@ a release it did not come from.
 
 abcd keeps what belongs to your account rather than to one repository in one
 folder in your home directory, `~/.abcd.noindex`: the `path-entry` and
-`cache-attestation` records, the `trusted-roots`, `filter-roots` and
+`cache-attestation` and `release-mark` records, the `trusted-roots`, `filter-roots` and
 `rules.json` declarations, the transcript, worktree and sources stores, and the run logs.
 The `.noindex` ending is a name the Mac's search indexer passes over, so a new
 worktree or transcript there sets off no indexing; abcd changes only the name
 of its own folder and never the computer's search settings. On Linux the
 ending changes nothing.
+
+abcd keeps this folder readable only by you. It makes the folder, and each
+folder it makes inside it, so that only your account can open them. If the
+folder already exists and other accounts can open it (made by hand with
+`mkdir`, or by an earlier abcd), the next abcd command closes it to your
+account alone, which closes everything inside it too. A `~/.abcd.noindex` that
+is a symlink, or that belongs to another account, is left as it is.
+
+If your home folder is itself a git repository, a dotfiles repository you push
+somewhere, abcd keeps its folder out of it. The first time an abcd command
+other than the status line runs with `~/.abcd.noindex` in place, it writes `~/.abcd.noindex/.gitignore` holding `*`,
+so a `git add -A` in your home stages nothing abcd keeps there that your home
+repository does not already track; an ignore file never untracks a file already
+committed. It does this once:
+a file beside it, `gitignore-laid`, records that it did, and while that file
+stands abcd never writes `.gitignore` again. To let your home repository track
+abcd's folder, delete `.gitignore`; abcd leaves it deleted. Credentials are the
+exception: abcd never stores one in its folder while your home is a git
+repository, whether `.gitignore` is there or not.
 
 If an earlier abcd left a `~/.abcd` folder in your home directory, every abcd
 command and hook stops before it writes anything and names the two commands
@@ -343,23 +394,32 @@ those reasons is named, with the check it failed, by `abcd ahoy` as a
 
 ## CLI
 
-One line, checksum-verified, no administrator rights. Pick your operating
+One line, no administrator rights. Pick your operating
 system: the command detects your architecture, downloads the binary and the
 `checksums.txt` manifest from the latest release, verifies the binary's SHA-256
 against the manifest (and refuses to install on any mismatch — or if the
 manifest doesn't list the binary at all), then installs to `~/.local/bin`, the
-single-user location.
+single-user location. When the GitHub CLI, `gh` 2.68 or later, is installed
+and signed in, the command also checks the binary against its signed build
+record with `gh attestation verify`, held to this repository's release
+workflow on `main` and to the commit the latest release's tag names, and
+installs nothing if that check fails or that commit cannot be looked up.
+
+If you do not have `gh`, the download is checked only against the
+`checksums.txt` published beside it on the same release page, not against the
+signed build record, and the command prints a warning saying so, with the `gh
+attestation verify` command that checks the installed binary by hand.
 
 ### macOS
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; esac; b="abcd-darwin-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | shasum -a 256 -c -; v=none; if command -v gh >/dev/null 2>&1 && h=$(gh attestation verify --help 2>/dev/null) && for f in --source-digest --source-ref --cert-identity --deny-self-hosted-runners; do printf "%s\n" "$h" | grep -q -e "$f" || h=; done && [ -n "$h" ]; then t=$(curl -q --proto =https --proto-redir =https -fsS -o /dev/null -w "%{redirect_url}" "https://github.com/intentdriven/abcd/releases/latest") || t=; t=$(printf "%s\n" "$t" | sed -n "s|^https://github.com/intentdriven/abcd/releases/tag/\(v[0-9][0-9A-Za-z.-]*\)$|\1|p"); c=; [ -z "$t" ] || c=$(curl -q --proto =https --proto-redir =https -fsS -H "Accept: application/vnd.github.sha" "https://api.github.com/repos/intentdriven/abcd/commits/$t") || c=; printf "%s\n" "$c" | grep -q "^[0-9a-f]\{40\}$" || { echo "abcd install: the commit of the latest release could not be resolved through the GitHub API, so the build provenance of $b cannot be bound to that release. Nothing is installed." >&2; exit 1; }; v=0; gh attestation verify "$b" --hostname github.com --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners --source-digest "$c" || v=$?; fi; case "$v" in 0|4|none) ;; *) echo "abcd install: gh attestation verify could not verify the build provenance of $b as signed by the release workflow of intentdriven/abcd from the commit of release $t. Nothing is installed." >&2; exit 1;; esac; [ "$v" = 0 ] || echo "abcd install: WARNING: $b was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record, because gh 2.68 or later, signed in, is not available. To check it by hand: gh attestation verify $HOME/.local/bin/abcd --hostname github.com --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners --source-digest \$(gh api repos/intentdriven/abcd/commits/\$($HOME/.local/bin/abcd --version | sed -n \"1s/^abcd //p\") -H \"Accept: application/vnd.github.sha\")" >&2; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
 ```
 
 ### Linux
 
 ```sh
-sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
+sh -c 'set -eu; unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR; [ ! -L "$HOME/.abcd.noindex" ] || { echo "abcd install: ~/.abcd.noindex is a symlink, which abcd refuses rather than follows; replace it with a real directory and re-run" >&2; exit 1; }; cd "$(mktemp -d)"; arch=$(uname -m); case "$arch" in x86_64) arch=amd64;; aarch64) arch=arm64;; esac; b="abcd-linux-$arch"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/$b"; curl -q --proto =https --proto-redir =https -fsSLO "https://github.com/intentdriven/abcd/releases/latest/download/checksums.txt"; l=$(grep " $b$" checksums.txt); printf "%s\n" "$l" | sha256sum -c -; v=none; if command -v gh >/dev/null 2>&1 && h=$(gh attestation verify --help 2>/dev/null) && for f in --source-digest --source-ref --cert-identity --deny-self-hosted-runners; do printf "%s\n" "$h" | grep -q -e "$f" || h=; done && [ -n "$h" ]; then t=$(curl -q --proto =https --proto-redir =https -fsS -o /dev/null -w "%{redirect_url}" "https://github.com/intentdriven/abcd/releases/latest") || t=; t=$(printf "%s\n" "$t" | sed -n "s|^https://github.com/intentdriven/abcd/releases/tag/\(v[0-9][0-9A-Za-z.-]*\)$|\1|p"); c=; [ -z "$t" ] || c=$(curl -q --proto =https --proto-redir =https -fsS -H "Accept: application/vnd.github.sha" "https://api.github.com/repos/intentdriven/abcd/commits/$t") || c=; printf "%s\n" "$c" | grep -q "^[0-9a-f]\{40\}$" || { echo "abcd install: the commit of the latest release could not be resolved through the GitHub API, so the build provenance of $b cannot be bound to that release. Nothing is installed." >&2; exit 1; }; v=0; gh attestation verify "$b" --hostname github.com --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners --source-digest "$c" || v=$?; fi; case "$v" in 0|4|none) ;; *) echo "abcd install: gh attestation verify could not verify the build provenance of $b as signed by the release workflow of intentdriven/abcd from the commit of release $t. Nothing is installed." >&2; exit 1;; esac; [ "$v" = 0 ] || echo "abcd install: WARNING: $b was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record, because gh 2.68 or later, signed in, is not available. To check it by hand: gh attestation verify $HOME/.local/bin/abcd --hostname github.com --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners --source-digest \$(gh api repos/intentdriven/abcd/commits/\$($HOME/.local/bin/abcd --version | sed -n \"1s/^abcd //p\") -H \"Accept: application/vnd.github.sha\")" >&2; mkdir -p "$HOME/.local/bin"; install -m 0755 "$b" "$HOME/.local/bin/abcd"; mkdir -p "$HOME/.abcd.noindex"; printf "path=%s\nbinary_sha256=%s\n" "$HOME/.local/bin/abcd" "${l%% *}" > "$HOME/.abcd.noindex/path-entry"; "$HOME/.local/bin/abcd" --version'
 ```
 
 ### Windows
@@ -394,7 +454,9 @@ not own.
 
 Prefer to inspect before running? The command is exactly what it says: two
 downloads from [the latest release](https://github.com/intentdriven/abcd/releases/latest),
-a checksum verification, a copy into a directory you own, and one two-line
+a checksum verification, a `gh attestation verify` when `gh` can run one,
+bound to the commit GitHub's API names for the latest release's tag (or the
+warning when it cannot), a copy into a directory you own, and one two-line
 record in `~/.abcd.noindex/path-entry` naming what it just installed and that binary's
 SHA-256. The record is what the plugin's hooks read before they will run an
 `abcd` off your `PATH`. You can do the same by hand — grab the binary for your
@@ -408,7 +470,24 @@ commit, with the checksums generated over the same bytes that are uploaded.
 To move a `~/.local/bin` install to a later release, run `abcd update`; `abcd
 update --check` reports whether one is available and names the command your
 install shape takes, since a plugin-root binary takes a plugin update and a
-package-manager install takes the manager's own upgrade.
+package-manager install takes the manager's own upgrade. `abcd update` checks
+more than the checksum: before it swaps anything it verifies the release's
+signed build provenance, proving the binary was built by this repository's
+release workflow on `main` from the commit the release's tag names, and it
+refuses the swap, naming what failed, when that cannot be verified, offline
+included. To do the same check by hand, run `gh attestation verify <binary>
+--repo intentdriven/abcd --cert-identity
+https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main
+--source-ref refs/heads/main --deny-self-hosted-runners --source-digest
+<commit>`, where `<commit>` is what `gh api repos/intentdriven/abcd/commits/<tag> -H
+'Accept: application/vnd.github.sha'` prints for the release's tag.
+
+The script abcdev.app serves at `/install.sh` does what the one-liners do,
+the same `gh attestation verify` step and its warning included, and one thing
+more: after the install it records the release in
+`~/.abcd.noindex/release-mark`, the newest-release mark the plugin's bootstrap
+and `abcd update` keep, and only ever raises it. It does not write
+`~/.abcd.noindex/path-entry`.
 
 ## What adopting a repository commits
 
@@ -486,6 +565,131 @@ This mention is deliberate. abcd recognises its own hooks and fence by the
 markers they carry, so a hook whose marker is renamed or stripped reads as
 someone else's hook, a fence without its markers reads as drifted, and
 `abcd ahoy` reports either as a gap.
+
+`README.md` is not among them. abcd writes in it only after you answer yes to
+the README question below, and only the parts you choose; the marks around
+each part name abcd, as the fence in `.gitignore` does.
+
+## The README parts abcd keeps current
+
+Setup can keep a few parts of your project's `README.md` current. Each part is
+read from the project on this computer and sits inside its own marked place.
+Setup asks before it writes any, never writes a title, and never touches your
+own words. It writes in your working tree and commits nothing: committing
+`README.md` is yours to do.
+
+The parts, in the order abcd places them:
+
+| Part | What it writes | Left out, with the reason said, when |
+| --- | --- | --- |
+| `release-badge` | a badge of the latest release, linked to the forge's latest-release page | the project is not declared public; there is no `origin` remote abcd can read, or it is not on github.com |
+| `build-badge` | the forge's own status badge for one workflow, linked to that workflow's runs | as the release badge; or `.github/workflows/` holds no workflow file, or several and none is `ci.yml` or `ci.yaml` |
+| `abcd-badge` | a "managed with abcd" badge linked to abcd's repository | only by one of the checks below, since it reads nothing from the project |
+| `licence` | one line naming the licence and linking the file, or linking it unnamed | there is no `LICENSE`, `LICENSE.md` or `LICENSE.txt` at the root |
+| `links` | links to `CHANGELOG.md`, `CONTRIBUTING.md`, `SECURITY.md` and `CODE_OF_CONDUCT.md`, each looked for at the root, then in `.github/`, then in `docs/` | none of the four is found |
+| `contents` | a list of links to the README's own level-two and level-three headings | the README has no level-two heading |
+
+The two forge badges go by what you declared in abcd's settings
+(`repo.visibility` in `.abcd/config.json`, which `--visibility public` sets):
+abcd reads no visibility from the forge, and a project not declared public is
+not offered them. The badge images are drawn when someone reads the page, so
+no version number is written into the file. The licence is named only from an
+`SPDX-License-Identifier:` line in the file's first twenty lines, or from the
+standard first line of the MIT, Apache 2.0, BSD 2-Clause, BSD 3-Clause, ISC or
+Mozilla Public License 2.0 text; any other licence file is linked without being
+named. A heading whose anchor abcd cannot be sure of is listed in `contents`
+without a link, and a note says which.
+
+Before a part is written it passes three checks, and a part that fails one is
+left out with the finding named. A badge's addresses must use https and the
+one host allowed for that badge, and may carry no query key the forge does not
+read: an `origin` remote ending `?token=abc` is refused naming `token`. Every
+part passes abcd's outbound scrub. Where the project keeps
+`.abcd/docs-lint.json`, every part passes its banned tokens too. Setup reads
+files and the `origin` remote's address and asks the network nothing.
+
+A part looks like this in `README.md`:
+
+```markdown
+<!-- BEGIN ABCD:licence sha256=<64 hex digits> -->
+Licensed under the MIT License; see [LICENSE](LICENSE).
+<!-- END ABCD:licence -->
+```
+
+The opening mark carries a hash of the text abcd wrote. Each setup run reads
+every chosen part from the project again and rewrites one that has gone stale,
+wherever in the file you moved it; a run in which every part is current leaves
+the file's bytes and time stamp as they were. A part whose text does not
+match its hash was edited by hand: setup names it and its line
+(`licence part edited by hand at line 4; left as it is`), leaves it, and still
+writes the others. Two marks for one part, or a mark with no partner, leaves
+the whole file as it is and names the line. A new part goes beside the nearest
+part already there, else after a leading frontmatter block, else after the
+first level-one heading, else at the top. Marks shown inside a code block, as
+above, are not read as a part. A project with no `README.md` gets one holding
+only the chosen parts, with no title and no prose.
+
+### The question
+
+At a terminal, in a run without `--yes`, setup asks whether abcd should keep
+parts of `README.md` current: `yes`, `no`, or `later`, the default. `yes` goes
+on to one question per part offered, each saying what the part is, its
+current setting, how to change it later, and the exact lines it would write in
+this project or the reason it writes none. Each part's answer is `on`, `off`
+or `later`. The licence and the links start on; the table of contents and the
+managed-with-abcd badge start off; the two forge badges start on where they
+are offered. Through the plugin, your agent harness asks the same questions
+with its own question tool: the first one alone, then the parts as tabs of at
+most four.
+
+The answer is saved as `readme.parts` in `.abcd/config.json`. A list of parts
+is rewritten on every later setup run. `no` saves an empty list, takes out the
+parts whose text is still abcd's, and is not asked again. `later`, at the first
+question or at any part, saves nothing, so the next setup run asks again. The
+answer is kept in `.abcd/config.json`, so the question is asked only once
+abcd's starter files exist.
+
+### Answering it with `--readme-parts`
+
+```sh
+'<plugin-root>/abcd' ahoy install --readme-parts licence,links
+```
+
+```sh
+'<plugin-root>/abcd' ahoy install --readme-parts none
+```
+
+`<plugin-root>` is the folder described under [Plugin](#plugin); once abcd is
+on your `PATH`, `abcd` alone takes the place of the quoted path. The flag takes the parts you want, comma-separated, or `none`, which answers
+no. It answers the question in any run, `--yes` included, and is saved as the
+question's answer is. A name that is not one of the six parts, an empty name,
+or `none` beside a part is refused with exit 2, naming the parts, before
+anything is written. A value that differs from the saved one is shown as a
+change (`readme.parts: licence -> licence,links`), and a part you drop is
+taken out of `README.md` where its text is still abcd's. Until abcd's starter
+files exist there is nowhere to save the answer, so the run leaves `README.md`
+as it is and says so.
+
+### What `--yes` does
+
+`--yes` never answers the README question. While the question is unanswered,
+a `--yes` run without `--readme-parts` leaves `README.md` as it is, or absent
+if there was none, lists `readme.offered` under `optional_skipped`, and its
+summary says "The README question was not asked" and names `--readme-parts`.
+Once a list of parts is saved, a `--yes` run keeps those parts current like
+any other setup run. A run whose answers
+are piped in is not asked either, and reports it the same way.
+
+### Uninstall
+
+`abcd ahoy uninstall` takes out every part whose text still matches its hash,
+whatever `readme.parts` says, and leaves each part edited by hand, naming it.
+Two marks for one part, or a mark with no partner, leaves the file untouched
+and names the line. A `README.md` holding no part is never written. A
+`README.md` that abcd created is deleted once nothing but blank lines is left
+in it; one you made is kept, even when empty. The uninstall's text names what
+it did on its `readme:` line, for example
+`readme: links removed; licence edited by hand, left`.
 
 ## Build
 

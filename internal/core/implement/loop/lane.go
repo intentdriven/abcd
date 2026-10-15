@@ -214,13 +214,29 @@ func worktreeStage(c Context, lane *Lane) (Outcome, error) {
 		}
 		// The checkout writes the lane's files as the person's own git
 		// would, through the filters their global config defines
-		// (iss-2610111729375108).
-		if _, err := pickGit(c.RepoRoot, args...); err != nil {
+		// (iss-2610111729375108), and runs the repository's post-checkout
+		// hook (the one `git lfs install` installs), as the person's own
+		// `git worktree add` does (iss-2610120640452939). Its time scales
+		// with the tree, so it has its own bound (worktreeAddGit).
+		if _, err := worktreeAddGit(c.RepoRoot, args...); errors.Is(err, errCheckoutStalled) {
+			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
+				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
+				fmt.Sprintf("settle the repository's post-checkout hook if it waits; a checkout that needs longer than %s (a large Git LFS download) can be made by hand at %s on %s, which the worktree stage adopts; then run `abcd implement step` again",
+					worktreeAddTimeout, fsutil.RedactHome(lw.Path), lw.Branch))
+		} else if err != nil {
 			return Outcome{}, refuse(string(StageWorktree), "", lane.ID,
 				"git could not add the lane's worktree: "+fsutil.RedactHome(err.Error()),
 				"settle what git reports, then run `abcd implement step` again")
 		}
 	}
+	// git makes the worktree at the process umask, 0755 under the usual 022;
+	// the lane's checkout is the caller's alone, like the store levels above
+	// it. An adopted worktree is narrowed too, since a process killed between
+	// git's add and this line left it as git made it. A store on a
+	// filesystem that cannot change modes (exFAT, a network share) keeps the
+	// lane as git made it rather than refusing the step: the home above it is
+	// narrowed at every command, so other accounts cannot reach the lane.
+	_, _ = fsutil.NarrowToOwner(lw.Path)
 	head, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", branchRef+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(head) {
 		return Outcome{}, fmt.Errorf("resolving the lane branch %s: %v", lw.Branch, err)

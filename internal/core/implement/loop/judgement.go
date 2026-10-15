@@ -64,6 +64,10 @@ const (
 // DrainRoute's From.
 const DrainFromJudgement = "judgement"
 
+// DrainFromReservation is a hand-back's From when the drain could not reserve
+// the issue: its found_at names no path to reserve it with.
+const DrainFromReservation = "reservation"
+
 // judgementKinds are the kinds a yes names, each routed as a lane's hand-back
 // of that kind is.
 var judgementKinds = []string{HandBackUserVisible, HandBackTrustRule}
@@ -170,15 +174,26 @@ func judgementMove(j DrainJudging) string {
 		j.Issue, j.Request, j.Answer, j.Answer)
 }
 
-// judgementQuoteNote tells the request's reader the one substitution
-// fenceQuote makes in the record text it quotes.
-const judgementQuoteNote = "The remedy and the record are quoted as the ledger holds them, save one substitution: an HTML\n" +
-	"comment opener or closer inside a quote has its second hyphen written `&#45;`, so no quote can end\n" +
-	"its fence early.\n\n"
+// judgementQuoteNote tells the request's reader the substitutions the
+// request makes in the record text it quotes: the termsafe mask, then
+// fenceQuote's.
+const judgementQuoteNote = "The remedy and the record are quoted as the ledger holds them, save two substitutions: a\n" +
+	"control character or a rune that renders as nothing (a bidi override, a zero-width or tag rune) is\n" +
+	"written `?`, and an HTML comment opener or closer inside a quote has its second hyphen written\n" +
+	"`&#45;`, so no quote can end its fence early.\n\n"
 
 // judgementRequest is the request's text: the question, what each answer
 // does, the issue with its remedy and record, and the answer's shape.
+//
+// The request is an agent's input, so every record string it quotes is
+// masked (termsafe.Sanitize for a one-line field and the remedy,
+// termsafe.SanitizeBlock for the body): a bidi override or a tag rune in a
+// record would otherwise reach the judging agent unseen by the person
+// (iss-2610121653499543). The digest is not: j.RemedySHA256 is over the
+// remedy as stored, so a remedy rewritten with a hidden rune where a '?'
+// stood still changes it.
 func judgementRequest(iss capture.Issue, v capture.DrainVerdict, j DrainJudging) string {
+	path := termsafe.Sanitize(iss.Path)
 	var b strings.Builder
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	p("# Drain judgement request: %s\n\n", iss.ID)
@@ -200,18 +215,18 @@ func judgementRequest(iss capture.Issue, v capture.DrainVerdict, j DrainJudging)
 	p("must answer. The judgement can only ever hand an issue back.\n\n")
 	p("## The issue\n\n")
 	p("- id: %s\n", iss.ID)
-	p("- record: %s\n", iss.Path)
-	p("- severity: %s\n", iss.Severity)
-	p("- category: %s\n\n", iss.Category)
+	p("- record: %s\n", path)
+	p("- severity: %s\n", termsafe.Sanitize(string(iss.Severity)))
+	p("- category: %s\n\n", termsafe.Sanitize(string(iss.Category)))
 	b.WriteString(judgementQuoteNote)
-	p("### The remedy\n\n<!-- begin remedy -->\n\n%s\n\n<!-- end remedy -->\n\n", fenceQuote(iss.Remedy))
-	p("### The record's body\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", iss.Path, fenceQuote(strings.TrimSpace(iss.Body)), iss.Path)
+	p("### The remedy\n\n<!-- begin remedy -->\n\n%s\n\n<!-- end remedy -->\n\n", fenceQuote(termsafe.Sanitize(iss.Remedy)))
+	p("### The record's body\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", path, fenceQuote(termsafe.SanitizeBlock(strings.TrimSpace(iss.Body))), path)
 	p("## Your answer\n\n")
 	p("Write this JSON to `%s`, strictly in this shape (any other field refuses it):\n\n", j.Answer)
 	p("    {\n      \"schema_version\": %d,\n      \"issue\": %q,\n      \"remedy_sha256\": %q,\n", DrainJudgementSchemaVersion, iss.ID, j.RemedySHA256)
 	p("      \"answer\": \"yes or no\",\n      \"kind\": \"%s or %s, with yes only; leave the field out with no\",\n", HandBackUserVisible, HandBackTrustRule)
 	p("      \"reason\": \"one sentence; with %s, the question the decision record must answer\"\n    }\n\n", HandBackTrustRule)
-	p("`remedy_sha256` is the remedy's digest as this request showed it; copy it as it stands. Then run\n")
+	p("`remedy_sha256` is the digest of the remedy as the ledger holds it; copy it as it stands. Then run\n")
 	p("`abcd drain --judgement %s`. A remedy rewritten in the meantime refuses the answer, and the next\n", j.Answer)
 	p("`abcd drain` asks again.\n")
 	return b.String()
@@ -229,7 +244,7 @@ func judgementGaps(a JudgementAnswer, j DrainJudging) []string {
 		gaps = append(gaps, "issue "+j.Issue+", the issue the request names (it names "+termsafe.DescribeRefused(a.Issue)+")")
 	}
 	if a.RemedySHA256 != j.RemedySHA256 {
-		gaps = append(gaps, "remedy_sha256 as the request states it, the digest of the remedy it showed")
+		gaps = append(gaps, "remedy_sha256 as the request states it, the digest of the remedy as the ledger held it")
 	}
 	switch a.Answer {
 	case JudgementYes:

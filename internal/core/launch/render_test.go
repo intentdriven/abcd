@@ -93,24 +93,9 @@ func TestRenderPayloadSatisfiesPublicLockstep(t *testing.T) {
 // working tree would pass every other test here and silently break the premise.
 func TestRenderPayloadLeavesSourceTreeUnversioned(t *testing.T) {
 	root := repoRootForTest(t)
-	manifests := []string{".claude-plugin/plugin.json", ".claude-plugin/marketplace.json"}
-	before := make(map[string][]byte, len(manifests))
-	for _, rel := range manifests {
-		data, err := os.ReadFile(filepath.Join(root, rel))
-		if err != nil {
-			t.Fatalf("read %s: %v", rel, err)
-		}
-		before[rel] = data
-	}
+	_, before := renderThisRepo(t)
 
-	dest := filepath.Join(t.TempDir(), "payload")
-	if _, err := RenderPayload(PayloadRenderRequest{
-		RepoRoot: root, Dest: dest, Version: "9.9.9", Entry: sampleEntry(), Dirty: DirtySkip,
-	}); err != nil {
-		t.Fatalf("render this repository's payload: %v", err)
-	}
-
-	for _, rel := range manifests {
+	for _, rel := range thisRepoManifests {
 		after, err := os.ReadFile(filepath.Join(root, rel))
 		if err != nil {
 			t.Fatalf("re-read %s: %v", rel, err)

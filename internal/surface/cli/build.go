@@ -242,10 +242,12 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"on <date>`: every candidate with its score, the rule, the runner-up and why it lost, and the\n" +
 			"falsifier. The lane's worktree stage appends it to the intent in the lane's own worktree and\n" +
 			"commits it there as the lane branch's first commit, record-only, before the brief; the\n" +
-			"receipt verifier does not count that commit as the implementer's. That commit runs no hook\n" +
-			"and is unsigned, even where your git configuration signs every commit. It does run the\n" +
-			"repository's content filters: staging the entry passes it through its clean filter, as\n" +
-			"Git LFS needs. The checkout you run this\n" +
+			"receipt verifier does not count that commit as the implementer's. That commit is made as\n" +
+			"your own git makes one: the repository's hooks run, and a hook that refuses it refuses the\n" +
+			"stage; it is signed where your git configuration signs every commit; and staging the entry\n" +
+			"passes it through the repository's clean filter, as Git LFS needs. A commit still waiting\n" +
+			"after ten minutes on a signing prompt or a hook is stopped and refuses the stage, naming\n" +
+			"the deadline. The checkout you run this\n" +
 			"in is never written but for the run state. `abcd intent ready` keeps reporting the person's\n" +
 			"entry as the most recent conjecture.\n\n" +
 			"One pick by default, and nothing picks again once it is delivered. --max <n> (above 1) or\n" +
@@ -264,13 +266,13 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"rounds falsifies the pick: the run record (`abcd implement record`) carries the pick's\n" +
 			"score table and says so, and the intent's entry is not edited.\n\n" +
 			"No candidate for a first pick is refused, naming each excluded intent and the check that\n" +
-			"excluded it, and nothing is written. Refused too, writing nothing: a negative --max,\n" +
-			"--max with --until-empty, and, while a series is in progress, a count or pace other than\n" +
+			"excluded it, and nothing is written. Refused too, writing nothing: --max 0 or a negative\n" +
+			"--max, --max with --until-empty, and, while a series is in progress, a count or pace other than\n" +
 			"the one it began with, and, until it is restored or removed, a series state that cannot be\n" +
-			"read, does not parse, or names a count, a pick or an outcome the series never writes; and a\n" +
-			"pick whose reason the grounds writer's gate refuses, a defect to report. Exit 2 on a\n" +
-			"refusal, exit 3 when the chosen intent's run is already in progress or the run state or\n" +
-			"the series is locked.",
+			"read, does not parse, or names a count, a pick, an outcome, pace flags or a pace the series\n" +
+			"never writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.\n" +
+			"Exit 2 on a refusal, exit 3 when the chosen intent's run is already in progress or the run\n" +
+			"state or the series is locked.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const prefix = "abcd build next"
@@ -295,6 +297,11 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			}
 			if cmd.Flags().Changed("fix-rounds") {
 				o.FixRounds = &fixRounds
+			}
+			if cmd.Flags().Changed("max") && maxPicks < 1 {
+				// NextOptions.Max reads 0 as no --max at all; an explicit
+				// --max 0 is no run count either, so it is refused here.
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, loop.RunCountRefusal(maxPicks))
 			}
 			res, err := loop.Next(root, o, loop.NextOptions{Max: maxPicks, UntilEmpty: untilEmpty})
 			if err != nil {
@@ -733,8 +740,9 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 
 func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	var runID, release, discard, restart, yielded string
+	var acceptConfig bool
 	cmd := &cobra.Command{
-		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]]",
+		Use: "step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change]",
 		Long: "Perform the run's next move, write the state, and exit. At a stage that hands work to\n" +
 			"an agent, the result names the agent to start, the brief it is handed and the path its\n" +
 			"receipt goes to; that work advances only on `abcd implement receipt`. A lane lands one\n" +
@@ -758,16 +766,24 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"time; a lane whose sibling landed\n" +
 			"since its base is synced first (the default branch merged in with a merge commit, never a\n" +
 			"rebase) and judged by a fresh round, and a conflicting sync goes to a fresh implementer;\n" +
-			"a sync counts no fix round. The sync's merge commit runs no hook and is unsigned, even where\n" +
-			"your git configuration signs every commit, and the merge does not verify the signature of the\n" +
-			"commit it merges in. The merge is git's built-in merge on every path, whatever merge driver\n" +
-			"the repository configures or merge.default names, so a driver's program never runs. The\n" +
-			"merge does run the repository's content filters: each file it writes passes through its\n" +
-			"smudge filter, as Git LFS needs, in the lane's worktree, where the implementer already runs\n" +
-			"the repository's own code.\n\n" +
+			"a sync counts no fix round. The sync's merge is made as your own `git merge` makes one, in\n" +
+			"the lane's worktree: the repository's hooks run, its merge commit is signed where your git\n" +
+			"configuration signs every commit, the signature of the commit it merges in is verified where\n" +
+			"merge.verifySignatures says so, the merge driver the repository configures or merge.default\n" +
+			"names merges each path it covers, and each file it writes passes through the repository's\n" +
+			"smudge filter, as Git LFS needs. A merge the repository refuses before it begins refuses\n" +
+			"the step, naming what git reported. A merge still waiting after ten minutes on a signing\n" +
+			"prompt or a hook (a passphrase dialog nobody answers) is stopped and refuses the step,\n" +
+			"so an unattended run is never held by it; the merged result git had staged is reset away,\n" +
+			"leaving the lane's worktree clean at its judged head, and the refusal says so. A sync\n" +
+			"starts only from a clean worktree, so that reset never touches a change the loop did not\n" +
+			"make.\n\n" +
 			"The lane's stages, in order: worktree makes the lane's worktree in the machine-scoped\n" +
 			"store, " + abcdhome.Display("worktrees/<root-sha>/<run-id>-<lane-id>") + ", on a branch build/<run-id>-<lane-id>\n" +
-			"cut from the default branch; brief renders the lane's brief from that base (the intent,\n" +
+			"cut from the default branch, as your own `git worktree add` makes one (the repository's\n" +
+			"post-checkout hook runs, as Git LFS needs); its checkout's time scales with the tree, so it\n" +
+			"is bounded at sixty minutes rather than the ten of a commit or a merge, and one stopped\n" +
+			"there refuses the stage naming the checkout and the bound; brief renders the lane's brief from that base (the intent,\n" +
 			"the spec, the conventions of AGENTS.md, the decisions the intent cites, and the spec\n" +
 			"steps before the lane's with what landed each) into the lane's directory of the run;\n" +
 			"implement hands the lane to a fresh implementer and awaits\n" +
@@ -797,11 +813,16 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
 			"(aside/<UTC stamp>/: changes.patch, aside.json, any partial receipt) once the patch is\n" +
-			"proved to apply to that commit, the lane's worktree is reset and cleaned, the run record\n" +
+			"proved to apply to that commit, the lane's worktree is reset and cleaned as your own git\n" +
+			"resets and cleans it (the repository's hooks run on the reset), the run record\n" +
 			"names the aside for review, and the implementer await is re-told; the brief never names\n" +
-			"the aside. It is refused, changing nothing, while the run has an outage (open or given\n" +
-			"up), for a blank --yielded, for a lane with no implementer out, or for a worktree that\n" +
-			"is not the one the loop derives.\n" +
+			"the aside. An await a rate limit kept, because what its agent left could not be saved\n" +
+			"aside, is marked in the run state, and --restart re-tells it the same way once that is\n" +
+			"settled, a validator's included: only a validator's partial return is saved aside, its\n" +
+			"worktree is not touched, and a validator of the round that is still out unmarked is left\n" +
+			"alone. It is refused, changing nothing, while the run has an outage (open or given up),\n" +
+			"for a blank --yielded, for a lane with neither an implementer out nor an await a rate\n" +
+			"limit kept, or for a worktree that is not the one the loop derives.\n" +
 			"land follows a passing round, one step per call: it checks the lane's worktree is clean\n" +
 			"at the judged head; on the lane that closes the spec it runs `spec close` in the lane's\n" +
 			"worktree and ingests the audit that lane took, and for every capture the lane's receipts\n" +
@@ -844,6 +865,19 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"asked for, the reason and the route that runs it. A role left unset is the host's, and\n" +
 			"the call is exactly the host-driven step. A step that re-tells an await starts nothing.\n" +
 			"An interrupt kills the runner's process group.\n\n" +
+			"With oracle.review set to rp (in .abcd/config.json or " + abcdhome.Display("config.json") + ", the\n" +
+			"MCP oracle's address, oracle.rp.url, in the latter alone), a ruthless or security review\n" +
+			"the step hands to the host is sent instead to that MCP oracle, with a request rendered\n" +
+			"beside the reviewer's brief (its agent definition, the lane's brief, the reports and the\n" +
+			"diff): the answer is written to the review's return path and its verdict recorded through\n" +
+			"the same receipt, and the result's route names rp; a return the host's agent wrote first\n" +
+			"stands, and the answer is kept aside beside it. A review the route does not return (no\n" +
+			"server named on this machine, a refused connection, a bound run out, the server's error,\n" +
+			"a return with no verdict or too large, a request too large to compose, or an interrupt)\n" +
+			"falls back: the host is handed the same brief and return path, and the call records one\n" +
+			"fallback naming the role, rp, the reason and the host, which status and record count. The\n" +
+			"intent-auditor, and a reviewer routed to a runner, are unchanged; with oracle.review unset\n" +
+			"or host nothing changes, and abcd never starts, installs or configures the oracle.\n\n" +
 			"The run's window clock: once the run's working window has elapsed, the call starts\n" +
 			"nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an\n" +
 			"agent already started may still hand back its receipt. Before next_eligible_at the call\n" +
@@ -868,6 +902,24 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"up on the outage, every call is refused at the stage outage, naming since when, the\n" +
 			"probes, what was done, what is left and whether the product thinker's notification is\n" +
 			"pending (notify).\n\n" +
+			"The run tripwire: the repository's git settings that can name a program (filter.*,\n" +
+			"core.hooksPath, core.sshCommand, core.fsmonitor, core.pager, core.editor, core.askPass,\n" +
+			"core.gitProxy, core.worktree, extensions.worktreeConfig, credential.*, a remote's url,\n" +
+			"pushurl, proxy, vcs, uploadpack and receivepack, url rewrites, protocol allow rules, diff\n" +
+			"and merge drivers, gpg programs and gpg.ssh.defaultKeyCommand, include and includeIf\n" +
+			"paths), every such setting each lane worktree reads and the hooks directory git runs\n" +
+			"there, the hooks directory and info/attributes are fingerprinted at the run's first\n" +
+			"check, and checked again at the start of every step, discard and restart, before the\n" +
+			"shared network probe and before a rate-limit checkpoint saves a lane aside. They run on\n" +
+			"the loop's git as on your own, so abcd never changes them; a change during the run is\n" +
+			"refused at the stage config, before the call reaches its git, naming each changed key or\n" +
+			"file (never a value; a key whose name can hold a URL is named url.<hidden-id>.insteadof),\n" +
+			"and a checkpoint keeps the lane as it is. The check is made when the call starts, not\n" +
+			"together with git: a change made while the call runs is seen by the next one. A run\n" +
+			"started before the tripwire records its fingerprint at its next check and moves.\n" +
+			"--accept-config-change, once you have looked at what changed, records the configuration\n" +
+			"as it stands, names what it accepted on stderr, in the result (accepted_config_change) and\n" +
+			"in the run record, and takes the step.\n\n" +
 			"--run names the run; without it, the one run in progress in this checkout. Exit 2 on a\n" +
 			"refusal, exit 3 on a pause or a locked run state.",
 		Args: cobra.NoArgs,
@@ -882,6 +934,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			var res loop.StepResult
+			var accepted []string
 			// A --yielded given at all is judged trimmed: a blank one names
 			// no line, and is never read as an agent that died.
 			yieldedSet := cmd.Flags().Changed("yielded")
@@ -896,11 +949,13 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			case yieldedSet && yielded == "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: "restart", Lane: restart,
 					Reason: "--yielded is blank, so it names no line the agent yielded with", Remedy: "pass the agent's own `NETWORK: <cmd>` line, or leave --yielded out for an agent that died; nothing was changed"})
-			case restart != "":
-				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded)
 			case release != "" && discard != "":
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, &loop.Refusal{Stage: string(loop.StageHeld),
 					Reason: "--release and --discard name one decision each; give one", Remedy: "run `abcd implement step --release <lane-id>` or `--discard <lane-id>`, one lane per invocation"})
+			case acceptConfig && !acceptConfigChange(cmd, root, id, &accepted, &err):
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			case restart != "":
+				return runRestart(cmd.OutOrStdout(), *asJSON, root, id, restart, yielded, accepted)
 			case release != "":
 				res, err = loop.Release(root, id, release, loop.Options{})
 			case discard != "":
@@ -914,6 +969,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				if lerr != nil {
 					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
 				}
+				review, lerr := loop.LoadReviewRoute(roots, agentPrompt)
+				if lerr != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
+				}
 				// An interrupt or a termination ends the context, and the runner
 				// kills the process group it started through its own handle: a
 				// harness never outlives the step that started it.
@@ -921,11 +980,17 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				defer stop()
 				res, err = loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{},
 					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
+				if err == nil {
+					// A review the step handed to the host goes to the reviewer
+					// route instead when oracle.review selects one (itd-6).
+					res, err = loop.DriveReview(ctx, root, id, res, loop.DefaultStages(), loop.Options{}, review)
+				}
 			}
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
 			res = redactStep(res)
+			res.AcceptedConfigChange = accepted
 			return render(cmd.OutOrStdout(), *asJSON, res, func(w io.Writer) { renderStepResult(w, "step", res) })
 		},
 	}
@@ -934,7 +999,25 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request")
 	cmd.Flags().StringVar(&restart, "restart", "", "restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside")
 	cmd.Flags().StringVar(&yielded, "yielded", "", "with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying")
+	cmd.Flags().BoolVar(&acceptConfig, "accept-config-change", false, "accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step")
 	return cmd
+}
+
+// acceptConfigChange accepts the run's changed git configuration for
+// `implement step --accept-config-change`, naming what it accepted on stderr
+// and in *acceptedp, which the step's result carries. It reports false, with
+// *errp set, when the accept is refused.
+func acceptConfigChange(cmd *cobra.Command, root, runID string, acceptedp *[]string, errp *error) bool {
+	accepted, err := loop.AcceptConfigChange(root, runID, loop.Options{})
+	if err != nil {
+		*errp = err
+		return false
+	}
+	*acceptedp = accepted
+	if len(accepted) > 0 {
+		fmt.Fprintln(cmd.ErrOrStderr(), termsafe.Sanitize("accepted a change to the repository's git configuration: "+strings.Join(accepted, ", ")))
+	}
+	return true
 }
 
 func newImplementReceiptCommand(asJSON *bool) *cobra.Command {

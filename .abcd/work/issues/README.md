@@ -83,12 +83,15 @@ Required:
   `architectural-insight`, `future-work-seed`, `observation`, `lapse`).
 - `source` — the surfacing channel (`plan-review`, `impl-review`,
   `manual-test`, `review-followup`, `agent-finding`, `agent-observation`,
-  `user-observation`, `drift-detection`, `memory-curation`).
+  `user-observation`, `drift-detection`, `memory-curation`, `managed-repo`,
+  `security-advisory`; a `security-advisory` record lives in the embargo
+  store, never in this ledger, while its advisory is unpublished).
 - `found_during` — non-empty session or command context.
 
 Optional:
 
 - `found_at` — repo-relative path or conceptual location.
+- `finding_ref` — the consistency finding's stable key (`cfk-…`), which a later pass links by.
 - `lapsed_at` — the RFC 3339 instant, in UTC, at which a recorded discipline gave
   way: the lapse itself, not its write-up. The record id is timestamp-numeric and
   therefore already carries write-up time, which is the value this property

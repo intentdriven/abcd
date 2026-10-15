@@ -35,7 +35,27 @@ const maxPathEntryBytes = 4 << 10
 // cacheAssetPath is the verified release artefact for this platform inside the
 // persistent data dir — the same name and layout hooks/bootstrap.sh writes.
 func cacheAssetPath(dataDir string) string {
-	return filepath.Join(dataDir, "cache", "abcd-"+runtime.GOOS+"-"+runtime.GOARCH)
+	return filepath.Join(dataDir, "cache", cacheAssetName())
+}
+
+// cacheAssetName is this platform's release asset name.
+func cacheAssetName() string { return "abcd-" + runtime.GOOS + "-" + runtime.GOARCH }
+
+// ghAttestationVerifyCommand is the hand check of a downloaded release asset's
+// build provenance, the same policy abcd update and ahoy install verify in
+// process: signed by this repository's release workflow on main, built from
+// main on a GitHub-hosted runner, at the commit the release tag names. hooks/bootstrap.sh and the install one-liner run this
+// when gh is present. With no tag known the commit is named as a placeholder.
+func ghAttestationVerifyCommand(file, tag string) string {
+	// The command is pasted into a shell, so a tag outside the release-tag
+	// alphabet is never spliced in, wherever it was read from.
+	if !ReleaseTagShape.MatchString(tag) {
+		tag = "<release tag>"
+	}
+	return "gh attestation verify " + file + " --repo intentdriven/abcd" +
+		" --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main" +
+		" --source-ref refs/heads/main --deny-self-hosted-runners" +
+		" --source-digest $(gh api repos/intentdriven/abcd/commits/" + tag + " -H 'Accept: application/vnd.github.sha')"
 }
 
 // cacheMetaPath is the cache's provenance record (release_tag / release_sha /
@@ -320,13 +340,19 @@ func IsOwnedPathCopy(target string) bool {
 // artefact is available to install from (iss-2609100506263330). "A session
 // whose hooks provisioned the cache" is a condition the operator cannot check,
 // create or observe; this is a command they can type. The one-liner fetches the release binary and verifies it against that
-// release's own checksums.txt, writes it to ~/.local/bin/abcd and records it in
-// ~/.abcd.noindex/path-entry, which is exactly the owned-copy shape `ahoy install` then
-// adopts where it stands. One string, shared by the install refusal and the
-// symlink.legacy fix hint, so the two cannot drift apart.
+// release's own checksums.txt and, when gh is present, its signed build
+// provenance with gh attestation verify, refusing when that fails and warning
+// when gh cannot check (the product thinker's ruling of 2026-10-12,
+// iss-2610120617521209). It writes the binary to ~/.local/bin/abcd and records
+// it in ~/.abcd.noindex/path-entry, which is exactly the owned-copy shape `ahoy
+// install` then adopts where it stands; the served /install.sh writes no such
+// record, so it is not the remedy. One string, shared by the install refusal
+// and the symlink.legacy fix hint, so the two cannot drift apart.
 var coldCacheRemedy = "Install a verified copy first with the install one-liner in the README " +
-	"(https://github.com/intentdriven/abcd#install): it downloads the release binary, checks it against that release's own checksums.txt, " +
-	"writes it to ~/.local/bin/abcd and records it in " + abcdhome.Display("path-entry") + ". Then re-run `abcd ahoy install`, which adopts it."
+	"(https://github.com/intentdriven/abcd#install): it downloads the release binary and checks it against that release's own checksums.txt; " +
+	"when gh is installed and signed in it also checks the signed build record with `gh attestation verify` and installs nothing if that fails, " +
+	"and without gh it installs on the checksum alone and warns that the download was not checked against the signed build record. " +
+	"It writes the binary to ~/.local/bin/abcd and records it in " + abcdhome.Display("path-entry") + ". Then re-run `abcd ahoy install`, which adopts it."
 
 // coldCacheRefusal is the install note for a run that had no verified artefact
 // to install from. It says what was left at target and why, in the words the
@@ -429,6 +455,20 @@ func cacheBindingProblem(dataDir string) (cacheAttestation, string) {
 	}
 	if cacheRecordedSHA(dataDir) != att.sha {
 		return cacheAttestation{}, "its recorded binary_sha256 is not the one " + record + " attests, so the cache changed after it was authenticated"
+	}
+	// The hash binds bytes, not time: the attestation keeps vouching for the
+	// release it was written at after a newer one was installed, so a writer
+	// in the attested directory could restore that older release's genuine
+	// bytes and record (iss-2609151847117977). The newest-release mark is the
+	// monotonic check: an attested release older than it, or one the
+	// attestation does not name, is not promoted.
+	if mark, ok := ReadReleaseMark(); ok {
+		if att.releaseTag == "" {
+			return cacheAttestation{}, record + " does not name the release it attested, and this machine has recorded " + mark + " as its newest release, so the cache cannot be told from an older release's"
+		}
+		if ReleaseOlder(att.releaseTag, mark) {
+			return cacheAttestation{}, record + " attests " + att.releaseTag + ", older than " + mark + ", the newest release this machine has installed or verified, so the cache was not promoted (to go back to " + att.releaseTag + " on purpose, run `" + LowerReleaseMarkCommand(att.releaseTag) + "`)"
+		}
 	}
 	return att, ""
 }

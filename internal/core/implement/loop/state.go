@@ -50,6 +50,7 @@ import (
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
@@ -131,8 +132,56 @@ const lockFileName = ".lock"
 // a landing's `check_wait_since` (ruling DR6d-2) is version 9's too, added
 // before any release wrote the version;
 // one of them carrying anything only version 9 writes is refused, and so is a
-// version-9 file carrying `awaiting`, which version 9 never writes.
-const SchemaVersion = 9
+// file of version 9 or later carrying `awaiting`, which no version since 8
+// writes.
+//
+// Version 10 added an await's `kept` (iss-2610100913086397): why a rate-limit
+// checkpoint kept the await when it could not save the gone agent's return
+// aside, which `--restart` re-tells. Version 9 is its strict subset, read as a
+// run no rate limit kept an await of and written back at version 10; a file of
+// version 9 or lower carrying `kept` is not one its version wrote, and is
+// refused. Releases that write version 9 (up to v0.13.4) decode a newer file
+// strictly before they check its version: a version-10 file carrying `kept`
+// reaches them as a file that does not parse, with a remedy to restore it or
+// remove the run directory, and one without `kept` as a version they do not
+// know.
+//
+// Version 11 added the run's reservation on the shared remote
+// (itd-2609091034175565, spc-2610031753359849 spec 2): the run's
+// `reserved_at`, which `implement step` renews, fences and tombstones. Version
+// 10 is its strict subset, read as a run that holds no reservation and written
+// back at the current version; a file of version 10 or lower carrying
+// `reserved_at` is not one its version wrote, and is refused.
+//
+// Version 12 added an await's `answered` (itd-6): the reviewer route and the
+// SHA-256 of the answer its step placed at the await's return path, under the
+// run's lock, so the receipt records the review as the route's when the
+// return its verifier reads is that answer. Version 11 is its strict subset,
+// read as a run no route placed an answer for, its `reserved_at` kept, and
+// written back at version 12; a file of version 11 or lower carrying
+// `answered` is not one its version wrote, and is refused. Releases that
+// write version 10 (v0.14.0 and v0.14.1), and builds that write version 11,
+// decode a newer file strictly before they check its version: a version-12
+// file carrying `answered` or `reserved_at` reaches them as a file that does
+// not parse (`unknown field`), with a remedy to restore it or remove the run
+// directory, which would throw the run away; the run is intact, and the newer
+// abcd that wrote it reads it. A version-12 file carrying neither reaches them
+// as a version they do not know. From version 12 on, decodeState refuses a
+// version above its own before any strict decode, so whatever a later version
+// adds is read as a newer abcd's file, never as one that does not parse.
+const SchemaVersion = 12
+
+// schemaVersionUnanswered is the version before an await's `answered`: read,
+// never written.
+const schemaVersionUnanswered = 11
+
+// schemaVersionUnreserved is the version before the run's reservation: read,
+// never written.
+const schemaVersionUnreserved = 10
+
+// schemaVersionUnkept is the version before an await's `kept`: read, never
+// written.
+const schemaVersionUnkept = 9
 
 // schemaVersionSerial is the version before a run worked in parallel: read and
 // migrated, never written.
@@ -180,8 +229,10 @@ const (
 const maxStateBytes = 4 << 20
 
 // lockTimeout bounds how long a mutation waits for another invocation's
-// mutation to finish before it reports contention.
-const lockTimeout = 3 * time.Second
+// mutation to finish before it reports contention. It is a variable so a test
+// that holds the lock to see a waiter back off can shorten the wait
+// (shortLockTimeout); nothing else assigns it.
+var lockTimeout = 3 * time.Second
 
 // runIDRe is the shape of a run id, checked before any path is built from one.
 var runIDRe = regexp.MustCompile(`^run-[0-9]{16}$`)
@@ -277,6 +328,10 @@ type State struct {
 	// runner asked for, the reason and the route that ran instead. The run's
 	// summary counts them per runner and per role (runner.Tally).
 	Fallbacks []runner.FallbackReceipt `json:"fallbacks,omitempty"`
+	// ReservedAt is when the run reserved its key on the shared remote
+	// (itd-2609091034175565): the reservation `implement step` renews, fences
+	// and tombstones. Nil for a run that holds none.
+	ReservedAt *time.Time `json:"reserved_at,omitempty"`
 }
 
 // Transcript is one transcript the run record captured into the history store.
@@ -509,6 +564,23 @@ type Await struct {
 	// called with this path.
 	Receipt string    `json:"receipt"`
 	Since   time.Time `json:"since"`
+	// Kept is why a rate-limit checkpoint kept the await: its agent is gone,
+	// but what it left could not be saved aside (ratelimit.go). A restart
+	// re-tells an await so marked; "" for every other await.
+	Kept string `json:"kept,omitempty"`
+	// Answered is the reviewer route's answer its step placed at Receipt
+	// (itd-6), recorded under the run's lock as it placed it; nil for every
+	// other await, the host's included.
+	Answered *RouteAnswer `json:"answered,omitempty"`
+}
+
+// RouteAnswer is the answer a reviewer route placed at an await's return path:
+// the route, and the SHA-256 (hex) of the bytes it placed. The receipt records
+// the review as the route's only when the return its verifier reads has that
+// digest.
+type RouteAnswer struct {
+	Route  string `json:"route"`
+	SHA256 string `json:"sha256"`
 }
 
 // Entry is one line of the run record.
@@ -609,6 +681,32 @@ func (s State) validated() bool {
 		}
 	}
 	return false
+}
+
+// kept reports the first await, in a state, that carries `kept`, which only
+// version 10 and later write, or "".
+func (s State) kept() string {
+	for _, l := range s.Lanes {
+		for _, a := range l.Awaits {
+			if a.Kept != "" {
+				return "`kept` on " + l.ID + "'s " + a.Role
+			}
+		}
+	}
+	return ""
+}
+
+// answered reports the first await, in a state, that carries `answered`,
+// which only version 12 writes, or "".
+func (s State) answered() string {
+	for _, l := range s.Lanes {
+		for _, a := range l.Awaits {
+			if a.Answered != nil {
+				return "`answered` on " + l.ID + "'s " + a.Role
+			}
+		}
+	}
+	return ""
 }
 
 // parallel reports what, in a state, only version 9 writes: the name of the
@@ -717,7 +815,9 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 		var sr *Refusal
 		if errors.As(err, &sr) {
 			sr.Reason = rel + " " + sr.Reason
-			sr.Remedy = "the loop is the file's only writer; restore it or remove the run directory " + runRel(runID)
+			if sr.Remedy == "" {
+				sr.Remedy = "the loop is the file's only writer; restore it or remove the run directory " + runRel(runID)
+			}
 			return State{}, sr
 		}
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s does not parse as a run state: %v", rel, err),
@@ -742,7 +842,16 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnrouted && st.routed():
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a fallback or a runner's route, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionSerial:
+	case st.SchemaVersion <= schemaVersionUnkept && st.kept() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.kept(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnreserved && st.ReservedAt != nil:
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries a reservation, which version %d never wrote", rel, st.SchemaVersion, st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion <= schemaVersionUnanswered && st.answered() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.answered(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnanswered:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
@@ -755,7 +864,28 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s names run %q, not the run it is stored under", rel, st.RunID),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
 	}
-	return st, nil
+	// The stored pace names the layers and origins the resolver writes, so no
+	// other text reaches `implement record --json`, a start's payload or a
+	// resume's refusal; the refusal does not echo it (iss-2610121206163414).
+	if st.Pace != nil && !st.Pace.written() {
+		return State{}, refuse("state", "", "", rel+" carries a pace the loop never writes: a setting whose layer is not "+
+			strings.Join(paceLayers, ", ")+", or whose origin carries a control, bidi or zero-width rune",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// A lane's stored hand-back carries only text the loop writes, so none
+	// reaches a --json stream raw; the refusal does not echo it
+	// (iss-2610121516559163).
+	if !st.handBacksWritten() {
+		return State{}, refuse("state", "", "", rel+" carries a hand-back the loop never writes: a control, bidi or zero-width character in its text",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	if !st.receiptsWritten() {
+		return State{}, refuse("state", "", "", rel+" carries a receipt's model or resolution the loop never writes: a control, bidi or zero-width character in its text",
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	}
+	// The repository and tool text it stores is shown masked, never refused,
+	// so a run abcd wrote stays readable (iss-2610121542240257).
+	return st.masked(), nil
 }
 
 // stateStepNamed is a state file of versions 1 to 3, which named the lane's
@@ -776,8 +906,9 @@ type laneStepNamed struct {
 }
 
 // stateAwaitNamed is a state file of version 4 or later read in the shape that
-// carries the lane's one `awaiting`: versions 4 to 8 wrote it, and a version-9
-// file carrying it is refused by name rather than as an unknown field.
+// carries the lane's one `awaiting`: versions 4 to 8 wrote it, and a file of
+// version 9 or later carrying it is refused by name rather than as an unknown
+// field.
 type stateAwaitNamed struct {
 	State
 	Lanes []laneAwaitNamed `json:"lanes"`
@@ -805,7 +936,16 @@ func decodeState(data []byte) (State, error) {
 	var peek struct {
 		SchemaVersion int `json:"schema_version"`
 	}
-	if err := json.Unmarshal(data, &peek); err != nil || peek.SchemaVersion < schemaVersionUnpaced || peek.SchemaVersion > SchemaVersion {
+	err := json.Unmarshal(data, &peek)
+	if err == nil && peek.SchemaVersion > SchemaVersion {
+		// A newer abcd wrote it: refused as that before any strict decode, so
+		// a field the newer version added is never read as a file that does
+		// not parse, whose remedy would throw the run away.
+		return State{}, refuse("state", "", "", fmt.Sprintf("is schema version %d, which a newer abcd wrote; this abcd reads versions %d to %d",
+			peek.SchemaVersion, schemaVersionUnpaced, SchemaVersion),
+			"run the newer abcd that wrote it (`abcd update` brings this one up to date); do not remove the run directory, which holds the run")
+	}
+	if err != nil || peek.SchemaVersion < schemaVersionUnpaced {
 		var st State
 		err := jsonstrict.Decode(data, &st)
 		return st, err
@@ -896,8 +1036,11 @@ func serialCarries(st State, version int) error {
 // writeState is the state file's one writer: a whole-file atomic replacement
 // inside the checkout's os.Root, so a reader sees the old state or the new one,
 // never half of either. The caller holds the lock.
+//
+// The repository and tool text the state carries is stored masked
+// (State.masked, iss-2610121542240257).
 func writeState(root *os.Root, st State) error {
-	data, err := json.MarshalIndent(st, "", "  ")
+	data, err := json.MarshalIndent(st.masked(), "", "  ")
 	if err != nil {
 		return err
 	}

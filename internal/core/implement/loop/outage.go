@@ -145,6 +145,11 @@ func outageFor(repoRoot, runID string, o Options) (*outageGate, error) {
 		return nil, outageUnreadable(err)
 	}
 	if g.probeDue() {
+		// The probe reaches the remote through the repository's own transport
+		// settings, so the run tripwire is checked right before it.
+		if err := configTripwire(repoRoot, runID); err != nil {
+			return nil, err
+		}
 		probe := o.NetworkProbe
 		if probe == nil {
 			probe = implement.RemoteProbe(repoRoot)

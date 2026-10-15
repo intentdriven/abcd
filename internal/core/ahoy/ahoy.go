@@ -158,6 +158,26 @@ type InstallOptions struct {
 	// install keeps the hook instead of making the maintainer re-pass the flag to
 	// keep something they already chose.
 	Attribution bool
+	// OutboundHook opts this repo into the committed commit-msg hook that runs
+	// `abcd lint outbound` over every commit message. --outbound-hook.
+	//
+	// Opt-IN, never a default: installing a hook changes how the repository's
+	// commits work, which is the repository's choice (iss-2609250834251447). The
+	// hook finds abcd only through `git config --local abcd.binary` and fails
+	// open with one warning when none is configured. The choice is PERSISTED
+	// (`outbound.hook` in config.json), as Attribution's is.
+	OutboundHook bool
+	// OutboundForge opts this repo into the shell guard's forge-text check:
+	// the title, body and body file a posting gh command hands the forge are
+	// judged against the outbound policy before the command runs.
+	// --outbound-forge.
+	//
+	// Opt-IN, never a default, on --outbound-hook's terms: refusing a posting
+	// command changes how work in the repository goes, which is the
+	// repository's choice (iss-2610142210511831). It writes no hook and names
+	// no binary, because the guard is the abcd already running. The choice is
+	// PERSISTED (`outbound.forge` in config.json), which is all the guard reads.
+	OutboundForge bool
 	// AllowStaleBinary overrides the itd-111 staleness refusal: an install run
 	// through a binary that is stale against its source tip, or whose vintage
 	// cannot be determined, otherwise refuses before any write. The override is
@@ -180,7 +200,25 @@ type InstallOptions struct {
 	// install (--install-tool), which is that answer given in advance. Every
 	// other category is still asked, or pre-answered, as before.
 	ApproveDependency bool
+	// VerifyProvenance verifies a release artefact's SLSA build provenance by
+	// its sha256, for the release tag the cache attestation names (the
+	// provenance must name the commit that tag resolves to), returning the
+	// verified signer identity. Promoting the
+	// plugin's cached release binary to the PATH copy runs it before anything
+	// is written, and any failure refuses (iss-2610120617515834): the cache
+	// was checked against checksums.txt from the same release page as the
+	// binary, which whoever can change that page can change too. The front
+	// door supplies abcd update's own in-process check
+	// (update.ReleaseProvenance), one primitive for both verbs; this package
+	// cannot import it, because update imports ahoy. Nil refuses every
+	// promotion: there is no unverified path.
+	VerifyProvenance ProvenanceCheck
 }
+
+// ProvenanceCheck verifies a release artefact's build provenance by its
+// sha256 digest, as the build of release tag, and returns the verified signer
+// identity.
+type ProvenanceCheck func(tag string, digest []byte) (signer string, err error)
 
 // InstallResult is the outcome of Install.
 type InstallResult struct {
@@ -223,7 +261,23 @@ type InstallResult struct {
 	// writeKinds runs parallel to Writes: what each write is, which the summary
 	// explains. Unexported, so the wire shape is unchanged.
 	writeKinds []writeKind
+	// unverifiedCheck is the hand check for the owned copy whose provenance
+	// failed, which the summary gives under UnverifiedCopyGapID.
+	unverifiedCheck string
+	// unverifiedWhy names why that copy was not verified when a fact other
+	// than the check says so (its release is older than the mark).
+	unverifiedWhy string
+	// readmeAwaitsConfig is set when the run reports the README question
+	// skipped and ends with no .abcd/config.json to keep its answer in, so the
+	// summary names the starter files first (iss-2610120505551170).
+	readmeAwaitsConfig bool
 }
+
+// ReadmeAwaitsConfig reports whether the run left the README question
+// unanswered with no .abcd/config.json to keep the answer in: until abcd's
+// starter files exist, the question is not asked and --readme-parts is
+// refused, so the way to answer it starts with creating them.
+func (r InstallResult) ReadmeAwaitsConfig() bool { return r.readmeAwaitsConfig }
 
 // ApplyResult is the outcome of one apply step.
 type ApplyResult struct {

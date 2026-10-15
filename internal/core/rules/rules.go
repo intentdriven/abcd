@@ -28,9 +28,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io"
-	"io/fs"
 	"os"
-	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -38,7 +36,6 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/guard"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
-	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"syscall"
 )
@@ -393,29 +390,22 @@ func SwapUserHomeForTest(fn func() (string, error)) (restore func()) {
 	return func() { userHomeDir = prev }
 }
 
+// UserHome is the home the user layer is read under, through the seam the
+// tests swap. It is exported so the memory recall reads the machine's
+// memory.json beside the very rules.json Load read: one home for both
+// layers, never a second lookup that a test could leave pointing at the
+// developer's own. "" when there is none.
+func UserHome() string {
+	home, _ := userHomeDir()
+	return home
+}
+
 // readRepoLayer reads and parses <repoRoot>/.abcd/rules.json. ok is false when
 // the file is absent; every other failure is an error naming the file.
 func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
-	// Refuse a symlinked .abcd directory component before touching the leaf, so a
-	// swapped .abcd cannot redirect the read (trust boundary).
-	if di, err := os.Lstat(filepath.Join(repoRoot, ".abcd")); err == nil && di.Mode()&os.ModeSymlink != 0 {
-		return RuleSet{}, false, fmt.Errorf("rules: .abcd is a symlink (refusing to follow)")
-	}
-	path := filepath.Join(repoRoot, ".abcd", "rules.json")
-	data, err := readGuarded(path, maxRulesFileBytes)
-	if err != nil {
-		switch {
-		case os.IsNotExist(err):
-			return RuleSet{}, false, nil
-		case errors.Is(err, syscall.ELOOP):
-			return RuleSet{}, false, fmt.Errorf("rules: %s is a symlink (refusing to follow)", RepoRelPath)
-		case errors.Is(err, errNotRegular):
-			return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file", RepoRelPath)
-		case errors.Is(err, errTooBig):
-			return RuleSet{}, false, fmt.Errorf("rules: %s exceeds the %d-byte cap", RepoRelPath, maxRulesFileBytes)
-		default:
-			return RuleSet{}, false, fmt.Errorf("rules: reading %s: %w", RepoRelPath, err)
-		}
+	data, ok, err := ReadRepoLayerFile(repoRoot, RepoRelPath, "rules", maxRulesFileBytes)
+	if err != nil || !ok {
+		return RuleSet{}, false, err
 	}
 	over, err = parseLayer(data, RepoRelPath)
 	if err != nil {
@@ -427,71 +417,11 @@ func readRepoLayer(repoRoot string) (over RuleSet, ok bool, err error) {
 // readUserLayer reads and parses the user scope's ~/.abcd.noindex/rules.json. ok is
 // false when there is no such file — or no home to hold one — which is the
 // ordinary case and costs nothing: nothing is created, nothing is reported.
-//
-// The file injects text into every session on the machine, so it is read as the
-// caller's WORD, through the same primitive as the other home-scoped
-// declarations (fsutil.ReadDeclaration): a regular file — never a symlink,
-// FIFO or device — within the size cap, owned by this session's uid and
-// writable by nobody else. That is the ownership rule the repo root's trust
-// bound applies to a foreign-uid checkout (root.go, foreignOwnerRefusal): a
-// file another account could have written is not this account's convention.
-// And the ~/.abcd.noindex directory itself must not be a symlink when a rules.json sits
-// behind it, the pre-check the repo's .abcd gets — checked only once a file is
-// there, because a machine whose ~/.abcd.noindex is a dotfiles symlink holding no
-// rules.json reads nothing and must keep behaving exactly as it did. That check
-// is fsutil.ReadHomeDeclaration's (fsutil.HomeScopeLink), the one every other
-// home-scoped reader and writer applies, so the rule cannot drift per file.
-//
-// Every refusal is an error naming the file in tilde form, never a silent
-// fallback to the defaults: an unreadable user layer that degraded to a partial
-// injection is the silent shape loud-staging exists to prevent.
+// The read and its refusals are ReadUserLayerFile's.
 func readUserLayer(home string) (over RuleSet, ok bool, err error) {
-	// No home, or a relative one, names no user scope: a relative HOME would
-	// resolve ~/.abcd.noindex against whatever directory the session happens to start
-	// in, which is not the machine's scope but a guess at one.
-	if home == "" || !filepath.IsAbs(home) {
-		return RuleSet{}, false, nil
-	}
-	data, refusal, err := fsutil.ReadHomeDeclaration(home, UserRelPath, maxRulesFileBytes)
-	// Absent is the lstat's answer, so a permission error here is a HOME or
-	// ~/.abcd.noindex this uid cannot search, never the file's own mode: that reads as
-	// no user layer, as it does for the sibling home-scoped declarations
-	// (trusted-roots, local-transcript-roots), so a sandboxed or foreign HOME
-	// does not warn on every prompt about a file nobody can see. A rules.json
-	// that is there and cannot be opened is DeclarationUnreadable, and loud.
-	if refusal == fsutil.DeclarationAbsent && (os.IsNotExist(err) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fs.ErrPermission)) {
-		return RuleSet{}, false, nil
-	}
-	switch refusal {
-	case fsutil.DeclarationOK:
-	case fsutil.DeclarationBehindSymlink:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is a symlink (refusing to follow it to %s)", abcdhome.Display(), UserDisplayPath)
-	case fsutil.DeclarationDirectoryExposed:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is not read: %w", UserDisplayPath, err)
-	case fsutil.DeclarationNotRegular:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file (a symlink, FIFO or device is refused)", UserDisplayPath)
-	case fsutil.DeclarationWritableByOthers:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is writable by others, so its rules are not necessarily yours (chmod go-w it): %w", UserDisplayPath, err)
-	case fsutil.DeclarationForeignOwner:
-		return RuleSet{}, false, fmt.Errorf("rules: %s is not owned by this session's uid, so its rules are not this account's: %w", UserDisplayPath, err)
-	default:
-		if errors.Is(err, fsutil.ErrTooBig) {
-			return RuleSet{}, false, fmt.Errorf("rules: %s exceeds the %d-byte cap", UserDisplayPath, maxRulesFileBytes)
-		}
-		if errors.Is(err, fsutil.ErrNotRegular) || errors.Is(err, syscall.ELOOP) {
-			return RuleSet{}, false, fmt.Errorf("rules: %s is not a regular file (a symlink, FIFO or device is refused)", UserDisplayPath)
-		}
-		// The raw error can carry the expanded path; the message names the
-		// file in tilde form and keeps only the reason.
-		why := "unknown error"
-		var pe *os.PathError
-		switch {
-		case errors.As(err, &pe):
-			why = pe.Err.Error()
-		case err != nil:
-			why = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
-		}
-		return RuleSet{}, false, fmt.Errorf("rules: %s could not be read (%s)", UserDisplayPath, why)
+	data, ok, err := ReadUserLayerFile(home, UserRelPath, "rules", "rules", maxRulesFileBytes)
+	if err != nil || !ok {
+		return RuleSet{}, false, err
 	}
 	over, err = parseLayer(data, UserDisplayPath)
 	if err != nil {
@@ -959,8 +889,17 @@ func Render(domains []ResolvedDomain) string {
 func renderDomain(d ResolvedDomain) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s\n", Label(d.Name, d.Source))
+	// An override's bodies are another party's text: each is fenced, so no
+	// markdown construct inside it renders (iss-2609020219265817). Bundled
+	// bodies are abcd's own words and keep their structure.
+	fence := d.Source == SourceUser || d.Source == SourceRepo
 	for _, r := range d.Rules {
-		body := sanitizeRuleBody(r)
+		var body string
+		if fence {
+			body = FenceRuleBody(r)
+		} else {
+			body = sanitizeRuleBody(r)
+		}
 		// Defence behind Validate's loud refusal: a body that sanitises to
 		// nothing (empty or whitespace-only) never becomes a contentless "- "
 		// bullet, even on an unvalidated render path (iss-2608261550497978).
@@ -972,6 +911,64 @@ func renderDomain(d ResolvedDomain) string {
 	return b.String()
 }
 
+// FenceRuleBody renders an override's rule body as a fenced code block inside
+// its bullet. The line-start contract the indent pass of sanitizeRuleBody
+// defends is not the only reader of the injected block: a markdown renderer
+// reads "- # x", a setext underline or an "<h2>" HTML block as a heading, which
+// would put an unlabelled heading in front of that reader
+// (iss-2609020219265817). Inside a fence CommonMark honours no construct at
+// all, and the fence is computed rather than escaped construct by construct:
+// tildes, one longer than the longest tilde or backtick run in the body (at
+// least three), so no body line can close it (CommonMark 0.31.2 §4.5). Every
+// non-blank line, the closing fence included, sits at the bullet's content
+// column, so the block stays inside its list item and no line starts
+// flush-left. The body's own text is unchanged apart from the normalisation
+// and control-character mask sanitizeRuleBody also applies. An empty body
+// renders to "" so the caller drops it.
+//
+// It is exported as the tree's one fence for another party's text under a
+// "- " bullet: the memory recall fences every note body through it
+// (spc-2610111627213138), so a note from a repository's committed
+// .abcd/memory.json can no more put a heading in front of the reader than an
+// override's rule can. One primitive, never a copy. The returned text starts
+// with the opening fence and carries no indent on that first line, so a
+// caller placing it on a line of its own prefixes "  " to reach the bullet's
+// content column.
+func FenceRuleBody(r string) string {
+	lines := ruleBodyLines(r)
+	if len(lines) == 1 && lines[0] == "" {
+		return ""
+	}
+	longest := 0
+	for _, line := range lines {
+		run, prev := 0, rune(0)
+		for _, c := range line {
+			if (c == '~' || c == '`') && c == prev {
+				run++
+			} else if c == '~' || c == '`' {
+				run = 1
+			} else {
+				run = 0
+			}
+			prev = c
+			if run > longest {
+				longest = run
+			}
+		}
+	}
+	fence := strings.Repeat("~", max(3, longest+1))
+	var b strings.Builder
+	b.WriteString(fence)
+	for _, line := range lines {
+		b.WriteByte('\n')
+		if line != "" {
+			b.WriteString("  " + line)
+		}
+	}
+	b.WriteString("\n  " + fence)
+	return b.String()
+}
+
 // sanitizeRuleBody makes a repo-controlled rule body safe to embed under its
 // domain heading. The rendered "## NAME" lines are the injection contract
 // host-side parsers rely on, and a rule body is untrusted input: control
@@ -979,6 +976,32 @@ func renderDomain(d ResolvedDomain) string {
 // is indented under the bullet, so a hostile rules.json cannot forge domain
 // headings, forge sibling rules, or smuggle escapes into the rendered block.
 func sanitizeRuleBody(r string) string {
+	lines := ruleBodyLines(r)
+	for i, line := range lines {
+		// The first line is defused by the "- " bullet prefix the renderer adds.
+		// EVERY continuation line sits flush-left otherwise — Validate accepts a
+		// bare newline and the normalisation turns CR, LS and PS into one — so
+		// each is indented two spaces, the markdown list-item continuation:
+		// the line stays inside its bullet instead of reading as a loose
+		// paragraph, a leading "- " cannot forge a sibling rule, and a leading
+		// "#" cannot forge a heading. The contract defended is the line-start
+		// one the host-side parser splits on ("## " flush-left); CommonMark
+		// would still read a two-space "## x" as a heading, which is why an
+		// override's body is fenced instead (FenceRuleBody). A line already
+		// indented keeps its own deeper indent, and a blank line stays blank,
+		// so the pass is a fixed point — rendered text fed back as a body
+		// re-renders unchanged.
+		if i > 0 && line != "" && !strings.HasPrefix(line, "  ") {
+			lines[i] = "  " + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// ruleBodyLines is the normalisation both renderings share: line endings
+// unified, trailing whitespace trimmed, the body split into lines, and each
+// line passed through the terminal-safety mask.
+func ruleBodyLines(r string) []string {
 	// CRLF collapses to LF (editor-neutral signatures); a lone CR, LINE
 	// SEPARATOR and PARAGRAPH SEPARATOR become LF — they are line starts to
 	// the host-side parser's multiline split (or overprint terminals), so the
@@ -1004,28 +1027,12 @@ func sanitizeRuleBody(r string) string {
 	r = strings.TrimRight(r, " \t\n")
 	lines := strings.Split(r, "\n")
 	for i, line := range lines {
-		// The first line is defused by the "- " bullet prefix the renderer adds.
-		// EVERY continuation line sits flush-left otherwise — Validate accepts a
-		// bare newline and the normalisation above turns CR, LS and PS into one
-		// — so each is indented two spaces, the markdown list-item continuation:
-		// the line stays inside its bullet instead of reading as a loose
-		// paragraph, a leading "- " cannot forge a sibling rule, and a leading
-		// "#" cannot forge a heading. The contract defended is the line-start
-		// one the host-side parser splits on ("## " flush-left); CommonMark
-		// would still read a two-space "## x" as a heading, which is not the
-		// boundary this block is parsed by. A line already indented keeps its
-		// own deeper indent, and a blank line stays blank, so the pass is a
-		// fixed point — rendered text fed back as a body re-renders unchanged.
-		if i > 0 && line != "" && !strings.HasPrefix(line, "  ") {
-			line = "  " + line
-		}
-		lines[i] = line
 		// Terminal-display safety is the canonical termsafe mask: C0/C1
 		// controls, bidi overrides and zero-width runes become '?', so a
 		// hostile rule body cannot recolour, reorder, or hide rendered text.
-		lines[i] = termsafe.Sanitize(lines[i])
+		lines[i] = termsafe.Sanitize(line)
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 // Label is a domain name as every provenance surface prints it: bare for a
@@ -1078,3 +1085,54 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 	}
 	return out
 }
+
+// CapPrompt is prompt cut to the bytes the loader scans (maxPromptBytes), so
+// a huge pasted prompt cannot blow up matching. Every reader of a prompt —
+// Inject, TermMatcher, Hits and the `rules --prompt` diagnostic — caps
+// through it, so a word past the cap matches nowhere.
+func CapPrompt(prompt string) string {
+	if len(prompt) > maxPromptBytes {
+		return prompt[:maxPromptBytes]
+	}
+	return prompt
+}
+
+// TermMatcher is the loader's term rule, exported so a memory note's recall
+// word hits on exactly the prompts a domain's recall word does
+// (spc-2610111627213138, "One recall for notes and pages"): it indexes prompt
+// once — capped at the bytes Inject scans, lower-cased, stemmed — and returns
+// the match a domain's every recall word and alias is judged by (word
+// boundary, stems, multi-word phrases). One function, never a copy.
+func TermMatcher(prompt string) func(term string) bool {
+	prompt = CapPrompt(prompt)
+	idx := indexPrompt(prompt)
+	return idx.termHit
+}
+
+// Hits names what made d match prompt, for the `rules --prompt` diagnostic:
+// "*NAME" when a star-command activated it, otherwise each recall word and
+// alias that hits, in the order the domain declares them. It says nothing of
+// state or the kill switch; Match decides whether d is injected at all.
+func Hits(d ResolvedDomain, prompt string) []string {
+	prompt = CapPrompt(prompt)
+	if parseStarCommands(prompt)[d.Name] {
+		return []string{"*" + d.Name}
+	}
+	hit := TermMatcher(prompt)
+	var out []string
+	for _, terms := range [][]string{d.Recall, d.Aliases} {
+		for _, term := range terms {
+			if hit(term) {
+				out = append(out, term)
+			}
+		}
+	}
+	return out
+}
+
+// SanitizeRuleBody is the rule body's render-safety pass (sanitizeRuleBody),
+// exported so the memory recall renders a note's head line — its id, its
+// layer and its one-line title — through the same mask a rule body takes:
+// control and bidirectional characters masked, any continuation line indented
+// under the bullet. A note's body is fenced instead (FenceRuleBody).
+func SanitizeRuleBody(r string) string { return sanitizeRuleBody(r) }

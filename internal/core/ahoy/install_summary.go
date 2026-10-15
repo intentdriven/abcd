@@ -35,6 +35,8 @@ const (
 	writePrivateNames            writeKind = "private-names"
 	writeDocsCheck               writeKind = "docs-check"
 	writeAttributionHook         writeKind = "attribution-hook"
+	writeOutboundHook            writeKind = "outbound-hook"
+	writeOutboundForge           writeKind = "outbound-forge"
 	writeSessionStore            writeKind = "session-store"
 	writeConventionsBlock        writeKind = "conventions-block"
 	writeConventionsBlockRemoved writeKind = "conventions-block-removed"
@@ -57,7 +59,7 @@ const (
 // repository's own files first, then this machine, then the optional extras.
 var allWriteKinds = []writeKind{
 	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
-	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
+	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
 }
@@ -118,6 +120,16 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Added a commit-message prompt that asks every commit to say whether an AI tool helped write it.",
 		Why:    "It keeps an honest record of AI assistance in the repository's history.",
 		Action: "Nothing. Answer the prompt when you commit.",
+	},
+	writeOutboundHook: {
+		What:   "Added a commit-message check that stops a commit whose message carries a live AI-session link or an AI tool's sign-off line.",
+		Why:    "Once pushed, either one can be removed from the repository's history only by rewriting it.",
+		Action: "Tell the check where abcd is, once per clone: git config --local abcd.binary /absolute/path/to/abcd. Until then it warns and lets each commit through.",
+	},
+	writeOutboundForge: {
+		What:   "Switched on a check that stops your AI assistant posting a pull request, issue or comment whose text carries a live AI-session link or an AI tool's sign-off line.",
+		Why:    "The forge keeps the earlier version of anything posted, so either one cannot be taken back once it is sent.",
+		Action: "Nothing. Your assistant is told what to remove when a post is stopped.",
 	},
 	writeRules: {
 		What:   "Created .abcd/rules.json, which switches abcd's working-rule reminders on or off for this repository.",
@@ -300,11 +312,47 @@ var optionalSkippedHelp = map[string]SummaryItem{
 	},
 }
 
+// readmeAwaitsConfigHelp explains the README question a run left unasked with
+// no .abcd/config.json to keep the answer in. Neither route the ordinary
+// action names works there: the question is not asked without the config, and
+// --readme-parts is refused, so the starter files come first
+// (iss-2610120505551170).
+var readmeAwaitsConfigHelp = SummaryItem{
+	What:   optionalSkippedHelp[ReadmeOfferGapID].What,
+	Why:    optionalSkippedHelp[ReadmeOfferGapID].Why,
+	Action: "The answer is kept in .abcd/config.json, which does not exist yet: run abcd ahoy install again and answer y to creating abcd's starter files, then answer the README question at a terminal, or pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
+}
+
 // remainingHelp explains the required work a run left outstanding.
 var remainingHelp = SummaryItem{
 	What:   "Some required set-up steps are still not done.",
 	Why:    "abcd does not work fully in this repository until they are.",
 	Action: "Run abcd ahoy install again and answer y to each question; abcd ahoy doctor lists the steps one by one.",
+}
+
+// unverifiedCopyHelp explains an owned PATH copy whose build provenance did not
+// verify, with the hand check for that file.
+func unverifiedCopyHelp(check, why string) SummaryItem {
+	if check == "" {
+		check = ghAttestationVerifyCommand("<the abcd on your PATH>", "")
+	}
+	if why != "" {
+		// The hand check is bound to the copy's own older tag, which a
+		// genuine older build passes, so it is qualified: a pass is not the
+		// copy being adopted.
+		return SummaryItem{
+			What:   "The abcd on your PATH is " + why + ", so it was not adopted; it was left as it is.",
+			Why:    "With no verified cache to compare it with, the copy names its own release, and a release older than the newest this machine has known is refused so an old build cannot stand in for a newer one.",
+			Action: "Reinstall the newest release with the install one-liner in the README, or run abcd update. You can check the copy by hand with `" + check + "`, but a pass proves only that it is a genuine build of that older release; it does not lift the newest-release floor, and the copy is still refused.",
+			Refs:   []string{UnverifiedCopyGapID},
+		}
+	}
+	return SummaryItem{
+		What:   "The abcd on your PATH could not be verified as a release build of abcd, so it was not adopted; it was left as it is.",
+		Why:    "Its recorded checksum shows only that it is the file that was installed; the build record the release workflow signed is what shows who built it.",
+		Action: "Check it by hand with `" + check + "`, or run abcd ahoy install again once GitHub's attestations API is reachable; if it fails, reinstall with the install one-liner in the README.",
+		Refs:   []string{UnverifiedCopyGapID},
+	}
 }
 
 // statusHeadline is the one sentence that opens the summary for each status.
@@ -370,15 +418,26 @@ func (r *InstallResult) explain() {
 		it.Refs = []string{c}
 		r.Summary = append(r.Summary, it)
 	}
-	if len(r.Remaining) > 0 {
+	var rest []string
+	for _, id := range r.Remaining {
+		if id == UnverifiedCopyGapID {
+			r.Summary = append(r.Summary, unverifiedCopyHelp(r.unverifiedCheck, r.unverifiedWhy))
+			continue
+		}
+		rest = append(rest, id)
+	}
+	if len(rest) > 0 {
 		it := remainingHelp
-		it.Refs = append([]string(nil), r.Remaining...)
+		it.Refs = rest
 		r.Summary = append(r.Summary, it)
 	}
 	for _, id := range r.OptionalSkipped {
 		it, ok := optionalSkippedHelp[id]
 		if !ok {
 			continue
+		}
+		if id == ReadmeOfferGapID && r.readmeAwaitsConfig {
+			it = readmeAwaitsConfigHelp
 		}
 		it.Refs = []string{id}
 		r.Summary = append(r.Summary, it)
