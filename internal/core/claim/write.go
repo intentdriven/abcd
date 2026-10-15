@@ -103,7 +103,7 @@ func resolveRef(root, ref string) (name, typ string, ok bool, err error) {
 // to say what it was reading.
 func readCommit[M any](root, name, tree string, fetchedAt time.Time, keep bool, parse func(string) (M, string)) (head, M, error) {
 	var zero M
-	size, err := localGit(root, 32, "cat-file", "-s", name)
+	size, err := storedGit(root, 32, "cat-file", "-s", name)
 	if err != nil {
 		return head{}, zero, err
 	}
@@ -113,7 +113,7 @@ func readCommit[M any](root, name, tree string, fetchedAt time.Time, keep bool, 
 	}
 	var obj string
 	if n <= maxObjectBytes {
-		obj, err = localGit(root, maxObjectBytes, "cat-file", "commit", name)
+		obj, err = storedGit(root, maxObjectBytes, "cat-file", "commit", name)
 	}
 	if n > maxObjectBytes || (err != nil && strings.Contains(err.Error(), "exceeded")) {
 		h := head{Commit: name, Unreadable: reasonObjectTooBig}

@@ -507,3 +507,98 @@ func TestWhatTheBoundLeavesUnsaid(t *testing.T) {
 		t.Fatalf("a tip moved back past the window = %+v, %v; want More, not Rewritten, and three commits already read", h, err)
 	}
 }
+
+// TestTheWalkReadsCommitsAsStoredNotAsReplaced: a replace ref (one a fetch
+// can bring in, under remote.origin.fetch = +refs/replace/*:refs/replace/*)
+// standing a single-parent copy in for a merge does not hide the merge: the
+// walk reads the merge's own parents, so the commits it brought in are
+// flagged as passed (Merged), not dropped from view.
+func TestTheWalkReadsCommitsAsStoredNotAsReplaced(t *testing.T) {
+	r := newCheckout(t, "1234+octo@users.noreply.github.com")
+	b := newBranch(t, r, "octo")
+	m := b.grow(2)[1]
+	if err := testNamespace.markRead(r.Root(), b.ref, m); err != nil {
+		t.Fatal(err)
+	}
+	v1 := b.commit(m)
+	v2 := b.commit(v1)
+	x := b.commit(m, v2)
+	r.Git("update-ref", b.ref, x)
+	r.Git("replace", x, b.commit(m))
+	// The replacement is live for a git that honours it: x reads as having
+	// the one parent m.
+	if got := strings.Fields(r.Git("rev-list", "--parents", "-n", "1", x)); !slices.Equal(got, []string{x, m}) {
+		t.Fatalf("the replace ref is not in effect: rev-list --parents %s = %q", x, got)
+	}
+	h, err := testNamespace.since(r.Root(), b.ref, 10)
+	if err != nil || !slices.Equal(h.Added, []string{x}) || h.More || h.Rewritten || !h.Merged {
+		t.Fatalf("a merge standing behind a replace ref = %+v, %v; want only the merge, and Merged (v1 %s and v2 %s not hidden)", h, err, v1, v2)
+	}
+	// The mark's own line is read as stored too: a mark whose line a replace
+	// ref would graft onto the tip's still reads as the rewrite it is.
+	r.Git("update-ref", "-d", b.ref)
+	fresh := b.grow(2)
+	r.Git("replace", m, b.commit(fresh[0]))
+	if got := strings.Fields(r.Git("rev-list", "--first-parent", "-n", "2", m)); len(got) != 2 || got[1] != fresh[0] {
+		t.Fatalf("the replace ref is not in effect: rev-list %s = %q", m, got)
+	}
+	h, err = testNamespace.since(r.Root(), b.ref, 10)
+	if err != nil || !h.Rewritten || !slices.Equal(h.Added, newest(fresh)) {
+		t.Fatalf("a mark grafted onto the tip by a replace ref = %+v, %v; want Rewritten and both new commits", h, err)
+	}
+}
+
+// TestHasCommitSaysWhenTheTypeCannotBeRead: an object that exists but cannot
+// be read (here a loose object its file mode makes unreadable) is a failure,
+// not a missing commit: `cat-file -t` fails, `cat-file -e` finds it, and the
+// answer is the error.
+func TestHasCommitSaysWhenTheTypeCannotBeRead(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads a file whatever its mode")
+	}
+	r := newCheckout(t, "1234+octo@users.noreply.github.com")
+	b := newBranch(t, r, "octo")
+	c := b.commit()
+	loose := filepath.Join(r.Root(), ".git", "objects", c[:2], c[2:])
+	if err := os.Chmod(loose, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(loose, 0o444) })
+	if got, err := hasCommit(r.Root(), c); err == nil || got {
+		t.Fatalf("hasCommit of an unreadable object = %v, %v; want an error", got, err)
+	}
+}
+
+// TestAWindowOfTwoParentMergesReadsItsParents: a window every commit of which
+// is an ordinary two-parent merge fits the listing's bound, so it is read in
+// one walk with its parents, never through the fallback that drops them.
+func TestAWindowOfTwoParentMergesReadsItsParents(t *testing.T) {
+	r := newCheckout(t, "1234+octo@users.noreply.github.com")
+	b := newBranch(t, r, "octo")
+	tip := b.grow(1)[0]
+	const limit = 5
+	for range limit + 1 {
+		tip = b.commit(tip, b.commit())
+	}
+	r.Git("update-ref", b.ref, tip)
+	line, merges, err := tipLine(r.Root(), b.ref, tip, limit)
+	if err != nil || len(line) != limit+1 || len(merges) != limit+1 || slices.Contains(merges, false) {
+		t.Fatalf("tipLine over a window of merges = %d commits, merges %v, %v; want %d, every one a merge", len(line), merges, err, limit+1)
+	}
+	log := traced(t)
+	if h, err := testNamespace.since(r.Root(), b.ref, limit); err != nil || !h.Merged || len(h.Added) != limit {
+		t.Fatalf("a walk over a window of merges = %+v, %v", h, err)
+	}
+	walks := 0
+	for _, c := range log.cmds {
+		if c[0] == "rev-list" {
+			walks++
+			if !slices.Contains(c, "--parents") {
+				t.Errorf("the window was read without its parents: %q", c)
+			}
+		}
+	}
+	if walks != 1 {
+		t.Fatalf("the walk ran %d rev-lists; want the one with --parents: %q", walks, log.cmds)
+	}
+}

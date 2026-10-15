@@ -30,6 +30,9 @@ const maxWalk = 1000
 // more: a tip moved back more than limit commits below the mark, with more
 // than limit commits beneath it, reads as More with Rewritten false, and
 // Added then holds commits already read.
+//
+// Every commit is read as stored, never through a replace ref
+// (storedObjects).
 type history struct {
 	// Tip is the branch's commit as last fetched; "" when this checkout holds
 	// no such ref.
@@ -164,7 +167,7 @@ func upTo(line []string, limit int) ([]string, bool) {
 // commit has in fewer bytes than naming them all, and the bound is what keeps
 // a writer's commit from growing this read.
 func tipLine(root, ref, tip string, limit int) (line []string, merges []bool, err error) {
-	out, err := localGit(root, (limit+1)*3*(len(tip)+1)+1,
+	out, err := storedGit(root, (limit+1)*3*(len(tip)+1)+1,
 		"rev-list", "--first-parent", "--parents", "--max-count="+strconv.Itoa(limit+1), tip, "--")
 	if err != nil {
 		if !strings.Contains(err.Error(), "exceeded") {
@@ -193,7 +196,7 @@ func tipLine(root, ref, tip string, limit int) (line []string, merges []bool, er
 // the walk reads no more than it prints. The `--` ends the revisions, so a
 // file named as the commit is never read as a path.
 func firstParents(root, ref, commit string, limit int) ([]string, error) {
-	out, err := localGit(root, (limit+1)*(len(commit)+1)+1,
+	out, err := storedGit(root, (limit+1)*(len(commit)+1)+1,
 		"rev-list", "--first-parent", "--max-count="+strconv.Itoa(limit+1), commit, "--")
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", ref, err)
@@ -218,13 +221,13 @@ func hasCommit(root, commit string) (bool, error) {
 	if !gitutil.IsFullSHA(commit) {
 		return false, nil
 	}
-	typ, err := localGit(root, 64, "cat-file", "-t", commit)
+	typ, err := storedGit(root, 64, "cat-file", "-t", commit)
 	if err == nil {
 		return strings.TrimSpace(typ) == "commit", nil
 	}
 	args := []string{"cat-file", "-e", commit}
 	trace(args...)
-	if _, missing, eerr := gitutil.RunCappedExitOne(root, 64, args...); eerr == nil && missing {
+	if _, missing, eerr := gitutil.RunCappedExitOne(root, 64, append([]string{storedObjects}, args...)...); eerr == nil && missing {
 		return false, nil
 	}
 	return false, err
