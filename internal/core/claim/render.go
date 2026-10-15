@@ -157,15 +157,17 @@ func count(n int, noun string) string {
 }
 
 // readerHolder is the GitHub username the person reading resolves to, read as
-// a reservation verb would read it; "" when it cannot be told.
+// a reservation verb would read it but without the network: a render never
+// asks the forge, so a holder only the token could name is "" here, as is one
+// that cannot be told.
 func readerHolder(root string, o Options) string {
-	email, err := personalConfig(root, "user.email")
+	who, err := gitIdentity(root)
 	if err != nil {
 		return ""
 	}
-	u, err := resolveHolder(root, o.home(), email)
+	h, err := resolveHolder(root, who, o, false)
 	if err != nil {
 		return ""
 	}
-	return u
+	return h.Login
 }

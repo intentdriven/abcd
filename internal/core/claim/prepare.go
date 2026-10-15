@@ -20,6 +20,11 @@ type Options struct {
 	// Version is the binary's version the Assisted-by label names; "" means
 	// the running binary's (core.Version).
 	Version string
+	// ForgeUser answers whose GitHub account the session's own forge token
+	// belongs to (login and numeric id): the user endpoint, asked only by an
+	// explicit act when git's identity names no holder. nil means the real
+	// call, `gh api user`; tests set it so none touches the network.
+	ForgeUser func(root string) (login string, id int64, err error)
 }
 
 func (o Options) now() time.Time {
@@ -131,8 +136,15 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 	if p.who, err = gitIdentity(root); err != nil {
 		return nil, err
 	}
-	if p.holder, err = resolveHolder(root, o.home(), p.who.Email); err != nil {
+	h, err := resolveHolder(root, p.who, o, true)
+	if err != nil {
 		return nil, err
+	}
+	p.holder = h.Login
+	if !p.who.person() {
+		// Git's identity is unset or a machine's: the token's account authors
+		// the reservation, so that identity never reaches a commit.
+		p.who = identity{Name: h.Login, Email: h.NoReply}
 	}
 	if p.copy, err = copyKey(root); err != nil {
 		return nil, err

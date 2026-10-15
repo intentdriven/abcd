@@ -18,6 +18,11 @@ import (
 // reserveStore is the noun the checkout resolution names in its refusal.
 const reserveStore = "the reservation"
 
+// reserveForgeUser is the forge's user endpoint the verb's acts may ask whose
+// account the session's token is; nil means the real call. Tests replace it so
+// none touches the network.
+var reserveForgeUser func(root string) (login string, id int64, err error)
+
 // reserveOutput is the --json document of one reservation act: what was done,
 // to which record, for whom, from which copy (this or another, never a copy's
 // key), over which files, until when, and what it replaced.
@@ -56,11 +61,13 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 		takeOver  bool
 		release   bool
 		leaseFor  time.Duration
+		holder    bool
 	)
 	cmd := &cobra.Command{
 		Use: "reserve <record-id>",
 		Long: "abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]\n" +
-			"abcd reserve <record-id> --release\n\n" +
+			"abcd reserve <record-id> --release\n" +
+			"abcd reserve --holder\n\n" +
 			"Reserve an issue or an intent on the shared remote before starting work on it, so\n" +
 			"every other participant sees it is taken. The reservation is the branch\n" +
 			"abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits\n" +
@@ -75,16 +82,40 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"another copy to this one; it never moves another person's. A record already\n" +
 			"resolved, won't-fixed, shipped or superseded on origin's default branch counts\n" +
 			"as released whatever its reservation says.\n\n" +
-			"The holder is read from user.email when it is a GitHub no-reply address, or from\n" +
-			"reservation.github_username in the machine configuration; the repository's\n" +
-			"own configuration is never read for it. The checkout must have its local tier\n" +
-			"(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every\n" +
-			"reservation.\n\n" +
+			"The holder is your GitHub username, from the first of these that names it:\n" +
+			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
+			"in the machine configuration (the repository's own configuration is never read\n" +
+			"for it); and the account this session's own GitHub token belongs to, which\n" +
+			"takes one call to GitHub's user endpoint, through gh. When git's identity is\n" +
+			"not a person's (unset, or a machine's), the token alone names the holder, that\n" +
+			"account authors the reservation commit, and the identity git had is shown\n" +
+			"nowhere. The checkout must have its local tier (.abcd/.work.local/), where this\n" +
+			"copy's key is kept. `abcd peers` lists every reservation.\n\n" +
+			"--holder prints the account an act from this checkout would reserve as and the\n" +
+			"source that named it (git, config or token), or its --json document. It may\n" +
+			"make that one call to the user endpoint when git's identity is not a person's\n" +
+			"GitHub no-reply address; it takes no record id and no other flag, and reserves,\n" +
+			"writes and pushes nothing. It exits 0 when the account is known and 2 when not.\n\n" +
 			"Exit 0 when the act reached origin (or a release was already made); exit 3 when\n" +
 			"the record is held by someone else or by your other copy, so back off; exit 2\n" +
 			"on every other refusal and failure. Nothing is pushed on a refusal, and a failed\n" +
 			"push leaves no reservation and nothing in the checkout.",
-		Args: func(_ *cobra.Command, args []string) error {
+		Args: func(cmd *cobra.Command, args []string) error {
+			if holder {
+				var with []string
+				if len(args) > 0 {
+					with = append(with, "record id")
+				}
+				for _, f := range []string{"footprint", "take-over", "lease", "release"} {
+					if cmd.Flags().Changed(f) {
+						with = append(with, "--"+f)
+					}
+				}
+				if len(with) > 0 {
+					return &exitError{Code: 2, Msg: "abcd reserve: --holder takes no " + strings.Join(with, ", ") + "; nothing was reserved"}
+				}
+				return nil
+			}
 			switch len(args) {
 			case 0:
 				return &exitError{Code: 2, Msg: "abcd reserve: name the issue or intent to reserve (abcd reserve <record-id> --footprint <path>); `abcd peers` lists the reservations; nothing was pushed"}
@@ -94,6 +125,9 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			return &exitError{Code: 2, Msg: "abcd reserve: takes one record id, not " + fmt.Sprint(len(args)) + "; nothing was pushed"}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if holder {
+				return runReserveHolder(cmd.OutOrStdout(), *asJSON)
+			}
 			if release {
 				var with []string
 				for _, f := range []string{"footprint", "take-over", "lease"} {
@@ -114,7 +148,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was pushed"}
 			}
 			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
-				TakeOver: takeOver, Release: release}, claim.Options{})
+				TakeOver: takeOver, Release: release}, claim.Options{ForgeUser: reserveForgeUser})
 			if err != nil {
 				return reserveRefusal(err)
 			}
@@ -126,7 +160,28 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().BoolVar(&takeOver, "take-over", false, "move your own live reservation from another copy to this one")
 	cmd.Flags().DurationVar(&leaseFor, "lease", 0, "how long the reservation holds, from 1m to 24h (default 2h)")
 	cmd.Flags().BoolVar(&release, "release", false, "release your reservation from this copy by pushing a tombstone")
+	cmd.Flags().BoolVar(&holder, "holder", false, "say which GitHub account an act would reserve as, and from where; reserves nothing")
 	return cmd
+}
+
+// runReserveHolder is `reserve --holder`: the account a reservation act from
+// this checkout would be made as, and the source that named it. It writes
+// nothing; when git's identity names no holder it may ask the forge's user
+// endpoint once, as the act itself would.
+func runReserveHolder(w io.Writer, asJSON bool) error {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+	root, err := gitutil.CheckoutRoot(cwd, reserveStore)
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was reserved"}
+	}
+	h, err := claim.ResolveHolder(root, claim.Options{ForgeUser: reserveForgeUser})
+	if err != nil {
+		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+	}
+	return render(w, asJSON, h, func(w io.Writer) { fmt.Fprintf(w, "would reserve as %s (from %s)\n", h.Login, h.Source) })
 }
 
 // reserveRefusal maps the core's two refusal classes to their exit codes: the

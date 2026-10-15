@@ -11,7 +11,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -125,9 +124,9 @@ func TestARepositoryConfiguredUsernameIsNeverUsed(t *testing.T) {
 	r := newCheckout(t, "pat@example.com")
 	r.Write(".abcd/config.json", `{"reservation": {"github_username": "mallory"}}`)
 	log := traced(t)
-	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir()})
-	want := "cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and " + abcdhome.Display("config.json") + " sets no " +
-		"reservation.github_username; set one of them (the repository's own configuration is never read for this); nothing was pushed"
+	noToken := (&forgeFake{err: errors.New("gh: not logged in")}).user
+	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir(), ForgeUser: noToken})
+	want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("prepare = %v; want %q", err, want)
 	}
@@ -380,7 +379,9 @@ func TestAReservationNamesNoHostNoHomeAndPassesTheOutboundPolicy(t *testing.T) {
 }
 
 // TestACheckoutWithoutAGitIdentityIsRefused: git would otherwise compose an
-// author from the machine's name, which a public commit may not carry.
+// author from the machine's name, which a public commit may not carry. With no
+// git identity only the session's token can name the author, so when it
+// cannot answer the act is refused.
 func TestACheckoutWithoutAGitIdentityIsRefused(t *testing.T) {
 	r := gittest.NewRepo(t)
 	// Neither a global nor a system file may lend the checkout a name.
@@ -390,8 +391,9 @@ func TestACheckoutWithoutAGitIdentityIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Git("config", "user.email", "1234+octo@users.noreply.github.com")
-	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir()})
-	want := "git has no user.name or user.email to author the reservation; set them, then retry; nothing was pushed"
+	noToken := (&forgeFake{err: errors.New("gh: not logged in")}).user
+	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir(), ForgeUser: noToken})
+	want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("prepare without user.name = %v; want %q", err, want)
 	}

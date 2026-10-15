@@ -3458,6 +3458,13 @@
           "hidden": false
         },
         {
+          "name": "holder",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "lease",
           "shorthand": "",
           "type": "duration",
