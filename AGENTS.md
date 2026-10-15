@@ -418,8 +418,11 @@ gate.
   creating any PR, issue or comment, re-read what was actually created and
   strip either shape from it** — the harness appends them outside the model's
   own output. The commit-msg hook and the attribution gate judge commit
-  messages (`abcd lint outbound`); nothing judges a forge artefact at posting
-  time but that re-read.
+  messages (`abcd lint outbound`). In a repository with `outbound.forge: true`
+  in `.abcd/config.json` (abcd's own included), the shell guard judges the
+  `gh pr`/`gh issue` title, body and body file written on the command line
+  before it posts (`forge-text-outbound`); the re-read stays the control for
+  everything else, a footer a harness appends after the command runs included.
 - **`ACKNOWLEDGEMENTS.md`** credits ideas, tools, and writing in three parts —
   development, inspirations, references. Add an entry in the same change that lands
   it (adopts a pattern, cites a source in an ADR, integrates a tool), never later.

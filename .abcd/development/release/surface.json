@@ -281,6 +281,20 @@
           "hidden": false
         },
         {
+          "name": "outbound-forge",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "outbound-hook",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "readme-parts",
           "shorthand": "",
           "type": "string",

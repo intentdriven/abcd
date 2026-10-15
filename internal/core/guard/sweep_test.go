@@ -18,6 +18,8 @@ import (
 //
 //   - testdata/corpus/repo-mined.txt, a line at a time;
 //   - testdata/corpus/everyday-variables.txt, a line at a time;
+//   - testdata/corpus/forge-posting.txt, a line at a time: benign posting gh
+//     commands, which the second pass judges with the forge-text check on;
 //   - every recipe line of the repository's Makefile, with make's `$$` read as
 //     the shell's `$`;
 //   - every line of scripts/*.sh, hooks/*.sh and .githooks/*, and each of those
@@ -49,6 +51,11 @@ func TestFalsePositiveSweepCeiling(t *testing.T) {
 	var inputs []string
 	inputs = append(inputs, readCorpus(t, filepath.Join("testdata", "corpus", "repo-mined.txt"))...)
 	inputs = append(inputs, readCorpus(t, filepath.Join("testdata", "corpus", "everyday-variables.txt"))...)
+	forgeLines := readCorpus(t, filepath.Join("testdata", "corpus", "forge-posting.txt"))
+	if len(forgeLines) < 20 {
+		t.Fatalf("the forge-posting corpus holds %d lines; it has gone missing", len(forgeLines))
+	}
+	inputs = append(inputs, forgeLines...)
 
 	mk, err := os.ReadFile(filepath.Join(root, "Makefile"))
 	if err != nil {
@@ -89,8 +96,42 @@ func TestFalsePositiveSweepCeiling(t *testing.T) {
 		}
 	}
 
-	r := Defaults()
-	var allows, warns, blocks, unparsable int
+	// Two passes: the bundled registry alone, and a registry loaded for a
+	// repository that opted into the forge-text check (forge.go,
+	// iss-2610142210511831), so the posting commands in the sweep are judged.
+	// The armed pass is held to the same ceilings, and to no forge-text
+	// verdict at all: every posting command the sweep holds is benign.
+	armedRoot := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(armedRoot, ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(armedRoot, ".abcd", "config.json"), []byte(`{"outbound": {"forge": true}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	armed, err := Load(armedRoot)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	armed = armed.ReadingFrom(NewFiles(cwd))
+	for _, pass := range []struct {
+		name string
+		r    Registry
+	}{{"bundled", Defaults()}, {"forge-text armed", armed}} {
+		t.Run(pass.name, func(t *testing.T) {
+			sweepPass(t, pass.r, inputs)
+		})
+	}
+}
+
+// sweepPass checks every input against r and holds the counts to the
+// ceilings; a forge-text verdict on any input fails it outright.
+func sweepPass(t *testing.T, r Registry, inputs []string) {
+	t.Helper()
+	var allows, warns, blocks, unparsable, forge int
 	for _, in := range inputs {
 		d, err := r.Check(in)
 		if err != nil {
@@ -100,6 +141,10 @@ func TestFalsePositiveSweepCeiling(t *testing.T) {
 		shown := in
 		if len(shown) > 160 {
 			shown = shown[:160] + "…"
+		}
+		if contains(d.Matches, forgeTextEntryID) || contains(d.Matches, forgeUnreadEntryID) {
+			forge++
+			t.Errorf("a forge-text verdict on ordinary work: %s %q", d.EntryID, shown)
 		}
 		switch d.Verdict {
 		case VerdictAllow:
@@ -112,8 +157,8 @@ func TestFalsePositiveSweepCeiling(t *testing.T) {
 			t.Logf("block %-28s %q", d.EntryID, shown)
 		}
 	}
-	t.Logf("sweep: %d inputs, %d allow, %d block, %d warn, %d unparsable",
-		len(inputs), allows, blocks, warns, unparsable)
+	t.Logf("sweep: %d inputs, %d allow, %d block, %d warn, %d unparsable, %d forge-text",
+		len(inputs), allows, blocks, warns, unparsable, forge)
 	if len(inputs) < 2000 {
 		t.Fatalf("the sweep holds %d inputs; a corpus has gone missing", len(inputs))
 	}
