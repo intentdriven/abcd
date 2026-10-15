@@ -135,6 +135,7 @@ var helpPlacements = map[string]helpPlacement{
 	"implement":           {group: groupAgents, page: "commands/implement.md"},
 	"inbox":               {group: groupAgents, page: "commands/inbox.md"},
 	"intent audit ingest": {page: "commands/intent.md"},
+	"land":                {group: groupAgents, page: "commands/land.md"},
 	"lint":                {group: groupAgents, page: "commands/lint.md"},
 	"mode":                {group: groupAgents, page: "commands/mode.md"},
 	"peers":               {group: groupAgents, page: "commands/peers.md"},

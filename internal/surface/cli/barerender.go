@@ -34,6 +34,10 @@ var bareRenderExceptions = map[string]string{
 		"standing state beyond the records it writes, so bare prints its usage and sub-verbs",
 	"identity": "a parent of its init and render sub-verbs; its report is `abcd lint " +
 		"identity`, so bare prints its sub-verbs",
+	"land": "bare is the landing itself, of the checkout's current branch: it gates, " +
+		"pushes and arms rather than rendering, and on the default branch, a detached HEAD " +
+		"or uncommitted work it refuses (exit 2) and pushes nothing; --no-push --no-enqueue " +
+		"limits it to the gate",
 	"launch": "its state is the release preview, asked for with --dry-run; bare refuses " +
 		"(exit 1) naming the flag, because publishing is not wired",
 	"reflect": "its one operand is the cut release whose seed it renders, and a " +

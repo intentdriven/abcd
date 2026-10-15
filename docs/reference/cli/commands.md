@@ -2874,6 +2874,48 @@ instance itself. A sweep that passes lifts that halt.
 abcd lab sweep lab-260901000000-0123abc
 ```
 
+### `abcd land`
+
+Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.
+
+**Usage:** `abcd land [<branch>] [flags]`
+
+abcd land [<branch>] [--no-push] [--no-enqueue]
+
+Land a branch whose work is committed: the checkout's current branch, or the one
+named, from the worktree that has it checked out. Each step can be resumed by
+running abcd land again.
+
+  1. Gate: when a preflight receipt already names the branch's head (in any
+     worktree, as the pre-push hook looks), the gate is skipped; otherwise
+     `make preflight` runs in the branch's checkout, its output on stderr, and the
+     head must be unchanged and a receipt present after it. A repository whose
+     make file declares no preflight target gets no push.
+  2. Push (land.push): a plain push of the branch to the same name on origin,
+     with the repository's hooks running, never forced, never the default branch.
+  3. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
+     queue where the merge gate allows it (today: only where a merge queue gates the
+     default branch and a ruleset requires a person's approval), then confirmed in
+     the queue. With no pull request it prints the `gh pr create` command and stops;
+     it never opens one.
+
+land.push and land.enqueue are read from .abcd/config.json and
+~/.abcd.noindex/config.json, default true, and off wins from any layer: either file
+can turn an act off and neither can turn it back on. --no-push and --no-enqueue turn
+one off for this run. An act that is off says which layer turned it off.
+
+Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an
+origin that is not the repository the forge client resolves, and a pull request
+from another repository. Exit 0 when every step did its act or said why it
+stopped; exit 2 on a refusal, which names what was done before it.
+
+**Flags:**
+
+```
+      --no-enqueue   do not arm or queue the pull request this run
+      --no-push      do not push the branch this run; print the push command instead
+```
+
 ### `abcd launch`
 
 Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.

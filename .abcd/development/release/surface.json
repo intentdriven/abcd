@@ -2551,6 +2551,29 @@
       "flags": []
     },
     {
+      "path": "abcd land",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
+      "flags": [
+        {
+          "name": "no-enqueue",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "no-push",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd launch",
       "hidden": false,
       "group": "release",

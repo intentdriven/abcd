@@ -43,7 +43,6 @@ package loop
 // listing, the body and title from the records, through the scrub.
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -61,6 +60,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -115,18 +115,15 @@ const (
 	PRStrippedFileName = "pr-body.stripped.md"
 	// PreflightReceiptsRelDir is where the preflight mints its receipts, one
 	// file named by the full commit id, in any worktree of the repository.
-	PreflightReceiptsRelDir = TierRelDir + "/preflight-receipts"
+	PreflightReceiptsRelDir = landing.ReceiptsRelDir
 	// RulesetsRelDir is the committed mirror of the default branch's rulesets.
-	RulesetsRelDir = ".abcd/work/rulesets"
+	RulesetsRelDir = landing.RulesetsRelDir
 )
 
 // Timeouts and caps for what the landing runs.
 const (
-	netTimeout      = 10 * time.Minute
-	ghTimeout       = 2 * time.Minute
-	maxForgeOutput  = 1 << 20
-	maxRulesetBytes = 256 << 10
-	maxRulesets     = 32
+	netTimeout = 10 * time.Minute
+	ghTimeout  = landing.ForgeTimeout
 )
 
 // landSubject is the records commit's subject.
@@ -437,23 +434,10 @@ func resolvedIn(wt, issue string) bool {
 }
 
 // preflightReceipt finds the preflight receipt for sha in any worktree git
-// lists for the repository, as the pre-push hook's check does. A receipt must
-// be a regular file, never a symlink.
+// lists for the repository, as the pre-push hook's check does
+// (landing.Receipt).
 func preflightReceipt(repoRoot, sha string) (string, error) {
-	wts, err := gitutil.ListWorktrees(repoRoot, maxWorktreeListing)
-	if err != nil {
-		return "", fmt.Errorf("listing the repository's worktrees: %w", err)
-	}
-	for _, wt := range wts {
-		if wt.Bare {
-			continue
-		}
-		p := filepath.Join(wt.Path, filepath.FromSlash(PreflightReceiptsRelDir), sha)
-		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
-			return p, nil
-		}
-	}
-	return "", nil
+	return landing.Receipt(repoRoot, sha)
 }
 
 // landPush pushes the lane's branch once the preflight receipt names its head.
@@ -511,39 +495,21 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 }
 
 // runCapped runs cmd, returning its stdout within the forge cap and its
-// stderr, bounded, in the error.
+// stderr, bounded, in the error (landing.RunCapped).
 func runCapped(cmd *exec.Cmd, what string) (string, error) {
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if len(msg) > 2048 {
-			msg = msg[:2048]
-		}
-		return "", fmt.Errorf("%s: %v (%s)", what, err, msg)
-	}
-	if stdout.Len() > maxForgeOutput {
-		return "", fmt.Errorf("%s wrote more than %d bytes", what, maxForgeOutput)
-	}
-	return stdout.String(), nil
+	return landing.RunCapped(cmd, what)
 }
 
-// forge runs the forge client with args from the checkout the run lives in,
-// refused when the client is not installed.
+// forge runs the forge client with args from the checkout the run lives in
+// (landing.GH), refused when the client is not installed.
 func forge(c Context, lane Lane, args ...string) (string, error) {
-	bin, err := exec.LookPath("gh")
-	if err != nil {
+	out, err := landing.GH(c.RepoRoot, args...)
+	if errors.Is(err, landing.ErrNoForgeClient) {
 		return "", refuse(string(StageLand), "", lane.ID, "the forge client `gh` is not installed, and the landing opens the pull request through it",
 			"install gh and sign in with your own identity (`gh auth login`), then run `abcd implement step` again")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Dir = c.RepoRoot
-	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1")
-	what := "gh " + strings.Join(args[:min(2, len(args))], " ")
-	out, err := runCapped(cmd, what)
 	if err != nil {
+		what := "gh " + strings.Join(args[:min(2, len(args))], " ")
 		if r := netFailure(StageLand, lane.ID, what, err); r != nil {
 			return "", r
 		}
@@ -727,123 +693,8 @@ func recheckBody(c Context, lane *Lane) (bool, error) {
 	return true, nil
 }
 
-// ruleset is the part of a ruleset mirror the merge rule is read from.
-type ruleset struct {
-	Enforcement string `json:"enforcement"`
-	Conditions  struct {
-		RefName struct {
-			Include []string `json:"include"`
-			Exclude []string `json:"exclude"`
-		} `json:"ref_name"`
-	} `json:"conditions"`
-	Rules []struct {
-		Type       string          `json:"type"`
-		Parameters json.RawMessage `json:"parameters"`
-	} `json:"rules"`
-}
-
-// targets reports whether the ruleset applies to the default branch def.
-func (r ruleset) targets(def string) bool {
-	match := func(pats []string) bool {
-		for _, p := range pats {
-			if p == "~DEFAULT_BRANCH" || p == "~ALL" || p == "refs/heads/"+def {
-				return true
-			}
-		}
-		return false
-	}
-	return r.Enforcement == "active" && match(r.Conditions.RefName.Include) && !match(r.Conditions.RefName.Exclude)
-}
-
 // mergeMethods maps a merge queue's method to the forge client's flag.
-var mergeMethods = map[string]string{"MERGE": "--merge", "SQUASH": "--squash", "REBASE": "--rebase"}
-
-// codeOwnersPaths are where the forge reads a CODEOWNERS file from, in the
-// order it looks: the first file found is the only one it reads.
-var codeOwnersPaths = []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"}
-
-// namesCodeOwners reports whether the CODEOWNERS file the forge reads at the
-// lane's base — the first found in codeOwnersPaths, so a file there shadows
-// the later ones even when it names nobody — names at least one owner: a line
-// whose pattern is followed by an owner token (codeOwner).
-func namesCodeOwners(c Context, lane Lane) bool {
-	for _, p := range codeOwnersPaths {
-		raw, err := gitutil.RunCappedBytes(c.RepoRoot, maxRulesetBytes, "cat-file", "blob", lane.BaseSHA+":"+p)
-		if err != nil {
-			continue
-		}
-		for _, line := range strings.Split(string(raw), "\n") {
-			if lineNamesOwner(line) {
-				return true
-			}
-		}
-		return false
-	}
-	return false
-}
-
-// lineNamesOwner reports whether one CODEOWNERS line names an owner: after its
-// pattern, a field before any comment is an owner token. A blank line, a
-// comment and a pattern with no owner name nobody.
-func lineNamesOwner(line string) bool {
-	fields := strings.Fields(line)
-	if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
-		return false
-	}
-	for _, f := range fields[1:] {
-		if strings.HasPrefix(f, "#") {
-			return false
-		}
-		if codeOwner(f) {
-			return true
-		}
-	}
-	return false
-}
-
-// codeOwner reports whether a token is one the forge takes as an owner:
-// @username, @org/team-name, or an e-mail address.
-func codeOwner(tok string) bool {
-	if name, ok := strings.CutPrefix(tok, "@"); ok {
-		org, team, isTeam := strings.Cut(name, "/")
-		if isTeam {
-			return ownerName(org) && team != "" && !strings.ContainsAny(team, "/@")
-		}
-		return ownerName(name)
-	}
-	local, domain, ok := strings.Cut(tok, "@")
-	return ok && local != "" && strings.Contains(domain, ".") && !strings.HasPrefix(domain, ".") &&
-		!strings.HasSuffix(domain, ".") && !strings.Contains(domain, "@")
-}
-
-// ownerName reports whether s is a forge account name: letters, digits and
-// hyphens, not empty.
-func ownerName(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
-			return false
-		}
-	}
-	return true
-}
-
-// requiresApproval reports whether a pull_request rule's parameters require a
-// person's approval: an approving count of one or more, or a code-owner review
-// where a CODEOWNERS file at the lane's base names an owner. Parameters that
-// do not parse require nothing, so the merge is left for a person.
-func requiresApproval(c Context, lane Lane, params json.RawMessage) bool {
-	var p struct {
-		Count     int  `json:"required_approving_review_count"`
-		CodeOwner bool `json:"require_code_owner_review"`
-	}
-	if json.Unmarshal(params, &p) != nil {
-		return false
-	}
-	return p.Count >= 1 || (p.CodeOwner && namesCodeOwners(c, lane))
-}
+var mergeMethods = landing.MergeMethods
 
 // mergeRule reads the ruleset mirror at the lane's base: the merge queue's
 // method when an active ruleset gates the default branch through one, or ""
@@ -866,67 +717,22 @@ type mergeRuleRead struct {
 	mirrored bool
 }
 
-// readMergeRule is mergeRule with whether the mirror exists.
+// readMergeRule is mergeRule with whether the mirror exists, read through the
+// landing's one reader of the mirror (landing.ReadMergeRule), its refusals
+// worded for the loop.
 func readMergeRule(c Context, lane Lane, def string) (mergeRuleRead, error) {
-	method, approval, mirrored, err := mergeRuleParts(c, lane, def)
-	return mergeRuleRead{method: method, approval: approval, mirrored: mirrored}, err
-}
-
-// mergeRuleParts reads the mirror once for mergeRule and readMergeRule.
-func mergeRuleParts(c Context, lane Lane, def string) (string, bool, bool, error) {
-	names, err := gitutil.RunCappedBytes(c.RepoRoot, maxGitOutput, "ls-tree", "-z", "--name-only", lane.BaseSHA, "--", RulesetsRelDir+"/")
-	if err != nil {
-		return "", false, false, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", err)
+	r, err := landing.ReadMergeRule(c.RepoRoot, lane.BaseSHA, def, "the lane's base")
+	var le *landing.ListError
+	var me *landing.MirrorError
+	switch {
+	case errors.As(err, &le):
+		return mergeRuleRead{}, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", le.Err)
+	case errors.As(err, &me):
+		return mergeRuleRead{}, refuse(string(StageLand), "", lane.ID, me.Reason, me.Fix+", then run `abcd implement step` again")
+	case err != nil:
+		return mergeRuleRead{}, err
 	}
-	method := ""
-	approval := false
-	count := 0
-	for _, name := range strings.Split(string(names), "\x00") {
-		if !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		if count++; count > maxRulesets {
-			return "", false, false, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("the ruleset mirror holds more than %d files", maxRulesets), "trim the mirror, then run `abcd implement step` again")
-		}
-		raw, err := gitutil.RunCappedBytes(c.RepoRoot, maxRulesetBytes, "cat-file", "blob", lane.BaseSHA+":"+name)
-		if err != nil {
-			return "", false, false, refuse(string(StageLand), "", lane.ID, name+" cannot be read at the lane's base", "restore the ruleset mirror, then run `abcd implement step` again")
-		}
-		var rs ruleset
-		if err := json.Unmarshal(raw, &rs); err != nil {
-			return "", false, false, refuse(string(StageLand), "", lane.ID, name+" does not parse as a ruleset, so the merge rule cannot be read",
-				"restore the ruleset mirror (its README says how to refresh it), then run `abcd implement step` again")
-		}
-		if !rs.targets(def) {
-			continue
-		}
-		for _, rule := range rs.Rules {
-			if rule.Type == "pull_request" && requiresApproval(c, lane, rule.Parameters) {
-				approval = true
-			}
-			if rule.Type != "merge_queue" {
-				continue
-			}
-			var p struct {
-				MergeMethod string `json:"merge_method"`
-			}
-			_ = json.Unmarshal(rule.Parameters, &p)
-			m := strings.ToUpper(p.MergeMethod)
-			if m == "" {
-				m = "MERGE"
-			}
-			if _, ok := mergeMethods[m]; !ok {
-				return "", false, false, refuse(string(StageLand), "", lane.ID, name+" names a merge-queue method the forge client has no flag for",
-					"correct the ruleset mirror, then run `abcd implement step` again")
-			}
-			if method != "" && method != m {
-				return "", false, false, refuse(string(StageLand), "", lane.ID, "the ruleset mirror gates the default branch through merge queues with different methods",
-					"correct the ruleset mirror, then run `abcd implement step` again")
-			}
-			method = m
-		}
-	}
-	return method, approval, count > 0, nil
+	return mergeRuleRead{method: r.Method, approval: r.Approval, mirrored: r.Mirrored}, nil
 }
 
 // landArm arms the merge by the ruleset's rule, or leaves the pull request
