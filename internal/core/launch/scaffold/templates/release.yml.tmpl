@@ -895,14 +895,101 @@ jobs:
         # lists the merged PRs since the previous tag; CHANGELOG.md remains the
         # durable record. GITHUB_TOKEN-only: no personal access token, no elevated
         # secret.
+        #
+        # The draft is then addressed by its numeric id alone, never by its tag:
+        # the one Release carrying the tag must be this draft, its assets exactly
+        # the files of dist/, each uploaded and with the digest of the file
+        # attached. It is published by that id, marked latest only when no
+        # published release carries a higher version, and its assets are read
+        # again afterwards and must be the ones checked.
         run: |
           set -euo pipefail
           assets=()
           if [ -d dist ]; then
             while IFS= read -r -d '' f; do assets+=("$f"); done < <(find dist -type f -print0 | sort -z)
           fi
+          id_re='^[0-9]+$'
+          ver_re='^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if [[ ! $TAG =~ $ver_re ]]; then
+            printf "refusing to publish '%s': not a vX.Y.Z release tag\n" "$TAG" >&2
+            exit 1
+          fi
+          mine=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}")
           gh release create "${TAG}" ${assets[@]+"${assets[@]}"} --draft --verify-tag --title "${TAG}" --generate-notes
-          gh release edit "${TAG}" --draft=false
+
+          # The one Release carrying the tag is the draft just created.
+          rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            --jq '.[] | [.id, .draft, .prerelease, .tag_name] | @tsv')"
+          ours="$(awk -F '\t' -v tag="$TAG" '$4 == tag' <<<"$rows")"
+          id="${ours%%$'\t'*}"
+          if [[ ! $id =~ $id_re ]] || [ "$ours" != "${id}"$'\t'"true"$'\t'"false"$'\t'"${TAG}" ]; then
+            printf "refusing to publish '%s': the one Release carrying it must be the draft just created; the repository lists:\n%s\n" "$TAG" "$ours" >&2
+            exit 1
+          fi
+
+          # Its assets are exactly the files of dist/, uploaded, each with the
+          # digest of the file attached.
+          list_assets() {
+            gh api "repos/${GITHUB_REPOSITORY}/releases/${id}/assets?per_page=100" --paginate \
+              --jq '.[] | [.id, .name, .state, (.digest // "")] | @tsv' | sort
+          }
+          attached="$(list_assets)"
+          bad=0
+          count=0
+          for f in ${assets[@]+"${assets[@]}"}; do
+            count=$((count + 1))
+            name="${f##*/}"
+            want="sha256:$(sha256sum "$f" | awk '{print $1}')"
+            if ! awk -F '\t' -v n="$name" -v d="$want" \
+                '$2 == n && $3 == "uploaded" && ($4 == "" || $4 == d) {found = 1} END {exit !found}' <<<"$attached"; then
+              printf "refusing to publish '%s': %s is not attached uploaded with the digest of dist/%s\n" "$TAG" "$name" "$name" >&2
+              bad=1
+            fi
+          done
+          if [ "$(awk 'NF {n++} END {print n + 0}' <<<"$attached")" != "$count" ]; then
+            printf "refusing to publish '%s': the draft carries assets other than the files of dist/:\n%s\n" "$TAG" "$attached" >&2
+            bad=1
+          fi
+          [ "$bad" = 0 ] || exit 1
+
+          # Latest only when no published release carries a higher version, so a
+          # re-released older tag does not become the latest.
+          latest=true
+          while IFS=$'\t' read -r _ draft pre tag; do
+            [ "$draft" = false ] && [ "$pre" = false ] && [[ $tag =~ $ver_re ]] || continue
+            higher=false
+            for i in 1 2 3; do
+              a=$((10#${BASH_REMATCH[i]}))
+              b=$((10#${mine[i-1]}))
+              if [ "$a" -ne "$b" ]; then
+                [ "$a" -lt "$b" ] || higher=true
+                break
+              fi
+              if [ "$i" = 3 ] && [ -n "${mine[3]}" ] && [ -z "${BASH_REMATCH[4]}" ]; then
+                higher=true
+              fi
+            done
+            if [ "$higher" = true ]; then
+              echo "${tag} is a higher published version; ${TAG} is published without becoming the latest release."
+              latest=false
+              break
+            fi
+          done <<<"$rows"
+
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${id}" \
+            -F draft=false -f make_latest="$latest" --jq '.draft' >/dev/null
+
+          # The Release as published carries exactly the assets checked.
+          after="$(list_assets)"
+          if [ "$after" != "$attached" ]; then
+            printf "'%s' assets changed after they were checked. Checked (id, name, state, digest):\n%s\nNow attached:\n%s\n" "$TAG" "$attached" "$after" >&2
+            exit 1
+          fi
+          if [ "$(gh api "repos/${GITHUB_REPOSITORY}/releases/${id}" --jq '.draft')" != false ]; then
+            printf "'%s' is still a draft after publishing it\n" "$TAG" >&2
+            exit 1
+          fi
+          echo "published ${TAG} (Release ${id}, latest: ${latest})"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 <%- end %>

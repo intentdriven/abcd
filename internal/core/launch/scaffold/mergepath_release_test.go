@@ -143,6 +143,16 @@ func cutFirstRelease(t *testing.T, profile string) {
 	if got := rel["v0.1.0"]; got != merged {
 		t.Fatalf("published releases %v: want v0.1.0 built from the merged commit %s\n%s", rel, merged, f.log.String())
 	}
+	// It was published by the id the forge assigned the draft, as the latest
+	// release: no published release carries a higher version.
+	id, err := os.ReadFile(filepath.Join(f.state, "ids", "v0.1.0"))
+	if err != nil {
+		t.Fatalf("the forge assigned the release no id: %v", err)
+	}
+	patches, _ := os.ReadFile(filepath.Join(f.state, "patches"))
+	if want := strings.TrimSpace(string(id)) + " draft=false make_latest=true\n"; string(patches) != want {
+		t.Errorf("the release was published by %q, want %q", patches, want)
+	}
 	if tagged := r.Git("ls-remote", "origin", "refs/tags/v0.1.0^{}"); !strings.HasPrefix(tagged, merged) {
 		t.Errorf("tag v0.1.0 = %q, want it at the merged commit %s", tagged, merged)
 	}
@@ -379,9 +389,9 @@ case "${1:-} ${2:-}" in
   # A release is created as a draft and published once its assets are
   # attached; a create that would publish in one step is refused.
   tag="$3"; shift 3
-  verify=0 draft=0
+  verify=0 draft=0 files=()
   while [ $# -gt 0 ]; do
-    case "$1" in --verify-tag) verify=1 ;; --draft) draft=1 ;; --title|--notes) shift ;; *) ;; esac
+    case "$1" in --verify-tag) verify=1 ;; --draft) draft=1 ;; --title|--notes) shift ;; -*) ;; *) files+=("$1") ;; esac
     shift
   done
   [ "$verify" = 1 ] || { echo "fake gh: release create without --verify-tag" >&2; exit 98; }
@@ -390,23 +400,42 @@ case "${1:-} ${2:-}" in
   [ ! -f "$FORGE_STATE/drafts/$tag" ] || { echo "fake gh: a second draft of $tag" >&2; exit 98; }
   commit="$(git --git-dir="$FORGE_ORIGIN" rev-parse -q --verify "refs/tags/$tag^{commit}")" || {
     echo "tag $tag does not exist on the forge" >&2; exit 1; }
-  mkdir -p "$FORGE_STATE/drafts"
-  printf '%s\n' "$commit" > "$FORGE_STATE/drafts/$tag" ;;
+  mkdir -p "$FORGE_STATE/drafts" "$FORGE_STATE/ids" "$FORGE_STATE/assets"
+  printf '%s\n' "$commit" > "$FORGE_STATE/drafts/$tag"
+  # The id the forge assigns the created Release, kept when it is published.
+  printf 'created/%s' "$tag" | cksum | cut -d' ' -f1 > "$FORGE_STATE/ids/$tag"
+  : > "$FORGE_STATE/assets/$tag"
+  n=0
+  for f in ${files[@]+"${files[@]}"}; do
+    n=$((n + 1))
+    printf '%s\t%s\tuploaded\tsha256:%s\n' "$n" "${f##*/}" "$(sha256sum "$f" | cut -d' ' -f1)" >> "$FORGE_STATE/assets/$tag"
+  done ;;
 "release edit")
-  tag="$3"
-  [ "${4:-}" = --draft=false ] && [ $# = 4 ] || { echo "fake gh: release edit $*" >&2; exit 97; }
-  [ -f "$FORGE_STATE/drafts/$tag" ] || { echo "release not found" >&2; exit 1; }
-  mkdir -p "$FORGE_STATE/releases"
-  mv "$FORGE_STATE/drafts/$tag" "$FORGE_STATE/releases/$tag" ;;
+  echo "fake gh: a Release is published by its id, never edited by tag: $*" >&2; exit 98 ;;
 "run list")
   printf '\n' ;;
 "attestation verify")
   digest="$(git hash-object "$3")"
   [ -f "$FORGE_STATE/attestations/$digest" ] || { echo "no attestation for $3" >&2; exit 1; } ;;
 "api "*)
-  # A release's id is the checksum of its state and tag, so a draft and a
-  # published release of one tag never share one.
-  relid() { printf '%s/%s' "$1" "$2" | cksum | cut -d' ' -f1; }
+  # A created Release keeps the id the forge assigned it; one seeded by the
+  # test is identified by the checksum of its state and tag, so a seeded draft
+  # and a published release of one tag never share one.
+  relid() {
+    if [ -f "$FORGE_STATE/ids/$2" ]; then cat "$FORGE_STATE/ids/$2"
+    else printf '%s/%s' "$1" "$2" | cksum | cut -d' ' -f1
+    fi
+  }
+  # bytag prints the state and tag of the Release with id $1, or fails.
+  bytag() {
+    for state in drafts releases; do
+      for f in "$FORGE_STATE/$state"/*; do
+        [ -e "$f" ] || continue
+        if [ "$(relid "$state" "${f##*/}")" = "$1" ]; then printf '%s %s\n' "$state" "${f##*/}"; return 0; fi
+      done
+    done
+    echo "gh: Not Found (HTTP 404)" >&2; return 1
+  }
   shift
   method=GET path="" expr="" paginate=0
   while [ $# -gt 0 ]; do
@@ -414,6 +443,7 @@ case "${1:-} ${2:-}" in
       --method|-X) method="$2"; shift 2 ;;
       --paginate) paginate=1; shift ;;
       --jq) expr="$2"; shift 2 ;;
+      -F|-f) fields="${fields:-} $2"; shift 2 ;;
       -*) echo "fake gh: api $1" >&2; exit 97 ;;
       *) path="$1"; shift ;;
     esac
@@ -422,18 +452,44 @@ case "${1:-} ${2:-}" in
   "GET repos/"*/git/ref/heads/*)
     git --git-dir="$FORGE_ORIGIN" rev-parse "refs/heads/${path##*/heads/}" ;;
   "GET repos/"*"/releases?per_page=100")
-    # The listing, already filtered the one way the workflows read it.
-    [ "$paginate" = 1 ] && [ "$expr" = '.[] | [.id, .draft, .tag_name] | @tsv' ] || {
-      echo "fake gh: release listing paginate=$paginate jq=$expr" >&2; exit 97; }
+    # The listing, already filtered one of the two ways the workflows read it.
+    [ "$paginate" = 1 ] || { echo "fake gh: release listing without --paginate" >&2; exit 97; }
+    case "$expr" in
+      '.[] | [.id, .draft, .tag_name] | @tsv') cols=3 ;;
+      '.[] | [.id, .draft, .prerelease, .tag_name] | @tsv') cols=4 ;;
+      *) echo "fake gh: release listing jq=$expr" >&2; exit 97 ;;
+    esac
     for state in drafts releases; do
       [ -d "$FORGE_STATE/$state" ] || continue
       for f in "$FORGE_STATE/$state"/*; do
         [ -e "$f" ] || continue
         tag="${f##*/}"
         draft=false; [ "$state" = drafts ] && draft=true
-        printf '%s\t%s\t%s\n' "$(relid "$state" "$tag")" "$draft" "$tag"
+        if [ "$cols" = 3 ]; then
+          printf '%s\t%s\t%s\n' "$(relid "$state" "$tag")" "$draft" "$tag"
+        else
+          printf '%s\t%s\tfalse\t%s\n' "$(relid "$state" "$tag")" "$draft" "$tag"
+        fi
       done
     done ;;
+  "GET repos/"*/releases/*/"assets?per_page=100")
+    [ "$paginate" = 1 ] && [ "$expr" = '.[] | [.id, .name, .state, (.digest // "")] | @tsv' ] || {
+      echo "fake gh: asset listing paginate=$paginate jq=$expr" >&2; exit 97; }
+    id="${path%/assets*}"; id="${id##*/}"
+    read -r _ tag <<<"$(bytag "$id")"
+    cat "$FORGE_STATE/assets/$tag" ;;
+  "GET repos/"*/releases/*)
+    [ "$expr" = .draft ] || { echo "fake gh: release read jq=$expr" >&2; exit 97; }
+    read -r state _ <<<"$(bytag "${path##*/}")"
+    if [ "$state" = drafts ]; then echo true; else echo false; fi ;;
+  "PATCH repos/"*/releases/*)
+    id="${path##*/}"
+    read -r state tag <<<"$(bytag "$id")"
+    [ "$state" = drafts ] || { echo "fake gh: publishing a published release" >&2; exit 98; }
+    printf '%s%s\n' "$id" "${fields:-}" >> "$FORGE_STATE/patches"
+    mkdir -p "$FORGE_STATE/releases"
+    mv "$FORGE_STATE/drafts/$tag" "$FORGE_STATE/releases/$tag"
+    echo false ;;
   "DELETE repos/"*/releases/*)
     id="${path##*/}"
     for f in "$FORGE_STATE/releases"/*; do
@@ -442,7 +498,7 @@ case "${1:-} ${2:-}" in
     done
     for f in "$FORGE_STATE/drafts"/*; do
       [ -e "$f" ] || continue
-      if [ "$(relid drafts "${f##*/}")" = "$id" ]; then rm "$f"; exit 0; fi
+      if [ "$(relid drafts "${f##*/}")" = "$id" ]; then rm -f "$f" "$FORGE_STATE/ids/${f##*/}"; exit 0; fi
     done
     echo "release $id not found" >&2; exit 1 ;;
   *) echo "fake gh: unsupported api $method $path" >&2; exit 97 ;;
