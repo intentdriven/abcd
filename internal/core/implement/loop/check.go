@@ -331,6 +331,10 @@ type peerSnapshot struct {
 	reader string
 	// now is when the reservations are judged.
 	now time.Time
+	// takeOver is a start's --take-over: this person's own live reservation
+	// from another copy is then no holder, since the start's reservation
+	// moves it to this copy.
+	takeOver bool
 }
 
 // readPeers reads the peer listing, the shared run's claims when the
@@ -382,7 +386,8 @@ func (snap *peerSnapshot) readReservations(repoRoot string) error {
 // reservationHolder names the reservation another copy holds on id in the
 // view as last fetched, with the view's age: another person's, this person's
 // on another computer, or an unreadable one within its hold. This copy's own
-// is never a holder. "" when nothing but this copy holds it.
+// is never a holder, nor this person's other copy under --take-over. "" when
+// nothing but this copy holds it.
 func (snap *peerSnapshot) reservationHolder(id string) string {
 	if snap.reservedErr != "" {
 		return "the reservations as last fetched could not be read, so whether another copy reserved it is unknown (" + snap.reservedErr + ")"
@@ -392,6 +397,9 @@ func (snap *peerSnapshot) reservationHolder(id string) string {
 	}
 	r, ok := snap.reserved.Lookup(id)
 	if ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && claim.SameHolder(r.Holder, snap.reader) {
+		if snap.takeOver {
+			return ""
+		}
 		return fmt.Sprintf("your copy on another computer reserved it until %s, %s", stamp(r.EffectiveExpiry), snap.reserved.AsOf(snap.now))
 	}
 	return snap.reserved.HeldBy(id, snap.now)

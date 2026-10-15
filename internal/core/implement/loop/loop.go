@@ -58,10 +58,20 @@ type Options struct {
 	// deadline; nil asks Runners.
 	Quota func(ctx context.Context, name string) (runner.Quota, bool, error)
 
+	// TakeOver is `abcd build --take-over`: the start's reservation moves
+	// this person's own live reservation from another copy to this one. It
+	// never moves another person's.
+	TakeOver bool
+
 	// reserve is the footprint a new run reserves its key with on origin
-	// after its checks pass and before it is created (reservation.go); nil
-	// reserves nothing. The drain sets it from the issue's found_at.
+	// after its checks pass and before it is created (reservation.go), when
+	// the caller has read it: the drain sets it from the issue's found_at.
+	// Nil, the start reads it from the run's record (runFootprint). In a
+	// checkout with no remote named origin nothing is reserved either way.
 	reserve []string
+	// noReserve starts a run on an origin without reserving its key: a test
+	// fixture that stands a run up and takes its reservation by hand sets it.
+	noReserve bool
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -208,7 +218,12 @@ type StartResult struct {
 	Pace *Pace `json:"pace"`
 	// HandBack is set when the run's lane stands handed back to the person.
 	HandBack *HandBack `json:"hand_back,omitempty"`
-	Next     string    `json:"next"`
+	// Reservation is what the start did with the run's reservation on the
+	// shared remote (reserved, renewed or took it over, until when, with what
+	// footprint); empty when it reserved nothing (no remote named origin, or
+	// a resumed run handed back).
+	Reservation string `json:"reservation,omitempty"`
+	Next        string `json:"next"`
 }
 
 // StepResult is what advance and Receipt return.
@@ -314,6 +329,9 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		if err == nil && flags.set {
 			err = resumeWithFlags(res, flags)
 		}
+		if err == nil {
+			err = reserveResumed(repoRoot, &res, o)
+		}
 		if err != nil {
 			return StartResult{}, err
 		}
@@ -335,6 +353,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	if err != nil {
 		return StartResult{}, err
 	}
+	snap.takeOver = o.TakeOver
 	chk, err := check(repoRoot, key, o.Session, snap)
 	if err != nil {
 		return StartResult{}, err
@@ -353,12 +372,9 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	// The run's reservation on the shared remote (reservation.go), once the
 	// record may start and before the run exists: another's hold refuses the
 	// start, and a run that is then not created releases it.
-	var reservedAt *time.Time
-	reservedNote, fresh := "", false
-	if o.reserve != nil {
-		if reservedAt, reservedNote, fresh, err = reserveKey(repoRoot, chk.Key, o.reserve, o.now()); err != nil {
-			return StartResult{}, err
-		}
+	reservedAt, reservedNote, fresh, err := reserveStart(repoRoot, chk, o)
+	if err != nil {
+		return StartResult{}, err
 	}
 	// keep is set once a run in this checkout holds the reservation: the one
 	// created here, or a racing start's run resumed below.
@@ -452,6 +468,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		res = startResult(st, chk.Checks, false)
 		res.Claim = claim
+		res.Reservation = reservedNote
 		keep = true
 		return nil
 	})
@@ -843,6 +860,7 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			// The lane's own receipt handed the work back: the verifier has
 			// discarded it, and the lane ends here, before the validators.
 			handBackLane(st, &lane, *lane.HandBack, "", now)
+			releaseOnHandBack(repoRoot, st, now)
 			st.Lanes[i] = lane
 			st.UpdatedAt = now
 			res = laneResult(*st, lane, "", nil)

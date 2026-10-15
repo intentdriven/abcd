@@ -181,8 +181,8 @@ and written nowhere, decision 8), then does the first of these that applies:
    and tombstone ([`27-implement.md`](27-implement.md)); every drain move
    renews, at half its lease, the reservation of each issue lane parked at
    land, so a pull request waiting on a person stays held while the drain
-   moves; a lane handed back has its reservation tombstoned as the drain
-   routes the hand-back. Without `origin`
+   moves; a lane handed back has its reservation tombstoned by the step that
+   hands it back, and the route the drain writes names the outcome. Without `origin`
    nothing is reserved.
 
 The host's answer is taken first of all, before the window clock and the

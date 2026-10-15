@@ -121,6 +121,33 @@ A refusal names the check, the reason and the remedy, carries every check's row,
 and writes nothing. A peer's holding is contention rather than a fault in the
 record.
 
+**The reservation across people** (itd-2609091034175565, spc-2610031753359849
+step 13). The claim above keeps one person's sessions in one copy apart; the
+reservation keeps people, and one person's computers, apart. In a checkout
+with a remote named `origin`, a run reserves its key there once its checks and
+its budget check pass and before the run is created, through
+`internal/core/claim`, as `abcd reserve` does: with the packages its spec's
+`## Footprint` `- packages:` line names, each cleaned of a trailing slash, for
+an intent, and the path an issue's `found_at` names for an issue. A spec with
+no footprint, or an issue with no such path, is refused at the `reservation`
+stage, starting nothing (C35); another's hold, a person's or this person's
+other copy's, is contention at the same stage; a take-over asked for passes
+through, moving this person's own live reservation from another copy and never
+another person's, and the peers check then does not count that copy as a holder. The
+run's state records the reservation (`reserved_at`) and its record names it;
+a run that is then not created releases a reservation it made fresh. A
+resumed start reserves too, with its record's footprint: it renews this
+copy's own, keeping the reservation's term so a resume never cuts the day the
+land fence gave a waiting pull request, and reserves anew one a release
+released or a run started before reservations never took, recording it in
+the run's state; a run handed back reserves nothing. A release asked of the
+verb pushes the tombstone over this copy's reservation on the key and changes
+nothing in the run's state (C36); the run's next step meets it at the land fence. A run whose
+issue lane is handed back releases its reservation as the step hands it back,
+whoever started the run (iss-2610142247197128). In a checkout with no remote
+named `origin` nothing is reserved. The pick starts the same run, so the
+picked intent is reserved the same way.
+
 ## The pick
 
 The pick sub-verb chooses the intent instead of taking one named
@@ -740,8 +767,10 @@ Sub-verbs: `abcd build next`.
 |---|---|
 | `--fix-rounds` | string |
 | `--pace` | string |
+| `--release` | bool |
 | `--session` | string |
 | `--sub-agents` | string |
+| `--take-over` | bool |
 
 ### `abcd build next`
 

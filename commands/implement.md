@@ -532,7 +532,11 @@ drain's lane parked at land. A run nobody steps, hands a receipt to or drains
 over for longer than its lease loses the reservation, and another person may
 then take the record over. A step or a receipt that finds the reservation held
 by another person or copy says so in its answer and logs `reservation_lost` in
-the run record, once. A run whose state records no
+the run record, once. A run keyed by an issue whose lane is handed back
+releases its reservation as the step hands it back: it pushes the tombstone
+while the reservation is still this copy's and logs `reservation_released`
+with the outcome, since the issue is the person's again. An intent's run keeps
+its reservation through a hand-back, for the lanes it still holds. A run whose state records no
 reservation is neither renewed nor fenced.
 
 Every landing step is recorded as it completes, so a killed `step` repeats the

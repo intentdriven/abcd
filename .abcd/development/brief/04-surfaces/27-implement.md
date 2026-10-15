@@ -352,7 +352,11 @@ it held by another person or copy says so and logs `reservation_lost` once. Once
 step pushes a tombstone over the reservation while it is still this person's
 from this copy, leaves another's as it stands and names the holder, and a
 tombstone that fails is named without undoing the landing; the lane branch
-removal touches only the lane's `build/` branch. A run holding no reservation
+removal touches only the lane's `build/` branch. A run keyed by an issue whose
+lane is handed back pushes a tombstone over its reservation as the step (or
+the receipt) hands it back, logging `reservation_released` with the outcome,
+whether a drain or `abcd build <iss-N>` started it (iss-2610142247197128); an
+intent's run keeps its reservation through a hand-back. A run holding no reservation
 is neither renewed, fenced nor tombstoned.
 
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the

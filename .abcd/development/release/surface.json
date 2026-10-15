@@ -461,7 +461,7 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
+      "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.",
       "flags": [
         {
           "name": "fix-rounds",
@@ -478,6 +478,13 @@
           "hidden": false
         },
         {
+          "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "session",
           "shorthand": "",
           "type": "string",
@@ -488,6 +495,13 @@
           "name": "sub-agents",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take-over",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }

@@ -238,9 +238,9 @@ abcd banlist remove --private acme-internal
 
 ### `abcd build`
 
-Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
+Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
+**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 An issue id starts the loop's issue-keyed lane instead (below).
@@ -255,6 +255,21 @@ check reads the reservations from disk alone, and names another copy's with its 
 its expiry and the view's age; this copy's own is never a holder. A refusal names the
 check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent
 instead of taking one named.
+
+In a checkout with a remote named origin, the run reserves its key there, as
+`abcd reserve` does, once the checks pass and before the run is created: a new run, and a
+resumed one, with the files the spec's `## Footprint` packages line names (an issue's
+found_at path for an issue id), so every other participant sees it is taken. A spec with
+no footprint, or an issue with no found_at path, is refused at the reservation and nothing
+is started. Another person's reservation, or your own from another computer, refuses
+the start as contention; --take-over moves your own live reservation from another copy
+to this one, never another person's. `abcd implement step` renews the reservation, fences
+the landing with it and releases it once the run lands; a run whose issue lane is handed
+back releases it then. --release pushes the tombstone over this copy's reservation on the
+key and changes nothing in the run's state: a later step meets it at the land fence, and
+`abcd build` again reserves it anew. --release takes no other flag. The reservation needs
+your GitHub username, read from a no-reply user.email or from
+reservation.github_username in ~/.abcd.noindex/config.json.
 
 When the checks pass, the run is created in this checkout's local tier,
 `.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,
@@ -324,8 +339,10 @@ Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is loc
 ```
       --fix-rounds string   the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer
       --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
+      --release             push the tombstone over this copy's reservation on the key, changing nothing in the run's state
       --session string      the host session's id in the shared run state; a new run claims the intent for it
       --sub-agents string   this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer
+      --take-over           move your own live reservation on the key from another copy to this one; never another person's
 ```
 
 **Example:**

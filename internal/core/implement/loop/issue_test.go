@@ -273,7 +273,7 @@ func TestAnIssueLaneLandsOnePullRequestThatResolvesItsIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
-	start, err := Start(repo.Root(), eligibleIssue, Options{})
+	start, err := Start(repo.Root(), eligibleIssue, Options{noReserve: true})
 	if err != nil {
 		t.Fatal(err)
 	}

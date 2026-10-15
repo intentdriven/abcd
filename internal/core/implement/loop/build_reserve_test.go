@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -130,5 +131,201 @@ func TestTheRunsOwnReservationIsNeverAHolder(t *testing.T) {
 	row := chk.Checks[len(chk.Checks)-1]
 	if row.Name != CheckPeers || row.OK || !strings.Contains(row.Detail, "your copy on another computer") {
 		t.Fatalf("P's other copy holds it, named as P's: %+v", row)
+	}
+}
+
+// `abcd build` reserves, releases and takes over (spc-2610031753359849 spec
+// 2, step 13): a new run, and a resumed one, reserves its key at the start,
+// after the checks and before the lane opens, with the footprint its spec's
+// `## Footprint` packages line names (an issue's found_at path for an issue
+// run); `--take-over` passes through; a run whose issue lane is handed back
+// releases its reservation (iss-2610142247197128).
+
+// footprintedSpec is spc-1 with a footprint naming two packages.
+var footprintedSpec = specWithSteps("") + "\n## Footprint\n\n- packages: internal/widget, commands/\n- tests: the widget\n"
+
+// TestBuildReservesTheIntentWithItsSpecFootprint is C34: a new run reserves
+// its intent on origin, as this person from this copy, with the packages its
+// spec's footprint names, records it in its state and its record, and says so;
+// a resumed run reserves again, renewing its own.
+func TestBuildReservesTheIntentWithItsSpecFootprint(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	bare := onOrigin(t, repo)
+
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, []string{"internal/widget", "commands"}) {
+		t.Fatalf("the reservation's footprint is the spec's packages: %v", fp)
+	}
+	tip := originReservation(t, bare, reservedRef)
+	if tip.holder != "octo" || tip.released {
+		t.Fatalf("the reservation is P's: %+v", tip)
+	}
+	st, err := ReadState(repo.Root(), res.RunID)
+	if err != nil || st.ReservedAt == nil {
+		t.Fatalf("the run records its reservation: %+v %v", st.ReservedAt, err)
+	}
+	if note := recordNote(t, repo, res.RunID, StageReservation); !strings.Contains(note, "reserved itd-10 on origin") {
+		t.Fatalf("the run record says what it reserved: %q", note)
+	}
+	if !strings.Contains(res.Reservation, "reserved itd-10 on origin") {
+		t.Fatalf("the start names the reservation: %q", res.Reservation)
+	}
+
+	again, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil || !again.Resumed || again.RunID != res.RunID {
+		t.Fatalf("starting again resumes the run: %+v %v", again, err)
+	}
+	if after := originReservation(t, bare, reservedRef); after.parent != tip.commit || after.released {
+		t.Fatalf("the resumed run renews its reservation as the tip's child: before %+v, after %+v", tip, after)
+	}
+	if !strings.Contains(again.Reservation, "renewed the reservation on itd-10") {
+		t.Fatalf("the resumed start names the renewal: %q", again.Reservation)
+	}
+}
+
+// TestAResumedRunWithoutAReservationReservesIt: a run started where nothing
+// was reserved (before reservations, or before its checkout had an origin)
+// reserves its key when it is resumed, and records it.
+func TestAResumedRunWithoutAReservationReservesIt(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st, _ := ReadState(repo.Root(), res.RunID); st.ReservedAt != nil {
+		t.Fatalf("with no origin nothing is reserved: %+v", st.ReservedAt)
+	}
+	bare := onOrigin(t, repo)
+	before, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(res.RunID))))
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil || !again.Resumed {
+		t.Fatalf("starting again resumes the run: %+v %v", again, err)
+	}
+	if tip := originReservation(t, bare, reservedRef); tip.holder != "octo" || tip.parent != "" {
+		t.Fatalf("the resumed run reserves its key: %+v", tip)
+	}
+	st, err := ReadState(repo.Root(), res.RunID)
+	if err != nil || st.ReservedAt == nil {
+		t.Fatalf("the resumed run records its reservation: %+v %v", st.ReservedAt, err)
+	}
+	after, _ := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(res.RunID))))
+	if string(after) == string(before) {
+		t.Fatal("the state was not written")
+	}
+}
+
+// TestBuildWithoutAFootprintIsRefusedAtTheReservation is C35: a spec with no
+// footprint refuses the start at the reservation, naming the spec and the
+// missing section, starts nothing and pushes nothing.
+func TestBuildWithoutAFootprintIsRefusedAtTheReservation(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	bare := onOrigin(t, repo)
+	_, err := Start(repo.Root(), "itd-10", Options{})
+	r := mustRefusal(t, err)
+	want := "spc-1 has no footprint under ## Footprint to reserve itd-10 with; fill its packages line, then run abcd build again; nothing was started"
+	if r.Stage != StageReservation || r.Contention || r.Reason != want {
+		t.Fatalf("want the reservation refusal %q, got %+v", want, r)
+	}
+	runTierAbsent(t, repo.Root())
+	if tip := originReservation(t, bare, reservedRef); tip.commit != "" {
+		t.Fatalf("nothing is pushed: %+v", tip)
+	}
+}
+
+// TestBuildTakeOverPassesThrough: a build over this person's live
+// reservation from another computer backs off naming --take-over; with
+// TakeOver the start takes it over to this copy and the record says so.
+func TestBuildTakeOverPassesThrough(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	bare := onOrigin(t, repo)
+	p2 := otherCopy(t, bare, patEmail)
+	if _, err := claim.Reserve(p2, claim.Request{Record: "itd-10", Footprint: []string{"internal/widget"}}, claim.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	held := originReservation(t, bare, reservedRef)
+
+	_, err := Start(repo.Root(), "itd-10", Options{})
+	r := mustRefusal(t, err)
+	if !r.Contention || !strings.Contains(r.Reason, "pass --take-over to continue here") {
+		t.Fatalf("the build backs off naming --take-over: %+v", r)
+	}
+	runTierAbsent(t, repo.Root())
+
+	res, err := Start(repo.Root(), "itd-10", Options{TakeOver: true})
+	if err != nil {
+		t.Fatalf("the take-over: %v", err)
+	}
+	if tip := originReservation(t, bare, reservedRef); tip.parent != held.commit {
+		t.Fatalf("the take-over is the tip's child: %+v over %+v", tip, held)
+	}
+	if note := recordNote(t, repo, res.RunID, StageReservation); !strings.Contains(note, "took over the reservation on itd-10") {
+		t.Fatalf("the run record says it took the reservation over: %q", note)
+	}
+}
+
+// TestBuildNextReservesThePickedIntent: `build next` reaches the same start,
+// so the picked intent is reserved with its spec's footprint.
+func TestBuildNextReservesThePickedIntent(t *testing.T) {
+	repo := pickRepo(t, map[string][2]string{
+		"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", fpSmall)},
+	})
+	bare := onOrigin(t, repo)
+	res, err := Next(repo.Root(), Options{}, NextOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Pick == nil || res.Pick.Chosen.ID != "itd-10" {
+		t.Fatalf("the pick takes itd-10: %+v", res.Pick)
+	}
+	if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, []string{"internal/core/intent"}) {
+		t.Fatalf("the picked intent is reserved with its spec's footprint: %v", fp)
+	}
+}
+
+// TestBuildReservesAnIssueWithItsFoundAt: `build <iss-N>` reserves the issue
+// with the path its found_at names, as the drain does; one with no found_at
+// path is refused at the reservation, starting nothing.
+func TestBuildReservesAnIssueWithItsFoundAt(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	if _, err := Start(repo.Root(), secondIssue, Options{}); err != nil {
+		t.Fatal(err)
+	}
+	if fp := footprintOf(t, bare, secondIssue); !slices.Equal(fp, []string{"commands/drain.md"}) {
+		t.Fatalf("the issue is reserved with its found_at path: %v", fp)
+	}
+
+	repo, bare = reservingDrainRepo(t, "")
+	_, err := Start(repo.Root(), secondIssue, Options{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageReservation || !strings.Contains(r.Reason, secondIssue+" has no found_at path to reserve it with") {
+		t.Fatalf("an issue with no found_at is refused at the reservation: %+v", r)
+	}
+	runTierAbsent(t, repo.Root())
+	if fp := footprintOf(t, bare, secondIssue); fp != nil {
+		t.Fatalf("nothing is reserved: %v", fp)
+	}
+}
+
+// TestAHandedBackBuildLaneReleasesItsReservation is iss-2610142247197128: a
+// run `build <iss-N>` started, which no drain routes, releases its
+// reservation when its lane is handed back, and its record says so.
+func TestAHandedBackBuildLaneReleasesItsReservation(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	res, err := Start(repo.Root(), secondIssue, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handBackLaneOf(t, repo, res.RunID, Options{}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the page needs a decision", Home: "the brief"})
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != "octo" {
+		t.Fatalf("the handed-back issue's reservation is released: %+v", tomb)
+	}
+	if note := recordNote(t, repo, res.RunID, StageReservationReleased); !strings.Contains(note, "released the reservation on "+secondIssue) {
+		t.Fatalf("the run record says the reservation was released: %q", note)
 	}
 }

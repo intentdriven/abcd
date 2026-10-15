@@ -943,6 +943,64 @@ These are the facilitator's design calls; none changes a criterion.
     held every other person off for up to two hours. A run `abcd build
     <iss-N>` starts holds no reservation until step 13, which must release
     its hand-back too, outside the drain.
+- **What step 12 settled** (the build's peers check, 2026-10-15):
+  - The peers check reads the reservations for an intent key only. An issue
+    key's peers row does not: its run's reservation, fetched afresh at the
+    start, judges it, so a drain still passes over another's issue with the
+    check `reservation`.
+  - A holder is another copy's reservation that holds: another person's live
+    one, an unreadable one within its hold (in the board's words, from
+    `Snapshot.HeldBy`), and this person's own live one from another computer,
+    named "your copy on another computer reserved it until `<expiry>`" with the
+    view's age, which `--take-over` exempts (step 13), since the start's
+    reservation then moves it. Telling this person's other copy apart reads
+    the reader's username by the reservation verb's rule
+    (`claim.ReaderHolder`), only when such a reservation is in the view; when
+    it cannot be told, the reservation is named by its holder, as any other.
+  - A lapsed reservation is no holder at the check, within the margin or past
+    it: the start's reservation judges the margin on a fresh fetch. A view
+    nothing here fetched holds none, so the check passes and the build's own
+    reservation fetches. A view that cannot be read fails closed on every
+    intent, as a peer the listing cannot read does.
+  - The start reads the peers and the view once, at its own clock, before the
+    checks; the pick reads them once per candidate set at the run's clock.
+- **What step 13 settled** (`abcd build` reserves, releases and takes over,
+  2026-10-15):
+  - Every start reserves in a checkout with a remote named `origin`: the zero
+    `Options` is production. The unexported `reserve` seam still carries a
+    footprint the caller read (the drain's, from `found_at`); left nil, the
+    start reads the run's record's. `Options.TakeOver` is the flag, and an
+    unexported `noReserve` lets a test fixture stand a run up on an origin
+    and take its reservation by hand.
+  - An intent's footprint is its spec's `- packages:` entries, each
+    `path.Clean`ed (so `commands/` reserves `commands`), duplicates dropped,
+    in the order written. An entry that is not a repository-relative path is
+    the reservation's own exit-2 refusal, naming it.
+  - `abcd build <iss-N>` reserves with the path the issue's `found_at` names,
+    as the drain does; an issue with none is refused at the reservation,
+    exit 2, starting nothing: "`<iss-N>` has no found_at path to reserve it
+    with; give it a found_at naming the file the fix changes, then run abcd
+    build again; nothing was started".
+  - A resumed start reserves with its record's footprint and records it (the
+    stage `reservation`, `reserved_at` kept when set): it renews this copy's
+    own live reservation keeping its term (`renewalTerm`, read from the view),
+    so a resume never cuts the fence's day, and reserves anew one a release
+    released or a run started before reservations never took. A run handed
+    back reserves nothing. A refusal leaves the run unchanged and says so; a
+    fresh reservation whose recording fails is released.
+  - `--release` is `loop.ReleaseReservation`: the tombstone, through the
+    reserve verb's release, and nothing in any run's state. It takes no other
+    flag (a usage error, exit 2), its refusals keep the reserve verb's exit
+    codes, and its payload is the reserve verb's.
+  - A run keyed by an issue releases its reservation as its lane is handed
+    back, in the step or the receipt that hands it back
+    (`releaseOnHandBack`, the run record's stage `reservation_released`),
+    whoever started the run (iss-2610142247197128). The drain's route reuses
+    the record's clause rather than pushing again. An intent's run keeps its
+    reservation through a hand-back: its held lanes may still land, and the
+    fence would refuse them over a released one.
+  - The state's schema is unchanged: `reserved_at` (version 11) carries the
+    reservation, and `reservation_released` is a record entry.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an

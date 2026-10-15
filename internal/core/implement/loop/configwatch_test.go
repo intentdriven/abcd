@@ -54,7 +54,7 @@ func absent(t *testing.T, path, what string) {
 func startedRun(t *testing.T) (*gittest.Repo, string) {
 	t.Helper()
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +71,7 @@ func startedRun(t *testing.T) (*gittest.Repo, string) {
 // steps after it move and the file is not rewritten.
 func TestARunWithoutAFingerprintRecordsOneAndProceeds(t *testing.T) {
 	repo := briefRepo(t, agentsMarked)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -212,7 +212,7 @@ func TestACredentialHelperValueIsNeverShown(t *testing.T) {
 	const one, two = "s3cr3t-token-one", "s3cr3t-token-two"
 	repo := briefRepo(t, agentsMarked)
 	repo.Git("config", "credential.helper", "!echo password="+one)
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -328,7 +328,7 @@ func TestACoreWorktreePlantedMidRunStopsTheNextStep(t *testing.T) {
 			if tc.before != nil {
 				tc.before(repo)
 			}
-			start, err := Start(repo.Root(), "itd-10", Options{})
+			start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -363,7 +363,7 @@ func laneRun(t *testing.T, before func(repo *gittest.Repo)) (*gittest.Repo, stri
 	if before != nil {
 		before(repo)
 	}
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
 	if err != nil {
 		t.Fatal(err)
 	}

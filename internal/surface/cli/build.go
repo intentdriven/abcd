@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -94,8 +95,9 @@ func errorsIsNoCheckout(err error) bool { return errors.Is(err, gitutil.ErrNoChe
 // newBuildCommand builds `abcd build <itd-N>`.
 func newBuildCommand(asJSON *bool) *cobra.Command {
 	var session, pace, subAgents, fixRounds string
+	var release, takeOver bool
 	cmd := &cobra.Command{
-		Use: "build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>]",
+		Use: "build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release]",
 		Long: "Start the implement loop for one intent, or resume the run already in progress for it.\n" +
 			"An issue id starts the loop's issue-keyed lane instead (below).\n" +
 			"A new run's checks run first, and every one must pass:\n" +
@@ -109,6 +111,20 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"its expiry and the view's age; this copy's own is never a holder. A refusal names the\n" +
 			"check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent\n" +
 			"instead of taking one named.\n\n" +
+			"In a checkout with a remote named origin, the run reserves its key there, as\n" +
+			"`abcd reserve` does, once the checks pass and before the run is created: a new run, and a\n" +
+			"resumed one, with the files the spec's `## Footprint` packages line names (an issue's\n" +
+			"found_at path for an issue id), so every other participant sees it is taken. A spec with\n" +
+			"no footprint, or an issue with no found_at path, is refused at the reservation and nothing\n" +
+			"is started. Another person's reservation, or your own from another computer, refuses\n" +
+			"the start as contention; --take-over moves your own live reservation from another copy\n" +
+			"to this one, never another person's. `abcd implement step` renews the reservation, fences\n" +
+			"the landing with it and releases it once the run lands; a run whose issue lane is handed\n" +
+			"back releases it then. --release pushes the tombstone over this copy's reservation on the\n" +
+			"key and changes nothing in the run's state: a later step meets it at the land fence, and\n" +
+			"`abcd build` again reserves it anew. --release takes no other flag. The reservation needs\n" +
+			"your GitHub username, read from a no-reply user.email or from\n" +
+			"reservation.github_username in " + abcdhome.Display("config.json") + ".\n\n" +
 			"When the checks pass, the run is created in this checkout's local tier,\n" +
 			"`.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,\n" +
 			"the other unlanded steps pending, and the run record's first line. The tier itself is\n" +
@@ -167,9 +183,23 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			const prefix = "abcd build"
+			if release {
+				var with []string
+				for _, f := range []string{"session", "pace", "sub-agents", "fix-rounds", "take-over"} {
+					if cmd.Flags().Changed(f) {
+						with = append(with, "--"+f)
+					}
+				}
+				if len(with) > 0 {
+					return &exitError{Code: 2, Msg: prefix + ": --release takes no " + strings.Join(with, ", ") + "; nothing was pushed"}
+				}
+			}
 			root, err := loopRoot()
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
+			}
+			if release {
+				return buildRelease(cmd.OutOrStdout(), *asJSON, root, args[0])
 			}
 			roots, notes := layered.RootsFor(root)
 			for _, n := range notes {
@@ -179,7 +209,7 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)
 			}
-			o := loop.Options{Session: session, Roots: &roots, Runners: cfg}
+			o := loop.Options{Session: session, Roots: &roots, Runners: cfg, TakeOver: takeOver}
 			if cmd.Flags().Changed("pace") {
 				o.Pace = &pace
 			}
@@ -211,6 +241,9 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 				case !res.Resumed:
 					fmt.Fprintln(w, "  claim:   none (no --session): a build in another checkout cannot see this run until its lane shows")
 				}
+				if res.Reservation != "" {
+					fmt.Fprintf(w, "  reservation: %s\n", termsafe.Sanitize(res.Reservation))
+				}
 				fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(fsutil.RedactHome(res.Next)))
 			})
 		},
@@ -219,8 +252,39 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&pace, "pace", "", "this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer")
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer")
 	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer")
+	cmd.Flags().BoolVar(&takeOver, "take-over", false, "move your own live reservation on the key from another copy to this one; never another person's")
+	cmd.Flags().BoolVar(&release, "release", false, "push the tombstone over this copy's reservation on the key, changing nothing in the run's state")
 	cmd.AddCommand(newBuildNextCommand(asJSON))
 	return cmd
+}
+
+// buildRelease is `abcd build <id> --release`: the tombstone over this copy's
+// reservation on the key, and nothing in any run's state. A refusal of the
+// key is the loop's; the reservation's own refusals keep their exit codes,
+// 3 for the back-off and 2 for every other.
+func buildRelease(w io.Writer, asJSON bool, root, key string) error {
+	const prefix = "abcd build"
+	res, err := loop.ReleaseReservation(root, key, loop.Options{})
+	if err != nil {
+		if _, ok := loop.AsRefusal(err); ok {
+			return loopFail(w, asJSON, prefix, err)
+		}
+		msg := prefix + ": " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+		if errors.Is(err, claim.ErrBackOff) {
+			return &exitError{Code: 3, Msg: msg}
+		}
+		return &exitError{Code: 2, Msg: msg}
+	}
+	out := reserveView(res)
+	return render(w, asJSON, out, func(w io.Writer) {
+		if out.Act == claim.ActAlreadyReleased {
+			fmt.Fprintf(w, "build %s: the reservation on %s was already released; nothing was pushed, and the run's state is unchanged\n", out.Record, out.Record)
+			return
+		}
+		fmt.Fprintf(w, "build %s: released the reservation on %s with a tombstone (%s); the run's state is unchanged\n",
+			out.Record, out.Record, shortCommit(out.Commit))
+		fmt.Fprintf(w, "next: a step of the run meets the release at the land fence; `abcd build %s` reserves it again\n", out.Record)
+	})
 }
 
 // newBuildNextCommand builds `abcd build next` (itd-2609211116005482).

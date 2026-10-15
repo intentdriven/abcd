@@ -1,6 +1,6 @@
 ---
 name: build
-description: "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it."
+description: "Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it."
 argument-hint: "<itd-N> | <iss-N> | next"
 block: people
 ---
@@ -23,7 +23,7 @@ run; the payloads name the stage under `stage` and the spec's step under
 ## Start the run
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] --json
 ```
 
 Pass `--session` with the host session's id when it has joined the shared run
@@ -35,6 +35,55 @@ is not counted as a peer's. A session that has not joined is refused at the
 `claim` stage with nothing written. Without `--session` the run holds no claim,
 and the result says so (`claim` is null): another checkout cannot see the run
 until its lane shows.
+
+**The reservation.** The claim keeps one person's sessions in one copy apart;
+the reservation keeps people apart. In a checkout with a remote named
+`origin`, the run reserves its key there, as `/abcd:reserve` does, once the
+checks below pass and before the run is created: the branch
+`abcd-reserved/<id>` on `origin`, naming you (your GitHub username, from a
+no-reply `user.email` or `reservation.github_username` in
+`~/.abcd.noindex/config.json`), this copy, and the files the spec's
+`## Footprint` `- packages:` line names (an issue's `found_at` path for
+`build <iss-N>`). Every other participant, a second person, a second
+computer, a cloud session, sees it before starting the same item. The
+payload's `reservation` says what was done (`reserved <id> on origin for this
+copy until <expiry>, footprint: …`); a run in a checkout without `origin`
+reserves nothing and carries none.
+
+- A spec with no footprint is refused at the `reservation` stage, exit 2,
+  starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
+  <itd-N> with; fill its packages line, then run abcd build again; nothing was
+  started`. An issue whose `found_at` names no repository-relative path is
+  refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
+- Another person's live reservation, or yours from another computer, refuses
+  the start as contention, exit 3: back off and take other work. For your own
+  other copy the refusal says `pass --take-over to continue here`; pass
+  `--take-over` only when the person means to move the work to this copy. It
+  never moves another person's.
+- Any other refusal of the reservation (no username, no local tier, `origin`
+  not answering) is exit 2, naming it, and starts nothing.
+
+`implement step` then renews the reservation, fences the landing on it and
+tombstones it once the run's last lane lands (`/abcd:implement`); a run whose
+issue lane is handed back releases it then. Starting again while the run is in
+progress reserves again: it renews this copy's reservation (keeping its term),
+or reserves anew one that `--release` released or that a run started before
+reservations never took, and records it in the run's state.
+
+### Release the reservation
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N|iss-N> --release --json
+```
+
+`--release` pushes the tombstone over this copy's reservation on the key and
+changes nothing in the run's state: it starts, resumes and steps nothing. A
+later step of the run meets the release at the land fence, which arms
+nothing and says to reserve it again with `abcd build <id>`. A release already
+made exits 0 as `already_released`; another person's reservation, or your
+other copy's, is refused (exit 2), pushing nothing. `--release` takes no other
+flag. The payload is `/abcd:reserve`'s: `act`, `record`, `holder`, `copy`,
+`footprint`, `effective_expiry`, `commit`.
 
 An issue id builds the loop's issue-keyed lane instead: `build <iss-N>` (an
 issue id by shape) checks that the repository's own drain rule takes the issue,
@@ -93,7 +142,7 @@ goes back to the planning interview, a hold to the person who placed it.
 When the checks pass, the payload names the `run_id`, the `state` file
 (`.abcd/.work.local/run/<run-id>/state.json`), the first `lane` (the spec's first
 unlanded step), the `pending` spec steps, `claim` (the claim `--session` took,
-or null),
+or null), `reservation` (above; absent when nothing was reserved),
 and `next`, the move to make. The
 local tier is never created: in a repository abcd does not manage the verb
 refuses. Starting again while the run is in progress creates nothing, runs no
@@ -124,7 +173,7 @@ reason says the spec carries no footprint. The readiest is taken, the oldest
 among equals; the reason then says the tie was broken by age.
 
 The pick starts the run `build <itd-N>` would start for that intent, with the
-same brief, worktree and receipt, and records the pick in the run's state. Its
+same brief, worktree, receipt and reservation, and records the pick in the run's state. Its
 reason is one grounds entry, `pursued: picked by run <run-id> on <date>; …`,
 naming every candidate with its score, the rule, the runner-up and why it lost,
 and the falsifier (fix rounds past the pace rule's count, or an unachievable

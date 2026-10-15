@@ -156,8 +156,8 @@ what it did in `next`:
   GitHub username, `origin` not answering) refuses the move, nothing opened.
   The lane's run then renews the reservation, fences its landing on it and
   tombstones it once it lands (`commands/implement.md`); when the lane is
-  handed back instead, the drain pushes the tombstone as it routes the
-  hand-back, and the route's `wrote` says so. Without `origin` there
+  handed back instead, the step that hands it back pushes the tombstone, and
+  the route's `wrote` says so as the drain routes the hand-back. Without `origin` there
   is nowhere to reserve, and nothing is.
 - **It opens a lane.** The next eligible issue in the order, once judged `no`
   over its remedy as it stands, gets the implement
