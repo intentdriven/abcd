@@ -1,7 +1,7 @@
 ---
 id: adr-2610031352212697
 slug: claims-are-branches-on-the-shared-remote
-status: proposed
+status: accepted
 date: 2026-10-03
 supersedes: null
 superseded_by: null

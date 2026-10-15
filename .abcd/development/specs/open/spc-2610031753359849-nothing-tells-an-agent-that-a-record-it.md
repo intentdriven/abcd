@@ -1001,6 +1001,10 @@ These are the facilitator's design calls; none changes a criterion.
     fence would refuse them over a released one.
   - The state's schema is unchanged: `reserved_at` (version 11) carries the
     reservation, and `reservation_released` is a record entry.
+- **What step 15 settled** (the ship records, 2026-10-15): no source was
+  adopted, so `ACKNOWLEDGEMENTS.md` is unchanged (decision 23: the primitive
+  is git itself). iss-2610142247197128 was resolved with impact `internal`,
+  since the intent's own changelog line carries the behaviour.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an
