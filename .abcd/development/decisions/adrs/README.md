@@ -210,6 +210,8 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610110925465593](2610110925465593-decisions-are-one-flat-file-each-and-the.md) | Decisions are one flat file each and the single log is retired (supersedes adr-2609151138420062) | accepted | 2026-10-11 |
 | [adr-2610120558328615](2610120558328615-a-private-advisory-s-record-never-enters.md) | A private advisory's record never enters the public ledger, its store is never committed, and nothing public carries an advisory id or hint | accepted | 2026-10-12 |
 | [adr-2610140859394097](2610140859394097-abcd-s-home-ignores-itself-once-and.md) | abcd's home ignores itself once, and credentials never sit in a working tree | proposed | 2026-10-14 |
+| [adr-2610141949110653](2610141949110653-the-brief-session-s-browser-editor-ships.md) | The brief session's browser editor ships as a vendored bundle the binary embeds | accepted | 2026-10-14 |
+| [adr-2610142147242544](2610142147242544-abcd-s-site-is-built-onto-its-own-github.md) | abcd's record is built onto its own GitHub Pages, and abcdev.app becomes abcd's documentation site | proposed | 2026-10-14 |
 | [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md) | A fresh install's facilitator is a person until the repository says auto | accepted | 2026-10-15 |
 | [adr-2610150729333337](2610150729333337-a-status-branch-moves-without-a.md) | A status branch moves without a preflight receipt | proposed | 2026-10-15 |
 <!-- /index -->
