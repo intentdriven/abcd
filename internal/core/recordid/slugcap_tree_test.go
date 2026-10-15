@@ -18,15 +18,6 @@ import (
 func TestCommittedRecordSlugsWithinTheCap(t *testing.T) {
 	root := repoRootForTest(t)
 	for _, fam := range familyRoots {
-		// The decisions folder holds no record until abcd's own log is migrated
-		// (spc-2610110931381316, step 6), so the walk may find it absent or
-		// empty. Step 6 removes this exemption once the folder holds the
-		// migrated records, and from then on an empty walk is the failure below.
-		emptyAllowed := fam.prefix == "dcn"
-		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(fam.dir))); emptyAllowed && os.IsNotExist(err) {
-			t.Logf("%s: %s is absent (exempt until step 6)", fam.prefix, fam.dir)
-			continue
-		}
 		fileFamily := fam.prefix
 		if fileFamily == "adr" {
 			fileFamily = "" // the ADR store's filenames carry no family tag
@@ -61,7 +52,7 @@ func TestCommittedRecordSlugsWithinTheCap(t *testing.T) {
 		if err != nil {
 			t.Fatalf("walking %s: %v", fam.dir, err)
 		}
-		if count == 0 && !emptyAllowed {
+		if count == 0 {
 			t.Errorf("%s: no records found under %s; the walk is not reading the store", fam.prefix, fam.dir)
 		}
 		t.Logf("%s: %d records, longest path %d characters (%s)", fam.prefix, count, len(longest), longest)

@@ -180,7 +180,8 @@ Read from `$ABCD`, delegating heavy reading to subagents where available:
   three-rung promotion ladder in its README.
 - `.abcd/development/decisions/adrs/` — MADR, one `<stamp>-<slug>.md` per
   decision under a timestamp id (`adr-<yymmddHHMMSS><rrrr>`). Session
-  decisions live in `work/DECISIONS.md`; architecture-shaping ones graduate.
+  decisions live in `work/decisions/`, one record each (`abcd decide`);
+  architecture-shaping ones graduate.
 - `.abcd/development/intents/` — lifecycle by directory (`drafts/` →
   `planned/` → `shipped/` → `superseded/`).
 - `docs/README.md` — strict Diátaxis, four directories, present tense only,

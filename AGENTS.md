@@ -129,7 +129,7 @@ Run from the repo root.
 make preflight      # the pre-push gate: the load check first (load-check,
                     # a warning, never a failure), then fmt-check +
                     # lint-reviews +
-                    # lint-issues + lint-decisions + record-lint +
+                    # lint-issues + record-lint +
                     # issue-drift + docs-lint + check-attribution +
                     # site-render +
                     # smoke + evals-cold-reading,
@@ -190,7 +190,7 @@ of entries the queue has already dropped, and only those whose queue ref is
 gone; it is not a required check.
 Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
-(RS001–RS006) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
+(RS001–RS006), full-history secret scanning (`gitleaks`), a workflow audit
 (`zizmor`), dependency review, `govulncheck`, and the smoke harness
 (`make smoke`). A
 fail-closed classifier stands the race lane and the `zizmor`,
@@ -207,8 +207,10 @@ Development material lives under `.abcd/`; `docs/` is user-facing only.
 - `.abcd/development/` — **durable record** (committed): brief, intents, ADRs,
   plans, research. In every repository checkout; not in the released binaries.
 - `.abcd/work/` — **shared working** (committed): `CONTEXT.md` (current
-  orientation) and `DECISIONS.md` (append-only decision log; architecture-shaping
-  decisions graduate to ADRs under `.abcd/development/decisions/adrs/`), plus the
+  orientation) and `decisions/` (one record per decision, `dcn-<id>-<slug>.md`,
+  recorded with `abcd decide "<text>"` and listed by a bare `abcd decide`;
+  architecture-shaping decisions graduate to ADRs under
+  `.abcd/development/decisions/adrs/`), plus the
   issue ledger `issues/` (working-tier data per adr-32), the reviews charter
   `reviews/`, the branch-ruleset mirror `rulesets/`, and `intake.md`, the
   external-contribution runbook.
@@ -294,8 +296,8 @@ with `*CONCURRENCY` to force it).
 
 ## Definition of done
 
-- `make preflight` is clean — the nine gates (`fmt-check`, `lint-reviews`,
-  `lint-issues`, `lint-decisions`, `record-lint`, `issue-drift`, `docs-lint`,
+- `make preflight` is clean — the eight gates (`fmt-check`, `lint-reviews`,
+  `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
   `check-attribution`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test ./...`, and

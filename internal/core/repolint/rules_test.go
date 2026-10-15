@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/repolint"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -186,7 +187,7 @@ func TestDecisionDurabilityWarnsOnAFrozenLogAlone(t *testing.T) {
 	res := newFixtureRepo(t).
 		file(".gitignore", ".abcd/.work.local/\n").
 		file(".abcd/development/README.md", "x\n").
-		file(".abcd/work/DECISIONS.md", "# decisions\n- 2026-07-13: a thing.\n").
+		file(decisions.FrozenLog, "# decisions\n- 2026-07-13: a thing.\n").
 		file(".abcd/.work.local/NEXT.md", "x\n").
 		file("AGENTS.md", "x\n").
 		commit().run()
@@ -207,7 +208,7 @@ func TestRule_ConventionsRouterMissing(t *testing.T) {
 	b := newFixtureRepo(t).
 		file(".gitignore", ".abcd/.work.local/\n").
 		file(".abcd/development/README.md", "x\n").
-		file(".abcd/work/DECISIONS.md", "x\n").
+		file(decisions.FrozenLog, "x\n").
 		file(".abcd/.work.local/NEXT.md", "x\n").
 		commit() // no AGENTS.md
 	res := b.run()
@@ -228,7 +229,7 @@ func TestRule_WorkLocalNotGitignored(t *testing.T) {
 	b := newFixtureRepo(t).
 		file(".gitignore", "# .work.local deliberately NOT ignored here\n").
 		file(".abcd/development/README.md", "x\n").
-		file(".abcd/work/DECISIONS.md", "x\n").
+		file(decisions.FrozenLog, "x\n").
 		file(".abcd/.work.local/NEXT.md", "x\n").
 		file("AGENTS.md", "x\n").
 		commit()
@@ -252,7 +253,7 @@ func TestRule_TierPresentButNotADirectory(t *testing.T) {
 	b := newFixtureRepo(t).
 		file(".gitignore", ".abcd/.work.local/\n").
 		file(".abcd/development", "I am a file, not the durable-record tier\n"). // a file at a tier path
-		file(".abcd/work/DECISIONS.md", "x\n").
+		file(decisions.FrozenLog, "x\n").
 		file(".abcd/.work.local/NEXT.md", "x\n").
 		file("AGENTS.md", "x\n").
 		commit()
@@ -395,7 +396,7 @@ func TestRule_ConventionsRouterIsADirectory(t *testing.T) {
 	b := newFixtureRepo(t).
 		file(".gitignore", ".abcd/.work.local/\n").
 		file(".abcd/development/README.md", "x\n").
-		file(".abcd/work/DECISIONS.md", "x\n").
+		file(decisions.FrozenLog, "x\n").
 		file(".abcd/.work.local/NEXT.md", "x\n").
 		file("AGENTS.md/keep.txt", "AGENTS.md is a directory here\n"). // dir, not a router file
 		commit()

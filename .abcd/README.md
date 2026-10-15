@@ -10,7 +10,7 @@ Three tiers, on two axes (durability × sharing):
 
 - **`development/`** — durable record (committed): brief, roadmap, intents,
   decisions/adrs, research. The specification for the build.
-- **`work/`** — shared working (committed): `CONTEXT.md`, `DECISIONS.md`, the
+- **`work/`** — shared working (committed): `CONTEXT.md`, `decisions/` (one record per decision, `abcd decide`), the
   issue ledger `issues/` (adr-32), the reviews charter `reviews/`, the
   branch-ruleset mirror `rulesets/`, and `intake.md`, the external-contribution
   runbook.

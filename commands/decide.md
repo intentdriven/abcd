@@ -59,8 +59,8 @@ naming `ahoy install`, which lays it.
 
 Every decision recorded, newest first, read from the folder each time: the id,
 then the decision. `--json` returns `[{id, date, slug, path, text}]`. A
-repository that kept a single `.abcd/work/DECISIONS.md` before the folder still
-has it as frozen history: the listing ends with one line naming it, and does not
+repository that kept a single `.abcd/work/DECISIONS.md`, now frozen, before the
+folder still has it as history: the listing ends with one line naming it, and does not
 list its entries. A file in the folder that cannot be read as a record is named
 on stderr; relay it. The listing writes nothing.
 

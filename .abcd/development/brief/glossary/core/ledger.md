@@ -46,8 +46,8 @@ prose, or beside a `iss-N` id. Name the ledger in full everywhere else.
 
 ## When NOT to use
 
-Do not use "ledger" for the append-only decision log `.abcd/work/DECISIONS.md`, which the record
-calls a decision log. Do not use it for the native transcript store or the memory substrate:
+Do not use "ledger" for the decision records in `.abcd/work/decisions/`, which the record
+calls the decision log. Do not use it for the native transcript store or the memory substrate:
 both are stores, neither is append-or-move over identified records.
 
 ## Examples

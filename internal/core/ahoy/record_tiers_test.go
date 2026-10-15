@@ -312,7 +312,7 @@ func TestInstallScaffoldsNoMergeAttribute(t *testing.T) {
 	for _, rel := range []string{
 		decisions.RelDir + "/dcn-2610150000001234-a-decision.md",
 		decisions.RelDir + "/README.md",
-		".abcd/work/DECISIONS.md",
+		decisions.FrozenLog,
 	} {
 		if got := repo.Git("check-attr", "merge", "--", rel); !strings.HasSuffix(got, ": merge: unspecified") {
 			t.Errorf("git check-attr merge %s = %q, want unspecified", rel, got)
