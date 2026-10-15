@@ -7,7 +7,7 @@ The pass was composed in the local tier and promoted here so that the second
 person can read the grounds of the ruling. It folds in one adversarial security review
 and one state-of-the-art pass, both held the same day. The product thinker
 chose option 1 on 2026-10-15; the ruling is recorded on
-[itd-2609151838312703](../../intents/drafts/itd-2609151838312703-sessions-on-one-machine-or-one-local.md).
+[itd-2609151838312703](../../intents/drafts/itd-2609151838312703-sessions-tell-each-other-through-notes.md).
 
 ## The problem
 
@@ -32,7 +32,7 @@ planned (itd-2610120738075547). Neither can receive those messages. <!-- record-
 - **abcd never reads a file another account can write.** This ruling was
   relayed on 2026-10-14 and is not yet in the decision log. It rules out the
   shared directory that the draft
-  [itd-2609151838312703](../../intents/drafts/itd-2609151838312703-sessions-on-one-machine-or-one-local.md)
+  [itd-2609151838312703](../../intents/drafts/itd-2609151838312703-sessions-tell-each-other-through-notes.md)
   first proposed.
 - **Claims are branches on the shared remote.** This is
   [itd-2609091034175565](../../intents/planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md)

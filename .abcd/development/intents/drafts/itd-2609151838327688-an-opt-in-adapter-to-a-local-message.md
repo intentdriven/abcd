@@ -36,7 +36,7 @@ An opt-in adapter to a local message broker brings push delivery and cross-machi
 
 ## Prior Art
 
-- [itd-2609151838312703](itd-2609151838312703-sessions-on-one-machine-or-one-local.md) — the basic this adapter extends; sequenced after it, and it shares the mailbox's record contract.
+- [itd-2609151838312703](itd-2609151838312703-sessions-tell-each-other-through-notes.md) — the basic this adapter extends; sequenced after it, and it shares the mailbox's record contract.
 - [2026-09-15-agent-messaging-on-a-local-network](../../research/notes/2026-09-15-agent-messaging-on-a-local-network.md) — ranks an embedded NATS server with JetStream as the adapter, with an MCP mailbox server as the runner-up.
 - [basics-built-in-adapters-bring-power](../../principles/basics-built-in-adapters-bring-power.md) — the stance; the adapter is opt-in and never a precondition.
 
