@@ -3,7 +3,7 @@ package cli
 // decide.go is the front door onto the two decision stores
 // (spc-2610110931381316, decision 17). `abcd decide "<text>"` records a decision
 // through internal/core/decisions, one file in `.abcd/work/decisions/`; bare
-// `abcd decide` lists those records oldest first; and `abcd decide --adr
+// `abcd decide` lists those records newest first; and `abcd decide --adr
 // "<title>"` mints an architecture decision record through internal/core/decide
 // (the 2026-09-01 ruling in `.abcd/work/DECISIONS.md`). Decisions outnumber
 // ADRs about eight to one, so the common act takes the short form.
@@ -44,7 +44,7 @@ func newDecideCommand(asJSON *bool) *cobra.Command {
 			"whose id is minted through the shared record-id seam and whose body is `<date> — <text>`.\n" +
 			"Nothing is appended anywhere, so two branches that each record a decision merge with nothing\n" +
 			"to reconcile. It needs the shared tier .abcd/work/, which `abcd ahoy install` lays.\n\n" +
-			"abcd decide with no operand lists every decision recorded, oldest first, read from the folder\n" +
+			"abcd decide with no operand lists every decision recorded, newest first, read from the folder\n" +
 			"each time: the id, then the decision. Where a frozen .abcd/work/DECISIONS.md also exists, the\n" +
 			"listing ends by naming it as earlier history it does not list. It writes nothing.\n\n" +
 			"abcd decide --adr \"<title>\" mints an architecture decision record: its id is\n" +
@@ -109,7 +109,7 @@ func recordDecision(cmd *cobra.Command, asJSON bool, text string) error {
 	})
 }
 
-// listDecisions is bare `abcd decide`: the folder, oldest first. A file the
+// listDecisions is bare `abcd decide`: the folder, newest first. A file the
 // reader skipped is named on stderr, so a malformed record is never dropped in
 // silence.
 func listDecisions(cmd *cobra.Command, asJSON bool) error {

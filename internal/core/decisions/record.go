@@ -202,7 +202,7 @@ func redactText(root, text string) (string, error) {
 // exists. Step 4 introduces the package's exported name for this path.
 const frozenLogRel = SharedTierRel + "/DECISIONS.md"
 
-// Listing is the folder read for the verb's bare form: every record oldest
+// Listing is the folder read for the verb's bare form: every record newest
 // first, the files the reader skipped, and whether a frozen log sits beside
 // the folder.
 type Listing struct {
@@ -225,6 +225,12 @@ func ReadListing(dir string) (Listing, error) {
 	if err != nil {
 		return Listing{}, err
 	}
+	// The record can hold years of decisions and the recent ones are the ones a
+	// reader comes for, so the listing runs newest first (the product thinker's
+	// ruling of 2026-10-15). List keeps id order for every other reader.
+	for i, j := 0, len(ds)-1; i < j; i, j = i+1, j-1 {
+		ds[i], ds[j] = ds[j], ds[i]
+	}
 	l := Listing{Decisions: ds, Skipped: skipped}
 	if fi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(frozenLogRel))); err == nil && fi.Mode().IsRegular() {
 		l.Frozen = frozenLogRel
@@ -232,7 +238,7 @@ func ReadListing(dir string) (Listing, error) {
 	return l, nil
 }
 
-// Entries is the listing's JSON form: every record, oldest first, as
+// Entries is the listing's JSON form: every record, newest first, as
 // {id, date, slug, path, text}. An empty folder is an empty array, never null.
 func (l Listing) Entries() []Decision {
 	if l.Decisions == nil {
@@ -242,7 +248,7 @@ func (l Listing) Entries() []Decision {
 }
 
 // Text is the listing's human form: one block per record, the id and then the
-// body, oldest first; a line naming the frozen log as earlier history where one
+// body, newest first; a line naming the frozen log as earlier history where one
 // exists. A folder with no records says so and names how to record one.
 func (l Listing) Text() string {
 	var b strings.Builder

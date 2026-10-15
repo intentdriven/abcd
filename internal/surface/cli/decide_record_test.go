@@ -63,7 +63,7 @@ func TestDecideRecordsADecisionFromTheCLI(t *testing.T) {
 }
 
 // TestBareDecideListsTheDecisions: with no operand the verb lists the folder
-// oldest first, in both forms, and writes nothing.
+// newest first, in both forms, and writes nothing.
 func TestBareDecideListsTheDecisions(t *testing.T) {
 	repo := decisionsRepo(t)
 
@@ -98,8 +98,8 @@ func TestBareDecideListsTheDecisions(t *testing.T) {
 	if len(listed) != 2 {
 		t.Fatalf("bare decide --json listed %d records, want 2:\n%s", len(listed), raw)
 	}
-	if listed[0].ID > listed[1].ID {
-		t.Errorf("the listing is not oldest first: %s before %s", listed[0].ID, listed[1].ID)
+	if listed[0].ID < listed[1].ID {
+		t.Errorf("the listing is not newest first: %s before %s", listed[0].ID, listed[1].ID)
 	}
 }
 

@@ -854,7 +854,7 @@ whose id is minted through the shared record-id seam and whose body is `<date> â
 Nothing is appended anywhere, so two branches that each record a decision merge with nothing
 to reconcile. It needs the shared tier .abcd/work/, which `abcd ahoy install` lays.
 
-abcd decide with no operand lists every decision recorded, oldest first, read from the folder
+abcd decide with no operand lists every decision recorded, newest first, read from the folder
 each time: the id, then the decision. Where a frozen .abcd/work/DECISIONS.md also exists, the
 listing ends by naming it as earlier history it does not list. It writes nothing.
 

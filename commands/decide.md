@@ -11,7 +11,7 @@ One verb, three forms:
 
 - `abcd decide "<text>"` **records a decision**: one new file in
   `.abcd/work/decisions/`, the repository's decision log.
-- `abcd decide`, with no operand, **lists every decision recorded**, oldest
+- `abcd decide`, with no operand, **lists every decision recorded**, newest
   first.
 - `abcd decide --adr "<title>"` **mints an architecture decision record**: the
   id, the date, the filename, and the four empty sections the ADR store
@@ -57,7 +57,7 @@ naming `ahoy install`, which lays it.
 "${CLAUDE_PLUGIN_ROOT}/abcd" decide
 ```
 
-Every decision recorded, oldest first, read from the folder each time: the id,
+Every decision recorded, newest first, read from the folder each time: the id,
 then the decision. `--json` returns `[{id, date, slug, path, text}]`. A
 repository that kept a single `.abcd/work/DECISIONS.md` before the folder still
 has it as frozen history: the listing ends with one line naming it, and does not

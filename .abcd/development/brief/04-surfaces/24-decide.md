@@ -8,7 +8,7 @@ decision 17):
   `.abcd/work/decisions/dcn-<id>-<slug>.md`, in the flat folder that holds the
   repository's decision log
   ([adr-2610110925465593](../../decisions/adrs/2610110925465593-decisions-are-one-flat-file-each-and-the.md)).
-- `abcd decide`, with no operand, **lists the decisions** recorded, oldest
+- `abcd decide`, with no operand, **lists the decisions** recorded, newest
   first. It is the verb's bare render, and it writes nothing.
 - `abcd decide` given its ADR flag and a quoted title **mints an architecture
   decision record**: it allocates the id, derives the slug and the date, and
@@ -74,7 +74,7 @@ a text with nothing slug-able in it.
 
 ## Listing the decisions
 
-Bare `abcd decide` reads the folder and prints every record oldest first, one
+Bare `abcd decide` reads the folder and prints every record newest first, one
 block per record: the id, then the body. The JSON form is `[{id, date, slug,
 path, text}]`, an empty array for an empty folder. A file in the folder the
 reader cannot take as a record is named on stderr with its reason. Where a

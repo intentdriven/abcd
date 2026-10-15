@@ -158,7 +158,7 @@ func TestTwoBranchesRecordingMergeCleanly(t *testing.T) {
 }
 
 // TestListingIsDateOrderedAndDerived is A2 for the listing: records written out
-// of id order list oldest first, in both forms, each with its id and full text,
+// of id order list newest first, in both forms, each with its id and full text,
 // and reading the listing changes no file.
 func TestListingIsDateOrderedAndDerived(t *testing.T) {
 	root := sharedTierRepo(t)
@@ -172,7 +172,7 @@ func TestListingIsDateOrderedAndDerived(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ReadListing: %v", err)
 	}
-	want := []string{"dcn-2609010000001111", "dcn-2610010930002222", "dcn-2610141200005555"}
+	want := []string{"dcn-2610141200005555", "dcn-2610010930002222", "dcn-2609010000001111"}
 
 	text := l.Text()
 	last := -1
@@ -197,6 +197,11 @@ func TestListingIsDateOrderedAndDerived(t *testing.T) {
 	}
 	if len(got) != len(want) {
 		t.Fatalf("JSON listing holds %d records, want %d: %s", len(got), len(want), raw)
+	}
+	for i, id := range want {
+		if got[i]["id"] != id {
+			t.Errorf("JSON listing[%d] = %s, want %s (newest first)", i, got[i]["id"], id)
+		}
 	}
 	for i, id := range want {
 		e := got[i]
