@@ -315,6 +315,7 @@ Sub-verbs: none.
 | `--date` | string |
 | `--out` | string |
 | `--preview` | bool |
+| `--project` | bool |
 | `--version` | string |
 
 ### `abcd site setup`

@@ -3071,6 +3071,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "project",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -3470,6 +3477,13 @@
         },
         {
           "name": "preview",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "project",
           "shorthand": "",
           "type": "bool",
           "required": false,

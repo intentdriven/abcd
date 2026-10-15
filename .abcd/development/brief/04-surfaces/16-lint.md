@@ -223,5 +223,6 @@ Sub-verbs: none.
 |---|---|
 | `--base-path` | string |
 | `--out` | string |
+| `--project` | bool |
 
 <!-- surface-appendix:end -->

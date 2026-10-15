@@ -49,7 +49,7 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 
 	var buildOut string
 	var version, commit, stampDate, buildBase string
-	var preview bool
+	var preview, buildProject bool
 	buildCmd := &cobra.Command{
 		Use:  "build",
 		Args: cobra.NoArgs,
@@ -66,6 +66,7 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 				// build's state file through the loop, as the bare board does.
 				Lanes:    loop.StatusLanes,
 				BasePath: buildBase,
+				Project:  buildProject,
 			})
 			if err != nil {
 				// A failure after the build completed ui.json still says what
@@ -88,12 +89,20 @@ func newSiteCommand(asJSON *bool) *cobra.Command {
 	buildCmd.Flags().StringVar(&stampDate, "date", "", "date for the build stamp (default: the newest release's date)")
 	buildCmd.Flags().BoolVar(&preview, "preview", false, "stamp the build as unreleased at this commit, for a preview deployment of an untagged tree")
 	buildCmd.Flags().StringVar(&buildBase, "base-path", "/", basePathUsage)
+	buildCmd.Flags().BoolVar(&buildProject, "project", false, projectUsage("build"))
 	buildCmd.MarkFlagsMutuallyExclusive("preview", "version")
 	siteCmd.AddCommand(buildCmd)
 
 	siteCmd.AddCommand(newSiteSetupCommand(asJSON))
 
 	return siteCmd
+}
+
+// projectUsage describes --project on the two verbs that take it: `site
+// build` builds a project site, `lint site` gates one.
+func projectUsage(verb string) string {
+	return verb + " a project site, every page built from what abcd writes to the repository and the interface words, styles and scripts " +
+		"taken from the binary; .abcd/site.json then holds the site's settings only"
 }
 
 // basePathUsage describes --base-path on the two verbs that take it.
@@ -124,6 +133,7 @@ func siteRootAndOut(cmd *cobra.Command, out string) (string, string, error) {
 // index.html. It exits 1 when any gate fails, so a release job can stop on it.
 func newLintSiteCommand(asJSON *bool) *cobra.Command {
 	var checkOut, checkBase string
+	var checkProject bool
 	checkCmd := &cobra.Command{
 		Use:  "site",
 		Args: cobra.NoArgs,
@@ -132,7 +142,7 @@ func newLintSiteCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			res, err := site.Check(site.CheckRequest{RepoRoot: root, OutDir: out, Lanes: loop.StatusLanes, BasePath: checkBase})
+			res, err := site.Check(site.CheckRequest{RepoRoot: root, OutDir: out, Lanes: loop.StatusLanes, BasePath: checkBase, Project: checkProject})
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd lint site: " + scrubPaths(err)}
 			}
@@ -149,6 +159,7 @@ func newLintSiteCommand(asJSON *bool) *cobra.Command {
 	}
 	checkCmd.Flags().StringVar(&checkOut, "out", site.DefaultOutDir, "built output directory to check (rendered first if absent)")
 	checkCmd.Flags().StringVar(&checkBase, "base-path", "/", basePathUsage)
+	checkCmd.Flags().BoolVar(&checkProject, "project", false, projectUsage("gate"))
 
 	return checkCmd
 }
@@ -201,9 +212,15 @@ func renderSiteStatus(w io.Writer, st site.Status) {
 		fmt.Fprintf(w, "  this repo declares no site composition; nothing to build\n")
 		return
 	}
-	fmt.Fprintf(w, "  chapters:     %d\n", st.Chapters)
+	if st.Project {
+		fmt.Fprintf(w, "  project site: built from what abcd writes; interface words from the binary\n")
+	} else {
+		fmt.Fprintf(w, "  chapters:     %d\n", st.Chapters)
+	}
 	fmt.Fprintf(w, "  issue ledger: %s\n", publishedWord(st.IssueLedge))
-	fmt.Fprintf(w, "  ui strings:   %s\n", mark(st.UIStrings, termsafe.Sanitize(st.UIPath)))
+	if !st.Project {
+		fmt.Fprintf(w, "  ui strings:   %s\n", mark(st.UIStrings, termsafe.Sanitize(st.UIPath)))
+	}
 	if st.Baseline {
 		fmt.Fprintf(w, "  baseline:     %s (%d unresolved references admitted)\n",
 			termsafe.Sanitize(st.BaselinePath), st.BaselineN)
@@ -223,6 +240,10 @@ func renderSiteStatus(w io.Writer, st site.Status) {
 		fmt.Fprintf(w, "  output:       %s (%d entries)\n", termsafe.Sanitize(st.OutDir), st.OutFiles)
 	default:
 		fmt.Fprintf(w, "  output:       %s (not built)\n", termsafe.Sanitize(st.OutDir))
+	}
+	if st.Project {
+		fmt.Fprintf(w, "run `abcd site build --project` to render\n")
+		return
 	}
 	fmt.Fprintf(w, "run `abcd site build` to render\n")
 }
