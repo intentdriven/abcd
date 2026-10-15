@@ -1,0 +1,15 @@
+# abcd session blueprint v0.14.1 sha256:9a1777e0d807eb377fa3c609c6c1c1fce568ced0f83d16fd702c8eba64000bc2
+# The team's own relay for abcd's live brief sessions. It downloads the
+# released abcd binary for linux/amd64, checks it against the checksum that
+# release published (pinned below when this file was written), and runs the
+# relay behind the host's proxy. abcd refuses to overwrite this file once it is
+# edited; delete it and run `abcd session blueprint` to write it again.
+FROM --platform=linux/amd64 alpine:3.22@sha256:5291449c3df73caf6ed85e649dec1b9e818b39a5d8c871e97afc13e9cd5e8fa8
+RUN wget -q -O /usr/local/bin/abcd "https://github.com/intentdriven/abcd/releases/download/v0.14.1/abcd-linux-amd64" \
+ && echo "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  /usr/local/bin/abcd" | sha256sum -c - \
+ && chmod 0755 /usr/local/bin/abcd \
+ && adduser -D -H relay
+USER relay
+ENV PORT=10000
+EXPOSE 10000
+CMD ["sh", "-c", "exec abcd session serve --listen \"0.0.0.0:${PORT}\" --behind-proxy"]

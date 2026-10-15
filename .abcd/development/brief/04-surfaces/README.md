@@ -44,6 +44,7 @@ are wiring rather than user-facing surface are listed separately under
 | 34 | `/abcd:build` | shipped | Start the loop that takes one READY intent to delivered, refusing while a question is open or a peer holds it | [`34-build.md`](34-build.md) |
 | 35 | `/abcd:drain` | shipped | Work the open ledger unattended: preview with `--dry-run` which open issues a machine may fix alone and in what order, then run it one lane at a time, routing every hand-back by its kind | [`35-drain.md`](35-drain.md) |
 | 36 | `/abcd:dashboard` | shipped | Open the project from a phone or another computer on your own Tailscale network, through a server that answers only the devices Tailscale names | [`36-dashboard.md`](36-dashboard.md) |
+| 37 | `/abcd:session` | shipped | Run the relay a team's live brief session goes through, on the host's machine over Tailscale Serve or on the team's own relay, write that relay's blueprint, and write the session's static page | [`37-session.md`](37-session.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -138,7 +139,7 @@ the command's sentence (the section below).
 
 | Block | Group | Verbs |
 |---|---|---|
-| people | set-up | `ahoy`, `dashboard`, `update`, and the framework's `help` and `completion` |
+| people | set-up | `ahoy`, `dashboard`, `session`, `update`, and the framework's `help` and `completion` |
 | people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `library` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
@@ -219,8 +220,9 @@ read-only render of their own state, and close on the next move where there is
 one to name.
 
 It is a convention rather than a universal, and the exceptions are where the
-tree does not yet meet its own discipline. Seven parents print usage with no state
-at all: `disembark`, `docs`, `embark`, `guard`, `history`, `ideate`, and `scribe`. Bare
+tree does not yet meet its own discipline. Eight parents print usage with no state
+at all: `disembark`, `docs`, `embark`, `guard`, `history`, `ideate`, `scribe`, and
+`session`, whose running relay keeps its sessions in that process's memory alone. Bare
 `abcd launch` refuses with a hint to pass `--dry-run`. Bare `abcd decide` refuses
 because its one operand is the quoted title it mints a record from, and bare
 `abcd build` refuses as a usage error because its one operand is the intent it
@@ -339,7 +341,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `abcd`, `ahoy`, `banlist`, `build`, `capture`, `dashboard`, `decide`, `disembark`, `docs`, `drain`,
 `embark`, `guard`, `history`, `ideate`, `identity`, `implement`, `inbox`,
 `intent`, `lab`, `launch`, `library`, `lint`, `mode`, `peers`,
-`reading`, `reflect`, `report`, `scribe`, `site`, `update`.
+`reading`, `reflect`, `report`, `scribe`, `session`, `site`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

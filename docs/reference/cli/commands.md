@@ -3713,6 +3713,135 @@ beside the run, write-once; an ingest that lands no record leaves the run open.
 abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md
 ```
 
+### `abcd session`
+
+Run the relay a team's live brief session goes through, or write its blueprint or its page: Writes nothing bare; refuses an unknown sub-verb.
+
+**Usage:** `abcd session`
+
+Run the relay a team's live brief session goes through, write the blueprint
+that deploys it to the team's own Render account, or write the session's static
+page for the team to serve. The relay holds each session's
+edits in memory only, as opaque bytes, and drops them when the host closes the
+session or nobody has been connected for half an hour; it writes nothing to disk
+and logs nothing. abcd runs no relay of its own: the team runs it, on the host's
+machine reached over Tailscale Serve, or on the team's own relay.
+
+Bare `abcd session` prints this help and writes nothing.
+
+#### `abcd session blueprint`
+
+Write the team relay's Render blueprint and Dockerfile, pinned to a release's checksum: Writes .abcd/relay/; refuses an edited file or no GitHub origin.
+
+**Usage:** `abcd session blueprint [flags]`
+
+Write the team's own relay deployment into this checkout: .abcd/relay/render.yaml,
+a Render Blueprint declaring one free web service, and .abcd/relay/Dockerfile,
+which downloads the released abcd binary for linux/amd64 and checks it against
+the SHA-256 that release's checksums.txt publishes. The checksum is read from the
+release page when the files are written (the one network read this verb makes,
+named on stderr) and pinned in the Dockerfile. The relay serves sessions for this
+checkout's origin repository on github.com, named in render.yaml as
+ABCD_SESSION_REPOS, a plain value; it refuses a checkout without one.
+
+render.yaml also names, in ABCD_SESSION_ORIGINS, the page origins the relay
+admits: each --origin, an https origin, or https://abcdesign.app by default.
+
+--relay-origin names the deployed relay's https origin, once Render has given it
+one; the verb then also writes .abcd/relay/relays.json, naming it as the relay
+this repository trusts, which the session page reads from the repository.
+
+--release names the release to pin; it defaults to this abcd's own version when
+that is a release. A file left exactly as abcd wrote it is replaced; one that was
+edited, or that abcd did not write, is never overwritten, and nothing is written.
+
+Exit 2 on a refusal, with nothing written.
+
+**Flags:**
+
+```
+      --origin stringArray    a session page origin the relay admits, as https://host[:port] (repeatable; default https://abcdesign.app)
+      --relay-origin string   the deployed relay's https origin, as https://host[:port]; given, .abcd/relay/relays.json names it as the relay this repository trusts
+      --release string        the abcd release tag to pin, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)
+```
+
+#### `abcd session page`
+
+Write the brief session's static page and its editor bundle into a directory: Writes only the page's six files; refuses a directory holding anything else.
+
+**Usage:** `abcd session page [flags]`
+
+Write the brief session's page into --out: index.html and an identical 404.html,
+session.js, session.css, and the vendored editor bundle with its licences under
+vendor/. The files are plain and static, embedded in this binary; serve them
+from any static host, such as GitHub Pages, whose 404.html fallback is how
+/<owner>/<repo>/brief/ reaches the page. The page connects only to the relay the
+person names and to api.github.com with their own token, and it sends the
+person to github.com for sign-in and to open the pre-filled issues a session
+sends. It reads nothing from this checkout.
+
+--base-path names the path the site is served under, such as a project's
+GitHub Pages address owner.github.io/<repo>/: the page then loads its files from
+under it and opens at <base-path>/<owner>/<repo>/brief/. It is plain path
+segments, and the root by default.
+
+It writes those six files and nothing else, and removes nothing. --out may be
+absent, empty, or a directory an earlier run wrote, whose files are replaced; a
+directory holding anything else, a symlink or a file is refused.
+
+Exit 2 on a refusal, with nothing written.
+
+**Flags:**
+
+```
+      --base-path string   the path the site is served under, as plain path segments (default "/")
+      --out string         the directory to write the page into: absent, empty, or one an earlier run wrote
+```
+
+#### `abcd session serve`
+
+Run the brief session relay in the foreground, on loopback by default: Writes nothing; refuses a bad --listen, or no repository to serve beyond loopback.
+
+**Usage:** `abcd session serve [flags]`
+
+Run the brief session relay in the foreground until interrupted. It listens on
+this computer alone (127.0.0.1:8787) unless --listen names another address,
+which is the second, explicit choice: the team's own relay deployment listens on
+0.0.0.0 behind its host's proxy, with --behind-proxy. On a person's own machine,
+teammates reach it through Tailscale Serve, on the tailnet only; the start line
+prints the command. Never Funnel: a guest outside the tailnet joins through the
+team's relay instead.
+
+It serves sessions only for the repositories it is given: each --repo owner/name,
+every repository of each --owner, and each entry of ABCD_SESSION_REPOS, a
+comma list of either. Nobody signs in against, or hosts, any other. Listening
+beyond this computer it refuses to start without one; on loopback it serves this
+checkout's origin repository, or any repository outside a GitHub checkout.
+
+It serves the session WebSocket at /session, the sign-in exchange at /auth/token,
+the GitHub App's public client id at /config and a health check at /healthz. It
+admits a browser only from https://abcdesign.app or a loopback page, or, when
+--origin is given, from exactly the origins it names, and otherwise, when
+ABCD_SESSION_ORIGINS is set, from exactly the origins that comma list names.
+Sign-in goes through the team's GitHub App only: its secret is read from
+ABCD_SESSION_GITHUB_CLIENT_SECRET and its client id from --client-id or
+ABCD_SESSION_GITHUB_CLIENT_ID; without them, sign-in is not offered and a team member
+pastes a personal access token. ABCD_SESSION_GITHUB_APP_TYPE set to
+anything but github-app is refused: the relay takes no OAuth app.
+
+Exit 2 on a refusal, with nothing started.
+
+**Flags:**
+
+```
+      --behind-proxy         trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy
+      --client-id string     the team's GitHub sign-in app's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID)
+      --listen string        the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer (default "127.0.0.1:8787")
+      --origin stringArray   a page origin to admit, as scheme://host[:port] (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app and loopback pages
+      --owner stringArray    a GitHub user or organisation whose every repository to serve sessions for (repeatable)
+      --repo stringArray     a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
+```
+
 ### `abcd site`
 
 Report what the website declares and what was built: Writes nothing; refuses any argument.
