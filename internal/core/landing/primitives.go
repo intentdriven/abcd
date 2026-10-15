@@ -68,10 +68,10 @@ func Receipt(repoRoot, sha string) (string, error) {
 	return "", nil
 }
 
-// RunCapped runs cmd, returning its stdout within MaxOutput and, on a failure,
+// runCapped runs cmd, returning its stdout within MaxOutput and, on a failure,
 // an error naming what and carrying its bounded stderr, scrubbed of
 // credential URLs (gitutil.ScrubURLCredentials) before it is cut.
-func RunCapped(cmd *exec.Cmd, what string) (string, error) {
+func runCapped(cmd *exec.Cmd, what string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
@@ -109,7 +109,7 @@ func GH(dir string, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = append(gitutil.ScrubbedEnv(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1")
-	return RunCapped(cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
+	return runCapped(cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
 }
 
 // GitFunc runs one networked git command (a fetch or a push) from dir:
@@ -141,7 +141,7 @@ func FetchDefault(git GitFunc, dir, def string) (string, error) {
 // Landed fetches the default branch def and reports whether sha is on it as
 // origin holds it (an ancestor of, or equal to, its tip): the one ancestry
 // check by which a landing proves a head merged, the implement loop's and
-// `abcd land`'s. A squash or rebase merge leaves no such ancestry; MergedAt is
+// `abcd land`'s. A squash or rebase merge leaves no such ancestry; mergedAt is
 // the forge's half of the proof for it. A refused fetch is a *FetchError; any
 // other error is git unable to answer, which is not a no.
 func Landed(git GitFunc, dir, def, sha string) (tracking string, on bool, err error) {
@@ -178,7 +178,7 @@ func (e *MergedListingFullError) Error() string {
 	return fmt.Sprintf("the forge lists %d merged pull requests from branches named %s (its bound) and none at this head, so the proof that it merged may lie past the bound", e.Listed, e.Branch)
 }
 
-// MergedAt asks the forge, through ask (the forge client's arguments), for a
+// mergedAt asks the forge, through ask (the forge client's arguments), for a
 // pull request from this repository's own branch that MERGED into the default
 // branch def with sha as its head, and returns its number and URL, or 0 when
 // none did: the proof a squash or a rebase merge leaves where the ancestor
@@ -188,7 +188,7 @@ func (e *MergedListingFullError) Error() string {
 // another head proves nothing about sha. A listing the bound filled with none
 // at sha is a *MergedListingFullError, and any other error is the forge
 // unable to answer: neither is a no.
-func MergedAt(ask func(args ...string) (string, error), branch, def, sha string) (int, string, error) {
+func mergedAt(ask func(args ...string) (string, error), branch, def, sha string) (int, string, error) {
 	out, err := ask("pr", "list", "--head="+branch, "--state=merged",
 		"--json=number,url,headRefOid,baseRefName,isCrossRepository,mergedAt", fmt.Sprintf("--limit=%d", maxMergedListed))
 	if err != nil {

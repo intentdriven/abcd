@@ -257,7 +257,7 @@ func Land(cwd string, o Options) (Result, error) {
 	// A squash or rebase merge puts another commit on the default branch, so
 	// the ancestor check says no: the forge's merged pull request at this head
 	// is the proof, and a forge that cannot answer gets no push.
-	pr, prURL, err := MergedAt(func(args ...string) (string, error) { return o.Forge(dir, args...) }, branch, def, head)
+	pr, prURL, err := mergedAt(func(args ...string) (string, error) { return o.Forge(dir, args...) }, branch, def, head)
 	var full *MergedListingFullError
 	switch {
 	case errors.Is(err, ErrNoForgeClient):

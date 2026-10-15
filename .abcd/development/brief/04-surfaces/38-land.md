@@ -40,7 +40,7 @@ already on it has landed (the implement loop's own ancestor check,
 `landing.Landed`). A squash or rebase merge leaves no such ancestry, so when
 the ancestor check says no the forge is asked for a merged pull request from
 this repository's branch whose head was the head and whose base was the
-default branch (`landing.MergedAt`); one there has landed too. Either way the verb reports one step, `land`, with
+default branch (the landing package's merged-pull-request check); one there has landed too. Either way the verb reports one step, `land`, with
 status `landed` (naming the pull request the forge listed), gating, pushing
 and queueing nothing, so a re-run after the merge never recreates the branch
 the merge deleted, whichever method the queue merged by. A pull request merged

@@ -26,13 +26,13 @@ func TestAPullRequestMergedIntoAnotherBaseIsNotLanded(t *testing.T) {
 func TestMergedAtSetsAsideAPullRequestFromAnotherRepository(t *testing.T) {
 	sha := strings.Repeat("a", 40)
 	ask := func(...string) (string, error) { return "[" + mergedEntry(9, sha, "main", true) + "]", nil }
-	n, url, err := MergedAt(ask, "feat/x", "main", sha)
+	n, url, err := mergedAt(ask, "feat/x", "main", sha)
 	if err != nil || n != 0 || url != "" {
-		t.Fatalf("MergedAt = %d, %q, %v: want 0 for a pull request from another repository", n, url, err)
+		t.Fatalf("mergedAt = %d, %q, %v: want 0 for a pull request from another repository", n, url, err)
 	}
 	ask = func(...string) (string, error) { return "[" + mergedEntry(9, sha, "main", false) + "]", nil }
-	if n, url, err := MergedAt(ask, "feat/x", "main", sha); err != nil || n != 9 || url != "https://example.com/o/r/pull/9" {
-		t.Fatalf("MergedAt = %d, %q, %v: want #9 from this repository", n, url, err)
+	if n, url, err := mergedAt(ask, "feat/x", "main", sha); err != nil || n != 9 || url != "https://example.com/o/r/pull/9" {
+		t.Fatalf("mergedAt = %d, %q, %v: want #9 from this repository", n, url, err)
 	}
 }
 
