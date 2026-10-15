@@ -59,7 +59,9 @@ reserves nothing and carries none.
   the start as contention, exit 3: back off and take other work. Each
   worktree is its own copy, so a build in a sibling worktree of this checkout
   whose footprint overlaps one already reserved there backs off the same way. For your own
-  other copy the refusal says `pass --take-over to continue here`; pass
+  other copy the refusal says `pass --take-over to continue here` (or, when
+  the view as last fetched already shows it, names `abcd build <itd-N>
+  --take-over`, the form `build next`'s exclusion takes too); pass
   `--take-over` only when the person means to move the work to this copy. It
   never moves another person's.
 - Any other refusal of the reservation (no username, no local tier, `origin`

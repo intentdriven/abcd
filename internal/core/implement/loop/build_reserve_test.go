@@ -74,6 +74,36 @@ func TestBuildNextExcludesAnotherPersonsReservationWithTheViewsAge(t *testing.T)
 	}
 }
 
+// TestBuildNextNamesTheTakeOverCommandForYourOtherCopy: `build next` has no
+// --take-over, so an intent this person's other copy reserved is excluded
+// with a reason naming the command that moves it here, `abcd build <itd-N>
+// --take-over`, as the peers row's remedy does.
+func TestBuildNextNamesTheTakeOverCommandForYourOtherCopy(t *testing.T) {
+	repo := pickRepo(t, map[string][2]string{
+		"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", fpSmall)},
+		"11": {pickIntent("11", "", settledQuestions, gwt), pickSpec("11", fpSmall)},
+	})
+	bare := onOrigin(t, repo)
+	p2 := otherCopy(t, bare, patEmail)
+	if _, err := claim.Reserve(p2, claim.Request{Record: "itd-10", Footprint: []string{"internal/core/intent"}}, claim.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	fetchedBy(t, repo.Root())
+
+	set, err := candidates(repo.Root(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(set.Excluded, func(e Excluded) bool { return e.ID == "itd-10" })
+	if i < 0 {
+		t.Fatalf("the intent your other copy reserved is excluded: %+v", set.Excluded)
+	}
+	if e := set.Excluded[i]; e.Check != CheckPeers || !strings.Contains(e.Reason, "your copy on another computer") ||
+		!strings.Contains(e.Reason, "`abcd build itd-10 --take-over`") {
+		t.Fatalf("the exclusion names abcd build itd-10 --take-over, not a flag build next lacks: %+v", e)
+	}
+}
+
 // TestBuildRefusesAnotherPersonsReservationAtThePeersCheck is C39: `build
 // <itd-N>` over an intent another person reserved, as last fetched, is
 // refused at the peers check as contention, naming the holder, and writes
@@ -122,7 +152,7 @@ func TestThePeersCheckNamesTakeOverForYourOtherCopy(t *testing.T) {
 	if r.Check != CheckPeers || !r.Contention {
 		t.Fatalf("want the peers check as contention: %+v", r)
 	}
-	if !strings.Contains(r.Reason, "your copy on another computer") || !strings.Contains(r.Reason, "pass --take-over to continue here") {
+	if !strings.Contains(r.Reason, "your copy on another computer") || !strings.Contains(r.Reason, "to continue here, run `abcd build itd-10 --take-over`") {
 		t.Fatalf("the refusal names your other copy and --take-over: %q", r.Reason)
 	}
 	if !strings.Contains(r.Remedy, "--take-over") {
