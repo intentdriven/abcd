@@ -644,6 +644,9 @@ func NewRootCommand() *cobra.Command {
 	// two operands the design admits, because the operand it most often refuses
 	// is one it used to take (adr-2609021016286571).
 	applyReadingFlagErrors(root)
+	// Also after the generic tagging: the two flags the one outbound switch
+	// replaced are refused naming it (iss-2610152024327989).
+	applyRetiredInstallFlags(root)
 	// Also after the generic tagging: cobra's help verb inherits the root's
 	// flag-error function, and `abcd help --agent` names the spelling that works.
 	applyHelpVerbAgentRefusal(root)
@@ -3942,8 +3945,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		refuseAdopt   bool
 		dev           bool
 		attribution   bool
-		outboundHook  bool
-		outboundForge bool
+		outbound      bool
 		allowStale    bool
 		binDir        string
 		visibility    string
@@ -3975,8 +3977,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				opts.ReadmeParts = readmeParts
 			}
-			opts.OutboundHook = outboundHook
-			opts.OutboundForge = outboundForge
+			opts.Outbound = outbound
 			opts.VerifyProvenance = ahoyReleaseProvenance
 			named, err := installToolNames(installTools)
 			if err != nil {
@@ -4123,8 +4124,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
 	installCmd.Flags().BoolVar(&attribution, "attribution", false, "opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook")
-	installCmd.Flags().BoolVar(&outboundHook, "outbound-hook", false, "opt this repo into the committed commit-msg hook that refuses a commit message carrying a live agent-session URL or a tool attribution footer; it runs only the abcd named by git config --local abcd.binary and lets the commit through with one warning when none is set; the choice is recorded, so a later install without the flag keeps the hook")
-	installCmd.Flags().BoolVar(&outboundForge, "outbound-forge", false, "opt this repo into the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which it refuses when they carry a live agent-session URL or a tool attribution footer; it writes no hook and names no binary, and the choice is recorded in .abcd/config.json as outbound.forge, so a later install without the flag keeps it")
+	installCmd.Flags().BoolVar(&outbound, "outbound", false, "opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified, and says so when it cannot; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both")
 	installCmd.Flags().BoolVar(&allowStale, "allow-stale-binary", false, "proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix")
 	installCmd.Flags().StringVar(&binDir, "bin-dir", "", "directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges")
 	installCmd.Flags().StringVar(&visibility, "visibility", "", "repo visibility: private | public")

@@ -4,6 +4,8 @@ import (
 	_ "embed"
 	"os"
 	"regexp"
+
+	"github.com/intentdriven/abcd/internal/core/guard"
 )
 
 // OutboundHookRelPath is the committed commit-msg hook that runs `abcd lint
@@ -21,6 +23,10 @@ const (
 	outboundHookMarkerPrefix = "# abcd-outbound:"
 )
 
+// outboundHalfGapID is the gap a repository raises when it recorded only one
+// half of the outbound switch.
+const outboundHalfGapID = "outbound.half_on"
+
 // outboundHookMarkerRe matches the marker as a complete line, on the attribution
 // marker's terms (blanks and a trailing CR tolerated, so a CRLF checkout is still
 // recognised as abcd's and can be healed).
@@ -29,7 +35,8 @@ var outboundHookMarkerRe = regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(o
 // outboundHookTemplate is the scaffolded gate, embedded so it can never be absent.
 // It finds abcd only through `git config --local abcd.binary`, an absolute path
 // outside the working tree, and fails open with one warning line when there is
-// none (iss-2609250834251447).
+// none (iss-2609250834251447). The explicit opt-in writes that key to the PATH
+// copy whose provenance install verified (stepOutboundBinary).
 //
 //go:embed defaults/commit-msg
 var outboundHookTemplate []byte
@@ -49,55 +56,59 @@ func outboundOptedIn(cwd string) bool {
 }
 
 // detectOutboundHook reports the outbound hook's state for a repository that
-// opted in, and nothing for one that did not.
+// opted in, and nothing for one that did not; a repository that recorded one
+// half of the switch only is reported by outboundHalfGap as well.
 func detectOutboundHook(cwd string, hooksPath HooksPathState) []Gap {
+	half := outboundHalfGap(cwd)
 	if !outboundOptedIn(cwd) {
-		return nil
+		return half
 	}
 	root, err := os.OpenRoot(cwd)
 	if err != nil {
-		return nil
+		return half
 	}
 	defer root.Close()
 	switch classifyHook(root, OutboundHookRelPath, outboundHookMarkerRe) {
 	case HookAbsent:
-		return []Gap{{
+		return append(half, Gap{
 			ID: "outbound.hook_missing", Category: SafeAutocreate, Scope: "repo",
 			Title:    "outbound commit-message gate not committed",
 			Detail:   OutboundHookRelPath + " is absent, so nothing checks a commit message for a live agent-session URL or a tool attribution footer before it enters history.",
 			FixHint:  "ahoy install writes the hook (this repo has recorded the opt-in)" + hooksPathHint(hooksPath),
 			Required: true, Resolvable: true,
-		}}
+		})
 	case HookForeign:
-		return []Gap{{
+		return append(half, Gap{
 			ID: "outbound.hook_foreign", Category: PluginOwned, Scope: "repo",
 			Title:      "a foreign commit-msg hook occupies " + OutboundHookRelPath,
 			Detail:     OutboundHookRelPath + " carries no `" + outboundHookMarker + "` line, so abcd did not write it and the outbound check does not run on this path.",
 			FixHint:    "chain `abcd lint outbound` from it by hand, or move it aside and re-run `abcd ahoy install`.",
 			Required:   false,
 			Resolvable: false,
-		}}
+		})
 	case HookUnreadable:
-		return []Gap{{
+		return append(half, Gap{
 			ID: "outbound.hook_unreadable", Category: PluginOwned, Scope: "repo",
 			Title:      OutboundHookRelPath + " cannot be read as a hook",
 			Detail:     OutboundHookRelPath + " exists but is a symlink, a directory, or otherwise unreadable, so abcd can neither identify nor replace it.",
 			FixHint:    "restore " + OutboundHookRelPath + " as a regular file, or remove it and re-run `abcd ahoy install`.",
 			Required:   false,
 			Resolvable: false,
-		}}
+		})
 	}
-	return nil
+	return half
 }
 
 // outboundWouldChange reports work the gap set cannot see: an explicit
-// --outbound-hook against a repository that has not recorded the opt-in, or has
-// recorded it and is missing the hook (the first opt-in raises no gap).
+// --outbound against a repository that has not recorded both halves, has
+// recorded them and is missing the hook (the first opt-in raises no gap), or
+// whose clone names no abcd for the hook yet. A clone whose git config cannot be
+// read is not counted: nothing this run could write would change that.
 func outboundWouldChange(cwd string, opts InstallOptions) bool {
-	if !opts.OutboundHook {
+	if !opts.Outbound {
 		return false
 	}
-	if !outboundOptedIn(cwd) {
+	if !outboundOptedIn(cwd) || !guard.ForgeTextOptedIn(cwd) {
 		return true
 	}
 	root, err := os.OpenRoot(cwd)
@@ -105,20 +116,27 @@ func outboundWouldChange(cwd string, opts InstallOptions) bool {
 		return false
 	}
 	defer root.Close()
-	return classifyHook(root, OutboundHookRelPath, outboundHookMarkerRe) == HookAbsent
+	if classifyHook(root, OutboundHookRelPath, outboundHookMarkerRe) == HookAbsent {
+		return true
+	}
+	cur, err := localAbcdBinary(cwd)
+	return err == nil && cur == ""
 }
 
 // stepOutboundHook writes the committed outbound gate for a repository that asked
-// for it, and records the opt-in so a later plain install keeps it. It mirrors
-// stepAttributionHook: the explicit flag is its own approval, a restore of a
-// hand-deleted hook is held to the safe-autocreate approval, and the write is
-// create-if-absent and contained, so a commit-msg hook abcd did not write is never
-// touched.
+// for the switch, or whose recorded forge-text half this run completes, and
+// records the opt-in so a later plain install keeps it. It mirrors
+// stepAttributionHook: the explicit flag is its own approval, a completion is
+// held to the settings approval its gap asks for, a restore of a hand-deleted
+// hook is held to the safe-autocreate approval, and the write is
+// create-if-absent and contained, so a commit-msg hook abcd did not write is
+// never touched.
 func (a *applyCtx) stepOutboundHook() {
-	if !a.outbound && !outboundOptedIn(a.cwd) {
+	asked := a.outbound || a.completingOutbound()
+	if !asked && !outboundOptedIn(a.cwd) {
 		return
 	}
-	if !a.outbound && !a.approved[SafeAutocreate] {
+	if !asked && !a.approved[SafeAutocreate] {
 		return
 	}
 	root, err := os.OpenRoot(a.cwd)
@@ -127,7 +145,7 @@ func (a *applyCtx) stepOutboundHook() {
 	}
 	defer root.Close()
 	a.createContained(writeOutboundHook, root, OutboundHookRelPath, outboundHookTemplate, 0o755, 0o755)
-	if a.outbound {
+	if asked {
 		a.recordOutboundOptIn()
 	}
 }

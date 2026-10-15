@@ -37,6 +37,7 @@ const (
 	writeAttributionHook         writeKind = "attribution-hook"
 	writeOutboundHook            writeKind = "outbound-hook"
 	writeOutboundForge           writeKind = "outbound-forge"
+	writeOutboundBinary          writeKind = "outbound-binary"
 	writeSessionStore            writeKind = "session-store"
 	writeConventionsBlock        writeKind = "conventions-block"
 	writeConventionsBlockRemoved writeKind = "conventions-block-removed"
@@ -59,7 +60,7 @@ const (
 // repository's own files first, then this machine, then the optional extras.
 var allWriteKinds = []writeKind{
 	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
-	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeRules, writeConventionsBlock,
+	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeOutboundBinary, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
 }
@@ -124,12 +125,17 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	writeOutboundHook: {
 		What:   "Added a commit-message check that stops a commit whose message carries a live AI-session link or an AI tool's sign-off line.",
 		Why:    "Once pushed, either one can be removed from the repository's history only by rewriting it.",
-		Action: "Tell the check where abcd is, once per clone: git config --local abcd.binary /absolute/path/to/abcd. Until then it warns and lets each commit through.",
+		Action: "In each clone, run abcd ahoy install --outbound once: it tells the check where the abcd it verified is, or a note says why it could not. Until a clone names one, the check warns and lets each commit through. git runs the check once the clone points core.hooksPath at .githooks.",
 	},
 	writeOutboundForge: {
 		What:   "Switched on a check that stops your AI assistant posting a pull request, issue or comment whose text carries a live AI-session link or an AI tool's sign-off line.",
 		Why:    "The forge keeps the earlier version of anything posted, so either one cannot be taken back once it is sent.",
 		Action: "Nothing. Your assistant is told what to remove when a post is stopped.",
+	},
+	writeOutboundBinary: {
+		What:   "Told this clone's commit-message check where abcd is: abcd.binary in .git/config now names the abcd command this install verified.",
+		Why:    "The check runs only an abcd named by an absolute path outside the repository, never one found on the command path or in the repository's own files.",
+		Action: "Nothing. It is this clone's own setting and is never committed; to undo it, run git config --local --unset abcd.binary.",
 	},
 	writeRules: {
 		What:   "Created .abcd/rules.json, which switches abcd's working-rule reminders on or off for this repository.",

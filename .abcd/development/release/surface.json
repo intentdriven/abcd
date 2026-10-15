@@ -281,14 +281,7 @@
           "hidden": false
         },
         {
-          "name": "outbound-forge",
-          "shorthand": "",
-          "type": "bool",
-          "required": false,
-          "hidden": false
-        },
-        {
-          "name": "outbound-hook",
+          "name": "outbound",
           "shorthand": "",
           "type": "bool",
           "required": false,

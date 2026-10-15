@@ -306,16 +306,22 @@ on `PATH`, lands in that one run. It runs a second time, with the attribution
 flag, where the user opts in: that run installs the committed
 `prepare-commit-msg` prompt asking every commit to declare whether a tool
 assisted it, and the choice is recorded, so a later install without the flag
-keeps the hook. The outbound flag is the same kind of opt-in: it installs the
-committed `commit-msg` gate that refuses a live agent-session URL or a tool
-attribution footer in a commit message, running only the abcd binary the clone
-names in `git config --local abcd.binary` and letting the commit through with
-one warning when there is none (iss-2609250834251447). The outbound-forge flag
-is a third opt-in of the same kind and independent of the second: it records
-`outbound.forge: true`, and the shell guard then refuses a posting `gh pr` or
-`gh issue` command whose title, body or body file carries either shape
-(`forge-text-outbound`). It writes no hook and names no binary, since the guard
-is the abcd already running (iss-2610142210511831). The identity verb's render is the follow-on surface and writes
+keeps the hook. The outbound flag is the same kind of opt-in, and one switch
+for two checks (iss-2610152024327989): it installs the committed `commit-msg`
+gate that refuses a live agent-session URL or a tool attribution footer in a
+commit message, and it records `outbound.forge: true` beside `outbound.hook:
+true`, so the shell guard also refuses a posting `gh pr` or `gh issue` command
+whose title, body or body file carries either shape (`forge-text-outbound`,
+iss-2610142210511831). The gate runs only the abcd binary the clone names in
+`git config --local abcd.binary` and lets the commit through with one warning
+when there is none (iss-2609250834251447); the explicit flag writes that key,
+clone-local, to the `PATH` copy whose build provenance the same run verified,
+and writes nothing, saying why, when there is no such copy, when the entry is
+the dev shim or when it lies inside the working tree (iss-2610152024267547). It
+leaves `core.hooksPath` to the person, as the guard hooks do. The two flags that
+each turned on one half are retired and refused naming the switch, and a
+repository that recorded one half under them raises `outbound.half_on`, which
+the next install completes. The identity verb's render is the follow-on surface and writes
 nothing: it proposes a correction as a diff, and adopting it is always the
 product thinker's move.
 
@@ -1300,8 +1306,7 @@ Sub-verbs: none.
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
 | `--oracle-backend` | string |
-| `--outbound-forge` | bool |
-| `--outbound-hook` | bool |
+| `--outbound` | bool |
 | `--readme-parts` | string |
 | `--refuse-adopt` | bool |
 | `--scan-deep` | string |

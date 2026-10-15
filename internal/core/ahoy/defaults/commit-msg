@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # abcd-outbound: v1
 # abcd outbound gate, commit-message half — scaffolded by
-# `abcd ahoy install --outbound-hook` into this repo's committed hooks, because
+# `abcd ahoy install --outbound` into this repo's committed hooks, because
 # this repository asked for it. abcd never installs it by default.
 #
 # Refuses a commit whose message carries a LIVE AGENT-SESSION URL or a tool's own
@@ -11,7 +11,9 @@
 # shell copy could not match.
 #
 # HOW IT FINDS abcd. One way only — an absolute path this clone's own git config
-# names, which a person sets once per clone:
+# names. `abcd ahoy install --outbound`, run once in a clone, sets it to the abcd
+# copy whose build provenance it verified, and says so when it cannot; a person
+# can also set it by hand:
 #
 #     git config --local abcd.binary /absolute/path/to/abcd
 #

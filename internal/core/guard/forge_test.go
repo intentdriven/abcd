@@ -10,7 +10,7 @@ import (
 )
 
 // The forge-text check (iss-2610142210511831). A repository that opted in with
-// `ahoy install --outbound-forge` (outbound.forge in .abcd/config.json) has the
+// `ahoy install --outbound` (outbound.forge in .abcd/config.json) has the
 // text a posting gh command hands the forge judged against the outbound policy
 // before it runs: a pull request's or an issue's title and body, a comment's
 // body, and a body file. A live agent-session URL or a tool attribution footer

@@ -2,9 +2,8 @@
 
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
 questions, records the answers, and gets on with it; `ahoy install
---attribution`, `ahoy install --outbound-hook` and `ahoy install
---outbound-forge` write one more key each, and four further keys can be hand-set
-and are read but never written. Beyond those eleven, the binary reads only keys a
+--attribution` writes one more key and `ahoy install --outbound` two more, and
+four further keys can be hand-set and are read but never written. Beyond those eleven, the binary reads only keys a
 person opts into: the provider adapter's `oracle` keys and the interview's list
 style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
@@ -24,8 +23,9 @@ Eleven keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, and the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and writes exactly those four values back.
 `attribution.hook` is written by `ahoy install --attribution`, and
-`outbound.hook` by `ahoy install --outbound-hook`, and `outbound.forge` by
-`ahoy install --outbound-forge`, which the shell guard reads. The remaining four —
+`outbound.hook` and `outbound.forge` together by `ahoy install --outbound`, the
+one outbound switch; the shell guard reads `outbound.forge`, and an install
+completes a repository that records only one of the two. The remaining four —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, and the filing-time match's threshold and compared fields —
 are hand-set: the binary reads them and never writes them.
@@ -64,7 +64,8 @@ are hand-set: the binary reads them and never writes them.
   },
   "outbound": {
     "hook": true,                       // the committed commit-msg gate refusing a session URL or a tool
-                                        //   footer; runs only the abcd `git config --local abcd.binary` names
+                                        //   footer; runs only the abcd `git config --local abcd.binary` names,
+                                        //   which --outbound sets, clone-local, to the copy it verified
     "forge": true                       // the shell guard refuses a posting gh pr/issue command whose title,
                                         //   body or body file carries either shape (forge-text-outbound)
   },

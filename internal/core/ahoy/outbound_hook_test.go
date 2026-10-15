@@ -13,7 +13,7 @@ import (
 // outboundOpts is installOpts with the outbound commit-msg hook opted into.
 func outboundOpts() InstallOptions {
 	o := installOpts()
-	o.OutboundHook = true
+	o.Outbound = true
 	return o
 }
 

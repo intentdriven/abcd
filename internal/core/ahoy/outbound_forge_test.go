@@ -8,21 +8,13 @@ import (
 	"github.com/intentdriven/abcd/internal/core/guard"
 )
 
-// outboundForgeOpts is installOpts with the forge-text check opted into.
-func outboundForgeOpts() InstallOptions {
-	o := installOpts()
-	o.OutboundForge = true
-	return o
-}
-
 // TestOutboundForgeIsOptInAndIdempotent — iss-2610142210511831. A managed
 // repository has the text its agents hand the forge judged by the shell guard
 // only when the person asks: refusing a posting command changes how work in
 // the repository goes, which is the repository's choice, never abcd's
-// default. The choice is one key in config.json, which the guard reads; it
-// writes no hook and needs no binary named, because the guard is the abcd
-// already running. A later plain install keeps it, and it is independent of
-// the commit-msg gate.
+// default. The choice is one key in config.json, which the guard reads, and
+// since iss-2610152024327989 the one outbound switch records it beside the
+// commit-msg hook's. A later plain install keeps it.
 func TestOutboundForgeIsOptInAndIdempotent(t *testing.T) {
 	newRepo := func(t *testing.T) string {
 		t.Helper()
@@ -44,39 +36,18 @@ func TestOutboundForgeIsOptInAndIdempotent(t *testing.T) {
 		}
 	})
 
-	t.Run("opting in records the key and nothing else", func(t *testing.T) {
-		setupHermetic(t)
-		repo := newRepo(t)
-		res, err := Install(repo, outboundForgeOpts(), RefusingPrompter{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res.Status != "clean" {
-			t.Fatalf("install status = %q (remaining=%v), want clean", res.Status, res.Remaining)
-		}
-		if !guard.ForgeTextOptedIn(repo) {
-			t.Fatal("--outbound-forge did not record outbound.forge: true")
-		}
-		if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(OutboundHookRelPath))); err == nil {
-			t.Error("--outbound-forge wrote the commit-msg hook, which is --outbound-hook's to write")
-		}
-		if outboundOptedIn(repo) {
-			t.Error("--outbound-forge recorded the commit-msg hook's opt-in")
-		}
-	})
-
 	t.Run("opting in on an already-installed repo, then a plain install keeps it", func(t *testing.T) {
 		setupHermetic(t)
 		repo := newRepo(t)
 		if _, err := Install(repo, installOpts(), RefusingPrompter{}); err != nil {
 			t.Fatal(err)
 		}
-		res, err := Install(repo, outboundForgeOpts(), RefusingPrompter{})
+		res, err := Install(repo, outboundOpts(), RefusingPrompter{})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !guard.ForgeTextOptedIn(repo) {
-			t.Fatalf("--outbound-forge recorded nothing on an already-installed repo (status=%q writes=%v)", res.Status, res.Writes)
+			t.Fatalf("--outbound recorded no forge-text opt-in on an already-installed repo (status=%q writes=%v)", res.Status, res.Writes)
 		}
 		before := treeHash(t, repo)
 		res, err = Install(repo, installOpts(), RefusingPrompter{})
@@ -91,13 +62,6 @@ func TestOutboundForgeIsOptInAndIdempotent(t *testing.T) {
 		}
 		if !guard.ForgeTextOptedIn(repo) {
 			t.Error("a plain install dropped the recorded opt-in")
-		}
-		res, err = Install(repo, outboundForgeOpts(), RefusingPrompter{})
-		if err != nil {
-			t.Fatal(err)
-		}
-		if res.Status != "already_up_to_date" {
-			t.Errorf("a second --outbound-forge status = %q, want already_up_to_date", res.Status)
 		}
 	})
 }
