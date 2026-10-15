@@ -899,9 +899,10 @@ jobs:
         # The draft is then addressed by its numeric id alone, never by its tag:
         # the one Release carrying the tag must be this draft, its assets exactly
         # the files of dist/, each uploaded and with the digest of the file
-        # attached. It is published by that id, marked latest only when no
-        # published release carries a higher version, and its assets are read
-        # again afterwards and must be the ones checked.
+        # attached; an asset the forge records no digest for is refused. It is
+        # published by that id, marked latest only when no published release
+        # carries a higher version, and its assets are read again afterwards and
+        # must be the ones checked.
         run: |
           set -euo pipefail
           assets=()
@@ -940,8 +941,11 @@ jobs:
             count=$((count + 1))
             name="${f##*/}"
             want="sha256:$(sha256sum "$f" | awk '{print $1}')"
-            if ! awk -F '\t' -v n="$name" -v d="$want" \
-                '$2 == n && $3 == "uploaded" && ($4 == "" || $4 == d) {found = 1} END {exit !found}' <<<"$attached"; then
+            if awk -F '\t' -v n="$name" '$2 == n && $4 == "" {found = 1} END {exit !found}' <<<"$attached"; then
+              printf "refusing to publish '%s': the forge records no digest for %s\n" "$TAG" "$name" >&2
+              bad=1
+            elif ! awk -F '\t' -v n="$name" -v d="$want" \
+                '$2 == n && $3 == "uploaded" && $4 == d {found = 1} END {exit !found}' <<<"$attached"; then
               printf "refusing to publish '%s': %s is not attached uploaded with the digest of dist/%s\n" "$TAG" "$name" "$name" >&2
               bad=1
             fi

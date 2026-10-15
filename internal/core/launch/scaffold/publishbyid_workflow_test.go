@@ -21,7 +21,8 @@ import (
 // REST call, and anything else is refused. Every call is logged, and every
 // PATCH with its fields. Marker files in FAKE_DIR make the forge misbehave:
 // second-draft (another draft of the tag appears beside the one created),
-// misrecorded (the forge records a wrong digest for the named asset) and
+// misrecorded (the forge records a wrong digest for the named asset),
+// undigested (the forge records no digest for the named asset) and
 // replaced-on-publish (the named asset is replaced as the Release publishes).
 const draftFakeGH = `#!/usr/bin/env bash
 set -euo pipefail
@@ -49,6 +50,9 @@ case "${1:-} ${2:-}" in
     d="sha256:$(sha256sum "$f" | cut -d' ' -f1)"
     if [ -f "$FAKE_DIR/misrecorded" ] && [ "$(cat "$FAKE_DIR/misrecorded")" = "${f##*/}" ]; then
       d="sha256:0000"
+    fi
+    if [ -f "$FAKE_DIR/undigested" ] && [ "$(cat "$FAKE_DIR/undigested")" = "${f##*/}" ]; then
+      d=""
     fi
     jq --argjson id "$n" --arg n "${f##*/}" --arg d "$d" \
       '. + [{"id": $id, "release_id": 4242, "name": $n, "state": "uploaded", "digest": $d}]' "$assets" > "$assets.next"
@@ -185,7 +189,8 @@ func published(id int, tag string) map[string]any {
 // profiles' release step publishes the draft it created by its id, with
 // make_latest set only when no published release carries a higher version,
 // and refuses a second draft of the tag, an asset the forge records with
-// another digest, and an asset that changes as the Release publishes.
+// another digest or with none, and an asset that changes as the Release
+// publishes.
 func TestAManagedReleaseIsPublishedByIdOnceItsAssetsAreDist(t *testing.T) {
 	requireJQ(t)
 	const step = "Create the GitHub Release as a draft, attach dist/, then publish it"
@@ -221,6 +226,10 @@ func TestAManagedReleaseIsPublishedByIdOnceItsAssetsAreDist(t *testing.T) {
 		{
 			name: "an asset recorded with another digest", tag: "v1.2.3", files: dist,
 			markers: map[string]string{"misrecorded": "tool-linux"}, fails: true, mention: "tool-linux",
+		},
+		{
+			name: "an asset with no recorded digest", tag: "v1.2.3", files: dist,
+			markers: map[string]string{"undigested": "tool-darwin"}, fails: true, mention: "records no digest for tool-darwin",
 		},
 		{
 			name: "an asset replaced as the Release publishes", tag: "v1.2.3", files: dist,
