@@ -16,4 +16,4 @@ resolved_by:
   commit: "3ba387595"
 ---
 
-The product thinker's ruling, in their words: "when a security-relevant issue is identified during development or review, fix it during the development cycle. If that's not possible, record it as a private advisory, never mention it anywhere on the commit, PR, etc." Today a security finding a review raises is handled like any other: fixed, or captured as an open issue and named in the commit and PR trailers, which publishes a weakness before its fix ships. The rule is taught nowhere an agent reads before it acts.
+The product thinker ruled on 2026-10-15 that a security-relevant finding identified during development or review is fixed within the same development cycle, and that where this is not possible it is recorded as a private advisory and mentioned nowhere in commits, pull requests or other public text. Today a security finding a review raises is handled like any other: fixed, or captured as an open issue and named in the commit and PR trailers, which publishes a weakness before its fix ships. The rule is taught nowhere an agent reads before it acts.
