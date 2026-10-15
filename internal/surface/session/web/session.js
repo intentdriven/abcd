@@ -2024,7 +2024,7 @@ function linesLabel(p) {
 
 // creditLines says who a passage is credited to, one line each.
 // show formats a guest's name for where the lines go: as it is for the page,
-// mdText for an issue or a pull request body.
+// mdName for an issue or a pull request body.
 function creditLines(p, show = (s) => s) {
   const lines = [];
   if (p.authors.length) lines.push("Written by " + p.authors.map((l) => "@" + l).join(", "));
@@ -2060,12 +2060,21 @@ function baseCommit() {
   return typeof sha === "string" && COMMIT_RE.test(sha) ? sha : "unknown";
 }
 
-// mdText makes a guest's name inert in a Markdown body: [ ] ( ) < > ` and *
-// are escaped, so a name cannot write a link, an image, an autolink in angle
-// brackets, code or emphasis. trailerText has already taken out line breaks
-// and every @.
-function mdText(s) {
-  return String(s).replace(/[\[\]()<>`*]/g, "\\$&");
+// mdName makes a guest's name inert in a Markdown body: it goes in a code
+// span, after trailerText's cleaning (no line breaks, no angle brackets, no
+// @). Escaping alone is not enough on GitHub, which autolinks a bare URL or
+// domain (evil.example/x, www.example, a full web address) whatever is
+// escaped around it; inside a code span nothing is a link, a mention, an
+// image or emphasis. The fence is longer than any run of backticks in the
+// name, and a name that starts or ends with a backtick is padded with a
+// space each side, which the span drops again.
+function mdName(s) {
+  const name = trailerText(s);
+  let longest = 0;
+  for (const m of name.matchAll(/`+/g)) longest = Math.max(longest, m[0].length);
+  const fence = "`".repeat(longest + 1);
+  const pad = name.startsWith("`") || name.endsWith("`") ? " " : "";
+  return fence + pad + name + pad + fence;
 }
 
 function issueTitle(p) {
@@ -2088,7 +2097,7 @@ function issueBody(p) {
     "",
     fenced(p.after),
     "",
-    ...creditLines(p, mdText),
+    ...creditLines(p, mdName),
     "",
     ISSUE_MARKER,
   ].join("\n");
@@ -2189,10 +2198,10 @@ function trouble(step, status, errors) {
 
 function prBody(list, members, pairs, changed) {
   const people = new Set(members.map((l) => "@" + l));
-  for (const p of pairs) people.add(mdText(p.guest) + " (guest)");
+  for (const p of pairs) people.add(mdName(p.guest) + " (guest)");
   for (const r of session.roster) {
     if (r.role === "member" && typeof r.login === "string" && NAME_RE.test(r.login)) people.add("@" + r.login);
-    else if (r.role !== "member" && typeof r.name === "string" && r.name) people.add(mdText(trailerText(r.name)) + " (guest)");
+    else if (r.role !== "member" && typeof r.name === "string" && r.name) people.add(mdName(trailerText(r.name)) + " (guest)");
   }
   const out = [
     "Edits to the brief made together in a live session, from base commit " + baseCommit() + ".",
@@ -2201,10 +2210,10 @@ function prBody(list, members, pairs, changed) {
     "",
     "Changed passages:",
   ];
-  for (const p of list) out.push("- `" + relPath(p.path) + "`, " + linesLabel(p) + ": " + creditLines(p, mdText).join("; "));
+  for (const p of list) out.push("- `" + relPath(p.path) + "`, " + linesLabel(p) + ": " + creditLines(p, mdName).join("; "));
   if (pairs.length) {
     out.push("", "Approved guest suggestions:");
-    for (const p of pairs) out.push("- " + mdText(p.guest) + " (guest), approved by @" + p.approver);
+    for (const p of pairs) out.push("- " + mdName(p.guest) + " (guest), approved by @" + p.approver);
   }
   out.push("", "Changed files:", ...changed.map((f) => "- `" + f + "`"));
   return out.join("\n");

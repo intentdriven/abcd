@@ -86,7 +86,7 @@ The document has `gc` off, so each change can be credited. Credit comes from the
   - the base commit
   - the credited author, or the approver and the guest
 
-  The base commit is named only when it is 40 hex digits, and a guest's display name, in an issue body or a pull request body, has `[`, `]`, `(`, `)`, `<`, `>`, `` ` `` and `*` escaped, so it cannot write a link, an image, code or emphasis (security review 2, finding 11a).
+  The base commit is named only when it is 40 hex digits, and a guest's display name, in an issue body or a pull request body, goes in a code span, its fence longer than any run of backticks in it, so it cannot write a link, an image, code or emphasis (security review 2, finding 11a), nor be autolinked: GitHub links a bare URL or domain in a name even with every Markdown character escaped, but nothing inside a code span. A commit's trailer names the guest as plain text.
 
   Each issue's title starts `Brief:` and its body ends with the fixed line `Sent from an abcdesign.app brief session.` The team's agent session finds a session's issues by that marker, not by a label: a pre-filled label makes GitHub answer 404 to anyone without triage permission, and a label the repository lacks is unreliable.
 

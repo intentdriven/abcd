@@ -454,7 +454,7 @@ func TestIssueLinksAreMeasuredAgainstOneNamedLimit(t *testing.T) {
 	}
 	// The issue body names the file, the base commit, both versions and the credit.
 	body := functionBody(t, js, "issueBody")
-	for _, want := range []string{"p.path", "baseCommit()", "fenced(p.before)", "fenced(p.after)", "creditLines(p, mdText)"} {
+	for _, want := range []string{"p.path", "baseCommit()", "fenced(p.before)", "fenced(p.after)", "creditLines(p, mdName)"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("issueBody does not carry %s", want)
 		}
@@ -714,7 +714,7 @@ func TestGuestNamesMentionNobody(t *testing.T) {
 		t.Error("a passage's guest name does not go through trailerText")
 	}
 	pr := functionBody(t, js, "prBody")
-	if !strings.Contains(pr, "people.add(mdText(trailerText(r.name))") {
+	if !strings.Contains(pr, "people.add(mdName(trailerText(r.name))") {
 		t.Error("prBody names a guest without trailerText")
 	}
 	if !strings.Contains(functionBody(t, js, "openPullRequest"), "const guest = trailerText(a.guest);") {
@@ -1125,7 +1125,9 @@ func TestStoredSuggestionsAreBounded(t *testing.T) {
 
 // The base commit an issue or a pull request names is checked as a commit
 // id, and a guest's name cannot write a link, an image, code or emphasis in
-// either body (security review 2, item 11a).
+// either body (security review 2, item 11a), nor be autolinked: GitHub links
+// a bare URL or domain (evil.example/x, www.…, https://…) even with every
+// Markdown character escaped, but nothing inside a code span.
 func TestBodiesNameOnlyACommitAndInertGuestNames(t *testing.T) {
 	js := pageScript(t)
 	if !strings.Contains(js, "const COMMIT_RE = /^[0-9a-f]{40}$/;") {
@@ -1139,16 +1141,29 @@ func TestBodiesNameOnlyACommitAndInertGuestNames(t *testing.T) {
 		if strings.Contains(body, "effectiveMeta().base_sha") || !strings.Contains(body, "baseCommit()") {
 			t.Errorf("%s names the base commit unchecked:\n%s", fn, body)
 		}
-		if !strings.Contains(body, "creditLines(p, mdText)") {
+		if !strings.Contains(body, "creditLines(p, mdName)") {
 			t.Errorf("%s credits guests without neutralising their names", fn)
 		}
 	}
-	md := functionBody(t, js, "mdText")
-	if !strings.Contains(md, "replace(/[\\[\\]()<>`*]/g, \"\\\\$&\")") {
-		t.Errorf("mdText does not escape [ ] ( ) < > ` and *:\n%s", md)
+	// A backslash escape inside a code span shows as written, so the old
+	// escaping is gone, not layered under the span.
+	if strings.Contains(js, "function mdText(") || strings.Contains(js, "mdText(") {
+		t.Error("session.js still escapes a guest's name instead of putting it in a code span")
+	}
+	md := functionBody(t, js, "mdName")
+	for _, want := range []string{
+		"const name = trailerText(s);",
+		"for (const m of name.matchAll(/`+/g)) longest = Math.max(longest, m[0].length);",
+		"const fence = \"`\".repeat(longest + 1);",
+		"const pad = name.startsWith(\"`\") || name.endsWith(\"`\") ? \" \" : \"\";",
+		"return fence + pad + name + pad + fence;",
+	} {
+		if !strings.Contains(md, want) {
+			t.Errorf("mdName does not carry %s:\n%s", want, md)
+		}
 	}
 	pr := functionBody(t, js, "prBody")
-	for _, want := range []string{"people.add(mdText(trailerText(r.name))", "people.add(mdText(p.guest)", `out.push("- " + mdText(p.guest)`} {
+	for _, want := range []string{"people.add(mdName(trailerText(r.name))", "people.add(mdName(p.guest)", `out.push("- " + mdName(p.guest)`} {
 		if !strings.Contains(pr, want) {
 			t.Errorf("prBody does not carry %s", want)
 		}
