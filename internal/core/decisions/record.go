@@ -197,11 +197,6 @@ func redactText(root, text string) (string, error) {
 	return out, nil
 }
 
-// frozenLogRel is a managed repository's frozen single log, kept as earlier
-// history and never written (spec decision 7). The listing names it where it
-// exists. Step 4 introduces the package's exported name for this path.
-const frozenLogRel = SharedTierRel + "/DECISIONS.md"
-
 // Listing is the folder read for the verb's bare form: every record newest
 // first, the files the reader skipped, and whether a frozen log sits beside
 // the folder.
@@ -232,8 +227,8 @@ func ReadListing(dir string) (Listing, error) {
 		ds[i], ds[j] = ds[j], ds[i]
 	}
 	l := Listing{Decisions: ds, Skipped: skipped}
-	if fi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(frozenLogRel))); err == nil && fi.Mode().IsRegular() {
-		l.Frozen = frozenLogRel
+	if fi, err := os.Lstat(filepath.Join(root, filepath.FromSlash(FrozenLog))); err == nil && fi.Mode().IsRegular() {
+		l.Frozen = FrozenLog
 	}
 	return l, nil
 }

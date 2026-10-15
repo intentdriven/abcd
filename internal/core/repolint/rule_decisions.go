@@ -20,12 +20,6 @@ import (
 // they vanish on the next checkout.
 type decisionDurability struct{}
 
-// frozenLogRel is a managed repository's single decisions log, read here only
-// to tell a repository with history from one with none. It is the same path as
-// lint.DecisionsLedger, named apart because that constant belongs to the
-// decisions-append gate, which leaves with abcd's own log.
-const frozenLogRel = ".abcd/work/DECISIONS.md"
-
 func (decisionDurability) Meta() RuleMeta {
 	return RuleMeta{
 		ID:         "decision-durability",
@@ -59,7 +53,7 @@ func (decisionDurability) Eval(ctx Context) ([]Finding, error) {
 	if err != nil {
 		return nil, err
 	}
-	frozen, err := durablyPresent(ctx.RepoRoot, frozenLogRel)
+	frozen, err := durablyPresent(ctx.RepoRoot, decisions.FrozenLog)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +61,7 @@ func (decisionDurability) Eval(ctx Context) ([]Finding, error) {
 	case local:
 		finding.Message = "decisions live only in the gitignored .abcd/.work.local/ layer — they will not survive a clone"
 	case frozen:
-		finding.Message = "only a frozen " + frozenLogRel + " is kept, and a new decision has no " + decisions.RelDir +
+		finding.Message = "only a frozen " + decisions.FrozenLog + " is kept, and a new decision has no " + decisions.RelDir +
 			"/ folder to go to; run `abcd ahoy install` to lay it (the log stays as it is)"
 	}
 	return []Finding{finding}, nil
