@@ -380,8 +380,8 @@ rounds falsifies the pick: the run record (`abcd implement record`) carries the 
 score table and says so, and the intent's entry is not edited.
 
 No candidate for a first pick is refused, naming each excluded intent and the check that
-excluded it, and nothing is written. Refused too, writing nothing: a negative --max,
---max with --until-empty, and, while a series is in progress, a count or pace other than
+excluded it, and nothing is written. Refused too, writing nothing: --max 0 or a negative
+--max, --max with --until-empty, and, while a series is in progress, a count or pace other than
 the one it began with, and, until it is restored or removed, a series state that cannot be
 read, does not parse, or names a count, a pick, an outcome, pace flags or a pace the series
 never writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.

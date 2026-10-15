@@ -174,6 +174,36 @@ func TestBuildNextMaxCarriesTheSeriesInJSON(t *testing.T) {
 	}
 }
 
+// TestBuildNextMaxOneOnALiveSeriesIsRefused (iss-2610120925509505): --max 1
+// is a count other than a live --max 3 series' own, so it is refused at the
+// pick, exit 2, starting no run; a call with no count still continues the
+// series.
+func TestBuildNextMaxOneOnALiveSeriesIsRefused(t *testing.T) {
+	repo := buildRepo(t)
+	secondBuildIntent(t, repo)
+	mustImplement(t, "build", "next", "--max", "3", "--json")
+
+	ref := refusalDocs(t, 2, "build", "next", "--max", "1", "--json")
+	reason, _ := ref["reason"].(string)
+	if ref["stage"] != "pick" || !strings.Contains(reason, "--max 3") || !strings.Contains(reason, "--max 1") {
+		t.Fatalf("--max 1 on a live --max 3 series is refused at the pick: %v", ref)
+	}
+	if code, _, errOut := implementCLI(t, "build", "next", "--max", "1"); code != 2 || !strings.Contains(errOut, "--max 3") {
+		t.Fatalf("the text refusal exits 2 naming the series' count: %d %q", code, errOut)
+	}
+	var waiting map[string]any
+	out := mustImplement(t, "build", "next", "--json")
+	if err := json.Unmarshal([]byte(out), &waiting); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	if waiting["pick"] != nil || waiting["series"] == nil {
+		t.Fatalf("with no count the call continues the series: %s", out)
+	}
+	if runs, _ := loop.Runs(repo.Root()); len(runs) != 1 {
+		t.Fatalf("the refused count started no run: %d runs", len(runs))
+	}
+}
+
 // TestBuildNextRefusesControlRunesInTheSeriesFlags (iss-2610120925598775): a
 // series state whose stored pace flags carry U+202E or U+009B is refused at
 // the pick, exit 2, and no raw rune reaches the --json stream; the flags a
@@ -375,6 +405,60 @@ func TestBuildNextRefusesTwoCounts(t *testing.T) {
 		t.Fatalf("two counts are refused at the pick: %v", ref)
 	}
 	runDirAbsent(t, repo.Root())
+}
+
+// TestBuildNextRefusesAnExplicitMaxZero (iss-2610121210280182): --max 0 as
+// typed is no run count, so it is refused at the pick with the negative
+// count's words, exit 2, starting no run: with no series, rather than read as
+// a single pick, and on a live series, rather than read as no count and
+// continuing it. A call with no --max still gives a single pick, and still
+// continues a live series.
+func TestBuildNextRefusesAnExplicitMaxZero(t *testing.T) {
+	refusedZero := func(t *testing.T) {
+		t.Helper()
+		ref := refusalDocs(t, 2, "build", "next", "--max", "0", "--json")
+		reason, _ := ref["reason"].(string)
+		remedy, _ := ref["remedy"].(string)
+		if ref["stage"] != "pick" || reason != "--max 0 is not a run count" || !strings.Contains(remedy, "1 or more") {
+			t.Fatalf("--max 0 is refused at the pick with the negative count's words: %v", ref)
+		}
+		if code, _, errOut := implementCLI(t, "build", "next", "--max", "0"); code != 2 || !strings.Contains(errOut, "--max 0 is not a run count") {
+			t.Fatalf("the text refusal exits 2 naming --max 0: %d %q", code, errOut)
+		}
+	}
+
+	t.Run("no series", func(t *testing.T) {
+		repo := buildRepo(t)
+		refusedZero(t)
+		runDirAbsent(t, repo.Root())
+		var single struct {
+			Pick   *struct{} `json:"pick"`
+			Series *struct{} `json:"series"`
+		}
+		if err := json.Unmarshal([]byte(mustImplement(t, "build", "next", "--json")), &single); err != nil {
+			t.Fatal(err)
+		}
+		if single.Pick == nil || single.Series != nil {
+			t.Fatalf("with no --max the call is a single pick: %+v", single)
+		}
+	})
+
+	t.Run("live series", func(t *testing.T) {
+		repo := buildRepo(t)
+		secondBuildIntent(t, repo)
+		mustImplement(t, "build", "next", "--max", "2", "--json")
+		refusedZero(t)
+		var waiting map[string]any
+		if err := json.Unmarshal([]byte(mustImplement(t, "build", "next", "--json")), &waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting["pick"] != nil || waiting["series"] == nil {
+			t.Fatalf("with no --max the call continues the series: %v", waiting)
+		}
+		if runs, _ := loop.Runs(repo.Root()); len(runs) != 1 {
+			t.Fatalf("the refused count started no run: %d runs", len(runs))
+		}
+	})
 }
 
 // TestImplementRecordCarriesThePick is criterion 6 at the front door: the run
