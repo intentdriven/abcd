@@ -78,12 +78,7 @@ provenance against `release.yml` on `main` and the released commit, which only
 auto-release's call provides, so a run started by a hand-pushed tag is refused
 by its first job (`pushed-tag`) before anything is checked out, built or
 signed. A pre-release tag (`vX.Y.Z-…`) is refused by the release job's tag
-check, since the site run publishes full releases only. A release published
-before release provenance was held to `release.yml` on `main` carries a
-signing identity these checks no longer accept, so `site.yml`'s emergency
-redeploy, `abcd update` and the plugin bootstrap refuse it, a redeploy with no
-tag input included while the newest published release is one of them, and the
-next release clears it.
+check, since the site run publishes full releases only.
 
 The Release is created as a draft holding the binaries, the plugin archive and
 `checksums.txt`; the site run attaches `site.tar.gz` and then publishes it, so
