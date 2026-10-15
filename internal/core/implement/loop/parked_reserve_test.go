@@ -179,14 +179,17 @@ func TestARenewalKeepsTheDayTheFenceGave(t *testing.T) {
 }
 
 // TestTheFenceHoldsADayWhenThePullRequestIsLeftForAPerson: a pull request the
-// landing leaves open for a person to merge, under a mirror with no queue or
-// with a queue no approval gates, waits on that person as long as a review
-// would, so the fence renews for a day there too. Only a checkout with no
-// mirror at all keeps the default lease (C44, decision 29).
+// landing leaves open for a person to merge, under a mirror with no queue,
+// with a queue no approval gates, or with no mirror at all, waits on that
+// person as long as a review would, so the fence renews for a day there too.
+// The no-mirror case is C44 as the product thinker amended it on 2026-10-15
+// ("Hold the sign a day", iss-2610152020234609): a two-hour lapse let a
+// colleague's drain redo work that was only waiting to merge.
 func TestTheFenceHoldsADayWhenThePullRequestIsLeftForAPerson(t *testing.T) {
 	for name, ruleset := range map[string]string{
 		"no merge queue":     noQueueRuleset,
 		"a queue unreviewed": unreviewedQueueRuleset("MERGE"),
+		"no mirror":          "",
 	} {
 		t.Run(name, func(t *testing.T) {
 			f := newLandFixture(t, ruleset)

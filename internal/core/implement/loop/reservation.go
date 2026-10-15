@@ -153,26 +153,24 @@ func lastReservationEntry(st State) *Entry {
 // stamp renders a time as a reservation carries one: RFC 3339, UTC.
 func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 
-// fenceLease is the lease the land fence renews with. Under a ruleset mirror
-// every landing the loop makes waits on a person, so it takes the longest
-// lease, lease.Max: the loop arms a merge only behind a required approval (a
-// review, or a code owner's), and otherwise leaves the pull request open for
-// a person to merge, and either can wait overnight. A day is also past any
-// merge queue's check timeout and its margin (C43). With no mirror at all it
-// is the default lease (decision 29 on the intent, C44). Past the fence,
-// renewals keep the hold: a step's, a receipt's and every drain move's, each
-// at half the lease and keeping its term.
-func fenceLease(mirrored bool) time.Duration {
-	if mirrored {
-		return lease.Max
-	}
-	return lease.Default
-}
+// fenceLease is the lease the land fence renews with: lease.Max, a day,
+// mirror or not, because every landing the loop makes waits on a person. It
+// arms a merge only behind a required approval (a review, or a code owner's)
+// read from the ruleset mirror, and otherwise, a checkout with no mirror
+// included, leaves the pull request open for a person to merge, and either
+// can wait overnight. A day is also past any merge queue's check timeout and
+// its margin (C43). The product thinker ruled the no-mirror case on
+// 2026-10-15 ("Hold the sign a day", amending decision 29 and C44,
+// iss-2610152020234609): a two-hour lapse let a colleague's drain redo work
+// that was only waiting to merge. Past the fence, renewals keep the hold: a
+// step's, a receipt's and every drain move's, each at half the lease and
+// keeping its term.
+const fenceLease = lease.Max
 
 // landFence is the land fence, at the top of the arming: it fetches the run's
 // reservation and refuses, arming nothing, unless the tip is this person's
 // from this copy and live; when it holds, it renews it with term, the
-// fenceLease of the merge rule. It returns the renewed expiry, zero
+// fenceLease. It returns the renewed expiry, zero
 // for a run that holds no reservation.
 func landFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
 	id := c.State.Key

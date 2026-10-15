@@ -852,31 +852,9 @@ func requiresApproval(c Context, lane Lane, params json.RawMessage) bool {
 // base is the default branch the lane was cut from, so the lane's own commits
 // cannot change the rule it lands by.
 func mergeRule(c Context, lane Lane, def string) (string, bool, error) {
-	r, err := readMergeRule(c, lane, def)
-	return r.method, r.approval, err
-}
-
-// mergeRuleRead is the ruleset mirror read at a lane's base: the merge
-// queue's method ("" when none gates the default branch), whether a person's
-// approval is required, and whether a mirror exists at all, which decides the
-// land fence's lease.
-type mergeRuleRead struct {
-	method   string
-	approval bool
-	mirrored bool
-}
-
-// readMergeRule is mergeRule with whether the mirror exists.
-func readMergeRule(c Context, lane Lane, def string) (mergeRuleRead, error) {
-	method, approval, mirrored, err := mergeRuleParts(c, lane, def)
-	return mergeRuleRead{method: method, approval: approval, mirrored: mirrored}, err
-}
-
-// mergeRuleParts reads the mirror once for mergeRule and readMergeRule.
-func mergeRuleParts(c Context, lane Lane, def string) (string, bool, bool, error) {
 	names, err := gitutil.RunCappedBytes(c.RepoRoot, maxGitOutput, "ls-tree", "-z", "--name-only", lane.BaseSHA, "--", RulesetsRelDir+"/")
 	if err != nil {
-		return "", false, false, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", err)
+		return "", false, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", err)
 	}
 	method := ""
 	approval := false
@@ -886,15 +864,15 @@ func mergeRuleParts(c Context, lane Lane, def string) (string, bool, bool, error
 			continue
 		}
 		if count++; count > maxRulesets {
-			return "", false, false, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("the ruleset mirror holds more than %d files", maxRulesets), "trim the mirror, then run `abcd implement step` again")
+			return "", false, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("the ruleset mirror holds more than %d files", maxRulesets), "trim the mirror, then run `abcd implement step` again")
 		}
 		raw, err := gitutil.RunCappedBytes(c.RepoRoot, maxRulesetBytes, "cat-file", "blob", lane.BaseSHA+":"+name)
 		if err != nil {
-			return "", false, false, refuse(string(StageLand), "", lane.ID, name+" cannot be read at the lane's base", "restore the ruleset mirror, then run `abcd implement step` again")
+			return "", false, refuse(string(StageLand), "", lane.ID, name+" cannot be read at the lane's base", "restore the ruleset mirror, then run `abcd implement step` again")
 		}
 		var rs ruleset
 		if err := json.Unmarshal(raw, &rs); err != nil {
-			return "", false, false, refuse(string(StageLand), "", lane.ID, name+" does not parse as a ruleset, so the merge rule cannot be read",
+			return "", false, refuse(string(StageLand), "", lane.ID, name+" does not parse as a ruleset, so the merge rule cannot be read",
 				"restore the ruleset mirror (its README says how to refresh it), then run `abcd implement step` again")
 		}
 		if !rs.targets(def) {
@@ -916,17 +894,17 @@ func mergeRuleParts(c Context, lane Lane, def string) (string, bool, bool, error
 				m = "MERGE"
 			}
 			if _, ok := mergeMethods[m]; !ok {
-				return "", false, false, refuse(string(StageLand), "", lane.ID, name+" names a merge-queue method the forge client has no flag for",
+				return "", false, refuse(string(StageLand), "", lane.ID, name+" names a merge-queue method the forge client has no flag for",
 					"correct the ruleset mirror, then run `abcd implement step` again")
 			}
 			if method != "" && method != m {
-				return "", false, false, refuse(string(StageLand), "", lane.ID, "the ruleset mirror gates the default branch through merge queues with different methods",
+				return "", false, refuse(string(StageLand), "", lane.ID, "the ruleset mirror gates the default branch through merge queues with different methods",
 					"correct the ruleset mirror, then run `abcd implement step` again")
 			}
 			method = m
 		}
 	}
-	return method, approval, count > 0, nil
+	return method, approval, nil
 }
 
 // landArm arms the merge by the ruleset's rule, or leaves the pull request
@@ -940,16 +918,14 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	rule, err := readMergeRule(c, *lane, def)
+	method, approval, err := mergeRule(c, *lane, def)
 	if err != nil {
 		return Outcome{}, err
 	}
-	method, approval := rule.method, rule.approval
 	// The land fence (spc-2610031753359849 spec 2): before the rule decides,
 	// the run's reservation must still be this person's from this copy, and
-	// it is renewed for a day under a mirror, where every landing waits on a
-	// person, and for the default lease with no mirror.
-	holds, err := landFence(c, *lane, fenceLease(rule.mirrored))
+	// it is renewed for fenceLease, a day.
+	holds, err := landFence(c, *lane, fenceLease)
 	if err != nil {
 		return Outcome{}, err
 	}

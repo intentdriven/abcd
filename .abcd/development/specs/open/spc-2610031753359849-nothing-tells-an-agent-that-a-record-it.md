@@ -583,7 +583,7 @@ the test that proves the criterion, in the package the step lands in.
 | C41 | 8 | `loop.TestAStepUnderHalfLeasePushesNothing` |
 | C42 | 8 | `loop.TestTheFenceRefusesAReservationNowAnotherPersons` |
 | C43 | 8 | `loop.TestTheFenceRenewsPastTheQueueTimeout` |
-| C44 | 8 | `loop.TestTheFenceRenewsWithTheDefaultLeaseWithoutAMirror` |
+| C44 | 8 | `loop.TestTheFenceHoldsADayWhenThePullRequestIsLeftForAPerson` (its no-mirror case; C44 as amended on 2026-10-15, below; it replaced `loop.TestTheFenceRenewsWithTheDefaultLeaseWithoutAMirror`) |
 | C45 | 9 | `loop.TestALandedLaneTombstonesItsOwnReservation` |
 | C46 | 9 | `loop.TestALandedLaneLeavesAnotherPersonsReservation` |
 | C47 | 10 | `claim.TestTheEleventhReservationIsRefusedNamingTheCap` |
@@ -814,6 +814,18 @@ These are the facilitator's design calls; none changes a criterion.
     decision 29's default rather than the day the reviewers asked for every
     unarmed pull request, since decision 29 is the intent's and changing it
     is its owner's call; such a run's pull request holds by the renewals.
+  - **Amended 2026-10-15 by the product thinker** (about 20:15 BST,
+    answering "Hold the sign a day"; iss-2610152020234609): a pull request
+    waiting on a person holds the reservation for a day, mirror or not, so
+    the fence's lease is `lease.Max` with no mirror too. This amends
+    decision 29 and C44 of the intent (its decision 40); the line above and
+    the Approach's "With no mirror, the lease is the default two hours"
+    stand as what was settled before. The reason: a two-hour lapse let a
+    colleague's drain redo work that was only waiting to merge. With no
+    mirror the loop never arms a merge (no merge queue is known), so every
+    such landing leaves the pull request open for a person and there is no
+    case left for the default lease; the fence's lease no longer depends on
+    the mirror at all.
   - A renewal keeps the tip's own term, `min(max(lease.Default, effective
     expiry − Abcd-Claimed-At), lease.Max)`, never the default alone: a
     renewal at half a day-long fence lease would otherwise cut the hold to
