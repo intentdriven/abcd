@@ -1,0 +1,6 @@
+---
+id: dcn-2607300000000007
+slug: a-cross-agent-transcript-capture-source
+date: 2026-07-30
+---
+2026-07-30 — a cross-agent transcript-capture source is the current default SOTA upgrade for the history corpus, triggered when compatibility beyond Claude Code becomes a concern; adopted import-only: its output enters through the pre-declared `specstory-import` seam over the native store, so the fail-closed redaction applies to imported material, and the native floor stays the default with capture degrading to it when the tool is absent. The candidate tool, target harness, and provider-coverage caveats live in research/notes/2026-07-30-session-recording-sota.md (§6 addendum) — commitment records name no external tool before adoption is decided. The SOTA verdict is re-verified at the adopting intent; a move from optional to required tool is a sota-per-intent path-1 hard stop (new-dependency approval). Rejected: adopting the tool's in-repo history directory as a store (adr-29 already rejected external stores; transcripts stay out of the repo) and bespoke per-host parsers (a permanent maintenance burden the external tool already carries). See iss-217. (Recorded 2026-08-15; decided 2026-07-30, parked across the attribution epoch.)

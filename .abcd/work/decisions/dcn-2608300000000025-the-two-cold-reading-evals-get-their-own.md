@@ -1,0 +1,6 @@
+---
+id: dcn-2608300000000025
+slug: the-two-cold-reading-evals-get-their-own
+date: 2026-08-30
+---
+2026-08-30 — The two cold-reading evals get their own always-run CI job rather than riding the `smoke` job that stands down on record-only pull requests. The stand-down is anti-correlated with the risk these evals exist to catch: they read the live record tree, and `docs/`, `.abcd/development/`, `.abcd/work/` and the root prose files are both the classifier's inert allowlist and the material the assembler includes, so the diff most able to introduce warm content is exactly the diff that skips the check. A stood-down job still reports its context green, so the current shape manufactures a green for work that did not happen, which the loud-staging principle refuses. The remedy follows the reasoning `ci.yml` already documents for the ubuntu unit lane, which never stands down precisely because its tests read the live tree: a small job with no `inert` condition running these two evals alone, the rest of the smoke harness unchanged, the workflow edit landing with itd-186/187 so it is reviewed beside the evals it serves. Ruled before the build rather than after, because spc-64 and spc-65 both promised no workflow edit would be needed and that promise is what changes.

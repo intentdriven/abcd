@@ -1,0 +1,6 @@
+---
+id: dcn-2609230000000018
+slug: the-two-rulings-that-close-how-a-release
+date: 2026-09-23
+---
+2026-09-23 — The two rulings that close how a release reaches `/plugin update` (product thinker, rulings E4 and E5 of the run A interview, 10:23Z and 10:27Z), recorded beside the build they govern; the E1 to E3 entry left E4 owed. E4, the contributor entry, 10:23Z: there is no second, development entry in the marketplace catalog. The public listing carries the pinned release archive alone, and contributors load the plugin from their own checkout, a step documented for contributors only (`CONTRIBUTING.md`), never in the user docs. E5, binary upgrade integrity, raised by the product thinker in E1, 10:27Z: `abcd update` verifies a downloaded binary only against the same release's `checksums.txt`, which catches corruption but not a release page whose binary and checksums were both replaced. A check independent of that release, such as a digest committed in the repository's history or a signed build attestation (a new verification dependency needs sign-off), is next-cycle work; this release keeps the same-page check. It is captured as iss-2609231050273096, deferred past v0.9.0 with this ruling as its reason.

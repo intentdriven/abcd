@@ -1,0 +1,6 @@
+---
+id: dcn-2608290000000002
+slug: the-gitleaks-adapter-admits-a-binary
+date: 2026-08-29
+---
+2026-08-29 — The gitleaks adapter admits a binary under an allow-shape, not a deny-list (GHSA-fg9r-3f8g-89m6, iss-2608291807456485): absolute path, resolved OUTSIDE the repository both lexically and after symlink resolution, regular, executable — applied identically to a committed `path` and to the PATH lookup result. Refusal is `ErrConfiguredPathRefused`, as loud as not-found, and a refused configured path never falls back to PATH. PATH itself stays trusted as the operator's environment (abcd already resolves git, gh and grep from it; a hostile checkout cannot set it); what the admission rule closes is a PATH entry or config that reaches INTO the checkout. Rejected: a fixed safe search path for the fallback (would break Homebrew/asdf/custom installs for no gain against an operator-level PATH compromise) and executing with an isolated env (the env is the operator's, like PATH — gitleaks does honour GITLEAKS_CONFIG, but a checkout cannot set it; cwd is pinned to the private temp dir instead). Containment routes through `fsutil.PathWithin` with the case-folding predicate AND an `os.SameFile` ancestor walk, because a byte-exact compare admitted a case-variant or NFD respelling of the root on APFS.

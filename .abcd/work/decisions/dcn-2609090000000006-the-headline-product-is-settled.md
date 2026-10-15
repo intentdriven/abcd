@@ -1,0 +1,6 @@
+---
+id: dcn-2609090000000006
+slug: the-headline-product-is-settled
+date: 2026-09-09
+---
+2026-09-09 — The headline product is settled (maintainer, closing the press release's "Product framing after adr-35" open question, both halves). abcd helps a product thinker realise an intent as a high-fidelity prototype or demonstrator, carrying the why from idea to shipped reality: the identity block's story, the one the README strapline and the roles page already tell and the one the roles and product-thinker-surface decisions on the design branch (numbered 0055 and 0056 there, re-minted at merge) are built on. The lifeboat is a key capability of that product rather than its headline, and its widening from whole repositories to a single feature, a lab session or an abandoned worktree enters the press release under the not-yet-real marker, as intention rather than commitment. `disembark probe` is a user-facing command and keeps its place in the press release's scope list. Rejected: the rescue story as headline (it would re-pin the identity block and every surface held to it); adr-35's "read any repository for its theory" as headline (it is the probe's own promise, now one capability among the surfaces); deferring (the audit of the press release against delivered reality had been blocked on this question since adr-35).

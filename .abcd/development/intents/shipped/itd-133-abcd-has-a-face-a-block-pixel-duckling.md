@@ -151,7 +151,7 @@ Per-criterion verdicts:
   evidence: internal/livery/livery_test.go:183 — "for i, want := range []rune{'b', 'w', 'r', 'w', 'b'} {"
   evidence: internal/livery/grids.go:80 — "ApproximateGeometry: true,"
 - ac-5 — MET_WITH_CONCERNS: the role assignment is recorded in the decision log's 2026-08-21 entry (duckling mascot, signal-flag hoist as the terminal logo, lifeboat for the lifeboat verbs, forge logo kept); the concern is that the intent refers to 'the decision log' in prose only — there is no link to the entry, so discovery is by date
-  evidence: .abcd/work/DECISIONS.md:1663 — "2026-08-21 — Visual identity roles (itd-133, maintainer-ruled at the planning"
+  evidence: [dcn-2608210000000002](../../../work/decisions/dcn-2608210000000002-visual-identity-roles-itd-133.md) — "2026-08-21 — Visual identity roles (itd-133, maintainer-ruled at the planning"
   evidence: .abcd/development/intents/shipped/itd-133-abcd-has-a-face-a-block-pixel-duckling.md:55 — "place (maintainer-ruled 2026-08-21, recorded in the decision log)."
 - ac-6 — MET: the launch payload config includes docs/, so the 28 SVGs under docs/assets/img/livery/ ship as assets; no committed file references them from a user-facing page or references the local scratch prototypes (the only scratch mention in the tree is an unrelated test fixture path)
   evidence: .abcd/config/launch-payload.json:8 — ""docs","
@@ -168,7 +168,7 @@ Gap audit:
     evidence: internal/livery/livery_test.go:202 — "TestSVGAssetsInSync"
     evidence: .github/workflows/ci.yml:282 — "run: go test ./..."
   - the role-assignment decision recorded in the decision log
-    evidence: .abcd/work/DECISIONS.md:1663 — "Visual identity roles (itd-133"
+    evidence: [dcn-2608210000000002](../../../work/decisions/dcn-2608210000000002-visual-identity-roles-itd-133.md) — "Visual identity roles (itd-133"
 - diverged:
   - the decision is linked from this intent — referenced in prose, not linked
     evidence: .abcd/development/intents/shipped/itd-133-abcd-has-a-face-a-block-pixel-duckling.md:55 — "recorded in the decision log"

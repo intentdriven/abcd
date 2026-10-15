@@ -1,0 +1,6 @@
+---
+id: dcn-2609230000000019
+slug: the-one-sanctioned-mention-of-abcd-in-an
+date: 2026-09-23
+---
+2026-09-23 — The one sanctioned mention of abcd in an adopted repository (product thinker, ruling F of the run A interview, 14:38Z, on iss-2609231103413459). The 2026-09-11 ruling that `ahoy install` must not write abcd by name into a repository it adopts (carried by iss-2609110944498549) covers the name-guard hooks (`.githooks/pre-commit`, `.githooks/pre-merge-commit`) and the `.gitignore` fence, and they are its sanctioned exception: both keep their markers and their naming, documented as the one allowed mention of abcd in an adopted repository, because the hooks run the binary and the fence tells people not to hand-edit it. No rename and no migration: detection classifies an adopted repository by exactly that hook marker and fence, so a rename would have to migrate every repository already adopted. The product thinker ruled the markers, not abcd's record ids: the hook templates' citations of abcd's own records (itd-74, spc-20, itd-150, iss-370, and a path into the design record) resolve to nothing in an adopter's repository, so they are dropped from the templates and a test keeps them out. iss-2609231103413459 closes as wontfix on this ruling.

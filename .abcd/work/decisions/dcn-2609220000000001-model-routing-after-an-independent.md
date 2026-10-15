@@ -1,0 +1,6 @@
+---
+id: dcn-2609220000000001
+slug: model-routing-after-an-independent
+date: 2026-09-22
+---
+2026-09-22 — Model routing, after an independent research pass (product thinker, at an interactive interview). Jev (TypeSafe AI, on OpenRouter) is a typed-decision model, not a router: it fits abcd's closed-option judgements and nothing generative. Rulings: a provider adapter serves only the models it lists under a vendor denylist no listing overrides, everything else on the host (adr-2609221009491186); the OpenAI-compatible API adapter is planned with OpenRouter as configuration, a one-time walkthrough at ahoy and the key kept out of the harness (itd-2609081951381895); a decision adapter for the typed judgements runs in shadow as an abcd lab and a research note is the evidence a ruling turns a judgement type on with (itd-2609221009495079); escalation inside a lane is a rule on a failed fix round, recorded on the model tier (itd-2609170822093401); model per role, the pick and consistency are not routing and stand as ruled; itd-17's learned router is superseded. Every external credential abcd holds goes through one store with three homes the person chooses (adr-2609221017021499, itd-2609221017023290); the API adapter and the site setup read through it. The research is filed as research/notes/2026-09-22-jev-and-model-routing-sota.md.

@@ -102,7 +102,7 @@ Gap audit:
   - the issue ledger links to specs through related_specs
     evidence: internal/core/capture/validate.go:144 — "{"related_specs", reSpcID, "spc-N"},"
   - the reviews-subsystem criterion is dropped as moot by the product thinker's ruling, and the record says so
-    evidence: .abcd/work/DECISIONS.md:2507 — "itd-43's third criterion is moot and dropped, so spc-8 closes."
+    evidence: [dcn-2609230000000001](../../../work/decisions/dcn-2609230000000001-the-product-thinker-ruled-on-the-owed.md) — "itd-43's third criterion is moot and dropped, so spc-8 closes."
 - diverged:
   - no epic left behind in a heading or the brief: one noun use survives inside a fenced diagram on the brief's intent surface page, outside the detector's scope
     evidence: .abcd/development/brief/04-surfaces/05-intent.md:244 — "(no epic currently owns"

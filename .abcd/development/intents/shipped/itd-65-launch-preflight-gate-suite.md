@@ -192,7 +192,7 @@ Per-criterion verdicts:
   evidence: internal/core/launch/dryrun.go:247 — "// Fail closed on the coverage gap: any include-selected file the scanner"
   evidence: internal/core/launch/dryrun_test.go:109 — "func TestZeroCoverageRefuses"
   evidence: internal/adapter/scanner/finding.go:6 — "gitleaks/trufflehog shell-out) — so it is fully testable and reusable across"
-  evidence: .abcd/work/DECISIONS.md:744 — "native patterns are the default engine, gitleaks is the stronger"
+  evidence: [dcn-2607240000000004](../../../work/decisions/dcn-2607240000000004-itd-28-gitleaks-sign-off-stage-2-runs.md) — "native patterns are the default engine, gitleaks is the stronger"
 - ac-7 — MET: a clean payload would publish with exit 0 and every preview or cut that renders a payload writes preflight.json and preflight.md under the local tier
   evidence: internal/core/launch/dryrun_test.go:78 — "func TestShipCleanWouldPublish"
   evidence: internal/core/launch/gates_test.go:464 — "func TestWritePreflightReportLandsInTheLocalTier"
@@ -224,7 +224,7 @@ Gap audit:
   - the doc-history gate offers to auto-append the flagged passage to the changelog; delivered as a hard-fail only, the append superseded by the derived changelog (adr-37) and recorded on the intent
     evidence: .abcd/development/intents/shipped/itd-65-launch-preflight-gate-suite.md:98 — "Superseded: the offer to auto-append"
   - gitleaks at a pinned floor as the secret engine, failing closed when absent; delivered as a native pattern scanner with no shell-out, failing closed on unavailability and coverage, per the 2026-07-24 ruling that the intent record does not itself name
-    evidence: .abcd/work/DECISIONS.md:743 — "2026-07-24 — itd-28 gitleaks sign-off: Stage 2 runs through the scanner"
+    evidence: [dcn-2607240000000004](../../../work/decisions/dcn-2607240000000004-itd-28-gitleaks-sign-off-stage-2-runs.md) — "2026-07-24 — itd-28 gitleaks sign-off: Stage 2 runs through the scanner"
     evidence: internal/adapter/scanner/finding.go:6 — "gitleaks/trufflehog shell-out)"
   - the optional oracle/LLM adjudication of ambiguous narration hits; delivered as a deterministic layered detector only, the oracle pass absent and the auditor-agent question left open on the intent
     evidence: internal/core/launch/gates.go:807 — "func narrationConstruct(sentence string) string {"

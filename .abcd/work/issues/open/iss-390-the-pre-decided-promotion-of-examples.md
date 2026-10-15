@@ -16,7 +16,7 @@ the pre-decided promotion of examples-use-reserved-identifiers to a discipline-k
 ## Evidence
 
 - `.abcd/development/principles/README.md:24-25` — "The moment a principle gains a mechanical gate (a lint code, a hook, a CI check), it is promoted to a discipline-kind intent … this directory is the not-yet-enforced layer."
-- `.abcd/work/DECISIONS.md:881` — the iss-154 allowlist-inversion lint's shipping "promotes the principle to a discipline".
+- [dcn-2607290000000001](../../decisions/dcn-2607290000000001-privacy-leak-follow-up-illustrative.md) — the iss-154 allowlist-inversion lint's shipping "promotes the principle to a discipline".
 - The trigger fired (the lint is armed in `repolint`), yet `.abcd/development/intents/disciplines/` holds only itd-1, itd-5, itd-37, itd-79, itd-81, itd-84 — no intent for examples-use-reserved-identifiers.
 - Refuter verdict: CONFIRMED (minor, process) — the promotion is pre-decided by two records, not an open design question. Minting a discipline-kind intent is a maintainer ceremony (an intent record, not an issue fix), so this record stays open as the tracker rather than being resolved by the autonomous round; iss-389 fixed the principle file's false prose in the same round.
 

@@ -159,7 +159,7 @@ Gap audit:
   - The rate-limited lane is 'checkpointed to its branch': delivered as the agent's uncommitted work and partial receipt saved aside under the run directory and the worktree reset to the branch's last commit, so nothing new reaches the branch
     evidence: internal/core/implement/loop/ratelimit.go:157 — "aside, err := saveAside(repoRoot, root, st.RunID, *lane, lane.Awaits[k], why, aw.Role == RoleImplementer, now)"
     evidence: internal/core/implement/loop/ratelimit_test.go:108 — "lane-2's worktree is reset to its last commit"
-    evidence: .abcd/work/DECISIONS.md:2680 — ""Checkpointed to its branch" reads as the restart of 2026-10-09 reads a gone agent"
+    evidence: [dcn-2610100000000002](../../../work/decisions/dcn-2610100000000002-four-points-spc-2609301921521360-left.md) — ""Checkpointed to its branch" reads as the restart of 2026-10-09 reads a gone agent"
   - The budget comparison exists only behind an optional QuotaReporter that no shipped runner implements, so every real run today skips the check out loud; the comparison path is exercised through the Options.Quota test seam
     evidence: internal/core/runner/runner.go:139 — "type QuotaReporter interface {"
     evidence: internal/core/implement/loop/budget.go:139 — "detail = "skipped, as no runner of the run reports a quota: " + detail"
@@ -168,7 +168,7 @@ Gap audit:
     evidence: internal/core/implement/loop/budget.go:13 — "Fix rounds and syncs"
 - missing:
   - Rate-limit detection for the opencode runner: an opencode limit is still an ordinary refusal and falls back as before
-    evidence: .abcd/work/DECISIONS.md:2680 — "an opencode limit stays a refusal and falls back as before"
+    evidence: [dcn-2610100000000002](../../../work/decisions/dcn-2610100000000002-four-points-spc-2609301921521360-left.md) — "an opencode limit stays a refusal and falls back as before"
     evidence: internal/core/runner/claude.go:80 — "if what := claudeRateLimit(res.stdout); what != "" {"
   - A rate limit met by a host-run sub-agent: the loop reads only a Dispatch failure, and no verb lets the host report one
     evidence: internal/core/implement/loop/drive.go:152 — "out, err := d.Dispatch(ctx, req)"

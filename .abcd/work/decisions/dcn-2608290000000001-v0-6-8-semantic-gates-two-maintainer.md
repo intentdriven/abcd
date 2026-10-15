@@ -1,0 +1,6 @@
+---
+id: dcn-2608290000000001
+slug: v0-6-8-semantic-gates-two-maintainer
+date: 2026-08-29
+---
+2026-08-29 — v0.6.8 semantic gates: two maintainer judgements recorded so they are not re-litigated. (a) The iss35 cross-check was RE-RUN against the final content commit (00f1509d) rather than accepting an earlier full-tier run whose tree was amended in flight: a receipt attests one sha and the earlier run could not honestly name one; at ~13 minutes wall and ~1.7M tokens a re-run is cheaper than the ambiguity. (b) PROMOTE with a disposition on every finding (60, all independently re-verified, 0 refuted) rather than HOLD: the findings are the design brief lagging the shipped surface (iss-2608231346137587, whose corpus rule forbids hand-fixing ahead of the mining intent), not something the release introduced or ships, and a HOLD would block a correct changelog behind debt the record already owns. Also noted: the local_username payload rule collides with product vocabulary on a machine whose account name is a common word (iss-2608291444328326); the release push used a HOME symlink alias so the pre-push preflight could run in full, never --no-verify, and CI re-ran every gate under its own account.

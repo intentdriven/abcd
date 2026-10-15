@@ -16,7 +16,7 @@ closes the one genuine coverage gap (AC5's list shape), and records — rather
 than papers over — the two places the live system diverges from the AC letter:
 the resolve-note storage design (AC2) and, until the 2026-09-23 build, the
 promote flow the verbs could not complete (AC3). The product thinker ruled AC3
-built as written (ruling B3, DECISIONS.md 2026-09-23): the back-links renamed
+built as written (ruling B3, [dcn-2609230000000016](../../../work/decisions/dcn-2609230000000016-itd-4-ac3-built-as-ruled-b3-the-promote.md)): the back-links renamed
 to `related_issues` / `related_intents` as the AC names them, every existing
 record migrated, and the drift check the AC cites delivered as
 `abcd intent audit --issue-drift`. With AC3 delivered the spec closes and itd-4

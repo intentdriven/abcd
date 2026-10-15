@@ -1,0 +1,6 @@
+---
+id: dcn-2609250000000004
+slug: reach-of-the-push-receipt-entry-above
+date: 2026-09-25
+---
+2026-09-25 — Reach of the push-receipt entry above, stated after review (iss-2608210738378295). The receipt's clean-tree test is `git status` read when the preflight begins and when it ends, and a tree `git status` cannot see is not vouched for. So `scripts/preflight-receipt.sh` also refuses to mint while any tracked file is flagged skip-worktree or assume-unchanged (`git ls-files -v` tags it `S` or in lower case), because either flag hides that file's edits from the status read; a sparse checkout sets skip-worktree and so never mints. What the receipt still cannot see, stated in the script's header: files git ignores, which are outside the commit yet can be read by a gate (a `go.work`, which `.gitignore` lists, changes every Go gate's module resolution); HEAD moved and moved back, or the tree changed and restored, between the two reads; and anything a gate reads from outside the checkout. The receipt stays a local convenience gate and CI the authority; closing those would mean running the gates on a clean export of HEAD, the alternative the entry above did not take (lane hooks fix round, autonomous run A).

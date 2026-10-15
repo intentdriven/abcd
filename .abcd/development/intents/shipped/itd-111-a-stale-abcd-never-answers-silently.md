@@ -271,7 +271,7 @@ Gap audit:
     evidence: internal/surface/cli/version.go:72 — "cmd.Deprecated = "its report moved to `abcd --version` and its check to `abcd update --check`""
   - the amended AC8 cites a 2026-09-29 product-thinker ruling recorded in .abcd/work/DECISIONS.md; no such line exists at 8ffb6d069 or on main (the PR body says a separate rulings lane appends it)
     evidence: .abcd/development/intents/shipped/itd-111-a-stale-abcd-never-answers-silently.md:160 — "`.abcd/work/DECISIONS.md` under that date"
-    evidence: .abcd/work/DECISIONS.md:2587 — "2026-09-29 — An autonomous run keeps at most five sub-agents alive"
+    evidence: [dcn-2609290000000003](../../../work/decisions/dcn-2609290000000003-an-autonomous-run-keeps-at-most-five.md) — "2026-09-29 — An autonomous run keeps at most five sub-agents alive"
   - under an explicit --bin-dir a writability probe creates and removes a temp file before the stale refusal, and its comment says it creates nothing
     evidence: internal/core/ahoy/apply.go:91 — "binTargetPath, err := resolveInstallTarget(opts, det.pluginRoot)"
     evidence: internal/core/ahoy/store.go:431 — "f, err := os.CreateTemp(dir, ".abcd-write-probe-*")"

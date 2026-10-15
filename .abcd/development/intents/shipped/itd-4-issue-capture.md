@@ -111,7 +111,7 @@ Per-criterion verdicts:
   evidence: internal/core/capture/workflow.go:289 — "transition(req.RepoRoot, req.IssuesRoot, req.ID, "resolve", "resolution", req.Resolution,"
   evidence: internal/core/capture/workflow_test.go:291 — "tr.FromStatus != StateOpen || tr.ToStatus != StateResolved"
   evidence: internal/core/capture/workflow_test.go:299 — "lr.Issues[0].Resolution !="
-  evidence: .abcd/work/DECISIONS.md:579 — "AC2's resolve note lives as the structured frontmatter scalar `resolution:` ... not body-appended prose as the AC letter says"
+  evidence: [dcn-2607170000000002](../../../work/decisions/dcn-2607170000000002-burst-3-m3-itd-4-spc-6-three-record.md) — "AC2's resolve note lives as the structured frontmatter scalar `resolution:` ... not body-appended prose as the AC letter says"
 - ac-3 — MET_WITH_CONCERNS: promote mints the draft with related_issues: [iss-N] and appends itd-M to the issue's related_intents, the drift walker checks the join and is enforced in preflight and CI; concerns: the seed is a by-id pointer, not the entry's content (spc-24 design), the mint goes through intent.CreateDraft rather than a `/abcd:intent new` invocation (that alias is deprecated), and the check is named `abcd intent audit --issue-drift`, not intent-fidelity-reviewer
   evidence: internal/core/capture/promote.go:222 — "RelatedIssue: req.ID,"
   evidence: internal/core/intent/create.go:427 — "b.WriteString(RelatedIssuesKey + ": [" + opts.RelatedIssue + "]\n")"
@@ -131,7 +131,7 @@ Per-criterion verdicts:
   evidence: internal/surface/cli/cli.go:1996 — "WARNING: `abcd intent new` is deprecated; use `abcd intent "<text>"`"
 - ac-4 — NOT_MET: promised: the plugin's sync step promotes every entry of the local-tier issues file into open/ with provenance 'migrated from' that file; delivered: no verb or sync step reads that file (its only mention is a package comment), no ledger record carries that provenance (grep over .abcd/work/issues/ finds none), and the source file is absent; the ruling of 2026-07-17 declares it satisfied-by-history, which records the omission rather than realising the outcome
   evidence: internal/core/capture/capture.go:2 — "a per-repo issue ledger that replaces the free-form"
-  evidence: .abcd/work/DECISIONS.md:586 — "AC4 migration recorded satisfied-by-history (source absent, ledger populated iss-1..iss-103); no dead migration code built"
+  evidence: [dcn-2607170000000002](../../../work/decisions/dcn-2607170000000002-burst-3-m3-itd-4-spc-6-three-record.md) — "AC4 migration recorded satisfied-by-history (source absent, ledger populated iss-1..iss-103); no dead migration code built"
   evidence: .abcd/work/issues/resolved/iss-1-launch-phase-ownership.md:9 — "found_during: "roadmap-consistency-review""
   evidence: .abcd/development/specs/closed/spc-6-issue-capture.md:106 — "satisfied-by-history ... Record-only; no code."
 - ac-5 — MET_WITH_CONCERNS: the pin test captures five issues and asserts `capture list --open --json` returns all five with id, slug, severity and the one-line body; concern: the human render prints id, status, severity and slug with no summary, so the criterion holds on the JSON surface only (captured as iss-2609240307549105)
@@ -157,7 +157,7 @@ Gap audit:
   - drift detection is enforced: a make preflight prerequisite and a CI check step, both --strict, and the decision log corrects its own earlier 'not wired' statement
     evidence: Makefile:306 — "preflight: load-check lint-reviews lint-issues lint-decisions record-lint issue-drift"
     evidence: .github/workflows/ci.yml:348 — "run: go run ./cmd/abcd intent audit --issue-drift --strict"
-    evidence: .abcd/work/DECISIONS.md:2523 — "Decision (5) says the drift check is not wired into preflight or CI. That contradicts the criterion it delivers"
+    evidence: [dcn-2609230000000017](../../../work/decisions/dcn-2609230000000017-two-corrections-to-the-entry-above.md) — "Decision (5) says the drift check is not wired into preflight or CI. That contradicts the criterion it delivers"
   - every retired back-link in the tree was migrated to the two-sided join and the gate reports nothing at HEAD
     evidence: internal/core/capture/migrate_test.go:106 — "func TestMigrateRewritesEveryRetiredBackLinkIntoTheTwoSidedJoin"
     evidence: .abcd/work/issues/open/iss-327-managed-repo-pii-config-wrong-and-abcd-lint-missing-privacy-hygiene-error.md:10 — "related_intents: [itd-93]"
@@ -168,7 +168,7 @@ Gap audit:
 - diverged:
   - resolve note appended to the body — delivered as the frontmatter scalar `resolution:` (signed off 2026-07-17)
     evidence: internal/core/capture/workflow.go:289 — ""resolve", "resolution", req.Resolution"
-    evidence: .abcd/work/DECISIONS.md:579 — "recorded as intentional design evolution, not a gap"
+    evidence: [dcn-2607170000000002](../../../work/decisions/dcn-2607170000000002-burst-3-m3-itd-4-spc-6-three-record.md) — "recorded as intentional design evolution, not a gap"
   - promote seeds the draft with the entry's content — delivered as a by-id pointer to the issue, never a copy (spc-24 SSOT design)
     evidence: internal/core/capture/promote.go:216 — "seed := "Graduated from `" + req.ID + "`: " + title +"
     evidence: .abcd/development/specs/closed/spc-24-an-issue-graduates-into-an-intent.md:50 — "a by-id pointer, **never** a copy of the issue body (SSOT)"
@@ -185,7 +185,7 @@ Gap audit:
     evidence: internal/surface/cli/capture_surface_test.go:199 — "runCLI(t, "capture", "list", "--open", "--json")"
 - missing:
   - the plugin's sync-step migration of the local-tier issues file into the ledger with 'migrated from' provenance (ruled satisfied-by-history 2026-07-17; nothing in the tree performs or evidences it)
-    evidence: .abcd/work/DECISIONS.md:586 — "no dead migration code built"
+    evidence: [dcn-2607170000000002](../../../work/decisions/dcn-2607170000000002-burst-3-m3-itd-4-spc-6-three-record.md) — "no dead migration code built"
     evidence: internal/core/capture/capture.go:2 — "a per-repo issue ledger that replaces the free-form"
   - brief § 5 reserved-meta-command table covering /abcd:dredge and /abcd:reflect — the brief reserves /abcd:audit alone
     evidence: .abcd/development/brief/04-surfaces/16-lint.md:16 — "`/abcd:audit` stays reserved for itd-16's hash-chain fidelity surface."

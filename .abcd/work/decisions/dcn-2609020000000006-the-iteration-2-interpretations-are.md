@@ -1,0 +1,6 @@
+---
+id: dcn-2609020000000006
+slug: the-iteration-2-interpretations-are
+date: 2026-09-02
+---
+2026-09-02 — The Iteration 2 interpretations are fixed in advance, as the framework's section 13 and the companion's section 7.6 state them, and are recorded here before any reading runs: the opening readings are the widening reading and the detection pass over Iteration 1's shipped state; one closing run is scheduled over the same object set after the dispositions and whatever revisions they occasion; amnesia is a repository property held by the eval and not evidenced by a case run; a detection rejected with a named purpose over a state deliberately unchanged that returns is the purpose-durability finding; a detection accepted and acted upon whose tension returns is the convergence finding; silence at the closing run is weak evidence of settlement and is reported as such; where the opening readings surface nothing, the iteration proceeds on the researcher's own conjectures, the null result is recorded as a run with an empty item set, and no further reading is commissioned to manufacture a finding; where the widening reading returns fewer than two configurations, the comparative reading is not exercised and that outcome is a committed comparative run with an empty item set; recurrence matching is warm work and the recognition is itself a disposition judgement.

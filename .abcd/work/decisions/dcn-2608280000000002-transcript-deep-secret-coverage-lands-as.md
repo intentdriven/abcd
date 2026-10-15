@@ -1,0 +1,6 @@
+---
+id: dcn-2608280000000002
+slug: transcript-deep-secret-coverage-lands-as
+date: 2026-08-28
+---
+2026-08-28 — Transcript deep-secret coverage lands as an OPT-IN gitleaks adapter, off by default (iss-96). The native scanner stays the always-on default; a repo arms deeper coverage by dropping an enabled `.abcd/config/gitleaks.json`, whereupon `internal/adapter/gitleaks` shells out to a gitleaks binary (PATH or configured path) over the transcript and its findings AUGMENT native redaction through the same `scanner.Redact` discipline. This realises option (c) of the iss-96 grill (labelled+delimited+high-entropy reach the prefix-anchored native set misses) as the host-delegated/opt-in-adapter pattern (adr: LLM/CLI oracles are opt-in adapters), NOT an always-on entropy detector (option (a), rejected for its redaction false-positive cost on prose) and NOT a hard gitleaks dependency in the default build. Fail-closed, never a silent no-op: an armed-but-absent binary makes capture refuse the write with `gitleaks configured but not found`. Default-off invokes nothing — no lookup, no process, no cost — so the unopted path is byte-for-byte unchanged. iss-96's residue beyond (c)'s reach (bare no-keyname values, sub-entropy-floor tokens) stays open.

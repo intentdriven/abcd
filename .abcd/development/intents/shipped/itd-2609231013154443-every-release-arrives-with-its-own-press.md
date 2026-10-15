@@ -295,7 +295,7 @@ Gap audit:
     evidence: commands/launch.md:459 — "In the final cut report, **report every refused attempt** and its reasons before"
     evidence: .abcd/development/specs/closed/spc-2609231435545473-every-release-arrives-with-its-own-press.md:229 — "The verb is host-delegated, so the loop lives in the host orchestration"
   - the closed spec's payload example carries a truncated quote the ingest refuses by design (recorded, spec left as written)
-    evidence: .abcd/work/DECISIONS.md:2527 — "The payload example in spc-2609231435545473 (closed) is stale on one point"
+    evidence: [dcn-2609230000000023](../../../work/decisions/dcn-2609230000000023-the-payload-example-in.md) — "The payload example in spc-2609231435545473 (closed) is stale on one point"
 - missing:
   - this release: the next cut carries the first page. No RELEASE.md exists at BASE and the archive holds only its README; the page arrives with the first cut that passes, which is the cut's own step and not this diff's
     evidence: .abcd/development/releases/README.md:7 — "The pages are written by the release cut, never by hand."
@@ -308,7 +308,7 @@ Scope-condition dispositions:
   evidence: .abcd/development/releases/README.md:7 — "The pages are written by the release cut, never by hand."
 - cond-2609231435545969 — survived: every shipped intent at BASE carries a Press Release section (75 of 75), the verifier reads real records (itd-121's quote passes as its record has it) and six intents of the pending cut quote a persona, so the assumption holds for the population the first page reads
   evidence: internal/core/release/page_test.go:533 — "func TestQuoteSaysFormFromARealRecord"
-  evidence: .abcd/work/DECISIONS.md:2527 — "six intents of that release (itd-119, itd-120, itd-121, itd-123, itd-124, itd-125) quote as `says <Name>, <role>.`"
+  evidence: [dcn-2609230000000023](../../../work/decisions/dcn-2609230000000023-the-payload-example-in.md) — "six intents of that release (itd-119, itd-120, itd-121, itd-123, itd-124, itd-125) quote as `says <Name>, <role>.`"
 - cond-2609231435546492 — untested: nothing in the delivery exercises or contradicts a second release line: the archive-never-overwrites check and the base tag both assume one line and no test cuts on two
 - cond-2609231435540452 — survived: the delivery enforces no cap (the spec scopes one out) and bounds the page at fifty headlines and quotes as a hostile-payload guard, and the pending first cut at BASE lists seven intents on the page, well inside the assumed twenty
   evidence: internal/core/release/page.go:35 — "A release is scoped at about twenty intents; fifty of either is not a page, it is a hostile payload."

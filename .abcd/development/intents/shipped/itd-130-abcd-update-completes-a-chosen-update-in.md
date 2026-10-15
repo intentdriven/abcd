@@ -249,7 +249,7 @@ Per-criterion verdicts:
   evidence: internal/surface/cli/update.go:86 — "return nil"
   evidence: internal/surface/cli/update.go:80 — "ahoy.RefreshPathEntryDigest(tgt.Path, rep.Digest)"
   evidence: internal/core/update/update_test.go:233 — "rep.Tag != \"v0.6.2\" || rep.OldVersion != \"v0.6.1\" || rep.Digest == \"\""
-  evidence: .abcd/work/DECISIONS.md:2198 — "Every release object older than v0.6.9 is deleted from the forge"
+  evidence: [dcn-2608300000000001](../../../work/decisions/dcn-2608300000000001-every-release-object-older-than-v0-6-9.md) — "Every release object older than v0.6.9 is deleted from the forge"
   evidence: .abcd/development/intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in.md:95 — "A copy matching no release stays foreign and is refused"
 - ac-2 — MET: selfupdate verifies the streamed bytes against the manifest digest BEFORE creating the .new file, so a mismatch writes nothing; its error names both digests ('Expected: %x, got: %x') and Apply wraps it; the CLI returns the error (non-zero exit); TestApplyChecksumMismatchLeavesTargetUntouched asserts the target is byte-identical and the directory holds only the target.
   evidence: internal/core/update/update_test.go:241 — "func TestApplyChecksumMismatchLeavesTargetUntouched"
@@ -354,7 +354,7 @@ Gap audit:
   - Ownership by provenance is narrower than 'a pinned copy at vN': provable only while vN's checksums.txt is still published and vN sits within the newest 12 feed entries; the 2026-08-30 deletion of every pre-v0.6.9 release object makes every older pinned copy an unprovenanced-file refusal
     evidence: internal/core/update/update.go:233 — "provenanceN:  12,"
     evidence: internal/core/update/update.go:485 — "A missing release (404) is found=false, not an error: provenance treats it as \"cannot prove\""
-    evidence: .abcd/work/DECISIONS.md:2198 — "v0.1.0, v0.2.0, v0.3.0, v0.4.2, v0.5.1, v0.6.7, v0.6.8; the v0.6.0–v0.6.6 tags never had one"
+    evidence: [dcn-2608300000000001](../../../work/decisions/dcn-2608300000000001-every-release-object-older-than-v0-6-9.md) — "v0.1.0, v0.2.0, v0.3.0, v0.4.2, v0.5.1, v0.6.7, v0.6.8; the v0.6.0–v0.6.6 tags never had one"
   - Shadowed entry: spc-32 promised to proceed on the owned entry and annotate the receipt; delivered is a refusal on the foreign first occupant that names the shadowed install, and the unprovenanced-regular-file shape drops the shadow entirely
     evidence: .abcd/development/specs/closed/spc-32-abcd-update-completes-a-chosen-update-in.md:61 — "proceed on the owned entry but the receipt reports the shadowing occupant"
     evidence: internal/core/update/update.go:133 — "case ahoy.UpdateTargetForeign:"
