@@ -82,7 +82,7 @@ composition and no site sources.
   contributors page, no timeline, none of the health page's authorship checks,
   and no `authorship`, `history` or per-record `dates` in `record.json`; a
   record is dated by its own frontmatter alone. abcd's own composed site keeps
-  all of them and is byte-identical before and after (3096 files at `/` and at
+  all of them and is byte-identical before and after (3097 files at `/` and at
   `--base-path /abcd/`). Whether a project site should show any of it is to be
   revisited. The workflow builds with abcd's latest
   release, so a project site cannot build until a release carries
