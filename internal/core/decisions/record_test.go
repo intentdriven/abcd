@@ -9,17 +9,18 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
-// git runs git in dir with an identity and no user or system configuration, so
-// the developer's own settings (a merge driver, a signing key) cannot reach the
-// test.
+// git runs git in dir with an identity under the shared hermetic environment
+// (gittest.Env), so neither an ambient GIT_DIR nor the developer's own settings
+// (a merge driver, a signing key) can reach the test.
 func git(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-c", "commit.gpgsign=false", "-c", "init.defaultBranch=main"}, args...)...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(),
-		"GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1",
+	cmd.Env = append(gittest.Env(t),
 		"GIT_AUTHOR_NAME=Example", "GIT_AUTHOR_EMAIL=example@example.com",
 		"GIT_COMMITTER_NAME=Example", "GIT_COMMITTER_EMAIL=example@example.com")
 	out, err := cmd.CombinedOutput()
