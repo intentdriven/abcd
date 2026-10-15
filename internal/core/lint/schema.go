@@ -29,6 +29,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -37,6 +38,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -145,11 +147,24 @@ var (
 	// carry, because they are half the record's typed links. They are parsed by
 	// the same scan so the graph never needs a second parser: reading them here
 	// costs one regexp pass per record and adds no finding.
-	recordGraphFields = []string{"spec_id", "intent"}
+	//
+	// `related_issues` and `routed_from` are graph fields for the cross-document
+	// rules (reciprocal.go), which read them back from the other end. Neither is
+	// resolved here, and prose_citation_resolves keeps reading them as it did
+	// (recordUnjudgedGraphFields), so no gate stops looking at them.
+	recordGraphFields = []string{"spec_id", "intent", "related_issues", "routed_from"}
+	// recordUnjudgedGraphFields are the graph fields no rule resolves.
+	recordUnjudgedGraphFields = []string{"related_issues", "routed_from"}
 	// recordParsedFields is every field the scan reads handles out of, in a fixed
 	// order so the graph export is deterministic.
 	recordParsedFields = append(append([]string{}, recordHandleFields...), recordGraphFields...)
 )
+
+// UnjudgedGraphField reports whether field is a graph field no rule resolves,
+// so a reader of the graph does not count it dangling.
+func UnjudgedGraphField(field string) bool {
+	return slices.Contains(recordUnjudgedGraphFields, field)
+}
 
 // recordStore describes one identified record store: where the buckets are, and
 // how a well-formed filename spells the id.
@@ -1475,6 +1490,17 @@ func checkIssueRecordShape(r schemaRecord, severity string, judged map[string]bo
 		v := r.scalar(f.value)
 		if !issueschema.SlugRe.MatchString(v) {
 			add("slug", f.line, "invalid slug '"+v+"'; a slug is kebab-case (lower-case alphanumerics joined by single hyphens) and capture refuses any other shape")
+		}
+	}
+
+	// finding_ref: the stable key of the consistency finding the record was
+	// filed for (itd-2609291923559186 G1). Capture writes it in one shape only,
+	// and the reader refuses and skips a record carrying any other, so this gate
+	// reports it in the reader's terms. A blank is the reader-parity leg's.
+	if f, present := r.fields["finding_ref"]; present && !isNull(strings.TrimSpace(f.value)) {
+		v := r.scalar(f.value)
+		if !findingkey.Valid(v) {
+			add("finding_ref", f.line, "invalid finding_ref '"+v+"'; a finding key is cfk- and sixteen lowercase hex digits, and capture refuses any other shape and skips the record")
 		}
 	}
 

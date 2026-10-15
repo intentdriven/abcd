@@ -258,11 +258,19 @@ func TestASeriesRefusesWhatItCannotHonour(t *testing.T) {
 	if _, err := Next(root, Options{}, NextOptions{Max: 2}); err != nil {
 		t.Fatal(err)
 	}
-	for _, n := range []NextOptions{{Max: 3}, {UntilEmpty: true}} {
+	// --max 1 is a count too (iss-2610120925509505): given on a live series it
+	// is refused, never taken as a move of that series.
+	for _, n := range []NextOptions{{Max: 3}, {Max: 1}, {UntilEmpty: true}} {
 		r := mustRefusal(t, func() error { _, err := Next(root, Options{}, n); return err }())
 		if r.Stage != StagePick || !strings.Contains(r.Reason, "--max 2") {
 			t.Fatalf("a live series keeps the count it started with: %+v", r)
 		}
+	}
+	if runs, _ := Runs(root); len(runs) != 1 {
+		t.Fatalf("a refused count starts no run: %d runs", len(runs))
+	}
+	if res, err := Next(root, Options{}, NextOptions{Max: 2}); err != nil || res.Series == nil {
+		t.Fatalf("the series' own count continues it: %+v %v", res, err)
 	}
 	pace := "7/7"
 	if _, err := Next(root, Options{Pace: &pace}, NextOptions{}); err == nil {
@@ -355,6 +363,7 @@ func TestARemovedPickIsPickedPast(t *testing.T) {
 // next.lock within the lock timeout is refused as contention (exit 3 at the
 // front door), at the pick, and starts nothing.
 func TestASeriesMoveBacksOffWhileAnotherHoldsItsLock(t *testing.T) {
+	shortLockTimeout(t)
 	root := seriesRepo(t)
 	first, err := Next(root, Options{}, NextOptions{Max: 2})
 	if err != nil {

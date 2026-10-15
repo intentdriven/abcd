@@ -36,6 +36,8 @@ var examples = map[string]string{
 
 	"abcd decide": `abcd decide "Record ids are minted from a timestamp"`,
 
+	"abcd reserve": "abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go",
+
 	"abcd docs fidelity record": "abcd docs fidelity record --verdict-json verdict.json",
 
 	"abcd disembark coverage":      "abcd disembark coverage probe-report.json",
@@ -45,6 +47,9 @@ var examples = map[string]string{
 	"abcd disembark principles":    "abcd disembark principles ../lifeboat",
 	"abcd disembark review":        "abcd disembark review ../lifeboat .",
 
+	"abcd embargo close":  "abcd embargo close GHSA-xxxx-xxxx-xxxx",
+	"abcd embargo triage": `abcd embargo triage GHSA-xxxx-xxxx-xxxx not-a-vulnerability --by "Alice Example" --reason "the behaviour is the documented one"`,
+
 	"abcd embark from":    "abcd embark from ../lifeboat",
 	"abcd embark lessons": "abcd embark lessons ../lifeboat",
 	"abcd embark probe":   "abcd embark probe ../lifeboat",
@@ -53,7 +58,7 @@ var examples = map[string]string{
 	"abcd history reconstruct": "abcd history reconstruct 0123abcd-session",
 	"abcd history show":        "abcd history show 0123abcd-session",
 
-	"abcd ideate record": "abcd ideate record widen-the-public-api --verdict-json verdict.json",
+	"abcd ideate record": "abcd ideate record widen-the-public-api --public --verdict-json verdict.json",
 
 	"abcd implement check":         "abcd implement check lane --session s-example",
 	"abcd implement claim":         "abcd implement claim iss-2609010000000001 --session s-example --lane cli",
@@ -100,6 +105,9 @@ var examples = map[string]string{
 	"abcd library cite-check": "abcd library cite-check draft.md",
 	"abcd library declassify": "abcd library declassify example-paper-2026",
 	"abcd library ingest":     "abcd library ingest https://example.com/paper.pdf",
+
+	"abcd memory add":    `abcd memory add --title "The tests need the race flag" --recall test --recall race --by Example:model-1 < note.txt`,
+	"abcd memory remove": "abcd memory remove mem-2609010000000001",
 
 	"abcd reading assemble": "abcd reading assemble --position widening --target HEAD",
 	"abcd reading ingest":   "abcd reading ingest --reading-json reading.json",

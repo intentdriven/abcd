@@ -65,8 +65,11 @@ func ReceiptsProtocolFor(root string) (ReceiptsProtocol, error) {
 			"Record each PROMOTE receipt at `.abcd/work/reviews/<content-sha>/<gate>.json`, keyed to the full " +
 				"sha of the content commit (`git rev-parse HEAD` right after step 1) — never the tag, " +
 				"and never the merge.",
-			"Commit the receipts on top. The release branch is exactly two commits: the roll, then the receipts " +
-				"naming it. Amending the roll after this gives it a new sha and orphans every receipt.",
+			"Commit the receipts on top: the release branch is the roll, then the receipts naming it. Amending " +
+				"the roll after this gives it a new sha and orphans every receipt.",
+			"Disposition every finding a receipt records as fixed, invalid or deferred. Capture each deferred " +
+				"finding as its own open issue record (`abcd capture`), name it in the finding's `record` field, " +
+				"and commit the captures after the receipts, so the merged tree holds them.",
 			"Run `abcd launch receipts` on the release branch. It runs the release job's receipt gate locally " +
 				"and names each missing or non-PROMOTE receipt; merge only when it exits 0.",
 		}

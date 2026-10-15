@@ -1537,7 +1537,8 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 			// case-insensitive filesystem (macOS's default) `SUDO`/`ENV`/`NICE`
 			// resolve to and run the real binary (gh-315).
 			w := strings.ToLower(path.Base(tok))
-			a := arrival{idx: st.pos, noglob: st.noglob, wrapper: wrappers[w]}
+			runner, isRunner := runnerAt(w, tokens, st.pos)
+			a := arrival{idx: st.pos, noglob: st.noglob, wrapper: wrappers[w] || isRunner}
 			if !found[a] {
 				if isUnknown(tok) && !a.wrapper {
 					if unknownSites == maxUnknownSites {
@@ -1549,7 +1550,23 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 				found[a] = true
 				out = append(out, a)
 			}
+			// A package runner is read as a wrapper so the program behind it is
+			// judged, but the runner word is also a command in its own right:
+			// a repository's own entry naming npx, npm, pnpm or yarn matched it
+			// before the runners were read as wrappers, and must still. So the
+			// word arrives a second time, as no wrapper.
+			// It is not counted against maxUnknownSites: its last component is a
+			// fixed runner name, so it cannot stand for every program, and it adds
+			// at most one arrival per word.
+			if isRunner || packageRunners[w] {
+				if b := (arrival{idx: st.pos, noglob: st.noglob}); !found[b] {
+					found[b] = true
+					out = append(out, b)
+				}
+			}
 			switch {
+			case isRunner:
+				push(state{pos: st.pos + 2, mode: walkOptions, wrapper: runner, noglob: st.noglob})
 			case wrappers[w]:
 				push(state{pos: st.pos + 1, mode: walkOptions, wrapper: w, noglob: st.noglob || w == "noglob"})
 			case isUnknown(tok):
@@ -1692,6 +1709,12 @@ func commandSites(s segment) []arrival {
 func commandNamed(s segment, a arrival, name string) bool {
 	tok := s.tokens[a.idx]
 	if nameCouldBe(tok, name) {
+		return true
+	}
+	// A package runner's operand names its program with a version after it
+	// (`npx kill-port@latest`); no program is called by such a name, so the
+	// word is read as the program it names as well.
+	if pn := packageName(tok); pn != tok && nameCouldBe(pn, name) {
 		return true
 	}
 	return !a.noglob && s.globAt(a.idx) && globMatches(strings.ToLower(path.Base(tok)), strings.ToLower(name))

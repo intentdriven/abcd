@@ -158,6 +158,10 @@ var proseTypedFrontmatterKeys = func() map[string]bool {
 	for _, f := range recordParsedFields {
 		m[f] = true
 	}
+	// A graph field nothing resolves stays prose to this rule.
+	for _, f := range recordUnjudgedGraphFields {
+		delete(m, f)
+	}
 	return m
 }()
 

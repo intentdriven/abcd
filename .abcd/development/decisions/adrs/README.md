@@ -180,7 +180,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2609091014087993](2609091014087993-a-tool-never-creates-directories-in-user.md) | A tool never creates directories in user-owned project space; agent and session scratch is machine-scoped (superseded by adr-2609091248200336) | superseded | 2026-09-09 |
 | [adr-2609091248200336](2609091248200336-a-tool-never-creates-directories-in-user.md) | A tool never creates directories in user-owned project space; the store's location binds now and its verbs bind when the store ships (supersedes adr-2609091014087993; superseded by adr-2610031751065746) | superseded | 2026-09-09 |
 | [adr-2609091248201071](2609091248201071-the-transcript-corpus-is-a-sibling-store.md) | The transcript corpus is a sibling store that creates itself through the canonical directory primitive (supersedes adr-2609090717039680; superseded by adr-2610031751066232) | superseded | 2026-09-09 |
-| [adr-2609151138420062](2609151138420062-the-decisions-log-is-a-folder-of-minted.md) | The decisions log is a folder of minted records, not one appended file | accepted | 2026-09-15 |
+| [adr-2609151138420062](2609151138420062-the-decisions-log-is-a-folder-of-minted.md) | The decisions log is a folder of minted records, not one appended file (superseded by adr-2610110925465593) | superseded | 2026-09-15 |
 | [adr-2609151513118583](2609151513118583-an-intent-owns-one-or-more-specs-and-it.md) | An intent owns one or more specs, and it ships when its last spec closes | accepted | 2026-09-15 |
 | [adr-2609151528057131](2609151528057131-abcd-owns-the-product-thinker-s-surface.md) | abcd owns the product thinker's surface | accepted | 2026-08-29 |
 | [adr-2609151528057260](2609151528057260-three-roles-who-each-artefact-addresses.md) | Three roles, who each artefact addresses, and when the loop stops | accepted | 2026-08-29 |
@@ -207,4 +207,9 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610091016270711](2610091016270711-who-may-change-an-abcd-managed-project-s.md) | Who may change an abcd-managed project's design on abcdesign.app, and how a change lands | accepted | 2026-10-09 |
 | [adr-2610091150447054](2610091150447054-the-guard-reads-a-script-the-command.md) | The guard reads a script the command names before it judges the command | accepted | 2026-10-09 |
 | [adr-2610091918443997](2610091918443997-what-may-enter-abcd-s-memory-notes.md) | What may enter abcd's memory notes without the person's yes, and how a note reaches the record | accepted | 2026-10-09 |
+| [adr-2610110925465593](2610110925465593-decisions-are-one-flat-file-each-and-the.md) | Decisions are one flat file each and the single log is retired (supersedes adr-2609151138420062) | accepted | 2026-10-11 |
+| [adr-2610120558328615](2610120558328615-a-private-advisory-s-record-never-enters.md) | A private advisory's record never enters the public ledger, its store is never committed, and nothing public carries an advisory id or hint | accepted | 2026-10-12 |
+| [adr-2610140859394097](2610140859394097-abcd-s-home-ignores-itself-once-and.md) | abcd's home ignores itself once, and credentials never sit in a working tree | proposed | 2026-10-14 |
+| [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md) | A fresh install's facilitator is a person until the repository says auto | accepted | 2026-10-15 |
+| [adr-2610150729333337](2610150729333337-a-status-branch-moves-without-a.md) | A status branch moves without a preflight receipt | proposed | 2026-10-15 |
 <!-- /index -->

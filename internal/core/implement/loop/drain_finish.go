@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -73,6 +74,35 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, error) {
 	if len(parked) == 0 {
 		return out, nil
 	}
+	// Every drain move keeps its parked lanes held (spc-2610031753359849): a
+	// pull request waiting on a person's merge can wait overnight, and
+	// nothing else steps the run, so each parked run's reservation is renewed
+	// here at half its lease, logged in the run's record.
+	// The view is read once, from disk, outside the run lock, and only a run
+	// it shows due (or held by another) is locked and renewed; the renewal's
+	// own fetch and push are made for that run alone.
+	if snap, err := claim.View(repoRoot, now); err == nil {
+		for _, run := range parked {
+			if run.ReservedAt == nil {
+				continue
+			}
+			if _, due, lost := renewalDue(run, snap, now); !due && lost == "" {
+				continue
+			}
+			if err := mutate(repoRoot, run.RunID, func(_ *os.Root, st *State) (bool, error) {
+				if parkedAtLand(*st) < 0 {
+					return false, nil
+				}
+				logged, updated := len(st.Record), st.UpdatedAt
+				renewReservation(repoRoot, st, now, &snap)
+				return len(st.Record) != logged || !st.UpdatedAt.Equal(updated), nil
+			}); err != nil {
+				if _, ok := AsRefusal(err); !ok {
+					return nil, err
+				}
+			}
+		}
+	}
 	refused := func(run State, r *Refusal) DrainFinished {
 		return DrainFinished{Issue: run.Issue(), RunID: run.RunID, PR: run.Lanes[parkedAtLand(run)].PR,
 			Note: fsutil.RedactHome(r.Reason + "; " + r.Remedy)}
@@ -90,7 +120,7 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, error) {
 		return out, nil
 	}
 	tracking := "refs/remotes/" + Remote + "/" + def
-	if _, err := netGit(repoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
+	if _, err := gitutil.Net(repoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
 		r := refuse(StageDrain, "", "", "git could not fetch "+def+" from "+Remote+" to find the merged lanes: "+err.Error(),
 			"the next `abcd drain` looks again")
 		for _, run := range parked {

@@ -236,6 +236,18 @@ folder already exists and other accounts can open it (made by hand with
 account alone, which closes everything inside it too. A `~/.abcd.noindex` that
 is a symlink, or that belongs to another account, is left as it is.
 
+If your home folder is itself a git repository, a dotfiles repository you push
+somewhere, abcd keeps its folder out of it. The first time an abcd command
+other than the status line runs with `~/.abcd.noindex` in place, it writes `~/.abcd.noindex/.gitignore` holding `*`,
+so a `git add -A` in your home stages nothing abcd keeps there that your home
+repository does not already track; an ignore file never untracks a file already
+committed. It does this once:
+a file beside it, `gitignore-laid`, records that it did, and while that file
+stands abcd never writes `.gitignore` again. To let your home repository track
+abcd's folder, delete `.gitignore`; abcd leaves it deleted. Credentials are the
+exception: abcd never stores one in its folder while your home is a git
+repository, whether `.gitignore` is there or not.
+
 If an earlier abcd left a `~/.abcd` folder in your home directory, every abcd
 command and hook stops before it writes anything and names the two commands
 that move you on. In an agent session no tool runs at all, because the safety

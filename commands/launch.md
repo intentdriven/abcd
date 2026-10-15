@@ -872,14 +872,18 @@ exact commit, pinning a judge model, and declaring the matching detector. CI
 cannot produce these: they spawn LLM agents, so they are host-run, and an un-run
 pass is never a silent pass.
 
-**The release branch is exactly two commits.** A receipt names the commit its
-reviewer read and must live in a LATER commit — it can never sit in the tree of
-the commit it names, because adding it would change that commit's sha. So:
+**The release branch is the roll, then the receipts.** A receipt names the
+commit its reviewer read and must live in a LATER commit — it can never sit in
+the tree of the commit it names, because adding it would change that commit's
+sha. So:
 
 1. **The CHANGELOG roll** — the release-content commit, written by the three
    steps above: the dated section, and on a feature cut the release page and its
    archive move. This is what the reviewers read.
 2. **The receipts** — a commit recording the semantic verdicts that name commit 1.
+3. **The captures**, when a review deferred a finding — a commit after the
+   receipts holding one open issue record per deferred finding, so the merged
+   tree the release job reads holds them.
 
 On merge, `release.yml` derives the content commit from the receipts directory
 of the released tree: of the commits on the released lineage that a
@@ -912,6 +916,33 @@ is the adr-37 runbook at
 
 A receipt is bound to its gate by its `policy.detector` value, not its filename,
 and a mismatched, malformed, HOLD, model-less or wrong-detector receipt blocks.
+
+**Every finding a receipt records is `fixed`, `invalid` or `deferred`**, spelled
+exactly, and a deferred finding names its own open issue record in a separate
+`record` field:
+
+```json
+{"where": "04-surfaces/16-lint.md:12", "disposition": "deferred", "record": "iss-<id>"}
+```
+
+Capture each deferred finding with `abcd capture` before writing its receipt
+entry, one record per finding. The gate refuses any other disposition word, a
+deferred finding with no record, a record that is not open in the issue ledger
+or that the ledger's reader refuses, a record on a `fixed` or `invalid`
+finding, and one record named by two deferred findings across the release's
+receipts. The rule arms from the release-gate manifest's `schemaVersion` 2, so
+a commit from before it keeps the free-text dispositions its receipts were
+written to.
+
+The gate also refuses, in the manifest era, a release whose version is not
+newer than every release tag, unless it re-gates its own tagged commit and every
+newer release tag descends from it; a version already tagged at another commit
+is refused too. So a point release on an older line, such as v0.14.2 after
+v0.15.0, is refused: cut the next version on `main` instead. Before 1.0 only the
+newest release is offered (the product thinker's ruling of 2026-10-14), and
+`ComputeRetention` refuses an out-of-order ship already. A hand-pushed tag that
+`verify` refuses is used up, because tags cannot be deleted or moved; roll the
+next version rather than push it again.
 Report a HOLD to the user and stop: a HOLD is a result, not an obstacle to route
 around, and the receipts cannot be hand-written to unblock a release.
 
@@ -930,8 +961,10 @@ It is the release job's receipt gate, not a model of it: it reads the
 required-gate names from the committed `release.yml` (which owns that list), derives
 the content commit from the receipts directory the way the release job does, and
 runs the release job's own check over it. It reads the working tree, so it
-refuses on an uncommitted receipt change — the release job reads the committed
-tree and would not see it.
+refuses on an uncommitted receipt or capture — the release job reads the
+committed tree and would not see it. A file git ignores or one marked
+skip-worktree is beyond what it can see, and a clone with no release tags, while
+CHANGELOG.md names an earlier release, is refused until `git fetch --tags`.
 
 Exit codes:
 

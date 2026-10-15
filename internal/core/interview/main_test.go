@@ -22,10 +22,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -49,7 +51,65 @@ func TestMain(m *testing.M) {
 	if dir := os.Getenv(stubScriptEnv); dir != "" && slices.Contains(os.Args, "--print") {
 		os.Exit(stubRunner(dir))
 	}
-	os.Exit(m.Run())
+	plainStub.env = os.Environ()
+	plainStub.goCmd, _ = exec.LookPath("go")
+	code := m.Run()
+	if plainStub.dir != "" {
+		_ = os.RemoveAll(plainStub.dir)
+	}
+	os.Exit(code)
+}
+
+// plainStub is this package's test binary built without the race detector,
+// made once per run, for stubBinary under -race; TestMain removes it. It is
+// built in the environment the run started with, never one a test has set
+// (a sandboxed HOME would point the go command at an empty cache).
+var plainStub struct {
+	once  sync.Once
+	env   []string
+	goCmd string
+	dir   string
+	path  string
+	err   error
+}
+
+// stubBinary returns the binary that plays the harness: this test binary, or
+// under -race the same package's test binary built without the detector. Both
+// run the same TestMain, so the stub's behaviour is the same; only its start
+// is cheaper, which every turn of every stubbed interview pays. A build that
+// fails leaves the instrumented binary in its place, which costs time and
+// changes nothing else.
+func stubBinary(t *testing.T) string {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !raceEnabled {
+		return self
+	}
+	plainStub.once.Do(func() {
+		if plainStub.goCmd == "" {
+			plainStub.err = errors.New("no go command on the PATH the run started with")
+			return
+		}
+		if plainStub.dir, plainStub.err = os.MkdirTemp("", "abcd-interview-stub-"); plainStub.err != nil {
+			return
+		}
+		out := filepath.Join(plainStub.dir, "interview.test")
+		cmd := exec.Command(plainStub.goCmd, "test", "-c", "-o", out, ".")
+		cmd.Env = plainStub.env
+		if b, err := cmd.CombinedOutput(); err != nil {
+			plainStub.err = fmt.Errorf("go test -c: %v: %s", err, b)
+			return
+		}
+		plainStub.path = out
+	})
+	if plainStub.err != nil {
+		t.Logf("the stub runs instrumented: %v", plainStub.err)
+		return self
+	}
+	return plainStub.path
 }
 
 func stubRunner(dir string) int {
@@ -132,10 +192,7 @@ func stubRunner(dir string) int {
 // script's directory.
 func stubOnPath(t *testing.T, receipts ...string) string {
 	t.Helper()
-	self, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
+	self := stubBinary(t)
 	bin, script := t.TempDir(), t.TempDir()
 	if err := os.Symlink(self, filepath.Join(bin, "claude")); err != nil {
 		t.Fatal(err)

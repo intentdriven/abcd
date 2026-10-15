@@ -34,10 +34,12 @@ const linearWorkBar = 6.0
 // fourteen bundled entries and about 20 with sixteen, the two rm-target
 // entries of iss-2609282105242542, and about 24.7 once the retired spelling of
 // the ledger flip took an entry of its own beside the library one
-// (spc-2610100613109045, step 5). The bar sits at 28, which keeps that shape
-// under it with room for a few more entries and stays far below the hundred a
-// dropped bound costs.
-const workPerByteBar = 28.0
+// (spc-2610100613109045, step 5), about 27.6 with the two stop-by-holder
+// entries of ruling AS, and about 28.6 once kill-port took one
+// (iss-2610112232319827). The bar sits at 30, which keeps that shape under it
+// with room for a few more entries and stays far below the hundred a dropped
+// bound costs.
+const workPerByteBar = 30.0
 
 // checkWork runs one check over line against the bundled registry and returns
 // the work the guard counted doing it (tally in work.go): bytes tokenized, bytes
@@ -47,10 +49,17 @@ const workPerByteBar = 28.0
 // only hides it until the cap moves.
 func checkWork(t *testing.T, line string) (Decision, int) {
 	t.Helper()
+	return checkWorkOn(t, Defaults(), line)
+}
+
+// checkWorkOn is checkWork against r, for a reading only a loaded registry
+// makes (the forge-text check).
+func checkWorkOn(t *testing.T, r Registry, line string) (Decision, int) {
+	t.Helper()
 	n := 0
 	workTally = &n
 	defer func() { workTally = nil }()
-	d, err := Defaults().check(line)
+	d, err := r.check(line)
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
@@ -65,6 +74,12 @@ func checkWork(t *testing.T, line string) (Decision, int) {
 // a class is a count, the same on an idle machine and a loaded one.
 func assertWorkGrowth(t *testing.T, build func(int) string, base int, why string) (small, large Decision) {
 	t.Helper()
+	return assertWorkGrowthOn(t, Defaults(), build, base, why)
+}
+
+// assertWorkGrowthOn is assertWorkGrowth against r.
+func assertWorkGrowthOn(t *testing.T, r Registry, build func(int) string, base int, why string) (small, large Decision) {
+	t.Helper()
 	if raceEnabled {
 		t.Skip("a deterministic count gains nothing under -race; the uninstrumented run asserts it")
 	}
@@ -72,8 +87,8 @@ func assertWorkGrowth(t *testing.T, build func(int) string, base int, why string
 	if len(lLine) < 3*len(sLine) {
 		t.Fatalf("the shape does not scale with its parameter: %d bytes at base, %d at four times it", len(sLine), len(lLine))
 	}
-	small, lo := checkWork(t, sLine)
-	large, hi := checkWork(t, lLine)
+	small, lo := checkWorkOn(t, r, sLine)
+	large, hi := checkWorkOn(t, r, lLine)
 	if lo == 0 {
 		t.Fatalf("the %d-byte shape counted no work; it pins nothing", len(sLine))
 	}

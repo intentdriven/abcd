@@ -26,8 +26,15 @@ const (
 // writer, so the record is one the reader accepts.
 func fileIssue(t *testing.T, repo *gittest.Repo, id string, sev capture.Severity, cat capture.Category, remedy string) {
 	t.Helper()
+	fileIssueAt(t, repo, id, sev, cat, remedy, "")
+}
+
+// fileIssueAt is fileIssue with the record's found_at; "" names none.
+func fileIssueAt(t *testing.T, repo *gittest.Repo, id string, sev capture.Severity, cat capture.Category, remedy, foundAt string) {
+	t.Helper()
 	if _, err := capture.Capture(capture.CaptureRequest{RepoRoot: repo.Root(), Text: "The renderer panics on an empty list (" + id + ")",
-		Severity: sev, Category: cat, Source: "manual-test", Slug: "renderer", FoundDuring: "the loop's tests", ForceID: id, Remedy: remedy}); err != nil {
+		Severity: sev, Category: cat, Source: "manual-test", Slug: "renderer", FoundDuring: "the loop's tests", FoundAt: foundAt,
+		ForceID: id, Remedy: remedy}); err != nil {
 		t.Fatalf("capture %s: %v", id, err)
 	}
 }
@@ -36,11 +43,23 @@ func fileIssue(t *testing.T, repo *gittest.Repo, id string, sev capture.Severity
 // issues filed, all committed on the default branch.
 func issueRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
-	repo := briefRepo(t, agentsMarked)
+	return issueRepoAt(t, "")
+}
+
+// issueRepoRule writes the repository's own drain rule, uncommitted.
+func issueRepoRule(t *testing.T, repo *gittest.Repo) {
+	t.Helper()
 	repo.Write(drainrule.ADRsRelDir+"/2609300000000001-drain-rule.md",
 		"---\nid: adr-2609300000000001\nslug: drain-rule\nstatus: accepted\ndate: 2026-09-30\n"+drainrule.ProposalFrontmatter()+"---\n\n# The drain rule\n")
-	fileIssue(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy)
-	fileIssue(t, repo, majorIssue, capture.SeverityMajor, capture.Category("bug"), "A remedy for a major one.")
+}
+
+// issueRepoAt is issueRepo with every issue's found_at; "" names none.
+func issueRepoAt(t *testing.T, foundAt string) *gittest.Repo {
+	t.Helper()
+	repo := briefRepo(t, agentsMarked)
+	issueRepoRule(t, repo)
+	fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, foundAt)
+	fileIssueAt(t, repo, majorIssue, capture.SeverityMajor, capture.Category("bug"), "A remedy for a major one.", foundAt)
 	repo.Commit("the ledger")
 	return repo
 }
