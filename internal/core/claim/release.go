@@ -21,7 +21,10 @@ import (
 // record's), or when its holder releases it. With no lease named it holds for
 // lease.Max, a day, so a cut that waits overnight on its checks or its
 // approval outlasts its own lease; a slower cut renews it by reserving it
-// again from the same copy, and nothing ever holds past lease.Max.
+// again from the same copy. Without a renewal no reservation holds past
+// lease.Max from its claim, or, when it is claimed more than lease.Skew ahead
+// of this copy's clock, past lease.Max from when this copy first fetched it
+// (lease.Judge); an unreadable one holds for lease.Default on the same terms.
 
 // releasePrefix begins every release subject.
 const releasePrefix = "rel-"
@@ -131,8 +134,10 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 // hold's Mine says whether it is under the username a reservation verb here
 // would resolve, and Own whether it is also from this copy. The snapshot is the
 // view the holds were read from, for a render to date them (Snapshot.AsOf).
-// It is the one reader of the hold: the land fence calls it after its fetch,
-// and `abcd peers`, `abcd status` and the prompt hook render its lines.
+// The land fence calls it after its fetch. `abcd peers` renders the holds
+// from its own view through Snapshot.Holds instead, with the same lines;
+// `abcd status` and the prompt hook are to render them in step 3 of
+// spc-2610150728396006 and do not yet.
 func ReleaseHolds(root string, now time.Time, o Options) ([]Hold, Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)
 	snap, err := View(root, now)

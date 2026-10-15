@@ -285,3 +285,41 @@ func TestAnUnreadableReleaseHoldsEveryMerge(t *testing.T) {
 		t.Fatalf("an unreadable release past its hold still holds: %+v", holds)
 	}
 }
+
+// TestAReleaseClaimedFarAheadStopsHoldingADayAfterItWasFirstFetched: a
+// release reservation claimed five years ahead holds every merge for
+// lease.Max from when this copy first fetched it, and no longer, however
+// often the fence fetches again; an unreadable release whose commit date is
+// five years ahead holds for the default hold from its first fetch in the
+// same way.
+func TestAReleaseClaimedFarAheadStopsHoldingADayAfterItWasFirstFetched(t *testing.T) {
+	ahead := t0.Add(5 * 365 * 24 * time.Hour)
+	for _, c := range []struct {
+		name, msg string
+		hold      time.Duration
+	}{
+		{"readable", "abcd reservation: rel-v0.16.0\n\nAbcd-Reservation: rel-v0.16.0\nAbcd-Holder: octo\n" +
+			"Abcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\nAbcd-Claimed-At: " + stamp(ahead) +
+			"\nAbcd-Expires-At: " + stamp(ahead.Add(lease.Max)) + "\n", lease.Max},
+		{"unreadable", "abcd reservation: rel-v0.16.0\n\nnot a reservation\n", lease.Default},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			w := newWorld(t)
+			q := w.clone("99+quinn@users.noreply.github.com", "")
+			w.pushHostile("rel-v0.16.0", c.msg, ahead)
+			for _, at := range []time.Duration{0, time.Hour, c.hold - time.Minute} {
+				w.set(t0.Add(at))
+				if _, err := Fetch(q.dir, q.opts()); err != nil {
+					t.Fatal(err)
+				}
+			}
+			holds, _, err := ReleaseHolds(q.dir, t0.Add(c.hold-time.Second), q.opts())
+			if err != nil || len(holds) != 1 || !holds[0].EffectiveExpiry.Equal(t0.Add(c.hold)) {
+				t.Fatalf("holds a second before %s from the first fetch = %+v, %v; want one, until %s", c.hold, holds, err, t0.Add(c.hold))
+			}
+			if holds, _, err := ReleaseHolds(q.dir, t0.Add(c.hold), q.opts()); err != nil || len(holds) != 0 {
+				t.Fatalf("holds %s after the first fetch = %+v, %v; want none", c.hold, holds, err)
+			}
+		})
+	}
+}
