@@ -426,3 +426,41 @@ func jobTimeoutMinutes(t *testing.T, where, job string) time.Duration {
 	}
 	return time.Duration(n) * time.Minute
 }
+
+// TestPlainTestStepRunsTheWholeModule: the ubuntu leg's plain pass names its
+// slowest packages ahead of ./..., so they start with the step instead of
+// behind every faster package (a speed lane under the cancel policy of
+// 2026-09-28), and it still runs exactly the module: ./... last, no package
+// named twice, and the same set go list resolves ./... to.
+func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	const where = ".github/workflows/ci.yml job check"
+	check, ok := workflowJobBlock(readRepoFile(t, root, ".github/workflows/ci.yml"), "check")
+	if !ok {
+		t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
+	}
+	step, ok := workflowStepBlock(check, "Test")
+	if !ok {
+		t.Fatalf("%s: no `Test` step", where)
+	}
+	var cmds []string
+	for _, l := range strings.Split(step, "\n") {
+		l = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "run:"))
+		if strings.HasPrefix(l, "go test ") {
+			cmds = append(cmds, l)
+		}
+	}
+	if len(cmds) != 1 {
+		t.Fatalf("%s step Test: want one `go test` command, found %d", where, len(cmds))
+	}
+	var pkgs []string
+	for _, w := range strings.Fields(cmds[0])[2:] {
+		if !strings.HasPrefix(w, "-") {
+			pkgs = append(pkgs, w)
+		}
+	}
+	if len(pkgs) == 0 {
+		t.Fatalf("%s step Test: `%s` names no packages", where, cmds[0])
+	}
+	sameRacePackageSet(t, root, where+" step Test", pkgs, modulePattern)
+}
