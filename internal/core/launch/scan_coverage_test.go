@@ -139,12 +139,9 @@ func TestBinaryPayloadSecretRefuses(t *testing.T) {
 // deliberately not asserted here — an environmental identity match on a text
 // file (iss-2608291444328326) is a different rule and a different file class.
 func TestRepoPayloadBinariesScanClean(t *testing.T) {
-	root := repoRootForTest(t)
-	bundle, err := ResolveBundle(root, nil)
-	if err != nil {
-		t.Fatalf("resolve the payload bundle: %v", err)
-	}
-	scan := scanBundle(root, bundle)
+	// The scan the render of this repository's payload made: the same scanner
+	// over the same bundle (ResolveBundle(root, nil)) a direct call reads.
+	scan := scanThisRepo(t)
 	if scan.Unavailable {
 		t.Fatalf("scanner unavailable on the repo's own payload: %s", scan.UnavailableReason)
 	}

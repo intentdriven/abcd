@@ -1,10 +1,10 @@
 ---
 id: adr-2609151138420062
 slug: the-decisions-log-is-a-folder-of-minted
-status: accepted
+status: superseded
 date: 2026-09-15
 supersedes: null
-superseded_by: null
+superseded_by: adr-2610110925465593
 related_intents: [itd-2609151138388536]
 related_rfcs: []
 related_adrs: [adr-45]
@@ -112,7 +112,7 @@ disjoint file additions. The gate goes when the shape lands, in the same change,
 and nothing is left invoking it.
 
 The delivery is
-[itd-2609151138388536](../../intents/drafts/itd-2609151138388536-append-only-logs-conflict-on-every-merge.md).
+[itd-2609151138388536](../../intents/planned/itd-2609151138388536-append-only-logs-conflict-on-every-merge.md).
 This record is the rule; that intent is the capability, with the migration, the
 index assembly, the adoption path and the gate retirement as its acceptance
 criteria.

@@ -1,0 +1,118 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "87513ff33a591aecd547374e0366944bbed7e71a"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-15T14:22:54Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:7c24686a047353fd41b487afe1d514ddb6df86cf26640c168bde258af6b5ae1e",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.14.2"
+  },
+  "categories": {
+    "misleading": 5,
+    "missing": 2,
+    "stale": 2
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "misleading",
+      "severity": "major",
+      "where": "RELEASE.md:3; docs/how-to/install.md:242",
+      "summary": "RELEASE.md:3; docs/how-to/install.md:242 (raised by opus): Both pages say that once ~/.abcd.noindex/.gitignore exists, the next `git add -A` skips everything abcd keeps there ('nothing private leaves the machine by accident'; 'stages nothing abcd keeps there'). That is false for a file the home repository already tracks: git applies .gitignore to untracked paths only, so `git add -A` still stages changes to an already-tracked ~/.abcd.noindex/config.json or memory.json. homeignore.Lay only writes the ignore file and marker. CHANGELOG.md:11 states the exception ('does not untrack anything your home repository already tracks'), but neither page does. A person whose dotfiles repository already tracks abcd's home reads that they are covered and keeps pushing. Fix with one clause on each page, for example: 'It does not untrack a file your home repository already tracks; to stop tracking those, run `git rm -r --cached .abcd.noindex` in your home repository.' RELEASE.md also says 'The first time abcd runs' without the status-line exception that the changelog and install.md give (nitpick).",
+      "disposition": "fixed",
+      "note": "Fixed after the content commit in a3718a67b: both pages now say the ignore file leaves a file the home repository already tracks tracked. An Opus and Sonnet pair confirmed the fix (the Opus agent against real git), both PROMOTE."
+    },
+    {
+      "id": "dc-2",
+      "category": "missing",
+      "severity": "minor",
+      "where": "CHANGELOG.md:5-24",
+      "summary": "CHANGELOG.md:5-24 (raised by opus+sonnet): Judgement call under the derived-changelog convention, which gives partly delivered intents no changelog line. This binary ships user-visible verbs that the 0.14.2 section never mentions: `abcd embargo` (listed in the default root help under Release, with a full command page), `abcd reserve` and `abcd memory` (in --help --agent), `rules --prompt`, drain reservations, and consistency chunking with --max-chunks. Line 5 says itd-2610112239022766 (embargo) is 'targeted and not shipped', but `abcd embargo` is in the binary. It also reuses the name `abcd memory`: in v0.14.0 and v0.14.1 bare `abcd memory` refused with exit 2; it now exits 0 with a different payload, and the section has no line saying so (the preamble says a break is stated as an Added line). Only docs/how-to/upgrade-to-v0.14.0.md mentions the reuse. / The pages shipped in this range document verbs the changelog and release note never announce: abcd reserve, abcd memory (add/list/remove), abcd embargo, `abcd rules --prompt`, reservation fields on `abcd peers` and the bare board. They exist in the binary and the pages match it, so nothing misleads; the changelog is record-derived, so this follows from which records were resolved. Judgement call for the facilitator.",
+      "disposition": "deferred",
+      "record": "iss-2610151422155612",
+      "note": "Misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-3",
+      "category": "missing",
+      "severity": "minor",
+      "where": "CHANGELOG.md:9",
+      "summary": "CHANGELOG.md:9 (raised by opus): The forge-text entry's list of what the check does not cover leaves out the pr and issue close --comment forms, a body or path the line does not fix (`--body \"$BODY\"`), and a short flag bundled behind another (`-db x`). commands/guard.md lists all of these. Verified: a pr close --comment carrying a tool footer is an allow, while the same text on pr comment --body is blocked. A reader of the release notes could take closing comments to be covered.",
+      "disposition": "deferred",
+      "record": "iss-2610151422151786",
+      "note": "Misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-4",
+      "category": "misleading",
+      "severity": "minor",
+      "where": "CHANGELOG.md:16; RELEASE.md:7",
+      "summary": "CHANGELOG.md:16; RELEASE.md:7 (raised by opus): The entry says that with `oracle.review = rp` in the repository's or the machine's configuration, a build lane sends its reviews to RepoPrompt. In the code (internal/core/oracle/review.go) the route also needs `oracle.rp.url`, and only ~/.abcd.noindex/config.json may set it: a repository that sets it is refused. With only `oracle.review = rp`, every review falls back to the host. commands/build.md and commands/implement.md state this correctly; the changelog line does not mention the URL.",
+      "disposition": "deferred",
+      "record": "iss-2610151422150430",
+      "note": "Misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-5",
+      "category": "stale",
+      "severity": "minor",
+      "where": "docs/how-to/upgrade-to-v0.14.0.md:7-9,32-35",
+      "summary": "docs/how-to/upgrade-to-v0.14.0.md:7-9,32-35 (raised by opus+sonnet): The guide says a script that runs an old command name 'gets a refusal that names what replaced it'. The new paragraph covers bare `abcd memory` now running, but on this binary `abcd memory ingest`, `ask` and `lint` refuse as a plain cobra unknown sub-verb (`abcd: unknown command \"ingest\" for \"abcd memory\"`, exit 2) with no pointer to `library`. Verified: `abcd source` still names its successor. The paragraph also says only 'a release after v0.14.0' and does not name v0.14.2. / The note says 'A release after v0.14.0' reuses the name memory without naming the release, while the table above still lists `abcd memory` as retired. Verified true of this binary (`abcd memory` answers with a count, `abcd memory ingest` is still unknown command, exit 2). Naming v0.14.2 would be exact.",
+      "disposition": "deferred",
+      "record": "iss-2610151422157749",
+      "note": "Misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-6",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "CHANGELOG.md:23",
+      "summary": "CHANGELOG.md:23 (raised by opus): The entry says the build page 'lists all four refusals the pick commit's worktree stage can raise'. pickCommit (internal/core/implement/loop/pickcommit.go) raises more: a signing prompt or hook still waiting, an entry it could not write, a grounds-writer defect, and a hook refusal that shares the identity message. commands/build.md:128-130 does cover the hook and signing cases, so the page is fine; only the count of four is overstated.",
+      "disposition": "deferred",
+      "record": "iss-2610151422163904",
+      "note": "Misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-7",
+      "category": "stale",
+      "severity": "nitpick",
+      "where": "commands/peers.md:84-85",
+      "summary": "commands/peers.md:84-85 (raised by opus): The page says `fetched_at` and `age_seconds` are both absent when nothing has been fetched. The binary emits `\"view\":{\"origin\":false,\"age_seconds\":null}`: reservationView.AgeSeconds has no omitempty, so the key is present as null. A consumer that tests for the key being present gets a different answer from one that tests for null.",
+      "disposition": "deferred",
+      "record": "iss-2610151422166945",
+      "note": "Misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-8",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "docs/how-to/install.md:239-247 and CHANGELOG.md:27",
+      "summary": "docs/how-to/install.md:239-247 and CHANGELOG.md:27 (raised by sonnet): Neither page says that a symlinked ~/.abcd.noindex (the dotfiles layout) never gets the .gitignore (homeignore.Lay returns NoHome), nor that an existing .gitignore there is kept as it is while the marker is written. install.md does say a symlinked folder is left as it is two lines earlier, so a careful reader can infer it.",
+      "disposition": "deferred",
+      "record": "iss-2610151422164851",
+      "note": "Misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-9",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "commands/launch.md (version-order paragraph)",
+      "summary": "commands/launch.md (version-order paragraph) (raised by sonnet): The example 'v0.14.2 after v0.15.0' reads oddly in the release that is itself v0.14.2; the rule is correct, only the example is awkward.",
+      "disposition": "deferred",
+      "record": "iss-2610151422179394",
+      "note": "Misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer pair (an Opus 5.5 agent and a Sonnet 5.5 agent on the same brief, full tier for an additive release) over an exact export of content commit 87513ff33a591aecd547374e0366944bbed7e71a with the binary built from it: every line of the 0.14.2 CHANGELOG section and RELEASE.md, and every user-facing page changed since v0.14.1, checked against the code and the binary. Sonnet PROMOTE; Opus HOLD on one major finding (dc-1: the home ignore file overclaimed for already-tracked files), which was fixed in a3718a67b and confirmed by a second pair, so the review promotes. The other 8 findings mislead no action; overlapping findings from the two reviewers were folded, and each remaining one is deferred to its own open record. Not checked live: ahoy install, reservations against a real origin, the RepoPrompt route, embargo against the forge."
+}
