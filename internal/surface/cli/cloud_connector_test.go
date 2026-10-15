@@ -248,8 +248,9 @@ func TestConnectorDeclarationLoads(t *testing.T) {
 	if code != 0 || strings.TrimSpace(out) != want {
 		t.Errorf("get claude is_remote = %q (exit %d), want the script's absolute path %s", out, code, want)
 	}
-	if out, code := c.script(nil, connectorScript, "get", "claude", "setup"); code == 0 {
-		t.Errorf("get of a key the declaration does not carry succeeded: %q", out)
+	out, code = c.script(nil, connectorScript, "get", "claude", "setup")
+	if code != 0 || strings.TrimSpace(out) != filepath.Join(filepath.Dir(want), "setup.sh") {
+		t.Errorf("get claude setup = %q (exit %d), want the setup script the host's settings file runs", out, code)
 	}
 	if out, code := c.script(nil, connectorScript, "get", "nosuch", "wip_prefix"); code == 0 {
 		t.Errorf("get of an undeclared connector succeeded: %q", out)
@@ -263,6 +264,9 @@ func TestConnectorDeclarationLoads(t *testing.T) {
 	}
 	if out, _ := c.script(nil, connectorScript, "prefixes"); !strings.Contains(out, "claude/abcd-wip/") || !strings.Contains(out, "\nabcd-wip/") && !strings.HasPrefix(out, "abcd-wip/") {
 		t.Errorf("prefixes = %q, want both connectors' prefixes", out)
+	}
+	if out, code := c.script(nil, connectorScript, "get", "other", "setup"); code == 0 {
+		t.Errorf("get of a key the declaration does not carry succeeded: %q", out)
 	}
 	out, code = c.script(nil, connectorScript, "default")
 	if code == 0 || !strings.Contains(out, "refusing to guess") {
