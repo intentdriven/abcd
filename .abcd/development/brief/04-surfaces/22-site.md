@@ -95,8 +95,39 @@ set by abcd, because the value would pass through it: the verb reads which
 secret names are present and prints the exact command for each one that is not.
 The credential is read by name through the credential store and never written
 into the repository or the report, which names only the credential's name. A second run over an unchanged repository and host
-writes nothing and says so. One provider ships, behind an adapter seam
+writes nothing and says so. Two providers ship, behind an adapter seam
 ([`05-internals/02-adapters.md`](../05-internals/02-adapters.md#hosting-providers)).
+
+## A project's own site
+
+The second provider publishes a managed repository's site on the project's own
+GitHub Pages, built by the project's own workflow at each release
+(itd-2610091010348892). Such a site renders only what abcd already writes to the
+repository; the product thinker's ruling of 2026-10-15 is, verbatim, "The
+website only renders what abcd already writes -- SSOT". A project's
+hand-written documentation is read on GitHub, and nothing is written for the
+website.
+
+So setting one up writes two files and no more: the site's settings, holding
+the publish switch and no composition, and the workflow. The interface words,
+styles, scripts and headers policy ship in the binary, and the workflow builds
+and gates with the project flag, so the repository carries no site sources.
+The landing page is an about page derived in code, from four parts in this
+order, each rendered only where the repository holds it: the identity block,
+the brief's opening (the first section of the brief skeleton,
+`01-product/01-press-release.md`), the press releases of the newest shipped
+intents whose audit was met, and the release list in `CHANGELOG.md`. A
+repository holding none of the four is refused at setup, since its site would be
+empty. The record pages are built exactly as for any site; the references page,
+the contribution policy and every picture are left out, because each comes from
+a person's own files (pictures are a later intent, iss-2610150529485165).
+
+The gate holds the line: on a project site, a rendered span whose source file
+abcd does not write fails the build, on every page, the record's own included.
+Files under `.abcd/` (but the local tier) and `CHANGELOG.md` are abcd's; `docs/`,
+`README.md` and every other file are not. The build and the gate name the route
+explicitly, and refuse settings of the other shape. abcd's own composed site is
+not a project site: it renders its documentation and stays as it is.
 
 ## The page set
 

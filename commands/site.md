@@ -25,6 +25,9 @@ emits `{ "manifest": …, "ui_strings": …, "baseline": …, "out_dir": … }`:
 
 - `manifest` — whether `.abcd/site.json` is present. Absent means this repo
   declares no composition, and there is nothing to render.
+- `project` — whether `.abcd/site.json` holds a project site's settings
+  (`"mode": "project"`) rather than a composition: then there are no chapters
+  and no `ui_strings`, and the site builds with `--project` (below).
 - `chapters` — how many chapters the manifest composes the landing page from.
 - `issue_ledger` — whether the working-tier issue ledger is published. It is an
   explicit per-repo opt-in; the default renders the durable record only.
@@ -85,6 +88,24 @@ stylesheet, the scripts, the pictures, the navigation and every record route)
 is placed under that path. Give `abcd lint site` the same `--base-path`, so it
 resolves what it reads against the same root. The default, `/`, writes exactly
 the links a site served at the root of its domain needs.
+
+`--project` builds a project site instead, from a `.abcd/site.json` that holds
+the site's settings only (`"mode": "project"`, the `hosting` block and its
+switch; `abcd site setup --provider github-pages` writes it, below). Nothing is
+composed and nothing is read from `site-src/`: every page is built from what
+abcd already writes to the repository, and the interface words, the
+stylesheet, the scripts and the headers policy come from the binary. The about
+page at `/` is, in this order and each only where the repository holds it: the
+identity block `.abcd/positioning.json` points at (as the heading), the
+brief's opening (the first section with text in
+`.abcd/development/brief/01-product/01-press-release.md`), the press releases of
+the three newest shipped intents whose audit was met, and the release list in
+`CHANGELOG.md`. Anything absent is left out, never filled. The record pages are
+built as they always are; the references page (which quotes
+`ACKNOWLEDGEMENTS.md`) and every picture (which lives under `docs/`) are left
+out, and so is a hand-written `docs/` tree or `README.md`: a project's own
+documentation is read on GitHub. A build whose `--project` and settings file
+disagree is refused, both ways.
 
 Every page opens with one line saying it is the record of an abcd-managed
 repository, linking to that repository. Its words are the `managed_record`
@@ -175,14 +196,25 @@ Pages at each release, at `https://<owner>.github.io/<repo>/` (or at the root of
 a custom domain given with `--domain`). It is the same verb with a second
 provider, and these things differ:
 
+- **Only what abcd writes.** A project site renders nothing written for the
+  website: its pages are built from the identity block, the brief, the
+  development record and `CHANGELOG.md` (see `build --project` above), and the
+  project's own docs are read on GitHub. A repository holding none of the
+  about page's four parts yet is refused before anything is asked or written,
+  since the site would be empty.
 - **The switch.** Before anything is written, setup asks whether to switch the
-  project site on, naming the address. A yes records `"publish": true` in the
-  composition's `hosting` block, writes the site's inputs under `site-src/` and
-  adds `.github/workflows/site.yml`; nothing else in the repository changes. A
-  no, or an unanswered run, writes nothing and changes nothing remote, and the
-  status is `declined`. A composition that already exists with no `hosting`
-  block is not rewritten: setup refuses and names the block to add, and once
-  it is added the next run still asks the switch before it adds the workflow.
+  project site on, naming the address. A yes writes `.abcd/site.json` holding
+  the project site's settings (`"mode": "project"` and the `hosting` block with
+  `"publish": true`, and no composition) and adds `.github/workflows/site.yml`,
+  which builds and gates with `--project`; nothing else in the repository
+  changes, and nothing is written under `site-src/`. A no, or an unanswered
+  run, writes nothing and changes nothing remote, and the status is
+  `declined`. Settings already written with the switch on, but no workflow,
+  are asked the switch again before the workflow is added. A composition that
+  already exists with no `hosting` block is not rewritten: setup refuses and
+  names the block to add, and once it is added the next run still asks the
+  switch before it adds the workflow (that repository keeps its composed
+  site).
 - **An existing Pages site.** Setup reads the repository's Pages site before it
   asks or writes. One the repository already publishes, built by a workflow, is
   named by its address and build type in the switch question and in the host
@@ -215,8 +247,8 @@ provider, and these things differ:
 - **The base path.** The workflow builds and gates the site with
   `--base-path /<repo>/`, the path GitHub serves it below (the root for a custom
   domain or an `<owner>.github.io` repository).
-- **Switching it off.** Set `"publish"` to `false` in the composition's
-  `hosting` block. The workflow reads the switch both at the released commit and
+- **Switching it off.** Set `"publish"` to `false` in the `hosting` block of
+  `.abcd/site.json`. The workflow reads the switch both at the released commit and
   at the head of the default branch, so the next release publishes nothing, and
   neither does a later push or dispatch that renders an older tag. A later `abcd site setup` touches nothing
   remote and offers to remove the workflow it added, `removed` on a yes; a
@@ -233,8 +265,8 @@ never its value.
 ## The gate over what was rendered
 
 Whether a build may be published is `/abcd:lint site` — run `abcd lint site
---out site`. It runs the site's gates over the built output directory and names
-every finding at its source.
+--out site` (with `--project` for a project site). It runs the site's gates
+over the built output directory and names every finding at its source.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
