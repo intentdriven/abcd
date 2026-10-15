@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -40,6 +41,18 @@ func TestReserveUnderVendorIdentityShowsItNowhere(t *testing.T) {
 	if calls.n == 0 {
 		t.Fatal("the forge was never asked; the holder cannot have come from the token")
 	}
+	// The token cannot answer, and its error names the vendor identity: the
+	// refusals still show it nowhere.
+	q := w.clone(t, "q", vendorMail)
+	gitCmd(t, q, "config", "user.name", vendorName)
+	fakeForge(t, "", 0, errors.New("gh: HTTP 401 for "+vendorName+" <"+vendorMail+">"))
+	for _, args := range [][]string{{"reserve", "--holder"}, {"reserve", "iss-8", "--footprint", "c.go"}} {
+		code, stdout, stderr := reserveRun(t, q, args...)
+		if code != 2 || !strings.Contains(stderr, "could not work out whose GitHub account this session uses") {
+			t.Fatalf("%v with a failing token: exit %d; want the token refusal\n%s%s", args, code, stdout, stderr)
+		}
+		shown.WriteString(stdout + stderr)
+	}
 	tip := w.remoteTip(t, "iss-5")
 	if tip == "" {
 		t.Fatal("the reservation did not reach origin")
@@ -52,7 +65,7 @@ func TestReserveUnderVendorIdentityShowsItNowhere(t *testing.T) {
 		}
 		shown.WriteString(gitCmd(t, w.origin, "log", "--format=%an%n%ae%n%cn%n%ce%n%B", "refs/heads/abcd-reserved/"+id))
 	}
-	for _, dir := range []string{p, w.origin} {
+	for _, dir := range []string{p, q, w.origin} {
 		shown.WriteString(gitCmd(t, dir, "for-each-ref", "--format=%(refname)"))
 	}
 	all := strings.ToLower(shown.String())

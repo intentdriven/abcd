@@ -30,11 +30,16 @@ The following are non-negotiable invariants — any architectural choice that vi
    meaning is one fetch of the reservations and one push to the record's
    `abcd-reserved/` branch, plus one call to the forge's user endpoint when
    git's identity does not name the holder (invariant 10), and `peers`, whose
-   meaning includes one fetch of the reservations; `reserve --holder`'s
-   meaning is that user-endpoint call alone, made only when git's identity is
-   not a person's GitHub no-reply address and no machine key names the holder,
-   and nothing else. Every render of a reservation reads the view as last
-   fetched, from disk, and never asks the user endpoint.
+   meaning includes one fetch of the reservations. The implement loop's
+   reservation acts (reserve, renew, the land fence and release, in
+   `internal/core/implement/loop/reservation.go`) go through the same act and
+   may make that same call. `reserve --holder`'s meaning is that user-endpoint
+   call alone, and nothing else, made in either of two cases: (a) git's
+   identity is a person's but carries neither a GitHub no-reply address nor a
+   machine key; (b) git's identity is not a person's (unset, or a machine's),
+   in which case the machine key is skipped. Every render of a reservation
+   reads the view as last fetched, from disk, and never asks the user
+   endpoint.
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it
    listens on this computer's own Tailscale addresses alone, never every
@@ -50,7 +55,7 @@ The following are non-negotiable invariants — any architectural choice that vi
 
 9. **Corpus documents and ledgers never leave the user tier, and a public citation requires both gates** — what crosses from the sources corpus into any repo or render is citation data only, never a document or an influence ledger; and a citation becomes public only when the source's `permission_status` permits *and* a human has flipped the ledger line's `cited_publicly` flag. Per [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md); consumed by itd-76, itd-126, itd-127.
 
-10. **Remotes are read freely, written only on explicit request — and the caller's identity comes from caller-local facts** — no verb mutates remote state (settings, rulesets, environments, roles) except a dedicated, confirmed apply verb that owns its bootstrap ordering and refreshes the committed mirror in the same change; and any probe that needs the caller's identity derives it from caller-local sources (git identity, the noreply-embedded login, `$HOME`), plus the caller's OWN forge token asked through the forge's user endpoint, never from who owns the remote. The reservation holder is the one lookup that consults the token, in one resolver (`internal/core/claim`) every consumer shares, and in this order: the noreply login in git's `user.email`, then the machine key `reservation.github_username`, then the token. When git's identity is not a person's (unset, or a machine identity as the attribution gate judges an author), the token alone is used, its account authors the act's commit, and the identity git had is shown nowhere. If every step fails, the act refuses loudly, naming the failure's class and never the identity it rejected. A git branch push is not remote configuration: a reservation (`abcd reserve`, a branch under `refs/heads/abcd-reserved/`) writes history to a branch, not the remote's settings, so it needs no apply verb and may be renewed by the verb that holds it (itd-2609091034175565 decision 12). Per [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md); consumed by itd-92 and every later remote-touching verb; already enforced in the launch scanner (iss-283).
+10. **Remotes are read freely, written only on explicit request — and the caller's identity comes from caller-local facts** — no verb mutates remote state (settings, rulesets, environments, roles) except a dedicated, confirmed apply verb that owns its bootstrap ordering and refreshes the committed mirror in the same change; and any probe that needs the caller's identity derives it from caller-local sources (git identity, the noreply-embedded login, `$HOME`), plus the token `gh` resolves from this session's environment, asked only for its account's login and id, with the endpoint pinned to github.com, never from who owns the remote. The reservation holder is the one lookup that consults the token, in one resolver (`internal/core/claim`) every consumer shares, and in this order: the noreply login in git's `user.email`, then the machine key `reservation.github_username`, then the token. When git's identity is not a person's (unset, or a machine identity as the attribution gate judges an author), the token alone is used, its account authors the act's commit, and the identity git had is shown nowhere. If every step fails, the act refuses loudly, naming the failure's class and never the identity it rejected. A git branch push is not remote configuration: a reservation (`abcd reserve`, a branch under `refs/heads/abcd-reserved/`) writes history to a branch, not the remote's settings, so it needs no apply verb and may be renewed by the verb that holds it (itd-2609091034175565 decision 12). Per [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md); consumed by itd-92 and every later remote-touching verb; already enforced in the launch scanner (iss-283).
 
 11. **Record ids are collision-proof by construction and capture-stable** — the mint never allocates by looking at the current maximum (two minters sharing a stale view must still produce distinct ids); an id, once minted, is never renumbered; the grammar stays numeric so every id-consuming surface holds one parser; and a configured forge allocator allocates numbers only — offline it falls back to the native scheme loudly, and capture never blocks on network. Per [adr-45](../../decisions/adrs/0045-record-ids-are-timestamp-numeric-and.md); implemented by itd-114; asserted by the record-lint uniqueness detectors, which stay armed as the scheme's fail-safe.
 

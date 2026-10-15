@@ -126,9 +126,13 @@ To learn the holder without reserving anything:
 
 It prints `{"login", "id", "noreply", "source"}` (`source` is `git`, `config`
 or `token`; `id` and `noreply` when known), or as text `would reserve as
-<login> (from <source>)`. It may make that one user-endpoint call, takes no
-record id and no other flag, and reserves, writes and pushes nothing. Exit 0
-when the account is known, 2 when not.
+<login> (from <source>)`. It may make that one user-endpoint call in two
+cases: git's identity is a person's but carries neither a no-reply address nor
+a machine key; or git's identity is not a person's (unset, or a machine's), when
+the machine key is skipped. It takes no record id and no other flag, and
+reserves, writes and pushes nothing. Exit 0 when the account is known, 2 when
+not. Its `noreply` is the account's address; a person's own git identity still
+authors their commits.
 
 ## Release when done
 

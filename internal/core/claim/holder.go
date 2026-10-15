@@ -113,9 +113,10 @@ func ResolveHolder(root string, o Options) (Holder, error) {
 // resolveHolder is the person's GitHub account, from these places in order
 // and from nowhere else. When git's identity is a person's:
 //
-//  1. user.email, when it is a GitHub noreply address;
+//  1. user.email, when it is a GitHub noreply address whose local part is a
+//     GitHub username (one that is not falls through to the next source);
 //  2. reservation.github_username in the machine layer of the layered
-//     configuration (~/.abcd.noindex/config.json), taken only from that layer;
+//     configuration (~/.abcd.noindex/config.json), the only layer read for it;
 //  3. when net allows it, the session's own forge token, asked whose account
 //     it is through the user endpoint (o.ForgeUser).
 //
@@ -123,19 +124,17 @@ func ResolveHolder(root string, o Options) (Holder, error) {
 // author then comes from the token's account, and the machine key is skipped
 // because the author's address must come from the same account as the login.
 // The repository's own .abcd/config.json is never read for it: a value there
-// would let a commit decide whose name a reservation is pushed under. Only an
+// would let a commit decide whose name a reservation is pushed under, and a
+// malformed one would let a commit block the person. Only an
 // explicit act passes net; a render never does, so it makes no network call.
 // With no source the act is refused, and the refusal never echoes the git
 // identity it rejected.
 func resolveHolder(root string, who identity, o Options, net bool) (Holder, error) {
 	if who.person() {
-		if u := NoReplyUsername(who.Email); u != "" {
-			if !validUsername(u) {
-				return Holder{}, refuse("user.email names %s, which is not a GitHub username; %s", echo(u), nothingPushed)
-			}
+		if u := NoReplyUsername(who.Email); u != "" && validUsername(u) {
 			return Holder{Login: u, ID: noreplyID(who.Email), NoReply: who.Email, Source: HolderFromGit}, nil
 		}
-		u, err := machineHolder(root, o.home())
+		u, err := machineHolder(o.home())
 		if err != nil {
 			return Holder{}, err
 		}
@@ -154,9 +153,15 @@ func resolveHolder(root string, who identity, o Options, net bool) (Holder, erro
 }
 
 // machineHolder is reservation.github_username from the machine layer, ""
-// when that layer does not set it.
-func machineHolder(root, home string) (string, error) {
-	stack, err := layered.Load(layered.Config, layered.Roots{Repo: root, Home: home})
+// when that layer does not set it or no home resolves to hold one. Only the
+// machine layer is loaded (Roots.Repo is ""), so nothing the repository
+// commits, malformed or not, can refuse the person here; the person's own
+// file, malformed for this key, still refuses, naming the file.
+func machineHolder(home string) (string, error) {
+	if home == "" {
+		return "", nil
+	}
+	stack, err := layered.Load(layered.Config, layered.Roots{Home: home})
 	if err != nil {
 		return "", refuse("could not read the configuration that names your GitHub username: %v; %s", err, nothingPushed)
 	}
@@ -208,6 +213,7 @@ var (
 	errForgeNoToken = errors.New("gh could not read the account (it is not logged in to github.com, holds no usable token, or GitHub was unreachable)")
 	errForgeTimeout = errors.New("gh did not answer in time")
 	errForgeAnswer  = errors.New("GitHub's answer did not name an account")
+	errForgeMachine = errors.New("the token belongs to a machine account, not a person's")
 )
 
 // tokenHolder asks the session's forge token whose account it is: one call of
@@ -221,16 +227,21 @@ func tokenHolder(root string, o Options) (Holder, error) {
 	if err == nil && (!validUsername(login) || id <= 0) {
 		err = errForgeAnswer
 	}
+	noreply := fmt.Sprintf("%d+%s@users.noreply.github.com", id, login)
+	if err == nil && toolid.IsToolIdentity(toolid.RoleAuthor, login, noreply) {
+		// A release bot's or an automation account's token names no person.
+		err = errForgeMachine
+	}
 	if err != nil {
 		cause := errForgeNoToken
-		for _, c := range []error{errForgeMissing, errForgeTimeout, errForgeAnswer} {
+		for _, c := range []error{errForgeMissing, errForgeTimeout, errForgeAnswer, errForgeMachine} {
 			if errors.Is(err, c) {
 				cause = c
 			}
 		}
 		return Holder{}, refuse("could not work out whose GitHub account this session uses: %v; %s", cause, nothingPushed)
 	}
-	return Holder{Login: login, ID: id, NoReply: fmt.Sprintf("%d+%s@users.noreply.github.com", id, login), Source: HolderFromToken}, nil
+	return Holder{Login: login, ID: id, NoReply: noreply, Source: HolderFromToken}, nil
 }
 
 // forgeUser is the real user-endpoint call: `gh api user` through the one
@@ -238,14 +249,7 @@ func tokenHolder(root string, o Options) (Holder, error) {
 func forgeUser(root string) (string, int64, error) {
 	out, err := github.API(root, nil, "user")
 	if err != nil {
-		var missing *tools.MissingError
-		switch {
-		case errors.As(err, &missing):
-			return "", 0, errForgeMissing
-		case errors.Is(err, github.ErrTimeout):
-			return "", 0, errForgeTimeout
-		}
-		return "", 0, errForgeNoToken
+		return "", 0, forgeClass(err)
 	}
 	var u struct {
 		Login string `json:"login"`
@@ -255,6 +259,19 @@ func forgeUser(root string) (string, int64, error) {
 		return "", 0, errForgeAnswer
 	}
 	return u.Login, u.ID, nil
+}
+
+// forgeClass is the class a failed user-endpoint call falls in: gh missing,
+// gh out of time, or else no account read. gh's own words are dropped.
+func forgeClass(err error) error {
+	var missing *tools.MissingError
+	switch {
+	case errors.As(err, &missing):
+		return errForgeMissing
+	case errors.Is(err, github.ErrTimeout):
+		return errForgeTimeout
+	}
+	return errForgeNoToken
 }
 
 // personalConfig reads one git config value under the developer's own

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io/fs"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -129,5 +131,56 @@ func TestReserveHolderWritesNothing(t *testing.T) {
 	}
 	if after := snapshot(); after != before {
 		t.Fatalf("--holder changed a ref or a file:\nbefore\n%s\nafter\n%s", before, after)
+	}
+}
+
+// TestReserveHolderRealForgeClasses runs the real user-endpoint call against a
+// gh stub, so the classification the refusal names is the one the code makes:
+// gh's own words never reach the output, an identity on its stderr included.
+func TestReserveHolderRealForgeClasses(t *testing.T) {
+	const prefix = "could not work out whose GitHub account this session uses: "
+	const leak = "HTTP 401: Bad credentials for Pat Example <pat@example.com> as octo-secret"
+	w := newReserveWorld(t)
+	pat := w.clone(t, "pat", "pat@example.com")
+	path := os.Getenv("PATH")
+	for _, c := range []struct {
+		name, body, class string
+	}{
+		{"gh fails, naming an identity", "printf '%s\\n' '" + leak + "' >&2\nexit 1\n",
+			"gh could not read the account (it is not logged in to github.com, holds no usable token, or GitHub was unreachable)"},
+		{"not JSON", "printf 'not json'\n", "GitHub's answer did not name an account"},
+		{"an id past int64", `printf '{"login":"x","id":99999999999999999999}'` + "\n", "GitHub's answer did not name an account"},
+		{"a negative id", `printf '{"login":"x","id":-1}'` + "\n", "GitHub's answer did not name an account"},
+		{"a zero id", `printf '{"login":"x","id":0}'` + "\n", "GitHub's answer did not name an account"},
+	} {
+		t.Setenv("PATH", path)
+		calls := stubGHScript(t, c.body)
+		code, stdout, stderr := reserveRun(t, pat, "reserve", "--holder")
+		if code != 2 || stdout != "" || !strings.Contains(stderr, prefix+c.class+"; nothing was pushed") {
+			t.Fatalf("%s: exit %d, stdout %q, stderr %q; want the class %q", c.name, code, stdout, stderr, c.class)
+		}
+		for _, s := range []string{leak, "Bad credentials", "octo-secret", "pat@example.com", "Pat Example"} {
+			if strings.Contains(stdout+stderr, s) {
+				t.Fatalf("%s: the output carries %q: %s", c.name, s, stderr)
+			}
+		}
+		if got := calls(); len(got) != 1 || got[0] != "api --hostname github.com user" {
+			t.Fatalf("%s: gh was asked %q; want the user endpoint once", c.name, got)
+		}
+	}
+
+	// gh missing from PATH: a directory holding git alone.
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	only := t.TempDir()
+	if err := os.Symlink(git, filepath.Join(only, "git")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", only)
+	code, stdout, stderr := reserveRun(t, pat, "reserve", "--holder")
+	if want := prefix + "the GitHub CLI (gh) is not on PATH; nothing was pushed"; code != 2 || stdout != "" || !strings.Contains(stderr, want) {
+		t.Fatalf("gh missing: exit %d, stdout %q, stderr %q; want %q", code, stdout, stderr, want)
 	}
 }

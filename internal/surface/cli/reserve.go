@@ -93,9 +93,11 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"copy's key is kept. `abcd peers` lists every reservation.\n\n" +
 			"--holder prints the account an act from this checkout would reserve as and the\n" +
 			"source that named it (git, config or token), or its --json document. It may\n" +
-			"make that one call to the user endpoint when git's identity is not a person's\n" +
-			"GitHub no-reply address; it takes no record id and no other flag, and reserves,\n" +
-			"writes and pushes nothing. It exits 0 when the account is known and 2 when not.\n\n" +
+			"make that one call to the user endpoint in two cases: git's identity is a\n" +
+			"person's but carries neither a GitHub no-reply address nor a machine key; or\n" +
+			"git's identity is not a person's (unset, or a machine's), when the machine key\n" +
+			"is skipped. It takes no record id and no other flag, and reserves, writes and\n" +
+			"pushes nothing. It exits 0 when the account is known and 2 when not.\n\n" +
 			"Exit 0 when the act reached origin (or a release was already made); exit 3 when\n" +
 			"the record is held by someone else or by your other copy, so back off; exit 2\n" +
 			"on every other refusal and failure. Nothing is pushed on a refusal, and a failed\n" +

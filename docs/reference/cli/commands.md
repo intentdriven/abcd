@@ -3893,9 +3893,11 @@ copy's key is kept. `abcd peers` lists every reservation.
 
 --holder prints the account an act from this checkout would reserve as and the
 source that named it (git, config or token), or its --json document. It may
-make that one call to the user endpoint when git's identity is not a person's
-GitHub no-reply address; it takes no record id and no other flag, and reserves,
-writes and pushes nothing. It exits 0 when the account is known and 2 when not.
+make that one call to the user endpoint in two cases: git's identity is a
+person's but carries neither a GitHub no-reply address nor a machine key; or
+git's identity is not a person's (unset, or a machine's), when the machine key
+is skipped. It takes no record id and no other flag, and reserves, writes and
+pushes nothing. It exits 0 when the account is known and 2 when not.
 
 Exit 0 when the act reached origin (or a release was already made); exit 3 when
 the record is held by someone else or by your other copy, so back off; exit 2

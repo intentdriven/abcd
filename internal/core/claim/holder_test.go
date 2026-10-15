@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/github"
+	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -186,5 +188,125 @@ func TestRenderHolderNeverCallsForge(t *testing.T) {
 	}
 	if fake.calls != 0 {
 		t.Fatalf("a render asked the forge %d times; a render makes no network call", fake.calls)
+	}
+}
+
+// TestHolderRefusesMachineAccountToken: a token whose account is a machine's
+// (a release bot, an automation account) names no person, so it is refused in
+// a fixed class that never echoes the login.
+func TestHolderRefusesMachineAccountToken(t *testing.T) {
+	const want = "could not work out whose GitHub account this session uses: the token belongs to a machine account, not a person's; nothing was pushed"
+	for _, login := range []string{"release-bot", "acme-automation"} {
+		for _, r := range []*gittest.Repo{newCheckout(t, "pat@example.com"), unsetCheckout(t)} {
+			fake := &forgeFake{login: login, id: 77}
+			o := Options{Now: clockAt(t0), Home: t.TempDir(), ForgeUser: fake.user}
+			_, herr := ResolveHolder(r.Root(), o)
+			_, perr := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, o)
+			for _, err := range []error{herr, perr} {
+				if !errors.Is(err, ErrRefused) || err.Error() != want {
+					t.Fatalf("token %s: %v; want %q", login, err, want)
+				}
+			}
+		}
+	}
+}
+
+// TestRepoConfigCannotBlockTokenFallback: a person with no noreply address
+// and no machine key reaches the token whatever the repository commits to its
+// own configuration, and whether or not a home resolves: only the machine
+// layer is read for the key, so repository input can never block the person.
+func TestRepoConfigCannotBlockTokenFallback(t *testing.T) {
+	want := Holder{Login: "octo-person", ID: 4242, NoReply: "4242+octo-person@users.noreply.github.com", Source: HolderFromToken}
+	for _, body := range []string{`{"reservation":{"x":1}}`, `{"reservation":`, `{"reservation":{"github_username":"mallory"}}`} {
+		r := newCheckout(t, "pat@corp.com")
+		r.Git("config", "user.name", "Pat")
+		r.Write(".abcd/config.json", body)
+		r.Commit("config")
+		fake := &forgeFake{login: "octo-person", id: 4242}
+		h, err := ResolveHolder(r.Root(), Options{Home: t.TempDir(), ForgeUser: fake.user})
+		if err != nil || h != want || fake.calls != 1 {
+			t.Fatalf("committed %s: holder = %+v, %v after %d calls; want %+v from the token", body, h, err, fake.calls, want)
+		}
+	}
+	// An unresolved home holds no machine key either: the token answers.
+	r := newCheckout(t, "pat@corp.com")
+	t.Setenv("HOME", "")
+	fake := &forgeFake{login: "octo-person", id: 4242}
+	if h, err := ResolveHolder(r.Root(), Options{ForgeUser: fake.user}); err != nil || h != want {
+		t.Fatalf("with no home: holder = %+v, %v; want %+v from the token", h, err, want)
+	}
+	// The person's own machine layer, malformed for this key, still refuses,
+	// naming the file.
+	home := machineConfig(t, `{"reservation": {"github_username": 5}}`)
+	fake = &forgeFake{login: "octo-person", id: 4242}
+	_, err := ResolveHolder(r.Root(), Options{Home: home, ForgeUser: fake.user})
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "config.json (machine layer): reservation.github_username") || fake.calls != 0 {
+		t.Fatalf("a malformed machine key: %v after %d calls; want the refusal naming the file", err, fake.calls)
+	}
+}
+
+// TestOverlongNoReplyFallsThrough: a noreply-shaped user.email whose local
+// part is too long to be a GitHub username names no holder, so the next
+// source is asked instead of the act being refused.
+func TestOverlongNoReplyFallsThrough(t *testing.T) {
+	long := "4242+" + strings.Repeat("a", 40) + "@users.noreply.github.com"
+	r := newCheckout(t, long)
+	fake := &forgeFake{err: errors.New("must not be asked")}
+	h, err := ResolveHolder(r.Root(), Options{Home: machineConfig(t, `{"reservation": {"github_username": "octo"}}`), ForgeUser: fake.user})
+	if want := (Holder{Login: "octo", Source: HolderFromConfig}); err != nil || h != want {
+		t.Fatalf("with the machine key: holder = %+v, %v; want %+v", h, err, want)
+	}
+	fake = &forgeFake{login: "octo-person", id: 4242}
+	h, err = ResolveHolder(r.Root(), Options{Home: t.TempDir(), ForgeUser: fake.user})
+	if err != nil || h.Source != HolderFromToken || h.Login != "octo-person" {
+		t.Fatalf("without it: holder = %+v, %v; want the token's", h, err)
+	}
+}
+
+// TestNoForgeCallWhenRefusedLocally: a checkout the act would refuse on its
+// own facts (no origin, no local tier) is refused before GitHub is asked.
+func TestNoForgeCallWhenRefusedLocally(t *testing.T) {
+	noOrigin := newCheckout(t, botMail)
+	noOrigin.Git("config", "user.name", botName)
+	noTier := gittest.NewRepo(t)
+	noTier.Git("config", "user.name", botName)
+	noTier.Git("config", "user.email", botMail)
+	bare := filepath.Join(t.TempDir(), "origin.git")
+	gittest.InitBare(t, bare)
+	noTier.Git("remote", "add", "origin", bare)
+	for _, c := range []struct {
+		r    *gittest.Repo
+		want string
+	}{
+		{noOrigin, "this checkout has no remote"},
+		{noTier, "is not a directory in this checkout"},
+	} {
+		fake := &forgeFake{login: "octo-person", id: 4242}
+		_, err := Reserve(c.r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir(), ForgeUser: fake.user})
+		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), c.want) || fake.calls != 0 {
+			t.Fatalf("Reserve = %v after %d forge calls; want %q before any", err, fake.calls, c.want)
+		}
+	}
+}
+
+// TestForgeFailureClasses: the real call's failure reduces to a class, a
+// timeout among them, and the class is what the refusal names.
+func TestForgeFailureClasses(t *testing.T) {
+	for _, c := range []struct {
+		err  error
+		want error
+	}{
+		{fmt.Errorf("%w within 30s", github.ErrTimeout), errForgeTimeout},
+		{tools.Missing(errors.New("no gh"), "gh", tools.GitHubSettings), errForgeMissing},
+		{errors.New("gh: HTTP 401 for pat@example.com"), errForgeNoToken},
+	} {
+		if got := forgeClass(c.err); got != c.want {
+			t.Fatalf("forgeClass(%v) = %v; want %v", c.err, got, c.want)
+		}
+	}
+	r := newCheckout(t, "pat@example.com")
+	_, err := ResolveHolder(r.Root(), Options{Home: t.TempDir(), ForgeUser: func(string) (string, int64, error) { return "", 0, errForgeTimeout }})
+	if want := "could not work out whose GitHub account this session uses: " + errForgeTimeout.Error() + "; nothing was pushed"; err == nil || err.Error() != want {
+		t.Fatalf("a timeout: %v; want %q", err, want)
 	}
 }

@@ -181,9 +181,16 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 // each.
 func stubGH(t *testing.T, answer string) func() []string {
 	t.Helper()
+	return stubGHScript(t, "printf '%s' '"+answer+"'\n")
+}
+
+// stubGHScript is stubGH with body, a shell fragment, in place of the answer:
+// it may write to stderr and exit as it likes.
+func stubGHScript(t *testing.T, body string) func() []string {
+	t.Helper()
 	dir := t.TempDir()
 	log := filepath.Join(dir, "calls")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\nprintf '%s' '" + answer + "'\n"
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\n" + body
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}

@@ -98,12 +98,15 @@ type prepared struct {
 
 // prepare checks a request in the order the refusals promise: the id before
 // any ref name is formed, then the footprint and the lease before any git
-// runs, then the person's identity, holder and working copy from the
-// checkout. A reservation's message, and the tombstone that would release it,
+// runs, then the working copy and the caller's local checks (local, such as
+// Reserve's origin check), then the person's identity and holder. Every check
+// that can refuse on the checkout's own facts runs before the holder, so a
+// checkout refused locally never asks GitHub whose account the token is. A
+// reservation's message, and the tombstone that would release it,
 // are composed and measured against the cap and the outbound policy here too,
 // so a message that may not be written is refused before anything reaches the
 // remote, and a reservation accepted is one that can be released.
-func prepare(root string, req Request, o Options) (*prepared, error) {
+func prepare(root string, req Request, o Options, local ...func(root string) error) (*prepared, error) {
 	id, err := reservableID(req.Record)
 	if err != nil {
 		return nil, err
@@ -133,6 +136,14 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 		return nil, refuse("lease %s is outside %s to %s; %s", term, lease.Min, lease.Max, nothingPushed)
 	}
 	p := &prepared{root: root, id: id, req: req, lease: term, now: o.now(), label: o.assistedBy()}
+	if p.copy, err = copyKey(root); err != nil {
+		return nil, err
+	}
+	for _, check := range local {
+		if err := check(root); err != nil {
+			return nil, err
+		}
+	}
 	if p.who, err = gitIdentity(root); err != nil {
 		return nil, err
 	}
@@ -145,9 +156,6 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 		// Git's identity is unset or a machine's: the token's account authors
 		// the reservation, so that identity never reaches a commit.
 		p.who = identity{Name: h.Login, Email: h.NoReply}
-	}
-	if p.copy, err = copyKey(root); err != nil {
-		return nil, err
 	}
 	if !req.Release && !req.Renew {
 		// The reservation is measured by the longer of its own message and the
