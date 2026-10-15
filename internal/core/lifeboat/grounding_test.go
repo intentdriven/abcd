@@ -67,10 +67,7 @@ func findSection(t *testing.T, cov Coverage, name Section) SectionCoverage {
 // sections are grounded from the tier that owns them. With the adapter stubs
 // this fails (every section blank); it passes once the tiered adapters land.
 func TestProbeGroundsRichRepoFromEveryTier(t *testing.T) {
-	cov, err := Probe(repoRoot(t))
-	if err != nil {
-		t.Fatal(err)
-	}
+	cov := probeThisRepo(t)
 
 	if cov.Summary.Grounded < 5 {
 		t.Errorf("rich repo grounded only %d sections; the record should ground many", cov.Summary.Grounded)

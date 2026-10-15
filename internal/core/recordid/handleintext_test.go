@@ -8,13 +8,14 @@ import "testing"
 // or a longer word; a slug after the number still names the record.
 func TestHandleInTextFindsGenealogy(t *testing.T) {
 	for s, want := range map[string]string{
-		"as adr-43 ruled":                  "adr-43",
-		"(itd-79)":                         "itd-79",
-		"ADR-6's concern":                  "ADR-6",
-		"see rdi-2609020000000009.":        "rdi-2609020000000009",
-		"while cond-2609020626047525 held": "cond-2609020626047525",
-		"rfm-1":                            "rfm-1",
-		"the file itd-4-a-slug.md":         "itd-4",
+		"as adr-43 ruled":                    "adr-43",
+		"(itd-79)":                           "itd-79",
+		"ADR-6's concern":                    "ADR-6",
+		"see rdi-2609020000000009.":          "rdi-2609020000000009",
+		"while cond-2609020626047525 held":   "cond-2609020626047525",
+		"rfm-1":                              "rfm-1",
+		"the file itd-4-a-slug.md":           "itd-4",
+		"the note mem-2610111200001234 says": "mem-2610111200001234",
 	} {
 		got, ok := HandleInText(s)
 		if !ok || got != want {
@@ -26,6 +27,7 @@ func TestHandleInTextFindsGenealogy(t *testing.T) {
 		"no handle here",
 		"xadr-4 is a longer word",
 		"iss-",
+		"a memo-12 is a longer word",
 	} {
 		if got, ok := HandleInText(s); ok {
 			t.Errorf("HandleInText(%q) found %q", s, got)

@@ -34,6 +34,16 @@ const maxTrustedRootsBytes = 64 << 10
 // with it left alone, that a root the caller really owns is admitted unchanged.
 var ownerUID = fsutil.OwnerUID
 
+// SwapOwnerUIDForTest substitutes the marker root's owner lookup and returns
+// the restore. It is exported because a front door that must print the
+// refusal (Resolution.Notes) is tested from another package. Tests only; never
+// called in production code, and never safe to call from a parallel test.
+func SwapOwnerUIDForTest(fn func(string) (uint32, error)) (restore func()) {
+	prev := ownerUID
+	ownerUID = fn
+	return func() { ownerUID = prev }
+}
+
 // caseFoldingFS is the package's view of fsutil.CaseFoldingFS, held as a var
 // for the reason ownerUID is: the case-folding branch of the trusted-roots
 // match cannot be provoked on a case-sensitive host, so substituting the

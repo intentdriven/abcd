@@ -279,6 +279,21 @@ for, the reason, the route that runs it); start the agent as for any await. A
 `step` that re-tells an await starts no runner. The runner configuration is read
 on every `step`; a fault is refused at the `runner` stage before anything runs.
 
+With `oracle.review` set to `rp` (the repository's `.abcd/config.json` or
+`~/.abcd.noindex/config.json`, the server's `oracle.rp.url` in the latter alone), a
+ruthless or security review the stage hands to the host, and no runner took, is
+sent by `step` itself to RepoPrompt over MCP, with a request rendered beside the
+review's brief (`request.md`); the answer is written to the review's return path
+and verified through the same receipt, so the loop records its verdict, and the
+result's `route` names `rp`. Do not start an agent for it, and give that `step`
+a timeout above the route's thirty-minute bound or run it in the background. A
+review the route does not return, an interrupted step included, leaves the lane
+awaiting, and the result names `awaiting` plus `fallback` (the role,
+`asked: rp`, the reason, `ran: host`): start the reviewer as for any await, and
+tell the user the reason. The route is read on every
+`step`; a fault is refused at the `review` stage before anything runs. Unset,
+nothing changes.
+
 `step` keeps the run's window clock, on the pace the run started with
 (`/abcd:build`). Once the window's working minutes have elapsed, `step` starts
 nothing, writes `next_eligible_at` (now plus the run's pause), records the
