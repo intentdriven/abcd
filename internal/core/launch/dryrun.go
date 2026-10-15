@@ -205,7 +205,9 @@ func DryRun(req DryRunRequest) (DryRunReport, error) {
 }
 
 // scanBundle adapts the bundle's Included files to the scanner and runs it.
-func scanBundle(repoRoot string, bundle Bundle) scanner.ScanResult {
+// It is a variable so a test can keep the scan a render of this repository
+// made, rather than scan the same payload a second time.
+var scanBundle = func(repoRoot string, bundle Bundle) scanner.ScanResult {
 	sc, err := scanner.New(repoRoot)
 	if err != nil {
 		return scanner.ScanResult{Unavailable: true, UnavailableReason: err.Error()}
