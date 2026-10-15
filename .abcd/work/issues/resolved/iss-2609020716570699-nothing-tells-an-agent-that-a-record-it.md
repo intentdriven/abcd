@@ -13,6 +13,12 @@ remedy: "Waits on the M20 interview for itd-2609091034175565: the same-account h
 related_intents: [itd-2609091416295622, itd-2609091416304128, itd-2609091034175565]
 deferred_after: v0.11.1
 deferral_reason: "Promoted to itd-2609091034175565 (draft), and a promoted issue keeps its folder until the intent ships. The product thinker's ruling M20 of 2026-09-23 plans it next cycle; the interview answers the draft's open questions. Owed: that interview, which opens on one question: where does the claim signal's stop sit, and how is an abandoned claim told from a live one?"
+resolution: "Delivered by itd-2609091034175565: a session now reserves a record on the shared remote before working it, through abcd drain and abcd build, and every pick, peers row and build start reads those reservations, so another session learns a record is claimed before it starts rather than at the resolution gate."
+impact: internal
+resolved_by:
+  intent: "itd-2609091034175565"
+  spec: "spc-2610031753359849"
+  commit: "8b15572d4"
 ---
 
 Nothing tells an agent that a record it is about to fix has been claimed or resolved by another session until the resolution gate refuses the push. In one night a peer session re-fixed two issues a paused branch also fixed, and two of its open PRs duplicate merged work. The claim signal that worked in every published multi-agent run is the repository itself: a claim written into the open record (claimed_by: account and harness, branch) and pushed alone through the queue before any fix starts, so a losing race is a push rejection; plus a duplicate-guard required check that fails a PR whose Resolves trailer names a record already resolved on origin/main; plus capture resolve refusing a record that is already terminal on the fetched origin/main. Folder membership is already the status signal, so the claim extends the one canonical primitive rather than adding a lock file that rots. Refines iss-2608220750029993.
