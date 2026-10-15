@@ -134,8 +134,8 @@ abcd carries the project flag. Setup states this in a note on every project
 setup, since it asks the network nothing to learn which release is latest.
 
 The gate holds the line: on a project site, a rendered span whose source file
-abcd does not write fails `lint site`, on every page, the record's own included,
-and so does a site with no title.
+abcd does not write fails the site's gate, on every page, the record's own
+included, and so does a site with no title.
 Files under `.abcd/` (but the local tier) and `CHANGELOG.md` are abcd's; `docs/`,
 `README.md` and every other file are not. The build and the gate name the route
 explicitly, and refuse settings of the other shape. abcd's own composed site is
