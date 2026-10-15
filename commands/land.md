@@ -96,9 +96,10 @@ that name with none at this head, since the proof may lie past the bound.
    the 100 checks land reads, it says so; BEHIND is then not called no
    holder. The forge often queues an armed CLEAN pull request by itself after
    a wait (fifteen minutes on the first real run), so auto-merge is toggled
-   only when this account's arming has sat CLEAN outside the queue for more
-   than 30 minutes, timed from the later of the arming's time on the forge
-   and the time its last required check passed, and then once a run. Those
+   only when this account's arming is CLEAN and still outside the queue more
+   than 30 minutes after the later of the arming's time on the forge and the
+   time its last required check passed, and then once a run (a review that
+   arrives later does not restart that clock). Those
    are the forge's times against the local clock: a fast local clock shortens
    the grace, and a forge time ahead of the local clock never toggles. Inside
    that grace the note says how long ago it was armed (and how long it has

@@ -498,6 +498,9 @@ func TestAPullRequestAtAnotherHeadIsNotArmed(t *testing.T) {
 	if s := step(t, res, "enqueue"); s.Status != StatusStopped || f.forge.called("pr", "merge") != 0 {
 		t.Fatalf("enqueue step %+v, calls %v: want stopped and unarmed", s, f.forge.calls)
 	}
+	if s := step(t, res, "enqueue").Note; !strings.Contains(s, "pull it") || !strings.Contains(s, "wait for the forge") {
+		t.Fatalf("enqueue note %q: want both remedies, pulling a newer forge head and waiting for an older one", s)
+	}
 }
 
 const (

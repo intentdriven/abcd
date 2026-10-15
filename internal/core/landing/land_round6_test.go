@@ -94,8 +94,8 @@ func TestTheGraceRunsFromTheLastRequiredCheckNotTheArming(t *testing.T) {
 	if f.forge.called("pr", "merge") != 0 {
 		t.Fatalf("forge calls %v, want no toggle 6 minutes after the checks passed", f.forge.calls)
 	}
-	if s := step(t, res, "enqueue").Note; !strings.Contains(s, "CLEAN for 6 min") || !strings.Contains(s, "after 13:48 UTC") {
-		t.Fatalf("enqueue note %q, want CLEAN for 6 min and the time the grace ends", s)
+	if s := step(t, res, "enqueue").Note; !strings.Contains(s, "required checks passed 6 min ago") || !strings.Contains(s, "after 13:48 UTC") {
+		t.Fatalf("enqueue note %q, want the checks passed 6 min ago and the time the grace ends", s)
 	}
 
 	at(t, "13:48:17") // CLEAN+31
@@ -109,7 +109,7 @@ func TestTheGraceRunsFromTheLastRequiredCheckNotTheArming(t *testing.T) {
 	if f.forge.called("pr", "merge", "7", "--disable-auto") != 1 {
 		t.Fatalf("forge calls %v, want one toggle 31 minutes after the checks passed", f.forge.calls)
 	}
-	if s := step(t, res, "enqueue").Note; !strings.Contains(s, "sat CLEAN outside the queue for 31 min") {
+	if s := step(t, res, "enqueue").Note; !strings.Contains(s, "required checks passed 31 min ago") || strings.Contains(s, "sat CLEAN") {
 		t.Fatalf("enqueue note %q", s)
 	}
 }
@@ -268,7 +268,33 @@ func TestAnOwnArmingOnAnotherHeadIsRefused(t *testing.T) {
 	wantRefusal(t, err, short(other))
 	wantRefusal(t, err, short(f.head()))
 	wantRefusal(t, err, "gh pr merge 7 --disable-auto")
+	wantRefusal(t, err, "pull the forge's head")
 	if f.forge.called("pr", "merge") != 0 {
 		t.Fatalf("forge calls %v, want nothing toggled or armed", f.forge.calls)
+	}
+}
+
+// A CLEAN pull request whose rollup is still PENDING only because a check
+// that is not required is running is not held by checks: the note must not
+// say checks are still pending while it reports CLEAN (round 6 review note).
+func TestACleanPullRequestIsNotCalledHeldByAPendingRollup(t *testing.T) {
+	at(t, "14:12:30")
+	f := newFixture(t, queueRuleset)
+	f.forge.prs = f.prFor(f.head())
+	empty := func(pr map[string]any) {
+		r := rollupOf(pr)
+		r["state"] = "PENDING"
+		r["contexts"].(map[string]any)["nodes"] = []any{}
+	}
+	f.forge.answers = []string{
+		recorded(t, "pr-state-1020-pending.json", empty),
+		recorded(t, "pr-state-1020-pending.json", both(unqueued("CLEAN", "REPPL", "2026-10-15T14:12:20Z"), empty)),
+	}
+	res, err := f.land(f.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if s := step(t, res, "enqueue").Note; strings.Contains(s, "checks are still pending") {
+		t.Fatalf("enqueue note %q: a CLEAN pull request is not held by a pending rollup", s)
 	}
 }

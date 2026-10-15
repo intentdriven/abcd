@@ -1091,7 +1091,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 	res.PR, res.PRURL = pr.Number, pr.URL
 	n := fmt.Sprint(pr.Number)
 	if pr.HeadRefOid != res.Head {
-		res.add("enqueue", StatusStopped, fmt.Sprintf("pull request #%s's head on the forge is %s, not %s's head %s, so nothing was armed: push the branch (or let the forge see the push), then run abcd land again",
+		res.add("enqueue", StatusStopped, fmt.Sprintf("pull request #%s's head on the forge is %s, not %s's head %s, so nothing was armed: if the forge's head is newer, pull it into the branch and run abcd land again, which gates it; if it is older, wait for the forge to see the push, then run abcd land again",
 			n, short(pr.HeadRefOid), res.Branch, short(res.Head)), "")
 		return nil
 	}
@@ -1183,7 +1183,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 		// land did not check: refused, as after a fresh arming.
 		if s.HeadRefOid != res.Head {
 			return refuse(fmt.Sprintf("pull request #%s is armed by this account, but its head on the forge is %s, not %s, the head land gated, so the arming may merge a commit land did not check", n, short(s.HeadRefOid), short(res.Head)),
-				"withdraw the arming (gh pr merge "+n+" --disable-auto), then run abcd land again to gate and arm the forge's head")
+				"withdraw the arming (gh pr merge "+n+" --disable-auto), bring the branch to the commit you mean to merge (pull the forge's head, or push the gated one), then run abcd land again: land gates and arms only the branch's local head")
 		}
 		note = "pull request #" + n + " is already armed (" + armedMethod(s) + ") by this account"
 		rearm = rearmArgs(s, n, res.Head)
@@ -1216,7 +1216,7 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 			return refuse("pull request #"+n+" is now DISARMED: land withdrew its auto-merge to queue it again and the forge refused the new arming ("+why+")",
 				"arm it again yourself with: gh "+strings.Join(shellWords(rearm), " ")+" (or run abcd land again)")
 		}
-		note += fmt.Sprintf("; it sat CLEAN outside the queue for %d min, armed with its required checks passed, past the %d-minute grace, so auto-merge was toggled once", int(clean/time.Minute), int(toggleGrace/time.Minute))
+		note += fmt.Sprintf("; its required checks passed %d min ago and it is still CLEAN outside the queue, past the %d-minute grace, so auto-merge was toggled once", int(clean/time.Minute), int(toggleGrace/time.Minute))
 		if s, err = confirmView(view, n, res.Head); err != nil {
 			return err
 		}
@@ -1257,7 +1257,7 @@ func waitText(s prState, n string, rearm []string) string {
 	case clean <= toggleGrace:
 		since := fmt.Sprintf("armed %d min ago", int(armed/time.Minute))
 		if clean < armed {
-			since += fmt.Sprintf(", CLEAN for %d min since its last required check passed", int(clean/time.Minute))
+			since += fmt.Sprintf(", its required checks passed %d min ago", int(clean/time.Minute))
 		}
 		return fmt.Sprintf("; armed; the forge has not queued it yet (%s); run abcd land again after %s if it is still not queued",
 			since, ceilMinute(now().Add(toggleGrace-clean)).UTC().Format("15:04 UTC"))
@@ -1350,7 +1350,9 @@ func holdText(s prState, def string) string {
 	}
 	unread := false
 	if r := s.StatusCheckRollup; r != nil {
-		if (r.State == "PENDING" || r.State == "EXPECTED") && !r.pendingRequiredListed() {
+		// A CLEAN pull request has every required check it needs; a pending
+		// rollup there is a check that is not required, which holds nothing.
+		if (r.State == "PENDING" || r.State == "EXPECTED") && !r.pendingRequiredListed() && s.MergeStateStatus != "CLEAN" {
 			b.WriteString("checks are still pending (the forge's rollup is " + r.State + "), and no required check land read is pending: one may not have started yet; ")
 			unread = true
 		}

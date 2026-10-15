@@ -89,8 +89,8 @@ bound: the refusal says so and gives the push to run by hand.
    says checks are still pending and names the rollup's state, which is the
    authority; and when the forge has more checks than the page held, it says
    the forge lists more checks than land read. Auto-merge is toggled once a
-   run, and only when this account's arming has sat CLEAN and unqueued for
-   more than 30 minutes, timed from the later of the arming's `enabledAt` and
+   run, and only when this account's arming is CLEAN and still unqueued more
+   than 30 minutes after the later of the arming's `enabledAt` and
    the newest time a required check passed (a check run's `completedAt`, a
    commit status's `createdAt`), all the forge's own times, with no local
    clock state: on the first real run (pull request #1018) the last required
