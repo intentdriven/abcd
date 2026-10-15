@@ -29,7 +29,7 @@ We expect people running several sessions to address them by name instead of by 
 
 ## Scope Conditions
 
-- Holds for hosts whose session-start hook output can set a session title, and whose prompt hook input carries the session's current title. Proved live on Claude Code 2.1.301 on 2026-10-15 (decisions 5 and 6); a host without these gets no name and no error. <!-- cond: cond-2610152057145724 -->
+- Holds for hosts whose prompt hook output can set a session title, and whose session-start and prompt hook inputs carry the session's current title. Proved live on Claude Code 2.1.301 on 2026-10-15 (decisions 5 and 6); a host without these gets no name and no error. <!-- cond: cond-2610152057145724 -->
 - Holds on macOS and Linux, where abcd reads the process table to tell whether a named session's host process is still running (decision 4). Elsewhere no session is named. <!-- cond: cond-2610152057148823 -->
 - Holds for up to 126 sessions between two moments when none is running (fourteen bundled names, nine rounds): the fourteen persona names come round again as Alice Two, Bob Two and so on, and the counting only restarts at Alice once every named session has ended. <!-- cond: cond-2610152057141120 -->
 - Holds for a repository persona list of plain one-word names. A name that is not a single capitalised word of letters, at most sixteen characters, is never used: the bundled list stands in for the whole repository list, and a line on stderr says why (decision 8). <!-- cond: cond-2610152057140250 -->
