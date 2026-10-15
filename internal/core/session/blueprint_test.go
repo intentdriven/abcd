@@ -70,14 +70,14 @@ func golden(t *testing.T, name string, got []byte) {
 func TestBlueprintMatchesItsGoldens(t *testing.T) {
 	root := t.TempDir()
 	rel := goodRelease()
-	res, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.1", Fetch: rel, Repos: testRepos})
+	res, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.1", Fetch: rel, Repos: testRepos})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Digest != testDigest || res.Asset != "abcd-linux-amd64" || !strings.HasSuffix(res.Source, "/v0.14.1/checksums.txt") {
+	if res.Digest != testDigest || res.Asset != "abcd-linux-amd64" || !strings.HasSuffix(res.Source, "/v0.17.1/checksums.txt") {
 		t.Fatalf("result = %+v", res)
 	}
-	if strings.Join(rel.asked, ",") != "v0.14.1/checksums.txt" {
+	if strings.Join(rel.asked, ",") != "v0.17.1/checksums.txt" {
 		t.Fatalf("fetched %v, want the release's checksums alone", rel.asked)
 	}
 	for _, f := range []string{"Dockerfile", "render.yaml"} {
@@ -95,10 +95,10 @@ func TestBlueprintMatchesItsGoldens(t *testing.T) {
 }
 
 func TestBlueprintPinsTheReleaseAndItsChecksum(t *testing.T) {
-	files := renderBlueprint("v0.14.1", testDigest, testRepos, nil)
+	files := renderBlueprint("v0.17.1", testDigest, testRepos, nil)
 	docker := string(files["Dockerfile"])
 	for _, want := range []string{
-		"https://github.com/intentdriven/abcd/releases/download/v0.14.1/abcd-linux-amd64",
+		"https://github.com/intentdriven/abcd/releases/download/v0.17.1/abcd-linux-amd64",
 		testDigest + "  /usr/local/bin/abcd\" | sha256sum -c -",
 		"session serve --listen \\\"0.0.0.0:${PORT}\\\" --behind-proxy",
 		"--platform=linux/amd64",
@@ -138,15 +138,15 @@ func TestBlueprintPinsTheReleaseAndItsChecksum(t *testing.T) {
 
 func TestBlueprintRefusesToOverwriteAnEditedFile(t *testing.T) {
 	root := t.TempDir()
-	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.0", Fetch: goodRelease(), Repos: testRepos}); err != nil {
+	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.0", Fetch: goodRelease(), Repos: testRepos}); err != nil {
 		t.Fatal(err)
 	}
 	// Unedited: the same release is unchanged, a new release replaces it.
-	res, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.0", Fetch: goodRelease(), Repos: testRepos})
+	res, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.0", Fetch: goodRelease(), Repos: testRepos})
 	if err != nil || res.Files[0].State != "unchanged" || res.Files[1].State != "unchanged" {
 		t.Fatalf("rerun: %+v %v, want both unchanged", res, err)
 	}
-	res, err = WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.1", Fetch: goodRelease(), Repos: testRepos})
+	res, err = WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos})
 	if err != nil || res.Files[0].State != "replaced" {
 		t.Fatalf("new release: %+v %v, want replaced", res, err)
 	}
@@ -159,7 +159,7 @@ func TestBlueprintRefusesToOverwriteAnEditedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := mustRead(t, docker)
-	_, err = WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.2", Fetch: goodRelease(), Repos: testRepos})
+	_, err = WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.2", Fetch: goodRelease(), Repos: testRepos})
 	var ref *BlueprintRefusal
 	if !errors.As(err, &ref) || len(ref.Edited) != 1 || ref.Edited[0] != ".abcd/relay/render.yaml" {
 		t.Fatalf("err = %v, want a refusal naming render.yaml", err)
@@ -173,7 +173,7 @@ func TestBlueprintRefusesToOverwriteAnEditedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = os.Remove(yaml)
-	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.2", Fetch: goodRelease(), Repos: testRepos}); !errors.As(err, &ref) {
+	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.2", Fetch: goodRelease(), Repos: testRepos}); !errors.As(err, &ref) {
 		t.Fatalf("a foreign Dockerfile: err = %v, want a refusal", err)
 	}
 }
@@ -188,9 +188,9 @@ func TestBlueprintRefusals(t *testing.T) {
 		{"not a tag", "latest", goodRelease(), "not a release tag"},
 		{"a path in the tag", "v1.0.0/../x", goodRelease(), "not a release tag"},
 		{"no release", "v9.9.9", &fakeRelease{}, "publishes no checksums.txt"},
-		{"no linux binary", "v0.14.1", &fakeRelease{found: true, checksums: "1111111111111111111111111111111111111111111111111111111111111111  abcd-darwin-arm64\n"}, "names no abcd-linux-amd64"},
-		{"garbage", "v0.14.1", &fakeRelease{found: true, checksums: "not a manifest\n"}, "malformed"},
-		{"the network", "v0.14.1", &fakeRelease{err: errors.New("offline")}, "offline"},
+		{"no linux binary", "v0.17.1", &fakeRelease{found: true, checksums: "1111111111111111111111111111111111111111111111111111111111111111  abcd-darwin-arm64\n"}, "names no abcd-linux-amd64"},
+		{"garbage", "v0.17.1", &fakeRelease{found: true, checksums: "not a manifest\n"}, "malformed"},
+		{"the network", "v0.17.1", &fakeRelease{err: errors.New("offline")}, "offline"},
 	} {
 		root := t.TempDir()
 		_, err := WriteBlueprint(BlueprintRequest{Root: root, Release: c.release, Fetch: c.fetch, Repos: testRepos})
@@ -212,7 +212,7 @@ func TestBlueprintRefusesASymlinkedDirectory(t *testing.T) {
 	if err := os.Symlink(elsewhere, filepath.Join(root, ".abcd", "relay")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.1", Fetch: goodRelease(), Repos: testRepos}); err == nil {
+	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos}); err == nil {
 		t.Fatal("wrote through a symlinked .abcd/relay")
 	}
 	if entries, _ := os.ReadDir(elsewhere); len(entries) != 0 {
@@ -234,7 +234,7 @@ func mustRead(t *testing.T, p string) []byte {
 func TestBlueprintRefusesWithoutARepositoryToServe(t *testing.T) {
 	for _, repos := range [][]string{nil, {"acme"}, {"acme/brief\"\nx: y"}} {
 		root := t.TempDir()
-		if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.1", Fetch: goodRelease(), Repos: repos}); err == nil {
+		if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.1", Fetch: goodRelease(), Repos: repos}); err == nil {
 			t.Errorf("repos %q accepted", repos)
 		}
 		if _, err := os.Stat(filepath.Join(root, ".abcd")); err == nil {
@@ -250,7 +250,7 @@ func TestBlueprintRefusesWithoutARepositoryToServe(t *testing.T) {
 // trusted relay, stamped like the other files, and without one no
 // relays.json is written.
 func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
-	files := renderBlueprint("v0.14.1", testDigest, testRepos, nil)
+	files := renderBlueprint("v0.17.1", testDigest, testRepos, nil)
 	yaml := string(files["render.yaml"])
 	if !strings.Contains(yaml, "- key: ABCD_SESSION_ORIGINS\n        value: \"https://abcdesign.app\"") {
 		t.Errorf("render.yaml does not name the page origin:\n%s", yaml)
@@ -258,16 +258,16 @@ func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
 	if strings.Contains(yaml, "APP_TYPE") || strings.Contains(yaml, "oauth") {
 		t.Errorf("render.yaml still names a sign-in app type:\n%s", yaml)
 	}
-	files = renderBlueprint("v0.14.1", testDigest, testRepos, []string{"https://pages.example.org", "https://abcdesign.app"})
+	files = renderBlueprint("v0.17.1", testDigest, testRepos, []string{"https://pages.example.org", "https://abcdesign.app"})
 	if !strings.Contains(string(files["render.yaml"]), "value: \"https://pages.example.org,https://abcdesign.app\"") {
 		t.Errorf("render.yaml does not name the given origins:\n%s", files["render.yaml"])
 	}
-	if _, err := WriteBlueprint(BlueprintRequest{Root: t.TempDir(), Release: "v0.14.1", Fetch: goodRelease(), Repos: testRepos, Origins: []string{"http://pages.example.org"}}); err == nil {
+	if _, err := WriteBlueprint(BlueprintRequest{Root: t.TempDir(), Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos, Origins: []string{"http://pages.example.org"}}); err == nil {
 		t.Error("an http page origin was written into the blueprint")
 	}
 
 	root := t.TempDir()
-	res, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.1", Fetch: goodRelease(), Repos: testRepos})
+	res, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
 		t.Fatal("relays.json was written without a relay origin")
 	}
 
-	res, err = WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.1", Fetch: goodRelease(), Repos: testRepos, RelayOrigin: "https://Relay.Example.org/"})
+	res, err = WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos, RelayOrigin: "https://Relay.Example.org/"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -298,7 +298,7 @@ func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
 	}
 
 	// Untouched, it is replaced; edited, it is refused and nothing written.
-	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.2", Fetch: goodRelease(), Repos: testRepos, RelayOrigin: "https://other.example.org"}); err != nil {
+	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.2", Fetch: goodRelease(), Repos: testRepos, RelayOrigin: "https://other.example.org"}); err != nil {
 		t.Fatalf("replacing an untouched relays.json: %v", err)
 	}
 	path := filepath.Join(root, ".abcd", "relay", "relays.json")
@@ -306,7 +306,7 @@ func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
 		t.Fatal(err)
 	}
 	var ref *BlueprintRefusal
-	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.14.2", Fetch: goodRelease(), Repos: testRepos, RelayOrigin: "https://relay.example.org"}); !errors.As(err, &ref) {
+	if _, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.2", Fetch: goodRelease(), Repos: testRepos, RelayOrigin: "https://relay.example.org"}); !errors.As(err, &ref) {
 		t.Fatalf("an edited relays.json: %v, want a refusal", err)
 	}
 }
@@ -329,6 +329,38 @@ func TestRelayOriginsAreReadStrictly(t *testing.T) {
 	} {
 		if _, err := NormalizeRelayOrigin(in); err == nil {
 			t.Errorf("%q accepted", in)
+		}
+	}
+}
+
+// TestBlueprintRefusesAReleaseWithoutTheSessionVerb: a release older than the
+// first to carry `abcd session` would build a relay container that exits at
+// once, so the blueprint refuses it before reading anything; the release the
+// running abcd is counts as carrying it, whatever the constant says (final
+// review, docs item 1).
+func TestBlueprintRefusesAReleaseWithoutTheSessionVerb(t *testing.T) {
+	if firstSessionRelease != "v0.17.0" {
+		t.Fatalf("firstSessionRelease = %s; the release cut sets it to the first release carrying abcd session", firstSessionRelease)
+	}
+	for _, c := range []struct {
+		release, running string
+		ok               bool
+	}{
+		{"v0.14.1", "", false},
+		{"v0.16.9", "dev", false},
+		{"v0.17.0-rc.1", "", true},
+		{"v0.17.0", "", true},
+		{"v1.0.0", "", true},
+		{"v0.15.2", "v0.15.2", true},
+		{"v0.15.1", "v0.15.2", false},
+	} {
+		rel := goodRelease()
+		_, err := WriteBlueprint(BlueprintRequest{Root: t.TempDir(), Release: c.release, Running: c.running, Fetch: rel, Repos: testRepos})
+		if c.ok && err != nil {
+			t.Errorf("%s (running %q): %v, want it pinned", c.release, c.running, err)
+		}
+		if !c.ok && (err == nil || !strings.Contains(err.Error(), "abcd session") || len(rel.asked) != 0) {
+			t.Errorf("%s (running %q): %v, fetched %v; want a refusal naming abcd session, before any fetch", c.release, c.running, err, rel.asked)
 		}
 	}
 }

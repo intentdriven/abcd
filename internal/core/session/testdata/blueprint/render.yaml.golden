@@ -1,4 +1,4 @@
-# abcd session blueprint v0.14.1 sha256:c8860c05a3fa375791e84746d809e8af831a50eea480f1ed3c08b9ef11b7612e
+# abcd session blueprint v0.17.1 sha256:c8860c05a3fa375791e84746d809e8af831a50eea480f1ed3c08b9ef11b7612e
 # The team's own brief session relay: one free web service built from the
 # Dockerfile beside this file. On Render, choose New, then Blueprint, pick this
 # repository and set the Blueprint path to .abcd/relay/render.yaml. One deploy

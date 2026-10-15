@@ -72,8 +72,8 @@ func gitRemoteAt(t *testing.T, dir, url string) {
 func TestSessionBlueprintWritesThePinnedFiles(t *testing.T) {
 	repo := managedSessionRepo(t)
 	rel := swapSessionRelease(t)
-	out := string(runCLI(t, "session", "blueprint", "--release", "v0.14.1"))
-	for _, want := range []string{".abcd/relay/Dockerfile", ".abcd/relay/render.yaml", "v0.14.1", sessionDigest, "checksums.txt", "Blueprint path"} {
+	out := string(runCLI(t, "session", "blueprint", "--release", "v0.17.1"))
+	for _, want := range []string{".abcd/relay/Dockerfile", ".abcd/relay/render.yaml", "v0.17.1", sessionDigest, "checksums.txt", "Blueprint path"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output does not say %q:\n%s", want, out)
 		}
@@ -85,7 +85,7 @@ func TestSessionBlueprintWritesThePinnedFiles(t *testing.T) {
 	if err != nil || !bytes.Contains(docker, []byte(sessionDigest+"  /usr/local/bin/abcd")) {
 		t.Fatalf("Dockerfile: %v\n%s", err, docker)
 	}
-	if strings.Join(rel.asked, ",") != "v0.14.1/checksums.txt" {
+	if strings.Join(rel.asked, ",") != "v0.17.1/checksums.txt" {
 		t.Fatalf("fetched %v", rel.asked)
 	}
 
@@ -94,7 +94,7 @@ func TestSessionBlueprintWritesThePinnedFiles(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	root.SetOut(&stdout)
 	root.SetErr(&stderr)
-	root.SetArgs([]string{"session", "blueprint", "--release", "v0.14.1", "--json"})
+	root.SetArgs([]string{"session", "blueprint", "--release", "v0.17.1", "--json"})
 	if err := root.Execute(); err != nil {
 		t.Fatal(err)
 	}
@@ -119,6 +119,11 @@ func TestSessionBlueprintRefusals(t *testing.T) {
 	if exitCode(err) != 2 || !strings.Contains(err.Error(), "--release") {
 		t.Fatalf("no --release on a dev build: %v\n%s", err, out)
 	}
+	// A release older than the first to carry `abcd session` is refused by
+	// name: its container would exit at once.
+	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.14.1"); exitCode(err) != 2 || !strings.Contains(err.Error(), "abcd session") {
+		t.Fatalf("a release without the session verb: %v, want exit 2 naming abcd session", err)
+	}
 	for _, args := range [][]string{
 		{"session", "blueprint", "--release", "latest"},
 		{"session", "blueprint", "--release", "v9.9.9"},
@@ -131,12 +136,12 @@ func TestSessionBlueprintRefusals(t *testing.T) {
 		t.Fatal("a refusal created .abcd/")
 	}
 
-	runCLI(t, "session", "blueprint", "--release", "v0.14.1")
+	runCLI(t, "session", "blueprint", "--release", "v0.17.1")
 	yaml := filepath.Join(repo, ".abcd", "relay", "render.yaml")
 	if err := os.WriteFile(yaml, []byte("services: []\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	_, err = runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.14.2")
+	_, err = runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.2")
 	if exitCode(err) != 2 || !strings.Contains(err.Error(), "render.yaml") {
 		t.Fatalf("an edited render.yaml: %v, want exit 2 naming it", err)
 	}
@@ -145,7 +150,7 @@ func TestSessionBlueprintRefusals(t *testing.T) {
 	plain := t.TempDir()
 	gitInitAt(t, plain)
 	t.Chdir(plain)
-	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.14.1"); exitCode(err) != 2 {
+	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1"); exitCode(err) != 2 {
 		t.Fatalf("an unmanaged checkout: %v, want exit 2", err)
 	}
 }
@@ -414,7 +419,7 @@ func TestSessionPageHelpSaysWhatGitHubIsReachedFor(t *testing.T) {
 func TestSessionBlueprintServesTheOriginRepository(t *testing.T) {
 	repo := managedSessionRepo(t)
 	swapSessionRelease(t)
-	out := string(runCLI(t, "session", "blueprint", "--release", "v0.14.1"))
+	out := string(runCLI(t, "session", "blueprint", "--release", "v0.17.1"))
 	if !strings.Contains(out, "acme/brief") {
 		t.Errorf("output does not name the served repository:\n%s", out)
 	}
@@ -424,7 +429,7 @@ func TestSessionBlueprintServesTheOriginRepository(t *testing.T) {
 	}
 
 	bare := managedSessionRepoWithoutOrigin(t)
-	_, err = runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.14.1")
+	_, err = runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1")
 	if exitCode(err) != 2 || !strings.Contains(err.Error(), "origin") {
 		t.Fatalf("no origin: %v, want exit 2 naming the origin", err)
 	}
@@ -532,14 +537,14 @@ func TestSessionServeOnLoopbackServesTheOriginRepository(t *testing.T) {
 func TestSessionBlueprintWritesTheRelayOrigin(t *testing.T) {
 	repo := managedSessionRepo(t)
 	swapSessionRelease(t)
-	_, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.14.1", "--relay-origin", "http://relay.example.org")
+	_, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1", "--relay-origin", "http://relay.example.org")
 	if exitCode(err) != 2 || !strings.Contains(err.Error(), "--relay-origin") {
 		t.Fatalf("an http relay origin: %v, want exit 2", err)
 	}
 	if _, err := os.Stat(filepath.Join(repo, ".abcd")); err == nil {
 		t.Fatal("a refusal wrote .abcd/")
 	}
-	out := string(runCLI(t, "session", "blueprint", "--release", "v0.14.1", "--relay-origin", "https://relay.example.org"))
+	out := string(runCLI(t, "session", "blueprint", "--release", "v0.17.1", "--relay-origin", "https://relay.example.org"))
 	if !strings.Contains(out, ".abcd/relay/relays.json") {
 		t.Errorf("output does not name relays.json:\n%s", out)
 	}
@@ -636,17 +641,17 @@ func TestSessionServeReadsItsOriginsFromTheEnvironment(t *testing.T) {
 func TestSessionBlueprintNamesThePageOrigins(t *testing.T) {
 	repo := managedSessionRepo(t)
 	swapSessionRelease(t)
-	runCLI(t, "session", "blueprint", "--release", "v0.14.1")
+	runCLI(t, "session", "blueprint", "--release", "v0.17.1")
 	data, err := os.ReadFile(filepath.Join(repo, ".abcd", "relay", "render.yaml"))
 	if err != nil || !strings.Contains(string(data), "- key: ABCD_SESSION_ORIGINS\n        value: \"https://abcdesign.app\"") {
 		t.Fatalf("render.yaml: %v\n%s", err, data)
 	}
-	runCLI(t, "session", "blueprint", "--release", "v0.14.1", "--origin", "https://pages.example.org", "--origin", "https://abcdesign.app")
+	runCLI(t, "session", "blueprint", "--release", "v0.17.1", "--origin", "https://pages.example.org", "--origin", "https://abcdesign.app")
 	data, _ = os.ReadFile(filepath.Join(repo, ".abcd", "relay", "render.yaml"))
 	if !strings.Contains(string(data), "value: \"https://pages.example.org,https://abcdesign.app\"") {
 		t.Fatalf("render.yaml does not name the given origins:\n%s", data)
 	}
-	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.14.1", "--origin", "http://pages.example.org"); exitCode(err) != 2 {
+	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1", "--origin", "http://pages.example.org"); exitCode(err) != 2 {
 		t.Fatalf("an http page origin: %v, want exit 2", err)
 	}
 }

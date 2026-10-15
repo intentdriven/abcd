@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -65,6 +66,50 @@ var releaseTagRe = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.]+
 // ValidReleaseTag reports whether tag is one a blueprint may pin.
 func ValidReleaseTag(tag string) bool { return releaseTagRe.MatchString(tag) }
 
+// firstSessionRelease is the first abcd release that carries `abcd session`:
+// the relay container runs `abcd session serve`, so a blueprint pinning an
+// older release builds a container that exits at once. No release carries the
+// verb yet (v0.14.1 is the newest), so this is the next release it can ship
+// in as planned; THE RELEASE CUT THAT FIRST SHIPS THE VERB SETS IT to that
+// release's tag. A release the running abcd is counts as carrying the verb
+// whatever this says, so a binary is never refused its own version.
+const firstSessionRelease = "v0.17.0"
+
+// releaseCore is a release tag's MAJOR, MINOR and PATCH, its pre-release
+// ignored: a release candidate of the first release carrying the verb carries
+// it too.
+func releaseCore(tag string) [3]int {
+	var v [3]int
+	core, _, _ := strings.Cut(strings.TrimPrefix(tag, "v"), "-")
+	for i, part := range strings.SplitN(core, ".", 3) {
+		v[i], _ = strconv.Atoi(part)
+	}
+	return v
+}
+
+// releaseBefore reports whether release a is older than release b, by their
+// MAJOR.MINOR.PATCH.
+func releaseBefore(a, b string) bool {
+	x, y := releaseCore(a), releaseCore(b)
+	for i := range x {
+		if x[i] != y[i] {
+			return x[i] < y[i]
+		}
+	}
+	return false
+}
+
+// carriesSession reports whether release carries `abcd session`: it is no
+// older than firstSessionRelease, or than running, the running abcd's own
+// version when that is a release.
+func carriesSession(release, running string) bool {
+	floor := firstSessionRelease
+	if ValidReleaseTag(running) && releaseBefore(running, floor) {
+		floor = running
+	}
+	return !releaseBefore(release, floor)
+}
+
 // AssetFetcher fetches one named asset of a release; found is false, with no
 // error, when the release or the asset does not exist.
 type AssetFetcher interface {
@@ -77,6 +122,9 @@ type BlueprintRequest struct {
 	Root string
 	// Release is the abcd release tag the relay runs.
 	Release string
+	// Running is the running abcd's own version: a release it names carries
+	// `abcd session`, whatever firstSessionRelease says.
+	Running string
 	// Fetch reads the release's checksums.txt.
 	Fetch AssetFetcher
 	// Repos are the repositories the relay serves sessions for, each
@@ -289,6 +337,9 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 	res := BlueprintResult{Release: req.Release, Asset: relayAsset, Repos: req.Repos}
 	if !ValidReleaseTag(req.Release) {
 		return res, fmt.Errorf("%q is not a release tag (vMAJOR.MINOR.PATCH)", req.Release)
+	}
+	if !carriesSession(req.Release, req.Running) {
+		return res, fmt.Errorf("release %s predates `abcd session`, which the relay container runs; name %s or later", req.Release, firstSessionRelease)
 	}
 	if len(req.Repos) == 0 {
 		return res, errors.New("the relay must serve at least one repository")
