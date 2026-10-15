@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/decisions"
 )
 
 // graveyard_notices_test.go — iss-2608270926037088. A graveyard finding's
@@ -147,7 +149,7 @@ func TestGraveyardRecordTextIsMarkdownSafe(t *testing.T) {
 	write("docs/adr/0009-x.md", "---\nstatus: superseded\nsuperseded_by: \"<!-- adr-10 -->\"\n---\n\n# x\n\n"+
 		"## Alternatives Considered\n\n- see [the spike](https://example.com/spike) <details>\n")
 	write(".abcd/work/issues/wontfix/iss-4-x.md", "---\nid: \"iss-4\"\nwontfix_reason: \"</table> moved\"\n---\n")
-	write(".abcd/work/DECISIONS.md", "# DECISIONS\n\n- Kafka rejected <img src=x onerror=y>.\n")
+	write(decisions.FrozenLog, "# DECISIONS\n\n- Kafka rejected <img src=x onerror=y>.\n")
 
 	ctx := abandonedCtx(t, dir)
 	var all []Finding

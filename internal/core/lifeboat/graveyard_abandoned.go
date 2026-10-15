@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 )
@@ -22,7 +23,8 @@ import (
 // cite exactly the id a human reads in the record — no re-derivation. Findings
 // are grouped in signalRank order (buildAbandoned appends signal by signal in
 // that order) and, within a signal, in that signal's fixed deterministic order
-// (sorted record id, sorted ADR id, or DECISIONS.md line order), so the
+// (sorted record id, sorted ADR id, or a frozen decision log's line order then
+// the decision records' id order), so the
 // assembled abandoned.json is byte-identical across re-plans of an unchanged
 // repo and the pinned manifest hash stays stable.
 
@@ -55,8 +57,8 @@ var (
 	gvIssueHandleRe  = regexp.MustCompile(`^iss-([0-9]+)$`)
 )
 
-// gvRejectionVerbs is the deliberately narrow set of verbs that mark a
-// DECISIONS.md bullet as recording a rejected option. It is conservative on
+// gvRejectionVerbs is the deliberately narrow set of verbs that mark a decision
+// record, or a frozen decision log's bullet, as recording a rejected option. It is conservative on
 // purpose: a broad list ("no", "instead", "not") would fire on ordinary prose,
 // so only unambiguous abandonment verbs qualify. Matched as a substring of the
 // lower-cased line, so "rejected" fires on "RAG rejected at this scale" but not
@@ -264,39 +266,68 @@ func gvWontfixIssues(ctx *SourceContext) []Finding {
 	return capSignalFindings(out)
 }
 
-// gvRejectedOptions reports every top-level DECISIONS.md bullet whose text
-// carries a conservative rejection verb, keyed by dec-L<line> (1-based line
-// number, stable for an unchanged append-only file), in file (line) order.
+// gvRejectedOptions reports every decision recorded with a conservative
+// rejection verb in its text (spc-2610110931381316, decision 14). A frozen
+// decision log comes first, as the older history: each top-level bullet whose
+// own line carries the verb, keyed by dec-L<line> (1-based, stable for an
+// unchanged frozen file), in line order. Then each decision record whose body
+// carries it, keyed by its own dcn id, in id order; a record the folder's reader
+// refuses is passed over, as a record of any other signal is.
 func gvRejectedOptions(ctx *SourceContext) []Finding {
-	data, ok := ctx.ReadFile(nativeDecisions)
-	if !ok {
-		return nil
-	}
 	var out []Finding
-	for i, raw := range strings.Split(string(data), "\n") {
-		line := strings.TrimRight(raw, "\r")
-		if !strings.HasPrefix(line, "- ") { // top-level bullet only (no indentation)
-			continue
-		}
-		low := strings.ToLower(line)
-		matched := false
-		for _, v := range gvRejectionVerbs {
-			if strings.Contains(low, v) {
-				matched = true
-				break
+	if data, ok := ctx.ReadFile(nativeFrozenLog); ok {
+		for _, e := range decisions.FrozenEntries(string(data)) {
+			line, _, _ := strings.Cut(e.Text, "\n") // the bullet's own line only
+			if !gvRejects(line) {
+				continue
 			}
+			out = append(out, Finding{
+				ID:       decisionID(e.Line),
+				Signal:   SignalRejectedOption,
+				Summary:  "decision log records a rejected option",
+				Evidence: []string{gvText(strings.TrimSpace(line))},
+			})
 		}
-		if !matched {
+	}
+	var records []Finding
+	names, truncated := ctx.listDirNoted(nativeDecisionsDir)
+	for _, name := range names {
+		if !strings.HasPrefix(name, decisions.Family+"-") || !strings.HasSuffix(name, ".md") {
 			continue
 		}
-		out = append(out, Finding{
-			ID:       decisionID(i + 1),
+		path := nativeDecisionsDir + "/" + name
+		data, ok := ctx.ReadFile(path)
+		if !ok {
+			continue
+		}
+		d, err := decisions.Parse(path, data)
+		if err != nil || !gvRejects(d.Text) {
+			continue
+		}
+		records = append(records, Finding{
+			ID:       d.ID,
 			Signal:   SignalRejectedOption,
-			Summary:  "decision log records a rejected option",
-			Evidence: []string{gvText(strings.TrimSpace(line))},
+			Summary:  "decision record records a rejected option",
+			Evidence: []string{gvText(path), gvText(d.Text)},
 		})
 	}
+	gvSortByID(records)
+	out = append(out, records...)
+	if truncated {
+		out = append(out, gvListingTruncatedFinding(SignalRejectedOption, ctx.listCap))
+	}
 	return capSignalFindings(out)
+}
+
+// gvRejects reports whether text carries one of gvRejectionVerbs.
+func gvRejects(text string) bool {
+	low := strings.ToLower(text)
+	for _, v := range gvRejectionVerbs {
+		if strings.Contains(low, v) {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------------------------------------------------------------------------

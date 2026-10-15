@@ -32,10 +32,11 @@ import (
 //     exists-differs), and
 //   - an AGENTS.md that already holds the CURRENT marker block (so EnsureMarker is
 //     a no-op on a byte-copy of the source, the P2 marker-idempotence leg), and
-//   - NO .abcd/work/DECISIONS.md — the abandoned.json re-derivation (P1) must draw
-//     only from embarked families (a superseded intent, a wontfix issue, an ADR
-//     with `## Alternatives Considered`), never DECISIONS.md, which embark does
-//     not write, or L2.abandoned.json would differ from L1's.
+//   - NO decision record and NO frozen decision log — the abandoned.json
+//     re-derivation (P1) must draw only from embarked families (a superseded
+//     intent, a wontfix issue, an ADR with `## Alternatives Considered`), never
+//     the decisions, which embark does not write, or L2.abandoned.json would
+//     differ from L1's.
 func embarkableSourceFixture(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {

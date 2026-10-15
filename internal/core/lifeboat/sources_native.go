@@ -5,13 +5,14 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // nativeSources returns the Tier-2 adapters: brief sections derivable from an
 // abcd record under .abcd/ (decisions, intents, specs, brief, roadmap, work
-// issues and reviews, DECISIONS.md). Every adapter reports TierNative and reads
+// issues and reviews, the decision records and a frozen decision log). Every adapter reports TierNative and reads
 // only through the SourceContext file surface — it never touches git and never
 // writes.
 //
@@ -185,7 +186,11 @@ const (
 	nativeIssuesDir   = recordid.IssuesRelDir
 	nativeIntentsDir  = ".abcd/development/intents"
 	nativeGlossaryDir = ".abcd/development/brief/glossary"
-	nativeDecisions   = ".abcd/work/DECISIONS.md"
+	// nativeDecisionsDir holds the decision records, one dcn-<id>-<slug>.md
+	// file each; nativeFrozenLog is the single log a repository adopted before
+	// the folder, read where it remains as frozen history.
+	nativeDecisionsDir = decisions.RelDir
+	nativeFrozenLog    = decisions.FrozenLog
 )
 
 // nativeIssueStates are the capture-ledger subdirectories, in a fixed order so
@@ -310,10 +315,10 @@ func (nativeIssuesSource) Probe(ctx *SourceContext) Evidence {
 }
 
 // nativeTradeoffsSource grounds "evidence/tradeoffs" from the section's own brief
-// file, the alternatives an ADR weighed, and the decision log. An authored brief
-// file or ADRs with an Alternatives-Considered section ground it; the decision
-// log alone, or a stub brief file, is partial. Blank when the record has none of
-// them.
+// file, the alternatives an ADR weighed, and the decisions recorded: the
+// decision records and a frozen decision log. An authored brief file or ADRs
+// with an Alternatives-Considered section ground it; the decisions alone, or a
+// stub brief file, are partial. Blank when the record has none of them.
 type nativeTradeoffsSource struct{}
 
 func (nativeTradeoffsSource) Section() Section { return "evidence/tradeoffs" }
@@ -323,8 +328,8 @@ func (s nativeTradeoffsSource) Probe(ctx *SourceContext) Evidence {
 	return nativeWithBriefFile(ctx, s.Section(), s.probeRecord(ctx))
 }
 
-// probeRecord is the tradeoffs reading from ADR alternatives and the decision
-// log alone, before the brief file is consulted.
+// probeRecord is the tradeoffs reading from ADR alternatives and the decisions
+// recorded alone, before the brief file is consulted.
 func (nativeTradeoffsSource) probeRecord(ctx *SourceContext) Evidence {
 	adrsWithAlts := 0
 	for _, name := range ctx.ListDir(nativeADRDir) {
@@ -343,18 +348,23 @@ func (nativeTradeoffsSource) probeRecord(ctx *SourceContext) Evidence {
 	if adrsWithAlts > 0 {
 		sources = append(sources, fmt.Sprintf("%d ADR(s) with an Alternatives Considered section", adrsWithAlts))
 	}
-	if d, ok := ctx.ReadFile(nativeDecisions); ok && nativeBodyBytes(d) > 0 {
-		sources = append(sources, nativeDecisions)
+	var logs []string
+	if n := nativeCountRecords(ctx, nativeDecisionsDir, decisions.Family+"-"); n > 0 {
+		logs = append(logs, fmt.Sprintf("%s (%d decision records)", nativeDecisionsDir, n))
 	}
+	if d, ok := ctx.ReadFile(nativeFrozenLog); ok && nativeBodyBytes(d) > 0 {
+		logs = append(logs, nativeFrozenLog)
+	}
+	sources = append(sources, logs...)
 	if len(sources) == 0 {
 		return blank(
-			[]string{nativeADRDir + "/*.md (Alternatives Considered)", nativeDecisions},
-			"What did this project weigh and reject, and why? No ADR alternatives or decision log in the record.",
+			[]string{nativeADRDir + "/*.md (Alternatives Considered)", nativeDecisionsDir, nativeFrozenLog},
+			"What did this project weigh and reject, and why? No ADR alternatives or decisions in the record.",
 		)
 	}
 	if adrsWithAlts == 0 {
 		return partial(ConfidenceMedium, sources,
-			"Found the decision log ("+nativeDecisions+") but no ADR with an Alternatives Considered section, so what was decided is known but not what it was weighed against; ADRs recording their alternatives, or an authored "+nativeSectionBriefFile("evidence/tradeoffs")+", would ground it.")
+			"Found the decisions recorded ("+strings.Join(logs, ", ")+") but no ADR with an Alternatives Considered section, so what was decided is known but not what it was weighed against; ADRs recording their alternatives, or an authored "+nativeSectionBriefFile("evidence/tradeoffs")+", would ground it.")
 	}
 	return Evidence{Status: StatusGrounded, Confidence: ConfidenceHigh, Sources: sources}
 }

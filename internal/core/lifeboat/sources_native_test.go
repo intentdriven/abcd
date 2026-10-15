@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/decisions"
 )
 
 // nativeTierFixture builds a small abcd record under .abcd/ exercising the
@@ -314,6 +316,47 @@ func TestNativeEvidenceSectionsGroundFromTheirBriefFiles(t *testing.T) {
 	ev := nativeSourceForSection(t, "evidence/open-questions").Probe(sctx)
 	if ev.Status != StatusPartial || ev.Reason == "" {
 		t.Errorf("stub open-questions = %s (reason %q), want partial with a reason", ev.Status, ev.Reason)
+	}
+}
+
+// TestLifeboatReadsTheDecisionsFolder is spc-2610110931381316 step 4: the
+// decisions folder is a native source of the trade-offs section next to a
+// frozen log. Records alone make the section partial, as the log alone did,
+// citing the folder and its count; a frozen log beside them is cited too; and
+// a folder holding only its README is no source.
+func TestLifeboatReadsTheDecisionsFolder(t *testing.T) {
+	probe := func(files map[string]string) Evidence {
+		t.Helper()
+		dir := t.TempDir()
+		writeTree(t, dir, files)
+		ctx, err := newSourceContext(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer ctx.Close()
+		return nativeSourceForSection(t, "evidence/tradeoffs").Probe(ctx)
+	}
+	record := func(id, slug string) string {
+		return "---\nid: " + id + "\nslug: " + slug + "\ndate: 2026-10-01\n---\n2026-10-01 — " + slug + "\n"
+	}
+	readme := decisions.RelDir + "/README.md"
+	recs := map[string]string{
+		readme: "# Decisions\n",
+		decisions.RelDir + "/dcn-2610010000000001-one.md": record("dcn-2610010000000001", "one"),
+		decisions.RelDir + "/dcn-2610010000000002-two.md": record("dcn-2610010000000002", "two"),
+	}
+	folder := decisions.RelDir + " (2 decision records)"
+	ev := probe(recs)
+	if ev.Status != StatusPartial || !containsSource(ev.Sources, folder) || containsSource(ev.Sources, decisions.FrozenLog) {
+		t.Errorf("records alone = %s %v, want partial citing %q", ev.Status, ev.Sources, folder)
+	}
+	recs[decisions.FrozenLog] = "# DECISIONS\n\n- 2026-07-08 — RAG rejected at this scale.\n"
+	ev = probe(recs)
+	if !containsSource(ev.Sources, folder) || !containsSource(ev.Sources, decisions.FrozenLog) {
+		t.Errorf("records and a frozen log = %v, want both cited", ev.Sources)
+	}
+	if ev = probe(map[string]string{readme: "# Decisions\n"}); ev.Status != StatusBlank {
+		t.Errorf("a folder holding only its README = %s %v, want blank", ev.Status, ev.Sources)
 	}
 }
 
