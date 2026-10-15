@@ -168,21 +168,26 @@ func (p *prepared) tombstone(footprint []string) message {
 	}
 }
 
-// checkMessage refuses a message the writer may not write: one over the size
-// cap, or one the outbound policy finds a session URL or a tool footer in,
-// since a reservation is public the moment it is pushed.
-func checkMessage(root, text string) error {
+// checkMessage refuses a reservation message the writer may not write
+// (checkText, for the reservation family).
+func checkMessage(root, text string) error { return checkText(root, reservationFamily, text) }
+
+// checkText refuses a message of family f the writer may not write: one over
+// the size cap, or one the outbound policy finds a session URL or a tool footer
+// in, since every message this package writes is public the moment it is
+// pushed. Each refusal names the family's message and, at the cap, its remedy.
+func checkText(root string, f *family, text string) error {
 	if n := len(text); n > MaxMessageBytes {
-		return refuse("the reservation message would be %d bytes, over the %d-byte cap: name fewer or shorter footprint paths; %s",
-			n, MaxMessageBytes, nothingPushed)
+		return refuse("the %s message would be %d bytes, over the %d-byte cap: %s; %s",
+			f.name, n, MaxMessageBytes, f.shorten, nothingPushed)
 	}
-	findings, err := scanner.CheckOutbound(root, text, "reservation message")
+	findings, err := scanner.CheckOutbound(root, text, f.name+" message")
 	if len(findings) > 0 {
-		return refuse("the reservation message carries %s, which public text may not carry; %s", findings[0].Kind, nothingPushed)
+		return refuse("the %s message carries %s, which public text may not carry; %s", f.name, findings[0].Kind, nothingPushed)
 	}
 	if err != nil {
-		return refuse("the reservation message could not be judged against the outbound policy: %s; %s",
-			redacted(err), nothingPushed)
+		return refuse("the %s message could not be judged against the outbound policy: %s; %s",
+			f.name, redacted(err), nothingPushed)
 	}
 	return nil
 }

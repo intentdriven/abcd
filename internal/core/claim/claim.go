@@ -124,10 +124,10 @@ func reservableID(arg string) (string, error) {
 	return id, nil
 }
 
-// refName is a reservable id's branch on the remote; trackingName is this
-// checkout's copy of it. Both take only reservableID's answer.
-func refName(id string) string      { return RefPrefix + id }
-func trackingName(id string) string { return TrackingPrefix + id }
+// refName is a reservable id's branch on the remote, a full ref; trackingName
+// is this checkout's copy of it. Both take only reservableID's answer.
+func refName(id string) string      { return reservations.ref(id) }
+func trackingName(id string) string { return reservations.track(id) }
 
 // Why a renewal found no reservation of this person's from this copy to renew.
 const (

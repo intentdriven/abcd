@@ -18,7 +18,7 @@ const (
 	tierRelDir   = ".abcd/.work.local"
 	stateRelDir  = tierRelDir + "/reservation"
 	copyKeyRel   = stateRelDir + "/copy-key"
-	fetchedAtRel = stateRelDir + "/fetched-at"
+	fetchedAtRel = stateRelDir + "/fetched-at" // reservations.stampRel()
 	copyKeyLen   = 32
 	stateMode    = 0o600
 )

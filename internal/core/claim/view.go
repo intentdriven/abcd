@@ -97,7 +97,7 @@ func Fetch(root string, o Options) (gap string, err error) {
 	if !slices.Contains(strings.Fields(out), Remote) {
 		return "", ErrNoOrigin
 	}
-	return fetch(root, o.now())
+	return fetch(root, o.now(), noReservation, reservations)
 }
 
 // View reads the reservations from this checkout's disk only, as last
@@ -113,7 +113,7 @@ func View(root string, now time.Time) (Snapshot, error) {
 // this clone holds of it.
 func view(root string, now time.Time, derive bool) (Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)
-	snap := Snapshot{FetchedAt: lastFetched(root), Reservations: []Reservation{}}
+	snap := Snapshot{FetchedAt: lastFetched(root, reservations), Reservations: []Reservation{}}
 	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
 	if err != nil {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
@@ -195,15 +195,15 @@ func terminal(finished map[string][]string, id string) bool {
 	return false
 }
 
-// lastFetched is the time this checkout's last fetch stamped; zero when no
-// stamp reads.
-func lastFetched(root string) time.Time {
+// lastFetched is the time this checkout's last fetch of ns stamped; zero when
+// no stamp reads.
+func lastFetched(root string, ns namespace) time.Time {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return time.Time{}
 	}
 	defer r.Close()
-	data, err := fsutil.ReadGuardedInRoot(r, fetchedAtRel, 64)
+	data, err := fsutil.ReadGuardedInRoot(r, ns.stampRel(), 64)
 	if err != nil {
 		return time.Time{}
 	}

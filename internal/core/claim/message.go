@@ -26,6 +26,41 @@ const (
 	keyAssistedBy  = "Assisted-by"
 )
 
+// family is one kind of empty-tree commit this package writes to the shared
+// remote and reads back: the trailer keys its messages carry, and the words a
+// refusal names its messages by. The trailers are read by the one collector
+// (collectTrailers) and judged by the family's own validator; a family never
+// reads another's keys.
+type family struct {
+	// name is the family's noun in a refusal: "reservation" gives "the
+	// reservation message" and "the reservation commit".
+	name string
+	// keys are the trailer keys the family's messages carry, each in its
+	// canonical spelling; the collector reads no other.
+	keys []string
+	// shorten is the remedy a refusal of a message over the cap names.
+	shorten string
+}
+
+// reservationFamily is the reservation's: a record held by one person from one
+// working copy for a lease, validated by validateReservation.
+var reservationFamily = &family{
+	name:    "reservation",
+	keys:    []string{keyReservation, keyHolder, keyCopy, keyFootprint, keyClaimedAt, keyExpiresAt, keyReleasedAt, keyAssistedBy},
+	shorten: "name fewer or shorter footprint paths",
+}
+
+// commitMessage is one family's commit message, as the empty-tree writer
+// (writeEmptyCommit) measures, judges and writes it.
+type commitMessage interface {
+	// text is the whole message: a subject, a blank line, then one trailer
+	// per line, every value written on standard input and never as an
+	// argument.
+	text() string
+	// messageFamily is the family the message belongs to.
+	messageFamily() *family
+}
+
 // message is one reservation commit's content: the record, who holds it from
 // which working copy, the files the work will change and the lease. A
 // tombstone, the reservation released, carries ReleasedAt, with ExpiresAt
@@ -45,6 +80,9 @@ type message struct {
 
 // released reports whether the message is a tombstone.
 func (m message) released() bool { return !m.ReleasedAt.IsZero() }
+
+// messageFamily makes a reservation message a commitMessage.
+func (message) messageFamily() *family { return reservationFamily }
 
 // stamp renders a time the way every reservation carries one: RFC 3339, UTC,
 // to the second.
@@ -78,22 +116,28 @@ func (m message) text() string {
 	return b.String()
 }
 
-// tip is a reservation branch's head commit as read from this checkout's
-// object store: either a readable message or the reason it cannot be read.
+// head is what every family's reader reads of one commit besides its
+// message: the commit, its date and parentage, and why it cannot be read.
 // Every value in it is data a writer chose, never instruction text.
-type tip struct {
+type head struct {
 	Commit string
 	// WrittenAt is the commit's committer date: the stamp an unreadable tip's
 	// hold is counted from.
 	WrittenAt time.Time
 	// Parent reports whether the commit has a parent (a create has none).
 	Parent bool
-	message
-	// Unreadable is the reason the tip cannot be read, "" when it can.
+	// Unreadable is the reason the commit cannot be read, "" when it can.
 	Unreadable string
 	// DatedFromFetch is true when WrittenAt is not the commit's date, which
-	// could not be read, but when this copy first fetched the tip.
+	// could not be read, but when this copy first fetched the commit.
 	DatedFromFetch bool
+}
+
+// tip is a reservation branch's head commit as read from this checkout's
+// object store: either a readable message or the reason it cannot be read.
+type tip struct {
+	head
+	message
 }
 
 // The reasons a tip is unreadable. Each is fixed text: nothing a writer chose
@@ -110,17 +154,21 @@ const (
 	reasonFootprint     = "a footprint it names is not a repository-relative path"
 )
 
-// parseTip reads one commit object as the tip of record's reservation branch.
-// emptyTree is the repository's empty tree. obj is the object as `git
-// cat-file commit` prints it, already bounded by the caller.
-func parseTip(record, commit string, obj []byte, emptyTree string) tip {
-	t := tip{Commit: commit}
-	head, msg, ok := bytes.Cut(obj, []byte("\n\n"))
+// parseTip reads one commit object as a commit of the family parse reads:
+// the head, and the message parse makes of the commit's message text, or the
+// reason the commit is unreadable (the message then the zero value). emptyTree
+// is the repository's empty tree. obj is the object as `git cat-file commit`
+// prints it, already bounded by the caller. The bounds and the empty tree are
+// every family's; parse is the family's own.
+func parseTip[M any](commit string, obj []byte, emptyTree string, parse func(text string) (M, string)) (head, M) {
+	h := head{Commit: commit}
+	var zero M
+	headers, msg, ok := bytes.Cut(obj, []byte("\n\n"))
 	if !ok {
-		head, msg = obj, nil
+		headers, msg = obj, nil
 	}
 	tree := ""
-	for _, l := range strings.Split(string(head), "\n") {
+	for _, l := range strings.Split(string(headers), "\n") {
 		k, v, _ := strings.Cut(l, " ")
 		switch k {
 		case "tree":
@@ -128,24 +176,31 @@ func parseTip(record, commit string, obj []byte, emptyTree string) tip {
 				tree = v
 			}
 		case "parent":
-			t.Parent = true
+			h.Parent = true
 		case "committer":
-			t.WrittenAt = committerTime(v)
+			h.WrittenAt = committerTime(v)
 		}
 	}
 	switch {
 	case tree == "":
-		t.Unreadable = reasonNoObject
-		return t
+		h.Unreadable = reasonNoObject
+		return h, zero
 	case len(msg) > MaxMessageBytes:
-		t.Unreadable = reasonMessageTooBig
-		return t
+		h.Unreadable = reasonMessageTooBig
+		return h, zero
 	case tree != emptyTree:
-		t.Unreadable = reasonNotEmptyTree
-		return t
+		h.Unreadable = reasonNotEmptyTree
+		return h, zero
 	}
-	t.message, t.Unreadable = parseMessage(record, string(msg))
-	return t
+	m, why := parse(string(msg))
+	h.Unreadable = why
+	return h, m
+}
+
+// reservationParser is the parser parseTip reads record's reservation branch
+// with.
+func reservationParser(record string) func(string) (message, string) {
+	return func(text string) (message, string) { return parseMessage(record, text) }
 }
 
 // committerTime is the time in a committer header's value, "<name> <<email>>
@@ -162,41 +217,78 @@ func committerTime(v string) time.Time {
 	return time.Unix(sec, 0).UTC()
 }
 
-// parseMessage reads a reservation message's trailers, from its final
-// paragraph, by their known keys; an unknown key is ignored. It returns the
-// reason the message is unreadable, "" when it reads.
-func parseMessage(record, text string) (message, string) {
+// trailers is a message's trailer block as collectTrailers reads it: the
+// known keys' values, and what else the message carries, which a validator
+// that admits nothing outside its trailers refuses on.
+type trailers struct {
+	// vals holds each known key's values, in order, under its canonical
+	// spelling.
+	vals map[string][]string
+	// other is the final paragraph's lines that carry no known key, verbatim.
+	other []string
+	// lead is the message before its final paragraph (the subject, and any
+	// paragraph after it), "" when the message is one paragraph.
+	lead string
+}
+
+// collectTrailers reads a message's trailers, from its final paragraph, by the
+// keys given, matched without regard to case; a line carrying any other key,
+// or none, is kept in other. It is every family's one trailer reader: a family
+// judges what it collects with its own validator.
+func collectTrailers(text string, keys []string) trailers {
 	paras := strings.Split(strings.TrimRight(strings.ReplaceAll(text, "\r\n", "\n"), "\n"), "\n\n")
 	last := paras[len(paras)-1]
-	vals := map[string][]string{}
+	t := trailers{vals: map[string][]string{}, lead: strings.Join(paras[:len(paras)-1], "\n\n")}
 	for _, l := range strings.Split(last, "\n") {
 		k, v, ok := strings.Cut(l, ":")
-		if !ok {
-			continue
-		}
-		k = strings.TrimSpace(k)
-		for _, known := range []string{keyReservation, keyHolder, keyCopy, keyFootprint, keyClaimedAt, keyExpiresAt, keyReleasedAt, keyAssistedBy} {
-			if strings.EqualFold(k, known) {
-				vals[known] = append(vals[known], strings.TrimSpace(v))
+		known := ""
+		if ok {
+			k = strings.TrimSpace(k)
+			for _, want := range keys {
+				if strings.EqualFold(k, want) {
+					known = want
+				}
 			}
 		}
-	}
-	var m message
-	one := func(k string) (string, bool) {
-		if len(vals[k]) != 1 {
-			return "", false
+		if known == "" {
+			t.other = append(t.other, l)
+			continue
 		}
-		return vals[k][0], true
+		t.vals[known] = append(t.vals[known], strings.TrimSpace(v))
 	}
-	id, ok := one(keyReservation)
+	return t
+}
+
+// one is key's value when the trailers carry exactly one.
+func (t trailers) one(key string) (string, bool) {
+	if len(t.vals[key]) != 1 {
+		return "", false
+	}
+	return t.vals[key][0], true
+}
+
+// parseMessage reads a reservation message: its trailers through the one
+// collector, judged by the reservation's validator. It returns the reason the
+// message is unreadable, "" when it reads.
+func parseMessage(record, text string) (message, string) {
+	return validateReservation(record, collectTrailers(text, reservationFamily.keys))
+}
+
+// validateReservation is the reservation family's validator: the trailers must
+// name record exactly once, one GitHub username as holder, one working copy,
+// the lease's times and only repository-relative footprint paths. A key it
+// does not know, and any text outside the trailers, is ignored.
+func validateReservation(record string, t trailers) (message, string) {
+	var m message
+	id, ok := t.one(keyReservation)
 	if !ok || !recordid.CitedIDRe.MatchString(id) || recordid.CanonCitedID(id) != record {
 		return m, reasonRecord
 	}
 	m.Record = record
-	if m.Holder, ok = one(keyHolder); !ok || !validUsername(m.Holder) {
+	if m.Holder, ok = t.one(keyHolder); !ok || !validUsername(m.Holder) {
 		return message{}, reasonHolder
 	}
-	if m.Copy, ok = one(keyCopy); !ok || !validCopyKey(m.Copy) {
+	if m.Copy, ok = t.one(keyCopy); !ok || !validCopyKey(m.Copy) {
 		return message{}, reasonCopy
 	}
 	var err error
@@ -205,9 +297,9 @@ func parseMessage(record, text string) (message, string) {
 		into     *time.Time
 		optional bool
 	}{{keyClaimedAt, &m.ClaimedAt, false}, {keyExpiresAt, &m.ExpiresAt, false}, {keyReleasedAt, &m.ReleasedAt, true}} {
-		v, ok := one(f.key)
+		v, ok := t.one(f.key)
 		if !ok {
-			if f.optional && len(vals[f.key]) == 0 {
+			if f.optional && len(t.vals[f.key]) == 0 {
 				continue
 			}
 			return message{}, reasonTime
@@ -217,13 +309,13 @@ func parseMessage(record, text string) (message, string) {
 		}
 		*f.into = f.into.UTC()
 	}
-	for _, p := range vals[keyFootprint] {
+	for _, p := range t.vals[keyFootprint] {
 		if !validFootprint(p) {
 			return message{}, reasonFootprint
 		}
 		m.Footprint = append(m.Footprint, p)
 	}
-	if v, ok := one(keyAssistedBy); ok {
+	if v, ok := t.one(keyAssistedBy); ok {
 		m.AssistedBy = v
 	}
 	return m, ""
