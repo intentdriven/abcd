@@ -159,23 +159,52 @@ jobs:
           fi
           echo "on=$on" >> "$GITHUB_OUTPUT"
 
-<% end %>      - name: Download abcd and its checksums
+<% end %>      # abcd's highest stable vX.Y.Z release by version, never the release
+      # marked "latest": that mark can be moved to any release.
+      - name: Download abcd and its checksums
+        id: abcd
 <% .IfOn %>        env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh release download --repo <% .AbcdRepo %> \
+          tags="$(gh release list --repo <% .AbcdRepo %> --exclude-drafts --exclude-pre-releases \
+            --limit 1000 --json tagName --jq '.[].tagName')"
+          version="$(printf '%s\n' "$tags" | sed -n 's/^v\([0-9]\{1,\}\.[0-9]\{1,\}\.[0-9]\{1,\}\)$/\1/p' \
+            | sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1)"
+          ABCD_TAG="v${version}"
+          if ! [[ "$ABCD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::<% .AbcdRepo %> has no published stable vX.Y.Z release to render with"
+            exit 1
+          fi
+          echo "tag=$ABCD_TAG" >> "$GITHUB_OUTPUT"
+          gh release download "$ABCD_TAG" --repo <% .AbcdRepo %> \
             --pattern 'abcd-linux-amd64' --pattern 'checksums.txt' --dir "$RUNNER_TEMP"
 
+      # The checksum is integrity only: checksums.txt sits on the same release
+      # page as the binary, so whoever can replace one can replace both. The
+      # attestation is the authenticity check: built by release.yml on abcd's
+      # main branch, from the commit this release's tag names, on a
+      # GitHub-hosted runner.
       - name: Verify abcd against its release manifest and its provenance
 <% .IfOn %>        env:
           GH_TOKEN: ${{ github.token }}
+          ABCD_TAG: ${{ steps.abcd.outputs.tag }}
         run: |
           set -euo pipefail
+          if ! [[ "$ABCD_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::the abcd release tag is not vX.Y.Z; refusing to verify it"
+            exit 1
+          fi
           cd "$RUNNER_TEMP"
           grep ' abcd-linux-amd64$' checksums.txt | sha256sum -c -
+          commit="$(gh api "repos/<% .AbcdRepo %>/commits/${ABCD_TAG}" --jq .sha)"
+          if ! [[ "$commit" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::the commit of abcd $ABCD_TAG could not be resolved; refusing to run it"
+            exit 1
+          fi
           gh attestation verify abcd-linux-amd64 --repo <% .AbcdRepo %> \
-            --signer-workflow <% .AbcdRepo %>/.github/workflows/release.yml
+            --cert-identity https://github.com/<% .AbcdRepo %>/.github/workflows/release.yml@refs/heads/main \
+            --source-ref refs/heads/main --source-digest "$commit" --deny-self-hosted-runners
           install -m 0755 abcd-linux-amd64 "${RUNNER_TEMP}/abcd"
 
       - name: Render and check the site
