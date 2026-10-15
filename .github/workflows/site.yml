@@ -12,6 +12,9 @@ name: site
 #                     a `release:` trigger would never fire for this repository's
 #                     releases at all. Being CALLED also removes the race against
 #                     asset uploads: `gh release create` has already returned.
+#                     On this path the Release is still a DRAFT: `render`
+#                     attaches site.tar.gz to it and `publish` publishes it,
+#                     before `deploy` moves the site (see PUBLICATION below).
 #   workflow_dispatch the EMERGENCY redeploy. The SITE always comes from a tag: an
 #                     empty `tag` input resolves the latest PUBLISHED release, so the
 #                     released-bytes invariant survives the emergency (adr-48 4).
@@ -32,23 +35,32 @@ name: site
 # Production renders the site with the RELEASED, checksum-and-attestation-verified
 # binary — the same bytes the README install one-liner hands a user — so abcdev.app is
 # one verifiable statement: this is abcd at that tag (adr-48 1). Every production run
-# is idempotent per tag: re-running deploys the same tag over itself and the release
-# asset upload uses --clobber, so re-running is the safe response to a failure — with
-# ONE exception. A tag released before the `abcd site` verbs existed can never render,
+# is idempotent per tag: re-running deploys the same tag over itself, and site.tar.gz
+# is attached only while the Release is still a draft (--clobber replaces it on a
+# re-run), so re-running is the safe response to a failure — with ONE exception. A tag released before the `abcd site` verbs existed can never render,
 # and the render job refuses it in one line rather than crashing mid-job; re-running
 # that cannot help, and the fix is to dispatch a tag that has the verbs.
 #
-# A site failure can neither block the release nor change a byte of what it published
-# — the isolation is the caller's job dependency (release.yml's `site` job needs
-# `release`), not workflow-file separation. It does turn the caller's RUN red, because
-# a called workflow's failure is the caller's failure; the Release, its assets and its
-# attestations are already made and are untouched.
+# PUBLICATION. On the release chain this workflow publishes the Release: release.yml
+# leaves it a DRAFT holding the binaries, the plugin archive and checksums.txt,
+# `render` attaches site.tar.gz, and `publish` checks every asset is attached and then
+# publishes it, before `deploy` moves abcdev.app. So a Release is visible only once all
+# of its assets are attached, no asset is ever added to a published Release (the flow
+# immutable releases require), and the site never describes a release that is not
+# published. A failed render leaves the Release an unpublished draft: re-run the
+# failed jobs of the release run. A failed deploy leaves it published and only the
+# website behind. The emergency redeploy and a re-run against a Release that is
+# already published attach nothing and publish nothing: they deploy the site alone,
+# from the in-run artefact. A site failure cannot change a byte of what the release
+# job built — the isolation is the caller's job dependency (release.yml's `site` job
+# needs `release`) — and it does turn the caller's RUN red, because a called
+# workflow's failure is the caller's failure.
 #
 # THE ENVIRONMENT CONTRACT (dashboard state, recorded here because the tree is the
 # only durable record of it). THREE environments:
 #
-#   `site-render`   the render job. NO SECRETS AT ALL. Deployment policy: branch
-#                   `main` AND tags `v*`.
+#   `site-render`   the render and publish jobs. NO SECRETS AT ALL. Deployment
+#                   policy: branch `main` AND tags `v*`.
 #   `site`          the deploy job. Same policy: branch `main` AND tags `v*`. NO
 #                   required reviewer, deliberately — the emergency redeploy is the
 #                   3am path and must not wait on a human.
@@ -146,6 +158,7 @@ jobs:
       contents: read
     outputs:
       mode: ${{ steps.resolve.outputs.mode }}
+      chain: ${{ steps.resolve.outputs.chain }}
       tag: ${{ steps.resolve.outputs.tag }}
       sha: ${{ steps.resolve.outputs.sha }}
       deploy: ${{ steps.resolve.outputs.deploy }}
@@ -190,6 +203,11 @@ jobs:
               ;;
           esac
           echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          # The release chain: release.yml called this workflow and stated its mode.
+          # There the Release is still a draft, which `render` reads and attaches to.
+          chain=false
+          [ -z "$CALL_MODE" ] || chain=true
+          echo "chain=$chain" >> "$GITHUB_OUTPUT"
 
           if [ "$mode" = preview ]; then
             echo "tag=" >> "$GITHUB_OUTPUT"
@@ -293,7 +311,11 @@ jobs:
           fi
           # --repo is required, not optional: this job deliberately does not check out
           # the repository, so gh has no git remote to infer the repo from.
-          if [ "$prerelease" = false ]; then
+          #
+          # On the release chain the Release is a DRAFT, which this job's read-only
+          # token may not be able to see, so its flags are read by `render` instead,
+          # whose token can: there a pre-release refuses and a draft is attached to.
+          if [ "$prerelease" = false ] && [ "$chain" = false ]; then
             prerelease="$(gh release view "$tag" --repo "${GITHUB_REPOSITORY}" \
               --json isPrerelease,isDraft \
               --jq 'if (.isPrerelease or .isDraft) then "true" else "false" end')"
@@ -336,6 +358,10 @@ jobs:
       contents: write       # upload site.tar.gz to the Release (no branch push)
       id-token: write       # mint the OIDC token actions/attest signs with
       attestations: write   # publish the build-provenance attestation (public repo)
+    outputs:
+      # true while the Release is a draft on the release chain: site.tar.gz was
+      # attached to it, and `publish` publishes it.
+      draft: ${{ steps.state.outputs.draft }}
     env:
       TAG: ${{ needs.resolve.outputs.tag }}
     steps:
@@ -508,24 +534,41 @@ jobs:
             ./abcd site check --out site
           fi
 
-      - name: Re-check that the release is still not a pre-release
-        # `resolve` read this state minutes ago and the render is slow. A maintainer
-        # who flags the release as a pre-release or draft mid-run has said, in the only
-        # way GitHub offers, that it must not be published — so honour it at the last
-        # moment before anything becomes public. This REFUSES rather than skipping:
-        # unlike the check in `resolve`, the flip happened after work started, which is
-        # a state worth seeing in the log.
+      - name: Read the release's state, at the last moment before anything is attached
+        id: state
+        # `resolve` read this state minutes ago (or, on the release chain, left it to
+        # this job) and the render is slow. A pre-release must not get a site, so it
+        # REFUSES here: a flip mid-run is a state worth seeing in the log. A DRAFT is
+        # what the release chain hands this workflow — the Release is published only
+        # once site.tar.gz is attached — so on the chain it is attached to, and the
+        # `publish` job publishes it. A draft reached by the emergency redeploy is a
+        # release someone has withdrawn, and refuses as before. A published Release
+        # is never modified: the site deploys from the in-run artefact alone.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CHAIN: ${{ needs.resolve.outputs.chain }}
         run: |
           set -euo pipefail
           state="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
             --json isPrerelease,isDraft \
-            --jq 'if (.isPrerelease or .isDraft) then "true" else "false" end')"
-          if [ "$state" = true ]; then
-            echo "::error::${TAG} became a pre-release or draft while this run was rendering; refusing to publish a site for it."
-            exit 1
-          fi
+            --jq '"\(.isPrerelease) \(.isDraft)"')"
+          case "$state" in
+            "false false")
+              draft=false
+              ;;
+            "false true")
+              if [ "$CHAIN" != true ]; then
+                echo "::error::${TAG} is a draft; the emergency redeploy publishes a site only for a published release."
+                exit 1
+              fi
+              draft=true
+              ;;
+            *)
+              echo "::error::${TAG} is a pre-release; refusing to publish a site for it."
+              exit 1
+              ;;
+          esac
+          echo "draft=$draft" >> "$GITHUB_OUTPUT"
 
       - name: Pack the rendered site
         run: tar -czf site.tar.gz -C site .
@@ -547,9 +590,12 @@ jobs:
         with:
           subject-path: site.tar.gz
 
-      - name: Attach site.tar.gz to the release
-        # --clobber makes a re-run of this tag replace the asset instead of erroring, so
-        # the whole production path stays idempotent per tag.
+      - name: Attach site.tar.gz to the draft release
+        # Only while the Release is a draft on the release chain: a published Release
+        # gets no new asset (immutable releases refuse one). --clobber makes a re-run
+        # against the same draft replace the asset instead of erroring, so the whole
+        # production path stays idempotent per tag.
+        if: steps.state.outputs.draft == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "${TAG}" site.tar.gz --repo "${GITHUB_REPOSITORY}" --clobber
@@ -567,14 +613,65 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # Publish the draft Release once every asset is attached. Release chain only: the
+  # Release is a draft exactly when `render` attached site.tar.gz to it, so this runs
+  # then and never on the emergency redeploy. It runs no build code and holds no
+  # credential but the job token. It checks every file checksums.txt names, the
+  # manifest itself and site.tar.gz are attached, publishes, and confirms the
+  # Release is no longer a draft. It runs before `deploy`, so abcdev.app never
+  # describes a release that is not published.
+  publish:
+    needs: [resolve, render]
+    if: ${{ needs.render.outputs.draft == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # The same {main, v*} gate as `render`: this job writes to a Release.
+    environment: site-render
+    permissions:
+      contents: write       # publish the draft Release (no branch push)
+    env:
+      TAG: ${{ needs.resolve.outputs.tag }}
+    steps:
+      - name: Publish the release once every asset is attached
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          dl="${RUNNER_TEMP}/publish"
+          mkdir -p "$dl"
+          gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --pattern 'checksums.txt' --dir "$dl"
+          attached="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" \
+            --json assets --jq '.assets[].name')"
+          want="$(awk '{print $2}' "$dl/checksums.txt"; printf '%s\n' checksums.txt site.tar.gz)"
+          missing=0
+          while IFS= read -r name; do
+            [ -n "$name" ] || continue
+            if ! grep -Fxq -- "$name" <<<"$attached"; then
+              echo "::error::${TAG} has no $name attached; refusing to publish it."
+              missing=1
+            fi
+          done <<<"$want"
+          [ "$missing" = 0 ]
+          gh release edit "${TAG}" --repo "${GITHUB_REPOSITORY}" --draft=false
+          draft="$(gh release view "${TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq .isDraft)"
+          if [ "$draft" != false ]; then
+            echo "::error::${TAG} is still a draft after publishing it."
+            exit 1
+          fi
+          echo "published ${TAG} with every asset attached."
+
   # Deploy production. The ONLY job that holds a Cloudflare credential, and it runs no
   # build code: it checks out the tagged commit for wrangler.jsonc alone, unpacks the
   # artefact `render` handed it (attested too, once the repo is public), and calls
   # wrangler. Nothing here resolves a package, executes a plugin, or reads the
   # rendered content.
   deploy:
-    needs: [resolve, render]
-    if: ${{ needs.resolve.outputs.deploy == 'true' }}
+    needs: [resolve, render, publish]
+    # After `publish` on the release chain, so the site describes a published release;
+    # `publish` is skipped when the Release was already published (the emergency
+    # redeploy, or a re-run after publication), and the deploy then follows `render`.
+    if: ${{ !cancelled() && needs.resolve.outputs.deploy == 'true' && needs.render.result == 'success' && (needs.publish.result == 'success' || needs.publish.result == 'skipped') }}
     runs-on: ubuntu-latest
     # Generous for what it does — extract an archive and call wrangler, a job that
     # finishes in well under a minute. It is sized for a slow Cloudflare API rather

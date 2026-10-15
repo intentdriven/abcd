@@ -651,8 +651,44 @@ jobs:
             bin/abcd-*
             bin/checksums.txt
 
-      - name: Create the GitHub Release and upload the binaries, the plugin archive and checksums.txt
-        # --verify-tag: refuse to publish unless the tag already exists remotely —
+      - name: Refuse a tag already released; clear an unfinished draft of it
+        # The Release is created as a DRAFT and published only once every asset
+        # is attached (site.yml publishes it once it has attached site.tar.gz),
+        # so a run that stopped in between leaves a draft behind. A re-run, or auto-release's heal path, clears that draft here
+        # and creates the Release afresh from this run's own assets; the tag is
+        # never touched. A tag whose Release is already PUBLISHED is refused
+        # before anything is created: a published release is never rebuilt.
+        # TAG arrives through the workflow env (injection-safe).
+        run: |
+          set -euo pipefail
+          for _ in 1 2 3 4 5; do
+            state="$(gh release view "${TAG}" --json isDraft --jq .isDraft 2>/dev/null)" || state=''
+            case "$state" in
+              false)
+                printf "refusing to release '%s': its Release is already published\n" "$TAG" >&2
+                exit 1
+                ;;
+              true)
+                echo "clearing an unfinished draft Release of ${TAG}"
+                gh release delete "${TAG}" --yes
+                ;;
+              *)
+                exit 0
+                ;;
+            esac
+          done
+          printf "refusing to release '%s': its unfinished drafts did not clear\n" "$TAG" >&2
+          exit 1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create the draft GitHub Release with the binaries, the plugin archive and checksums.txt
+        # --draft: the Release is created unpublished, with every asset this job
+        # built attached. site.yml (the `site` job below) attaches site.tar.gz
+        # and then publishes it, so the Release becomes visible only once all of
+        # its assets are attached, and no asset is added to a published Release:
+        # the flow GitHub recommends, and the one immutable releases require.
+        # --verify-tag: refuse unless the tag already exists remotely —
         # existence only; it does not check what the tag points at (see the contract
         # note at the top of this file). --generate-notes lists the merged PRs since
         # the previous tag; CHANGELOG.md remains the durable, hand-curated record.
@@ -660,24 +696,30 @@ jobs:
         # the archive-sourced plugin needs (ruling E3).
         #
         # THE WINDOW: the ship's merge to main already names this release's archive
-        # in the catalog, and the archive exists only from this step on — later
-        # still while the release environment's approval waits. An install or update
+        # in the catalog, and the archive is downloadable only once the Release is
+        # published — after this job and the site render — later still while the
+        # release environment's approval waits. An install or update
         # in between fails closed: the download 404s, the harness refuses, and an
         # installed plugin stays on its previous release. Nothing wrong can be
         # installed, because the pinned digest refuses any other bytes. The window
         # cannot be closed from this side (the pin must be in the tagged tree, so
         # it lands before the tag), so it is kept short: approve the release
         # deployment promptly once the ship merges.
-        run: gh release create "${TAG}" bin/abcd-* bin/checksums.txt --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
+        run: gh release create "${TAG}" bin/abcd-* bin/checksums.txt --draft --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: "The plugin installs from this release's pinned archive and needs Claude Code v2.1.224 or later; the binaries have no harness requirement."
 
-      - name: Verify the published attestation against a freshly downloaded binary
-        # Post-release gate: prove the attestation is real and retrievable. Download
-        # one binary FRESH from the just-created Release and verify it against a
-        # provenance signed BY THIS release workflow. Skipped on a private repo (no
-        # attestation was produced above); re-enables alongside attestation on the flip.
+      - name: Verify the draft's attestation against a freshly downloaded binary
+        # Pre-publication gate: prove the attestation is real and retrievable for
+        # the bytes users will download. Download one binary FRESH from the draft
+        # Release (the job token can read a draft; publishing changes no asset)
+        # and verify it against provenance signed by this release workflow on
+        # <% .DefaultBranch %>, on a GitHub-hosted runner, from RELEASE_COMMIT, the
+        # commit this run releases — the policy every installer verifies. A
+        # failure here leaves the Release an unpublished draft. Skipped on a
+        # private repo (no attestation was produced above); re-enables alongside
+        # attestation on the flip.
         if: ${{ !github.event.repository.private }}
         run: |
           set -euo pipefail
@@ -693,7 +735,7 @@ jobs:
             --source-ref refs/heads/<% .DefaultBranch %> \
             --source-digest "${RELEASE_COMMIT}" \
             --deny-self-hosted-runners
-          # The plugin archive too: fresh from the Release, attested by this
+          # The plugin archive too: fresh from the draft, attested by this
           # workflow, and byte-identical to the archive verified against the pin.
           gh release download "${TAG}" \
             --repo "${GITHUB_REPOSITORY}" \
@@ -717,8 +759,42 @@ jobs:
           name: release-assets
           path: dist/
 
-      - name: Create the GitHub Release, attach dist/ and generate notes
-        # --verify-tag: refuse to publish unless the tag already exists remotely —
+      - name: Refuse a tag already released; clear an unfinished draft of it
+        # The Release is created as a DRAFT and published only once every asset
+        # is attached, so a run that stopped in between leaves a draft behind. A re-run, or auto-release's heal path, clears that draft here
+        # and creates the Release afresh from this run's own assets; the tag is
+        # never touched. A tag whose Release is already PUBLISHED is refused
+        # before anything is created: a published release is never rebuilt.
+        # TAG arrives through the workflow env (injection-safe).
+        run: |
+          set -euo pipefail
+          for _ in 1 2 3 4 5; do
+            state="$(gh release view "${TAG}" --json isDraft --jq .isDraft 2>/dev/null)" || state=''
+            case "$state" in
+              false)
+                printf "refusing to release '%s': its Release is already published\n" "$TAG" >&2
+                exit 1
+                ;;
+              true)
+                echo "clearing an unfinished draft Release of ${TAG}"
+                gh release delete "${TAG}" --yes
+                ;;
+              *)
+                exit 0
+                ;;
+            esac
+          done
+          printf "refusing to release '%s': its unfinished drafts did not clear\n" "$TAG" >&2
+          exit 1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create the GitHub Release as a draft, attach dist/, then publish it
+        # The Release is created as a --draft with every asset attached and
+        # published only after, so it never appears with an asset missing and no
+        # asset is added to a published Release: the flow GitHub recommends, and
+        # the one immutable releases require.
+        # --verify-tag: refuse unless the tag already exists remotely —
         # existence only; it does not check what the tag points at (see the contract
         # note at the top of this file). Every file the build job left in dist/ is
         # attached; with none, the Release carries its notes alone. --generate-notes
@@ -731,7 +807,8 @@ jobs:
           if [ -d dist ]; then
             while IFS= read -r -d '' f; do assets+=("$f"); done < <(find dist -type f -print0 | sort -z)
           fi
-          gh release create "${TAG}" ${assets[@]+"${assets[@]}"} --verify-tag --title "${TAG}" --generate-notes
+          gh release create "${TAG}" ${assets[@]+"${assets[@]}"} --draft --verify-tag --title "${TAG}" --generate-notes
+          gh release edit "${TAG}" --draft=false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 <%- end %>
@@ -773,14 +850,20 @@ jobs:
   # releases. Running after `release` also removes the race against the asset uploads
   # the site workflow reads: `gh release create` has already returned.
   #
-  # NON-GATING, and that isolation is this job dependency rather than a separate
-  # workflow file: `needs: release` means a red site can neither block the release
-  # nor change a byte of what it published, while `!cancelled()` keeps this job from
-  # inheriting a cancellation. Be precise about what "non-gating" does NOT mean: a
+  # PUBLICATION happens here. The `release` job leaves the Release a DRAFT holding
+  # the binaries, the plugin archive and checksums.txt; site.yml's render attaches
+  # site.tar.gz to that draft, and its `publish` job then publishes the Release,
+  # before its `deploy` job moves abcdev.app. So the Release becomes visible only
+  # once every asset is attached, and no asset is added after publication — the
+  # flow immutable releases require. A failed render therefore leaves the Release
+  # an unpublished draft: re-run the failed jobs of this run, which renders,
+  # attaches and publishes it. A failed deploy after `publish` leaves the Release
+  # published and only the website behind.
+  #
+  # `needs: release` keeps a red site from changing a byte of what the release job
+  # built, while `!cancelled()` keeps this job from inheriting a cancellation. A
   # called workflow's failure IS the caller's failure, so a red site turns this
-  # whole run red. The Release, its assets and its attestations are already made and
-  # are untouched — a red run with a green `release` job means the website, and the
-  # fix is to re-run this job.
+  # whole run red.
   #
   # The job dependency isolates RUNTIME failures, and only those. The input contract
   # below is resolved at PARSE time: a `with:` block that does not match site.yml's
@@ -802,7 +885,7 @@ jobs:
     needs: release
     if: ${{ !cancelled() && needs.release.result == 'success' }}
     permissions:
-      contents: write       # site.yml: attach site.tar.gz to the Release (no branch push)
+      contents: write       # site.yml: attach site.tar.gz to the draft Release and publish it (no branch push)
       id-token: write       # site.yml: OIDC for the site.tar.gz build-provenance attestation
       attestations: write   # site.yml: publish that attestation (public repo)
     uses: ./.github/workflows/site.yml

@@ -20,13 +20,16 @@ itself.
 <%- else %> On merge to
 `<% .DefaultBranch %>`, `auto-release.yml` reads the newest dated heading and
 calls `<% .ReleaseWorkflow %>`, which verifies exactly that commit, tags it only once the
-gates pass, and publishes. A refused gate leaves no tag, so the version stays
+gates pass, and publishes: the Release is created as a draft with every asset
+attached and published only after, so it is never visible with an asset
+missing and no asset is added once it is public. A refused gate leaves no tag, so the version stays
 free. Nothing else declares a release; an ordinary push with no new dated
 heading is a no-op.
 
 The whole path runs on the built-in `GITHUB_TOKEN` — no personal access token,
 no standing secret. Tags are immutable; a publish is idempotent and self-healing
-(a missing Release is re-cut from the tagged commit, never a moved-on HEAD).
+(a missing Release, or one left an unpublished draft, is re-cut from the tagged
+commit, never a moved-on HEAD).
 The one tag it does not heal is a hand-pushed tag its own `verify` refused:
 rebuilding that commit would fail the same way, so `auto-release.yml` refuses
 loudly and names the re-cut, a new dated version.

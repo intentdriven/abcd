@@ -121,6 +121,12 @@ func cutFirstRelease(t *testing.T, profile string) {
 	r.Git("push", "-q", "origin", "main")
 	merged := r.Git("rev-parse", "HEAD")
 
+	// An earlier attempt's unfinished draft of the tag, which the release job
+	// clears before it creates the Release afresh.
+	if profile == "bare" {
+		mustWrite(t, filepath.Join(f.state, "drafts", "v0.1.0"), "0000000000000000000000000000000000000000\n")
+	}
+
 	// 4. The push to main runs auto-release, which calls release.yml.
 	runs := f.run(AutoReleaseYMLPath, event{name: "push", sha: merged, refName: "main"})
 	if runs["detect"].result != "success" || runs["release"].result != "success" {
@@ -128,7 +134,11 @@ func cutFirstRelease(t *testing.T, profile string) {
 			runs["detect"].result, runs["release"].result, f.log.String())
 	}
 
-	// The release PUBLISHED, from the merged commit, under the tag the chain made.
+	// The release PUBLISHED, from the merged commit, under the tag the chain made,
+	// and no draft is left behind.
+	if drafts, _ := os.ReadDir(filepath.Join(f.state, "drafts")); len(drafts) != 0 {
+		t.Errorf("the cut left %d unpublished draft(s)", len(drafts))
+	}
 	rel := f.releases()
 	if got := rel["v0.1.0"]; got != merged {
 		t.Fatalf("published releases %v: want v0.1.0 built from the merged commit %s\n%s", rel, merged, f.log.String())
@@ -312,20 +322,51 @@ const fakeGH = `#!/usr/bin/env bash
 set -euo pipefail
 case "${1:-} ${2:-}" in
 "release view")
-  [ -f "$FORGE_STATE/releases/$3" ] ;;
-"release create")
+  # A published release reads isDraft false, a draft true; --json/--jq are
+  # answered only for that field, the one the workflows read.
   tag="$3"; shift 3
-  verify=0
+  json=0
   while [ $# -gt 0 ]; do
-    case "$1" in --verify-tag) verify=1 ;; --title) shift ;; *) ;; esac
+    case "$1" in
+      --json) [ "$2" = isDraft ] || { echo "fake gh: release view --json $2" >&2; exit 97; }; json=1; shift ;;
+      --jq) [ "$2" = .isDraft ] || { echo "fake gh: release view --jq $2" >&2; exit 97; }; shift ;;
+      *) echo "fake gh: release view $1" >&2; exit 97 ;;
+    esac
+    shift
+  done
+  if [ -f "$FORGE_STATE/releases/$tag" ]; then [ "$json" = 0 ] || echo false
+  elif [ -f "$FORGE_STATE/drafts/$tag" ]; then [ "$json" = 0 ] || echo true
+  else echo "release not found" >&2; exit 1
+  fi ;;
+"release create")
+  # A release is created as a draft and published once its assets are
+  # attached; a create that would publish in one step is refused.
+  tag="$3"; shift 3
+  verify=0 draft=0
+  while [ $# -gt 0 ]; do
+    case "$1" in --verify-tag) verify=1 ;; --draft) draft=1 ;; --title|--notes) shift ;; *) ;; esac
     shift
   done
   [ "$verify" = 1 ] || { echo "fake gh: release create without --verify-tag" >&2; exit 98; }
+  [ "$draft" = 1 ] || { echo "fake gh: release create without --draft publishes before its assets are attached" >&2; exit 98; }
   [ ! -f "$FORGE_STATE/releases/$tag" ] || { echo "release $tag already exists" >&2; exit 1; }
+  [ ! -f "$FORGE_STATE/drafts/$tag" ] || { echo "fake gh: a second draft of $tag" >&2; exit 98; }
   commit="$(git --git-dir="$FORGE_ORIGIN" rev-parse -q --verify "refs/tags/$tag^{commit}")" || {
     echo "tag $tag does not exist on the forge" >&2; exit 1; }
+  mkdir -p "$FORGE_STATE/drafts"
+  printf '%s\n' "$commit" > "$FORGE_STATE/drafts/$tag" ;;
+"release edit")
+  tag="$3"
+  [ "${4:-}" = --draft=false ] && [ $# = 4 ] || { echo "fake gh: release edit $*" >&2; exit 97; }
+  [ -f "$FORGE_STATE/drafts/$tag" ] || { echo "release not found" >&2; exit 1; }
   mkdir -p "$FORGE_STATE/releases"
-  printf '%s\n' "$commit" > "$FORGE_STATE/releases/$tag" ;;
+  mv "$FORGE_STATE/drafts/$tag" "$FORGE_STATE/releases/$tag" ;;
+"release delete")
+  tag="$3"
+  [ "${4:-}" = --yes ] && [ $# = 4 ] || { echo "fake gh: release delete $*" >&2; exit 97; }
+  [ ! -f "$FORGE_STATE/releases/$tag" ] || { echo "fake gh: release delete of a published release" >&2; exit 98; }
+  [ -f "$FORGE_STATE/drafts/$tag" ] || { echo "release not found" >&2; exit 1; }
+  rm "$FORGE_STATE/drafts/$tag" ;;
 "run list")
   printf '\n' ;;
 "attestation verify")

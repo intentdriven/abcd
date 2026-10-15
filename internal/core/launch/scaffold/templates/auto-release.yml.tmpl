@@ -19,9 +19,10 @@ name: auto-release
 # Only the NEWEST dated version is ever tagged: older CHANGELOG versions are left
 # alone, because tagging them at the current HEAD would mis-point an immutable
 # tag at the wrong code. Idempotent: when the newest version is already tagged AND
-# its GitHub Release exists, `detect` reports need_tag=need_release=false and
+# its GitHub Release is published, `detect` reports need_tag=need_release=false and
 # nothing runs, so an ordinary (non-release) push to main does nothing. If the tag
-# exists but its Release is MISSING (e.g. a transient publish failure), `detect`
+# exists but its Release is MISSING or still an unpublished draft (e.g. a transient
+# publish failure), `detect`
 # sets need_release=true and re-invokes `release` ALONE — built from the tagged
 # commit (release_ref), never the moved-on HEAD — so a flaky publish never
 # permanently wedges the version. A tag its own verify refused is the exception:
@@ -101,13 +102,15 @@ jobs:
             echo "need_tag=false" >> "$GITHUB_OUTPUT"
             # Deliberate fail-open: ANY non-zero from `gh release view` (a true 404
             # or a transient rate-limit/auth blip) counts as "Release missing" and
-            # re-releases. Safe — `gh release create` (<% .ReleaseWorkflow %>) has no --clobber,
-            # so a false positive just errors on the existing release and nothing is
-            # overwritten: one red run, no data loss. Parsing the error to isolate a
+            # re-releases. Safe — <% .ReleaseWorkflow %> refuses a tag whose Release is
+            # already published before it creates anything, so a false positive is
+            # one red run, no data loss. Parsing the error to isolate a
             # real 404 was rejected — it would hinge on gh's wording and could
             # misclassify a genuine missing-Release, re-wedging the very failure
-            # this heals.
-            if gh release view "$tag" >/dev/null 2>&1; then
+            # this heals. Only a PUBLISHED Release counts: a Release is created as
+            # a draft and published once every asset is attached, so a draft is a
+            # release that did not finish, and it is re-released like a missing one.
+            if [ "$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null)" = false ]; then
               echo "$tag is tagged and released; nothing to do."
               echo "need_release=false" >> "$GITHUB_OUTPUT"
             else
@@ -166,12 +169,12 @@ jobs:
   release:
     needs: detect
     # Run when a release is needed: a fresh version (need_tag, so <% .ReleaseWorkflow %>
-    # tags it after verify) or a tagged version whose Release is missing (the
-    # heal path, built from the tagged commit).
+    # tags it after verify) or a tagged version whose Release is missing or a
+    # draft (the heal path, built from the tagged commit).
     if: needs.detect.outputs.need_release == 'true'
     permissions:
 <%- if .Abcd %>
-      contents: write        # <% .ReleaseWorkflow %>: push the new tag after verify, create the Release; site.yml: attach site.tar.gz
+      contents: write        # <% .ReleaseWorkflow %>: push the new tag after verify, create the draft Release; site.yml: attach site.tar.gz and publish the Release
       id-token: write        # <% .ReleaseWorkflow %> + site.yml: OIDC for build-provenance attestation
       attestations: write    # <% .ReleaseWorkflow %>: publish + read back the attestations; site.yml: attest site.tar.gz
 <%- else %>

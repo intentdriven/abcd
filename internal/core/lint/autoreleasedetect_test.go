@@ -35,7 +35,7 @@ while [ $# -gt 0 ]; do
 done
 case "$sub" in
   "release view")
-    [ -f "$FAKE_DIR/released" ] && exit 0
+    [ -f "$FAKE_DIR/release.json" ] && { jq -r "${expr:-.}" "$FAKE_DIR/release.json"; exit 0; }
     echo "release not found" >&2; exit 1 ;;
   "run list")
     if [ "$workflow" != release.yml ] || [ "$event" != push ] || [ "$branch" != "$FAKE_TAG" ]; then
@@ -54,7 +54,8 @@ esac
 // detectCase is one state of the world the detect step reads.
 type detectCase struct {
 	tagged   bool              // the newest CHANGELOG version is tagged
-	released bool              // its GitHub Release exists
+	released bool              // its GitHub Release exists and is published
+	draft    bool              // its GitHub Release exists as an unpublished draft
 	runs     []string          // release.yml push-run ids for the tag, newest first
 	verify   map[string]string // run id -> the conclusion of that run's verify job ("in_progress": still running, no conclusion)
 	listFail bool              // the run listing errors
@@ -96,7 +97,10 @@ func runDetect(t *testing.T, workflow string, c detectCase) (string, int, string
 		}
 	}
 	if c.released {
-		write("released", "")
+		write("release.json", `{"isDraft":false}`)
+	}
+	if c.draft {
+		write("release.json", `{"isDraft":true}`)
 	}
 	if c.listFail {
 		write("list-fails", "")
@@ -246,6 +250,15 @@ func TestAutoReleaseRefusesToRebuildATagItsVerifyRefused(t *testing.T) {
 			})
 			if code != 0 || !strings.Contains(got, "need_release=false") {
 				t.Errorf("detect acted on a tag whose Release exists (rc=%d):\n%s\n%s", code, out, got)
+			}
+		})
+		// A release is created as a draft and published once every asset is
+		// attached, so a run that stopped in between leaves a draft. Only a
+		// published release counts as released; a draft is re-released.
+		t.Run(where+": a tag whose Release is still a draft is re-released", func(t *testing.T) {
+			out, code, got := runDetect(t, wf, detectCase{tagged: true, draft: true})
+			if code != 0 || !strings.Contains(got, "need_release=true") || !strings.Contains(got, "release_ref=") {
+				t.Errorf("detect counted a draft as released (rc=%d):\n%s\n%s", code, out, got)
 			}
 		})
 		t.Run(where+": an untagged version is tagged after verify", func(t *testing.T) {
