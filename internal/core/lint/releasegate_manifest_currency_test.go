@@ -34,11 +34,12 @@ func TestReleaseGateManifestIsCurrent(t *testing.T) {
 	const manifestRel = ".abcd/development/release-gate/manifest.json"
 
 	var m struct {
-		BriefDocs    []string          `json:"briefDocs"`
-		Surfaces     []json.RawMessage `json:"surfaces"`
-		CheckerCount int               `json:"checkerCount"`
-		PromptHash   string            `json:"promptHash"`
-		Prompt       struct {
+		SchemaVersion int               `json:"schemaVersion"`
+		BriefDocs     []string          `json:"briefDocs"`
+		Surfaces      []json.RawMessage `json:"surfaces"`
+		CheckerCount  int               `json:"checkerCount"`
+		PromptHash    string            `json:"promptHash"`
+		Prompt        struct {
 			Context    string `json:"context"`
 			DirectionA string `json:"directionA"`
 			DirectionB string `json:"directionB"`
@@ -46,6 +47,14 @@ func TestReleaseGateManifestIsCurrent(t *testing.T) {
 	}
 	if err := json.Unmarshal([]byte(readRepoFile(t, root, manifestRel)), &m); err != nil {
 		t.Fatalf("parse %s: %v", manifestRel, err)
+	}
+
+	// schemaVersion 2 is what arms the release gate's closed disposition
+	// vocabulary for this tree: every finding a release receipt records is
+	// fixed, invalid or deferred to its own open issue record. Lowering it
+	// would disarm the deferred-finding discipline for every later release.
+	if m.SchemaVersion != 2 {
+		t.Errorf("schemaVersion is %d; the committed manifest is schemaVersion 2, which arms the closed disposition vocabulary", m.SchemaVersion)
 	}
 
 	// checkerCount is one checker per brief doc (Direction A) plus one per

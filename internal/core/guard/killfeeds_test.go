@@ -233,9 +233,10 @@ func TestARedirectIntoAStringReachesItsCommands(t *testing.T) {
 // review-drainG2) in one table, so the group-input and redirect readings are
 // seen to take none of them away.
 func TestKillFeedReviewBlockShapesStillBlock(t *testing.T) {
-	var cases []verdictCase
+	// A name a substitution prints can be lsof or fuser as well as pgrep, so
+	// kill-by-holder fires beside kill-by-search there and either may win.
+	cases := []verdictCase{{`kill $( $(pgrep make) )`, VerdictBlock, ""}}
 	for _, cmd := range []string{
-		`kill $( $(pgrep make) )`,
 		`kill "$(pgrep make)"`,
 		"kill `pgrep make`",
 		`kill -9 $(pgrep -f make) 4242`,
