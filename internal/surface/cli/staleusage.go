@@ -12,6 +12,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdrepo"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/core/update"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -317,19 +318,29 @@ func synopsisCarriesFlag(body string, s usageSkew) bool {
 	}
 	invocation := regexp.MustCompile(head + `(?:\s|$)`)
 	flag := regexp.MustCompile(`(?:^|[^A-Za-z0-9-])(` + regexp.QuoteMeta(s.flag) + `)(?:[^A-Za-z0-9-]|$)`)
-	fenced := false
+	// Which lines are fenced is mdrecord's to say, under the rule the site
+	// renders command pages by: a page nests fences in list items (ahoy.md's
+	// install steps), and ListNested reads those as TopLevel cannot.
+	lines := strings.Split(body, "\n")
+	for _, sp := range mdrecord.Read(lines, mdrecord.ListNested).Fences {
+		end := sp.End
+		if sp.Closed {
+			end-- // the closing delimiter line
+		}
+		if synopsisInBlock(lines[sp.Start+1:end], s, invocation, flag) {
+			return true
+		}
+	}
+	return false
+}
+
+// synopsisInBlock is synopsisCarriesFlag over the content lines of one fenced
+// block. A wrapped synopsis never runs past its block's closing delimiter.
+func synopsisInBlock(block []string, s usageSkew, invocation, flag *regexp.Regexp) bool {
 	// A synopsis wrapped with trailing backslashes, joined so far; a builder,
 	// because recopying the joined text per wrapped line is quadratic too.
 	var held strings.Builder
-	for _, line := range strings.Split(body, "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "```") {
-			fenced = !fenced
-			held.Reset()
-			continue
-		}
-		if !fenced {
-			continue
-		}
+	for _, line := range block {
 		if cont, wrapped := strings.CutSuffix(strings.TrimRight(line, " \t"), `\`); wrapped {
 			held.WriteString(cont)
 			held.WriteByte(' ')
