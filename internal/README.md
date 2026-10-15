@@ -287,6 +287,13 @@ plugin surface, and a future MCP server share one engine.
   committed guard hooks, the `.gitattributes` line keeping them at LF, the public
   family, and the gitignored stub) into a repo it configures, importing this package
   for the paths and for the one canonical statement of the private layer's reach.
+- **`adapter/repoprompt/`** — the RepoPrompt reviewer route (itd-6): a client of
+  MCP's Streamable HTTP transport, spoken with the standard library, that sends
+  one review request to the MCP server the person names on their own machine
+  (`oracle.rp.url`, loopback only) and returns the text it answered. It
+  connects and nothing else: it starts no process and reads no file, which a
+  test holds its imports to. `mcptest/` is the MCP server its tests, and the
+  loop's, run against on the loopback address.
 - **`adapter/scanner/`** — the secret/PII seam, and the first adapter seam to
   ship. Its native implementation is pure Go with no external dependency: a
   bundled secret-pattern set plus the probed machine identity, layered with an

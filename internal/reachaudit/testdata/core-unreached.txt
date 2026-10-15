@@ -102,7 +102,6 @@ internal/core/record.RecommendedVerbPaths
 internal/core/record/match.Bundled
 internal/core/report.EnvelopeSender
 internal/core/rules.Defaults
-internal/core/rules.Label
 internal/core/rules.Merge
 internal/core/rules.Signature
 internal/core/rules.Validate

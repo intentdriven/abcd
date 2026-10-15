@@ -7,7 +7,8 @@
 // coordination-free, offline, and reading no maximum anywhere, so two minters
 // sharing a stale view, or two current checkouts sharing the same view, can
 // never converge on one id. Captures (iss), intents (itd), specs (spc), the
-// reading families and the scope-condition markers all mint this way; a family
+// reading families, the scope-condition markers and the memory notes (mem,
+// internal/core/memnote) all mint this way; a family
 // adopts the seam by holding a Minter and naming its family tag, never by
 // carrying an allocator of its own (adr-45 ruling 3). Decisions (adr) mint here
 // too, per the 2026-09-01 ruling adr-45 ruling 3 deferred: an ADR filed from

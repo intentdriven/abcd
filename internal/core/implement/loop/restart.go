@@ -283,7 +283,9 @@ func Restart(repoRoot, runID, laneID, yielded string, o Options) (RestartResult,
 			if told == nil {
 				res.Aside = aside
 			}
-			aw.Since, aw.Kept = now, ""
+			// The fresh agent's return is its own: no answer a route placed
+			// for the gone one stays recorded on the await.
+			aw.Since, aw.Kept, aw.Answered = now, "", nil
 			lane.Awaits[k] = aw
 			told = append(told, aw)
 			saved := "nothing was left uncommitted"

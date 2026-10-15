@@ -3238,6 +3238,75 @@
       ]
     },
     {
+      "path": "abcd memory",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Count the memory notes in both layers and name any layer it cannot read: Writes nothing; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd memory add",
+      "hidden": false,
+      "sentence": "Write one memory note, its body read from stdin: Writes ~/.abcd.noindex/memory.json only; refuses a secret, a network address or a private name.",
+      "flags": [
+        {
+          "name": "by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "everywhere",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "moved-from-host",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "recall",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "title",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd memory list",
+      "hidden": false,
+      "sentence": "List every memory note with its body, recall words, stamps and reach: Writes nothing; refuses any argument.",
+      "flags": []
+    },
+    {
+      "path": "abcd memory remove",
+      "hidden": false,
+      "sentence": "Remove one personal memory note, whoever wrote it: Writes ~/.abcd.noindex/memory.json only; refuses a note in the project's file.",
+      "flags": []
+    },
+    {
       "path": "abcd mode",
       "hidden": false,
       "group": "agents",
@@ -3440,7 +3509,15 @@
       "group": "agents",
       "block": "agents",
       "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
-      "flags": []
+      "flags": [
+        {
+          "name": "prompt",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd scribe",

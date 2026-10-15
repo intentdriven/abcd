@@ -389,9 +389,11 @@ func readDirIfPresent(dir string) ([]os.DirEntry, error) {
 // prose carries genealogy at all — a reading item, a disposition or a condition
 // named in a sentence is as much a pointer back into the record as an ADR is.
 // A slug after the number does not stop it being one: `itd-4-a-slug` names
-// itd-4, which is prose_citation_resolves' reading of the same shape.
+// itd-4, which is prose_citation_resolves' reading of the same shape. A
+// memory note's id (mem, internal/core/memnote) is one too, since the memory
+// recall brings notes back into running text (spc-2610111627213138 step 2).
 var handleInTextRe = regexp.MustCompile(
-	`(?i)(?:^|[^A-Za-z0-9-])((?:adr|itd|spc|iss|rdi|rdg|dsp|adm|srp|rfm|cond)-[0-9]+)(?:$|[^A-Za-z0-9])`)
+	`(?i)(?:^|[^A-Za-z0-9-])((?:adr|itd|spc|iss|rdi|rdg|dsp|adm|srp|rfm|cond|mem)-[0-9]+)(?:$|[^A-Za-z0-9])`)
 
 // HandleInText returns the first record handle the text carries, and whether it
 // carries one. It is the one answer the principles lint and the reading

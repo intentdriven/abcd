@@ -46,11 +46,14 @@ func TestLibraryCarriesEveryMemoryAndSourceSubVerb(t *testing.T) {
 	}
 }
 
-// TestMemoryAndSourceAreUnknownCommands is the old-names rule for step 5: both
-// spellings refuse as unknown commands, the note names library, and neither
-// calls the binary stale for not knowing a name that was retired.
-func TestMemoryAndSourceAreUnknownCommands(t *testing.T) {
-	for _, old := range []string{"memory", "source"} {
+// TestSourceIsAnUnknownCommand is the old-names rule for step 5: the retired
+// spelling refuses as an unknown command, the note names library, and nothing
+// calls the binary stale for not knowing a name that was retired. The old
+// memory verb's name is not retired any more: the verb split gave it to the
+// agents' memory-notes verb (itd-2610091918433290), which
+// memory_test.go covers.
+func TestSourceIsAnUnknownCommand(t *testing.T) {
+	for _, old := range []string{"source"} {
 		t.Run(old, func(t *testing.T) {
 			root := stalePluginRoot(t)
 			setExecutable(t, filepath.Join(root, "abcd"))
