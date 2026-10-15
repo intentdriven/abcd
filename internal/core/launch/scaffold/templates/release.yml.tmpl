@@ -497,6 +497,59 @@ jobs:
           fi
           echo "release tag: $TAG"
 
+      - name: Refuse a tag already released; clear an unfinished draft of it
+        # The Release is created as a DRAFT and published only once every asset
+<%- if .Abcd %>
+        # is attached (site.yml publishes it once it has attached site.tar.gz),
+<%- else %>
+        # is attached,
+<%- end %>
+        # so a run that stopped in between leaves a draft behind. A re-run, or
+        # auto-release's heal path, clears that draft here and creates the
+        # Release afresh from this run's own assets; the tag is never touched. A
+        # tag whose Release is already PUBLISHED is refused: a published release
+        # is never rebuilt. It runs straight after the tag shape-check, before
+        # anything is built or signed, so a refused tag mints no attestation.
+        # Each draft is chosen from the release listing by its tag and its draft
+        # state, and deleted by the id the listing reports for it, never looked
+        # up by tag name: a lookup by name can resolve a published Release of
+        # the tag. A listing that fails refuses rather than guess. TAG arrives
+        # through the workflow env (injection-safe).
+        run: |
+          set -euo pipefail
+          id_re='^[0-9]+$'
+          for _ in 1 2 3 4 5; do
+            if ! rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+                --jq '.[] | [.id, .draft, .tag_name] | @tsv')"; then
+              printf "refusing to release '%s': cannot list the repository's releases\n" "$TAG" >&2
+              exit 1
+            fi
+            drafts=()
+            while IFS=$'\t' read -r id draft tag; do
+              [ "$tag" = "$TAG" ] || continue
+              if [ "$draft" != true ]; then
+                printf "refusing to release '%s': its Release is already published\n" "$TAG" >&2
+                exit 1
+              fi
+              if [[ ! $id =~ $id_re ]]; then
+                printf "refusing to release '%s': a draft of it carries no numeric id\n" "$TAG" >&2
+                exit 1
+              fi
+              drafts+=("$id")
+            done <<< "$rows"
+            if [ "${#drafts[@]}" -eq 0 ]; then
+              exit 0
+            fi
+            for id in "${drafts[@]}"; do
+              echo "clearing unfinished draft Release ${id} of ${TAG}"
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${id}"
+            done
+          done
+          printf "refusing to release '%s': its unfinished drafts did not clear\n" "$TAG" >&2
+          exit 1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Record the default-branch tip (no-branch-commit tripwire)
         # This release job must push NOTHING to any branch. Record the remote
         # default-branch tip now; the closing step re-reads it and fails the run if
@@ -651,37 +704,6 @@ jobs:
             bin/abcd-*
             bin/checksums.txt
 
-      - name: Refuse a tag already released; clear an unfinished draft of it
-        # The Release is created as a DRAFT and published only once every asset
-        # is attached (site.yml publishes it once it has attached site.tar.gz),
-        # so a run that stopped in between leaves a draft behind. A re-run, or auto-release's heal path, clears that draft here
-        # and creates the Release afresh from this run's own assets; the tag is
-        # never touched. A tag whose Release is already PUBLISHED is refused
-        # before anything is created: a published release is never rebuilt.
-        # TAG arrives through the workflow env (injection-safe).
-        run: |
-          set -euo pipefail
-          for _ in 1 2 3 4 5; do
-            state="$(gh release view "${TAG}" --json isDraft --jq .isDraft 2>/dev/null)" || state=''
-            case "$state" in
-              false)
-                printf "refusing to release '%s': its Release is already published\n" "$TAG" >&2
-                exit 1
-                ;;
-              true)
-                echo "clearing an unfinished draft Release of ${TAG}"
-                gh release delete "${TAG}" --yes
-                ;;
-              *)
-                exit 0
-                ;;
-            esac
-          done
-          printf "refusing to release '%s': its unfinished drafts did not clear\n" "$TAG" >&2
-          exit 1
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Create the draft GitHub Release with the binaries, the plugin archive and checksums.txt
         # --draft: the Release is created unpublished, with every asset this job
         # built attached. site.yml (the `site` job below) attaches site.tar.gz
@@ -758,36 +780,6 @@ jobs:
         with:
           name: release-assets
           path: dist/
-
-      - name: Refuse a tag already released; clear an unfinished draft of it
-        # The Release is created as a DRAFT and published only once every asset
-        # is attached, so a run that stopped in between leaves a draft behind. A re-run, or auto-release's heal path, clears that draft here
-        # and creates the Release afresh from this run's own assets; the tag is
-        # never touched. A tag whose Release is already PUBLISHED is refused
-        # before anything is created: a published release is never rebuilt.
-        # TAG arrives through the workflow env (injection-safe).
-        run: |
-          set -euo pipefail
-          for _ in 1 2 3 4 5; do
-            state="$(gh release view "${TAG}" --json isDraft --jq .isDraft 2>/dev/null)" || state=''
-            case "$state" in
-              false)
-                printf "refusing to release '%s': its Release is already published\n" "$TAG" >&2
-                exit 1
-                ;;
-              true)
-                echo "clearing an unfinished draft Release of ${TAG}"
-                gh release delete "${TAG}" --yes
-                ;;
-              *)
-                exit 0
-                ;;
-            esac
-          done
-          printf "refusing to release '%s': its unfinished drafts did not clear\n" "$TAG" >&2
-          exit 1
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create the GitHub Release as a draft, attach dist/, then publish it
         # The Release is created as a --draft with every asset attached and

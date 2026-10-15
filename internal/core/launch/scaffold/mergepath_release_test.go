@@ -361,22 +361,54 @@ case "${1:-} ${2:-}" in
   [ -f "$FORGE_STATE/drafts/$tag" ] || { echo "release not found" >&2; exit 1; }
   mkdir -p "$FORGE_STATE/releases"
   mv "$FORGE_STATE/drafts/$tag" "$FORGE_STATE/releases/$tag" ;;
-"release delete")
-  tag="$3"
-  [ "${4:-}" = --yes ] && [ $# = 4 ] || { echo "fake gh: release delete $*" >&2; exit 97; }
-  [ ! -f "$FORGE_STATE/releases/$tag" ] || { echo "fake gh: release delete of a published release" >&2; exit 98; }
-  [ -f "$FORGE_STATE/drafts/$tag" ] || { echo "release not found" >&2; exit 1; }
-  rm "$FORGE_STATE/drafts/$tag" ;;
 "run list")
   printf '\n' ;;
 "attestation verify")
   digest="$(git hash-object "$3")"
   [ -f "$FORGE_STATE/attestations/$digest" ] || { echo "no attestation for $3" >&2; exit 1; } ;;
 "api "*)
-  case "$2" in
-  repos/*/git/ref/heads/*)
-    git --git-dir="$FORGE_ORIGIN" rev-parse "refs/heads/${2##*/heads/}" ;;
-  *) echo "fake gh: unsupported api $2" >&2; exit 97 ;;
+  # A release's id is the checksum of its state and tag, so a draft and a
+  # published release of one tag never share one.
+  relid() { printf '%s/%s' "$1" "$2" | cksum | cut -d' ' -f1; }
+  shift
+  method=GET path="" expr="" paginate=0
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --method|-X) method="$2"; shift 2 ;;
+      --paginate) paginate=1; shift ;;
+      --jq) expr="$2"; shift 2 ;;
+      -*) echo "fake gh: api $1" >&2; exit 97 ;;
+      *) path="$1"; shift ;;
+    esac
+  done
+  case "$method $path" in
+  "GET repos/"*/git/ref/heads/*)
+    git --git-dir="$FORGE_ORIGIN" rev-parse "refs/heads/${path##*/heads/}" ;;
+  "GET repos/"*"/releases?per_page=100")
+    # The listing, already filtered the one way the workflows read it.
+    [ "$paginate" = 1 ] && [ "$expr" = '.[] | [.id, .draft, .tag_name] | @tsv' ] || {
+      echo "fake gh: release listing paginate=$paginate jq=$expr" >&2; exit 97; }
+    for state in drafts releases; do
+      [ -d "$FORGE_STATE/$state" ] || continue
+      for f in "$FORGE_STATE/$state"/*; do
+        [ -e "$f" ] || continue
+        tag="${f##*/}"
+        draft=false; [ "$state" = drafts ] && draft=true
+        printf '%s\t%s\t%s\n' "$(relid "$state" "$tag")" "$draft" "$tag"
+      done
+    done ;;
+  "DELETE repos/"*/releases/*)
+    id="${path##*/}"
+    for f in "$FORGE_STATE/releases"/*; do
+      [ -e "$f" ] || continue
+      [ "$(relid releases "${f##*/}")" != "$id" ] || { echo "fake gh: delete of a published release" >&2; exit 98; }
+    done
+    for f in "$FORGE_STATE/drafts"/*; do
+      [ -e "$f" ] || continue
+      if [ "$(relid drafts "${f##*/}")" = "$id" ]; then rm "$f"; exit 0; fi
+    done
+    echo "release $id not found" >&2; exit 1 ;;
+  *) echo "fake gh: unsupported api $method $path" >&2; exit 97 ;;
   esac ;;
 *)
   echo "fake gh: unsupported: $*" >&2; exit 97 ;;
