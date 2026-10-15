@@ -142,6 +142,7 @@ func TestBriefNamesEveryPart(t *testing.T) {
 		{"the reserve rule", "go run ./cmd/abcd reserve " + fixtureIssue},
 		{"the branch, from the connector's prefix", "claude/abcd-wip/" + fixtureIssue},
 		{"the hand-back", "scripts/cloud/hand-back.sh --state"},
+		{"the hand-back's item", "--item " + fixtureIssue},
 		{"the report file", ".abcd/work/cloud-reports/" + fixtureIssue + ".md"},
 		{"the fallback", "tracking issue"},
 	} {

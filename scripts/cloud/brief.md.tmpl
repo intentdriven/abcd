@@ -43,7 +43,9 @@ pushes it; push nowhere else, and never to `{{BASE}}`.
 
 End every session, finished or stopped, with
 
-    scripts/cloud/hand-back.sh --state <handed-back|stopped> --did <text> --failed <text> --needs <text>
+    scripts/cloud/hand-back.sh --state <handed-back|stopped> --item {{ITEM}} \
+      --assisted-by <Vendor>:<model-version> \
+      --did <text> --failed <text> --needs <text>
 
 It commits the report as `{{REPORT_DIR}}/{{ITEM}}.md`, alone, as the branch's
 last commit, and pushes the branch through the committed hooks. Only when that
