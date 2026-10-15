@@ -36,8 +36,10 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/hosting"
 	"github.com/intentdriven/abcd/internal/core/changelog"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/positioning"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -247,6 +249,56 @@ func (c *composer) briefOpening() (*docPage, int, error) {
 	return nil, 0, nil
 }
 
+// recordLintRelPath is the record's lint configuration, which names the
+// record's roots and the directory of each record store.
+const recordLintRelPath = ".abcd/record-lint.json"
+
+// standardRecordRoot is where abcd's standard layout keeps the durable record.
+const standardRecordRoot = ".abcd/development"
+
+// loadRecordConfig is the one place a build reads where the record lives.
+// The record's lint configuration says so where the repository carries one.
+// A managed repository need not: nothing abcd writes for it creates the file,
+// so on the project route an absent one reads as abcd's standard layout
+// (standardRecordConfig), its issue ledger included where the settings opt in
+// to publishing it. On the composed route an absent one stays absent, as it
+// always has.
+func loadRecordConfig(root *os.Root, project, issueLedger bool) (lint.Config, error) {
+	cfg, err := lint.LoadConfigInRoot(root, recordLintRelPath)
+	switch {
+	case err == nil:
+		return cfg, nil
+	case !os.IsNotExist(err):
+		return lint.Config{}, err
+	case project:
+		return standardRecordConfig(issueLedger), nil
+	}
+	return lint.Config{}, nil
+}
+
+// standardRecordConfig is abcd's standard layout: the design record under
+// `.abcd/development/`, its intents, specs, ADRs and principles (the stores the
+// record explorer renders), and the issue ledger under `.abcd/work/issues`
+// only where the settings opt in to publishing it (RecordOpts.IssueLedger).
+// The ledger is working-tier data (adr-32), and no record of the design cites
+// an issue by a typed field, so leaving it unread costs no reference.
+func standardRecordConfig(issueLedger bool) lint.Config {
+	stores := map[string]string{
+		"adr": recordid.ADRsRelDir,
+		"itd": intent.IntentsRelDir,
+		"spc": standardRecordRoot + "/specs",
+		"prn": path.Join(standardRecordRoot, principlesDirName),
+	}
+	if issueLedger {
+		stores["iss"] = recordid.IssuesRelDir
+	}
+	return lint.Config{
+		Roots: []string{standardRecordRoot},
+		// The record_schema rule's stores: the one key LoadRecordGraph reads.
+		Rules: map[string]lint.RuleConfig{"record_schema": {RecordStores: stores}},
+	}
+}
+
 // projectHasContent reports whether the repository at root holds anything a
 // project site's about page is built from. Setup asks it before switching a
 // project site on.
@@ -260,8 +312,9 @@ func projectHasContent(root string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	cfg, err := lint.LoadConfigInRoot(srcRoot, ".abcd/record-lint.json")
-	if err != nil && !os.IsNotExist(err) {
+	// The about page reads no issue, so the ledger is left unread here.
+	cfg, err := loadRecordConfig(srcRoot, true, false)
+	if err != nil {
 		return false, err
 	}
 	graph, err := lint.LoadRecordGraph(cfg, root)

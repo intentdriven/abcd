@@ -378,3 +378,78 @@ func TestAProjectWithoutAnIdentityBlockIsTitledByItsRepositoryName(t *testing.T)
 func firstMatch(pattern, s string) string {
 	return regexp.MustCompile(pattern).FindString(s)
 }
+
+// A managed repository keeps its record in abcd's standard layout and need
+// carry no `.abcd/record-lint.json`: nothing writes one for it. Its project
+// site reads the record from that layout, so its intents and record pages are
+// the same as a repository that declares the layout in the file.
+func TestAProjectSiteReadsTheStandardLayoutWithoutARecordLintConfig(t *testing.T) {
+	f := newProjectFixture(t)
+	withCfg := t.TempDir()
+	declared, err := Build(Request{RepoRoot: f.Root(), OutDir: withCfg, Stamp: fixtureStamp, Project: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := siteFiles(t, withCfg)
+	if err := os.Remove(filepath.Join(f.Root(), ".abcd", "record-lint.json")); err != nil {
+		t.Fatal(err)
+	}
+	// Left uncommitted, so the history both builds read is the same.
+	out := t.TempDir()
+	res, err := Build(Request{RepoRoot: f.Root(), OutDir: out, Stamp: fixtureStamp, Project: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Records == 0 || res.Records != declared.Records {
+		t.Fatalf("records = %d, want the %d the declared layout reads", res.Records, declared.Records)
+	}
+	got := siteFiles(t, out)
+	about := string(got["index.html"])
+	if !strings.Contains(about, `id="shipped"`) || !strings.Contains(about, "A fixture user opens the page and sees the record.") {
+		t.Error("the about page lacks the shipped intents' section")
+	}
+	if _, ok := got["record/intent/itd-2/index.html"]; !ok {
+		t.Error("no record page for a shipped intent")
+	}
+	for rel, data := range want {
+		if rel == "record.json" {
+			continue
+		}
+		if g, ok := got[rel]; !ok {
+			t.Errorf("%s is built from the declared layout and not from the standard one", rel)
+		} else if string(g) != string(data) {
+			t.Errorf("%s differs between the declared layout and the standard one", rel)
+		}
+	}
+	for rel := range got {
+		if _, ok := want[rel]; !ok {
+			t.Errorf("%s is built from the standard layout only", rel)
+		}
+	}
+	check, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, Project: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !check.OK() {
+		t.Fatalf("findings: %+v", check.Findings)
+	}
+}
+
+// The issue ledger joins the standard layout only where the settings opt in
+// to publishing it, as it does for a declared layout.
+func TestTheStandardLayoutReadsTheIssueLedgerOnlyWhenOptedIn(t *testing.T) {
+	for _, optIn := range []bool{false, true} {
+		f := newProjectFixture(t)
+		if err := os.Remove(filepath.Join(f.Root(), ".abcd", "record-lint.json")); err != nil {
+			t.Fatal(err)
+		}
+		if optIn {
+			f.write(ManifestRelPath, strings.Replace(projectSettingsJSON, `"hosting"`, `"record": {"issue_ledger": true}, "hosting"`, 1))
+		}
+		_, files := buildProject(t, f)
+		_, issuePage := files["record/issue/iss-1/index.html"]
+		if issuePage != optIn {
+			t.Errorf("opted in = %v, but an issue page is built = %v", optIn, issuePage)
+		}
+	}
+}

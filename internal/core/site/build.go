@@ -487,9 +487,9 @@ func build(req Request, written *labelsAdded) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	lintCfg, err := lint.LoadConfigInRoot(lintRoot, ".abcd/record-lint.json")
+	lintCfg, err := loadRecordConfig(lintRoot, manifest.Project(), manifest.Record.IssueLedger)
 	lintRoot.Close()
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return Result{}, err
 	}
 	graph, err := lint.LoadRecordGraph(lintCfg, repoRoot)
