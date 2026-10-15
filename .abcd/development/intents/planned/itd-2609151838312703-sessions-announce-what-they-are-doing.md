@@ -1,8 +1,8 @@
 ---
 id: itd-2609151838312703
 slug: sessions-announce-what-they-are-doing
-spec_id: null
-kind: null
+spec_id: spc-2610150728396006
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-2609091034175565]
@@ -12,7 +12,7 @@ origin: researcher-authored
 production_mode: dictated-and-formatted
 related_issues: [iss-2609091037191879, iss-2610142200372105, iss-2608220750029993, iss-2610150726321422, iss-2610150726331622]
 related_intents: [itd-2609151838327688, itd-2610100704270254, itd-2609150819440345]
-related_adrs: [adr-2610031352212697]
+related_adrs: [adr-2610031352212697, adr-2610150729333337]
 ---
 
 # Sessions under any account, on any machine or in the cloud announce what they are doing through short fixed-form announcements on the shared remote, a person reads everyone's status with one command, and what is really a hold stays a reservation
@@ -37,13 +37,13 @@ We expect sessions under different accounts, on different machines and in the cl
 
 ## Scope Conditions
 
-- Holds for participants who can push to the shared remote: people with write access and the cloud sessions they start. An outside contributor can read the announcements but cannot make one.
-- Holds where the forge keeps a record of who pushed: abcd checks each announcement's sender against it and shows the sender as verified, or as doubtful when the record names someone else; where the forge cannot say (no login, a push made by an app), the sender is shown as claimed.
-- Holds up to hundreds of announcements a day per person; a session is shown the newest announcement per item and a count of the rest. Many announcements a second is beyond what pushes to the shared remote carry, and belongs to the faster carrier the broker draft keeps (decision 15).
-- Holds while everything an announcement carries may be public for ever: a kind, an item id, a time and the sender's GitHub username, on a public repository. Announcements are kept permanently (C15); a deleted branch would not be erased anyway, since the forge keeps its commits retrievable for a while and every clone keeps a copy.
-- Holds for warnings that may arrive late: a session sees an announcement only after a fetch, so nothing that must never be missed rests on an announcement alone; the release hold is enforced at the merge step instead (C7).
-- Holds once the embargo check is on the default branch (adr-2610120558328615, on an unmerged branch on 2026-10-15); until then C5 cannot be built; the session cutting v0.15.0 expects it on the default branch on 2026-10-15. <!-- record-lint: forward-looking -->
-- Hypothesis until the cloud probe answers it: a hosted cloud session may push a branch outside the host's own prefix, and its git identity resolves to a forge username. If either fails, a cloud session cannot make announcements under this design and the question goes back to the product thinker.
+- Holds for participants who can push to the shared remote: people with write access and the cloud sessions they start. An outside contributor can read the announcements but cannot make one. <!-- cond: cond-2610150728392489 -->
+- Holds where the forge keeps a record of who pushed: abcd checks each announcement's sender against it and shows the sender as verified, or as doubtful when the record names someone else; where the forge cannot say (no login, a push made by an app), the sender is shown as claimed. <!-- cond: cond-2610150728396735 -->
+- Holds up to hundreds of announcements a day per person; a session is shown the newest announcement per item and a count of the rest. Many announcements a second is beyond what pushes to the shared remote carry, and belongs to the faster carrier the broker draft keeps (decision 15). <!-- cond: cond-2610150728394771 -->
+- Holds while everything an announcement carries may be public for ever: a kind, an item id, a time and the sender's GitHub username, on a public repository. Announcements are kept permanently (C15); a deleted branch would not be erased anyway, since the forge keeps its commits retrievable for a while and every clone keeps a copy. <!-- cond: cond-2610150728392907 -->
+- Holds for warnings that may arrive late: a session sees an announcement only after a fetch, so nothing that must never be missed rests on an announcement alone; the release hold is enforced at the merge step instead (C7). <!-- cond: cond-2610150728397242 -->
+- Holds once the embargo check is on the default branch (adr-2610120558328615, on an unmerged branch on 2026-10-15); until then C5 cannot be built; the session cutting v0.15.0 expects it on the default branch on 2026-10-15. <!-- record-lint: forward-looking --> <!-- cond: cond-2610150728395676 -->
+- Hypothesis until the cloud probe answers it: a hosted cloud session may push a branch outside the host's own prefix, and its git identity resolves to a forge username. If either fails, a cloud session cannot make announcements under this design and the question goes back to the product thinker. <!-- cond: cond-2610150728394737 -->
 
 ## Acceptance Criteria
 
@@ -75,26 +75,26 @@ Run by hand under [`decompose-before-filing`](../../principles/decompose-before-
 | Part | Type | Home | Verdict |
 | --- | --- | --- | --- |
 | Making, reading and listing fixed-form announcements on the shared remote (C1 to C6, C9 to C12, C16 to C18) | capability | this intent, generalising the reservation primitive's write, fetch, trailer collection and render rather than adding a second copy ([`one-canonical-primitive`](../../principles/one-canonical-primitive.md)) | file here |
-| A release cut held by a reservation the land step reads (C7, C8) | capability | this intent; it widens the reservation's subject from a record to a release and adds a reader to the land fence, so it `builds_on` [itd-2609091034175565](../planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md); it would resolve iss-2609091037191879 | file here |
-| A status branch that moves without a preflight receipt, and the ruleset that keeps its history (C13 to C15) | trust rule | a new ADR beside [adr-2610031352212697](../../decisions/adrs/2610031352212697-claims-are-branches-on-the-shared-remote.md), plus clauses in brief invariants 7 and 10 naming `abcd announce`, `abcd status` and the status branch as the reservation's clauses do | mint at planning |
+| A release cut held by a reservation the land step reads (C7, C8) | capability | this intent; it widens the reservation's subject from a record to a release and adds a reader to the land fence, so it `builds_on` [itd-2609091034175565](itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md); it would resolve iss-2609091037191879 | file here |
+| A status branch that moves without a preflight receipt, and the ruleset that keeps its history (C13 to C15) | trust rule | a new ADR beside [adr-2610031352212697](../../decisions/adrs/2610031352212697-claims-are-branches-on-the-shared-remote.md), [adr-2610150729333337](../../decisions/adrs/2610150729333337-a-status-branch-moves-without-a.md), minted at planning; clauses in brief invariants 7 and 10 naming `abcd announce`, `abcd status` and the status branch, written in the change that builds them, as the reservation's clauses were | minted |
 | When abcd fetches the announcements (C12, C16): only through verbs whose meaning says so | trust rule | brief invariant 7 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)) as it stands, with a clause naming `abcd announce` and `abcd status` as the reservations' clause does (decision 14) | clause at planning |
 | A message from a peer informs and never authorises | stance | already held for the host's own messages; stated as decision 4 and taught by C6's rendered line; no new principle | cite, no new record |
-| The sub-agent budget | capability | [itd-2610100704270254](itd-2610100704270254-an-abcd-run-works-out-how-many-sub.md), beside this intent (decision 5) | not this intent |
-| Session presence: which sessions are running now | capability | iss-2608220750029993 and the session register [itd-2609150819440345](itd-2609150819440345-which-session-holds-which-worktree.md); announcements say what happened, not who is alive (decision 16) | keep both |
-| An opt-in broker adapter for announcements on a local network | capability | [itd-2609151838327688](itd-2609151838327688-an-opt-in-adapter-to-a-local-message.md), kept as a draft to be rewritten later as an optional faster carrier of these announcements (decision 15) | keep both |
+| The sub-agent budget | capability | [itd-2610100704270254](../drafts/itd-2610100704270254-an-abcd-run-works-out-how-many-sub.md), beside this intent (decision 5) | not this intent |
+| Session presence: which sessions are running now | capability | iss-2608220750029993 and the session register [itd-2609150819440345](../drafts/itd-2609150819440345-which-session-holds-which-worktree.md); announcements say what happened, not who is alive (decision 16) | keep both |
+| An opt-in broker adapter for announcements on a local network | capability | [itd-2609151838327688](../drafts/itd-2609151838327688-an-opt-in-adapter-to-a-local-message.md), kept as a draft to be rewritten later as an optional faster carrier of these announcements (decision 15) | keep both |
 
 ## Decisions
 
 Ruled by the product thinker on 2026-10-15 ("ok, agreed, option 1"; the decision log's entry of that day), choosing between the three options of the design pass of 2026-10-14 ([2026-10-14-session-messages-across-accounts](../../research/notes/2026-10-14-session-messages-across-accounts.md)):
 
 1. **The carrier is short fixed-form notes on the shared remote.** Each note carries a kind from a fixed list, the record or pull request it concerns, and an expiry, and no free text; a question points at an item, and the conversation happens on that item. This replaces the shared directory and the local-network bound this draft first stated.
-2. **What is really a hold stays a reservation** ([itd-2609091034175565](../planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md)): who owns an item is its reservation, and "hold your merge during a release cut" becomes a reservation on the release rather than a note.
+2. **What is really a hold stays a reservation** ([itd-2609091034175565](itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md)): who owns an item is its reservation, and "hold your merge during a release cut" becomes a reservation on the release rather than a note.
 
 Settled without a question, each the one defensible answer on the record (the research note gives the grounds):
 
 3. A shared machine folder is out: it needs a file another account can write, which abcd never reads (the ruling of 2026-10-14, in the decision log), and it never leaves the machine.
 4. No note grants anything (no slot loans, no approvals): a note informs or asks, never authorises.
-5. The sub-agent budget ([itd-2610100704270254](itd-2610100704270254-an-abcd-run-works-out-how-many-sub.md)) sits beside this intent, not in it: the machine cap is a property of one machine, and hosted sessions run on their own.
+5. The sub-agent budget ([itd-2610100704270254](../drafts/itd-2610100704270254-an-abcd-run-works-out-how-many-sub.md)) sits beside this intent, not in it: the machine cap is a property of one machine, and hosted sessions run on their own.
 6. The host's same-account messages stay a wake-up accelerator only, never the record.
 7. A note that cannot be fetched is reported as unread since a time and for a reason, never shown as silence; a sender is shown as claimed until identity can be bound.
 8. **Two probes from a real hosted session come first in the build:** whether a push to a branch outside the host's own prefix is accepted, and which forge identity the push arrives as. The product thinker asked for the plan on 2026-10-15 before the probes ran, so both stand as a scope-condition hypothesis; a refused push returns the branch prefix to the product thinker.
@@ -110,8 +110,8 @@ Decided by the technical facilitator on 2026-10-15 on the two adversarial review
 Ruled by the product thinker at the planning interview of 2026-10-15:
 
 14. **Notes are fetched only by a command whose job is that** ("Only when a command checks", Q1): `abcd notes`, `abcd peers` and the land step fetch them, and the prompt hook shows only the last fetch from disk, with its age. Brief invariant 7 stands without an exception; the alternative, an opt-in fetch from the prompt hook at most once a minute, was not chosen. Accepted cost: a session that runs none of those commands sees a new note only at its next merge.
-15. **The broker draft stays, to be rewritten later** ([itd-2609151838327688](itd-2609151838327688-an-opt-in-adapter-to-a-local-message.md); "Keep it, rewrite later", Q2): a messaging service on the person's own network would wake an idle session the moment a note arrives, which notes on the shared remote cannot, but it never reaches another person's computer or a cloud session. It stays a separate draft, re-based on notes as an optional faster carrier when it is next worked on; until then it still describes the retired shared-folder mailbox.
-16. **Notes are planned on their own, apart from the session register** ([itd-2609150819440345](itd-2609150819440345-which-session-holds-which-worktree.md); "Plan notes on their own", Q3): notes say what a session did, the register would say which sessions are running and what each holds. The register's way of sharing between computers is still undecided, and notes do not wait for it.
+15. **The broker draft stays, to be rewritten later** ([itd-2609151838327688](../drafts/itd-2609151838327688-an-opt-in-adapter-to-a-local-message.md); "Keep it, rewrite later", Q2): a messaging service on the person's own network would wake an idle session the moment a note arrives, which notes on the shared remote cannot, but it never reaches another person's computer or a cloud session. It stays a separate draft, re-based on notes as an optional faster carrier when it is next worked on; until then it still describes the retired shared-folder mailbox.
+16. **Notes are planned on their own, apart from the session register** ([itd-2609150819440345](../drafts/itd-2609150819440345-which-session-holds-which-worktree.md); "Plan notes on their own", Q3): notes say what a session did, the register would say which sessions are running and what each holds. The register's way of sharing between computers is still undecided, and notes do not wait for it.
 17. **Senders are checked against the forge's record of who pushed** ("Confirm as written" on the revised condition, Q6b, after the product thinker asked why it could not be added now): the forge's activity record names the account behind each push and was read successfully on 2026-10-15, so abcd checks it inside `abcd notes`, whose documented meaning includes that read (invariant 7); a forge that cannot say leaves the sender claimed, the native default under invariant 2, with the forge lookup the adapter.
 18. **Notes cope with hundreds a day per person** (Q6c, after the product thinker asked whether the limit was necessary): nothing in git limits that rate; what a session can absorb is capped by showing the newest note per item and a count (C18), and the remaining limit, about one push a second per person, is the broker draft's to lift.
 19. **Notes carry the sender's GitHub username, and are kept permanently** (the product thinker, 2026-10-15, after asking how abcd could know a sender without recording usernames). Chosen first was "Leave usernames out" (Q6d); on the explanation that the forge's own record of who pushed names the sender to anyone who looks, so a code or an anonymous note hides the name only from a casual reader while costing a pseudonymous commit author, the product thinker chose GitHub usernames ("agreed, github usernames"): they are already public on every commit and pull request, and they are the only form abcd can verify against the forge (C17). The criterion that a note names nobody was struck. Notes are permanent as C15 makes them; deletion would not erase them in any case.

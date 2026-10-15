@@ -100,7 +100,6 @@ gate. That is what keeps "not hand-counted" true after the day it was written.
 - `itd-174` — Each repository configures how far its facilitator is consulted and when it escalates (sequenced after itd-169)
 - `itd-175` — The product thinker writes down how this could be wrong, and what would show it (Phase 8; the defeater list an acceptance rests on)
 - `itd-176` — Whatever ships says how hard anyone looked at it (Phase 7)
-- `itd-2609151838312703` — sessions on one machine or one local network leave each other messages in a shared mailbox abcd owns (the built-in basic; nothing leaves the local network)
 - `itd-2609151838327688` — an opt-in adapter to a local message broker brings push delivery and cross-machine reach to the session mailbox (sequenced after the mailbox)
 - `itd-2609151658486398` — a release cut publishes the security advisories its fixes close, and closes those resolved as won't-fix (the publication step the 2026-08-27 advisory-handling pilot named as its target)
 - `itd-2609091416304128` — `capture resolve` and `capture wontfix` refuse a record already terminal at the local `origin/main` ref as last fetched, stating the ref's age and performing no fetch; the same judgement rendered read-only on `abcd <record-id>` (split from itd-2609091034175565 on the same ruling; the third clause of iss-2609020716570699's remedy, RS001's answer moved earlier)
