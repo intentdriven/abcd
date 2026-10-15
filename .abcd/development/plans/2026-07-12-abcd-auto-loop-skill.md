@@ -256,7 +256,7 @@ atomicity. The corrected principle, which the command encodes:
 ## 10. SOTA backing for adopted external practices
 
 From a `sota-researcher` pass (primary sources, evidence-tiered). Verdicts recorded
-in `.abcd/work/DECISIONS.md`; on build, the sources graduate to `ACKNOWLEDGEMENTS.md`
+in [dcn-2607120000000004](../../work/decisions/dcn-2607120000000004-abcd-auto-loop-design-recorded-plans.md); on build, the sources graduate to `ACKNOWLEDGEMENTS.md`
 (inspirations/references) in the same change. The pass tempers, not overturns, the
 design — three findings sharpen specific sections (flagged inline). Titles marked
 [house convention] are ours, defensibly extrapolated, not directly measured.

@@ -14,7 +14,7 @@
 // its own, so the precedence order, the guarded reads and the refusals are
 // spelled once.
 //
-// Two file families, one shape of resolution (DECISIONS, 2026-09-25):
+// Two file families, one shape of resolution (dcn-2609250000000005):
 //
 //   - Config: .abcd/config.json in the checkout and ~/.abcd.noindex/config.json on the
 //     machine, holding scalar keys under a namespace (pace.work_minutes,

@@ -7,7 +7,7 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-round-5-ruthless"
 found_at: "commands/intent.md"
-resolution: "The surface claim and the RecordGrounds doc now say what the refusal establishes — that no grounds this tool writes can land on a terminal record — instead of asserting the corpus carries none, and both name the migration exception: itd-177, itd-182 and itd-188 carry a section relocated by hand from the pre-tooling `## Grounds (pursued)` section on the matching spec. A DECISIONS entry draws the relocation-versus-backfill line. The enforcement is unchanged and stays maximally strict, because nothing in it can tell relocated text from invented text."
+resolution: "The surface claim and the RecordGrounds doc now say what the refusal establishes — that no grounds this tool writes can land on a terminal record — instead of asserting the corpus carries none, and both name the migration exception: itd-177, itd-182 and itd-188 carry a section relocated by hand from the pre-tooling `## Grounds (pursued)` section on the matching spec. The decision dcn-2608300000000017 draws the relocation-versus-backfill line. The enforcement is unchanged and stays maximally strict, because nothing in it can tell relocated text from invented text."
 impact: internal
 resolved_by:
   intent: "itd-179"

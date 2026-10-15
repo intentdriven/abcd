@@ -125,7 +125,7 @@ func TestMarkerBlockGatePassesBalancedAndQuotedMarkers(t *testing.T) {
 // row carries as two sentences on one line. Where a pair cannot be
 // told apart lexically the gate refuses (the escape marker is one comment
 // away and every finding names it); the residual trade is recorded in
-// .abcd/work/DECISIONS.md.
+// dcn-2609250000000018.
 var narrationSpecification = []struct {
 	sentence string
 	refuse   bool

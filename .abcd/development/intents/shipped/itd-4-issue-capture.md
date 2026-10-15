@@ -107,7 +107,7 @@ Per-criterion verdicts:
   evidence: internal/core/capture/workflow_test.go:89 — "func TestCaptureAppendAndReadBack"
   evidence: internal/core/capture/workflow_test.go:165 — "filepath.Base(got.Path) != tc.want.ID+"-"+tc.want.Slug+".md""
   evidence: commands/capture.md:4 — "argument-hint: "[text] | list --open|--resolved|--wontfix|--all | ..."
-- ac-2 — MET_WITH_CONCERNS: resolve moves open/ to resolved/ and persists the note, but as the frontmatter scalar `resolution:` rather than appended to the body as the criterion says; the divergence is signed off (DECISIONS.md 2026-07-17, adjudication 1) and the test asserts the scalar
+- ac-2 — MET_WITH_CONCERNS: resolve moves open/ to resolved/ and persists the note, but as the frontmatter scalar `resolution:` rather than appended to the body as the criterion says; the divergence is signed off ([dcn-2607170000000002](../../../work/decisions/dcn-2607170000000002-burst-3-m3-itd-4-spc-6-three-record.md), adjudication 1) and the test asserts the scalar
   evidence: internal/core/capture/workflow.go:289 — "transition(req.RepoRoot, req.IssuesRoot, req.ID, "resolve", "resolution", req.Resolution,"
   evidence: internal/core/capture/workflow_test.go:291 — "tr.FromStatus != StateOpen || tr.ToStatus != StateResolved"
   evidence: internal/core/capture/workflow_test.go:299 — "lr.Issues[0].Resolution !="

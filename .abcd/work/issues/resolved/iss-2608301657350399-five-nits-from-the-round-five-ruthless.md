@@ -7,7 +7,7 @@ category: "tech-debt"
 source: "user-observation"
 found_during: "itd-179-round-5-ruthless"
 found_at: "internal/core/grounds/grounds_test.go"
-resolution: "All five fixed. Nit 1's guard is re-anchored on the property rather than the phrase: the refused set is proved to be exactly the runes below U+0020 in both directions, the message must name the serialiser it mirrors, and the over-claim ban is over the nouns that make a claim store-wide rather than one sentence. Nit 2's doc comment sits on requireGroundsFlag. Nit 3 gets its own groundsCheckExemption, asserted by string inequality with the claim exemption rather than by a banned word. Nit 4's test was deleted when grounds left frontmatter; the reader half is proved in capture and the gate half in lint, which is the split the nit asked for. Nit 5's comment carries the measurement — 3776 code points, 7 assigned, zero format characters and zero variation selectors — and the DECISIONS round-4 entry is corrected by an append."
+resolution: "All five fixed. Nit 1's guard is re-anchored on the property rather than the phrase: the refused set is proved to be exactly the runes below U+0020 in both directions, the message must name the serialiser it mirrors, and the over-claim ban is over the nouns that make a claim store-wide rather than one sentence. Nit 2's doc comment sits on requireGroundsFlag. Nit 3 gets its own groundsCheckExemption, asserted by string inequality with the claim exemption rather than by a banned word. Nit 4's test was deleted when grounds left frontmatter; the reader half is proved in capture and the gate half in lint, which is the split the nit asked for. Nit 5's comment carries the measurement — 3776 code points, 7 assigned, zero format characters and zero variation selectors — and the round-4 entry dcn-2608300000000015 is corrected by an append, dcn-2608300000000018."
 impact: internal
 resolved_by:
   intent: "itd-179"
@@ -43,7 +43,7 @@ a sentence or a name rather than a behaviour.
    unassigned; zero Cf and zero variation selectors, which live in the DERIVED
    property rather than this one. The conclusion the sentence supports is
    correct and was verified exhaustively; the description of the remainder is
-   not. The same loose phrasing is in the DECISIONS.md round-4 entry.
+   not. The same loose phrasing is in the round-4 decision [dcn-2608300000000015](../../decisions/dcn-2608300000000015-itd-179-round-4-the-grounds-floor-s.md).
 
 ## Grounds
 

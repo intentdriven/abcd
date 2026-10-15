@@ -7,7 +7,7 @@ category: "bug"
 source: "user-observation"
 found_during: "itd-179-fix-delta-ruthless"
 found_at: "internal/core/grounds/record.go"
-wontfix_reason: "Declined on the product thinker's ruling of 2026-08-31 (DECISIONS.md, ruling 3): the guard is correct and the hand edit is the accepted repair, so a triage verb that would append a grounds entry below an unclosed comment or fence refuses rather than landing an entry no reader can see. What the fix/drain-record-reading branch still improved: the refusal, which already named the construct, its body line and the opener's text, now also says the exit, close or remove the opener in a text editor and re-run. A record-body repair verb, if wanted, is its own intent, as the ruling says."
+wontfix_reason: "Declined on the product thinker's ruling of 2026-08-31 (dcn-2608310000000001, ruling 3): the guard is correct and the hand edit is the accepted repair, so a triage verb that would append a grounds entry below an unclosed comment or fence refuses rather than landing an entry no reader can see. What the fix/drain-record-reading branch still improved: the refusal, which already named the construct, its body line and the opener's text, now also says the exit, close or remove the opener in a text editor and re-run. A record-body repair verb, if wanted, is its own intent, as the ruling says."
 ---
 
 an unclosed comment or fence in an issue body still locks the record out of every triage verb and no open record tracks it
@@ -41,8 +41,8 @@ committed file.
 The delta made it SURVIVABLE and that was the agreed scope: the refusal now
 names the construct and its line instead of blaming the grounds operand, and
 `Promote` no longer mints a draft it will orphan. Body scope closed the
-frontmatter half only. None of that closes this half, and the fix's own DECISIONS
-entry concedes as much.
+frontmatter half only. None of that closes this half, and the fix's own decision
+[dcn-2608300000000020](../../decisions/dcn-2608300000000020-itd-179-delta-close-body-scope-does-not.md) concedes as much.
 
 Two asymmetries worth recording for whoever takes it. `AppendToRecord` already
 refuses an unclosed `<!--` in GROUNDS text, so the write side is inconsistent

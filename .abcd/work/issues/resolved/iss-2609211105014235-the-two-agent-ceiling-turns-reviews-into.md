@@ -11,7 +11,7 @@ production_mode: hand-written
 found_at: "the pilot run's pace rule: two sub-agents alive at once"
 deferred_after: "v0.9.0"
 deferral_reason: "Routed to the product thinker by the 2026-09-23 run (ruling owed: whether the lane ceiling counts reviewers separately (pacing input to itd-2609201925079472)). The 2026-09-23 interview gave routed minor and nitpick captures the default: deferred past v0.9.0, returning at the next anchor."
-resolution: "Answered by the product thinker's rulings on the sub-agent ceiling, which replace the pilot's flat two: .abcd/work/DECISIONS.md, 2026-09-23 (five sub-agents alive at once, in any mix of roles; then six from session 3) and 2026-09-24 (four, in any mix of roles, continuous; recorded in 0eb64ef24). 'In any mix of roles' is the ruling the record asked for: reviewers count against the same ceiling as implementers, and the ceiling is raised rather than split by role. The run's lane rules carry the current figure (five agents alive, ruled 2026-09-29)."
+resolution: "Answered by the product thinker's rulings on the sub-agent ceiling, which replace the pilot's flat two: 2026-09-23 (dcn-2609230000000002 and dcn-2609230000000022: five sub-agents alive at once, in any mix of roles; then six from session 3) and 2026-09-24 (dcn-2609240000000001: four, in any mix of roles, continuous; recorded in 0eb64ef24). 'In any mix of roles' is the ruling the record asked for: reviewers count against the same ceiling as implementers, and the ceiling is raised rather than split by role. The run's lane rules carry the current figure (five agents alive, ruled 2026-09-29)."
 impact: internal
 resolved_by:
   commit: "0eb64ef24"

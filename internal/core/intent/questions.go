@@ -48,7 +48,7 @@ var (
 // questions. A record with no such section asks none.
 //
 // It reads fail-closed, recognising only the two settled markers the record
-// uses (the 2026-09-25 DECISIONS entry):
+// uses (the 2026-09-25 decision dcn-2609250000000028):
 //
 //   - a section whose first line is an italic `_All resolved …_` (or `_All
 //     four resolved …_`) is settled whole: every item below it is an answer

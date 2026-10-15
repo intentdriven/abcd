@@ -18,7 +18,7 @@ import (
 )
 
 // The LOAD domain carries the product thinker's ruling on iss-2609210828122412
-// (DECISIONS.md, 2026-09-23): orphaned background burners from a load
+// (dcn-2609230000000013): orphaned background burners from a load
 // experiment in a managed repository starved a development machine into a
 // kernel panic. Three of the ruling's four conditions hold as rules now, and
 // the bundled domain is how they reach an agent in every repository abcd

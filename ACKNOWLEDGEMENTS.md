@@ -89,7 +89,7 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   the signer pinned to abcd's release workflow and the statement naming the
   downloaded bytes. Like golang.org/x/term it is named here rather than in
   `go.mod` alone, because the product thinker signed it and its transitive
-  modules off by name (`.abcd/work/DECISIONS.md`, 2026-10-14).
+  modules off by name ([dcn-2610140000000002](.abcd/work/decisions/dcn-2610140000000002-the-product-thinker-signed-off-on-github.md), 2026-10-14).
 - **"20 Must-Know Agentic AI Terms" (Andreas Horn, LinkedIn, 2026)** — the
   practitioner term list whose assessment seeded the terminology crosswalk
   (itd-100, `docs/reference/terminology.md`). Credited as the prompt, not a

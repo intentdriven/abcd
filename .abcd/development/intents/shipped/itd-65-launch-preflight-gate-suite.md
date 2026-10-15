@@ -93,7 +93,7 @@ test (the evidence for each is under `## Decisions`).
   makes the dated CHANGELOG heading the release instrument, and its
   2026-08-26 amendment records that the ingest composes that section from the
   records that shipped, behind the completeness bijection (first cut this way:
-  v0.5.1, `.abcd/work/DECISIONS.md`, 2026-08-16). A gate cannot append prose to
+  v0.5.1, [dcn-2608160000000008](../../../work/decisions/dcn-2608160000000008-the-v0-5-1-release-gate-ruled-promote-2.md)). A gate cannot append prose to
   a changelog nothing hand-writes, so:
   - *The doc-history criterion (third).* Superseded: the offer to auto-append
     the flagged passage, and "the change is recorded in the changelog" as a

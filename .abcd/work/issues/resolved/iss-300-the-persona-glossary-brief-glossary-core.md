@@ -18,7 +18,7 @@ The persona glossary (brief/glossary/core/persona.md) and brief/01-product/05-pe
   determines the name — never pick a name directly", echoed by
   `.abcd/development/intents/disciplines/itd-79-persona-registry.md` ("by role, never by name").
   The `persona_registry` lint (`internal/core/lint/persona.go`, blocker) and the 2026-07-08 /
-  2026-08 DECISIONS entries confirm this is the shipped, reconciled rule; there is no
+  2026-08 entries in [`.abcd/work/decisions/`](../../decisions/) confirm this is the shipped, reconciled rule; there is no
   random-picker code in the tree.
 - `.abcd/development/brief/glossary/core/persona.md` says "Match the role hint when the role
   matters; pick randomly otherwise", and its worked examples assign `Carol, product lead`

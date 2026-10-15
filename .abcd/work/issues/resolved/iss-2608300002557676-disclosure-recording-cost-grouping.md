@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "facilitator review, 2026-08-28"
 found_at: "the workstream's filing plan"
 lapsed_at: "2026-08-28T00:00:00Z"
-resolution: "the cost-grouping caveat is a content disclosure under DECISIONS 2026-08-28 (a content defect is disclosed, not fixed)"
+resolution: "the cost-grouping caveat is a content disclosure under dcn-2608280000000005 (a content defect is disclosed, not fixed)"
 impact: internal
 ---
 

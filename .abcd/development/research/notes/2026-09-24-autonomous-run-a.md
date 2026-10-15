@@ -242,8 +242,8 @@ for abcd to learn from. Grouped:
 - **Evidence moves rulings.** The load-check ruling of the morning ("refuse
   when it is too high") became "warn, never refuse" once a review showed
   from the run's own load data that no threshold separates the crash from
-  normal parallel work. The record shows it as a change, in a DECISIONS
-  entry of its own.
+  normal parallel work. The record shows it as a change, in a decision
+  entry of its own, [dcn-2609230000000021](../../../work/decisions/dcn-2609230000000021-the-load-check-before-abcd-s-own-test.md).
 - **Who is running this now.** The pace changed mid-interview, and the
   interviewer heard it from the run, not from the product thinker. Each
   orchestrator rotation reached the interviewing session as a peer message

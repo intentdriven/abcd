@@ -9,7 +9,7 @@ skills to commands** via relabel (host-delegated markdown workflows, no Go
 verbs; the read-only skill boundary rule is kept — the classification gave).
 Implementation order: enumerate the three chapters + reclassify the three
 skills (so the coverage rule can go green), then build the rule (TDD, branch),
-then wire the detector gate. See DECISIONS.md 2026-07-11 and NEXT.md tasks.
+then wire the detector gate. See [dcn-2607110000000002](../../work/decisions/dcn-2607110000000002-iss-35-graduation-signed-off-maintainer.md) and NEXT.md tasks.
 
 The original design analysis is retained below as the rationale of record.
 

@@ -29,7 +29,7 @@ Bob's abcd is complete without it.
 ## Why This Matters
 
 The 2026-08-19 decision (ledger-canonical, one-way mirror, human-gated
-import — see `../../../work/DECISIONS.md` and the SOTA survey at
+import — see [dcn-2608190000000001](../../../work/decisions/dcn-2608190000000001-the-abcd-work-issues-ledger-is-the.md) and the SOTA survey at
 `../../research/notes/2026-08-19-issue-ledger-forge-sync-sota.md`) was
 hand-run the same day on iss-285/286/287 and graded in
 `../../research/notes/2026-08-19-forge-mirror-pilot.md`. The pilot's verdict:

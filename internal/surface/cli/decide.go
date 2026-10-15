@@ -5,7 +5,7 @@ package cli
 // through internal/core/decisions, one file in `.abcd/work/decisions/`; bare
 // `abcd decide` lists those records newest first; and `abcd decide --adr
 // "<title>"` mints an architecture decision record through internal/core/decide
-// (the 2026-09-01 ruling in `.abcd/work/DECISIONS.md`). Decisions outnumber
+// (the 2026-09-01 ruling dcn-2609010000000007). Decisions outnumber
 // ADRs about eight to one, so the common act takes the short form.
 //
 // The verb is deliberately SMALL, for the reason ideate's is: everything an ADR

@@ -127,7 +127,7 @@ citations'. That is the property the family was moved for. A hand-numbered
 ordinal is allocated by reading the directory, so two branches deciding on the
 same day allocate the same number — which is what happened when `0055` and
 `0056` were each minted twice, and it is the collision the ruling of 2026-09-01
-(`.abcd/work/DECISIONS.md`, that date) closed by construction.
+([dcn-2609010000000007](../../../work/decisions/dcn-2609010000000007-adrs-take-timestamp-ids-through-the-same.md)) closed by construction.
 
 The filename is the stamp followed by the slug, so a directory listing is in
 decision order and the two vintages do not interleave: every ordinal is shorter

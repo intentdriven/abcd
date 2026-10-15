@@ -150,7 +150,7 @@ None stated.
   when the next session starts, then the session reports the version
   transition performed.
   _Amended 2026-09-30 by the product thinker's rulings CJ1 and CJ1b of
-  2026-09-29 (recorded in `.abcd/work/DECISIONS.md` under 2026-09-30): the
+  2026-09-29 (recorded in [dcn-2609300000000011](../../../work/decisions/dcn-2609300000000011-rulings-cj1-and-cj1b-of-the-product.md)): the
   transition is reported once, by the process that performed the swap, when
   it completes: the bootstrap's success notice and `abcd update`'s receipt
   open with `abcd updated from X to Y`, and the session start shows it only
@@ -165,7 +165,7 @@ None stated.
   each platform, then observed behaviour matches — verified by an agent's
   check on macOS plus the Linux leg of CI, with the record naming both runs.
   _Amended 2026-09-29 by the product thinker's ruling (recorded in
-  `.abcd/work/DECISIONS.md` under that date): the agent's check on macOS and
+  [dcn-2609290000000007](../../../work/decisions/dcn-2609290000000007-the-product-thinker-answered-twenty-six.md)): the agent's check on macOS and
   the Linux CI run stand in for the per-platform check by a person that this
   criterion first asked for ("recorded as a machine-class criterion,
   human-verified per platform", with the itd-109 calibration as the harness).
@@ -243,11 +243,11 @@ Per-criterion verdicts:
   evidence: internal/core/ahoy/vintage.go:155 — ""the running abcd binary's vintage cannot be determined (an unstamped or modified/dirty build) ... Rebuild it with `make build`"
   evidence: internal/core/ahoy/refusal_test.go:23 — "func TestInstallRefusesUnknownVintage"
   evidence: internal/core/ahoy/vintage_test.go:41 — "func TestVintageFromUnknownCurrentIsTerminal"
-- ac-8 — MET_WITH_CONCERNS: the closed spec names both runs; the Linux run (36608836118 at de42f275a, job check (ubuntu-latest) 109544802516) reads success on the forge, and the auditor re-ran the 25 named tests on darwin/arm64 (25 pass, 0 skipped); the concerns are that the amendment cites a 2026-09-29 ruling 'recorded in .abcd/work/DECISIONS.md' which no line of that file carries at 8ffb6d069 or on main, and that the end-to-end scratch-copy check is narrative only, with no script or log in the tree to re-run
+- ac-8 — MET_WITH_CONCERNS: the closed spec names both runs; the Linux run (36608836118 at de42f275a, job check (ubuntu-latest) 109544802516) reads success on the forge, and the auditor re-ran the 25 named tests on darwin/arm64 (25 pass, 0 skipped); the concerns are that the amendment cites a 2026-09-29 ruling 'recorded in' the decision log, which no line of that log carries at 8ffb6d069 or on main, and that the end-to-end scratch-copy check is narrative only, with no script or log in the tree to re-run
   evidence: .abcd/development/specs/closed/spc-2609230613208843-per-platform-staleness-calibration.md:36 — "CI workflow run 36608836118, job `check (ubuntu-latest)` (job 109544802516)"
   evidence: .abcd/development/specs/closed/spc-2609230613208843-per-platform-staleness-calibration.md:42 — "**macOS: the agent's check, 2026-09-29, at the same commit (darwin/arm64).**"
   evidence: .abcd/development/intents/shipped/itd-111-a-stale-abcd-never-answers-silently.md:160 — "`.abcd/work/DECISIONS.md` under that date"
-  evidence: .abcd/work/DECISIONS.md:2587 — "2026-09-29 — An autonomous run keeps at most five sub-agents alive at once (the last 2026-09-29 line; none names itd-111, platform parity or a stand-in check)"
+  evidence: [dcn-2609290000000003](../../../work/decisions/dcn-2609290000000003-an-autonomous-run-keeps-at-most-five.md) — "2026-09-29 — An autonomous run keeps at most five sub-agents alive at once (the last 2026-09-29 line; none names itd-111, platform parity or a stand-in check)"
 
 Gap audit:
 - honoured:
@@ -269,7 +269,7 @@ Gap audit:
     evidence: internal/surface/cli/update.go:53 — "return runVersion(cmd, *asJSON, true)"
   - the vintage report AC3 places on `abcd version` is at `abcd --version`; `abcd version` refuses with a moved notice (same consolidation)
     evidence: internal/surface/cli/version.go:72 — "cmd.Deprecated = "its report moved to `abcd --version` and its check to `abcd update --check`""
-  - the amended AC8 cites a 2026-09-29 product-thinker ruling recorded in .abcd/work/DECISIONS.md; no such line exists at 8ffb6d069 or on main (the PR body says a separate rulings lane appends it)
+  - the amended AC8 cites a 2026-09-29 product-thinker ruling recorded in the decision log; no such line exists at 8ffb6d069 or on main (the PR body says a separate rulings lane appends it)
     evidence: .abcd/development/intents/shipped/itd-111-a-stale-abcd-never-answers-silently.md:160 — "`.abcd/work/DECISIONS.md` under that date"
     evidence: [dcn-2609290000000003](../../../work/decisions/dcn-2609290000000003-an-autonomous-run-keeps-at-most-five.md) — "2026-09-29 — An autonomous run keeps at most five sub-agents alive"
   - under an explicit --bin-dir a writability probe creates and removes a temp file before the stale refusal, and its comment says it creates nothing

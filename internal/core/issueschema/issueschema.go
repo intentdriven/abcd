@@ -149,7 +149,7 @@ var Known = map[string]bool{
 // `related_intents`, and the intent names the record back in `related_issues`.
 //
 // A retired key is NOT in Known, so the reader refuses a record carrying it —
-// no reader tolerates the old spelling (DECISIONS.md, 2026-09-23). This map
+// no reader tolerates the old spelling (dcn-2609230000000016). This map
 // exists so that refusal, the committed-ledger gate's and the drift check's all
 // name the successor and the one verb that rewrites it, `abcd capture migrate`,
 // instead of reporting an unexplained unknown property.

@@ -212,12 +212,13 @@ var proseBaselineClasses = map[string]bool{
 	// A numeric id written to demonstrate behaviour rather than to cite, at a
 	// site that CANNOT carry the line marker — the marker is the ordinary door
 	// for this class, and a baseline entry is a GLOBAL licence: every future
-	// mention of that id, anywhere, passes unmarked. No entry uses this class
-	// today; the corpus's illustrative ids (itd-9999, itd-1990,
-	// iss-2608201142077341) are each marked on their own line instead. It stays
-	// as a class because one shape genuinely cannot be marked — a value a reader
-	// consumes verbatim, such as the `slug:` field — and the alternative to a
-	// named class there is an entry that lies about which door it used.
+	// mention of that id, anywhere, passes unmarked. The corpus's illustrative
+	// ids (itd-1990, iss-2608201142077341) are each marked on their own line
+	// instead. It stays as a class because some shapes genuinely cannot be
+	// marked — a value a reader consumes verbatim, such as the `slug:` field, or
+	// a decision record migrated verbatim from the retired single log, which
+	// carries itd-9999 and adr-9999 — and the alternative to a named class there
+	// is an entry that lies about which door it used.
 	"illustrative": true,
 	// A record that is not in this tree yet — typically one living on an
 	// unmerged branch.

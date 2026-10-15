@@ -65,7 +65,7 @@ AC as ordered in itd-4 → status and evidence:
    prose as the AC literally says. The live design is deliberate and
    queryable, in daily use across the 100+-entry ledger; the note is captured
    and durable. Adjudicated as an intentional design evolution, not a gap
-   (DECISIONS.md 2026-07-17). Covered by `TestResolveTransition`.
+   ([dcn-2607170000000002](../../../work/decisions/dcn-2607170000000002-burst-3-m3-itd-4-spc-6-three-record.md)). Covered by `TestResolveTransition`.
 3. **`capture promote iss-N` → intent draft + bidirectional links** —
    **met (2026-09-23).** `abcd capture promote <iss-N>` mints the draft (the
    quoted-text create itd-46 shipped and `capture.Promote` both route through

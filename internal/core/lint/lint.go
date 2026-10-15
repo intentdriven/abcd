@@ -832,7 +832,7 @@ var contextStatusDefaultPatterns = []string{
 	`(?i)^status:`,
 }
 
-const contextStatusMessage = "CONTEXT.md is status-free (DECISIONS.md 2026-07-10): status lives in the live surfaces (CLI, ledger), not in orientation docs"
+const contextStatusMessage = "CONTEXT.md is status-free (dcn-2607100000000005): status lives in the live surfaces (CLI, ledger), not in orientation docs"
 
 // checkContextStatusFree scans a single target file (the work-tier CONTEXT.md,
 // which sits outside cfg.Roots) line by line, flagging every line that matches

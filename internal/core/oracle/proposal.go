@@ -8,9 +8,8 @@ type proposed struct {
 	// ceiling is the most agents one step of this agent may run at once,
 	// itself included. No agent contract under agents/ declares a fan-out
 	// ceiling, and every agent in the roster is a single prompt that spawns no
-	// sub-agent of its own, so each ceiling is 1 (.abcd/work/DECISIONS.md,
-	// 2026-09-25). A contract that grows a ceiling field moves the number
-	// there; the roster test keeps this table and agents/ in step either way.
+	// sub-agent of its own, so each ceiling is 1 (dcn-2609250000000006). A
+	// contract that grows a ceiling field moves the number there; the roster test keeps this table and agents/ in step either way.
 	ceiling int
 }
 

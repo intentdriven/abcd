@@ -32,7 +32,7 @@ carried that paragraph as its `## Expectation`, written before the work;
 retiring the phase removed it, and the ADR's last consequence names a release
 press release composed from the shipped intents' press releases as its nearest
 home and leaves the step unruled. The product thinker ruled it on 2026-09-23
-(DECISIONS.md, the 2026-09-23 rulings entry; the interview's fuller wording is
+([dcn-2609230000000001](../../../work/decisions/dcn-2609230000000001-the-product-thinker-ruled-on-the-owed.md), the 2026-09-23 rulings entry; the interview's fuller wording is
 recorded in this intent's Decisions below): each release gets a press release
 composed at the cut from its shipped intents' press releases, backward-looking,
 and this release is the first to carry one.

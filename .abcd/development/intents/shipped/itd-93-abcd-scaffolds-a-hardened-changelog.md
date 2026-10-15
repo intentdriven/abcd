@@ -16,7 +16,7 @@ impact: additive
 
 ## Press Release
 
-> _Design settled in the 2026-07-24 maintainer grill (see DECISIONS.md); the
+> _Design settled in the 2026-07-24 maintainer grill (see [dcn-2607240000000003](../../../work/decisions/dcn-2607240000000003-itd-93-design-settled-in-maintainer.md)); the
 > four resolved decisions are folded below and recorded in § Open Questions._
 
 > **A repo abcd manages gets a release process that is correct the day it goes
@@ -189,8 +189,8 @@ None stated.
 
 ## Open Questions
 
-_All four resolved in the 2026-07-24 maintainer grill (see DECISIONS.md,
-2026-07-24 entries). The PRD is synthesised from that interview; promotion is
+_All four resolved in the 2026-07-24 maintainer grill (see [dcn-2607240000000003](../../../work/decisions/dcn-2607240000000003-itd-93-design-settled-in-maintainer.md)
+and [dcn-2607240000000005](../../../work/decisions/dcn-2607240000000005-next-run-queue-reshaped-by-the-grill-the.md)). The PRD is synthesised from that interview; promotion is
 queued in `../../plans/2026-07-24-next-run-queue.md` (Track 1)._
 
 - **Which surface scaffolds it?** RESOLVED: a `launch` sub-verb (e.g.

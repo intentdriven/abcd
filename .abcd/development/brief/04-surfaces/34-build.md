@@ -57,8 +57,8 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   not a question; the same word and colon mid-sentence are prose.
   Every other list item is a question whatever it says: one led `**Open`, one
   that only points to another record, and one that merely mentions deferral
-  all count (the 2026-09-25 entry in `.abcd/work/DECISIONS.md`, and its
-  2026-09-28 correction).
+  all count (the 2026-09-25 decision [dcn-2609250000000028](../../../work/decisions/dcn-2609250000000028-the-build-s-open-question-check-reads.md), and its
+  2026-09-28 correction [dcn-2609280000000008](../../../work/decisions/dcn-2609280000000008-correction-to-the-2026-09-25-entry-on.md)).
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to

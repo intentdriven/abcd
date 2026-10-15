@@ -121,7 +121,7 @@ func TestSubstitutionInCommandPosition(t *testing.T) {
 }
 
 // TestUnknownWordOverBlocksStayRecorded pins the two over-blocks the rule
-// accepts in the fail-closed direction (recorded in .abcd/work/DECISIONS.md):
+// accepts in the fail-closed direction (recorded in dcn-2609250000000015):
 // an unknown operand can be any subcommand, so a read-only command whose
 // subcommand a substitution prints reads as the hazard its entry names.
 func TestUnknownWordOverBlocksStayRecorded(t *testing.T) {

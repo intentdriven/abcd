@@ -15,7 +15,7 @@ The iss35 crosscheck's scope and depth are unpinned, so the gate is not reproduc
 
 ---
 
-**Design decided (2026-07-24, maintainer grill; see DECISIONS.md):** a
+**Design decided (2026-07-24, maintainer grill; see [dcn-2607240000000002](../../decisions/dcn-2607240000000002-iss-122-design-the-crosscheck-gate-gets.md)):** a
 committed input manifest under `.abcd/development/release-gate/` pins the doc
 list, directions, checker count, and prompt hash, with **tiered depth** — full
 depth for feature/breaking releases, a Direction-B-only shallow pass for patch

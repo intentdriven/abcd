@@ -9,7 +9,7 @@ found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/launch/gates.go"
-resolution: "The narration hard tier refuses genuine narration again: every construct is refused except its present-state readings (comparative and is/are relative-clause no longer, the is-renamed-to-match purpose form, previously/now with no clause-opening previously and no change verb within three words, used to as a passive or participle); the must-refuse and must-pass sets are one table, narrationSpecification, read by TestNarrationGateHardFailsOnAChangeConstruct and TestNarrationGatePassesPresentTense; the residual trade is in DECISIONS.md (2026-09-25)."
+resolution: "The narration hard tier refuses genuine narration again: every construct is refused except its present-state readings (comparative and is/are relative-clause no longer, the is-renamed-to-match purpose form, previously/now with no clause-opening previously and no change verb within three words, used to as a passive or participle); the must-refuse and must-pass sets are one table, narrationSpecification, read by TestNarrationGateHardFailsOnAChangeConstruct and TestNarrationGatePassesPresentTense; the residual trade is in dcn-2609250000000018 (2026-09-25)."
 impact: fix
 resolved_by:
   commit: "45ace81f"

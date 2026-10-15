@@ -76,8 +76,8 @@ func executedTree(build func() *cobra.Command) func() *cobra.Command {
 // frameworkCommands are the visible commands cobra itself adds when the tree
 // executes: `help` and `completion` with its four shells. `abcd --help` lists
 // them under Set-up with cobra's own text, and the manifest carries no sentence
-// for them, because they are the framework's (DECISIONS.md, 2026-09-25, the
-// sentence lane's rulings). The gate exempts them by name, and
+// for them, because they are the framework's (dcn-2609250000000022 and
+// dcn-2609250000000024, the sentence lane's rulings). The gate exempts them by name, and
 // TestTheFrameworkCommandsAreTheOnlyExemption holds the name list to the tree,
 // so the gate never reads as covering every listed verb while some are outside it.
 var frameworkCommands = map[string]bool{

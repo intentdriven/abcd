@@ -180,7 +180,7 @@ None stated.
 ## Decisions
 
 Ruled by the product thinker on 2026-09-29 (interview by orchestrator abcd-23
-of autonomous run A; recorded in `.abcd/work/DECISIONS.md` under that date):
+of autonomous run A; recorded in [dcn-2609290000000007](../../../work/decisions/dcn-2609290000000007-the-product-thinker-answered-twenty-six.md)):
 
 1. **The store under the home folder wins** (adr-2609091248200336): a
    per-change worktree lives in the store, never inside or beside the

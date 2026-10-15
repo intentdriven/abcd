@@ -7,7 +7,7 @@ category: "process"
 source: "user-observation"
 found_during: "abcdev-site session close-out 2026-08-22"
 found_at: "CHANGELOG.md"
-resolution: "the changelog is derived from one-file-per-record transitions (DECISIONS 2026-08-26: the changelog is an INDEX, and Unreleased must be empty), so no shared entries are left to contend over"
+resolution: "the changelog is derived from one-file-per-record transitions (dcn-2608260000000003: the changelog is an INDEX, and Unreleased must be empty), so no shared entries are left to contend over"
 impact: internal
 ---
 

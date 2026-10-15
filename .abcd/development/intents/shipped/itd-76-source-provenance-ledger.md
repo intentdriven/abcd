@@ -87,7 +87,7 @@ Per-criterion verdicts:
   evidence: internal/core/source/source_test.go:572 — "func TestTheRepositoryGuardRefreshesWithItsOwnBuild"
   evidence: internal/core/source/source_test.go:401 — "the guard let a confidential title through"
   evidence: internal/core/ahoy/defaults/pre-commit:481 — "elif [ -z "$sources_bin" ]; then"
-  evidence: .abcd/work/DECISIONS.md:2562 — "The copy `abcd ahoy` scaffolds refreshes only when the clone opts in with \`git config --local abcd.sourcesBinary"
+  evidence: [dcn-2609250000000027](../../../work/decisions/dcn-2609250000000027-the-pre-commit-guard-s-sources-refresh.md) — "The copy `abcd ahoy` scaffolds refreshes only when the clone opts in with \`git config --local abcd.sourcesBinary"
 - ac-4 — MET: CiteCheck scans through the private layer's matcher and a Finding carries source key, field, line and offset only; TestCiteCheckReportsByKeyOnly asserts the JSON report holds no title, alias or author
   evidence: internal/core/source/guard.go:91 — "type Finding struct"
   evidence: internal/core/source/guard.go:135 — "Finding{Source: key, Field: field, Line: h.Line, Offset: h.Offset}"

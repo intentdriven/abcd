@@ -13,7 +13,7 @@ explicitly. Unsettled questions are recorded *as
 questions*, never as claims — registered in
 [`03-evidence/03-open-questions.md`](03-evidence/03-open-questions.md), or
 carried inline as an explicit `Open question (adr-35)` note where one bears
-directly on a passage (DECISIONS.md, 2026-07-14). This follows from
+directly on a passage ([dcn-2607140000000005](../../work/decisions/dcn-2607140000000005-adr-35-s-blast-radius-across-the-record.md)). This follows from
 [adr-5](../decisions/adrs/0005-brief-is-current-state.md): the brief is the
 project's current state, and that state includes what the project has decided
 to build but not yet built.

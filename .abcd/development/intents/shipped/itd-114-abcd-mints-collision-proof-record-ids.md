@@ -45,7 +45,7 @@ priced no longer exists.
 The week of 2026-08-19/20 reopened the question with recorded costs: **three
 live id collisions in two days** across three distinct minter pairings
 (hunt-vs-session twice, hunt-vs-hunt once; iss-330 is the standing record, the
-round-2 renumber in `DECISIONS.md` the second occurrence, PR #386 the third),
+round-2 renumber in [dcn-2608200000000001](../../../work/decisions/dcn-2608200000000001-bughunt-round-2-branch-bughunt-a-round-2.md) the second occurrence, PR #386 the third),
 one of which invalidated a tagged release cut whose receipts were already
 frozen and forced a full re-cut. The
 [graded field test](../../research/notes/2026-08-20-itd-114-collision-field-test.md)
@@ -75,7 +75,7 @@ else. Safety must live in the mint, not in every minter's prompt.
 
 ## What's Out of Scope
 
-- **The forge as a store.** The 2026-08-19 decision (`DECISIONS.md`; embodied
+- **The forge as a store.** The 2026-08-19 decision ([dcn-2608190000000001](../../../work/decisions/dcn-2608190000000001-the-abcd-work-issues-ledger-is-the.md); embodied
   in [itd-129](../drafts/itd-129-forge-mirror-as-an-opt-in-adapter-the.md))
   is ledger-canonical, mirror-out, "the forge owns nothing" — this intent's
   forge option allocates numbers and never stores records. Any forge

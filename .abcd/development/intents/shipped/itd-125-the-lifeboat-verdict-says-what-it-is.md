@@ -34,7 +34,7 @@ target (the real seam surface, adr-25), and leaves the artefact
 (`audit/oracle-*.json`) contradicting the vocabulary at every level. The
 maintainer therefore **reversed adr-40 §5** ("keep the verb, fix the prose")
 in favour of the rename — the reversal is recorded as a dated amendment
-inside adr-40 §5 and a `DECISIONS.md` line. The oracle seam itself is
+inside adr-40 §5 and the decision [dcn-2608160000000005](../../../work/decisions/dcn-2608160000000005-adr-40-5-reversed-at-the.md). The oracle seam itself is
 untouched: adr-25 stands, and `oracle` remains the seam's name.
 
 ## Scope Conditions
@@ -67,7 +67,7 @@ None stated.
   re-checked in the same change.
 - **Given** the decision record, **then** the adr-40 §5 amendment (dated,
   in-place, recording the compute-or-ingest finding and the reversal) and
-  one dated `DECISIONS.md` line land with this intent's planning records.
+  one dated decision ([dcn-2608160000000005](../../../work/decisions/dcn-2608160000000005-adr-40-5-reversed-at-the.md)) land with this intent's planning records.
 - **Given** itd-122's extended `surface_coverage` armed, **then** the
   `disembark` sub-verb table row flips in the same change — `record-lint`
   exit 0 proves the migration; landing before the check is armed is

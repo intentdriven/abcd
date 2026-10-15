@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "session-closeout-audit-2026-08-23"
 found_at: ".abcd/development/research/notes/2026-08-22-ideate-cli-verb-taxonomy-restructure.md"
 deferred_after: "v0.11.1"
-deferral_reason: "ruling owed to the product thinker (lapsed-deferral triage, run A 2026-09-29): Is the CLI command tree an engine API free to diverge from the plugin surface's spelling, or must the two keep one spelling? No ADR or DECISIONS entry has ruled it at v0.11.1."
+deferral_reason: "ruling owed to the product thinker (lapsed-deferral triage, run A 2026-09-29): Is the CLI command tree an engine API free to diverge from the plugin surface's spelling, or must the two keep one spelling? No ADR or .abcd/work/decisions/ entry has ruled it at v0.11.1."
 remedy: "Waits on the ruling on whether the CLI tree may diverge from the plugin surface's spelling; record the answer as an ADR either way. If one spelling: surface_coverage refuses a Go verb with no command page of the same name, and a page with no verb, unless the pair is on a declared exception list (changelog, spec and rules today); if free to diverge: each command page declares in its frontmatter the verb path it invokes and surface_coverage joins on that declaration instead of the name. Prove either with a surface_coverage test over a fixture tree holding one undeclared divergence."
 ---
 

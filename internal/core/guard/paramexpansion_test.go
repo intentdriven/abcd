@@ -60,7 +60,7 @@ func TestParameterExpansionIsAnUnknownWord(t *testing.T) {
 // TestParameterExpansionInOperandPositionStaysAnOperand pins the other half of
 // the rule: a variable that is a whole word is read as one operand of unknown
 // value, never as every flag, exactly as a whole-word substitution is (allow
-// (1) of DECISIONS 2026-09-25). That is how everyday commands spell a branch, a
+// (1) of dcn-2609250000000014). That is how everyday commands spell a branch, a
 // message, an API path and a file, and none of them is a new block.
 func TestParameterExpansionInOperandPositionStaysAnOperand(t *testing.T) {
 	runVerdictCases(t, []verdictCase{

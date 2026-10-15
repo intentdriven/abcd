@@ -7,7 +7,7 @@
 // It exists because ADRs were the last record family allocating by hand. Two
 // branches minted `0055` and `0056` on the same day for different decisions —
 // the add/add collision the timestamp mint removed for captures, intents and
-// specs — and the 2026-09-01 ruling (`.abcd/work/DECISIONS.md`, that date) took
+// specs — and the 2026-09-01 ruling (dcn-2609010000000007) took
 // the family onto the same seam: an ADR filed from then on is
 // `adr-<yymmddHHMMSS><rrrr>`, in a file the stamp orders. The hand-numbered
 // ordinals `0001`–`0058` keep their ids and their filenames; nothing is

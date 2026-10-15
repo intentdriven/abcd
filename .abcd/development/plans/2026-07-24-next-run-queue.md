@@ -6,7 +6,7 @@ the generic protocol at
 supersedes the pick-up role of
 [`2026-07-18-next-drain-run-queue.md`](2026-07-18-next-drain-run-queue.md)
 (itd-93's readiness gates listed there are now cleared — see the 2026-07-24
-DECISIONS.md entries; that file remains the record of why they were gates).
+decisions [dcn-2607240000000003](../../work/decisions/dcn-2607240000000003-itd-93-design-settled-in-maintainer.md) and [dcn-2607240000000005](../../work/decisions/dcn-2607240000000005-next-run-queue-reshaped-by-the-grill-the.md); that file remains the record of why they were gates).
 
 ## Run contract
 
@@ -31,7 +31,7 @@ functionality into early dogfooded use.
 Hitting one means stop and report, never push through (per the playbook):
 
 1. **itd-93 PRD synthesis ambiguity** — the PRD is synthesised from the
-   2026-07-24 grill decisions (DECISIONS.md). If synthesis requires an
+   2026-07-24 grill decisions ([dcn-2607240000000003](../../work/decisions/dcn-2607240000000003-itd-93-design-settled-in-maintainer.md)). If synthesis requires an
    interpretation the grill did not settle, STOP; do not invent the bar.
 2. **receipt_gate schema** — iss-122 adds manifest-hash and tier fields to the
    receipt contract. Any change beyond adding those fields (renaming, removing,

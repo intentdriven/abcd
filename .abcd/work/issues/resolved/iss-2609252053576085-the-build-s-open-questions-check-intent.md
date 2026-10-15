@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "autonomous run A resumed 2026-09-25"
 origin: researcher-authored
 production_mode: hand-written
-resolution: "intent.OpenQuestions reads the section opener _All resolved …_ and an item's explicit resolved/deferred marker, and nothing else; the rule is the 2026-09-25 DECISIONS entry. itd-111 and itd-93 now pass; ten planned intents still refuse on items the record does not mark settled."
+resolution: "intent.OpenQuestions reads the section opener _All resolved …_ and an item's explicit resolved/deferred marker, and nothing else; the rule is the 2026-09-25 entry dcn-2609250000000028. itd-111 and itd-93 now pass; ten planned intents still refuse on items the record does not mark settled."
 impact: fix
 resolved_by:
   commit: "b321386f"

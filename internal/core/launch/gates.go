@@ -394,7 +394,7 @@ var narrationEscapeRe = regexp.MustCompile(`(?i)<!--\s*docs-lint:\s*allow\b`)
 // (itd-65 AC10); the present-tense warning docs lint carries is where they
 // belong. The gate's specification is narrationSpecification in
 // gates_test.go, and the pairs it cannot tell apart lexically are refused
-// (the escape marker exists for them), a trade recorded in DECISIONS.md.
+// (the escape marker exists for them), a trade recorded in dcn-2609250000000018.
 var narrationConstructs = []struct {
 	name  string
 	re    *regexp.Regexp

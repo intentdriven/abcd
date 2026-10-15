@@ -42,5 +42,5 @@ Deferred past v0.11.1: Promoted to itd-2609091034175565 (draft), and a promoted 
 ## Remedy grounds (2026-09-29)
 
 - itd-2609221656373558 (shipped) answers how an abandoned claim is told from a live one inside one account: a lease that lapses and is logged; itd-2609091416295622 (shipped) is the sibling-worktree listing.
-- The open question is only whether the stop must reach other machines, where the 2026-09-09 ruling in .abcd/work/DECISIONS.md prices the pushed claim at a merge-queue pass per claim.
+- The open question is only whether the stop must reach other machines, where the 2026-09-09 ruling [dcn-2609090000000005](../../decisions/dcn-2609090000000005-itd-2609091034175565-the-claim-intent-is.md) prices the pushed claim at a merge-queue pass per claim.
 - Rejected: a lock file in the tree, which the record refuses as a primitive that rots.

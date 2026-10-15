@@ -18,7 +18,7 @@ claim is grounded in the committed record; every established definition is
 grounded in a fetch-verified primary source.
 
 The term inventory and all positions were settled at the 2026-07-26 maintainer
-grill (DECISIONS.md); the sweep evidence came from a six-cluster primary-source
+grill ([dcn-2607260000000001](../../../work/decisions/dcn-2607260000000001-itd-100-grill-settled-crosswalk-is-a.md)); the sweep evidence came from a six-cluster primary-source
 research pass (protocols, core loop, context, safety, governance, operations)
 plus a full record-mapping pass, all URLs fetch-verified 2026-07-26 and the two
 bot-blocked OpenAI posts human-verified 2026-07-27.

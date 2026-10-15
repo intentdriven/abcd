@@ -42,7 +42,7 @@ adding state: bucket is directory-as-truth, acceptance criteria reuse
 `countAcceptanceCriteria` (the same parser `Plan` and the fidelity review
 use), the link check mirrors `Reconcile`'s bidirectional-agreement guard as a
 report, and the body check keys on the shared stub marker. AC sign-off is
-implicit in a human-run `abcd intent plan` (DECISIONS.md 2026-07-18): no new
+implicit in a human-run `abcd intent plan` ([dcn-2607180000000002](../../../work/decisions/dcn-2607180000000002-acceptance-criteria-sign-off-is-implicit.md)): no new
 frontmatter, no forgeable schema; agents are barred from unattended planning
 at the protocol layer.
 

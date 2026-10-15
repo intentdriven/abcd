@@ -493,7 +493,7 @@ actually read that commit (F-G applied).
 Chasing the backtick doc finding to ALL its occurrences (git grep across every
 tracked file — the scope error in F-T taught me to grep the whole repo, not a
 dir subset) surfaced far more than a stale line:
-- History (DECISIONS.md): backtick-following was REVERTED on 2026-08-01 after
+- History ([dcn-2608010000000004](../../../work/decisions/dcn-2608010000000004-guard-batch-iss-159-144-148-revert-of.md)): backtick-following was REVERTED on 2026-08-01 after
   three adversarial rounds each found a guard-bypass regression; iss-148 re-opened.
 - This release's gh-312 (iss-2608270500192596) RE-implemented it. I did NOT trust
   the changelog claim — I built the binary and ran the exact revert-era adversarial
@@ -502,7 +502,7 @@ dir subset) surfaced far more than a stale line:
   BLOCKS. gh-312 genuinely solved what three rounds couldn't.
 - But one bypass remains for BOTH `$()` and backticks: a substitution before an
   enclosing command's trailing flags truncates them — `cd s && rm $(true) -rf *`
-  ALLOWS vs `cd s && rm -rf *` BLOCKS. Pre-existing `$()` gap (per DECISIONS.md),
+  ALLOWS vs `cd s && rm -rf *` BLOCKS. Pre-existing `$()` gap (per [dcn-2608010000000004](../../../work/decisions/dcn-2608010000000004-guard-batch-iss-159-144-148-revert-of.md)),
   now shared by backticks at parity; the deep sub-part iss-148 defers.
 - Ledger inconsistency: iss-148 (OPEN, "neither form followed") contradicted
   iss-2608270500192596 (RESOLVED, "backticks now followed"). Reconciled: narrowed

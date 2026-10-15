@@ -240,7 +240,7 @@ in-daily-use design stores it as a queryable frontmatter scalar. For record
 catch-up items this class — the AC letter written before implementation,
 the implementation deliberately better — recurs (burst 1's SessionEnd-vs-Stop
 was the same shape). The run handled it by adjudicating in the spec body +
-DECISIONS.md. The protocol should name this verdict explicitly (met-with-
+[dcn-2607170000000002](../../work/decisions/dcn-2607170000000002-burst-3-m3-itd-4-spc-6-three-record.md). The protocol should name this verdict explicitly (met-with-
 recorded-deviation) so catch-up runs neither force code back to the stale
 letter nor silently mark MET.
 
@@ -305,7 +305,7 @@ rule is now "full `record-lint` after every record commit, not just `audit`".
   line in a worker prompt is cheap insurance.
 - **Judgment calls surfaced, not buried:** the worker flagged its self-quote
   sweep decision (itd-48's internal quotes) as an explicit judgment call in
-  its report; the orchestrator promoted it to DECISIONS.md and the spec body.
+  its report; the orchestrator promoted it to the decision [dcn-2607170000000004](../../work/decisions/dcn-2607170000000004-burst-5-m5-itd-43-spc-8-gl002-enforces-a.md) and the spec body.
 - **Heaviest worker of the run:** ~169k subagent tokens, ~23 min, 95 tool
   uses, 4 commits — the detector-build + corpus-sweep combination is the
   upper end of what one worker context comfortably holds.

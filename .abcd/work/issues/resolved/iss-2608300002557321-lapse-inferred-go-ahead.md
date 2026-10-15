@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "cold-reading workstream session 1, 2026-08-29"
 found_at: "the workstream's Phase 1 filing, discarded"
 lapsed_at: "2026-08-29T00:00:00Z"
-resolution: "the branch was deleted and the cycle restarted on an explicit go: DECISIONS 2026-08-30, Cycle 1 restarts on v0.6.9"
+resolution: "the branch was deleted and the cycle restarted on an explicit go: dcn-2608300000000002, Cycle 1 restarts on v0.6.9"
 impact: internal
 ---
 

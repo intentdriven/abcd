@@ -50,5 +50,5 @@ The 2026-07-08 dependency sweep demonstrated the failure mode this kills: twenty
 
 - Registry: `.abcd/development/personas.json` (schema_version 2 — role-first selection convention).
 - Gate: `persona_registry` rule in `.abcd/record-lint.json`, implemented in `internal/core/lint/persona.go`.
-- Lineage: promoted from the `principles/` layer per the promotion path recorded in `principles/README.md`; decision lines of 2026-07-08 in `.abcd/work/DECISIONS.md`.
+- Lineage: promoted from the `principles/` layer per the promotion path recorded in `principles/README.md`; decision lines of 2026-07-08: [dcn-2607080000000002](../../../work/decisions/dcn-2607080000000002-personas-in-any-scenario-are-always.md), [dcn-2607080000000003](../../../work/decisions/dcn-2607080000000003-consume-model-interview-spec-id-is.md), [dcn-2607080000000004](../../../work/decisions/dcn-2607080000000004-persona-registry-lint-shipped.md), [dcn-2607080000000005](../../../work/decisions/dcn-2607080000000005-persona-ssots-reconciled-personas-json.md).
 - Convention prior art: controlled-vocabulary field binding (DITA subject-scheme pattern) — see `ACKNOWLEDGEMENTS.md`.

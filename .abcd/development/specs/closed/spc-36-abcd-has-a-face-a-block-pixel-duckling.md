@@ -78,7 +78,7 @@ Out (per the intent): ANSI/terminal rendering, colour detection, fallbacks
    and doc comments; no forge page rewiring.
 4. *True geometry full-size, labelled-approximate compact* —
    `TestFlagGeometry` plus the compact variant's labels.
-5. *Role assignment discoverable* — recorded in `.abcd/work/DECISIONS.md`
+5. *Role assignment discoverable* — recorded in [dcn-2608210000000002](../../../work/decisions/dcn-2608210000000002-visual-identity-roles-itd-133.md)
    (2026-08-21 entry), linked from the intent's Prior Art and criteria.
 6. *Ships via docs/, scratch stays local* — assets land under
    `docs/assets/img/livery/`, already inside the launch payload's `docs/`

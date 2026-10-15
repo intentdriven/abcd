@@ -48,8 +48,8 @@ product thinker adopted both halves on 2026-09-23 (iss-2609100506256173).
 four times in five across a handful of vendors would make the tag ceremony, and
 it would be dropped.
 
-**Promotion.** The enabling convention is this page and its entry in
-`.abcd/work/DECISIONS.md` (2026-09-23). No rung above it exists: nothing checks
+**Promotion.** The enabling convention is this page and its decision record
+[dcn-2609230000000011](../../work/decisions/dcn-2609230000000011-agent-guidance-that-walks-a-person.md) (2026-09-23). No rung above it exists: nothing checks
 that a redaction rule carries a purpose or that a runbook step carries a tag.
 The next rung is a purpose field on the redaction rules a managed repository
 declares, refused when empty.

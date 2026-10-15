@@ -211,8 +211,8 @@ func ReadDispositions(content string) []Disposition {
 // Position cannot decide between the sources because it is not the order of
 // writing: the verdict ingest replaces the receipt's OWED stub in place, and the
 // stub is parked at ship time, before any condition block, so a verdict
-// ingested after a condition block sits above it (the 2026-09-25 ruling in
-// .abcd/work/DECISIONS.md).
+// ingested after a condition block sits above it (the 2026-09-25 ruling
+// dcn-2609250000000002).
 func Standing(content string) map[string]Disposition {
 	all := ReadDispositions(content)
 	lastCond := map[string]Disposition{}

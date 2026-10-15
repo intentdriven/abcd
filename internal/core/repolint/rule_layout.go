@@ -25,7 +25,7 @@ import (
 // clone has none. Requiring it would flag every clean checkout. The load-bearing
 // assertion is "if present, ignored", which is what stops decisions and logs
 // leaking. (Divergence from the plan's literal "present and gitignored",
-// recorded in DECISIONS.md.)
+// recorded in dcn-2607130000000008.)
 type threeTierLayout struct{}
 
 func (threeTierLayout) Meta() RuleMeta {

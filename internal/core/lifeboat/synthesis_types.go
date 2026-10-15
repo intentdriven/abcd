@@ -30,7 +30,7 @@ package lifeboat
 // No wall-clock anywhere: the review artefact is named review-<manifest12>.json, where
 // manifest12 is the first 12 hex of the lifeboat's manifest_sha256 (shortHex over
 // prov.ManifestSHA256) — deterministic and unique per content, a plan amendment to
-// the plan's oracle-<ts>.json (DECISIONS.md entry is the orchestrator's).
+// the plan's oracle-<ts>.json (dcn-2607160000000002 is the orchestrator's entry).
 //
 // See the M6 section of .abcd/development/plans/2026-07-14-lifeboat-coverage-experiment.md,
 // itd-5, and the M6 design record.

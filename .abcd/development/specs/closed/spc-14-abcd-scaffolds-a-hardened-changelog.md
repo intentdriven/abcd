@@ -18,7 +18,7 @@ built-in `workflow_dispatch` rehearsal a repo runs green before its first real
 release.
 
 This spec is the product requirement synthesised from the 2026-07-24 maintainer
-grill (DECISIONS.md) and the intent. Its four design decisions are settled here;
+grill ([dcn-2607240000000003](../../../work/decisions/dcn-2607240000000003-itd-93-design-settled-in-maintainer.md)) and the intent. Its four design decisions are settled here;
 the **implementation design and build are a separate, focused run** and are out
 of scope for this promotion (2026-07-24 next-run queue, Track 1: "Promotion only
 — implementation is NOT in this run").

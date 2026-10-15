@@ -55,7 +55,7 @@ const (
 // UpdatedFormat is the one wording of the line every binary swap prints when it
 // completes: `abcd update`'s receipt and hooks/bootstrap.sh's success notice
 // both lead with it, and the session check uses it for the one swap whose
-// output nobody sees (the ruling CJ1b in .abcd/work/DECISIONS.md). The
+// output nobody sees (the ruling CJ1b, dcn-2609300000000011). The
 // bootstrap is POSIX sh and cannot import it, so
 // TestBootstrapUpdateLineIsTheSharedWording holds the script's printf literal
 // to this constant.

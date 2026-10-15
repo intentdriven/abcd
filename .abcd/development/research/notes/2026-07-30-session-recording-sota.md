@@ -74,7 +74,7 @@ A note here informs the decision; it does not make it. Whether the coverage gain
 
 ## 6. Addendum (2026-08-15) — adoption trigger, target harness, and where the names live
 
-The maintainer's decision (DECISIONS.md 2026-07-30, recorded 2026-08-15) adopts §5's shape and names its trigger: a cross-agent capture source becomes worth building **when compatibility beyond Claude Code becomes a concern**, and the harness the maintainer has named as the target is **opencode**. This note is the record that carries the names; the ledger entry (iss-217) and the DECISIONS line refer here, per the convention that commitment records name no external tool before its adoption is decided.
+The maintainer's decision ([dcn-2607300000000007](../../../work/decisions/dcn-2607300000000007-a-cross-agent-transcript-capture-source.md), recorded 2026-08-15) adopts §5's shape and names its trigger: a cross-agent capture source becomes worth building **when compatibility beyond Claude Code becomes a concern**, and the harness the maintainer has named as the target is **opencode**. This note is the record that carries the names; the ledger entry (iss-217) and the decision record refer here, per the convention that commitment records name no external tool before its adoption is decided.
 
 Facts verified 2026-08-15: SpecStory's documented `specstory run` providers are Claude Code, Cursor (CLI + IDE), Codex CLI, Droid CLI, and Gemini CLI (deprecated in favour of Antigravity CLI). **opencode is not among them.** The CLI exposes a Provider SPI for adding new agent providers, so opencode support is buildable without waiting on the vendor. Both facts are re-verified at the adopting intent, alongside the SOTA verdict itself.
 

@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "cold-reading workstream preparation, 2026-08-28"
 found_at: ".abcd/work/DECISIONS.md (pre-tooling entries)"
 lapsed_at: "2026-08-28T00:00:00Z"
-resolution: "the pre-tooling window is disclosed; the DECISIONS entries of 2026-08-28 (mechanism versus content) and 2026-08-30 (construal filed) close it"
+resolution: "the pre-tooling window is disclosed; the decisions dcn-2608280000000005 (2026-08-28, mechanism versus content) and dcn-2608300000000004 (2026-08-30, construal filed) close it"
 impact: internal
 ---
 

@@ -55,8 +55,8 @@ attention (production practice).
 `.abcd/.work.local/NEXT.md` (handover), `.abcd/work/DECISIONS.md`
 (append-only decision log), `.abcd/work/CONTEXT.md` (status-free
 orientation). The decision record already adopts durable handoff +
-fresh-context resume over compaction (`.abcd/work/DECISIONS.md`, 2026-07-12
-block). The gap is ownership, not design: no verb writes NEXT.md, no schema
+fresh-context resume over compaction ([dcn-2607120000000004](../../../work/decisions/dcn-2607120000000004-abcd-auto-loop-design-recorded-plans.md)).
+The gap is ownership, not design: no verb writes NEXT.md, no schema
 validates it, no lint checks freshness, and it is lost on a worktree move
 (finding F6 in `../../plans/2026-07-16-run-findings.md`). SOTA practice makes
 the handoff write a *protocol trigger* — on stop signal, on budget approach,
@@ -215,7 +215,7 @@ small-repo scale, agentic search wins on operational simplicity, while hybrid
 is plausibly the endgame for large-monorepo products.
 
 *Fit:* the repo already rejected RAG-over-ledger at single-milestone scale
-(`.abcd/work/DECISIONS.md`, 2026-07-12 block). The survey confirms the
+([dcn-2607120000000004](../../../work/decisions/dcn-2607120000000004-abcd-auto-loop-design-recorded-plans.md)). The survey confirms the
 rejection and adds the boundary condition under which it would be revisited:
 monorepo scale plus a trained embedding model — neither applies here.
 
