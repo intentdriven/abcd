@@ -82,8 +82,11 @@ composition and no site sources.
   contributors page, no timeline, none of the health page's authorship checks,
   and no `authorship`, `history` or per-record `dates` in `record.json`; a
   record is dated by its own frontmatter alone. abcd's own composed site keeps
-  all of them and is byte-identical before and after (3097 files at `/` and at
-  `--base-path /abcd/`). Whether a project site should show any of it is to be
+  all of them, and every page and `record.json` are byte-identical before and
+  after (3097 files at `/` and at `--base-path /abcd/`). The one file that
+  changes is the graph script `record.js`: a record exported without git dates
+  shows its own date as that date and links its history undated, and a record
+  with git dates is shown exactly as before. Whether a project site should show any of it is to be
   revisited. The workflow builds with abcd's latest
   release, so a project site cannot build until a release carries
   `--project`; setup says so in a note on every project run.
