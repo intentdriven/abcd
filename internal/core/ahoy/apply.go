@@ -189,7 +189,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 				return InstallResult{
 					Status:          "partial",
 					Remaining:       []string{UnverifiedCopyGapID},
-					Notes:           append(readmeStandingNotes(abs, opts), note),
+					Notes:           append(append(readmeStandingNotes(abs, opts), outboundStandingNotes(abs, opts)...), note),
 					OptionalSkipped: optionalSkipped(opts, abs, det.Gaps, p),
 					unverifiedCheck: check,
 					unverifiedWhy:   why,
@@ -200,7 +200,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		// omitted or left, since no apply step runs to say it.
 		return InstallResult{
 			Status:          "already_up_to_date",
-			Notes:           readmeStandingNotes(abs, opts),
+			Notes:           append(readmeStandingNotes(abs, opts), outboundStandingNotes(abs, opts)...),
 			OptionalSkipped: optionalSkipped(opts, abs, det.Gaps, p),
 		}, nil
 	}
@@ -257,6 +257,9 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	ac.stepPathEntry()
 	// After the PATH-entry steps: abcd.binary names the verified copy they left.
 	ac.stepOutboundBinary()
+	// After stepOutboundBinary: the shim finds abcd through the abcd.binary it
+	// wrote, and the two notes read in that order.
+	ac.stepOutboundShim()
 	// After stepPathEntry: the harness command names the entry the two steps
 	// above actually left on PATH.
 	ac.stepStatusLine()

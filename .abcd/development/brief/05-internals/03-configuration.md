@@ -25,7 +25,9 @@ and the deep scanner is on `PATH`), and writes exactly those four values back.
 `attribution.hook` is written by `ahoy install --attribution`, and
 `outbound.hook` and `outbound.forge` together by `ahoy install --outbound`, the
 one outbound switch; the shell guard reads `outbound.forge`, and an install
-completes a repository that records only one of the two. The remaining four —
+completes a repository that records only one of the two and leaves the other
+absent, while a key set to `false` is the repository's choice and is left as it
+is. The remaining four —
 whether abcd should enable the forge's own secret scanning, the rules loader's
 refresh backstop, and the filing-time match's threshold and compared fields —
 are hand-set: the binary reads them and never writes them.

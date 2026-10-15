@@ -1,6 +1,10 @@
 package ahoy
 
-import "github.com/intentdriven/abcd/internal/core/guard"
+import (
+	"os"
+
+	"github.com/intentdriven/abcd/internal/core/guard"
+)
 
 // The forge-text half of the outbound switch (iss-2610142210511831). `ahoy
 // install --outbound` records `outbound.forge: true` in config.json beside
@@ -47,22 +51,53 @@ func (a *applyCtx) stepOutboundForge() {
 }
 
 // outboundHalfGap reports a repository that recorded one half of the outbound
-// switch and not the other, which only the two retired flags could produce
-// (iss-2610152024327989). The switch is one choice, so a half is the choice
-// made and half carried out: the gap is required, and install completes it by
-// recording the other half — and, for a repository that recorded only the
-// forge-text half, writing the commit-msg hook — under the settings approval.
-// It never writes abcd.binary: that is the explicit opt-in's alone.
+// switch and left the other key absent, which only the two retired flags could
+// produce (iss-2610152024327989). The switch is one choice, so a half is the
+// choice made and half carried out: the gap is required, and install completes
+// it by recording the other half — and, for a repository that recorded only the
+// forge-text half, writing the commit-msg hook where nothing occupies its path —
+// under the settings approval. It never writes abcd.binary: that is the explicit
+// opt-in's alone.
+//
+// A key the repository set itself, to false or to anything but true, is the
+// person's choice and never a half to complete: it raises outboundHalfChosenGapID,
+// a note nothing resolves, and install changes neither key.
 func outboundHalfGap(cwd string) []Gap {
 	hook, forge := outboundOptedIn(cwd), guard.ForgeTextOptedIn(cwd)
 	if hook == forge {
 		return nil
 	}
-	on, off := "the commit-message check (outbound.hook)", "the forge-text check (outbound.forge)"
+	cfg, err := readConfig(cwd)
+	if err != nil {
+		return nil
+	}
+	section := subMap(cfg, "outbound")
+	on, off, offKey := "the commit-message check (outbound.hook)", "the forge-text check (outbound.forge)", "forge"
+	if forge {
+		on, off, offKey = off, on, "hook"
+	}
+	if _, set := section[offKey]; set {
+		return []Gap{{
+			ID: outboundHalfChosenGapID, Category: PluginOwned, Scope: "repo",
+			Title:      "the outbound switch is half on by this repository's choice: " + on + " is on and " + off + " is set to something other than true",
+			Detail:     "One opt-in, `abcd ahoy install --outbound`, turns on both outbound checks. This repository set outbound." + offKey + " itself, so abcd leaves it as it is and " + off + " stays off.",
+			FixHint:    "nothing to do if that is the choice; `abcd ahoy install --outbound` turns both on, and setting both keys to false turns the switch off.",
+			Required:   false,
+			Resolvable: false,
+		}}
+	}
 	completes := "records outbound.forge: true in .abcd/config.json"
 	if forge {
-		on, off = off, on
 		completes = "records outbound.hook: true in .abcd/config.json and writes the commit-msg hook " + OutboundHookRelPath
+		if root, err := os.OpenRoot(cwd); err == nil {
+			state, runsCheck := classifyOutboundHook(root, OutboundHookRelPath)
+			root.Close()
+			if left := outboundHookLeft(state, runsCheck); left != "" {
+				completes = "records outbound.hook: true in .abcd/config.json and does not write the commit-msg hook: " + left
+			} else if state == HookInstalled {
+				completes = "records outbound.hook: true in .abcd/config.json; the commit-msg hook " + OutboundHookRelPath + " is already abcd's"
+			}
+		}
 	}
 	return []Gap{{
 		ID: outboundHalfGapID, Category: ConfigChange, Scope: "repo",

@@ -317,11 +317,22 @@ iss-2610142210511831). The gate runs only the abcd binary the clone names in
 when there is none (iss-2609250834251447); the explicit flag writes that key,
 clone-local, to the `PATH` copy whose build provenance the same run verified,
 and writes nothing, saying why, when there is no such copy, when the entry is
-the dev shim or when it lies inside the working tree (iss-2610152024267547). It
-leaves `core.hooksPath` to the person, as the guard hooks do. The two flags that
-each turned on one half are retired and refused naming the switch, and a
-repository that recorded one half under them raises `outbound.half_on`, which
-the next install completes. The identity verb's render is the follow-on surface and writes
+the dev shim or when it lies inside the working tree (iss-2610152024267547).
+It never sets `core.hooksPath`, which chooses every hook git runs in the
+clone. So that the check runs with no manual step, the explicit flag alone also
+writes the same embedded template, marked as abcd's, as the clone's own
+`commit-msg` in the common git directory's `hooks/` (shared by every worktree),
+where no hooks path is set at any scope and nothing occupies that path; it
+never runs or calls the committed copy. Where a hooks path is set, or a
+`commit-msg` hook abcd did not write is there, it writes nothing and one note
+says the check is not wired, why, and the line to chain it with; a rerun leaves
+a current shim as it is and refreshes a stale abcd-marked one. The binary is not
+re-verified at commit time: a swap of the `PATH` copy by the same account is out
+of scope. The two flags that each turned on one half are retired and refused
+naming the switch, and a repository that recorded one half under them, leaving
+the other key absent, raises `outbound.half_on`, which the next install
+completes; a key the repository set to `false` is its choice and raises only
+the advisory `outbound.half_chosen`. The identity verb's render is the follow-on surface and writes
 nothing: it proposes a correction as a diff, and adopting it is always the
 product thinker's move.
 

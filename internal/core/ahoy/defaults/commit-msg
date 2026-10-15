@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # abcd-outbound: v1
-# abcd outbound gate, commit-message half — scaffolded by
-# `abcd ahoy install --outbound` into this repo's committed hooks, because
-# this repository asked for it. abcd never installs it by default.
+# abcd outbound gate, commit-message half — written by
+# `abcd ahoy install --outbound`, because this repository asked for it, into the
+# committed .githooks/ and, in a clone with no core.hooksPath and no commit-msg
+# hook of its own, into the clone's own git hooks directory, where git runs it
+# with no further step. abcd never installs it by default, never replaces a
+# commit-msg hook it did not write, and never sets core.hooksPath.
 #
 # Refuses a commit whose message carries a LIVE AGENT-SESSION URL or a tool's own
 # attribution footer. Either one, once committed and pushed, comes out of public
@@ -20,7 +23,7 @@
 # Never a PATH search (a repository can shadow PATH), never an environment
 # variable (a repo-scoped direnv could set one), and never a file this working
 # tree carries (a pull could replace it): a setting that resolves into the
-# working tree is not run.
+# working tree is not run. The binary is not re-verified at commit time.
 #
 # FAILS OPEN. When no usable abcd is configured, or the one configured cannot
 # judge the message, this hook prints ONE warning line and the commit proceeds:
@@ -28,7 +31,9 @@
 # works, which is not abcd's to change. A message the binary judges and refuses
 # is BLOCKED.
 #
-# Point this repo's hooks at the directory holding this file, once per clone:
+# WHERE GIT RUNS IT. The copy in the clone's git hooks directory runs as it
+# is. The committed copy in .githooks/ runs only in a clone whose hooks path
+# points there, which is the person's own setting:
 #
 #     git config core.hooksPath .githooks
 #

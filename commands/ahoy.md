@@ -915,7 +915,8 @@ the flag keeps both and restores a hand-deleted hook.
 
 - **The commit-message check.** A committed `commit-msg` hook runs `abcd lint
   outbound` over every commit message. A `commit-msg` hook abcd did not write
-  is reported, never replaced. The hook finds abcd one way only, an absolute
+  is never replaced; it is reported unless it runs `abcd lint outbound`
+  itself, outside a comment, in which case the check already runs through it. The hook finds abcd one way only, an absolute
   path in the clone's own git config, `abcd.binary`. `--outbound` sets it, in
   this clone's `.git/config` only, to the `PATH` copy whose build provenance
   the same run verified. It writes nothing, and says why in the result's
@@ -934,10 +935,28 @@ the flag keeps both and restores a hand-deleted hook.
   judge the message (an exit 1 without `lint outbound`'s own verdict line
   counts as that), it prints one warning line and the commit proceeds:
   refusing every commit where abcd is absent would change how the repository
-  works. Only a message abcd judges and refuses is blocked. Like the guard
-  hooks, it runs once the clone's `core.hooksPath` points at `.githooks`,
-  which `--outbound` does not set, because that key chooses every hook git
-  runs in the clone.
+  works. Only a message abcd judges and refuses is blocked. The binary is
+  not re-verified at commit time: a swap of the `PATH` copy by the same
+  account is out of scope.
+
+  `--outbound` never sets `core.hooksPath`, because that key chooses every
+  hook git runs in the clone. So that the check needs no manual step, it
+  also writes the same embedded template, marked as abcd's, as the clone's
+  own `commit-msg` hook in the common git directory (`.git/hooks/commit-msg`
+  in a plain clone, shared by every worktree), where no `core.hooksPath` is
+  set at any scope and nothing is at that path. That copy finds abcd through
+  `abcd.binary` like the committed one and never runs or calls the committed
+  copy. Where `core.hooksPath` is set, or a `commit-msg` hook abcd did not
+  write is already there, it writes nothing, and one note says the check is
+  not wired, why, and the line to add to that hook to chain it:
+
+  ```bash
+  if bin=$(git config --local --get abcd.binary); then "$bin" lint outbound --label "commit message" "$1" || exit 1; fi
+  ```
+
+  A hooks path whose `commit-msg` already runs the check draws no note. A
+  rerun leaves a current copy as it is and refreshes an abcd-marked one that
+  is not the current template. A plain `install` never writes this copy.
 - **The forge-text check.** The title, body and body file a posting `gh pr` or
   `gh issue` command (create, new, edit, comment) hands the forge are judged
   against the same outbound policy before the command runs, and a live
@@ -953,8 +972,12 @@ retired: either is refused at exit 2 with a message naming `--outbound`, and
 nothing is written. A repository that recorded only one half under them is
 reported as `outbound.half_on`, and the next `install` completes it under the
 settings approval: it records the other key and, where only the forge-text half
-was on, writes the hook. Completing it never writes `abcd.binary`; only an
-explicit `--outbound` does.
+was on, writes the hook, unless a `commit-msg` hook abcd did not write is
+already at `.githooks/commit-msg`, which the gap and the result's notes then
+name. Completing it never writes `abcd.binary` or the clone's own hook; only an
+explicit `--outbound` does. Only a key that is absent is completed: a key the
+repository set to `false` is its choice, left as it is, and reported as the
+advisory `outbound.half_chosen`, which no install resolves.
 
 For dogfooding abcd itself, `abcd ahoy install --dev` installs a track-latest
 shim instead of the pinned owned copy: the `PATH` entry rebuilds abcd from

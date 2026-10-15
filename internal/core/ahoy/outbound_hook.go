@@ -6,6 +6,7 @@ import (
 	"regexp"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // OutboundHookRelPath is the committed commit-msg hook that runs `abcd lint
@@ -24,13 +25,53 @@ const (
 )
 
 // outboundHalfGapID is the gap a repository raises when it recorded only one
-// half of the outbound switch.
-const outboundHalfGapID = "outbound.half_on"
+// half of the outbound switch and left the other key absent, which only the
+// retired flags produced. outboundHalfChosenGapID is the note a repository
+// raises when it set the other key itself, to anything but true: that is the
+// person's choice, so it is reported and never resolved.
+const (
+	outboundHalfGapID       = "outbound.half_on"
+	outboundHalfChosenGapID = "outbound.half_chosen"
+)
 
 // outboundHookMarkerRe matches the marker as a complete line, on the attribution
 // marker's terms (blanks and a trailing CR tolerated, so a CRLF checkout is still
 // recognised as abcd's and can be healed).
 var outboundHookMarkerRe = regexp.MustCompile(`(?m)^[ \t]*` + regexp.QuoteMeta(outboundHookMarkerPrefix) + `[ \t]*v[0-9]+[ \t\r]*$`)
+
+// outboundHookRunsCheckRe matches a line that runs `lint outbound`, outside a
+// comment. A commit-msg hook abcd did not write but that runs the check itself
+// (abcd's own repository carries one) leaves nothing for the foreign-hook
+// advisory to say. It is a reading of the text, not a proof the hook works: it
+// only ever silences an advisory, and never decides a write or what runs.
+var outboundHookRunsCheckRe = regexp.MustCompile(`(?m)^[ \t]*[^#\s].*\blint[ \t]+outbound\b`)
+
+// classifyOutboundHook is classifyHook against the outbound marker, with
+// whether a hook abcd did not write runs the check itself.
+func classifyOutboundHook(root *os.Root, rel string) (state HookState, runsCheck bool) {
+	state = classifyHook(root, rel, outboundHookMarkerRe)
+	if state != HookForeign {
+		return state, false
+	}
+	data, err := fsutil.ReadGuardedInRoot(root, rel, maxAhoyFileBytes)
+	return state, err == nil && outboundHookRunsCheckRe.Match(data)
+}
+
+// outboundHookLeft says why the commit-msg hook at OutboundHookRelPath is not
+// written by a run that records the opt-in, and what follows for the check;
+// "" when the hook is absent (it will be written) or already abcd's.
+func outboundHookLeft(state HookState, runsCheck bool) string {
+	switch state {
+	case HookForeign:
+		if runsCheck {
+			return OutboundHookRelPath + " is not abcd's (it carries no `" + outboundHookMarker + "` line), so abcd leaves it, and it already runs `abcd lint outbound` itself"
+		}
+		return OutboundHookRelPath + " is not abcd's (it carries no `" + outboundHookMarker + "` line), so abcd leaves it, and the commit-message check does not run on that path until you chain `abcd lint outbound` from it by hand"
+	case HookUnreadable:
+		return OutboundHookRelPath + " cannot be read as a hook (a symlink, a directory or an unreadable file), so abcd leaves it, and the commit-message check does not run on that path"
+	}
+	return ""
+}
 
 // outboundHookTemplate is the scaffolded gate, embedded so it can never be absent.
 // It finds abcd only through `git config --local abcd.binary`, an absolute path
@@ -68,7 +109,8 @@ func detectOutboundHook(cwd string, hooksPath HooksPathState) []Gap {
 		return half
 	}
 	defer root.Close()
-	switch classifyHook(root, OutboundHookRelPath, outboundHookMarkerRe) {
+	state, runsCheck := classifyOutboundHook(root, OutboundHookRelPath)
+	switch state {
 	case HookAbsent:
 		return append(half, Gap{
 			ID: "outbound.hook_missing", Category: SafeAutocreate, Scope: "repo",
@@ -78,6 +120,11 @@ func detectOutboundHook(cwd string, hooksPath HooksPathState) []Gap {
 			Required: true, Resolvable: true,
 		})
 	case HookForeign:
+		if runsCheck {
+			// The repository's own hook runs the check: the advisory below would
+			// say the check does not run on this path, which is false.
+			return half
+		}
 		return append(half, Gap{
 			ID: "outbound.hook_foreign", Category: PluginOwned, Scope: "repo",
 			Title:      "a foreign commit-msg hook occupies " + OutboundHookRelPath,
@@ -100,15 +147,19 @@ func detectOutboundHook(cwd string, hooksPath HooksPathState) []Gap {
 }
 
 // outboundWouldChange reports work the gap set cannot see: an explicit
-// --outbound against a repository that has not recorded both halves, has
-// recorded them and is missing the hook (the first opt-in raises no gap), or
-// whose clone names no abcd for the hook yet. A clone whose git config cannot be
+// --outbound against a repository that has not recorded both halves, whose
+// clone-local commit-msg shim is missing or stale (planOutboundShim), that has
+// recorded both and is missing the committed hook (the first opt-in raises no
+// gap), or whose clone names no abcd for the hook yet. A clone whose git config cannot be
 // read is not counted: nothing this run could write would change that.
 func outboundWouldChange(cwd string, opts InstallOptions) bool {
 	if !opts.Outbound {
 		return false
 	}
 	if !outboundOptedIn(cwd) || !guard.ForgeTextOptedIn(cwd) {
+		return true
+	}
+	if planOutboundShim(cwd).action != shimNone {
 		return true
 	}
 	root, err := os.OpenRoot(cwd)
@@ -145,15 +196,29 @@ func (a *applyCtx) stepOutboundHook() {
 	}
 	defer root.Close()
 	a.createContained(writeOutboundHook, root, OutboundHookRelPath, outboundHookTemplate, 0o755, 0o755)
-	if asked {
-		a.recordOutboundOptIn()
+	if !asked {
+		return
+	}
+	// The opt-in is recorded either way; the receipt says a commit-message
+	// check was added only when the committed hook is abcd's, and a hook left
+	// as it was is said so, with what follows for the check.
+	state, runsCheck := classifyOutboundHook(root, OutboundHookRelPath)
+	kind := writeOutboundHook
+	if state != HookInstalled {
+		kind = writeSettings
+	}
+	a.recordOutboundOptIn(kind)
+	if left := outboundHookLeft(state, runsCheck); left != "" {
+		a.refuse("outbound.hook was recorded, and the commit-msg hook was not written: " + left + ".")
 	}
 }
 
 // recordOutboundOptIn persists `outbound.hook: true` into config.json under the
 // config lock, refusing a file it cannot parse and surfacing a failure as a
-// change-note, exactly as recordAttributionOptIn does.
-func (a *applyCtx) recordOutboundOptIn() {
+// change-note, exactly as recordAttributionOptIn does. kind is what the write
+// is for the person: the commit-message check, or a setting alone when the
+// committed hook is not abcd's.
+func (a *applyCtx) recordOutboundOptIn(kind writeKind) {
 	wrote := false
 	err := withConfigLock(a.cwd, func() error {
 		cfgMap, err := readConfig(a.cwd)
@@ -178,6 +243,6 @@ func (a *applyCtx) recordOutboundOptIn() {
 		return
 	}
 	if wrote {
-		a.note(writeOutboundHook, configPath(a.cwd))
+		a.note(kind, configPath(a.cwd))
 	}
 }
