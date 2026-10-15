@@ -12,6 +12,8 @@ package cli
 // way until it renders or is listed here. The brief's one enumeration of the
 // exceptions (04-surfaces/README.md, "Bare invocation") is held to this table.
 var bareRenderExceptions = map[string]string{
+	"announce": "its two operands are the kind and the item it announces on the shared " +
+		"remote, so bare refuses as a usage error (exit 2) naming the kinds, and pushes nothing",
 	"build": "its one operand is the intent it starts or resumes a run for, so bare " +
 		"refuses as a usage error (exit 2) and writes nothing; the run's state renders " +
 		"through `abcd implement status`",

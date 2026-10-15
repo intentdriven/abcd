@@ -47,6 +47,7 @@ are wiring rather than user-facing surface are listed separately under
 | 37 | `/abcd:embargo` | shipped | Keep a privately reported security advisory off the public ledger until its fix ships, then close or publish it on your approval of exactly what it shows | [`37-embargo.md`](37-embargo.md) |
 | 37 | `/abcd:memory` | shipped | Keep short lessons an agent would otherwise relearn, stamped with who wrote them, when and in which session, and refused when they would hold a secret, a private name or a network address | [`37-memory.md`](37-memory.md) |
 | 37 | `/abcd:reserve` | shipped | Reserve an issue or intent on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
+| 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -146,7 +147,7 @@ the command's sentence (the section below).
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
-| agents and hosts | — | `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `memory`, `mode`, `peers`, `reflect`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`, `statusline` |
+| agents and hosts | — | `announce`, `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `memory`, `mode`, `peers`, `reflect`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
@@ -231,7 +232,9 @@ starts a run for; the run's state renders through `abcd implement status`. Bare
 `abcd reflect` prints its usage, because its one operand is the cut release
 whose retrospective seed it renders. Bare
 `abcd drain` is the run itself, one move per invocation, so it is not a render;
-what a drain would do renders through its dry run. Bare `abcd reserve` refuses
+what a drain would do renders through its dry run. Bare `abcd announce`
+refuses as a usage error naming the kinds, because its two operands are the
+kind and the item it announces. Bare `abcd reserve` refuses
 as a usage error because its one operand is the record it reserves; the
 reservations render through `abcd peers`. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
 because their reports are `abcd lint identity` and `abcd ahoy --remote`. Bare `abcd report` opens the editor on a
@@ -341,11 +344,11 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `banlist`, `build`, `capture`, `dashboard`, `decide`,
-`disembark`, `docs`, `drain`, `embargo`, `embark`, `guard`, `history`, `ideate`,
-`identity`, `implement`, `inbox`, `intent`, `lab`, `launch`, `library`, `lint`,
-`memory`, `mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`,
-`site`, `update`.
+`abcd`, `ahoy`, `announce`, `banlist`, `build`, `capture`, `dashboard`,
+`decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`, `guard`, `history`,
+`ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`, `launch`,
+`library`, `lint`, `memory`, `mode`, `peers`, `reading`, `reflect`, `report`,
+`reserve`, `scribe`, `site`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

@@ -366,6 +366,22 @@
       ]
     },
     {
+      "path": "abcd announce",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+      "flags": [
+        {
+          "name": "expires-in",
+          "shorthand": "",
+          "type": "duration",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd banlist",
       "hidden": false,
       "group": "agents",

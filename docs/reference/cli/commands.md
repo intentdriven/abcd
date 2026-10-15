@@ -164,6 +164,52 @@ Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of
       --bin-dir string   directory holding the PATH entry to remove; needed only when it was installed with --bin-dir into a directory that is not on PATH
 ```
 
+### `abcd announce`
+
+Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.
+
+**Usage:** `abcd announce <kind> <item> [flags]`
+
+abcd announce <kind> <item> [--expires-in <duration>]
+
+Post a short fixed-form announcement on the shared remote, so every other
+session sees what this one is doing. The kind is one of merging, merged, asking, answered, handed-over;
+the item is the record it concerns (iss-N or itd-N) or a pull request (#N, or
+the bare number, since a shell reads #N as a comment). --expires-in sets how
+long it stands (default 30m, from 1m to 24h). An announcement carries no free text: a
+question points at the item, and the conversation happens there.
+
+The announcement is one commit that changes no file on your own status branch,
+abcd-status/<your GitHub username in lower case> on the remote named origin,
+carrying the kind, the item, you as sender, this working copy, the time sent
+and the expiry. The verb fetches the status branches and origin's default
+branch, then makes one plain fast-forward push with the repository's hooks
+running. A push that lost a race to another of your sessions is rebuilt on the
+new tip and pushed again, up to three times; then it says "not sent" and why.
+Nothing is ever forced.
+
+A record must already be on origin's default branch, since an announcement is
+public; a record the embargo store on this machine holds is refused, and so is
+every announcement when that store cannot be checked. The sender is read from
+user.email when it is a GitHub no-reply address, or from
+reservation.github_username in the machine configuration; a tool's git
+identity is refused, since an announcement is authored as the person.
+
+Exit 0 when the announcement reached origin; exit 2 on every refusal, and when
+it was not sent. Nothing is pushed on a refusal.
+
+**Flags:**
+
+```
+      --expires-in duration   how long the announcement stands, from 1m to 24h (default 30m)
+```
+
+**Example:**
+
+```
+abcd announce merging iss-2609010000000001
+```
+
 ### `abcd banlist`
 
 Render both banned-names layers: Writes nothing; refuses an unknown word without echoing it.
