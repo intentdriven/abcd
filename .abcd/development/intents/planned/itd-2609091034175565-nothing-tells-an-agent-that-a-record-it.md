@@ -266,7 +266,7 @@ Further decisions of 2026-10-03, at the planning interview:
 38. **Two specs, through the verbs that exist** (decided without a question). `intent plan` mints spec 1, whose `## Steps` list the spec-1 work first and the spec-2 work after; when spec 1's steps land, `spec close <spc-N> --remainder <slug>` mints spec 2, carrying the unlanded steps; the intent ships when spec 2 closes. This realises decision 19.
 39. **`abcd reserve` is an agent's verb** (the product thinker, 2026-10-12: "I suggest /abcd:reserve becomes an agent-only verb"). This refines decision 20, which had it cover hand work: the verb is listed in the agents-and-hosts block and hidden from a person's `/abcd:` menu, it stays runnable from the CLI, and a person sees reservations through `abcd peers` and the record and board renders.
 
-Ruled by the product thinker on 2026-10-15, at about 20:15 BST, answering "Hold the sign a day" (iss-2610152020234609):
+Ruled by the product thinker on 2026-10-15, at about 20:15 BST (iss-2610152020234609):
 
 40. **A pull request waiting on a person holds the reservation for a day, mirror or not.** This amends decision 29, whose "with no mirror, the default lease" no longer holds: the land fence renews for `lease.Max` whether or not a ruleset mirror exists, because a two-hour lapse let a colleague's drain redo work that was only waiting to merge. Criterion C44 is revised to match, and so is the land fence's line under What's In Scope.
 

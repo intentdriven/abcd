@@ -815,7 +815,7 @@ These are the facilitator's design calls; none changes a criterion.
     unarmed pull request, since decision 29 is the intent's and changing it
     is its owner's call; such a run's pull request holds by the renewals.
   - **Amended 2026-10-15 by the product thinker** (about 20:15 BST,
-    answering "Hold the sign a day"; iss-2610152020234609): a pull request
+    iss-2610152020234609): a pull request
     waiting on a person holds the reservation for a day, mirror or not, so
     the fence's lease is `lease.Max` with no mirror too. This amends
     decision 29 and C44 of the intent (its decision 40); the line above and
