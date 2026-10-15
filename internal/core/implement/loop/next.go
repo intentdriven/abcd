@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -36,6 +37,11 @@ const StagePick = "pick"
 // CheckRun is the exclusion of a planned intent this checkout already has a
 // run in progress for: the pick starts a run, never resumes one.
 const CheckRun = "run"
+
+// CheckFootprint is the exclusion of a planned intent whose spec names no
+// footprint packages to reserve it with, in a checkout with a remote named
+// origin: its start would be refused at the reservation.
+const CheckFootprint = "footprint"
 
 // Excluded is a planned intent the pick did not consider, with the first
 // check that excluded it.
@@ -140,6 +146,12 @@ func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error)
 	if err != nil {
 		return set, err
 	}
+	// With a remote named origin the start reserves the intent with its
+	// spec's footprint packages, so one that names none is no candidate.
+	reserves, err := claim.HasOrigin(repoRoot)
+	if err != nil {
+		return set, err
+	}
 	for _, id := range planned {
 		if st, ok := live[id]; ok {
 			reason := "run " + st.RunID + " in this checkout builds it; resume it with `abcd implement step`"
@@ -162,6 +174,16 @@ func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error)
 				}
 			}
 			continue
+		}
+		if reserves {
+			fp, err := specPackages(repoRoot, chk.Spec)
+			if err != nil {
+				return set, err
+			}
+			if len(fp) == 0 {
+				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckFootprint, Reason: noFootprint(chk.Spec, id)})
+				continue
+			}
 		}
 		score, err := readiness(repoRoot, corpus, store, id, chk.Spec)
 		if err != nil {

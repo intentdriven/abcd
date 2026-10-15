@@ -473,11 +473,16 @@ func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
 		return nil, err
 	}
 	if len(fp) == 0 {
-		return nil, refuse(StageReservation, "", "", fmt.Sprintf("%s has no footprint under ## Footprint to reserve %s with; fill its packages line, then run abcd build again; %s",
-			specID, key, outcome),
+		return nil, refuse(StageReservation, "", "", noFootprint(specID, key)+", then run abcd build again; "+outcome,
 			"name the packages the build will change on the `- packages:` line of "+specID+"'s `## Footprint` section; the reservation names them for every other participant")
 	}
 	return fp, nil
+}
+
+// noFootprint says that specID names no footprint to reserve key with: the
+// start's refusal at the reservation, and the pick's exclusion.
+func noFootprint(specID, key string) string {
+	return fmt.Sprintf("%s has no footprint under ## Footprint to reserve %s with; fill its packages line", specID, key)
 }
 
 // maxSpecBytes caps a spec read the loop makes for its footprint.

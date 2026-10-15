@@ -457,3 +457,39 @@ func TestAResumeRenewsItsOwnReservationPastAnOverlapARaceLetIn(t *testing.T) {
 		t.Fatalf("a stale view's renewal falls back to the reserve, naming --take-over: %+v", r)
 	}
 }
+
+// TestBuildNextExcludesAnIntentWithNoFootprintToReserve: in a checkout with
+// a remote named origin a start reserves its intent with its spec's
+// footprint packages, so an intent whose spec names none would be picked
+// only to be refused at the reservation, aborting a series and re-picked on
+// every rerun. It is excluded at the check `footprint`, named in the dry
+// view, and the pick moves to the next candidate.
+func TestBuildNextExcludesAnIntentWithNoFootprintToReserve(t *testing.T) {
+	repo := pickRepo(t, map[string][2]string{
+		// The readier one by score: a test path, but no packages.
+		"10": {pickIntent("10", "", settledQuestions, gwt), pickSpec("10", "- tests: the widget\n")},
+		"11": {pickIntent("11", "", settledQuestions, "- it works\n"), pickSpec("11", "- packages: a, b, c, d\n- tests: the widget\n")},
+	})
+	bare := onOrigin(t, repo)
+	set, err := candidates(repo.Root(), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(set.Excluded, func(e Excluded) bool { return e.ID == "itd-10" })
+	if i < 0 || set.Excluded[i].Check != CheckFootprint || !strings.Contains(set.Excluded[i].Reason, "spc-10 has no footprint under ## Footprint") {
+		t.Fatalf("the intent with no footprint is excluded at the footprint check: %+v", set.Excluded)
+	}
+	if len(set.Candidates) != 1 || set.Candidates[0].ID != "itd-11" {
+		t.Fatalf("only the footprinted intent is a candidate: %+v", set.Candidates)
+	}
+	res, err := Next(repo.Root(), Options{}, NextOptions{})
+	if err != nil {
+		t.Fatalf("the pick moves on to the next candidate: %v", err)
+	}
+	if res.Pick == nil || res.Pick.Chosen.ID != "itd-11" {
+		t.Fatalf("the pick takes itd-11: %+v", res.Pick)
+	}
+	if fp := footprintOf(t, bare, "itd-11"); !slices.Equal(fp, []string{"a", "b", "c", "d"}) {
+		t.Fatalf("the picked intent is reserved: %v", fp)
+	}
+}

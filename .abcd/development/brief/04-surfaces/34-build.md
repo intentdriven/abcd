@@ -153,8 +153,11 @@ picked intent is reserved the same way.
 The pick sub-verb chooses the intent instead of taking one named
 (itd-2609211116005482, spc-2609212015048113). Its candidates are the planned
 intents that pass every check above, judged by the same function, less one
-this checkout already has a run in progress for; a planned intent a check
-excludes is named with the first check that excluded it. Each candidate is
+this checkout already has a run in progress for, and, in a checkout with a
+remote named `origin`, less one whose spec's `## Footprint` names no packages
+to reserve it with (the check `footprint`), since its start would be refused
+at the reservation; a planned intent a check excludes is named with the first
+check that excluded it. Each candidate is
 scored from its record, three parts of 0 to 100 at equal weight (decision 7,
 the bundled default): criteria clarity (the share of its acceptance criteria
 with all three Given-When-Then clauses), a test path (its spec's `## Footprint`

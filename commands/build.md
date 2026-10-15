@@ -162,6 +162,9 @@ When the argument is `next`, let the run choose the intent:
 
 The candidates are the planned intents that pass every check above, judged by
 the same function, less one this checkout already has a run in progress for.
+In a checkout with `origin`, an intent whose spec's `## Footprint` names no
+packages is excluded too, at the check `footprint`, since its start would be
+refused at the reservation; the pick moves to the next candidate.
 Each is scored from its record, three parts at equal weight, each 0 to 100:
 
 - criteria clarity: the share of its acceptance criteria written in

@@ -404,7 +404,10 @@ start at the reservation, naming the spec and the missing section, and starts
 nothing (C34, C35). `--release` pushes the tombstone and changes nothing in the
 run's state; a later step meets it at the fence (C36). `--take-over` passes
 through to the reservation. `build next` reaches the same `start`, so the
-picked intent is reserved the same way.
+picked intent is reserved the same way; in a checkout with a remote named
+`origin` it excludes an intent whose spec names no footprint packages at the
+check `footprint`, so the pick moves on rather than pick one the start
+refuses.
 
 **`abcd drain`** (spec 2) reserves each issue as its lane starts, with the
 issue's `found_at` path as the footprint (C37). An issue whose `found_at` is
@@ -997,6 +1000,12 @@ These are the facilitator's design calls; none changes a criterion.
     released or a run started before reservations never took. A run handed
     back reserves nothing. A refusal leaves the run unchanged and says so; a
     fresh reservation whose recording fails is released.
+  - `build next` excludes, in a checkout with a remote named `origin`, a
+    planned intent whose spec names no `- packages:` footprint, at the
+    check `footprint` with the reservation's own reason (`noFootprint`)
+    (review of steps 12 to 15, 2026-10-15). Picking it would refuse the
+    start at the reservation, abort a series, and re-pick it on every rerun.
+    Without `origin` nothing is reserved, so nothing is excluded for it.
   - A resumed issue run reads its issue's `found_at` from whichever status
     folder holds the issue, not from `open/` alone (review of steps 12 to
     15, 2026-10-15). It is not refused as "no longer open": a resume is not
