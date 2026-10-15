@@ -295,3 +295,71 @@ func TestAbcdsDraftIsHandedOnByItsId(t *testing.T) {
 		t.Errorf("the refusal must list the Releases carrying the tag:\n%s", r.out)
 	}
 }
+
+// TestAbcdsDraftAssetsAreCheckedOnEveryRepository: abcd's release job
+// downloads each asset of its draft by id and compares it byte for byte with
+// bin/, and the asset count with what it built, on every repository; only the
+// provenance verification is skipped on a private one, where no attestation is
+// produced. The check is executed against the fake forge.
+func TestAbcdsDraftAssetsAreCheckedOnEveryRepository(t *testing.T) {
+	requireJQ(t)
+	rendered, err := Render(AbcdSubstitutions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	const private = "if: ${{ !github.event.repository.private }}"
+	var check string
+	for _, step := range strings.Split(jobSection(t, string(rendered.ReleaseYML), "release"), "\n      - name: ")[1:] {
+		code := uncommented(step)
+		attests := strings.Contains(code, "gh attestation verify")
+		if attests && !strings.Contains(code, private) {
+			t.Errorf("a step verifying provenance must be skipped on a private repository:\n%s", step)
+		}
+		if !strings.Contains(code, `cmp "$DL/`) {
+			continue
+		}
+		if strings.Contains(code, private) || attests {
+			t.Errorf("the byte-for-byte check of the draft's assets must run on every repository, apart from the provenance verification:\n%s", step)
+		}
+		check = runBlock(t, step) + "\n"
+	}
+	if check == "" {
+		t.Fatal("no step of the release job compares the draft's assets with bin/")
+	}
+
+	bin := map[string]string{
+		"bin/abcd-linux-amd64": "linux", "bin/abcd-plugin-v1.2.3.zip": "zip", "bin/checksums.txt": "sums", "extra/notes.txt": "notes",
+	}
+	const create = `gh release create "$TAG" bin/abcd-* bin/checksums.txt --draft
+RELEASE_ID=4242 RUNNER_TEMP="$PWD/.runner-temp"
+`
+	cases := []struct {
+		name    string
+		prefix  string
+		mention string // empty when the check passes
+	}{
+		{name: "every asset the job built", prefix: create},
+		{name: "an asset whose bytes differ from bin/", prefix: create + "printf x >> bin/abcd-linux-amd64\n", mention: "abcd-linux-amd64"},
+		{
+			name:    "an asset the job did not build",
+			prefix:  `gh release create "$TAG" bin/abcd-* bin/checksums.txt extra/notes.txt --draft` + "\n" + create[strings.Index(create, "\n")+1:],
+			mention: "notes.txt",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := runDraftStep(t, c.prefix+check, "v1.2.3", bin, nil, nil)
+			if (r.err != nil) != (c.mention != "") {
+				t.Fatalf("exit err=%v, want failure=%v:\n%s", r.err, c.mention != "", r.out)
+			}
+			if !strings.Contains(r.out, c.mention) {
+				t.Errorf("the output must name %q:\n%s", c.mention, r.out)
+			}
+			for _, line := range strings.Split(strings.TrimSpace(r.calls), "\n") {
+				if strings.HasPrefix(line, "release ") && !strings.HasPrefix(line, "release create ") {
+					t.Errorf("the check addressed the Release by tag: gh %s", line)
+				}
+			}
+		})
+	}
+}

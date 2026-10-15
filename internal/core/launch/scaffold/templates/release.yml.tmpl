@@ -819,20 +819,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: "The plugin installs from this release's pinned archive and needs Claude Code v2.1.224 or later; the binaries have no harness requirement."
 
-      - name: Verify the draft's attestation against a freshly downloaded binary
-        # Pre-publication gate: prove the attestation is real and retrievable for
-        # the bytes users will download. Download every asset FRESH from the
-        # draft, by the draft's id and each asset's id (the job token can read a
-        # draft; publishing changes no asset), require each to be byte-identical
-        # to the file this job built and the draft to carry nothing else, and
-        # verify the binary and the plugin archive against provenance signed by
-        # this release workflow on
-        # <% .DefaultBranch %>, on a GitHub-hosted runner, from RELEASE_COMMIT, the
-        # commit this run releases — the policy every installer verifies. A
-        # failure here leaves the Release an unpublished draft. Skipped on a
-        # private repo (no attestation was produced above); re-enables alongside
-        # attestation on the flip.
-        if: ${{ !github.event.repository.private }}
+      - name: Verify the draft's assets against a fresh download of each
+        # Pre-publication gate, on every repository: download every asset FRESH
+        # from the draft, by the draft's id and each asset's id (the job token can
+        # read a draft; publishing changes no asset), and require each to be
+        # byte-identical to the file this job built and the draft to carry
+        # nothing else. A failure here leaves the Release an unpublished draft.
         run: |
           set -euo pipefail
           DL="$RUNNER_TEMP/attest-verify"
@@ -857,6 +849,24 @@ jobs:
             printf "the draft Release %s carries an asset this job did not build:\n%s\n" "$RELEASE_ID" "$assets" >&2
             exit 1
           fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+
+      - name: Verify the draft's attestation against the freshly downloaded binary
+        # Prove the attestation is real and retrievable for the bytes users will
+        # download: the binary and the plugin archive the step above downloaded
+        # from the draft are verified against provenance signed by this release
+        # workflow on
+        # <% .DefaultBranch %>, on a GitHub-hosted runner, from RELEASE_COMMIT, the
+        # commit this run releases — the policy every installer verifies. A
+        # failure here leaves the Release an unpublished draft. Skipped on a
+        # private repo (no attestation was produced above); re-enables alongside
+        # attestation on the flip. The asset check above runs there regardless.
+        if: ${{ !github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          DL="$RUNNER_TEMP/attest-verify"
           gh attestation verify "$DL/abcd-linux-amd64" \
             --repo "${GITHUB_REPOSITORY}" \
             --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>@refs/heads/<% .DefaultBranch %>" \
@@ -874,7 +884,6 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_COMMIT: ${{ inputs.ref || github.sha }}
-          RELEASE_ID: ${{ steps.draft.outputs.id }}
 <%- else %>
       - name: Receive the build job's dist/
         if: needs.build.outputs.assets == 'true'
