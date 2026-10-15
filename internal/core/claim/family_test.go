@@ -211,6 +211,42 @@ func TestAnOversizedCommitOfAnotherFamilyIsUnreadable(t *testing.T) {
 	}
 }
 
+// TestAnOversizedCommitIsMeasuredBeforeItIsRead: a commit object past the
+// bound is judged by its size, which git reads from the object's header, and
+// its body is never streamed; one exactly at the bound is read.
+func TestAnOversizedCommitIsMeasuredBeforeItIsRead(t *testing.T) {
+	r := newCheckout(t, "1234+octo@users.noreply.github.com")
+	tree := r.Git("hash-object", "-w", "-t", "tree", "/dev/null")
+	size := func(sha string) int {
+		n, err := strconv.Atoi(r.Git("cat-file", "-s", sha))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	k := 1 + maxObjectBytes - size(r.Git("commit-tree", tree, "-m", "y"))
+	exact := r.Git("commit-tree", tree, "-m", strings.Repeat("y", k))
+	over := r.Git("commit-tree", tree, "-m", strings.Repeat("y", k+1))
+	if size(exact) != maxObjectBytes || size(over) != maxObjectBytes+1 {
+		t.Fatalf("the fixtures are %d and %d bytes; want %d and one more", size(exact), size(over), maxObjectBytes)
+	}
+	parse := func(string) (int, string) { return 7, "" }
+	log := traced(t)
+	h, _, err := readCommit(r.Root(), over, tree, t0, false, parse)
+	if err != nil || h.Unreadable != reasonObjectTooBig {
+		t.Fatalf("a commit one past the bound = %+v, %v; want it unreadable", h, err)
+	}
+	for _, c := range log.cmds {
+		if slices.Equal(c, []string{"cat-file", "commit", over}) {
+			t.Fatalf("an oversized commit was streamed whole: %q", log.cmds)
+		}
+	}
+	h, _, err = readCommit(r.Root(), exact, tree, t0, false, parse)
+	if err != nil || h.Unreadable == reasonObjectTooBig {
+		t.Fatalf("a commit at the bound = %+v, %v; want it read", h, err)
+	}
+}
+
 // TestANamespaceAbsentOnTheRemoteIsFetchedAsEmpty: a namespace origin holds
 // no branch of is no failure: the fetch stamps each namespace and tracks no
 // branch of either.
