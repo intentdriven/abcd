@@ -134,11 +134,18 @@ release.
    verified exactly as the CI job does.
 3. As `abcd`: resolve the declared toolchain through
    `scripts/pinned-toolchain.sh` (so `go run ./cmd/abcd` works) and set
-   `core.hooksPath=.githooks` in the checkout.
-4. Print one line per prerequisite put in place.
-
-The author identity is set by the brief's first step, not here (the setup runs
-before the prompt is read). Every command after setup runs as `abcd`
+   `core.hooksPath=.githooks` in the checkout (the probe of 2026-10-15 found it
+   unset in a hosted clone, so the committed hooks never ran there).
+4. Set the checkout's local author identity from the environment's forge
+   token (the intent's decisions 17 and 18): the token's login as
+   `user.name` and `<id>+<login>@users.noreply.github.com` as `user.email`,
+   through the one token-identity primitive the session announcements use
+   (spc-2610150728396006's holder fallback, reached as a `go run ./cmd/abcd`
+   verb), never a second lookup in the script. When the lookup fails it sets
+   nothing and prints one line saying the identity could not be taken from the
+   token; no output, commit, ref or trailer ever repeats the identity the
+   container came with.
+5. Print one line per prerequisite put in place. Every command after setup runs as `abcd`
 (`su abcd -c`), and `begin.sh` and `env-check.sh` refuse to run as uid 0.
 Preflight runs in the background as `abcd`, so the host's per-command time
 limit does not cut it short.
@@ -187,9 +194,9 @@ to preview) refuses, writing nothing, unless:
    closed). With no store, nothing is under embargo on this machine.
 
 The brief, from `brief.md.tmpl`, names: the item and its record path; the
-author identity to commit under, read from the person's `git config
-user.name`/`user.email` (refused when either is missing); the first step,
-`scripts/cloud/begin.sh --author "<name> <email>"`; the rules (no hook is ever
+first step, `scripts/cloud/begin.sh`; the rule that every commit is authored
+under the identity the setup took from the forge token (no author is read
+from the person's computer, decision 17); the rules (no hook is ever
 skipped, every abcd verb is `go run ./cmd/abcd`, every commit carries
 `Assisted-by:` and no co-author trailer, reserve the item with `abcd reserve`
 once it is on the default branch); the branch, the connector's `wip_prefix`
@@ -200,8 +207,10 @@ path and no session link (C4).
 
 `begin.sh` runs the connector's `is_remote` script first: outside the cloud it
 prints that it is not running in the environment the brief was written for and
-exits 1, before anything else (C3). Inside, it refuses uid 0, sets the author
-identity for the checkout, and runs `env-check.sh`.
+exits 1, before anything else (C3). Inside, it refuses uid 0, stops before any
+work when the checkout's author identity is unset or is not a person's (the
+attribution gate's own signals, through `scripts/check-attribution.sh`; it
+names the cause without repeating the identity), and runs `env-check.sh`.
 
 ### The push hook entry (C7, invariant 23)
 
@@ -300,21 +309,22 @@ reads one from the branch (decision 9).
 3. The place check and the environment check (**build-alone**)
    - criteria: C2, C3
    - packages: scripts/cloud/begin.sh, scripts/cloud/env-check.sh, internal/surface/cli
-   - tests: TestBeginRefusesOutsideCloud (exit 1, the message, nothing else run); TestBeginRefusesRoot (a fake `id -u` of 0); TestBeginSetsAuthorIdentity; TestEnvCheckNamesMissingToolSetupAndGates; TestEnvCheckStopsForAGateTool; TestEnvCheckWarnsForANonGateTool; TestEnvCheckWritesNothing
+   - tests: TestBeginRefusesOutsideCloud (exit 1, the message, nothing else run); TestBeginRefusesRoot (a fake `id -u` of 0); TestBeginStopsOnVendorOrUnsetIdentity (and the output never contains the identity it refused); TestEnvCheckNamesMissingToolSetupAndGates; TestEnvCheckStopsForAGateTool; TestEnvCheckWarnsForANonGateTool; TestEnvCheckWritesNothing
 4. The setup step and the settings file (**build-alone**; proved live in step 12)
    - criteria: C1, C11
    - needs: 2
    - waits on: step 1's outcome on non-root running
    - packages: scripts/cloud/connectors/claude/setup.sh, .claude/settings.json, internal/surface/cli, internal/core/lint
-   - tests: TestSetupDoesNothingOffCloud; TestSetupReadsGitleaksPinFromCI (the version it would install equals ci.yml's); TestSetupRefusesWhenUserCannotBeCreated (a fake `useradd` failing); TestSetupIsIdempotent (fakes for `useradd`, `chown`, the download and `su`, run twice); TestSettingsFileShape (plugin enabled from this repository's marketplace, both attribution keys off, one SessionStart hook naming setup.sh, nothing else)
+   - waits on: the token-identity verb from spc-2610150728396006's step 2 reaching the default branch, for the identity half only
+   - tests: TestSetupDoesNothingOffCloud; TestSetupSetsIdentityFromToken (a fake verb returning login and id; `user.name` and `user.email` set locally); TestSetupLookupFailureSetsNothingAndSaysSoOnce (the container's identity appears in no output, commit, ref or trailer); TestSetupReadsGitleaksPinFromCI (the version it would install equals ci.yml's); TestSetupRefusesWhenUserCannotBeCreated (a fake `useradd` failing); TestSetupIsIdempotent (fakes for `useradd`, `chown`, the download and `su`, run twice); TestSettingsFileShape (plugin enabled from this repository's marketplace, both attribution keys off, one SessionStart hook naming setup.sh, nothing else)
 5. The brief (**build-alone**)
    - criteria: C4, C13
    - packages: scripts/cloud/brief.sh, scripts/cloud/brief.md.tmpl, internal/surface/cli
-   - tests: TestBriefNamesEveryPart (item, author, first step, the no-skip and go-run rules, branch from the connector's prefix, hand-back and fallback); TestBriefCarriesNoSessionLinkHomePathOrSecret; TestBriefRefusesUnreadyIntent; TestBriefAcceptsOpenIssueAndReadyIntent; TestBriefRefusesItemNotOnRemoteDefault (a draft never pushed; a record only on a local branch); TestBriefRefusesEmbargoedItem (a fixture embargo store and a fake `abcd embargo check` exiting 2); TestBriefFailsClosedWhenEmbargoCheckCannotRun (store present, verb unknown); TestBriefWithoutStoreSkipsEmbargoCheck; TestBriefRefusesMissingAuthor
+   - tests: TestBriefNamesEveryPart (item, author, first step, the no-skip and go-run rules, branch from the connector's prefix, hand-back and fallback); TestBriefCarriesNoSessionLinkHomePathOrSecret; TestBriefRefusesUnreadyIntent; TestBriefAcceptsOpenIssueAndReadyIntent; TestBriefRefusesItemNotOnRemoteDefault (a draft never pushed; a record only on a local branch); TestBriefRefusesEmbargoedItem (a fixture embargo store and a fake `abcd embargo check` exiting 2); TestBriefFailsClosedWhenEmbargoCheckCannotRun (store present, verb unknown); TestBriefWithoutStoreSkipsEmbargoCheck; TestBriefReadsNoAuthorFromThisComputer
 6. The push hook's work-in-progress entry (**build-alone**, after `feat/reserve-on-remote` has landed its declared list on the default branch; until then this step waits)
    - criteria: C7 (the hook half), C12
    - needs: 2
-   - waits on: the reservation build's declared list of receipt-less prefixes reaching the default branch (`feat/reserve-on-remote`)
+   - waits on: the reservation build's declared list of receipt-less prefixes reaching the default branch (`feat/reserve-on-remote`; landed by pull request #1004, so this step is free); the session-announcement build (spc-2610150728396006) adds a row to the same table, so the two rows are coordinated with that build
    - packages: .githooks/pre-push, internal/surface/cli/githook_prepush_test.go; internal/core/guard/defaults if the guard registry refuses the session's push (add it as a `known_good`, as the reservation step did)
    - tests: TestPrePushAdmitsWIPWithoutReceipt (create and update); TestPrePushRefusesOtherHostBranchWithoutReceipt (`claude/fix-x`); TestPrePushRefusesWIPWithBadRecordID (none, two ids, a trailing path); TestPrePushRefusesWIPFailingAttribution (an AI co-author trailer; no `Assisted-by:`); TestPrePushRefusesOnBadDeclaration; TestPrePushWIPStillRefusesForcePush; TestPrePushDefaultBranchStillRefused; the reservation entry's tests pass unchanged
 7. The required check and the ruleset (**build-alone** for the job and the mirror; **needs the person** to apply the ruleset)
@@ -352,6 +362,17 @@ reads one from the branch (decision 9).
     - records: a dated research note with the receipts (no session link, no home path); the change that finishes this step closes this spec (`go run ./cmd/abcd spec close spc-2610120941441282`, after the docs review for HEAD), carries `Delivers: itd-2610120738075547`, and resolves iss-2610120729071657, iss-2610120729094755, iss-2610120729087253, iss-2610120729083126 and iss-2610120724251698 with a `Resolves:` trailer each; iss-2610120729076366 keeps its worktree-guidance half and stays open with a note that C5 answered its other half
 
 ## Delivery
+
+**Step 1, partly answered on 2026-10-15.** A probe in a real hosted session
+found that the forge proxy accepted a push to a branch outside the host's own
+namespace as well as inside it, that the forge credited both pushes to the
+person's own account through the environment's token, that the clone's git
+identity was the host vendor's default (decisions 17 and 18 answer it in
+step 4), and that the committed pre-push hook never ran because the clone had
+no `core.hooksPath` (step 4 sets it). Still unproved there: a push to
+`claude/abcd-wip/<item-id>` itself, running preflight as a non-root user,
+`CLAUDE_CODE_REMOTE`, and a start from the person's terminal; step 12 proves
+them.
 
 A build session does not wait for step 1 to start: steps 2, 3, 5, 7 (its code
 half), 8, 9, 10 and 11 need nothing from the person, and step 1's outcome can
