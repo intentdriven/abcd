@@ -3377,7 +3377,7 @@ names it.
 ```
       --claim string          what was decided or claimed
       --corrects int          the line this record corrects
-      --decision string       the decision influenced: a DECISIONS.md date, an ADR or intent id, or free text
+      --decision string       the decision influenced: a decision id, an ADR or intent id, or free text
       --flip int              cite line N publicly (the person's act; checks the source's permission first)
       --influence string      the influence: supports | contradicts | method | background
       --list                  print the ledger, numbered (read-only)

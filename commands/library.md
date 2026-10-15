@@ -198,7 +198,7 @@ supplies a method, or shapes background understanding — not mere incidental
 reading), record one line:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" library ledger --decision "<ADR id | intent id | date | text>" \
+"${CLAUDE_PLUGIN_ROOT}/abcd" library ledger --decision "<decision id | ADR id | intent id | text>" \
   --claim "<what was decided>" --source <key> --influence supports|contradicts|method|background \
   [--locator "§2"] [--used-in <path>]... --json
 ```
