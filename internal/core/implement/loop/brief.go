@@ -21,6 +21,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/decide"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -48,9 +49,6 @@ const ConventionsFile = "AGENTS.md"
 // the remedy names the plugin command.
 const conventionsRemedy = "write the repository's conventions into " + ConventionsFile +
 	" on the default branch (`/abcd:ahoy install` sets one up)"
-
-// DecisionsLogRel is the append-only decision log the brief quotes entries of.
-const DecisionsLogRel = ".abcd/work/DECISIONS.md"
 
 // The markers the working-conventions section sits between in a managed
 // repository's AGENTS.md (commands/ahoy.md, the install section).
@@ -95,7 +93,7 @@ type briefSources struct {
 	// of AGENTS.md it is.
 	conventions, conventionsFrom string
 	adrs                         []citedADR
-	decisions                    []string
+	decisions                    namedDecisions
 	// steps is the spec's build view at the base (spec.Steps): the steps it
 	// lists, or its one implicit step.
 	steps []spec.Step
@@ -134,7 +132,7 @@ func briefStage(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, err
 		}
 		body = renderBrief(c.State, *lane, laneDir, src)
-		from = fmt.Sprintf("%s, %s, %s (%s) and %d cited decision(s)", c.State.Intent, c.State.Spec, ConventionsFile, src.conventionsFrom, len(src.adrs)+len(src.decisions))
+		from = fmt.Sprintf("%s, %s, %s (%s) and %d cited decision(s)", c.State.Intent, c.State.Spec, ConventionsFile, src.conventionsFrom, len(src.adrs)+src.decisions.count())
 	}
 	if err := fsutil.EnsureRealDirAll(c.RepoRoot, dirRel, dirPerm); err != nil {
 		return Outcome{}, fmt.Errorf("creating the lane's directory: %w", err)
@@ -236,16 +234,8 @@ func readBriefSources(repoRoot string, st State, lane *Lane) (briefSources, erro
 	for _, id := range slices.Compact(ids) {
 		src.adrs = append(src.adrs, at.describeADR(adrs, id))
 	}
-	logEntry, found, err := at.file(DecisionsLogRel)
-	if err != nil {
-		return src, fmt.Errorf("reading %s at %s: %w", DecisionsLogRel, base, err)
-	}
-	if found {
-		log, err := read(logEntry, maxDecisionsBytes)
-		if err != nil {
-			return src, err
-		}
-		src.decisions = decisionsNaming(string(log), st.Intent, st.Spec)
+	if src.decisions, err = at.decisionsNaming(base, read, st.Intent, st.Spec); err != nil {
+		return src, err
 	}
 	return src, nil
 }
@@ -429,43 +419,130 @@ func conventionsSection(agents string) (text, from string) {
 	return strings.TrimSpace(agents), "the whole file: it marks no working-conventions section"
 }
 
-// decisionsNaming returns the decision log's entries — top-level list items,
-// with the lines that continue them — that name any of ids as a whole word.
-func decisionsNaming(log string, ids ...string) []string {
-	var res []*regexp.Regexp
+// namedDecisions is what a brief quotes of the decisions naming its key: the
+// records in the decisions folder whose body names it, in id order; the files
+// there that mention it but that the record reader refused, named rather than
+// dropped; and the entries of a managed repository's frozen log that name it,
+// where the base carries one (spc-2610110931381316, decision 7).
+type namedDecisions struct {
+	records   []decisions.Decision
+	refused   []decisions.Skipped
+	frozen    []string
+	hasFrozen bool
+}
+
+// count is how many decisions the brief quotes.
+func (d namedDecisions) count() int { return len(d.records) + len(d.frozen) }
+
+// decisionsNaming reads the decisions naming any of ids at the base. The folder
+// may hold hundreds of records, so it is searched once with `git grep` for the
+// ids, and only the files that mention one are read; each is parsed by the
+// folder's own reader and quoted only when its body names an id as a whole
+// word. read is the brief's refusing reader, used for the frozen log as it
+// always was; a record that cannot be read is named in refused instead, so one
+// bad file does not stop a brief the rest of the folder can serve.
+func (b baseTree) decisionsNaming(base string, read func(baseEntry, int64) ([]byte, error), ids ...string) (namedDecisions, error) {
+	var out namedDecisions
+	args := []string{"grep", "-z", "-l", "-F"}
 	for _, id := range ids {
 		if id != "" {
-			res = append(res, regexp.MustCompile(`(^|[^0-9A-Za-z-])`+regexp.QuoteMeta(id)+`($|[^0-9A-Za-z-])`))
+			args = append(args, "-e", id)
 		}
 	}
-	var out []string
-	var cur []string
-	flush := func() {
-		if len(cur) == 0 {
-			return
-		}
-		entry := strings.Join(cur, "\n")
-		for _, re := range res {
-			if re.MatchString(entry) {
-				out = append(out, entry)
-				break
+	if len(args) == 4 {
+		return out, nil
+	}
+	hits, none, err := gitutil.RunCappedExitOne(b.root, maxBaseListing, append(args, b.sha, "--", decisions.RelDir+"/")...)
+	if err != nil {
+		return out, fmt.Errorf("searching %s at %s: %w", decisions.RelDir, base, err)
+	}
+	mentions := map[string]bool{}
+	if !none {
+		for _, hit := range strings.Split(string(hits), "\x00") {
+			if _, rel, ok := strings.Cut(hit, ":"); ok {
+				mentions[rel] = true
 			}
 		}
-		cur = nil
 	}
-	for _, line := range strings.Split(log, "\n") {
-		switch {
-		case strings.HasPrefix(line, "- "):
-			flush()
-			cur = []string{line}
-		case cur != nil && (strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t")):
-			cur = append(cur, line)
-		default:
-			flush()
+	if len(mentions) > 0 {
+		entries, err := b.list(decisions.RelDir+"/", false)
+		if err != nil {
+			return out, fmt.Errorf("reading %s at %s: %w", decisions.RelDir, base, err)
+		}
+		for _, e := range entries {
+			if !mentions[e.path] {
+				continue
+			}
+			data, err := b.blob(e, maxRecordBytes)
+			if err != nil {
+				out.refused = append(out.refused, decisions.Skipped{Path: e.path, Reason: err.Error()})
+				continue
+			}
+			d, err := decisions.Parse(e.path, data)
+			if err != nil {
+				if decisions.Names(string(data), ids...) {
+					out.refused = append(out.refused, decisions.Skipped{Path: e.path, Reason: err.Error()})
+				}
+				continue
+			}
+			if decisions.Names(d.Text, ids...) {
+				out.records = append(out.records, d)
+			}
+		}
+		slices.SortFunc(out.records, func(x, y decisions.Decision) int { return strings.Compare(x.ID, y.ID) })
+	}
+
+	logEntry, found, err := b.file(decisions.FrozenLog)
+	if err != nil {
+		return out, fmt.Errorf("reading %s at %s: %w", decisions.FrozenLog, base, err)
+	}
+	if found {
+		log, err := read(logEntry, maxDecisionsBytes)
+		if err != nil {
+			return out, err
+		}
+		out.hasFrozen = true
+		for _, e := range decisions.FrozenEntries(string(log)) {
+			if decisions.Names(e.Text, ids...) {
+				out.frozen = append(out.frozen, e.Text)
+			}
 		}
 	}
-	flush()
-	return out
+	return out, nil
+}
+
+// summary is the brief's opening line for the decisions it quotes.
+func (d namedDecisions) summary(naming string) string {
+	s := fmt.Sprintf("%d decision record(s) in `%s/`", len(d.records), decisions.RelDir)
+	if d.hasFrozen {
+		s += fmt.Sprintf(" and %d entr%s of the frozen log `%s`", len(d.frozen), plural(len(d.frozen), "y", "ies"), decisions.FrozenLog)
+	}
+	return s + " naming " + naming
+}
+
+// render writes the decisions the brief quotes: the folder's records, then the
+// frozen log's entries where the base carries one.
+func (d namedDecisions) render(b *bytes.Buffer, naming string) {
+	fmt.Fprintf(b, "### Decision records in `%s/` naming %s\n\n", decisions.RelDir, naming)
+	if len(d.records) == 0 && len(d.refused) == 0 {
+		b.WriteString("None.\n")
+	}
+	for _, r := range d.records {
+		fmt.Fprintf(b, "- %s: %s\n", r.ID, strings.ReplaceAll(r.Text, "\n", "\n  "))
+	}
+	for _, r := range d.refused {
+		fmt.Fprintf(b, "- `%s` names it but is not read as a record: %s\n", r.Path, r.Reason)
+	}
+	if !d.hasFrozen {
+		return
+	}
+	fmt.Fprintf(b, "\n### Entries of the frozen log `%s` naming %s\n\n", decisions.FrozenLog, naming)
+	if len(d.frozen) == 0 {
+		b.WriteString("None.\n")
+	}
+	for _, e := range d.frozen {
+		fmt.Fprintf(b, "%s\n", e)
+	}
 }
 
 // lostConnectionRule is the implementer's half of a lost connection
@@ -497,8 +574,8 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 	p("- the intent: %s, `%s`\n", st.Intent, src.intentPath)
 	p("- the spec: %s, `%s`\n", st.Spec, src.specPath)
 	p("- the conventions: `%s`, %s\n", ConventionsFile, src.conventionsFrom)
-	p("- the decisions the intent cites: %d ADR(s), and %d entr%s of `%s` naming %s or %s\n\n",
-		len(src.adrs), len(src.decisions), plural(len(src.decisions), "y", "ies"), DecisionsLogRel, st.Intent, st.Spec)
+	p("- the decisions the intent cites: %d ADR(s), and %s\n\n",
+		len(src.adrs), src.decisions.summary(st.Intent+" or "+st.Spec))
 
 	p("## Your lane\n\n")
 	p("- Build spec step %d, %q, and nothing else of the spec.\n", lane.SpecStep, lane.StepTitle)
@@ -570,13 +647,8 @@ func renderBrief(st State, lane Lane, laneDir string, src briefSources) []byte {
 			p("- %s — not found at the lane's base\n", a.ID)
 		}
 	}
-	p("\n### Entries of `%s` naming %s or %s\n\n", DecisionsLogRel, st.Intent, st.Spec)
-	if len(src.decisions) == 0 {
-		p("None.\n")
-	}
-	for _, d := range src.decisions {
-		p("%s\n", d)
-	}
+	p("\n")
+	src.decisions.render(&b, st.Intent+" or "+st.Spec)
 	return b.Bytes()
 }
 

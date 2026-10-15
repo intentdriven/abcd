@@ -28,7 +28,7 @@ type issueBriefSources struct {
 	// conventions is the conventions text, and conventionsFrom says which part
 	// of AGENTS.md it is.
 	conventions, conventionsFrom string
-	decisions                    []string
+	decisions                    namedDecisions
 }
 
 // readIssueBriefSources reads the issue's record, open at the lane's base, and
@@ -92,14 +92,8 @@ func readIssueBriefSources(repoRoot string, st State, lane *Lane) (issueBriefSou
 	}
 	src.issuePath, src.issueText, src.remedy = found[0].path, string(text), remedy
 	src.conventions, src.conventionsFrom = conventionsSection(string(agents))
-	if logEntry, ok, err := at.file(DecisionsLogRel); err != nil {
-		return src, fmt.Errorf("reading %s at %s: %w", DecisionsLogRel, base, err)
-	} else if ok {
-		log, err := read(logEntry, maxDecisionsBytes)
-		if err != nil {
-			return src, err
-		}
-		src.decisions = decisionsNaming(string(log), id)
+	if src.decisions, err = at.decisionsNaming(base, read, id); err != nil {
+		return src, err
 	}
 	return src, nil
 }
@@ -119,7 +113,7 @@ func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources
 	p("Rendered from, at the lane's base (%s, %s):\n\n", lane.Branch, lane.BaseSHA)
 	p("- the issue: %s, `%s`\n", id, src.issuePath)
 	p("- the conventions: `%s`, %s\n", ConventionsFile, src.conventionsFrom)
-	p("- %d entr%s of `%s` naming %s\n\n", len(src.decisions), plural(len(src.decisions), "y", "ies"), DecisionsLogRel, id)
+	p("- %s\n\n", src.decisions.summary(id))
 
 	p("## Your lane\n\n")
 	p("- Fix %s by its remedy, below, and nothing else.\n", id)
@@ -182,12 +176,6 @@ func renderIssueBrief(st State, lane Lane, laneDir string, src issueBriefSources
 
 	p("---\n\n## The issue: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", id, src.issuePath, fenceQuote(strings.TrimSpace(src.issueText)), src.issuePath)
 	p("## The conventions: %s\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", ConventionsFile, ConventionsFile, fenceQuote(src.conventions), ConventionsFile)
-	p("### Entries of `%s` naming %s\n\n", DecisionsLogRel, id)
-	if len(src.decisions) == 0 {
-		p("None.\n")
-	}
-	for _, d := range src.decisions {
-		p("%s\n", d)
-	}
+	src.decisions.render(&b, id)
 	return b.Bytes()
 }

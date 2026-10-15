@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -115,6 +116,35 @@ func TestAnIssueKeyOpensOneLaneWhoseBriefIsTheRecordAndItsRemedy(t *testing.T) {
 	for _, not := range []string{"## The spec:", "## The intent:"} {
 		if strings.Contains(string(brief), not) {
 			t.Errorf("an issue brief has no %q section", not)
+		}
+	}
+}
+
+// TestIssueBriefQuotesDecisionsNamingTheIssue is spc-2610110931381316 step 4:
+// an issue lane's brief quotes the decision records in the folder naming the
+// issue, and the entries of a frozen log naming it, and neither one naming
+// another record.
+func TestIssueBriefQuotesDecisionsNamingTheIssue(t *testing.T) {
+	repo := issueRepo(t)
+	repo.Write(decisions.RelDir+"/dcn-2610010000000001-guard-the-renderer.md",
+		decisionRecord("dcn-2610010000000001", "guard-the-renderer", "2026-10-01", "Guard the renderer first ("+eligibleIssue+")."))
+	repo.Write(decisions.FrozenLog, decisionsLog+"- 2026-09-30 — "+eligibleIssue+" waits for the drain.\n")
+	repo.Commit("decisions naming the issue")
+	brief := firstLaneBrief(t, repo, eligibleIssue)
+	for _, want := range []string{
+		"1 decision record(s) in `" + decisions.RelDir + "/` and 1 entry of the frozen log `" + decisions.FrozenLog + "` naming " + eligibleIssue,
+		"### Decision records in `" + decisions.RelDir + "/` naming " + eligibleIssue + "\n\n" +
+			"- dcn-2610010000000001: 2026-10-01 — Guard the renderer first (" + eligibleIssue + ").\n",
+		"### Entries of the frozen log `" + decisions.FrozenLog + "` naming " + eligibleIssue + "\n\n" +
+			"- 2026-09-30 — " + eligibleIssue + " waits for the drain.\n",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Fatalf("the issue brief must carry %q:\n%s", want, brief)
+		}
+	}
+	for _, absent := range []string{"The run holds one lane", "The loop is a state file"} {
+		if strings.Contains(brief, absent) {
+			t.Fatalf("the issue brief quotes a decision naming another record, %q:\n%s", absent, brief)
 		}
 	}
 }

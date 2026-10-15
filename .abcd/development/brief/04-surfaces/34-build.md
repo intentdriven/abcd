@@ -523,8 +523,11 @@ still the base's: the intent and the spec whole, the conventions of `AGENTS.md` 
 section between `<!-- working-conventions … -->` and
 `<!-- /working-conventions -->` when it marks one, the whole file when it does
 not), and the decisions the intent cites (each ADR id in the intent, with its
-title and path, and every entry of `.abcd/work/DECISIONS.md` that names the
-intent or its spec). It opens by naming each source and the base it was read
+title and path; every decision record in `.abcd/work/decisions/` whose text
+names the intent or its spec, in id order, with any such file the record reader
+refuses named rather than quoted; and, in a managed repository that kept its
+frozen single log, every entry of it naming either). An issue lane's brief
+quotes the decisions naming the issue the same way. It opens by naming each source and the base it was read
 at, then gives the lane (the spec step it builds, the worktree, the branch), the
 spec's steps before the lane's (itd-2609212103565953, criterion 4), each with
 what landed it — the `landed:` line the spec at the base records, and the lane

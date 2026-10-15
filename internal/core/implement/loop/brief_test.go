@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -22,8 +23,28 @@ const (
 		"- 2026-09-22 — The spec spc-1 takes steps.\n"
 )
 
+// The decision records briefRepo commits in the folder: two that name the
+// intent or its spec, one naming only a longer id, and one whose text names
+// the intent but which its own id does not date, so the reader refuses it.
+var briefDecisionRecords = map[string]string{
+	"dcn-2609230000000001-the-run-holds-one-lane.md": decisionRecord("dcn-2609230000000001", "the-run-holds-one-lane", "2026-09-23",
+		"The run holds one lane per step (itd-10)."),
+	"dcn-2609240000000001-spec-steps-land-in-order.md": decisionRecord("dcn-2609240000000001", "spec-steps-land-in-order", "2026-09-24",
+		"spc-1's steps land in order,\nas the second line says."),
+	"dcn-2609250000000001-a-longer-id.md": decisionRecord("dcn-2609250000000001", "a-longer-id", "2026-09-25",
+		"A record for itd-100 only."),
+	"dcn-2609260000000001-misdated.md": decisionRecord("dcn-2609260000000001", "misdated", "2026-09-01",
+		"A MISDATED RECORD naming itd-10."),
+}
+
+// decisionRecord is a decision record as the folder's writer lays one out.
+func decisionRecord(id, slug, date, text string) string {
+	return "---\nid: " + id + "\nslug: " + slug + "\ndate: " + date + "\n---\n" + date + " — " + text + "\n"
+}
+
 // briefRepo is loopRepo with the record a brief is rendered from committed on
-// the default branch: the conventions, one cited ADR and the decision log.
+// the default branch: the conventions, one cited ADR, the decision records in
+// the folder and a frozen decision log.
 func briefRepo(t *testing.T, agents string) *gittest.Repo {
 	t.Helper()
 	repo := loopRepo(t, readyIntent("", settledQuestions+"Refines adr-27, and adr-404 which does not exist.\n\n"), specWithSteps(""))
@@ -31,7 +52,10 @@ func briefRepo(t *testing.T, agents string) *gittest.Repo {
 		repo.Write("AGENTS.md", agents)
 	}
 	repo.Write(adrRel, adrBody)
-	repo.Write(".abcd/work/DECISIONS.md", decisionsLog)
+	repo.Write(decisions.FrozenLog, decisionsLog)
+	for name, body := range briefDecisionRecords {
+		repo.Write(decisions.RelDir+"/"+name, body)
+	}
 	repo.Commit("the record")
 	return repo
 }
@@ -124,6 +148,57 @@ func TestTheBriefNamesWhatItWasRenderedFrom(t *testing.T) {
 	}
 	if !strings.Contains(st.Record[len(st.Record)-1].Note, "rendered "+wantRel) {
 		t.Fatalf("the record names the brief: %+v", st.Record[len(st.Record)-1])
+	}
+}
+
+// firstLaneBrief starts a run on key and returns the brief its first lane is
+// handed.
+func firstLaneBrief(t *testing.T, repo *gittest.Repo, key string) string {
+	t.Helper()
+	start, err := Start(repo.Root(), key, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	advanceTo(t, repo, start.RunID, StageImplement)
+	return laneBrief(t, repo, start.RunID, 0)
+}
+
+// TestBriefQuotesDecisionsNamingTheIntent is spc-2610110931381316 step 4: the
+// brief quotes, in id order, every decision record in the folder whose body
+// names the intent or its spec, names a record the reader refused rather than
+// dropping it, and then quotes the entries of a frozen log naming either; a
+// base with no frozen log has no frozen section.
+func TestBriefQuotesDecisionsNamingTheIntent(t *testing.T) {
+	brief := firstLaneBrief(t, briefRepo(t, agentsMarked), "itd-10")
+	folder := "### Decision records in `" + decisions.RelDir + "/` naming itd-10 or spc-1\n\n"
+	first := "- dcn-2609230000000001: 2026-09-23 — The run holds one lane per step (itd-10).\n"
+	second := "- dcn-2609240000000001: 2026-09-24 — spc-1's steps land in order,\n  as the second line says.\n"
+	frozen := "### Entries of the frozen log `" + decisions.FrozenLog + "` naming itd-10 or spc-1\n\n"
+	for _, want := range []string{
+		folder + first + second,
+		"`" + decisions.RelDir + "/dcn-2609260000000001-misdated.md` names it but is not read as a record:",
+		frozen + "- 2026-09-20 — The loop is a state file (itd-10),\n  continued on a second line.\n- 2026-09-22 — The spec spc-1 takes steps.\n",
+		"2 decision record(s) in `" + decisions.RelDir + "/` and 2 entries of the frozen log `" + decisions.FrozenLog + "` naming itd-10 or spc-1",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Fatalf("the brief must carry %q:\n%s", want, brief)
+		}
+	}
+	if strings.Index(brief, folder) > strings.Index(brief, frozen) {
+		t.Fatalf("the folder's records come before the frozen log's entries:\n%s", brief)
+	}
+	for _, absent := range []string{"A record for itd-100 only", "A MISDATED RECORD", "itd-100 only"} {
+		if strings.Contains(brief, absent) {
+			t.Fatalf("the brief must not quote %q:\n%s", absent, brief)
+		}
+	}
+
+	repo := briefRepo(t, agentsMarked)
+	repo.Remove(decisions.FrozenLog)
+	repo.Commit("no frozen log")
+	brief = firstLaneBrief(t, repo, "itd-10")
+	if !strings.Contains(brief, folder+first+second) || strings.Contains(brief, "frozen log") {
+		t.Fatalf("a base without a frozen log quotes the folder alone:\n%s", brief)
 	}
 }
 
@@ -270,15 +345,6 @@ func TestTheBriefIsRenderedFromTheLaneBase(t *testing.T) {
 	})
 }
 
-// TestDecisionsNamingMatchesWholeIDs: an entry naming a longer id that merely
-// starts with the key's digits is not the key's.
-func TestDecisionsNamingMatchesWholeIDs(t *testing.T) {
-	got := decisionsNaming(decisionsLog, "itd-10", "")
-	if len(got) != 1 || !strings.Contains(got[0], "a state file") {
-		t.Fatalf("decisionsNaming = %q", got)
-	}
-}
-
 // TestABriefRenderedAgainRendersTheBaseNotTheWorktree: the brief says it was
 // rendered at the lane's base, so it is read from the base commit's objects,
 // not the lane worktree's files. A brief rendered again after the implementer
@@ -326,7 +392,9 @@ func TestABriefRenderedAgainRendersTheBaseNotTheWorktree(t *testing.T) {
 	if err := os.Remove(filepath.Join(wt, "AGENTS.md")); err != nil {
 		t.Fatal(err)
 	}
-	write(DecisionsLogRel, "- 2026-09-27 — IMPLEMENTER'S DECISION on itd-10.\n")
+	write(decisions.FrozenLog, "- 2026-09-27 — IMPLEMENTER'S DECISION on itd-10.\n")
+	write(decisions.RelDir+"/dcn-2609270000000001-implementers.md",
+		decisionRecord("dcn-2609270000000001", "implementers", "2026-09-27", "IMPLEMENTER'S RECORD on itd-10."))
 
 	c := Context{RepoRoot: repo.Root(), RunDir: runRel(st.RunID), State: st}
 	if _, err := briefStage(c, &lane); err != nil {
