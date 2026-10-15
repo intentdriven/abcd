@@ -151,7 +151,7 @@ func TestVerifyStoreRefusesStoreInsideCheckout(t *testing.T) {
 // for it from whatever repository encloses it.
 func TestVerifyStoreRefusesAPlainDirectory(t *testing.T) {
 	f := newFixture(t)
-	p, err := StorePath(f.home, f.repo.Root())
+	p, err := storePath(f.home, f.repo.Root())
 	if err != nil {
 		t.Fatal(err)
 	}

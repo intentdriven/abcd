@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/intentdriven/abcd/internal/core/embargo"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -554,9 +554,9 @@ func TestAGoneWorktreeOnAMergedBranchIsCountedOnce(t *testing.T) {
 // location or the count.
 func TestPeersSkipsEmbargoStore(t *testing.T) {
 	f := newFixture(t)
-	store, err := embargo.StorePath(f.home, f.here())
-	if err != nil {
-		t.Fatal(err)
+	store, ok := storepath.Path(f.home, f.here())
+	if !ok {
+		t.Fatal("the fixture repository has no root commit to key the embargo store on")
 	}
 	if err := os.MkdirAll(filepath.Dir(store), 0o700); err != nil {
 		t.Fatal(err)

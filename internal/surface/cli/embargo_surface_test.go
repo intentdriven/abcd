@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/embargo"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -90,9 +91,9 @@ func jsonKeys(t *testing.T, doc string) []string {
 // on at exit 2, saying what to do, and writes nothing.
 func TestEmbargoSurfaceRefusals(t *testing.T) {
 	r := embargoSurfaceRepo(t)
-	store, err := embargo.StorePath(os.Getenv("HOME"), r.Root())
-	if err != nil {
-		t.Fatal(err)
+	store, ok := storepath.Path(os.Getenv("HOME"), r.Root())
+	if !ok {
+		t.Fatal("the fixture repository has no root commit to key the embargo store on")
 	}
 	for _, tc := range []struct {
 		args []string

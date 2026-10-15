@@ -64,11 +64,11 @@ type Store struct {
 	Checkout string `json:"checkout"`
 }
 
-// StorePath is where the store of the repository at repoRoot lives under
+// storePath is where the store of the repository at repoRoot lives under
 // home: worktrees/<root-sha>/embargo in abcd's home, keyed on the root commit
 // so every worktree of the repository finds the same store
 // (adr-2610031751065746).
-func StorePath(home, repoRoot string) (string, error) {
+func storePath(home, repoRoot string) (string, error) {
 	p, ok := storepath.Path(home, repoRoot)
 	if !ok {
 		return "", refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
@@ -85,7 +85,7 @@ func openStore(home, repoRoot string) (s Store, created bool, err error) {
 	if err != nil {
 		return Store{}, false, refuse("this is not inside a git checkout", "run it from the repository's checkout")
 	}
-	p, err := StorePath(home, top)
+	p, err := storePath(home, top)
 	if err != nil {
 		return Store{}, false, err
 	}
@@ -117,7 +117,7 @@ func openExisting(home, repoRoot string) (Store, State, error) {
 	if err != nil {
 		return Store{}, State{}, refuse("this is not inside a git checkout", "run it from the repository's checkout")
 	}
-	p, err := StorePath(home, top)
+	p, err := storePath(home, top)
 	if err != nil {
 		return Store{}, State{}, err
 	}

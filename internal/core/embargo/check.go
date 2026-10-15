@@ -167,7 +167,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	}
 	res := CheckResult{Allowed: allowList, Findings: []CheckFinding{}, Commits: len(commits), Files: len(texts)}
 
-	p, err := StorePath(req.Home, top)
+	p, err := storePath(req.Home, top)
 	if err != nil {
 		return CheckResult{}, err
 	}

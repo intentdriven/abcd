@@ -334,7 +334,7 @@ func TestTriageRefusesWithoutStore(t *testing.T) {
 	f := newFixture(t)
 	_, err := Triage(TriageRequest{Home: f.home, RepoRoot: f.repo.Root(), Target: "iss-2610120000000001", Verdict: VerdictVulnerability, By: "Alice"})
 	mustRefuse(t, err, "intake")
-	p, _ := StorePath(f.home, f.repo.Root())
+	p, _ := storePath(f.home, f.repo.Root())
 	if _, err := os.Lstat(p); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("triage made a store")
 	}
