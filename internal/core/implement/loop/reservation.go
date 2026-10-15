@@ -369,10 +369,12 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (at *time.Time, n
 // reserveResumed is a resumed run's reservation: `abcd build` over a run in
 // progress reserves its key again, with the footprint its record names, so a
 // run started before reservations (or before its checkout had an origin)
-// takes one, a reservation `build --release` released is taken again, and
-// one this copy holds live is renewed, keeping its footprint and term
+// takes one, a reservation `build --release` released is taken again, one
+// this copy holds live is renewed, keeping its footprint and term
 // (reserveAgain), so a resume never cuts the day the land fence gave a pull
-// request waiting on a person nor meets an overlap a race let in. A run
+// request waiting on a person nor meets an overlap a race let in, and one
+// whose footprint the record has since widened is reserved again with the
+// widened footprint, judged for overlap. A run
 // handed back starts nothing further and reserves nothing. The run's state
 // records the reservation; a refusal leaves the run unchanged.
 func reserveResumed(repoRoot string, res *StartResult, o Options) error {
@@ -417,14 +419,18 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 }
 
 // reserveAgain is a resumed run's reservation act. Over this copy's own live
-// reservation, as last fetched, it is a renewal keeping the tip's footprint
-// and term (renewalTerm), so a resume never cuts the fence's day and, as an
-// act that widens nothing, is not judged for overlap: an overlap a race let
-// in would otherwise refuse the resume while `implement step` renews the
-// very same reservation. A renewal the fetched tip shows the view was stale
-// for (the reservation gone, released by a tombstone, or moved to this
-// person's other copy) falls back to the reservation any other resume
-// makes: a reserve with the record's footprint, --take-over passed through.
+// reservation, as last fetched, whose footprint covers every path the
+// record names now (fp), it is a renewal keeping the tip's footprint and
+// term (renewalTerm), so a resume never cuts the fence's day and, as an act
+// that widens nothing, is not judged for overlap: an overlap a race let in
+// would otherwise refuse the resume while `implement step` renews the very
+// same reservation. A record whose footprint widened since the tip was
+// written (a spec's packages line that gained a path) is reserved with it,
+// so the widening is published and judged for overlap like any reservation.
+// A renewal the fetched tip shows the view was stale for (the reservation
+// gone, released by a tombstone, or moved to this person's other copy)
+// falls back to the reservation any other resume makes: a reserve with the
+// record's footprint, --take-over passed through.
 func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Time) (*time.Time, string, bool, error) {
 	plain := claim.Request{Footprint: fp, TakeOver: takeOver}
 	snap, err := claim.View(repoRoot, now)
@@ -432,7 +438,7 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Tim
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	r, ok := snap.Lookup(key)
-	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
+	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive || !covers(r.Footprint, fp) {
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	res, err := claim.Reserve(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r)}, claimOptions(now))
@@ -442,6 +448,21 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Tim
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	return reservedNote(res, err, now)
+}
+
+// covers reports whether every path of fp lies within held: equal to one of
+// its paths or beneath one, segment by segment, the sense in which two
+// footprints overlap.
+func covers(held, fp []string) bool {
+	for _, p := range fp {
+		if !slices.ContainsFunc(held, func(h string) bool {
+			h, p := path.Clean(h), path.Clean(p)
+			return h == p || strings.HasPrefix(p, h+"/")
+		}) {
+			return false
+		}
+	}
+	return true
 }
 
 // runFootprint is the footprint a run's record names to reserve its key

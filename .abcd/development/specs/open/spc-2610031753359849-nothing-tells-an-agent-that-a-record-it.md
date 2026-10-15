@@ -399,7 +399,10 @@ replaced.
 **`abcd build <itd-N> [--release] [--take-over]`** (spec 2). A new run, and a
 resumed one, reserves the intent at `loop.start`, after the pre-start checks
 and before the lane opens, with the footprint the spec's `## Footprint`
-`packages:` names (`spec.ReadFootprint`). A spec with no footprint refuses the
+`packages:` names (`spec.ReadFootprint`); a resume over this copy's own live
+reservation renews it keeping its footprint while that footprint covers every
+path the spec names now, and reserves with the widened footprint once the spec
+names a path it does not. A spec with no footprint refuses the
 start at the reservation, naming the spec and the missing section, and starts
 nothing (C34, C35). `--release` pushes the tombstone and changes nothing in the
 run's state; a later step meets it at the fence (C36). `--take-over` passes
@@ -989,12 +992,19 @@ These are the facilitator's design calls; none changes a criterion.
     build again; nothing was started".
   - A resumed start reserves with its record's footprint and records it (the
     stage `reservation`, `reserved_at` kept when set): over this copy's own
-    live reservation, as last fetched, it makes a renew-only act keeping the
-    tip's footprint and term (`renewalTerm`), so a resume never cuts the
-    fence's day and, like a step's renewal, is not judged for overlap: an
-    overlap a race let in would otherwise refuse `abcd build` (exit 3) while
-    `implement step` renews the same reservation (review of steps 12 to 15,
-    2026-10-15). A renewal that finds the view stale (the reservation gone,
+    live reservation, as last fetched, whose footprint covers every entry of
+    the record's current footprint (each equal to a tip path or beneath one),
+    it makes a renew-only act keeping the tip's footprint and term
+    (`renewalTerm`), so a resume never cuts the fence's day and, like a
+    step's renewal, is not judged for overlap: an overlap a race let in would
+    otherwise refuse `abcd build` (exit 3) while `implement step` renews the
+    same reservation (review of steps 12 to 15, 2026-10-15). A record whose
+    footprint names a path the tip does not cover (a spec's `- packages:`
+    line widened since the run started) takes the plain reserve with that
+    footprint instead, so the widening is published and judged for overlap;
+    a renew-only act would keep the tip's narrower footprint, and another
+    person could start in the added path without backing off (final review
+    of steps 12 to 15, 2026-10-15). A renewal that finds the view stale (the reservation gone,
     tombstoned, or moved to this person's other copy) falls back to the
     plain reserve with the record's footprint. It reserves anew one a release
     released or a run started before reservations never took. A run handed

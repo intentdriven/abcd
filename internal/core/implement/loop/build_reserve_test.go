@@ -458,6 +458,38 @@ func TestAResumeRenewsItsOwnReservationPastAnOverlapARaceLetIn(t *testing.T) {
 	}
 }
 
+// TestAResumePublishesAFootprintTheSpecWidened: a resume renews this copy's
+// own live reservation, keeping the tip's footprint, only while that
+// footprint covers every path the spec names now. A spec whose packages line
+// gained a path since the run started is reserved again with the widened
+// footprint, so origin names every path the build will change.
+func TestAResumePublishesAFootprintTheSpecWidened(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	bare := onOrigin(t, repo)
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, []string{"internal/widget", "commands"}) {
+		t.Fatalf("the start reserves the spec's packages: %v", fp)
+	}
+	tip := originReservation(t, bare, reservedRef)
+	repo.Write(specRel, strings.Replace(footprintedSpec, "- packages: internal/widget, commands/",
+		"- packages: internal/widget, commands/, internal/extra", 1))
+	repo.Commit("the spec widens its footprint")
+
+	again, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil || !again.Resumed || again.RunID != res.RunID {
+		t.Fatalf("starting again resumes the run: %+v %v", again, err)
+	}
+	if fp := footprintOf(t, bare, "itd-10"); !slices.Equal(fp, []string{"internal/widget", "commands", "internal/extra"}) {
+		t.Fatalf("origin's tip carries the widened footprint: %v", fp)
+	}
+	if after := originReservation(t, bare, reservedRef); after.parent != tip.commit || after.released || after.holder != "octo" {
+		t.Fatalf("the widened reservation is the tip's child, still P's: before %+v, after %+v", tip, after)
+	}
+}
+
 // TestBuildNextExcludesAnIntentWithNoFootprintToReserve: in a checkout with
 // a remote named origin a start reserves its intent with its spec's
 // footprint packages, so an intent whose spec names none would be picked
