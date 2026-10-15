@@ -426,8 +426,11 @@ const mine = [];              // a guest's own suggestions
 const notes = [];             // warnings the page keeps showing
 // The guest's suggestion sent and not yet answered. The relay's answer, a
 // refusal or a rate limit included, does not say which message it answers,
-// so a guest has one suggestion in flight at a time.
+// so a guest has one suggestion in flight at a time. Every refusal names
+// kind "suggest"; one no answer comes for in SUGGEST_TIMEOUT is given up on.
 let suggestionInFlight = null;
+let suggestTimer = 0;
+const SUGGEST_TIMEOUT = 15000;
 let ws = null;
 let retries = 0;
 let retryTimer = 0;
@@ -507,12 +510,19 @@ function socketClosed(ev) {
   const quiet = quietClose;
   quietClose = false;
   // No answer comes on a closed connection.
+  clearTimeout(suggestTimer);
   if (suggestionInFlight) {
     suggestionInFlight = null;
     toast(WORDS.suggestLost);
   }
   renderTop();
   if (session.over) return;
+  // The relay ended the session. Its closed message comes first, unless the
+  // close cut a log replay short: then the close's reason says so.
+  if (ev.code === 1000 && (ev.reason === "session closed" || ev.reason === "session expired")) {
+    endSession(ev.reason === "session expired" ? WORDS.expired : WORDS.ended);
+    return;
+  }
   // The relay closes a connection that joined nothing in time; the next
   // Join or Host opens another.
   if (quiet && !session.everJoined) {
@@ -805,19 +815,15 @@ function onError(msg) {
     return;
   }
   if (code === "rejoined-elsewhere" || code === "too-many-tries") forgetRejoin();
-  if (code === "suggestion-too-big" || code === "too-many-suggestions" || code === "suggestions-full" || code === "bad-suggestion") {
-    // This refused the one suggestion in flight.
+  if (msg.kind === "suggest" || code === "suggestion-too-big" || code === "too-many-suggestions" || code === "suggestions-full" || code === "bad-suggestion") {
+    // This refused the one suggestion in flight: the relay names every
+    // refusal of a suggest by its kind, a rate limit's included, so a
+    // dropped cursor ("awareness") leaves it alone. A suggestion dropped for
+    // coming too fast may be sent again.
+    const was = suggestionInFlight;
     suggestionInFlight = null;
-    toast(WORDS.suggestNotSent + " " + text);
-    renderSide();
-    return;
-  }
-  if (code === "rate-limited" && msg.kind === "suggest" && suggestionInFlight) {
-    // The relay dropped the guest's suggestion for coming too fast, and says
-    // so by its kind: a dropped cursor ("awareness") leaves it alone. The
-    // guest is told to send it again.
-    suggestionInFlight = null;
-    toast(WORDS.suggestTooFast);
+    clearTimeout(suggestTimer);
+    if (was) toast(code === "rate-limited" ? WORDS.suggestTooFast : WORDS.suggestNotSent + " " + text);
     renderSide();
     return;
   }
@@ -1085,6 +1091,11 @@ async function relayConfig() {
     // (docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app,
     // docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps).
     // A relay that does not say github-app gets no sign-in: only a pasted token.
+    // The page takes the relay's word for the kind: GitHub documents no
+    // client-id format that tells a GitHub App's from an OAuth app's (its
+    // docs name a client id only as "different from the app ID"), and no
+    // public API answers for a client id, so the shape is not checked. The
+    // authorize request asks for no scope either way.
     signIn: cfg.app_type === "github-app" && cfg.sign_in === true && /^[A-Za-z0-9._-]{1,100}$/.test(clientID) && authorize !== "",
     clientID,
     authorize,
@@ -1591,13 +1602,25 @@ function sendSuggestion(replacement) {
   if (utf8Length(JSON.stringify(body)) > MAX_SUGGEST_BYTES) { toast(WORDS.suggestTooBig); return false; }
   if (suggestionInFlight) { toast(WORDS.suggestWait); return false; }
   suggestionInFlight = body;
+  clearTimeout(suggestTimer);
+  suggestTimer = setTimeout(suggestionTimedOut, SUGGEST_TIMEOUT);
   sendJSON({ type: "suggest", body });
   return true;
+}
+
+// suggestionTimedOut gives up on a suggestion the relay has not answered:
+// the guest is told it may not have reached the team.
+function suggestionTimedOut() {
+  if (!suggestionInFlight) return;
+  suggestionInFlight = null;
+  toast(WORDS.suggestLost);
+  renderSide();
 }
 
 function onSuggested(msg) {
   const body = suggestionInFlight;
   suggestionInFlight = null;
+  clearTimeout(suggestTimer);
   if (!body) return;
   mine.push({ id: String(msg.id || ""), body });
   toast(msg.delivered > 0 ? WORDS.suggestionSent : WORDS.noMembers);
@@ -1628,6 +1651,8 @@ function boundedPosition(p) {
 // storedSuggestion is what a member's page records of a guest's suggestion:
 // the fields it is made of, each validated and bounded, and nothing else; or
 // null for one that is not a suggestion, or is larger than the relay passes.
+// The relay caps the body alone, so the body alone is measured: the id and
+// the name added here must not push a suggestion it passed over the cap.
 function storedSuggestion(id, from, b) {
   if (!SUGGESTION_ID_RE.test(id) || !validSuggestion(b)) return null;
   const quote = { exact: b.quote.exact, prefix: b.quote.prefix, suffix: b.quote.suffix };
@@ -1635,7 +1660,7 @@ function storedSuggestion(id, from, b) {
     id, from: cleanName(from),
     body: { path: b.path, anchor: boundedPosition(b.anchor), head: boundedPosition(b.head), quote, replacement: b.replacement },
   };
-  return utf8Length(JSON.stringify(out)) > MAX_SUGGEST_BYTES ? null : out;
+  return utf8Length(JSON.stringify(out.body)) > MAX_SUGGEST_BYTES ? null : out;
 }
 
 function onSuggest(msg) {

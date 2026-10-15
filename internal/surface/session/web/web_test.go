@@ -600,14 +600,27 @@ func TestPageUnderABasePath(t *testing.T) {
 		{"", "/"}, {"/", "/"}, {"abcdesign", "/abcdesign/"}, {"/abcdesign", "/abcdesign/"},
 		{"abcdesign/", "/abcdesign/"}, {"/a/b.c_d~e-f/", "/a/b.c_d~e-f/"},
 	} {
-		if got, err := NormaliseBasePath(c.in); err != nil || got != c.want {
-			t.Errorf("NormaliseBasePath(%q) = %q, %v; want %q", c.in, got, err, c.want)
+		if got, err := normaliseBasePath(c.in); err != nil || got != c.want {
+			t.Errorf("normaliseBasePath(%q) = %q, %v; want %q", c.in, got, err, c.want)
 		}
 	}
 	for _, bad := range []string{"..", "/a/../b", "a//b", "a b", "https://x.example", "a?b", "a#b", "a%20b", `a"b`, "a<b", "./a", "//"} {
-		if got, err := NormaliseBasePath(bad); err == nil {
-			t.Errorf("NormaliseBasePath(%q) = %q, want a refusal", bad, got)
+		if got, err := normaliseBasePath(bad); err == nil {
+			t.Errorf("normaliseBasePath(%q) = %q, want a refusal", bad, got)
 		}
+		var ref *Refusal
+		if _, err := Write(filepath.Join(t.TempDir(), "page"), bad); !errors.As(err, &ref) || strings.HasPrefix(ref.Reason, "site:") {
+			t.Errorf("Write under base path %q: %v, want a Refusal in the page's own words", bad, err)
+		}
+	}
+	// The page takes and refuses exactly the paths the site builder does:
+	// it calls the builder's rule rather than keeping a twin of it.
+	src, err := os.ReadFile("web.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(src), "site.NormaliseBasePath(") || strings.Contains(string(src), "segmentRe") {
+		t.Error("web.go keeps its own base-path rule instead of the site builder's")
 	}
 
 	byPath := func(files []File) map[string]string {
@@ -1090,11 +1103,17 @@ func TestStoredSuggestionsAreBounded(t *testing.T) {
 	stored := functionBody(t, js, "storedSuggestion")
 	for _, want := range []string{
 		"if (!SUGGESTION_ID_RE.test(id) || !validSuggestion(b)) return null;", "boundedPosition(b.anchor)", "boundedPosition(b.head)",
-		"from: cleanName(from)", "utf8Length(JSON.stringify(out)) > MAX_SUGGEST_BYTES",
+		"from: cleanName(from)", "utf8Length(JSON.stringify(out.body)) > MAX_SUGGEST_BYTES",
 	} {
 		if !strings.Contains(stored, want) {
 			t.Errorf("storedSuggestion does not carry %s:\n%s", want, stored)
 		}
+	}
+	// The relay caps a suggestion's body alone; the id and the name a member's
+	// page adds must not push a body the relay passed over the cap, or every
+	// member drops it (final review F).
+	if strings.Contains(stored, "JSON.stringify(out)) >") {
+		t.Errorf("storedSuggestion measures the added fields against the relay's cap on the body:\n%s", stored)
 	}
 	if strings.Contains(stored, "b.anchor ??") || strings.Contains(stored, "...b") {
 		t.Errorf("storedSuggestion stores a field as it came:\n%s", stored)
@@ -1147,23 +1166,38 @@ func TestARefusedSuggestionLeavesNothingWaiting(t *testing.T) {
 		t.Errorf("onSuggested does not take the suggestion in flight:\n%s", ok)
 	}
 	on := functionBody(t, js, "onError")
-	limited := strings.Index(on, `if (code === "rate-limited" && msg.kind === "suggest" && suggestionInFlight) {`)
+	// Every refusal of a suggest names kind "suggest", a rate limit's
+	// included, and any of them clears the one in flight (final review F).
+	limited := strings.Index(on, `if (msg.kind === "suggest" || `)
 	if limited < 0 {
-		t.Fatalf("onError leaves a rate-limited suggestion waiting:\n%s", on)
+		t.Fatalf("onError does not clear the suggestion in flight on every refusal of its kind:\n%s", on)
 	}
 	// A rate limit names the kind it dropped: a dropped cursor is answered by
 	// nothing, and never reaches the sign-in branch below it.
 	other, verifying := strings.Index(on, "if (code === \"rate-limited\") {"), strings.Index(on, "if (session.verifying) {")
-	if other < 0 || verifying < 0 || other > verifying {
-		t.Errorf("onError lets a dropped cursor read as a failed sign-in:\n%s", on)
+	if other < 0 || verifying < 0 || other > verifying || limited > other {
+		t.Errorf("onError lets a dropped cursor read as a failed sign-in, or a dropped suggestion as a cursor:\n%s", on)
 	}
 	branch := on[limited:]
 	branch = branch[:strings.Index(branch, "\n  }\n")]
-	if !strings.Contains(branch, "suggestionInFlight = null;") || !strings.Contains(branch, "toast(WORDS.suggestTooFast);") || !strings.Contains(branch, "renderSide();") {
-		t.Errorf("a rate-limited suggestion is not cleared and said:\n%s", branch)
+	for _, want := range []string{"suggestionInFlight = null;", "clearTimeout(suggestTimer);", "WORDS.suggestTooFast", `WORDS.suggestNotSent + " " + text`, "renderSide();"} {
+		if !strings.Contains(branch, want) {
+			t.Errorf("a refused suggestion is not cleared and said (%s):\n%s", want, branch)
+		}
 	}
-	if !strings.Contains(on, "toast(WORDS.suggestNotSent + \" \" + text);") {
-		t.Errorf("a refused suggestion is not said to be unsent:\n%s", on)
+	// No answer at all clears it too, after a while.
+	if !strings.Contains(js, "\nconst SUGGEST_TIMEOUT = 15000;") {
+		t.Error("a suggestion no answer comes for is never given up on")
+	}
+	if !strings.Contains(send, "suggestTimer = setTimeout(suggestionTimedOut, SUGGEST_TIMEOUT);") {
+		t.Errorf("sendSuggestion starts no timeout:\n%s", send)
+	}
+	timedOut := functionBody(t, js, "suggestionTimedOut")
+	if !strings.Contains(timedOut, "suggestionInFlight = null;") || !strings.Contains(timedOut, "toast(WORDS.suggestLost)") {
+		t.Errorf("a suggestion past its timeout is not cleared and said:\n%s", timedOut)
+	}
+	if !strings.Contains(ok, "clearTimeout(suggestTimer);") {
+		t.Errorf("an answered suggestion's timeout keeps running:\n%s", ok)
 	}
 	for _, want := range []string{"  suggestTooFast: ", "  suggestNotSent: ", "  suggestWait: ", "  suggestLost: "} {
 		if !strings.Contains(js, want) {
@@ -1275,6 +1309,14 @@ func TestThePageSaysASessionExpired(t *testing.T) {
 	}
 	if !strings.Contains(js, "  expired: ") {
 		t.Error("the page has no words for an expired session")
+	}
+	// A close that cut a replay short comes without the closed message: its
+	// reason says the session ended, and the page ends it rather than
+	// reconnecting (final review A).
+	closed := functionBody(t, js, "socketClosed")
+	end, retry := strings.Index(closed, `if (ev.code === 1000 && (ev.reason === "session closed" || ev.reason === "session expired")) {`), strings.Index(closed, "retryTimer = setTimeout(openSocket")
+	if end < 0 || retry < 0 || end > retry {
+		t.Errorf("a session the relay ended mid-replay is reconnected to:\n%s", closed)
 	}
 }
 

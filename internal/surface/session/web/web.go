@@ -23,10 +23,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -58,7 +58,7 @@ var sources = []struct{ path, asset string }{
 var rooted = []string{`src="/session.js"`, `href="/session.css"`, `href="/vendor/collab.js"`}
 
 // Files is every file the page is made of, in the order they are written,
-// for a site served under base, a path NormaliseBasePath returned ("/" is the
+// for a site served under base, a path normaliseBasePath returned ("/" is the
 // root, whose files are the embedded assets byte for byte).
 func Files(base string) []File {
 	out := make([]File, 0, len(sources))
@@ -84,27 +84,17 @@ func Files(base string) []File {
 	return out
 }
 
-// segmentRe is one plain path segment: the URL's unreserved characters, so a
-// base path is never escaped, never interpreted and never leaves an attribute.
-var segmentRe = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
-
-// NormaliseBasePath is the base path s names, with one leading and one
-// trailing slash: "" and "/" are the root, "abcdesign" is "/abcdesign/". It
-// refuses anything but plain path segments: no scheme or host, no empty, "."
-// or ".." segment, and no character a URL would have to escape. Its twin is
-// the site builder's NormaliseBasePath (internal/core/site/basepath.go, on
-// the hosted-sites branch); the two take and refuse the same paths.
-func NormaliseBasePath(s string) (string, error) {
-	if s == "" || s == "/" {
-		return "/", nil
+// normaliseBasePath is the base path s names, by the site builder's own rule
+// (site.NormaliseBasePath), so the page takes and refuses exactly the paths
+// the site it is published beside does: "" and "/" are the root, "abcdesign"
+// is "/abcdesign/", and anything but plain path segments is refused, here as
+// a Refusal in the page's own words.
+func normaliseBasePath(s string) (string, error) {
+	base, err := site.NormaliseBasePath(s)
+	if err != nil {
+		return "", &Refusal{Reason: strings.TrimPrefix(err.Error(), "site: ")}
 	}
-	trimmed := strings.TrimSuffix(strings.TrimPrefix(s, "/"), "/")
-	for _, seg := range strings.Split(trimmed, "/") {
-		if seg == "." || seg == ".." || !segmentRe.MatchString(seg) {
-			return "", &Refusal{Reason: fmt.Sprintf("the base path %q is not plain path segments (letters, digits and . _ ~ -, separated by single slashes)", s)}
-		}
-	}
-	return "/" + trimmed + "/", nil
+	return base, nil
 }
 
 // Result is what Write did.
@@ -132,7 +122,7 @@ func Write(out, basePath string) (Result, error) {
 	if out == "" {
 		return Result{}, &Refusal{Reason: "name the directory to write the page into with --out"}
 	}
-	base, err := NormaliseBasePath(basePath)
+	base, err := normaliseBasePath(basePath)
 	if err != nil {
 		return Result{}, err
 	}
