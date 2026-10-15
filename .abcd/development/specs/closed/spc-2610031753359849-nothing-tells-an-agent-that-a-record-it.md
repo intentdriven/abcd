@@ -10,7 +10,7 @@ production_mode: hand-written
 ## Summary
 
 This spec delivers
-[itd-2609091034175565](../../intents/planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md):
+[itd-2609091034175565](../../intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md):
 Before an agent starts on an item, abcd reserves it on the shared remote as a
 branch nobody merges, and every participant (a second person, a second computer,
 a hosted cloud session) sees the reservation before starting the same item or
@@ -51,7 +51,7 @@ uses (the intent's "On words").
 ## Scope
 
 In, as the intent's
-[What's In Scope](../../intents/planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md#whats-in-scope)
+[What's In Scope](../../intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md#whats-in-scope)
 draws it:
 
 - **Spec 1.** `internal/core/lease` (new: the lease bounds and the one
@@ -78,7 +78,7 @@ draws it:
   `commands/implement.md` and `commands/abcd.md`.
 
 Out, as the intent's
-[What's Out of Scope](../../intents/planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md#whats-out-of-scope)
+[What's Out of Scope](../../intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md#whats-out-of-scope)
 draws it: The wider session register (itd-2609150819440345); outside
 contributors (itd-2610031259176838); the resolve-time refusal
 (itd-2609091416304128), which reuses this spec's "as of last fetch" reader when
@@ -399,12 +399,18 @@ replaced.
 **`abcd build <itd-N> [--release] [--take-over]`** (spec 2). A new run, and a
 resumed one, reserves the intent at `loop.start`, after the pre-start checks
 and before the lane opens, with the footprint the spec's `## Footprint`
-`packages:` names (`spec.ReadFootprint`). A spec with no footprint refuses the
+`packages:` names (`spec.ReadFootprint`); a resume over this copy's own live
+reservation renews it keeping its footprint while that footprint covers every
+path the spec names now, and reserves with the widened footprint once the spec
+names a path it does not. A spec with no footprint refuses the
 start at the reservation, naming the spec and the missing section, and starts
 nothing (C34, C35). `--release` pushes the tombstone and changes nothing in the
 run's state; a later step meets it at the fence (C36). `--take-over` passes
 through to the reservation. `build next` reaches the same `start`, so the
-picked intent is reserved the same way.
+picked intent is reserved the same way; in a checkout with a remote named
+`origin` it excludes an intent whose spec names no footprint packages at the
+check `footprint`, so the pick moves on rather than pick one the start
+refuses.
 
 **`abcd drain`** (spec 2) reserves each issue as its lane starts, with the
 issue's `found_at` path as the footprint (C37). An issue whose `found_at` is
@@ -943,6 +949,113 @@ These are the facilitator's design calls; none changes a criterion.
     held every other person off for up to two hours. A run `abcd build
     <iss-N>` starts holds no reservation until step 13, which must release
     its hand-back too, outside the drain.
+- **What step 12 settled** (the build's peers check, 2026-10-15):
+  - The peers check reads the reservations for an intent key only. An issue
+    key's peers row does not: its run's reservation, fetched afresh at the
+    start, judges it, so a drain still passes over another's issue with the
+    check `reservation`.
+  - A holder is another copy's reservation that holds: another person's live
+    one, an unreadable one within its hold (in the board's words, from
+    `Snapshot.HeldBy`), and this person's own live one from another computer,
+    named "your copy on another computer reserved it until `<expiry>`" with the
+    view's age and "to continue here, run `abcd build <itd-N> --take-over`",
+    the remedy naming it too, as the start's own reservation would (review
+    of steps 12 to 15, 2026-10-15); the reason names the command rather than
+    the flag because `build next`, which excludes with the same reason, has
+    no `--take-over` (final review of steps 12 to 15); another person's never
+    names it. `--take-over` exempts it (step 13), since the start's
+    reservation then moves it. Telling this person's other copy apart reads
+    the reader's username by the reservation verb's rule
+    (`claim.ReaderHolder`), only when such a reservation is in the view; when
+    it cannot be told, the reservation is named by its holder, as any other.
+  - A lapsed reservation is no holder at the check, within the margin or past
+    it: the start's reservation judges the margin on a fresh fetch. A view
+    nothing here fetched holds none, so the check passes and the build's own
+    reservation fetches. A view that cannot be read fails closed on every
+    intent, as a peer the listing cannot read does.
+  - The start reads the peers and the view once, at its own clock, before the
+    checks; the pick reads them once per candidate set at the run's clock.
+- **What step 13 settled** (`abcd build` reserves, releases and takes over,
+  2026-10-15):
+  - Every start reserves in a checkout with a remote named `origin`: the zero
+    `Options` is production. The unexported `reserve` seam still carries a
+    footprint the caller read (the drain's, from `found_at`); left nil, the
+    start reads the run's record's. `Options.TakeOver` is the flag, and an
+    unexported `noReserve` lets a test fixture stand a run up on an origin
+    and take its reservation by hand.
+  - An intent's footprint is its spec's `- packages:` entries, each
+    `path.Clean`ed (so `commands/` reserves `commands`), duplicates dropped,
+    in the order written. An entry that is not a repository-relative path is
+    the reservation's own exit-2 refusal, naming it.
+  - `abcd build <iss-N>` reserves with the path the issue's `found_at` names,
+    as the drain does; an issue with none is refused at the reservation,
+    exit 2, starting nothing: "`<iss-N>` has no found_at path to reserve it
+    with; give it a found_at naming the file the fix changes, then run abcd
+    build again; nothing was started".
+  - A resumed start reserves with its record's footprint and records it (the
+    stage `reservation`, `reserved_at` kept when set): over this copy's own
+    live reservation, as last fetched, whose footprint covers every entry of
+    the record's current footprint (each equal to a tip path or beneath one),
+    it makes a renew-only act keeping the tip's footprint and term
+    (`renewalTerm`), so a resume never cuts the fence's day and, like a
+    step's renewal, is not judged for overlap: an overlap a race let in would
+    otherwise refuse `abcd build` (exit 3) while `implement step` renews the
+    same reservation (review of steps 12 to 15, 2026-10-15). A record whose
+    footprint names a path the tip does not cover (a spec's `- packages:`
+    line widened since the run started) takes the plain reserve with that
+    footprint instead, so the widening is published and judged for overlap;
+    a renew-only act would keep the tip's narrower footprint, and another
+    person could start in the added path without backing off (final review
+    of steps 12 to 15, 2026-10-15). A renewal that finds the view stale (the reservation gone,
+    tombstoned, or moved to this person's other copy) falls back to the
+    plain reserve with the record's footprint. It reserves anew one a release
+    released or a run started before reservations never took. A run handed
+    back reserves nothing. A refusal leaves the run unchanged and says so; a
+    fresh reservation whose recording fails is released.
+  - `build next` excludes, in a checkout with a remote named `origin`, a
+    planned intent whose spec names no `- packages:` footprint, at the
+    check `footprint` with the reservation's own reason (`noFootprint`)
+    (review of steps 12 to 15, 2026-10-15). Picking it would refuse the
+    start at the reservation, abort a series, and re-pick it on every rerun.
+    Without `origin` nothing is reserved, so nothing is excluded for it.
+  - A resumed issue run reads its issue's `found_at` from whichever status
+    folder holds the issue, not from `open/` alone (review of steps 12 to
+    15, 2026-10-15). It is not refused as "no longer open": a resume is not
+    re-judged, because the run's own lane resolves its issue (as a lane
+    moves an intent to `shipped/`), so refusing an issue that left `open/`
+    would refuse the run as its own peer. An issue in no folder at all is
+    refused at the reservation, naming that, with the run unchanged.
+  - `--release` is `loop.ReleaseReservation`: the tombstone, through the
+    reserve verb's release, and nothing in any run's state. It takes no other
+    flag (a usage error, exit 2), its refusals keep the reserve verb's exit
+    codes, and its payload is the reserve verb's.
+  - A run keyed by an issue releases its reservation as its lane is handed
+    back, in the step or the receipt that hands it back
+    (`releaseOnHandBack`, the run record's stage `reservation_released`),
+    whoever started the run (iss-2610142247197128). The drain's route reuses
+    the record's clause rather than pushing again, but only for a release
+    that succeeded: a fetch or push that failed is logged at its own stage,
+    `reservation_release_failed`, and the drain's route pushes the tombstone
+    again, so an issue handed back while `origin` was unreachable does not
+    hold every drain off until its lease lapses (review of steps 12 to 15,
+    2026-10-15). An intent's run keeps its
+    reservation through a hand-back: its held lanes may still land, and the
+    fence would refuse them over a released one.
+  - The state's schema is unchanged: `reserved_at` (version 11) carries the
+    reservation, and `reservation_released` is a record entry.
+- **Builds in sibling worktrees serialise on their footprints** (ruling of
+  the product thinker, 2026-10-15, answered "agreed!" on the review of steps
+  12 to 15): each worktree is its own copy (its local tier holds its own copy
+  key), so two concurrent sessions building intents whose footprints overlap
+  in sibling worktrees of one checkout still back off, and the second is
+  refused at the reservation with exit 3, as a second person would be. This
+  follows step 10's overlap design and is kept as it stands; `commands/build.md`
+  and the AGENTS.md concurrent-sessions short form (with the `CONCURRENCY`
+  domain in `.abcd/rules.json`) say so.
+- **What step 15 settled** (the ship records, 2026-10-15): no source was
+  adopted, so `ACKNOWLEDGEMENTS.md` is unchanged (decision 23: the primitive
+  is git itself). iss-2610142247197128 was resolved with impact `internal`,
+  since the intent's own changelog line carries the behaviour.
 - **A claim dated ahead of the reader** (review of steps 1 to 3, 2026-10-12)
   is clamped from the reader's clock as well as its own: `lease.Judge` takes
   the effective expiry as `min(ExpiresAt, min(ClaimedAt, now) + Max)`, and an

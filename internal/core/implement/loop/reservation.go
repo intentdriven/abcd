@@ -16,7 +16,10 @@ package loop
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -24,6 +27,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -32,6 +36,13 @@ import (
 const (
 	StageReservationRenewed     = "reservation_renewed"
 	StageReservationRenewFailed = "reservation_renew_failed"
+	// StageReservationReleased is a step's release of an issue run's
+	// reservation when its lane is handed back.
+	StageReservationReleased = "reservation_released"
+	// StageReservationReleaseFailed is a step's release of an issue run's
+	// reservation that could not push the tombstone: the drain routing the
+	// hand-back tries it again.
+	StageReservationReleaseFailed = "reservation_release_failed"
 )
 
 // StageReservation is the refusal stage, and the run record's stage, of a
@@ -301,23 +312,22 @@ func isPushFailure(err error) bool {
 	return errors.As(err, &fe) || errors.As(err, &pe)
 }
 
-// reserveKey reserves a new run's key on origin for this copy with footprint,
-// after the run's checks pass and before it is created, and returns the run
-// record's line for it. A checkout with no remote named origin has nowhere to
-// reserve, and reserves nothing (nil, ""). Another's hold is the back-off,
-// contention at the reservation check; any other refusal stops the start.
-// fresh is true when the act made the reservation (a reserve or a take-over)
-// rather than renewing one this copy already held, so only a fresh one is
-// released when the run is not created.
-func reserveKey(repoRoot, key string, footprint []string, now time.Time) (at *time.Time, note string, fresh bool, err error) {
-	ok, err := claim.HasOrigin(repoRoot)
-	if err != nil {
-		return nil, "", false, err
-	}
-	if !ok {
-		return nil, "", false, nil
-	}
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: key, Footprint: footprint}, claimOptions(now))
+// reserveKey reserves a run's key on origin for this copy with req's
+// footprint (and its take-over and lease), and returns the run record's line
+// for it. The caller has found a remote named origin. Another's hold is the
+// back-off, contention at the reservation check; any other refusal stops the
+// start. fresh is true when the act made the reservation (a reserve or a
+// take-over) rather than renewing one this copy already held, so only a
+// fresh one is released when the run is not created.
+func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (at *time.Time, note string, fresh bool, err error) {
+	req.Record = key
+	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
+	return reservedNote(res, err, now)
+}
+
+// reservedNote is reserveKey's reading of a reservation act's outcome: the
+// run record's line for it, or the refusal.
+func reservedNote(res claim.Result, err error, now time.Time) (at *time.Time, note string, fresh bool, _ error) {
 	if err != nil {
 		if errors.Is(err, claim.ErrBackOff) {
 			return nil, "", false, contend(StageReservation, CheckReservation, "", err.Error(),
@@ -333,10 +343,240 @@ func reserveKey(repoRoot, key string, footprint []string, now time.Time) (at *ti
 	return &t, note, res.Act != claim.ActRenewed, nil
 }
 
+// reserveStart is a new run's reservation, once its checks pass and before
+// it is created: in a checkout with a remote named origin, the key is
+// reserved with the footprint the caller read (the drain's, from the issue's
+// found_at) or, when it named none, the one the run's record names
+// (runFootprint), and --take-over passes through. A checkout with no remote
+// named origin has nowhere to reserve, and reserves nothing (nil, "").
+func reserveStart(repoRoot string, chk CheckResult, o Options) (at *time.Time, note string, fresh bool, err error) {
+	if o.noReserve {
+		return nil, "", false, nil
+	}
+	ok, err := claim.HasOrigin(repoRoot)
+	if err != nil || !ok {
+		return nil, "", false, err
+	}
+	fp := o.reserve
+	if fp == nil {
+		if fp, err = runFootprint(repoRoot, chk.Key, chk.Spec, "nothing was started"); err != nil {
+			return nil, "", false, err
+		}
+	}
+	return reserveKey(repoRoot, chk.Key, claim.Request{Footprint: fp, TakeOver: o.TakeOver}, o.now())
+}
+
+// reserveResumed is a resumed run's reservation: `abcd build` over a run in
+// progress reserves its key again, with the footprint its record names, so a
+// run started before reservations (or before its checkout had an origin)
+// takes one, a reservation `build --release` released is taken again, one
+// this copy holds live is renewed, keeping its footprint and term
+// (reserveAgain), so a resume never cuts the day the land fence gave a pull
+// request waiting on a person nor meets an overlap a race let in, and one
+// whose footprint the record has since widened is reserved again with the
+// widened footprint, judged for overlap. A run
+// handed back starts nothing further and reserves nothing. The run's state
+// records the reservation; a refusal leaves the run unchanged.
+func reserveResumed(repoRoot string, res *StartResult, o Options) error {
+	if o.noReserve {
+		return nil
+	}
+	ok, err := claim.HasOrigin(repoRoot)
+	if err != nil || !ok {
+		return err
+	}
+	st, err := ReadState(repoRoot, res.RunID)
+	if err != nil {
+		return err
+	}
+	if st.handedBack() {
+		return nil
+	}
+	fp, err := runFootprint(repoRoot, st.Key, st.Spec, res.RunID+" is unchanged")
+	if err != nil {
+		return err
+	}
+	now := o.now()
+	at, note, fresh, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, now)
+	if err != nil {
+		return err
+	}
+	if err := mutate(repoRoot, res.RunID, func(_ *os.Root, st *State) (bool, error) {
+		if st.ReservedAt == nil {
+			st.ReservedAt = at
+		}
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: note})
+		st.UpdatedAt = now
+		return true, nil
+	}); err != nil {
+		if fresh {
+			releaseKey(repoRoot, st.Key, now)
+		}
+		return err
+	}
+	res.Reservation = note
+	return nil
+}
+
+// reserveAgain is a resumed run's reservation act. Over this copy's own live
+// reservation, as last fetched, whose footprint covers every path the
+// record names now (fp), it is a renewal keeping the tip's footprint and
+// term (renewalTerm), so a resume never cuts the fence's day and, as an act
+// that widens nothing, is not judged for overlap: an overlap a race let in
+// would otherwise refuse the resume while `implement step` renews the very
+// same reservation. A record whose footprint widened since the tip was
+// written (a spec's packages line that gained a path) is reserved with it,
+// so the widening is published and judged for overlap like any reservation,
+// with the tip's term, so a widening resume never cuts the fence's day either.
+// A renewal the fetched tip shows the view was stale for (the reservation
+// gone, released by a tombstone, or moved to this person's other copy)
+// falls back to the reservation any other resume makes: a reserve with the
+// record's footprint, --take-over passed through.
+func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Time) (*time.Time, string, bool, error) {
+	plain := claim.Request{Footprint: fp, TakeOver: takeOver}
+	snap, err := claim.View(repoRoot, now)
+	if err != nil {
+		return reserveKey(repoRoot, key, plain, now)
+	}
+	r, ok := snap.Lookup(key)
+	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
+		return reserveKey(repoRoot, key, plain, now)
+	}
+	if !covers(r.Footprint, fp) {
+		widened := plain
+		widened.Lease = renewalTerm(r)
+		return reserveKey(repoRoot, key, widened, now)
+	}
+	res, err := claim.Reserve(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r)}, claimOptions(now))
+	var nh *claim.NotHeld
+	if errors.As(err, &nh) && (nh.Why == claim.NotHeldAbsent || nh.Why == claim.NotHeldAnotherCopy ||
+		(nh.Why == claim.NotHeldReleased && !nh.Derived)) {
+		return reserveKey(repoRoot, key, plain, now)
+	}
+	return reservedNote(res, err, now)
+}
+
+// covers reports whether every path of fp lies within held: equal to one of
+// its paths or beneath one, segment by segment, the sense in which two
+// footprints overlap.
+func covers(held, fp []string) bool {
+	for _, p := range fp {
+		if !slices.ContainsFunc(held, func(h string) bool {
+			h, p := path.Clean(h), path.Clean(p)
+			return h == p || strings.HasPrefix(p, h+"/")
+		}) {
+			return false
+		}
+	}
+	return true
+}
+
+// runFootprint is the footprint a run's record names to reserve its key
+// with: an intent's spec's `## Footprint` packages line, each cleaned, and an
+// issue's found_at path, read from whichever status folder holds the issue:
+// a resume is not re-judged, and the run's own lane resolves its issue, so an
+// issue that has left open/ mid-run still names its footprint. A record that
+// names none is refused at the reservation, its reason ending with outcome
+// (what was not done).
+func runFootprint(repoRoot, key, specID, outcome string) ([]string, error) {
+	if validIssueKey(key) {
+		lr, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: capture.StateAll})
+		if err != nil {
+			return nil, err
+		}
+		i := slices.IndexFunc(lr.Issues, func(iss capture.Issue) bool { return recordid.SameID(iss.ID, key) })
+		if i < 0 {
+			return nil, refuse(StageReservation, "", "", key+" is in no status folder of this checkout's ledger, so it names no found_at path to reserve it with; "+outcome,
+				"restore the issue's record, or remove the run's directory if the issue is gone for good")
+		}
+		if fp, ok := issueFootprint(lr.Issues[i]); ok {
+			return fp, nil
+		}
+		return nil, refuse(StageReservation, "", "", key+" has no found_at path to reserve it with; give it a found_at naming the file the fix changes, then run abcd build again; "+outcome,
+			"give the issue's record a found_at naming the file the fix changes, which the build reserves it with")
+	}
+	fp, err := specPackages(repoRoot, specID)
+	if err != nil {
+		return nil, err
+	}
+	if len(fp) == 0 {
+		return nil, refuse(StageReservation, "", "", noFootprint(specID, key)+", then run abcd build again; "+outcome,
+			"name the packages the build will change on the `- packages:` line of "+specID+"'s `## Footprint` section; the reservation names them for every other participant")
+	}
+	return fp, nil
+}
+
+// noFootprint says that specID names no footprint to reserve key with: the
+// start's refusal at the reservation, and the pick's exclusion.
+func noFootprint(specID, key string) string {
+	return fmt.Sprintf("%s has no footprint under ## Footprint to reserve %s with; fill its packages line", specID, key)
+}
+
+// maxSpecBytes caps a spec read the loop makes for its footprint.
+const maxSpecBytes = 1 << 20
+
+// specPackages is the packages specID's `## Footprint` section names, each
+// cleaned (a trailing slash dropped), in the order written; empty when the
+// spec has no such section or it names none.
+func specPackages(repoRoot, specID string) ([]string, error) {
+	store, err := spec.Load(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	sp, ok := store.Lookup(specID)
+	if !ok {
+		return nil, fmt.Errorf("%s is not in the spec store", specID)
+	}
+	data, err := fsutil.ReadGuarded(filepath.Join(repoRoot, filepath.FromSlash(sp.Path)), maxSpecBytes)
+	if err != nil {
+		return nil, err
+	}
+	var out []string
+	for _, p := range spec.ReadFootprint(string(data)).Packages {
+		if p = path.Clean(strings.TrimSpace(p)); p != "." && !slices.Contains(out, p) {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
 // releaseKey releases a reservation a start took and then could not create
 // its run for, best effort: a failure leaves it to lapse with its lease.
 func releaseKey(repoRoot, key string, now time.Time) {
 	_, _ = claim.Reserve(repoRoot, claim.Request{Record: key, Release: true}, claimOptions(now))
+}
+
+// ReleaseReservation is `abcd build <id> --release`: it pushes a tombstone
+// over this person's reservation on id from this copy, and changes nothing in
+// any run's state; a later step of the run meets the release at the land
+// fence (C36). A key that is not an intent or issue id is refused by name.
+func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
+	if row, ok := keyCheck(key); !ok {
+		return claim.Result{}, CheckResult{Key: key, Checks: []CheckRow{row}}.refusal()
+	}
+	return claim.Reserve(repoRoot, claim.Request{Record: key, Release: true}, claimOptions(o.now()))
+}
+
+// releaseOnHandBack releases an issue run's reservation as its lane is handed
+// back (iss-2610142247197128): the issue is a person's again, so it is not
+// left holding others off until it lapses, whether a drain routes the
+// hand-back or the run was started by `abcd build <iss-N>`. The run record
+// logs the outcome at reservation_released or, when the fetch or the push
+// failed, at reservation_release_failed, which the drain routing the
+// hand-back tries again (releaseHandedBack). An intent's run keeps its
+// reservation: its held lanes may still land.
+func releaseOnHandBack(repoRoot string, st *State, now time.Time) {
+	if st.ReservedAt == nil || st.Issue() == "" {
+		return
+	}
+	clause, failed := releaseReservation(repoRoot, st.Key, now)
+	stage := StageReservationReleased
+	if failed {
+		clause += ", so it lapses with its lease unless a drain routing the hand-back releases it"
+		stage = StageReservationReleaseFailed
+	}
+	st.Record = append(st.Record, Entry{At: now, Stage: stage, Note: clause})
+	st.UpdatedAt = now
 }
 
 // issueFootprint is the footprint a drain reserves an issue with: the
@@ -364,11 +604,23 @@ func noFoundAtHandBack(issue string, now time.Time) DrainRoute {
 
 // releaseHandedBack releases the reservation of an issue run whose lane was
 // handed back, as the drain routes the hand-back: the issue is a person's
-// again, so it is not left holding others off until it lapses. It returns
-// the route's clause, "" for a run that holds no reservation.
+// again, so it is not left holding others off until it lapses. A step that
+// handed the lane back and released it (releaseOnHandBack) logged
+// reservation_released, and that record's clause is returned; one whose
+// fetch or push failed logged reservation_release_failed instead, and that
+// run, like one handed back by an abcd before that step, is released here.
+// It returns the route's clause, "" for a run that holds no reservation.
 func releaseHandedBack(repoRoot string, run State, now time.Time) string {
 	if run.ReservedAt == nil || run.Issue() == "" {
 		return ""
+	}
+	// The step that handed the lane back has already released it, and its
+	// record says how (releaseOnHandBack). A failed release is a different
+	// stage, so it is never reused: the tombstone is pushed again below.
+	for k := len(run.Record) - 1; k >= 0; k-- {
+		if run.Record[k].Stage == StageReservationReleased {
+			return run.Record[k].Note
+		}
 	}
 	clause, failed := releaseReservation(repoRoot, run.Key, now)
 	if failed {
