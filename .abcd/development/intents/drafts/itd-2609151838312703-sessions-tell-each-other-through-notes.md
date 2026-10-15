@@ -23,7 +23,7 @@ related_adrs: [adr-2610031352212697]
 >
 > "Last night five of my sessions passed dozens of messages, and from this morning my colleague's sessions and my cloud sessions could see none of them," said Maya, an autonomous-development practitioner working with a second contributor. "Now when one of my sessions starts merging, my colleague's session sees 'merging the login fix' before it pushes, and when I cut a release, nobody's session merges into it. I can read every note my sessions sent in one list."
 
-> _Agent-seeded on 2026-10-15 from the ruling (Decisions) and revised after two adversarial reviews the same day; for the product thinker's confirmation at the planning interview._
+> _Agent-seeded on 2026-10-15 from the ruling (Decisions) and revised after two adversarial reviews the same day; confirmed as written by the product thinker at the planning interview of 2026-10-15 (Q4, in four parts)._
 
 ## Why This Matters
 
@@ -42,7 +42,7 @@ We expect sessions under different accounts, on different machines and in the cl
 - Holds at coordination scale, on the order of the dozens of messages five sessions exchanged on 2026-10-14; a busier use is a re-decision.
 - Holds while everything a note carries may be public for ever: a kind, an item id, a time and a username, on a public repository.
 - Holds for warnings that may arrive late: a session sees a note only after a fetch, so nothing that must never be missed rests on a note alone; the release hold is enforced at the merge step instead (C7).
-- Holds once the embargo check is on the default branch (adr-2610120558328615, on an unmerged branch on 2026-10-15); until then C3's second refusal cannot be built. <!-- record-lint: forward-looking -->
+- Holds once the embargo check is on the default branch (adr-2610120558328615, on an unmerged branch on 2026-10-15); until then C5 cannot be built. <!-- record-lint: forward-looking -->
 - Hypothesis until the cloud probe answers it: a hosted cloud session may push a branch outside the host's own prefix, and its git identity resolves to a forge username. If either fails, a cloud session cannot send notes under this design and the question goes back to the product thinker.
 
 ## Acceptance Criteria
@@ -75,11 +75,11 @@ Run by hand under [`decompose-before-filing`](../../principles/decompose-before-
 | Sending, reading and listing fixed-form notes on the shared remote (C1 to C6, C9 to C12, C16) | capability | this intent, generalising the reservation primitive's write, fetch, trailer collection and render rather than adding a second copy ([`one-canonical-primitive`](../../principles/one-canonical-primitive.md)) | file here |
 | A release cut held by a reservation the land step reads (C7, C8) | capability | this intent; it widens the reservation's subject from a record to a release and adds a reader to the land fence, so it `builds_on` [itd-2609091034175565](../planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md); it would resolve iss-2609091037191879 | file here |
 | A notes branch that moves without a preflight receipt, and the ruleset that keeps its history (C13 to C15) | trust rule | a new ADR beside [adr-2610031352212697](../../decisions/adrs/2610031352212697-claims-are-branches-on-the-shared-remote.md), plus clauses in brief invariants 7 and 10 naming the notes verbs and branch as the reservation's clauses do | mint at planning |
-| When abcd fetches the notes (C12, C16): only through verbs whose meaning says so, or also from the prompt hook | trust rule | brief invariant 7 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); the open question below | asked at the interview |
+| When abcd fetches the notes (C12, C16): only through verbs whose meaning says so | trust rule | brief invariant 7 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)) as it stands, with a clause naming the notes verbs as the reservations' clause does (decision 14) | clause at planning |
 | A message from a peer informs and never authorises | stance | already held for the host's own messages; stated as decision 4 and taught by C6's rendered line; no new principle | cite, no new record |
 | The sub-agent budget | capability | [itd-2610100704270254](itd-2610100704270254-an-abcd-run-works-out-how-many-sub.md), beside this intent (decision 5) | not this intent |
-| Session presence: which sessions are running now | capability | iss-2608220750029993 and the session register [itd-2609150819440345](itd-2609150819440345-which-session-holds-which-worktree.md); notes say what happened, not who is alive | not this intent |
-| An opt-in broker adapter for notes on a local network | capability | [itd-2609151838327688](itd-2609151838327688-an-opt-in-adapter-to-a-local-message.md), whose basic this draft no longer is | overlap, asked at the interview |
+| Session presence: which sessions are running now | capability | iss-2608220750029993 and the session register [itd-2609150819440345](itd-2609150819440345-which-session-holds-which-worktree.md); notes say what happened, not who is alive (decision 16) | keep both |
+| An opt-in broker adapter for notes on a local network | capability | [itd-2609151838327688](itd-2609151838327688-an-opt-in-adapter-to-a-local-message.md), kept as a draft to be rewritten later as an optional faster carrier of these notes (decision 15) | keep both |
 
 ## Decisions
 
@@ -105,6 +105,12 @@ Decided by the technical facilitator on 2026-10-15 on the two adversarial review
 12. **The push hook's shape check for notes is the reservation's** (a fast-forward of commits that change no file), not a second trailer parser in shell; a note the reader cannot parse is flagged by C11.
 13. **Expiry is counted from when this checkout first fetched the note** (C9), the shape of the clock finding iss-2610142200372105 records for reservations.
 
+Ruled by the product thinker at the planning interview of 2026-10-15:
+
+14. **Notes are fetched only by a command whose job is that** ("Only when a command checks", Q1): `abcd notes`, `abcd peers` and the land step fetch them, and the prompt hook shows only the last fetch from disk, with its age. Brief invariant 7 stands without an exception; the alternative, an opt-in fetch from the prompt hook at most once a minute, was not chosen. Accepted cost: a session that runs none of those commands sees a new note only at its next merge.
+15. **The broker draft stays, to be rewritten later** ([itd-2609151838327688](itd-2609151838327688-an-opt-in-adapter-to-a-local-message.md); "Keep it, rewrite later", Q2): a messaging service on the person's own network would wake an idle session the moment a note arrives, which notes on the shared remote cannot, but it never reaches another person's computer or a cloud session. It stays a separate draft, re-based on notes as an optional faster carrier when it is next worked on; until then it still describes the retired shared-folder mailbox.
+16. **Notes are planned on their own, apart from the session register** ([itd-2609150819440345](itd-2609150819440345-which-session-holds-which-worktree.md); "Plan notes on their own", Q3): notes say what a session did, the register would say which sessions are running and what each holds. The register's way of sharing between computers is still undecided, and notes do not wait for it.
+
 ## Prior Art
 
 - [2026-10-14-session-messages-across-accounts](../../research/notes/2026-10-14-session-messages-across-accounts.md): the options, the adversarial review, the state-of-the-art pass and the recommendation the ruling adopted.
@@ -115,8 +121,7 @@ Decided by the technical facilitator on 2026-10-15 on the two adversarial review
 
 ## Open Questions
 
-- **When does abcd fetch the notes?** Brief invariant 7 lets abcd touch the network only through a verb whose documented meaning is that fetch, which is how reservations work: `reserve` and `peers` fetch, and every render reads the last fetch from disk. Under it, notes are fetched by `abcd notes`, `abcd peers` and the land step, and the prompt hook shows only what is already on disk (C12), so a session that runs none of them sees nothing new. The alternative is to amend the invariant in the open, as the dashboard's listener was, so that the prompt hook may start a background fetch at most once a minute per repository when the person has switched it on. For the product thinker at the planning interview.
-- **The broker draft (itd-2609151838327688).** It was filed as the opt-in adapter to this draft's local mailbox, and this draft no longer has one: keep both, bundle, supersede, or refine. For the product thinker at the planning interview.
+_None open._
 
 ## Audit Notes
 
