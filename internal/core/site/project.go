@@ -288,8 +288,14 @@ func (c *composer) ComposeAbout() (string, error) {
 	b.WriteString(c.head())
 	b.WriteString(c.header())
 	b.WriteString(`<main id="app"><div class="page">`)
-	if a.identity {
+	switch {
+	case a.identity:
 		b.WriteString(c.aboutHero())
+	case c.repo.Name != "":
+		// No identity block: the page is headed by the repository's name on
+		// GitHub, from the origin remote (projectRepoMeta), which is the
+		// forge's name for it rather than words written for the website.
+		b.WriteString(`<div class="wrap rechead"><h1 class="pagetitle">` + escapeText(c.repo.Name) + `</h1></div>`)
 	}
 	if a.brief != nil {
 		h, err := c.aboutBrief(a.brief, a.opening)

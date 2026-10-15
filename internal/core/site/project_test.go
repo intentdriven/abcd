@@ -332,3 +332,49 @@ func TestAProjectSiteReadsNothingFromThePackageManifest(t *testing.T) {
 		t.Fatalf("findings: %+v", res.Findings)
 	}
 }
+
+// A project with no identity block is titled by its repository's name on
+// GitHub: the head, the brand and the about page's heading carry it, and a
+// record page reads "<page> · <name>", never a name with nothing after it.
+func TestAProjectWithoutAnIdentityBlockIsTitledByItsRepositoryName(t *testing.T) {
+	f := newProjectFixture(t)
+	if err := os.Remove(filepath.Join(f.Root(), ".abcd", "positioning.json")); err != nil {
+		t.Fatal(err)
+	}
+	f.commitAt("2026-03-08T09:00:00+00:00", "chore: no identity pointer", "None")
+	out, files := buildProject(t, f)
+	about := string(files["index.html"])
+	for _, want := range []string{
+		"<title>" + projectOriginName + "</title>",
+		`<a class="brand" href="/">` + projectOriginName + `</a>`,
+		`<h1 class="pagetitle">` + projectOriginName + `</h1>`,
+	} {
+		if !strings.Contains(about, want) {
+			t.Errorf("the about page lacks %q", want)
+		}
+	}
+	if strings.Contains(about, `class="hero"`) {
+		t.Error("the about page renders a hero with no identity block")
+	}
+	dash := string(files["record/index.html"])
+	if !strings.Contains(dash, "<title>Dashboard · "+projectOriginName+"</title>") {
+		t.Errorf("the dashboard's title is not the page and the repository name: %s", firstMatch(`<title>[^<]*</title>`, dash))
+	}
+	for rel, data := range files {
+		if strings.Contains(string(data), " · </title>") || strings.Contains(string(data), "<title></title>") {
+			t.Errorf("%s is titled with no name", rel)
+		}
+	}
+	res, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, Project: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK() {
+		t.Fatalf("findings: %+v", res.Findings)
+	}
+}
+
+// firstMatch returns the first match of pattern in s, for a failure message.
+func firstMatch(pattern, s string) string {
+	return regexp.MustCompile(pattern).FindString(s)
+}
