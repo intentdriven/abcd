@@ -464,6 +464,11 @@ func echoName(n string) string {
 // namespaces are fetched alone, and only the default branch is lost: gap is
 // why it could not be read, and the act goes on without it. A fetch of the
 // namespaces themselves that fails refuses the act.
+//
+// The namespaces are stamped in the order given, and a stamp that cannot be
+// written refuses the act after the fetch has landed: the namespaces stamped
+// before it keep their stamps, each true, and it and those after it keep the
+// stamp of their last fetch that recorded one.
 func fetch(root string, now time.Time, outcome string, spaces ...namespace) (gap string, err error) {
 	if len(spaces) == 0 {
 		return "", refuse("a fetch names no namespace; %s", outcome)
