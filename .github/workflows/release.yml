@@ -323,11 +323,21 @@ jobs:
         # line-oriented, so a tag carrying an embedded newline would pass on its
         # first line; [[ =~ ]] matches the whole string. TAG arrives through the
         # workflow env (injection-safe).
+        #
+        # A pre-release tag (vX.Y.Z-…) is refused too: this chain publishes a
+        # Release only once site.yml has attached site.tar.gz, and site.yml
+        # renders and publishes full releases only, so a pre-release would stay
+        # an unpublished draft. Build metadata (vX.Y.Z+…) is not a pre-release.
         run: |
           set -euo pipefail
           tag_re='^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
           if [[ ! $TAG =~ $tag_re ]]; then
             printf "refusing to release '%s': not a vX.Y.Z release tag\n" "$TAG" >&2
+            exit 1
+          fi
+          pre_re='^v[0-9]+\.[0-9]+\.[0-9]+-'
+          if [[ $TAG =~ $pre_re ]]; then
+            printf "refusing to release '%s': a pre-release tag; this release chain publishes full vX.Y.Z releases only\n" "$TAG" >&2
             exit 1
           fi
           echo "release tag: $TAG"
