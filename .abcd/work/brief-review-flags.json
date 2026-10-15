@@ -28,7 +28,7 @@
     {
       "chapter": "05-intent.md",
       "sentence": "disciplines follow. The seven written since (itd-190 onwards) head the rule",
-      "replacement": "disciplines follow. The eight written since (itd-190 onwards) head the rule",
+      "replacement": "disciplines follow. The nine written since (itd-190 onwards) head the rule",
       "evidence": ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention.md:1",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
@@ -36,7 +36,7 @@
     {
       "chapter": "05-intent.md",
       "sentence": "**The first trigger has fired, and the enum has not been drawn.** Fourteen",
-      "replacement": "**The first trigger has fired, and the enum has not been drawn.** Fifteen",
+      "replacement": "**The first trigger has fired, and the enum has not been drawn.** Sixteen",
       "evidence": ".abcd/development/intents/disciplines/README.md:1",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
@@ -52,7 +52,7 @@
     {
       "chapter": "05-intent.md",
       "sentence": "four bench drafts and seven of the fourteen disciplines carry no section",
-      "replacement": "four bench drafts and eight of the fifteen disciplines carry no section",
+      "replacement": "four bench drafts and nine of the sixteen disciplines carry no section",
       "evidence": ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention.md:1",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"

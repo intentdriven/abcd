@@ -49,6 +49,11 @@ func foundAtPath(value string) (string, bool) {
 	return v, true
 }
 
+// FoundAtPath is the repo-relative path a found_at value names, with any
+// locator suffix dropped, and whether it names one: the file a drain reserves
+// an issue with.
+func FoundAtPath(value string) (string, bool) { return foundAtPath(value) }
+
 // checkFoundAt refuses a found_at that names a repo-relative path which does
 // not resolve in the checkout being written to (iss-2609120511058115). The
 // ledger records findings about the repository it lives in; a path that is not

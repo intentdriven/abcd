@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/core/github"
 )
 
 // Forge is the slice of the forge `abcd site setup` reads and writes: the
@@ -52,11 +53,11 @@ type BranchPolicy struct {
 }
 
 // ghForge is Forge over the GitHub CLI, acting as the person who invoked the
-// verb (ahoy.GH): abcd holds no forge token.
+// verb (github.Run): abcd holds no forge token.
 type ghForge struct {
 	dir  string
 	repo string
-	// gh runs one gh subcommand; nil is ahoy.GH. Tests point it at an
+	// gh runs one gh subcommand; nil is github.Run. Tests point it at an
 	// in-process fake of the forge's API, so nothing reaches a network.
 	gh func(dir string, stdin []byte, args ...string) ([]byte, error)
 }
@@ -74,7 +75,7 @@ func GitHubForge(dir string) (Forge, error) {
 func (g *ghForge) Repo() string { return g.repo }
 
 func (g *ghForge) api(stdin []byte, method, path string) ([]byte, error) {
-	args := []string{"api", "--hostname", ahoy.GitHubHost, "-H", "Accept: application/vnd.github+json"}
+	args := []string{"api", "--hostname", github.Host, "-H", "Accept: application/vnd.github+json"}
 	if method != "" {
 		args = append(args, "--method", method)
 	}
@@ -85,7 +86,7 @@ func (g *ghForge) api(stdin []byte, method, path string) ([]byte, error) {
 	if g.gh != nil {
 		return g.gh(g.dir, stdin, args...)
 	}
-	return ahoy.GH(g.dir, stdin, args...)
+	return github.Run(g.dir, stdin, args...)
 }
 
 // envPath builds an environment path. The environment names are this

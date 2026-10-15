@@ -1,0 +1,10 @@
+# gitleaks finding fingerprints that are not secrets, one per line, each with
+# its reason above it. A fingerprint names one commit, one file, one rule and
+# one line, so it hides nothing added anywhere else; it is history residue
+# under principles/secret-shaped-fixtures-at-runtime.md, never a pattern.
+#
+# Commit 268da6f4a added a consistency finding key test constant
+# (itd-2609291923559186), `goodFindingKey = "cfk-…"`, and generic-api-key reads
+# the `Key = "…"` assignment as a credential. The key is a content hash, and
+# the constant is renamed at the branch tip.
+268da6f4aa61b7ef3cb58a886a3f4c6225009410:internal/core/capture/findingkey_test.go:generic-api-key:17

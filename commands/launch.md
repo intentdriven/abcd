@@ -91,13 +91,15 @@ deployment gate that no merge can bypass, because publishing cannot be undone.
 | 2 | Prove the release gate locally | you, one command |
 | 3 | Open the release PR, wait for green, merge | you, in GitHub |
 | 4 | Tag the release | automatic |
-| 5 | Build, checksum, attest, publish | **stops and waits for your approval** |
-| 6 | Deploy the website from the tag | automatic, after step 5 |
+| 5 | Build, checksum, attest, create the Release as a draft | **stops and waits for your approval** |
+| 6 | Attach the website, publish the Release, deploy the website | automatic, after step 5 |
 | 7 | Update your plugin and check what you got | you, locally |
 
 Steps 4-6 are one GitHub Actions run. You do not visit Cloudflare: the site
 deploy is invoked by the release workflow, so approving step 5 releases step 6
-with it.
+with it. The Release stays an unpublished draft until step 6 has attached the
+website's archive to it, so it becomes public with every asset already
+attached; there is nothing extra to click.
 
 ### Step 3 — merging, and the one hazard
 
@@ -132,8 +134,10 @@ Click it, tick the **release** environment, optionally leave a comment, and clic
 What you are approving: building four platform binaries stamped with the tag,
 rendering the plugin archive (`abcd-plugin-vX.Y.Z.zip`) and proving it is the one
 the catalog pins, checksumming exactly those bytes, signing a provenance
-attestation, publishing a GitHub Release with the binaries and the archive
-attached, and deploying the website from the tag. That is why it is gated — it is the step that puts bytes in front of the
+attestation, creating the GitHub Release as a draft with the binaries and the
+archive attached, verifying the draft's downloads against that attestation,
+then attaching the website's archive, checking every asset of the draft again,
+publishing the Release and deploying the website from the tag. That is why it is gated — it is the step that puts bytes in front of the
 public. The reviewer requirement itself lives in the repository's environment
 settings rather than in a workflow file, and the scaffold-parity test fails any
 edit that drops the `environment:` binding from the job.
@@ -143,8 +147,8 @@ checks before it (`verify`) take a few minutes: they build, test and lint the
 tagged commit. Wait for `verify` to go green.
 
 **Approve promptly.** From the moment the release PR merges, the catalog on `main`
-names this release's archive, and the archive exists only once this job uploads
-it. A plugin install or update in between fails closed — the download is not
+names this release's archive, and the archive is downloadable only once the
+Release is published, a few minutes after you approve. A plugin install or update in between fails closed — the download is not
 there yet, so the harness refuses and an installed plugin stays on its previous
 release — and nothing else can be installed in its place, because the pinned
 digest refuses any other bytes. The window cannot be closed (the pin has to be in
@@ -172,6 +176,15 @@ Six failures are worth recognising, because each looks like something else.
 
 - **The run says `Waiting` for a long time and nothing happens.** That is the
   approval gate, not a hang. Approve it.
+- **`site / render` or `site / publish` failed.** The Release is still an
+  unpublished draft, so nothing new is public and installs stay on the
+  previous release. Re-run the failed jobs of the same run (**Re-run failed
+  jobs** on its page, or `gh run rerun <run-id> --failed`): the render attaches
+  the website's archive to the draft and `publish` publishes it. The dispatch
+  below does not help here, because it deploys published releases only, and
+  neither does a later push to `main`: `auto-release` then fails its `detect`
+  job and names this same remedy, since only the run of the tagged commit can
+  finish its Release.
 - **The release succeeded but `site / deploy` failed.** Known, recorded as
   iss-2608231912566984, and not a release failure: the binaries, checksums and
   attestation are published and correct, and only the website is behind. Deploy
@@ -872,14 +885,18 @@ exact commit, pinning a judge model, and declaring the matching detector. CI
 cannot produce these: they spawn LLM agents, so they are host-run, and an un-run
 pass is never a silent pass.
 
-**The release branch is exactly two commits.** A receipt names the commit its
-reviewer read and must live in a LATER commit — it can never sit in the tree of
-the commit it names, because adding it would change that commit's sha. So:
+**The release branch is the roll, then the receipts.** A receipt names the
+commit its reviewer read and must live in a LATER commit — it can never sit in
+the tree of the commit it names, because adding it would change that commit's
+sha. So:
 
 1. **The CHANGELOG roll** — the release-content commit, written by the three
    steps above: the dated section, and on a feature cut the release page and its
    archive move. This is what the reviewers read.
 2. **The receipts** — a commit recording the semantic verdicts that name commit 1.
+3. **The captures**, when a review deferred a finding — a commit after the
+   receipts holding one open issue record per deferred finding, so the merged
+   tree the release job reads holds them.
 
 On merge, `release.yml` derives the content commit from the receipts directory
 of the released tree: of the commits on the released lineage that a
@@ -912,6 +929,33 @@ is the adr-37 runbook at
 
 A receipt is bound to its gate by its `policy.detector` value, not its filename,
 and a mismatched, malformed, HOLD, model-less or wrong-detector receipt blocks.
+
+**Every finding a receipt records is `fixed`, `invalid` or `deferred`**, spelled
+exactly, and a deferred finding names its own open issue record in a separate
+`record` field:
+
+```json
+{"where": "04-surfaces/16-lint.md:12", "disposition": "deferred", "record": "iss-<id>"}
+```
+
+Capture each deferred finding with `abcd capture` before writing its receipt
+entry, one record per finding. The gate refuses any other disposition word, a
+deferred finding with no record, a record that is not open in the issue ledger
+or that the ledger's reader refuses, a record on a `fixed` or `invalid`
+finding, and one record named by two deferred findings across the release's
+receipts. The rule arms from the release-gate manifest's `schemaVersion` 2, so
+a commit from before it keeps the free-text dispositions its receipts were
+written to.
+
+The gate also refuses, in the manifest era, a release whose version is not
+newer than every release tag, unless it re-gates its own tagged commit and every
+newer release tag descends from it; a version already tagged at another commit
+is refused too. So a point release on an older line, such as v0.14.2 after
+v0.15.0, is refused: cut the next version on `main` instead. Before 1.0 only the
+newest release is offered (the product thinker's ruling of 2026-10-14), and
+`ComputeRetention` refuses an out-of-order ship already. A hand-pushed tag that
+`verify` refuses is used up, because tags cannot be deleted or moved; roll the
+next version rather than push it again.
 Report a HOLD to the user and stop: a HOLD is a result, not an obstacle to route
 around, and the receipts cannot be hand-written to unblock a release.
 
@@ -930,8 +974,10 @@ It is the release job's receipt gate, not a model of it: it reads the
 required-gate names from the committed `release.yml` (which owns that list), derives
 the content commit from the receipts directory the way the release job does, and
 runs the release job's own check over it. It reads the working tree, so it
-refuses on an uncommitted receipt change — the release job reads the committed
-tree and would not see it.
+refuses on an uncommitted receipt or capture — the release job reads the
+committed tree and would not see it. A file git ignores or one marked
+skip-worktree is beyond what it can see, and a clone with no release tags, while
+CHANGELOG.md names an earlier release, is refused until `git fetch --tags`.
 
 Exit codes:
 
@@ -1037,10 +1083,12 @@ For **`kind: plugin`**, four files:
   gates configured, `verify` arms the receipt gate against the reviewed
   **content** commit it derives from the receipts directory of the released
   tree, so the first public release cannot hit the receipt-vs-tag
-  self-reference, and on a tag push it first refuses a tag that is not `v` plus
-  the released tree's newest dated CHANGELOG version (`record-lint
-  --released-version`, the reader the receipts are bound with), so a hand-pushed
-  tag cannot publish under another version's receipts.
+  self-reference, and it first refuses a release tag that is not `v` plus the
+  released tree's newest dated CHANGELOG version (`record-lint
+  --released-version`, the reader the receipts are bound with), so a tag cannot
+  publish under another version's receipts. A run started by a pushed version
+  tag is then refused by its first job, `pushed-tag`, before anything is built:
+  releases are made by `auto-release.yml` from the default branch.
 - `.github/workflows/auto-release.yml` — newest dated CHANGELOG heading → tag that
   commit → call `release.yml`. `GITHUB_TOKEN`-only, no personal access token.
 - `.abcd/development/release-gate/README.md` — the adr-37 runbook, including the

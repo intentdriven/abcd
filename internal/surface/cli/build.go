@@ -266,8 +266,8 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			"rounds falsifies the pick: the run record (`abcd implement record`) carries the pick's\n" +
 			"score table and says so, and the intent's entry is not edited.\n\n" +
 			"No candidate for a first pick is refused, naming each excluded intent and the check that\n" +
-			"excluded it, and nothing is written. Refused too, writing nothing: a negative --max,\n" +
-			"--max with --until-empty, and, while a series is in progress, a count or pace other than\n" +
+			"excluded it, and nothing is written. Refused too, writing nothing: --max 0 or a negative\n" +
+			"--max, --max with --until-empty, and, while a series is in progress, a count or pace other than\n" +
 			"the one it began with, and, until it is restored or removed, a series state that cannot be\n" +
 			"read, does not parse, or names a count, a pick, an outcome, pace flags or a pace the series\n" +
 			"never writes; and a pick whose reason the grounds writer's gate refuses, a defect to report.\n" +
@@ -297,6 +297,11 @@ func newBuildNextCommand(asJSON *bool) *cobra.Command {
 			}
 			if cmd.Flags().Changed("fix-rounds") {
 				o.FixRounds = &fixRounds
+			}
+			if cmd.Flags().Changed("max") && maxPicks < 1 {
+				// NextOptions.Max reads 0 as no --max at all; an explicit
+				// --max 0 is no run count either, so it is refused here.
+				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, loop.RunCountRefusal(maxPicks))
 			}
 			res, err := loop.Next(root, o, loop.NextOptions{Max: maxPicks, UntilEmpty: untilEmpty})
 			if err != nil {
@@ -860,6 +865,19 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"asked for, the reason and the route that runs it. A role left unset is the host's, and\n" +
 			"the call is exactly the host-driven step. A step that re-tells an await starts nothing.\n" +
 			"An interrupt kills the runner's process group.\n\n" +
+			"With oracle.review set to rp (in .abcd/config.json or " + abcdhome.Display("config.json") + ", the\n" +
+			"MCP oracle's address, oracle.rp.url, in the latter alone), a ruthless or security review\n" +
+			"the step hands to the host is sent instead to that MCP oracle, with a request rendered\n" +
+			"beside the reviewer's brief (its agent definition, the lane's brief, the reports and the\n" +
+			"diff): the answer is written to the review's return path and its verdict recorded through\n" +
+			"the same receipt, and the result's route names rp; a return the host's agent wrote first\n" +
+			"stands, and the answer is kept aside beside it. A review the route does not return (no\n" +
+			"server named on this machine, a refused connection, a bound run out, the server's error,\n" +
+			"a return with no verdict or too large, a request too large to compose, or an interrupt)\n" +
+			"falls back: the host is handed the same brief and return path, and the call records one\n" +
+			"fallback naming the role, rp, the reason and the host, which status and record count. The\n" +
+			"intent-auditor, and a reviewer routed to a runner, are unchanged; with oracle.review unset\n" +
+			"or host nothing changes, and abcd never starts, installs or configures the oracle.\n\n" +
 			"The run's window clock: once the run's working window has elapsed, the call starts\n" +
 			"nothing, writes next_eligible_at (now plus the run's pause) and exits 0 naming it; an\n" +
 			"agent already started may still hand back its receipt. Before next_eligible_at the call\n" +
@@ -951,6 +969,10 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				if lerr != nil {
 					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
 				}
+				review, lerr := loop.LoadReviewRoute(roots, agentPrompt)
+				if lerr != nil {
+					return loopFail(cmd.OutOrStdout(), *asJSON, prefix, lerr)
+				}
 				// An interrupt or a termination ends the context, and the runner
 				// kills the process group it started through its own handle: a
 				// harness never outlives the step that started it.
@@ -958,6 +980,11 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 				defer stop()
 				res, err = loop.Drive(ctx, root, id, loop.DefaultStages(), loop.Options{},
 					loop.Runners{Config: cfg, Transcripts: &lazyHistoryStore{cmd: cmd}})
+				if err == nil {
+					// A review the step handed to the host goes to the reviewer
+					// route instead when oracle.review selects one (itd-6).
+					res, err = loop.DriveReview(ctx, root, id, res, loop.DefaultStages(), loop.Options{}, review)
+				}
 			}
 			if err != nil {
 				return loopFail(cmd.OutOrStdout(), *asJSON, prefix, err)

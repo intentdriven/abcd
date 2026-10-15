@@ -39,10 +39,11 @@ unset HTTPS_PROXY https_proxy HTTP_PROXY http_proxy ALL_PROXY all_proxy CURL_HOM
 unset CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
 
 # gh_policy is who must have built the binary for `gh attestation verify` to
-# pass: this repository's release workflow, on github.com — the policy
+# pass: this repository's release workflow on main (--cert-identity), from
+# main (--source-ref), on a GitHub-hosted runner, on github.com — the policy
 # hooks/bootstrap.sh, `abcd update` and `abcd ahoy install` verify too. The
 # hostname is named so no GH_HOST can point the check at another server.
-gh_policy='--hostname github.com --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml'
+gh_policy='--hostname github.com --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners'
 
 # usage is the --help text.
 usage() {
@@ -144,8 +145,9 @@ verify() {
 # commit the latest release's tag names (--source-digest, which gh holds to the
 # commit Fulcio recorded for the signing run). A gh that can verify, for a
 # release whose commit the API does not answer, stops the install; a gh whose
-# attestation command predates --source-digest counts as one that cannot
-# verify. The tag is read after the download, so a release published in
+# attestation command lacks any flag of the policy (--source-digest,
+# --source-ref, --cert-identity, --deny-self-hosted-runners) counts as one that
+# cannot verify. The tag is read after the download, so a release published in
 # between is refused, never passed: its commit is not the downloaded build's.
 # The hand check binds the installed binary to the commit of the release it
 # reports itself to be.
@@ -158,6 +160,12 @@ verify_provenance() {
 		cannot='the installed gh has no attestation command (gh 2.68 or later has it)'
 	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--source-digest'; then
 		cannot='the installed gh cannot hold the check to the release commit (its attestation verify has no --source-digest; gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--source-ref'; then
+		cannot='the installed gh cannot hold the check to the ref the release was built from (its attestation verify has no --source-ref; gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--cert-identity'; then
+		cannot='the installed gh cannot hold the check to the release workflow on main (its attestation verify has no --cert-identity; gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--deny-self-hosted-runners'; then
+		cannot='the installed gh cannot hold the check to a GitHub-hosted runner (its attestation verify has no --deny-self-hosted-runners; gh 2.68 or later has it)'
 	else
 		tag=$(curl -q --proto '=https' --proto-redir '=https' --tlsv1.2 -fsS -o /dev/null -w '%{redirect_url}' "https://github.com/intentdriven/abcd/releases/latest") || tag=''
 		tag=$(printf '%s\n' "$tag" | sed -n 's|^https://github.com/intentdriven/abcd/releases/tag/\(v[0-9][0-9A-Za-z.-]*\)$|\1|p')

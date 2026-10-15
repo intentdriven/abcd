@@ -97,9 +97,11 @@ type helpPlacement struct {
 // inbox, implement, history, site, docs, scribe, identity, guard, hook and
 // statusline with agents. P2 keeps drain with agents until itd-82 ships. P3
 // makes peers and mode agents only, P4 report, spec and rules, and P6 banlist.
-// memory and source have merged into library, a person's verb under records
-// (P4 and decision 1), and changelog into launch as its preview
-// (`launch --dry-run`, P4), so neither old name has a placement. Neither
+// The old memory and source verbs merged into library, a person's verb under
+// records (P4 and decision 1), and changelog into launch as its preview
+// (`launch --dry-run`, P4), so neither source nor changelog has a placement;
+// the memory name returned as the agents' memory-notes verb
+// (itd-2610091918433290), which the verb split gave it. Neither
 // surface caps the person's list (the 2026-10-09 menu ruling), and the plugin menu lists the
 // same commands (TestPluginPersonListEqualsTheCLIs). The groups are the spec's
 // decision 1: ideate under records, reading and lab under checks, dashboard
@@ -122,6 +124,9 @@ var helpPlacements = map[string]helpPlacement{
 	"disembark": {group: groupPortability},
 	"embark":    {group: groupPortability},
 	"launch":    {group: groupRelease},
+	// embargo is a person's verb under release (spc-2610120557432880, step
+	// 10): the person decides every verdict and approves every act on GitHub.
+	"embargo": {group: groupRelease},
 
 	// The agents-and-hosts block. rules names the page that installs the rule
 	// loader, and spec the user-facing half of the spec lifecycle (the spec's
@@ -137,9 +142,11 @@ var helpPlacements = map[string]helpPlacement{
 	"inbox":               {group: groupAgents, page: "commands/inbox.md"},
 	"intent audit ingest": {page: "commands/intent.md"},
 	"lint":                {group: groupAgents, page: "commands/lint.md"},
+	"memory":              {group: groupAgents, page: "commands/memory.md"},
 	"mode":                {group: groupAgents, page: "commands/mode.md"},
 	"peers":               {group: groupAgents, page: "commands/peers.md"},
 	"reflect":             {group: groupAgents, page: "commands/reflect.md"},
+	"reserve":             {group: groupAgents, page: "commands/reserve.md"},
 	"report":              {group: groupAgents, page: "commands/report.md"},
 	"rules":               {group: groupAgents, page: "commands/ahoy.md"},
 	"scribe":              {group: groupAgents, page: "commands/scribe.md"},

@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/homeignore"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
@@ -32,7 +33,9 @@ import (
 // host adds a prompt or session-start hook's stdout to the agent's context, so
 // the agent can tell the person; a staging hook's result line is the machine
 // contract its callers parse; the shell guard's blocking status is what keeps a
-// command from running unchecked; and the status line is one short row.
+// command from running unchecked; `lint outbound` exits 2, its "could not
+// run", because its callers read exit 1 as a refusal of the text; and the
+// status line is one short row.
 
 // homeStop is the stop in force for the home HOME names, or nil. An empty or
 // relative HOME is no stop: the refusals for that shape stand where they are.
@@ -107,6 +110,19 @@ func renderHomeStop(root *cobra.Command, args []string, stop *abcdhome.Stop, std
 	case "statusline":
 		fmt.Fprintln(stdout, stop.Short)
 		return 0
+	case "lint outbound":
+		// Exit 2, the verb's "the check could not run": its callers read exit
+		// 1 as a refusal of the text, and the scaffolded commit-msg gate would
+		// then block every commit while the stop stands rather than failing
+		// open as it promises.
+		if asJSON {
+			enc := json.NewEncoder(stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(newErrorEnvelope(stop.Line, 2))
+			return 2
+		}
+		fmt.Fprintln(stderr, "abcd:", stop.Line)
+		return 2
 	}
 	if asJSON {
 		enc := json.NewEncoder(stdout)
@@ -142,4 +158,53 @@ func admitsRename(stop *abcdhome.Stop, stdin io.Reader) bool {
 	// keeps, so `mv` would rename the folder to a name with an invisible
 	// character in it and the stop would lift.
 	return strings.EqualFold(in.ToolName, "Bash") && strings.Trim(in.ToolInput.Command, " \t\n") == abcdhome.RenameCommand
+}
+
+// layHomeIgnore makes sure abcd's home ignores itself (homeignore.Lay) for the
+// home HOME names, the same reading homeStop takes. It runs only once the stop
+// has let the command through, so the old home's stop still writes nothing. A
+// lay that fails returns false, and the caller does not try again in the same
+// run; it never fails the command, and the next command tries again. The
+// failure is said in one line on stderr unless quiet: under --json nothing is
+// written to stderr by design (iss-2609100519128005), and a hook's stderr is
+// handed to the agent as the hook's own words.
+func layHomeIgnore(stderr io.Writer, quiet bool) bool {
+	if _, err := homeignore.Lay(os.Getenv("HOME")); err != nil {
+		if !quiet {
+			fmt.Fprintf(stderr, "abcd: %s/%s was not laid (%s); the next command tries again\n",
+				abcdhome.Display(), homeignore.IgnoreName, scrubPaths(err))
+		}
+		return false
+	}
+	return true
+}
+
+// isHookCall reports whether args name a hook the host runs (`hook <event>` or
+// `guard hook`), whose stderr is read by a machine rather than a person.
+func isHookCall(args []string) bool {
+	var words []string
+	for _, a := range args {
+		if !strings.HasPrefix(a, "-") {
+			words = append(words, a)
+		}
+		if len(words) == 2 {
+			break
+		}
+	}
+	return len(words) > 0 && (words[0] == "hook" || (len(words) == 2 && words[0] == "guard" && words[1] == "hook"))
+}
+
+// isStatusline reports whether args name the status line, the one command the
+// home's ignore file is never laid from, because it writes nothing at all. It
+// reads the first word that is not a flag rather than calling root.Find, whose
+// lookup is not free of side effects on the tree (findByPath's note); the
+// harness runs the status line as the bare `statusline` word.
+func isStatusline(args []string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(a, "-") {
+			continue
+		}
+		return a == "statusline"
+	}
+	return false
 }

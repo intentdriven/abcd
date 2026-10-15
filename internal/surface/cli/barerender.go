@@ -24,6 +24,8 @@ var bareRenderExceptions = map[string]string{
 		"add it, and writes nothing; what a drain would do renders with --dry-run",
 	"docs": "a parent holding the citation-baseline writer alone; the documentation's " +
 		"state is `abcd lint docs`, so bare prints its sub-verb",
+	"embargo": "a parent whose sub-verbs each take one step of an advisory's embargo; " +
+		"its store holds private advisories, which no bare listing shows, so bare prints its sub-verbs",
 	"embark": "a parent whose sub-verbs act on a named lifeboat; with no operand there " +
 		"is no state to render, so bare prints its sub-verbs",
 	"guard": "it judges one command handed to it and keeps no standing state to " +
@@ -39,6 +41,9 @@ var bareRenderExceptions = map[string]string{
 	"reflect": "its one operand is the cut release whose seed it renders, and a " +
 		"retrospective has no standing state apart from a release, so bare prints its " +
 		"usage and its write sub-verb and writes nothing (spc-2609211751376504)",
+	"reserve": "its one operand is the record it reserves on the shared remote, so bare " +
+		"refuses as a usage error (exit 2) and pushes nothing; the reservations render " +
+		"through `abcd peers`",
 	"report": "it files a report from a file or the editor, so bare opens the editor on " +
 		"a terminal and refuses (exit 2) anywhere else",
 	"scribe": "a parent whose sub-verbs act on a named reading run or on a scribe's " +

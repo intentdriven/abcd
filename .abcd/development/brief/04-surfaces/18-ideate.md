@@ -66,25 +66,43 @@ instructs the host to strip authorship and prior-leg framing before the hand-off
 
 ## Behaviour
 
-The recorder takes the idea's slug and the verdict JSON, from a file or stdin.
+The recorder takes the idea's slug, the product thinker's answer to "is this idea
+private or public?", and the verdict JSON, from a file or stdin.
+
+The answer is **required** and has no default (iss-2610090740139804, the product
+thinker's ruling of 2026-10-14). The command page asks it before the first leg,
+and the recorder refuses a run that carries neither answer or both, writing
+nothing: a verdict filed in the wrong store is either an idea published before
+its time or a public record nobody finds.
 
 The verdict is **required**. There is no evidence-only fallback, as there is
 for three of `disembark`'s four synthesis verbs, because there is no evidence-only
 verdict an idea could have: a binary that invented one would be doing the judging.
 
-The verb writes the verdict record as a dated research note under
-`.abcd/development/research/notes/`, and one dated pointer line in
-`.abcd/work/DECISIONS.md`. No new record family: a killed idea is a research
-outcome, and the research directory is where a session looks before re-proposing
-one.
+A **public** verdict is written as a dated record under
+`.abcd/development/research/ideas/<root-sha>/`, with one dated pointer line in
+`.abcd/work/DECISIONS.md`. A **private** verdict is written owner-only under
+`~/.abcd.noindex/ideas/<root-sha>/` and nothing else: no pointer, because the
+decision log is committed. Both stores are keyed on the repository's root commit,
+so a repository with no commit yet is refused, and so is a shallow clone, whose
+graft would stand in for the root and file the verdict where no full clone
+looks. A private verdict is also refused when the home directory lies inside a git working tree that is not the account's
+own, where a commit could carry it, and when abcd's home ignore file
+(`~/.abcd.noindex/.gitignore`, internal/core/homeignore) cannot be laid before
+the write: the account's own home is admitted only because abcd's home ignores
+itself there. No new record family: a killed idea is a
+research outcome, and the research directory is where a session looks before
+re-proposing one.
 
 Exit codes are the release-cut shape without the middle state: `0` recorded, `2`
 refused with nothing written. There is no exit 1, because a verdict is either
 recordable or it is not.
 
-## Both writes are committed, so both are redacted first
+## Every write is redacted first
 
-The verb takes intent's fail-closed posture rather than capture's
+A public verdict and its pointer are committed, and a private verdict is a file
+on disk that may be published by hand later, so one redaction path serves both
+stores. The verb takes intent's fail-closed posture rather than capture's
 redact-and-report one: a repository whose scanner configuration cannot be read
 refuses the run outright, because recording under a detector the verb cannot
 trust is worse than not recording.
@@ -104,7 +122,7 @@ Refusals are **whole-document**, never cite-or-be-dropped. A verdict record with
 a quietly-dropped falsified claim or grill hit is worse than no record, because a
 later session trusts it.
 
-The refusals a caller actually meets fall into five groups, each protecting
+The refusals a caller actually meets fall into six groups, each protecting
 something a later reader depends on:
 
 - **The payload cannot be tied to a definition**: no `schema_version`, one this
@@ -124,9 +142,15 @@ something a later reader depends on:
   list with no explicit marker saying nothing was weighed, because silence and
   "nothing was weighed" read identically; or a verdict record that already exists
   for this slug and date, because overwriting erases a recorded reason.
+- **The store is not answered**: neither answer, or both. The product
+  thinker's answer decides who can ever read the verdict, so the verb never
+  picks one.
 - **The write is not safely containable**: a slug that is not lower-case
-  kebab-case, a symlinked component under the research directory, or a repository
-  with no `.abcd/work/DECISIONS.md` for the pointer line to land in.
+  kebab-case, a component under the research directory symlinked out of the
+  repository, a repository with no `.abcd/work/DECISIONS.md` for a public
+  verdict's pointer line to land in, or a private verdict whose home lies inside
+  a git working tree that is not the account's own or where abcd's home
+  ignore file cannot be laid.
 - **There is no store to address**: a working directory with no repository above
   it, or one git will not answer for. The research store belongs to a checkout,
   and laying one where the caller happens to be standing writes a verdict nobody
@@ -135,7 +159,7 @@ something a later reader depends on:
   than a second one beneath it.
 
 That resolution has a reporting half as well as a refusing one. If a second
-research store already exists somewhere below the checkout root, the run
+research store already exists between the working directory and the checkout root, the run
 succeeds against the checkout's own store and names the stray one on the way
 past, saying that it was left untouched and that anything filed there reaches no
 gate and no release cut. It is a notice, not a refusal, and it moves nothing:
@@ -146,7 +170,8 @@ The research directory itself is created when absent: nothing else in abcd
 establishes it, so refusing would fail the first run in every repository, after
 the three host legs have already been paid for. The create is exclusive, which is
 the no-overwrite guarantee, and the decision log's read-modify-write runs under
-the same advisory lock the ledger allocators use.
+an advisory lock of its own, `.abcd/work/.decisions.lock`, taken through the
+same flock primitive the ledger allocators use.
 
 ## References
 
@@ -173,6 +198,8 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--private` | bool |
+| `--public` | bool |
 | `--verdict-json` | string |
 
 <!-- surface-appendix:end -->

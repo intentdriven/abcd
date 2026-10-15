@@ -181,9 +181,9 @@ jobs:
 
       # The checksum is integrity only: checksums.txt sits on the same release
       # page as the binary, so whoever can replace one can replace both. The
-      # attestation is the authenticity check: built by release.yml on abcd's
-      # main branch, from the commit this release's tag names, on a
-      # GitHub-hosted runner.
+      # provenance is the authenticity check: it is held to abcd's release
+      # workflow on main, built from main on a GitHub-hosted runner, at the
+      # commit the downloaded release's tag names.
       - name: Verify abcd against its release manifest and its provenance
         if: steps.switch.outputs.on == 'true'
         env:
@@ -204,7 +204,9 @@ jobs:
           fi
           gh attestation verify abcd-linux-amd64 --repo intentdriven/abcd \
             --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main \
-            --source-ref refs/heads/main --source-digest "$commit" --deny-self-hosted-runners
+            --source-ref refs/heads/main \
+            --source-digest "$commit" \
+            --deny-self-hosted-runners
           install -m 0755 abcd-linux-amd64 "${RUNNER_TEMP}/abcd"
 
       - name: Render and check the site

@@ -1,22 +1,28 @@
 name: <% if .Gate %>abcd-release-gate<% else %>release<% end %>
 <% if .Abcd %>
-# Pushing a version tag (vX.Y.Z) first re-runs the deterministic, Linux-only
-# verify gate (gofmt, build, vet, the race leg, and the record/docs/reviews
-# gates — a subset of the merge gate, which is the authority; see the
-# release-gate runbook for what gates the merge alone)
-# against the PUSHED COMMIT; only if that gate is green does it cross-compile the
-# four binaries FROM THAT SAME COMMIT, generate a checksums.txt manifest over them,
-# and publish a GitHub Release with the binaries + checksums.txt attached (plus
-# their SLSA build-provenance attestations once the repo is public — attestation is
-# not offered on a user-owned private repo, so it is skipped there and re-enables
-# automatically on the public flip).
-# Nothing is pushed to any branch. Every job checks out `github.sha` — the commit the
-# pushed tag pointed at, fixed for the whole run — never the tag NAME (which could be
-# re-pointed between jobs to swap unverified code into the build) and never the
-# default-branch tip. Net effect: a tag push yields a verified release whose binaries,
-# checksums, and reported version all come from the pushed commit. Called by
-# auto-release with create_tag, the same run makes the tag itself, and only once
-# verify is green: detect -> verify -> tag -> build -> publish.
+# Releases are made by auto-release from main: a merge that rolls a new dated
+# CHANGELOG version calls this workflow, which first re-runs the deterministic,
+# Linux-only verify gate (gofmt, build, vet, the race leg, and the
+# record/docs/reviews gates — a subset of the merge gate, which is the
+# authority; see the release-gate runbook for what gates the merge alone)
+# against the commit being released; only if that gate is green does it tag
+# that commit, cross-compile the four binaries FROM THAT SAME COMMIT, generate a
+# checksums.txt manifest over them, and create the GitHub Release with the
+# binaries + checksums.txt attached (plus their SLSA build-provenance
+# attestations once the repo is public — attestation is not offered on a
+# user-owned private repo, so it is skipped there and re-enables automatically
+# on the public flip): detect -> verify -> tag -> build -> publish.
+# Nothing is pushed to any branch. Every job checks out a resolved commit SHA,
+# fixed for the whole run — never the tag NAME (which could be re-pointed
+# between jobs to swap unverified code into the build) and never a moved-on
+# default-branch tip — so the binaries, checksums, and reported version all
+# come from the released commit.
+#
+# Pushing a version tag (vX.Y.Z) still starts a run, and that run releases
+# nothing: release provenance is verified against this workflow on main and
+# the released commit, which only auto-release's call provides, so its first
+# job (`pushed-tag`) refuses it before anything is checked out, built or
+# signed, and every other job is skipped.
 <%- else if .Gate %>
 # abcd's release gate for this repository. It is CALLED — by auto-release.yml, or
 # by this repository's own release workflow before its build step — and never
@@ -30,6 +36,22 @@ name: <% if .Gate %>abcd-release-gate<% else %>release<% end %>
 # SHA, never a re-resolvable tag NAME. A manual workflow_dispatch runs the
 # rehearsal (below), which arms the gate against a simulated release and
 # publishes nothing.
+<%- else if .RefusesPushedTag %>
+# Releases are made by auto-release from <% .DefaultBranch %>: a merge that rolls a new
+# dated CHANGELOG version calls this workflow, which re-runs the full
+# verification gate against the commit being released; only if that gate is
+# green does it tag that commit and build and publish a GitHub Release from it.
+# Nothing is pushed to any branch, and the whole path runs on the built-in
+# GITHUB_TOKEN. Every job checks out a resolved commit SHA, never the
+# re-resolvable tag NAME and never a moved-on default-branch tip. A manual
+# workflow_dispatch runs the rehearsal (below), which arms the gate against a
+# simulated release and publishes nothing.
+#
+# Pushing a version tag (vX.Y.Z) still starts a run, and that run releases
+# nothing: release provenance is verified against this workflow on
+# <% .DefaultBranch %> and the released commit, which only auto-release's call
+# provides, so its first job (`pushed-tag`) refuses it before anything is
+# checked out, built or signed, and every other job is skipped.
 <%- else %>
 # Pushing a version tag (vX.Y.Z) re-runs the full verification gate against the
 # PUSHED COMMIT; only if that gate is green does it build and publish a GitHub
@@ -108,7 +130,31 @@ permissions:
   contents: read
 
 jobs:
+<%- if .RefusesPushedTag %>
+  # A run started by a pushed version tag releases nothing: release provenance
+  # is verified against this workflow on <% .DefaultBranch %> and the released commit, which
+  # only auto-release's call provides. This job refuses such a run, naming the
+  # path that does release, and verify (with every job after it) is skipped.
+  # It checks out nothing and holds no write scope. The trigger stays, so a
+  # pushed tag reads as a refused run rather than as no run at all. A call
+  # from auto-release carries its caller's push event, but on a branch.
+  pushed-tag:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse a release started by a pushed tag
+        # TAG arrives through the workflow env (injection-safe).
+        run: |
+          set -euo pipefail
+          echo "::error::a pushed tag does not release; releases are made by auto-release from <% .DefaultBranch %>."
+          printf "refusing to release '%s' from a pushed tag: auto-release tags and releases the newest dated CHANGELOG version once it merges to <% .DefaultBranch %>\n" "$TAG" >&2
+          exit 1
+<%- end %>
 <%- if .Abcd %>
+
   # Gate the release on the pushed commit: the deterministic, Linux-only re-run
   # of the build and record gates (gofmt, build, vet, test, the race leg, the
   # record/docs drift gates, the reviews-charter discipline, smoke) — a subset
@@ -118,6 +164,8 @@ jobs:
   # never the default-branch tip or the re-resolvable tag name — so the gate
   # exercises exactly the commit whose binaries will ship.
 <%- else %>
+<%- if .RefusesPushedTag %>
+<% end %>
   # Gate the release on the pushed commit: the deterministic verification gate
 <%- if .GoModule %>
   # (gofmt, build, vet, test, the race leg). A red step here aborts before anything
@@ -140,6 +188,10 @@ jobs:
 <%- end %>
 <%- end %>
   verify:
+<%- if .RefusesPushedTag %>
+    # Skipped on a pushed tag's run, which the pushed-tag job refuses.
+    if: github.event_name != 'push' || github.ref_type != 'tag'
+<%- end %>
 <%- if .Abcd %>
     # The race step's own -timeout (20m, sized in ci.yml) must fire before this
     # does, or a hang reads as a cancelled job with no goroutine dump: 20m for
@@ -230,7 +282,7 @@ jobs:
 <%- if .Abcd %>
 
       - name: Test (race, internal)
-        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 <%- else %>
 
       # A generic module may have no internal tree, so the race leg runs over the
@@ -272,14 +324,13 @@ jobs:
 
       # --- The release tag names the released version (iss-2609251945586202) ---
       # The receipts gate below binds the receipts to the version the released
-      # tree's CHANGELOG names, not to the tag. A hand-pushed tag naming another
-      # version (v0.9.1 on a tree whose newest dated heading is 0.9.0, or a
-      # v0.9.0-rc.1) would otherwise publish under a version nobody reviewed,
-      # admitted by the receipts of the CHANGELOG's. So the tag must be exactly
-      # "v" plus that version, read by record-lint's strict reader, the one the
-      # receipts are bound with; this step compares the two and reads no heading
-      # itself. It refuses before the receipts gate and before the tag job, so
-      # nothing is built, tagged or published. Skipped on the rehearsal path,
+      # tree's CHANGELOG names, not to the tag, so the release tag must be
+      # exactly "v" plus that version, read by record-lint's strict reader, the
+      # one the receipts are bound with; this step compares the two and reads
+      # no heading itself. A tag naming another version (v0.9.1 on a tree whose
+      # newest dated heading is 0.9.0, or a v0.9.0-rc.1) is refused before the
+      # receipts gate and before the tag job, so nothing is built, tagged or
+      # published. Skipped on the rehearsal path,
       # where TAG is the branch name. TAG reaches the script through the
       # workflow env (injection-safe).
       - name: The release tag names the released CHANGELOG version (fail-closed)
@@ -457,6 +508,10 @@ jobs:
       contents: write       # create the Release and upload its assets (no branch push)
       id-token: write       # mint the OIDC token actions/attest signs with
       attestations: write   # publish the build-provenance attestations (public repo)
+    outputs:
+      # The numeric id of the draft Release this job creates. site.yml reads,
+      # attaches to and publishes that Release by this id, never by its tag.
+      release_id: ${{ steps.draft.outputs.id }}
 <%- else %>
       contents: write       # create the Release (no branch push, no attestation)
 <%- end %>
@@ -488,6 +543,13 @@ jobs:
         # line-oriented, so a tag carrying an embedded newline would pass on its
         # first line; [[ =~ ]] matches the whole string. TAG arrives through the
         # workflow env (injection-safe).
+<%- if .Abcd %>
+        #
+        # A pre-release tag (vX.Y.Z-…) is refused too: this chain publishes a
+        # Release only once site.yml has attached site.tar.gz, and site.yml
+        # renders and publishes full releases only, so a pre-release would stay
+        # an unpublished draft. Build metadata (vX.Y.Z+…) is not a pre-release.
+<%- end %>
         run: |
           set -euo pipefail
           tag_re='^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$'
@@ -495,7 +557,67 @@ jobs:
             printf "refusing to release '%s': not a vX.Y.Z release tag\n" "$TAG" >&2
             exit 1
           fi
+<%- if .Abcd %>
+          pre_re='^v[0-9]+\.[0-9]+\.[0-9]+-'
+          if [[ $TAG =~ $pre_re ]]; then
+            printf "refusing to release '%s': a pre-release tag; this release chain publishes full vX.Y.Z releases only\n" "$TAG" >&2
+            exit 1
+          fi
+<%- end %>
           echo "release tag: $TAG"
+
+      - name: Refuse a tag already released; clear an unfinished draft of it
+        # The Release is created as a DRAFT and published only once every asset
+<%- if .Abcd %>
+        # is attached (site.yml publishes it once it has attached site.tar.gz),
+<%- else %>
+        # is attached,
+<%- end %>
+        # so a run that stopped in between leaves a draft behind. A re-run, or
+        # auto-release's heal path, clears that draft here and creates the
+        # Release afresh from this run's own assets; the tag is never touched. A
+        # tag whose Release is already PUBLISHED is refused: a published release
+        # is never rebuilt. It runs straight after the tag shape-check, before
+        # anything is built or signed, so a refused tag mints no attestation.
+        # Each draft is chosen from the release listing by its tag and its draft
+        # state, and deleted by the id the listing reports for it, never looked
+        # up by tag name: a lookup by name can resolve a published Release of
+        # the tag. A listing that fails refuses rather than guess. TAG arrives
+        # through the workflow env (injection-safe).
+        run: |
+          set -euo pipefail
+          id_re='^[0-9]+$'
+          for _ in 1 2 3 4 5; do
+            if ! rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+                --jq '.[] | [.id, .draft, .tag_name] | @tsv')"; then
+              printf "refusing to release '%s': cannot list the repository's releases\n" "$TAG" >&2
+              exit 1
+            fi
+            drafts=()
+            while IFS=$'\t' read -r id draft tag; do
+              [ "$tag" = "$TAG" ] || continue
+              if [ "$draft" != true ]; then
+                printf "refusing to release '%s': its Release is already published\n" "$TAG" >&2
+                exit 1
+              fi
+              if [[ ! $id =~ $id_re ]]; then
+                printf "refusing to release '%s': a draft of it carries no numeric id\n" "$TAG" >&2
+                exit 1
+              fi
+              drafts+=("$id")
+            done <<< "$rows"
+            if [ "${#drafts[@]}" -eq 0 ]; then
+              exit 0
+            fi
+            for id in "${drafts[@]}"; do
+              echo "clearing unfinished draft Release ${id} of ${TAG}"
+              gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/${id}"
+            done
+          done
+          printf "refusing to release '%s': its unfinished drafts did not clear\n" "$TAG" >&2
+          exit 1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Record the default-branch tip (no-branch-commit tripwire)
         # This release job must push NOTHING to any branch. Record the remote
@@ -574,14 +696,23 @@ jobs:
       - name: Verify the semantic-gate receipt attestation
         if: ${{ !github.event.repository.private }}
         # CONTENT_SHA reaches this step via $GITHUB_ENV (receive step above).
+        # The attestation is held to the release workflow on <% .DefaultBranch %>
+        # (the exact certificate identity and source ref auto-release's call
+        # signs with), a GitHub-hosted runner, and RELEASE_COMMIT, the commit
+        # this run releases, as the source digest: the same policy every
+        # consumer of the release's attestations verifies.
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ inputs.ref || github.sha }}
         run: |
           set -euo pipefail
           for r in .abcd/work/reviews/"$CONTENT_SHA"/*.json; do
             gh attestation verify "$r" \
               --repo "${GITHUB_REPOSITORY}" \
-              --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>" \
+              --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>@refs/heads/<% .DefaultBranch %>" \
+              --source-ref refs/heads/<% .DefaultBranch %> \
+              --source-digest "${RELEASE_COMMIT}" \
+              --deny-self-hosted-runners \
               --predicate-type https://abcd.dev/attestations/semantic-release-gate/v1
           done
 <%- end %>
@@ -642,8 +773,13 @@ jobs:
             bin/abcd-*
             bin/checksums.txt
 
-      - name: Create the GitHub Release and upload the binaries, the plugin archive and checksums.txt
-        # --verify-tag: refuse to publish unless the tag already exists remotely —
+      - name: Create the draft GitHub Release with the binaries, the plugin archive and checksums.txt
+        # --draft: the Release is created unpublished, with every asset this job
+        # built attached. site.yml (the `site` job below) attaches site.tar.gz
+        # and then publishes it, so the Release becomes visible only once all of
+        # its assets are attached, and no asset is added to a published Release:
+        # the flow GitHub recommends, and the one immutable releases require.
+        # --verify-tag: refuse unless the tag already exists remotely —
         # existence only; it does not check what the tag points at (see the contract
         # note at the top of this file). --generate-notes lists the merged PRs since
         # the previous tag; CHANGELOG.md remains the durable, hand-curated record.
@@ -651,48 +787,103 @@ jobs:
         # the archive-sourced plugin needs (ruling E3).
         #
         # THE WINDOW: the ship's merge to main already names this release's archive
-        # in the catalog, and the archive exists only from this step on — later
-        # still while the release environment's approval waits. An install or update
+        # in the catalog, and the archive is downloadable only once the Release is
+        # published — after this job and the site render — later still while the
+        # release environment's approval waits. An install or update
         # in between fails closed: the download 404s, the harness refuses, and an
         # installed plugin stays on its previous release. Nothing wrong can be
         # installed, because the pinned digest refuses any other bytes. The window
         # cannot be closed from this side (the pin must be in the tagged tree, so
         # it lands before the tag), so it is kept short: approve the release
         # deployment promptly once the ship merges.
-        run: gh release create "${TAG}" bin/abcd-* bin/checksums.txt --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
+        #
+        # The draft's numeric id is read back straight after it is created: the
+        # one Release carrying the tag must be this draft, and every later read
+        # and write of it, here and in site.yml, names that id, never the tag.
+        id: draft
+        run: |
+          set -euo pipefail
+          gh release create "${TAG}" bin/abcd-* bin/checksums.txt --draft --verify-tag --title "${TAG}" --notes "${RELEASE_NOTES}" --generate-notes
+          id_re='^[0-9]+$'
+          rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            --jq '.[] | [.id, .draft, .tag_name] | @tsv')"
+          ours="$(awk -F '\t' -v tag="$TAG" '$3 == tag' <<<"$rows")"
+          id="${ours%%$'\t'*}"
+          if [[ ! $id =~ $id_re ]] || [ "$ours" != "${id}"$'\t'"true"$'\t'"${TAG}" ]; then
+            printf "refusing to release '%s': the one Release carrying it must be the draft just created; the repository lists:\n%s\n" "$TAG" "$ours" >&2
+            exit 1
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "created draft Release ${id} of ${TAG}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_NOTES: "The plugin installs from this release's pinned archive and needs Claude Code v2.1.224 or later; the binaries have no harness requirement."
 
-      - name: Verify the published attestation against a freshly downloaded binary
-        # Post-release gate: prove the attestation is real and retrievable. Download
-        # one binary FRESH from the just-created Release and verify it against a
-        # provenance signed BY THIS release workflow. Skipped on a private repo (no
-        # attestation was produced above); re-enables alongside attestation on the flip.
-        if: ${{ !github.event.repository.private }}
+      - name: Verify the draft's assets against a fresh download of each
+        # Pre-publication gate, on every repository: download every asset FRESH
+        # from the draft, by the draft's id and each asset's id (the job token can
+        # read a draft; publishing changes no asset), and require each to be
+        # byte-identical to the file this job built and the draft to carry
+        # nothing else. A failure here leaves the Release an unpublished draft.
         run: |
           set -euo pipefail
           DL="$RUNNER_TEMP/attest-verify"
           mkdir -p "$DL"
-          gh release download "${TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern 'abcd-linux-amd64' \
-            --dir "$DL"
-          gh attestation verify "$DL/abcd-linux-amd64" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>"
-          # The plugin archive too: fresh from the Release, attested by this
-          # workflow, and byte-identical to the archive verified against the pin.
-          gh release download "${TAG}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --pattern "abcd-plugin-${TAG}.zip" \
-            --dir "$DL"
-          gh attestation verify "$DL/abcd-plugin-${TAG}.zip" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --signer-workflow "${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>"
-          cmp "$DL/abcd-plugin-${TAG}.zip" "bin/abcd-plugin-${TAG}.zip"
+          id_re='^[0-9]+$'
+          assets="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}/assets?per_page=100" --paginate \
+            --jq '.[] | [.id, .name] | @tsv')"
+          built=0
+          for f in bin/abcd-* bin/checksums.txt; do
+            name="${f##*/}"
+            aid="$(awk -F '\t' -v n="$name" '$2 == n {print $1}' <<<"$assets")"
+            if [[ ! $aid =~ $id_re ]]; then
+              printf "the draft Release %s has no %s attached\n" "$RELEASE_ID" "$name" >&2
+              exit 1
+            fi
+            gh api -H 'Accept: application/octet-stream' \
+              "repos/${GITHUB_REPOSITORY}/releases/assets/${aid}" > "$DL/$name"
+            cmp "$DL/$name" "$f"
+            built=$((built + 1))
+          done
+          if [ "$(awk 'NF {n++} END {print n + 0}' <<<"$assets")" != "$built" ]; then
+            printf "the draft Release %s carries an asset this job did not build:\n%s\n" "$RELEASE_ID" "$assets" >&2
+            exit 1
+          fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.draft.outputs.id }}
+
+      - name: Verify the draft's attestation against the freshly downloaded binary
+        # Prove the attestation is real and retrievable for the bytes users will
+        # download: the binary and the plugin archive the step above downloaded
+        # from the draft are verified against provenance signed by this release
+        # workflow on
+        # <% .DefaultBranch %>, on a GitHub-hosted runner, from RELEASE_COMMIT, the
+        # commit this run releases — the policy every installer verifies. A
+        # failure here leaves the Release an unpublished draft. Skipped on a
+        # private repo (no attestation was produced above); re-enables alongside
+        # attestation on the flip. The asset check above runs there regardless.
+        if: ${{ !github.event.repository.private }}
+        run: |
+          set -euo pipefail
+          DL="$RUNNER_TEMP/attest-verify"
+          gh attestation verify "$DL/abcd-linux-amd64" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>@refs/heads/<% .DefaultBranch %>" \
+            --source-ref refs/heads/<% .DefaultBranch %> \
+            --source-digest "${RELEASE_COMMIT}" \
+            --deny-self-hosted-runners
+          # The plugin archive too: fresh from the draft, attested by this
+          # workflow, and byte-identical to the archive verified against the pin.
+          gh attestation verify "$DL/abcd-plugin-${TAG}.zip" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --cert-identity "https://github.com/${GITHUB_REPOSITORY}/.github/workflows/<% .ReleaseWorkflow %>@refs/heads/<% .DefaultBranch %>" \
+            --source-ref refs/heads/<% .DefaultBranch %> \
+            --source-digest "${RELEASE_COMMIT}" \
+            --deny-self-hosted-runners
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_COMMIT: ${{ inputs.ref || github.sha }}
 <%- else %>
       - name: Receive the build job's dist/
         if: needs.build.outputs.assets == 'true'
@@ -701,21 +892,117 @@ jobs:
           name: release-assets
           path: dist/
 
-      - name: Create the GitHub Release, attach dist/ and generate notes
-        # --verify-tag: refuse to publish unless the tag already exists remotely —
+      - name: Create the GitHub Release as a draft, attach dist/, then publish it
+        # The Release is created as a --draft with every asset attached and
+        # published only after, so it never appears with an asset missing and no
+        # asset is added to a published Release: the flow GitHub recommends, and
+        # the one immutable releases require.
+        # --verify-tag: refuse unless the tag already exists remotely —
         # existence only; it does not check what the tag points at (see the contract
         # note at the top of this file). Every file the build job left in dist/ is
         # attached; with none, the Release carries its notes alone. --generate-notes
         # lists the merged PRs since the previous tag; CHANGELOG.md remains the
         # durable record. GITHUB_TOKEN-only: no personal access token, no elevated
         # secret.
+        #
+        # The draft is then addressed by its numeric id alone, never by its tag:
+        # the one Release carrying the tag must be this draft, its assets exactly
+        # the files of dist/, each uploaded and with the digest of the file
+        # attached; an asset the forge records no digest for is refused. It is
+        # published by that id, marked latest only when no published release
+        # carries a higher version, and its assets are read again afterwards and
+        # must be the ones checked.
         run: |
           set -euo pipefail
           assets=()
           if [ -d dist ]; then
             while IFS= read -r -d '' f; do assets+=("$f"); done < <(find dist -type f -print0 | sort -z)
           fi
-          gh release create "${TAG}" ${assets[@]+"${assets[@]}"} --verify-tag --title "${TAG}" --generate-notes
+          id_re='^[0-9]+$'
+          ver_re='^v([0-9]+)\.([0-9]+)\.([0-9]+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'
+          if [[ ! $TAG =~ $ver_re ]]; then
+            printf "refusing to publish '%s': not a vX.Y.Z release tag\n" "$TAG" >&2
+            exit 1
+          fi
+          mine=("${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}" "${BASH_REMATCH[3]}" "${BASH_REMATCH[4]}")
+          gh release create "${TAG}" ${assets[@]+"${assets[@]}"} --draft --verify-tag --title "${TAG}" --generate-notes
+
+          # The one Release carrying the tag is the draft just created.
+          rows="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate \
+            --jq '.[] | [.id, .draft, .prerelease, .tag_name] | @tsv')"
+          ours="$(awk -F '\t' -v tag="$TAG" '$4 == tag' <<<"$rows")"
+          id="${ours%%$'\t'*}"
+          if [[ ! $id =~ $id_re ]] || [ "$ours" != "${id}"$'\t'"true"$'\t'"false"$'\t'"${TAG}" ]; then
+            printf "refusing to publish '%s': the one Release carrying it must be the draft just created; the repository lists:\n%s\n" "$TAG" "$ours" >&2
+            exit 1
+          fi
+
+          # Its assets are exactly the files of dist/, uploaded, each with the
+          # digest of the file attached.
+          list_assets() {
+            gh api "repos/${GITHUB_REPOSITORY}/releases/${id}/assets?per_page=100" --paginate \
+              --jq '.[] | [.id, .name, .state, (.digest // "")] | @tsv' | sort
+          }
+          attached="$(list_assets)"
+          bad=0
+          count=0
+          for f in ${assets[@]+"${assets[@]}"}; do
+            count=$((count + 1))
+            name="${f##*/}"
+            want="sha256:$(sha256sum "$f" | awk '{print $1}')"
+            if awk -F '\t' -v n="$name" '$2 == n && $4 == "" {found = 1} END {exit !found}' <<<"$attached"; then
+              printf "refusing to publish '%s': the forge records no digest for %s\n" "$TAG" "$name" >&2
+              bad=1
+            elif ! awk -F '\t' -v n="$name" -v d="$want" \
+                '$2 == n && $3 == "uploaded" && $4 == d {found = 1} END {exit !found}' <<<"$attached"; then
+              printf "refusing to publish '%s': %s is not attached uploaded with the digest of dist/%s\n" "$TAG" "$name" "$name" >&2
+              bad=1
+            fi
+          done
+          if [ "$(awk 'NF {n++} END {print n + 0}' <<<"$attached")" != "$count" ]; then
+            printf "refusing to publish '%s': the draft carries assets other than the files of dist/:\n%s\n" "$TAG" "$attached" >&2
+            bad=1
+          fi
+          [ "$bad" = 0 ] || exit 1
+
+          # Latest only when no published release carries a higher version, so a
+          # re-released older tag does not become the latest.
+          latest=true
+          while IFS=$'\t' read -r _ draft pre tag; do
+            [ "$draft" = false ] && [ "$pre" = false ] && [[ $tag =~ $ver_re ]] || continue
+            higher=false
+            for i in 1 2 3; do
+              a=$((10#${BASH_REMATCH[i]}))
+              b=$((10#${mine[i-1]}))
+              if [ "$a" -ne "$b" ]; then
+                [ "$a" -lt "$b" ] || higher=true
+                break
+              fi
+              if [ "$i" = 3 ] && [ -n "${mine[3]}" ] && [ -z "${BASH_REMATCH[4]}" ]; then
+                higher=true
+              fi
+            done
+            if [ "$higher" = true ]; then
+              echo "${tag} is a higher published version; ${TAG} is published without becoming the latest release."
+              latest=false
+              break
+            fi
+          done <<<"$rows"
+
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${id}" \
+            -F draft=false -f make_latest="$latest" --jq '.draft' >/dev/null
+
+          # The Release as published carries exactly the assets checked.
+          after="$(list_assets)"
+          if [ "$after" != "$attached" ]; then
+            printf "'%s' assets changed after they were checked. Checked (id, name, state, digest):\n%s\nNow attached:\n%s\n" "$TAG" "$attached" "$after" >&2
+            exit 1
+          fi
+          if [ "$(gh api "repos/${GITHUB_REPOSITORY}/releases/${id}" --jq '.draft')" != false ]; then
+            printf "'%s' is still a draft after publishing it\n" "$TAG" >&2
+            exit 1
+          fi
+          echo "published ${TAG} (Release ${id}, latest: ${latest})"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 <%- end %>
@@ -757,14 +1044,21 @@ jobs:
   # releases. Running after `release` also removes the race against the asset uploads
   # the site workflow reads: `gh release create` has already returned.
   #
-  # NON-GATING, and that isolation is this job dependency rather than a separate
-  # workflow file: `needs: release` means a red site can neither block the release
-  # nor change a byte of what it published, while `!cancelled()` keeps this job from
-  # inheriting a cancellation. Be precise about what "non-gating" does NOT mean: a
+  # PUBLICATION happens here. The `release` job leaves the Release a DRAFT holding
+  # the binaries, the plugin archive and checksums.txt and hands on its numeric id;
+  # site.yml's render attaches site.tar.gz to that draft, and its `publish` job
+  # checks every asset again and then publishes the Release, both by that id,
+  # before its `deploy` job moves abcdev.app. So the Release becomes visible only
+  # once every asset is attached, and no asset is added after publication — the
+  # flow immutable releases require. A failed render therefore leaves the Release
+  # an unpublished draft: re-run the failed jobs of this run, which renders,
+  # attaches and publishes it. A failed deploy after `publish` leaves the Release
+  # published and only the website behind.
+  #
+  # `needs: release` keeps a red site from changing a byte of what the release job
+  # built, while `!cancelled()` keeps this job from inheriting a cancellation. A
   # called workflow's failure IS the caller's failure, so a red site turns this
-  # whole run red. The Release, its assets and its attestations are already made and
-  # are untouched — a red run with a green `release` job means the website, and the
-  # fix is to re-run this job.
+  # whole run red.
   #
   # The job dependency isolates RUNTIME failures, and only those. The input contract
   # below is resolved at PARSE time: a `with:` block that does not match site.yml's
@@ -786,7 +1080,7 @@ jobs:
     needs: release
     if: ${{ !cancelled() && needs.release.result == 'success' }}
     permissions:
-      contents: write       # site.yml: attach site.tar.gz to the Release (no branch push)
+      contents: write       # site.yml: attach site.tar.gz to the draft Release and publish it (no branch push)
       id-token: write       # site.yml: OIDC for the site.tar.gz build-provenance attestation
       attestations: write   # site.yml: publish that attestation (public repo)
     uses: ./.github/workflows/site.yml
@@ -794,6 +1088,9 @@ jobs:
       # The same expression the workflow-level TAG env uses: inputs.tag on the
       # workflow_call path, the pushed tag ref name on the tag-push path.
       tag: ${{ inputs.tag || github.ref_name }}
+      # The draft Release the release job created, by its numeric id: site.yml
+      # reads, attaches to and publishes that Release by this id alone.
+      release_id: ${{ needs.release.outputs.release_id }}
       # Explicit, never defaulted: site.yml refuses any other value, so its production
       # path can only be reached by a caller that asked for it by name.
       mode: production

@@ -281,6 +281,20 @@
           "hidden": false
         },
         {
+          "name": "outbound-forge",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "outbound-hook",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "readme-parts",
           "shorthand": "",
           "type": "string",
@@ -1300,6 +1314,118 @@
       ]
     },
     {
+      "path": "abcd embargo",
+      "hidden": false,
+      "group": "release",
+      "block": "people",
+      "sentence": "Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd embargo check",
+      "hidden": false,
+      "sentence": "Check a commit range or texts for what would disclose an advisory under embargo: Writes nothing; refuses on each id, reserved CVE id, title or store path found.",
+      "flags": [
+        {
+          "name": "allow",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "file",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "range",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo close",
+      "hidden": false,
+      "sentence": "Show an advisory's closing text and digest, or close it on GitHub with it: Writes GitHub and the store only with --approve; refuses a digest for other text.",
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo intake",
+      "hidden": false,
+      "sentence": "Take this repository's private advisories into private records in the embargo store: Writes only the embargo store; refuses a remote that is not on GitHub.",
+      "flags": []
+    },
+    {
+      "path": "abcd embargo publish",
+      "hidden": false,
+      "sentence": "Show the publication plan with computed patched versions, or publish it: Writes GitHub and the store only with --approve; refuses a digest for another plan.",
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo triage",
+      "hidden": false,
+      "sentence": "Record a verdict on a private advisory, drafting a closing verdict's text: Writes the embargo store; refuses an unknown verdict or one missing its reason.",
+      "flags": [
+        {
+          "name": "by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "cannot-help",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "exists-without",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd embark",
       "hidden": false,
       "group": "portability",
@@ -1589,15 +1715,29 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
+      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd ideate record",
       "hidden": false,
       "block": "agents",
-      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated research record; refuses without an idea slug or --verdict-json.",
+      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.",
       "flags": [
+        {
+          "name": "private",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "public",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "verdict-json",
           "shorthand": "",
@@ -2252,6 +2392,13 @@
       "sentence": "Emit the consistency request over the brief and every intent, or one intent against them: Writes the request locally; refuses a superseded intent.",
       "flags": [
         {
+          "name": "max-chunks",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "route",
           "shorthand": "",
           "type": "stringArray",
@@ -2269,7 +2416,7 @@
         {
           "name": "findings-json",
           "shorthand": "",
-          "type": "string",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         },
@@ -3082,6 +3229,75 @@
       ]
     },
     {
+      "path": "abcd memory",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Count the memory notes in both layers and name any layer it cannot read: Writes nothing; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd memory add",
+      "hidden": false,
+      "sentence": "Write one memory note, its body read from stdin: Writes ~/.abcd.noindex/memory.json only; refuses a secret, a network address or a private name.",
+      "flags": [
+        {
+          "name": "by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "everywhere",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "moved-from-host",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "recall",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "session",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "title",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd memory list",
+      "hidden": false,
+      "sentence": "List every memory note with its body, recall words, stamps and reach: Writes nothing; refuses any argument.",
+      "flags": []
+    },
+    {
+      "path": "abcd memory remove",
+      "hidden": false,
+      "sentence": "Remove one personal memory note, whoever wrote it: Writes ~/.abcd.noindex/memory.json only; refuses a note in the project's file.",
+      "flags": []
+    },
+    {
       "path": "abcd mode",
       "hidden": false,
       "group": "agents",
@@ -3094,7 +3310,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.",
       "flags": []
     },
     {
@@ -3242,12 +3458,57 @@
       ]
     },
     {
+      "path": "abcd reserve",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
+      "flags": [
+        {
+          "name": "footprint",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "lease",
+          "shorthand": "",
+          "type": "duration",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take-over",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd rules",
       "hidden": false,
       "group": "agents",
       "block": "agents",
       "sentence": "Render the active rule set, or the one domain named: Writes nothing; refuses an unknown domain.",
-      "flags": []
+      "flags": [
+        {
+          "name": "prompt",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd scribe",
