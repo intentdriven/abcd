@@ -590,6 +590,7 @@ func NewRootCommand() *cobra.Command {
 	// `reflect` is the release retrospective (itd-24): the seed a cut release's
 	// interview opens from, and the one write that files it.
 	root.AddCommand(newReflectCommand(&asJSON))
+	root.AddCommand(newEmbargoCommand(&asJSON))
 
 	root.AddCommand(newCaptureCommand(&asJSON))
 	root.AddCommand(newBanlistCommand(&asJSON))

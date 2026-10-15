@@ -83,7 +83,9 @@ Required:
   `architectural-insight`, `future-work-seed`, `observation`, `lapse`).
 - `source` — the surfacing channel (`plan-review`, `impl-review`,
   `manual-test`, `review-followup`, `agent-finding`, `agent-observation`,
-  `user-observation`, `drift-detection`, `memory-curation`).
+  `user-observation`, `drift-detection`, `memory-curation`, `managed-repo`,
+  `security-advisory`; a `security-advisory` record lives in the embargo
+  store, never in this ledger, while its advisory is unpublished).
 - `found_during` — non-empty session or command context.
 
 Optional:
