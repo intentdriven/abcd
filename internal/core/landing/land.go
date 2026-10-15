@@ -825,13 +825,41 @@ func prStateArgs(owner, name, n string) []string {
 	return []string{"api", "graphql", "-f", "query=" + PRStateQuery, "-f", "o=" + owner, "-f", "r=" + name, "-F", "n=" + n}
 }
 
-// prStateAnswer is the forge's answer to PRStateQuery.
+// prStateAnswer is the forge's answer to PRStateQuery. An answer may carry
+// errors beside its data (a field the token may not read comes back null),
+// and gh exits 0 on some of them, so Errors is read, never left to gh.
 type prStateAnswer struct {
 	Data struct {
 		Repository *struct {
 			PullRequest *prState `json:"pullRequest"`
 		} `json:"repository"`
 	} `json:"data"`
+	Errors []json.RawMessage `json:"errors"`
+}
+
+// maxForgeErrorText bounds how much of the forge's error messages a refusal
+// carries.
+const maxForgeErrorText = 512
+
+// errorText is the forge's messages in an answer's errors, sanitised and
+// bounded; an error with no message is shown as its raw JSON.
+func (a prStateAnswer) errorText() string {
+	var msgs []string
+	for _, raw := range a.Errors {
+		var e struct {
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(raw, &e) != nil || strings.TrimSpace(e.Message) == "" {
+			msgs = append(msgs, string(raw))
+			continue
+		}
+		msgs = append(msgs, e.Message)
+	}
+	t := termsafe.Sanitize(fsutil.RedactHome(gitutil.ScrubURLCredentials(strings.Join(msgs, "; "))))
+	if len(t) > maxForgeErrorText {
+		t = t[:maxForgeErrorText]
+	}
+	return t
 }
 
 // enqueue is step 6. tracking is origin's default branch as just fetched;
@@ -917,6 +945,10 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 		var a prStateAnswer
 		if json.Unmarshal([]byte(out), &a) != nil {
 			return prState{}, refuse("the forge's view of pull request #"+n+" does not parse", "check the forge client, then run abcd land again")
+		}
+		if len(a.Errors) > 0 {
+			return prState{}, refuse("the forge answered the query for pull request #"+n+"'s state with errors, so nothing was armed: "+a.errorText(),
+				"settle what the forge reports (gh pr view "+n+"), then run abcd land again")
 		}
 		if a.Data.Repository == nil || a.Data.Repository.PullRequest == nil {
 			return prState{}, refuse("the forge reports no pull request #"+n+" in "+nameWithOwner, "check the forge client (gh pr view "+n+"), then run abcd land again")

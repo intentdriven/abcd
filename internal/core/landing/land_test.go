@@ -53,7 +53,10 @@ type fakeForge struct {
 	merged    string
 	mergedErr error
 	views     []string
-	calls     [][]string
+	// answer, when set, is the whole answer to the state query, its @HEAD@
+	// replaced as a view's is.
+	answer string
+	calls  [][]string
 	// onRepoView runs when the repository is viewed, before the answer.
 	onRepoView func()
 	// failArm fails the arm call with this ordinal (1 is the first), 0 none.
@@ -107,6 +110,14 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 		owner, name, _ := strings.Cut(f.owner(), "/")
 		if !ok || !slices.Equal(args, prStateArgs(owner, name, n)) {
 			return "", fmt.Errorf("fake forge: unexpected query %v", args)
+		}
+		// The real forge refuses a field its schema lacks, and so does this
+		// one, from the schema as ghcontract pins it.
+		if err := ghcontract.CheckGraphQL(PRStateQuery); err != nil {
+			return "", err
+		}
+		if f.answer != "" {
+			return strings.ReplaceAll(f.answer, "@HEAD@", f.head), nil
 		}
 		if len(f.views) == 0 {
 			return "", errors.New("fake forge: no view left")

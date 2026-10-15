@@ -69,12 +69,15 @@ func Receipt(repoRoot, sha string) (string, error) {
 }
 
 // RunCapped runs cmd, returning its stdout within MaxOutput and, on a failure,
-// an error naming what and carrying its bounded stderr.
+// an error naming what and carrying its bounded stderr, scrubbed of
+// credential URLs (gitutil.ScrubURLCredentials) before it is cut.
 func RunCapped(cmd *exec.Cmd, what string) (string, error) {
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
+		// Scrubbed BEFORE the cut, as gitutil's runners do: a cut across a
+		// credential URL leaves a fragment the scrubber no longer recognises.
+		msg := gitutil.ScrubURLCredentials(strings.TrimSpace(stderr.String()))
 		if len(msg) > maxStderr {
 			msg = msg[:maxStderr]
 		}

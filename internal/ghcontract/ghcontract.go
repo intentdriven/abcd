@@ -8,6 +8,11 @@
 // set) and `gh repo view --json` print them with no value, under
 // gh-2.100.0/. Refresh them by running those three commands with a newer gh.
 //
+// It pins the forge's GraphQL fields the same way (graphql-fields.txt, read
+// by introspection), and CheckGraphQL refuses a query selecting a field its
+// type does not have, so a renamed or mistyped field in a query abcd sends
+// fails a test rather than the real forge.
+//
 // It is a test-support package, as gittest is: production code never imports
 // it.
 package ghcontract
