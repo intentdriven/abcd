@@ -642,7 +642,7 @@ func (u *Updater) remedyInstallByHand(tag, target string) string {
 	}
 	return "retry once GitHub's attestations API and the Sigstore TUF repository are reachable, or install by hand: download " +
 		u.assetName + " from " + u.assetURL(tag, u.assetName) + " (" + u.origin + "/releases/tag/" + tag + "), check it with `gh attestation verify " +
-		u.assetName + " --repo " + p.repo + " --signer-workflow " + p.repo + "/" + p.workflow + " --source-digest $(gh api repos/" + p.repo + "/commits/" + tag + " -H 'Accept: application/vnd.github.sha')`, which also holds it to the commit " + tag + " names, and only then copy it over " +
+		u.assetName + " --repo " + p.repo + " --cert-identity " + p.signerSAN() + " --source-ref " + p.ref + " --deny-self-hosted-runners --source-digest $(gh api repos/" + p.repo + "/commits/" + tag + " -H 'Accept: application/vnd.github.sha')`, which also holds it to the commit " + tag + " names, and only then copy it over " +
 		fsutil.RedactHome(target)
 }
 

@@ -127,16 +127,17 @@ refusal is a named shape with a remedy in `refusal`:
   cannot run once it is gone.
 - `absent` — nothing on PATH to update; point at the install remedy.
 - `unverified-provenance` — the binary matched `checksums.txt`, but no build
-  provenance signed by `intentdriven/abcd`'s release workflow from the
-  release tag's commit verifies for it: none is published, it was signed by
+  provenance signed by `intentdriven/abcd`'s release workflow on `main`
+  from the release tag's commit verifies for it: none is published, it was signed by
   another repository or workflow, it names other bytes, it was built from
   another release's commit, the tag's commit could not be resolved, or
   GitHub's API or the Sigstore TUF repository could not be reached (offline
   included). Nothing was swapped. Relay the
   detail, which names what failed, and the remedy: retry once both are
   reachable, or install by hand — download the asset, check it with
-  `gh attestation verify --source-digest <the tag's commit>`, then copy it
-  over the PATH copy.
+  `gh attestation verify --cert-identity <release.yml on main> --source-ref
+  refs/heads/main --source-digest <the tag's commit>`, then copy it over the
+  PATH copy.
 - `older-than-mark` — a bare `abcd update` resolved a latest release older
   than `~/.abcd.noindex/release-mark`, the newest release this machine has
   installed or verified: the publisher may have withdrawn the newer one.

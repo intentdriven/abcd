@@ -48,15 +48,13 @@ merge-queue batch carries the ship with any other queued pull request, and one
 that touches the payload renders another digest. A refusal tags nothing and
 leaves the version free — land a follow-up pull request that re-pins (the
 refusal names the rendered digest) or reverts the payload change, and its push
-retries. A hand-pushed tag exists before `verify` runs, so a refusal there
-consumes the version, and `auto-release.yml` then refuses to rebuild it and
-names the re-cut, a new dated version; prove it on the release branch first: `go run ./cmd/abcd launch
+retries. Prove it on the release branch first: `go run ./cmd/abcd launch
 archive --out "$(mktemp -d)" --tag vX.Y.Z --verify --repository <owner/name>`,
 naming the repository the tag will be pushed to, exits 0 when the release will
 pass. Without `--repository` a pin whose address names another repository (a
 fork, a rename, a transfer) passes locally and is refused after the tag,
 consuming the version. From the ship's merge
-until the publish job uploads the archive, the catalog on `main` names a zip that
+until the Release is published, the catalog on `main` names a zip that
 is not there yet; an install or update in that window fails closed and leaves an
 installed plugin on its previous release, so approve the release deployment
 promptly.
@@ -74,7 +72,27 @@ audit, dependency review, `govulncheck`, the attribution gate and the external
 review. The normal release path (`auto-release` tagging the main tip) re-checks
 nothing those gates have not already passed on the exact tagged commit; a
 hand-pushed tag on a commit outside `main` forgoes them, which is one more
-reason the runbook's branch → PR → merge path is the supported one.
+reason the runbook's branch → PR → merge path is the supported one. It is also
+the only path that publishes: every provenance check verifies release
+provenance against `release.yml` on `main` and the released commit, which only
+auto-release's call provides, so a run started by a hand-pushed tag is refused
+by its first job (`pushed-tag`) before anything is checked out, built or
+signed. A pre-release tag (`vX.Y.Z-…`) is refused by the release job's tag
+check, since the site run publishes full releases only.
+
+The Release is created as a draft holding the binaries, the plugin archive and
+`checksums.txt`; the site run attaches `site.tar.gz` and then publishes it, so
+a Release is public only once every asset is attached and no asset is added
+after publication. The release job hands the site run the draft's numeric id,
+and both address the Release by that id alone, refusing when more than one
+Release carries the tag. Immediately before publishing, the site run downloads
+every asset again by its id and checks it against `checksums.txt`, against the
+archive the render attached and against the release provenance policy; it
+marks the Release latest only when no published release carries a higher
+version, and fails if the assets differ afterwards from the ones it checked. A run that stops before that leaves a draft and nothing
+public: re-run the failed jobs of that run. A later push to `main` does not
+re-cut it, because a run started by that push releases a different commit:
+`auto-release`'s `detect` fails and names this remedy instead.
 
 ## Semantic gates (host-run, before the tag)
 
@@ -356,11 +374,11 @@ where `<sha>` is `record-lint --derive-content-sha`. That trust root has an edge
 `verify` builds `record-lint` from the tree it gates, so a release cannot disarm
 the gate short of editing `release.yml` or the gate code (`internal/core/lint`,
 `cmd/record-lint`), both reviewed in the pull request and nothing more
-(iss-2610142152501415). Before it, on a tag push,
-`verify` requires the tag to be `v` plus the version `record-lint
---released-version` reads from the released tree — the strict reader the
-receipts are bound with — so a hand-pushed tag naming another version cannot
-publish under the receipts of the CHANGELOG's version (iss-2609251945586202).
+(iss-2610142152501415). Before it, `verify` requires the release tag to be `v`
+plus the version `record-lint --released-version` reads from the released
+tree — the strict reader the receipts are bound with — so a tag naming another
+version cannot publish under the receipts of the CHANGELOG's version
+(iss-2609251945586202).
 On abcd's own profile `launch archive --tag` refuses such a tag earlier still.
 The rule is skipped on the
 rehearsal path (`workflow_dispatch`), where no real receipts exist. Once `verify`
