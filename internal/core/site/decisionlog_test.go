@@ -1,7 +1,7 @@
 package site
 
 // The decision log page's tests (spc-2610110931381316, step 5): every decision
-// record on one page, oldest first and grouped by month, published only where
+// record on one page, newest first and grouped by month, published only where
 // the repository opts in, and kept off the pages built for the stores that move.
 
 import (
@@ -57,7 +57,7 @@ func (f *fixture) addDecisions(optIn bool) []fixtureDecision {
 }
 
 // TestDecisionLogPageListsEveryEntry is A2 at the site: one page lists every
-// decision, uncapped, oldest first, grouped by month, each row its id linking
+// decision, uncapped, newest first, grouped by month, each row its id linking
 // the record's own page, its date and its full text — and the build that writes
 // it is the same build twice.
 func TestDecisionLogPageListsEveryEntry(t *testing.T) {
@@ -74,7 +74,9 @@ func TestDecisionLogPageListsEveryEntry(t *testing.T) {
 		t.Error(`the page is not headed "Decision log"`)
 	}
 
-	last := -1
+	// decs is oldest first; the page runs newest first, so each row sits
+	// above the one for the decision recorded before it.
+	last := len(page)
 	for _, d := range decs {
 		link := `<a href="/record/decision/` + d.ID + `/">` + d.ID + `</a>`
 		at := strings.Index(page, link)
@@ -82,8 +84,8 @@ func TestDecisionLogPageListsEveryEntry(t *testing.T) {
 			t.Errorf("the page has no row linking %s to its own page", d.ID)
 			continue
 		}
-		if at < last {
-			t.Errorf("%s is listed before an older decision; the page must run oldest first", d.ID)
+		if at > last {
+			t.Errorf("%s is listed below an older decision; the page must run newest first", d.ID)
 		}
 		last = at
 		if !containsString(res.Files, "record/decision/"+d.ID+"/index.html") {
@@ -111,7 +113,7 @@ func TestDecisionLogPageListsEveryEntry(t *testing.T) {
 	for _, m := range months {
 		got = append(got, m[1]+"="+m[2])
 	}
-	if want := []string{"2026-08=20", "2026-09=20", "2026-10=13"}; strings.Join(got, ",") != strings.Join(want, ",") {
+	if want := []string{"2026-10=13", "2026-09=20", "2026-08=20"}; strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Errorf("the months are %v, want %v", got, want)
 	}
 

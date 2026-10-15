@@ -7,15 +7,17 @@ package site
 // never moved, and the record holds hundreds of them, so they are not dealt
 // onto the development page or drawn on the relationship chart, both of which
 // are built for the stores that move and which hundreds of one-line nodes
-// would bury. They are read here instead, the way the single log they replace
-// was read: top to bottom, oldest first.
+// would bury. They are read here instead, newest first: the record can hold
+// years of decisions, and the recent ones are the ones a reader comes for
+// (the product thinker's ruling of 2026-10-15).
 //
 // The page has no cap. The intent's criterion is that every entry is listed,
 // so a list cut the way the development page cuts a bucket would fail it. The
 // rows are grouped by the month of their date, each month a disclosure whose
 // heading is the month and its count, and every row is in the HTML whether its
 // month is open or not, so a reader's find-in-page reaches all of them. The
-// newest month opens, as the place a reader arriving at the log looks first.
+// newest month comes first and opens, as the place a reader arriving at the
+// log looks first.
 //
 // A row is the record's id, linking the record's own page, its date, and its
 // full body rendered from the record file, which is the record's words and
@@ -31,17 +33,19 @@ import (
 // hasDecisionLog reports whether the export carries any decision to list.
 func (e *explorer) hasDecisionLog() bool { return len(e.export.Decisions) > 0 }
 
-// decisionMonth is one month's decisions, oldest first.
+// decisionMonth is one month's decisions, newest first.
 type decisionMonth struct {
 	month string
 	nodes []ExportNode
 }
 
-// decisionMonths groups the decisions by the month of their date. The export
-// holds them oldest first, so the months come out in order too.
+// decisionMonths groups the decisions by the month of their date, newest
+// first. The export holds them oldest first, in id order, so walking it
+// backwards puts the months and the rows within each in newest-first order.
 func decisionMonths(nodes []ExportNode) []decisionMonth {
 	var out []decisionMonth
-	for _, n := range nodes {
+	for i := len(nodes) - 1; i >= 0; i-- {
+		n := nodes[i]
 		m := n.Date
 		if len(m) >= len("YYYY-MM") {
 			m = m[:len("YYYY-MM")]
@@ -75,7 +79,7 @@ func (e *explorer) decisionLogPage() (string, error) {
 			l.WriteString(`</span><div class="decbody"` + srcAttr(n.Path, "") + `>` + body + `</div></li>`)
 		}
 		l.WriteString(`</ul>`)
-		b.WriteString(panelFold("c12", m.month, "", strconv.Itoa(len(m.nodes)), l.String(), i == len(months)-1))
+		b.WriteString(panelFold("c12", m.month, "", strconv.Itoa(len(m.nodes)), l.String(), i == 0))
 	}
 	b.WriteString(`</div>`)
 	return e.shell(routeDecisionLog, e.c.ui.RecordNav.DecisionLog, "", b.String()), nil
