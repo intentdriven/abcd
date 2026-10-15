@@ -1,6 +1,6 @@
 package site
 
-// The decision records' tests at the site (spc-2610110931381316, step 5): every decision
+// The decision log page's tests (spc-2610110931381316, step 5): every decision
 // record on one page, oldest first and grouped by month, published only where
 // the repository opts in, and kept off the pages built for the stores that move.
 
@@ -54,6 +54,93 @@ func (f *fixture) addDecisions(optIn bool) []fixtureDecision {
 	}
 	f.commitAt("2026-03-07T09:00:00+00:00", "docs: record the decisions", "None")
 	return out
+}
+
+// TestDecisionLogPageListsEveryEntry is A2 at the site: one page lists every
+// decision, uncapped, oldest first, grouped by month, each row its id linking
+// the record's own page, its date and its full text — and the build that writes
+// it is the same build twice.
+func TestDecisionLogPageListsEveryEntry(t *testing.T) {
+	f := newFixture(t)
+	decs := f.addDecisions(true)
+	out := t.TempDir()
+	res := buildFixture(t, f, out)
+
+	if !containsString(res.Files, "record/decision-log/index.html") {
+		t.Fatalf("the build wrote no decision log page: %v", res.Files)
+	}
+	page := outFile(t, out, "record/decision-log/index.html")
+	if !strings.Contains(page, `<h1 class="pagetitle">Decision log</h1>`) {
+		t.Error(`the page is not headed "Decision log"`)
+	}
+
+	last := -1
+	for _, d := range decs {
+		link := `<a href="/record/decision/` + d.ID + `/">` + d.ID + `</a>`
+		at := strings.Index(page, link)
+		if at < 0 {
+			t.Errorf("the page has no row linking %s to its own page", d.ID)
+			continue
+		}
+		if at < last {
+			t.Errorf("%s is listed before an older decision; the page must run oldest first", d.ID)
+		}
+		last = at
+		if !containsString(res.Files, "record/decision/"+d.ID+"/index.html") {
+			t.Errorf("%s has no page of its own", d.ID)
+		}
+		row := page[at:]
+		if end := strings.Index(row, "</li>"); end >= 0 {
+			row = row[:end]
+		}
+		if !strings.Contains(row, `<span class="d">`+d.Date+`</span>`) {
+			t.Errorf("the row for %s does not carry its date", d.ID)
+		}
+		for _, line := range strings.Split(d.Text, "\n") {
+			if !strings.Contains(row, line) {
+				t.Errorf("the row for %s does not carry its full text: missing %q", d.ID, line)
+			}
+		}
+	}
+
+	// One disclosure per month, every entry in the HTML whether its month is
+	// open or not, and the months in order.
+	months := regexp.MustCompile(`<details class="panel fold[^"]*"[^>]*><summary><h3>(\d{4}-\d{2})<span>(\d+)</span>`).
+		FindAllStringSubmatch(page, -1)
+	got := []string{}
+	for _, m := range months {
+		got = append(got, m[1]+"="+m[2])
+	}
+	if want := []string{"2026-08=20", "2026-09=20", "2026-10=13"}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("the months are %v, want %v", got, want)
+	}
+
+	// The navigation reaches the page, and the dashboard has one tile with the
+	// count that leads to it.
+	dash := outFile(t, out, "record/index.html")
+	if !strings.Contains(dash, `<a href="/record/decision-log/">Decision log</a>`) {
+		t.Error("the navigation does not reach the decision log")
+	}
+	tile := fmt.Sprintf(`<a class="tile lead" href="/record/decision-log/"><span class="n">%d</span><span class="l">Decision log</span>`, decisionCount)
+	if strings.Count(dash, tile) != 1 {
+		t.Errorf("the dashboard has no single tile counting %d decisions and linking the page", decisionCount)
+	}
+	// The ADR tile keeps its own label.
+	if !strings.Contains(dash, `<span class="l">decisions</span>`) {
+		t.Error(`the ADR tile lost its "decisions" label`)
+	}
+
+	// The export built twice is identical.
+	again := t.TempDir()
+	res2 := buildFixture(t, f, again)
+	if strings.Join(res.Files, "\n") != strings.Join(res2.Files, "\n") {
+		t.Fatal("two builds of one tree wrote different files")
+	}
+	for _, name := range res.Files {
+		if outFile(t, out, name) != outFile(t, again, name) {
+			t.Errorf("%s differs between two builds of the same tree", name)
+		}
+	}
 }
 
 // TestDecisionsAreOptedInto is adr-32's tiering at the site: the decisions folder

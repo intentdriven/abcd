@@ -95,6 +95,10 @@ type RecordNav struct {
 	// Development names the deck of the stores that MOVE — intents, specs and
 	// issues — as Foundations names the ones that hold.
 	Development string `json:"development"`
+	// DecisionLog names the page that lists every decision record, oldest
+	// first; it also captions the dashboard tile that counts them and leads
+	// there. The ADR store keeps its own caption, Tiles.ADR.
+	DecisionLog string `json:"decision_log"`
 	// Health names the page that collects every finding the record can be
 	// checked against itself for.
 	Health string `json:"health"`
