@@ -284,7 +284,7 @@ func TestSessionServeOnLoopbackCountsTailnetVisitorsApart(t *testing.T) {
 		return ws
 	}
 	mal := dial("100.101.102.103")
-	for i := 0; i < coresession.DefaultLimits().MaxFailedJoins; i++ {
+	for i := 0; i < coresession.New(coresession.Options{}).Limits().MaxFailedJoins; i++ {
 		if got := join(mal); got != "bad-code" {
 			t.Fatalf("wrong code %d: %q, want bad-code", i, got)
 		}

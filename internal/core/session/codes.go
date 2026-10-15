@@ -44,10 +44,10 @@ func (r *Relay) newCode() (string, error) {
 	return "", errors.New("no free join code")
 }
 
-// NormalizeCode reads a join code as a person types it: case ignored, spaces
+// normalizeCode reads a join code as a person types it: case ignored, spaces
 // and dashes dropped. Anything longer than a code with separators, or with a
 // symbol outside the alphabet once read, is no code ("").
-func NormalizeCode(s string) string {
+func normalizeCode(s string) string {
 	if len(s) > maxCodeInput {
 		return ""
 	}
@@ -84,7 +84,7 @@ func IsTailnetAddr(a netip.Addr) bool {
 	return tailnet4.Contains(a) || tailnet6.Contains(a)
 }
 
-// AddressKey is the key the failed-join limit and the connection caps count
+// addressKey is the key the failed-join limit and the connection caps count
 // by: an IPv4 address, or an IPv6 /48 network. One home or phone usually holds
 // a whole /64, and a site is commonly given a /48 of 65,536 of them, so
 // counting single IPv6 addresses, or /64s, would let one visitor rotate
@@ -92,7 +92,7 @@ func IsTailnetAddr(a netip.Addr) bool {
 // every device of a tailnet shares one /48 of Tailscale's range, and a device
 // cannot pick another address in it. An address that does not parse is its
 // own key.
-func AddressKey(addr string) string {
+func addressKey(addr string) string {
 	a, err := netip.ParseAddr(strings.TrimSpace(addr))
 	if err != nil {
 		return strings.TrimSpace(addr)

@@ -172,7 +172,7 @@ type Limits struct {
 	MaxRejoinTokens int
 	// MaxConnections caps the connections the relay holds at once, in a
 	// session or not, and MaxConnsPerAddr those from one address, keyed as
-	// the failed-join limit keys it (AddressKey).
+	// the failed-join limit keys it (addressKey).
 	MaxConnections  int
 	MaxConnsPerAddr int
 	// AdmitWithin is how long a connection may stay open without hosting,
@@ -220,7 +220,7 @@ type Limits struct {
 	// GitHub has since revoked keeps it.
 	MaxSessionLife time.Duration
 	// MaxExchangesPerAddr sign-in exchanges (/auth/token) are allowed from
-	// one address, keyed as wrong codes are (AddressKey), within
+	// one address, keyed as wrong codes are (addressKey), within
 	// ExchangeWindow.
 	MaxExchangesPerAddr int
 	ExchangeWindow      time.Duration
@@ -237,10 +237,10 @@ type Limits struct {
 // updates would hold many times its limit in memory.
 const LogEntryOverhead = 64
 
-// DefaultLimits are the relay's limits unless a caller sets others. Sixteen
+// defaultLimits are the relay's limits unless a caller sets others. Sixteen
 // sessions of at most 8 MiB of log each keep a relay inside a free host's
 // memory.
-func DefaultLimits() Limits {
+func defaultLimits() Limits {
 	return Limits{
 		MaxMessageBytes:  256 << 10,
 		MaxLogBytes:      8 << 20,
@@ -365,7 +365,7 @@ type Relay struct {
 // New builds a relay.
 func New(o Options) *Relay {
 	l := o.Limits
-	d := DefaultLimits()
+	d := defaultLimits()
 	fill := func(v *int, def int) {
 		if *v <= 0 {
 			*v = def
@@ -454,13 +454,13 @@ func New(o Options) *Relay {
 }
 
 // AllowExchange counts one sign-in exchange from addr (the client's address
-// as the transport judged it, keyed by AddressKey) and reports whether it may
+// as the transport judged it, keyed by addressKey) and reports whether it may
 // go ahead: at most MaxExchangesPerAddr in ExchangeWindow. A refused one is
 // not counted.
 func (r *Relay) AllowExchange(addr string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key, now := AddressKey(addr), r.now()
+	key, now := addressKey(addr), r.now()
 	if r.exchanges.blocked(key, now) {
 		return false
 	}
@@ -589,7 +589,7 @@ var ErrTooManyConnections = errors.New("the relay holds as many connections as i
 func (r *Relay) Connect(p Peer, addr string) (*Conn, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	key := AddressKey(addr)
+	key := addressKey(addr)
 	if r.open >= r.limits.MaxConnections || r.openBy[key] >= r.limits.MaxConnsPerAddr {
 		return nil, ErrTooManyConnections
 	}
@@ -1175,7 +1175,7 @@ func (c *Conn) join(code, name string) {
 		}
 		return
 	}
-	rm := r.rooms[NormalizeCode(code)]
+	rm := r.rooms[normalizeCode(code)]
 	if rm != nil && r.expired(rm, now) {
 		// Its time is up, though the sweep has not ended it yet: it ends now,
 		// and the code is no longer one, without counting as a wrong one.
@@ -1207,7 +1207,7 @@ func (c *Conn) join(code, name string) {
 	if c.login != "" && c.memberOf == rm.repoKey {
 		c.role, c.name = roleMember, c.login
 	} else {
-		c.role, c.name = roleGuest, CleanName(name)
+		c.role, c.name = roleGuest, cleanName(name)
 	}
 	rm.conns = append(rm.conns, c)
 	r.giveSeat(c, token)
@@ -1604,10 +1604,10 @@ func (r *Relay) debugState() string {
 	return b.String()
 }
 
-// CleanName makes a guest's display name safe to show and to stamp: control
+// cleanName makes a guest's display name safe to show and to stamp: control
 // and format characters (bidirectional overrides among them) removed, spaces
 // collapsed, at most 40 characters, and "Guest" when nothing is left.
-func CleanName(s string) string {
+func cleanName(s string) string {
 	var b strings.Builder
 	n := 0
 	space := false

@@ -95,7 +95,7 @@ func TestBlueprintMatchesItsGoldens(t *testing.T) {
 }
 
 func TestBlueprintPinsTheReleaseAndItsChecksum(t *testing.T) {
-	files := RenderBlueprint("v0.14.1", testDigest, testRepos, nil)
+	files := renderBlueprint("v0.14.1", testDigest, testRepos, nil)
 	docker := string(files["Dockerfile"])
 	for _, want := range []string{
 		"https://github.com/intentdriven/abcd/releases/download/v0.14.1/abcd-linux-amd64",
@@ -250,7 +250,7 @@ func TestBlueprintRefusesWithoutARepositoryToServe(t *testing.T) {
 // trusted relay, stamped like the other files, and without one no
 // relays.json is written.
 func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
-	files := RenderBlueprint("v0.14.1", testDigest, testRepos, nil)
+	files := renderBlueprint("v0.14.1", testDigest, testRepos, nil)
 	yaml := string(files["render.yaml"])
 	if !strings.Contains(yaml, "- key: ABCD_SESSION_ORIGINS\n        value: \"https://abcdesign.app\"") {
 		t.Errorf("render.yaml does not name the page origin:\n%s", yaml)
@@ -258,7 +258,7 @@ func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
 	if strings.Contains(yaml, "APP_TYPE") || strings.Contains(yaml, "oauth") {
 		t.Errorf("render.yaml still names a sign-in app type:\n%s", yaml)
 	}
-	files = RenderBlueprint("v0.14.1", testDigest, testRepos, []string{"https://pages.example.org", "https://abcdesign.app"})
+	files = renderBlueprint("v0.14.1", testDigest, testRepos, []string{"https://pages.example.org", "https://abcdesign.app"})
 	if !strings.Contains(string(files["render.yaml"]), "value: \"https://pages.example.org,https://abcdesign.app\"") {
 		t.Errorf("render.yaml does not name the given origins:\n%s", files["render.yaml"])
 	}

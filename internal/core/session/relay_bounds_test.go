@@ -58,7 +58,7 @@ func TestAConnectionTheRelayClosesStaysCountedUntilItsTransportLeaves(t *testing
 // afresh and one guest cannot spend the whole session's allowance; the
 // session's cap stays as the backstop (final review B).
 func TestSuggestionsAreBoundedPerSeat(t *testing.T) {
-	d := DefaultLimits()
+	d := defaultLimits()
 	if d.MaxSuggestBytesPerSeat != 256<<10 || d.MaxSuggestsPerSeat != 100 || d.MaxSuggestBytesPerSeat >= d.MaxRoomSuggestBytes {
 		t.Fatalf("seat defaults = %d bytes, %d suggestions; want 256 KiB, 100, under the session's %d", d.MaxSuggestBytesPerSeat, d.MaxSuggestsPerSeat, d.MaxRoomSuggestBytes)
 	}
@@ -122,7 +122,7 @@ func TestSuggestionsAreBoundedPerSeat(t *testing.T) {
 // bucket for awareness, below the session's rate, so one participant cannot
 // drain the session's and hold up everyone else's cursors (final review C).
 func TestAwarenessBytesAreRatedPerConnection(t *testing.T) {
-	d := DefaultLimits()
+	d := defaultLimits()
 	if d.AwarenessConnBytesPerSecond != 32<<10 || d.AwarenessConnBytesBurst != 64<<10 {
 		t.Fatalf("connection awareness defaults = %d/s burst %d, want 32 KiB/s burst 64 KiB", d.AwarenessConnBytesPerSecond, d.AwarenessConnBytesBurst)
 	}

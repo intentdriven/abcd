@@ -212,12 +212,12 @@ func pageOrigins(given []string) ([]string, error) {
 	return out, nil
 }
 
-// RenderBlueprint renders the two files for release, pinned to digest, the
+// renderBlueprint renders the two files for release, pinned to digest, the
 // SHA-256 of release's abcd-linux-amd64, serving repos (each owner/name) and
 // admitting pages from origins (each an https origin, as NormalizeRelayOrigin
 // reads it; none is DefaultPageOrigin), so nothing in either needs escaping
 // inside the quoted list. It reads and writes nothing.
-func RenderBlueprint(release, digest string, repos, origins []string) map[string][]byte {
+func renderBlueprint(release, digest string, repos, origins []string) map[string][]byte {
 	if len(origins) == 0 {
 		origins = []string{DefaultPageOrigin}
 	}
@@ -331,7 +331,7 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 		return res, fmt.Errorf("%s's checksums.txt names no %s", req.Release, relayAsset)
 	}
 	res.Digest = digest
-	files := RenderBlueprint(req.Release, digest, req.Repos, origins)
+	files := renderBlueprint(req.Release, digest, req.Repos, origins)
 	names := append([]string(nil), blueprintFiles...)
 	if relayOrigin != "" {
 		files[RelaysFile] = renderRelays(req.Release, relayOrigin)

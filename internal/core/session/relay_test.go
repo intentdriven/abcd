@@ -157,7 +157,7 @@ type harness struct {
 
 func newHarness(t *testing.T, mod func(*Limits)) *harness {
 	t.Helper()
-	l := DefaultLimits()
+	l := defaultLimits()
 	// The tests' fake connections never end on their own, so the connection
 	// caps are lifted unless a test sets them.
 	l.MaxConnections, l.MaxConnsPerAddr = 1<<20, 1<<20
@@ -512,7 +512,7 @@ func TestWrongCodesAreLimitedPerAddress(t *testing.T) {
 	if _, p := h.join(t, code, "Gus", "198.51.100.7"); p.last(t, "joined") == nil {
 		t.Fatal("another address was held up by the limit")
 	}
-	h.clock.advance(DefaultLimits().FailedJoinWindow + time.Second)
+	h.clock.advance(defaultLimits().FailedJoinWindow + time.Second)
 	if _, p := h.join(t, code, "Mal", "203.0.113.5"); p.last(t, "joined") == nil {
 		t.Fatal("the limit outlived its window")
 	}
@@ -610,7 +610,7 @@ func TestIdleSessionIsPurged(t *testing.T) {
 		t.Fatal("a session with someone still connected was purged")
 	}
 	g.Leave()
-	h.clock.advance(DefaultLimits().IdleAfter - time.Second)
+	h.clock.advance(defaultLimits().IdleAfter - time.Second)
 	h.r.Sweep()
 	if s := h.r.Stats(); s.Sessions != 1 {
 		t.Fatal("purged before the idle limit")
@@ -717,8 +717,8 @@ func TestAddressKeyCountsATailnetAddressAlone(t *testing.T) {
 		"2001:db8:1:ffff::a":                      "2001:db8:1::/48",
 		"::ffff:192.0.2.1":                        "192.0.2.1",
 	} {
-		if got := AddressKey(in); got != want {
-			t.Errorf("AddressKey(%q) = %q, want %q", in, got, want)
+		if got := addressKey(in); got != want {
+			t.Errorf("addressKey(%q) = %q, want %q", in, got, want)
 		}
 	}
 }
@@ -752,7 +752,7 @@ func rateLimitedAs(t *testing.T, p *fakePeer, kind string) bool {
 
 func TestAwarenessIsRateLimitedPerConnection(t *testing.T) {
 	h := newHarness(t, nil)
-	l := DefaultLimits()
+	l := defaultLimits()
 	if l.AwarenessPerSecond != 20 || l.AwarenessBurst != 40 {
 		t.Fatalf("awareness default = %d/s burst %d, want 20/s burst 40", l.AwarenessPerSecond, l.AwarenessBurst)
 	}
@@ -800,7 +800,7 @@ func TestAwarenessIsRateLimitedPerConnection(t *testing.T) {
 
 func TestSuggestIsRateLimitedPerConnection(t *testing.T) {
 	h := newHarness(t, nil)
-	l := DefaultLimits()
+	l := defaultLimits()
 	if l.SuggestPerSecond != 1 || l.SuggestBurst != 5 {
 		t.Fatalf("suggest default = %d/s burst %d, want 1/s burst 5", l.SuggestPerSecond, l.SuggestBurst)
 	}
@@ -838,7 +838,7 @@ func TestSuggestIsRateLimitedPerConnection(t *testing.T) {
 
 func TestHostingIsRateLimitedPerAddress(t *testing.T) {
 	h := newHarness(t, nil)
-	l := DefaultLimits()
+	l := defaultLimits()
 	if l.MaxHostsPerAddr != 3 || l.HostWindow != 10*time.Minute {
 		t.Fatalf("host default = %d per %v, want 3 per 10m", l.MaxHostsPerAddr, l.HostWindow)
 	}
@@ -1028,7 +1028,7 @@ func TestRejoinTokenDiesWithItsSession(t *testing.T) {
 	host2, hp2, _ := h.host(t, "tok-bea")
 	tok2 := rejoinToken(t, hp2, "hosted")
 	host2.Leave()
-	h.clock.advance(DefaultLimits().IdleAfter + time.Second)
+	h.clock.advance(defaultLimits().IdleAfter + time.Second)
 	h.r.Sweep()
 	if _, p := h.rejoin(t, tok2, "192.0.2.1"); p.last(t, "error")["code"] != "bad-rejoin" {
 		t.Fatal("a purged session's rejoin token still works")
@@ -1087,7 +1087,7 @@ func TestReplayIsOneQueuedItem(t *testing.T) {
 }
 
 func TestDefaultConnectionLimits(t *testing.T) {
-	l := DefaultLimits()
+	l := defaultLimits()
 	if l.MaxConnections != 256 || l.MaxConnsPerAddr != 16 || l.AdmitWithin != 30*time.Second {
 		t.Fatalf("defaults = %d connections, %d per address, %v to enter; want 256, 16, 30s", l.MaxConnections, l.MaxConnsPerAddr, l.AdmitWithin)
 	}
@@ -1178,7 +1178,7 @@ func TestAConnectionThatEntersNoSessionExpires(t *testing.T) {
 // a fixed overhead against the log limit, so a log of tiny updates cannot
 // hold many times its limit, and the entries are capped in number too.
 func TestTheLogChargesEachEntryAndCapsTheirCount(t *testing.T) {
-	if d := DefaultLimits(); d.MaxLogEntries != 50000 || LogEntryOverhead != 64 {
+	if d := defaultLimits(); d.MaxLogEntries != 50000 || LogEntryOverhead != 64 {
 		t.Fatalf("defaults: %d entries, %d bytes of overhead; want 50000 and 64", d.MaxLogEntries, LogEntryOverhead)
 	}
 	h := newHarness(t, func(l *Limits) { l.MaxLogBytes = 150 })
@@ -1211,7 +1211,7 @@ func TestTheLogChargesEachEntryAndCapsTheirCount(t *testing.T) {
 // are dropped with rate-limited, neither logged nor forwarded, and the
 // connection stays open.
 func TestUpdatesAreRateLimitedPerConnection(t *testing.T) {
-	l := DefaultLimits()
+	l := defaultLimits()
 	if l.UpdatesPerSecond != 60 || l.UpdateBurst != 200 {
 		t.Fatalf("update default = %d/s burst %d, want 60/s burst 200", l.UpdatesPerSecond, l.UpdateBurst)
 	}
@@ -1396,7 +1396,7 @@ func TestAuthorsAreBoundedPerSession(t *testing.T) {
 // its own address but not towards the pause. A rejoin token and a verified
 // member are not held up.
 func TestWrongCodesAreBudgetedRelayWide(t *testing.T) {
-	if d := DefaultLimits(); d.RelayFailedJoins != 600 || d.FailedJoinWindow != 10*time.Minute {
+	if d := defaultLimits(); d.RelayFailedJoins != 600 || d.FailedJoinWindow != 10*time.Minute {
 		t.Fatalf("defaults: %d wrong codes in %v, want 600 in 10m", d.RelayFailedJoins, d.FailedJoinWindow)
 	}
 	h := newHarness(t, func(l *Limits) {
@@ -1437,7 +1437,7 @@ func TestWrongCodesAreBudgetedRelayWide(t *testing.T) {
 	}
 	// The tries during the pause did not extend it: once the window turns,
 	// joining by code works again.
-	h.clock.advance(DefaultLimits().FailedJoinWindow)
+	h.clock.advance(defaultLimits().FailedJoinWindow)
 	if _, p := h.join(t, code, "Bo", "198.51.100.2"); p.last(t, "joined") == nil {
 		t.Fatalf("after the pause: %v", p.texts(t))
 	}
@@ -1524,7 +1524,7 @@ func TestValidOwner(t *testing.T) {
 // name, a few hundred bytes, so one over MaxAwarenessBytes is refused and
 // never forwarded (security review 2, item 1).
 func TestAwarenessFramesAreCappedInSize(t *testing.T) {
-	if d := DefaultLimits(); d.MaxAwarenessBytes != 8<<10 {
+	if d := defaultLimits(); d.MaxAwarenessBytes != 8<<10 {
 		t.Fatalf("MaxAwarenessBytes = %d, want 8 KiB", d.MaxAwarenessBytes)
 	}
 	h := newHarness(t, nil)
@@ -1548,7 +1548,7 @@ func TestAwarenessFramesAreCappedInSize(t *testing.T) {
 // is held to a byte rate per session, so many connections each inside their
 // own frame rate cannot flood the room's queues.
 func TestAwarenessBytesAreRatedPerRoom(t *testing.T) {
-	d := DefaultLimits()
+	d := defaultLimits()
 	if d.AwarenessBytesPerSecond != 128<<10 || d.AwarenessBytesBurst != 512<<10 {
 		t.Fatalf("room awareness defaults = %d/s burst %d, want 128 KiB/s burst 512 KiB", d.AwarenessBytesPerSecond, d.AwarenessBytesBurst)
 	}
@@ -1589,7 +1589,7 @@ func TestAwarenessBytesAreRatedPerRoom(t *testing.T) {
 // capped in bytes, each connection in count, and each session in total bytes
 // (security review 2, item 2).
 func TestSuggestionsAreBoundedInSizeCountAndRoomBytes(t *testing.T) {
-	d := DefaultLimits()
+	d := defaultLimits()
 	if d.MaxSuggestBytes != 70<<10 || d.MaxSuggestsPerSeat != 100 || d.MaxRoomSuggestBytes != 1<<20 {
 		t.Fatalf("suggestion defaults = %d bytes, %d a connection, %d a room; want 70 KiB, 100, 1 MiB",
 			d.MaxSuggestBytes, d.MaxSuggestsPerSeat, d.MaxRoomSuggestBytes)
@@ -1655,7 +1655,7 @@ func TestSuggestionsAreBoundedInSizeCountAndRoomBytes(t *testing.T) {
 // relay's lock, and a connection refused MaxRefusals times is closed
 // (security review 2, item 7).
 func TestRefusedMessagesAreBudgetedPerConnection(t *testing.T) {
-	d := DefaultLimits()
+	d := defaultLimits()
 	if d.MessagesPerSecond != 50 || d.MessageBurst != 100 || d.MaxRefusals != 1000 {
 		t.Fatalf("message defaults = %d/s burst %d, close after %d; want 50/s, 100, 1000", d.MessagesPerSecond, d.MessageBurst, d.MaxRefusals)
 	}
@@ -1717,7 +1717,7 @@ func TestAcceptedFramesSpendNoMessageBudget(t *testing.T) {
 	host, hp, code := h.host(t, "tok-ada")
 	h.join(t, code, "Gus", "198.51.100.7")
 	hp.reset()
-	for i := 0; i < DefaultLimits().UpdateBurst; i++ {
+	for i := 0; i < defaultLimits().UpdateBurst; i++ {
 		host.Receive(context.Background(), update(byte(i)))
 	}
 	if e := hp.last(t, "error"); e != nil {
@@ -1731,7 +1731,7 @@ func TestAcceptedFramesSpendNoMessageBudget(t *testing.T) {
 // after GitHub has revoked it, lasts at most that long (security review 2,
 // item 8).
 func TestSessionsExpireAfterTheirLifetime(t *testing.T) {
-	if d := DefaultLimits(); d.MaxSessionLife != 12*time.Hour {
+	if d := defaultLimits(); d.MaxSessionLife != 12*time.Hour {
 		t.Fatalf("MaxSessionLife = %v, want 12h", d.MaxSessionLife)
 	}
 	h := newHarness(t, nil)
@@ -1780,7 +1780,7 @@ func TestSessionsExpireAfterTheirLifetime(t *testing.T) {
 // address, keyed as wrong codes are, at most MaxExchangesPerAddr in
 // ExchangeWindow (security review 2, item 10).
 func TestTokenExchangesAreLimitedPerAddress(t *testing.T) {
-	if d := DefaultLimits(); d.MaxExchangesPerAddr != 10 || d.ExchangeWindow != 10*time.Minute {
+	if d := defaultLimits(); d.MaxExchangesPerAddr != 10 || d.ExchangeWindow != 10*time.Minute {
 		t.Fatalf("exchange defaults = %d in %v, want 10 in 10m", d.MaxExchangesPerAddr, d.ExchangeWindow)
 	}
 	h := newHarness(t, nil)
