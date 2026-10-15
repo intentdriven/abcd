@@ -13,5 +13,3 @@ remedy: "Plan an intent: when the site would render a figure slot with no image,
 ---
 
 A project's site renders only what abcd already writes, so it has no pictures of its own: abcd should ask the person for images, or offer to generate some, depending on the context (the about page's hero, a chapter's figure, the project's kind), and commit what is chosen where the site can render it
-
-The product thinker, 2026-10-15, verbatim: "for the images issue: They must be stored in abcd's default folder structure; probably obvious, but worth adding".
