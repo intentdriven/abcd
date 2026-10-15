@@ -64,6 +64,10 @@ const (
 // DrainRoute's From.
 const DrainFromJudgement = "judgement"
 
+// DrainFromReservation is a hand-back's From when the drain could not reserve
+// the issue: its found_at names no path to reserve it with.
+const DrainFromReservation = "reservation"
+
 // judgementKinds are the kinds a yes names, each routed as a lane's hand-back
 // of that kind is.
 var judgementKinds = []string{HandBackUserVisible, HandBackTrustRule}

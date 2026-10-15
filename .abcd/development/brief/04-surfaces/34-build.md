@@ -223,7 +223,14 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 10. Version 10
+under a run id it does not name. The state is schema version 11. Version 11
+added the run's reservation on the shared remote (itd-2609091034175565): the
+run's `reserved_at`, the reservation each step of the run renews at half its
+lease, fences before the landing arms a merge, and tombstones once the run's
+last lane has landed. Version 10 is its strict subset, read as a run that holds
+no reservation; a file of version 10 or lower carrying `reserved_at` is
+refused. A change that adds another field after it takes version 12, with its
+own migration from 11. Version 10
 added an await's `kept` (iss-2610100913086397): why a rate-limit checkpoint
 kept the await when it could not save the gone agent's return aside, which a
 restart of the lane re-tells. Version 9 is its strict subset, read as a run no rate

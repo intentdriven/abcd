@@ -25,6 +25,12 @@ The following are non-negotiable invariants — any architectural choice that vi
    checksum-verified artifact. No version-discovery request exists anywhere
    in abcd ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)).
    Tier-1 paths are enforceable in the zero-network test harness.
+   The reservations on the shared remote (itd-2609091034175565) are fetched
+   and pushed only by verbs whose documented meaning says so: `reserve`, whose
+   meaning is one fetch of the reservations and one push to the record's
+   `abcd-reserved/` branch, and `peers`, whose meaning includes one fetch of
+   the reservations; every render of a reservation reads the view as last
+   fetched, from disk.
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it
    listens on this computer's own Tailscale addresses alone, never every
@@ -40,7 +46,7 @@ The following are non-negotiable invariants — any architectural choice that vi
 
 9. **Corpus documents and ledgers never leave the user tier, and a public citation requires both gates** — what crosses from the sources corpus into any repo or render is citation data only, never a document or an influence ledger; and a citation becomes public only when the source's `permission_status` permits *and* a human has flipped the ledger line's `cited_publicly` flag. Per [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md); consumed by itd-76, itd-126, itd-127.
 
-10. **Remotes are read freely, written only on explicit request — and the caller's identity comes from caller-local facts** — no verb mutates remote state (settings, rulesets, environments, roles) except a dedicated, confirmed apply verb that owns its bootstrap ordering and refreshes the committed mirror in the same change; and any probe that needs the caller's identity derives it from caller-local sources (git identity, the noreply-embedded login, `$HOME`), never from who owns the remote. Per [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md); consumed by itd-92 and every later remote-touching verb; already enforced in the launch scanner (iss-283).
+10. **Remotes are read freely, written only on explicit request — and the caller's identity comes from caller-local facts** — no verb mutates remote state (settings, rulesets, environments, roles) except a dedicated, confirmed apply verb that owns its bootstrap ordering and refreshes the committed mirror in the same change; and any probe that needs the caller's identity derives it from caller-local sources (git identity, the noreply-embedded login, `$HOME`), never from who owns the remote. A git branch push is not remote configuration: a reservation (`abcd reserve`, a branch under `refs/heads/abcd-reserved/`) writes history to a branch, not the remote's settings, so it needs no apply verb and may be renewed by the verb that holds it (itd-2609091034175565 decision 12). Per [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md); consumed by itd-92 and every later remote-touching verb; already enforced in the launch scanner (iss-283).
 
 11. **Record ids are collision-proof by construction and capture-stable** — the mint never allocates by looking at the current maximum (two minters sharing a stale view must still produce distinct ids); an id, once minted, is never renumbered; the grammar stays numeric so every id-consuming surface holds one parser; and a configured forge allocator allocates numbers only — offline it falls back to the native scheme loudly, and capture never blocks on network. Per [adr-45](../../decisions/adrs/0045-record-ids-are-timestamp-numeric-and.md); implemented by itd-114; asserted by the record-lint uniqueness detectors, which stay armed as the scheme's fail-safe.
 

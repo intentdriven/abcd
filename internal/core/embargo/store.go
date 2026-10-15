@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -22,7 +23,7 @@ import (
 
 // StoreName is the store's folder under the repository's level of the
 // worktree store.
-const StoreName = "embargo"
+const StoreName = storepath.Name
 
 // ledgerRel is where a private record sits inside the store: the ledger's own
 // layout, so the capture and resolve code read it unchanged.
@@ -68,11 +69,11 @@ type Store struct {
 // so every worktree of the repository finds the same store
 // (adr-2610031751065746).
 func StorePath(home, repoRoot string) (string, error) {
-	sha := gitutil.RootCommit(repoRoot)
-	if !gitutil.IsFullSHA(sha) {
+	p, ok := storepath.Path(home, repoRoot)
+	if !ok {
 		return "", refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
 	}
-	return abcdhome.Path(home, "worktrees", sha, StoreName), nil
+	return p, nil
 }
 
 // openStore returns the store of the repository at repoRoot, making it on first
