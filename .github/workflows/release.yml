@@ -1,22 +1,28 @@
 name: release
 
-# Pushing a version tag (vX.Y.Z) first re-runs the deterministic, Linux-only
-# verify gate (gofmt, build, vet, the race leg, and the record/docs/reviews
-# gates — a subset of the merge gate, which is the authority; see the
-# release-gate runbook for what gates the merge alone)
-# against the PUSHED COMMIT; only if that gate is green does it cross-compile the
-# four binaries FROM THAT SAME COMMIT, generate a checksums.txt manifest over them,
-# and publish a GitHub Release with the binaries + checksums.txt attached (plus
-# their SLSA build-provenance attestations once the repo is public — attestation is
-# not offered on a user-owned private repo, so it is skipped there and re-enables
-# automatically on the public flip).
-# Nothing is pushed to any branch. Every job checks out `github.sha` — the commit the
-# pushed tag pointed at, fixed for the whole run — never the tag NAME (which could be
-# re-pointed between jobs to swap unverified code into the build) and never the
-# default-branch tip. Net effect: a tag push yields a verified release whose binaries,
-# checksums, and reported version all come from the pushed commit. Called by
-# auto-release with create_tag, the same run makes the tag itself, and only once
-# verify is green: detect -> verify -> tag -> build -> publish.
+# Releases are made by auto-release from main: a merge that rolls a new dated
+# CHANGELOG version calls this workflow, which first re-runs the deterministic,
+# Linux-only verify gate (gofmt, build, vet, the race leg, and the
+# record/docs/reviews gates — a subset of the merge gate, which is the
+# authority; see the release-gate runbook for what gates the merge alone)
+# against the commit being released; only if that gate is green does it tag
+# that commit, cross-compile the four binaries FROM THAT SAME COMMIT, generate a
+# checksums.txt manifest over them, and create the GitHub Release with the
+# binaries + checksums.txt attached (plus their SLSA build-provenance
+# attestations once the repo is public — attestation is not offered on a
+# user-owned private repo, so it is skipped there and re-enables automatically
+# on the public flip): detect -> verify -> tag -> build -> publish.
+# Nothing is pushed to any branch. Every job checks out a resolved commit SHA,
+# fixed for the whole run — never the tag NAME (which could be re-pointed
+# between jobs to swap unverified code into the build) and never a moved-on
+# default-branch tip — so the binaries, checksums, and reported version all
+# come from the released commit.
+#
+# Pushing a version tag (vX.Y.Z) still starts a run, and that run releases
+# nothing: release provenance is verified against this workflow on main and
+# the released commit, which only auto-release's call provides, so its first
+# job (`pushed-tag`) refuses it before anything is checked out, built or
+# signed, and every other job is skipped.
 on:
   push:
     tags:
@@ -73,6 +79,28 @@ permissions:
   contents: read
 
 jobs:
+  # A run started by a pushed version tag releases nothing: release provenance
+  # is verified against this workflow on main and the released commit, which
+  # only auto-release's call provides. This job refuses such a run, naming the
+  # path that does release, and verify (with every job after it) is skipped.
+  # It checks out nothing and holds no write scope. The trigger stays, so a
+  # pushed tag reads as a refused run rather than as no run at all. A call
+  # from auto-release carries its caller's push event, but on a branch.
+  pushed-tag:
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Refuse a release started by a pushed tag
+        # TAG arrives through the workflow env (injection-safe).
+        run: |
+          set -euo pipefail
+          echo "::error::a pushed tag does not release; releases are made by auto-release from main."
+          printf "refusing to release '%s' from a pushed tag: auto-release tags and releases the newest dated CHANGELOG version once it merges to main\n" "$TAG" >&2
+          exit 1
+
   # Gate the release on the pushed commit: the deterministic, Linux-only re-run
   # of the build and record gates (gofmt, build, vet, test, the race leg, the
   # record/docs drift gates, the reviews-charter discipline, smoke) — a subset
@@ -82,6 +110,8 @@ jobs:
   # never the default-branch tip or the re-resolvable tag name — so the gate
   # exercises exactly the commit whose binaries will ship.
   verify:
+    # Skipped on a pushed tag's run, which the pushed-tag job refuses.
+    if: github.event_name != 'push' || github.ref_type != 'tag'
     # The race step's own -timeout (20m, sized in ci.yml) must fire before this
     # does, or a hang reads as a cancelled job with no goroutine dump: 20m for
     # the slowest package plus about 10m this job spends before it starts.
