@@ -177,6 +177,12 @@ func (e *explorer) hasFoundations() bool {
 	return len(e.principles) > 0 || len(e.disciplines) > 0
 }
 
+// hasContributors reports whether the contributors page is built. A project
+// site has none: its author names and declared tools are read out of git
+// history, which is not something abcd writes to the repository, and a project
+// site renders only what abcd writes (project.go).
+func (e *explorer) hasContributors() bool { return !e.c.project }
+
 // hasReferences reports whether the bibliography rendered.
 func (e *explorer) hasReferences() bool { return e.bib != nil && len(e.bib.Entries) > 0 }
 
@@ -202,8 +208,10 @@ func (e *explorer) Pages() (map[string]string, error) {
 			return nil, err
 		}
 	}
-	if err := add(routeContributors, e.contributorsPage); err != nil {
-		return nil, err
+	if e.hasContributors() {
+		if err := add(routeContributors, e.contributorsPage); err != nil {
+			return nil, err
+		}
 	}
 	if e.hasHealth() {
 		if err := add(routeHealth, e.healthPage); err != nil {
@@ -304,7 +312,9 @@ func (e *explorer) subnav(active string) string {
 	if e.hasHealth() {
 		tabs = append(tabs, tab{routeHealth, e.c.ui.RecordNav.Health})
 	}
-	tabs = append(tabs, tab{routeContributors, e.c.ui.RecordNav.Contributors})
+	if e.hasContributors() {
+		tabs = append(tabs, tab{routeContributors, e.c.ui.RecordNav.Contributors})
+	}
 	if e.hasReferences() {
 		tabs = append(tabs, tab{routeReferences, e.c.ui.NavReferences})
 	}

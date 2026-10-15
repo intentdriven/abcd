@@ -453,3 +453,26 @@ func TestTheStandardLayoutReadsTheIssueLedgerOnlyWhenOptedIn(t *testing.T) {
 		}
 	}
 }
+
+// A project site has no contributors page: its names and declared tools are
+// read out of git history, which is not something abcd writes. Nothing links
+// to it either. The composed route keeps it.
+func TestAProjectSiteHasNoContributorsPage(t *testing.T) {
+	_, files := buildProject(t, newProjectFixture(t))
+	if _, ok := files["contributors/index.html"]; ok {
+		t.Error("a project site renders the contributors page")
+	}
+	for rel, data := range files {
+		if strings.Contains(string(data), `/contributors/"`) {
+			t.Errorf("%s links the contributors page", rel)
+		}
+	}
+	composed := newFixture(t)
+	out := t.TempDir()
+	if _, err := Build(Request{RepoRoot: composed.Root(), OutDir: out, Stamp: fixtureStamp}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := siteFiles(t, out)["contributors/index.html"]; !ok {
+		t.Error("the composed route lost its contributors page")
+	}
+}

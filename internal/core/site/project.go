@@ -14,9 +14,10 @@ package site
 //   - the about page (`/`), from the identity block, the brief's opening, the
 //     newest shipped intents' press releases and the release list in
 //     CHANGELOG.md, each rendered only where the repository holds it;
-//   - the record explorer, exactly as the composed route renders it, with the
-//     two pages that quote hand-written files left out (the references page
-//     reads ACKNOWLEDGEMENTS.md, the contributors policy a contribution guide);
+//   - the record explorer, exactly as the composed route renders it, with two
+//     pages left out: the references page, which reads ACKNOWLEDGEMENTS.md, and
+//     the contributors page, whose names and declared tools are read out of git
+//     history rather than written by abcd;
 //   - the interface words, the stylesheet, the scripts and the headers policy,
 //     from the binary (setupsrc/), never from files in the repository.
 //
