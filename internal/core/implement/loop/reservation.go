@@ -426,7 +426,8 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // would otherwise refuse the resume while `implement step` renews the very
 // same reservation. A record whose footprint widened since the tip was
 // written (a spec's packages line that gained a path) is reserved with it,
-// so the widening is published and judged for overlap like any reservation.
+// so the widening is published and judged for overlap like any reservation,
+// with the tip's term, so a widening resume never cuts the fence's day either.
 // A renewal the fetched tip shows the view was stale for (the reservation
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
@@ -438,8 +439,13 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Tim
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	r, ok := snap.Lookup(key)
-	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive || !covers(r.Footprint, fp) {
+	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
 		return reserveKey(repoRoot, key, plain, now)
+	}
+	if !covers(r.Footprint, fp) {
+		widened := plain
+		widened.Lease = renewalTerm(r)
+		return reserveKey(repoRoot, key, widened, now)
 	}
 	res, err := claim.Reserve(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r)}, claimOptions(now))
 	var nh *claim.NotHeld

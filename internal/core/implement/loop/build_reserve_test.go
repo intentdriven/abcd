@@ -597,3 +597,61 @@ func TestAStepThatHandsAnIssueLaneBackReleasesItsReservation(t *testing.T) {
 		t.Fatalf("the run record says the reservation was released: %q", note)
 	}
 }
+
+// TestAWidenedResumeKeepsTheReservationsTerm: a resume over a spec whose
+// footprint widened reserves again so the widening is judged for overlap, and
+// that reserve renews this copy's own reservation with its term, as the
+// renewal does, never the default lease: a reservation the land fence held
+// for a day keeps the day (iss-2610150616342977).
+func TestAWidenedResumeKeepsTheReservationsTerm(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	bare := onOrigin(t, repo)
+	if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: "itd-10", Renew: true, Lease: 24 * time.Hour}, claimOptions(now)); err != nil {
+		t.Fatalf("the fence's day: %v", err)
+	}
+	if day := originReservation(t, bare, reservedRef); day.expires.Sub(day.claimed) != 24*time.Hour {
+		t.Fatalf("the reservation is held for a day: %+v", day)
+	}
+	repo.Write(specRel, strings.Replace(footprintedSpec, "- packages: internal/widget, commands/",
+		"- packages: internal/widget, commands/, internal/extra", 1))
+	repo.Commit("the spec widens its footprint")
+
+	if _, err := Start(repo.Root(), "itd-10", Options{}); err != nil {
+		t.Fatal(err)
+	}
+	tip := originReservation(t, bare, reservedRef)
+	if fp := footprintOf(t, bare, "itd-10"); !slices.Contains(fp, "internal/extra") {
+		t.Fatalf("the widening is published: %v", fp)
+	}
+	if term := tip.expires.Sub(tip.claimed); term != 24*time.Hour {
+		t.Fatalf("the widened reserve keeps the day, not the default lease: %s", term)
+	}
+}
+
+// TestCoversJudgesSegmentBySegment pins the boundary covers draws: a held
+// path covers itself and the paths beneath it, never a sibling that merely
+// shares its prefix, so a spec that adds internal/corex over a held
+// internal/core is a widening the resume publishes.
+func TestCoversJudgesSegmentBySegment(t *testing.T) {
+	for _, tc := range []struct {
+		held, fp []string
+		want     bool
+	}{
+		{[]string{"internal/core"}, []string{"internal/core"}, true},
+		{[]string{"internal/core"}, []string{"internal/core/claim"}, true},
+		{[]string{"internal/core/"}, []string{"internal/core/claim"}, true},
+		{[]string{"internal/core"}, []string{"internal/corex"}, false},
+		{[]string{"internal/core/claim"}, []string{"internal/core"}, false},
+		{[]string{"commands", "internal/core"}, []string{"internal/core", "commands"}, true},
+		{[]string{"internal/core"}, []string{"internal/core", "commands"}, false},
+		{nil, []string{"commands"}, false},
+	} {
+		if got := covers(tc.held, tc.fp); got != tc.want {
+			t.Errorf("covers(%q, %q) = %v, want %v", tc.held, tc.fp, got, tc.want)
+		}
+	}
+}
