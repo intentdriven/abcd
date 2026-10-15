@@ -21,8 +21,10 @@ itself.
 `<% .DefaultBranch %>`, `auto-release.yml` reads the newest dated heading and
 calls `<% .ReleaseWorkflow %>`, which verifies exactly that commit, tags it only once the
 gates pass, and publishes: the Release is created as a draft with every asset
-attached and published only after, so it is never visible with an asset
-missing and no asset is added once it is public. A refused gate leaves no tag, so the version stays
+attached and published only after, by the draft's id once its assets are the
+files built, so it is never visible with an asset missing and no asset is
+added once it is public. It is marked the latest release only when no
+published release carries a higher version. A refused gate leaves no tag, so the version stays
 free. Nothing else declares a release; an ordinary push with no new dated
 heading is a no-op.
 

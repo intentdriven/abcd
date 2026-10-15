@@ -136,8 +136,8 @@ rendering the plugin archive (`abcd-plugin-vX.Y.Z.zip`) and proving it is the on
 the catalog pins, checksumming exactly those bytes, signing a provenance
 attestation, creating the GitHub Release as a draft with the binaries and the
 archive attached, verifying the draft's downloads against that attestation,
-then attaching the website's archive, publishing the Release and deploying the
-website from the tag. That is why it is gated — it is the step that puts bytes in front of the
+then attaching the website's archive, checking every asset of the draft again,
+publishing the Release and deploying the website from the tag. That is why it is gated — it is the step that puts bytes in front of the
 public. The reviewer requirement itself lives in the repository's environment
 settings rather than in a workflow file, and the scaffold-parity test fails any
 edit that drops the `environment:` binding from the job.

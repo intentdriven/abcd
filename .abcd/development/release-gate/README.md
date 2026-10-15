@@ -83,7 +83,13 @@ check, since the site run publishes full releases only.
 The Release is created as a draft holding the binaries, the plugin archive and
 `checksums.txt`; the site run attaches `site.tar.gz` and then publishes it, so
 a Release is public only once every asset is attached and no asset is added
-after publication. A run that stops before that leaves a draft and nothing
+after publication. The release job hands the site run the draft's numeric id,
+and both address the Release by that id alone, refusing when more than one
+Release carries the tag. Immediately before publishing, the site run downloads
+every asset again by its id and checks it against `checksums.txt`, against the
+archive the render attached and against the release provenance policy; it
+marks the Release latest only when no published release carries a higher
+version, and fails if the assets differ afterwards from the ones it checked. A run that stops before that leaves a draft and nothing
 public: re-run the failed jobs of that run. A later push to `main` does not
 re-cut it, because a run started by that push releases a different commit:
 `auto-release`'s `detect` fails and names this remedy instead.
