@@ -476,3 +476,23 @@ func TestAProjectSiteHasNoContributorsPage(t *testing.T) {
 		t.Error("the composed route lost its contributors page")
 	}
 }
+
+// A project build with nothing abcd wrote for its about page is refused, as
+// setup refuses it, before anything is written: the page would be empty.
+func TestAProjectBuildWithNothingAbcdWroteIsRefused(t *testing.T) {
+	f := newProjectFixture(t)
+	for _, rel := range []string{".abcd/positioning.json", BriefOpeningRelPath, changelogFile, ".abcd/development/intents/shipped"} {
+		if err := os.RemoveAll(filepath.Join(f.Root(), filepath.FromSlash(rel))); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f.commitAt("2026-03-08T09:00:00+00:00", "chore: nothing for the about page", "None")
+	out := filepath.Join(t.TempDir(), "site")
+	_, err := Build(Request{RepoRoot: f.Root(), OutDir: out, Stamp: fixtureStamp, Project: true})
+	if !errors.Is(err, ErrProjectEmpty) {
+		t.Fatalf("a project build with nothing abcd wrote = %v, want ErrProjectEmpty", err)
+	}
+	if _, serr := os.Stat(out); !os.IsNotExist(serr) {
+		t.Errorf("the refused build wrote its output directory: %v", serr)
+	}
+}

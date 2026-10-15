@@ -171,10 +171,10 @@ const BriefOpeningRelPath = ".abcd/development/brief/01-product/01-press-release
 const aboutShippedIntents = 3
 
 // ErrProjectEmpty refuses a project site with nothing to build its about page
-// from.
-var ErrProjectEmpty = errors.New("site setup: this repository holds nothing abcd writes that a project site is built from yet: " +
+// from: setup does not switch it on, and a build does not write it.
+var ErrProjectEmpty = errors.New("site: this repository holds nothing abcd writes that a project site is built from yet: " +
 	"no identity block (`abcd identity init`), no brief opening (" + BriefOpeningRelPath + "), no shipped intent whose " +
-	"audit was met, and no release in CHANGELOG.md; the site would be empty, so it is not switched on")
+	"audit was met, and no release in CHANGELOG.md; the site would be empty, so it is neither switched on nor built")
 
 // aboutSources is what the about page is built from. Each part is set only
 // where the repository holds it: anything absent is left out, never filled.
