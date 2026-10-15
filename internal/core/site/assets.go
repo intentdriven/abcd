@@ -378,6 +378,8 @@ type assetPipe struct {
 	copies map[string]string
 	// base is the build's base path, which every picture's src sits under.
 	base string
+	// project leaves every picture out (a project site, project.go).
+	project bool
 }
 
 func newAssetPipe(repoRoot string, root *os.Root, base string) *assetPipe {
@@ -398,6 +400,12 @@ func (a *assetPipe) Copies() [][2]string {
 // directory of the page the reference was written in, so `../assets/img/x.png`
 // resolves the way a reader on GitHub sees it.
 func (a *assetPipe) render(pageDir, src, alt string, at Source) (string, error) {
+	// A project site renders no picture: every picture lives under docs/,
+	// a person's own files, and asking for pictures or offering to make them
+	// is a later intent (iss-2610150529485165). The picture is left out.
+	if a.project {
+		return "", nil
+	}
 	if strings.HasPrefix(src, "http://") || strings.HasPrefix(src, "https://") || strings.HasPrefix(src, "data:") {
 		return "", &UnsupportedError{Path: at.Path, Line: at.Line, Construct: "remote image",
 			Detail: "every picture is a committed asset under docs/assets/img/; " + quote(src) + " is fetched at render time"}

@@ -313,6 +313,10 @@ type Request struct {
 	// for a project's GitHub Pages address); empty is the root. Every
 	// root-absolute URL the build writes is placed under it (basepath.go).
 	BasePath string
+	// Project builds a project site (project.go): `.abcd/site.json` holds
+	// its settings, and every page is derived from what abcd writes. A build
+	// whose flag and settings file disagree is refused.
+	Project bool
 }
 
 // Result describes what a build wrote.
@@ -425,19 +429,29 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		}
 		return Result{}, err
 	}
+	if err := routeAgrees(manifest, req.Project); err != nil {
+		return Result{}, err
+	}
 	// A ui.json written before a label existed gains that label with its
 	// default words, and nothing else changes (the TG1 ruling); a label the
-	// file carries, blank or not, is still judged by LoadUI.
+	// file carries, blank or not, is still judged by LoadUI. A project site
+	// reads its interface words from the binary and touches no file.
 	var addedLabels []string
-	if !req.LeaveUI {
-		if addedLabels, err = addMissingLabels(repoRoot, manifest.UIStrings); err != nil {
+	var ui UI
+	if manifest.Project() {
+		if ui, err = projectUI(); err != nil {
 			return Result{}, err
 		}
-		written.file, written.labels = manifest.UIStrings, addedLabels
-	}
-	ui, err := LoadUI(repoRoot, manifest.UIStrings)
-	if err != nil {
-		return Result{}, err
+	} else {
+		if !req.LeaveUI {
+			if addedLabels, err = addMissingLabels(repoRoot, manifest.UIStrings); err != nil {
+				return Result{}, err
+			}
+			written.file, written.labels = manifest.UIStrings, addedLabels
+		}
+		if ui, err = LoadUI(repoRoot, manifest.UIStrings); err != nil {
+			return Result{}, err
+		}
 	}
 	repo, err := LoadRepoMeta(repoRoot)
 	if err != nil {
@@ -512,8 +526,17 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		repoRoot: repoRoot, root: srcRoot, manifest: manifest, ui: ui, repo: repo,
 		assets: newAssetPipe(repoRoot, srcRoot, base), graph: graph, history: hist, stamp: stamp,
 		beta: isPreOne(version), version: version, releaseDate: releaseDate, base: base,
+		identityLoc: manifest.Identity,
 	}
-	html, err := c.ComposeLanding()
+	compose := c.ComposeLanding
+	if manifest.Project() {
+		if c.identityLoc, err = projectIdentity(repoRoot); err != nil {
+			return Result{}, err
+		}
+		c.project, c.assets.project = true, true
+		compose = c.ComposeAbout
+	}
+	html, err := compose()
 	if err != nil {
 		return Result{}, err
 	}
@@ -530,9 +553,13 @@ func build(req Request, written *labelsAdded) (Result, error) {
 
 	// The record explorer. Its optional inputs — a bibliography, a principle
 	// store, a changelog — each omit the page they feed rather than failing.
-	bib, err := LoadBibliography(repoRoot, CSLRelPath, AcknowledgementsRelPath)
-	if err != nil {
-		return Result{}, err
+	// A project site has no references page: its headings and numbering are
+	// ACKNOWLEDGEMENTS.md's, a person's own file (project.go).
+	var bib *Bibliography
+	if !manifest.Project() {
+		if bib, err = LoadBibliography(repoRoot, CSLRelPath, AcknowledgementsRelPath); err != nil {
+			return Result{}, err
+		}
 	}
 	recordRoot := ""
 	if len(lintCfg.Roots) > 0 {
@@ -625,8 +652,18 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		}
 	}
 	res.Pages = len(pages)
-	for _, cp := range copiedSources {
-		data, err := fsutil.ReadGuardedInRoot(srcRoot, cp.src, maxAssetBytes)
+	// A project site's static files are the binary's own: nothing is read
+	// from the repository.
+	statics, readStatic := copiedSources, func(src string) ([]byte, error) {
+		return fsutil.ReadGuardedInRoot(srcRoot, src, maxAssetBytes)
+	}
+	if manifest.Project() {
+		statics, readStatic = projectCopies, func(src string) ([]byte, error) {
+			return setupSources.ReadFile("setupsrc/" + src)
+		}
+	}
+	for _, cp := range statics {
+		data, err := readStatic(cp.src)
 		if err != nil {
 			if os.IsNotExist(err) {
 				continue
@@ -638,8 +675,10 @@ func build(req Request, written *labelsAdded) (Result, error) {
 		}
 	}
 	// The installer. A repository that commits no template serves no /install.sh
-	// — the same graceful absence every other copied source has.
+	// — the same graceful absence every other copied source has. A project
+	// site serves none: the template is a site source.
 	switch tmpl, err := fsutil.ReadGuardedInRoot(srcRoot, installTemplateRelPath, maxAssetBytes); {
+	case manifest.Project():
 	case err == nil:
 		if err := write(installScriptName, renderInstallScript(tmpl, stamp)); err != nil {
 			return Result{}, err
@@ -690,6 +729,9 @@ type Status struct {
 	// board that exits non-zero answers the question by refusing to answer it.
 	OutRefused string `json:"out_refused,omitempty"`
 	Chapters   int    `json:"chapters"`
+	// Project says the file holds a project site's settings: no chapters and
+	// no ui.json, every page built from what abcd writes (project.go).
+	Project    bool   `json:"project"`
 	IssueLedge bool   `json:"issue_ledger"`
 	Version    string `json:"version"`
 	Commit     string `json:"commit"`
@@ -706,11 +748,12 @@ func Describe(repoRoot, outDir string) (Status, error) {
 	switch {
 	case err == nil:
 		st.Manifest = true
+		st.Project = m.Project()
 		st.Chapters = len(m.Home.Chapters)
 		st.IssueLedge = m.Record.IssueLedger
 		st.UIPath = m.UIStrings
 		if root, rerr := os.OpenRoot(repoRoot); rerr == nil {
-			if _, serr := root.Stat(m.UIStrings); serr == nil {
+			if _, serr := root.Stat(m.UIStrings); serr == nil && !m.Project() {
 				st.UIStrings = true
 			}
 			root.Close()

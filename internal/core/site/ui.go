@@ -301,6 +301,13 @@ func LoadUI(repoRoot, rel string) (UI, error) {
 	if err != nil {
 		return UI{}, err
 	}
+	return decodeUI(data, rel)
+}
+
+// decodeUI decodes an interface-string allowlist against the closed struct,
+// unknown keys refused and every declared string required. rel names the file
+// in a refusal.
+func decodeUI(data []byte, rel string) (UI, error) {
 	var ui UI
 	dec := json.NewDecoder(strings.NewReader(string(data)))
 	dec.DisallowUnknownFields()
