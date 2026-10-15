@@ -167,7 +167,7 @@ func manifestShapeProblems(raw []byte) []string {
 	// (iss-2609011423385217), and a stored copy is rewritten on one line by
 	// every branch that adds a chapter (iss-2610150526192138).
 	if _, ok := keys["checkerCount"]; ok {
-		out = append(out, fmt.Sprintf("the manifest stores checkerCount; the count is computed, briefDocs (%d) + surfaces (%d) = %d, and a stored copy conflicts on every branch that adds a chapter",
+		out = append(out, fmt.Sprintf("the manifest stores checkerCount; the count is computed, briefDocs (%d) + surfaces (%d) = %d, and a stored copy goes silently wrong when two branches that each add a chapter merge",
 			len(m.BriefDocs), len(m.Surfaces), len(m.BriefDocs)+len(m.Surfaces)))
 	}
 

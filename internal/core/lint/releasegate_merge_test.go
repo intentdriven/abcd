@@ -32,8 +32,11 @@ import (
 // files, so the real checkout is never touched. Each branch makes the edits a
 // surface-adding branch has to make for TestReleaseGateManifestIsCurrent to
 // pass, then refreshes every derived value the files store, as a branch must.
-// So a derived value stored again later, or a roster put back inline, makes
-// both branches rewrite one line and fails this test with that file named.
+// So a roster put back inline, or a hash stored again, makes both branches
+// rewrite one line and fails this test with that file named. A stored count is
+// different: both branches bump it to the same value, git merges the identical
+// edits cleanly, and the result is silently wrong, which the manifest shape
+// check in TestReleaseGateManifestIsCurrent refuses instead.
 func TestSurfaceAdditionsMergeCleanly(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	const manifestRel = ".abcd/development/release-gate/manifest.json"
