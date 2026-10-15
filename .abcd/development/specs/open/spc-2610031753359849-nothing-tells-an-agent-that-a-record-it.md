@@ -982,9 +982,15 @@ These are the facilitator's design calls; none changes a criterion.
     with; give it a found_at naming the file the fix changes, then run abcd
     build again; nothing was started".
   - A resumed start reserves with its record's footprint and records it (the
-    stage `reservation`, `reserved_at` kept when set): it renews this copy's
-    own live reservation keeping its term (`renewalTerm`, read from the view),
-    so a resume never cuts the fence's day, and reserves anew one a release
+    stage `reservation`, `reserved_at` kept when set): over this copy's own
+    live reservation, as last fetched, it makes a renew-only act keeping the
+    tip's footprint and term (`renewalTerm`), so a resume never cuts the
+    fence's day and, like a step's renewal, is not judged for overlap: an
+    overlap a race let in would otherwise refuse `abcd build` (exit 3) while
+    `implement step` renews the same reservation (review of steps 12 to 15,
+    2026-10-15). A renewal that finds the view stale (the reservation gone,
+    tombstoned, or moved to this person's other copy) falls back to the
+    plain reserve with the record's footprint. It reserves anew one a release
     released or a run started before reservations never took. A run handed
     back reserves nothing. A refusal leaves the run unchanged and says so; a
     fresh reservation whose recording fails is released.

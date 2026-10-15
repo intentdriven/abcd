@@ -66,8 +66,9 @@ reserves nothing and carries none.
 `implement step` then renews the reservation, fences the landing on it and
 tombstones it once the run's last lane lands (`/abcd:implement`); a run whose
 issue lane is handed back releases it then. Starting again while the run is in
-progress reserves again: it renews this copy's reservation (keeping its term),
-or reserves anew one that `--release` released or that a run started before
+progress reserves again: it renews this copy's live reservation (keeping its
+footprint and term, so another reservation over the same files that a race let
+in does not refuse it), or reserves anew one that `--release` released or that a run started before
 reservations never took, and records it in the run's state.
 
 ### Release the reservation

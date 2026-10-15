@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -358,5 +359,72 @@ func TestAResumedIssueRunReadsFoundAtWhereverItsIssueIs(t *testing.T) {
 	}
 	if fp := footprintOf(t, bare, secondIssue); !slices.Equal(fp, []string{"commands/drain.md"}) {
 		t.Fatalf("the footprint is the resolved issue's found_at path: %v", fp)
+	}
+}
+
+// pushRacedReservation pushes holder's live reservation on id straight onto
+// origin, footprint fp, as a race between two people lets one in past the
+// overlap check: each reservation is its own ref, so the overlap is not
+// compare-and-swapped.
+func pushRacedReservation(t *testing.T, bare, id, holder string, fp ...string) {
+	t.Helper()
+	now := time.Now().UTC().Truncate(time.Second)
+	msg := "abcd reservation: " + id + "\n\nAbcd-Reservation: " + id + "\nAbcd-Holder: " + holder +
+		"\nAbcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\n"
+	for _, p := range fp {
+		msg += "Abcd-Footprint: " + p + "\n"
+	}
+	msg += "Abcd-Claimed-At: " + stamp(now) + "\nAbcd-Expires-At: " + stamp(now.Add(2*time.Hour)) + "\n"
+	dir := filepath.Join(t.TempDir(), "raced")
+	gitIn(t, "", "clone", "-q", bare, dir)
+	path := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(path, []byte(msg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tree := gitIn(t, dir, "hash-object", "-w", "-t", "tree", "/dev/null")
+	sha := gitIn(t, dir, "-c", "user.name=Quinn", "-c", "user.email=quinn@example.invalid", "-c", "commit.gpgsign=false",
+		"commit-tree", tree, "-F", path)
+	gitIn(t, dir, "push", "-q", "origin", sha+":"+claim.RefPrefix+id)
+}
+
+// TestAResumeRenewsItsOwnReservationPastAnOverlapARaceLetIn: a resume over
+// this copy's own live reservation is a renewal, keeping the tip's footprint
+// and term, so it is not judged for overlap; another person's reservation a
+// race let in over the same paths would otherwise refuse `abcd build` while
+// `implement step` keeps renewing the very same reservation.
+func TestAResumeRenewsItsOwnReservationPastAnOverlapARaceLetIn(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	bare := onOrigin(t, repo)
+	res, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tip := originReservation(t, bare, reservedRef)
+	pushRacedReservation(t, bare, "itd-11", "quinn", "internal/widget")
+
+	again, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil || !again.Resumed || again.RunID != res.RunID {
+		t.Fatalf("the resume renews its own reservation past the raced overlap: %+v %v", again, err)
+	}
+	after := originReservation(t, bare, reservedRef)
+	if after.parent != tip.commit || after.released || after.expires.Sub(after.claimed) != tip.expires.Sub(tip.claimed) {
+		t.Fatalf("the resume renews the tip keeping its term: before %+v, after %+v", tip, after)
+	}
+	if !strings.Contains(again.Reservation, "renewed the reservation on itd-10") {
+		t.Fatalf("the resumed start names the renewal: %q", again.Reservation)
+	}
+
+	// A view gone stale: P's other computer took the reservation over, and
+	// this copy has not fetched since. The renewal finds it moved, and the
+	// resume falls back to the reserve any other resume makes, which backs
+	// off naming --take-over, as the start does.
+	gitIn(t, bare, "update-ref", "-d", claim.RefPrefix+"itd-11")
+	p2 := otherCopy(t, bare, patEmail)
+	if _, err := claim.Reserve(p2, claim.Request{Record: "itd-10", Footprint: []string{"internal/widget"}, TakeOver: true}, claim.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	_, err = Start(repo.Root(), "itd-10", Options{})
+	if r := mustRefusal(t, err); !r.Contention || !strings.Contains(r.Reason, "pass --take-over to continue here") {
+		t.Fatalf("a stale view's renewal falls back to the reserve, naming --take-over: %+v", r)
 	}
 }

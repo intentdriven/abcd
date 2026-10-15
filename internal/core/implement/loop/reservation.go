@@ -322,6 +322,12 @@ func isPushFailure(err error) bool {
 func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (at *time.Time, note string, fresh bool, err error) {
 	req.Record = key
 	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
+	return reservedNote(res, err, now)
+}
+
+// reservedNote is reserveKey's reading of a reservation act's outcome: the
+// run record's line for it, or the refusal.
+func reservedNote(res claim.Result, err error, now time.Time) (at *time.Time, note string, fresh bool, _ error) {
 	if err != nil {
 		if errors.Is(err, claim.ErrBackOff) {
 			return nil, "", false, contend(StageReservation, CheckReservation, "", err.Error(),
@@ -364,8 +370,9 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (at *time.Time, n
 // progress reserves its key again, with the footprint its record names, so a
 // run started before reservations (or before its checkout had an origin)
 // takes one, a reservation `build --release` released is taken again, and
-// one this copy holds is renewed, keeping its term, so a resume never cuts
-// the day the land fence gave a pull request waiting on a person. A run
+// one this copy holds live is renewed, keeping its footprint and term
+// (reserveAgain), so a resume never cuts the day the land fence gave a pull
+// request waiting on a person nor meets an overlap a race let in. A run
 // handed back starts nothing further and reserves nothing. The run's state
 // records the reservation; a refusal leaves the run unchanged.
 func reserveResumed(repoRoot string, res *StartResult, o Options) error {
@@ -388,13 +395,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 		return err
 	}
 	now := o.now()
-	req := claim.Request{Footprint: fp, TakeOver: o.TakeOver}
-	if snap, err := claim.View(repoRoot, now); err == nil {
-		if r, ok := snap.Lookup(st.Key); ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
-			req.Lease = renewalTerm(r)
-		}
-	}
-	at, note, fresh, err := reserveKey(repoRoot, st.Key, req, now)
+	at, note, fresh, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, now)
 	if err != nil {
 		return err
 	}
@@ -413,6 +414,34 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 	}
 	res.Reservation = note
 	return nil
+}
+
+// reserveAgain is a resumed run's reservation act. Over this copy's own live
+// reservation, as last fetched, it is a renewal keeping the tip's footprint
+// and term (renewalTerm), so a resume never cuts the fence's day and, as an
+// act that widens nothing, is not judged for overlap: an overlap a race let
+// in would otherwise refuse the resume while `implement step` renews the
+// very same reservation. A renewal the fetched tip shows the view was stale
+// for (the reservation gone, released by a tombstone, or moved to this
+// person's other copy) falls back to the reservation any other resume
+// makes: a reserve with the record's footprint, --take-over passed through.
+func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Time) (*time.Time, string, bool, error) {
+	plain := claim.Request{Footprint: fp, TakeOver: takeOver}
+	snap, err := claim.View(repoRoot, now)
+	if err != nil {
+		return reserveKey(repoRoot, key, plain, now)
+	}
+	r, ok := snap.Lookup(key)
+	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
+		return reserveKey(repoRoot, key, plain, now)
+	}
+	res, err := claim.Reserve(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r)}, claimOptions(now))
+	var nh *claim.NotHeld
+	if errors.As(err, &nh) && (nh.Why == claim.NotHeldAbsent || nh.Why == claim.NotHeldAnotherCopy ||
+		(nh.Why == claim.NotHeldReleased && !nh.Derived)) {
+		return reserveKey(repoRoot, key, plain, now)
+	}
+	return reservedNote(res, err, now)
 }
 
 // runFootprint is the footprint a run's record names to reserve its key
