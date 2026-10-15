@@ -373,7 +373,7 @@ func (j judged) notHeld(id, why string, kind error, msg string) *NotHeld {
 // for the default lease), whether the default branch already finished the
 // record, and whose it is.
 func judge(p *prepared, tree string) (judged, error) {
-	t, ok, err := readTip(p.root, p.id, trackingName(p.id), tree, p.now, true)
+	t, ok, err := readSeen(p.root, p.id, trackingName(p.id), tree, p.now, true)
 	if err != nil {
 		return judged{}, refuse("could not read the reservation on %s: %s; %s", p.id, redacted(err), noReservation)
 	}
@@ -398,10 +398,10 @@ func judge(p *prepared, tree string) (judged, error) {
 		}
 	}
 	if t.Unreadable != "" {
-		j.verdict = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt}, lease.Default, p.now)
+		j.verdict = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)
 		return j, nil
 	}
-	j.verdict = lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt}, lease.Default, p.now)
+	j.verdict = lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)
 	j.mine = sameHolder(t.Holder, p.holder)
 	j.thisCopy = t.Copy == p.copy
 	return j, nil

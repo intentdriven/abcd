@@ -26,6 +26,12 @@ const (
 	Max = 24 * time.Hour
 )
 
+// Skew is how far ahead of the reader's clock a claim may be dated and still
+// be judged by its own dates: the allowance for two honest clocks that differ
+// by a little. A claim dated further ahead is counted from when the reader
+// first saw it (Stamp.FirstSeen).
+const Skew = 5 * time.Minute
+
 // Stamp is what a claim says about its own lifetime, as read.
 type Stamp struct {
 	// ClaimedAt and ExpiresAt are the claim's own times. They are read only
@@ -39,14 +45,20 @@ type Stamp struct {
 	// rather than as the claim says: a claim file's modification time, a
 	// reservation commit's committer date.
 	WrittenAt time.Time
+	// FirstSeen is when the reader first saw this claim, kept by the reader
+	// rather than read from the claim. It is read only when the claim's own
+	// date (ClaimedAt, or WrittenAt when unreadable) is more than Skew ahead
+	// of now; zero then counts from now.
+	FirstSeen time.Time
 }
 
 // Verdict is a claim judged at a moment.
 type Verdict struct {
 	// EffectiveExpiry is when the claim stops holding: a readable claim's
 	// expiry clamped to a day after it was claimed (or after now, when it is
-	// dated ahead of the reader), or an unreadable one's WrittenAt (or now)
-	// plus the grace.
+	// dated a little ahead of the reader, or after it was first seen, when it
+	// is dated more than Skew ahead), or an unreadable one's WrittenAt (or
+	// now, or its first sighting, on the same terms) plus the grace.
 	EffectiveExpiry time.Time
 	// Live is true while now is before EffectiveExpiry.
 	Live bool
@@ -56,24 +68,44 @@ type Verdict struct {
 }
 
 // Judge says whether a claim holds at now. A readable claim's effective expiry
-// is min(ExpiresAt, min(ClaimedAt, now) + Max), so neither a far-ahead clock
-// nor a hand-edited expiry can hold a record past a day from its claim, nor
-// past a day from the reader's own now when the claim is dated ahead of it;
-// an unreadable one is held until min(WrittenAt, now) + grace.
+// is min(ExpiresAt, min(from, now) + Max) and an unreadable one is held until
+// min(from, now) + grace, where from is the claim's own date (ClaimedAt, or
+// WrittenAt when unreadable) unless that date is more than Skew ahead of now,
+// when from is FirstSeen (now when FirstSeen is zero).
 //
-// A claim dated ahead of the reader is clamped at every reading, so it still
-// holds while the writer's clock stays ahead: the clamp bounds what one
-// reading may promise, not how long a clock may run fast.
+// So neither a far-ahead clock nor a hand-edited expiry can hold a record past
+// a day from its claim: a claim dated a little ahead of the reader, within
+// the Skew two honest clocks may differ by, is clamped from the reader's now,
+// and one dated further ahead is counted from when the reader first saw it,
+// so it lapses a day after that sighting rather than holding for a day from
+// every reading.
 func Judge(s Stamp, grace time.Duration, now time.Time) Verdict {
 	if s.Unreadable {
-		exp := earlier(s.WrittenAt, now).Add(grace)
+		exp := earlier(from(s.WrittenAt, s.FirstSeen, now), now).Add(grace)
 		return Verdict{EffectiveExpiry: exp, Live: now.Before(exp), Unreadable: true}
 	}
 	exp := s.ExpiresAt
-	if ceiling := earlier(s.ClaimedAt, now).Add(Max); ceiling.Before(exp) {
+	if ceiling := earlier(from(s.ClaimedAt, s.FirstSeen, now), now).Add(Max); ceiling.Before(exp) {
 		exp = ceiling
 	}
 	return Verdict{EffectiveExpiry: exp, Live: now.Before(exp)}
+}
+
+// Ahead reports whether a claim dated at is more than Skew ahead of now, the
+// claim Judge counts from its first sighting instead of from its own date.
+func Ahead(at, now time.Time) bool { return at.After(now.Add(Skew)) }
+
+// from is the time a claim dated at is counted from at now: at itself, or
+// when it is more than Skew ahead, its first sighting (now when there is
+// none).
+func from(at, firstSeen, now time.Time) time.Time {
+	if !Ahead(at, now) {
+		return at
+	}
+	if firstSeen.IsZero() {
+		return now
+	}
+	return firstSeen
 }
 
 // earlier is the earlier of two times.
