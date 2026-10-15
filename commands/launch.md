@@ -172,7 +172,7 @@ binary is already in place, so it needs the plugin update to fetch a new one.
 
 ### When it goes wrong
 
-Six failures are worth recognising, because each looks like something else.
+Seven failures are worth recognising, because each looks like something else.
 
 - **The run says `Waiting` for a long time and nothing happens.** That is the
   approval gate, not a hang. Approve it.
@@ -200,6 +200,11 @@ Six failures are worth recognising, because each looks like something else.
   its environment secrets perfectly well, provided every caller above it passes
   `secrets: inherit` — measured on a canary secret, and pinned by
   `TestReleaseChainPassesSecretsAtEveryLevel`.
+- **The emergency redeploy, `abcd update` or the plugin bootstrap refuses an
+  older release.** A release published before release provenance was held to
+  `release.yml` on `main` carries a signing identity these checks no longer
+  accept, so they refuse it, a redeploy with no tag input included while the
+  newest published release is one of them, and the next release clears it.
 - **`verify` fails on `Semantic-gate receipts`.** The receipts do not match
   the commit the workflow derived from the receipts directory. On the
   `auto-release` path the gate runs before the tag, so nothing was tagged and the
