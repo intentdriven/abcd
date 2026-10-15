@@ -118,9 +118,12 @@
       return {
         i: i, id: n.id, type: n.type, status: n.lifecycle || n.status || '', title: n.title,
         path: n.path, kind: n.kind, sev: n.severity, date: n.date,
-        created: (n.dates && n.dates.created) || n.date,
-        entered: (n.dates && n.dates.entered) || n.date,
-        last: (n.dates && n.dates.touched) || n.date,
+        // A record exported without git dates (a project site) keeps only its
+        // own date field, shown as that field, never as a git date.
+        created: n.dates ? (n.dates.created || n.date) : '',
+        entered: n.dates ? (n.dates.entered || n.date) : '',
+        last: n.dates ? (n.dates.touched || n.date) : '',
+        nogit: !n.dates,
         hx: { date: coil.x * CR, links: links.x * CR },
         hy: { date: coil.y * CR, links: links.y * CR },
         r: L.radius[i], x: 0, y: 0, vx: 0, vy: 0, a: 1, ta: 1, s: 1
@@ -723,11 +726,12 @@
       if (W_.blob) {
         foot += '<a class="gh" href="' + esc(W_.blob + n.path) + '">' + esc(W_.open) + ' ↗</a>';
       }
-      if (W_.commits && n.last) {
+      if (W_.commits && (n.last || n.nogit)) {
         /* The last-touched date LINKS the record's commit history, so an
-           amendment is traceable from the card rather than merely visible. */
+           amendment is traceable from the card rather than merely visible.
+           A record exported without git dates links its history undated. */
         foot += '<a class="gh" href="' + esc(W_.commits + n.path) + '">' + esc(W_.history) +
-          ' · ' + esc(fmtShort(n.last)) + ' ↗</a>';
+          (n.last ? ' · ' + esc(fmtShort(n.last)) : '') + ' ↗</a>';
       }
 
       card.innerHTML =

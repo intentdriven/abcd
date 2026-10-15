@@ -14,10 +14,15 @@ package site
 //   - the about page (`/`), from the identity block, the brief's opening, the
 //     newest shipped intents' press releases and the release list in
 //     CHANGELOG.md, each rendered only where the repository holds it;
-//   - the record explorer, exactly as the composed route renders it, with two
-//     pages left out: the references page, which reads ACKNOWLEDGEMENTS.md, and
-//     the contributors page, whose names and declared tools are read out of git
-//     history rather than written by abcd;
+//   - the record explorer, as the composed route renders it, less everything
+//     read out of git history rather than written by abcd: the contributors
+//     page (author names and declared tools), the timeline (records placed at
+//     the day git first saw them), the health page's authorship checks, and
+//     record.json's authorship, history and per-record git dates. The
+//     references page, which reads ACKNOWLEDGEMENTS.md, is left out too. A
+//     project build never walks git history (no log, no shortlog, no blame):
+//     it asks git only for the origin remote, which names the repository, the
+//     commit it builds, and the root commit that marks its output directory;
 //   - the interface words, the stylesheet, the scripts and the headers policy,
 //     from the binary (setupsrc/), never from files in the repository.
 //
@@ -469,14 +474,16 @@ func (c *composer) aboutReleases(releases []changelog.DatedRelease) (string, err
 }
 
 // metIntents are the shipped intents the record shows delivered: their audit
-// was met and their press release was written, most recently shipped first,
-// id descending as the tie-break (newestMetIntent's rule, for every intent).
+// was met and their press release was written, newest id first.
+//
+// The order reads no git history, which a project site does not show: the date
+// an intent entered shipped/ is git's, not abcd's. The id is abcd's. A
+// timestamped id, `itd-<yymmddHHMMSS><rrrr>`, carries the moment abcd minted
+// it, so its number orders it in time; an ordinal id, `itd-N`, was minted
+// before every timestamped one and sorts below them all, by N. That is
+// lint.HandleLess's order, read backwards.
 func (c *composer) metIntents() []lint.RecordNode {
-	type picked struct {
-		node lint.RecordNode
-		date string
-	}
-	var out []picked
+	var out []lint.RecordNode
 	for _, n := range c.graph.Nodes {
 		if n.Type != "intent" || n.Lifecycle != "shipped" {
 			continue
@@ -484,19 +491,10 @@ func (c *composer) metIntents() []lint.RecordNode {
 		if !c.auditIsMet(n.Path) || c.pressReleaseIsUnwritten(n.Path) {
 			continue
 		}
-		out = append(out, picked{n, c.history.EnteredBucket(n.Path)})
+		out = append(out, n)
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		if out[i].date != out[j].date {
-			return out[i].date > out[j].date
-		}
-		return handleNum(out[i].node.ID) > handleNum(out[j].node.ID)
-	})
-	nodes := make([]lint.RecordNode, len(out))
-	for i, p := range out {
-		nodes[i] = p.node
-	}
-	return nodes
+	sort.SliceStable(out, func(i, j int) bool { return lint.HandleLess(out[j].ID, out[i].ID) })
+	return out
 }
 
 // checkProjectTitle refuses a project site with no title. The composer titles

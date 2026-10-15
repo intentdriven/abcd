@@ -99,7 +99,9 @@ page at `/` is, in this order and each only where the repository holds it: the
 identity block `.abcd/positioning.json` points at (as the heading), the
 brief's opening (the first section with text in
 `.abcd/development/brief/01-product/01-press-release.md`), the press releases of
-the three newest shipped intents whose audit was met, and the release list in
+the three newest shipped intents whose audit was met (newest by id: a
+timestamped id carries when abcd minted it, and an ordinal one such as `itd-7`
+sorts before every timestamped one), and the release list in
 `CHANGELOG.md`. Anything absent is left out, never filled; with no identity
 block, the page is headed and titled by the repository's name on GitHub. With
 neither an identity block nor a GitHub origin, the site has no title, and the
@@ -114,10 +116,15 @@ where the repository carries no such file, from abcd's standard layout under
 ledger under `.abcd/work/issues`, so an intent's typed link to an issue
 resolves; an issue is published only where the settings opt in to it, with
 `"record": {"issue_ledger": true}` in `.abcd/site.json`. The
-references page (which quotes `ACKNOWLEDGEMENTS.md`), the contributors page
-(whose names and declared tools are read out of git history), and every
-picture (which lives under `docs/`) are left out, and so is a hand-written
-`docs/` tree or `README.md`: a project's own documentation is read on GitHub.
+references page (which quotes `ACKNOWLEDGEMENTS.md`) and every picture (which
+lives under `docs/`) are left out, and so is a hand-written `docs/` tree or
+`README.md`: a project's own documentation is read on GitHub. A project site
+also shows nothing read from git history, and the build does not read it: no
+contributors page, no timeline, none of the health page's authorship checks
+(the same-author pairs, the commits declaring nothing or more than one model,
+and the share disclosing assistance), and no `authorship`, `history` or
+per-record `dates` in `record.json`. A record is dated by the `date` in its
+own frontmatter alone, and one without is undated.
 A build whose `--project` and settings file disagree is refused, both ways.
 
 Every page opens with one line saying it is the record of an abcd-managed

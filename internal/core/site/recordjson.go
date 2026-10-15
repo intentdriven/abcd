@@ -49,14 +49,16 @@ type RecordExport struct {
 	// Releases are the dated CHANGELOG headings, newest first. Absent where the
 	// repository records none.
 	Releases []changelog.DatedRelease `json:"releases"`
-	// Authorship is who wrote the history and what assisted.
-	Authorship Authorship `json:"authorship"`
+	// Authorship is who wrote the history and what assisted. A project site
+	// carries none: it is read from git history, which abcd does not write.
+	Authorship *Authorship `json:"authorship,omitempty"`
 	// Health is the record's own reference hygiene, measured.
 	Health Health `json:"health"`
 	// Layout carries the two precomputed arrangements.
 	Layout Arrangements `json:"layout"`
-	// History summarises the git walk the dates came from.
-	History HistoryMeta `json:"history"`
+	// History summarises the git walk the dates came from. A project site
+	// carries none, for the same reason.
+	History *HistoryMeta `json:"history,omitempty"`
 }
 
 // BuildStamp is what produced this file. Every field is injected by the caller
@@ -90,15 +92,16 @@ type ExportNode struct {
 	Kind      string `json:"kind,omitempty"`
 	Severity  string `json:"severity,omitempty"`
 	// Date is the record's effective date: its own frontmatter date where it
-	// carries one, else the day its file first appeared in git.
+	// carries one, else the day its file first appeared in git. A project
+	// site reads no git, so there it is the frontmatter date or empty.
 	Date string `json:"date"`
 	// Derived is true for a record that declares NO frontmatter — its id is its
 	// file name, its title its first heading, its dates git's. A page must not
 	// present those as fields the record stated, and a chart must not read a
 	// lifecycle it never had.
 	Derived bool `json:"derived,omitempty"`
-	// Dates are the file's three git dates.
-	Dates FileDates `json:"dates"`
+	// Dates are the file's three git dates. A project site carries none.
+	Dates *FileDates `json:"dates,omitempty"`
 	// Degree is the weighted connectedness the chart sizes bubbles by.
 	Degree float64 `json:"degree"`
 }
@@ -150,6 +153,33 @@ type HistoryMeta struct {
 	Commits     int    `json:"commits"`
 }
 
+// authorship is the export's authorship, or a zero one where the export
+// carries none (the project route).
+func (x RecordExport) authorship() Authorship {
+	if x.Authorship == nil {
+		return Authorship{}
+	}
+	return *x.Authorship
+}
+
+// firstCommit is the day of the history's oldest commit, or "" where the
+// export carries no history (the project route).
+func (x RecordExport) firstCommit() string {
+	if x.History == nil {
+		return ""
+	}
+	return x.History.FirstCommit
+}
+
+// dates is the record's git dates, or zero ones where the export carries none
+// (the project route).
+func (n ExportNode) dates() FileDates {
+	if n.Dates == nil {
+		return FileDates{}
+	}
+	return *n.Dates
+}
+
 // relationOf maps a frontmatter field to the relation it declares, and to
 // whether it declares it from the far end. The record spells one link from both
 // sides — an intent's `spec_id` and its spec's `intent` are the same link — so
@@ -176,6 +206,19 @@ var symmetricRel = map[string]bool{"related": true, "implements": true}
 // BuildRecordExport derives record.json from the record graph, the git history
 // and the changelog.
 func BuildRecordExport(repoRoot, baselineRel string, graph lint.RecordGraph, extra []lint.RecordNode, hist History, stamp BuildStamp, opts RecordOpts) (RecordExport, error) {
+	return buildRecordExport(repoRoot, baselineRel, graph, extra, &hist, stamp, opts)
+}
+
+// buildRecordExport is BuildRecordExport with the git history optional. A nil
+// hist is the project route: a project site renders only what abcd writes, and
+// git history is not that, so the export carries no authorship, no history
+// block and no per-record git dates, and nothing here asks git for them. Each
+// record is placed by its own frontmatter date alone.
+func buildRecordExport(repoRoot, baselineRel string, graph lint.RecordGraph, extra []lint.RecordNode, hist *History, stamp BuildStamp, opts RecordOpts) (RecordExport, error) {
+	gitHistory := hist != nil
+	if hist == nil {
+		hist = &History{}
+	}
 	nodes := graph.Nodes
 	derived := map[string]bool{}
 	if len(extra) > 0 {
@@ -237,14 +280,20 @@ func BuildRecordExport(repoRoot, baselineRel string, graph lint.RecordGraph, ext
 		Mentions:      mentions,
 		Counts: Counts{ByType: map[string]int{}, ByLifecycle: map[string]map[string]int{},
 			ByStatus: map[string]map[string]int{}},
-		History: HistoryMeta{FirstCommit: hist.First, LastCommit: hist.Last, Commits: hist.Commits},
+	}
+	if gitHistory {
+		exp.History = &HistoryMeta{FirstCommit: hist.First, LastCommit: hist.Last, Commits: hist.Commits}
 	}
 	for i, n := range nodes {
 		date := hist.EffectiveDate(n.Path, n.Date)
 		exp.Nodes[i] = ExportNode{
 			ID: n.ID, Type: n.Type, Lifecycle: n.Lifecycle, Title: n.Title, Path: n.Path,
 			Status: n.Status, Kind: n.Kind, Severity: n.Severity,
-			Date: date, Dates: hist.Files[n.Path], Derived: derived[n.ID],
+			Date: date, Derived: derived[n.ID],
+		}
+		if gitHistory {
+			dates := hist.Files[n.Path]
+			exp.Nodes[i].Dates = &dates
 		}
 		lay[i] = LayoutNode{Type: n.Type, Date: date, Num: handleNum(n.ID), Touched: hist.Files[n.Path].Touched}
 		exp.Counts.ByType[n.Type]++
@@ -274,9 +323,12 @@ func BuildRecordExport(repoRoot, baselineRel string, graph lint.RecordGraph, ext
 		exp.Releases = []changelog.DatedRelease{}
 	}
 
-	exp.Authorship, err = LoadAuthorship(repoRoot)
-	if err != nil {
-		return RecordExport{}, err
+	if gitHistory {
+		auth, err := LoadAuthorship(repoRoot)
+		if err != nil {
+			return RecordExport{}, err
+		}
+		exp.Authorship = &auth
 	}
 
 	exp.Health, err = measureHealth(repoRoot, baselineRel, graph, index)

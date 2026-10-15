@@ -115,7 +115,9 @@ The landing page is an about page derived in code, from four parts in this
 order, each rendered only where the repository holds it: the identity block,
 the brief's opening (the first section of the brief skeleton,
 `01-product/01-press-release.md`), the press releases of the newest shipped
-intents whose audit was met, and the release list in `CHANGELOG.md`. Without an
+intents whose audit was met, newest id first (a timestamped id carries when
+abcd minted it, and an ordinal one sorts before every timestamped one), and the
+release list in `CHANGELOG.md`. Without an
 identity block the page is headed and titled by the repository's name on
 GitHub. A repository holding none of the four is refused at setup and at build,
 since its site would be empty. The repository's address and name come from the
@@ -124,9 +126,18 @@ The record pages are built exactly as for any site, from the record's lint
 configuration or, where a managed repository carries none, from abcd's standard
 layout under `.abcd/development/`. The issue ledger is always read, so an
 intent's typed link to an issue resolves, and an issue is published only where
-the settings opt in with `"record": {"issue_ledger": true}`. The references page, the contributors page and every picture are left
-out, because each comes from a person's own files or from git history rather
-than from what abcd writes (pictures are a later intent, iss-2610150529485165).
+the settings opt in with `"record": {"issue_ledger": true}`. The references
+page and every picture are left out, because each comes from a person's own
+files rather than from what abcd writes (pictures are a later intent,
+iss-2610150529485165).
+
+A project site shows nothing read from git history either, and its build does
+not read it. Who wrote a commit, what model it declared, how many commits there
+are and when any of them landed are git's record, not abcd's, so the
+contributors page, the timeline, the health page's authorship checks and
+record.json's authorship, history and per-record git dates are all left out,
+and a record is dated by its own frontmatter alone. Whether a project site
+should show any of it is to be revisited.
 
 The project route depends on abcd's own releases: the workflow downloads abcd's
 latest release to build with, so a project site cannot build until a release of

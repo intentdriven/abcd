@@ -208,7 +208,8 @@ const (
 )
 
 // frontmatterTable is the record's own fields, plus the three dates git carries
-// for its file. Every cell is a value the record already holds.
+// for its file. Every cell is a value the record already holds. A project site
+// carries no git dates, so its rows are the record's own fields alone.
 func (e *explorer) frontmatterTable(n ExportNode) string {
 	rows := [][2]string{
 		{"id", n.ID},
@@ -218,9 +219,9 @@ func (e *explorer) frontmatterTable(n ExportNode) string {
 		{"kind", n.Kind},
 		{"severity", n.Severity},
 		{fieldDate, n.Date},
-		{fieldCreated, n.Dates.Created},
-		{fieldEntered, n.Dates.Entered},
-		{fieldTouched, n.Dates.Touched},
+		{fieldCreated, n.dates().Created},
+		{fieldEntered, n.dates().Entered},
+		{fieldTouched, n.dates().Touched},
 	}
 	var b strings.Builder
 	b.WriteString(`<div class="tablewrap"><table class="fm"><tbody>`)
@@ -241,8 +242,13 @@ func (e *explorer) frontmatterTable(n ExportNode) string {
 //
 // The path is a file name, which the generator may print; everything else here
 // is a ui.json label.
+//
+// A project site reads no git history, so it cannot tell whether git has
+// touched the file; it offers the link always, since a project site is built
+// from the committed tree, and the history is read on the forge rather than on
+// the site.
 func (e *explorer) fileLinks(n ExportNode) string {
-	return e.forgeFileLinks(n.Path, n.Dates.Touched != "")
+	return e.forgeFileLinks(n.Path, e.c.project || n.dates().Touched != "")
 }
 
 // forgeFileLinks is fileLinks for any repository file the site puts a page on —

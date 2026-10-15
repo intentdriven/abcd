@@ -23,7 +23,8 @@ package site
 //
 // Generic side (itd-140): the inputs are the record format and git history. A
 // repository with no authorship data renders the families that do have data, and
-// one with no findings at all renders the page saying so.
+// one with no findings at all renders the page saying so. A project site reads
+// no git history, so it renders the record's own families alone.
 
 import (
 	"strconv"
@@ -41,7 +42,7 @@ const isolatedListCap = 20
 // Without records and without a history there is no check to run, and the page
 // and its navigation entry are omitted (itd-140: graceful absence).
 func (e *explorer) hasHealth() bool {
-	return e.pages.status && (len(e.export.Nodes) > 0 || e.export.Authorship.Commits > 0)
+	return e.pages.status && (len(e.export.Nodes) > 0 || e.export.authorship().Commits > 0)
 }
 
 // healthPage renders `/record/health/`: one panel per family of finding.
@@ -60,29 +61,42 @@ func (e *explorer) healthPage() (string, error) {
 	// the answer. The lists below are folded, so the page opens as a summary.
 	b.WriteString(`<div class="dash">`)
 	ui := e.c.ui
-	a := e.export.Authorship
-	tiles := []struct {
+	a := e.export.authorship()
+	type count struct {
 		n     int
 		label string
-	}{
+	}
+	tiles := []count{
 		{len(e.export.Health.Unresolved), ui.Health.Unresolved},
 		{len(e.isolatedRecords()), ui.Health.Isolated},
-		{len(e.sameAuthorCandidates()), ui.Health.SameAuthor},
-		{a.Undeclared, ui.Health.Undeclared},
-		{a.MultiTrailerCommits, ui.Health.MultiTrailer},
+	}
+	// The authorship families are answered by git history, which a project
+	// site does not read (project.go): their tiles, the disclosure rate and
+	// their panels are left out there, and the checks the record makes of
+	// itself stay.
+	gitFamilies := !e.c.project
+	if gitFamilies {
+		tiles = append(tiles,
+			count{len(e.sameAuthorCandidates()), ui.Health.SameAuthor},
+			count{a.Undeclared, ui.Health.Undeclared},
+			count{a.MultiTrailerCommits, ui.Health.MultiTrailer})
 	}
 	for _, t := range tiles {
 		b.WriteString(tile(strconv.Itoa(t.n), t.label, nil))
 	}
-	b.WriteString(e.healthDisclosureRate())
+	if gitFamilies {
+		b.WriteString(e.healthDisclosureRate())
+	}
 	b.WriteString(`</div>`)
 
 	b.WriteString(`<div class="dash reading">`)
 	b.WriteString(e.healthUnresolved())
 	b.WriteString(e.healthIsolated())
-	b.WriteString(e.healthSameAuthor())
-	b.WriteString(e.healthUndeclared())
-	b.WriteString(e.healthMultiTrailer())
+	if gitFamilies {
+		b.WriteString(e.healthSameAuthor())
+		b.WriteString(e.healthUndeclared())
+		b.WriteString(e.healthMultiTrailer())
+	}
 	b.WriteString(e.healthSupersedes())
 	b.WriteString(`</div>`)
 	return e.shell(routeHealth, e.c.ui.RecordNav.Health, "", b.String()), nil
@@ -100,7 +114,7 @@ func (e *explorer) healthPage() (string, error) {
 // commit has no rate, and renders no tile.
 func (e *explorer) healthDisclosureRate() string {
 	ui := e.c.ui
-	a := e.export.Authorship
+	a := e.export.authorship()
 	if a.Authored == 0 {
 		return ""
 	}
@@ -273,7 +287,7 @@ func nameIsProfileUser(name, profile string) bool {
 // address the suggested `.mailmap` line may name; where both do, the alias is
 // the row with fewer commits.
 func (e *explorer) sameAuthorCandidates() []authorPair {
-	humans := e.export.Authorship.Humans
+	humans := e.export.authorship().Humans
 	var out []authorPair
 	for i := range humans {
 		for j := i + 1; j < len(humans); j++ {
@@ -336,7 +350,7 @@ func (e *explorer) healthSameAuthor() string {
 // list whose length is the whole point of the number. The count is the finding.
 func (e *explorer) healthUndeclared() string {
 	ui := e.c.ui
-	a := e.export.Authorship
+	a := e.export.authorship()
 	if a.Undeclared == 0 {
 		return panelDisclosure("c12", ui.Health.Undeclared, "", "0", e.healthClean())
 	}
@@ -368,7 +382,7 @@ func (e *explorer) healthUndeclared() string {
 // of them.
 func (e *explorer) healthMultiTrailer() string {
 	ui := e.c.ui
-	a := e.export.Authorship
+	a := e.export.authorship()
 	// The COMMIT count decides whether the family has anything to report; the
 	// trailer and commit totals below are the two figures that differ because
 	// of it, and the separator between them goes the way the others did.
