@@ -973,7 +973,35 @@ func TestAClearOfAPersonsNameIsNeverAFork(t *testing.T) {
 				t.Fatalf("clearing the person's Bob reserved %q, want nothing", out.Name)
 			}
 			resends(t, m, []struct{ sid, title, want string }{{"p2", "Bob", ""}})
+			// Later the person quits and resumes the cleared session while
+			// abcd's Bob still runs: the title is still theirs.
+			m.end(100)
+			if out := Start(m.at(m.launch(400)), Request{Root: root, SessionID: "p2", Source: "resume", Title: "Bob"}); out.Name != "" {
+				t.Fatalf("resuming the person's cleared Bob reserved %q, want nothing", out.Name)
+			}
 		})
+	}
+}
+
+// TestAClearBeforeAbcdGaveTheNameStillRecordsItAsThePersons: the person's Bob
+// is cleared while abcd has given Bob to no one, so the clear has nothing to
+// match; abcd later gives Bob to another session, and the cleared session is
+// resumed. The clear recorded the title as the person's, so it is kept (C4).
+func TestAClearBeforeAbcdGaveTheNameStillRecordsItAsThePersons(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	if out := Start(m.at(m.launch(100)), Request{Root: root, SessionID: "p", Source: "startup", Title: "Bob"}); out.Name != "" {
+		t.Fatalf("a session the person named was named %q", out.Name)
+	}
+	if out := Start(m.at(101), Request{Root: root, SessionID: "p2", Source: "clear", Title: "Bob"}); out.Name != "" {
+		t.Fatalf("clearing the person's Bob reserved %q, want nothing", out.Name)
+	}
+	m.end(100)
+	mustName(t, m.start(200, root, "a"), "Alice")
+	mustName(t, m.start(300, root, "b"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}, {"b", "", "Bob"}})
+	if out := Start(m.at(m.launch(400)), Request{Root: root, SessionID: "p2", Source: "resume", Title: "Bob"}); out.Name != "" {
+		t.Fatalf("resuming the person's cleared Bob reserved %q, want nothing", out.Name)
 	}
 }
 

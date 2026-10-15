@@ -566,6 +566,12 @@ func hold(m Machine, req Request) Outcome {
 		out.Notes = append(out.Notes, note)
 	}
 	if !m.mayHold(req) {
+		// A clear of a title abcd never gave is the person's own under a
+		// new id: record it as theirs, as a titled startup does, so a later
+		// resume of the new id never reads it as inherited (C4).
+		if req.Source == "clear" {
+			keep(m, req)
+		}
 		return out
 	}
 	err := m.update(func(reg *register, tab Table, host Host) (bool, error) {
@@ -584,6 +590,14 @@ func hold(m Machine, req Request) Outcome {
 			// a title no entry on this host accounts for is the person's own.
 			case req.Source != "clear" && reg.Given.inherits(req.SessionID, req.Title):
 				inherited = true
+			case req.Source == "clear":
+				// The person's own title under the clear's new id: recorded
+				// as theirs, so a later resume of the new id keeps it (C4).
+				if _, own := reg.Given.of(req.SessionID); own {
+					return false, nil
+				}
+				reg.Given.give(req.SessionID, "")
+				return true, nil
 			default:
 				return false, nil
 			}
