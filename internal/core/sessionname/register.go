@@ -1,6 +1,7 @@
 package sessionname
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -171,6 +172,126 @@ type register struct {
 	Handed []string `json:"handed"`
 	// Live is one entry per running named session.
 	Live []entry `json:"live"`
+	// Given is the name abcd's prompt hook set as each session's title, by
+	// session id. It is what tells abcd's title from the person's on resume
+	// and clear (C4, decision 10): a title is abcd's only when it is the name
+	// given to that session id. It is not emptied with Handed, since a
+	// session resumed after every session ended still carries abcd's name,
+	// and it is bounded at maxGiven. A register written before it existed
+	// reads as having given nothing.
+	Given givenNames `json:"given"`
+}
+
+// maxGiven bounds the record of given names. A session that is never resumed
+// stays in it until newer ones push it out; 512 is far more sessions than a
+// person resumes from, and keeps the record within a few tens of kilobytes,
+// well inside maxRegisterBytes.
+const maxGiven = 512
+
+// givenName is one session's given name.
+type givenName struct {
+	SessionID string
+	Name      string
+}
+
+// givenNames is the record of given names, oldest first. On disk it is one
+// JSON object, {session_id: name}, written and read in this order, so the
+// order of its keys is the order the names were given. That order is what
+// give drops by: when the record is past maxGiven, the oldest written goes
+// first, and giving a session a name again moves it to the newest end.
+type givenNames []givenName
+
+// of is the name given to sessionID, and whether there is one.
+func (g givenNames) of(sessionID string) (string, bool) {
+	for _, n := range g {
+		if n.SessionID == sessionID {
+			return n.Name, true
+		}
+	}
+	return "", false
+}
+
+// gave reports whether abcd gave sessionID the name title.
+func (g givenNames) gave(sessionID, title string) bool {
+	name, ok := g.of(sessionID)
+	return ok && name == title
+}
+
+// give records name as given to sessionID, newest, and drops the oldest past
+// maxGiven.
+func (g *givenNames) give(sessionID, name string) {
+	*g = append(slices.DeleteFunc(*g, func(n givenName) bool { return n.SessionID == sessionID }),
+		givenName{SessionID: sessionID, Name: name})
+	if over := len(*g) - maxGiven; over > 0 {
+		*g = slices.Delete(*g, 0, over)
+	}
+}
+
+// move carries the name given to from over to to: a clear gave the session a
+// new id. Nothing is recorded when from was given nothing.
+func (g *givenNames) move(from, to string) {
+	if name, ok := g.of(from); ok && from != to {
+		*g = slices.DeleteFunc(*g, func(n givenName) bool { return n.SessionID == from })
+		g.give(to, name)
+	}
+}
+
+// MarshalJSON writes the record as one object, oldest first.
+func (g givenNames) MarshalJSON() ([]byte, error) {
+	var b bytes.Buffer
+	b.WriteByte('{')
+	for i, n := range g {
+		k, err := json.Marshal(n.SessionID)
+		if err != nil {
+			return nil, err
+		}
+		v, err := json.Marshal(n.Name)
+		if err != nil {
+			return nil, err
+		}
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		b.Write(k)
+		b.WriteByte(':')
+		b.Write(v)
+	}
+	b.WriteByte('}')
+	return b.Bytes(), nil
+}
+
+// UnmarshalJSON reads the object in the order its keys are written. null
+// reads as an empty record; a key seen twice keeps its later name.
+func (g *givenNames) UnmarshalJSON(raw []byte) error {
+	if string(bytes.TrimSpace(raw)) == "null" {
+		*g = nil
+		return nil
+	}
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	if tok, err := dec.Token(); err != nil || tok != json.Delim('{') {
+		return errors.New("given is not an object")
+	}
+	var out givenNames
+	for dec.More() {
+		tok, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		sessionID, ok := tok.(string)
+		if !ok {
+			return errors.New("given has a key that is not a string")
+		}
+		var name string
+		if err := dec.Decode(&name); err != nil {
+			return err
+		}
+		out.give(sessionID, name)
+	}
+	if _, err := dec.Token(); err != nil {
+		return err
+	}
+	*g = out
+	return nil
 }
 
 // Start is the session-start hook's naming.
@@ -182,12 +303,13 @@ type register struct {
 //
 // A sub-agent is never named, nor a payload with no session id. A new session
 // (startup, or a fork) with no title reserves the next free name. A resumed or
-// cleared session whose title is one of this repository's persona names keeps
-// it, and the register holds the name for the process now running it, so no
-// other session is given it (C5); unless a running session on another host
-// now holds that name, when the resumed session reserves the next free name
-// instead (decision 10). A compaction of a titled session changes nothing: the
-// host keeps the title through it.
+// cleared session whose title is the name abcd gave it (Given) keeps it, and
+// the register holds the name for the process now running it, so no other
+// session is given it (C5); unless a running session on another host now
+// holds that name, when the resumed session reserves the next free name
+// instead (decision 10). Any other title is the person's, persona name or not,
+// and is neither held nor replaced (C4). A compaction of a titled session
+// changes nothing: the host keeps the title through it.
 //
 // A resume, clear or compaction with no title is a session whose first prompt
 // has not set its name yet (rejoin): its entry is re-keyed to the process now
@@ -254,6 +376,13 @@ func name(m Machine, req Request) Outcome {
 // name handed out again while this session's first prompt sets it. The entry
 // is re-keyed before the prune, so it is judged by the host now running it. A
 // compaction runs in the same process, so its entry is kept exactly as it is.
+//
+// A clear gives the session a new id in the same host process (seen live: a
+// clear turned 7344b67a into 315e82fe and kept the process), so a clear whose
+// id has no entry takes the entry on its own host (sameHost) as its own, and
+// re-keys it to the new id as well; without that it would reserve a second
+// name and leave the first held by an id no session carries.
+//
 // A session with no entry reserves the next free name, as a new session does.
 // The returned name is the one its first prompt sets, "" when nothing is owed.
 func rejoin(m Machine, req Request) Outcome {
@@ -263,17 +392,24 @@ func rejoin(m Machine, req Request) Outcome {
 		out.Notes = append(out.Notes, note)
 	}
 	err := m.update(func(reg *register, tab Table, host Host) (bool, error) {
-		if i := slices.IndexFunc(reg.Live, func(e entry) bool { return e.SessionID == req.SessionID }); i >= 0 {
-			e := &reg.Live[i]
+		i := slices.IndexFunc(reg.Live, func(e entry) bool { return e.SessionID == req.SessionID })
+		if i < 0 && req.Source == "clear" {
+			i = reg.onHost(host)
+		}
+		if i >= 0 {
+			e := reg.Live[i]
 			if !e.Sent {
 				out.Name = e.Name
 			}
 			if req.Source == "compact" {
 				return false, nil
 			}
-			rekeyed := newEntry(e.Name, e.SessionID, host)
+			reg.Given.move(e.SessionID, req.SessionID)
+			rekeyed := newEntry(e.Name, req.SessionID, host)
 			rekeyed.Sent, rekeyed.Replaces = e.Sent, e.Replaces
-			*e = rekeyed
+			// Moved to the end: the newest entry on a host is the session it
+			// runs now (onHost).
+			reg.Live = append(slices.Delete(reg.Live, i, i+1), rekeyed)
 			if !slices.Contains(reg.Handed, e.Name) {
 				reg.Handed = append(reg.Handed, e.Name)
 			}
@@ -290,6 +426,18 @@ func rejoin(m Machine, req Request) Outcome {
 		out.Notes = append(out.Notes, failed(err))
 	}
 	return out
+}
+
+// onHost is the index of the live entry recorded for host (sameHost, with
+// each reading's slack), or -1. A host process runs one session at a time, so
+// when several entries name it the newest, the last, is the one it runs now.
+func (reg *register) onHost(host Host) int {
+	for i := len(reg.Live) - 1; i >= 0; i-- {
+		if sameHost(reg.Live[i].host(), host) {
+			return i
+		}
+	}
+	return -1
 }
 
 // reserve hands the session the first name of the persona sequence not
@@ -311,8 +459,16 @@ func (reg *register) reserve(personas []string, sessionID string, host Host, rep
 }
 
 // hold keeps a resumed session's name held for the process now running it.
-// Only a name this repository's sequence hands out is held: any other title is
-// the person's own, and abcd neither records nor guards it.
+// Only the name abcd gave this session is held, which Given records by session
+// id: any other title is the person's own, a persona name the person typed
+// included, and abcd neither records nor guards it (C4). Given, not this
+// repository's persona sequence, is the test, so a name given before the
+// sequence changed is still held. A clear gives the session a new id in the
+// same process, so on a clear the name given to the entry on this same host
+// counts, and is carried over to the new id.
+//
+// The register is first read without the lock, as the prompt hook reads it:
+// a title abcd never gave costs no process-table read and writes nothing.
 //
 // When a running session on another host holds the name, which happens once
 // every named session had ended and naming restarted while this one was away,
@@ -325,10 +481,22 @@ func hold(m Machine, req Request) Outcome {
 	if note != "" {
 		out.Notes = append(out.Notes, note)
 	}
-	if !slices.Contains(Sequence(personas), req.Title) {
+	if !m.mayHold(req) {
 		return out
 	}
 	err := m.update(func(reg *register, tab Table, host Host) (bool, error) {
+		if !reg.Given.gave(req.SessionID, req.Title) {
+			if req.Source != "clear" {
+				return false, nil
+			}
+			i := slices.IndexFunc(reg.Live, func(e entry) bool {
+				return e.Name == req.Title && sameHost(e.host(), host) && reg.Given.gave(e.SessionID, req.Title)
+			})
+			if i < 0 {
+				return false, nil
+			}
+			reg.Given.move(reg.Live[i].SessionID, req.SessionID)
+		}
 		reg.prune(tab)
 		// An entry under this same host is this session before a clear gave
 		// it a new id: the same process, so the same session.
@@ -358,6 +526,54 @@ func hold(m Machine, req Request) Outcome {
 	return out
 }
 
+// mayHold reads the register without the lock and reports whether abcd may
+// have given req's title to its session: the name given to its id, or, on a
+// clear (a new id), to any session. A register that cannot be read answers
+// yes, so the locked read names the refusal; no register answers no.
+func (m Machine) mayHold(req Request) bool {
+	dir, reg, err := m.peek()
+	if err != nil {
+		return true
+	}
+	if dir == nil {
+		return false
+	}
+	dir.Close()
+	if reg.Given.gave(req.SessionID, req.Title) {
+		return true
+	}
+	return req.Source == "clear" && slices.ContainsFunc(reg.Given, func(n givenName) bool { return n.Name == req.Title })
+}
+
+// peek opens the sessions folder without creating it and reads the register
+// without the lock: the file is only ever replaced by a rename, so an unlocked
+// read sees one whole version of it. A machine with no home, no sessions
+// folder, or a sessions folder that is a symlink (session start names that
+// refusal) has no register: a nil folder and no error. The caller closes the
+// folder.
+func (m Machine) peek() (*os.Root, register, error) {
+	if m.Home == "" || !filepath.IsAbs(m.Home) {
+		return nil, register{}, nil
+	}
+	dir, err := fsutil.OpenHomeScope(m.Home, abcdhome.Rel(registerDir))
+	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
+		return nil, register{}, nil
+	}
+	if err != nil {
+		return nil, register{}, folderError(err)
+	}
+	if err := vetFolder(dir); err != nil {
+		dir.Close()
+		return nil, register{}, err
+	}
+	reg, err := readRegister(dir, m.Home)
+	if err != nil {
+		dir.Close()
+		return nil, register{}, err
+	}
+	return dir, reg, nil
+}
+
 // Resend is the prompt hook's naming: the title to set on this prompt, or "".
 // title is the session's current title from the prompt's payload.
 //
@@ -365,8 +581,9 @@ func hold(m Machine, req Request) Outcome {
 // decision 9), and only to a session that has no title yet: a title equal to
 // the name is already set, and any other title is the person's own, which
 // always wins (C4). Either way the entry is marked sent, and no later prompt
-// sets anything. The one title replaced is the persona name a resumed session
-// carried that a running session now holds (decision 10).
+// sets anything. The one title replaced is the name abcd gave a resumed
+// session that a running session now holds (decision 10). A name set is
+// recorded in Given, so a later resume or clear knows the title is abcd's.
 //
 // A machine with no register touches nothing, nor does one whose sessions
 // folder is a symlink: session start refuses that with its note, and the
@@ -376,24 +593,17 @@ func hold(m Machine, req Request) Outcome {
 // unlocked read sees one whole version of it. The lock is taken only to mark
 // the title sent.
 func Resend(m Machine, sessionID, title string) Outcome {
-	if sessionID == "" || m.Home == "" || !filepath.IsAbs(m.Home) {
+	if sessionID == "" {
 		return Outcome{}
 	}
-	dir, err := fsutil.OpenHomeScope(m.Home, abcdhome.Rel(registerDir))
-	if errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) || errors.Is(err, fsutil.ErrHomeScopeSymlinked) {
-		return Outcome{}
-	}
+	dir, reg, err := m.peek()
 	if err != nil {
-		return Outcome{Notes: []string{failed(folderError(err))}}
+		return Outcome{Notes: []string{failed(err)}}
+	}
+	if dir == nil {
+		return Outcome{}
 	}
 	defer dir.Close()
-	if err := vetFolder(dir); err != nil {
-		return Outcome{Notes: []string{failed(err)}}
-	}
-	reg, err := readRegister(dir, m.Home)
-	if err != nil {
-		return Outcome{Notes: []string{failed(err)}}
-	}
 	if i, _ := reg.owed(sessionID, title); i < 0 {
 		return Outcome{}
 	}
@@ -408,11 +618,12 @@ func Resend(m Machine, sessionID, title string) Outcome {
 			return nil
 		}
 		reg.Live[i].Sent = true
-		if err := writeRegister(dir, reg); err != nil {
-			return err
-		}
 		if owed {
 			send = reg.Live[i].Name
+			reg.Given.give(sessionID, send)
+		}
+		if err := writeRegister(dir, reg); err != nil {
+			return err
 		}
 		return nil
 	})

@@ -2,6 +2,7 @@ package sessionname
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -215,6 +216,7 @@ func TestResumeHoldsTheNameForTheResumedProcess(t *testing.T) {
 	root := t.TempDir()
 	mustName(t, m.start(100, root, "a"), "Alice")
 	mustName(t, m.start(200, root, "b"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{{"b", "", "Bob"}})
 	m.end(200)
 	out := Start(m.at(m.launch(300)), Request{Root: root, SessionID: "b", Source: "resume", Title: "Bob"})
 	if out.Name != "" || len(out.Notes) != 0 {
@@ -233,14 +235,17 @@ func TestResumeHoldsTheNameForTheResumedProcess(t *testing.T) {
 
 // TestResumeAfterEveryoneEndedStillHoldsTheName: naming restarted at Alice
 // while Bob was away, so resuming Bob adds Bob back to the names handed out.
+// The record of the names abcd gave outlives that restart: it is what says
+// the title Bob is abcd's.
 func TestResumeAfterEveryoneEndedStillHoldsTheName(t *testing.T) {
 	m := newMachine(t)
 	root := t.TempDir()
 	mustName(t, m.start(100, root, "a"), "Alice")
 	mustName(t, m.start(200, root, "b"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{{"b", "", "Bob"}})
 	m.end(100)
 	m.end(200)
-	Start(m.at(m.launch(300)), Request{Root: root, SessionID: "b", Source: "clear", Title: "Bob"})
+	Start(m.at(m.launch(300)), Request{Root: root, SessionID: "b", Source: "resume", Title: "Bob"})
 	mustName(t, m.start(400, root, "c"), "Alice")
 	mustName(t, m.start(500, root, "d"), "Carol")
 }
@@ -364,6 +369,7 @@ func TestResumeHoldsTheNameAcrossAClearInTheSameProcess(t *testing.T) {
 	root := t.TempDir()
 	from := m.launch(100)
 	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
 	for i := range m.procs {
 		if m.procs[i].PID == 100 {
 			m.procs[i].Age -= time.Second
@@ -732,6 +738,7 @@ func TestAClearReadSlowlyStillHoldsTheName(t *testing.T) {
 	root := t.TempDir()
 	from := m.launch(100)
 	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
 	m.age(100, time.Hour+3*time.Second)
 	out := Start(slowly(m.at(from), 3*time.Second), Request{Root: root, SessionID: "a2", Source: "clear", Title: "Alice"})
 	if out.Name != "" || len(out.Notes) != 0 {
@@ -744,28 +751,79 @@ func TestAClearReadSlowlyStillHoldsTheName(t *testing.T) {
 
 // TestAResumeBeforeTheFirstPromptKeepsTheReservedName: a session reserved
 // Alice and its host ended before its first prompt, so it carries no title.
-// Resumed or cleared, its entry is re-keyed to the process now running it,
-// keeping the name and the title still owed; a later start does not prune it
-// and hand Alice out again, and the first prompt sets Alice.
+// Resumed under the same session id in a new process, its entry is re-keyed to
+// the process now running it, keeping the name and the title still owed; a
+// later start does not prune it and hand Alice out again, and the first prompt
+// sets Alice.
 func TestAResumeBeforeTheFirstPromptKeepsTheReservedName(t *testing.T) {
-	for _, source := range []string{"resume", "clear"} {
-		t.Run(source, func(t *testing.T) {
-			m := newMachine(t)
-			root := t.TempDir()
-			mustName(t, m.start(100, root, "a"), "Alice")
-			m.end(100)
-			mustName(t, Start(m.at(m.launch(300)), Request{Root: root, SessionID: "a", Source: source}), "Alice")
-			reg := m.register()
-			if !bytes.Contains(reg, []byte(`"host_pid": 300`)) || bytes.Contains(reg, []byte(`"host_pid": 100`)) || !bytes.Contains(reg, []byte(`"sent": false`)) {
-				t.Fatalf("the entry was not re-keyed to the running host, still owed:\n%s", reg)
-			}
-			mustName(t, m.start(400, root, "b"), "Bob")
-			resends(t, m, []struct{ sid, title, want string }{
-				{"a", "", "Alice"},
-				{"b", "", "Bob"},
-			})
-		})
+	m := newMachine(t)
+	root := t.TempDir()
+	mustName(t, m.start(100, root, "a"), "Alice")
+	m.end(100)
+	mustName(t, Start(m.at(m.launch(300)), Request{Root: root, SessionID: "a", Source: "resume"}), "Alice")
+	reg := m.register()
+	if !bytes.Contains(reg, []byte(`"host_pid": 300`)) || bytes.Contains(reg, []byte(`"host_pid": 100`)) || !bytes.Contains(reg, []byte(`"sent": false`)) {
+		t.Fatalf("the entry was not re-keyed to the running host, still owed:\n%s", reg)
 	}
+	mustName(t, m.start(400, root, "b"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{
+		{"a", "", "Alice"},
+		{"b", "", "Bob"},
+	})
+}
+
+// TestAClearBeforeTheFirstPromptKeepsTheReservedName is the host's clear as
+// it was seen live: the same host process, a NEW session id (7344b67a became
+// 315e82fe), and, before the first prompt, no title. The session is the one
+// that reserved Alice, so its entry is re-keyed to the new id, still owed: it
+// does not reserve a second name, and Alice is not left held by an id no
+// session carries any more.
+func TestAClearBeforeTheFirstPromptKeepsTheReservedName(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	from := m.launch(100)
+	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "a2", Source: "clear"}), "Alice")
+	reg := m.register()
+	if bytes.Count(reg, []byte(`"session_id"`)) != 1 || !bytes.Contains(reg, []byte(`"session_id": "a2"`)) || !bytes.Contains(reg, []byte(`"sent": false`)) {
+		t.Fatalf("the register does not hold Alice once, for a2, still owed:\n%s", reg)
+	}
+	mustName(t, m.start(400, root, "b"), "Bob")
+	resends(t, m, []struct{ sid, title, want string }{
+		{"a2", "", "Alice"},
+		{"a", "", ""},
+		{"b", "", "Bob"},
+	})
+}
+
+// TestAClearMatchesAnEntryASlowReadRecorded: the entry was recorded by a slow
+// table read, so its host's start time is early by that read; the clear, in
+// the same process, reads the table fast and puts the start where it truly is.
+// The entry's own slack is what lets the two readings name one host: without
+// it the clear would not find its session, and would take a second name.
+func TestAClearMatchesAnEntryASlowReadRecorded(t *testing.T) {
+	t.Run("after the first prompt", func(t *testing.T) {
+		m := newMachine(t)
+		root := t.TempDir()
+		startAfterASlowRead(t, m, root)
+		resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
+		out := Start(m.at(101), Request{Root: root, SessionID: "a2", Source: "clear", Title: "Alice"})
+		if out.Name != "" || len(out.Notes) != 0 {
+			t.Fatalf("a fast clear of a slowly recorded entry: %+v, want the name held", out)
+		}
+		if reg := m.register(); bytes.Count(reg, []byte(`"session_id"`)) != 1 || !bytes.Contains(reg, []byte(`"a2"`)) {
+			t.Fatalf("the register does not hold Alice once, for a2:\n%s", reg)
+		}
+	})
+	t.Run("before the first prompt", func(t *testing.T) {
+		m := newMachine(t)
+		root := t.TempDir()
+		startAfterASlowRead(t, m, root)
+		mustName(t, Start(m.at(101), Request{Root: root, SessionID: "a2", Source: "clear"}), "Alice")
+		if reg := m.register(); bytes.Count(reg, []byte(`"session_id"`)) != 1 || !bytes.Contains(reg, []byte(`"a2"`)) {
+			t.Fatalf("the register does not hold Alice once, for a2:\n%s", reg)
+		}
+	})
 }
 
 // TestAResumeWithoutATitleKeepsASentEntrySent: an entry whose title the
@@ -818,4 +876,143 @@ func TestACompactionBeforeTheFirstPromptKeepsItsEntry(t *testing.T) {
 		t.Fatalf("compaction changed the register:\n%s\nwant\n%s", m.register(), before)
 	}
 	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
+}
+
+// TestAPersonaNameThePersonGaveIsNeverReplaced is C4 and decision 10's last
+// sentence on resume: a title that happens to be a persona name, but that abcd
+// did not give this session, is the person's. Resumed while a running session
+// holds that name, it is neither held nor replaced, and no name is reserved.
+func TestAPersonaNameThePersonGaveIsNeverReplaced(t *testing.T) {
+	for name, arrange := range map[string]func(m *machine, root string){
+		// The person started the session with --name Bob: abcd never named it.
+		"started with --name": func(m *machine, root string) {
+			from := m.launch(100)
+			if out := Start(m.at(from), Request{Root: root, SessionID: "p", Source: "startup", Title: "Bob"}); out.Name != "" {
+				t.Fatalf("a session the person named was named %q", out.Name)
+			}
+		},
+		// abcd named it Alice, and the person renamed it Bob.
+		"renamed by hand": func(m *machine, root string) {
+			mustName(t, m.start(100, root, "p"), "Alice")
+			resends(t, m, []struct{ sid, title, want string }{{"p", "", "Alice"}, {"p", "Bob", ""}})
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			m := newMachine(t)
+			root := t.TempDir()
+			arrange(m, root)
+			m.end(100)
+			mustName(t, m.start(200, root, "a"), "Alice")
+			mustName(t, m.start(300, root, "b"), "Bob")
+			before := m.register()
+			out := Start(m.at(m.launch(400)), Request{Root: root, SessionID: "p", Source: "resume", Title: "Bob"})
+			if out.Name != "" || len(out.Notes) != 0 {
+				t.Fatalf("resuming the person's Bob: %+v, want nothing", out)
+			}
+			if !bytes.Equal(m.register(), before) {
+				t.Fatalf("resuming the person's Bob changed the register:\n%s\nwant\n%s", m.register(), before)
+			}
+			resends(t, m, []struct{ sid, title, want string }{{"p", "Bob", ""}})
+			mustName(t, m.start(500, root, "c"), "Carol")
+		})
+	}
+}
+
+// TestResumeHoldsANameFromAnEarlierPersonaList: the name abcd gave is held on
+// resume even when the repository's persona list no longer has it, because
+// what makes the title abcd's is the record of the names it gave, not the
+// list as it reads today.
+func TestResumeHoldsANameFromAnEarlierPersonaList(t *testing.T) {
+	m := newMachine(t)
+	root := writePersonas(t, `{"personas":[{"name":"Zed"},{"name":"Yan"}]}`)
+	mustName(t, m.start(100, root, "z"), "Zed")
+	resends(t, m, []struct{ sid, title, want string }{{"z", "", "Zed"}})
+	m.end(100)
+	p := filepath.Join(root, filepath.FromSlash(PersonasRel))
+	if err := os.WriteFile(p, []byte(`{"personas":[{"name":"Yan"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	out := Start(m.at(m.launch(200)), Request{Root: root, SessionID: "z", Source: "resume", Title: "Zed"})
+	if out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("resuming Zed after the list changed: %+v, want the name held", out)
+	}
+	// Zed is held: a session in a repository whose list is Zed alone is given
+	// the next round's name.
+	mustName(t, m.start(300, writePersonas(t, `{"personas":[{"name":"Zed"}]}`), "n"), "Zed Two")
+}
+
+// TestTheGivenNameFollowsAClearToALaterResume is the live sequence: a session
+// is named at its first prompt, cleared (a new id in the same process, the
+// title kept), and later resumed under the new id in a new process. The name
+// abcd gave follows the id through the clear, so the resume holds it.
+func TestTheGivenNameFollowsAClearToALaterResume(t *testing.T) {
+	m := newMachine(t)
+	root := t.TempDir()
+	from := m.launch(100)
+	mustName(t, Start(m.at(from), Request{Root: root, SessionID: "a", Source: "startup"}), "Alice")
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
+	if out := Start(m.at(from), Request{Root: root, SessionID: "a2", Source: "clear", Title: "Alice"}); out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("clear: %+v, want the name held", out)
+	}
+	m.end(100)
+	if out := Start(m.at(m.launch(200)), Request{Root: root, SessionID: "a2", Source: "resume", Title: "Alice"}); out.Name != "" || len(out.Notes) != 0 {
+		t.Fatalf("resume of the cleared id: %+v, want the name held", out)
+	}
+	mustName(t, m.start(300, root, "b"), "Bob")
+	if reg := m.register(); !bytes.Contains(reg, []byte(`"a2": "Alice"`)) || bytes.Contains(reg, []byte(`"a": "Alice"`)) {
+		t.Fatalf("the given name did not move to the cleared id:\n%s", reg)
+	}
+}
+
+// TestARegisterWithoutGivenStillLoads: a register written before the record of
+// given names existed loads, its owed title is still sent, and the send is
+// recorded.
+func TestARegisterWithoutGivenStillLoads(t *testing.T) {
+	m := newMachine(t)
+	m.launch(100)
+	if err := os.MkdirAll(abcdhome.Path(m.home, "sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	legacy := fmt.Sprintf(`{"schema_version":1,"handed":["Alice"],"live":[{"name":"Alice","session_id":"a","host_pid":100,"host_start_unix":%d,"sent":false}]}`, readAt.Add(-time.Hour).Unix())
+	if err := os.WriteFile(abcdhome.Path(m.home, "sessions", "names.json"), []byte(legacy), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	resends(t, m, []struct{ sid, title, want string }{{"a", "", "Alice"}})
+	if !bytes.Contains(m.register(), []byte(`"a": "Alice"`)) {
+		t.Fatalf("the send was not recorded:\n%s", m.register())
+	}
+	mustName(t, m.start(200, t.TempDir(), "b"), "Bob")
+}
+
+// TestGivenKeepsTheNewestNames: the record of given names is bounded at
+// maxGiven, dropping the oldest written first; a name given again to a
+// session already in it moves that session to the newest end; and the order
+// survives a write and a read of the register, which is what makes "oldest"
+// mean anything in a JSON object.
+func TestGivenKeepsTheNewestNames(t *testing.T) {
+	var g givenNames
+	for i := range maxGiven + 1 {
+		g.give(fmt.Sprintf("s%d", i), "Alice")
+	}
+	if len(g) != maxGiven || g[0].SessionID != "s1" || g[len(g)-1].SessionID != fmt.Sprintf("s%d", maxGiven) {
+		t.Fatalf("after %d gives: %d kept, first %q, last %q; want %d, s1 first", maxGiven+1, len(g), g[0].SessionID, g[len(g)-1].SessionID, maxGiven)
+	}
+	g.give("s1", "Bob")
+	if g[len(g)-1] != (givenName{"s1", "Bob"}) || g[0].SessionID != "s2" || len(g) != maxGiven {
+		t.Fatalf("giving s1 again did not move it to the newest end: first %+v, last %+v", g[0], g[len(g)-1])
+	}
+	raw, err := json.Marshal(register{SchemaVersion: registerSchema, Given: g})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var back register
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(back.Given, g) {
+		t.Fatalf("the order did not survive a round trip:\n%s", raw)
+	}
+	if name, ok := back.Given.of("s1"); !ok || name != "Bob" {
+		t.Fatalf("Given.of(s1) = %q, %v; want Bob", name, ok)
+	}
 }
