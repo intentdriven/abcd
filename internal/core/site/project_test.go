@@ -53,8 +53,19 @@ func newProjectFixture(t *testing.T) *fixture {
 		"## Why This Matters\n\nA later section the opening does not reach.\n")
 	f.write("README.md", "# Fixture\n\n"+readmeOnlyWords+"\n")
 	f.commitAt("2026-03-07T09:00:00+00:00", "chore: the project route", "None")
+	// A managed repository on GitHub: the origin remote is where a project
+	// site's repository address and name come from.
+	f.git("2026-03-07T09:00:00+00:00", "remote", "add", "origin", "https://github.com/"+projectOrigin+".git")
 	return f
 }
+
+// projectOrigin is the project fixture's GitHub repository, from its origin
+// remote.
+const (
+	projectOrigin     = "fixture-owner/fixture-repo"
+	projectOriginURL  = "https://github.com/" + projectOrigin
+	projectOriginName = "fixture-repo"
+)
 
 func buildProject(t *testing.T, f *fixture) (string, map[string][]byte) {
 	t.Helper()
@@ -254,7 +265,7 @@ func TestEveryProjectPageOpensWithTheManagedRepositoryLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := managedLine("https://example.invalid/fixture/repo", escapeText(ui.ManagedRecord))
+	want := managedLine(projectOriginURL, escapeText(ui.ManagedRecord))
 	pages := 0
 	for rel, data := range files {
 		if !strings.HasSuffix(rel, ".html") {
@@ -279,6 +290,41 @@ func TestAProjectSiteBuildsBelowItsBasePath(t *testing.T) {
 		t.Fatal(err)
 	}
 	res, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, Project: true, BasePath: "/fixture/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK() {
+		t.Fatalf("findings: %+v", res.Findings)
+	}
+}
+
+// A project site's repository facts are the origin remote's alone. The
+// package manifest is a file a person writes, so its name, author, licence and
+// repository address reach no page and pass no gate; on a fork the managed
+// line links the fork, never the upstream the manifest names.
+func TestAProjectSiteReadsNothingFromThePackageManifest(t *testing.T) {
+	f := newProjectFixture(t)
+	f.write(".claude-plugin/plugin.json", `{
+  "name": "Quillfeather",
+  "description": "A hostile manifest.",
+  "author": {"name": "Ottoline Brackenbury"},
+  "repository": "https://github.com/upstream-elsewhere/quillfeather",
+  "license": "Licensed under the Brackenbury Terms of Gentle Reuse"
+}
+`)
+	f.commitAt("2026-03-08T09:00:00+00:00", "chore: a manifest of its own", "None")
+	out, files := buildProject(t, f)
+	for rel, data := range files {
+		for _, words := range []string{"Quillfeather", "quillfeather", "Ottoline", "Brackenbury", "Gentle Reuse", "upstream-elsewhere"} {
+			if strings.Contains(string(data), words) {
+				t.Errorf("%s carries %q from the package manifest", rel, words)
+			}
+		}
+		if strings.HasSuffix(rel, ".html") && !strings.Contains(string(data), `<p class="managed"><small><a href="`+projectOriginURL+`">`) {
+			t.Errorf("%s: the managed line does not link the origin remote", rel)
+		}
+	}
+	res, err := Check(CheckRequest{RepoRoot: f.Root(), OutDir: out, Project: true})
 	if err != nil {
 		t.Fatal(err)
 	}

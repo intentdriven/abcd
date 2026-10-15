@@ -256,6 +256,31 @@ func LoadRepoMeta(repoRoot string) (RepoMeta, error) {
 	return m, nil
 }
 
+// loadRepoMetaFor reads the repository facts a build or a gate renders from.
+// A composed site reads the package manifest (LoadRepoMeta). A project site
+// reads the origin remote alone (projectRepoMeta): the manifest is a file a
+// person writes, so its name, author, licence and repository address are not
+// something abcd wrote, and on a fork its address is the upstream's.
+func loadRepoMetaFor(repoRoot string, project bool) (RepoMeta, error) {
+	if project {
+		return projectRepoMeta(repoRoot), nil
+	}
+	return LoadRepoMeta(repoRoot)
+}
+
+// projectRepoMeta is a project site's repository facts: the repository's
+// address on GitHub and its name there, both from the origin remote, and
+// nothing else. With no GitHub origin there is no address and no name, and
+// the pages that would carry them render without them.
+func projectRepoMeta(repoRoot string) RepoMeta {
+	repo, err := ahoy.GitHubRepo(repoRoot)
+	if err != nil {
+		return RepoMeta{}
+	}
+	_, name, _ := strings.Cut(repo, "/")
+	return RepoMeta{Name: name, Repository: "https://github.com/" + repo}
+}
+
 // loadPackageMeta reads the package manifest alone.
 func loadPackageMeta(repoRoot string) (RepoMeta, error) {
 	root, err := os.OpenRoot(repoRoot)
@@ -453,7 +478,7 @@ func build(req Request, written *labelsAdded) (Result, error) {
 			return Result{}, err
 		}
 	}
-	repo, err := LoadRepoMeta(repoRoot)
+	repo, err := loadRepoMetaFor(repoRoot, manifest.Project())
 	if err != nil {
 		return Result{}, err
 	}

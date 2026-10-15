@@ -332,7 +332,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	if err != nil {
 		return CheckResult{}, err
 	}
-	repo, err := LoadRepoMeta(repoRoot)
+	repo, err := loadRepoMetaFor(repoRoot, manifest.Project())
 	if err != nil {
 		return CheckResult{}, err
 	}
@@ -838,7 +838,10 @@ func (c *checker) generatorWords() generatorWords {
 			addPhrase(seg)
 		}
 	}
-	// The package's own metadata, from `.claude-plugin/plugin.json`.
+	// The package's own metadata, from `.claude-plugin/plugin.json`; on a
+	// project site, the repository's name and handle from its origin remote
+	// alone (projectRepoMeta), so nothing a person wrote for the manifest
+	// passes here.
 	addName(c.repo.Name)
 	addName(c.repo.AuthorName)
 	addName(c.repo.License)
