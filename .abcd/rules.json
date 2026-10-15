@@ -78,6 +78,7 @@
         "launch",
         "library",
         "lint",
+        "memory",
         "mode",
         "peers",
         "reading",

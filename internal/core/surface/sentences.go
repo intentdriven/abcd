@@ -339,6 +339,15 @@ var sentences = map[string]string{
 	"abcd lint site": "Gate the built website, rendering it first when absent: " +
 		"Writes only inside the output directory; refuses a site failing any gate with exit 1.",
 
+	"abcd memory": "Count the memory notes in both layers and name any layer it cannot read: " +
+		"Writes nothing; refuses an unknown sub-verb.",
+	"abcd memory add": "Write one memory note, its body read from stdin: " +
+		"Writes " + abcdhome.Display("memory.json") + " only; refuses a secret, a network address or a private name.",
+	"abcd memory list": "List every memory note with its body, recall words, stamps and reach: " +
+		"Writes nothing; refuses any argument.",
+	"abcd memory remove": "Remove one personal memory note, whoever wrote it: " +
+		"Writes " + abcdhome.Display("memory.json") + " only; refuses a note in the project's file.",
+
 	"abcd mode": "Print or set whose answer the agent loop is waiting on: " +
 		"Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.",
 

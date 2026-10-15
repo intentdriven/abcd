@@ -8,7 +8,7 @@
   "verificationResult": "PROMOTE",
   "judgeModel": "claude-opus-4-8",
   "tier": "full",
-  "manifestHash": "sha256:6607746c5fe41e6eaad90a390b71f1583c6a213ba9f6f395aa557ffffa5c6cc0",
+  "manifestHash": "sha256:7c24686a047353fd41b487afe1d514ddb6df86cf26640c168bde258af6b5ae1e",
   "policy": {
     "detector": "iss35-brief-surface-crosscheck",
     "version": "1",
