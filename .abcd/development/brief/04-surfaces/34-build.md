@@ -137,7 +137,7 @@ another person's, and the peers check then does not count that copy as a holder.
 run's state records the reservation (`reserved_at`) and its record names it;
 a run that is then not created releases a reservation it made fresh. A
 resumed start reserves too, with its record's footprint: it renews this
-copy's own while that footprint still covers every path the spec names, and
+copy's own while the reservation's footprint covers every path the spec names, and
 reserves it again, judged for overlap, once the spec has widened it; either
 way it keeps the reservation's term, so a resume never cuts the day the land
 fence gave a waiting pull request. It reserves anew one a release released
