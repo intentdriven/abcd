@@ -2,28 +2,51 @@
 
 The verb's check says whether a newer release exists, and `/abcd:update` is the one
 command that acts on that: it fetches the release, verifies the platform binary
-against that release's own checksums, and swaps the installed copy atomically. A
+against that release's own checksums and against the build provenance the
+release workflow signed for it, and swaps the installed copy atomically. A
 person types one verb and either has the new version or has a refusal that names
-the command that owns the file instead.
+the way forward instead, such as the command that owns the file.
+
+The two checks prove different things. The checksums are published on the same
+release page as the binary, so they prove only that the download arrived
+intact: whoever could replace the binary could replace them with it. The build
+provenance does not trust the page. It must be signed for this repository's
+release workflow as it stands on the main branch, run on a GitHub-hosted
+runner, and it must name both the exact bytes fetched and the commit the release
+tag points at, so an older release's genuine build uploaded under a newer tag
+fails it. A file that already matches the release's checksums is held to the
+same check before it is called current. Where the provenance cannot be verified,
+offline included, the verb refuses and nothing is swapped.
 
 The verb is the explicit ask. abcd never checks for or applies updates on its own
 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this verb,
-with its check, is the only **command** that reaches the release origin, and only
-when invoked
+with its check, reaches the release origin only when invoked
 ([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in.md),
-spc-32). The release origin is not its only destination: to verify a fetched
+spc-32). It is not the only **command** that reaches it. The launch preview and
+the release cut reach it too, and only when asked to read the parity baseline
+from a release's published plugin archive rather than render it fresh: they
+fetch that archive and the release's checksums, hold the one to the other, and
+announce each fetch on stderr as they make it. The release origin is not this
+verb's only destination either: to verify a fetched
 binary's build provenance, the verb also reaches GitHub's API, for the binary's
 attestations and for the commit the release tag names, and Sigstore's TUF
 repository, for the trusted root the signature is checked against. Each is
 reached only after a release has been chosen, so none of them discovers an
 update.
 
-They are not the only code paths to that origin. `hooks/bootstrap.sh` pins the
+Nor are commands the only code paths to that origin. `hooks/bootstrap.sh` pins the
 same repository, resolves its latest release over the network, and downloads the
 checksum-verified asset — and the hook configuration fires it whenever the plugin
 root holds no binary, so it reaches the origin without the user naming a network
 action in that moment. adr-38 admits it as a tier of its own: provisioning
 completes a chosen update, it never discovers one.
+
+Nor is this verb the only command that reaches GitHub's API and Sigstore's TUF
+repository. An ahoy installation reaches both: before it promotes the plugin's
+cached release binary to the owned copy on `PATH`, or adopts an owned copy
+already there, it holds that binary to this verb's own provenance check, for the
+release the cache's record or the copy's build metadata names. Like this verb's,
+that reach is keyed by a release already chosen, so it discovers nothing.
 
 The check is a flag of this verb (itd-2609212130136102): it prints the
 version report [`08-abcd.md`](08-abcd.md#what-the-version-flag-reports) describes, fetches the latest
@@ -79,11 +102,20 @@ cases where there is nothing to act on at all: no `abcd` anywhere on `PATH`, and
 an entry whose install shape abcd cannot classify, which fails closed rather than
 fetching.
 
-One further refusal arrives after the dispatch, once the release checksums are in
-hand: a regular file that none of the three proofs vouches for. That one
-deliberately does not ask for a deletion — removing the file would destroy the
-only tool able to fetch a replacement — and names the reinstall route that
-overwrites the entry in place instead.
+Three further refusals arrive after the dispatch, each needing something only
+the release origin can supply. A bare update whose resolved latest release is
+older than the newest release this machine has installed or verified is refused
+before anything is fetched, because the publisher may have withdrawn the newer
+one; naming the older release is the way back to it on purpose. Once the release
+checksums are in hand, a regular file that none of the three proofs vouches for
+is refused. That one deliberately does not ask for a deletion — removing the
+file would destroy the only tool able to fetch a replacement — and names the
+reinstall route that overwrites the entry in place instead. And a binary whose
+build provenance cannot be verified is refused, offline included, whether it is
+the downloaded release or a file that already matches the release's checksums
+and would otherwise be called current; its remedy is to retry once GitHub's API
+and the TUF repository are reachable, or to check the release by hand against
+the same policy and copy it over the installed one.
 
 A tag abcd resolved rather than one the caller typed is confirmed before the
 fetch, unless the caller has already said yes. The question is only put where somebody is there
@@ -97,11 +129,13 @@ The transport is pinned: no proxy or CA overrides from the environment (set ones
 are ignored and named in the receipt), redirects only onto the release origin's
 own hosts, every hop re-checked. The redirect rule holds for every destination:
 the API and the TUF repository are reached directly over the same transport, and
-a redirect from either is followed only onto those same release hosts. The release is verified in full before anything
-is written, then staged beside the target and swapped in atomically, so a failed
-download, verification, staging write or swap leaves no partial file. Download
-progress goes to stderr, and only when stderr is a terminal: stdout carries the
-receipt and nothing else, and a piped or hooked run shows no progress.
+a redirect from either is followed only onto those same release hosts. The
+release is verified in full, against its checksums and its build provenance,
+before anything is written, then staged beside the target and swapped in
+atomically, so a failed download, verification, staging write or swap leaves no
+partial file. Download progress goes to stderr, and only when stderr is a
+terminal: stdout carries the receipt and nothing else, and a piped or hooked run
+shows no progress.
 
 The target file is not quite the only thing the verb touches. Where this machine's
 install record names the very entry just refreshed, abcd re-stamps that record
@@ -109,6 +143,16 @@ with the digest the release checksums proved, so the file it updated does not re
 as somebody else's binary the next time an install shape is judged. The re-stamp
 runs on an already-current outcome too, and it does nothing at all where no record
 names that path.
+
+The verb also records the release it installed or verified, on a swap and on an
+already-current answer alike, as this machine's newest release: the mark the
+newest-release refusal above is judged against, kept in the user-level abcd home
+beside the install record. A bare update only ever raises the mark, so a release
+at or below it changes nothing. A release the person named is recorded whatever
+the mark said, so naming an older release lowers the mark to it, and that is the
+one way the mark goes down. The plugin bootstrap raises the same mark whenever it
+provisions a release it verified against the published checksums. A mark that
+cannot be written leaves the update in place and says so in a note on stderr.
 
 ## An update says so once
 
@@ -144,16 +188,18 @@ happened:
 | `action` | What it means |
 |---|---|
 | `swapped` | the file was replaced, and the render opens `abcd updated from <old> to <tag>`, with the path on the line below |
-| `already-current` | the target's digest already equals the release's, so the binary is left untouched |
-| `refused` | a dispatch or ownership refusal, naming its shape and its remedy |
+| `already-current` | the target's digest already equals the release's and its build provenance verifies as that release's, so the binary is left untouched |
+| `refused` | a dispatch, ownership, newest-release or provenance refusal, naming its shape and its remedy |
 
 On a run that reached the release origin, the receipt carries beside `action` the
 origin, the tag, the asset and its digest, the target path (redacted to `~`), and
-the ownership proof that allowed the swap. It carries `env_ignored` when proxy or
-CA overrides were scrubbed. A refusal receipt is deliberately thinner: a refusal
-raised before any fetch carries the target path and a block naming shape, detail
-and remedy, and nothing else, because there is no release it could name. In the
-JSON form a refusal of either kind is one document on stdout: the receipt,
+the ownership proof that allowed the swap. A swap or an already-current answer
+also carries `attested_by`, the signer identity of the build provenance the
+binary verified against: the release workflow on the main branch. It carries
+`env_ignored` when proxy or CA overrides were scrubbed. A refusal receipt is
+deliberately thinner: a refusal raised before any fetch carries the target path
+and a block naming shape, detail and remedy, and nothing else, because there is
+no release it could name. In the JSON form a refusal of either kind is one document on stdout: the receipt,
 carrying the three fields of the global refusal envelope (`"abcd": "error"`,
 `error`, `exit_code`) beside its own, so a reader expecting one document gets
 the refusal whole rather than a receipt followed by a second envelope.
