@@ -2444,13 +2444,17 @@ The planning interview added two criteria from the product thinker's pushback on
 
 A third added criterion, that an announcement names nobody, was struck when the product thinker returned to GitHub usernames.
 
-## 2026-10-16: autonomous runs execute inside an OS-enforced sandbox (product thinker, routing to be read)
+## 2026-10-16: the agents abcd launches on its own work inside an OS sandbox (product thinker, routing to be read)
 
 | part | type | home |
 |---|---|---|
-| an unattended run (drain, build lane, headless agent abcd starts) executes inside an OS-enforced sandbox, with writes limited to its worktree and abcd's home and network limited to origin and the forge | capability | intent itd-2610161621364075 (draft) |
-| the command guard is steering, and an OS sandbox is the boundary for an unattended run | trust rule | adr-2610161621415708 (proposed); a brief invariant once accepted |
-| parse-layer checks shape behaviour, and only the OS enforces | stance | the research note of 2026-08-18 on the guard's parse-layer limits, cited; no new principle |
-| how each platform's sandbox is detected and what it allows | plumbing | left to the intent's planning |
+| (A) an agent abcd's runner launches runs inside a boundary the operating system enforces around the whole process, writing only what its run needs (its worktree, its receipt folder, the shared git directory without hooks and config, caches, temp) | capability | intent itd-2610161621364075 (draft) |
+| (B) a drain or build the person's own session drives reports how isolated it is before it starts, since abcd cannot fence a session it did not launch | capability | the same draft, as an open question; a second intent if the product thinker splits it |
+| (C) network access limited to a declared list of hosts, which narrows mistakes and does not stop code being sent elsewhere | capability | a later intent, not filed |
+| an unattended launch executes inside an OS sandbox; the machine checks run outside it; a run without one is the person's choice, in their user layer | trust rule | adr-2610161621415708 (proposed); a brief invariant once accepted |
+| parse-layer checks steer, only the execution layer enforces, and a document calls a launch confined only where the boundary runs | stance | adr-42 and the principle `enforcement-claims-are-facts`, cited; no new principle |
+| how each platform's sandbox is detected and launched, and the derived write set | plumbing | the brief's runner paragraph in `04-surfaces/34-build.md` (§ The lane), which the adapters chapter's command-line-runner entry points at |
 
-Verdict: SPLIT. The product thinker asked to file it and will read the routing before it is confirmed. The proposal came from the product thinker during the crash recovery of 2026-10-16. Their question was whether a record already forced agents into a sandbox; none did, and the research note held the state of the art without a record citing it.
+Verdict: SPLIT, proposed. The product thinker asked to file it and will read the routing before it is confirmed. The proposal came from the product thinker during the crash recovery of 2026-10-16. Their question was whether a record already forced agents into a sandbox. adr-42 and the guard chapter of the brief had recorded the principle, that an enforced boundary needs an execution-layer control with the guard in front of it, but no record enacted it, and the research note of 2026-08-18 held the state of the art without a record acting on it.
+
+Initial routing, from the two adversarial reviews before the interview: parts A, B and C as the table gives them. The draft first covered every unattended run with writes limited to the worktree and abcd's home and network limited to origin and the forge. The reviews narrowed it to the launches abcd itself makes (host-driven runs default to the person's session, and abcd never edits the host's settings), replaced "abcd's home" with a derived write set (the home holds the runner routes and other repositories' worktrees, so writing it changes the next launch's policy), and moved the network to part C (no platform sandbox names hosts without a proxy, and an allowed forge still takes a push anywhere the credential reaches). Whether the split survives is the planning interview's to grade.

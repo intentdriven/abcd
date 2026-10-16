@@ -212,4 +212,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610140859394097](2610140859394097-abcd-s-home-ignores-itself-once-and.md) | abcd's home ignores itself once, and credentials never sit in a working tree | proposed | 2026-10-14 |
 | [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md) | A fresh install's facilitator is a person until the repository says auto | accepted | 2026-10-15 |
 | [adr-2610150729333337](2610150729333337-a-status-branch-moves-without-a.md) | A status branch moves without a preflight receipt | proposed | 2026-10-15 |
+| [adr-2610161621415708](2610161621415708-abcd-s-command-guard-steers-agents-an-os.md) | Unattended runs abcd launches execute inside an OS sandbox | proposed | 2026-10-16 |
 <!-- /index -->
