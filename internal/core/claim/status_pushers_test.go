@@ -496,3 +496,30 @@ func TestAnUnreadTipDoesNotReadAsARecordBehind(t *testing.T) {
 		t.Fatalf("the forge was asked %d times; want the next fetch to ask again", asked)
 	}
 }
+
+// TestARecordForABranchNotHeldIsNotSaidToBeBehind: the status branches held
+// here are read, and octo's is not among them, so no tip of it is held to
+// set the record against. The fetch does not say the record does not yet
+// name the push of a tip held here, and keeps nothing the record could still
+// change.
+func TestARecordForABranchNotHeldIsNotSaidToBeBehind(t *testing.T) {
+	_, pat, cs := octoBranch(t, 2)
+	pat.status(nil)
+	old := senderRefs
+	senderRefs = func(context.Context, string) ([]statusRef, error) { return nil, nil }
+	t.Cleanup(func() { senderRefs = old })
+	res := pat.status(func(_ context.Context, _, branch string) ([]Push, error) {
+		if branch != "octo" {
+			return nil, nil
+		}
+		return []Push{{Before: zeroCommit, After: cs[1], Pusher: "octo"}}, nil
+	})
+	if strings.Contains(res.SendersUnchecked, "does not yet name") {
+		t.Fatalf("unchecked = %q; want no word of a tip held here for a branch not held", res.SendersUnchecked)
+	}
+	for i, c := range cs {
+		if got := pusherKept(pat.dir, c); got != (pusherVerdict{}) {
+			t.Fatalf("commit %d keeps %+v; want nothing kept with no tip held", i, got)
+		}
+	}
+}

@@ -1451,7 +1451,8 @@ const askedRel = "forge-asked"
 // the owner. A branch whose record could not be placed in full keeps nothing
 // of it, and one whose record was not read in full (ErrPartialRecord), or not
 // as far as the tip held here, or held against no tip because the branches
-// held here could not be read, keeps only another account named as a pusher.
+// held here could not be read or do not hold this one, keeps only another
+// account named as a pusher.
 // It returns why the forge could not be asked, or its record could not be
 // read or placed in full, "" when it could.
 func checkSenders(root string, now time.Time, lookup PusherLookup, held map[string]bool) string {
@@ -1514,17 +1515,20 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 		}
 		// The forge records a push some time after it lands: a record that
 		// names no push to the tip held here has not caught up yet, and is
-		// read as one not read in full. With no tip known, nothing is held
-		// against one, and the record is read as not read in full too.
+		// read as one not read in full. With no tip known, or none held of
+		// this branch, nothing is held against one, and the record is read
+		// as not read in full too, with nothing said of a tip.
+		tipHeld := tips[b] != ""
 		var atTip *Push
 		for i := range pushed {
-			if tips[b] != "" && pushed[i].After == tips[b] {
+			if tipHeld && pushed[i].After == tips[b] {
 				atTip = &pushed[i]
 				break
 			}
 		}
-		behind := tipsKnown && !partial && atTip == nil
-		partial = partial || behind || !tipsKnown
+		short := partial
+		behind := tipsKnown && tipHeld && !partial && atTip == nil
+		partial = partial || behind || !tipsKnown || !tipHeld
 		byCommit, err := placePushes(ctx, root, b, pushed)
 		if err != nil {
 			failed = append(failed, "abcd-status/"+b+": the forge's record of pushes was not placed in full: "+termsafe.Sanitize(redacted(err)))
@@ -1534,7 +1538,7 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 		switch {
 		case behind:
 			failed = append(failed, "abcd-status/"+b+": the forge's record does not yet name the push of the tip held here"+askedAgain)
-		case partial && tipsKnown:
+		case short && tipsKnown:
 			failed = append(failed, "abcd-status/"+b+": "+ErrPartialRecord.Error()+askedAgain)
 		}
 		for _, c := range ask[b] {
