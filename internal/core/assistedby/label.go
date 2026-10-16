@@ -25,7 +25,7 @@ const Vendor = "abcd"
 // is not a vX.Y.Z release tag"), bounded: each number at most three digits,
 // then an optional SemVer pre-release and an optional build part, each at
 // most two dot-separated identifiers of at most twelve characters. The whole
-// version is at most 62 characters, so the label carries a version and never
+// version is at most 64 characters, so the label carries a version and never
 // a sentence. A tag outside the bound is not copied into a label: its build
 // composes as a development build (labelVersion).
 const ReleaseVersionPattern = `v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}` +

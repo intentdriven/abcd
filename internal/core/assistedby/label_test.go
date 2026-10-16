@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -85,7 +87,7 @@ func TestComposedLabelGrammarMatchesTheGate(t *testing.T) {
 // SemVer identifiers and nothing longer: at most two dot-separated
 // identifiers of at most twelve characters each for the pre-release and for
 // the build part, with each number at most three digits, so the whole version
-// is at most 62 characters. Every form abcd writes passes (a release, a
+// is at most 64 characters. Every form abcd writes passes (a release, a
 // release candidate, build metadata, a development build); a free-text
 // suffix, however SemVer-shaped, is refused by the label and by the gate, and
 // a version stamped with one composes as a development build.
@@ -117,6 +119,33 @@ func TestComposedLabelBoundsTheVersionSuffix(t *testing.T) {
 		}
 		if got := ComposedValue(v); got != "abcd:dev" {
 			t.Errorf("ComposedValue(%q) = %q, want abcd:dev", v, got)
+		}
+	}
+}
+
+// TestTheStatedVersionBoundIsTheLongestAdmitted: the length the comments give
+// for a release version is the longest one ReleaseVersionPattern admits, every
+// number at three digits and all four identifiers at twelve characters.
+func TestTheStatedVersionBoundIsTheLongestAdmitted(t *testing.T) {
+	longest := "v999.999.999-abcdefghijkl.abcdefghijkl+abcdefghijkl.abcdefghijkl"
+	if !regexp.MustCompile(`^(?:` + ReleaseVersionPattern + `)$`).MatchString(longest) {
+		t.Fatalf("the longest version form %q is not admitted by the pattern", longest)
+	}
+	stated := regexp.MustCompile(`at most (\d+) characters`)
+	for _, file := range []string{"label.go", "label_test.go"} {
+		b, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := strings.Join(strings.Fields(strings.ReplaceAll(string(b), "\n//", " ")), " ")
+		found := stated.FindAllStringSubmatch(text, -1)
+		if len(found) == 0 {
+			t.Fatalf("%s states no length for a version", file)
+		}
+		for _, m := range found {
+			if n, _ := strconv.Atoi(m[1]); n != len(longest) {
+				t.Errorf("%s says a version is at most %d characters; the longest the pattern admits is %d", file, n, len(longest))
+			}
 		}
 	}
 }
