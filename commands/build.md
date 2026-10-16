@@ -391,7 +391,12 @@ skipped with a warning on stderr, so the role runs on the host as if unrouted
 nothing of theirs, and says so with a warning on stderr naming the repository's
 file, the role and the machine route it displaced (tell the user that too). A person whose Claude
 account is a subscription, with no API key, runs the role in their own session:
-the claude runner runs bare, on an API key only. `build` reads this configuration before it creates the run, and a
+the claude runner runs bare, on an API key only. A claude runner whose role's
+contract grants the shell carries the guard as its permission prompt answerer
+(`abcd guard approve`, see `commands/guard.md`): a shell command the guard
+reads whole and clears runs unattended, and anything else is refused with the
+guard's reason, which the agent is handed, so a refusal in the lane's record
+is the guard's and not a stall. `build` reads this configuration before it creates the run, and a
 fault, a model route off the allowlist included, is refused at the `runner`
 stage with nothing created. When a step hands work to a routed role,
 `implement step` starts the runner itself with the brief and the receipt path

@@ -14,7 +14,8 @@ package loop
 // result message with the final text and the session; --bare skips hooks,
 // plugins, MCP servers and CLAUDE.md, and never reads OAuth credentials or the
 // keychain; dontAsk denies every call that would otherwise prompt while the
-// --allowedTools entries run. opencode (opencode.ai/docs/cli): `run --format
+// --allowedTools entries run, and a shell launch names the guard as its
+// --permission-prompt-tool instead (dcn-2610161624025493). opencode (opencode.ai/docs/cli): `run --format
 // json` prints "raw JSON events", --pure (a global flag) runs "without
 // external plugins", --dir, --file and --model provider/model; the page does
 // NOT document the events' shape, so the step_start/text/step_finish lines
@@ -30,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -297,7 +299,11 @@ func TestARoutedRoleRunsThroughItsRunner(t *testing.T) {
 		t.Fatalf("the result names the route that ran: %+v", res.Route)
 	}
 	argv := strings.Join(env.argv(t, "claude"), "\n")
-	for _, want := range []string{"--bare", "--allowedTools=" + strings.Join(toolsFor(RoleImplementer), ","),
+	// The implementer's contract grants the shell, so the launch carries the
+	// guard as its permission prompt answerer and grants the rest unasked.
+	granted := slices.DeleteFunc(toolsFor(RoleImplementer), func(t string) bool { return t == "Bash" })
+	for _, want := range []string{"--bare", "--allowedTools=" + strings.Join(granted, ","),
+		"--permission-prompt-tool=" + runner.ApproverTool,
 		"Brief: " + filepath.Join(root, filepath.FromSlash(RunRelDir), "brief.md")} {
 		if !strings.Contains(argv, want) {
 			t.Fatalf("the launch carries %q:\n%s", want, argv)
