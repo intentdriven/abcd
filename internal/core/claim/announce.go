@@ -394,6 +394,10 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 	}
 	ref := statusBranches.ref(p.branch)
 	branch = "abcd-status/" + p.branch
+	sent := func(sha string, attempts int) AnnounceResult {
+		return AnnounceResult{Kind: p.msg.Kind, Item: p.msg.Item, Sender: p.msg.Sender, Branch: branch,
+			SentAt: p.msg.SentAt, ExpiresAt: p.msg.ExpiresAt, Commit: sha, Attempts: attempts}
+	}
 	// refused is what origin said of the last push it refused, "" before any.
 	refused := ""
 	for attempt := 1; ; attempt++ {
@@ -414,20 +418,36 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 		perr := push(root, pushTo(sha, ref))
 		pushes++
 		if perr == nil {
-			return AnnounceResult{Kind: p.msg.Kind, Item: p.msg.Item, Sender: p.msg.Sender, Branch: "abcd-status/" + p.branch,
-				SentAt: p.msg.SentAt, ExpiresAt: p.msg.ExpiresAt, Commit: sha, Attempts: attempt}, nil
+			return sent(sha, attempt), nil
 		}
 		refused = Remote + " refused the push: " + redacted(perr)
 		// The tip check runs first, on every attempt, the last included: a lost
 		// race shows as a tip that moved, and a push refused while the tip
 		// stands was refused for another reason, so it is not retried and is
-		// not blamed on the race, however many races came before it.
+		// not blamed on the race, however many races came before it. When the
+		// branch cannot be read back, whether the push landed is not known, so
+		// it is not called "not sent": it is an *AnnounceError counting the
+		// push.
 		if _, ferr := fetch(root, p.now, noAnnouncement, statusBranches); ferr != nil {
-			return AnnounceResult{}, &NotSentError{Reason: refused}
+			return AnnounceResult{}, fmt.Errorf("%s; %s could not be fetched afterwards to see whether the push landed: %s",
+				refused, branch, withoutOutcome(ferr))
 		}
 		next, terr := statusTip(root, p.branch)
 		if terr != nil {
-			return AnnounceResult{}, &NotSentError{Reason: refused}
+			return AnnounceResult{}, fmt.Errorf("%s; %s could not be fetched afterwards to see whether the push landed: %s",
+				refused, branch, withoutOutcome(terr))
+		}
+		// A push git reports as refused can still have reached origin, and
+		// another session may have pushed on top of it since. Either way the
+		// branch now holds this commit, so it was sent, and is not sent again.
+		landed := next == sha
+		if !landed && next != "" {
+			if landed, err = statusHolds(root, sha, next); err != nil {
+				return AnnounceResult{}, fmt.Errorf("%s; whether the push landed on %s could not be read: %s", refused, branch, redacted(err))
+			}
+		}
+		if landed {
+			return sent(sha, attempt), nil
 		}
 		if next == parent {
 			if attempt == 1 {
@@ -442,6 +462,18 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 		}
 		parent = next
 	}
+}
+
+// statusHolds reports whether commit is on the status branch that ends in
+// tip: an ancestor of it, read as stored (storedObjects). git answers in the
+// exit status, 1 meaning no.
+func statusHolds(root, commit, tip string) (bool, error) {
+	trace("merge-base", "--is-ancestor", commit, tip)
+	_, no, err := gitutil.RunCappedExitOne(root, 4096, storedObjects, "merge-base", "--is-ancestor", commit, tip)
+	if err != nil {
+		return false, err
+	}
+	return !no, nil
 }
 
 // withoutOutcome is a refusal's text without the closing words that say what

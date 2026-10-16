@@ -224,3 +224,25 @@ func TestAnnounceSaysWhatBecameOfThePushOnAnUnclassedFailure(t *testing.T) {
 		}
 	}
 }
+
+// TestAnnounceSaysAPushMayHaveLandedWhenTheBranchCannotBeReadBack drives the
+// real core: the checkout's pre-push hook points origin somewhere that does
+// not exist and refuses the push, so the fetch after it fails too. Whether the
+// push landed is not known, so the verb does not say "not sent" or that nothing
+// was pushed: it says a refused push may still have reached origin, naming the
+// branch to look at.
+func TestAnnounceSaysAPushMayHaveLandedWhenTheBranchCannotBeReadBack(t *testing.T) {
+	w := newReserveWorld(t)
+	p := w.clone(t, "p", octoMail)
+	nowhere := filepath.Join(t.TempDir(), "nowhere.git")
+	hook := "#!/bin/sh\ngit config remote.origin.url '" + nowhere + "'\necho 'refused here' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(p, ".git", "hooks", "pre-push"), []byte(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := reserveRun(t, p, "announce", "merging", "#1012")
+	if code != 2 || stdout != "" || strings.Contains(stderr, "nothing was pushed") || strings.Contains(stderr, "not sent: ") ||
+		!strings.Contains(stderr, "refused here") ||
+		!strings.Contains(stderr, "origin refused 1 earlier push to abcd-status/octo and a refused push may still have reached it") {
+		t.Fatalf("exit %d, stderr %q, stdout %q; want exit 2 saying the push may have reached origin", code, stderr, stdout)
+	}
+}

@@ -290,6 +290,90 @@ func TestARetryThatCannotBeWrittenSaysAPushWasMade(t *testing.T) {
 	}
 }
 
+// unsentCommit is the announcement commit p wrote and has not pushed: the one
+// commit in its object store no ref reaches.
+func unsentCommit(t *testing.T, p *participant) string {
+	t.Helper()
+	var shas []string
+	for _, l := range strings.Split(p.git("fsck", "--unreachable", "--no-reflogs"), "\n") {
+		if f := strings.Fields(l); len(f) == 3 && f[0] == "unreachable" && f[1] == "commit" {
+			shas = append(shas, f[2])
+		}
+	}
+	if len(shas) != 1 {
+		t.Fatalf("unreachable commits %q; want the one announcement", shas)
+	}
+	return shas[0]
+}
+
+// TestAPushReportedRefusedThatLandedIsNotSentTwice: git reports the push as
+// refused, but origin took it, and may have taken another session's commit on
+// top of it since. The fetch after the refusal shows the commit on the branch,
+// so the announcement is reported sent, as that commit, with no second push.
+func TestAPushReportedRefusedThatLandedIsNotSentTwice(t *testing.T) {
+	for _, onTop := range []bool{false, true} {
+		t.Run(map[bool]string{false: "at the tip", true: "under another commit"}[onTop], func(t *testing.T) {
+			w := newWorld(t)
+			p := w.clone("1234+octo@users.noreply.github.com", "")
+			var landed, tip string
+			beforePush = func(root string) {
+				if root != p.dir {
+					return
+				}
+				beforePush = nil
+				landed = unsentCommit(t, p)
+				p.git("push", "-q", "origin", landed+":"+StatusRefPrefix+"octo")
+				tip = landed
+				if onTop {
+					tip = runGit(t, w.bare, "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-p", landed, "-m", "on top")
+					runGit(t, w.bare, "update-ref", StatusRefPrefix+"octo", tip, landed)
+				}
+				p.git("config", "remote.origin.pushurl", filepath.Join(t.TempDir(), "nowhere.git"))
+			}
+			t.Cleanup(func() { beforePush = nil })
+			log := traced(t)
+
+			res, err := p.announce("merging", "#1012")
+			if err != nil {
+				t.Fatalf("announce = %v; want it reported sent", err)
+			}
+			if res.Commit != landed || res.Attempts != 1 || res.Branch != "abcd-status/octo" || w.statusTip("octo") != tip {
+				t.Fatalf("result %+v, origin's tip %s; want the landed commit %s, one attempt", res, w.statusTip("octo"), landed)
+			}
+			if n := strings.Count(strings.Join(log.subcommands(), " "), "push"); n != 1 {
+				t.Fatalf("%d pushes; want one", n)
+			}
+		})
+	}
+}
+
+// TestAPushRefusedAndThenUnfetchableMayHaveReachedOrigin: the push is refused
+// and the fetch that would show whether it landed fails too, so the outcome is
+// not known. It is not "not sent": it is an *AnnounceError counting the push,
+// which the front door tells as one that may have reached origin.
+func TestAPushRefusedAndThenUnfetchableMayHaveReachedOrigin(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	beforePush = func(root string) {
+		if root != p.dir {
+			return
+		}
+		beforePush = nil
+		p.git("config", "remote.origin.url", filepath.Join(t.TempDir(), "nowhere.git"))
+	}
+	t.Cleanup(func() { beforePush = nil })
+
+	_, err := p.announce("merging", "#1012")
+	var ae *AnnounceError
+	if !errors.As(err, &ae) || errors.Is(err, ErrRefused) || ae.Pushes != 1 || ae.Branch != "abcd-status/octo" {
+		t.Fatalf("announce = %#v; want an *AnnounceError counting one push to abcd-status/octo", err)
+	}
+	if msg := err.Error(); strings.HasPrefix(msg, "not sent") || strings.Contains(msg, nothingPushed) ||
+		!strings.Contains(msg, "could not be fetched") {
+		t.Fatalf("announce = %q; want the push and the failed fetch, not \"not sent\"", msg)
+	}
+}
+
 // TestAnAnnouncementOutsideTheFixedFormIsRefusedBeforeAnyGit is C3 at the
 // writer: a kind outside the list, an item that is neither a record id nor a
 // pull-request number, and an expiry beyond 24 hours are each refused naming
