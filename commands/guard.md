@@ -159,43 +159,92 @@ invalid UTF-8, or is over 4096 bytes.
 ## `approve` — answering a headless agent's permission prompts
 
 ```bash
-abcd guard approve --dir=<the agent's working tree>
+abcd guard approve --dir=<the agent's working tree> --base=<the commit the run started on>
 ```
 
 You never run this yourself. When abcd starts an agent through its claude
 runner without a terminal (a build lane's implementer or reviewer routed to a
-runner), and the role's contract grants the shell, the launch carries the guard:
-the runner names `approve` as the harness's permission prompt tool and starts
-this verb as the launch's one MCP server, on stdio, all on that launch's command
-line. Nothing is written to the person's host settings, interactive sessions
-are unchanged, and this adds no sandbox. On that launch the shell is no longer
-granted without a prompt, so every shell command the harness would ask a person
-about is put to the guard instead, judged against the registry of the working
-tree `--dir` names, read afresh each time.
+runner, or an interview's role), and the role's contract grants the shell, the
+launch carries the guard: the runner names `approve` as the harness's permission
+prompt tool and starts this verb as the launch's one MCP server, on stdio, all
+on that launch's command line. Nothing is written to the person's host settings,
+interactive sessions are unchanged, and this adds no sandbox. On that launch the
+shell is no longer granted without a prompt, so every shell command the harness
+would ask a person about is put to the guard instead.
+
+Each prompt is judged against the registry of the working tree `--dir` names,
+read afresh each time, and that registry is in force only where it is at least
+as strong as the one at `--base`: the lane's base for a build or a drain, the
+working tree's `HEAD` when an interview launched. A new entry or a stricter tier
+takes effect; any weakening since the base, of a warn as much as a blocker,
+committed during the run or not, leaves no registry in force, and every command
+is refused (`registry-not-in-force`). A shell launch that names no base is not
+started.
 
 A shell command is approved only when the guard reads it whole and clears it:
 
 - no registry entry and no reading signal fired, a **warn included**, since
   nobody is there to see the warning;
 - the check left no note, such as a script the command runs that does not exist;
-- the repository's registry is loaded and switched on;
+- the repository's registry is loaded, switched on and in force as above;
 - every program the line runs is named by the line, not by a variable, a
   substitution or a glob (`program-name-unread`);
-- no inline code is handed to a non-shell interpreter, such as `python -c`,
-  `node -e`, `perl -e` or `pwsh -Command` (`inline-code-unread`);
-- the line names no path the harness protects from writes, such as `.git/`,
-  `.claude/`, `.mcp.json` or a shell start-up file (`protected-path`);
-- no `rm` or `rmdir` targets, or may target, the root, a top-level directory,
-  the home directory, the working tree or a directory above it
-  (`critical-path-removal`).
+- no code reaches an interpreter that the guard does not read
+  (`inline-code-unread`): inline code for `python -c`, `node -e` or `-p`,
+  `perl -e`, `ruby -e`, `php -r`, `osascript`, `lua` or `Rscript -e`,
+  `deno eval` or `pwsh -Command`; code on the standard input (a pipe, a
+  here-document, a here-string or a redirected file) of one of those, or of
+  `ex`, when no script file is named; an `awk` program that calls `system(`,
+  pipes to or from a command, or is a variable; a `sed` script with the `e`
+  command or the `e` flag of `s`; `tar`'s options that run a program
+  (`--checkpoint-action`, `--to-command`, `--use-compress-program`, `-I` and
+  the like); a `vim` or `ex` command (`-c`, `--cmd`, `+`) holding a `!`;
+- every write or removal names its target in full (`path-not-fixed`). The
+  targets are read from the guard's own parse of the line: redirections, the
+  writers its write model lists (`tee`, `cp`, `mv`, `install`, `ln`, `dd`,
+  `curl -o`, `wget -O`, `sed -i` and a sed script's `w`, `patch`,
+  `git checkout`/`restore`/`clone`, `tar -x`, `unzip`), and the operands of
+  `touch`, `mkdir`, `chmod`, `chown`, `truncate`, `rm`, `rmdir`, `unlink`,
+  `mv`'s sources and `ln`'s link targets. A target held in a variable, a
+  substitution's output or a glob, or a relative name after a change of
+  directory the line leaves unknown, is refused;
+- no write or removal reaches a protected path (`protected-path`), judged with
+  its existing directories resolved through symlinks and its case folded where
+  the filesystem folds it: the git common directory (its hooks and config
+  included), each directory `core.hooksPath` names, each checkout's `.git`, the
+  home directory's shell start-up files, `~/.gitconfig` and `~/.config/git`,
+  the host's settings (`~/.claude`, `~/.claude.json`, a checkout's `.claude/`),
+  `.mcp.json`, `.abcd/guard.json`, and the names the host protects in any
+  working tree (`.husky/`, `.vscode/`, `.envrc`, `.npmrc` and the like). A
+  removal of a directory holding one counts. A line that only names one of
+  them, to read it, is not a write;
+- no `git config` with `--global`, `--system` or `--file` writes, sets a key
+  that starts a program (`core.hooksPath`, `core.fsmonitor`, `core.pager`,
+  `core.sshCommand`, an alias, a filter or diff driver, a credential helper,
+  the signing keys and the like), or opens the editor, and no git command sets
+  such a key for itself with `-c`, `--config-env` or `GIT_CONFIG_*`
+  (`git-config-write`). Reading configuration, and setting an ordinary key in
+  the repository's own file, is approved;
+- nothing removes, moves or recursively changes (`chmod -R`, `chown -R`) a
+  path that is, or may be, the root, a top-level directory, the home directory
+  or a directory directly in it, the working tree or a directory above it, or
+  another checkout of the repository (the main one, or another registered
+  worktree); no `find` deletes (`-delete`, or `-exec rm`) from home or above;
+  and no `rsync --delete` writes into such a directory
+  (`critical-path-removal`);
+- the call does not ask to run outside the host's sandbox
+  (`dangerouslyDisableSandbox`, refused as `sandbox-off`).
 
-It then runs with exactly the input that was judged. Anything else is refused
-with the guard's reason and what to run instead, which the harness hands the
-agent so it can rewrite the command. A prompt for any tool but the shell is
-refused (`prompt-not-shell`), since nobody is there to approve it. A role whose
-contract grants no shell keeps its launch as it was, with every prompt refused
-unasked. The opencode runner has no per-launch prompt answerer, so its launches
-keep the permissions opencode's own configuration sets.
+An approved call runs with the command judged and its description, and nothing
+else it carried. Anything else is refused with the guard's reason and what to
+run instead, which the harness hands the agent so it can rewrite the command. A
+prompt for any tool but the shell is refused (`prompt-not-shell`), since nobody
+is there to approve it. A role whose contract grants no shell keeps its launch
+as it was, with every prompt refused unasked. The opencode runner has no
+per-launch prompt answerer, so its launches keep the permissions opencode's own
+configuration sets. A script the line runs is read for the registry's hazards
+as everywhere, but the checks above read the line itself, not the script's own
+writes.
 
 ## Registry and overrides
 

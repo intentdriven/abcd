@@ -393,10 +393,17 @@ file, the role and the machine route it displaced (tell the user that too). A pe
 account is a subscription, with no API key, runs the role in their own session:
 the claude runner runs bare, on an API key only. A claude runner whose role's
 contract grants the shell carries the guard as its permission prompt answerer
-(`abcd guard approve`, see `commands/guard.md`): a shell command the guard
-reads whole and clears runs unattended, and anything else is refused with the
-guard's reason, which the agent is handed, so a refusal in the lane's record
-is the guard's and not a stall. `build` reads this configuration before it creates the run, and a
+(`abcd guard approve`, see `commands/guard.md`), judged against the hazard
+registry at the lane's base commit: a change to `.abcd/guard.json` during the
+run takes effect only where it strengthens that registry, and any weakening,
+committed or not, refuses every command. A shell command the guard reads whole
+and clears runs unattended with the command and its description alone; a write
+or removal whose target the line does not spell out, one reaching a protected
+path, `git config` beyond the repository's own file, code handed to an
+interpreter the guard does not read, and a removal of a critical directory are
+refused; and anything else the guard refuses is refused with its reason, which
+the agent is handed, so a refusal in the lane's record is the guard's and not a
+stall. `build` reads this configuration before it creates the run, and a
 fault, a model route off the allowlist included, is refused at the `runner`
 stage with nothing created. When a step hands work to a routed role,
 `implement step` starts the runner itself with the brief and the receipt path

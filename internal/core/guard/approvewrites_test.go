@@ -79,10 +79,10 @@ func refusedAs(ids ...string) []string { return ids }
 
 var protectedOrRegistry = refusedAs(protectedPathEntryID)
 
-// TestApproveReadsQuotingAndEscapesFromTheParse: a protected target is the
-// same file however the line quotes or escapes it, and a line that only names
-// a protected path, without writing it, is not a write.
-func TestApproveReadsQuotingAndEscapesFromTheParse(t *testing.T) {
+// TestApproveReadsQuotingAndBackslashesFromTheParse: a protected target is the
+// same file however the line quotes it or puts backslashes in it, and a line
+// that only names a protected path, without writing it, is not a write.
+func TestApproveReadsQuotingAndBackslashesFromTheParse(t *testing.T) {
 	r := plainRig(t)
 	r.run(t, []approveCase{
 		{`echo '{}' > '.mcp.json'`, protectedOrRegistry},

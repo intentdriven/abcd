@@ -330,23 +330,58 @@ launch's command line, under
 the default permission mode, with the shell no longer granted without a prompt.
 Every shell command the harness would ask a person about is put to the guard,
 read against the registry of the working tree the agent runs in, afresh for
-each prompt.
+each prompt, and judged against the registry the run started on
+(dcn-2610161821420088): the runner passes the lane's base commit, or the
+working tree's HEAD when an interview launched, and the working tree's registry
+is in force only where it is at least as strong as the one there. Any weakening
+since then, of a warn as much as a blocker, committed during the run or not,
+leaves no registry in force and refuses every command; a shell launch with no
+base is not started.
 
 The bar is higher than the hook's, because nobody answers after it. Only a
 clean allow approves: no entry and no signal, a warn included; no note about the
 check; the repository's registry in force and switched on; every program named
-by the line, not a variable, a substitution or a glob; no inline code handed to
-a non-shell interpreter; no path the harness protects from writes named
-anywhere on the line (its own list: repository state such as `.git/`, shell and
-tool start-up files, its configuration and `.mcp.json`); and no `rm` or `rmdir`
-whose target is, or may be, the root, a top-level directory, the home
-directory, the working tree or a directory above it. The last two keep the
-refusals the harness's own safety checks gave in the refuse-every-prompt mode:
-the prompt tool is told the tool and its input, not why the harness asked, so
-the approver refuses those shapes itself. An approved call runs with the input
-re-encoded from what was judged. Everything else, and a prompt for any tool but
-the shell, is refused with the guard's reason and successor, which the harness
-hands the agent so it can rewrite the command.
+by the line, not a variable, a substitution or a glob; and none of the shapes
+the approver refuses itself. Those read the guard's own parse of the line, not
+its text:
+
+- code the guard does not read handed to an interpreter: inline (`python -c`,
+  `node -e` and the like), on the standard input of one that names no script
+  file, in an awk program or a sed script that runs a command, in tar's options
+  that run a program, or in a vim or ex command holding a `!`;
+- a write or removal whose target the line does not fix: the targets are the
+  ones the guard's write model resolves, in every shell state the reading placed
+  the command in, with the operands of the commands that change, remove or link
+  a path; a variable, a substitution's output, a glob or a name after an unknown
+  change of directory may be any file;
+- a write or removal reaching a protected path, compared after the target's
+  existing directories are resolved through symlinks and its case folded where
+  the filesystem folds it: the git common directory with its hooks and config,
+  each hooks directory core.hooksPath names, each checkout's `.git`, the home
+  shell start-up files and git configuration, the host's settings directories,
+  `.mcp.json` and `.abcd/guard.json`, and the names the harness's own list
+  protects in any working tree. A line that only names one of them is not a
+  write;
+- `git config` writing outside the repository's own file (its global or
+  system scope, or a file it names), setting a key that starts a program (the keys `gitutil.ExecPins` pins and the others git
+  documents), or opening the editor, and any git command setting such a key for
+  itself;
+- removing, moving or recursively changing a path that is, or may be, the root,
+  a top-level directory, the home directory or one of its direct children, the
+  working tree or a directory above it, or another checkout of the repository;
+  a find that deletes from home or above; an rsync that deletes into such a
+  directory;
+- a call that asks to run outside the host's sandbox.
+
+The protected paths and critical removals keep the refusals the harness's own
+safety checks gave in the refuse-every-prompt mode: the prompt tool is told the
+tool and its input, not why the harness asked, so the approver refuses those
+shapes itself. An approved call runs with the command judged and its
+description, re-encoded, and nothing else the call carried. Everything else, and
+a prompt for any tool but the shell, is refused with the guard's reason and
+successor, which the harness hands the agent so it can rewrite the command. The
+checks read the line itself: a script the line runs is read for the registry's
+hazards, not for its own writes.
 
 What this widens, plainly: on such a launch, a shell command the harness would
 have refused for want of a person, such as a compound line its parser cannot
