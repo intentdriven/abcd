@@ -1133,10 +1133,21 @@ live, or names a release tag this checkout lacks, is always handed back. Every
 other open issue is handed back, listed as ineligible, or skipped naming its
 blocker, by the rule that excluded it.
 
+In a checkout with a remote named origin, the ledger is read from origin's default
+branch, never from the checkout, which may be behind it: each move fetches the
+reservations and that branch first, under the drain's lock and before any judgement
+or reservation, and plans from what it fetched. A move that cannot read origin (the
+fetch fails, the default branch cannot be read, or no origin/HEAD names one) plans
+nothing: it records the failure in the drain's state and waits as for an outage,
+looking again after one minute, five, ten, then hourly, and exits 0 saying when.
+
 --dry-run shows every open issue's disposition, the eligible ones first in the
 order a drain takes them (by category, then severity, then oldest first), and
-writes nothing. The host judgement over each eligible remedy does not run; it can
-only ever hand an issue back.
+writes nothing. It fetches nothing either: it plans from origin's default branch as
+last fetched, and says how old that view is, how many commits the checkout is
+behind it, and which issues open in the checkout it has already finished. The host
+judgement over each eligible remedy does not run; it can only ever hand an issue
+back.
 
 Without --dry-run, each invocation performs one move of the drain and exits. Before
 the next eligible issue's lane opens, the host judges its remedy: the drain writes

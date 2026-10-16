@@ -208,6 +208,10 @@ func orderEligible(vs []DrainVerdict, r drainrule.Rule) {
 type DrainPlanRequest struct {
 	RepoRoot   string
 	IssuesRoot string
+	// Ledger, when set, is the ledger the plan judges in place of the
+	// checkout's: a commit's, as a drain reads origin's default branch
+	// (treeledger.go). The rule and the release tags are still the checkout's.
+	Ledger *TreeLedger
 }
 
 // DrainPlan is what a drain would do over the open ledger, and writes nothing:
@@ -238,6 +242,12 @@ type DrainPlan struct {
 	Order        string               `json:"order"`
 	Dispositions []DrainVerdict       `json:"dispositions"`
 	Counts       map[DrainOutcome]int `json:"counts"`
+	// Source names the commit the ledger was read from when it was not the
+	// checkout's (DrainPlanRequest.Ledger); empty for the checkout's.
+	Source string `json:"source,omitempty"`
+
+	// open is every open record judged, by id, for OpenIssue.
+	open map[string]Issue
 }
 
 // PlanDrain classifies every open issue by field, under the repository's own
@@ -253,7 +263,12 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 	if err != nil {
 		return DrainPlan{}, err
 	}
-	lr, err := List(ListRequest{RepoRoot: req.RepoRoot, IssuesRoot: req.IssuesRoot, State: StateOpen})
+	var lr ListResult
+	if req.Ledger != nil {
+		lr.Issues, lr.Skipped, err = listTree(req.Ledger)
+	} else {
+		lr, err = List(ListRequest{RepoRoot: req.RepoRoot, IssuesRoot: req.IssuesRoot, State: StateOpen})
+	}
 	if err != nil {
 		return DrainPlan{}, err
 	}
@@ -296,6 +311,13 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 		Order:         drainOrder(rule),
 		Dispositions:  append(append([]DrainVerdict{}, eligible...), rest...),
 		Counts:        map[DrainOutcome]int{},
+		open:          make(map[string]Issue, len(lr.Issues)),
+	}
+	if req.Ledger != nil {
+		plan.Source = req.Ledger.Source
+	}
+	for _, iss := range lr.Issues {
+		plan.open[iss.ID] = iss
 	}
 	for _, v := range plan.Dispositions {
 		plan.Counts[v.Outcome]++

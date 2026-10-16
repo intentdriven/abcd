@@ -140,7 +140,27 @@ name them at every move.
 The run is driven by the host session, as the implement loop is (decision 5 on
 itd-2609201916151817): each invocation of the bare verb performs one move and
 exits. It reads the ledger afresh (the classification is re-derived every move
-and written nowhere, decision 8), then does the first of these that applies:
+and written nowhere, decision 8), then does the first of these that applies.
+
+In a checkout with a remote named `origin`, the ledger a move reads is origin's
+default branch, never the checkout's own, which may be behind it
+(spc-2610161044461448 step 1, dcn-2610161040350256): under the drain's lock,
+before any judgement or reservation, the move fetches the reservations and that
+branch, and reads one snapshot of the ledger out of the commit it fetched. The
+plan, the lane's start check, the judgement's remedy digest and the
+reservation's footprint all read that snapshot, so an issue another account
+finished on origin is neither reserved, judged nor opened, and one filed there
+and not yet in this checkout is judged and opened from origin's record. A move
+that cannot read origin (the fetch fails, the fetch cannot read the default
+branch, or no `origin/HEAD` names one) plans nothing: it records the failure in
+the drain's state as an origin probe and waits as the outage gate waits, on the
+shared schedule (one minute, five, ten, then hourly), a move before the next
+probe reading nothing. It never plans from what the checkout last saw. The dry
+run fetches nothing: it plans from origin's default branch as last fetched and
+names the view's age, the commits the checkout is behind it, and the issues open
+in the checkout that branch has finished. Any reservation of a record finished
+on origin's default branch backs off, with a tip or without one
+([`37-reserve.md`](37-reserve.md)).
 
 1. When the implement loop's run has given up on a lost connection (the
    shared outage's eight hours of hourly probes have failed), it opens nothing

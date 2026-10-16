@@ -114,6 +114,17 @@ still handed back as live, lapsing only when the newer tag is fetched); `order` 
 `category`, `outcome`, `rule`, `reason`, and `blockers` when skipped); `counts`
 totals them by outcome; `ledger` names the checkout and branch read.
 
+In a checkout with a remote named `origin`, the dry run plans from origin's
+default branch as this checkout last fetched it, and fetches nothing: `source`
+names that branch and its commit; `origin` carries `ref`, `commit`,
+`fetched_at` (when abcd last fetched here, `null` when nothing recorded it),
+`age_minutes`, `behind` (the commits of that branch this checkout lacks) and
+`finished` (the issues open in this checkout that the branch holds resolved or
+wontfix). When this checkout names no default branch of origin, `origin` is
+`null`, `origin_unread` says why, and the plan is the checkout's own ledger.
+Tell the user the view's age and how far behind the checkout is, and name each
+finished issue: a drain will not take it.
+
 Tell the user any loosened floors, then the counts, then the eligible issues in
 order, then the others grouped by outcome with their reasons. For an
 `ineligible` issue, say that a person writing a remedy with
@@ -126,6 +137,23 @@ on. Do not act on the list: a hand-back is a person's decision.
 
 Each `abcd drain` without `--dry-run` performs one move and exits 0, saying
 what it did in `next`:
+
+- **It reads the ledger from origin.** In a checkout with a remote named
+  `origin`, every move first fetches the reservations and origin's default
+  branch, under the drain's lock, and plans from the ledger that branch holds,
+  never from the checkout, which may be behind: an issue another account
+  finished there is not taken, and one filed there and not yet in this
+  checkout is judged and opened from origin's record. `origin` names the
+  branch, its commit, the commits this checkout is behind and the issues open
+  here it has finished. A move that cannot read origin (the fetch fails, the
+  default branch cannot be read, or no `origin/HEAD` names one) plans nothing:
+  it asks no judgement, reserves nothing, records the failure in the drain's
+  state (`origin_wait`: `since`, `kind` — `fetch`, `default-branch` or
+  `origin-head` — `probes`, `next_probe_at`) and says in `next` when it looks
+  again, one minute, five, ten, then hourly; a move before then reads nothing.
+  For `origin-head`, run `git remote set-head origin --auto` and
+  `git fetch origin`. Tell the user, and run `abcd drain` again at or after
+  `next_probe_at`.
 
 - **It asks the host judgement.** Before the next eligible issue's lane opens,
   the drain writes a request, `.abcd/.work.local/run/drain-judgement.request.md`,

@@ -17,11 +17,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// drainOutput is the --json envelope of `drain --dry-run`: the core's plan,
-// marked as a dry run so a reader never takes it for a run's summary.
+// drainOutput is the --json envelope of `drain --dry-run`: the core's plan
+// and the view of origin it was read from, marked as a dry run so a reader
+// never takes it for a run's summary.
 type drainOutput struct {
 	DryRun bool `json:"dry_run"`
-	capture.DrainPlan
+	loop.DrainPreview
 }
 
 // newDrainCommand builds the `drain` verb (itd-82, spc-2609212015054359):
@@ -46,10 +47,20 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"live, or names a release tag this checkout lacks, is always handed back. Every\n" +
 			"other open issue is handed back, listed as ineligible, or skipped naming its\n" +
 			"blocker, by the rule that excluded it.\n\n" +
+			"In a checkout with a remote named origin, the ledger is read from origin's default\n" +
+			"branch, never from the checkout, which may be behind it: each move fetches the\n" +
+			"reservations and that branch first, under the drain's lock and before any judgement\n" +
+			"or reservation, and plans from what it fetched. A move that cannot read origin (the\n" +
+			"fetch fails, the default branch cannot be read, or no origin/HEAD names one) plans\n" +
+			"nothing: it records the failure in the drain's state and waits as for an outage,\n" +
+			"looking again after one minute, five, ten, then hourly, and exits 0 saying when.\n\n" +
 			"--dry-run shows every open issue's disposition, the eligible ones first in the\n" +
 			"order a drain takes them (by category, then severity, then oldest first), and\n" +
-			"writes nothing. The host judgement over each eligible remedy does not run; it can\n" +
-			"only ever hand an issue back.\n\n" +
+			"writes nothing. It fetches nothing either: it plans from origin's default branch as\n" +
+			"last fetched, and says how old that view is, how many commits the checkout is\n" +
+			"behind it, and which issues open in the checkout it has already finished. The host\n" +
+			"judgement over each eligible remedy does not run; it can only ever hand an issue\n" +
+			"back.\n\n" +
 			"Without --dry-run, each invocation performs one move of the drain and exits. Before\n" +
 			"the next eligible issue's lane opens, the host judges its remedy: the drain writes\n" +
 			"a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the\n" +
@@ -99,7 +110,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			if cmd.Flags().Changed("max") || cmd.Flags().Changed("pace") || cmd.Flags().Changed("sub-agents") || cmd.Flags().Changed("fix-rounds") || cmd.Flags().Changed("judgement") {
 				return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds or --judgement: it opens no lane and asks no judgement (nothing written)"}
 			}
-			plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
+			pv, err := loop.DrainDryRun(repoRoot, time.Now())
 			// Every refusal of the rule exits 2, as the bare verb's does: a rule
 			// unrecorded, ambiguous, malformed, or unreadable (a link, a record
 			// past the size cap).
@@ -109,9 +120,13 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("abcd drain: %w", err)
 			}
-			warnLoosened(cmd, plan.Record, plan.Loosened)
-			out := drainOutput{DryRun: true, DrainPlan: plan}
-			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, out, func(w io.Writer) { renderDrainPlan(w, plan) })
+			warnLoosened(cmd, pv.Record, pv.Loosened)
+			pv.OriginUnread = fsutil.RedactHome(pv.OriginUnread)
+			out := drainOutput{DryRun: true, DrainPreview: pv}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, out, func(w io.Writer) {
+				renderDrainPlan(w, pv.DrainPlan)
+				renderDrainOrigin(w, pv.Origin, pv.OriginUnread)
+			})
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
@@ -240,6 +255,13 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		parts = append(parts, fmt.Sprintf("%d %s", counts[o], o))
 	}
 	fmt.Fprintf(w, "  ledger: %s (`abcd drain --dry-run` lists each)\n", strings.Join(parts, ", "))
+	if res.Origin != nil {
+		renderDrainOrigin(w, res.Origin, "")
+	}
+	if wt := res.OriginWait; wt != nil {
+		fmt.Fprintf(w, "  origin: waiting (%s) since %s, %d probe(s); next at %s\n", termsafe.Sanitize(wt.Kind),
+			wt.Since.UTC().Format(time.RFC3339), wt.Probes, wt.NextProbeAt.UTC().Format(time.RFC3339))
+	}
 	renderDrainCounts(w, res.Counts)
 	if res.NextEligibleAt != nil {
 		fmt.Fprintf(w, "  next_eligible_at: %s\n", res.NextEligibleAt.UTC().Format(time.RFC3339))
@@ -332,5 +354,27 @@ func renderDrainPlan(w io.Writer, plan capture.DrainPlan) {
 	fmt.Fprintf(w, "  counts: %s\n", strings.Join(counts, ", "))
 	if plan.Counts[capture.DrainEligible] > 0 {
 		fmt.Fprintln(w, "  the host judgement over each eligible remedy has not run; it can only hand an issue back")
+	}
+}
+
+// renderDrainOrigin is the view of origin's default branch a plan was read
+// from: the branch and commit, the view's age, the commits this checkout is
+// behind, and the issues open here that it has finished; or why there is no
+// such view.
+func renderDrainOrigin(w io.Writer, o *loop.DrainOrigin, unread string) {
+	if o == nil {
+		if unread != "" {
+			fmt.Fprintf(w, "  origin: %s\n", termsafe.Sanitize(unread))
+		}
+		return
+	}
+	age := "at a time nothing here recorded"
+	if o.FetchedAt != nil {
+		age = fmt.Sprintf("%d minute(s) before, at %s", o.AgeMinutes, o.FetchedAt.UTC().Format(time.RFC3339))
+	}
+	fmt.Fprintf(w, "  origin: planned from %s at %s, as last fetched %s; this checkout is %d commit(s) behind it\n",
+		termsafe.Sanitize(o.Ref), termsafe.Sanitize(shortCommit(o.Commit)), age, o.Behind)
+	if len(o.Finished) > 0 {
+		fmt.Fprintf(w, "  finished on %s, still open in this checkout: %s\n", termsafe.Sanitize(o.Ref), termsafe.Sanitize(strings.Join(o.Finished, ", ")))
 	}
 }

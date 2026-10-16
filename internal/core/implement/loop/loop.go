@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -72,6 +73,11 @@ type Options struct {
 	// noReserve starts a run on an origin without reserving its key: a test
 	// fixture that stands a run up and takes its reservation by hand sets it.
 	noReserve bool
+	// plan is the drain plan an issue's start check reads in place of the
+	// checkout's ledger: the drain sets it to the plan its move read from
+	// origin's default branch (drain_origin.go). Nil, the check reads the
+	// checkout's.
+	plan *capture.DrainPlan
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -354,6 +360,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		return StartResult{}, err
 	}
 	snap.takeOver = o.TakeOver
+	snap.plan = o.plan
 	chk, err := check(repoRoot, key, o.Session, snap)
 	if err != nil {
 		return StartResult{}, err

@@ -127,19 +127,6 @@ func judgementFor(st DrainState, issue, digest string) *DrainJudgement {
 	return nil
 }
 
-// openIssues reads the open ledger by id.
-func openIssues(repoRoot string) (map[string]capture.Issue, error) {
-	lr, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: capture.StateOpen})
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]capture.Issue, len(lr.Issues))
-	for _, iss := range lr.Issues {
-		out[iss.ID] = iss
-	}
-	return out, nil
-}
-
 // requestJudgement writes the request for iss's judgement and returns what
 // the drain then awaits. When prior already awaits this issue over this
 // remedy, the request is written again and the answer the host may have
@@ -327,11 +314,7 @@ func takeJudgement(repoRoot, path string, st DrainState, live bool, plan capture
 		out.Note = j.Issue + " is no longer eligible, so the judgement decides nothing: " + why
 		return out, nil
 	}
-	issues, err := openIssues(repoRoot)
-	if err != nil {
-		return DrainJudgement{}, err
-	}
-	if iss, ok := issues[j.Issue]; !ok || remedyDigest(iss.Remedy) != j.RemedySHA256 {
+	if iss, ok := plan.OpenIssue(j.Issue); !ok || remedyDigest(iss.Remedy) != j.RemedySHA256 {
 		return DrainJudgement{}, refuse(StageDrain, "", "", j.Issue+"'s remedy has been rewritten since the judgement was requested, so the answer judges a remedy the lane would not work from",
 			"run `abcd drain`; it asks again over the remedy as it stands")
 	}

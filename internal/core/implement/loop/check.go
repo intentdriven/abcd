@@ -217,7 +217,15 @@ func keyCheck(key string) (CheckRow, bool) {
 // the issue, and no peer holds it. The run then has one lane, for the issue.
 func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnapshot) (CheckResult, error) {
 	row := CheckRow{Name: CheckEligible}
-	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
+	var plan capture.DrainPlan
+	var err error
+	if snap != nil && snap.plan != nil {
+		// The drain's move read the ledger from origin's default branch, and
+		// the start judges the issue by that same snapshot.
+		plan = *snap.plan
+	} else {
+		plan, err = capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
+	}
 	if err != nil {
 		if !drainRuleRefusal(err) {
 			return res, err
@@ -331,6 +339,9 @@ type peerSnapshot struct {
 	reader string
 	// now is when the reservations are judged.
 	now time.Time
+	// plan is the drain plan an issue's check reads (Options.plan); nil
+	// reads the checkout's ledger.
+	plan *capture.DrainPlan
 	// takeOver is a start's --take-over: this person's own live reservation
 	// from another copy is then no holder, since the start's reservation
 	// moves it to this copy.

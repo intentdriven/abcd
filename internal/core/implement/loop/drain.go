@@ -32,6 +32,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -116,6 +117,9 @@ type DrainState struct {
 	// Stopped says why the drain ended, and EndedAt when; empty while it runs.
 	Stopped string     `json:"stopped,omitempty"`
 	EndedAt *time.Time `json:"ended_at,omitempty"`
+	// OriginWait is the wait on origin a move that could not read it began
+	// (drain_origin.go); nil while origin answers.
+	OriginWait *DrainOriginWait `json:"origin_wait,omitempty"`
 }
 
 // DrainLane is one issue the drain handed to a lane.
@@ -200,6 +204,11 @@ type DrainResult struct {
 	// Counts are the drain's totals as this call leaves it (scope 8).
 	Counts DrainCounts `json:"counts"`
 	Next   string      `json:"next"`
+	// Origin is the view of origin's default branch this move planned from,
+	// and OriginWait the wait a move that could not read it is in
+	// (drain_origin.go); both nil in a checkout with no remote named origin.
+	Origin     *DrainOrigin     `json:"origin,omitempty"`
+	OriginWait *DrainOriginWait `json:"origin_wait,omitempty"`
 }
 
 // DrainCounts are the drain's totals (itd-82 scope 8): its lanes by outcome,
@@ -251,8 +260,9 @@ func Drain(repoRoot string, o Options, d DrainOptions) (DrainResult, error) {
 		return DrainResult{}, err
 	}
 	// The rule first: a repository without its own record is refused before
-	// anything else is read or written (criterion 11).
-	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
+	// anything else is read or written (criterion 11). The ledger is read
+	// under the lock, from origin's default branch (drain_origin.go).
+	rule, err := drainrule.Load(repoRoot)
 	if err != nil {
 		return DrainResult{}, err
 	}
@@ -265,7 +275,7 @@ func Drain(repoRoot string, o Options, d DrainOptions) (DrainResult, error) {
 	var res DrainResult
 	err = fsutil.WithFileLock(filepath.Join(repoRoot, filepath.FromSlash(drainLockRel)), lockTimeout, func() error {
 		var err error
-		res, err = drainMove(repoRoot, o, d, flags, plan)
+		res, err = drainMove(repoRoot, o, d, flags, rule)
 		return err
 	})
 	if errors.Is(err, fsutil.ErrLockContention) {
@@ -275,7 +285,7 @@ func Drain(repoRoot string, o Options, d DrainOptions) (DrainResult, error) {
 }
 
 // drainMove is Drain under the drain's lock.
-func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan capture.DrainPlan) (DrainResult, error) {
+func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule drainrule.Rule) (DrainResult, error) {
 	now := o.now()
 	st, live, err := readDrain(repoRoot)
 	if err != nil {
@@ -287,7 +297,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 		if err != nil {
 			return DrainResult{}, err
 		}
-		st = DrainState{SchemaVersion: DrainSchemaVersion, StartedAt: now, UpdatedAt: now, Rule: plan.Record,
+		st = DrainState{SchemaVersion: DrainSchemaVersion, StartedAt: now, UpdatedAt: now, Rule: rule.Record,
 			Max: d.Max, Pace: &pace, WindowStartedAt: &now, Lanes: []DrainLane{}, HandBacks: []DrainRoute{}}
 		started = true
 	} else {
@@ -302,9 +312,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			}
 		}
 	}
+	// The ledger as origin's default branch holds it, fetched now, before any
+	// judgement or reservation: a move that cannot read it plans nothing and
+	// waits (drain_origin.go).
+	plan, origin, wait, recovered, probed, err := movePlan(repoRoot, &st, rule, now)
+	if err != nil {
+		return DrainResult{}, err
+	}
 	res := DrainResult{State: DrainStateRel, Started: started, Rule: plan.Record, Loosened: plan.Loosened,
 		Order: plan.Order, Dispositions: plan.Dispositions, Routed: []DrainRoute{}, Passed: []Excluded{},
-		Flags: fieldFlags(plan), Finished: []DrainFinished{}}
+		Flags: fieldFlags(plan), Finished: []DrainFinished{}, Origin: origin}
 	finish := func(write bool) (DrainResult, error) {
 		if write {
 			st.UpdatedAt = now
@@ -321,6 +338,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 		if note := finishedNote(res.Finished); note != "" {
 			res.Next = note + "; " + res.Next
 		}
+		if recovered != "" {
+			res.Next = recovered + "; " + res.Next
+		}
+		res.OriginWait = st.OriginWait
 		res.Counts = drainCounts(repoRoot, st, res.Flags, res.Passed)
 		// The normal ending is claimed only once every lane has ended: an
 		// outage stop is taken before the lane in progress is read, so a
@@ -333,6 +354,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 			res.Lane = &l
 		}
 		return res, nil
+	}
+
+	// A move that could not read origin plans nothing: no judgement is taken,
+	// no lane is read or opened, and the answer given waits for the next move.
+	if wait != "" {
+		res.Next = wait
+		if d.Judgement != "" {
+			res.Next += "; the judgement answer given was not taken: give it again with --judgement once origin answers"
+		}
+		return finish(started || probed)
 	}
 
 	// The host's answer to the judgement the drain awaits (scope 3): taken
@@ -452,7 +483,6 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 	if err != nil {
 		return DrainResult{}, err
 	}
-	var issues map[string]capture.Issue
 	// In a checkout with a remote named origin, each issue is reserved there
 	// as its lane starts, with its found_at path as the footprint (C37);
 	// without one there is nowhere to reserve, and nothing is.
@@ -473,12 +503,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 				Reason: "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"})
 			continue
 		}
-		if issues == nil {
-			if issues, err = openIssues(repoRoot); err != nil {
-				return DrainResult{}, err
-			}
-		}
-		iss, ok := issues[v.ID]
+		iss, ok := plan.OpenIssue(v.ID)
 		if !ok {
 			continue
 		}
@@ -505,6 +530,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 		st.Judging = nil
 		lane := o
 		lane.reserve = footprint
+		lane.plan = &plan
 		started, err := Start(repoRoot, v.ID, lane)
 		if err != nil {
 			r, ok := AsRefusal(err)
@@ -714,6 +740,10 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 	// The stored lane, hand-back and judgement text carries no control, bidi
 	// or zero-width rune, so none reaches the drain's --json payload; the
 	// refusal does not echo it (iss-2610121505153157).
+	if !st.OriginWait.written() {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a wait on origin the drain never writes",
+			"the drain is the file's only writer; restore it or remove it")
+	}
 	if !st.textWritten() {
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" carries text the drain never writes: a control, bidi or zero-width character in its rule, a lane, a hand-back or a judgement",
 			"the drain is the file's only writer; restore it or remove it")
