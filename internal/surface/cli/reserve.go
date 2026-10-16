@@ -62,12 +62,14 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 		release   bool
 		leaseFor  time.Duration
 		holder    bool
+		sweep     *sweepFlags
 	)
 	cmd := &cobra.Command{
 		Use: "reserve <record-id>",
 		Long: "abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]\n" +
 			"abcd reserve <record-id> --release\n" +
-			"abcd reserve --holder\n\n" +
+			"abcd reserve --holder\n" +
+			"abcd reserve --sweep [--apply] [--older-than <days>]\n\n" +
 			"Reserve an issue or an intent on the shared remote before starting work on it, so\n" +
 			"every other participant sees it is taken. The reservation is the branch\n" +
 			"abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits\n" +
@@ -101,8 +103,24 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"Exit 0 when the act reached origin (or a release was already made); exit 3 when\n" +
 			"the record is held by someone else or by your other copy, so back off; exit 2\n" +
 			"on every other refusal and failure. Nothing is pushed on a refusal, and a failed\n" +
-			"push leaves no reservation and nothing in the checkout.",
+			"push leaves no reservation and nothing in the checkout.\n\n" +
+			"--sweep lists the spent reservation branches on origin and, with --apply, deletes\n" +
+			"them, each with a lease on the exact tip it judged, so a branch re-reserved\n" +
+			"meanwhile survives. A branch is spent when its tip has been untouched, its lease\n" +
+			"past the five-minute margin included, for --older-than days (default 7, at\n" +
+			"least 1), and either its record is resolved, won't-fixed, shipped or superseded\n" +
+			"on origin's default branch, or every commit on it is a reservation or a plain\n" +
+			"release, at least one a release. A hand-back on a record still open, a commit\n" +
+			"of a kind the sweep cannot classify, and an unreadable tip keep the branch.\n" +
+			"The reservations ruleset lets only its bypass actor delete these branches, so\n" +
+			"the scheduled reservation-sweep workflow is what applies it; anyone else's\n" +
+			"--apply is refused by origin. It takes no record id and no other flag; exit 0\n" +
+			"when it ran (a branch that moved since it was judged is kept, not a failure),\n" +
+			"exit 2 when it could not run or origin refused a deletion.",
 		Args: func(cmd *cobra.Command, args []string) error {
+			if err := sweep.args(cmd, args); err != nil || sweep.on {
+				return err
+			}
 			if holder {
 				var with []string
 				if len(args) > 0 {
@@ -127,6 +145,9 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			return &exitError{Code: 2, Msg: "abcd reserve: takes one record id, not " + fmt.Sprint(len(args)) + "; nothing was pushed"}
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if sweep.on {
+				return runReserveSweep(cmd.OutOrStdout(), *asJSON, sweep)
+			}
 			if holder {
 				return runReserveHolder(cmd.OutOrStdout(), *asJSON)
 			}
@@ -163,6 +184,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().DurationVar(&leaseFor, "lease", 0, "how long the reservation holds, from 1m to 24h (default 2h)")
 	cmd.Flags().BoolVar(&release, "release", false, "release your reservation from this copy by pushing a tombstone")
 	cmd.Flags().BoolVar(&holder, "holder", false, "say which GitHub account an act would reserve as, and from where; reserves nothing")
+	sweep = addSweepFlags(cmd)
 	return cmd
 }
 

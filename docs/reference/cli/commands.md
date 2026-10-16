@@ -3954,6 +3954,7 @@ Reserve an issue or intent on the shared remote, or release it: Writes one commi
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
 abcd reserve <record-id> --release
 abcd reserve --holder
+abcd reserve --sweep [--apply] [--older-than <days>]
 
 Reserve an issue or an intent on the shared remote before starting work on it, so
 every other participant sees it is taken. The reservation is the branch
@@ -3994,13 +3995,30 @@ the record is held by someone else or by your other copy, so back off; exit 2
 on every other refusal and failure. Nothing is pushed on a refusal, and a failed
 push leaves no reservation and nothing in the checkout.
 
+--sweep lists the spent reservation branches on origin and, with --apply, deletes
+them, each with a lease on the exact tip it judged, so a branch re-reserved
+meanwhile survives. A branch is spent when its tip has been untouched, its lease
+past the five-minute margin included, for --older-than days (default 7, at
+least 1), and either its record is resolved, won't-fixed, shipped or superseded
+on origin's default branch, or every commit on it is a reservation or a plain
+release, at least one a release. A hand-back on a record still open, a commit
+of a kind the sweep cannot classify, and an unreadable tip keep the branch.
+The reservations ruleset lets only its bypass actor delete these branches, so
+the scheduled reservation-sweep workflow is what applies it; anyone else's
+--apply is refused by origin. It takes no record id and no other flag; exit 0
+when it ran (a branch that moved since it was judged is kept, not a failure),
+exit 2 when it could not run or origin refused a deletion.
+
 **Flags:**
 
 ```
+      --apply                   with --sweep, delete the spent branches, each only while its tip is the one judged
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
       --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
+      --older-than int          with --sweep, the days a branch must have been untouched past its lease (at least 1) (default 7)
       --release                 release your reservation from this copy by pushing a tombstone
+      --sweep                   list the spent reservation branches on origin, which --apply deletes; a dry run without it
       --take-over               move your own live reservation from another copy to this one
 ```
 

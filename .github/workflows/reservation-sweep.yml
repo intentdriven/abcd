@@ -1,0 +1,117 @@
+name: reservation-sweep
+
+# Deletes spent reservation branches, refs/heads/abcd-reserved/**, from this
+# repository once a day (iss-2610142200389875, adr-2610161940004937).
+#
+# `abcd reserve` never deletes a reservation branch: a release pushes a
+# tombstone, and the reservations ruleset forbids deleting the branches to
+# everyone but its one bypass actor, the reservation-sweep GitHub App. So the
+# branches pile up unless something with that bypass removes the spent ones.
+# This workflow is that something: it mints a short-lived installation token
+# for the App and runs `abcd reserve --sweep --apply`, which judges every
+# branch with the same lease rules `abcd reserve` uses and deletes a spent one
+# only with a lease on the exact tip it judged, so a branch re-reserved while
+# it ran survives. What counts as spent, and what keeps a branch (a hand-back
+# on an open record, anything the sweep cannot classify), is in
+# commands/reserve.md and internal/core/reservesweep.
+#
+# The token is the App's alone and lives for at most an hour: it is masked,
+# reaches git only through a credential helper reading the environment, never
+# a URL or an argument, and is revoked when the job ends. Without the App's two
+# secrets (RESERVATION_SWEEP_APP_ID, RESERVATION_SWEEP_APP_KEY) the job runs
+# the dry run instead, deletes nothing, and says so.
+#
+# It is not a required check. A sweep missed (a failed run, a skipped day) is
+# caught by the next one; nothing waits on it.
+on:
+  schedule:
+    - cron: "37 4 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: reservation-sweep
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Sweep the spent reservation branches
+        env:
+          RESERVATION_SWEEP_APP_ID: ${{ secrets.RESERVATION_SWEEP_APP_ID }}
+          RESERVATION_SWEEP_APP_KEY: ${{ secrets.RESERVATION_SWEEP_APP_KEY }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${RESERVATION_SWEEP_APP_ID:-}" ] || [ -z "${RESERVATION_SWEEP_APP_KEY:-}" ]; then
+            echo "::warning title=reservation sweep did not delete::the App's secrets RESERVATION_SWEEP_APP_ID and RESERVATION_SWEEP_APP_KEY are not set, so this is the dry run; nothing was deleted."
+            go run ./cmd/abcd reserve --sweep
+            exit 0
+          fi
+          printf '%s' "$RESERVATION_SWEEP_APP_ID" | grep -Eq '^[0-9]+$' || {
+            echo "::error::RESERVATION_SWEEP_APP_ID is not an App id; nothing was deleted."
+            exit 2
+          }
+
+          # The App installation token, minted as scripts/dependency-reauthor.sh
+          # mints its own: a JWT signed with the App's key, exchanged for a
+          # token scoped to this repository's contents.
+          api="${GITHUB_API_URL:-https://api.github.com}"
+          b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
+          now="$(date +%s)"
+          header="$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)"
+          claims="$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' "$((now - 60))" "$((now + 540))" "$RESERVATION_SWEEP_APP_ID" | b64url)"
+          signature="$(printf '%s.%s' "$header" "$claims" |
+            openssl dgst -sha256 -sign <(printf '%s\n' "$RESERVATION_SWEEP_APP_KEY") -binary | b64url)" || true
+          if [ -z "$signature" ]; then
+            echo "::error::could not sign with RESERVATION_SWEEP_APP_KEY (is it the App's PEM private key?); nothing was deleted."
+            exit 2
+          fi
+          jwt="$header.$claims.$signature"
+
+          # call <method> <path> <credential> [body]: the credential reaches
+          # curl through a header on a descriptor, never its argument list.
+          call() {
+            local method="$1" path="$2" cred="$3" body="${4:-}"
+            if [ -n "$body" ]; then
+              curl -fsS --max-time 30 -X "$method" -H 'Accept: application/vnd.github+json' \
+                -H @<(printf 'Authorization: Bearer %s\n' "$cred") --data "$body" "$api$path"
+            else
+              curl -fsS --max-time 30 -X "$method" -H 'Accept: application/vnd.github+json' \
+                -H @<(printf 'Authorization: Bearer %s\n' "$cred") "$api$path"
+            fi
+          }
+          installation="$(call GET "/repos/$GITHUB_REPOSITORY/installation" "$jwt" | jq -r '.id // empty')" || true
+          if ! printf '%s' "$installation" | grep -Eq '^[0-9]+$'; then
+            echo "::error::the App named by RESERVATION_SWEEP_APP_ID is not installed on $GITHUB_REPOSITORY; nothing was deleted."
+            exit 2
+          fi
+          scope="$(jq -cn --arg name "${GITHUB_REPOSITORY#*/}" '{repositories: [$name], permissions: {contents: "write"}}')"
+          token="$(call POST "/app/installations/$installation/access_tokens" "$jwt" "$scope" | jq -r '.token // empty')" || true
+          if [ -z "$token" ]; then
+            echo "::error::the App could not mint an installation token for $GITHUB_REPOSITORY; nothing was deleted."
+            exit 2
+          fi
+          echo "::add-mask::$token"
+          trap 'call DELETE /installation/token "$token" >/dev/null 2>&1 || true' EXIT
+
+          # The token reaches git through a credential helper reading the
+          # environment: the helper list is reset first, so no other helper
+          # answers, and the token is never written to the repository's config.
+          git config --local credential.helper ''
+          # shellcheck disable=SC2016 # the helper expands the variable, not this shell
+          git config --local --add credential.helper \
+            '!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$ABCD_SWEEP_TOKEN"; }; f'
+          ABCD_SWEEP_TOKEN="$token" go run ./cmd/abcd reserve --sweep --apply

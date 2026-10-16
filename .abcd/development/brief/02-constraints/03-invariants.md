@@ -28,7 +28,10 @@ The following are non-negotiable invariants — any architectural choice that vi
    The reservations on the shared remote (itd-2609091034175565) are fetched
    and pushed only by verbs whose documented meaning says so: `reserve`, whose
    meaning is one fetch of the reservations and one push to the record's
-   `abcd-reserved/` branch, and `peers`, whose meaning includes one fetch of
+   `abcd-reserved/` branch; `reserve --sweep`, whose meaning is one fetch of
+   the reservations and the default branch and, with `--apply`, one push per
+   spent branch deleting it, leased on the tip it judged
+   (iss-2610142200389875); and `peers`, whose meaning includes one fetch of
    the reservations; `build`, whose meaning includes the run's reservation as
    it starts or resumes (a fetch and one push, the spec's footprint or the
    issue's `found_at` naming the files) and, with `--release`, a fetch and

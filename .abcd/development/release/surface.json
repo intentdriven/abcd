@@ -3489,6 +3489,13 @@
       "sentence": "Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
       "flags": [
         {
+          "name": "apply",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "footprint",
           "shorthand": "",
           "type": "stringArray",
@@ -3510,7 +3517,21 @@
           "hidden": false
         },
         {
+          "name": "older-than",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "sweep",
           "shorthand": "",
           "type": "bool",
           "required": false,
