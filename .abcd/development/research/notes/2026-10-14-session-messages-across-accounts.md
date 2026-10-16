@@ -35,7 +35,7 @@ planned (itd-2610120738075547). Neither can receive those messages. <!-- record-
   [itd-2609151838312703](../../intents/planned/itd-2609151838312703-sessions-announce-what-they-are-doing.md)
   first proposed.
 - **Claims are branches on the shared remote.** This is
-  [itd-2609091034175565](../../intents/planned/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md)
+  [itd-2609091034175565](../../intents/shipped/itd-2609091034175565-nothing-tells-an-agent-that-a-record-it.md)
   decision 10: a hosted session's git proxy accepts pushes of branches only.
 - **The repository is public.**
 

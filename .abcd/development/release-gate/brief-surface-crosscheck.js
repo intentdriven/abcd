@@ -10,10 +10,11 @@
 // ../plans/2026-07-11-iss35-semantic-release-gate.md).
 //
 // Invoke with args = the pinned input manifest
-// (.abcd/development/release-gate/manifest.json): { briefDocs, surfaces, prompt,
-// ... }. The manifest pins the run's inputs (iss-122) — the doc list, the
-// directions, the checker count, and the prompt (context + both direction
-// templates) are fixed there rather than composed ad hoc here, so two honest
+// (.abcd/development/release-gate/manifest.json): { briefDocs, commands, agents,
+// surfaces, prompt, ... }. The manifest pins the run's inputs (iss-122) — the
+// doc list, the command and agent rosters, the directions, and the prompt
+// (context + both direction templates) are fixed there rather than composed ad
+// hoc here, and the checker count follows from the lists, so two honest
 // runs of the same tier examine the same scope. It cannot pin the findings: the
 // checkers are LLM agents, and their count and classes vary between runs on
 // identical inputs (iss-2608231409595789). The receipt echoes the manifest's
@@ -47,10 +48,16 @@ const FINDINGS = {
 // Prompt text comes from the manifest, not from here: the context and both
 // direction templates are pinned in manifest.json (with their own promptHash) so
 // the prompt cannot drift between runs. The templates carry ${...} placeholders
-// as literal text; fill them per checker.
-const CTX = input.prompt.context
+// as literal text: the context's ${commands} and ${agents} are filled once from
+// the manifest's sorted rosters, and the direction templates per checker. The
+// rosters sit outside the prompt text, one name per line, so a branch adding a
+// surface edits neither the prompt nor its hash (iss-2610150526192138).
 const fill = (tmpl, subs) =>
   Object.entries(subs).reduce((s, [k, v]) => s.split('${' + k + '}').join(v), tmpl)
+const CTX = fill(input.prompt.context, {
+  commands: input.commands.join(', '),
+  agents: input.agents.join(', '),
+})
 const briefFindings = input.briefDocs.map(doc => () => agent(
   `${CTX}\n\n${fill(input.prompt.directionA, { doc })}`,
   { label: `brief:${doc.split('/').pop()}`, phase: 'CheckBrief', schema: FINDINGS }))

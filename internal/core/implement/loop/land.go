@@ -43,13 +43,10 @@ package loop
 // listing, the body and title from the records, through the scrub.
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -61,6 +58,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/intent"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -113,20 +111,6 @@ const (
 	// PRStrippedFileName the body re-read from the forge and stripped.
 	PRBodyFileName     = "pr-body.md"
 	PRStrippedFileName = "pr-body.stripped.md"
-	// PreflightReceiptsRelDir is where the preflight mints its receipts, one
-	// file named by the full commit id, in any worktree of the repository.
-	PreflightReceiptsRelDir = TierRelDir + "/preflight-receipts"
-	// RulesetsRelDir is the committed mirror of the default branch's rulesets.
-	RulesetsRelDir = ".abcd/work/rulesets"
-)
-
-// Timeouts and caps for what the landing runs.
-const (
-	netTimeout      = 10 * time.Minute
-	ghTimeout       = 2 * time.Minute
-	maxForgeOutput  = 1 << 20
-	maxRulesetBytes = 256 << 10
-	maxRulesets     = 32
 )
 
 // landSubject is the records commit's subject.
@@ -355,7 +339,10 @@ func landRecords(c Context, lane *Lane) (Outcome, error) {
 	msg := landSubject(st, *lane) + "\n\n" +
 		fmt.Sprintf("The implement loop's landing for %s: %s.\n\n", what, strings.Join(done, "; ")) +
 		strings.Join(append(trailers, assisted...), "\n") + "\n"
-	if _, err := hookedGit(wt, "commit", "-q", "-m", msg); err != nil {
+	// gitutil.LocalGit runs a local git command under the developer's own
+	// configuration with the repository's hooks running, and none of the
+	// networked runner's settings.
+	if _, err := gitutil.LocalGit(wt, "commit", "-q", "-m", msg); err != nil {
 		return Outcome{}, refuse(string(StageLand), "", lane.ID,
 			"git could not commit the landing's records (a repository hook refused it, or no git identity is configured): "+fsutil.RedactHome(err.Error()),
 			"settle what git or the hook reports (the records stay staged in the lane's worktree), then run `abcd implement step` again; the loop never skips a hook")
@@ -418,42 +405,10 @@ func modelGap(lane Lane, what, gap string) error {
 			"send the lane back through a fix round whose receipt reports it, then run `abcd implement step` again; the loop never claims no assistance for a model's text")
 }
 
-// hookedGit runs one git command in the lane's worktree with the repository's
-// hooks running, under the developer's own configuration less any injected
-// GIT_DIR or GIT_CONFIG_* (as gitutil.Net), with no terminal prompt.
-func hookedGit(dir string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), netTimeout)
-	defer cancel()
-	full := append([]string{"-c", "core.quotePath=false", "-C", dir}, args...)
-	cmd := exec.CommandContext(ctx, "git", full...)
-	cmd.Env = append(gitutil.ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
-	return runCapped(cmd, "git "+args[0])
-}
-
 // resolvedIn reports whether issue is already in the worktree's resolved/.
 func resolvedIn(wt, issue string) bool {
 	m, _ := filepath.Glob(filepath.Join(wt, ".abcd", "work", "issues", "resolved", issue+"-*.md"))
 	return len(m) > 0
-}
-
-// preflightReceipt finds the preflight receipt for sha in any worktree git
-// lists for the repository, as the pre-push hook's check does. A receipt must
-// be a regular file, never a symlink.
-func preflightReceipt(repoRoot, sha string) (string, error) {
-	wts, err := gitutil.ListWorktrees(repoRoot, maxWorktreeListing)
-	if err != nil {
-		return "", fmt.Errorf("listing the repository's worktrees: %w", err)
-	}
-	for _, wt := range wts {
-		if wt.Bare {
-			continue
-		}
-		p := filepath.Join(wt.Path, filepath.FromSlash(PreflightReceiptsRelDir), sha)
-		if fi, err := os.Lstat(p); err == nil && fi.Mode().IsRegular() {
-			return p, nil
-		}
-	}
-	return "", nil
 }
 
 // landPush pushes the lane's branch once the preflight receipt names its head.
@@ -475,7 +430,7 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 			fmt.Sprintf("%s is at %s, not at the head %s the landing lands", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 			"restore the branch to that head, then run `abcd implement step` again")
 	}
-	rcp, err := preflightReceipt(c.RepoRoot, lane.HeadSHA)
+	rcp, err := landing.Receipt(c.RepoRoot, lane.HeadSHA)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -494,12 +449,13 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 		r.checkWait = since
 		return Outcome{}, r
 	}
-	ref := "refs/heads/" + lane.Branch
-	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, ref+":"+ref); err != nil {
+	// The head the receipt names is pushed by its commit id, not the branch's
+	// ref, so a branch that moves after the check cannot change what is pushed.
+	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, lane.HeadSHA+":refs/heads/"+lane.Branch); err != nil {
 		if r := netFailure(StageLand, lane.ID, "git push "+lane.Branch, err); r != nil {
 			return Outcome{}, r
 		}
-		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not push "+lane.Branch+" to "+Remote+": "+fsutil.RedactHome(err.Error()),
+		return Outcome{}, refuse(string(StageLand), "", lane.ID, "git could not push "+lane.Branch+" to "+Remote+": "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
 			"settle what git or the pre-push hook reports, then run `abcd implement step` again")
 	}
 	note := "pushed " + lane.Branch + " at " + shortSHA(lane.HeadSHA) + " to " + Remote + " on its preflight receipt"
@@ -510,44 +466,20 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	return Outcome{Stay: true, Note: note}, nil
 }
 
-// runCapped runs cmd, returning its stdout within the forge cap and its
-// stderr, bounded, in the error.
-func runCapped(cmd *exec.Cmd, what string) (string, error) {
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if len(msg) > 2048 {
-			msg = msg[:2048]
-		}
-		return "", fmt.Errorf("%s: %v (%s)", what, err, msg)
-	}
-	if stdout.Len() > maxForgeOutput {
-		return "", fmt.Errorf("%s wrote more than %d bytes", what, maxForgeOutput)
-	}
-	return stdout.String(), nil
-}
-
-// forge runs the forge client with args from the checkout the run lives in,
-// refused when the client is not installed.
+// forge runs the forge client with args from the checkout the run lives in
+// (landing.GH), refused when the client is not installed.
 func forge(c Context, lane Lane, args ...string) (string, error) {
-	bin, err := exec.LookPath("gh")
-	if err != nil {
+	out, err := landing.GH(c.RepoRoot, args...)
+	if errors.Is(err, landing.ErrNoForgeClient) {
 		return "", refuse(string(StageLand), "", lane.ID, "the forge client `gh` is not installed, and the landing opens the pull request through it",
 			"install gh and sign in with your own identity (`gh auth login`), then run `abcd implement step` again")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, args...)
-	cmd.Dir = c.RepoRoot
-	cmd.Env = append(os.Environ(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1")
-	what := "gh " + strings.Join(args[:min(2, len(args))], " ")
-	out, err := runCapped(cmd, what)
 	if err != nil {
+		what := "gh " + strings.Join(args[:min(2, len(args))], " ")
 		if r := netFailure(StageLand, lane.ID, what, err); r != nil {
 			return "", r
 		}
-		return "", refuse(string(StageLand), "", lane.ID, fsutil.RedactHome(err.Error()),
+		return "", refuse(string(StageLand), "", lane.ID, gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
 			"settle what the forge client reports, then run `abcd implement step` again")
 	}
 	return out, nil
@@ -727,184 +659,27 @@ func recheckBody(c Context, lane *Lane) (bool, error) {
 	return true, nil
 }
 
-// ruleset is the part of a ruleset mirror the merge rule is read from.
-type ruleset struct {
-	Enforcement string `json:"enforcement"`
-	Conditions  struct {
-		RefName struct {
-			Include []string `json:"include"`
-			Exclude []string `json:"exclude"`
-		} `json:"ref_name"`
-	} `json:"conditions"`
-	Rules []struct {
-		Type       string          `json:"type"`
-		Parameters json.RawMessage `json:"parameters"`
-	} `json:"rules"`
-}
-
-// targets reports whether the ruleset applies to the default branch def.
-func (r ruleset) targets(def string) bool {
-	match := func(pats []string) bool {
-		for _, p := range pats {
-			if p == "~DEFAULT_BRANCH" || p == "~ALL" || p == "refs/heads/"+def {
-				return true
-			}
-		}
-		return false
-	}
-	return r.Enforcement == "active" && match(r.Conditions.RefName.Include) && !match(r.Conditions.RefName.Exclude)
-}
-
-// mergeMethods maps a merge queue's method to the forge client's flag.
-var mergeMethods = map[string]string{"MERGE": "--merge", "SQUASH": "--squash", "REBASE": "--rebase"}
-
-// codeOwnersPaths are where the forge reads a CODEOWNERS file from, in the
-// order it looks: the first file found is the only one it reads.
-var codeOwnersPaths = []string{".github/CODEOWNERS", "CODEOWNERS", "docs/CODEOWNERS"}
-
-// namesCodeOwners reports whether the CODEOWNERS file the forge reads at the
-// lane's base — the first found in codeOwnersPaths, so a file there shadows
-// the later ones even when it names nobody — names at least one owner: a line
-// whose pattern is followed by an owner token (codeOwner).
-func namesCodeOwners(c Context, lane Lane) bool {
-	for _, p := range codeOwnersPaths {
-		raw, err := gitutil.RunCappedBytes(c.RepoRoot, maxRulesetBytes, "cat-file", "blob", lane.BaseSHA+":"+p)
-		if err != nil {
-			continue
-		}
-		for _, line := range strings.Split(string(raw), "\n") {
-			if lineNamesOwner(line) {
-				return true
-			}
-		}
-		return false
-	}
-	return false
-}
-
-// lineNamesOwner reports whether one CODEOWNERS line names an owner: after its
-// pattern, a field before any comment is an owner token. A blank line, a
-// comment and a pattern with no owner name nobody.
-func lineNamesOwner(line string) bool {
-	fields := strings.Fields(line)
-	if len(fields) < 2 || strings.HasPrefix(fields[0], "#") {
-		return false
-	}
-	for _, f := range fields[1:] {
-		if strings.HasPrefix(f, "#") {
-			return false
-		}
-		if codeOwner(f) {
-			return true
-		}
-	}
-	return false
-}
-
-// codeOwner reports whether a token is one the forge takes as an owner:
-// @username, @org/team-name, or an e-mail address.
-func codeOwner(tok string) bool {
-	if name, ok := strings.CutPrefix(tok, "@"); ok {
-		org, team, isTeam := strings.Cut(name, "/")
-		if isTeam {
-			return ownerName(org) && team != "" && !strings.ContainsAny(team, "/@")
-		}
-		return ownerName(name)
-	}
-	local, domain, ok := strings.Cut(tok, "@")
-	return ok && local != "" && strings.Contains(domain, ".") && !strings.HasPrefix(domain, ".") &&
-		!strings.HasSuffix(domain, ".") && !strings.Contains(domain, "@")
-}
-
-// ownerName reports whether s is a forge account name: letters, digits and
-// hyphens, not empty.
-func ownerName(s string) bool {
-	if s == "" {
-		return false
-	}
-	for _, r := range s {
-		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-') {
-			return false
-		}
-	}
-	return true
-}
-
-// requiresApproval reports whether a pull_request rule's parameters require a
-// person's approval: an approving count of one or more, or a code-owner review
-// where a CODEOWNERS file at the lane's base names an owner. Parameters that
-// do not parse require nothing, so the merge is left for a person.
-func requiresApproval(c Context, lane Lane, params json.RawMessage) bool {
-	var p struct {
-		Count     int  `json:"required_approving_review_count"`
-		CodeOwner bool `json:"require_code_owner_review"`
-	}
-	if json.Unmarshal(params, &p) != nil {
-		return false
-	}
-	return p.Count >= 1 || (p.CodeOwner && namesCodeOwners(c, lane))
-}
-
-// mergeRule reads the ruleset mirror at the lane's base: the merge queue's
-// method when an active ruleset gates the default branch through one, or ""
-// when none does, and whether an active ruleset on the default branch requires
-// a person's approval (ruling AM1). A missing mirror requires nothing. The
-// base is the default branch the lane was cut from, so the lane's own commits
+// readMergeRule reads the ruleset mirror at the lane's base through the
+// landing's one reader of the mirror (landing.ReadMergeRule), its refusals
+// worded for the loop: the merge queue's method ("" when none gates the
+// default branch), whether an active ruleset on the default branch requires a
+// person's approval (ruling AM1), and whether a mirror exists at all, which
+// decides the land fence's lease. A missing mirror requires nothing. The base
+// is the default branch the lane was cut from, so the lane's own commits
 // cannot change the rule it lands by.
-func mergeRule(c Context, lane Lane, def string) (string, bool, error) {
-	names, err := gitutil.RunCappedBytes(c.RepoRoot, maxGitOutput, "ls-tree", "-z", "--name-only", lane.BaseSHA, "--", RulesetsRelDir+"/")
-	if err != nil {
-		return "", false, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", err)
+func readMergeRule(c Context, lane Lane, def string) (landing.MergeRule, error) {
+	r, err := landing.ReadMergeRule(c.RepoRoot, lane.BaseSHA, def, "the lane's base")
+	var le *landing.ListError
+	var me *landing.MirrorError
+	switch {
+	case errors.As(err, &le):
+		return landing.MergeRule{}, fmt.Errorf("listing the ruleset mirror at the lane's base: %v", le.Err)
+	case errors.As(err, &me):
+		return landing.MergeRule{}, refuse(string(StageLand), "", lane.ID, me.Reason, me.Fix+", then run `abcd implement step` again")
+	case err != nil:
+		return landing.MergeRule{}, err
 	}
-	method := ""
-	approval := false
-	count := 0
-	for _, name := range strings.Split(string(names), "\x00") {
-		if !strings.HasSuffix(name, ".json") {
-			continue
-		}
-		if count++; count > maxRulesets {
-			return "", false, refuse(string(StageLand), "", lane.ID, fmt.Sprintf("the ruleset mirror holds more than %d files", maxRulesets), "trim the mirror, then run `abcd implement step` again")
-		}
-		raw, err := gitutil.RunCappedBytes(c.RepoRoot, maxRulesetBytes, "cat-file", "blob", lane.BaseSHA+":"+name)
-		if err != nil {
-			return "", false, refuse(string(StageLand), "", lane.ID, name+" cannot be read at the lane's base", "restore the ruleset mirror, then run `abcd implement step` again")
-		}
-		var rs ruleset
-		if err := json.Unmarshal(raw, &rs); err != nil {
-			return "", false, refuse(string(StageLand), "", lane.ID, name+" does not parse as a ruleset, so the merge rule cannot be read",
-				"restore the ruleset mirror (its README says how to refresh it), then run `abcd implement step` again")
-		}
-		if !rs.targets(def) {
-			continue
-		}
-		for _, rule := range rs.Rules {
-			if rule.Type == "pull_request" && requiresApproval(c, lane, rule.Parameters) {
-				approval = true
-			}
-			if rule.Type != "merge_queue" {
-				continue
-			}
-			var p struct {
-				MergeMethod string `json:"merge_method"`
-			}
-			_ = json.Unmarshal(rule.Parameters, &p)
-			m := strings.ToUpper(p.MergeMethod)
-			if m == "" {
-				m = "MERGE"
-			}
-			if _, ok := mergeMethods[m]; !ok {
-				return "", false, refuse(string(StageLand), "", lane.ID, name+" names a merge-queue method the forge client has no flag for",
-					"correct the ruleset mirror, then run `abcd implement step` again")
-			}
-			if method != "" && method != m {
-				return "", false, refuse(string(StageLand), "", lane.ID, "the ruleset mirror gates the default branch through merge queues with different methods",
-					"correct the ruleset mirror, then run `abcd implement step` again")
-			}
-			method = m
-		}
-	}
-	return method, approval, nil
+	return r, nil
 }
 
 // landArm arms the merge by the ruleset's rule, or leaves the pull request
@@ -918,10 +693,11 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	method, approval, err := mergeRule(c, *lane, def)
+	rule, err := readMergeRule(c, *lane, def)
 	if err != nil {
 		return Outcome{}, err
 	}
+	method, approval := rule.Method, rule.Approval
 	// The land fence (spc-2610031753359849 spec 2): before the rule decides,
 	// the run's reservation must still be this person's from this copy, and
 	// it is renewed for fenceLease, a day.
@@ -957,7 +733,9 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 		}
 		return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
 	}
-	if _, err := forge(c, *lane, "pr", "merge", n, "--auto", mergeMethods[method]); err != nil {
+	// The arming is pinned to the pushed head: the forge refuses it when the
+	// pull request's head is another commit.
+	if _, err := forge(c, *lane, "pr", "merge", n, "--auto", landing.MergeMethods[method], "--match-head-commit="+ld.Pushed); err != nil {
 		return Outcome{}, err
 	}
 	ld.Armed = true
@@ -974,12 +752,10 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
-	tracking, err := fetchDefault(c, *lane, def)
-	if err != nil {
-		return Outcome{}, err
-	}
-	on, err := gitutil.IsAncestor(c.RepoRoot, ld.Pushed, tracking)
-	if err != nil {
+	tracking, on, err := landing.Landed(gitutil.Net, c.RepoRoot, def, ld.Pushed)
+	if fe := (*landing.FetchError)(nil); errors.As(err, &fe) {
+		return Outcome{}, fetchRefusal(*lane, def, fe.Err)
+	} else if err != nil {
 		return Outcome{}, fmt.Errorf("placing %s on %s: %v", shortSHA(ld.Pushed), tracking, err)
 	}
 	n := strconv.Itoa(lane.PR)
@@ -1052,17 +828,23 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 }
 
 // fetchDefault fetches the default branch def from the remote into its
-// remote-tracking ref, and returns the ref.
+// remote-tracking ref (landing.FetchDefault), and returns the ref.
 func fetchDefault(c Context, lane Lane, def string) (string, error) {
-	tracking := "refs/remotes/" + Remote + "/" + def
-	if _, err := gitutil.Net(c.RepoRoot, "fetch", "--quiet", "--no-tags", Remote, "+refs/heads/"+def+":"+tracking); err != nil {
-		if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
-			return "", r
-		}
-		return "", refuse(string(StageLand), "", lane.ID, "git could not fetch "+def+" from "+Remote+": "+fsutil.RedactHome(err.Error()),
-			"settle what git reports, then run `abcd implement step` again")
+	tracking, err := landing.FetchDefault(gitutil.Net, c.RepoRoot, def)
+	if fe := (*landing.FetchError)(nil); errors.As(err, &fe) {
+		return "", fetchRefusal(lane, def, fe.Err)
 	}
-	return tracking, nil
+	return tracking, err
+}
+
+// fetchRefusal is a fetch of the default branch def that git refused: a lost
+// network waited out on the shared probe, anything else a refusal.
+func fetchRefusal(lane Lane, def string, err error) error {
+	if r := netFailure(StageLand, lane.ID, "git fetch "+def, err); r != nil {
+		return r
+	}
+	return refuse(string(StageLand), "", lane.ID, "git could not fetch "+def+" from "+Remote+": "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
+		"settle what git reports, then run `abcd implement step` again")
 }
 
 // branchCheckedOutElsewhere refuses, before anything is removed, when git
@@ -1075,7 +857,7 @@ func fetchDefault(c Context, lane Lane, def string) (string, error) {
 // hand-back discard each delete the branch that way, so each asks first; stage
 // names the refusing stage and again what to run once the checkout is moved.
 func branchCheckedOutElsewhere(c Context, lane Lane, stage, again string) error {
-	wts, err := gitutil.ListWorktrees(c.RepoRoot, maxWorktreeListing)
+	wts, err := gitutil.ListWorktrees(c.RepoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return fmt.Errorf("listing the repository's worktrees: %w", err)
 	}
@@ -1101,7 +883,7 @@ func removeLaneWorktree(c Context, lane Lane) error {
 	if err := loopWorktree(c, lane, string(StageLand)); err != nil {
 		return err
 	}
-	wts, err := gitutil.ListWorktrees(c.RepoRoot, maxWorktreeListing)
+	wts, err := gitutil.ListWorktrees(c.RepoRoot, gitutil.MaxWorktreeListing)
 	if err != nil {
 		return fmt.Errorf("listing the repository's worktrees: %w", err)
 	}

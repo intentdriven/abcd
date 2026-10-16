@@ -61,6 +61,9 @@ func newParFixtureRuleset(t *testing.T, steps string, o Options, ruleset string)
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
 	f := &parFixture{repo: repo, gh: gh, stages: DefaultStages(), now: time.Date(2026, 9, 30, 9, 0, 0, 0, time.UTC)}
 	o.Now = f.clock
+	// The fixture's run holds no reservation: its tests are of the lanes,
+	// and the reservation's own are in reservation_test.go.
+	o.noReserve = true
 	if o.Session != "" {
 		// A run started for a session claims its intent in the shared run
 		// state, which the session joins first.
