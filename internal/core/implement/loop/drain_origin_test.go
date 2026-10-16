@@ -415,15 +415,26 @@ func TestADrainWaitingOnOriginFollowsTheOutageScheduleAndGivesUp(t *testing.T) {
 		now = w.NextProbeAt
 	}
 	hourly := now.Add(-time.Hour)
-	// Seven hours into the hourly stage the drain still waits.
-	res, w := move(hourly.Add(7 * time.Hour))
+	// Under seven hours into the hourly stage the drain still waits.
+	res, w := move(hourly.Add(6*time.Hour + 55*time.Minute))
 	if res.Complete || res.Stopped != "" || w.Probes != 5 {
-		t.Fatalf("seven hours into the hourly stage: %+v, stopped %q; want it still waiting", w, res.Stopped)
+		t.Fatalf("under seven hours into the hourly stage: %+v, stopped %q; want it still waiting", w, res.Stopped)
 	}
-	// Eight hours in, it gives up.
-	end := hourly.Add(8 * time.Hour)
+	// The next probe falls eight hours after the wait began but under eight
+	// into the hourly stage, which began sixteen minutes later: the bound
+	// counts from the hourly stage, so the drain still waits.
+	between := w.NextProbeAt
+	if !between.After(t0.Add(8*time.Hour)) || !between.Before(hourly.Add(8*time.Hour)) {
+		t.Fatalf("the probe at %s does not fall between the wait's eighth hour and the hourly stage's", between)
+	}
+	res, w = move(between)
+	if res.Complete || res.Stopped != "" || w.Probes != 6 {
+		t.Fatalf("eight hours after the wait began, under eight into the hourly stage: %+v, stopped %q; want it still waiting", w, res.Stopped)
+	}
+	// The probe after it, eight hours into the hourly stage, gives up.
+	end := w.NextProbeAt
 	res, w = move(end)
-	if !res.Complete || res.Stopped != DrainStoppedOrigin || w.Probes != 6 {
+	if !res.Complete || res.Stopped != DrainStoppedOrigin || w.Probes != 7 {
 		t.Fatalf("eight hours into the hourly stage: stopped %q, complete %v, wait %+v; want stopped %q", res.Stopped, res.Complete, w, DrainStoppedOrigin)
 	}
 	for _, want := range []string{"could not fetch", t0.Format(time.RFC3339), "gives up", "`abcd drain` begins a new drain"} {
