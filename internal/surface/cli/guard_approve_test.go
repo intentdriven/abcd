@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // rpcReply is one JSON-RPC response the approver wrote.
@@ -22,11 +24,26 @@ type rpcReply struct {
 	} `json:"error"`
 }
 
-// approverSession runs `guard approve` over the given request lines and
-// returns its replies by id, failing on any stdout line that is not one.
-func approverSession(t *testing.T, dir string, lines ...string) (map[string]rpcReply, int) {
+// approverRepo is guardRepo as a repository with one commit, the run's base,
+// which it returns with the working tree.
+func approverRepo(t *testing.T) (dir, base string) {
 	t.Helper()
-	stdout, stderr, code := runGuard(strings.Join(lines, "\n")+"\n", "guard", "approve", "--dir="+dir)
+	repo := gittest.NewRepo(t)
+	repo.Write("README", "x\n")
+	repo.Commit("base")
+	if err := os.MkdirAll(filepath.Join(repo.Root(), ".abcd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo.Root())
+	return repo.Root(), strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+}
+
+// approverSession runs `guard approve` for the run whose base is base over
+// the given request lines and returns its replies by id, failing on any
+// stdout line that is not one.
+func approverSession(t *testing.T, dir, base string, lines ...string) (map[string]rpcReply, int) {
+	t.Helper()
+	stdout, stderr, code := runGuard(strings.Join(lines, "\n")+"\n", "guard", "approve", "--dir="+dir, "--base="+base)
 	out := map[string]rpcReply{}
 	sc := bufio.NewScanner(strings.NewReader(stdout))
 	sc.Buffer(make([]byte, 1<<20), 1<<20)
@@ -86,8 +103,8 @@ func answer(t *testing.T, r rpcReply) (behavior, message string, updated map[str
 // other tool's prompt, refuses a method it does not serve, and writes nothing
 // for a notification.
 func TestGuardApproveAnswersTheHarnessOverMCP(t *testing.T) {
-	dir := guardRepo(t)
-	replies, code := approverSession(t, dir,
+	dir, base := approverRepo(t)
+	replies, code := approverSession(t, dir, base,
 		`{"jsonrpc":"2.0","id":"server-discover-probe-1","method":"server/discover","params":{}}`,
 		`{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"claude-code","version":"2.1.301"}}}`,
 		`{"jsonrpc":"2.0","method":"notifications/initialized"}`,
@@ -150,21 +167,42 @@ func TestGuardApproveAnswersTheHarnessOverMCP(t *testing.T) {
 // the registry of the working tree it was started for, the repository's own
 // entries included.
 func TestGuardApproveReadsTheRepositorysRegistry(t *testing.T) {
-	dir := guardRepo(t)
+	dir, base := approverRepo(t)
 	if err := os.WriteFile(filepath.Join(dir, ".abcd", "guard.json"), []byte(`{"schema_version":1,"entries":{"make-deploy":{"pattern":{"command":"make","subcommand":"deploy"},"tier":"blocker","why":"deploys from a lane.","successor":"leave deploys to the person."}}}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	replies, _ := approverSession(t, dir, callLine(t, 1, "Bash", map[string]any{"command": "make deploy"}))
+	replies, _ := approverSession(t, dir, base, callLine(t, 1, "Bash", map[string]any{"command": "make deploy"}))
 	if b, msg, _ := answer(t, replies["1"]); b != "deny" || !strings.Contains(msg, "make-deploy") {
 		t.Errorf("a repository hazard: %s %q", b, msg)
 	}
 }
 
+// TestGuardApproveJudgesAgainstTheRunsBase: the approver judges against the
+// registry at the commit the run started on, so a weakening committed during
+// the run leaves no registry in force and every command is refused.
+func TestGuardApproveJudgesAgainstTheRunsBase(t *testing.T) {
+	dir, base := approverRepo(t)
+	if err := os.WriteFile(filepath.Join(dir, ".abcd", "guard.json"), []byte(`{"schema_version":1,"disabled":true}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{{"add", ".abcd/guard.json"}, {"-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "-m", "off"}} {
+		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	replies, _ := approverSession(t, dir, base, callLine(t, 1, "Bash", map[string]any{"command": "go test ./..."}))
+	if b, msg, _ := answer(t, replies["1"]); b != "deny" || !strings.Contains(msg, "registry-not-in-force") {
+		t.Errorf("a command under a registry switched off during the run: %s %q", b, msg)
+	}
+}
+
 // TestGuardApproveRefusesARelativeDirectory: the directory it judges for is
-// named whole, or nothing is served.
+// named whole, and the run's base as a commit's full object name, or nothing
+// is served.
 func TestGuardApproveRefusesARelativeDirectory(t *testing.T) {
-	guardRepo(t)
-	for _, args := range [][]string{{"guard", "approve"}, {"guard", "approve", "--dir=sub"}} {
+	dir := guardRepo(t)
+	for _, args := range [][]string{{"guard", "approve"}, {"guard", "approve", "--dir=sub"},
+		{"guard", "approve", "--dir=" + dir}, {"guard", "approve", "--dir=" + dir, "--base=HEAD"}} {
 		stdout, _, code := runGuard("", args...)
 		if code != 2 || stdout != "" {
 			t.Errorf("%v: exit %d, stdout %q", args, code, stdout)

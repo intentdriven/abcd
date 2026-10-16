@@ -19,8 +19,12 @@ import (
 func (f fakeEnv) shellRequest(role string) Request {
 	r := f.request(role)
 	r.Tools = []string{"Read", "Edit", "Bash", "Grep"}
+	r.Base = fakeBase
 	return r
 }
+
+// fakeBase is the commit a shell request says its run started on.
+const fakeBase = "0123456789abcdef0123456789abcdef01234567"
 
 // mcpLaunch is the approver the launch's --mcp-config names.
 type mcpLaunch struct {
@@ -81,7 +85,7 @@ func TestAShellLaunchCarriesTheGuardApprover(t *testing.T) {
 		t.Fatalf("--mcp-config servers = %+v; want abcd alone", cfg.MCPServers)
 	}
 	if srv.Type != "stdio" || srv.Command != c.approver ||
-		!slices.Equal(srv.Args, []string{"guard", "approve", "--dir=" + f.repo}) {
+		!slices.Equal(srv.Args, []string{"guard", "approve", "--dir=" + f.repo, "--base=" + fakeBase}) {
 		t.Errorf("the approver server = %+v", srv)
 	}
 	if argv[len(argv)-2] != "--" {
@@ -125,6 +129,26 @@ func TestAShellLaunchWithNoApproverIsNotStarted(t *testing.T) {
 	}
 	if f.launched(Claude) {
 		t.Fatal("the harness was started with no approver")
+	}
+}
+
+// TestAShellLaunchWithNoBaseIsNotStarted: the approver judges against the
+// registry at the commit the run started on, so a shell launch that names no
+// such commit is refused before it starts, and so is one whose base is not a
+// commit's full object name.
+func TestAShellLaunchWithNoBaseIsNotStarted(t *testing.T) {
+	for _, base := range []string{"", "HEAD", "0123456", "--all"} {
+		f := newFake(t, "ok", Claude)
+		c := newClaude("")
+		c.approver = "/opt/abcd/bin/abcd"
+		req := f.shellRequest("implementer")
+		req.Base = base
+		if _, _, err := c.Run(context.Background(), req); err == nil {
+			t.Errorf("base %q: the shell launch was started", base)
+		}
+		if f.launched(Claude) {
+			t.Errorf("base %q: the harness was started", base)
+		}
 	}
 }
 
@@ -183,11 +207,30 @@ func TestARunnerLaunchsPromptsAreAnsweredByTheGuard(t *testing.T) {
 	}
 	// The fake's PATH is its own bin directory; the build has already run,
 	// so nothing after this needs the toolchain.
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("no git on PATH")
+	}
 	f := newFake(t, "approve", Claude)
 	t.Setenv("HOME", t.TempDir())
+	// The approver reads the registry at the run's base, so the working tree
+	// is a repository with one commit, and git is on the approver's PATH.
+	for _, args := range [][]string{{"init", "-q"}, {"-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-q", "--allow-empty", "-m", "base"}} {
+		cmd := exec.Command(git, append([]string{"-C", f.repo}, args...)...)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	head, err := exec.Command(git, "-C", f.repo, "rev-parse", "HEAD").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", f.bin+string(os.PathListSeparator)+filepath.Dir(git))
 	c := newClaude("")
 	c.approver = abcd
-	if _, _, err := c.Run(context.Background(), f.shellRequest("implementer")); err != nil {
+	req := f.shellRequest("implementer")
+	req.Base = strings.TrimSpace(string(head))
+	if _, _, err := c.Run(context.Background(), req); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if argv := f.argv(t, Claude); !slices.Contains(argv, "--permission-prompt-tool="+ApproverTool) {

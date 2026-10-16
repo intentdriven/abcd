@@ -94,7 +94,7 @@ func load(repoRoot string) (Registry, error) {
 	// registry against what HEAD carries is refused, and the committed registry
 	// stays in force until the edit is committed.
 	committed := committedRegistry(repoRoot)
-	if what := weakening(committed, merged); what != "" {
+	if what := weakening(committed, merged, false); what != "" {
 		return committed, fmt.Errorf("%w: %s %s, and HEAD does not carry that edit; the committed registry is in force until it is committed", ErrUncommittedOverride, RepoRelPath, what)
 	}
 	return merged, nil
@@ -104,12 +104,16 @@ func load(repoRoot string) (Registry, error) {
 // bundled defaults merged with the committed file. Any state in which the committed file cannot be read — no repository, no commit,
 // no such file in HEAD, a git that does not answer, a committed file that does
 // not load — is the bundled defaults alone, the registry that needs no review.
-func committedRegistry(repoRoot string) Registry {
-	listed, err := gitutil.Run(repoRoot, "ls-tree", "-z", "--name-only", "HEAD", "--", RepoRelPath)
+func committedRegistry(repoRoot string) Registry { return registryAt(repoRoot, "HEAD") }
+
+// registryAt is committedRegistry read at commit instead of HEAD, a revision
+// git can read as one (HEAD, or a commit's full object name).
+func registryAt(repoRoot, commit string) Registry {
+	listed, err := gitutil.Run(repoRoot, "ls-tree", "-z", "--name-only", commit, "--", RepoRelPath)
 	if err != nil || strings.Trim(listed, "\x00") == "" {
 		return Defaults()
 	}
-	blob, err := gitutil.RunLimited(repoRoot, maxGuardFileBytes, "cat-file", "blob", "HEAD:./"+RepoRelPath)
+	blob, err := gitutil.RunLimited(repoRoot, maxGuardFileBytes, "cat-file", "blob", commit+":./"+RepoRelPath)
 	if err != nil {
 		return Defaults()
 	}
@@ -125,10 +129,11 @@ func committedRegistry(repoRoot string) Registry {
 }
 
 // weakening names the first way next is weaker than base, or returns "" when
-// it is not: switching the guard off, or changing a blocker's tier or pattern.
+// it is not: switching the guard off, or changing a blocker's tier or pattern,
+// and with every set a warn's as well (removing it, or changing its pattern).
 // A new entry, a stricter tier, and a changed why, successor or fixture set
 // strengthen or merely reword, and take effect uncommitted.
-func weakening(base, next Registry) string {
+func weakening(base, next Registry, every bool) string {
 	if next.Disabled && !base.Disabled {
 		return "switches the guard off"
 	}
@@ -139,20 +144,47 @@ func weakening(base, next Registry) string {
 	sort.Strings(ids)
 	for _, id := range ids {
 		b := base.Entries[id]
-		if b.Tier != TierBlocker {
+		if b.Tier != TierBlocker && !every {
 			continue
 		}
 		n, ok := next.Entries[id]
 		switch {
 		case !ok:
-			return fmt.Sprintf("removes the blocker %s", id)
-		case n.Tier != TierBlocker:
+			return fmt.Sprintf("removes the %s %s", b.Tier, id)
+		case b.Tier == TierBlocker && n.Tier != TierBlocker:
 			return fmt.Sprintf("retiers the blocker %s to %s", id, n.Tier)
 		case !reflect.DeepEqual(n.Pattern, b.Pattern):
-			return fmt.Sprintf("changes the pattern of the blocker %s", id)
+			return fmt.Sprintf("changes the pattern of the %s %s", b.Tier, id)
 		}
 	}
 	return ""
+}
+
+// LoadRepoAt is LoadRepo for an agent abcd started without a terminal, judged
+// against the registry the run started on: base, the commit the run's working
+// tree was cut from. The working tree's registry is the one in force only
+// where it is at least as strong as base's: a weakening of any entry, a warn
+// as much as a blocker, committed during the run or not, leaves no registry in
+// force (ErrWeakenedSinceBase), and so does a base that names no commit.
+func LoadRepoAt(repoRoot, base string) Loaded {
+	ld := LoadRepo(repoRoot)
+	if ld.Posture != LoadClean {
+		return ld
+	}
+	if !gitutil.IsFullSHA(base) {
+		return Loaded{Registry: ld.Registry, Posture: LoadRepoDropped,
+			Err: fmt.Errorf("%w: the run names no base commit to read the registry at", ErrWeakenedSinceBase)}
+	}
+	if _, err := gitutil.ResolveCommit(repoRoot, base); err != nil {
+		return Loaded{Registry: ld.Registry, Posture: LoadRepoDropped,
+			Err: fmt.Errorf("%w: the run's base %s is not a commit in this repository", ErrWeakenedSinceBase, base[:12])}
+	}
+	at := registryAt(repoRoot, base)
+	if what := weakening(at, ld.Registry, true); what != "" {
+		return Loaded{Registry: at, Posture: LoadRepoDropped,
+			Err: fmt.Errorf("%w: %s %s against the run's base %s", ErrWeakenedSinceBase, RepoRelPath, what, base[:12])}
+	}
+	return ld
 }
 
 // LoadPosture is what a load produced, and so what a front door owes the

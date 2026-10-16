@@ -39,4 +39,9 @@ var (
 	// reviewable act (spc-16), so the edit is refused and the committed registry
 	// stays in force until it is committed (iss-147).
 	ErrUncommittedOverride = errors.New("guard: uncommitted override")
+	// ErrWeakenedSinceBase is the refusal of a registry weaker than the one at
+	// the commit an agent's run started on (LoadRepoAt): an agent abcd started
+	// without a terminal is judged against that one, and accepts only a
+	// stronger one.
+	ErrWeakenedSinceBase = errors.New("guard: registry weaker than at the run's base")
 )

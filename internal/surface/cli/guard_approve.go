@@ -26,6 +26,7 @@ import (
 	"regexp"
 
 	"github.com/intentdriven/abcd/internal/core/guard"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/spf13/cobra"
 )
 
@@ -41,14 +42,17 @@ const approveProtocol = "2025-06-18"
 var protocolRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 func newGuardApproveCommand() *cobra.Command {
-	var dir string
+	var dir, base string
 	cmd := &cobra.Command{
-		Use: "approve --dir <working-tree>",
+		Use: "approve --dir <working-tree> --base <commit>",
 		Long: "Answers the permission prompts of an agent abcd started without a terminal,\n" +
 			"over MCP on stdio: the claude runner starts it, as the one server of a launch\n" +
 			"whose role's contract grants the shell, and names its tool, approve, as the\n" +
 			"harness's permission prompt tool. Each prompt is judged against the hazard\n" +
-			"registry of the working tree --dir names, read afresh for every prompt.\n\n" +
+			"registry of the working tree --dir names, read afresh for every prompt, and\n" +
+			"in force only where it is at least as strong as the registry at --base, the\n" +
+			"commit the run started on: any weakening since then, of a warn or a blocker,\n" +
+			"committed or not, refuses every command.\n\n" +
 			"A shell command is approved only when the guard reads it whole and clears\n" +
 			"it: no registry entry and no reading signal, a warn included; no note about\n" +
 			"the check, such as a script that does not exist; the registry the repository\n" +
@@ -68,15 +72,20 @@ func newGuardApproveCommand() *cobra.Command {
 			if !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
 				return &exitError{Code: 2, Msg: "guard approve: --dir must name the working tree as a clean absolute path"}
 			}
+			if !gitutil.IsFullSHA(base) {
+				return &exitError{Code: 2, Msg: "guard approve: --base must name the commit the run started on by its full object name"}
+			}
 			return serveApprover(cmd.InOrStdin(), cmd.OutOrStdout(), func(tool string, input json.RawMessage) (guard.Approval, json.RawMessage) {
 				// Each prompt reads the registry afresh, as the hook does, so
-				// a run judges against the repository as it stands.
-				ld := guard.LoadRepo(rulesRoot(dir, cmd.ErrOrStderr()))
+				// a run judges against the repository as it stands, and only
+				// where that is at least as strong as it was at the base.
+				ld := guard.LoadRepoAt(rulesRoot(dir, cmd.ErrOrStderr()), base)
 				return guard.ApprovePrompt(ld, guard.NewFiles(dir), tool, input)
 			})
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "the working tree the agent runs in, as an absolute path")
+	cmd.Flags().StringVar(&base, "base", "", "the commit the run started on, by its full object name")
 	return cmd
 }
 

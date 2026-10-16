@@ -76,15 +76,16 @@ func grantsShell(tools []string) bool { return slices.Contains(tools, "Bash") }
 
 // approverConfig is the --mcp-config value that starts the approver: one
 // stdio server, abcd's own binary, judging commands against the registry of
-// the working tree the role runs in.
-func (c *ClaudeCLI) approverConfig(dir string) string {
+// the working tree the role runs in, as it stood at base, the commit the run
+// started on.
+func (c *ClaudeCLI) approverConfig(dir, base string) string {
 	type server struct {
 		Type    string   `json:"type"`
 		Command string   `json:"command"`
 		Args    []string `json:"args"`
 	}
 	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {"abcd": {
-		Type: "stdio", Command: c.approver, Args: []string{"guard", "approve", "--dir=" + dir},
+		Type: "stdio", Command: c.approver, Args: []string{"guard", "approve", "--dir=" + dir, "--base=" + base},
 	}}})
 	return string(raw)
 }
@@ -110,7 +111,7 @@ func (c *ClaudeCLI) args(req Request) []string {
 		// The guard answers for the shell, so the harness asks it rather
 		// than running every command unasked.
 		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
-		a = append(a, "--mcp-config="+c.approverConfig(req.Dir), "--strict-mcp-config",
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base), "--strict-mcp-config",
 			"--permission-prompt-tool="+ApproverTool)
 	}
 	if len(tools) > 0 {
@@ -142,6 +143,12 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		// or have every command refused; neither is the launch asked for.
 		return Answer{}, nil, fail(Claude, ReasonFailed,
 			"abcd cannot name its own binary to answer the run's permission prompts, so the shell launch was not started")
+	}
+	if grantsShell(req.Tools) && req.Base == "" {
+		// The approver judges against the registry at the run's base; with
+		// none named it would have nothing to judge against.
+		return Answer{}, nil, fail(Claude, ReasonFailed,
+			"the run names no base commit for its permission prompts to be judged against, so the shell launch was not started")
 	}
 	bin, err := c.launch.admit(Claude, "claude", req.Dir, req.Checkout)
 	if err != nil {
