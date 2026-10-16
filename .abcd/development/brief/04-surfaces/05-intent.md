@@ -562,13 +562,13 @@ Findings appended to the intent's `## Audit Notes` section. Manual re-run of the
 
 For bundle-member intents, this role runs *per intent* against the same delivered reality (each member's acceptance criteria checked separately).
 
-#### The audit loop — record-only vs loop-to-acceptance (itd-50 / spc-52, predecessor store)
+#### The audit loop — record-only vs loop-to-acceptance (staged: itd-50 / spc-52, predecessor store)
 
 Role 1 records per-criterion verdicts; **itd-50 adds the POLICY that decides what happens to a recorded verdict.** The policy rides the review-queue drainer on the run seam (adr-27) — it is NEVER in the pure on-close lifecycle hook (the lifecycle close stays a pure data function; the mode logic lives in the drainer/policy layer).
 
-**Two audit-loop modes, facilitator-elected per intent** via the `audit_mode` frontmatter key:
+**Two audit-loop modes, facilitator-elected per intent** via the `audit_mode` frontmatter key — a design target: no intent carries the key and no shipped code reads `audit_mode` or `audit_budget`. What ships records the verdicts in `## Audit Notes`, and an audit that fails or comes back undecided captures one issue carrying the owed check; no work re-opens.
 
-- **`record-only`** (the default, and today's behaviour) — a `NOT_MET` is written to `## Audit Notes`; no re-work is triggered. An **absent** `audit_mode` key resolves to `record-only` (additive, spc-28/spc-43-compatible — predecessor store).
+- **`record-only`** (the default) — a `NOT_MET` is written to `## Audit Notes`; no re-work is triggered. An **absent** `audit_mode` key resolves to `record-only` (additive, spc-28/spc-43-compatible — predecessor store).
 - **`loop-to-acceptance`** — a `NOT_MET` re-opens the linked work and iterates against the same acceptance criteria until they read `MET`, bounded by `audit_budget` (the spec-grain SHIP/NEEDS_WORK fix-loop lifted to the intent grain). See `05-internals/03-configuration.md` for the `audit_mode` / `audit_budget` keys, the default budget (`3`), and the fail-closed rule for a malformed/zero/negative budget.
 
 **Full state-coverage table** (every Family-2 rollup maps to a defined action — no dead-ends; the loop trigger is `NOT_MET` only):
