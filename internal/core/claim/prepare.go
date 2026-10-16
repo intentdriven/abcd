@@ -23,7 +23,9 @@ type Options struct {
 	// ForgeUser answers whose GitHub account the forge token gh resolves from
 	// the session's environment belongs to (login and numeric id): the user endpoint, asked only by an
 	// explicit act when git's identity names no holder. nil means the real
-	// call, `gh api user`; tests set it so none touches the network.
+	// call, `gh api user`, asked once per process for each checkout and forge
+	// credential; tests set it so none touches the network, and an answer it
+	// gives is never cached.
 	ForgeUser func(root string) (login string, id int64, err error)
 }
 

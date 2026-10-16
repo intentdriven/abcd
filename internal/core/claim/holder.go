@@ -1,12 +1,16 @@
 package claim
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/intentdriven/abcd/internal/core/github"
 	toolid "github.com/intentdriven/abcd/internal/core/identity"
@@ -124,7 +128,7 @@ func ResolveHolder(root string, o Options) (Holder, error) {
 //     configuration (~/.abcd.noindex/config.json), the only layer read for it;
 //  3. when net allows it, the forge token gh resolves from the session's
 //     environment, asked whose account it is through the user endpoint
-//     (o.ForgeUser).
+//     (o.ForgeUser), once per process for each checkout and credential.
 //
 // When it is not a person's (unset, or a machine's), the token alone: the
 // author then comes from the token's account, and the machine key is skipped
@@ -250,9 +254,92 @@ func tokenHolder(root string, o Options) (Holder, error) {
 	return Holder{Login: login, ID: id, NoReply: noreply, Source: HolderFromToken}, nil
 }
 
-// forgeUser is the real user-endpoint call: `gh api user` through the one
-// door to GitHub, its failure reduced to a class.
+// forgeUser is the real user-endpoint call, asked once per process for each
+// checkout and forge credential (iss-2610161015433495): a drain move makes
+// several reservation acts, and each asked GitHub the same question again.
+// Only a definite answer, a valid login with a positive id, is kept; a failure
+// is returned and asked again by the next act. An injected Options.ForgeUser
+// never reaches this cache.
 func forgeUser(root string) (string, int64, error) {
+	e := holderCache.entry(forgeKey(root))
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.known {
+		return e.login, e.id, nil
+	}
+	login, id, err := askForgeUser(root)
+	if err == nil && validUsername(login) && id > 0 {
+		e.login, e.id, e.known = login, id, true
+	}
+	return login, id, err
+}
+
+// forgeCredentialEnv is the environment that decides which gh answers the user
+// endpoint and with which token: the PATH gh is found on, the tokens gh reads
+// for github.com ahead of its own store, and the directories that store is
+// found under.
+var forgeCredentialEnv = []string{"PATH", "GH_TOKEN", "GITHUB_TOKEN", "GH_CONFIG_DIR", "XDG_CONFIG_HOME", "HOME", "AppData"}
+
+// holderCacheKey is what decides the user endpoint's answer: the checkout it is
+// asked from and a digest of the forge credential's environment. The digest,
+// never the token itself, is what the cache holds.
+type holderCacheKey struct {
+	root       string
+	credential [sha256.Size]byte
+}
+
+func forgeKey(root string) holderCacheKey {
+	h := sha256.New()
+	for _, name := range forgeCredentialEnv {
+		v, set := os.LookupEnv(name)
+		fmt.Fprintf(h, "%s\x00%t\x00%d\x00%s\x00", name, set, len(v), v)
+	}
+	k := holderCacheKey{root: filepath.Clean(root)}
+	copy(k.credential[:], h.Sum(nil))
+	return k
+}
+
+// forgeCache is the process's answers from the user endpoint, one entry per
+// key. Each entry has its own lock, held across its call, so concurrent acts
+// for one key ask once and acts for another key are never held up by it.
+type forgeCache struct {
+	mu      sync.Mutex
+	entries map[holderCacheKey]*forgeEntry
+}
+
+type forgeEntry struct {
+	mu    sync.Mutex
+	known bool
+	login string
+	id    int64
+}
+
+var holderCache = &forgeCache{}
+
+func (c *forgeCache) entry(k holderCacheKey) *forgeEntry {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.entries == nil {
+		c.entries = map[holderCacheKey]*forgeEntry{}
+	}
+	e := c.entries[k]
+	if e == nil {
+		e = &forgeEntry{}
+		c.entries[k] = e
+	}
+	return e
+}
+
+// reset forgets every answer; tests call it so none reads another's.
+func (c *forgeCache) reset() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = nil
+}
+
+// askForgeUser is one `gh api user` call through the one door to GitHub, its
+// failure reduced to a class.
+func askForgeUser(root string) (string, int64, error) {
 	out, err := github.API(root, nil, "user")
 	if err != nil {
 		return "", 0, forgeClass(err)
