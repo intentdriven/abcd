@@ -15,9 +15,10 @@ agent's, beside `/abcd:reserve`. An announcement informs and grants nothing:
 it never approves, lends or hands over anything. What is really a hold is a
 reservation (`/abcd:reserve`), not an announcement.
 
-**What it does to the remote.** The command's documented meaning is a fetch
-and a push: it fetches every status branch and origin's default branch, then
-writes one commit to your own status branch, `abcd-status/<your GitHub
+**What it does to the remote.** The command's documented meaning is a listing,
+a fetch and a push: it lists the status branches on origin first (`git
+ls-remote`, which changes nothing here), fetches each one named by a lower-case
+GitHub username, by name, with origin's default branch, then writes one commit to your own status branch, `abcd-status/<your GitHub
 username in lower case>` on the remote named `origin`, and to nothing else.
 The commit changes no file (its tree is the empty tree); its trailers carry the
 kind, the item, you as sender, this working copy, the time sent and the
@@ -86,7 +87,9 @@ origin. Relay the reason; each names the field and the limit, or what to set.
 - **Not sent.** A push that lost a race to another of the user's sessions is
   rebuilt on the tip that won and pushed again, up to three times. After that,
   or when origin refuses the push for any other reason, the refusal starts
-  `not sent:` and says why. Do not retry in a loop. A push git reports as
+  `not sent:` and says why. Each refused push is followed by one more listing
+  and fetch, to tell a push that landed anyway from a lost race. Do not retry
+  in a loop. A push git reports as
   refused that origin took anyway is reported sent, not sent twice.
 - **May have reached origin.** When a push was made and what became of it
   cannot be read back (the fetch after it failed, or the rebuilt commit could

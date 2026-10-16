@@ -24,6 +24,12 @@ type namespace struct {
 	stateDir string
 	// noun names the branches in a refusal: "the reservations".
 	noun string
+	// only, when not nil, is the one set of branches the fetch names, each by
+	// its own refspec, in place of the globbed one: the status branches'
+	// fetch, which lists origin's branches first and fetches only those whose
+	// names it reads (listStatusBranches). An empty set names no branch of the
+	// namespace.
+	only []string
 }
 
 // reservations is the reservation branches' namespace.
@@ -32,6 +38,20 @@ var reservations = namespace{remote: RefPrefix, tracking: TrackingPrefix, stateD
 // refspec is the namespace's forced, globbed refspec: every branch under the
 // prefix on origin to the same name under the tracking prefix.
 func (ns namespace) refspec() string { return "+" + ns.remote + "*:" + ns.tracking + "*" }
+
+// refspecs is every refspec a fetch of the namespace names: the globbed one,
+// or with only set, one forced refspec per branch it names. A name in only is
+// already validated by its family.
+func (ns namespace) refspecs() []string {
+	if ns.only == nil {
+		return []string{ns.refspec()}
+	}
+	specs := make([]string, 0, len(ns.only))
+	for _, name := range ns.only {
+		specs = append(specs, "+"+ns.ref(name)+":"+ns.track(name))
+	}
+	return specs
+}
 
 // ref is the full ref of the branch name in the namespace on origin, and
 // track this checkout's copy of it. name is already validated by its family.

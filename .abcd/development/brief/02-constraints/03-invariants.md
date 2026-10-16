@@ -49,17 +49,19 @@ The following are non-negotiable invariants — any architectural choice that vi
    in which case the machine key is skipped.
    The status branches (itd-2609151838312703, `abcd-status/<username>` on
    `origin`, one per person) are fetched and pushed only by verbs whose
-   documented meaning says so: `announce`, whose meaning is one fetch of every
-   status branch and origin's default branch (and a second, of the status
-   branches alone, when the default branch cannot be read), then one push to
-   the sender's own status branch, with one more fetch after each push origin
-   refuses, to tell a push that landed anyway and a lost race from another
+   documented meaning says so: `announce`, whose meaning is one listing of
+   the status branches on origin (`git ls-remote`), then one fetch of each
+   status branch whose name is a lower-case GitHub username and origin's
+   default branch (and a second, of those status branches alone, when the
+   default branch cannot be read), then one push to the sender's own status
+   branch, with one more listing and fetch after each push origin refuses, to tell a push that landed anyway and a lost race from another
    refusal, and one more push for each of at most three retries after a push
    that lost a race, and, as a reservation act may, one call to the forge's
    user endpoint when git's identity does not name the sender (invariant 10).
-   The whole namespace is fetched,
-   never one branch, since a fetch naming a branch origin does not hold yet
-   fails. The embargo check an announcement passes reads only this machine's
+   The namespace is never fetched by a glob, since two names differing only
+   in case break such a fetch on a case-insensitive filesystem, and a branch
+   is fetched only when the listing names it, since a fetch naming a branch
+   origin does not hold yet fails. The embargo check an announcement passes reads only this machine's
    store.
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it

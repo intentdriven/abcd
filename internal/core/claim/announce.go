@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -62,10 +63,68 @@ var announcementFamily = &family{
 	shorten: "an announcement carries no free text, so this is a defect in abcd",
 }
 
-// statusBranches is the status branches' namespace. The whole namespace is
-// fetched, never one branch: a fetch naming a branch origin does not hold yet
-// (a person's first announcement) fails.
+// statusBranches is the status branches' namespace. It is never fetched by a
+// glob: two names that differ only in case (abcd-status/octo and
+// abcd-status/Octo) break a globbed fetch on a case-insensitive filesystem.
+// Nor is a branch named blind, since a fetch naming a branch origin does not
+// hold yet (a person's first announcement) fails. Origin is listed first, and
+// each branch it holds whose name is a lower-case username is fetched by its
+// own refspec (fetchStatus).
 var statusBranches = namespace{remote: StatusRefPrefix, tracking: StatusTrackingPrefix, stateDir: tierRelDir + "/status", noun: "the status branches"}
+
+// listStatusBranches asks origin which status branches it holds (`git
+// ls-remote origin refs/heads/abcd-status/*`): the names that are lower-case
+// GitHub usernames, sorted, and every other name, which is not fetched.
+func listStatusBranches(root string) (names, skipped []string, err error) {
+	args := []string{"ls-remote", "--refs", Remote, StatusRefPrefix + "*"}
+	trace(args...)
+	out, err := gitutil.Net(root, args...)
+	if err != nil {
+		return nil, nil, errors.New(redacted(err))
+	}
+	names = []string{}
+	for _, line := range strings.Split(out, "\n") {
+		sha, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
+		if !ok || !gitutil.IsFullSHA(sha) {
+			continue
+		}
+		name, ok := strings.CutPrefix(ref, StatusRefPrefix)
+		if !ok || name == "" {
+			continue
+		}
+		if statusName(name) {
+			names = append(names, name)
+		} else {
+			skipped = append(skipped, name)
+		}
+	}
+	sort.Strings(names)
+	sort.Strings(skipped)
+	return names, skipped, nil
+}
+
+// statusName reports whether name, after abcd-status/, is a branch abcd reads
+// and writes: a GitHub username in lower case.
+func statusName(name string) bool { return validUsername(name) && name == strings.ToLower(name) }
+
+// fetchStatus is announce's read of the remote: it lists the status branches
+// on origin, then fetches, in one command, each one whose name is a
+// lower-case username, by its own refspec, with origin's default branch when
+// ref names it (fetchWith). listed reports whether origin holds the sender's
+// own branch, so a copy of it this checkout kept from before is never taken
+// for its tip.
+func fetchStatus(root string, now time.Time, ref, branch string) (gap string, listed bool, err error) {
+	names, _, err := listStatusBranches(root)
+	if err != nil {
+		return "", false, &FetchError{Reason: redacted(err), what: statusBranches.noun, outcome: noAnnouncement}
+	}
+	ns := statusBranches
+	ns.only = names
+	if gap, err = fetchWith(root, now, noAnnouncement, ref, ns); err != nil {
+		return "", false, err
+	}
+	return gap, slices.Contains(names, branch), nil
+}
 
 // noAnnouncement ends a refusal met reading or writing the remote.
 const noAnnouncement = "no announcement was sent"
@@ -355,12 +414,13 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 }
 
 // Announce sends one announcement: it checks and composes it, asks the
-// embargo check (C5), fetches the status branches and the default branch in
-// one fetch (the status branches alone in a second when the default branch
-// cannot be read), refuses a record the default branch does not hold (C4),
+// embargo check (C5), lists the status branches on origin and fetches each one
+// whose name is a lower-case username, by its own refspec, with the default
+// branch in one fetch (the status branches alone in a second when the default
+// branch cannot be read), refuses a record the default branch does not hold (C4),
 // writes one empty-tree commit on the sender's status branch as the person,
 // and makes one plain push. Each refused push is followed by one fetch, the
-// last included: a branch that now holds the commit means the push landed
+// last included (after the same listing): a branch that now holds the commit means the push landed
 // although git reported it refused, and it is sent; a branch that moved means
 // a race lost to another of the person's sessions, and the commit is rebuilt
 // on the tip that won and pushed again, up to three times (C2); a branch that
@@ -407,7 +467,7 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 				Remote, Remote, Remote, Remote, redacted(err), p.msg.Item, noAnnouncement)
 		}
 	}
-	gap, err := fetchWith(root, p.now, noAnnouncement, defaultRef, statusBranches)
+	gap, listed, err := fetchStatus(root, p.now, defaultRef, p.branch)
 	if err != nil {
 		return AnnounceResult{}, err
 	}
@@ -416,7 +476,7 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 			return AnnounceResult{}, err
 		}
 	}
-	parent, err := statusTip(root, p.branch)
+	parent, err := statusTip(root, p.branch, listed)
 	if err != nil {
 		return AnnounceResult{}, err
 	}
@@ -456,11 +516,12 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 		// branch cannot be read back, whether the push landed is not known, so
 		// it is not called "not sent": it is an *AnnounceError counting the
 		// push.
-		if _, ferr := fetch(root, p.now, noAnnouncement, statusBranches); ferr != nil {
+		_, listed, ferr := fetchStatus(root, p.now, originDefault(root), p.branch)
+		if ferr != nil {
 			return AnnounceResult{}, fmt.Errorf("%s; %s could not be fetched afterwards to see whether the push landed: %s",
 				refused, branch, withoutOutcome(ferr))
 		}
-		next, terr := statusTip(root, p.branch)
+		next, terr := statusTip(root, p.branch, listed)
 		if terr != nil {
 			return AnnounceResult{}, fmt.Errorf("%s; %s could not be fetched afterwards to see whether the push landed: %s",
 				refused, branch, withoutOutcome(terr))
@@ -515,8 +576,11 @@ func withoutOutcome(err error) string {
 }
 
 // statusTip is the commit the person's status branch ends in as just fetched,
-// "" when origin holds none yet.
-func statusTip(root, branch string) (string, error) {
+// "" when origin holds none yet: listed is whether origin's listing named it.
+func statusTip(root, branch string, listed bool) (string, error) {
+	if !listed {
+		return "", nil
+	}
 	ref := statusBranches.track(branch)
 	name, typ, ok, err := resolveRef(root, ref)
 	if err != nil {

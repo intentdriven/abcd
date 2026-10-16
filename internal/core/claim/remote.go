@@ -517,20 +517,30 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 		return "", refuse("a fetch names no namespace; %s", outcome)
 	}
 	args := []string{"fetch", "--prune", "--no-tags", Remote}
+	bare := len(args)
 	for _, ns := range spaces {
-		args = append(args, ns.refspec())
+		args = append(args, ns.refspecs()...)
 	}
 	withDefault := args
 	if ref != "" {
 		branch := strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/")
 		withDefault = append(append([]string(nil), args...), "+refs/heads/"+branch+":"+ref)
 	}
-	trace(withDefault...)
-	_, ferr := gitutil.Net(root, withDefault...)
+	// A fetch naming no refspec at all (a listed namespace origin holds
+	// nothing of, and no default branch) is not run: a bare `git fetch
+	// origin` would fetch whatever this clone is configured to.
+	var ferr error
+	if len(withDefault) > bare {
+		trace(withDefault...)
+		_, ferr = gitutil.Net(root, withDefault...)
+	}
 	if ferr != nil && ref != "" {
 		gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
-		trace(args...)
-		_, ferr = gitutil.Net(root, args...)
+		ferr = nil
+		if len(args) > bare {
+			trace(args...)
+			_, ferr = gitutil.Net(root, args...)
+		}
 	}
 	if ferr != nil {
 		e := &FetchError{Reason: redacted(ferr)}

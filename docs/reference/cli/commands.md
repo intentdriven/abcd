@@ -181,7 +181,8 @@ question points at the item, and the conversation happens there.
 The announcement is one commit that changes no file on your own status branch,
 abcd-status/<your GitHub username in lower case> on the remote named origin,
 carrying the kind, the item, you as sender, this working copy, the time sent
-and the expiry. The verb fetches the status branches and origin's default
+and the expiry. The verb lists the status branches on origin (git ls-remote),
+fetches each one named by a lower-case GitHub username, with origin's default
 branch, then makes one plain fast-forward push with the repository's hooks
 running. A push that lost a race to another of your sessions is rebuilt on the
 new tip and pushed again, up to three times; then it says "not sent" and why.

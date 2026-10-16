@@ -867,3 +867,93 @@ func TestAnUnclassedAnnounceFailureCountsThePushesTried(t *testing.T) {
 		t.Fatalf("announceFailure = %#v; want an *AnnounceError counting 2 pushes to abcd-status/octo, wrapping %v", got, inner)
 	}
 }
+
+// twinOnOrigin gives origin a status branch named twin pointing at commit,
+// written straight into the packed refs beside the others, sorted as git
+// sorts them: no case-insensitive filesystem holds two loose refs whose names
+// differ only in case.
+func (w *world) twinOnOrigin(twin, commit string) {
+	w.t.Helper()
+	runGit(w.t, w.bare, "pack-refs", "--all")
+	packed := filepath.Join(w.bare, "packed-refs")
+	data, err := os.ReadFile(packed)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	header, refs := lines[0], append(lines[1:], commit+" "+StatusRefPrefix+twin)
+	slices.SortFunc(refs, func(a, b string) int {
+		_, ra, _ := strings.Cut(a, " ")
+		_, rb, _ := strings.Cut(b, " ")
+		return strings.Compare(ra, rb)
+	})
+	if err := os.WriteFile(packed, []byte(header+"\n"+strings.Join(refs, "\n")+"\n"), 0o644); err != nil {
+		w.t.Fatal(err)
+	}
+}
+
+// TestACaseCollidingStatusBranchDoesNotStopAnAnnouncement is build note 25:
+// origin holds abcd-status/octo beside abcd-status/Octo, which a globbed fetch
+// cannot write on a case-insensitive filesystem, so a glob would refuse every
+// announcement there. announce lists origin's status branches first
+// (git ls-remote) and fetches each lower-case username by its own refspec:
+// the sender's branch is fetched and extended, and the twin is never fetched.
+func TestACaseCollidingStatusBranchDoesNotStopAnAnnouncement(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	first, err := p.announce("merging", "#1012")
+	if err != nil {
+		t.Fatalf("the first announcement: %v", err)
+	}
+	// The twin ends in a commit of its own, so the two names cannot share one
+	// loose ref here by chance.
+	other := runGit(t, w.bare, "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "a twin")
+	w.twinOnOrigin("Octo", other)
+	if refs := runGit(t, w.bare, "for-each-ref", "--format=%(refname)", StatusRefPrefix); !strings.Contains(refs, StatusRefPrefix+"Octo") ||
+		!strings.Contains(refs, StatusRefPrefix+"octo") {
+		t.Fatalf("origin holds %q; want both names", refs)
+	}
+	w.set(t0.Add(time.Minute))
+	log := traced(t)
+	next, err := p.announce("merged", "#1012")
+	if err != nil {
+		t.Fatalf("announce beside a case-colliding twin = %v; want it sent", err)
+	}
+	if w.parentOf(next.Commit) != first.Commit || w.statusTip("octo") != next.Commit {
+		t.Fatalf("the announcement %+v is not the child of %s at the tip", next, first.Commit)
+	}
+	if refs := p.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); strings.Contains(refs, "Octo") {
+		t.Fatalf("the twin named Octo was fetched: %s", refs)
+	}
+	subs := log.subcommands()
+	if i, j := slices.Index(subs, "ls-remote"), slices.Index(subs, "fetch"); i < 0 || j < 0 || i > j {
+		t.Fatalf("git ran %v; want the status branches listed before the fetch", subs)
+	}
+	log.mu.Lock()
+	defer log.mu.Unlock()
+	for _, c := range log.cmds {
+		if c[0] == "fetch" && strings.Contains(strings.Join(c, " "), "*") {
+			t.Fatalf("the fetch named a glob: git %s", strings.Join(c, " "))
+		}
+	}
+}
+
+// TestAnAnnouncementWithNothingToFetchFetchesNothingElse: with no status
+// branch on origin and no default branch named here, the fetch names no
+// refspec at all, so it is not run (a bare `git fetch origin` would fetch
+// whatever the clone is configured to); the announcement is still sent.
+func TestAnAnnouncementWithNothingToFetchFetchesNothingElse(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	p.git("update-ref", "-d", "refs/remotes/origin/HEAD")
+	p.git("update-ref", "-d", "refs/remotes/origin/main")
+	if _, err := p.announce("merging", "#1012"); err != nil {
+		t.Fatalf("announce = %v; want it sent", err)
+	}
+	if w.statusTip("octo") == "" {
+		t.Fatal("the announcement did not reach origin")
+	}
+	if refs := p.git("for-each-ref", "--format=%(refname)", "refs/remotes/origin/main"); refs != "" {
+		t.Fatalf("the fetch brought in %s, which it did not name", refs)
+	}
+}
