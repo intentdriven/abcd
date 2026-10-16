@@ -42,7 +42,13 @@ The following are non-negotiable invariants — any architectural choice that vi
    reservation read the view as last fetched, from disk, and never ask the
    forge's user endpoint. Each act above that writes a reservation may also
    make one call to that endpoint when git's identity does not name the
-   holder (invariant 10). `reserve --holder`'s meaning is that user-endpoint
+   holder (invariant 10). Each such act that reserves afresh (a reservation
+   over no tip or a released one, or a take-over, whether `reserve`'s, a
+   `build` start's or a `drain` lane's) may also make one call to the forge's
+   repository endpoint, when origin is on github.com, to ask whether origin is
+   a fork, at most once per process for a repository; a renewal and a release
+   never make it, and an unanswered call lets the act through with a warning
+   (spc-2610161044461448, step 10). `reserve --holder`'s meaning is that user-endpoint
    call alone, and nothing else, made in either of two cases: (a) git's
    identity is a person's but carries neither a GitHub no-reply address nor a
    machine key; (b) git's identity is not a person's (unset, or a machine's),

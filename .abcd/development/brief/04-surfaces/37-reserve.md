@@ -100,6 +100,22 @@ shipped or superseded on origin's default branch counts as released whatever
 its reservation says; when that branch cannot be read, the act goes on and the
 output says the check was skipped.
 
+A reservation over no tip or a released one, and a take-over, first ask the
+forge whether origin is a fork (spc-2610161044461448, step 10;
+dcn-2610161040378209): a reservation pushed to a fork is invisible to every
+account working on the repository it was made from, so it holds nothing for
+them. The origin read is where git pushes it (`git remote get-url --push
+origin`); when that is a github.com repository the forge names a fork, the act
+is refused before anything is fetched or pushed, naming the repository it was
+made from and the command that points origin there (`git remote set-url origin
+<url>`, in origin's own URL form). The forge is asked through the one door to
+GitHub (`gh api repos/<owner>/<name>`), at most once per process for a
+repository, its failure included. A renewal and a release never ask, an origin
+that is not on github.com is not asked, and a forge that does not answer (gh
+missing, out of time, refused, or answering what cannot be read) lets the act
+through, and the output says the check was skipped and why, in abcd's own words
+rather than gh's.
+
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past ten live reservations, counted by username
 across every record, is refused naming the ten; a renewal, and a take-over of
@@ -139,11 +155,12 @@ Exit 0 when the act reached origin, or a release was already made. Exit 3, the
 back-off, when another person's reservation is live or lapsed under the
 margin, an unreadable one is within its hold, another push won the race, or the
 same person's other copy holds it and no take-over was asked for, or a
-footprint path is in another live reservation's footprint. Exit 2 on the cap
-and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
+footprint path is in another live reservation's footprint. Exit 2 on the cap,
+on a fork origin, and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
-`effective_expiry`, `commit`, `replaced` for a take-over and
-`derived_unchecked` when the default branch could not be read.
+`effective_expiry`, `commit`, `replaced` for a take-over,
+`derived_unchecked` when the default branch could not be read, and
+`fork_unchecked` when the forge could not say whether origin is a fork.
 
 ## Where this sits
 

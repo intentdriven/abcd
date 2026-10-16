@@ -37,6 +37,7 @@ type reserveOutput struct {
 	Commit           string           `json:"commit"`
 	Replaced         *reserveReplaced `json:"replaced,omitempty"`
 	DerivedUnchecked string           `json:"derived_unchecked,omitempty"`
+	ForkUnchecked    string           `json:"fork_unchecked,omitempty"`
 }
 
 // reserveReplaced is the reservation a take-over replaced.
@@ -208,7 +209,8 @@ func reserveView(res claim.Result) reserveOutput {
 	out := reserveOutput{Act: res.Act, Record: res.Record, Holder: res.Holder, Copy: res.Copy,
 		Footprint: make([]string, 0, len(res.Footprint)), ClaimedAt: rfc3339(res.ClaimedAt),
 		EffectiveExpiry: rfc3339(res.ExpiresAt), Commit: res.Commit,
-		DerivedUnchecked: termsafe.Sanitize(fsutil.RedactHome(res.DerivedUnchecked))}
+		DerivedUnchecked: termsafe.Sanitize(fsutil.RedactHome(res.DerivedUnchecked)),
+		ForkUnchecked:    termsafe.Sanitize(fsutil.RedactHome(res.ForkUnchecked))}
 	for _, f := range res.Footprint {
 		out.Footprint = append(out.Footprint, termsafe.Sanitize(f))
 	}
@@ -256,6 +258,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if out.DerivedUnchecked != "" {
 		fmt.Fprintf(w, "  not checked: whether %s is already finished on origin's default branch (%s)\n", out.Record, out.DerivedUnchecked)
+	}
+	if out.ForkUnchecked != "" {
+		fmt.Fprintf(w, "  not checked: whether origin is a fork (%s)\n", out.ForkUnchecked)
 	}
 }
 

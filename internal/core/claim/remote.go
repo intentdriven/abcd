@@ -66,6 +66,11 @@ type Result struct {
 	// whether the record is already finished there was not checked; "" when
 	// it was read (or origin has none).
 	DerivedUnchecked string
+	// ForkUnchecked is why a fresh reservation could not ask the forge whether
+	// a github.com origin is a fork, so the act went on without the check; ""
+	// when it was checked, not asked (a renewal, a release, an origin off
+	// github.com) or found no fork.
+	ForkUnchecked string
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -101,6 +106,12 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	p, err := prepare(root, req, o, originPresent)
 	if err != nil {
 		return Result{}, err
+	}
+	forkUnchecked := ""
+	if !p.req.Release && !p.req.Renew {
+		if forkUnchecked, err = checkFork(root); err != nil {
+			return Result{}, err
+		}
 	}
 	tree, err := emptyTree(root)
 	if err != nil {
@@ -140,6 +151,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	res.Commit = sha
 	res.Copy = CopyThis
 	res.DerivedUnchecked = p.derivedGap
+	res.ForkUnchecked = forkUnchecked
 	return res, nil
 }
 
