@@ -357,7 +357,7 @@ const SLIDE_MAX = { guided: 1240, shared: 1300 };
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 // ---------------------------------------------------------------------------
-// Storage: only the display name is remembered; the relays the person
+// Storage: only the display name and the viewer's design are remembered; the relays the person
 // confirmed are kept for this tab, and the sign-in's PKCE verifier waits in
 // session storage across GitHub's redirect. Every access may throw (private
 // windows, blocked storage).

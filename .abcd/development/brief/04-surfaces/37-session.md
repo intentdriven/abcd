@@ -175,8 +175,8 @@ text is put on the page as text, never as markup.
   snapshot of the seeded state. The seed is sent before the invite shows: a
   QR code of the page's address with the relay and code in the fragment, the
   code in large letters, and buttons for a new code and to end the session.
-- **Editing.** The session opens on the brief's press release. A file list
-  grouped by folder, and a Markdown editor bound to
+- **Editing.** The session opens on the brief's press release. A list of
+  the brief's documents, grouped by folder, and a Markdown editor bound to
   the shared text, with each participant's cursor and name. A team member's
   edits are sent as they are typed and the page registers its client id for
   credit; edits made while the connection is down are sent when it returns,
@@ -188,9 +188,31 @@ text is put on the page as text, never as markup.
   neither still matches, and records the guest, the approving member, the text
   before and after, and the time, in one change; Decline drops it, and both
   are recorded so every member's panel agrees.
-
-Sending the session back to GitHub is the next step; the page shows that it
-is coming.
+- **Sending.** A team member opens Send to GitHub, which lists each changed
+  passage with its credit, the text before and after, and the route the host
+  chose: one pull request for the session, or a pre-filled issue per passage.
+- **Two designs.** The page has two looks over the same elements and the same
+  logic, which the product thinker chose on 2026-10-16 so the team can try
+  them against each other. Guided, the default, has large cards, numbered
+  areas, a "What happens next" note, and arrival cards whose main buttons
+  share a line, on one control height per size and a 4 px spacing scale.
+  Shared puts a live team bar over the document, with an icon-only Invite at
+  its end, an icon-only Send to GitHub that widens to its label on hover or
+  keyboard focus, and Suggestions alone on the right, mirroring Documents on
+  the left; as the window narrows, labels fade and fold to their icons, least
+  important first, never cut, wrapped or overlapping; it has no "What happens
+  next", and every overlay has a Close X at its top right. Ctrl+[ and Ctrl+]
+  switch between the designs on every platform, the Mac included (never Cmd),
+  with a short toast naming the design; the choice is kept per viewer in the
+  browser's local storage, beside the display name, and an unreadable or
+  unknown value falls back to Guided. In both, Alt+Shift+D shows or hides the
+  documents and Alt+Shift+S the right panel, as their tooltips say; a hidden
+  sidebar gives its room to the brief, the state lasts through every change
+  of screen, width and design, and on a phone the sidebars become sheets.
+  Escape closes the overlay on top. Both follow the light or dark setting and
+  reduced motion, reach every control from the keyboard with a visible focus,
+  and use the system's own font, inline SVG icons and one cobalt accent token
+  (#2457d6, or #7aa2ff in dark).
 
 ## Exit codes
 
