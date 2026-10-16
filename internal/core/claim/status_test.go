@@ -355,7 +355,10 @@ func TestAStatusBranchWhoseContinuityIsNotVerifiedIsDoubtful(t *testing.T) {
 		}
 	}
 	got := pat.notes()
-	for _, want := range []string{"- abcd-status/quinn (doubtful): " + DoubtRewritten, "asking #21", "asking #32", "merging #9"} {
+	// Three doubts, summed up in one line that keeps its place after eight
+	// announcements.
+	for _, want := range []string{"- 3 doubts about the status branches, not shown one by one; `abcd status` lists them\n",
+		"asking #21", "asking #32", "merging #9"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the block:\n%s\nwant it to carry %q", got, want)
 		}
@@ -641,5 +644,35 @@ func TestAFirstReadPastTheWindowIsDoubtful(t *testing.T) {
 	}
 	if got := pat.notes(); !strings.Contains(got, "- abcd-status/maya (doubtful): "+DoubtMore+"\n") {
 		t.Fatalf("the block:\n%s\nwant maya doubtful", got)
+	}
+}
+
+// TestJunkDoubtsNeverBuryAnAnnouncement is C18 against a flood of doubts:
+// twelve branches each passing a merge of commits that do not read as
+// announcements raise 36 doubts; the block shows the one real announcement
+// first and sums the doubts up in one line, and none is shown again.
+func TestJunkDoubtsNeverBuryAnAnnouncement(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	maya.announceAs("merging", "#1012")
+	for i := 1; i <= 12; i++ {
+		b := fmt.Sprintf("j%02d", i)
+		left := w.pushStatus(b, "junk left "+b+"\n", "")
+		right := w.pushStatus(b, "junk right "+b+"\n", "")
+		w.pushStatus(b, "junk merge "+b+"\n", "", left, right)
+	}
+	pat.status(nil)
+	got := pat.notes()
+	lines := strings.Split(strings.TrimSpace(got), "\n")
+	if len(lines) < 5 || lines[3] != "- @maya (claimed): merging #1012, for 30 min" {
+		t.Fatalf("the block:\n%s\nwant maya's announcement first", got)
+	}
+	if !strings.Contains(got, "\n- 36 doubts about the status branches, not shown one by one; `abcd status` lists them\n") ||
+		strings.Contains(got, "abcd-status/j") || strings.Contains(got, "more: `abcd status`") {
+		t.Fatalf("the block:\n%s\nwant the doubts summed up in one line", got)
+	}
+	if again := pat.notes(); again != "" {
+		t.Fatalf("the next prompt shows %q; want nothing", again)
 	}
 }

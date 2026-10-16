@@ -92,18 +92,29 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 }
 
 // noteLine is one line the block may show, with the key it is kept shown by.
+// A doubt's weight is how many doubts it stands for; a summing-up line
+// carries the lines it folds in place of a key.
 type noteLine struct {
 	key, text string
+	weight    int
+	folded    []noteLine
 }
 
-// notesFor is the block for v: the lines not yet shown, the failed fetches,
-// the holds and the doubts first, then the newest announcement per item, at
-// most maxNoteLines, then a count of the rest.
+// maxDoubtLines is the most doubts the block shows one by one: more are
+// summed up in one line, so a flood of them never pushes an announcement out.
+const maxDoubtLines = 2
+
+// notesFor is the block for v: the lines not yet shown, the failed fetches
+// and the holds first, then the newest announcement per item, then the
+// doubts (each branch found doubtful, each commit that does not read as an
+// announcement, the count of names not read), summed up in one line when
+// there are more than maxDoubtLines and always kept a place, at most
+// maxNoteLines in all, then a count of the rest.
 func notesFor(root string, v StatusView, now time.Time) Notes {
 	if !v.Origin {
 		return Notes{}
 	}
-	var first, news []noteLine
+	var first, news, doubts []noteLine
 	for _, u := range []struct {
 		what string
 		u    *Unread
@@ -117,41 +128,52 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 			text: termsafe.Sanitize(h.Line())})
 	}
 	for _, d := range v.Doubts {
-		first = append(first, noteLine{key: hashName("doubt\x00" + d.Branch + "\x00" + d.Reason + "\x00" + d.Tip), text: DoubtLine(d)})
+		doubts = append(doubts, noteLine{key: hashName("doubt\x00" + d.Branch + "\x00" + d.Reason + "\x00" + d.Tip), text: DoubtLine(d), weight: 1})
 	}
 	if v.UnreadNames > 0 {
 		// Counted, never named: a pusher chose each name. The line is kept
 		// shown by the set it counts, so a new name shows it again.
-		first = append(first, noteLine{key: hashName("unread-names\x00" + strings.Join(v.unreadNames, "\x00")),
-			text: UnreadNamesLine(v.UnreadNames) + "; `abcd status` says how to list them"})
+		doubts = append(doubts, noteLine{key: hashName("unread-names\x00" + strings.Join(v.unreadNames, "\x00")),
+			text: UnreadNamesLine(v.UnreadNames) + "; `abcd status` says how to list them", weight: v.UnreadNames})
 	}
 	// The newest announcement per item; the rest are counted.
 	seenItem := map[string]bool{}
 	var superseded []noteLine
 	for _, a := range v.Announcements {
 		l := noteLine{key: a.Commit, text: a.Line(now)}
-		item := a.Item
 		if a.Unreadable != "" {
-			item = "unreadable\x00" + a.Commit
+			l.weight = 1
+			doubts = append(doubts, l)
+			continue
 		}
-		if seenItem[item] {
+		if seenItem[a.Item] {
 			superseded = append(superseded, l)
 			continue
 		}
-		seenItem[item] = true
+		seenItem[a.Item] = true
 		news = append(news, l)
 	}
-	var shown, counted []noteLine
-	for _, l := range append(append(first, news...), superseded...) {
-		if shownKept(root, l.key) {
-			continue
+	doubts = unshown(root, doubts)
+	if len(doubts) > maxDoubtLines {
+		n := 0
+		for _, d := range doubts {
+			n += d.weight
 		}
-		if len(shown) < maxNoteLines && !isSuperseded(l, superseded) {
+		doubts = []noteLine{{folded: doubts,
+			text: fmt.Sprintf("%d doubts about the status branches, not shown one by one; `abcd status` lists them", n)}}
+	}
+	// The doubts keep their lines, at most maxDoubtLines, after the rest:
+	// neither can push the other out of the block.
+	var shown, counted []noteLine
+	for _, l := range unshown(root, append(first, news...)) {
+		if len(shown) < maxNoteLines-len(doubts) {
 			shown = append(shown, l)
 		} else {
 			counted = append(counted, l)
 		}
 	}
+	shown = append(shown, doubts...)
+	counted = append(counted, unshown(root, superseded)...)
 	if len(shown) == 0 && len(counted) == 0 {
 		return Notes{}
 	}
@@ -161,27 +183,40 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 	keys := make([]string, 0, len(shown)+len(counted))
 	for _, l := range shown {
 		b.WriteString("- " + l.text + "\n")
-		keys = append(keys, l.key)
+		keys = append(keys, l.keys()...)
 	}
 	if len(counted) > 0 {
-		fmt.Fprintf(&b, "- and %d more: `abcd status` lists them all\n", len(counted))
 		for _, l := range counted {
-			keys = append(keys, l.key)
+			keys = append(keys, l.keys()...)
 		}
+		fmt.Fprintf(&b, "- and %d more: `abcd status` lists them all\n", len(counted))
 	}
 	b.WriteString(GrantsNothing + "\n")
 	return Notes{Text: b.String(), keys: keys, root: root}
 }
 
-// isSuperseded reports whether l is an announcement an item's newer one
-// stands in for.
-func isSuperseded(l noteLine, superseded []noteLine) bool {
-	for _, s := range superseded {
-		if s.key == l.key {
-			return true
+// unshown is the lines of ls not kept as shown; a summing-up line is always
+// unshown, since it is built from unshown lines alone.
+func unshown(root string, ls []noteLine) []noteLine {
+	var out []noteLine
+	for _, l := range ls {
+		if l.folded != nil || !shownKept(root, l.key) {
+			out = append(out, l)
 		}
 	}
-	return false
+	return out
+}
+
+// keys is every key l is kept shown by: its own, or each line it sums up.
+func (l noteLine) keys() []string {
+	if l.folded == nil {
+		return []string{l.key}
+	}
+	ks := make([]string, 0, len(l.folded))
+	for _, f := range l.folded {
+		ks = append(ks, f.key)
+	}
+	return ks
 }
 
 // shownKept reports whether key was kept as shown.
