@@ -87,39 +87,71 @@ func (h HandBack) KeptNote(id string) string {
 const keptWalk = 256
 
 // keptHandBack is the hand-back a plain release of j, this person's
-// reservation from this copy, keeps: the first tombstone on the reservation
+// reservation from this copy, keeps: the standing hand-back the reservation
+// was made over (standingBelow). why is the reason the walk could not be
+// read, "" when it was (dcn-2610161806433529).
+func keptHandBack(p *prepared, j judged) (kept *tip, why string) {
+	kept, err := standingBelow(p, j)
+	if err != nil {
+		return nil, "could not read whether the reservation on " + p.id + " was made over a hand-back (" + redacted(err) + "), so the tombstone keeps none"
+	}
+	return kept, ""
+}
+
+// standingBelow is the hand-back tombstone the reservation at j's tip was
+// made over, when it still stands: the first tombstone on the reservation
 // branch's first-parent line below the tip, when it marks a hand-back whose
 // record origin's default branch holds unchanged (handBackStands' reading).
 // Every reservation commit above it, renewals and take-overs among them, is
 // passed over; an unreadable one, a plain tombstone, the branch's root and the
-// bound each end the walk with nothing kept. why is the reason the walk could
-// not be read, "" when it was (dcn-2610161806433529).
-func keptHandBack(p *prepared, j judged) (kept *tip, why string) {
+// bound each end the walk with nil. The error is a walk that could not be
+// read.
+func standingBelow(p *prepared, j judged) (*tip, error) {
 	line, err := firstParents(p.root, trackingName(p.id), j.Commit, keptWalk)
 	if err != nil {
-		return nil, "could not read whether the reservation on " + p.id + " was made over a hand-back (" + redacted(err) + "), so the tombstone keeps none"
+		return nil, err
 	}
 	tree, err := emptyTree(p.root)
 	if err != nil {
-		return nil, "could not read whether the reservation on " + p.id + " was made over a hand-back (" + redacted(err) + "), so the tombstone keeps none"
+		return nil, err
 	}
 	for _, c := range line[1:] {
 		h, m, err := readCommit(p.root, c, tree, p.now, false, reservationParser(p.id))
 		if err != nil {
-			return nil, "could not read whether the reservation on " + p.id + " was made over a hand-back (" + redacted(err) + "), so the tombstone keeps none"
+			return nil, err
 		}
 		if h.Unreadable != "" {
-			return nil, ""
+			return nil, nil
 		}
 		if !m.released() {
 			continue
 		}
 		if m.HandedBack == "" || changedSince(m.RecordBlob, j.blob) {
-			return nil, ""
+			return nil, nil
 		}
-		return &tip{head: h, message: m}, ""
+		return &tip{head: h, message: m}, nil
 	}
-	return nil, ""
+	return nil, nil
+}
+
+// drainOverHandBack refuses a drain's take-over or renewal of the reservation
+// at j's tip when that reservation was made over a hand-back that still
+// stands: a person reserved the issue over it by hand, and a reservation of
+// theirs, lapsed or not, hands the issue to no drain. A walk that cannot be
+// read backs off too, since it cannot say the hand-back does not stand
+// (dcn-2610161931122606).
+func drainOverHandBack(p *prepared, j judged) error {
+	kept, err := standingBelow(p, j)
+	if err != nil {
+		return backOff("could not read whether the reservation on %s was made over a hand-back (%s), so a drain neither takes it over nor renews it; take other work; %s",
+			p.id, redacted(err), nothingPushed)
+	}
+	if kept == nil {
+		return nil
+	}
+	return backOff("the reservation on %s was made over a hand-back by %s as %s at %s, and its record on %s's default branch is unchanged since: "+
+		"a drain neither takes it over nor renews it until a person changes the record; take other work; %s",
+		p.id, kept.Holder, kept.HandedBack, stamp(kept.ReleasedAt), Remote, nothingPushed)
 }
 
 // firstParent is commit's first parent, "" for a root commit.

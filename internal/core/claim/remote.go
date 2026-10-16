@@ -290,14 +290,30 @@ func pushRejection(stdout string, err error) error {
 // writes and the parent it writes it on, or the refusal.
 func decide(p *prepared, j judged) (Result, message, string, error) {
 	// A release and a renewal take their own rows before the finished-record
-	// back-off below: the holder's tombstone still lands, and a renewal is told
-	// the default branch released it, which the land fence reads.
+	// back-off decideReserve makes: the holder's tombstone still lands, and a
+	// renewal is told the default branch released it, which the land fence
+	// reads.
 	if p.req.Release {
 		return decideRelease(p, j)
 	}
 	if p.req.Renew {
 		return decideRenew(p, j)
 	}
+	res, m, parent, err := decideReserve(p, j)
+	// A drain's take-over or renewal of a reservation made over a standing
+	// hand-back backs off it, as a drain's reservation over the hand-back's
+	// own tombstone does: the tip alone does not show it.
+	if err == nil && p.req.Drain && (res.Act == ActTakenOver || res.Act == ActRenewed) {
+		if err := drainOverHandBack(p, j); err != nil {
+			return Result{}, message{}, "", err
+		}
+	}
+	return res, m, parent, err
+}
+
+// decideReserve is a reservation's rows of the push table: reserved afresh,
+// renewed, taken over, or backed off.
+func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 	m := p.reservation()
 	res := Result{Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt, ExpiresAt: m.ExpiresAt}
 	now := p.now
