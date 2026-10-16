@@ -52,7 +52,9 @@ alone:
 - its `related_intents` names no intent (an issue linked to an intent goes
   through that intent, whatever the repository's record says), unless the
   consistency pass filed it: the two intents such a record names are the ones
-  its contradiction is between, so it waits only for a person's remedy;
+  its contradiction is between, so once a person has written its remedy it is
+  judged by the other fields below as if it named no intent (an intent it was
+  promoted into, which names it back in `related_issues`, still owns it);
 - its category is one the rule takes;
 - its severity is one the rule takes;
 - it carries a `remedy:` (`abcd capture --remedy "<fix>"`, which every new

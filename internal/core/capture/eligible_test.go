@@ -694,8 +694,12 @@ func invariantText(page string, n int) (string, bool) {
 const promotedClause = "an issue whose `related_intents` names an intent is handed back by the rule `promoted`, so a machine never takes alone an issue an intent already owns"
 
 // consistencyClause is invariant 19's exception to the promoted clause for
-// the consistency pass's own records (ruling H12, dcn-2610161425496537).
-const consistencyClause = "a record the consistency pass files is not one, since the intents it names are the two its contradiction is between"
+// the consistency pass's own records (ruling H12, dcn-2610161425496537): the
+// intents the pass named do not hold the record, its other fields do, and an
+// intent it was promoted into still does.
+const consistencyClause = "a record the consistency pass files is not one, since the intents it names are the two its contradiction is between: " +
+	"it is listed as ineligible while it carries the automatic filer's remedy and, once a person has written its remedy, " +
+	"is judged by its other fields as if it named no intent, while an intent it was promoted into, which names it back in `related_issues`, owns it as any intent does"
 
 // TestADeferralIsHandedBackWhenTheCheckoutHoldsNoReleaseTag: a shallow clone
 // (fetch-depth 1, the unattended drain's likely checkout) fetches no tags, so

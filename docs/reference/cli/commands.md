@@ -1133,11 +1133,12 @@ whose related_intents names an intent is handed back as promoted, naming the
 intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit
 <itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still
 takes it; a record the consistency pass files is the exception, since the intents
-it names are the two it found contradicting, and it waits only for a person's
-remedy. An issue whose remedy opens "Waits on", or whose deferral past the
-current release tag is live, or names a release tag this checkout lacks, is handed
-back too. Every other open issue is handed back, listed as ineligible, or skipped
-naming its blocker, by the rule that excluded it.
+it names are the two it found contradicting: once a person has written its remedy,
+it is judged by its other fields as if it named no intent, and an intent it was
+promoted into still owns it. An issue whose remedy opens "Waits on", or whose
+deferral past the current release tag is live, or names a release tag this checkout
+lacks, is handed back too. Every other open issue is handed back, listed as
+ineligible, or skipped naming its blocker, by the rule that excluded it.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
 order a drain takes them (by category, then severity, then oldest first), and

@@ -47,11 +47,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit\n" +
 			"<itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still\n" +
 			"takes it; a record the consistency pass files is the exception, since the intents\n" +
-			"it names are the two it found contradicting, and it waits only for a person's\n" +
-			"remedy. An issue whose remedy opens \"Waits on\", or whose deferral past the\n" +
-			"current release tag is live, or names a release tag this checkout lacks, is handed\n" +
-			"back too. Every other open issue is handed back, listed as ineligible, or skipped\n" +
-			"naming its blocker, by the rule that excluded it.\n\n" +
+			"it names are the two it found contradicting: once a person has written its remedy,\n" +
+			"it is judged by its other fields as if it named no intent, and an intent it was\n" +
+			"promoted into still owns it. An issue whose remedy opens \"Waits on\", or whose\n" +
+			"deferral past the current release tag is live, or names a release tag this checkout\n" +
+			"lacks, is handed back too. Every other open issue is handed back, listed as\n" +
+			"ineligible, or skipped naming its blocker, by the rule that excluded it.\n\n" +
 			"--dry-run shows every open issue's disposition, the eligible ones first in the\n" +
 			"order a drain takes them (by category, then severity, then oldest first), and\n" +
 			"writes nothing. The host judgement over each eligible remedy does not run; it can\n" +
