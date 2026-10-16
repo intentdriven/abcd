@@ -69,7 +69,10 @@ behind more than the branches left before it. Once the cap has cut a branch
 short, it takes half its share from its newest unread commits and the rest
 from its oldest, and is marked read at the newest commit beneath which every
 commit is read, so every unread commit is read within a bounded number of
-intakes however fast the branch grows.
+intakes while the commits above the mark stay within the walk's limit of
+1,000. Once more than that lies above the mark, the walk reads only the
+newest 1,000 and the mark passes what lies beneath them unread; the branch is
+then shown as doubtful, since more was added than one read covers.
 The commit's raw text is never kept and never shown. An announcement stands
 for the life it was sent with from that first fetch, not by the sender's
 clock (C9); one whose own expiry passed more than an hour before the first
