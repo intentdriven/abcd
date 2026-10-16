@@ -139,10 +139,11 @@ The verb can lint a repo other than the current working directory.
 
 **No gate in this repository invokes bare `abcd lint`.** The v1 rule set backs
 onboarding and runs when a human types it; wiring it into CI is a separate
-decision, tracked as iss-2608231000561060. Its targets are gated: `abcd lint
-docs` runs in the `docs-lint` make target and in CI, `abcd lint site` in the
-`site-render` make target and in CI, and `abcd lint outbound` in the commit-msg
-hook and `scripts/check-attribution.sh`.
+decision, tracked as iss-2608231000561060. Three of its targets are gated:
+`abcd lint docs` runs in the `docs-lint` make target and in CI, `abcd lint site`
+in the `site-render` make target and in CI, and `abcd lint outbound` in the
+commit-msg hook, `scripts/check-attribution.sh` and CI's attribution workflow;
+`abcd lint identity` runs in no gate.
 
 ## The v1 rule set
 
