@@ -2443,3 +2443,17 @@ The planning interview added two criteria from the product thinker's pushback on
 - a cap on how many announcements one prompt shows.
 
 A third added criterion, that an announcement names nobody, was struck when the product thinker returned to GitHub usernames.
+
+## 2026-10-16: drains on several accounts (facilitator-on-delegation, routing not put to the product thinker)
+
+| part | type | home |
+|---|---|---|
+| planning from origin's default branch; held issues skipped before judging; a per-account start; hand-backs published on origin; waits at the cap and when only held work is left; renewing the lane in progress; refusing a fork origin; refusing once on an unreadable worktree; shared generated files and narrowed directory footprints | capability | intent itd-2610161016394967 (bundle drain-many-accounts) |
+| a lane that keeps refusing handed back as stuck; parked lanes read from their pull requests; lanes merging the default branch and regenerating generated files | capability | intent itd-2610161016391855 (the same bundle) |
+| the judgement routed to a command-line model; take-over after a restart; pace carried into every lane and changeable; changed records re-admitted; a failed fetch waited out; the holder cached; lane stages shown in abcd peers | capability | intent itd-2610161016401115 (the same bundle), building on the other two |
+| an issue naming an intent is not drained | rule clause | brief invariant 19, amended by the bundle's step 4 |
+| new drain network acts | rule clause | brief invariant 7's drain clause, amended by each step that adds one |
+| the hand-back kind and lane stage on the shared remote | cited | the reservation family (adr-2610031352212697) and the fixed-form rule (dcn-2610150000000001); no new trust rule |
+| regenerating generated files after a lane's merge | cited | the implementer's own fix round under the host's permissions (dcn-2610161040384068); abcd runs no repository-declared command, so no new trust rule |
+
+Verdict: FILE-AS-IS for each draft, as three members of one bundle. The product thinker delegated the planning, so no question put the table; the routing is the facilitator's and is graded as unconfirmed. The drafts were filed from 18 captures of a multi-account drain investigation the same day, already split by outcome (sharing the work, unsticking lanes, running unattended), so the decomposition moved nothing between them. Two parts route to clauses in existing invariants rather than to new records. The routing moved once after two adversarial reviews: the first design had abcd run a regenerate command the repository declares, which the design review showed to be a new trust boundary, so regeneration became the implementer's fix round and the trust-rule row fell away.

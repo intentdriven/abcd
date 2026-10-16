@@ -347,7 +347,7 @@ func TestIntakeRefusesMalformedListingWritingNothing(t *testing.T) {
 		advisoryJSON("GHSA-1111-1111-1111", "triage", "high", "another sample report", "another body")))
 	_, err := Intake(IntakeRequest{Home: f.home, RepoRoot: f.repo.Root()})
 	mustRefuse(t, err, "advisory id")
-	p, _ := storePath(f.home, f.repo.Root())
+	p := storePlace(t, f)
 	if open, _ := filepath.Glob(filepath.Join(p, ".abcd", "work", "issues", "open", "iss-*")); len(open) != 0 {
 		t.Fatalf("a refused intake minted %d records", len(open))
 	}
