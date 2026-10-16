@@ -889,7 +889,8 @@ func TestTheStatusFetchNamesItsBranchesOnStdin(t *testing.T) {
 // with flushing on, as a shipped binary writes, a prompt whose read is the
 // first to take in 300 new announcements reads what one intake takes and
 // keeps every line it showed or counted as shown in one unflushed file, well
-// inside the hook's second, and the next prompt shows none again.
+// inside the hook's second; each prompt after it takes in the next intake and
+// shows none of those lines again.
 func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	t.Setenv(fsutil.SkipFlushEnv, "0")
 	w := newWorld(t)
@@ -914,11 +915,14 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	if took > 500*time.Millisecond {
 		t.Fatalf("reading and marking 300 announcements took %s; want it near its cost, under 500 ms", took)
 	}
-	// One intake takes in the newest maxIntakeCommits; the block shows nine
-	// of them and the branch's doubt, and counts the rest.
+	// One intake takes in the newest maxIntakeCommits and leaves the rest
+	// for the next; the block shows nine of them, counts the rest and says
+	// the branch is not read yet, and the branch is not doubtful for the cap
+	// alone.
 	want := fmt.Sprintf("- and %d more: `abcd status` lists them all\n", maxIntakeCommits-(maxNoteLines-1))
-	if !strings.Contains(n.Text, want) || !strings.Contains(n.Text, "abcd-status/maya (doubtful): "+DoubtMore) {
-		t.Fatalf("the block:\n%s\nwant %q and maya doubtful", n.Text, want)
+	notYet := "- 1 status branch not read yet: one read takes in at most 100 new commits; the next prompt or `abcd status` reads on\n"
+	if !strings.Contains(n.Text, want) || !strings.Contains(n.Text, notYet) || strings.Contains(n.Text, "(doubtful)") || !strings.Contains(n.Text, "#300") {
+		t.Fatalf("the block:\n%s\nwant %q, %q, the newest #300 and no doubt", n.Text, want, notYet)
 	}
 	shownFiles := func() []string {
 		t.Helper()
@@ -931,9 +935,22 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	if got := shownFiles(); len(got) != 1 || !strings.HasPrefix(got[0], blockPrefix) {
 		t.Fatalf("shown/ holds %q after one block; want one block file", got)
 	}
-	if again := pat.notes(); again != "" {
-		t.Fatalf("the next prompt shows %q; want nothing", again)
+	// Each prompt after it takes in the next maxIntakeCommits and shows
+	// those, never a line shown before, until the whole flood is taken in;
+	// the prompt after that shows nothing.
+	for i, newest := range []string{"#200", "#100"} {
+		next := pat.notes()
+		if !strings.Contains(next, "merging "+newest+",") || strings.Contains(next, "merging #300,") {
+			t.Fatalf("prompt %d after the first shows:\n%s\nwant the next intake's newest, %s, and nothing shown before", i+1, next, newest)
+		}
+		if left := strings.Contains(next, notYet); left != (newest == "#200") {
+			t.Fatalf("prompt %d after the first shows:\n%s\nsays the branch is not read yet: %v", i+1, next, left)
+		}
 	}
+	if again := pat.notes(); again != "" {
+		t.Fatalf("once the flood is taken in, the next prompt shows %q; want nothing", again)
+	}
+	blocks := len(shownFiles())
 
 	// A block whose hook ran out of time keeps nothing: its lines are shown
 	// again at the next prompt rather than held past the budget.
@@ -945,13 +962,13 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	}
 	late.by = time.Now().Add(-time.Millisecond)
 	late.MarkShown()
-	if got := shownFiles(); len(got) != 1 {
-		t.Fatalf("shown/ holds %q after a block marked past its budget; want only the first block's file", got)
+	if got := shownFiles(); len(got) != blocks {
+		t.Fatalf("shown/ holds %q after a block marked past its budget; want only the %d earlier blocks' files", got, blocks)
 	}
 	if got := pat.notes(); !strings.Contains(got, "merged #1") {
 		t.Fatalf("after a block marked past its budget, the block:\n%s\nwant the line again", got)
 	}
-	if got := shownFiles(); len(got) != 2 {
-		t.Fatalf("shown/ holds %q after two blocks marked; want one file per block", got)
+	if got := shownFiles(); len(got) != blocks+1 {
+		t.Fatalf("shown/ holds %q after %d blocks marked; want one file per block", got, blocks+1)
 	}
 }

@@ -148,7 +148,7 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 		// Nothing is left of the deadline: no read is started, and the block
 		// says so in its own words.
 		why := "no time was left to read it at this prompt"
-		return Notes{Text: NotesHeading + "\n\nstatus unavailable: " + why + "; `abcd status` reads it in full\n"},
+		return Notes{Text: NotesHeading + "\n\nstatus unavailable: " + why + "; `abcd status` reads it without this prompt's deadline\n"},
 			fmt.Errorf("%w: %s", ErrStatusUnavailable, why)
 	}
 	done := make(chan answer, 1)
@@ -185,7 +185,7 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 		// carries it.
 		if errors.Is(got.err, context.DeadlineExceeded) || errors.Is(got.err, context.Canceled) {
 			why := "reading it here took longer than this prompt allows"
-			return Notes{Text: NotesHeading + "\n\nstatus unavailable: " + why + "; `abcd status` reads it in full\n"},
+			return Notes{Text: NotesHeading + "\n\nstatus unavailable: " + why + "; `abcd status` reads it without this prompt's deadline\n"},
 				fmt.Errorf("%w: %s", ErrStatusUnavailable, why)
 		}
 		return Notes{Text: NotesHeading + "\n\nstatus unavailable: it could not be read here; `abcd status` says why\n"},
@@ -261,6 +261,11 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 		if c.n > 0 {
 			doubts = append(doubts, noteLine{key: hashedKey(fmt.Sprintf("not-read\x00%s\x00%d", c.what, c.n)), text: c.line(c.n), weight: c.n})
 		}
+	}
+	if v.BranchesLeft > 0 {
+		// Kept shown by what is left, so the line is shown again once a
+		// later read has read on and something is still left.
+		doubts = append(doubts, noteLine{key: hashedKey("left\x00" + v.leftKey), text: BranchesLeftLine(v.BranchesLeft), weight: v.BranchesLeft})
 	}
 	// The newest announcement per item; the rest are counted.
 	seenItem := map[string]bool{}
@@ -419,6 +424,18 @@ func BranchesNotReadLine(n int) string {
 		return fmt.Sprintf("1 status branch past the %d one read takes, not read", maxStatusBranches)
 	}
 	return fmt.Sprintf("%d status branches past the %d one read takes, not read", n, maxStatusBranches)
+}
+
+// BranchesLeftLine counts the status branches holding more new commits than
+// one read takes in (maxIntakeCommits): "1 status branch not read yet: one
+// read takes in at most 100 new commits; the next prompt or `abcd status`
+// reads on".
+func BranchesLeftLine(n int) string {
+	what := "1 status branch"
+	if n != 1 {
+		what = fmt.Sprintf("%d status branches", n)
+	}
+	return fmt.Sprintf("%s not read yet: one read takes in at most %d new commits; the next prompt or `abcd status` reads on", what, maxIntakeCommits)
 }
 
 // AnnouncementsNotReadLine counts the announcements kept here past the most

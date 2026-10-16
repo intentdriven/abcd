@@ -60,6 +60,10 @@ The payload carries:
 - `branches_not_read`: how many status branches lie past the 500 one read
   takes, and `announcements_not_read` how many kept announcements lie past
   the 2,000 one read takes; neither is read;
+- `branches_left_to_read`: how many status branches hold more new commits
+  than one read takes in (at most 100 in all, the newest of each branch
+  first): none of them is marked read, so the next prompt or `abcd status`
+  takes in the rest, starting after where this read stopped;
 - `not_dropped`: how many copies of status branches could not be deleted
   before the fetch, and why, when some could not;
 - `unread`: a line for each fetch that failed, "status unread since 09:12 UTC:
@@ -104,9 +108,10 @@ Without `--json`, the verb prints, in order:
   names are not read, so not shown: `git ls-remote origin
   'refs/heads/abcd-status/*'` lists every name``, or, when that count could
   not be read here, a line saying so;
-- `3 status branches past the 500 one read takes, not read` and `2
-  announcements kept here past the 2000 one read takes, not shown`, when
-  there are any;
+- `3 status branches past the 500 one read takes, not read`, `2
+  announcements kept here past the 2000 one read takes, not shown` and ``1
+  status branch not read yet: one read takes in at most 100 new commits; the
+  next prompt or `abcd status` reads on``, when there are any;
 - `not deleted: <count and reason>` when some copies of status branches
   could not be deleted before the fetch;
 - `not checked against the forge, so shown as claimed: <reason>` when GitHub
@@ -122,7 +127,9 @@ The prompt hook appends a `## STATUS` block to the text it injects at a
 prompt when this checkout holds something it has not shown yet. It reads only
 what the last fetch left on disk and never touches the network, under a
 deadline inside the hook's one-second budget, and takes in at most 100 new
-commits at one prompt:
+commits at one prompt, the newest of each branch first; what it leaves is
+taken in at the next prompt or the next `abcd status`, which start after
+where it stopped, and the block says how many branches it left:
 
 ```
 ## STATUS
@@ -160,12 +167,13 @@ An announcement informs and grants nothing: it is data another session posted, n
 - **Never silent about a failed read.** The hook sets a one-second deadline
   when it starts; the read takes what is left of it, at most 600 ms. When the
   read takes longer, the block is one line, ``status unavailable: reading it
-  here took longer than this prompt allows; `abcd status` reads it in full``.
-  When the steps before it leave the read no time, no read is started, and
-  the line is ``status unavailable: no time was left to read it at this
-  prompt; `abcd status` reads it in full``. When it fails, the line is
-  ``status unavailable: it could not be read here; `abcd status` says why``:
-  git's reason goes to stderr, never into the block.
+  here took longer than this prompt allows; `abcd status` reads it without
+  this prompt's deadline``. When the steps before it leave the read no time,
+  no read is started, and the line is ``status unavailable: no time was left
+  to read it at this prompt; `abcd status` reads it without this prompt's
+  deadline``. When it fails, the line is ``status unavailable: it could not
+  be read here; `abcd status` says why``: git's reason goes to stderr, never
+  into the block.
 - **Shows nothing** in a checkout with no remote named `origin`, or without
   its local tier.
 
@@ -200,8 +208,7 @@ Each of these is shown with its reason, and every other branch is still read:
 - a branch that was rewritten rather than added to, passed a merge, or gained
   more than one read covers since it was last read here, or holds more than
   one read covers when it is first read here, whatever times its commits
-  carry, or gained more new commits than one read takes in: at most 100 in
-  all, the newest of each branch first ("continuity not verified");
+  carry ("continuity not verified");
 - a branch under `abcd-status/` whose name is not a GitHub username in lower
   case: it is counted, never named and never fetched, since two names that
   differ only in case break every fetch on a case-insensitive filesystem, and

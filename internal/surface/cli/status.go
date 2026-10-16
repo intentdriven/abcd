@@ -54,6 +54,7 @@ type statusOutput struct {
 	Doubtful         []doubtRow        `json:"doubtful"`
 	UnreadNames      *int              `json:"unread_names"`
 	BranchesNotRead  int               `json:"branches_not_read"`
+	BranchesLeft     int               `json:"branches_left_to_read"`
 	NotRead          int               `json:"announcements_not_read"`
 	Unread           []string          `json:"unread"`
 	SendersUnchecked string            `json:"senders_unchecked,omitempty"`
@@ -224,7 +225,7 @@ func (out *statusOutput) addStatus(v claim.StatusView, now time.Time) {
 	for _, d := range v.Doubts {
 		out.Doubtful = append(out.Doubtful, doubtRow{Branch: "abcd-status/" + d.Branch, Reason: d.Reason, Tip: d.Tip, Text: claim.DoubtLine(d)})
 	}
-	out.BranchesNotRead, out.NotRead = v.BranchesNotRead, v.AnnouncementsNotRead
+	out.BranchesNotRead, out.NotRead, out.BranchesLeft = v.BranchesNotRead, v.AnnouncementsNotRead, v.BranchesLeft
 	n := v.UnreadNames
 	out.UnreadNames = &n
 	if v.UnreadNamesUnknown {
@@ -294,6 +295,9 @@ func renderStatus(w io.Writer, out statusOutput) {
 	}
 	if out.NotRead > 0 {
 		fmt.Fprintln(w, "  "+claim.AnnouncementsNotReadLine(out.NotRead))
+	}
+	if out.BranchesLeft > 0 {
+		fmt.Fprintln(w, "  "+claim.BranchesLeftLine(out.BranchesLeft))
 	}
 	if out.NotDropped != "" {
 		fmt.Fprintln(w, "  not deleted: "+out.NotDropped)

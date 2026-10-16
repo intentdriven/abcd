@@ -94,7 +94,7 @@ func TestAPromptWithNoTimeLeftSaysSoInItsOwnWords(t *testing.T) {
 	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(promptMarkReserve/2))
 	defer cancel()
 	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
-	want := NotesHeading + "\n\nstatus unavailable: no time was left to read it at this prompt; `abcd status` reads it in full\n"
+	want := NotesHeading + "\n\nstatus unavailable: no time was left to read it at this prompt; `abcd status` reads it without this prompt's deadline\n"
 	if !errors.Is(err, ErrStatusUnavailable) || n.Text != want {
 		t.Fatalf("PromptNotes = %q, %v; want %q", n.Text, err, want)
 	}

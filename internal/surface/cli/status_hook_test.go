@@ -129,7 +129,7 @@ func TestTheHooksDeadlineStartsWithTheHook(t *testing.T) {
 		t.Fatalf("status: exit %d, %s", code, stderr)
 	}
 	out := runSlowHook(t, hookInputJSON(t, "s-spent", pat, "hello there"), 500*time.Millisecond, 600*time.Millisecond)
-	if !strings.Contains(out, "status unavailable: no time was left to read it at this prompt; `abcd status` reads it in full\n") || strings.Contains(out, "merging #1012") {
+	if !strings.Contains(out, "status unavailable: no time was left to read it at this prompt; `abcd status` reads it without this prompt's deadline\n") || strings.Contains(out, "merging #1012") {
 		t.Fatalf("with the hook's first step taking most of its budget, the hook's text:\n%s\nwant the status unavailable", out)
 	}
 	again := runSlowHook(t, hookInputJSON(t, "s-spent", pat, "hello again"), 500*time.Millisecond, time.Second)
