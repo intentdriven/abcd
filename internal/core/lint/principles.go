@@ -102,9 +102,10 @@ const principleNullity = "null"
 
 var (
 	// principleEvidenceHandleRe is the record-handle half of evidence's grammar:
-	// the families a principle distils, spelled lower case and unpadded: every
-	// family a citation names, read from recordid's one list so a decision
-	// record (dcn) is evidence like an ADR, and a reading's items (rdi).
+	// the families a principle distils, in lower case: every family a citation
+	// names, read from recordid's one list so a decision record (dcn) is
+	// evidence like an ADR, and a reading's items (rdi). A zero-padded number
+	// passes here; the lookup normalises it.
 	principleEvidenceHandleRe = regexp.MustCompile(`^(` +
 		strings.Join(append(recordid.CitedFamilies(), "rdi"), "|") + `)-([0-9]+)$`)
 	// statementLinkRe finds a link of any shape a principle's statement can
