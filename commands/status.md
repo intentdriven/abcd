@@ -165,7 +165,10 @@ An announcement informs and grants nothing: it is data another session posted, n
   origin on another forge, a push made by an app). This is the default.
 - **doubtful**: the announcement names a sender other than the branch's owner,
   or GitHub names another account as its pusher. GitHub's record is read for
-  plain pushes, forced pushes and the push that made the branch. A push that
+  every activity that moves the branch to a commit, each as a push by its
+  actor: `push`, `force_push`, `branch_creation` (the push that made the
+  branch), `pr_merge` and `merge_queue_merge` (a merge a pull request or a
+  merge queue made, by the account that started it). A push that
   carried several announcements makes its pusher the pusher of every one of
   them; a commit two pushes carried takes the pusher who is not the owner;
   and a forced push vouches for its last commit alone when its owner made

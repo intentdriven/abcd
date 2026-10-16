@@ -30,16 +30,18 @@ func activityFixture(t *testing.T, subs map[string]string) string {
 }
 
 // TestPushersReadsEveryPushLikeActivity: GitHub records a branch's first push
-// as branch_creation and a forced one as force_push, beside push, so all
-// three are read, and every other activity (a deletion, a merge queue's
-// merge) says nothing of who pushed a commit and is passed over, as is an
-// app's push. The query names no activity type, so none is lost to it.
+// as branch_creation, a forced one as force_push, and a merge made by a pull
+// request or a merge queue as pr_merge and merge_queue_merge, beside push:
+// each moves the branch, and its actor is the account that moved it, so all
+// five are read. A deletion moves the branch to no commit and is passed over,
+// as is an app's push. The query names no activity type, so none is lost to
+// it.
 func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
 	sha := func(c string) string { return strings.Repeat(c, 40) }
 	logPath := fakeActivity(t, activityFixture(t, map[string]string{
 		"before-force": sha("1"), "after-force": sha("2"), "before-bot": sha("3"), "after-bot": sha("4"),
 		"before-push": sha("5"), "after-push": sha("6"), "after-creation": sha("7"), "before-deletion": sha("8"),
-		"before-queue": sha("9"), "after-queue": sha("a"),
+		"before-queue": sha("9"), "after-queue": sha("a"), "before-pr": sha("b"), "after-pr": sha("c"),
 	}))
 	got, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/octo")
 	if err != nil {
@@ -49,6 +51,8 @@ func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
 		{Before: sha("1"), After: sha("2"), Login: "octo"},
 		{Before: sha("5"), After: sha("6"), Login: "octo"},
 		{Before: sha("0"), After: sha("7"), Login: "mallory"},
+		{Before: sha("b"), After: sha("c"), Login: "octo"},
+		{Before: sha("9"), After: sha("a"), Login: "mallory"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("pushers = %+v; want %+v", got, want)

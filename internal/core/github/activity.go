@@ -18,11 +18,12 @@ type Push struct {
 }
 
 // pushActivities are the activity types that move a branch to a commit: a
-// push, a forced push, and the push that made the branch (GitHub records a
-// branch's first push as branch_creation, its before forty zeros). Every
-// other type (a deletion, a merge made by a pull request or a merge queue)
-// says nothing of who pushed an announcement.
-var pushActivities = []string{"push", "force_push", "branch_creation"}
+// push, a forced push, the push that made the branch (GitHub records a
+// branch's first push as branch_creation, its before forty zeros), and a merge
+// made by a pull request or a merge queue (pr_merge, merge_queue_merge), whose
+// actor is the account that moved the branch. Each is read as a push. A
+// deletion moves the branch to no commit, and says nothing of one.
+var pushActivities = []string{"push", "force_push", "branch_creation", "pr_merge", "merge_queue_merge"}
 
 // Pushers is the forge's record of who pushed to ref (a full ref under
 // refs/heads/) on the repository origin names: its activity record's pushes

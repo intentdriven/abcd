@@ -61,11 +61,13 @@ func forgeAnswering(t *testing.T, fixture string, subs map[string]string) {
 // TestTheForgesRecordJudgesEachPushLikeActivity is C17 through the forge
 // adapter, against an answer in GitHub's own shape: the branch abcd-status/octo
 // was made by another account's first push (branch_creation), then added to by
-// octo, by an app, and by octo's forced push, beside a deletion and a merge
-// queue's merge that move nothing. The first announcement reads doubtful,
-// naming the account that made the branch; octo's own pushes read verified;
-// the app's reads claimed; and neither the deletion nor the merge queue's
-// merge judges a commit.
+// octo, by a pull request's merge octo made, by an app, and by octo's forced
+// push, beside a deletion that moves nothing and a merge queue's merge,
+// started by another account, that moved the branch to the same tip as the
+// forced push. The first announcement reads doubtful, naming the account that
+// made the branch; octo's own pushes read verified; the app's reads claimed;
+// the last reads doubtful, naming the account the merge queue moved the
+// branch for; and the deletion judges no commit.
 func TestTheForgesRecordJudgesEachPushLikeActivity(t *testing.T) {
 	fixture, err := os.ReadFile(filepath.Join("..", "..", "core", "github", "testdata", "activity.json"))
 	if err != nil {
@@ -89,6 +91,7 @@ func TestTheForgesRecordJudgesEachPushLikeActivity(t *testing.T) {
 		"after-creation":  c1,
 		"before-deletion": c2,
 		"before-queue":    c3, "after-queue": c4,
+		"before-pr": c1, "after-pr": c2,
 	})
 	// origin is a local bare repository, so the adapter is asked from a
 	// checkout whose origin names GitHub, as `abcd status` asks in one.
@@ -115,7 +118,7 @@ func TestTheForgesRecordJudgesEachPushLikeActivity(t *testing.T) {
 		c1: "doubtful @octo (doubtful: the forge's record names @mallory as its pusher): merging #1",
 		c2: "verified @octo (verified): merging #2",
 		c3: "claimed @octo (claimed): merging #3",
-		c4: "verified @octo (verified): merging #4",
+		c4: "doubtful @octo (doubtful: the forge's record names @mallory as its pusher): merging #4",
 	} {
 		if !strings.HasPrefix(checks[c], want) {
 			t.Fatalf("checks = %v; want %s to read %q", checks, c, want)

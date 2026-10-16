@@ -50,6 +50,16 @@
     "actor": {"login": "mallory", "id": 3003, "node_id": "MDQ6VXNlcjMwMDM=", "type": "User", "site_admin": false, "user_view_type": "public"}
   },
   {
+    "id": 46715369012,
+    "node_id": "PSH_kwLOTQTS4M8AAAAK4HP2Ne",
+    "before": "{{before-pr}}",
+    "after": "{{after-pr}}",
+    "ref": "refs/heads/abcd-status/octo",
+    "timestamp": "2026-10-16T12:35:14Z",
+    "activity_type": "pr_merge",
+    "actor": {"login": "octo", "id": 1001, "node_id": "MDQ6VXNlcjEwMDE=", "type": "User", "site_admin": false, "user_view_type": "public"}
+  },
+  {
     "id": 46715369013,
     "node_id": "PSH_kwLOTQTS4M8AAAAK4HP2Nf",
     "before": "{{before-queue}}",
