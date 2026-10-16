@@ -1228,7 +1228,8 @@ func variableCarried(s segment, i int) bool {
 // killall-by-name).
 func namesOnlyItsProgram(p Pattern) bool {
 	return p.Subcommand == "" && p.Subcommand2 == "" && len(p.Flags) == 0 && len(p.FlagValues) == 0 &&
-		len(p.ArgPaths) == 0 && len(p.ArgPrefixes) == 0 && len(p.ArgsFrom) == 0 && p.AfterCD == nil
+		len(p.ArgPaths) == 0 && len(p.ArgPrefixes) == 0 && len(p.ArgsFrom) == 0 && p.AfterCD == nil &&
+		len(p.Env) == 0
 }
 
 // vanishable reports whether a word is nothing but substitutions, so an

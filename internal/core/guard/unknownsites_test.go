@@ -37,7 +37,8 @@ var wordReaders = map[string]string{
 	"firstOperandLimit":  "the rule itself",
 
 	// match.go
-	"matchSegmentNamed":    "sitesNamed: every place the entry's command can sit; anyProgram marks a name nothing fixes",
+	"matchSegmentEnv":      "sitesNamed: every place the entry's command can sit; anyProgram marks a name nothing fixes",
+	"exportsAny":           "commandSites and nameCouldBe",
 	"newEntryMatcher":      "operandAcceptance over readWord",
 	"precededByCD":         "commandSites and nameCouldBeAny",
 	"steppedBeforeCommand": "vanishable (Tier 2's start filter)",

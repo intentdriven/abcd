@@ -295,6 +295,59 @@ func precededByCD(before []segment, chain int) bool {
 	return false
 }
 
+// envSetBefore reports whether a word before the command at site sets one
+// of names in its environment: an assignment word, which the walk steps as
+// the shell's own prefix or as an operand of env or sudo (envAssigns).
+func envSetBefore(s segment, site int, names []string) bool {
+	for i := 0; i < site && i < len(s.tokens); i++ {
+		if setsName(s.tokens[i], names) {
+			return true
+		}
+	}
+	return false
+}
+
+// setsName reports whether the known word tok sets one of names: `NAME=…`,
+// or `NAME+=…`, which appends to it.
+func setsName(tok string, names []string) bool {
+	if isUnknown(tok) {
+		return false
+	}
+	eq := strings.IndexByte(tok, '=')
+	if eq <= 0 {
+		return false
+	}
+	name := strings.TrimSuffix(tok[:eq], "+")
+	for _, n := range names {
+		if name == n {
+			return true
+		}
+	}
+	return false
+}
+
+// exportsAny reports whether the command s exports one of names to the
+// commands after it in the shell: `export NAME` or `export NAME=…`. A name
+// a substitution prints can be export (nameCouldBe).
+func exportsAny(s segment, names []string) bool {
+	for _, a := range commandSites(s) {
+		if !nameCouldBe(s.tokens[a.idx], "export") {
+			continue
+		}
+		for _, tok := range s.tokens[a.idx+1:] {
+			if setsName(tok, names) {
+				return true
+			}
+			for _, n := range names {
+				if tok == n {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
 // directoryChanges names the builtins an `after_cd` entry reads as the
 // directory change a command is chained after. `pushd` and `popd` change it
 // exactly as `cd` does and fail the same way, leaving the shell where it was
@@ -456,6 +509,14 @@ func matchSegment(p Pattern, s segment) bool {
 // name is unknown, not because the line names the entry's program, and Check
 // reports it as the substitution's, not the entry's (review4-guard finding 4).
 func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
+	return matchSegmentEnv(p, s, false)
+}
+
+// matchSegmentEnv is matchSegmentNamed, where exported reports whether an
+// earlier command in the line exports a variable p.Env names. An entry that
+// names variables fires only where the line sets one for the command: by
+// that export, or by an assignment among the words before it (envSetBefore).
+func matchSegmentEnv(p Pattern, s segment, exported bool) (hit, named bool) {
 	// The places a command can sit are looked through for every entry; the
 	// words after them are walked only for an entry whose command stands at
 	// one, which is where the count below charges them. Charging every word
@@ -478,6 +539,15 @@ func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
 		kept := sites[:0:0]
 		for _, a := range sites {
 			if !(anyProgram(s.tokens[a.idx]) && variableCarried(s, a.idx)) {
+				kept = append(kept, a)
+			}
+		}
+		sites = kept
+	}
+	if len(p.Env) > 0 && !exported {
+		kept := sites[:0:0]
+		for _, a := range sites {
+			if envSetBefore(s, a.idx, p.Env) {
 				kept = append(kept, a)
 			}
 		}

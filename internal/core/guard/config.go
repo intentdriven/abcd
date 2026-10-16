@@ -330,6 +330,9 @@ func mergePattern(base, over Pattern) Pattern {
 	if over.ArgsFrom != nil {
 		r.ArgsFrom = clonePatterns(over.ArgsFrom)
 	}
+	if over.Env != nil {
+		r.Env = append([]string(nil), over.Env...)
+	}
 	// AfterCD is a pointer precisely so an override can set it to false — a
 	// bool field could only ever tighten the requirement, never lift it.
 	if over.AfterCD != nil {

@@ -123,6 +123,15 @@ type Pattern struct {
 	// pointer means false; it is a pointer so a per-repo override can turn the
 	// requirement off as well as on.
 	AfterCD *bool `json:"after_cd,omitempty"`
+	// Env, when set, additionally requires that the line sets one of these
+	// environment variables for the command: as an assignment before it
+	// (`NAME=value cmd`), as an operand of a wrapper that sets the
+	// environment (`env NAME=value cmd`), or by an `export NAME` or `export
+	// NAME=value` earlier in the line. It is what reads a
+	// program that takes a setting from its environment as well as from its
+	// flags: opencode reads its permission setting from OPENCODE_PERMISSION.
+	// Names are compared exactly, as the environment does.
+	Env []string `json:"env,omitempty"`
 }
 
 // FlagValue is one flag-with-value constraint: some argument must set one of
@@ -340,8 +349,8 @@ func Validate(r Registry) error {
 		// does not make.
 		for i, src := range e.Pattern.ArgsFrom {
 			where := fmt.Sprintf("%s args_from %d", id, i)
-			if len(src.ArgsFrom) > 0 || src.AfterCD != nil {
-				return fmt.Errorf("%w: entry %s may not carry args_from or after_cd of its own", ErrInvalidEntry, where)
+			if len(src.ArgsFrom) > 0 || src.AfterCD != nil || len(src.Env) > 0 {
+				return fmt.Errorf("%w: entry %s may not carry args_from, after_cd or env of its own", ErrInvalidEntry, where)
 			}
 			if err := validatePattern(where, src); err != nil {
 				return err
@@ -364,6 +373,13 @@ func validatePattern(id string, p Pattern) error {
 	// ship an entry that looks armed and never fires.
 	if strings.ContainsAny(p.Command, "/ \t") {
 		return fmt.Errorf("%w: entry %s pattern command %q is a path or phrase and could never match a command name", ErrInvalidEntry, id, p.Command)
+	}
+	// An environment variable's name is a shell name; any other word is a
+	// variable no line can set, and the entry would never fire.
+	for i, name := range p.Env {
+		if !isName(name) {
+			return fmt.Errorf("%w: entry %s env name %d is %q, which is not a variable name a line can set", ErrInvalidEntry, id, i, name)
+		}
 	}
 	if strings.HasPrefix(p.Subcommand, "-") {
 		return fmt.Errorf("%w: entry %s subcommand %q starts with a dash and could never match a non-flag argument", ErrInvalidEntry, id, p.Subcommand)
@@ -668,8 +684,15 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 	for _, id := range ids {
 		p := r.Entries[id].Pattern
 		hit, named := false, false
+		// exported records whether a command before the one read exports a
+		// variable the entry names (Pattern.Env): an export holds for the
+		// rest of the shell, so it is carried along the line once.
+		exported := false
 		for i, s := range segs {
-			segHit, segNamed := matchSegmentNamed(p, s)
+			segHit, segNamed := matchSegmentEnv(p, s, exported)
+			if len(p.Env) > 0 && !exported {
+				exported = exportsAny(s, p.Env)
+			}
 			if !segHit {
 				continue
 			}
@@ -954,6 +977,7 @@ func clonePattern(p Pattern) Pattern {
 	out.ArgPaths = append([]PathArg(nil), p.ArgPaths...)
 	out.FlagValues = cloneFlagValues(p.FlagValues)
 	out.ArgsFrom = clonePatterns(p.ArgsFrom)
+	out.Env = append([]string(nil), p.Env...)
 	if p.AfterCD != nil {
 		v := *p.AfterCD
 		out.AfterCD = &v

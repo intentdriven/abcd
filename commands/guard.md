@@ -730,8 +730,11 @@ basename, and match it however the line starts it: by name or path, behind `env`
 or `command`, or through a package runner (`npx`, `bunx`, `bun x`, `pnpm dlx`,
 `pnpm exec`, `yarn dlx`, `npm exec`, with or without `--`), by the program's
 name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
-@openai/codex`, `npx opencode-ai`). opencode's permission settings given in
-its environment (`OPENCODE_PERMISSION`) are not read.
+@openai/codex`, `npx opencode-ai`). opencode also reads permission rules from
+its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
+starts — as an assignment before it, through `env`, or with an `export` earlier
+in the line — is a **block** too (`agent-launch-opencode-permission-env`), and
+one that starts opencode without setting it is not.
 
 A recursive delete of the filesystem root or the home directory (`/`, `/*`,
 `~`, `$HOME`, `${HOME}`, each also with a trailing `/`, `/*` or `/*/`, and the
