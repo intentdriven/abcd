@@ -460,15 +460,19 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	}
 
 	// The drain takes its judgement hold once per request (drain_hold.go): a
-	// request whose hold has lapsed unanswered is dropped, the hold released
-	// with the move, and its issue asked again only after the drain's other
-	// eligible work, so a host that polls without answering never holds the
-	// issue past one lease (dcn-2610161315385888).
+	// request whose hold has lapsed unanswered is dropped and the hold
+	// released at once, before anything else in the move can reach the
+	// issue, and its issue asked again only after the drain's other eligible
+	// work, so a host that polls without answering never holds the issue past
+	// one lease (dcn-2610161315385888).
 	if j := st.Judging; j != nil && j.Hold != nil && !now.Before(j.Hold.ExpiresAt) {
 		st.Lapsed = append(slices.DeleteFunc(st.Lapsed, func(l DrainLapse) bool { return l.Issue == j.Issue }),
 			DrainLapse{Issue: j.Issue, RequestedAt: j.RequestedAt, LapsedAt: j.Hold.ExpiresAt})
 		lapse = fmt.Sprintf("the judgement over %s was not answered before the reservation the drain took for it lapsed at %s, so the request is dropped; %s is asked again only once the drain has taken its other eligible work",
 			j.Issue, stamp(j.Hold.ExpiresAt), j.Issue)
+		if clause := holds.release(j.Issue); clause != "" {
+			lapse += "; " + clause
+		}
 		st.Judging = nil
 	}
 

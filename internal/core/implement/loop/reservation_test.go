@@ -107,6 +107,12 @@ func originReservation(t *testing.T, bare, ref string) reservation {
 	if sha == "" {
 		return reservation{}
 	}
+	return reservationCommit(t, bare, sha)
+}
+
+// reservationCommit reads the reservation commit sha on origin.
+func reservationCommit(t *testing.T, bare, sha string) reservation {
+	t.Helper()
 	r := reservation{commit: sha}
 	if f := strings.Fields(gitIn(t, bare, "rev-list", "--parents", "-n", "1", sha)); len(f) > 1 {
 		r.parent = f[1]

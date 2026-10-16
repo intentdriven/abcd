@@ -62,6 +62,11 @@ type Result struct {
 	// Commit is the commit pushed, or the tombstone already there.
 	Commit   string
 	Replaced *Replaced
+	// RenewedLive is true for a renewal (ActRenewed) of a reservation that
+	// was still live when the act judged it, false for one that had lapsed:
+	// a drain tells a person's own live reservation, which is never its to
+	// release, from one it brought back to life with its own push.
+	RenewedLive bool
 	// DerivedUnchecked is why origin's default branch could not be read, so
 	// whether the record is already finished there was not checked; "" when
 	// it was read (or origin has none).
@@ -260,7 +265,7 @@ func decide(p *prepared, j judged) (Result, message, string, error) {
 		res.Replaced = &Replaced{Commit: j.Commit, EffectiveExpiry: hold, Unreadable: j.Unreadable}
 		return res, m, j.Commit, nil
 	case j.mine && j.thisCopy:
-		res.Act = ActRenewed
+		res.Act, res.RenewedLive = ActRenewed, j.verdict.Live
 		return res, m, j.Commit, nil
 	}
 	exp := j.verdict.EffectiveExpiry

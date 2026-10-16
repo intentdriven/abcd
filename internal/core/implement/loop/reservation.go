@@ -334,15 +334,20 @@ func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (at *tim
 
 // reserveForJudgement reserves id on origin for the judgement the drain is
 // about to ask over it, with footprint (and --take-over), and returns the
-// drain's hold: the reservation the act made. A renewal is of a reservation
-// this person already held from this copy, made by hand, so it gives no hold
-// (nil): it is never the drain's to release. Another's hold is contention, as
-// for reserveKey.
+// drain's hold: the reservation the act made. Every push it makes is the
+// drain's, a renewal of this person's reservation that had lapsed included,
+// so the drain records it and releases it; the one exception is a renewal of
+// a reservation this person still held live from this copy (made by hand,
+// which the move's view could not show it), which gives no hold (nil): it is
+// never the drain's to release. Another's hold is contention, as for
+// reserveKey.
 func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool, now time.Time) (*DrainHold, error) {
 	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Footprint: footprint, TakeOver: takeOver}, claimOptions(now))
-	_, _, fresh, err := reservedNote(res, err, now)
-	if err != nil || !fresh {
+	if _, _, _, err := reservedNote(res, err, now); err != nil {
 		return nil, err
+	}
+	if res.Act == claim.ActRenewed && res.RenewedLive {
+		return nil, nil
 	}
 	return &DrainHold{Commit: res.Commit, ClaimedAt: res.ClaimedAt, ExpiresAt: res.ExpiresAt}, nil
 }

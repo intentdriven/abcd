@@ -283,6 +283,28 @@ func TestAFreshAgentInTheSameCopyRenews(t *testing.T) {
 	}
 }
 
+// TestARenewalSaysWhetherTheReservationWasStillLive: a renewal of this copy's
+// live reservation reports it live, one of a reservation that had lapsed
+// reports it lapsed, so a drain can tell a person's own hold from one its
+// push brought back.
+func TestARenewalSaysWhetherTheReservationWasStillLive(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-5", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	w.set(t0.Add(30 * time.Minute))
+	live, err := p.reserve("iss-5", "a.go")
+	if err != nil || live.Act != ActRenewed || !live.RenewedLive {
+		t.Fatalf("the renewal of a live reservation = %+v, %v; want it reported live", live, err)
+	}
+	w.set(live.ExpiresAt.Add(time.Hour))
+	lapsed, err := p.reserve("iss-5", "a.go")
+	if err != nil || lapsed.Act != ActRenewed || lapsed.RenewedLive {
+		t.Fatalf("the renewal of a lapsed reservation = %+v, %v; want it reported lapsed", lapsed, err)
+	}
+}
+
 // TestReleasingAnotherPersonsReservationPushesNothing is C5.
 func TestReleasingAnotherPersonsReservationPushesNothing(t *testing.T) {
 	w := newWorld(t)
