@@ -260,7 +260,7 @@ func renderReserve(w io.Writer, out reserveOutput) {
 		fmt.Fprintf(w, "  not checked: whether %s is already finished on origin's default branch (%s)\n", out.Record, out.DerivedUnchecked)
 	}
 	if out.ForkUnchecked != "" {
-		fmt.Fprintf(w, "  not checked: whether origin is a fork (%s)\n", out.ForkUnchecked)
+		fmt.Fprintf(w, "  %s\n", claim.ForkUncheckedLine(out.ForkUnchecked))
 	}
 }
 

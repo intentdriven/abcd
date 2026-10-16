@@ -349,17 +349,10 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 	note := fmt.Sprintf("%s %s on %s for this copy until %s, footprint: %s", verb, res.Record, claim.Remote,
 		stamp(res.ExpiresAt), strings.Join(res.Footprint, ", "))
 	if res.ForkUnchecked != "" {
-		note += "; " + ForkUncheckedLine(res.ForkUnchecked)
+		note += "; " + claim.ForkUncheckedLine(res.ForkUnchecked)
 	}
 	t := now
 	return reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed, forkUnchecked: res.ForkUnchecked}, nil
-}
-
-// ForkUncheckedLine is how a fork check a reservation could not make is
-// named, the same words wherever it is shown: reserve's output, a run's
-// record and a start's.
-func ForkUncheckedLine(why string) string {
-	return "not checked: whether " + claim.Remote + " is a fork (" + why + ")"
 }
 
 // reserveStart is a new run's reservation, once its checks pass and before

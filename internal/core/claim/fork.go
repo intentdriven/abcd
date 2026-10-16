@@ -203,6 +203,13 @@ func forkOriginAllowed(root, home string) (bool, error) {
 	return v.V == forkOriginAllow, nil
 }
 
+// ForkUncheckedLine is how a fork check a fresh reservation could not make
+// is named, the same words wherever it is shown: reserve's output, a run's
+// record and a start's, and a drain move's.
+func ForkUncheckedLine(why string) string {
+	return "not checked: whether " + Remote + " is a fork (" + why + ")"
+}
+
 // setURLCommand is the command that points the push URL naming fork at
 // parent: a plain set-url when pushes go to the fetch URL, set-url --push
 // when one push URL is configured, and with several the one to replace named

@@ -414,6 +414,14 @@ func TestARepositoryWhoseHomeIsAForkMayAllowIt(t *testing.T) {
 	}
 }
 
+// TestTheForkLinesAreOneWording: the warning for a check not made reads the
+// same wherever it is shown.
+func TestTheForkLinesAreOneWording(t *testing.T) {
+	if got, want := ForkUncheckedLine("octo/abcd: gh did not answer in time"), "not checked: whether origin is a fork (octo/abcd: gh did not answer in time)"; got != want {
+		t.Errorf("ForkUncheckedLine = %q, want %q", got, want)
+	}
+}
+
 // TestTheMachineHolderKeySitsBesideTheForkKey: the machine layer may hold
 // reservation.fork_origin beside reservation.github_username, and the
 // holder is still read from it.

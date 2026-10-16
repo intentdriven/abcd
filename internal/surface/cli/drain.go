@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -201,7 +202,7 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		// A lane's reservation that could not ask the forge whether origin is
 		// a fork says so, as reserve does (spc-2610161044461448, step 10).
 		if res.Start.ForkUnchecked != "" {
-			fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(loop.ForkUncheckedLine(res.Start.ForkUnchecked)))
+			fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(claim.ForkUncheckedLine(res.Start.ForkUnchecked)))
 		}
 	}
 	fmt.Fprintf(w, "  lanes: %d opened, one at a time\n", len(res.Lanes))

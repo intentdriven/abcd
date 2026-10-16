@@ -18,7 +18,7 @@ func TestReserveSaysWhenTheForkCheckWasNotMade(t *testing.T) {
 		Footprint: []string{"a.go"}, ForkUnchecked: "octo/abcd: gh did not answer in time"})
 	var buf bytes.Buffer
 	renderReserve(&buf, out)
-	if !strings.Contains(buf.String(), "  not checked: whether origin is a fork (octo/abcd: gh did not answer in time)\n") {
+	if !strings.Contains(buf.String(), "  "+claim.ForkUncheckedLine("octo/abcd: gh did not answer in time")+"\n") {
 		t.Fatalf("the text names the skipped check:\n%s", buf.String())
 	}
 	doc, err := json.Marshal(out)
@@ -44,7 +44,7 @@ func TestDrainSaysWhenALanesForkCheckWasNotMade(t *testing.T) {
 	res := loop.DrainResult{State: loop.DrainStateRel, Start: start}
 	var buf bytes.Buffer
 	renderDrainRun(&buf, res)
-	if !strings.Contains(buf.String(), "  not checked: whether origin is a fork (octo/abcd: gh did not answer in time)\n") {
+	if !strings.Contains(buf.String(), "  "+claim.ForkUncheckedLine("octo/abcd: gh did not answer in time")+"\n") {
 		t.Fatalf("the drain's text names the skipped check:\n%s", buf.String())
 	}
 	doc, err := json.Marshal(res)
