@@ -308,6 +308,9 @@ func renderEmbargoCheck(w io.Writer, res embargo.CheckResult) {
 		verdict = "REFUSED, " + countOf(len(res.Findings), "finding")
 	}
 	fmt.Fprintf(w, "abcd embargo check — %s: %s under embargo; %s\n", verdict, advisoryCount(res.UnderEmbargo), read)
+	if res.Note != "" {
+		fmt.Fprintln(w, termsafe.Sanitize("note: "+res.Note))
+	}
 	if len(res.Allowed) > 0 {
 		fmt.Fprintf(w, "  allowed: %s\n", strings.Join(res.Allowed, ", "))
 	}
