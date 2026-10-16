@@ -58,8 +58,9 @@ const (
 	RuleUnreadable DrainRule = "unreadable"
 	RuleNotOpen    DrainRule = "not-open"
 	RuleBlocked    DrainRule = "blocked"
-	// RulePromoted: the issue's related_intents names an intent, so an intent
-	// already owns it and it is worked there, never by a drain alone.
+	// RulePromoted: the issue's related_intents names an intent, so it goes
+	// through that intent (`abcd build`, or `abcd intent audit` for an
+	// audit's owed check), never through a drain alone.
 	RulePromoted DrainRule = "promoted"
 	RuleSecurity DrainRule = "security"
 	RuleCategory DrainRule = "category"
@@ -126,11 +127,7 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 		v.Blockers = append([]string(nil), iss.BlockedByOpen...)
 		return decide(DrainSkipped, RuleBlocked, "blocked by "+strings.Join(iss.BlockedByOpen, ", ")+", still open")
 	case len(promotedIntents(iss)) > 0:
-		// The ids are the record's own text, unjudged here, so they are masked:
-		// the reason reaches `drain --json`.
-		return decide(DrainHandBack, RulePromoted, fmt.Sprintf(
-			"promoted: related_intents names %s, so an intent owns this issue and it is worked there, never by a drain alone",
-			termsafe.Sanitize(strings.Join(promotedIntents(iss), ", "))))
+		return decide(DrainHandBack, RulePromoted, promotedReason(promotedIntents(iss)))
 	case iss.Category == drainrule.SecurityCategory && r.Security != drainrule.SecurityTake:
 		return decide(DrainHandBack, RuleSecurity, "category security is always a person's under this repository's rule")
 	case !r.TakesCategory(string(iss.Category)):
@@ -179,16 +176,43 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 		"every field rule passes on its remedy; the host judgement over the remedy may still hand it back")
 }
 
-// promotedIntents is every intent the issue's related_intents names, blanks
-// left out: any entry is the forward half of a promotion.
+// promotedIntents is every intent the issue's related_intents names, each
+// once, in the record's order. The reader has already refused a record whose
+// list holds an entry that is not an intent id (`itd-` and digits) or names
+// one twice, so no entry is blank; the de-duplication serves a caller that
+// builds an Issue by hand.
 func promotedIntents(iss Issue) []string {
 	var ids []string
 	for _, id := range iss.RelatedIntents {
-		if id = strings.TrimSpace(id); id != "" {
+		if !slices.Contains(ids, id) {
 			ids = append(ids, id)
 		}
 	}
 	return ids
+}
+
+// maxPromotedNamed bounds the intents a promoted reason names, so a record
+// linked to many stays one readable line.
+const maxPromotedNamed = 3
+
+// promotedReason is a promoted hand-back's reason: what the field says, that
+// related_intents names the intents, and the way out, the verbs that work an
+// issue through its intent. It claims no more than the link: a related intent
+// need not have taken the issue on. ids are distinct and non-empty; at most
+// maxPromotedNamed are named, then how many more. The ids are the record's own
+// text, unjudged here, so they are masked: the reason reaches `drain --json`.
+func promotedReason(ids []string) string {
+	named := strings.Join(ids[:min(len(ids), maxPromotedNamed)], ", ")
+	if more := len(ids) - maxPromotedNamed; more > 0 {
+		named += fmt.Sprintf(" and %d more", more)
+	}
+	target := "<itd-N>"
+	if len(ids) == 1 {
+		target = ids[0]
+	}
+	return termsafe.Sanitize(fmt.Sprintf(
+		"related_intents names %s; an issue linked to an intent goes through that intent: `abcd build %s`, or `abcd intent audit %s` for an audit's owed check",
+		named, target, target))
 }
 
 // waitsOnPrefix opens a remedy whose fix waits on an unanswered ruling, the

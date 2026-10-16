@@ -4,6 +4,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -308,6 +310,94 @@ func TestAnIssueNamingAnIntentIsHandedBackAsPromoted(t *testing.T) {
 		Status: StateOpen, RelatedIntents: []string{"itd-7"}, BlockedByOpen: []string{"iss-1"}}, drainrule.Baseline(), deferralAnchor{})
 	if blocked.Outcome != DrainSkipped || blocked.Rule != RuleBlocked {
 		t.Errorf("a blocked issue naming an intent: %s/%s, want skipped/blocked", blocked.Outcome, blocked.Rule)
+	}
+}
+
+// intentTokens is every intent id a reason names, as whole tokens, so itd-10
+// is never found inside itd-100.
+func intentTokens(reason string) []string { return intentTokenRe.FindAllString(reason, -1) }
+
+var intentTokenRe = regexp.MustCompile(`\bitd-[0-9]+\b`)
+
+// TestAPromotedReasonSaysWhatIsTrueAndNamesTheWayOut: the reason a promoted
+// hand-back gives says only what the field says, that related_intents names
+// the intent, and names the verbs that work an issue through it. It names
+// each intent once and at most three, so a record naming many stays one
+// readable line.
+func TestAPromotedReasonSaysWhatIsTrueAndNamesTheWayOut(t *testing.T) {
+	judge := func(related ...string) DrainVerdict {
+		return eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "r",
+			Status: StateOpen, RelatedIntents: related}, drainrule.Baseline(), deferralAnchor{})
+	}
+	one := judge("itd-7")
+	if one.Rule != RulePromoted {
+		t.Fatalf("an issue naming an intent: %s/%s, want promoted", one.Outcome, one.Rule)
+	}
+	for _, want := range []string{"related_intents names itd-7", "goes through that intent",
+		"`abcd build itd-7`", "`abcd intent audit itd-7`", "owed check"} {
+		if !strings.Contains(one.Reason, want) {
+			t.Errorf("the reason %q does not say %q", one.Reason, want)
+		}
+	}
+	// The field says only that the issue is linked: the reason claims no owner
+	// and no work done there.
+	for _, not := range []string{"owns this issue", "it is worked there"} {
+		if strings.Contains(one.Reason, not) {
+			t.Errorf("the reason %q claims %q, which a plain related link does not say", one.Reason, not)
+		}
+	}
+
+	many := judge("itd-1", "itd-2", "itd-3", "itd-4", "itd-5")
+	if got := strings.Join(slices.Compact(slices.Sorted(slices.Values(intentTokens(many.Reason)))), ","); got != "itd-1,itd-2,itd-3" {
+		t.Errorf("five intents name the first three alone, got %s in %q", got, many.Reason)
+	}
+	if !strings.Contains(many.Reason, "itd-1, itd-2, itd-3 and 2 more") {
+		t.Errorf("five intents end the list with how many more: %q", many.Reason)
+	}
+
+	// The reader refuses a record listing one intent twice, so a duplicate
+	// reaches the rule only from a caller; it is named once all the same.
+	dup := judge("itd-7", "itd-7", "itd-8", "itd-7")
+	if !strings.Contains(dup.Reason, "related_intents names itd-7, itd-8;") || strings.Contains(dup.Reason, "more") {
+		t.Errorf("duplicate intents are named once each: %q", dup.Reason)
+	}
+	if strings.Contains(dup.Reason, "`abcd build itd-7`") {
+		t.Errorf("two intents leave the build command's intent to the reader: %q", dup.Reason)
+	}
+	four := judge("itd-1", "itd-2", "itd-2", "itd-3", "itd-4")
+	if !strings.Contains(four.Reason, "itd-1, itd-2, itd-3 and 1 more") {
+		t.Errorf("the count of more is of distinct intents: %q", four.Reason)
+	}
+}
+
+// TestAnEmptyRelatedIntentsIsNotPromoted: a record carrying the field with no
+// intent in it names no intent, so the rule passes it on to the field rules.
+func TestAnEmptyRelatedIntentsIsNotPromoted(t *testing.T) {
+	f := newDrainFixture(t)
+	if _, err := Capture(CaptureRequest{
+		RepoRoot: f.repo, IssuesRoot: f.ir, Text: "text of iss-1", Severity: SeverityMinor,
+		Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t", ForceID: "iss-1",
+		Remedy: "guard the nil map", RelatedIntents: []string{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if v := verdictOf(t, f.plan(), "iss-1"); v.Outcome != DrainEligible {
+		t.Errorf("an issue with an empty related_intents: %s/%s (%s), want eligible", v.Outcome, v.Rule, v.Reason)
+	}
+}
+
+// TestPromotedIsAskedBeforeSecurity pins the rule's place: an issue an intent
+// is linked to goes through that intent even when it is a security issue,
+// since the intent is where the person deciding it is already working. Moving
+// promoted below security, or below any field rule, fails here.
+func TestPromotedIsAskedBeforeSecurity(t *testing.T) {
+	for _, r := range []drainrule.Rule{drainrule.Baseline(), {Categories: drainrule.Baseline().Categories,
+		Severities: drainrule.Baseline().Severities, Security: drainrule.SecurityTake}} {
+		v := eligibility(Issue{ID: "iss-1", Category: drainrule.SecurityCategory, Severity: SeverityMinor, Remedy: "r",
+			Status: StateOpen, RelatedIntents: []string{"itd-7"}}, r, deferralAnchor{})
+		if v.Rule != RulePromoted {
+			t.Errorf("a security issue naming an intent, security %s: %s/%s, want promoted", r.Security, v.Outcome, v.Rule)
+		}
 	}
 }
 

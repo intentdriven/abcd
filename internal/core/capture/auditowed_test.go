@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -105,7 +106,7 @@ func TestAnUndecidedAuditCapturesOneIssueAndAPassingReAuditResolvesIt(t *testing
 	// in related_intents, so the owed check is that intent's, paid through
 	// `abcd intent audit`, never by a drain alone (spc-2610161044461448 step 4).
 	if v := eligibility(iss, drainrule.Baseline(), deferralAnchor{}); v.Outcome != DrainHandBack || v.Rule != RulePromoted ||
-		!strings.Contains(v.Reason, "itd-10") {
+		!slices.Equal(slices.Compact(intentTokens(v.Reason)), []string{"itd-10"}) {
 		t.Fatalf("the drain must hand an undecided audit's issue back to its intent: %+v", v)
 	}
 
