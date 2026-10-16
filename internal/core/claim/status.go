@@ -222,6 +222,10 @@ type StatusView struct {
 type StatusFetch struct {
 	Gap              string
 	SendersUnchecked string
+	// NotDropped is how many of this checkout's copies of status branches
+	// that should have been deleted before the fetch were not, and why; ""
+	// when every one was.
+	NotDropped string
 }
 
 // FetchStatus is `abcd status`'s read of the remote: it lists the status
@@ -238,8 +242,9 @@ type StatusFetch struct {
 // kept in the local tier, its time and reason, for every reader to say (C10),
 // and answers its *FetchError. Before the fetch, every tracking ref under the
 // status namespace that is not among the names it fetches is deleted
-// (dropUnlisted): a branch deleted on origin, or one whose name is not read,
-// leaves nothing to read; a deletion that fails is a failed fetch.
+// (dropUnlisted): a branch deleted on origin, one whose name is not read, or
+// one past the cap leaves nothing to read; a deletion that fails twice is
+// said in NotDropped, and the fetch goes on.
 func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, error) {
 	now := o.now()
 	ok, err := HasOrigin(root)
@@ -257,10 +262,7 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	// Only the names origin lists, and of them only those the fetch reads,
 	// are kept: the named refspecs prune nothing, and a branch left from an
 	// earlier fetch would read as fetched now.
-	if err := statusBranches.dropUnlisted(root, names); err != nil {
-		noteFetchFailure(root, statusBranches, now, err.Error())
-		return StatusFetch{}, &FetchError{Reason: err.Error(), what: statusBranches.noun, outcome: "nothing was fetched"}
-	}
+	notDropped := statusBranches.dropUnlisted(root, names)
 	status := statusBranches
 	status.only = names
 	gap, err := fetch(root, now, "nothing was fetched", reservations, status)
@@ -269,8 +271,7 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	}
 	keepSkipped(root, skipped, past, now)
 	keepFirstFetched(root, now, nil)
-	var res StatusFetch
-	res.Gap = gap
+	res := StatusFetch{Gap: gap, NotDropped: notDropped}
 	in, err := takeIn(context.Background(), root, now)
 	if err != nil {
 		// The reader takes it in again and names what it could not read.

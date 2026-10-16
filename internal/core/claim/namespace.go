@@ -65,16 +65,41 @@ func (ns namespace) refspecs() []string {
 // dropUnlisted deletes every tracking ref of the namespace this checkout
 // holds whose name is not in keep, the names origin's listing named and the
 // fetch reads, in one `git update-ref --stdin` whose every deletion names the
-// commit it removes. A fetch that names each branch by its own refspec
-// (only) never prunes a branch origin no longer holds, so the listing that
-// sets only drops the rest first: what is left under the namespace is what
-// the fetch then refreshes.
-func (ns namespace) dropUnlisted(root string, keep []string) error {
+// value it removes and deletes the ref itself, never a ref a symbolic one
+// names (no-deref). A fetch that names each branch by its own refspec (only)
+// never prunes a branch origin no longer holds, so the listing that sets only
+// drops the rest first: what is left under the namespace is what the fetch
+// then refreshes. A deletion git refuses (a concurrent git holds a lock, or
+// moved a ref since it was listed) is listed and tried once more; one that
+// fails again is not a failed fetch: dropUnlisted answers how many copies it
+// left and git's reason, for the caller to say, and the fetch goes on.
+func (ns namespace) dropUnlisted(root string, keep []string) (left string) {
+	var n int
+	var why string
+	for range 2 {
+		n, why = ns.dropOnce(root, keep)
+		if n == 0 {
+			return ""
+		}
+	}
+	switch {
+	case n < 0:
+		return "the copies of " + ns.noun + " to delete could not be listed here: " + why
+	case n == 1:
+		return "1 copy of a status branch origin no longer lists, or whose name is not read, could not be deleted here, so it is read as last fetched: " + why
+	}
+	return fmt.Sprintf("%d copies of status branches origin no longer lists, or whose names are not read, could not be deleted here, so they are read as last fetched: %s", n, why)
+}
+
+// dropOnce is one try of dropUnlisted: how many deletions it could not make,
+// and why; 0 when it made them all, and -1 when it could not list them.
+func (ns namespace) dropOnce(root string, keep []string) (int, string) {
 	out, err := storedGitCtx(context.Background(), root, 16<<20, "for-each-ref", "--format=%(refname) %(objectname)", ns.tracking)
 	if err != nil {
-		return fmt.Errorf("listing %s held here: %s", ns.noun, redacted(err))
+		return -1, redacted(err)
 	}
 	var del strings.Builder
+	n := 0
 	for _, l := range strings.Split(out, "\n") {
 		f := strings.Fields(l)
 		if len(f) != 2 || !gitutil.IsFullSHA(f[1]) {
@@ -84,15 +109,16 @@ func (ns namespace) dropUnlisted(root string, keep []string) error {
 		if !ok || slices.Contains(keep, name) {
 			continue
 		}
-		fmt.Fprintf(&del, "delete %s %s\n", f[0], f[1])
+		fmt.Fprintf(&del, "option no-deref\ndelete %s %s\n", f[0], f[1])
+		n++
 	}
-	if del.Len() == 0 {
-		return nil
+	if n == 0 {
+		return 0, ""
 	}
 	if _, err := storedGitInput(context.Background(), root, del.String(), 64<<10, "update-ref", "--stdin"); err != nil {
-		return fmt.Errorf("dropping %s origin no longer lists: %s", ns.noun, redacted(err))
+		return n, redacted(err)
 	}
-	return nil
+	return 0, ""
 }
 
 // ref is the full ref of the branch name in the namespace on origin, and

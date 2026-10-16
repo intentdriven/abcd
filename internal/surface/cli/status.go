@@ -53,6 +53,7 @@ type statusOutput struct {
 	NotRead          int               `json:"announcements_not_read"`
 	Unread           []string          `json:"unread"`
 	SendersUnchecked string            `json:"senders_unchecked,omitempty"`
+	NotDropped       string            `json:"not_dropped,omitempty"`
 	LocalTierMissing bool              `json:"local_tier_missing,omitempty"`
 	ReadError        string            `json:"read_error,omitempty"`
 	Grants           string            `json:"grants"`
@@ -153,6 +154,7 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			// the holds (ReadStatus's), shared by the listing and the view.
 			failed, listed := out.reservationsBlock.fillView(root, now, fetched.Gap, ferr)
 			out.SendersUnchecked = termsafe.Sanitize(fsutil.RedactHome(fetched.SendersUnchecked))
+			out.NotDropped = termsafe.Sanitize(fsutil.RedactHome(fetched.NotDropped))
 			if out.View.Origin {
 				v, rerr := claim.ReadStatus(context.Background(), root, now, o)
 				if rerr != nil {
@@ -283,6 +285,9 @@ func renderStatus(w io.Writer, out statusOutput) {
 	}
 	if out.NotRead > 0 {
 		fmt.Fprintln(w, "  "+claim.AnnouncementsNotReadLine(out.NotRead))
+	}
+	if out.NotDropped != "" {
+		fmt.Fprintln(w, "  not deleted: "+out.NotDropped)
 	}
 	if out.SendersUnchecked != "" {
 		fmt.Fprintln(w, "  not checked against the forge, so shown as claimed: "+out.SendersUnchecked)
