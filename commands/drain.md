@@ -233,9 +233,13 @@ branch and ends it. The drain routes it:
 | `design-finding`, `second-package` | `home`: flagged with the `home` the lane names | nothing |
 | (fix rounds exhausted) | `home`: flagged, the issue staying open | nothing |
 
-Every issue the rule hands back is in `flags` with `route: "rule"` and the
-`rule` that excluded it; `flags` are re-derived at every move and written
-nowhere.
+Every issue the rule hands back is in `flags` with `from: "field"`,
+`route: "rule"` and the `rule` that excluded it; `flags` are re-derived at every
+move and written nowhere. An issue this drain promoted itself reads as
+`promoted` on every move after, and is not flagged again: it is counted once,
+in `hand_backs` with `route: "promoted"` and its `draft`. So the rule
+`promoted` is always a flag's `rule` field, and the route `promoted` always a
+hand-back's `route` field.
 
 ### The run's payload
 
