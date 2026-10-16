@@ -96,3 +96,40 @@ func TestACountThatCannotBeReadIsUnknownNotZero(t *testing.T) {
 		t.Fatalf("the block:\n%s\nwant the count said to be unknown", got)
 	}
 }
+
+// TestADeletedBranchWhoseNameIsNotReadStopsCounting: a status branch whose
+// name is not read, of which this checkout holds a copy (a fetch of the whole
+// namespace, as `abcd announce` makes, brought it), is counted until origin
+// deletes it; then the next fetch of either kind drops the copy, and the count
+// with it, in the view and in the block.
+func TestADeletedBranchWhoseNameIsNotReadStopsCounting(t *testing.T) {
+	for _, next := range []string{"announce", "status"} {
+		t.Run(next, func(t *testing.T) {
+			w := newWorld(t)
+			pat := w.clone("9+pat@users.noreply.github.com", "")
+			w.pushNames([]string{"Octo"})
+			pat.announceAs("merging", "#1")
+			if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); !strings.Contains(refs, "Octo") {
+				t.Fatalf("announce's fetch brought no copy of Octo: %s", refs)
+			}
+			if v := pat.read(); v.UnreadNames != 1 {
+				t.Fatalf("with a copy held, unread names = %d; want 1", v.UnreadNames)
+			}
+			runGit(t, w.bare, "update-ref", "-d", StatusRefPrefix+"Octo")
+			if next == "announce" {
+				pat.announceAs("merged", "#1")
+			} else {
+				pat.status(nil)
+			}
+			if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); strings.Contains(refs, "Octo") {
+				t.Fatalf("after origin deleted Octo, the next %s kept its copy: %s", next, refs)
+			}
+			if v := pat.read(); v.UnreadNames != 0 || v.UnreadNamesUnknown {
+				t.Fatalf("after origin deleted Octo, unread names = %d (unknown %v); want none", v.UnreadNames, v.UnreadNamesUnknown)
+			}
+			if got := pat.notes(); strings.Contains(got, "whose name") {
+				t.Fatalf("after origin deleted Octo, the block:\n%s\nwant no count of names not read", got)
+			}
+		})
+	}
+}

@@ -280,7 +280,8 @@ func TestAFailedReadIsSaidInFixedWords(t *testing.T) {
 // TestADoubtfulAnnouncementIsFlaggedAndEveryOtherBranchStillRead is C11: an
 // announcement naming a sender other than its branch's owner is shown marked
 // with the reason; a commit that changes a file is marked and never shown; a
-// branch whose name is not a lower-case username is named and not fetched;
+// branch whose name is not a lower-case username is counted, never named,
+// and not fetched;
 // and every other branch is still read.
 func TestADoubtfulAnnouncementIsFlaggedAndEveryOtherBranchStillRead(t *testing.T) {
 	w := newWorld(t)
