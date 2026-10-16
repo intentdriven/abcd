@@ -257,7 +257,7 @@ func tokenHolder(root string, o Options) (Holder, error) {
 }
 
 // forgeUser is the real user-endpoint call, asked once per process for each
-// checkout and forge credential (iss-2610161015433495): a drain move makes
+// checkout and forge credential, as holderCacheKey says (iss-2610161015433495): a drain move makes
 // several reservation acts, and each asked GitHub the same question again.
 // Only a definite answer, a valid login with a positive id, is kept; a failure
 // is returned and asked again by the next act. An injected Options.ForgeUser
@@ -266,15 +266,12 @@ func tokenHolder(root string, o Options) (Holder, error) {
 // answering) is returned but not kept.
 func forgeUser(root string) (string, int64, error) {
 	k := forgeKey(root)
-	e := holderCache.entry(k)
-	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.known {
-		return e.login, e.id, nil
+	if a, ok := holderCache.get(k); ok {
+		return a.login, a.id, nil
 	}
 	login, id, err := askForgeUser(root)
 	if err == nil && validUsername(login) && id > 0 && forgeKey(root) == k {
-		e.login, e.id, e.known = login, id, true
+		holderCache.put(k, forgeAnswer{login: login, id: id})
 	}
 	return login, id, err
 }
@@ -345,35 +342,39 @@ func ghHostsFile(root string) string {
 	return filepath.Join(dir, "hosts.yml")
 }
 
-// forgeCache is the process's answers from the user endpoint, one entry per
-// key. Each entry has its own lock, held across its call, so concurrent acts
-// for one key ask once and acts for another key are never held up by it.
+// forgeCache is the process's definite answers from the user endpoint, one
+// per key, behind one mutex that guards the map and is never held across a
+// call. No caller is concurrent today: a drain makes one move per process, and
+// no goroutine reaches the holder resolver. Were two acts with one key ever to
+// run at once, each would miss, both would ask gh, and the later answer would
+// replace the earlier one; neither would wait on the other, so a hung gh would
+// hold up only the act that asked it.
 type forgeCache struct {
 	mu      sync.Mutex
-	entries map[holderCacheKey]*forgeEntry
+	entries map[holderCacheKey]forgeAnswer
 }
 
-type forgeEntry struct {
-	mu    sync.Mutex
-	known bool
+type forgeAnswer struct {
 	login string
 	id    int64
 }
 
 var holderCache = &forgeCache{}
 
-func (c *forgeCache) entry(k holderCacheKey) *forgeEntry {
+func (c *forgeCache) get(k holderCacheKey) (forgeAnswer, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	a, ok := c.entries[k]
+	return a, ok
+}
+
+func (c *forgeCache) put(k holderCacheKey, a forgeAnswer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.entries == nil {
-		c.entries = map[holderCacheKey]*forgeEntry{}
+		c.entries = map[holderCacheKey]forgeAnswer{}
 	}
-	e := c.entries[k]
-	if e == nil {
-		e = &forgeEntry{}
-		c.entries[k] = e
-	}
-	return e
+	c.entries[k] = a
 }
 
 // reset forgets every answer; tests call it so none reads another's.

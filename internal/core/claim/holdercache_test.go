@@ -261,3 +261,24 @@ func TestAnAnswerWhoseAccountStoreMovedDuringTheCallIsNotKept(t *testing.T) {
 		t.Fatalf("an act after the store moved during the first call asked the forge %d times; want twice (no answer kept)", n)
 	}
 }
+
+// Only a kept answer takes a place in the cache: a key whose call failed
+// leaves nothing behind.
+func TestAFailedAskLeavesNoEntryInTheHolderCache(t *testing.T) {
+	r := newCheckout(t, "pat@example.com")
+	o := Options{Home: t.TempDir()}
+	gh := stubForge(t, `{"login":"octo-person","id":4242}`)
+	gh.failing(true)
+	for _, token := range []string{"one-credential", "another-credential"} {
+		t.Setenv("GH_TOKEN", token)
+		if _, err := ResolveHolder(r.Root(), o); !errors.Is(err, ErrRefused) {
+			t.Fatalf("a failing forge: %v; want a refusal", err)
+		}
+	}
+	holderCache.mu.Lock()
+	n := len(holderCache.entries)
+	holderCache.mu.Unlock()
+	if n != 0 {
+		t.Fatalf("two failed asks left %d entries in the holder cache; want none", n)
+	}
+}
