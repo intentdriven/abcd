@@ -462,11 +462,17 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// issue as a lane's hand-back of its kind is routed, and releases the
 	// reservation the drain took before it asked, and no other; a no lets the
 	// lane open below, on that reservation.
+	//
+	// answered is the hold the answer was asked on: the lane a no opens on it
+	// names the fork check its reservation could not make or waived, as a
+	// lane that reserved for itself does (step 10).
+	var answered *DrainJudging
 	if d.Judgement != "" {
 		j, err := takeJudgement(repoRoot, d.Judgement, st, live, plan, now)
 		if err != nil {
 			return DrainResult{}, err
 		}
+		answered = st.Judging
 		if j.Applied && j.Answer == JudgementYes {
 			r, err := routeHandBack(repoRoot, j.Issue, DrainFromJudgement, HandBack{Kind: j.Kind, Reason: j.Reason}, origin, now)
 			if err != nil {
@@ -738,6 +744,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if held {
 			lane.held = &heldReservation{at: hold.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
 				v.ID, claim.Remote, stamp(hold.EffectiveExpiry), strings.Join(hold.Footprint, ", "))}
+			if a := answered; a != nil && a.Issue == v.ID && a.Hold != nil && a.Hold.Commit == hold.Commit {
+				lane.held.forkUnchecked, lane.held.forkAllowed = a.Hold.ForkUnchecked, a.Hold.ForkAllowed
+				if a.Hold.ForkUnchecked != "" {
+					lane.held.note += "; " + claim.ForkUncheckedLine(a.Hold.ForkUnchecked)
+				}
+				if a.Hold.ForkAllowed != "" {
+					lane.held.note += "; " + claim.ForkAllowedLine(a.Hold.ForkAllowed)
+				}
+			}
 		}
 		holds.starting(v.ID)
 		if drainBeforeStart != nil {

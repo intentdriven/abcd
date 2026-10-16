@@ -91,11 +91,16 @@ type DrainJudging struct {
 // DrainHold is a reservation the drain took on an issue to judge it: the
 // commit its push made, and when it was claimed and lapses. The drain releases
 // that commit and no other, so a reservation this person made or renewed by
-// hand since is left as it stands.
+// hand since is left as it stands. ForkUnchecked and ForkAllowed are the fork
+// check the act could not make or waived (claim's Result), kept so the lane a
+// no opens on the hold says so as a lane that reserved for itself does
+// (spc-2610161044461448 step 10).
 type DrainHold struct {
-	Commit    string    `json:"commit"`
-	ClaimedAt time.Time `json:"claimed_at"`
-	ExpiresAt time.Time `json:"expires_at"`
+	Commit        string    `json:"commit"`
+	ClaimedAt     time.Time `json:"claimed_at"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	ForkUnchecked string    `json:"fork_unchecked,omitempty"`
+	ForkAllowed   string    `json:"fork_allowed,omitempty"`
 }
 
 // DrainJudgement is one answer the drain took: the question's answer, the kind

@@ -370,7 +370,8 @@ func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool,
 	if res.Act == claim.ActRenewed && res.RenewedLive {
 		return nil, nil
 	}
-	return &DrainHold{Commit: res.Commit, ClaimedAt: res.ClaimedAt, ExpiresAt: res.ExpiresAt}, nil
+	return &DrainHold{Commit: res.Commit, ClaimedAt: res.ClaimedAt, ExpiresAt: res.ExpiresAt,
+		ForkUnchecked: res.ForkUnchecked, ForkAllowed: res.ForkAllowed}, nil
 }
 
 // reservedNote is reserveKey's reading of a reservation act's outcome: the
@@ -416,7 +417,7 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (reserved, error)
 	}
 	if o.held != nil {
 		t := o.held.at
-		return reserved{at: &t, note: o.held.note}, nil
+		return reserved{at: &t, note: o.held.note, forkUnchecked: o.held.forkUnchecked, forkAllowed: o.held.forkAllowed}, nil
 	}
 	ok, err := claim.HasOrigin(repoRoot)
 	if err != nil || !ok {
@@ -433,12 +434,14 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (reserved, error)
 
 // heldReservation is the reservation a drain took on an issue before it
 // asked the judgement over it, as the move's view shows it: when it was
-// claimed, and the run record's line for it. The lane a no opens starts on
-// it with no second push; it is not fresh, so a start that then fails leaves
-// it to the drain, which releases it.
+// claimed, the run record's line for it, and the fork check the reservation
+// could not make or waived (DrainHold). The lane a no opens starts on it with
+// no second push; it is not fresh, so a start that then fails leaves it to the
+// drain, which releases it.
 type heldReservation struct {
-	at   time.Time
-	note string
+	at                         time.Time
+	note                       string
+	forkUnchecked, forkAllowed string
 }
 
 // reserveResumed is a resumed run's reservation: `abcd build` over a run in
