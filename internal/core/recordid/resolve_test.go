@@ -123,10 +123,10 @@ func TestResolverIgnoresSymlinkedEntries(t *testing.T) {
 	}
 }
 
-// TestCitedIDReGrammar pins the cited-id grammar: the four id-bearing families,
+// TestCitedIDReGrammar pins the cited-id grammar: the five id-bearing families,
 // bare decimal N, nothing else.
 func TestCitedIDReGrammar(t *testing.T) {
-	for _, ok := range []string{"itd-1", "iss-146", "spc-18", "adr-37"} {
+	for _, ok := range []string{"itd-1", "iss-146", "spc-18", "adr-37", "dcn-2610141200001234"} {
 		if !CitedIDRe.MatchString(ok) {
 			t.Errorf("CitedIDRe rejected %q", ok)
 		}
@@ -342,5 +342,28 @@ func TestLookupRefusesTwoFilesClaimingOneID(t *testing.T) {
 				t.Errorf("Resolver.Lookup(%s) must refuse as LookupOne does: %v", tc.id, err)
 			}
 		})
+	}
+}
+
+// TestCitedFamiliesAreTheGrammar pins that the exported family list and the
+// grammar are one list: every family CitedFamilies names is one CitedIDRe
+// accepts, the families are exactly the resolver's five, and CitedIDForms
+// describes each of them (iss-2610160608389169, iss-2610160608457651).
+func TestCitedFamiliesAreTheGrammar(t *testing.T) {
+	fams := CitedFamilies()
+	if got := strings.Join(fams, " "); got != "itd spc iss adr dcn" {
+		t.Errorf("CitedFamilies = %q; want the resolver's five families", got)
+	}
+	for _, f := range fams {
+		if !CitedIDRe.MatchString(f + "-1") {
+			t.Errorf("CitedIDRe rejects %s-1, a family CitedFamilies names", f)
+		}
+	}
+	if got, want := CitedIDForms(), "itd-N, spc-N, iss-N, adr-N, or dcn-N"; got != want {
+		t.Errorf("CitedIDForms = %q; want %q", got, want)
+	}
+	fams[0] = "zzz"
+	if CitedFamilies()[0] != "itd" {
+		t.Error("a caller's change to the returned slice reached the canonical list")
 	}
 }

@@ -494,8 +494,8 @@ func validateGrill(red *recordRedactor, leg Leg) ([]GrillHit, int, error) {
 			return nil, 0, fmt.Errorf("grill hit %d cites a %d-byte record id (max %d)", at, len(h.Record), maxRecordIDBytes)
 		}
 		if !recordid.CitedIDRe.MatchString(h.Record) {
-			return nil, 0, fmt.Errorf("grill hit %d cites %s, which is not a record id (want adr-N, itd-N, iss-N, or spc-N)",
-				at, termsafe.DescribeRefused(h.Record))
+			return nil, 0, fmt.Errorf("grill hit %d cites %s, which is not a record id (want %s)",
+				at, termsafe.DescribeRefused(h.Record), recordid.CitedIDForms())
 		}
 		if !relationEnum[h.Relation] {
 			return nil, 0, fmt.Errorf("grill hit %d (%s) has an out-of-enum relation (%s); a hit is %s, %s, or %s",
