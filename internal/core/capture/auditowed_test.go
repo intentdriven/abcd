@@ -101,10 +101,12 @@ func TestAnUndecidedAuditCapturesOneIssueAndAPassingReAuditResolvesIt(t *testing
 		!strings.Contains(iss.Body, "(receipt "+rcp+")") || iss.FoundAt != aoShipped {
 		t.Fatalf("the captured issue = %+v", iss)
 	}
-	// The drain may take it: its remedy is real, so the field rules decide as
-	// for any issue, and a minor inconsistency passes the baseline.
-	if v := eligibility(iss, drainrule.Baseline(), deferralAnchor{}); v.Outcome != DrainEligible {
-		t.Fatalf("the drain must be able to take an undecided audit's issue: %+v", v)
+	// The drain hands it back as promoted: the issue names the audited intent
+	// in related_intents, so the owed check is that intent's, paid through
+	// `abcd intent audit`, never by a drain alone (spc-2610161044461448 step 4).
+	if v := eligibility(iss, drainrule.Baseline(), deferralAnchor{}); v.Outcome != DrainHandBack || v.Rule != RulePromoted ||
+		!strings.Contains(v.Reason, "itd-10") {
+		t.Fatalf("the drain must hand an undecided audit's issue back to its intent: %+v", v)
 	}
 
 	// The same undecided verdict again links to the open issue.

@@ -252,6 +252,65 @@ func TestDrainOrdersTheEligibleByCategoryThenSeverityThenAge(t *testing.T) {
 	}
 }
 
+// TestAnIssueNamingAnIntentIsHandedBackAsPromoted is step 4 of
+// spc-2610161044461448 (iss-2610161015370582): an issue whose related_intents
+// names an intent is one an intent already owns, so the rule hands it back as
+// promoted, naming every intent, whatever its other fields would let through.
+// A drain on another account reads the same field from origin's record, so it
+// never judges or works again an issue a promotion already took.
+func TestAnIssueNamingAnIntentIsHandedBackAsPromoted(t *testing.T) {
+	f := newDrainFixture(t)
+	f.file("iss-1", SeverityMinor, "bug", "guard the nil map")
+	for id, related := range map[string][]string{
+		"iss-2": {"itd-2610010000000003"},
+		"iss-3": {"itd-2610010000000004", "itd-2610010000000005"},
+	} {
+		if _, err := Capture(CaptureRequest{
+			RepoRoot: f.repo, IssuesRoot: f.ir, Text: "text of " + id, Severity: SeverityMinor,
+			Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t", ForceID: id,
+			Remedy: "guard the nil map", RelatedIntents: related,
+		}); err != nil {
+			t.Fatalf("capture %s: %v", id, err)
+		}
+	}
+
+	p := f.plan()
+	if v := verdictOf(t, p, "iss-1"); v.Outcome != DrainEligible {
+		t.Errorf("an issue naming no intent: %s/%s (%s), want eligible", v.Outcome, v.Rule, v.Reason)
+	}
+	for id, intents := range map[string][]string{
+		"iss-2": {"itd-2610010000000003"},
+		"iss-3": {"itd-2610010000000004", "itd-2610010000000005"},
+	} {
+		v := verdictOf(t, p, id)
+		if v.Outcome != DrainHandBack || v.Rule != RulePromoted {
+			t.Errorf("%s: %s/%s (%s), want handback/promoted", id, v.Outcome, v.Rule, v.Reason)
+		}
+		for _, itd := range intents {
+			if !strings.Contains(v.Reason, itd) {
+				t.Errorf("%s: the dry run's reason %q does not name %s", id, v.Reason, itd)
+			}
+		}
+	}
+	if p.Counts[DrainEligible] != 1 || p.Counts[DrainHandBack] != 2 {
+		t.Errorf("counts = %v, want 1 eligible and 2 handed back", p.Counts)
+	}
+
+	// The intent decides before the issue's other fields: a heavier issue an
+	// intent owns is named for the intent, which is where it is worked. A
+	// blocked one is still skipped first, since it is not considered at all.
+	heavy := eligibility(Issue{ID: "iss-4", Category: "process", Severity: SeverityMajor, Remedy: "r",
+		Status: StateOpen, RelatedIntents: []string{"itd-7"}}, drainrule.Baseline(), deferralAnchor{})
+	if heavy.Outcome != DrainHandBack || heavy.Rule != RulePromoted {
+		t.Errorf("a major process issue naming an intent: %s/%s, want handback/promoted", heavy.Outcome, heavy.Rule)
+	}
+	blocked := eligibility(Issue{ID: "iss-5", Category: "bug", Severity: SeverityMinor, Remedy: "r",
+		Status: StateOpen, RelatedIntents: []string{"itd-7"}, BlockedByOpen: []string{"iss-1"}}, drainrule.Baseline(), deferralAnchor{})
+	if blocked.Outcome != DrainSkipped || blocked.Rule != RuleBlocked {
+		t.Errorf("a blocked issue naming an intent: %s/%s, want skipped/blocked", blocked.Outcome, blocked.Rule)
+	}
+}
+
 // TestDrainPlanWritesNothing is the dry run's promise: the plan reads the ledger
 // and leaves every byte of it as it was, and names the rule's decision record.
 func TestDrainPlanWritesNothing(t *testing.T) {
@@ -510,7 +569,17 @@ func TestAbcdsOwnDrainRuleIsTheStrictBaseline(t *testing.T) {
 	if !strings.Contains(string(inv), "["+abcdsOwnRuleRecord+"]") {
 		t.Errorf("the brief's invariants do not cite %s", abcdsOwnRuleRecord)
 	}
+	// Invariant 19 states the promoted clause the rule enforces
+	// (spc-2610161044461448 step 4): an issue an intent owns is never a
+	// machine's to take alone.
+	if !strings.Contains(string(inv), promotedClause) {
+		t.Errorf("invariant 19 does not state the promoted clause %q", promotedClause)
+	}
 }
+
+// promotedClause is invariant 19's clause for an issue an intent owns, word for
+// word, so dropping or rewording it in the brief fails here.
+const promotedClause = "an issue whose `related_intents` names an intent is handed back by the rule `promoted`, so a machine never takes alone an issue an intent already owns"
 
 // TestADeferralIsHandedBackWhenTheCheckoutHoldsNoReleaseTag: a shallow clone
 // (fetch-depth 1, the unattended drain's likely checkout) fetches no tags, so

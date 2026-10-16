@@ -58,9 +58,12 @@ const (
 	RuleUnreadable DrainRule = "unreadable"
 	RuleNotOpen    DrainRule = "not-open"
 	RuleBlocked    DrainRule = "blocked"
-	RuleSecurity   DrainRule = "security"
-	RuleCategory   DrainRule = "category"
-	RuleSeverity   DrainRule = "severity"
+	// RulePromoted: the issue's related_intents names an intent, so an intent
+	// already owns it and it is worked there, never by a drain alone.
+	RulePromoted DrainRule = "promoted"
+	RuleSecurity DrainRule = "security"
+	RuleCategory DrainRule = "category"
+	RuleSeverity DrainRule = "severity"
 	// RuleDeferred: the record's deferral past the current anchor tag is live,
 	// so a person carried it past this release.
 	RuleDeferred DrainRule = "deferred"
@@ -90,13 +93,17 @@ type DrainVerdict struct {
 // eligibility judges one issue by its fields alone, under the repository's
 // rule r, with anchor the checkout's current release tag as far as it is known. iss.BlockedByOpen must be the derived projection List fills (the
 // blockers still in open/). The rules are asked in a fixed order, and the
-// first that excludes the issue decides: not open, blocked, security, a
-// category outside the rule's set, a severity outside it, a remedy that waits
-// on a ruling, a live deferral, no remedy, the automatic filers' remedy. An
-// issue no rule excludes is eligible.
+// first that excludes the issue decides: not open, blocked, promoted to an
+// intent, security, a category outside the rule's set, a severity outside it,
+// a remedy that waits on a ruling, a live deferral, no remedy, the automatic
+// filers' remedy. An issue no rule excludes is eligible.
 //
 // Blocked comes first because a blocked issue is not considered at all until
-// its blocker clears; the severity and category hand-backs come before the
+// its blocker clears; promoted comes next because an issue an intent owns is
+// worked through that intent whatever its other fields say, so naming any of
+// them would send a reader to the wrong owner (spc-2610161044461448 step 4;
+// the field travels with the record, so a drain that reads a promoted record
+// never takes the issue again); the severity and category hand-backs come before the
 // others because answering a ruling, waiting out a deferral or adding a remedy
 // would not make such an issue eligible, so naming them would send a reader to
 // the wrong fix. A remedy waiting on a ruling is named before a deferral
@@ -118,6 +125,12 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 	case len(iss.BlockedByOpen) > 0:
 		v.Blockers = append([]string(nil), iss.BlockedByOpen...)
 		return decide(DrainSkipped, RuleBlocked, "blocked by "+strings.Join(iss.BlockedByOpen, ", ")+", still open")
+	case len(promotedIntents(iss)) > 0:
+		// The ids are the record's own text, unjudged here, so they are masked:
+		// the reason reaches `drain --json`.
+		return decide(DrainHandBack, RulePromoted, fmt.Sprintf(
+			"promoted: related_intents names %s, so an intent owns this issue and it is worked there, never by a drain alone",
+			termsafe.Sanitize(strings.Join(promotedIntents(iss), ", "))))
 	case iss.Category == drainrule.SecurityCategory && r.Security != drainrule.SecurityTake:
 		return decide(DrainHandBack, RuleSecurity, "category security is always a person's under this repository's rule")
 	case !r.TakesCategory(string(iss.Category)):
@@ -164,6 +177,18 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 	}
 	return decide(DrainEligible, RuleFields,
 		"every field rule passes on its remedy; the host judgement over the remedy may still hand it back")
+}
+
+// promotedIntents is every intent the issue's related_intents names, blanks
+// left out: any entry is the forward half of a promotion.
+func promotedIntents(iss Issue) []string {
+	var ids []string
+	for _, id := range iss.RelatedIntents {
+		if id = strings.TrimSpace(id); id != "" {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // waitsOnPrefix opens a remedy whose fix waits on an unanswered ruling, the
