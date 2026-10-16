@@ -195,22 +195,34 @@ text is put on the page as text, never as markup.
 - **Two designs.** The page has two looks over the same elements and the same
   logic, which the product thinker chose on 2026-10-16 so the team can try
   them against each other. Guided, the default, has large cards, numbered
-  areas, a "What happens next" note, and arrival cards whose main buttons
-  share a line, on one control height per size and a 4 px spacing scale.
+  areas, a "What happens next" note (before the session on each step the
+  page can go on from and when sessions are not set up, never while it is
+  checking or cannot go on; live, for guests only), and arrival cards whose
+  main buttons share a line, on one control height per size and a 4 px spacing scale.
   Shared puts a live team bar over the document, with an icon-only Invite at
   its end, an icon-only Send to GitHub that widens to its label on hover or
   keyboard focus, and Suggestions alone on the right, mirroring Documents on
   the left; as the window narrows, labels fade and fold to their icons, least
   important first, never cut, wrapped or overlapping; it has no "What happens
-  next", and every overlay has a Close X at its top right. Ctrl+[ and Ctrl+]
-  switch between the designs on every platform, the Mac included (never Cmd),
-  with a short toast naming the design; the choice is kept per viewer in the
+  next", and every overlay has a Close X at its top right. Ctrl+Shift+[ and
+  Ctrl+Shift+] (Ctrl+{ and Ctrl+}) switch between the designs on every
+  platform, the Mac included (never Cmd), leaving Ctrl+[ and Ctrl+] to the
+  editor's indent and outdent, with a short toast naming the design. On
+  Windows and Linux those keys are the editor's fold and unfold, which the
+  page takes; it shows no fold arrows, so a section cannot be folded there
+  (a Mac folds with Cmd+Alt+[ and Cmd+Alt+]); the choice is kept per viewer in the
   browser's local storage, beside the display name, and an unreadable or
   unknown value falls back to Guided. In both, Alt+Shift+D shows or hides the
-  documents and Alt+Shift+S the right panel, as their tooltips say; a hidden
-  sidebar gives its room to the brief, the state lasts through every change
-  of screen, width and design, and on a phone the sidebars become sheets.
-  Escape closes the overlay on top. Both follow the light or dark setting and
+  documents and Alt+Shift+S the right panel, as their tooltips say, each
+  toggle keeping one name and showing whether it is on; a hidden sidebar
+  gives its room to the brief, and the state lasts through every change of
+  screen and design. A phone, where the sidebars become sheets, keeps its
+  own state apart from a wider window's, and so does the right panel at the
+  slide-over widths, so closing it there never hides it on a wide window.
+  Escape closes the overlay on top that can be seen; inside the editor, and
+  while an input method is composing, Escape is theirs. A dialog takes focus
+  when it opens and gives it back to what opened it, and focus on a control
+  a change of layout hides moves to the control that does its job now. Both follow the light or dark setting and
   reduced motion, reach every control from the keyboard with a visible focus,
   and use the system's own font, inline SVG icons and one cobalt accent token
   (#2457d6, or #7aa2ff in dark).

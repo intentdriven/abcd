@@ -318,16 +318,29 @@ link that opens it in its own tab.
 The session page comes in two designs, so your team can try both:
 
 - **Guided**, the default: large cards with numbered areas, and a "What
-  happens next" note on each step.
+  happens next" note. Before the session it shows on each step the page can
+  go on from, and when live sessions are not set up yet; while the page is
+  still checking the project, or cannot go on, it says why instead. In the
+  session it shows for guests only.
 - **Shared**: a team bar along the top showing who is here, with the brief
   beneath it; the documents and the suggestions sit in panels at either side,
   and inviting people and sending to GitHub are icon buttons in the bar.
 
-Press Ctrl+[ or Ctrl+] to switch between them; it is Ctrl on every computer,
-a Mac included. The page remembers each person's choice in their own browser.
+Press Ctrl+Shift+[ or Ctrl+Shift+] (Ctrl+{ or Ctrl+}) to switch between
+them; it is Ctrl on every computer, a Mac included, and plain Ctrl+[ and
+Ctrl+] still indent and outdent in the brief. On Windows and Linux the
+editor would fold a section on those two keys instead; the page takes them
+for the switch, and as it shows no fold arrows, a section cannot be folded
+there (a Mac folds with Cmd+Option+[ and Cmd+Option+], which still work).
+The page remembers each person's choice in their own browser.
+
 In either design, Alt+Shift+D shows or hides the documents and Alt+Shift+S
-the panel on the right, and Escape closes whatever is open on top. On a
-phone, the panels open as sheets from the bottom of the screen.
+the panel on the right, and Escape closes whatever is open on top; in the
+brief itself, Escape is the editor's. Each panel stays as you left it when
+you change design. A phone keeps its own panel state, apart from a wider
+window's: there the panels open as sheets from the bottom of the screen. So
+does the right panel at the narrower window widths where it slides over the
+page, so closing it there leaves it open on a wide window.
 
 ## Who can join
 
