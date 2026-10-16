@@ -50,7 +50,12 @@ the forge client resolves here (an SSH host alias is refused, naming it, with
 the `insteadOf` rule that maps it in the URL's own form: land does not read ssh
 config; a URL on another real host is refused as on a different host, with the
 `git remote set-url` that points `origin` back), and the forge's own default
-branch must be the one `origin/HEAD` names here and not the branch. Then
+branch must be the one `origin` itself names (`git ls-remote --symref origin
+HEAD`, which fetches and writes nothing) and not the branch. A forge and an
+`origin` that disagree are refused, naming both, and so is an `origin` that
+cannot be asked. When the local `origin/HEAD` is stale or missing, land does
+not refuse: it says so in an `origin` step, goes on with the default the two
+agree on, and leaves `origin/HEAD` as it is. Then
 `origin`'s default branch is fetched, and the head has landed when it is on
 it, or when the forge lists a merged pull request from this repository's
 branch whose head was this head and whose base was the default branch (a
@@ -150,7 +155,8 @@ detached HEAD, uncommitted changes (staged, unstaged or untracked), a branch
 checked out in no worktree, a preflight that failed or minted no receipt, a
 head that moved while the preflight ran, `origin`'s URLs changed while the
 preflight ran, an `origin` URL that is not the forge's repository, a forge
-default branch that differs from the local one or is the branch, a forge that
+default branch that differs from the one `origin` names or is the branch, an
+`origin` that cannot be asked which branch is its default, a forge that
 cannot be asked (whether the branch already merged included), a merged
 listing full with none at the head, a push git or the pre-push hook
 refused, more than one open pull request from this repository, only a fork's
