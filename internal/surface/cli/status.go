@@ -109,22 +109,27 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"each release being cut, which holds every other session's merge.\n\n" +
 			"It reads the remote once: it lists the status branches on origin (git\n" +
 			"ls-remote), then fetches, in one command, the reservations with origin's\n" +
-			"release tags, each status branch whose name is a GitHub username in lower\n" +
-			"case, and origin's default branch, and stamps when in the local tier. A\n" +
-			"branch under abcd-status/ by any other name is counted, never named, and\n" +
-			"not fetched, and this checkout's copy of each status branch origin does not\n" +
-			"list is deleted first. Then it asks the forge (gh api, the repository's\n" +
-			"activity record) who pushed each standing announcement it has not asked\n" +
-			"about yet: a sender is verified when the forge names the branch's owner,\n" +
-			"doubtful when it names someone else, and claimed when the forge cannot say\n" +
-			"or an app pushed it.\n\n" +
+			"release tags, the first 500 status branches whose names are GitHub\n" +
+			"usernames in lower case, and origin's default branch, and stamps when in\n" +
+			"the local tier. A branch under abcd-status/ by any other name is counted,\n" +
+			"never named, and not fetched; branches past the 500 are counted and not\n" +
+			"fetched. Before the fetch, this checkout's copy of each status branch that\n" +
+			"is not among the names it fetches is deleted, so a branch deleted on\n" +
+			"origin, one whose name is not read and one past the 500 leave nothing to\n" +
+			"read; a copy that cannot be deleted is named, and the fetch goes on. Then\n" +
+			"it asks the forge (gh api, the repository's activity record) who pushed\n" +
+			"each standing announcement it has not asked about yet, on at most ten\n" +
+			"branches, the newest first: a sender is verified when the forge names the\n" +
+			"branch's owner, doubtful when it names someone else, and claimed when the\n" +
+			"forge cannot say or an app pushed it.\n\n" +
 			"An announcement stands for its life from when this checkout first fetched it,\n" +
 			"not by the sender's clock. One whose sender is not its branch's owner, one\n" +
 			"that does not read as an announcement (never shown but by its branch and the\n" +
 			"reason), and a branch that was rewritten, passed a merge or gained more than\n" +
 			"one read covers are marked doubtful, and every other branch is still read.\n" +
 			"A running session sees each new line once, at its next prompt, in a\n" +
-			"block headed STATUS of at most ten lines, read from disk alone.\n" +
+			"block headed STATUS of at most ten lines and one more that counts the\n" +
+			"rest, read from disk alone.\n" +
 			"An announcement informs and grants nothing.\n\n" +
 			"When the fetch fails, the status is listed as last fetched, with that view's\n" +
 			"age and a line saying it is unread since then and why. Exit 0 when the fetch\n" +

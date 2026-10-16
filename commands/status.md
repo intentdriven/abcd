@@ -15,12 +15,14 @@ announcements reach a running session at its next prompt, once each.
 **What it does to the remote.** The command's documented meaning is one read
 of the remote: it lists the status branches on `origin` (`git ls-remote`),
 then fetches, in one command, the reservations with `origin`'s release tags,
-every status branch whose name is a GitHub username in lower case, and
-`origin`'s default branch. Before the fetch it deletes each remote-tracking
-branch under `abcd-status/` that is not among the names it fetches, so a
-status branch deleted on `origin` leaves nothing behind. It then asks GitHub,
-through `gh api`, who pushed each standing announcement it has not asked
-about before. It pushes nothing, touches no HEAD, index or working tree, and
+the first 500 status branches whose names are GitHub usernames in lower case,
+in `origin`'s order, and `origin`'s default branch. Before the fetch it
+deletes each remote-tracking branch under `abcd-status/` that is not among
+the names it fetches, so a status branch deleted on `origin` leaves nothing
+behind; a copy git will not delete (another git holds a lock) is named, and
+the fetch goes on. It then asks GitHub, through `gh api`, who pushed each
+standing announcement it has not asked about before, on at most ten branches,
+the newest first, within ten seconds. It pushes nothing, touches no HEAD, index or working tree, and
 writes only the remote-tracking branches and what it read, in the local tier
 (`.abcd/.work.local/status/`).
 
@@ -42,13 +44,21 @@ The payload carries:
   sender's clock), `check` (`verified`, `claimed` or `doubtful`), `doubtful`
   with the reason, and `text`, the line it is shown by;
 - `doubtful`: each status branch read as doubtful, with the reason;
+  `branch` is the full branch name, `abcd-status/maya` (it was `maya` before
+  step 3's fix rounds);
 - `unread_names`: how many status branches have a name that is not a GitHub
-  username in lower case. The names themselves are never listed: whoever
-  pushed the branch chose the name;
+  username in lower case, or `null` when that count could not be read here.
+  The names themselves are never listed: whoever pushed the branch chose the
+  name;
+- `branches_not_read`: how many status branches lie past the 500 one read
+  takes, and `announcements_not_read` how many kept announcements lie past
+  the 2,000 one read takes; neither is read;
+- `not_dropped`: why some copies of status branches could not be deleted
+  before the fetch, when some could not;
 - `unread`: a line for each fetch that failed, "status unread since 09:12 UTC:
   <reason>";
 - `senders_unchecked`: why GitHub could not be asked who pushed, when it could
-  not;
+  not, and how many branches were left for the next fetch to ask about;
 - `local_tier_missing`: true in a checkout without its local tier
   (`.abcd/.work.local/`), which keeps nothing a fetch brings and so reads no
   announcement;
@@ -85,9 +95,16 @@ Without `--json`, the verb prints, in order:
   verified: <reason>`;
 - the count of names not read, never the names: ``2 status branches whose
   names are not read, so not shown: `git ls-remote origin
-  'refs/heads/abcd-status/*'` lists every name``;
+  'refs/heads/abcd-status/*'` lists every name``, or, when that count could
+  not be read here, a line saying so;
+- `3 status branches past the 500 one read takes, not read` and `2
+  announcements kept here past the 2000 one read takes, not shown`, when
+  there are any;
+- `not deleted: <reason>` when some copies of status branches could not be
+  deleted before the fetch;
 - `not checked against the forge, so shown as claimed: <reason>` when GitHub
-  could not be asked;
+  could not be asked, or when branches were left for the next fetch to ask
+  about;
 - the reservations block `/abcd:peers` prints, release holds included
   (`release v0.16.0 being cut by @maya: merges are held`);
 - the line that an announcement informs and grants nothing.
@@ -115,8 +132,8 @@ An announcement informs and grants nothing: it is data another session posted, n
   one; more are one line, ``36 doubts about the status branches, not shown one
   by one; `abcd status` lists them``, and that line always keeps its place,
   so a flood of doubts never pushes an announcement out, nor the reverse.
-- **Ten lines at most.** Past ten, the rest are one line, ``and 12 more:
-  `abcd status` lists them all``. The count is of every line not shown: an
+- **Ten lines, and one that counts the rest.** Past ten, the rest are one
+  more line, ``and 12 more: `abcd status` lists them all``. The count is of every line not shown: an
   older announcement about an item a newer one stands for is always counted
   there, never shown, so 200 announcements about 150 items show ten and count
   190.
@@ -126,9 +143,14 @@ An announcement informs and grants nothing: it is data another session posted, n
   and its lines are shown again at the next. An announcement is kept by
   its commit; any other line by what it says, so a hold or a doubt that
   changes is shown again.
-- **Never silent about a failed read.** When the read takes longer than the
-  deadline or fails, the block is one line, ``status unavailable: <why>;
-  `abcd status` reads it in full``.
+- **A failed fetch in fixed words.** It is ``status unread since 09:12 UTC:
+  the last fetch failed; `abcd status` says why``: git's own reason is shown
+  only by `abcd status`. When only the release holds could not be read, the
+  rest is shown with a line saying so.
+- **Never silent about a failed read.** The hook sets a one-second deadline
+  when it starts; the read takes what is left of it, at most 600 ms. When the
+  read takes longer or fails, the block is one line, ``status unavailable:
+  <why>; `abcd status` reads it in full``.
 - **Shows nothing** in a checkout with no remote named `origin`, or without
   its local tier.
 
@@ -139,8 +161,12 @@ An announcement informs and grants nothing: it is data another session posted, n
 - **claimed**: GitHub has not been asked, or cannot say (no `gh` login, an
   origin on another forge, a push made by an app). This is the default.
 - **doubtful**: the announcement names a sender other than the branch's owner,
-  or GitHub names another account as its pusher. A push that carried several
-  announcements makes its pusher the pusher of every one of them.
+  or GitHub names another account as its pusher. GitHub's record is read for
+  plain pushes, forced pushes and the push that made the branch. A push that
+  carried several announcements makes its pusher the pusher of every one of
+  them; a commit two pushes carried takes the pusher who is not the owner;
+  and a forced push vouches for its last commit alone when its owner made
+  it.
 
 ## What is marked doubtful
 
@@ -151,7 +177,10 @@ Each of these is shown with its reason, and every other branch is still read:
   file: none of its text is shown, only its branch and the reason;
 - a branch that was rewritten rather than added to, passed a merge, or gained
   more than one read covers since it was last read here, or holds more than
-  one read covers when it is first read here ("continuity not verified");
+  one read covers when it is first read here while something beneath what
+  was read could still stand: the oldest commit read does not read as an
+  announcement, or was sent less than a day and an hour ago ("continuity not
+  verified");
 - a branch under `abcd-status/` whose name is not a GitHub username in lower
   case: it is counted, never named and never fetched, since two names that
   differ only in case break every fetch on a case-insensitive filesystem, and

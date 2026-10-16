@@ -236,8 +236,8 @@ type StatusFetch struct {
 // a lower-case GitHub username and origin's default branch, and stamps when.
 // A branch under abcd-status/ by any other name is not fetched: two names that
 // differ only in case break every fetch on a case-insensitive filesystem
-// (decision 10), so it is kept by name for the reader to show as doubtful
-// (C11). Then it reads in what the fetch brought (the intake), and asks the
+// (decision 10), so it is counted, never named and never kept (C11). Then it
+// reads in what the fetch brought (the intake), and asks the
 // forge, through lookup when it is given, who pushed each standing
 // announcement whose pusher is not yet known here (C17). A checkout with no
 // remote named origin answers ErrNoOrigin. A listing or a fetch that fails is

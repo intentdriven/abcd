@@ -1718,9 +1718,9 @@ exits 0, so the hook can never wedge a session.
 After them comes a "## STATUS" block when the last fetch of the status
 branches brought something this checkout has not shown: each new
 announcement, release hold, doubtful branch and failed fetch, once, newest
-first, at most ten lines and a count of the rest. It is read from disk alone,
-under a deadline inside the hook's budget, and says the status is
-unavailable when the deadline passes first. A rules.json that will not load
+first, at most ten lines and one more that counts the rest. It is read from
+disk alone, inside the one-second deadline the hook sets when it starts,
+and says the status is unavailable when the deadline passes first. A rules.json that will not load
 does not switch it off: text then carries the block alone, beside the error.
 
 On the first prompt of a session whose start reserved it a name, when the
