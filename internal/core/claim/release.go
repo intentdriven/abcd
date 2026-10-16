@@ -88,7 +88,7 @@ type Hold struct {
 	Copy string `json:"copy,omitempty"`
 	// Mine is true when the hold is under the reader's own username, from
 	// any copy; Own when it is also this copy's: the cutting session itself.
-	// Only ReleaseHolds sets them.
+	// Only releaseHolds sets them.
 	Mine bool `json:"mine"`
 	Own  bool `json:"own"`
 	// EffectiveExpiry is when the hold ends unless it is renewed, released or
@@ -150,7 +150,7 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 	return out
 }
 
-// ReleaseHolds is every release being cut as this checkout last fetched the
+// releaseHolds is every release being cut as this checkout last fetched the
 // reservations, from disk alone: no fetch, no push and nothing written
 // (invariant 7). Each hold's Mine says whether it is under the username a
 // reservation verb here would resolve, and Own whether it is also from this
@@ -158,7 +158,7 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 // the land fence and `abcd land`, and for `abcd peers`, which shows each hold
 // by the same rule (Hold.Line), as `abcd status` and the prompt hook do. It
 // reads the release reservations' tips alone.
-func ReleaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
+func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	now = now.UTC().Truncate(time.Second)
 	snap, err := viewOf(root, now, true, isRelease)
 	if err != nil {
@@ -174,4 +174,10 @@ func ReleaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 		holds[i].Own = holds[i].Mine && h.Copy == CopyThis
 	}
 	return holds, nil
+}
+
+// ReleaseHoldsForTest is releaseHolds, for a test in another package that
+// holds what this checkout sees before a fetch.
+func ReleaseHoldsForTest(root string, now time.Time, o Options) ([]Hold, error) {
+	return releaseHolds(root, now, o)
 }

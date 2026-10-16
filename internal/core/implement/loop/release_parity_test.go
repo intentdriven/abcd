@@ -21,7 +21,7 @@ import (
 // (nil when nothing holds the landing).
 func landHold(t *testing.T, root string) *landing.Refusal {
 	t.Helper()
-	_, err := landing.ReleaseHold(root, "")
+	_, err := landing.ReleaseHoldForTest(root, "")
 	if err == nil {
 		return nil
 	}

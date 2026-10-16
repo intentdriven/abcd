@@ -132,7 +132,7 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 }
 
 // viewOf is view over the subjects only admits (every subject when only is
-// nil): a reader that needs the releases alone (ReleaseHolds) reads no other
+// nil): a reader that needs the releases alone (releaseHolds) reads no other
 // tip, and origin's default branch only when a record is there to derive.
 func viewOf(root string, now time.Time, derive bool, only func(subject string) bool) (Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)

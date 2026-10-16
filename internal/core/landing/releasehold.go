@@ -8,7 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// ReleaseHold is the release hold at `abcd land` (itd-2609151838312703 C7,
+// releaseHold is the release hold at `abcd land` (itd-2609151838312703 C7,
 // spc-2610150728396006 step 4), made before land pushes, arms or queues
 // anything: the land fence's own judgement (claim.FetchMergeHold), from the
 // checkout land runs in at root, whose copy key and local tier are the ones
@@ -20,9 +20,8 @@ import (
 // cannot see may be there, but as a refusal and not a hold: nobody is known
 // to hold anything. A checkout with no remote named origin is not held. It
 // returns the notice naming each release dated ahead that the hold did not
-// count (claim.MergeHold.Notice), "" when there is none. It is exported for
-// the land fence's parity tests, which hold the two judgements to one rule.
-func ReleaseHold(root, home string) (string, error) {
+// count (claim.MergeHold.Notice), "" when there is none.
+func releaseHold(root, home string) (string, error) {
 	m, err := claim.FetchMergeHold(root, time.Now(), claim.Options{Home: home})
 	var fe *claim.FetchError
 	switch {
@@ -42,3 +41,7 @@ func ReleaseHold(root, home string) (string, error) {
 	}
 	return clean(m.Notice()), nil
 }
+
+// ReleaseHoldForTest is releaseHold, for the land fence's parity tests,
+// which hold the two judgements to one rule.
+func ReleaseHoldForTest(root, home string) (string, error) { return releaseHold(root, home) }

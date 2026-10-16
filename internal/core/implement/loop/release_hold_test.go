@@ -51,7 +51,7 @@ func TestTheFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 			reserveRelease(t, q, "rel-v0.16.0", now.Add(-time.Minute))
 			// This checkout has not fetched Q's reservation: only the fence's
 			// own fetch can see it.
-			if holds, err := claim.ReleaseHolds(f.repo.Root(), now, claim.Options{}); err != nil || len(holds) != 0 {
+			if holds, err := claim.ReleaseHoldsForTest(f.repo.Root(), now, claim.Options{}); err != nil || len(holds) != 0 {
 				t.Fatalf("the checkout already sees the hold before the fence fetched: %+v %v", holds, err)
 			}
 			r := f.fenced(t)
