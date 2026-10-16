@@ -1019,11 +1019,19 @@ func docAuditGate(pre *DocAuditPreflight) GateSummary {
 var hookHandlerTypes = map[string]struct{}{"prompt": {}, "agent": {}, "http": {}}
 
 // hookComplianceGate is the hook-compliance row, at the warn tier: every
-// payload file a hook command invokes is executable in the payload (a hook that
-// tests for an executable silently skips one that is not), every command
-// handler names a command, and every timeout is a positive number. What a hook
+// payload file a hook EXECUTES is executable in the payload (a hook that tests
+// for an executable silently skips one that is not), every command handler
+// names a command, and every timeout is a positive number. What a hook
 // DECLARES is the installability smoke's (a missing file refuses there); this
 // row judges whether the declared hooks would behave.
+//
+// The mode is judged only where some hook text executes the file. A command
+// that runs its script through sh or bash (`sh "${CLAUDE_PLUGIN_ROOT}/hooks/x.sh"`,
+// the form abcd's own hooks/hooks.json uses for every hook) has the interpreter
+// read the script, which runs at any mode, so a 0644 script there is no concern
+// (iss-2610160608456302). A file the command, or a script it runs, executes
+// directly — session-start.sh runs hooks/bootstrap.sh that way — still needs
+// its executable bit, and a missing one is still a finding.
 func hookComplianceGate(bundle Bundle) GateSummary {
 	row := GateSummary{Name: gateHookCompliant, Status: "ran"}
 	tree := NewBundleTree(bundle)
@@ -1038,12 +1046,21 @@ func hookComplianceGate(bundle Bundle) GateSummary {
 		modes[f.LogicalPath] = f.GitMode
 	}
 	seen := map[string]struct{}{}
+	executed := map[string]map[string]struct{}{} // by hook command
 	for _, e := range surface.Entries {
 		if e.Origin != OriginHookCommand || e.Requirement != RequirePayload {
 			continue
 		}
 		mode, carried := modes[e.Path]
 		if _, dup := seen[e.Path]; dup || !carried || mode == "100755" {
+			continue
+		}
+		run, ok := executed[e.DeclaredAs]
+		if !ok {
+			run = hookExecutedRefs(tree, e.DeclaredAs)
+			executed[e.DeclaredAs] = run
+		}
+		if _, direct := run[e.Path]; !direct {
 			continue
 		}
 		seen[e.Path] = struct{}{}

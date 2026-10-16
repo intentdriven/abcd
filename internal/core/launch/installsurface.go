@@ -569,8 +569,26 @@ func collectCommandStrings(doc any) []string {
 // assembled at runtime is not knowable at release time. A reference this misses
 // yields no entry, never a false failure.
 func pluginRootRefs(command string) []string {
+	spans := pluginRootRefSpans(command)
+	out := make([]string, 0, len(spans))
+	for _, s := range spans {
+		out = append(out, s.path)
+	}
+	return out
+}
+
+// refSpan is one plugin-root reference in a command string: the payload path it
+// names and the offset of the `$` that opens it.
+type refSpan struct {
+	path  string
+	start int
+}
+
+// pluginRootRefSpans is pluginRootRefs with each reference's position kept, so
+// a caller can read the words that precede it.
+func pluginRootRefSpans(command string) []refSpan {
 	const name = "CLAUDE_PLUGIN_ROOT"
-	var out []string
+	var out []refSpan
 	for i := 0; i < len(command); {
 		j := strings.Index(command[i:], name)
 		if j < 0 {
@@ -591,10 +609,91 @@ func pluginRootRefs(command string) []string {
 			ref = ref[:k]
 		}
 		if ref = normaliseDeclared(ref); ref != "" {
-			out = append(out, ref)
+			dollar := start - 1
+			if command[dollar] == '{' {
+				dollar--
+			}
+			out = append(out, refSpan{path: ref, start: dollar})
 		}
 	}
 	return out
+}
+
+// hookExecutedRefs returns the plugin-root paths that a hook command, or a
+// hooks/*.sh script it names, EXECUTES: runs as a program rather than hands to
+// sh or bash as a script to read. It reads the same text hookCommandRefs reads,
+// one level deep, so every path it returns is one hookCommandRefs returned too.
+//
+// Only an executed file needs its executable bit. `sh "$CLAUDE_PLUGIN_ROOT/x.sh"`
+// has the interpreter open x.sh and read it, so x.sh runs at any mode; abcd's own
+// hooks/hooks.json runs every hook script that way (iss-2610160608456302). A
+// path one hook text executes is executed, whatever another text does with it.
+func hookExecutedRefs(tree PayloadTree, command string) map[string]struct{} {
+	out := map[string]struct{}{}
+	texts := []string{command}
+	for _, ref := range pluginRootRefs(command) {
+		if !strings.HasPrefix(ref, "hooks/") || !strings.HasSuffix(ref, ".sh") || !tree.Has(ref) {
+			continue
+		}
+		if data, err := tree.Read(ref); err == nil {
+			texts = append(texts, string(data))
+		}
+	}
+	for _, text := range texts {
+		for _, s := range pluginRootRefSpans(text) {
+			if !interpreterRuns(text, s.start) {
+				out[s.path] = struct{}{}
+			}
+		}
+	}
+	return out
+}
+
+// interpreterRuns reports whether the reference opening at start is the script
+// operand of an sh or bash invocation: the simple command it ends begins with
+// sh or bash (by name or by an absolute path to one), perhaps after exec,
+// command or variable assignments, and every word between the interpreter and
+// the reference is an option. `sh -c` is excluded, because its operand is a
+// command string the shell then executes.
+//
+// Like pluginRootRefs it does not emulate a shell. A form it does not
+// recognise reads as an execution, so the mode stays judged: an unfamiliar
+// invocation can cost a spurious warning, never a missed one.
+func interpreterRuns(text string, start int) bool {
+	head := text[:start]
+	head = strings.TrimRight(head, "\"'")
+	if k := strings.LastIndexAny(head, ";|&(`\n"); k >= 0 {
+		head = head[k+1:]
+	}
+	words := strings.Fields(head)
+	for len(words) > 0 && commandPrefixWord(words[0]) {
+		words = words[1:]
+	}
+	if len(words) == 0 {
+		return false
+	}
+	switch path.Base(strings.Trim(words[0], "\"'")) {
+	case "sh", "bash":
+	default:
+		return false
+	}
+	for _, opt := range words[1:] {
+		if !strings.HasPrefix(opt, "-") || (!strings.HasPrefix(opt, "--") && strings.Contains(opt, "c")) {
+			return false
+		}
+	}
+	return true
+}
+
+// commandPrefixWord reports whether a word can stand before the program of a
+// simple command without being that program: a keyword that opens a command
+// list, exec or command, or a variable assignment.
+func commandPrefixWord(w string) bool {
+	switch w {
+	case "then", "do", "else", "!", "exec", "command":
+		return true
+	}
+	return strings.Contains(w, "=") && !strings.HasPrefix(w, "-")
 }
 
 // dollarRooted reports whether the variable name at start is an actual expansion
