@@ -412,11 +412,7 @@ func terminalOnDefault(root, id string) (bool, error) {
 // a ref under refs/remotes/origin/, or "".
 func originDefault(root string) string {
 	trace("symbolic-ref", "--quiet", "refs/remotes/"+Remote+"/HEAD")
-	ref := gitutil.DefaultRef(root)
-	if !strings.HasPrefix(ref, "refs/remotes/"+Remote+"/") {
-		return ""
-	}
-	return ref
+	return gitutil.TrackedDefaultBranch(root, Remote)
 }
 
 // originPresent refuses a checkout with no remote named origin, naming the
