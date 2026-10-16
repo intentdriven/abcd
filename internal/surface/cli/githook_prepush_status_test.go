@@ -150,6 +150,35 @@ func TestPrePushIgnoresAGraftFile(t *testing.T) {
 	}
 }
 
+// TestPrePushGatesAStatusPushFromAShallowClone: a .git/shallow line naming an
+// announcement stops a history walk at it, hiding the commit carrying files
+// beneath it, even with no graft file read. The hook cannot see the whole
+// range in a shallow clone, so the status row does not pass it: the push is
+// gated, refused without a receipt, and origin is unmoved.
+func TestPrePushGatesAStatusPushFromAShallowClone(t *testing.T) {
+	c := newPrePushCase(t)
+	files := c.commit("feature.md", "a feature\n")
+	empty := c.git("hash-object", "-w", "-t", "tree", "/dev/null")
+	announcement := c.commitTree(empty, files, "abcd announcement: merging #1012")
+	gitDir := c.git("rev-parse", "--absolute-git-dir")
+	if err := os.WriteFile(filepath.Join(gitDir, "shallow"), []byte(announcement+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c.env = append(c.env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_GRAFT_FILE=/dev/null/none")
+	n := c.git("rev-list", "--count", announcement)
+	c.env = c.env[:len(c.env)-2]
+	if n != "1" {
+		t.Fatalf("the shallow file does not cut the history: %s commits reachable from the announcement", n)
+	}
+	out, err := c.push("origin", announcement+":"+statusRef)
+	if err == nil || !strings.Contains(out, "no passing preflight") {
+		t.Fatalf("a commit carrying files passed under the status prefix behind a shallow file (err %v)\n%s", err, out)
+	}
+	if got := c.remoteRef(statusRef); got != "" {
+		t.Errorf("the remote moved to %s although the push was refused", got)
+	}
+}
+
 // TestPrePushGatesAMergeThatBringsInFiles: a merge with the empty tree over an
 // announcement, whose second parent carries files, moves those files' commits
 // onto the branch, so it is gated as any push is.

@@ -115,8 +115,12 @@ only_empty_trees() {
 # fast-forward (or a create) and every commit it moves has the empty tree. The
 # range is everything new on an update, and everything reachable on a create.
 # A remote tip this clone does not hold fails both tests, so the push is gated.
+# So does any push from a shallow clone: a .git/shallow line stops the walk at
+# the commit it names, as a graft would, and the commits beneath it go unread,
+# so the hook cannot show the range changes no file and asks for a receipt.
 reservation_shape() {
   local remote_sha="$1" local_sha="$2"
+  [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" != "true" ] || return 1
   if is_null_id "$remote_sha"; then
     only_empty_trees "$local_sha"
   else
