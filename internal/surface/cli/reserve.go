@@ -95,7 +95,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 		Args: func(_ *cobra.Command, args []string) error {
 			switch len(args) {
 			case 0:
-				return &exitError{Code: 2, Msg: "abcd reserve: name the issue or intent to reserve (abcd reserve <record-id> --footprint <path>); `abcd peers` lists the reservations; nothing was pushed"}
+				return &exitError{Code: 2, Msg: "abcd reserve: name the issue or intent to reserve (abcd reserve <record-id> --footprint <path>), or the release being cut (abcd reserve rel-vX.Y.Z); `abcd peers` lists the reservations; nothing was pushed"}
 			case 1:
 				return nil
 			}
