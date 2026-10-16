@@ -43,7 +43,7 @@ var protocolRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 func newGuardApproveCommand() *cobra.Command {
 	var dir string
 	cmd := &cobra.Command{
-		Use: "approve --dir=<working tree>",
+		Use: "approve --dir <working-tree>",
 		Long: "Answers the permission prompts of an agent abcd started without a terminal,\n" +
 			"over MCP on stdio: the claude runner starts it, as the one server of a launch\n" +
 			"whose role's contract grants the shell, and names its tool, approve, as the\n" +

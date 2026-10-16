@@ -324,8 +324,9 @@ An agent abcd starts through its claude runner has no terminal, so nobody can
 answer the harness's permission prompts (iss-2610161612203555). A launch whose
 role's contract grants the shell therefore carries the guard
 (dcn-2610161624025493): the runner names the harness's permission prompt tool,
-`mcp__abcd__approve`, and starts `abcd guard approve --dir=<working tree>` as
-the launch's one MCP server, on stdio, both on that launch's command line, under
+`mcp__abcd__approve`, and starts the guard's approve sub-verb, for the working
+tree the agent runs in, as the launch's one MCP server, on stdio, both on that
+launch's command line, under
 the default permission mode, with the shell no longer granted without a prompt.
 Every shell command the harness would ask a person about is put to the guard,
 read against the registry of the working tree the agent runs in, afresh for

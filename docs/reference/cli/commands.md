@@ -1420,7 +1420,7 @@ Judge a shell command against the hazard registry before it runs: Writes nothing
 
 Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.
 
-**Usage:** `abcd guard approve --dir=<working tree> [flags]`
+**Usage:** `abcd guard approve --dir <working-tree> [flags]`
 
 Answers the permission prompts of an agent abcd started without a terminal,
 over MCP on stdio: the claude runner starts it, as the one server of a launch
@@ -1448,6 +1448,12 @@ start it. It exits 0 when its input ends.
 
 ```
       --dir string   the working tree the agent runs in, as an absolute path
+```
+
+**Example:**
+
+```
+abcd guard approve --dir /work/example-repo
 ```
 
 #### `abcd guard check`

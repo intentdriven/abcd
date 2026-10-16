@@ -478,7 +478,7 @@ print mode with the bare flag, so the repository's hooks, plugins and
 configured servers do not run; opencode runs in run mode with `--pure`. A
 claude launch whose role's contract grants the shell carries the guard
 (iss-2610161612203555, dcn-2610161624025493): the launch names the harness's
-permission prompt tool, served by `abcd guard approve` as the one MCP server it
+permission prompt tool, served by the guard's approve sub-verb as the one MCP server it
 starts (`--mcp-config` inline, `--strict-mcp-config`), under the default
 permission mode, and the shell is no longer granted without a prompt, so every
 shell command the harness would ask a person about is put to the guard, which

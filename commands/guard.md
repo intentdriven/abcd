@@ -1,7 +1,7 @@
 ---
 name: guard
 description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb."
-argument-hint: "[check [--command <command>] | hook | approve --dir=<dir>]"
+argument-hint: "[check [--command <command>] | hook | approve --dir <dir>]"
 block: agents
 user-invocable: false
 ---

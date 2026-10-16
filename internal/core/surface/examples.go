@@ -36,6 +36,8 @@ var examples = map[string]string{
 
 	"abcd decide": `abcd decide "Decisions are one flat file each"`,
 
+	"abcd guard approve": "abcd guard approve --dir /work/example-repo",
+
 	"abcd reserve": "abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go",
 
 	"abcd docs fidelity record": "abcd docs fidelity record --verdict-json verdict.json",
