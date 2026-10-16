@@ -707,7 +707,9 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 			"records the deployed relay's address in .abcd/relay/relays.json.\n\n" +
 			"It asks api.github.com whether the owner is an organisation, and converts the\n" +
 			"app GitHub created; for the cloud it reads the release's checksums. It waits up\n" +
-			"to an hour for the app to be created. Exit 2 on a refusal, with nothing written.",
+			"to an hour for the app to be created. Where sessions may run is recorded once\n" +
+			"the app is. Exit 2 on a refusal before then, with nothing written; a blueprint\n" +
+			"that cannot be written afterwards exits 2 with the app and the answer kept.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) (err error) {
 			defer endOnStop(&err)
@@ -789,17 +791,6 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 				}
 			}
 			res := sessionSetupResult{Repo: repo, Where: chosen, ClientID: clientID}
-			if !set || stored != chosen {
-				if _, serr := ahoy.StoreLiveSessions(root, chosen); serr == nil {
-					from := "not set"
-					if set {
-						from = stored
-					}
-					res.Recorded = "sessions.live: " + from + " -> " + chosen
-				} else {
-					fmt.Fprintf(cmd.ErrOrStderr(), "%swhere sessions may run was not recorded: %s\n", prefix, termsafe.Sanitize(serr.Error()))
-				}
-			}
 			stderr := cmd.ErrOrStderr()
 			var app coresession.CreatedApp
 			if clientID == "" {
@@ -841,6 +832,19 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 				res.ClientID, res.AppCreated = app.ClientID, true
 				res.AppSettings, res.AppInstall = app.SettingsURL(), app.InstallURL()
 			}
+			// Where sessions may run is recorded once the app is, so every
+			// refusal before this point leaves the checkout as it was.
+			if !set || stored != chosen {
+				if _, serr := ahoy.StoreLiveSessions(root, chosen); serr == nil {
+					from := "not set"
+					if set {
+						from = stored
+					}
+					res.Recorded = "sessions.live: " + from + " -> " + chosen
+				} else {
+					fmt.Fprintf(stderr, "%swhere sessions may run was not recorded: %s\n", prefix, termsafe.Sanitize(serr.Error()))
+				}
+			}
 			settings := res.AppSettings
 			if settings == "" {
 				settings = "the app's settings page on GitHub (Settings, then Developer settings, then GitHub Apps, then Edit beside the app)"
@@ -849,6 +853,13 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 				res.Steps = append(res.Steps, "Install the app on "+repo+": open "+res.AppInstall+", choose Only select repositories, pick "+repo+", and click Install.")
 			} else {
 				res.Steps = append(res.Steps, "The team's sign-in app is already recorded (client id "+res.ClientID+"); check on GitHub that it is installed on "+repo+".")
+				// An app recorded before, perhaps for local sessions alone,
+				// may lack the callback the manifest sets for the cloud.
+				if coresession.AllowsCloud(chosen) {
+					res.Steps = append(res.Steps, "Make sure the cloud's sign-in can return to the session page: on "+settings+
+						", under Identifying and authorizing users, add "+coresession.PageCallbackURL(repo)+
+						" as a Callback URL if it is not listed, and click Save changes.")
+				}
 			}
 			if coresession.AllowsLocal(chosen) {
 				res.Steps = append(res.Steps, "Switch on the app's device flow, which local sessions sign in with: open "+settings+

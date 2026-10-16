@@ -138,7 +138,7 @@ Every security property of `serve` holds for it unchanged: the limits, the rejoi
 2. **The second question,** after a Yes: "Where may sessions run?" with Local, Cloud and Both.
 3. **The team's GitHub App,** created through GitHub's App manifest flow. That is a POST form to `https://github.com/settings/apps/new`, or `https://github.com/organizations/<org>/settings/apps/new` for an organisation, carrying a pre-filled manifest:
    - the app's name;
-   - the callback URL, for the cloud: the page's own address (`https://abcdesign.app/<owner>/<repo>/brief/`);
+   - the callback URL, for the cloud: the page's own address (`https://abcdesign.app/<owner>/<repo>/brief/`). An app already recorded is kept; where the cloud is allowed, setup then names this callback URL to add on the app's settings page, since an app recorded for local sessions alone has none;
    - permissions: Contents and Pull requests read and write, Metadata read;
    - no webhook;
    - `public: false`.

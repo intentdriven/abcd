@@ -4231,7 +4231,9 @@ records the deployed relay's address in .abcd/relay/relays.json.
 
 It asks api.github.com whether the owner is an organisation, and converts the
 app GitHub created; for the cloud it reads the release's checksums. It waits up
-to an hour for the app to be created. Exit 2 on a refusal, with nothing written.
+to an hour for the app to be created. Where sessions may run is recorded once
+the app is. Exit 2 on a refusal before then, with nothing written; a blueprint
+that cannot be written afterwards exits 2 with the app and the answer kept.
 
 **Flags:**
 

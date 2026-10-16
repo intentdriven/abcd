@@ -223,3 +223,66 @@ func TestSessionSetupChecksTheReleaseBeforeCreatingTheApp(t *testing.T) {
 		t.Error("a refusal wrote .abcd/relay/")
 	}
 }
+
+// TestSessionSetupWithARecordedAppNamesTheCallbackForTheCloud: an app
+// recorded earlier, perhaps for local sessions alone, has no callback for the
+// session page. When the cloud is allowed, setup says to add the one the
+// manifest would have set, on the app's settings page.
+func TestSessionSetupWithARecordedAppNamesTheCallbackForTheCloud(t *testing.T) {
+	repo := managedSessionRepo(t)
+	sessionConfig(t, repo, `{"meta": {"schema_version": 1}}`)
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "relay"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".abcd", "relay", "github-app.json"), []byte(`{"client_id": "Iv23liRecorded"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	swapSessionRelease(t)
+	asked, done := fakeManifestAPI(t)
+	defer done()
+	const callback = "https://abcdesign.app/acme/brief/brief/"
+	for _, where := range []string{"cloud", "both"} {
+		out, err := runCLIStdinErr(t, "", "session", "setup", "--where", where, "--release", "v0.17.1")
+		if err != nil {
+			t.Fatalf("%s: %v\n%s", where, err, out)
+		}
+		text := string(out)
+		if !strings.Contains(text, "already recorded") || !strings.Contains(text, callback) || !strings.Contains(text, "Callback URL") {
+			t.Errorf("%s: output does not name the callback URL %s to add:\n%s", where, callback, text)
+		}
+	}
+	out, err := runCLIStdinErr(t, "", "session", "setup", "--where", "local")
+	if err != nil {
+		t.Fatalf("local: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), callback) {
+		t.Errorf("a local-only setup names a callback URL:\n%s", out)
+	}
+	if len(*asked) != 0 {
+		t.Errorf("GitHub was asked %v with the app already recorded", *asked)
+	}
+}
+
+// TestSessionSetupRefusedAfterTheChoiceRecordsNothing: a refusal says
+// "(nothing written)", so where sessions may run is recorded only once the
+// app is: a refusal on the way leaves .abcd/config.json as it was.
+func TestSessionSetupRefusedAfterTheChoiceRecordsNothing(t *testing.T) {
+	repo := managedSessionRepo(t)
+	sessionConfig(t, repo, `{"meta": {"schema_version": 1}}`)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "unavailable", http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+	old := sessionGitHubAPI
+	sessionGitHubAPI = srv.URL
+	defer func() { sessionGitHubAPI = old }()
+	_, err := runCLIStdinErr(t, "", "session", "setup", "--where", "local")
+	if exitCode(err) != 2 || !strings.Contains(err.Error(), "nothing written") {
+		t.Fatalf("GitHub unavailable: %v, want exit 2 saying nothing was written", err)
+	}
+	cfg, _ := os.ReadFile(filepath.Join(repo, ".abcd", "config.json"))
+	var m map[string]any
+	if json.Unmarshal(cfg, &m) != nil || m["sessions"] != nil {
+		t.Errorf("a refusal saying nothing was written recorded an answer:\n%s", cfg)
+	}
+}

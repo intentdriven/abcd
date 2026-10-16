@@ -61,7 +61,7 @@ It waits for the person in a browser, for up to an hour, so never run it from
 this session: tell the user to run `abcd session setup` in a Terminal of their
 own, in the project's checkout. Where sessions may run comes from `--where`,
 else from the recorded answer, else from the question, asked at a terminal;
-the answer is recorded.
+the answer is recorded once the app is.
 
 1. **The team's own GitHub sign-in app.** Each team registers its own; abcd
    owns no shared app. `setup` prints an address on this computer whose page
@@ -72,7 +72,10 @@ the answer is recorded.
    back, and `setup` keeps only the app's public client id, in
    `.abcd/relay/github-app.json`. The client secret, the webhook secret and
    the private key GitHub hands back are never written or shown. An app
-   already recorded is kept, and nothing is created twice.
+   already recorded is kept, and nothing is created twice; where the cloud is
+   allowed, `setup` then names the session page's callback URL to add on the
+   app's settings page, the one the manifest would have set, since an app
+   recorded for local sessions alone has none.
 2. **Installing it** on the repository, on the page `setup` names.
 3. **Enable Device Flow.** A manifest cannot tick it. For Local or Both,
    `setup` names the app's settings page and says to tick Enable Device Flow
@@ -95,7 +98,9 @@ checksums. `--json` returns `repo`, `where`, `recorded`, `client_id`,
 `steps`. It refuses (exit 2, nothing written) outside a checkout abcd manages
 or one whose origin is not on github.com, with nothing saying where sessions
 may run off a terminal, on a `--where` other than local, cloud or both, and on
-a `--relay-origin` for local sessions alone. Creating someone's GitHub App is
+a `--relay-origin` for local sessions alone. A blueprint that cannot be
+written once the app is recorded exits 2 with the app and the answer kept.
+Creating someone's GitHub App is
 an act on their account, so it never runs without the user asking for it.
 
 ## Start

@@ -84,9 +84,17 @@ func NewAppManifest(repo, where, redirectURL string) (AppManifest, error) {
 		DefaultEvents: []string{},
 	}
 	if AllowsCloud(where) {
-		m.CallbackURLs = []string{DefaultPageOrigin + "/" + repo + "/brief/"}
+		m.CallbackURLs = []string{PageCallbackURL(repo)}
 	}
 	return m, nil
+}
+
+// PageCallbackURL is the callback URL the cloud's web sign-in returns to:
+// the repository's session page on abcdesign.app. The manifest sets it for an
+// app registered where the cloud is allowed; an app recorded before has it
+// added on its settings page.
+func PageCallbackURL(repo string) string {
+	return DefaultPageOrigin + "/" + repo + "/brief/"
 }
 
 // appName is the app's name, within GitHub's length: the owner and the
