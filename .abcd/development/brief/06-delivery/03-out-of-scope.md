@@ -147,6 +147,8 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610110940216682` — Every change is checked in full once, on exactly what lands
 - `itd-2610111655362931` — On the dashboard, the product thinker and facilitator review memory notes and promote the ones worth keeping
 - `itd-2610150602547271` — The facilitator's mode gates the merge
+- `itd-2610161616086564` — After a plugin update, abcd offers to bring the repository's setup up to date
+- `itd-2610161617096084` — After a plugin update, abcd says what changed for this repository
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
