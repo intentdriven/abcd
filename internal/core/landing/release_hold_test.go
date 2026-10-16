@@ -3,12 +3,15 @@ package landing
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The release hold at `abcd land` (itd-2609151838312703 C7,
@@ -153,7 +156,8 @@ func TestATaggedCutHoldsNoLanding(t *testing.T) {
 
 // TestLandArmsNothingWhenTheHoldCannotBeRead: origin stops answering after
 // the default branch was fetched (here, during the gate); a hold land cannot
-// see may be there, so nothing is pushed, armed or queued.
+// see may be there, so nothing is pushed, armed or queued. Nobody is known to
+// hold anything, so it is a refusal (exit 2), not a hold (exit 3).
 func TestLandArmsNothingWhenTheHoldCannotBeRead(t *testing.T) {
 	f := newFixture(t, queueRuleset)
 	f.forge.prs = f.prFor(f.head())
@@ -164,7 +168,10 @@ func TestLandArmsNothingWhenTheHoldCannotBeRead(t *testing.T) {
 		return os.Rename(f.bare, f.bare+".gone")
 	}
 	_, err := f.land(f.options())
-	r := wantHeld(t, err)
+	var r *Refusal
+	if !errors.As(err, &r) || r.Held {
+		t.Fatalf("err = %v; want a refusal that is not a hold, since nobody holds the release", err)
+	}
 	if !strings.HasPrefix(r.Reason, "could not read the reservations from origin: ") ||
 		!strings.HasSuffix(r.Reason, ", so no release hold could be judged and abcd land pushes, arms and queues nothing") ||
 		r.Fix != "run abcd land again once origin answers" {
@@ -184,14 +191,107 @@ func TestACheckoutWithNoOriginIsNotHeldByLand(t *testing.T) {
 	f := newFixture(t, "")
 	f.cut(f.copyOf(quinnEmail), "rel-v0.16.0", time.Now().UTC().Add(-time.Minute))
 	root := f.repo.Root()
-	if err := releaseHold(root, f.home); err == nil {
+	if _, err := releaseHold(root, f.home); err == nil {
 		t.Fatal("with origin there, nothing holds; want Q's release to hold the landing")
 	}
 	ref := claim.TrackingPrefix + "rel-v0.16.0"
 	tip := f.repo.Git("rev-parse", ref)
 	f.repo.Git("remote", "remove", claim.Remote)
 	f.repo.Git("update-ref", ref, tip)
-	if err := releaseHold(root, f.home); err != nil {
+	if _, err := releaseHold(root, f.home); err != nil {
 		t.Fatalf("with no origin: %v; want nothing held", err)
+	}
+}
+
+// pushDatedRelease pushes a release reservation for subject onto origin,
+// claimed at at by quinn from another copy and committed at at, from a
+// scratch clone: a cut reserved on a clock that may run far ahead of this one.
+func (f *fixture) pushDatedRelease(subject string, at time.Time) {
+	f.t.Helper()
+	dir := filepath.Join(f.t.TempDir(), "ahead")
+	f.repo.Git("clone", "-q", f.bare, dir)
+	msg := filepath.Join(f.t.TempDir(), "msg")
+	text := "abcd reservation: " + subject + "\n\nAbcd-Reservation: " + subject + "\nAbcd-Holder: quinn\n" +
+		"Abcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\nAbcd-Claimed-At: " + at.UTC().Format(time.RFC3339) +
+		"\nAbcd-Expires-At: " + at.UTC().Add(24*time.Hour).Format(time.RFC3339) + "\n"
+	if err := os.WriteFile(msg, []byte(text), 0o600); err != nil {
+		f.t.Fatal(err)
+	}
+	tree := f.repo.Git("-C", dir, "hash-object", "-w", "-t", "tree", "/dev/null")
+	date := "@" + strconv.FormatInt(at.Unix(), 10) + " +0000"
+	cmd := exec.Command("git", "-C", dir, "-c", "user.name=Quinn", "-c", "user.email=quinn@example.invalid", "-c", "commit.gpgsign=false",
+		"commit-tree", tree, "-F", msg)
+	cmd.Env = append(gittest.Env(f.t), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+	out, err := cmd.Output()
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	f.repo.Git("-C", dir, "push", "-q", "origin", strings.TrimSpace(string(out))+":"+claim.RefPrefix+subject)
+}
+
+// TestLandWithNoLocalTierCountsNoReleaseDatedAhead: a new worktree has no
+// local tier, so it cannot keep when it first saw a release reservation (here
+// its gate is skipped on a receipt another worktree minted). A release dated
+// five years ahead would hold it from every reading, so it is not counted:
+// land pushes, and its notice names the release. A release dated within the
+// allowance holds the same worktree as any cut does, and no tier is made.
+func TestLandWithNoLocalTierCountsNoReleaseDatedAhead(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		at   time.Duration
+		held bool
+	}{{"dated five years ahead", 5 * 365 * 24 * time.Hour, false}, {"dated a minute ahead", time.Minute, true}} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newFixture(t, queueRuleset)
+			f.forge.prs = "[]"
+			f.forge.head = f.head()
+			wt := filepath.Join(t.TempDir(), "wt")
+			f.repo.Git("worktree", "add", "-q", "-b", "feat/y", wt, "feat/x")
+			if err := f.mint(f.repo.Root()); err != nil {
+				t.Fatal(err)
+			}
+			f.pushDatedRelease("rel-v0.16.0", time.Now().UTC().Truncate(time.Second).Add(c.at))
+			res, err := Land(wt, f.options())
+			if c.held {
+				if r := wantHeld(t, err); !strings.Contains(r.Reason, "release v0.16.0 is being cut by quinn") {
+					t.Fatalf("reason = %q; want quinn's release named", r.Reason)
+				}
+				if len(res.Notices) != 0 || f.onOrigin("feat/y") != "" {
+					t.Fatalf("notices %q, origin feat/y %q: want no notice and nothing pushed", res.Notices, f.onOrigin("feat/y"))
+				}
+			} else {
+				if err != nil {
+					t.Fatalf("land: %v; want the release dated ahead not counted", err)
+				}
+				want := "release v0.16.0 is reserved by quinn with a date more than 5 minutes ahead of this clock, and this checkout cannot keep when it first saw it"
+				if len(res.Notices) != 1 || !strings.HasPrefix(res.Notices[0], want) || f.onOrigin("feat/y") != f.head() {
+					t.Fatalf("notices %q, origin feat/y %q: want one notice naming the release and the branch pushed", res.Notices, f.onOrigin("feat/y"))
+				}
+			}
+			if _, err := os.Stat(filepath.Join(wt, ".abcd", ".work.local")); err == nil {
+				t.Fatal("land made the worktree's local tier")
+			}
+		})
+	}
+}
+
+// TestLandFromTheCuttingCheckoutIsNotHeldByItsOwnCut: P reserves the release
+// from this checkout, then lands a branch checked out in another worktree. The
+// cut is judged against the checkout land runs in, whose copy reserved it, so
+// it is not held by its own hold.
+func TestLandFromTheCuttingCheckoutIsNotHeldByItsOwnCut(t *testing.T) {
+	f := newFixture(t, queueRuleset)
+	f.asPat()
+	f.forge.prs = "[]"
+	wt := filepath.Join(t.TempDir(), "wt")
+	f.repo.Git("worktree", "add", "-q", "-b", "feat/y", wt, "feat/x")
+	f.cut(f.repo.Root(), "rel-v0.16.0", time.Now().UTC().Add(-time.Minute))
+	o := f.options()
+	o.Branch = "feat/y"
+	if _, err := f.land(o); err != nil {
+		t.Fatalf("land feat/y from the cutting checkout: %v; want it not held", err)
+	}
+	if f.onOrigin("feat/y") != f.head() {
+		t.Fatalf("origin feat/y %q; want %s pushed", f.onOrigin("feat/y"), f.head())
 	}
 }

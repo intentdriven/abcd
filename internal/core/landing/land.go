@@ -25,8 +25,9 @@ package landing
 //     the branch's checkout (it waits on the machine load waiter itself), and
 //     HEAD must be unchanged and a receipt present after it, and origin's
 //     URLs as they were before it (the branch's preflight could rewrite them).
-//     Then the release hold (releasehold.go): nothing is pushed, armed or
-//     queued while another session cuts a release, or when it cannot be read.
+//     Then the release hold (releasehold.go), judged from the checkout land
+//     runs in: nothing is pushed, armed or queued while another session cuts
+//     a release, or when it cannot be read.
 //  5. push (land.push): a plain `git push --porcelain origin
 //     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
 //     the one the gate checked whatever the branch names by then, the
@@ -154,6 +155,9 @@ type Result struct {
 	// forge lists PR as merged at it.
 	Landed bool   `json:"landed,omitempty"`
 	Steps  []Step `json:"steps"`
+	// Notices are lines the landing shows beside its steps, whatever its
+	// outcome: each release dated ahead that the release hold did not count.
+	Notices []string `json:"notices,omitempty"`
 }
 
 func (r *Result) add(name, status, note, command string) {
@@ -287,7 +291,15 @@ func Land(cwd string, o Options) (Result, error) {
 	if err := origin.unchanged(dir); err != nil {
 		return res, err
 	}
-	if err := releaseHold(dir, o.Roots.Home); err != nil {
+	// The hold is judged from the checkout land runs in, not the branch's:
+	// that is the copy the reservation verbs run here speak for, so a session
+	// that reserved the release here lands through its own hold whichever
+	// worktree has the branch checked out.
+	notice, err := releaseHold(root, o.Roots.Home)
+	if notice != "" {
+		res.Notices = append(res.Notices, notice)
+	}
+	if err != nil {
 		return res, err
 	}
 	if err := push(&res, o, dir); err != nil {

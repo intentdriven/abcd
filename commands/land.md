@@ -151,7 +151,9 @@ cannot be asked (whether the branch already merged included), a merged
 listing full with none at the head, a push git or the pre-push hook
 refused, more than one open pull request from this repository, only a fork's
 pull request, a pull request that conflicts with the default branch, a head
-that moved on the forge after arming, an unreadable ruleset mirror, and the
+that moved on the forge after arming, an unreadable ruleset mirror,
+reservations that cannot be fetched from `origin` before the push (a hold
+land cannot see may be there, so nothing is pushed), and the
 forge client missing while an act needs it. Relay the refusal; never retry it with `--no-verify`, a force, or a
 hand-run `gh pr merge` the merge gate did not allow.
 
@@ -163,10 +165,14 @@ release reservation (`rel-vX.Y.Z`, ended by the tag `vX.Y.Z` reaching
 nothing is pushed, armed or queued, and the refusal names the release, its
 holder (or "your copy on another computer") and until when. A session cutting
 a release has the final say on what merges before its tag, so the copy that
-reserved the release lands through its own hold. When the reservations cannot
-be fetched, land also exits 3 and pushes nothing, since a hold it cannot see
-may be there; a checkout with no `origin` is not held. Exit 3 means back off:
-relay who holds the release, and run `abcd land` again once it is tagged.
+reserved the release lands through its own hold; the hold is judged for the
+checkout land runs in, so landing a branch checked out in another worktree
+from the cutting checkout is not held. A checkout with no `origin` is not
+held. A release reserved with a date more than five minutes ahead of this
+clock holds from when this checkout first saw it; a checkout that cannot keep
+that sighting (no `.abcd/.work.local/`) does not count it, and prints one
+notice line naming it. Exit 3 means back off: relay who holds the release, and
+run `abcd land` again once it is tagged.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

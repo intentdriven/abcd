@@ -3119,15 +3119,21 @@ ready, and readiness is the gate.
 
 Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an
 origin that is not the repository the forge client resolves (an SSH host alias
-included), and a pull request only another repository opened. Exit 0 when every
-step did its act or said why it stopped; exit 2 on a refusal, which names what
-was done before it.
+included), and a pull request only another repository opened.
 
-Before the push, the reservations and origin's release tags are fetched: while
-another session cuts a release (a live rel-vX.Y.Z reservation, or an unreadable
-one within its hold), or when they cannot be read, nothing is pushed, armed or
-queued, and land exits 3 naming the release, its holder and until when. The
-copy cutting the release lands through its own hold.
+Before the push, the reservations and origin's release tags are fetched, and the
+release hold is judged for the checkout land runs in: while another session cuts
+a release (a live rel-vX.Y.Z reservation, or an unreadable one within its hold),
+nothing is pushed, armed or queued. The copy cutting the release lands through
+its own hold. A release reserved with a date more than five minutes ahead of
+this clock holds from when this checkout first saw it; one this checkout cannot
+keep that sighting for (no .abcd/.work.local/) is not counted, and a notice
+line on stderr names it.
+
+Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
+which names what was done before it; reservations that cannot be fetched are
+one, made before anything is pushed. Exit 3 when a release being cut holds the
+landing: it names the release, its holder and until when.
 
 **Flags:**
 
