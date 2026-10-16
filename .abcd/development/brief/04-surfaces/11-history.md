@@ -87,7 +87,7 @@ owns is refused and left untouched (iss-2609291610432030).
   answers for this repository, or for the one repository named by its
   root-commit SHA, which reaches a pile whose checkout is gone; across every
   repository in the store it gives counts and sizes per repository instead of
-  names.
+  per-transcript names.
 - **Discarding** deletes one staged or quarantined raw transcript for good,
   named by its bare filename, with its sidecar and quarantine note. It refuses
   without an explicit confirmation, and it too takes a repository named by its
@@ -214,7 +214,8 @@ a contract. The shell wrappers the host registers for the two events,
 `hooks/session-end.sh` and `hooks/subagent-stop.sh`, hand over to the
 entrypoint when a binary resolves, and themselves exit 1 when none does: no
 plugin binary and no vouched-for one on the search path, or a legacy `~/.abcd`
-standing with no plugin binary in the plugin root. With no plugin root set at all, each exits 0 at once and runs nothing. A programmatic caller asks for the machine-readable form, and each
+standing with no plugin binary in the plugin root. With no plugin root set at
+all, each exits 0 at once and runs nothing. A programmatic caller asks for the machine-readable form, and each
 entrypoint then writes exactly one result line to its output stream on every
 path: whether the transcript was captured, how (newly staged, re-staged over
 older bytes, or already staged), which session and sub-agent it belongs to, and
