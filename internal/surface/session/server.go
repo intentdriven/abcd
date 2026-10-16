@@ -35,6 +35,7 @@ import (
 
 	"github.com/coder/websocket"
 	core "github.com/intentdriven/abcd/internal/core/session"
+	"github.com/intentdriven/abcd/internal/surface/session/web"
 )
 
 // DefaultOrigin is the page's own origin. With loopback pages, for a page run
@@ -131,7 +132,17 @@ type Config struct {
 	// ReplayWithin bounds one log replay: a connection that has not taken
 	// the whole log within it is ended. Zero is DefaultReplayWithin.
 	ReplayWithin time.Duration
+	// ServePage serves the session page from the relay itself: a local
+	// session (`abcd session start`), where nothing goes to abcdesign.app.
+	ServePage bool
+	// Hosts, when given, are the only Host headers the relay answers, each a
+	// host or host:port; any other is refused with 421 before anything is
+	// read. A local session names its tailnet name and its loopback address.
+	Hosts []string
 }
+
+// maxDeviceLogins bounds the device sign-ins one relay holds at once.
+const maxDeviceLogins = 64
 
 // Server is the relay's HTTP handler.
 type Server struct {
@@ -139,9 +150,15 @@ type Server struct {
 	origins map[string]bool // the given origins; nil admits the default list
 	relay   *core.Relay
 	client  *http.Client
-	// peers is every live connection's queue, for queuedBytes.
-	mu    sync.Mutex
-	peers map[*peer]struct{}
+	// hosts are the Host headers answered; nil answers any.
+	hosts map[string]bool
+	// page is the session page as the relay serves it, when ServePage.
+	page map[string][]byte
+	// peers is every live connection's queue, for queuedBytes; devices is
+	// every device sign-in under way, by handle. mu guards both.
+	mu      sync.Mutex
+	peers   map[*peer]struct{}
+	devices map[string]*deviceLogin
 }
 
 // ErrNoRepositories is New's refusal of a relay beyond loopback that names
@@ -200,7 +217,21 @@ func New(cfg Config) (*Server, error) {
 	if cfg.ReplayWithin <= 0 {
 		cfg.ReplayWithin = DefaultReplayWithin
 	}
-	s := &Server{cfg: cfg, origins: origins, client: &c, peers: map[*peer]struct{}{}}
+	var hosts map[string]bool
+	for _, h := range cfg.Hosts {
+		if hosts == nil {
+			hosts = map[string]bool{}
+		}
+		h = strings.ToLower(strings.TrimSpace(h))
+		if h == "" || strings.ContainsAny(h, "/*?#@ ") {
+			return nil, fmt.Errorf("%q is not a host name", h)
+		}
+		hosts[h] = true
+	}
+	s := &Server{cfg: cfg, origins: origins, hosts: hosts, client: &c, peers: map[*peer]struct{}{}, devices: map[string]*deviceLogin{}}
+	if cfg.ServePage {
+		s.page = web.RelayFiles()
+	}
 	s.relay = core.New(core.Options{
 		Limits:   cfg.Limits,
 		Verifier: GitHub{API: cfg.GitHubAPI, Client: &c},
@@ -240,11 +271,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_ = rc.SetReadDeadline(time.Now().Add(httpWait))
 		_ = rc.SetWriteDeadline(time.Now().Add(httpWait))
 	}
+	// A relay that names its hosts answers no other, before anything is
+	// read: a page on another name that resolves to this computer (DNS
+	// rebinding) gets nothing.
+	if !s.hostAllowed(r.Host) {
+		http.Error(w, "misdirected request", http.StatusMisdirectedRequest)
+		return
+	}
 	switch r.URL.Path {
 	case "/session":
 		s.serveSession(w, r)
 	case "/auth/token":
 		s.serveToken(w, r)
+	case "/auth/device":
+		s.serveDeviceStart(w, r)
+	case "/auth/device/token":
+		s.serveDevicePoll(w, r)
 	case "/config":
 		s.serveConfig(w, r)
 	case "/healthz":
@@ -255,7 +297,9 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = io.WriteString(w, "ok\n")
 	default:
-		http.NotFound(w, r)
+		if !s.servePage(w, r) {
+			http.NotFound(w, r)
+		}
 	}
 }
 
@@ -705,9 +749,9 @@ func (s *Server) cors(w http.ResponseWriter, r *http.Request) bool {
 	return true
 }
 
-// serveConfig names the sign-in app's public client id, and whether sign-in
-// is set up at all; with a client id, its kind is always a GitHub App's,
-// since the relay takes no other. It never names the secret. The authorize
+// serveConfig names the sign-in app's public client id, whether sign-in is
+// set up at all, and which flow it takes; with a client id, its kind is always
+// a GitHub App's, since the relay takes no other. It never names the secret. The authorize
 // URL is bare: it carries no scope, which a GitHub App does not use, and the
 // page adds the request's own parameters.
 func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
@@ -718,11 +762,17 @@ func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
 	}
 	cfg := map[string]any{
 		"client_id":     s.cfg.ClientID,
-		"sign_in":       s.cfg.ClientID != "" && s.cfg.ClientSecret != "",
+		"sign_in":       s.cfg.ClientID != "",
 		"authorize_url": s.cfg.GitHubWeb + "/login/oauth/authorize",
 	}
 	if s.cfg.ClientID != "" {
 		cfg["app_type"] = AppTypeGitHubApp
+		// With the app's secret, GitHub's web flow through /auth/token;
+		// with its client id alone, the device flow through /auth/device.
+		cfg["flow"] = "web"
+		if s.deviceOffered() {
+			cfg["flow"] = "device"
+		}
 	}
 	writeJSON(w, http.StatusOK, cfg)
 }
@@ -739,24 +789,7 @@ var githubErrorRe = regexp.MustCompile(`^[a-z_]{1,64}$`)
 
 // serveToken is the sign-in exchange.
 func (s *Server) serveToken(w http.ResponseWriter, r *http.Request) {
-	allowed := s.cors(w, r)
-	if r.Method == http.MethodOptions {
-		if !allowed {
-			http.Error(w, "origin not allowed", http.StatusForbidden)
-			return
-		}
-		w.Header().Set("Access-Control-Allow-Methods", "POST")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-		w.Header().Set("Access-Control-Max-Age", "600")
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if r.Method != http.MethodPost {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	if !allowed {
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": "origin-not-allowed"})
+	if !s.postFrom(w, r) {
 		return
 	}
 	if s.cfg.ClientID == "" || s.cfg.ClientSecret == "" {
@@ -851,11 +884,25 @@ type GitHub struct {
 // token or what GitHub said.
 var errVerify = errors.New("GitHub did not accept the token")
 
+// userTokenPrefix is the prefix GitHub gives a GitHub App's user access
+// token, and no other kind: "ghu_ for GitHub user-to-server tokens", beside
+// ghp_ for a personal access token, gho_ for an OAuth app's and ghs_ for an
+// installation's
+// (https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/about-authentication-to-github#githubs-token-formats).
+const userTokenPrefix = "ghu_"
+
 // Verify answers the login and the repository's permissions.push. A
 // repository GitHub hides from the token (404) is no push, not an error.
+//
+// It takes only a GitHub App's user access token, refusing any other before
+// GitHub is asked: nobody pastes a token (adr-2610161400542916), and a GitHub
+// App's token reaches only the repositories the app is installed on.
 func (g GitHub) Verify(ctx context.Context, token, repo string) (string, bool, error) {
 	if !core.ValidRepo(repo) {
 		return "", false, errors.New("not an owner/name repository")
+	}
+	if !strings.HasPrefix(token, userTokenPrefix) || len(token) > 255 {
+		return "", false, errVerify
 	}
 	var user struct {
 		Login string `json:"login"`

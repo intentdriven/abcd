@@ -52,7 +52,7 @@ button, .button {
   border: 1px solid var(--line); background: var(--panel); color: var(--ink);
   padding: .4rem .8rem;
 }
-button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.primary, a.button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 button:disabled { opacity: .5; cursor: default; }
 input, select, textarea {
   font: inherit; color: var(--ink); background: var(--bg);
@@ -66,17 +66,14 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .6rem 0 
 .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem; }
 .card h2 { font-size: 1rem; margin: 0 0 .3rem; }
 .card p { margin: .3rem 0; color: var(--muted); font-size: .9rem; }
-/* Where the relay stands, and the confirmation a relay the repository's list
-   cannot speak for needs: its origin is shown large, never truncated. */
-.origin { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-weight: 600; word-break: break-all; color: var(--ink); }
-.card p.standing { font-size: .85rem; }
-.card p.standing.bad { color: var(--warn); }
+/* The confirmation a relay the repository's list cannot speak for needs,
+   naming the project; and the device sign-in's code to confirm on GitHub. */
 .trust { width: calc(100% - 2rem); max-width: 34rem; margin: 1rem auto 0; border: 2px solid var(--warn); }
 .trust .only { color: var(--ink); font-weight: 600; font-size: 1rem; }
 .owner { color: var(--ink); }
 .owner strong { font-size: 1.05rem; }
 .card p.owner { font-weight: 600; }
-.trust .origin { display: block; font-size: 1.15rem; margin: .4rem 0; padding: .5rem .6rem; background: var(--bg); border-radius: var(--radius); }
+.device { width: calc(100% - 2rem); max-width: 34rem; margin: 1rem auto 0; border: 2px solid var(--accent); }
 .row { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .8rem; align-items: center; }
 
 /* The workspace. */
@@ -103,7 +100,6 @@ label { display: block; font-size: .85rem; color: var(--muted); margin: .6rem 0 
 /* The invite. */
 .invite img { width: 100%; max-width: 14rem; image-rendering: pixelated; display: block; margin: 0 auto; background: #fff; }
 .code { font: 600 2.2rem/1.2 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .2em; text-align: center; margin: .4rem 0; }
-.link { font-size: .75rem; word-break: break-all; color: var(--muted); }
 
 /* The roster and the suggestions. */
 .roster ul, .suggestions ul { list-style: none; margin: 0; padding: 0; display: grid; gap: .4rem; }

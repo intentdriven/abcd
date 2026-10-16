@@ -1,16 +1,19 @@
 ---
 name: session
-description: "Run the relay a team's live brief session goes through, or write its blueprint or its page: Writes nothing bare; refuses an unknown sub-verb."
-argument-hint: "[serve|blueprint|page]"
+description: "Start a live brief session on this computer, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb."
+argument-hint: "[start|serve|blueprint|page]"
 block: people
 ---
 
 # `/abcd:session`
 
-The relay a team's live brief session goes through. During a call, a team
-opens its brief on abcdesign.app, the host opens a session, and everyone else
-joins by a QR code or a six-character code. The page is static; the session
-itself runs on a relay the team runs, never on anything abcd runs. The relay
+The relay a team's live brief session goes through. During a call, the host
+starts a session on the project's brief, and everyone else joins by the invite
+link, its QR code or a six-character code. Members of the project's team sign
+in with GitHub and edit; anyone else joins as a guest with a name and suggests
+changes. The page never asks anyone for a relay address or a token: it finds
+the relay itself, and opens onto the brief's press release. The session runs
+on a relay the team runs, never on anything abcd runs. The relay
 holds each session's edits in memory only, as opaque bytes, and drops them
 when the host closes the session or nobody has been connected for half an
 hour. It writes nothing to disk and logs nothing: no token, no secret, no
@@ -21,28 +24,63 @@ from any static host. The abcdesign.app address goes live when abcd publishes
 the page there; until then a team serves the page itself with `page` and admits
 its origin with `--origin`.
 
-There are two ways to run the relay, both the team's own:
+There are two ways to run a session, both the team's own:
 
-- **On the host's own machine**, with `serve`, reached by teammates on the
-  host's Tailscale network through Tailscale Serve. Never Funnel: a guest
-  outside the tailnet joins through the team's relay instead.
+- **On the host's own computer**, with `start`, for a project whose brief
+  should not leave the team's tailnet. The computer runs the relay and serves
+  the page itself, reached through Tailscale Serve; nothing goes to
+  abcdesign.app. Never Funnel: someone outside the tailnet joins as a guest
+  once the host shares the computer with them in Tailscale.
 - **On the team's own relay**, deployed once to the team's own Render account
-  from the files `blueprint` writes. One deploy serves all of the team's
-  sessions.
+  from the files `blueprint` writes and run there by `serve`, with the page on
+  abcdesign.app. One deploy serves all of the team's sessions.
 
 ## Status
 
-Bare invocation prints the three sub-verbs and writes nothing. A running relay's
+Bare invocation prints the four sub-verbs and writes nothing. A running relay's
 sessions live in that process's memory alone, so there is no state to report.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" session --help
 ```
 
+## Start
+
+Starting a session opens a network listener, so do it only when the user asks
+to host a live session from this computer. It runs in the foreground until
+stopped with Ctrl-C, and every session ends with it, so never start it from
+this session: tell the user to run `abcd session start` in a Terminal of their
+own, in the project's checkout. It prints:
+
+1. the one Tailscale step, `tailscale serve --bg <port>`, which shares it on
+   the user's tailnet at an https address and which Tailscale keeps until it is
+   turned off;
+2. the link to open, `https://<this computer's tailnet name>/<owner>/<repo>/brief/`,
+   where the host signs in with GitHub and starts the session, and the page
+   then shows the invite: a code, a QR code and a link to copy.
+
+Relay those lines as printed. It serves this checkout's origin repository on
+github.com only. Team members sign in with GitHub's device flow: the page
+shows a short code that the person confirms on github.com, so no secret sits on
+the computer. The GitHub App's public client id comes from `--client-id`,
+`ABCD_SESSION_GITHUB_CLIENT_ID`, or `.abcd/relay/github-app.json`
+(`{"client_id": "…"}`), which repository setup writes; the file must hold no
+secret. It asks Tailscale for this computer's tailnet name (read-only; it
+changes nothing in Tailscale), and it answers only that name and its own
+loopback address, as hosts and as page origins. It listens on
+`127.0.0.1:8787`, or `--port`. `--json` prints `url`, `link`, `repo`,
+`tailnet`, `serve_step` and `sign_in`.
+
+It refuses (exit 2, nothing started) outside a checkout whose origin is on
+github.com, without a client id ("sign-in is not set up for this project"),
+with a `github-app.json` that holds a secret or no usable client id, when
+Tailscale is not installed or not running, and on a port it cannot listen on.
+
 ## Serve
 
-Starting the relay opens a network listener, so do it only when the user asks
-to host a session from this computer. It runs in the foreground until stopped
+`serve` runs the relay for the team's cloud deployment, which the blueprint's
+Dockerfile starts. Starting it opens a network listener, so do it only when
+the user asks. It runs in the foreground until stopped
 with Ctrl-C, and every session it holds ends with it, so never start it from
 this session: tell the user to run `abcd session serve` in a Terminal of their
 own. It listens on this computer alone (`127.0.0.1:8787`) and prints one line
@@ -70,15 +108,17 @@ origin repository, or any repository when run outside a GitHub checkout; the
 start line says which.
 
 Team members sign in with the team's own GitHub App, the only kind of
-sign-in app the relay takes. The relay reads its secret from
-`ABCD_SESSION_GITHUB_CLIENT_SECRET` by name and its public client id from
-`--client-id` or `ABCD_SESSION_GITHUB_CLIENT_ID`. `ABCD_SESSION_GITHUB_APP_TYPE`,
+sign-in app the relay takes, and nobody pastes a token: the relay takes only a
+GitHub App user access token (`ghu_`), asks GitHub for its login and whether it
+may push to the repository, and drops it straight after. The relay reads the
+app's public client id from `--client-id` or `ABCD_SESSION_GITHUB_CLIENT_ID`,
+and its secret from `ABCD_SESSION_GITHUB_CLIENT_SECRET` by name. With both,
+members sign in through GitHub's web flow (`/auth/token`); with the client id
+alone, through GitHub's device flow (`/auth/device`); without a client id,
+sign-in is not offered and only guests can join. `ABCD_SESSION_GITHUB_APP_TYPE`,
 which once chose an OAuth app, may be unset or `github-app`; set to anything
-else the relay refuses to start. Never ask the
-user for the secret, and never print it or pass it on a command line. Without
-them, sign-in is not offered and a team member pastes a personal access token
-instead; the relay asks GitHub for that token's login and whether it may push
-to the repository, and drops the token straight after.
+else the relay refuses to start. Never ask the user for the secret, and never
+print it or pass it on a command line.
 
 It refuses (exit 2, nothing started) a `--listen` that is not an IP address
 (or `localhost`) and a port, an `--origin` that is not an exact
@@ -100,7 +140,8 @@ and refused frame to 50 a second per connection, closing one refused 1,000
 times; an update or cursor over its rate is dropped and answered once a second
 at most; a connection the relay closes ends within 5 seconds and stays counted
 until it has, and a log replay is bounded to a minute; sign-in
-exchanges to 10 per address in ten minutes; a session's life to 12 hours,
+exchanges and device sign-ins started to 10 per address in ten minutes
+together, and 64 device sign-ins waiting at once; a session's life to 12 hours,
 after which it ends for everyone with `closed {reason: "expired"}`; and
 joining by code pauses for everybody for ten minutes past 600 wrong codes from
 everywhere in ten minutes.
@@ -160,33 +201,38 @@ and an address without the trailing slash is sent on to it. The page connects
 only to the relay the person names and to `api.github.com`, and it sends the
 person to `github.com` for sign-in and to open the pre-filled issues a session
 sends. The directory is the one the user names; never publish or deploy it for
-them.
+them. (A session started with `start` serves the same files itself.)
 
-A link can name any relay, so the page trusts the repository, not the link.
-Before any sign-in, token or guest's name reaches a relay, it reads the
-repository's committed `.abcd/relay/relays.json`, `{"relays": ["https://<relay>"]}`,
-from `api.github.com` on the default branch: without a token for a public
-repository, and with the person's token, before anything else, once there is
-one. A relay the file does not name gets no token, no sign-in, no join and no
-connection, and a listed one shows which repository names it ("This relay is
-named by owner/repo. Only continue if you work on owner/repo."). Only GitHub's
-404 means there is no list to read (a private repository before sign-in, or no
-file): then the page shows the relay's address and the person must confirm it
-("Only continue if your team runs this relay") before any sign-in, token or
-join reaches it; the browser remembers the confirmation for that repository.
-Any other failure to read the list (a 403, a 429, a 5xx, no network) refuses
-the relay with "try again later", and offers no confirmation. So the team
-commits `relays.json` naming each relay's https origin: the one
-`blueprint --relay-origin` writes, and, for a host serving from their own
-machine, that machine's tailnet address. Sign-in goes through a GitHub App
-alone: when a user asks how to set it up, it is a GitHub App with the
-repository permissions Contents read and write, Pull requests read and write,
-and Metadata read, and only those. Its sign-in carries no scope and reaches
-only the repositories it is installed on. A relay that offers no GitHub App
-sign-in gets no sign-in button on the page; a team member pastes a token
-instead. The page refuses to run inside another page's frame: a static host
-cannot forbid framing, so the page shows only a link to open it in its own
-tab.
+The page never shows or asks for a relay address. A page `start` serves takes
+its own origin as its relay. On a static host, it uses the relay the invite
+link names, or, with none, the first relay the repository's committed
+`.abcd/relay/relays.json` names (`{"relays": ["https://<relay>"]}`), which it
+reads from `api.github.com` on the default branch, without a token for a
+public repository and with the person's token once there is one. A link can
+name any relay, so the page trusts the repository, not the link: a relay the
+file does not name gets no sign-in, no token, no join and no connection, and
+the page says the link does not lead to this project's own session. Only
+GitHub's 404 means there is no list to read (a private repository before
+sign-in, or no file): then a relay from the link reaches nothing until the
+person answers one plain question naming the repository ("Only continue if
+someone on the owner/repo team sent you this link"); the browser remembers the
+answer for that repository. Any other failure to read the list (a 403, a 429,
+a 5xx, no network) refuses the relay with "try again in a moment", and asks
+nothing. With no relay at all, the page says live sessions are not set up for
+this project yet and to ask the technical facilitator. So the team commits
+`relays.json` naming its cloud relay's https origin, the one
+`blueprint --relay-origin` writes.
+
+Sign-in goes through a GitHub App alone: when a user asks how to set it up, it
+is a GitHub App with the repository permissions Contents read and write, Pull
+requests read and write, and Metadata read, and only those, installed on the
+repository; for `start`, its "Enable Device Flow" setting is switched on. Its
+sign-in carries no scope and reaches only the repositories it is installed on.
+A relay that offers no GitHub App sign-in gets no sign-in button, and the page
+says sign-in is not set up yet and to ask the technical facilitator; guests can
+still join. There is no token field. The page refuses to run inside another
+page's frame: a static host cannot forbid framing, so the page shows only a
+link to open it in its own tab.
 
 It writes those six files and nothing else, and removes nothing. `<dir>` may be
 absent, empty, or a directory an earlier run wrote, whose files are replaced.

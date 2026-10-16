@@ -4058,17 +4058,18 @@ abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md
 
 ### `abcd session`
 
-Run the relay a team's live brief session goes through, or write its blueprint or its page: Writes nothing bare; refuses an unknown sub-verb.
+Start a live brief session on this computer, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb.
 
 **Usage:** `abcd session`
 
-Run the relay a team's live brief session goes through, write the blueprint
-that deploys it to the team's own Render account, or write the session's static
-page for the team to serve. The relay holds each session's
-edits in memory only, as opaque bytes, and drops them when the host closes the
-session or nobody has been connected for half an hour; it writes nothing to disk
-and logs nothing. abcd runs no relay of its own: the team runs it, on the host's
-machine reached over Tailscale Serve, or on the team's own relay.
+Start a live brief session on this computer, run the relay a team's cloud
+sessions go through, write the blueprint that deploys that relay to the team's
+own Render account, or write the session's static page for the team to serve.
+The relay holds each session's edits in memory only, as opaque bytes, and drops
+them when the host closes the session or nobody has been connected for half an
+hour; it writes nothing to disk and logs nothing. abcd runs no relay of its own:
+the team runs it, on the host's computer reached over Tailscale Serve
+(`abcd session start`), or on the team's own relay (`abcd session serve`).
 
 Bare `abcd session` prints this help and writes nothing.
 
@@ -4161,16 +4162,20 @@ comma list of either. Nobody signs in against, or hosts, any other. Listening
 beyond this computer it refuses to start without one; on loopback it serves this
 checkout's origin repository, or any repository outside a GitHub checkout.
 
-It serves the session WebSocket at /session, the sign-in exchange at /auth/token,
-the GitHub App's public client id at /config and a health check at /healthz. It
+It serves the session WebSocket at /session, the sign-in at /auth/token or
+/auth/device, the GitHub App's public client id at /config and a health check at
+/healthz. It
 admits a browser only from https://abcdesign.app or a loopback page, or, when
 --origin is given, from exactly the origins it names, and otherwise, when
 ABCD_SESSION_ORIGINS is set, from exactly the origins that comma list names.
-Sign-in goes through the team's GitHub App only: its secret is read from
-ABCD_SESSION_GITHUB_CLIENT_SECRET and its client id from --client-id or
-ABCD_SESSION_GITHUB_CLIENT_ID; without them, sign-in is not offered and a team member
-pastes a personal access token. ABCD_SESSION_GITHUB_APP_TYPE set to
-anything but github-app is refused: the relay takes no OAuth app.
+Sign-in goes through the team's GitHub App only, and nobody pastes a token: the
+relay takes only a GitHub App user access token. Its client id is read from
+--client-id or ABCD_SESSION_GITHUB_CLIENT_ID, and its secret from
+ABCD_SESSION_GITHUB_CLIENT_SECRET; with both, members sign in with GitHub's web
+flow, and with the client id alone, with GitHub's device flow (/auth/device).
+Without a client id, sign-in is not offered and only guests can join.
+ABCD_SESSION_GITHUB_APP_TYPE set to anything but github-app is refused: the
+relay takes no OAuth app.
 
 Exit 2 on a refusal, with nothing started.
 
@@ -4183,6 +4188,40 @@ Exit 2 on a refusal, with nothing started.
       --origin stringArray   a page origin to admit, as scheme://host[:port] (repeatable; also ABCD_SESSION_ORIGINS); given, it replaces the default of https://abcdesign.app and loopback pages
       --owner stringArray    a GitHub user or organisation whose every repository to serve sessions for (repeatable)
       --repo stringArray     a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
+```
+
+#### `abcd session start`
+
+Start a live brief session on this computer, reached over your tailnet: Writes nothing; refuses no recorded GitHub App, no Tailscale or no GitHub origin.
+
+**Usage:** `abcd session start [flags]`
+
+Start a live brief session on this computer, for a project whose brief should
+not leave the team's tailnet. It runs the session relay on loopback and serves the
+session page from it, so nothing goes to abcdesign.app, and prints the one
+Tailscale step that shares it on your tailnet and the link to open.
+
+It serves sessions for this checkout's origin repository on github.com. Team
+members sign in with GitHub's device flow: the page shows a short code to confirm
+on github.com, so no secret sits on this computer. The GitHub App's public client
+id comes from --client-id, ABCD_SESSION_GITHUB_CLIENT_ID, or
+.abcd/relay/github-app.json, which repository setup writes; without
+one it refuses, since nobody could sign in. Anyone else joins as a guest with a
+name, and suggests changes.
+
+It asks Tailscale for this computer's tailnet name and changes nothing in
+Tailscale. It answers only that name and its own loopback address, as hosts and
+as page origins. People outside your tailnet join as guests once you share this
+computer with them in Tailscale. Never Funnel.
+
+It runs in the foreground until interrupted; every session ends with it.
+Exit 2 on a refusal, with nothing started.
+
+**Flags:**
+
+```
+      --client-id string   the team's GitHub App's public client id (default: ABCD_SESSION_GITHUB_CLIENT_ID, then .abcd/relay/github-app.json)
+      --port int           the port on this computer to listen on (0 lets the system choose) (default 8787)
 ```
 
 ### `abcd site`

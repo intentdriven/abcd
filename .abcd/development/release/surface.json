@@ -3586,7 +3586,7 @@
       "hidden": false,
       "group": "set-up",
       "block": "people",
-      "sentence": "Run the relay a team's live brief session goes through, or write its blueprint or its page: Writes nothing bare; refuses an unknown sub-verb.",
+      "sentence": "Start a live brief session on this computer, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb.",
       "flags": []
     },
     {
@@ -3682,6 +3682,27 @@
           "name": "repo",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd session start",
+      "hidden": false,
+      "sentence": "Start a live brief session on this computer, reached over your tailnet: Writes nothing; refuses no recorded GitHub App, no Tailscale or no GitHub origin.",
+      "flags": [
+        {
+          "name": "client-id",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "port",
+          "shorthand": "",
+          "type": "int",
           "required": false,
           "hidden": false
         }

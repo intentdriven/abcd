@@ -1,50 +1,66 @@
 # Run a brief session relay
 
 A team edits its brief together live through a relay the team runs itself.
-abcd runs no relay and holds no key: the relay is the `abcd session serve`
-command, run either on the host's own machine or as the team's own small web
-service. Either way it keeps each session's edits in memory only, drops them
-when the host closes the session or nobody has been connected for half an
-hour, writes nothing to disk and logs nothing.
+abcd runs no relay and holds no key: the relay is part of the `abcd` command,
+run either on the host's own computer or as the team's own small web service.
+Either way it keeps each session's edits in memory only, drops them when the
+host closes the session or nobody has been connected for half an hour, writes
+nothing to disk and logs nothing.
 
-Pick one route:
+The people who join never see any of this. The session page finds the relay
+itself, never asks anyone for a server address or a key, and opens straight
+onto the brief's press release.
 
-- [On your own machine, over Tailscale](#on-your-own-machine-over-tailscale):
-  nothing to deploy, and every participant must be on your Tailscale network.
+Pick one route, or set up both:
+
+- [On your own computer, over Tailscale](#on-your-own-computer-over-tailscale):
+  for a project whose brief should not leave your tailnet. Your computer runs
+  the relay and serves the page itself, so nothing goes to abcdesign.app.
 - [On the team's own relay, on Render](#on-the-teams-own-relay-on-render): one
-  deploy serves all of the team's sessions, and anyone with the join code can
-  reach it.
+  deploy serves all of the team's sessions, the page is at abcdesign.app, and
+  anyone with the invite link can reach it.
 
-Both routes use the same [GitHub App for sign-in](#set-up-github-sign-in),
-which is optional.
+Both routes sign team members in through the team's own
+[GitHub App](#set-up-the-teams-github-app).
 
-## On your own machine, over Tailscale
+## On your own computer, over Tailscale
 
-1. Start the relay in a Terminal window of its own:
+1. In the project's checkout, start the session in a Terminal window of its
+   own:
 
    ```bash
-   abcd session serve
+   abcd session start
    ```
 
-   It listens on this computer alone, at `127.0.0.1:8787`, and prints the next
-   command. It runs until you press Ctrl-C, and every session it holds ends
-   then. Run in the project's checkout, it serves sessions for that
-   repository alone, the one its `origin` names on GitHub; name others with
-   `--repo owner/name` or `--owner <owner>`.
+   It listens on this computer alone, at `127.0.0.1:8787` (`--port` names
+   another), serves sessions for the repository the checkout's `origin` names
+   on GitHub, and prints two steps. It runs until you press Ctrl-C, and every
+   session ends then. It needs the GitHub App's client id, which it reads from
+   `.abcd/relay/github-app.json` (or `--client-id`), and Tailscale running on
+   this computer, whose name it reads without changing anything.
 
-2. Put it on your tailnet with Tailscale Serve, in a second window:
+2. The first step it prints shares it on your tailnet with Tailscale Serve:
 
    ```bash
    tailscale serve --bg 8787
    ```
 
-   Tailscale prints the https address teammates on your tailnet reach the relay
-   at. Use Serve only, never Funnel: Funnel would put your computer on the open
-   internet. A guest outside your tailnet joins through the team's relay
-   instead.
+   Run it once; Tailscale keeps it until you turn it off with
+   `tailscale serve --https=443 off`. Use Serve only, never Funnel: Funnel
+   would put your computer on the open internet.
 
-3. When the session is over, stop the relay with Ctrl-C and stop serving with
-   `tailscale serve --https=443 off`.
+3. The second step is the link to open, `https://<your computer's tailnet name>/<owner>/<repo>/brief/`.
+   Sign in with GitHub: the page shows a short code, you confirm it on
+   github.com, and no secret ever sits on your computer. Start the session,
+   and the page shows a code, a QR code and a link to copy for inviting
+   people.
+
+Teammates on your tailnet open the invite link. Someone outside your tailnet,
+such as a domain expert or a stakeholder, can join once you share this
+computer with them through Tailscale's sharing; they join as a guest.
+
+The relay answers only your computer's tailnet name and its own loopback
+address, and admits only the page it serves itself.
 
 ## On the team's own relay, on Render
 
@@ -82,8 +98,8 @@ which is optional.
 
 4. In the service's **Environment**, set `ABCD_SESSION_GITHUB_CLIENT_ID` and
    `ABCD_SESSION_GITHUB_CLIENT_SECRET` from your
-   [GitHub App](#set-up-github-sign-in), or leave both empty to go without
-   sign-in.
+   [GitHub App](#set-up-the-teams-github-app). With both, team members sign in
+   with one click. Without them, nobody can sign in, and only guests can join.
 
 5. Once Render shows the service's address, name it as the relay the
    repository trusts, and commit the file this writes:
@@ -93,7 +109,8 @@ which is optional.
    ```
 
    It adds `.abcd/relay/relays.json`, which the session page reads from the
-   repository to know which relay belongs to it.
+   repository to find the relay that belongs to it. Nobody types the address
+   anywhere.
 
 The blueprint turns automatic deploys off: a session lives in the relay's
 memory, so a redeploy ends every open session. Deploy by hand between calls.
@@ -102,74 +119,83 @@ visit, and a relay that slept holds no session.
 To move to a newer abcd release, run `abcd session blueprint` again with that
 release; a file you have not edited is replaced.
 
-## Set up GitHub sign-in
+## Set up the team's GitHub App
 
 A team member proves they can change the repository by signing in with GitHub,
-through a GitHub App the team registers once. The relay takes a GitHub App and
-nothing else: an App's sign-in reaches only the repositories the App is
-installed on, so even a relay you did not mean to trust cannot use it on your
-other repositories. Without one, a team member pastes a GitHub personal access
-token instead. Either way the relay asks
-GitHub for the person's login and whether they may push to the repository, and
-keeps neither the token nor anything else once it has the answer.
+through a GitHub App the team registers once. Nobody pastes a token: the relay
+takes a GitHub App's sign-in and nothing else. An App's sign-in reaches only
+the repositories the App is installed on, so even a relay you did not mean to
+trust cannot use it on your other repositories. The relay asks GitHub for the
+person's login and whether they may push to the repository, and keeps neither
+the sign-in nor anything else once it has the answer.
 
 1. On GitHub, register a new GitHub App under the team's organisation or your
-   account. Set its callback URL to the address the session page is served
-   from, `https://abcdesign.app/`. That address goes live when abcd publishes
-   the page there; until then, serve the page yourself with
-   `abcd session page`, use its address as the callback URL, and admit its
-   origin with `--origin`. Give it exactly the repository
-   permissions the page uses, and no others: **Contents** read and write,
-   **Pull requests** read and write, and **Metadata** read. Install it on
-   the repositories your sessions are for, and only those. A GitHub App's
-   sign-in holds only what both the app and the person may do, on the
-   repositories it is installed on.
-2. Note the app's client id, and generate a client secret.
-3. Give both to the relay through its environment:
+   account. Give it exactly the repository permissions the page uses, and no
+   others: **Contents** read and write, **Pull requests** read and write, and
+   **Metadata** read. Install it on the repositories your sessions are for,
+   and only those.
+2. For sessions on the team's relay: set its callback URL to the address the
+   session page is served from, `https://abcdesign.app/`. That address goes
+   live when abcd publishes the page there; until then, serve the page
+   yourself with `abcd session page`, use its address as the callback URL,
+   and admit its origin with `--origin`. Generate a client secret and give
+   both to the relay through its environment:
    - `ABCD_SESSION_GITHUB_CLIENT_ID`: the client id, which is public.
    - `ABCD_SESSION_GITHUB_CLIENT_SECRET`: the secret. The relay reads it by
      this name, adds it only to its own exchange with GitHub, and never logs
      it or sends it to a browser.
+3. For sessions on your own computer: tick **Enable Device Flow** in the app's
+   settings, and record its client id in the repository, with no secret:
+
+   ```json
+   {"client_id": "<the app's client id>"}
+   ```
+
+   as `.abcd/relay/github-app.json`. `abcd session start` refuses a file that
+   holds a `client_secret`. Leave the device flow off if you only use the
+   team's relay: anyone who knows the public client id can start a device
+   sign-in and ask someone to confirm its code.
 
 An OAuth app is not taken: its sign-in asks for access to every repository
 the person can reach. A relay set up earlier with
 `ABCD_SESSION_GITHUB_APP_TYPE=oauth-app` refuses to start; register a GitHub
 App as above, give the relay its client id and secret, and remove the
-variable. A relay that offers no GitHub App sign-in gets no sign-in button on
-the session page, only the token paste.
+variable. Where sign-in is not set up, the page says so and to ask the
+technical facilitator; guests can still join.
 
 ## Name your relay in the repository
 
-A link to the session page can name any relay, so the page does not take the
-link's word for it. Before any sign-in or token goes to a relay, the page reads
-`.abcd/relay/relays.json` from the repository's default branch:
+A link to the session page can name any relay, so the page on abcdesign.app
+does not take the link's word for it. Before any sign-in or guest's name goes
+to a relay, the page reads `.abcd/relay/relays.json` from the repository's
+default branch:
 
 ```json
 {"relays": ["https://<your service>.onrender.com"]}
 ```
 
-Commit this file naming the https address of each relay your team runs: the
-one `abcd session blueprint --relay-origin` writes for the Render route, and,
-if a host serves from their own machine, that machine's tailnet address as
-Tailscale Serve prints it. Each entry is an origin alone, with no path.
+Commit this file naming the https address of your team's relay: the one
+`abcd session blueprint --relay-origin` writes. Each entry is an origin alone,
+with no path. A page your own computer serves with `abcd session start` needs
+no entry: it is its own relay.
 
-- For a public repository the page reads the file without signing in. A relay
-  the file does not name gets no sign-in, no token and no guest's name, and
-  the page does not connect to it. A relay the file names shows which
-  repository names it: "This relay is named by owner/repo. Only continue if you
-  work on owner/repo." Check that it is your repository: a link can open the
-  page for anyone's.
+- For a public repository the page reads the file without signing in, and
+  uses the first relay it names. An invite link naming a relay the file does
+  not name gets no sign-in, no guest's name and no connection: the page says
+  the link does not lead to this project's own session.
 - For a private repository, or one without the file, GitHub answers that
-  there is no file to read, and the page cannot check the relay before
-  sign-in. It shows the relay's address and asks the person to confirm it:
-  "Only continue if your team runs this relay". A guest joining is asked the
-  same before their name is sent. The browser remembers the answer for that
-  repository. Once the person has signed in, the page reads the file with
-  their sign-in first; if the file names other relays, it refuses this one and
-  forgets the confirmation.
+  there is no file to read, and the page cannot check the link's relay before
+  sign-in. It names the project and asks one plain question first: "Only
+  continue if someone on the project's team sent you this link." The browser
+  remembers the answer for that project. Once the person has signed in, the
+  page reads the file with their sign-in; if the file names other relays, it
+  refuses this one and forgets the answer.
+- With no relay in the link and none in the file, the page says that live
+  sessions are not set up for this project yet, and to ask the technical
+  facilitator.
 - If GitHub does not answer at all (it refuses, limits the page's requests, or
-  fails), the page cannot check the relay, and refuses it without offering a
-  confirmation: try again later.
+  fails), the page cannot check the relay, and refuses it without asking:
+  "try again in a moment".
 
 Keeping the relay and its secret safe is the team's responsibility.
 
@@ -196,9 +222,9 @@ on a static host of your choice.
    must answer an unknown path with `404.html`: that is how
    `/<owner>/<repo>/brief/` reaches the page.
 
-3. Open `https://<your site>/<owner>/<repo>/brief/` and give the page your
-   relay's https address. If you set up a sign-in app, its callback URL is
-   your site's address.
+3. Open `https://<your site>/<owner>/<repo>/brief/`. The page finds the relay
+   in the repository's `relays.json`. If you set up a sign-in app, its
+   callback URL is your site's address.
 
 4. Start the relay with `--origin https://<your site>`, or, on the team's
    relay, write the blueprint with `--origin https://<your site>`, which sets
@@ -212,9 +238,9 @@ link that opens it in its own tab.
 
 ## Who can join
 
-- Anyone the host gives the join code to joins as a guest. A guest sees the
-  brief and everyone's changes, and proposes changes for a team member to
-  approve.
+- Anyone the host gives the invite link or the join code to joins as a guest,
+  with just a name. A guest sees the brief and everyone's changes, and
+  suggests changes for a team member to apply or decline.
 - A participant who signs in, and whom GitHub reports as able to push to the
   repository, joins as a team member and edits directly.
 
@@ -247,7 +273,8 @@ A cursor update is at most 8 KiB. A guest's suggestion is at most 70 KiB, and
 one connection makes at most a hundred, a session holding at most 1 MiB of
 them. A connection that keeps sending messages the relay refuses is cut off
 after a thousand. One address may sign in through the relay at most ten times
-in ten minutes.
+in ten minutes, and the relay holds at most 64 sign-ins waiting for a code to
+be confirmed on GitHub.
 
 It bounds connections too: 256 in all and 16 from one address. Past either, a
 new connection is turned away, and a connection that has not hosted or joined

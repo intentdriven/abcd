@@ -1,13 +1,17 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"net/netip"
 	"os"
+	"os/exec"
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/adapter/tailscale"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	coresession "github.com/intentdriven/abcd/internal/core/session"
@@ -76,18 +80,19 @@ var newSessionReleaseFetcher = func() (coresession.AssetFetcher, error) {
 func newSessionCommand(asJSON *bool) *cobra.Command {
 	cmd := &cobra.Command{
 		Use: "session",
-		Long: "Run the relay a team's live brief session goes through, write the blueprint\n" +
-			"that deploys it to the team's own Render account, or write the session's static\n" +
-			"page for the team to serve. The relay holds each session's\n" +
-			"edits in memory only, as opaque bytes, and drops them when the host closes the\n" +
-			"session or nobody has been connected for half an hour; it writes nothing to disk\n" +
-			"and logs nothing. abcd runs no relay of its own: the team runs it, on the host's\n" +
-			"machine reached over Tailscale Serve, or on the team's own relay.\n\n" +
+		Long: "Start a live brief session on this computer, run the relay a team's cloud\n" +
+			"sessions go through, write the blueprint that deploys that relay to the team's\n" +
+			"own Render account, or write the session's static page for the team to serve.\n" +
+			"The relay holds each session's edits in memory only, as opaque bytes, and drops\n" +
+			"them when the host closes the session or nobody has been connected for half an\n" +
+			"hour; it writes nothing to disk and logs nothing. abcd runs no relay of its own:\n" +
+			"the team runs it, on the host's computer reached over Tailscale Serve\n" +
+			"(`abcd session start`), or on the team's own relay (`abcd session serve`).\n\n" +
 			"Bare `abcd session` prints this help and writes nothing.",
 		Args: cobra.NoArgs,
 		RunE: helpRunE,
 	}
-	cmd.AddCommand(newSessionServeCommand(asJSON), newSessionBlueprintCommand(asJSON), newSessionPageCommand(asJSON))
+	cmd.AddCommand(newSessionStartCommand(asJSON), newSessionServeCommand(asJSON), newSessionBlueprintCommand(asJSON), newSessionPageCommand(asJSON))
 	return cmd
 }
 
@@ -156,6 +161,152 @@ func sessionServed(loopback bool, repos, owners []string, env, cwd string) ([]st
 	return nil, nil, nil
 }
 
+// sessionTailnetName is this computer's tailnet name, as Tailscale's own
+// read-only status reports it. It is a package var so a test can answer for
+// it: no test runs Tailscale.
+var sessionTailnetName = func(ctx context.Context, root string) (string, error) {
+	bin, err := tailscale.Resolve(exec.LookPath, tailscale.BundledCommands, root)
+	if err != nil {
+		return "", err
+	}
+	self, err := tailscale.New(bin).Status(ctx)
+	if err != nil {
+		return "", err
+	}
+	return self.Name, nil
+}
+
+// sessionLocal is the start line, or JSON object, `session start` prints once
+// it listens.
+type sessionLocal struct {
+	URL       string `json:"url"`
+	Link      string `json:"link"`
+	Repo      string `json:"repo"`
+	Tailnet   string `json:"tailnet"`
+	ServeStep string `json:"serve_step"`
+	SignIn    string `json:"sign_in"`
+}
+
+// sessionDefaultPort is where a local session listens unless --port names
+// another: the relay's own default.
+const sessionDefaultPort = 8787
+
+func newSessionStartCommand(asJSON *bool) *cobra.Command {
+	var port int
+	var clientID string
+	c := &cobra.Command{
+		Use: "start",
+		Long: "Start a live brief session on this computer, for a project whose brief should\n" +
+			"not leave the team's tailnet. It runs the session relay on loopback and serves the\n" +
+			"session page from it, so nothing goes to abcdesign.app, and prints the one\n" +
+			"Tailscale step that shares it on your tailnet and the link to open.\n\n" +
+			"It serves sessions for this checkout's origin repository on github.com. Team\n" +
+			"members sign in with GitHub's device flow: the page shows a short code to confirm\n" +
+			"on github.com, so no secret sits on this computer. The GitHub App's public client\n" +
+			"id comes from --client-id, " + sessionClientIDEnv + ", or\n" +
+			".abcd/relay/" + coresession.AppFile + ", which repository setup writes; without\n" +
+			"one it refuses, since nobody could sign in. Anyone else joins as a guest with a\n" +
+			"name, and suggests changes.\n\n" +
+			"It asks Tailscale for this computer's tailnet name and changes nothing in\n" +
+			"Tailscale. It answers only that name and its own loopback address, as hosts and\n" +
+			"as page origins. People outside your tailnet join as guests once you share this\n" +
+			"computer with them in Tailscale. Never Funnel.\n\n" +
+			"It runs in the foreground until interrupted; every session ends with it.\n" +
+			"Exit 2 on a refusal, with nothing started.",
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			const prefix = "abcd session start: "
+			refuse := func(msg string) error { return &exitError{Code: 2, Msg: prefix + msg + " (nothing started)"} }
+			if port < 0 || port > 65535 {
+				return refuse("--port " + strconv.Itoa(port) + " is not 0 to 65535")
+			}
+			cwd, err := os.Getwd()
+			if err != nil {
+				return err
+			}
+			root, err := gitutil.CheckoutRoot(cwd, "the live session's checkout")
+			if err != nil {
+				return refuse(err.Error())
+			}
+			repo, err := sessionOriginRepo(root)
+			if err != nil || !coresession.ValidRepo(repo) {
+				return refuse("a live session serves this checkout's repository, and its origin does not name one on github.com")
+			}
+			if clientID == "" {
+				clientID = strings.TrimSpace(os.Getenv(sessionClientIDEnv))
+			}
+			if clientID == "" {
+				id, err := coresession.ReadAppClientID(root)
+				if err != nil {
+					return refuse(err.Error())
+				}
+				clientID = id
+			}
+			if clientID == "" {
+				return refuse("sign-in is not set up for this project: no GitHub App is recorded in .abcd/relay/" + coresession.AppFile +
+					"; set up live sessions at repository setup, or name the app's client id with --client-id")
+			}
+			if !coresession.ValidClientID(clientID) {
+				return refuse("--client-id " + strconv.Quote(clientID) + " is not a GitHub App's client id")
+			}
+			name, err := sessionTailnetName(cmd.Context(), root)
+			name = strings.ToLower(strings.TrimSuffix(strings.TrimSpace(name), "."))
+			if err != nil || name == "" || strings.ContainsAny(name, "/:@ ") {
+				why := "Tailscale names no tailnet name for this computer"
+				if err != nil {
+					why = err.Error()
+				}
+				return refuse("a local session is reached over Tailscale, and " + why)
+			}
+			ln, err := session.Listen(netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), uint16(port)))
+			if err != nil {
+				return refuse("cannot listen on 127.0.0.1:" + strconv.Itoa(port) + ": " + err.Error())
+			}
+			bound := ln.Addr().String()
+			boundPort := bound[strings.LastIndex(bound, ":")+1:]
+			// The page and the relay are one server: its origin is the
+			// tailnet name Serve answers on, or this computer's own address.
+			srv, err := session.New(session.Config{
+				Origins:      []string{"https://" + name, "http://127.0.0.1:" + boundPort, "http://localhost:" + boundPort},
+				Hosts:        []string{name, "127.0.0.1:" + boundPort, "localhost:" + boundPort},
+				LoopbackOnly: true,
+				Repos:        []string{repo},
+				ClientID:     clientID,
+				ServePage:    true,
+			})
+			if err != nil {
+				_ = ln.Close()
+				return refuse(err.Error())
+			}
+			local := sessionLocal{
+				URL:       "http://" + bound,
+				Link:      "https://" + name + "/" + repo + "/brief/",
+				Repo:      repo,
+				Tailnet:   name,
+				ServeStep: "tailscale serve --bg " + boundPort,
+				SignIn:    "device",
+			}
+			_ = render(cmd.OutOrStdout(), *asJSON, local, func(w io.Writer) {
+				fmt.Fprintf(w, "abcd session start: a live brief session for %s is ready on this computer\n", termsafe.Sanitize(repo))
+				fmt.Fprintln(w, "  1. share it on your tailnet, once (Tailscale keeps it until you turn it off):")
+				fmt.Fprintf(w, "       %s\n", local.ServeStep)
+				fmt.Fprintln(w, "  2. open this link, sign in with GitHub and start the session:")
+				fmt.Fprintf(w, "       %s\n", termsafe.Sanitize(local.Link))
+				fmt.Fprintln(w, "     the page then shows a code and a QR code to invite people on your tailnet")
+				fmt.Fprintln(w, "  people outside your tailnet can join as guests once you share this computer with them in Tailscale")
+				fmt.Fprintln(w, "  stop it with Ctrl-C; every session ends with it")
+			})
+			if err := srv.Run(cmd.Context(), ln); err != nil && !errors.Is(err, cmd.Context().Err()) {
+				return fmt.Errorf("%s%w", prefix, err)
+			}
+			return nil
+		},
+	}
+	c.Flags().IntVar(&port, "port", sessionDefaultPort, "the port on this computer to listen on (0 lets the system choose)")
+	c.Flags().StringVar(&clientID, "client-id", "", "the team's GitHub App's public client id (default: "+sessionClientIDEnv+", then .abcd/relay/"+coresession.AppFile+")")
+	return c
+}
+
 func newSessionServeCommand(asJSON *bool) *cobra.Command {
 	var listen, clientID string
 	var origins, repos, owners []string
@@ -174,16 +325,20 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"comma list of either. Nobody signs in against, or hosts, any other. Listening\n" +
 			"beyond this computer it refuses to start without one; on loopback it serves this\n" +
 			"checkout's origin repository, or any repository outside a GitHub checkout.\n\n" +
-			"It serves the session WebSocket at /session, the sign-in exchange at /auth/token,\n" +
-			"the GitHub App's public client id at /config and a health check at /healthz. It\n" +
+			"It serves the session WebSocket at /session, the sign-in at /auth/token or\n" +
+			"/auth/device, the GitHub App's public client id at /config and a health check at\n" +
+			"/healthz. It\n" +
 			"admits a browser only from https://abcdesign.app or a loopback page, or, when\n" +
 			"--origin is given, from exactly the origins it names, and otherwise, when\n" +
 			sessionOriginsEnv + " is set, from exactly the origins that comma list names.\n" +
-			"Sign-in goes through the team's GitHub App only: its secret is read from\n" +
-			sessionSecretEnv + " and its client id from --client-id or\n" +
-			sessionClientIDEnv + "; without them, sign-in is not offered and a team member\n" +
-			"pastes a personal access token. " + sessionLegacyAppTypeEnv + " set to\n" +
-			"anything but github-app is refused: the relay takes no OAuth app.\n\n" +
+			"Sign-in goes through the team's GitHub App only, and nobody pastes a token: the\n" +
+			"relay takes only a GitHub App user access token. Its client id is read from\n" +
+			"--client-id or " + sessionClientIDEnv + ", and its secret from\n" +
+			sessionSecretEnv + "; with both, members sign in with GitHub's web\n" +
+			"flow, and with the client id alone, with GitHub's device flow (/auth/device).\n" +
+			"Without a client id, sign-in is not offered and only guests can join.\n" +
+			sessionLegacyAppTypeEnv + " set to anything but github-app is refused: the\n" +
+			"relay takes no OAuth app.\n\n" +
 			"Exit 2 on a refusal, with nothing started.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -230,7 +385,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 				URL:      "http://" + bound,
 				Loopback: loopback,
 				Proxy:    behindProxy,
-				SignIn:   clientID != "" && os.Getenv(sessionSecretEnv) != "",
+				SignIn:   clientID != "",
 				Repos:    append([]string{}, allowRepos...),
 				Owners:   append([]string{}, allowOwners...),
 				AnyRepo:  len(allowRepos) == 0 && len(allowOwners) == 0,
@@ -258,10 +413,13 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 					}
 					fmt.Fprintf(w, "  serves sessions for %s\n", termsafe.Sanitize(strings.Join(names, ", ")))
 				}
-				if start.SignIn {
-					fmt.Fprintln(w, "  sign-in: the team's GitHub sign-in app is set up")
-				} else {
-					fmt.Fprintf(w, "  sign-in is not set up (set %s and --client-id); a team member pastes a personal access token instead\n", sessionSecretEnv)
+				switch {
+				case start.SignIn && os.Getenv(sessionSecretEnv) != "":
+					fmt.Fprintln(w, "  sign-in: the team's GitHub App, through GitHub's web flow")
+				case start.SignIn:
+					fmt.Fprintln(w, "  sign-in: the team's GitHub App, through GitHub's device flow (no secret set)")
+				default:
+					fmt.Fprintf(w, "  sign-in is not set up (set --client-id, and %s for the web flow); only guests can join\n", sessionSecretEnv)
 				}
 				fmt.Fprintln(w, "  stop it with Ctrl-C; every session it holds ends with it")
 			})

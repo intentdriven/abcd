@@ -214,5 +214,5 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610142147242544](2610142147242544-abcd-s-site-is-built-onto-its-own-github.md) | abcd's record is built onto its own GitHub Pages, and abcdev.app becomes abcd's documentation site | proposed | 2026-10-14 |
 | [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md) | A fresh install's facilitator is a person until the repository says auto | accepted | 2026-10-15 |
 | [adr-2610150729333337](2610150729333337-a-status-branch-moves-without-a.md) | A status branch moves without a preflight receipt | proposed | 2026-10-15 |
-| [adr-2610161400542916](2610161400542916-the-brief-session-page-asks-nobody-for-a.md) | The brief session page asks nobody for a relay address or a token, and a local session signs in by GitHub's device flow | proposed | 2026-10-16 |
+| [adr-2610161400542916](2610161400542916-the-brief-session-page-asks-nobody-for-a.md) | The brief session page asks nobody for a relay address or a token, and a local session signs in by GitHub's device flow | accepted | 2026-10-16 |
 <!-- /index -->

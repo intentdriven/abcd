@@ -29,70 +29,75 @@ import {
 // The words the page shows: one table, so they can be reviewed in one place.
 // ---------------------------------------------------------------------------
 const WORDS = Object.freeze({
-  title: "Brief session",
-  wrongAddress: "This page opens a project's brief for a live session. Open it at /<owner>/<repo>/brief/.",
-  relayLabel: "Relay address",
-  relayHint: "The https address of your team's relay, or of the host's computer on Tailscale.",
-  relayBad: "Give the relay's https address (plain http only for localhost).",
-  relayChecking: "Checking which relays this repository names…",
-  relayListed: "This repository names this relay in .abcd/relay/relays.json.",
-  relayConfirmed: "You confirmed earlier that your team runs this relay:",
-  relayUnconfirmed: "This repository's relay list could not be read without signing in, so the page cannot check this relay for you. Before any sign-in reaches it, you will be asked to confirm it:",
-  relayRefused: "This repository names the relays its team runs in .abcd/relay/relays.json, and this one is not among them, so the page sends it no sign-in and does not connect to it:",
-  relayNoneUsable: "This repository's .abcd/relay/relays.json names no relay the page can use, so the page sends no sign-in to this one and does not connect to it:",
-  relayUnavailable: "The page could not check this repository's relay list, so it sends nothing to this relay. Try again later:",
-  namedBy: "This relay is named by",
-  onlyIfYouWorkOn: "Only continue if you work on",
+  title: "Brief",
+  wrongAddress: "This page opens a project's brief for a live session. Open it from the link your team shared.",
+  checking: "Getting the live session ready…",
+  notSetUp: "Live sessions are not set up for this project yet. Ask your technical facilitator to set them up.",
+  privateNoLink: "This page could not find a live session for this project. If your team runs one, ask the host for the invite link. If not, ask your technical facilitator to set live sessions up.",
+  notOurLink: "This invite link does not lead to this project's own live session, so the page will not open it. Ask the host for a new link.",
+  cannotCheck: "The page could not reach GitHub to check this project's settings. Try again in a moment.",
+  tryAgain: "Try again",
   pageFor: "This page is for",
-  trustHeading: "Check the relay",
-  trustOnly: "Only continue if your team runs this relay:",
-  trustOnlyJoin: "Only continue if this repository's team gave you this relay:",
-  trustWhy: "Signing in sends your GitHub sign-in to this relay. This repository does not name its relays where the page can read them, so only you can tell whether this is your team's. A link from someone else can name any relay.",
-  trustWhyJoin: "Joining sends your name, and every suggestion you make, to this relay. This repository does not name its relays where the page can read them, so only you can tell whether this is your team's. A link from someone else can name any relay.",
-  trustYes: "My team runs this relay",
-  noAppSignIn: "This relay does not offer sign-in through a GitHub App, so the page offers none. Paste a personal access token instead.",
+  trustHeading: "Before you continue",
+  trustQuestion: "The page cannot check this invite against the project's own settings, because the project is private.",
+  trustOnly: "Only continue if someone on the project's team sent you this link.",
+  trustYes: "Someone on the team sent it",
+  signInNotSetUp: "Signing in with GitHub is not set up for this project yet. Ask your technical facilitator. You can still join as a guest.",
   framedRefused: "This page does not run inside another page. Open it in its own tab:",
-  joinHeading: "Join a session",
-  joinHint: "Type the code the host's screen shows, or scan its QR code.",
-  codeLabel: "Join code",
+  joinHeading: "Join the live session",
+  joinMembers: "On the project's team? Sign in with GitHub to edit the brief directly.",
+  joinGuests: "Everyone else: join as a guest with your name, and suggest changes for the team to take up.",
+  codeLabel: "Session code",
   nameLabel: "Your name",
-  join: "Join",
-  codeBad: "A join code is six letters and digits.",
-  teamHeading: "Team members",
-  teamHint: "Sign in with GitHub to edit directly and to host a session. Without signing in you join as a guest and suggest changes for a team member to approve.",
+  join: "Join as a guest",
+  codeBad: "A session code is six letters and numbers. The host can read it out to you.",
+  haveCode: "Have a session code?",
+  joinWithCode: "Join with the code",
+  startHeading: "Start a live session",
+  startHint: "Sign in with GitHub to start a session on this brief. You will get a link and a QR code to invite people.",
   signIn: "Sign in with GitHub",
-  pasteToken: "Paste a GitHub token instead",
-  tokenLabel: "Personal access token",
-  useToken: "Use this token",
-  signInUnavailable: "This relay has no GitHub sign-in set up. Paste a personal access token instead.",
-  signInFailed: "GitHub sign-in did not complete. Try again, or paste a personal access token.",
+  signingInTo: "You are signing in to work on",
+  signInFailed: "Signing in with GitHub did not finish. Try again.",
   signingIn: "Signing in…",
   signedInAs: "Signed in as",
-  notMember: "GitHub says you cannot change this repository, so you take part as a guest.",
-  hostHeading: "Host a session",
-  host: "Host a session",
-  modeLabel: "Send the result back as",
-  modePR: "one pull request",
-  modeIssues: "one issue per change",
+  notMember: "GitHub says you cannot change this project, so you take part as a guest.",
+  deviceHeading: "Confirm on GitHub",
+  deviceStep1: "Open GitHub's sign-in page:",
+  deviceStep2: "Enter this code there, and confirm:",
+  deviceOpen: "Open GitHub",
+  deviceCopy: "Copy the code",
+  deviceCopied: "Code copied.",
+  deviceWaiting: "Waiting for you to confirm on GitHub…",
+  deviceExpired: "That code has expired. Sign in again for a new one.",
+  deviceDenied: "Signing in was cancelled on GitHub.",
+  host: "Start the session",
+  modeLabel: "When you are done, send the changes back as",
+  modePR: "one pull request for the whole session",
+  modeIssues: "one GitHub issue per change",
   loadingBrief: "Reading the brief from GitHub…",
   sendingBrief: "Sharing the brief with the session…",
   noBrief: "This repository has no brief at .abcd/development/brief/ on its default branch.",
   githubFailed: "GitHub did not answer the request for the brief",
   connecting: "Connecting…",
-  connected: "Connected",
+  connected: "Live",
   reconnecting: "Connection lost. Reconnecting…",
-  cannotConnect: "The relay could not be reached.",
+  cannotConnect: "The live session could not be reached. Try again in a moment, or ask the host.",
   syncing: "Loading the brief…",
   ended: "The session has ended.",
   expired: "The session has ended: a session lasts at most twelve hours. The host can open a new one.",
-  codeGone: "That session is no longer open on this relay.",
-  inviteHeading: "Invite",
-  inviteHint: "Scan to join, or type the code.",
+  codeGone: "That session is no longer open.",
+  wrongCode: "That code does not match a live session. Check it with the host.",
+  tooManyTries: "Too many wrong codes. Wait a few minutes, then try again.",
+  joinPaused: "Joining is paused for a few minutes. Try again shortly.",
+  notThisProject: "Live sessions for this project are not set up here. Ask your technical facilitator.",
+  signInRefused: "GitHub did not accept the sign-in. Sign in again.",
+  inviteHeading: "Invite people",
+  inviteHint: "Scan the QR code, or open the link and type the code.",
   newCode: "New code",
   endSession: "End session",
   endConfirm: "End the session for everyone? Edits not yet sent to GitHub are lost.",
-  copyLink: "Copy link",
-  linkCopied: "Link copied.",
+  copyLink: "Copy invite link",
+  linkCopied: "Invite link copied.",
   filesHeading: "Brief",
   noFile: "Choose a file.",
   rosterHeading: "In this session",
@@ -165,6 +170,7 @@ const WORDS = Object.freeze({
 const GITHUB_API = "https://api.github.com";
 const GITHUB_WEB = "https://github.com";
 const GITHUB_AUTHORIZE = "https://github.com/login/oauth/authorize";
+const GITHUB_DEVICE = "https://github.com/login/device";
 // GitHub answers 414 to a pre-filled issue link over its server limit and does
 // not document the number; the GitHub CLI stops at 8,192 bytes. The link is
 // measured as GitHub receives it, encoded, in bytes, against this margin
@@ -204,7 +210,6 @@ const SUGGESTION_ID_RE = /^s[0-9]{1,9}$/;
 // Origins of Yjs transactions: what the relay sent, and the host's seeding.
 const FROM_RELAY = Symbol("relay");
 const FROM_SEED = Symbol("seed");
-const KEY_RELAY = "abcd.session.relay";
 const KEY_NAME = "abcd.session.name";
 const KEY_SIGN_IN = "abcd.session.sign-in";
 const KEY_REJOIN = "abcd.session.rejoin";
@@ -220,9 +225,9 @@ const HEX_COLOUR_RE = /^#[0-9a-fA-F]{6}$/;
 const COLOURS = ["#2f6fdb", "#c2410c", "#15803d", "#9333ea", "#b91c1c", "#0e7490", "#a16207", "#be185d"];
 
 // ---------------------------------------------------------------------------
-// Storage: only the relay address and the display name are remembered, and
-// the sign-in's PKCE verifier waits in session storage across GitHub's
-// redirect. Every access may throw (private windows, blocked storage).
+// Storage: only the display name and the relays the person confirmed are
+// remembered, and the sign-in's PKCE verifier waits in session storage across
+// GitHub's redirect. Every access may throw (private windows, blocked storage).
 // ---------------------------------------------------------------------------
 function recall(key) {
   try { return localStorage.getItem(key) || ""; } catch { return ""; }
@@ -265,9 +270,9 @@ function forgetRelay(relay) {
 }
 
 // ---------------------------------------------------------------------------
-// The GitHub token: module memory only. A token just signed in or pasted is
-// held apart until the relay it would go to is cleared; only then does it
-// become the token verify sends.
+// The GitHub token: module memory only, and only ever from a sign-in: nobody
+// pastes a token. A token just signed in is held apart until the relay it
+// would go to is cleared; only then does it become the token verify sends.
 // ---------------------------------------------------------------------------
 let githubToken = "";
 let heldToken = "";
@@ -849,35 +854,46 @@ function onError(msg) {
   if (session.verifying) {
     session.verifying = false;
     githubToken = "";
-    toast(text);
+    toast(plainError(code, text));
     proceed();
     return;
   }
   if (code === "repo-not-served") {
-    if (session.everJoined) { endSession(text); return; }
+    if (session.everJoined) { endSession(WORDS.notThisProject); return; }
     session.code = "";
     session.pending = "";
-    toast(text);
+    toast(WORDS.notThisProject);
     renderStart();
     return;
   }
   if (code === "paused" && session.everJoined) {
     // Joining by code is paused on the relay for a while: try again later.
-    toast(text);
+    toast(WORDS.joinPaused);
     if (ws) ws.close();
     return;
   }
   if (code === "bad-code" || code === "too-many-tries" || code === "paused") {
     if (session.everJoined) endSession(WORDS.codeGone);
     else {
-      // The connection stays open: the person can type the code again.
+      // The connection stays open: the person can type the code again, in
+      // the code field a link's code had hidden.
       session.code = "";
-      toast(text);
+      linkCode = "";
+      toast(plainError(code, text));
       renderStart();
     }
     return;
   }
-  toast(text);
+  toast(plainError(code, text));
+}
+
+// plainError says a relay's refusal in the page's own plain words, where
+// there are some; the relay's words are for the people who run it.
+function plainError(code, text) {
+  return {
+    "bad-code": WORDS.wrongCode, "too-many-tries": WORDS.tooManyTries, paused: WORDS.joinPaused,
+    "verify-failed": WORDS.signInRefused, "repo-not-served": WORDS.notThisProject, "no-session": WORDS.codeGone,
+  }[code] || text;
 }
 
 // ---------------------------------------------------------------------------
@@ -1082,6 +1098,11 @@ async function relayConfig() {
   // Sign-in goes to github.com alone; a loopback relay may name a local
   // stand-in for testing.
   if (authorize !== GITHUB_AUTHORIZE && !(isLoopbackOrigin(session.relay) && isLoopbackOrigin(authorize))) authorize = "";
+  // The relay offers GitHub's web flow when it holds the app's secret (a
+  // cloud relay), or its device flow when it holds the client id alone (a
+  // session on the host's own computer, where no secret may sit;
+  // adr-2610161400542916).
+  const flow = cfg.flow === "device" ? "device" : "web";
   return {
     // Sign-in goes through a GitHub App alone: its user token can do only
     // what both the app (its installations and fine-grained permissions) and
@@ -1090,25 +1111,25 @@ async function relayConfig() {
     // over OAuth apps
     // (docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app/generating-a-user-access-token-for-a-github-app,
     // docs.github.com/en/apps/oauth-apps/building-oauth-apps/differences-between-github-apps-and-oauth-apps).
-    // A relay that does not say github-app gets no sign-in: only a pasted token.
-    // The page takes the relay's word for the kind: GitHub documents no
-    // client-id format that tells a GitHub App's from an OAuth app's (its
-    // docs name a client id only as "different from the app ID"), and no
-    // public API answers for a client id, so the shape is not checked. The
-    // authorize request asks for no scope either way.
-    signIn: cfg.app_type === "github-app" && cfg.sign_in === true && /^[A-Za-z0-9._-]{1,100}$/.test(clientID) && authorize !== "",
+    // A relay that does not say github-app gets no sign-in at all: nobody
+    // pastes a token. The page takes the relay's word for the kind: GitHub
+    // documents no client-id format that tells a GitHub App's from an OAuth
+    // app's, and no public API answers for a client id, so the shape is not
+    // checked. The authorize request asks for no scope either way.
+    signIn: cfg.app_type === "github-app" && cfg.sign_in === true && /^[A-Za-z0-9._-]{1,100}$/.test(clientID) && (flow === "device" || authorize !== ""),
+    flow,
     clientID,
     authorize,
   };
 }
 
+// startSignIn signs a team member in through the relay's sign-in: GitHub's
+// web flow, which leaves the page and comes back, or its device flow, which
+// shows a code to confirm on github.com.
 async function startSignIn() {
   if (framed()) return;
-  if (!readRelayInput()) return;
-  if (!session.everJoined) {
-    session.code = normalizeCode(ui.code.value);
-    session.name = ui.name.value.trim().slice(0, 40);
-  }
+  if (!session.relay) { toast(WORDS.notSetUp); return; }
+  if (!session.everJoined) readStartForm();
   // No sign-in starts through a relay the repository does not name, or, where
   // its list cannot be read, one the person has not confirmed.
   if (!relayClearedFor("signin")) return;
@@ -1116,19 +1137,17 @@ async function startSignIn() {
   try { cfg = await relayConfig(); } catch { toast(WORDS.cannotConnect); return; }
   signInOffered = cfg.signIn;
   if (!cfg.signIn) {
-    ui.signInNote.textContent = WORDS.noAppSignIn;
-    toast(WORDS.signInUnavailable);
-    showTokenForm(true);
+    toast(WORDS.signInNotSetUp);
     renderAll();
     return;
   }
+  if (cfg.flow === "device") { startDeviceSignIn(); return; }
   const state = randomText(16);
   const verifier = randomText(32);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
   const pending = { state, verifier, relay: session.relay, code: session.code, name: session.name };
   if (!stashSignIn(pending)) {
     toast(WORDS.signInFailed);
-    showTokenForm(true);
     return;
   }
   const q = new URLSearchParams({
@@ -1163,7 +1182,7 @@ async function finishSignIn() {
   if (!session.relay) { toast(WORDS.signInFailed); return true; }
   // GitHub's code goes to the relay's exchange only while the relay is still
   // cleared for this repository.
-  if (!relayCleared()) { toast(refusalWords(session.relay)); renderRelay(); return true; }
+  if (!relayCleared()) { toast(standingRefusal(relayStanding(session.relay))); renderAll(); return true; }
   setStatus(WORDS.signingIn, false);
   try {
     const res = await fetch(session.relay + "/auth/token", {
@@ -1186,23 +1205,85 @@ async function finishSignIn() {
   return true;
 }
 
-function useToken(value) {
-  if (framed()) return;
-  const t = String(value || "").trim();
-  if (!t) return;
-  if (!readRelayInput()) return;
-  heldToken = t;
-  presentHeldToken(false);
+// ---------------------------------------------------------------------------
+// GitHub's device flow, through the relay: GitHub documents no CORS for its
+// device endpoints, and the relay keeps the device code, so the page holds
+// only a handle. The person confirms the code on github.com in another tab;
+// the page asks the relay after it, no faster than GitHub's interval.
+// ---------------------------------------------------------------------------
+let device = null; // { handle, relay, timer, until }
+async function relayPost(path, body) {
+  const res = await fetch(session.relay + path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer",
+  });
+  const out = await res.json().catch(() => ({}));
+  return { status: res.status, out: out && typeof out === "object" ? out : {} };
+}
+
+async function startDeviceSignIn() {
+  stopDeviceSignIn();
+  let got;
+  try { got = await relayPost("/auth/device", {}); } catch { toast(WORDS.cannotConnect); return; }
+  const out = got.out;
+  if (got.status !== 200 || typeof out.handle !== "string" || !/^[A-Za-z0-9_-]{22}$/.test(out.handle) ||
+      typeof out.user_code !== "string" || !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(out.user_code)) {
+    toast(out.error === "device_flow_disabled" || got.status === 503 ? WORDS.signInNotSetUp : WORDS.signInFailed);
+    return;
+  }
+  const life = Math.min(Number(out.expires_in) || 900, 900) * 1000;
+  device = { handle: out.handle, relay: session.relay, timer: 0, until: Date.now() + life, interval: Math.max(5, Number(out.interval) || 5) };
+  ui.deviceCode.textContent = out.user_code;
+  ui.device.hidden = false;
+  ui.deviceOpen.focus();
+  pollDevice();
+}
+
+function stopDeviceSignIn() {
+  if (device) clearTimeout(device.timer);
+  device = null;
+  if (ui.device) ui.device.hidden = true;
+}
+
+function pollDevice() {
+  const d = device;
+  if (!d) return;
+  d.timer = setTimeout(async () => {
+    if (device !== d) return;
+    if (Date.now() > d.until || d.relay !== session.relay) { stopDeviceSignIn(); toast(WORDS.deviceExpired); return; }
+    let got;
+    try { got = await relayPost("/auth/device/token", { handle: d.handle }); } catch { got = null; }
+    if (device !== d) return;
+    const out = got ? got.out : {};
+    if (got && got.status === 200 && typeof out.access_token === "string" && out.access_token !== "") {
+      stopDeviceSignIn();
+      heldToken = out.access_token;
+      takeRejoin();
+      await presentHeldToken(false);
+      return;
+    }
+    if (!got || got.status >= 500 || out.error === "authorization_pending" || out.error === "slow_down") {
+      if (typeof out.interval === "number" && out.interval >= 5 && out.interval <= 60) d.interval = out.interval;
+      pollDevice();
+      return;
+    }
+    stopDeviceSignIn();
+    toast(out.error === "access_denied" ? WORDS.deviceDenied : out.error === "expired_token" || out.error === "token_expired" ? WORDS.deviceExpired : WORDS.signInFailed);
+  }, d.interval * 1000);
 }
 
 // presentHeldToken gives the held token to the relay, once the relay is
 // cleared. With a token, the page first asks api.github.com alone for the
 // repository's relay list, which a private repository shows only then: a list
-// that does not name the relay refuses it, and forgets any confirmation.
+// that does not name the relay refuses it, and forgets any confirmation. A
+// relay that serves this page itself is the page's own origin and needs no
+// list.
 async function presentHeldToken(checked) {
   if (!heldToken) return;
   const relay = session.relay;
-  if (!checked && anchor.state !== "listed") {
+  if (!checked && anchor.state !== "listed" && anchor.state !== "self") {
     const seen = await readRelayList(heldToken);
     // A list the token shows decides. One GitHub would not show for a reason
     // other than its absence refuses the relay until it can be checked.
@@ -1213,12 +1294,12 @@ async function presentHeldToken(checked) {
   if (standing === "refused" || standing === "unavailable") {
     if (standing === "refused") forgetRelay(relay);
     heldToken = "";
-    toast(standingRefusal(standing, relay));
-    renderRelay();
+    toast(standingRefusal(standing));
+    renderAll();
     return;
   }
   if (standing === "unconfirmed") { askTrust("token"); return; }
-  if (standing !== "listed" && standing !== "confirmed") { heldToken = ""; return; }
+  if (standing !== "listed" && standing !== "confirmed" && standing !== "self") { heldToken = ""; return; }
   githubToken = heldToken;
   heldToken = "";
   connectSignedIn();
@@ -1239,19 +1320,30 @@ function connectSignedIn() {
 }
 
 // ---------------------------------------------------------------------------
-// Which relays may have a token (security review F1). A link can name any
+// Which relay, and whether it may have anything (security review F1). The
+// page never shows or asks for a relay address (adr-2610161400542916). A page
+// the relay serves itself takes its own origin. Otherwise a link can name any
 // relay in its fragment, so the repository is the trust anchor: it names its
 // relays in a committed file the page reads from api.github.com, without a
 // token for a public repository. Where that file cannot be read, the person
-// confirms the relay before any sign-in reaches it.
+// confirms, in plain words, that the project's team sent the link, before any
+// sign-in, name or suggestion reaches the relay.
 // ---------------------------------------------------------------------------
-// The anchor: "checking" until GitHub answers, "listed" with the relays the
-// file names (none, for a file that names none the page can use), "unknown"
-// when GitHub says there is no file it will show (404: none, or a private
-// repository), or "unavailable" when GitHub did not answer that (a 403, a
-// 429, a 5xx, a network error): then the list could not be checked, and
-// nothing reaches the relay, confirmed or not, until it can be.
+// The anchor: "self" when the relay serves this page; "checking" until GitHub
+// answers; "listed" with the relays the file names (none, for a file that
+// names none the page can use); "unknown" when GitHub says there is no file it
+// will show (404: none, or a private repository); or "unavailable" when GitHub
+// did not answer that (a 403, a 429, a 5xx, a network error): then the list
+// could not be checked, and nothing reaches the relay, confirmed or not,
+// until it can be.
 let anchor = { state: "checking", relays: [] };
+
+// selfServed says the relay serves this page itself, a local session: its
+// HTML then carries the marker, which the static page never does.
+function selfServed() {
+  const m = document.querySelector('meta[name="abcd-session-relay"]');
+  return m !== null && m.getAttribute("content") === "self";
+}
 
 // readRelayList reads the repository's relay list from its default branch,
 // with the token given, or none.
@@ -1294,12 +1386,25 @@ function relaysIn(body) {
   } catch { return []; }
 }
 
-// relayStanding is what the page may do with a relay: "listed" or "confirmed"
-// may have a token, "unconfirmed" must be confirmed first, "refused" and
-// "unavailable" get nothing and no confirmation is offered for them,
-// "checking" waits for GitHub's answer.
+// chooseRelay settles which relay this page uses, once the anchor is read: a
+// page the relay serves uses its own origin; otherwise the relay the link
+// names, or, with none, the first the repository's list names, or, where the
+// list cannot be read, the one the person confirmed for this repository.
+function chooseRelay(fromLink) {
+  if (anchor.state === "self") return location.origin;
+  if (fromLink) return fromLink;
+  if (anchor.state === "listed") return anchor.relays[0] || "";
+  if (anchor.state === "unknown") return confirmedRelays()[0] || "";
+  return "";
+}
+
+// relayStanding is what the page may do with a relay: "self", "listed" or
+// "confirmed" may have a token, "unconfirmed" must be confirmed first,
+// "refused" and "unavailable" get nothing and no confirmation is offered for
+// them, "checking" waits for GitHub's answer.
 function relayStanding(relay) {
   if (!relay) return "";
+  if (anchor.state === "self") return relay === location.origin ? "self" : "refused";
   if (anchor.state === "checking") return "checking";
   if (anchor.state === "unavailable") return "unavailable";
   if (anchor.state === "listed") return anchor.relays.includes(relay) ? "listed" : "refused";
@@ -1307,16 +1412,15 @@ function relayStanding(relay) {
 }
 function relayCleared() {
   const standing = relayStanding(session.relay);
-  return standing === "listed" || standing === "confirmed";
+  return standing === "self" || standing === "listed" || standing === "confirmed";
 }
-function refusalWords(relay) {
-  return (anchor.state === "listed" && anchor.relays.length === 0 ? WORDS.relayNoneUsable : WORDS.relayRefused) + " " + relay;
-}
-// standingRefusal says why a relay that is not cleared gets nothing.
-function standingRefusal(standing, relay) {
-  if (standing === "checking") return WORDS.relayChecking;
-  if (standing === "unavailable") return WORDS.relayUnavailable + " " + relay;
-  return refusalWords(relay);
+// standingRefusal says, in plain words and with no address, why a relay that
+// is not cleared gets nothing.
+function standingRefusal(standing) {
+  if (standing === "checking") return WORDS.checking;
+  if (standing === "unavailable") return WORDS.cannotCheck;
+  if (standing === "refused") return WORDS.notOurLink;
+  return WORDS.notSetUp;
 }
 
 // recheckRelayList reads the relay list again after GitHub did not answer,
@@ -1328,9 +1432,10 @@ async function recheckRelayList() {
   try {
     const seen = await readRelayList("");
     if (anchor.state === "unavailable") anchor = seen;
+    if (!session.relay) session.relay = chooseRelay(linkRelay);
   } finally {
     rechecking = false;
-    renderRelay();
+    renderAll();
     refreshSignIn();
   }
 }
@@ -1340,14 +1445,14 @@ async function recheckRelayList() {
 // says why it is refused.
 function relayClearedFor(action) {
   const standing = relayStanding(session.relay);
-  if (standing === "listed" || standing === "confirmed") return true;
+  if (standing === "self" || standing === "listed" || standing === "confirmed") return true;
   if (standing === "unconfirmed") askTrust(action);
   else {
     heldToken = "";
-    toast(standingRefusal(standing, session.relay));
+    toast(standingRefusal(standing));
     if (standing === "unavailable") recheckRelayList();
   }
-  renderRelay();
+  renderAll();
   return false;
 }
 
@@ -1355,15 +1460,11 @@ let trustPending = null;
 function askTrust(action) {
   if (framed()) return;
   trustPending = { action, relay: session.relay };
-  const joining = action === "join";
-  // The repository this page is for, shown so a link to a stranger's
-  // repository is seen for what it is.
+  // The project this page is for, shown so a link to a stranger's project is
+  // seen for what it is. No address is shown: the question is whether the
+  // project's team sent the link.
   clear(ui.trustOwner);
   ui.trustOwner.append(WORDS.pageFor + " ", el("strong", { text: route.slug }), ".");
-  if (!joining) ui.trustOwner.append(" " + WORDS.onlyIfYouWorkOn + " ", el("strong", { text: route.slug }), ".");
-  ui.trustOnly.textContent = joining ? WORDS.trustOnlyJoin : WORDS.trustOnly;
-  ui.trustWhy.textContent = joining ? WORDS.trustWhyJoin : WORDS.trustWhy;
-  ui.trustOrigin.textContent = session.relay;
   ui.trust.hidden = false;
   ui.trustCancel.focus();
 }
@@ -1374,45 +1475,23 @@ function trustAnswered(yes) {
   if (!p) return;
   if (!yes || p.relay !== session.relay || relayStanding(p.relay) !== "unconfirmed") {
     heldToken = "";
-    renderRelay();
+    renderAll();
     return;
   }
-  const relay = p.relay;
-  confirmRelay(relay);
-  if (relayCleared()) remember(KEY_RELAY, relay);
-  renderRelay();
+  confirmRelay(p.relay);
+  renderAll();
   refreshSignIn();
   if (p.action === "signin") startSignIn();
   else if (p.action === "token") presentHeldToken(true);
   else if (p.action === "join") joinClicked();
+  else if (p.action === "host") hostClicked();
 }
 
-// ownerNotice names the repository a listed relay is named by, prominently:
-// a link can open the page for any repository, a stranger's among them, and
-// that repository's list then names the stranger's relay.
+// ownerNotice names the repository beside the sign-in, prominently: a link
+// can open the page for any repository, a stranger's among them, and that
+// repository's list then names the stranger's relay.
 function ownerNotice() {
-  return el("span", { class: "owner" },
-    WORDS.namedBy + " ", el("strong", { text: route.slug }), ". " + WORDS.onlyIfYouWorkOn + " ", el("strong", { text: route.slug }), ".");
-}
-
-// renderRelay shows where the relay stands, with its origin, on the relay
-// card, which is never hidden for a relay that is not cleared.
-function renderRelay() {
-  if (!ui.relayStanding) return;
-  const relay = session.everJoined ? session.relay : relayOrigin(ui.relay.value);
-  const standing = relayStanding(relay);
-  const words = {
-    checking: WORDS.relayChecking, listed: WORDS.relayListed, confirmed: WORDS.relayConfirmed,
-    unconfirmed: WORDS.relayUnconfirmed, refused: relay ? refusalWords("").trim() : "", unavailable: WORDS.relayUnavailable,
-  }[standing] || "";
-  clear(ui.relayStandingText);
-  ui.relayStandingText.append(words);
-  if (standing === "listed") ui.relayStandingText.append(" ", ownerNotice());
-  ui.relayStandingOrigin.textContent = standing && standing !== "checking" && standing !== "listed" ? relay : "";
-  ui.relayStanding.className = standing === "refused" || standing === "unavailable" ? "standing bad" : "standing";
-  ui.relayStanding.hidden = !words;
-  ui.teamOwner.hidden = standing !== "listed";
-  if (!relayCleared()) ui.relayCard.hidden = false;
+  return el("span", { class: "owner" }, WORDS.signingInTo + " ", el("strong", { text: route.slug }), ".");
 }
 
 // signInOffered is what the relay's /config said: true for a GitHub App's
@@ -1425,7 +1504,6 @@ async function refreshSignIn() {
   let offered = false;
   try { offered = (await relayConfig()).signIn; } catch { offered = false; }
   signInOffered = offered;
-  ui.signInNote.textContent = offered ? "" : WORDS.noAppSignIn;
   renderStart();
   renderTop();
 }
@@ -1563,13 +1641,21 @@ async function hostBrief() {
   renderAll();
 }
 
+// inviteFragment is what the invite link carries after #: the code, and the
+// relay only when a guest's page could not find the same one itself. A page
+// the relay serves is its own relay, and the first relay the repository's
+// list names is the one a page finds with no relay in the link.
+function inviteFragment() {
+  const own = anchor.state === "self" || (anchor.state === "listed" && anchor.relays[0] === session.relay);
+  return (own ? "" : "relay=" + encodeURIComponent(session.relay) + "&") + "code=" + session.code;
+}
 function inviteURL() {
   return location.origin + route.base + "/" + encodeURIComponent(route.owner) + "/" + encodeURIComponent(route.repo) +
-    "/brief/#relay=" + encodeURIComponent(session.relay) + "&code=" + session.code;
+    "/brief/#" + inviteFragment();
 }
 function updateFragment() {
   if (!session.code || !session.relay) return;
-  history.replaceState(null, "", location.pathname + "#relay=" + encodeURIComponent(session.relay) + "&code=" + session.code);
+  history.replaceState(null, "", location.pathname + "#" + inviteFragment());
 }
 
 // ---------------------------------------------------------------------------
@@ -2503,10 +2589,16 @@ function openFile(path) {
   renderFiles();
   renderGuestBar();
 }
+// firstFile is the file a session opens on: the brief's press release, the
+// file whose name holds "press-release", or else the first file.
+function firstFile() {
+  const paths = [...files.keys()].sort();
+  return paths.find((p) => /press-release/i.test(p.slice(p.lastIndexOf("/") + 1))) || paths[0] || "";
+}
 files.observe(() => {
   renderFiles();
   if (!currentPath || !files.has(currentPath)) {
-    const first = [...files.keys()].sort()[0];
+    const first = firstFile();
     if (first && session.synced) openFile(first);
   }
 });
@@ -2543,41 +2635,52 @@ function build() {
     el("h1", { text: route.slug + " · " + WORDS.title }), ui.status, el("span", { class: "spacer" }),
     ui.who, ui.signInTop, ui.submit);
 
-  // The start screen.
-  ui.relay = el("input", { id: "relay", type: "url", inputmode: "url", autocomplete: "off", spellcheck: "false", placeholder: "https://" });
+  // The start screen. It asks for nothing technical: no relay address and no
+  // token (adr-2610161400542916). It shows what the page can do here, in
+  // plain words, or why it cannot.
+  ui.notice = el("p");
+  ui.retry = el("button", { type: "button", hidden: true, text: WORDS.tryAgain, onclick: () => recheckRelayList() });
+  ui.noticeCard = el("section", { class: "card", hidden: true, role: "status" }, ui.notice, el("div", { class: "row" }, ui.retry));
   ui.code = el("input", { id: "code", autocomplete: "off", spellcheck: "false", maxlength: "12", autocapitalize: "characters" });
   ui.name = el("input", { id: "name", autocomplete: "nickname", maxlength: "40" });
   ui.mode = el("select", { id: "mode" },
     el("option", { value: "pr", text: WORDS.modePR }), el("option", { value: "issues", text: WORDS.modeIssues }));
-  ui.token = el("input", { id: "token", type: "password", autocomplete: "off", spellcheck: "false" });
-  ui.relay.addEventListener("input", () => renderRelay());
-  ui.relayStandingText = el("span");
-  ui.relayStandingOrigin = el("code", { class: "origin" });
-  ui.relayStanding = el("p", { class: "standing", hidden: true }, ui.relayStandingText, " ", ui.relayStandingOrigin);
-  ui.relayCard = el("section", { class: "card" },
-    el("label", { for: "relay", text: WORDS.relayLabel }), ui.relay, el("p", { text: WORDS.relayHint }), ui.relayStanding);
-  ui.joinCard = el("form", { class: "card", onsubmit: (e) => { e.preventDefault(); joinClicked(); } },
-    el("h2", { text: WORDS.joinHeading }), el("p", { text: WORDS.joinHint }),
-    el("label", { for: "code", text: WORDS.codeLabel }), ui.code,
-    el("label", { for: "name", text: WORDS.nameLabel }), ui.name,
-    el("div", { class: "row" }, el("button", { type: "submit", class: "primary", text: WORDS.join })));
-  ui.signedIn = el("p");
-  ui.signInButton = el("button", { type: "button", class: "primary", text: WORDS.signIn, onclick: () => startSignIn() });
-  ui.tokenToggle = el("button", { type: "button", text: WORDS.pasteToken, onclick: () => showTokenForm(true) });
-  ui.tokenForm = el("form", { hidden: true, onsubmit: (e) => { e.preventDefault(); const v = ui.token.value; ui.token.value = ""; useToken(v); } },
-    el("label", { for: "token", text: WORDS.tokenLabel }), ui.token,
-    el("div", { class: "row" }, el("button", { type: "submit", text: WORDS.useToken })));
+  ui.signedIn = el("p", { class: "state" });
+  ui.signInNote = el("p", { class: "state" });
+  ui.signInStart = el("button", { type: "button", class: "primary", text: WORDS.signIn, onclick: () => startSignIn() });
   ui.hostRow = el("div", { hidden: true },
-    el("h2", { text: WORDS.hostHeading }),
     el("label", { for: "mode", text: WORDS.modeLabel }), ui.mode,
     el("div", { class: "row" }, el("button", { type: "button", class: "primary", text: WORDS.host, onclick: () => hostClicked() })));
-  ui.signInNote = el("p", { class: "state" });
-  // The repository a listed relay is named by, where the sign-in is.
-  ui.teamOwner = el("p", { class: "owner", hidden: true }, ownerNotice());
-  ui.teamCard = el("section", { class: "card" },
-    el("h2", { text: WORDS.teamHeading }), el("p", { text: WORDS.teamHint }), ui.teamOwner, ui.signedIn,
-    el("div", { class: "row" }, ui.signInButton, ui.tokenToggle), ui.signInNote, ui.tokenForm, ui.hostRow);
-  ui.start = el("div", { class: "start" }, ui.relayCard, ui.joinCard, ui.teamCard);
+  ui.startCard = el("section", { class: "card", hidden: true },
+    el("h2", { text: WORDS.startHeading }), el("p", { text: WORDS.startHint }),
+    el("p", { class: "owner" }, ownerNotice()),
+    el("div", { class: "row" }, ui.signInStart), ui.hostRow);
+  // Joining: with a code from the invite link, members sign in and everyone
+  // else gives a name; without one, a smaller form takes a code given aloud.
+  ui.joinTitle = el("h2");
+  ui.signInJoin = el("button", { type: "button", class: "primary", text: WORDS.signIn, onclick: () => startSignIn() });
+  ui.joinMembers = el("div", {},
+    el("p", { text: WORDS.joinMembers }), el("p", { class: "owner" }, ownerNotice()), el("div", { class: "row" }, ui.signInJoin));
+  ui.joinGuests = el("p", { text: WORDS.joinGuests });
+  ui.codeRow = el("div", {}, el("label", { for: "code", text: WORDS.codeLabel }), ui.code);
+  ui.joinButton = el("button", { type: "submit", class: "primary", text: WORDS.join });
+  ui.joinCard = el("form", { class: "card", hidden: true, onsubmit: (e) => { e.preventDefault(); joinClicked(); } },
+    ui.joinTitle, ui.joinMembers, ui.joinGuests, ui.codeRow,
+    el("label", { for: "name", text: WORDS.nameLabel }), ui.name,
+    el("div", { class: "row" }, ui.joinButton));
+  // GitHub's device flow: the code to confirm on github.com, which the page
+  // opens in a new tab.
+  ui.deviceCode = el("div", { class: "code", "aria-live": "polite" });
+  ui.deviceOpen = el("a", { class: "button primary", href: GITHUB_DEVICE, target: "_blank", rel: "noopener noreferrer", text: WORDS.deviceOpen });
+  ui.device = el("section", { class: "card device", hidden: true, role: "dialog", "aria-labelledby": "device-heading" },
+    el("h2", { id: "device-heading", text: WORDS.deviceHeading }),
+    el("p", { text: WORDS.deviceStep1 }), el("div", { class: "row" }, ui.deviceOpen),
+    el("p", { text: WORDS.deviceStep2 }), ui.deviceCode,
+    el("div", { class: "row" },
+      el("button", { type: "button", text: WORDS.deviceCopy, onclick: () => copyText(ui.deviceCode.textContent, WORDS.deviceCopied) }),
+      el("button", { type: "button", text: WORDS.cancel, onclick: () => stopDeviceSignIn() })),
+    el("p", { class: "state", text: WORDS.deviceWaiting }));
+  ui.start = el("div", { class: "start" }, ui.noticeCard, ui.signedIn, ui.signInNote, ui.startCard, ui.joinCard);
 
   // The workspace.
   ui.files = el("nav", { class: "files", "aria-label": WORDS.filesHeading });
@@ -2604,57 +2707,32 @@ function build() {
     ui.files, el("section", { class: "center" }, ui.send, ui.filetitle, ui.editor, ui.guestbar), ui.side);
 
   // The confirmation a relay the repository's list cannot speak for needs
-  // before any sign-in reaches it, shown over the start screen or a session.
-  ui.trustOrigin = el("code", { class: "origin" });
+  // before any sign-in, name or suggestion reaches it, shown over the start
+  // screen or a session. It names the project and no address.
   ui.trustOwner = el("p", { class: "owner" });
-  ui.trustOnly = el("p", { class: "only", text: WORDS.trustOnly });
-  ui.trustWhy = el("p", { text: WORDS.trustWhy });
   ui.trustCancel = el("button", { type: "button", text: WORDS.cancel, onclick: () => trustAnswered(false) });
   ui.trust = el("section", { class: "card trust", hidden: true, role: "alertdialog", "aria-labelledby": "trust-heading" },
     el("h2", { id: "trust-heading", text: WORDS.trustHeading }),
-    ui.trustOwner, ui.trustOnly, ui.trustOrigin, ui.trustWhy,
+    ui.trustOwner, el("p", { text: WORDS.trustQuestion }), el("p", { class: "only", text: WORDS.trustOnly }),
     el("div", { class: "row" },
       el("button", { type: "button", class: "primary", text: WORDS.trustYes, onclick: () => trustAnswered(true) }), ui.trustCancel));
 
-  app.append(bar, ui.trust, ui.start, ui.work, ui.toast);
+  app.append(bar, ui.trust, ui.device, ui.start, ui.work, ui.toast);
   return true;
 }
 
-function showTokenForm(show) {
-  ui.tokenForm.hidden = !show;
-  if (show) ui.token.focus();
-}
-
-function readRelayInput() {
-  if (session.inRoom || session.everJoined) return true;
-  const relay = relayOrigin(ui.relay.value);
-  if (!relay) { toast(WORDS.relayBad); ui.relay.focus(); return false; }
-  if (relay !== session.relay) {
-    if (ws) { const sock = ws; ws = null; sock.close(); }
-    // A sign-in was cleared for the relay it was made with, never this one.
-    if (githubToken || heldToken) { githubToken = ""; heldToken = ""; session.login = ""; session.member = false; }
-    signInOffered = null;
-  }
-  session.relay = relay;
-  renderRelay();
-  const standing = relayStanding(relay);
-  if (standing === "refused" || standing === "checking" || standing === "unavailable") {
-    toast(standingRefusal(standing, relay));
-    if (standing === "unavailable") recheckRelayList();
-    return false;
-  }
-  // Only a cleared relay is remembered: never one a link named and nobody
-  // confirmed.
-  if (relayCleared()) remember(KEY_RELAY, relay);
-  return true;
+// readStartForm takes the code and the name from the start screen.
+function readStartForm() {
+  session.code = linkCode || normalizeCode(ui.code.value);
+  session.name = ui.name.value.trim().slice(0, 40);
 }
 
 function joinClicked() {
-  if (!readRelayInput()) return;
-  const code = normalizeCode(ui.code.value);
+  if (!session.relay) { toast(standingRefusal("")); return; }
+  const code = linkCode || normalizeCode(ui.code.value);
   if (!code) { toast(WORDS.codeBad); ui.code.focus(); return; }
   // A guest's name reaches a relay only once the relay is cleared, as a
-  // sign-in does: listed by the repository, or confirmed by the person.
+  // sign-in does: its own origin, listed by the repository, or confirmed.
   if (!relayClearedFor("join")) return;
   session.code = code;
   session.name = ui.name.value.trim().slice(0, 40);
@@ -2664,7 +2742,7 @@ function joinClicked() {
 }
 
 function hostClicked() {
-  if (!readRelayInput()) return;
+  if (!relayClearedFor("host")) return;
   session.code = "";
   if (socketOpen() && session.member) sendJSON({ type: "host", repo: route.slug });
   else { session.pending = "host"; openSocket(); }
@@ -2699,12 +2777,34 @@ function renderStart() {
   ui.start.hidden = inSession;
   ui.work.hidden = !inSession || session.seeding;
   if (inSession) return;
+  // What stands in the way, in plain words and with no address: no session
+  // set up, a link that is not the project's own, or GitHub out of reach.
+  const standing = relayStanding(session.relay);
+  let notice = "";
+  if (!session.relay) {
+    notice = { checking: WORDS.checking, unavailable: WORDS.cannotCheck, unknown: WORDS.privateNoLink }[anchor.state] || WORDS.notSetUp;
+  } else if (standing === "refused" || standing === "unavailable" || standing === "checking") {
+    notice = standingRefusal(standing);
+  }
+  ui.notice.textContent = notice;
+  ui.noticeCard.hidden = !notice;
+  ui.retry.hidden = anchor.state !== "unavailable";
+  const usable = !notice;
+  const invited = !!linkCode;
+  const canSignIn = !session.login && signInOffered !== false;
   ui.signedIn.textContent = session.login
     ? WORDS.signedInAs + " " + session.login + (session.member ? "" : ". " + WORDS.notMember)
     : "";
-  ui.signInButton.hidden = !!session.login || signInOffered === false;
-  ui.tokenToggle.hidden = !!session.login;
+  ui.signInNote.textContent = usable && signInOffered === false ? WORDS.signInNotSetUp : "";
+  ui.startCard.hidden = !usable || invited;
+  ui.signInStart.hidden = !canSignIn;
   ui.hostRow.hidden = !(session.login && session.member);
+  ui.joinCard.hidden = !usable;
+  ui.joinTitle.textContent = invited ? WORDS.joinHeading : WORDS.haveCode;
+  ui.joinMembers.hidden = !invited || !canSignIn;
+  ui.joinGuests.hidden = !invited;
+  ui.codeRow.hidden = invited;
+  ui.joinButton.textContent = invited ? WORDS.join : WORDS.joinWithCode;
 }
 
 function renderFiles() {
@@ -2765,7 +2865,6 @@ function renderSide() {
       el("h2", { text: WORDS.inviteHeading }), img,
       el("div", { class: "code", text: session.code, "aria-label": WORDS.codeLabel }),
       el("p", { class: "state", text: WORDS.inviteHint }),
-      el("div", { class: "link", text: url }),
       el("div", { class: "row" },
         el("button", { type: "button", text: WORDS.copyLink, onclick: () => copyLink(url) }),
         el("button", { type: "button", text: WORDS.newCode, onclick: () => sendJSON({ type: "rotate" }) }),
@@ -2809,7 +2908,10 @@ function renderSide() {
 }
 
 async function copyLink(url) {
-  try { await navigator.clipboard.writeText(url); toast(WORDS.linkCopied); } catch { /* clipboard refused */ }
+  await copyText(url, WORDS.linkCopied);
+}
+async function copyText(text, done) {
+  try { await navigator.clipboard.writeText(text); toast(done); } catch { /* clipboard refused */ }
 }
 
 function renderAll() {
@@ -2819,7 +2921,7 @@ function renderAll() {
   renderSide();
   renderGuestBar();
   if (session.synced && !session.seeding && !view && files.size > 0) {
-    openFile([...files.keys()].sort()[0]);
+    openFile(firstFile());
   } else if (view && session.over) {
     view.destroy();
     view = null;
@@ -2853,30 +2955,34 @@ function refuseFramed() {
     el("a", { href: pageURL(), target: "_top", rel: "noopener noreferrer", text: pageURL() })));
 }
 
+// The relay and the code an invite link carries in its fragment, which never
+// reaches a server.
+let linkRelay = "";
+let linkCode = "";
+
 async function main() {
   if (addSlash()) return;
   if (framed()) { refuseFramed(); return; }
   if (!build()) return;
   const frag = new URLSearchParams(location.hash.slice(1));
-  session.relay = relayOrigin(frag.get("relay")) || relayOrigin(recall(KEY_RELAY));
-  session.code = normalizeCode(frag.get("code"));
+  linkRelay = relayOrigin(frag.get("relay"));
+  linkCode = normalizeCode(frag.get("code"));
+  session.code = linkCode;
   session.name = recall(KEY_NAME);
-  ui.relay.value = session.relay;
   ui.code.value = session.code;
   ui.name.value = session.name;
   setStatus("", false);
   renderAll();
-  renderRelay();
-  // Before anything reaches a relay: which relays does the repository name?
-  anchor = await readRelayList("");
-  renderRelay();
-  if (frag.get("relay") && session.relay && relayCleared()) ui.relayCard.hidden = true;
+  // Before anything reaches a relay: is the relay this page's own server,
+  // and if not, which relays does the repository name?
+  anchor = selfServed() ? { state: "self", relays: [] } : await readRelayList("");
+  session.relay = chooseRelay(linkRelay);
+  renderAll();
   refreshSignIn();
   if (!(await finishSignIn())) {
     // A reload of a page that was in a session: back in by its rejoin token.
     if (takeRejoin()) openSocket();
   }
-  ui.relay.value = session.relay;
   ui.code.value = session.code;
   renderAll();
 }

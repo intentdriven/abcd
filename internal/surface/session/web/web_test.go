@@ -344,23 +344,24 @@ func TestPageScriptKeepsTheTokenAndTheDOMSafe(t *testing.T) {
 	if len(imports) != 1 || imports[0][1] != "./vendor/collab.js" {
 		t.Errorf("session.js imports %v, want ./vendor/collab.js alone", imports)
 	}
-	// The only addresses it names are GitHub's API, its sign-in page and its
-	// site, where a pre-filled issue opens.
+	// The only addresses it names are GitHub's API, its sign-in pages (the
+	// web flow's and the device flow's) and its site, where a pre-filled
+	// issue opens.
 	urls := regexp.MustCompile(`(?i)\b(?:https?|wss?)://[^\s"'`+"`"+`)]*`).FindAllString(js, -1)
 	for _, u := range urls {
-		if u != "https://api.github.com" && u != "https://github.com/login/oauth/authorize" && u != "https://github.com" && u != "https://" {
+		if u != "https://api.github.com" && u != "https://github.com/login/oauth/authorize" && u != "https://github.com/login/device" && u != "https://github.com" && u != "https://" {
 			t.Errorf("session.js names %q", u)
 		}
 	}
-	// localStorage is written in one place, which remembers the relay, the
-	// display name and the relays the person confirmed, and nothing else.
+	// localStorage is written in one place, which remembers the display name
+	// and the relays the person confirmed, and nothing else.
 	if n := strings.Count(js, "localStorage.setItem("); n != 1 || !strings.Contains(js, "function remember(key, value) {\n  try { localStorage.setItem(key, value); }") {
 		t.Errorf("localStorage.setItem appears %d times, or outside remember()", n)
 	}
 	remembers := regexp.MustCompile(`remember\(([^)]*)\)`).FindAllStringSubmatch(js, -1)
 	for _, m := range remembers {
-		if m[1] != "key, value" && m[1] != "KEY_RELAY, relay" && m[1] != "KEY_NAME, session.name" && m[1] != "KEY_TRUSTED, JSON.stringify(all" {
-			t.Errorf("remember(%s): only the relay address, the display name and the confirmed relays are remembered", m[1])
+		if m[1] != "key, value" && m[1] != "KEY_NAME, session.name" && m[1] != "KEY_TRUSTED, JSON.stringify(all" {
+			t.Errorf("remember(%s): only the display name and the confirmed relays are remembered", m[1])
 		}
 	}
 	// Session storage holds the sign-in's state and verifier across GitHub's
@@ -892,15 +893,10 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 	}
 	// The anonymous read comes before anything else the page does.
 	main := functionBody(t, js, "main")
-	anon, finish := strings.Index(main, `anchor = await readRelayList("");`), strings.Index(main, "finishSignIn()")
-	if anon < 0 || finish < 0 || anon > finish {
-		t.Errorf("main does not read the relay list before finishing a sign-in:\n%s", main)
-	}
-	// The relay card is hidden only for a relay that is cleared.
-	for _, line := range strings.Split(js, "\n") {
-		if strings.Contains(line, "relayCard.hidden = true") && !strings.Contains(line, "relayCleared()") {
-			t.Errorf("the relay card is hidden for a relay that may not be cleared: %s", strings.TrimSpace(line))
-		}
+	anon, choose, finish := strings.Index(main, `anchor = selfServed() ? { state: "self", relays: [] } : await readRelayList("");`),
+		strings.Index(main, "session.relay = chooseRelay(linkRelay);"), strings.Index(main, "finishSignIn()")
+	if anon < 0 || choose < 0 || finish < 0 || anon > choose || choose > finish {
+		t.Errorf("main does not read the relay list, then choose the relay, before finishing a sign-in:\n%s", main)
 	}
 	// Sign-in starts only through a cleared relay, before /config is asked.
 	start := functionBody(t, js, "startSignIn")
@@ -918,9 +914,11 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 		t.Error("finishSignIn does not hold the token for the relay check")
 	}
 	// A token is held, and becomes the token verify sends only once the relay
-	// is cleared, after api.github.com was asked with it.
-	if strings.Contains(functionBody(t, js, "useToken"), "githubToken =") {
-		t.Error("useToken presents the pasted token without the relay check")
+	// is cleared, after api.github.com was asked with it. The device flow's
+	// token takes the same road as the web flow's.
+	poll := functionBody(t, js, "pollDevice")
+	if !strings.Contains(poll, "heldToken = out.access_token;") || !strings.Contains(poll, "await presentHeldToken(false);") || strings.Contains(poll, "githubToken =") {
+		t.Errorf("the device flow's token skips the relay check:\n%s", poll)
 	}
 	present := functionBody(t, js, "presentHeldToken")
 	ask, give := strings.Index(present, "readRelayList(heldToken)"), strings.Index(present, "githubToken = heldToken;")
@@ -936,16 +934,17 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 		"afterOpen":       "if (githubToken && relayCleared())",
 		"connectSignedIn": "if (!githubToken || !relayCleared())",
 		"onJoined":        "githubToken && relayCleared()",
-		"readRelayInput":  "if (relayCleared()) remember(KEY_RELAY, relay);",
+		"hostClicked":     `if (!relayClearedFor("host")) return;`,
 		"openSocket":      "!relayCleared()",
 	} {
 		if !strings.Contains(functionBody(t, js, fn), want) {
 			t.Errorf("%s does not carry %s", fn, want)
 		}
 	}
-	// The confirmation names the relay in plain words.
-	if !strings.Contains(js, `trustOnly: "Only continue if your team runs this relay:"`) {
-		t.Error("the confirmation does not say to continue only for the team's own relay")
+	// The confirmation asks, in plain words, whether the project's team sent
+	// the link; it shows no address.
+	if !strings.Contains(js, `trustOnly: "Only continue if someone on the project's team sent you this link."`) {
+		t.Error("the confirmation does not say to continue only for a link from the project's team")
 	}
 	if !strings.Contains(functionBody(t, js, "confirmRelay"), "remember(KEY_TRUSTED, JSON.stringify(all));") {
 		t.Error("a confirmed relay is not remembered per repository")
@@ -968,9 +967,9 @@ func TestSignInIsAGitHubAppsAlone(t *testing.T) {
 		t.Errorf("relayConfig offers sign-in for a relay that is not a GitHub App's:\n%s", cfg)
 	}
 	start := functionBody(t, js, "startSignIn")
-	gate, assign := strings.Index(start, "if (!cfg.signIn) {"), strings.Index(start, "location.assign(")
-	if gate < 0 || assign < 0 || gate > assign {
-		t.Errorf("startSignIn sends the person to GitHub without a GitHub App:\n%s", start)
+	gate, assign, dev := strings.Index(start, "if (!cfg.signIn) {"), strings.Index(start, "location.assign("), strings.Index(start, "startDeviceSignIn()")
+	if gate < 0 || assign < 0 || dev < 0 || gate > assign || gate > dev {
+		t.Errorf("startSignIn signs in without a GitHub App:\n%s", start)
 	}
 	if !strings.Contains(js, "docs.github.com/en/apps/") {
 		t.Error("the GitHub App rule does not cite GitHub's documentation")
@@ -984,20 +983,15 @@ func TestSignInIsAGitHubAppsAlone(t *testing.T) {
 	if !strings.Contains(functionBody(t, js, "refreshSignIn"), "signInOffered = ") {
 		t.Error("the relay's /config does not decide whether sign-in is offered")
 	}
-	// The repository the relay is named by is shown prominently.
+	// The repository is named prominently beside every sign-in.
 	notice := functionBody(t, js, "ownerNotice")
-	for _, want := range []string{"WORDS.namedBy", "WORDS.onlyIfYouWorkOn", "route.slug", `el("strong"`} {
+	for _, want := range []string{"WORDS.signingInTo", "route.slug", `el("strong"`} {
 		if !strings.Contains(notice, want) {
 			t.Errorf("ownerNotice does not carry %s:\n%s", want, notice)
 		}
 	}
-	if !strings.Contains(js, `namedBy: "This relay is named by"`) || !strings.Contains(js, `onlyIfYouWorkOn: "Only continue if you work on"`) {
-		t.Error("the page does not name the repository a relay is named by")
-	}
-	for _, fn := range []string{"renderRelay", "build"} {
-		if !strings.Contains(functionBody(t, js, fn), "ownerNotice(") {
-			t.Errorf("%s does not show the repository the relay is named by", fn)
-		}
+	if b := functionBody(t, js, "build"); strings.Count(b, "ownerNotice()") != 2 {
+		t.Error("build does not name the repository beside both sign-in buttons")
 	}
 	if !strings.Contains(functionBody(t, js, "askTrust"), "route.slug") {
 		t.Error("the trust confirmation does not name the repository")
@@ -1032,7 +1026,8 @@ func TestTheRelayListIsReadFailClosed(t *testing.T) {
 	if !strings.Contains(cleared, `if (standing === "unconfirmed") askTrust(action);`) || strings.Count(cleared, "askTrust(") != 1 {
 		t.Errorf("relayClearedFor offers a confirmation for other than an unconfirmed relay:\n%s", cleared)
 	}
-	if !strings.Contains(js, `relayUnavailable: "The page could not check this repository's relay list, so it sends nothing to this relay. Try again later:"`) {
+	if !strings.Contains(js, `cannotCheck: "The page could not reach GitHub to check this project's settings. Try again in a moment."`) ||
+		!strings.Contains(functionBody(t, js, "standingRefusal"), `if (standing === "unavailable") return WORDS.cannotCheck;`) {
 		t.Error("the page has no words for a relay list it could not check")
 	}
 	if !strings.Contains(functionBody(t, js, "presentHeldToken"), `seen.state === "unavailable"`) {
@@ -1273,7 +1268,7 @@ func TestThePageRefusesToRunFramed(t *testing.T) {
 	if gate < 0 || build < 0 || gate > build {
 		t.Errorf("main builds the page before refusing a frame:\n%s", main)
 	}
-	for _, fn := range []string{"askTrust", "startSignIn", "useToken"} {
+	for _, fn := range []string{"askTrust", "startSignIn"} {
 		if !strings.Contains(functionBody(t, js, fn), "if (framed()) return;") {
 			t.Errorf("%s runs inside a frame", fn)
 		}

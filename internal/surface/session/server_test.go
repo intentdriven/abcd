@@ -25,14 +25,30 @@ const testSecret = "test-client-secret-0123456789abcdef"
 type fakeGitHub struct {
 	mu        sync.Mutex
 	exchanges []url.Values
+	// users counts the requests GET /user saw, by token.
+	users map[string]int
+	// deviceStarts are the device-code requests; devicePolls the polls of
+	// the token endpoint with a device code, each answered by the next of
+	// deviceAnswers (the last repeats).
+	deviceStarts  []url.Values
+	devicePolls   []url.Values
+	deviceAnswers []map[string]any
+	deviceStart   map[string]any // the device-code answer, when set
 }
 
 func (g *fakeGitHub) handler() http.Handler {
-	logins := map[string]string{"tok-ada": "ada", "tok-bea": "bea", "tok-cy": "cy"}
+	logins := map[string]string{"ghu_ada": "ada", "ghu_bea": "bea", "ghu_cy": "cy"}
 	push := map[string]bool{"ada": true, "bea": true}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /user", func(w http.ResponseWriter, r *http.Request) {
-		login, ok := logins[strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")]
+		token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+		g.mu.Lock()
+		if g.users == nil {
+			g.users = map[string]int{}
+		}
+		g.users[token]++
+		g.mu.Unlock()
+		login, ok := logins[token]
 		if !ok {
 			http.Error(w, `{"message":"Bad credentials"}`, http.StatusUnauthorized)
 			return
@@ -47,8 +63,38 @@ func (g *fakeGitHub) handler() http.Handler {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"full_name": "acme/brief", "permissions": map[string]bool{"pull": true, "push": push[login]}})
 	})
+	mux.HandleFunc("POST /login/device/code", func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		g.mu.Lock()
+		g.deviceStarts = append(g.deviceStarts, r.PostForm)
+		answer := g.deviceStart
+		g.mu.Unlock()
+		if answer == nil {
+			answer = map[string]any{
+				"device_code": deviceCode, "user_code": "WDJB-MJHT",
+				"verification_uri": "https://github.com/login/device", "expires_in": 900, "interval": 5,
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(answer)
+	})
 	mux.HandleFunc("POST /login/oauth/access_token", func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
+		if r.PostForm.Get("grant_type") == "urn:ietf:params:oauth:grant-type:device_code" {
+			g.mu.Lock()
+			g.devicePolls = append(g.devicePolls, r.PostForm)
+			var answer map[string]any
+			if n := len(g.deviceAnswers); n > 0 {
+				answer = g.deviceAnswers[0]
+				if n > 1 {
+					g.deviceAnswers = g.deviceAnswers[1:]
+				}
+			}
+			g.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(answer)
+			return
+		}
 		g.mu.Lock()
 		g.exchanges = append(g.exchanges, r.PostForm)
 		g.mu.Unlock()
@@ -61,7 +107,7 @@ func (g *fakeGitHub) handler() http.Handler {
 			})
 			return
 		}
-		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "gho_session_token", "token_type": "bearer", "scope": ""})
+		_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "ghu_session_token", "token_type": "bearer", "scope": ""})
 	})
 	return mux
 }
@@ -205,7 +251,7 @@ func hostNumber(t *testing.T, hosted map[string]any) byte {
 func TestHostAndGuestOverTheWire(t *testing.T) {
 	f := newFixture(t, nil)
 	host := f.dial(t, origin)
-	host.sendJSON(map[string]string{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
+	host.sendJSON(map[string]string{"type": "verify", "token": "ghu_ada", "repo": "acme/brief"})
 	if v, _ := host.until("verified"); v["member"] != true {
 		t.Fatalf("verified = %v", v)
 	}
@@ -344,7 +390,7 @@ func TestAuthTokenExchangesWithoutEverEchoingTheSecret(t *testing.T) {
 	url := f.http.URL + "/auth/token"
 
 	resp, body := post(t, url, origin, `{"code":"good-code","code_verifier":"`+verifier+`","redirect_uri":"https://abcdesign.app/acme/brief/brief/"}`)
-	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"access_token":"gho_session_token"`) {
+	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"access_token":"ghu_session_token"`) {
 		t.Fatalf("exchange: %d %s", resp.StatusCode, body)
 	}
 	if resp.Header.Get("Access-Control-Allow-Origin") != origin {
@@ -374,7 +420,7 @@ func TestAuthTokenExchangesWithoutEverEchoingTheSecret(t *testing.T) {
 		{origin, `not json`},
 	} {
 		resp, body := post(t, url, c.origin, c.body)
-		if resp.StatusCode < 400 || strings.Contains(body, testSecret) || strings.Contains(body, "gho_") {
+		if resp.StatusCode < 400 || strings.Contains(body, testSecret) || strings.Contains(body, "ghu_session") {
 			t.Errorf("origin %q body %s: %d %s, want a refusal", c.origin, c.body, resp.StatusCode, body)
 		}
 	}
@@ -448,10 +494,10 @@ func TestGitHubVerifier(t *testing.T) {
 		token, repo, login string
 		push, err          bool
 	}{
-		{"tok-ada", "acme/brief", "ada", true, false},
-		{"tok-cy", "acme/brief", "cy", false, false},
-		{"tok-ada", "acme/other", "ada", false, false}, // GitHub's 404: no access
-		{"tok-nobody", "acme/brief", "", false, true},
+		{"ghu_ada", "acme/brief", "ada", true, false},
+		{"ghu_cy", "acme/brief", "cy", false, false},
+		{"ghu_ada", "acme/other", "ada", false, false}, // GitHub's 404: no access
+		{"ghu_nobody", "acme/brief", "", false, true},
 	} {
 		login, push, err := v.Verify(ctx, c.token, c.repo)
 		if login != c.login || push != c.push || (err != nil) != c.err {
@@ -461,7 +507,7 @@ func TestGitHubVerifier(t *testing.T) {
 			t.Errorf("the error carries the token: %v", err)
 		}
 	}
-	if _, _, err := v.Verify(ctx, "tok-ada", "../../user"); err == nil {
+	if _, _, err := v.Verify(ctx, "ghu_ada", "../../user"); err == nil {
 		t.Error("a repository that is not owner/name reached a request")
 	}
 }
@@ -527,7 +573,7 @@ func TestTailnetVisitorsAreLimitedSeparately(t *testing.T) {
 		c.Limits.MaxFailedJoins = 2
 	})
 	host := f.dial(t, origin)
-	host.sendJSON(map[string]string{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
+	host.sendJSON(map[string]string{"type": "verify", "token": "ghu_ada", "repo": "acme/brief"})
 	host.until("verified")
 	host.sendJSON(map[string]string{"type": "host", "repo": "acme/brief"})
 	hosted, _ := host.until("hosted")
@@ -572,7 +618,7 @@ func TestOriginsAreParsedStrictly(t *testing.T) {
 func (f *fixture) hostSession(t *testing.T) (*client, string) {
 	t.Helper()
 	host := f.dial(t, origin)
-	host.sendJSON(map[string]string{"type": "verify", "token": "tok-ada", "repo": "acme/brief"})
+	host.sendJSON(map[string]string{"type": "verify", "token": "ghu_ada", "repo": "acme/brief"})
 	host.until("verified")
 	host.sendJSON(map[string]string{"type": "host", "repo": "acme/brief"})
 	hosted, _ := host.until("hosted")
@@ -741,7 +787,7 @@ func TestARelayBeyondLoopbackNeedsItsRepositories(t *testing.T) {
 func TestVerifyAgainstAnUnservedRepositoryIsRefused(t *testing.T) {
 	f := newFixture(t, nil)
 	c := f.dial(t, origin)
-	c.sendJSON(map[string]string{"type": "verify", "token": "tok-ada", "repo": "mal/own"})
+	c.sendJSON(map[string]string{"type": "verify", "token": "ghu_ada", "repo": "mal/own"})
 	if e, _ := c.until("error"); e["code"] != "repo-not-served" {
 		t.Fatalf("verify: %v, want repo-not-served", e)
 	}
@@ -794,7 +840,7 @@ func TestAuthTokenIsLimitedPerAddress(t *testing.T) {
 		}
 	}
 	resp, got := post(t, url, origin, body)
-	if resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(got, "rate-limited") || strings.Contains(got, "gho_") {
+	if resp.StatusCode != http.StatusTooManyRequests || !strings.Contains(got, "rate-limited") || strings.Contains(got, "ghu_session") {
 		t.Fatalf("the eleventh exchange: %d %s, want 429 rate-limited", resp.StatusCode, got)
 	}
 	if resp.Header.Get("Retry-After") == "" {

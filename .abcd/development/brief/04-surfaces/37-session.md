@@ -1,15 +1,17 @@
 # `/abcd:session` — The Brief Session's Relay
 
-`/abcd:session` runs the relay a team's live brief session goes through,
-writes the blueprint that deploys it as the team's own relay, and writes the
-static page the session is held on (itd-2610091016262335,
-spc-2610141709430146 steps 1 to 3). abcd runs no relay
+`/abcd:session` starts a live brief session on the host's own computer, runs
+the relay a team's cloud sessions go through, writes the blueprint that
+deploys it as the team's own relay, and writes the static page the session is
+held on (itd-2610091016262335, spc-2610141709430146 steps 1 to 5). The page
+never shows or asks for a relay address or a token
+([adr-2610161400542916](../../decisions/adrs/2610161400542916-the-brief-session-page-asks-nobody-for-a.md)). abcd runs no relay
 and holds no key
 ([adr-2610091016270711](../../decisions/adrs/2610091016270711-who-may-change-an-abcd-managed-project-s.md)):
 the team runs it, on the host's own machine or on the team's own Render
 account. It is abcd's second listener, admitted on the terms of
 [adr-2610032150581128](../../decisions/adrs/2610032150581128-abcd-is-reachable-on-a-network-only.md)'s
-amendment of 2026-10-14 and brief invariant 7's inbound clause
+amendments of 2026-10-14 and 2026-10-16 and brief invariant 7's inbound clause
 ([`02-constraints/03-invariants.md`](../02-constraints/03-invariants.md)).
 
 This chapter describes the relay, its blueprint and the page. The route back
@@ -27,6 +29,7 @@ to GitHub is the spec's later step.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `start` | — | shipped |
 | `serve` | — | shipped |
 | `blueprint` | — | shipped |
 | `page` | — | shipped |
@@ -38,13 +41,20 @@ The relay runs in the foreground until interrupted and listens on loopback
 non-loopback address is the second, explicit choice the amendment requires,
 and is meant for the team's relay, which listens on every address behind its
 host's proxy and trusts that proxy's forwarded address. On a person's own
-machine the relay is reached through Tailscale Serve, on the tailnet only, and
-the start line prints the Serve command that does it. Funnel is never offered:
-a guest outside the tailnet joins through the team's relay.
+machine, the local session runs it on loopback, serves the page from it as
+well, and
+prints the Tailscale Serve command that puts it on the tailnet, with the link
+to open. Funnel is never offered: someone outside the tailnet joins once the
+host shares the computer with them in Tailscale, as a guest. A local session
+answers
+only the computer's tailnet name and its loopback address, as hosts (any other
+gets 421) and as page origins.
 
-It serves four routes and nothing else: the session's WebSocket at `/session`,
-the sign-in exchange at `/auth/token`, the sign-in app's public client id at
-`/config`, and a health check at `/healthz`. A browser is admitted only from
+It serves these routes and nothing else: the session's WebSocket at
+`/session`, the web-flow sign-in exchange at `/auth/token`, the device-flow
+sign-in at `/auth/device` and `/auth/device/token`, the sign-in app's public
+client id and flow at `/config`, a health check at `/healthz`, and, for a
+local session only, the page's embedded files from a fixed route table. A browser is admitted only from
 `https://abcdesign.app`, a loopback page or another origin the host names, each
 an exact origin; a WebSocket or exchange with no origin, or another one, is
 refused with 403.
@@ -62,9 +72,11 @@ Anyone with the code joins as a guest and receives the session's update log
 replayed, then every update as it arrives. A guest's update frame is refused,
 which is how a guest stays read-only on the text; a guest's `suggest` message
 is routed to the team members alone, stamped with the guest's display name,
-cleaned of control and format characters. A participant who presents a GitHub
-token, signed in or pasted, becomes a team member when GitHub reports push
-access, and the token is dropped straight after the check. Team members'
+cleaned of control and format characters. A participant who presents the
+GitHub App user access token their sign-in gave them (`ghu_`; any other kind
+is refused before GitHub is asked, so nobody pastes a token) becomes a team
+member when GitHub reports push access, and the token is dropped straight
+after the check. Team members'
 updates are logged and forwarded; awareness (cursors and selections) is
 forwarded from anyone and never logged. A team member registers the Yjs client
 ids their page edits under, which the roster carries for credit.
@@ -79,10 +91,13 @@ Updates are opaque bytes behind a one-byte tag; the relay never parses them or
 the brief. Everything is in memory: a session is dropped whole when the host
 closes it, or when nobody has been connected for thirty minutes. Nothing is
 written to disk and nothing is logged, no token, secret or brief text. The
-sign-in app's secret is read from `ABCD_SESSION_GITHUB_CLIENT_SECRET` by name,
-added only to the relay's own exchange with GitHub, and never sent to a
-browser; GitHub's answer is passed on field by field, so nothing it echoes
-reaches the page.
+sign-in app's secret, on a cloud relay, is read from
+`ABCD_SESSION_GITHUB_CLIENT_SECRET` by name, added only to the relay's own
+exchange with GitHub, and never sent to a browser; GitHub's answer is passed
+on field by field, so nothing it echoes reaches the page. A relay with the
+client id and no secret (a local session, which never reads one) offers GitHub's
+device flow instead and keeps each device code in memory under a random
+handle, at most 64 at once, never sending it to a browser.
 
 Limits: 256 KiB a message, 8 MiB of log a session, 32 participants a session,
 16 sessions a relay, five sign-in attempts a connection, and a connection that
@@ -123,15 +138,21 @@ only and lets it connect over https and wss, or to loopback for a local
 relay; it sends no referrer, and every piece of brief, relay or participant
 text is put on the page as text, never as markup.
 
-- **Joining.** A joiner's relay address and code arrive in the URL fragment of
-  the host's QR code, so neither reaches the static host; a host types the
-  relay address once and the page remembers it. Only an https relay is
-  accepted, or plain http on this computer.
-- **Signing in.** "Sign in with GitHub" goes to GitHub's authorize page with
-  PKCE and a random state, both held in session storage across the redirect;
-  the page posts the returned code and verifier to the relay's `/auth/token`.
-  Pasting a personal access token is the fallback. The token is held in the
-  page's memory only, and is presented to the relay as `verify`.
+- **Finding the relay.** Nobody types a relay address. A page a local session
+  serves takes its own origin. On a static host the page uses the relay the invite
+  link's fragment names, if the repository's `.abcd/relay/relays.json` names
+  it, or else the first relay the file names; where the file cannot be read
+  before sign-in, it asks in plain words whether the project's team sent the
+  link. With none, it says live sessions are not set up yet and to ask the
+  technical facilitator. The invite link carries the relay only when the
+  guest's page could not find it alone.
+- **Signing in.** "Sign in with GitHub" goes, on a cloud relay, to GitHub's
+  authorize page with PKCE and a random state, both held in session storage
+  across the redirect, and the page posts the returned code and verifier to
+  the relay's `/auth/token`; in a local session, the page shows the device flow's code
+  to confirm on github.com and asks the relay after it. There is no token
+  field. The token is held in the page's memory only, and is presented to the
+  relay as `verify`.
 - **Hosting.** A team member hosts; the page reads the default branch's brief
   through GitHub's API with the host's token and seeds one shared document
   with a text per file, once, recording the base commit, the branch, the
@@ -139,7 +160,8 @@ text is put on the page as text, never as markup.
   snapshot of the seeded state. The seed is sent before the invite shows: a
   QR code of the page's address with the relay and code in the fragment, the
   code in large letters, and buttons for a new code and to end the session.
-- **Editing.** A file list grouped by folder, and a Markdown editor bound to
+- **Editing.** The session opens on the brief's press release. A file list
+  grouped by folder, and a Markdown editor bound to
   the shared text, with each participant's cursor and name. A team member's
   edits are sent as they are typed and the page registers its client id for
   credit; edits made while the connection is down are sent when it returns,
@@ -169,7 +191,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd session`
 
-Sub-verbs: `abcd session blueprint`, `abcd session page`, `abcd session serve`.
+Sub-verbs: `abcd session blueprint`, `abcd session page`, `abcd session serve`, `abcd session start`.
 
 Flags: none.
 
@@ -204,5 +226,14 @@ Sub-verbs: none.
 | `--origin` | stringArray |
 | `--owner` | stringArray |
 | `--repo` | stringArray |
+
+### `abcd session start`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--client-id` | string |
+| `--port` | int |
 
 <!-- surface-appendix:end -->

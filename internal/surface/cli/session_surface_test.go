@@ -655,3 +655,186 @@ func TestSessionBlueprintNamesThePageOrigins(t *testing.T) {
 		t.Fatalf("an http page origin: %v, want exit 2", err)
 	}
 }
+
+// swapTailnet answers for this computer's tailnet name.
+func swapTailnet(t *testing.T, name string, err error) {
+	t.Helper()
+	old := sessionTailnetName
+	sessionTailnetName = func(context.Context, string) (string, error) { return name, err }
+	t.Cleanup(func() { sessionTailnetName = old })
+}
+
+// writeSessionApp writes the GitHub App's public client id where repository
+// setup records it.
+func writeSessionApp(t *testing.T, repo, body string) {
+	t.Helper()
+	dir := filepath.Join(repo, ".abcd", "relay")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "github-app.json"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// startSession runs `abcd session start` with args until the test ends, and
+// returns its output once it has printed the link.
+func startSession(t *testing.T, args ...string) (*syncBuffer, func() error) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	root := NewRootCommand()
+	out := &syncBuffer{}
+	root.SetOut(out)
+	root.SetErr(out)
+	root.SetArgs(append([]string{"session", "start"}, args...))
+	done := make(chan error, 1)
+	go func() { done <- root.ExecuteContext(ctx) }()
+	stop := func() error {
+		cancel()
+		select {
+		case err := <-done:
+			return err
+		case <-time.After(10 * time.Second):
+			return errors.New("start did not stop")
+		}
+	}
+	t.Cleanup(func() { _ = stop() })
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(out.String(), "https://") {
+		select {
+		case err := <-done:
+			t.Fatalf("start ended: %v\n%s", err, out.String())
+		default:
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("start never printed its link:\n%s", out.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	return out, stop
+}
+
+// TestSessionStartServesTheBriefOnTheTailnet: `abcd session start` is the
+// host's one command for a local session. It serves the checkout's
+// repository, signs in by GitHub's device flow with the client id setup
+// recorded, serves the page itself, answers only its tailnet name and
+// loopback, and prints the Tailscale step and the link (adr-2610161400542916).
+func TestSessionStartServesTheBriefOnTheTailnet(t *testing.T) {
+	repo := managedSessionRepo(t)
+	writeSessionApp(t, repo, `{"client_id": "Iv23liPublicId"}`)
+	swapTailnet(t, "host.example.ts.net", nil)
+	// A secret in the environment is never read: a local session holds none.
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_SECRET", "test-secret-value-never-printed")
+	out, stop := startSession(t, "--port", "0", "--json")
+	var started struct {
+		URL       string `json:"url"`
+		Link      string `json:"link"`
+		Repo      string `json:"repo"`
+		ServeStep string `json:"serve_step"`
+		SignIn    string `json:"sign_in"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	port := started.URL[strings.LastIndex(started.URL, ":")+1:]
+	if !strings.HasPrefix(started.URL, "http://127.0.0.1:") || started.Link != "https://host.example.ts.net/acme/brief/brief/" ||
+		started.Repo != "acme/brief" || started.ServeStep != "tailscale serve --bg "+port || started.SignIn != "device" {
+		t.Fatalf("start = %+v", started)
+	}
+	get := func(host, path string) (int, string) {
+		req, _ := http.NewRequest(http.MethodGet, started.URL+path, nil)
+		req.Host = host
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		var b bytes.Buffer
+		_, _ = b.ReadFrom(resp.Body)
+		return resp.StatusCode, b.String()
+	}
+	if code, body := get("host.example.ts.net", "/acme/brief/brief/"); code != http.StatusOK || !strings.Contains(body, `name="abcd-session-relay" content="self"`) {
+		t.Fatalf("the brief page on the tailnet name: %d\n%s", code, body)
+	}
+	if code, _ := get("evil.example", "/acme/brief/brief/"); code != http.StatusMisdirectedRequest {
+		t.Fatalf("another host name: %d, want 421", code)
+	}
+	if code, body := get("127.0.0.1:"+port, "/config"); code != http.StatusOK || !strings.Contains(body, `"flow":"device"`) || !strings.Contains(body, "Iv23liPublicId") {
+		t.Fatalf("/config: %d %s", code, body)
+	}
+	wsURL := "ws" + strings.TrimPrefix(started.URL, "http") + "/session"
+	dial := func(origin string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		ws, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPHeader: http.Header{"Origin": {origin}}})
+		if err == nil {
+			_ = ws.CloseNow()
+		}
+		return err
+	}
+	if err := dial("https://host.example.ts.net"); err != nil {
+		t.Fatalf("the tailnet page was refused: %v", err)
+	}
+	if err := dial("https://abcdesign.app"); err == nil {
+		t.Fatal("a local session admitted abcdesign.app's page")
+	}
+	if err := stop(); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	if strings.Contains(out.String(), "test-secret-value-never-printed") {
+		t.Fatalf("the secret reached the output:\n%s", out.String())
+	}
+}
+
+// TestSessionStartSaysWhatToDoInPlainWords: the text names the one Tailscale
+// step, the link, and how people outside the tailnet join, and never Funnel.
+func TestSessionStartSaysWhatToDoInPlainWords(t *testing.T) {
+	repo := managedSessionRepo(t)
+	writeSessionApp(t, repo, `{"client_id": "Iv23liPublicId"}`)
+	swapTailnet(t, "host.example.ts.net", nil)
+	out, stop := startSession(t, "--port", "0")
+	_ = stop()
+	text := out.String()
+	for _, want := range []string{"acme/brief", "tailscale serve --bg ", "https://host.example.ts.net/acme/brief/brief/", "guests", "Ctrl-C"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("output does not say %q:\n%s", want, text)
+		}
+	}
+	if strings.Contains(strings.ToLower(text), "funnel") {
+		t.Errorf("output mentions Funnel:\n%s", text)
+	}
+}
+
+// TestSessionStartRefusals: no client id, no Tailscale, or no GitHub
+// repository, and nothing starts.
+func TestSessionStartRefusals(t *testing.T) {
+	repo := managedSessionRepo(t)
+	swapTailnet(t, "host.example.ts.net", nil)
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_ID", "")
+	if _, err := runCLIStdinErr(t, "", "session", "start", "--port", "0"); exitCode(err) != 2 || !strings.Contains(err.Error(), "sign-in is not set up") {
+		t.Errorf("no client id: %v, want exit 2 saying sign-in is not set up", err)
+	}
+	writeSessionApp(t, repo, `{"client_id": "Iv23liPublicId", "client_secret": "x"}`)
+	if _, err := runCLIStdinErr(t, "", "session", "start", "--port", "0"); exitCode(err) != 2 || !strings.Contains(err.Error(), "client_secret") {
+		t.Errorf("a secret in the app file: %v, want exit 2", err)
+	}
+	writeSessionApp(t, repo, `{"client_id": "Iv23liPublicId"}`)
+	swapTailnet(t, "", errors.New("Tailscale is not running on this computer"))
+	if _, err := runCLIStdinErr(t, "", "session", "start", "--port", "0"); exitCode(err) != 2 || !strings.Contains(err.Error(), "Tailscale") {
+		t.Errorf("no Tailscale: %v, want exit 2 naming Tailscale", err)
+	}
+	swapTailnet(t, "host.example.ts.net", nil)
+	for _, args := range [][]string{
+		{"session", "start", "--port", "99999"},
+		{"session", "start", "--client-id", "has space"},
+		{"session", "start", "extra"},
+	} {
+		if _, err := runCLIStdinErr(t, "", args...); exitCode(err) != 2 {
+			t.Errorf("%v: %v, want exit 2", args, err)
+		}
+	}
+	t.Chdir(managedSessionRepoWithoutOrigin(t))
+	if _, err := runCLIStdinErr(t, "", "session", "start", "--port", "0", "--client-id", "Iv23liPublicId"); exitCode(err) != 2 {
+		t.Errorf("a checkout without a GitHub origin: %v, want exit 2", err)
+	}
+}

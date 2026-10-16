@@ -37,6 +37,10 @@ var assets embed.FS
 // knows a directory holding the page's files as one it wrote.
 const Generator = `<meta name="generator" content="abcd session page">`
 
+// RelayMarker is the line the page carries when the relay serves it itself
+// (a local session): the page then takes its own origin as its relay.
+const RelayMarker = `<meta name="abcd-session-relay" content="self">`
+
 // File is one file the page is made of.
 type File struct {
 	Path string // slash-separated, relative to the output directory
@@ -80,6 +84,28 @@ func Files(base string) []File {
 			}
 		}
 		out = append(out, File{Path: s.path, Data: data})
+	}
+	return out
+}
+
+// RelayFiles is the page as a local session's relay serves it itself, keyed
+// by the path it is served at: the page's files at the site's root, its HTML
+// as "index.html" carrying RelayMarker once, and no 404.html, since the relay
+// answers the brief's path itself.
+func RelayFiles() map[string][]byte {
+	out := map[string][]byte{}
+	for _, f := range Files("/") {
+		switch f.Path {
+		case "404.html":
+			continue
+		case "index.html":
+			if bytes.Count(f.Data, []byte(Generator)) != 1 {
+				// The tests pin the line; a miss is a build that cannot happen.
+				panic("index.html does not carry the generator line once")
+			}
+			f.Data = bytes.Replace(f.Data, []byte(Generator), []byte(Generator+"\n"+RelayMarker), 1)
+		}
+		out[f.Path] = f.Data
 	}
 	return out
 }

@@ -1,7 +1,7 @@
 ---
 id: adr-2610161400542916
 slug: the-brief-session-page-asks-nobody-for-a
-status: proposed
+status: accepted
 date: 2026-10-16
 supersedes: null
 superseded_by: null
