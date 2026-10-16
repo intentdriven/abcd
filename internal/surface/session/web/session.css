@@ -2,7 +2,8 @@
    Two designs on one page: Guided (the default: large cards, numbered
    areas, "What happens next") and Shared (a live team bar over the
    document, floating sidebars, overlays). The design is the
-   [data-design] attribute on the root, switched with Ctrl+[ and Ctrl+].
+   [data-design] attribute on the root, switched with Ctrl+Shift+[ and
+   Ctrl+Shift+].
    Colours are custom properties; the cobalt accent is the one --accent
    token, in light and in dark. */
 
@@ -182,6 +183,9 @@ a { color: var(--accent-text); }
 [hidden] { display: none !important; }
 [data-design="shared"] .g-only, [data-design="guided"] .s-only { display: none !important; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; border-radius: 8px; }
+/* A heading takes focus only as the place a screen or dialog starts from;
+   it is not a control, so it draws no ring. */
+h1[tabindex="-1"]:focus-visible, h2[tabindex="-1"]:focus-visible { outline: none; }
 .notice { max-width: 40rem; margin: 3rem auto; padding: 0 1rem; color: var(--muted); }
 #app { min-height: 100vh; display: flow-root; }
 svg.i { width: 20px; height: 20px; flex: none; display: block; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -390,8 +394,10 @@ del, ins { display: block; white-space: pre-wrap; text-decoration: none; overflo
 .app:not([data-screen="work"]) .live-only { display: none !important; }
 .logo { width: 44px; height: 44px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); display: grid; place-items: center; flex: none; }
 .logo svg.i { width: 26px; height: 26px; }
-.top .names { min-width: 0; }
-.top .project { font-size: 1.25rem; font-weight: 700; line-height: 1.2; overflow-wrap: anywhere; }
+/* The project's name keeps a few letters' room and ends in an ellipsis,
+   never one letter to a line. */
+.top .names { flex: 0 1 auto; min-width: 3.5rem; }
+.top .project { font-size: 1.25rem; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top .sub { font-size: .9rem; color: var(--muted); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .top .spacer { flex: 1; }
 .top .status { font-size: .9rem; color: var(--muted); }
@@ -557,8 +563,8 @@ del, ins { display: block; white-space: pre-wrap; text-decoration: none; overflo
   .top .me .badge, .top .me .who, .top .status, .tb-sep { display: none; }
   .top .tb-toggle ~ .logo { display: none; }
   .app[data-screen="work"] .top .logo { display: none; }
-  .tb-toggle { width: var(--ctl-sm); padding: 0 !important; }
-  .tb-toggle .tb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .tb-toggle, .top .tb-signin { width: var(--ctl-sm); padding: 0 !important; }
+  .tb-toggle .tb-label, .top .tb-signin .tb-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   [data-design="guided"] .start, [data-design="guided"] .work { padding: 16px; }
   [data-design="guided"] .narrow, .g-live { gap: 16px; }
   [data-design="guided"] .card { padding: 20px; }
@@ -610,7 +616,6 @@ del, ins { display: block; white-space: pre-wrap; text-decoration: none; overflo
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; position: relative; border-radius: 20px; white-space: nowrap;
   }
   .tab svg.i { width: 24px; height: 24px; }
-  .tab span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
   .tab[aria-pressed="true"] { color: var(--accent-text); background: var(--accent-soft); }
   .tab-count { position: absolute; top: 4px; left: calc(50% + 6px); min-width: 20px; height: 20px; padding: 0 4px; border-radius: 999px; background: var(--no); color: #ffffff; font-size: .7rem; display: grid; place-items: center; }
   .g-live { padding-bottom: 88px; }
@@ -879,8 +884,11 @@ del, ins { display: block; white-space: pre-wrap; text-decoration: none; overflo
 [data-design="shared"] .invite { padding: var(--s4); border-radius: 20px; background: var(--win2); box-shadow: 0 0 0 1px var(--line); gap: var(--s4); }
 [data-design="shared"] .qr { width: 136px; height: 136px; border: 0; border-radius: 8px; }
 [data-design="shared"] .joincode span { width: 34px; height: 44px; border-radius: 8px; display: grid; place-items: center; background: var(--fill2); font: 700 24px/1 var(--mono); }
-[data-design="shared"] .targets { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s2); margin: 0; }
-[data-design="shared"] .targets .btn { height: 44px; border-radius: 12px; background: var(--fill2); }
+[data-design="shared"] .invite-body { display: grid; gap: var(--s3); }
+[data-design="shared"] .invite-body > .field-group { margin-top: 0; }
+/* The three actions share one row, so End session never sits alone. */
+[data-design="shared"] .targets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s2); margin: 0; }
+[data-design="shared"] .targets .btn { height: 44px; border-radius: 12px; background: var(--fill2); padding: 0 var(--s2); gap: 6px; min-width: 0; }
 [data-design="shared"] .targets svg.i { color: var(--accent-text); }
 [data-design="shared"] .targets .danger, [data-design="shared"] .targets .danger svg.i { color: var(--no); }
 [data-design="shared"] .invite .btn.primary { border-radius: 999px; }
@@ -975,6 +983,8 @@ del, ins { display: block; white-space: pre-wrap; text-decoration: none; overflo
   .app[data-overlay="invite"] .scrim { display: block; }
   [data-design="shared"] .invite { grid-template-columns: 1fr; justify-items: center; text-align: center; gap: var(--s3); }
   [data-design="shared"] .invite .stack { justify-items: center; }
+  /* Too narrow for the three actions side by side: one to a row, each whole. */
+  [data-design="shared"] .targets { grid-template-columns: minmax(0, 1fr); }
   [data-design="shared"] .send { left: 0; right: 0; width: auto; transform: none; top: var(--s3); bottom: 0; max-height: none; border-radius: 32px 32px 0 0; }
   [data-design="shared"] .send-in { padding: var(--s3) var(--s5) var(--s4); }
   [data-design="shared"] .send-h h2 { font-size: 22px; }

@@ -52,7 +52,6 @@ const WORDS = Object.freeze({
   signInNotSetUp: "Signing in with GitHub is not set up for this project yet. Ask your technical facilitator. You can still join as a guest.",
   signInBusy: "Too many sign-ins are in progress. Wait a few minutes, then try again.",
   framedRefused: "This page does not run inside another page. Open it in its own tab:",
-  joinHeading: "Join the live session",
   joinMembers: "On the project's team? Sign in with GitHub to edit the brief directly.",
   joinGuests: "Everyone else: join as a guest with your name, and suggest changes for the team to take up.",
   codeLabel: "Session code",
@@ -61,7 +60,6 @@ const WORDS = Object.freeze({
   codeBad: "A session code is six letters and numbers. The host can read it out to you.",
   haveCode: "Have a session code?",
   joinWithCode: "Join with the code",
-  startHeading: "Start a live session",
   startHint: "Sign in with GitHub to start a session on this brief. You will get a link and a QR code to invite people.",
   signIn: "Sign in with GitHub",
   signingInTo: "You are signing in to work on",
@@ -70,8 +68,6 @@ const WORDS = Object.freeze({
   signedInAs: "Signed in as",
   notMember: "GitHub says you cannot change this project, so you take part as a guest.",
   deviceHeading: "Confirm on GitHub",
-  deviceStep1: "Open GitHub's sign-in page:",
-  deviceStep2: "Enter this code there, and confirm:",
   deviceOpen: "Open GitHub",
   deviceCopy: "Copy the code",
   deviceCopied: "Code copied.",
@@ -106,9 +102,7 @@ const WORDS = Object.freeze({
   endConfirm: "End the session for everyone? Edits not yet sent to GitHub are lost.",
   copyLink: "Copy invite link",
   linkCopied: "Invite link copied.",
-  filesHeading: "Brief",
   noFile: "Choose a file.",
-  rosterHeading: "In this session",
   badgeHost: "host",
   badgeMember: "team member",
   badgeGuest: "guest",
@@ -142,7 +136,6 @@ const WORDS = Object.freeze({
   sendIntroIssues: "Each changed passage goes back as its own issue. GitHub opens the issue for you to check before you submit it.",
   sendNothing: "Nothing has changed since the session began.",
   sendRefresh: "Refresh",
-  sendClose: "Close",
   sendAsIssue: "Send as issue",
   tooLongForIssue: "Too long for an issue, send as a pull request",
   sendAsPR: "Send as a pull request",
@@ -171,7 +164,7 @@ const WORDS = Object.freeze({
   notesHeading: "Warnings",
   pathRefused: "Not sent: this file is not one of the brief's files the session started from:",
   // The two designs (Guided, the default, and Shared), switched with
-  // Ctrl+[ and Ctrl+]. A word with {repo}, {owner}, {name} or {n} has the
+  // Ctrl+Shift+[ and Ctrl+Shift+]. A word with {repo}, {owner}, {name} or {n} has the
   // value put in by say(), and is shown with textContent like every other.
   designGuided: "Switched to the guided design",
   designShared: "Switched to the shared design",
@@ -223,11 +216,8 @@ const WORDS = Object.freeze({
   documents: "Documents",
   documentsHint: "Pick one to open it.",
   showDocuments: "Show the documents",
-  hideDocuments: "Hide the documents",
   reviewPeople: "Review and people",
   suggestFollow: "Suggest and follow",
-  showPanel: "Show",
-  hidePanel: "Hide",
   close: "Close",
   done: "Done",
   briefArea: "The brief",
@@ -248,6 +238,13 @@ const WORDS = Object.freeze({
   wordsSuggested: "Suggested",
   youSelected: "You selected",
   whoHere: "Who's here",
+  // The phone's tab bar: four tabs share it, so each label is short enough
+  // to show whole.
+  tabBrief: "Brief",
+  tabSuggest: "Suggest",
+  tabSent: "Sent",
+  tabPeople: "People",
+  tabInvite: "Invite",
   hereNow: "Here now",
   thisSession: "This session",
   sessionInfoMember: "Changes save for everyone as you type. Guests suggest; the team decides.",
@@ -1654,6 +1651,7 @@ function askTrust(action) {
   // project's team sent the link.
   clear(ui.trustOwner);
   ui.trustOwner.append(WORDS.pageFor + " ", el("strong", { text: route.slug }), ".");
+  noteOpener("trust");
   ui.trust.hidden = false;
   ui.trustCancel.focus();
 }
@@ -1661,6 +1659,7 @@ function trustAnswered(yes) {
   const p = trustPending;
   trustPending = null;
   ui.trust.hidden = true;
+  returnFocus("trust");
   if (!p) return;
   if (!yes || p.relay !== session.relay || relayStanding(p.relay) !== "unconfirmed") {
     heldToken = "";
@@ -2671,12 +2670,13 @@ async function openPullRequest(only) {
 // roster's credits.
 // ---------------------------------------------------------------------------
 function submitSession() {
-  ui.send.hidden = !ui.send.hidden;
-  if (!ui.send.hidden) {
-    showSendResult("", false);
-    renderSend();
-  }
+  if (!ui.send.hidden) { closeSend(); return; }
+  noteOpener("send");
+  ui.send.hidden = false;
+  showSendResult("", false);
+  renderSend();
   applyLayout();
+  ui.sendHeading.focus();
 }
 
 function showSendResult(text, bad, href) {
@@ -2700,6 +2700,7 @@ doc.on("update", () => {
 function closeSend() {
   ui.send.hidden = true;
   applyLayout();
+  returnFocus("send");
 }
 
 function renderSend() {
@@ -2804,15 +2805,22 @@ files.observe(() => {
 // The two designs. Guided (the default) and Shared are one page, one set of
 // elements and one set of logic: the design is an attribute the stylesheet
 // reads, and a few parts (the documents, the people, the suggestions, the
-// invite, the editor) move into the design's own places. Ctrl+[ and Ctrl+]
-// switch on every platform, the Mac included; Alt+Shift+D and Alt+Shift+S
-// show and hide the two sidebars; Escape closes the overlay on top.
+// invite, the editor) move into the design's own places. Ctrl+Shift+[ and
+// Ctrl+Shift+] (Ctrl+{ and Ctrl+}) switch on every platform, the Mac
+// included, leaving Ctrl+[ and Ctrl+] to the editor's indent and outdent;
+// Alt+Shift+D and Alt+Shift+S show and hide the two sidebars; Escape closes
+// the overlay on top.
 // ---------------------------------------------------------------------------
 let design = DESIGNS[0];
-// The sidebars: shown or hidden on a wide screen; on a phone, the sheets
-// that are open (they start closed). Kept here, outside any screen, so it
-// lasts through every change of screen, width and design.
-const layout = { left: true, right: true, pleft: false, pright: false, sheet: "", invite: false };
+// The sidebars. A wide window keeps whether each shows (left, right); at
+// the slide-over widths the documents follow the wide window but the right
+// panel, which floats over the page there, keeps its own (slide), so closing
+// it there never hides it on a wide window. A phone keeps its own: the
+// guided documents card (pdocs) and open sheet (sheet), and the shared
+// full-screen documents (pleft) and suggestions sheet (pright). Kept here,
+// outside any screen, so it lasts through every change of screen, width and
+// design. The invite card is the shared design's alone.
+const layout = { left: true, right: true, slide: true, pdocs: true, sheet: "", pleft: false, pright: false, invite: false };
 
 // storedDesign is the design this viewer chose last, or the default.
 function storedDesign() {
@@ -2827,15 +2835,18 @@ function switchDesign(step) {
   toast(design === "shared" ? WORDS.designShared : WORDS.designGuided);
 }
 
-// shortcut names what a key press asks for: the design switch on Ctrl+[ and
-// Ctrl+] (never Cmd), a sidebar on Alt+Shift+D or Alt+Shift+S (read from the
-// key's place, so a Mac's Option characters do not matter), or Escape.
+// shortcut names what a key press asks for: the design switch on
+// Ctrl+Shift+[ and Ctrl+Shift+] (never Cmd), a sidebar on Alt+Shift+D or
+// Alt+Shift+S, or Escape. Each is read from the key's place, so a layout's
+// or a Mac's Option characters do not matter, and AltGr typing a character
+// (which some systems report as Ctrl+Alt) is never one.
 function shortcut(e) {
   if (e.key === "Escape") return "escape";
   if (e.metaKey) return "";
-  if (e.ctrlKey && !e.altKey) {
-    if (e.code === "BracketLeft" || e.key === "[") return "design-prev";
-    if (e.code === "BracketRight" || e.key === "]") return "design-next";
+  if (typeof e.getModifierState === "function" && e.getModifierState("AltGraph")) return "";
+  if (e.ctrlKey && e.shiftKey && !e.altKey) {
+    if (e.code === "BracketLeft") return "design-prev";
+    if (e.code === "BracketRight") return "design-next";
     return "";
   }
   if (e.altKey && e.shiftKey && !e.ctrlKey) {
@@ -2845,9 +2856,14 @@ function shortcut(e) {
   return "";
 }
 function onKey(e) {
+  // A key that ends an input method's composition is the composition's.
+  if (e.isComposing || e.keyCode === 229) return;
   const action = shortcut(e);
   if (!action) return;
   if (action === "escape") {
+    // In the editor, Escape is the editor's: it closes its search panel
+    // and its own selections.
+    if (view && e.target && view.dom.contains(e.target)) return;
     if (closeTop()) { e.preventDefault(); e.stopPropagation(); }
     return;
   }
@@ -2865,23 +2881,31 @@ function viewWidth() {
 function inWorkspace() {
   return !!ui.work && !ui.work.hidden;
 }
+// tier is which of the sidebars' states this width uses: "phone", "slide"
+// (where the right panel slides over the page) or "wide".
+function tier() {
+  const w = viewWidth();
+  return w <= PHONE_MAX ? "phone" : w <= SLIDE_MAX[design] ? "slide" : "wide";
+}
 
-// closeTop closes the overlay on top, and says whether there was one: the
-// relay confirmation (which is then refused), the Send panel, the invite
-// card, the guest's suggestion popover, a phone's sheet, then a slide-over.
+// closeTop closes the overlay on top that can be seen, and says whether
+// there was one: the relay confirmation (which is then refused), the Send
+// panel, the invite card, the guest's suggestion popover, a phone's sheet
+// or sidebar, then a slide-over. State another design or width keeps is
+// not on top of anything.
 function closeTop() {
   if (ui.trust && !ui.trust.hidden) { trustAnswered(false); return true; }
-  if (ui.send && !ui.send.hidden) { ui.send.hidden = true; applyLayout(); return true; }
-  if (layout.invite) { layout.invite = false; applyLayout(); return true; }
-  if (design === "shared" && ui.suggestForm && !ui.suggestForm.hidden) { ui.suggestForm.hidden = true; applyLayout(); return true; }
   if (!inWorkspace()) return false;
-  const w = viewWidth();
-  if (w <= PHONE_MAX) {
-    if (layout.sheet) { layout.sheet = ""; applyLayout(); return true; }
-    if (layout.pleft || layout.pright) { layout.pleft = false; layout.pright = false; applyLayout(); return true; }
+  if (!ui.send.hidden) { closeSend(); return true; }
+  if (design === "shared" && layout.invite) { closeInvite(); return true; }
+  if (design === "shared" && !ui.suggestBox.hidden && !ui.suggestForm.hidden) { ui.suggestForm.hidden = true; applyLayout(); return true; }
+  const t = tier();
+  if (t === "phone") {
+    if (design === "guided" && layout.sheet) { openSheet(""); return true; }
+    if (design === "shared" && (layout.pleft || layout.pright)) { layout.pleft = false; layout.pright = false; applyLayout(); return true; }
     return false;
   }
-  if (w <= SLIDE_MAX[design] && layout.right) { layout.right = false; applyLayout(); return true; }
+  if (t === "slide" && layout.slide) { layout.slide = false; applyLayout(); return true; }
   return false;
 }
 
@@ -2890,12 +2914,15 @@ function defaultSheet() {
   return session.role === "member" ? "sugs" : "suggest";
 }
 function toggleSide(side) {
-  const phone = viewWidth() <= PHONE_MAX;
-  if (phone && design === "shared") {
+  const t = tier();
+  if (t === "phone" && design === "shared") {
     if (side === "left") { layout.pleft = !layout.pleft; if (layout.pleft) layout.pright = false; }
     else { layout.pright = !layout.pright; if (layout.pright) layout.pleft = false; }
-  } else if (phone && side === "right") {
-    layout.sheet = layout.sheet ? "" : defaultSheet();
+  } else if (t === "phone") {
+    if (side === "left") layout.pdocs = !layout.pdocs;
+    else layout.sheet = layout.sheet ? "" : defaultSheet();
+  } else if (t === "slide" && side === "right") {
+    layout.slide = !layout.slide;
   } else {
     layout[side] = !layout[side];
   }
@@ -2908,44 +2935,117 @@ function openSheet(name) {
 
 // sideShown says whether a sidebar shows, at this width and in this design.
 function sideShown(side) {
-  if (viewWidth() > PHONE_MAX) return layout[side];
-  if (design === "shared") return side === "left" ? layout.pleft : layout.pright;
-  return side === "left" ? layout.left : !!layout.sheet;
+  const t = tier();
+  if (t === "phone") {
+    if (design === "shared") return side === "left" ? layout.pleft : layout.pright;
+    return side === "left" ? layout.pdocs : !!layout.sheet;
+  }
+  if (side === "right" && t === "slide") return layout.slide;
+  return layout[side];
+}
+
+// The invite card (Shared): it takes focus when it opens and gives it back
+// to what opened it.
+function toggleInvite() {
+  if (layout.invite) { closeInvite(); return; }
+  noteOpener("invite");
+  layout.invite = true;
+  applyLayout();
+  focusOn(ui.copyLink && ui.sShare.contains(ui.copyLink) ? ui.copyLink : ui.shareClose);
+}
+function closeInvite() {
+  layout.invite = false;
+  applyLayout();
+  returnFocus("invite");
+}
+
+// Focus. A dialog that opens takes focus, and gives it back to the control
+// that opened it when it closes; a focused control a change of layout hides
+// hands focus to the one that does its job now, so the keyboard is never
+// left on something nobody can see.
+const openers = { send: null, invite: null, trust: null };
+function noteOpener(name) {
+  const a = document.activeElement;
+  openers[name] = a && a !== document.body ? a : null;
+}
+function returnFocus(name) {
+  const o = openers[name];
+  openers[name] = null;
+  if (!o) return;
+  focusOn(hiddenNow(o) ? focusFallback(o) : o);
+}
+function focusOn(node) {
+  if (!node) return;
+  if (view && view.dom.contains(node)) view.focus();
+  else node.focus();
+}
+// hiddenNow says whether a person can see an element now: not hidden, not
+// the other design's, not in a closed sidebar or sheet.
+function hiddenNow(node) {
+  if (!node || !node.isConnected) return true;
+  const other = design === "shared" ? "g-only" : "s-only";
+  for (let n = node; n && n.nodeType === 1; n = n.parentNode) {
+    if (n.hidden || n.classList.contains(other)) return true;
+  }
+  if ([ui.gDocsCard, ui.sSidebar].some((c) => c.contains(node)) && !sideShown("left")) return true;
+  if ([ui.gSide, ui.sAside].some((c) => c.contains(node)) && !sideShown("right")) return true;
+  if (tier() === "phone" && design === "guided") {
+    const box = ui.sheets.find((b) => b.contains(node));
+    if (box && !box.classList.contains("is-open")) return true;
+  }
+  if (typeof node.checkVisibility === "function") return !node.checkVisibility({ visibilityProperty: true });
+  return false;
+}
+// focusFallback is where focus goes when a control it was on is hidden: the
+// same control in the other design's place, the toggle of a sidebar that
+// closed over it, the editor, or the screen's heading.
+function focusFallback(had) {
+  const pairs = [[ui.gLeft, ui.sLeft], [ui.gRight, ui.sRight], [ui.submitG, ui.submit], [ui.suggestButton, ui.suggestTop]];
+  const next = [];
+  for (const pair of pairs) if (pair.includes(had)) next.push(...pair);
+  if ([ui.gDocsCard, ui.sSidebar].some((c) => c.contains(had))) next.push(ui.gLeft, ui.sLeft);
+  if ([ui.gSide, ui.sAside].some((c) => c.contains(had))) next.push(ui.gRight, ui.sRight);
+  if (view) next.push(view.contentDOM);
+  next.push(ui.bannerTitle, ui.heroTitle);
+  return next.find((n) => n && n !== had && !hiddenNow(n)) || null;
+}
+// settleFocus puts focus back where it was before a change of layout, if
+// that is still seen (a part that moved between the designs, the editor
+// among them, loses focus as it moves), or on its fallback if not.
+function settleFocus(had) {
+  if (!had || had === document.body || !ui.app.contains(had)) return;
+  const target = hiddenNow(had) ? focusFallback(had) : had;
+  if (target && document.activeElement !== target) focusOn(target);
 }
 
 // applyLayout writes the design and the sidebars' state where the
-// stylesheet reads it, names the toggles for what they would do, and moves
-// the shared parts into the design's places.
+// stylesheet reads it, marks the toggles on or off, moves the shared parts
+// into the design's places, and keeps focus on something seen.
 function applyLayout() {
   document.documentElement.dataset.design = design;
   if (!ui.app) return;
+  const had = document.activeElement;
+  if (design !== "shared") layout.invite = false;
   const L = sideShown("left");
   const R = sideShown("right");
   ui.app.dataset.left = L ? "shown" : "hidden";
   ui.app.dataset.right = R ? "shown" : "hidden";
-  ui.app.dataset.sheet = viewWidth() <= PHONE_MAX && design === "guided" ? layout.sheet : "";
+  ui.app.dataset.sheet = tier() === "phone" && design === "guided" ? layout.sheet : "";
   ui.app.dataset.overlay = !ui.send.hidden ? "send" : layout.invite ? "invite" : "";
+  // Each toggle has one name, and says whether it is on with aria-pressed.
   const rightName = session.role === "guest" ? WORDS.suggestFollow : WORDS.reviewPeople;
   const sharedRight = session.role === "guest" ? WORDS.mySuggestionsHeading : WORDS.sugShort;
-  const leftTip = L ? WORDS.hideDocuments : WORDS.showDocuments;
-  const rightTip = (R ? WORDS.hidePanel : WORDS.showPanel) + " " + (design === "shared" ? sharedRight : rightName).toLowerCase();
-  for (const b of [ui.gLeft, ui.sLeft]) {
-    b.setAttribute("aria-pressed", String(L));
-    b.setAttribute("aria-label", leftTip);
-  }
-  for (const b of [ui.gRight, ui.sRight]) {
-    b.setAttribute("aria-pressed", String(R));
-    b.setAttribute("aria-label", rightTip);
-  }
-  ui.gLeft.title = leftTip + " (Alt+Shift+D)";
-  ui.gRight.title = rightTip + " (Alt+Shift+S)";
-  ui.sLeft.dataset.tip = leftTip;
-  ui.sRight.dataset.tip = rightTip;
+  for (const b of [ui.gLeft, ui.sLeft]) b.setAttribute("aria-pressed", String(L));
+  for (const b of [ui.gRight, ui.sRight]) b.setAttribute("aria-pressed", String(R));
+  ui.gRight.setAttribute("aria-label", rightName);
+  ui.sRight.setAttribute("aria-label", sharedRight);
+  ui.gRight.title = rightName + " (Alt+Shift+S)";
+  ui.sRight.dataset.tip = sharedRight;
   ui.gRightLabel.textContent = rightName;
   ui.sRightLabel.textContent = sharedRight;
   ui.gSideTitle.textContent = rightName;
   ui.inviteToggle.setAttribute("aria-expanded", String(layout.invite));
-  for (const box of [ui.suggestBox, ui.sugBox, ui.mineBox, ui.rosterBox, ui.inviteBox]) {
+  for (const box of ui.sheets) {
     box.classList.toggle("is-open", !!layout.sheet && box.dataset.panel === layout.sheet);
   }
   for (const tab of ui.tabs) tab.setAttribute("aria-pressed", String((tab.dataset.sheet || "") === layout.sheet));
@@ -2953,10 +3053,11 @@ function applyLayout() {
   renderTop();
   fitTiles();
   // The invite card opens under its button.
-  if (layout.invite && design === "shared" && viewWidth() > PHONE_MAX) {
+  if (layout.invite && viewWidth() > PHONE_MAX) {
     const r = ui.inviteToggle.getBoundingClientRect();
     ui.sShare.style.setProperty("--share-r", Math.max(12, Math.round(viewWidth() - (r.left + r.width / 2) - 90)) + "px");
   }
+  settleFocus(had);
 }
 
 // placeParts moves the parts both designs show into this design's places.
@@ -3132,20 +3233,24 @@ function build() {
   ui.hudCount = el("small");
   ui.hudLive = el("div", { class: "hud-live" }, el("span", { class: "dot", "aria-hidden": "true" }), el("span", {}, ui.hudStatus, ui.hudCount));
 
-  ui.signInTop = el("button", { type: "button", class: "btn small", text: WORDS.signIn, onclick: () => startSignIn() });
+  // A guest's sign-in, in the guided app bar (an icon on a phone, so the
+  // project's name keeps its room) or the shared sidebar's foot.
+  ui.signInTop = el("button", { type: "button", class: "btn small tb-signin", onclick: () => startSignIn() },
+    icon("github"), el("span", { class: "tb-label", text: WORDS.signIn }));
   ui.submit = el("button", { type: "button", class: "btn primary tb-send tip-r", "aria-label": WORDS.submit, "data-tip": WORDS.sendTip, "data-key": "", onclick: () => submitSession() },
     icon("send"), el("span", { class: "lbl", "aria-hidden": "true", text: WORDS.submit }));
   ui.suggestTop = el("button", { type: "button", class: "btn primary tb-send tip-r", "aria-label": WORDS.suggest, "data-tip": WORDS.suggestTip, "data-key": "", onclick: () => openSuggestForm() },
     icon("pencil"), el("span", { class: "lbl", "aria-hidden": "true", text: WORDS.suggest }));
 
   // The sidebar toggles: in the guided app bar, and at the two ends of the
-  // shared toolbar. Their names and tooltips say what they would do.
-  ui.gLeft = el("button", { type: "button", class: "btn small tb-toggle live-only", "aria-keyshortcuts": "Alt+Shift+D", onclick: () => toggleSide("left") },
+  // shared toolbar. Each keeps one name, with its shortcut in its tooltip,
+  // and says with aria-pressed whether its sidebar shows.
+  ui.gLeft = el("button", { type: "button", class: "btn small tb-toggle live-only", "aria-label": WORDS.documents, title: WORDS.documents + " (Alt+Shift+D)", "aria-keyshortcuts": "Alt+Shift+D", onclick: () => toggleSide("left") },
     icon("panelLeft"), el("span", { class: "tb-label", text: WORDS.documents }));
   ui.gRightLabel = el("span", { class: "tb-label" });
   ui.gRight = el("button", { type: "button", class: "btn small tb-toggle live-only", "aria-keyshortcuts": "Alt+Shift+S", onclick: () => toggleSide("right") },
     icon("panelRight"), ui.gRightLabel);
-  ui.sLeft = el("button", { type: "button", class: "tbtn tg-left", "aria-keyshortcuts": "Alt+Shift+D", "data-key": "Alt+Shift+D", onclick: () => toggleSide("left") },
+  ui.sLeft = el("button", { type: "button", class: "tbtn tg-left", "aria-label": WORDS.documents, "data-tip": WORDS.documents, "aria-keyshortcuts": "Alt+Shift+D", "data-key": "Alt+Shift+D", onclick: () => toggleSide("left") },
     icon("panelLeft"), el("span", { class: "lbl", "aria-hidden": "true", text: WORDS.documents }));
   ui.sRightLabel = el("span", { class: "lbl", "aria-hidden": "true" });
   ui.rightCount = el("span", { class: "count", "aria-hidden": "true" });
@@ -3245,7 +3350,7 @@ function build() {
           el("div", {}, el("strong", { class: "state", text: WORDS.deviceWaiting }), el("span", { class: "hint", text: WORDS.deviceBackHint })))))),
     el("div", { class: "row device-cancel" }, el("button", { type: "button", class: "btn", text: WORDS.cancel, onclick: () => stopDeviceSignIn(true) })),
     el("div", { class: "next g-only", role: "note" },
-      el("h2", {}, icon("next"), WORDS.whatNext), // g-only: the guided design's alone
+      el("h2", {}, icon("next"), WORDS.whatNext),
       nextSteps([[WORDS.nextChose, WORDS.nextChoseHint, "done"], [WORDS.nextConfirm, WORDS.nextHere, "here"], [WORDS.nextOpens, WORDS.nextOpensHint]])));
 
   // The workspace's parts, which each design places for itself.
@@ -3301,21 +3406,24 @@ function build() {
       el("p", { class: "area-help", text: WORDS.finishHelp })),
     el("div", { class: "actions" }, ui.submitG));
   ui.nextLive = el("div", { class: "next g-only", role: "note" },
-    el("h2", {}, icon("next"), WORDS.whatNext), // g-only: the guided design's alone
+    el("h2", {}, icon("next"), WORDS.whatNext),
     el("p", { class: "one", text: WORDS.nextGuest }));
   ui.tabs = [
-    ["", "doc", WORDS.briefArea, "all"], ["sugs", "bubble", WORDS.sugShort, "member"], ["suggest", "pencil", WORDS.suggest, "guest"],
-    ["mine", "clock", WORDS.mySuggestionsHeading, "guest"], ["people", "people", WORDS.whoHere, "all"], ["invite", "invite", WORDS.invitePeople, "host"],
+    ["", "doc", WORDS.tabBrief, "all"], ["sugs", "bubble", WORDS.sugShort, "member"], ["suggest", "pencil", WORDS.tabSuggest, "guest"],
+    ["mine", "clock", WORDS.tabSent, "guest"], ["people", "people", WORDS.tabPeople, "all"], ["invite", "invite", WORDS.tabInvite, "host"],
   ].map(([sheet, ic, text, who]) => el("button", { type: "button", class: "tab", "data-sheet": sheet, "data-who": who, onclick: () => openSheet(sheet) },
     icon(ic), el("span", { text })));
   ui.tabCount = el("b", { class: "tab-count", "aria-hidden": "true" });
   ui.tabs[1].append(ui.tabCount);
+  ui.gDocsCard = el("nav", { class: "card docs-card", "aria-label": WORDS.documents },
+    el("h2", { class: "side-title" }, icon("doc"), el("span", { text: WORDS.documents })),
+    el("p", { class: "hint", text: WORDS.documentsHint }), ui.gDocs);
+  // A guided phone's sheets: the right side's panels, one open at a time.
+  ui.sheets = [ui.suggestBox, ui.sugBox, ui.mineBox, ui.rosterBox, ui.inviteBox];
   const guided = el("div", { class: "g-live g-only" },
     el("section", { class: "card banner" }, el("div", {}, ui.bannerTitle, ui.bannerHelp), el("div", { class: "banner-acts" }, ui.liveDot)),
     el("div", { class: "live-grid" },
-      el("nav", { class: "card docs-card", "aria-label": WORDS.documents },
-        el("h2", { class: "side-title" }, icon("doc"), el("span", { text: WORDS.documents })),
-        el("p", { class: "hint", text: WORDS.documentsHint }), ui.gDocs),
+      ui.gDocsCard,
       el("section", { class: "card brief-card area", "aria-label": WORDS.briefArea },
         el("div", { class: "card-head" }, el("h2", { class: "area-title" }, el("span", { class: "num", "aria-hidden": "true" }), el("span", { text: WORDS.briefArea }))),
         ui.briefHelp, ui.readonlyTag, ui.gPaper, ui.editHint),
@@ -3341,31 +3449,36 @@ function build() {
   ui.sDoc = el("div", { class: "doc-slot" });
   ui.tiles = el("ul", { class: "tiles" });
   ui.hudSum = el("button", { type: "button", class: "hud-sum", onclick: () => { if (!sideShown("left")) toggleSide("left"); } });
-  ui.inviteToggle = el("button", { type: "button", class: "ibtn hud-inv tip-r", "aria-label": WORDS.invitePeople, "aria-haspopup": "dialog", "data-tip": WORDS.invitePeople, "data-key": "", onclick: () => { layout.invite = !layout.invite; applyLayout(); } }, icon("invite"));
+  ui.inviteToggle = el("button", { type: "button", class: "ibtn hud-inv tip-r", "aria-label": WORDS.invitePeople, "aria-haspopup": "dialog", "data-tip": WORDS.invitePeople, "data-key": "", onclick: () => toggleInvite() }, icon("invite"));
   ui.hud = el("div", { class: "hud glass", role: "group", "aria-label": WORDS.whoIsHere }, ui.hudLive, ui.tiles, ui.hudSum, ui.inviteToggle);
   ui.inspTitle = el("h2");
   ui.inspCount = el("span", { class: "count" });
   ui.inspSub = el("p", { class: "insp-sub" });
   ui.sInsp = el("div", { class: "insp-list" });
   ui.sPop = el("div", { class: "popover glass-strong", role: "dialog", "aria-label": WORDS.suggest }, closeButton(() => { ui.suggestForm.hidden = true; applyLayout(); }));
+  ui.shareClose = closeButton(() => closeInvite());
   ui.sShare = el("div", { class: "share glass-strong", role: "dialog", "aria-label": WORDS.invitePeople },
-    closeButton(() => { layout.invite = false; applyLayout(); }),
+    ui.shareClose,
     el("div", { class: "share-h" }, el("span", { class: "appicon sm" }, icon("invite")),
       el("div", {}, el("b", { text: WORDS.inviteTitle }), el("small", { text: say(WORDS.brandSub, { owner: route.owner }) }))));
+  ui.sAside = el("aside", { class: "inspector glass", id: "s-side", "aria-label": WORDS.suggestionsHeading },
+    closeButton(() => toggleSide("right")),
+    el("div", { class: "insp-h" }, ui.inspTitle, ui.inspCount), ui.inspSub, ui.sInsp);
+  // In the order it shows, so the tab order follows the eye: the toolbar
+  // along the top, the documents, the brief, the suggestions.
   const shared = el("div", { class: "s-live s-only" },
-    ui.sSidebar,
-    el("div", { class: "main" }, el("div", { class: "docscroll" }, el("article", { class: "doc" }, ui.guestBanner, ui.sDoc))),
     el("div", { class: "toolbar", role: "toolbar", "aria-label": WORDS.sessionBar },
       el("div", { class: "tcap tc-left glass" }, ui.sLeft), ui.hud, ui.submit, ui.suggestTop,
       el("div", { class: "tcap tc-right glass" }, ui.sRight)),
-    el("aside", { class: "inspector glass", id: "s-side", "aria-label": WORDS.suggestionsHeading },
-      closeButton(() => toggleSide("right")),
-      el("div", { class: "insp-h" }, ui.inspTitle, ui.inspCount), ui.inspSub, ui.sInsp),
+    ui.sSidebar,
+    el("div", { class: "main" }, el("div", { class: "docscroll" }, el("article", { class: "doc" }, ui.guestBanner, ui.sDoc))),
+    ui.sAside,
     ui.sPop, ui.sShare,
     el("div", { class: "scrim", onclick: () => closeTop() }));
 
   // Sending the session to GitHub: a screen of its own in Guided, a sheet
   // over the session in Shared.
+  ui.sendHeading = el("h2", { id: "send-heading", tabindex: "-1", text: WORDS.sendHeading });
   ui.sendIntro = el("p", { class: "state" });
   ui.sendList = el("ul", { class: "changes" });
   ui.sendActions = el("div", { class: "row actions" });
@@ -3374,7 +3487,7 @@ function build() {
     closeButton(() => closeSend()),
     el("div", { class: "send-in card" },
       el("div", { class: "send-h" }, el("span", { class: "appicon sm soft s-only" }, icon("send")),
-        el("div", {}, el("h2", { id: "send-heading", text: WORDS.sendHeading }), ui.sendIntro)),
+        el("div", {}, ui.sendHeading, ui.sendIntro)),
       el("h3", { text: WORDS.whatChanged }), ui.sendList),
     el("div", { class: "send-foot card" },
       el("div", { class: "reassure" }, icon("shield"), el("p", { text: WORDS.sendReassure })),
@@ -3528,7 +3641,7 @@ function renderStart() {
   // follows once sessions are set up.
   clear(ui.nextStart);
   ui.nextStart.hidden = !(usable || notSetUp);
-  ui.nextStart.append(el("h2", {}, icon("next"), WORDS.whatNext)); // g-only: ui.nextStart is the guided design's alone
+  ui.nextStart.append(el("h2", {}, icon("next"), WORDS.whatNext));
   if (notSetUp) ui.nextStart.append(el("p", { class: "one", text: WORDS.nextNotSetUp }));
   else if (invited) ui.nextStart.append(el("p", { class: "one", text: WORDS.nextInvited }));
   else {
@@ -3604,7 +3717,7 @@ function renderSide() {
           el("div", { class: "code joincode", "aria-label": WORDS.codeLabel + ": " + [...session.code].join(" ") },
             ...[...session.code].map((c) => el("span", { "aria-hidden": "true", text: c }))),
           el("p", { class: "code-hint", text: WORDS.inviteHint }),
-          el("button", { type: "button", class: "btn small primary", onclick: () => copyLink(url) }, icon("copy"), WORDS.copyLink))),
+          ui.copyLink = el("button", { type: "button", class: "btn small primary", onclick: () => copyLink(url) }, icon("copy"), WORDS.copyLink))),
       el("div", { class: "targets" },
         el("button", { type: "button", class: "btn small", onclick: () => copyText(session.code, WORDS.codeCopied) }, icon("copy"), WORDS.copyCode),
         el("button", { type: "button", class: "btn small", onclick: () => sendJSON({ type: "rotate" }) }, icon("refresh"), WORDS.newCode),

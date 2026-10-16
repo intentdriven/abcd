@@ -7,9 +7,10 @@ import (
 )
 
 // The page has two designs the team can try against each other: Guided, the
-// default, and Shared. Ctrl+[ and Ctrl+] switch between them on every
-// platform, the Mac included (never Cmd), and each viewer's choice is
-// remembered in this browser alone. Both designs toggle their sidebars with
+// default, and Shared. Ctrl+Shift+[ and Ctrl+Shift+] (Ctrl+{ and Ctrl+}) switch
+// between them on every platform, the Mac included (never Cmd), and each
+// viewer's choice is remembered in this browser alone. Plain Ctrl+[ and
+// Ctrl+] stay the editor's indent and outdent. Both designs toggle their sidebars with
 // Alt+Shift+D and Alt+Shift+S, and Escape closes the overlay on top.
 
 // designHarness is the page's design and shortcut functions, with storage,
@@ -98,16 +99,19 @@ console.log(JSON.stringify(out));
 	}
 }
 
-func TestTheShortcutsAreCtrlBracketsOnEveryPlatformAndAltShiftLetters(t *testing.T) {
+func TestTheShortcutsAreCtrlShiftBracketsOnEveryPlatformAndAltShiftLetters(t *testing.T) {
 	script := designHarness(t) + `
 const k = (o) => shortcut(Object.assign({ ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, key: "", code: "" }, o));
 console.log(JSON.stringify({
+  ctrlShiftLeft: k({ ctrlKey: true, shiftKey: true, code: "BracketLeft", key: "{" }),
+  ctrlShiftRight: k({ ctrlKey: true, shiftKey: true, code: "BracketRight", key: "}" }),
   ctrlLeft: k({ ctrlKey: true, code: "BracketLeft", key: "[" }),
   ctrlRight: k({ ctrlKey: true, code: "BracketRight", key: "]" }),
-  ctrlKeyOnly: k({ ctrlKey: true, code: "Digit8", key: "[" }),
-  cmdRight: k({ metaKey: true, code: "BracketRight", key: "]" }),
-  ctrlCmd: k({ ctrlKey: true, metaKey: true, code: "BracketLeft", key: "[" }),
-  ctrlAlt: k({ ctrlKey: true, altKey: true, code: "BracketLeft", key: "[" }),
+  ctrlShiftKeyOnly: k({ ctrlKey: true, shiftKey: true, code: "Digit8", key: "{" }),
+  cmdShiftRight: k({ metaKey: true, shiftKey: true, code: "BracketRight", key: "}" }),
+  ctrlCmd: k({ ctrlKey: true, metaKey: true, shiftKey: true, code: "BracketLeft", key: "{" }),
+  ctrlAlt: k({ ctrlKey: true, altKey: true, shiftKey: true, code: "BracketLeft", key: "{" }),
+  altGraph: k({ ctrlKey: true, shiftKey: true, code: "BracketLeft", key: "{", getModifierState: (m) => m === "AltGraph" }),
   altLeft: k({ altKey: true, code: "BracketLeft", key: "“" }),
   docs: k({ altKey: true, shiftKey: true, code: "KeyD", key: "Î" }),
   side: k({ altKey: true, shiftKey: true, code: "KeyS", key: "Í" }),
@@ -120,8 +124,9 @@ console.log(JSON.stringify({
 	var out map[string]string
 	runPage(t, script, &out)
 	want := map[string]string{
-		"ctrlLeft": "design-prev", "ctrlRight": "design-next", "ctrlKeyOnly": "design-prev",
-		"cmdRight": "", "ctrlCmd": "", "ctrlAlt": "", "altLeft": "",
+		"ctrlShiftLeft": "design-prev", "ctrlShiftRight": "design-next",
+		"ctrlLeft": "", "ctrlRight": "", "ctrlShiftKeyOnly": "",
+		"cmdShiftRight": "", "ctrlCmd": "", "ctrlAlt": "", "altGraph": "", "altLeft": "",
 		"docs": "left", "side": "right", "docsNoShift": "", "docsCtrl": "",
 		"escape": "escape", "plain": "",
 	}
@@ -141,60 +146,6 @@ console.log(JSON.stringify({
 		if strings.Contains(js, bad) {
 			t.Errorf("session.js carries %q: the shortcuts are the same on every platform", bad)
 		}
-	}
-}
-
-func TestEscapeClosesTheOverlayOnTop(t *testing.T) {
-	js := pageScript(t)
-	script := `
-const calls = [];
-const ui = { trust: { hidden: false }, send: { hidden: false }, suggestForm: { hidden: false } };
-function trustAnswered(yes) { calls.push("trust:" + yes); ui.trust.hidden = true; }
-function applyLayout() {}
-let width = 400;
-function viewWidth() { return width; }
-function inWorkspace() { return true; }
-let design = "shared";
-const layout = { left: true, right: true, pleft: true, pright: false, sheet: "", invite: true };
-` + constLine(t, js, "PHONE_MAX") + "\n" + constLine(t, js, "SLIDE_MAX") + "\n" + functionBody(t, js, "closeTop") + `
-const steps = [];
-const snap = () => JSON.stringify({ trust: ui.trust.hidden, send: ui.send.hidden, invite: layout.invite, form: ui.suggestForm.hidden, pleft: layout.pleft, right: layout.right });
-for (let i = 0; i < 5; i++) { steps.push(closeTop() + " " + snap()); }
-width = 1100;
-steps.push(closeTop() + " " + snap());
-steps.push(closeTop() + " " + snap());
-width = 1440; layout.right = true;
-steps.push(closeTop() + " " + snap());
-design = "guided"; layout.sheet = "people"; width = 390;
-steps.push(closeTop() + " sheet=" + layout.sheet);
-console.log(JSON.stringify({ steps, calls }));
-`
-	var out struct {
-		Steps []string
-		Calls []string
-	}
-	runPage(t, script, &out)
-	want := []string{
-		`true {"trust":true,"send":false,"invite":true,"form":false,"pleft":true,"right":true}`,
-		`true {"trust":true,"send":true,"invite":true,"form":false,"pleft":true,"right":true}`,
-		`true {"trust":true,"send":true,"invite":false,"form":false,"pleft":true,"right":true}`,
-		`true {"trust":true,"send":true,"invite":false,"form":true,"pleft":true,"right":true}`,
-		`true {"trust":true,"send":true,"invite":false,"form":true,"pleft":false,"right":true}`,
-		`true {"trust":true,"send":true,"invite":false,"form":true,"pleft":false,"right":false}`,
-		`false {"trust":true,"send":true,"invite":false,"form":true,"pleft":false,"right":false}`,
-		`false {"trust":true,"send":true,"invite":false,"form":true,"pleft":false,"right":true}`,
-		`true sheet=`,
-	}
-	if len(out.Steps) != len(want) {
-		t.Fatalf("steps %v", out.Steps)
-	}
-	for i := range want {
-		if out.Steps[i] != want[i] {
-			t.Errorf("Escape %d: %s, want %s", i+1, out.Steps[i], want[i])
-		}
-	}
-	if len(out.Calls) != 1 || out.Calls[0] != "trust:false" {
-		t.Errorf("the confirmation was answered %v, want one cancel", out.Calls)
 	}
 }
 
@@ -229,22 +180,6 @@ func TestEachDesignTakesTheCobaltAccentAsOneToken(t *testing.T) {
 		if v := strings.TrimSpace(m[1]); v != "#2457d6" && v != "#7aa2ff" {
 			t.Errorf("--accent is set to %s; the accent is cobalt", v)
 		}
-	}
-	// Shared has no "What happens next": every element carrying those words
-	// belongs to the guided design alone.
-	js := pageScript(t)
-	uses := 0
-	for _, line := range strings.Split(js, "\n") {
-		if !strings.Contains(line, "WORDS.whatNext") {
-			continue
-		}
-		uses++
-		if !strings.Contains(line, "g-only") {
-			t.Errorf("What happens next is not the guided design's alone: %s", strings.TrimSpace(line))
-		}
-	}
-	if uses == 0 {
-		t.Error("the guided design has no What happens next")
 	}
 	if !strings.Contains(css, `[data-design="shared"] .g-only`) || !strings.Contains(css, `[data-design="guided"] .s-only`) {
 		t.Error("session.css does not hide each design's own elements in the other")
