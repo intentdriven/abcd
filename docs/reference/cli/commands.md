@@ -1478,8 +1478,10 @@ registry, it refuses:
 
 An approved call runs with the command judged and its description, and
 nothing else it carried, from the working tree it was judged for: the
-command comes back as cd -- '<dir>' && <command>, since the host keeps
-the shell's directory from one call to the next. Everything else is refused with the guard's reason
+command comes back as cd -- '<dir>' && { <command> }, the command on lines
+of its own inside the braces, since the host keeps the shell's directory
+from one call to the next; when the directory cannot be entered, no part of
+the command runs. Everything else is refused with the guard's reason
 and what to run instead, which the harness hands the agent, so the agent can
 rewrite the command. A prompt for any tool but the shell is refused, since
 nobody is there to approve it.

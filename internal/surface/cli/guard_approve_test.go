@@ -145,7 +145,7 @@ func TestGuardApproveAnswersTheHarnessOverMCP(t *testing.T) {
 		list.Tools[0].Name != "approve" || list.Tools[0].InputSchema["type"] != "object" {
 		t.Errorf("tools/list = %s", replies["1"].Result)
 	}
-	if b, _, in := answer(t, replies["2"]); b != "allow" || in["command"] != "cd -- '"+dir+"' && go test ./..." || in["description"] != "tests" {
+	if b, _, in := answer(t, replies["2"]); b != "allow" || in["command"] != "cd -- '"+dir+"' && {\ngo test ./...\n}" || in["description"] != "tests" {
 		t.Errorf("a clean command: %s %v", b, in)
 	}
 	e := guard.Defaults().Entries["git-push-force"]

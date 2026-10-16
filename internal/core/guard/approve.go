@@ -156,13 +156,17 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 // runFrom is command as the host runs it once approved: from dir, the
 // working tree it was judged for. The host keeps the shell's directory from
 // one call to the next, so without the change an approved command would run
-// wherever the previous one left the shell. A change of directory inside the
-// command still holds for the rest of its line.
+// wherever the previous one left the shell. The command sits on lines of its
+// own inside a group the change of directory guards, so when the directory
+// cannot be entered no part of it runs, not even one after `||` or `;`, and
+// a here-document that ends it, or a comment at its end, closes before the
+// group does. A change of directory inside the command still holds for the
+// rest of its line.
 func runFrom(dir, command string) string {
 	if !filepath.IsAbs(dir) {
 		return command
 	}
-	return "cd -- " + shellquote.Single(dir) + " && " + command
+	return "cd -- " + shellquote.Single(dir) + " && {\n" + command + "\n}"
 }
 
 // approveShell answers a prompt for one shell command line, read against ld's

@@ -267,7 +267,7 @@ func TestARunnerLaunchsPromptsAreAnsweredByTheGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 	// It runs from the working tree it was judged for.
-	if clean.Behavior != "allow" || clean.UpdatedInput["command"] != "cd -- '"+f.repo+"' && go test ./..." {
+	if clean.Behavior != "allow" || clean.UpdatedInput["command"] != "cd -- '"+f.repo+"' && {\ngo test ./...\n}" {
 		t.Errorf("the clean command was answered %+v; want allow with the command judged, run from the working tree", clean)
 	}
 }

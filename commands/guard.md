@@ -270,9 +270,12 @@ A shell command is approved only when the guard reads it whole and clears it:
 
 An approved call runs with the command judged and its description, and nothing
 else it carried, from the working tree it was judged for: the approval hands the
-command back as `cd -- '<dir>' && <command>`, because the host keeps the shell's
-directory from one call to the next, and the approver judges every command as
-run from `--dir`. A change of directory inside the command still holds for the
+command back as `cd -- '<dir>' && {`, a newline, the command, a newline and
+`}`, because the host keeps the shell's directory from one call to the next, and
+the approver judges every command as run from `--dir`. When the directory cannot
+be entered no part of the command runs, a part after `||` or `;` included, and a
+command that ends in a here-document or a comment runs unchanged inside the
+braces. A change of directory inside the command still holds for the
 rest of its line, and a relative name after a `cd` the line spells out and
 joins with `&&` is read in that directory. Anything else is refused with the guard's reason and what to
 run instead, which the harness hands the agent so it can rewrite the command. A

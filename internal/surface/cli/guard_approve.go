@@ -99,8 +99,10 @@ func newGuardApproveCommand() *cobra.Command {
 			"  - a call asking to run outside the host's sandbox.\n\n" +
 			"An approved call runs with the command judged and its description, and\n" +
 			"nothing else it carried, from the working tree it was judged for: the\n" +
-			"command comes back as cd -- '<dir>' && <command>, since the host keeps\n" +
-			"the shell's directory from one call to the next. Everything else is refused with the guard's reason\n" +
+			"command comes back as cd -- '<dir>' && { <command> }, the command on lines\n" +
+			"of its own inside the braces, since the host keeps the shell's directory\n" +
+			"from one call to the next; when the directory cannot be entered, no part of\n" +
+			"the command runs. Everything else is refused with the guard's reason\n" +
 			"and what to run instead, which the harness hands the agent, so the agent can\n" +
 			"rewrite the command. A prompt for any tool but the shell is refused, since\n" +
 			"nobody is there to approve it.\n\n" +
