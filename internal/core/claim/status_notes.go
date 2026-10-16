@@ -382,19 +382,14 @@ func asOf(fetchedAt, now time.Time) string {
 // C17): "@maya (verified): merging #1012, for 30 min". A doubtful one names
 // the branch it was read on and the reason; an unreadable one names only the
 // branch and the reason, and none of its text. Every value is a validated
-// field, and the line passes termsafe.
+// field (an announcement is read only on a branch whose name is a lower-case
+// username, keptAnnouncement), and the line passes termsafe.
 func (a Announcement) Line(now time.Time) string {
 	if a.Unreadable != "" {
-		branch := "a status branch"
-		if statusName(a.Branch) {
-			branch = "abcd-status/" + a.Branch
-		}
-		return termsafe.Sanitize(fmt.Sprintf("%s (doubtful: %s): an announcement that is not shown", branch, a.Unreadable))
+		return termsafe.Sanitize(fmt.Sprintf("abcd-status/%s (doubtful: %s): an announcement that is not shown", a.Branch, a.Unreadable))
 	}
 	who := "@" + a.Sender + " (" + a.Check + ")"
 	switch {
-	case a.Doubtful == DoubtSender && !statusName(a.Branch):
-		who = fmt.Sprintf("@%s (doubtful: %s)", a.Sender, a.Doubtful)
 	case a.Doubtful == DoubtSender:
 		who = fmt.Sprintf("@%s on abcd-status/%s (doubtful: %s)", a.Sender, a.Branch, a.Doubtful)
 	case a.Doubtful == DoubtPusher && a.Pusher != "":
@@ -425,15 +420,11 @@ func Left(until, now time.Time) string {
 }
 
 // DoubtLine is how the block and `abcd status` show a doubtful branch (C11):
-// "abcd-status/maya (doubtful): continuity not verified: ...". Only a branch
-// whose name is a lower-case username is shown by name; any other is
-// counted (UnreadNamesLine), and a doubt naming one shows no name.
+// "abcd-status/maya (doubtful): continuity not verified: ...". A doubt is
+// kept only of a branch whose name is a lower-case username (keptDoubts);
+// any other is counted (UnreadNamesLine), never named.
 func DoubtLine(d BranchDoubt) string {
-	name := "a status branch"
-	if statusName(d.Branch) {
-		name = "abcd-status/" + d.Branch
-	}
-	return termsafe.Sanitize(name + " (doubtful): " + d.Reason)
+	return termsafe.Sanitize("abcd-status/" + d.Branch + " (doubtful): " + d.Reason)
 }
 
 // BranchesNotReadLine counts the status branches past the most one read

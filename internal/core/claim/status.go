@@ -49,12 +49,11 @@ const (
 // The reasons an announcement or a status branch is doubtful (C11). Each is
 // fixed text: nothing a writer chose is echoed into one.
 const (
-	DoubtBranchName = "its name is not a lower-case GitHub username, so it is not read"
-	DoubtRewritten  = "continuity not verified: the branch was rewritten rather than added to, so an announcement may be missing or shown twice"
-	DoubtMore       = "continuity not verified: more was added than one read covers, so an announcement may be missing or shown twice"
-	DoubtMerged     = "continuity not verified: a merge was passed, and what it brought in is not read"
-	DoubtSender     = "it names a sender other than the branch's owner"
-	DoubtPusher     = "the forge's record names another account as its pusher"
+	DoubtRewritten = "continuity not verified: the branch was rewritten rather than added to, so an announcement may be missing or shown twice"
+	DoubtMore      = "continuity not verified: more was added than one read covers, so an announcement may be missing or shown twice"
+	DoubtMerged    = "continuity not verified: a merge was passed, and what it brought in is not read"
+	DoubtSender    = "it names a sender other than the branch's owner"
+	DoubtPusher    = "the forge's record names another account as its pusher"
 )
 
 // announcementSlack is how far an announcement's own expiry may lie before
@@ -156,8 +155,8 @@ func (a Announcement) Standing(now time.Time) bool { return a.Unreadable == "" &
 // BranchDoubt is a status branch read as doubtful (C11): named, with the
 // reason, while every other branch is still read.
 type BranchDoubt struct {
-	// Branch is the name after abcd-status/, as origin or this checkout holds
-	// it; a render quotes it, since it may be any name git admits.
+	// Branch is the name after abcd-status/, always a lower-case username: a
+	// branch by any other name is counted, never kept as a doubt.
 	Branch string
 	Reason string
 	// Tip is the commit the branch ended in when it was found doubtful; "" for
