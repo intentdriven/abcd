@@ -71,26 +71,43 @@ type Store struct {
 // reads takes errNoFreePlace for "no store".
 func locate(home, top string) (storepath.Location, error) {
 	loc, err := storepath.Locate(home, top)
+	return loc, worded(err)
+}
+
+// reachable is every store the outbound check of the repository at top
+// reads under home: storepath.Reachable's answer, its refusals worded as
+// locate words them.
+func reachable(home, top string) (storepath.Reach, error) {
+	r, err := storepath.Reachable(home, top)
+	return r, worded(err)
+}
+
+// worded is a storepath refusal worded for the person, naming neither a
+// store nor a key; nil stays nil.
+func worded(err error) error {
 	switch {
 	case err == nil:
-		return loc, nil
+		return nil
 	case errors.Is(err, storepath.ErrWorktreesUnread):
-		return loc, refuse("git could not list this repository's worktrees, so whether it has an embargo store cannot be told",
+		return refuse("git could not list this repository's worktrees, so whether it has an embargo store cannot be told",
 			"settle what `git worktree list --porcelain` reports, then run it again")
 	case errors.Is(err, storepath.ErrSeveralStores):
-		return loc, refuse("more than one embargo store is a worktree of this repository, so which one holds the records cannot be told",
+		return refuse("more than one embargo store is a worktree of this repository, so which one holds the records cannot be told",
 			"inspect each with `git worktree list`, keep the one holding the records, remove the other with `git worktree remove <path>`, then run it again")
 	case errors.Is(err, storepath.ErrRootsUnread):
-		return loc, refuse("git could not list the root commits of this repository's default branch, so no embargo store can be made", "settle what git reports, then run it again")
+		return refuse("git could not list the root commits of this repository's default branch, so where its embargo stores are, or one would be made, cannot be told", "settle what git reports, then run it again")
 	case errors.Is(err, storepath.ErrNoRootCommit):
-		return loc, refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
+		return refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
 	case errors.Is(err, storepath.ErrPlaceTaken):
-		return loc, refuse("the place this repository's embargo store would be made could not be examined, or holds a folder that is no worktree of this repository nor of another repository on this machine, perhaps a store git has lost track of",
+		return refuse("the place this repository's embargo store would be made could not be examined, or holds a folder that is no worktree of this repository nor of another repository on this machine, perhaps a store git has lost track of",
 			"look under abcd's worktree store, keep any private records the folder holds, move it aside, then run `abcd embargo intake`")
+	case errors.Is(err, storepath.ErrPlaceUnread):
+		return refuse("a place under a root of this repository's history, where an embargo store is kept, could not be examined, or holds a folder that is no live worktree of any repository on this machine, perhaps a store git has lost track of, so what is under embargo cannot be told",
+			"look under abcd's worktree store, keep any private records the folder holds, move it aside, then run it again")
 	case errors.Is(err, storepath.ErrNoFreePlace):
-		return loc, errNoFreePlace
+		return errNoFreePlace
 	default:
-		return loc, refuse("the embargo store could not be located", "run it again")
+		return refuse("the embargo store could not be located", "run it again")
 	}
 }
 
@@ -111,6 +128,49 @@ func registered(loc storepath.Location, top string) (Store, error) {
 		return Store{}, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
 	}
 	return Store{Root: loc.Path, Checkout: top}, nil
+}
+
+// readOtherStore reads the state of a store the check reaches that is not
+// this checkout's own: another clone's of the same project, or the store of
+// a project whose history this one merged in. It is read and never written,
+// and it is not held to Verify's "a worktree of this repository": its
+// records are under embargo here whoever's they are. The state is read
+// inside the store's folder (os.Root), so no link in it can lead the read
+// out of the store, and held to loadState's checks: a regular file, this
+// account's alone, within its cap, in shape.
+func readOtherStore(root string) (State, error) {
+	bad := func(why string) error {
+		return refuse("the state file of an embargo store this repository's history reaches is refused: "+why,
+			"settle it from the checkout that store belongs to, then run it again")
+	}
+	if !fsutil.IsRealDir(root) {
+		return State{}, bad("its store is not a real directory")
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return State{}, bad("its store could not be opened")
+	}
+	defer r.Close()
+	fi, err := r.Lstat(StateRel)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return emptyState(), nil
+	case err != nil:
+		return State{}, bad("it could not be examined")
+	case !fi.Mode().IsRegular():
+		return State{}, bad("it is not a regular file")
+	case fsutil.CallersAlone(filepath.Join(root, filepath.FromSlash(StateRel)), fi) != nil:
+		return State{}, bad("it is not this account's alone (another owner, or a group or other write bit)")
+	}
+	data, err := fsutil.ReadGuardedInRoot(r, StateRel, maxStateBytes)
+	if err != nil {
+		return State{}, bad("it could not be read within its size limit")
+	}
+	st, why := decodeState(data)
+	if why != "" {
+		return State{}, bad(why)
+	}
+	return st, nil
 }
 
 // openStore returns the store of the repository at repoRoot, making it on first

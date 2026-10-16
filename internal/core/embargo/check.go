@@ -16,6 +16,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"golang.org/x/text/unicode/norm"
@@ -101,9 +102,10 @@ type CheckFinding struct {
 }
 
 // CheckResult is what the check read and found. UnderEmbargo counts the
-// advisories whose id is refused; IntakeStale warns that the last intake is
-// more than a day old, so an advisory reported since is not yet in the set.
-// The result never carries the store's location.
+// ids under embargo, each once however many stores hold it; IntakeAt is the
+// oldest intake of the stores read, nil when one has had none; IntakeStale
+// warns that it is more than a day old, so a report made since is not yet
+// in the set. The result never carries a store's location.
 type CheckResult struct {
 	NoStore      bool           `json:"no_store"`
 	Note         string         `json:"note,omitempty"`
@@ -127,13 +129,20 @@ type needle struct {
 	pathEnd  bool // the match must not continue a path segment's name after it
 }
 
-// denySet is what the check refuses, built from the store's state.
+// denySet is what the check refuses, built from the stores' states.
 type denySet struct {
 	needles  []needle
-	held     map[string]bool // every advisory id the store holds, canonGHSA's form
+	held     map[string]bool // every id a store holds, canonGHSA's form
 	allowed  map[string]bool // --allow'ed ids, canonGHSA's form
-	unlisted bool            // refuse an advisory id the store does not hold
+	unlisted bool            // refuse an id of that shape no store holds
 	embargo  int
+	counted  map[string]bool // the ids embargo counts, canonGHSA's form
+}
+
+// heldStore is one store the check read: its folder and its state.
+type heldStore struct {
+	root string
+	st   State
 }
 
 // Check is the outbound embargo check. It reads the commit range and the
@@ -141,8 +150,15 @@ type denySet struct {
 // title (unless the advisory was moved to the public track, which is fixed in
 // the open) and the store's location, plus any advisory id the store does not
 // hold that --allow does not name. Inputs are read before the store, so a
-// refusal to read one is the same with or without a store. With no store on
-// this machine nothing is under embargo, and the check passes saying so.
+// refusal to read one is the same with or without a store.
+//
+// The deny set is the union of every store the repository's history reaches
+// (storepath.Reachable): this checkout's own, verified as every sub-verb
+// verifies it, and every live store at the place under a root of the
+// default branch, whoever's it is, read and never written (readOtherStore).
+// A place that holds anything else, or cannot be examined, refuses the
+// check. Only with no store of its own and none at any root's place is
+// nothing under embargo, and the check passes saying so.
 func Check(req CheckRequest) (CheckResult, error) {
 	now := clock(req.Now)
 	if strings.TrimSpace(req.Range) == "" && len(req.Files) == 0 {
@@ -166,33 +182,41 @@ func Check(req CheckRequest) (CheckResult, error) {
 	}
 	res := CheckResult{Allowed: allowList, Findings: []CheckFinding{}, Commits: len(commits), Files: len(texts)}
 
-	// No store registered, with the place one would be made free or holding
-	// only other repositories' stores, is the one answer of "no store"; every
-	// other answer locate cannot give cleanly is a refusal.
-	loc, err := locate(req.Home, top)
-	if err == errNoFreePlace || (err == nil && !loc.Registered) {
+	reach, err := reachable(req.Home, top)
+	if err != nil {
+		return CheckResult{}, err
+	}
+	if reach.Own == "" && len(reach.Others) == 0 {
 		res.NoStore = true
 		res.Note = "nothing is under embargo on this machine: there is no embargo store for this repository"
 		return res, nil
 	}
-	if err != nil {
-		return CheckResult{}, err
+	var stores []heldStore
+	if reach.Own != "" {
+		s, err := registered(storepath.Location{Path: reach.Own, Registered: true}, top)
+		if err != nil {
+			return CheckResult{}, err
+		}
+		st, err := s.Verify()
+		if err != nil {
+			return CheckResult{}, err
+		}
+		stores = append(stores, heldStore{root: s.Root, st: st})
 	}
-	s, err := registered(loc, top)
-	if err != nil {
-		return CheckResult{}, err
+	for _, root := range reach.Others {
+		st, err := readOtherStore(root)
+		if err != nil {
+			return CheckResult{}, err
+		}
+		stores = append(stores, heldStore{root: root, st: st})
 	}
-	st, err := s.Verify()
-	if err != nil {
-		return CheckResult{}, err
-	}
-	ds, err := buildDenySet(s, st, allowed)
+	ds, err := buildDenySet(stores, allowed)
 	if err != nil {
 		return CheckResult{}, err
 	}
 	res.UnderEmbargo = ds.embargo
-	res.IntakeAt = st.IntakeAt
-	res.IntakeStale = st.IntakeAt == nil || now.Sub(*st.IntakeAt) > staleIntake
+	res.IntakeAt = oldestIntake(stores)
+	res.IntakeStale = res.IntakeAt == nil || now.Sub(*res.IntakeAt) > staleIntake
 
 	for _, c := range commits {
 		res.Findings = append(res.Findings, ds.scan(c.message, "commit "+c.sha, "message", 1)...)
@@ -442,52 +466,92 @@ func patchPath(p string) string {
 	return strings.TrimPrefix(p, "b/")
 }
 
-// buildDenySet is the deny set of a store's state: every advisory under
-// embargo (embargoed), and, while any is, the store's location on this
-// machine in every form a text could name it: absolute, home-relative, and
-// the worktree-store fragment under the store's own key. The
-// relative paths inside any store (StateRel, DraftDirRel) are not in the set:
-// abcd's own source names them, and they say nothing of where this machine
-// keeps its records.
-func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
-	ds := denySet{held: map[string]bool{}, allowed: allowed, unlisted: true}
-	unpublished := map[string]bool{}
+// oldestIntake is the oldest intake of the stores read, nil when one has
+// had none: the deny set is as stale as its stalest part.
+func oldestIntake(stores []heldStore) *time.Time {
+	var oldest *time.Time
+	for _, h := range stores {
+		if h.st.IntakeAt == nil {
+			return nil
+		}
+		if oldest == nil || h.st.IntakeAt.Before(*oldest) {
+			oldest = h.st.IntakeAt
+		}
+	}
+	return oldest
+}
+
+// hold marks every id st holds as held, and as unpublished when st holds it
+// so, whatever another store says of it.
+func (ds *denySet) hold(st State, unpublished map[string]bool) {
 	for _, a := range st.Advisories {
 		ds.held[canonGHSA(a.GHSAID)] = true
-		unpublished[canonGHSA(a.GHSAID)] = a.PublishedAt == nil
+		unpublished[canonGHSA(a.GHSAID)] = unpublished[canonGHSA(a.GHSAID)] || a.PublishedAt == nil
 	}
 	for _, p := range st.Pending {
 		ds.held[canonGHSA(p.GHSAID)] = true
 		unpublished[canonGHSA(p.GHSAID)] = true
 	}
+}
+
+// buildDenySet is the deny set of every store read: each entry under embargo
+// in any of them (embargoed), one that one store holds published and another
+// unpublished counting as unpublished; and, while any is, each store's
+// location on this machine in every form a text could name it (absolute,
+// home-relative, and the worktree-store fragment under that store's own
+// key). The relative paths inside any store (StateRel, DraftDirRel) are not
+// in the set: abcd's own source names them, and they say nothing of where
+// this machine keeps its records.
+func buildDenySet(stores []heldStore, allowed map[string]bool) (denySet, error) {
+	ds := denySet{held: map[string]bool{}, allowed: allowed, unlisted: true}
+	unpublished := map[string]bool{}
+	for _, h := range stores {
+		ds.hold(h.st, unpublished)
+	}
 	for id := range allowed {
 		if unpublished[id] {
-			return denySet{}, refuse("an --allow value names an unpublished advisory this store holds, which stays under embargo",
+			return denySet{}, refuse("an --allow value names an id an embargo store holds unpublished, which stays under embargo",
 				"drop it from --allow; only an advisory already public may be allowed")
 		}
 	}
-	ds.addEmbargoed(st, "", true)
+	for _, h := range stores {
+		ds.addEmbargoed(h.st, "", true)
+	}
 	if ds.embargo == 0 {
 		return ds, nil
 	}
-	// The worktree-store fragment is the found store's own: its key is its
-	// parent folder's name (storepath.Locate), which need not be any root
-	// the history has now.
-	key := filepath.Base(filepath.Dir(s.Root))
-	forms := []string{s.Root, resolve(s.Root), "worktrees/" + key + "/" + StoreName}
-	if home, err := os.UserHomeDir(); err == nil {
-		for _, h := range []string{filepath.Clean(home), resolve(home)} {
-			for _, root := range []string{s.Root, resolve(s.Root)} {
-				if rel, err := filepath.Rel(h, root); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
-					forms = append(forms, "~/"+filepath.ToSlash(rel))
+	home, homeErr := os.UserHomeDir()
+	for _, h := range stores {
+		// The worktree-store fragment is the store's own: its key is its
+		// parent folder's name, which need not be any root the history has
+		// now.
+		key := filepath.Base(filepath.Dir(h.root))
+		forms := []string{h.root, resolve(h.root), "worktrees/" + key + "/" + StoreName}
+		if homeErr == nil {
+			for _, hd := range []string{filepath.Clean(home), resolve(home)} {
+				for _, root := range []string{h.root, resolve(h.root)} {
+					if rel, err := filepath.Rel(hd, root); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
+						forms = append(forms, "~/"+filepath.ToSlash(rel))
+					}
 				}
 			}
 		}
-	}
-	for _, f := range forms {
-		ds.add(filepath.ToSlash(f), KindStorePath, false)
+		for _, f := range forms {
+			ds.add(filepath.ToSlash(f), KindStorePath, false)
+		}
 	}
 	return ds, nil
+}
+
+// countOnce counts id as under embargo, once however many stores hold it.
+func (ds *denySet) countOnce(id string) {
+	if ds.counted == nil {
+		ds.counted = map[string]bool{}
+	}
+	if id = canonGHSA(id); !ds.counted[id] {
+		ds.counted[id] = true
+		ds.embargo++
+	}
 }
 
 // addEmbargoed adds every advisory under embargo but the one with id skip:
@@ -507,7 +571,7 @@ func (ds *denySet) addEmbargoed(st State, skip string, dropClosedTitles bool) {
 		if a.PublishedAt != nil || (skip != "" && canonGHSA(a.GHSAID) == canonGHSA(skip)) {
 			continue
 		}
-		ds.embargo++
+		ds.countOnce(a.GHSAID)
 		ds.add(a.GHSAID, KindAdvisoryID, true)
 		if a.CVEID != nil {
 			ds.add(*a.CVEID, KindReservedCVE, true)
@@ -522,7 +586,7 @@ func (ds *denySet) addEmbargoed(st State, skip string, dropClosedTitles bool) {
 		if skip != "" && canonGHSA(p.GHSAID) == canonGHSA(skip) {
 			continue
 		}
-		ds.embargo++
+		ds.countOnce(p.GHSAID)
 		ds.add(p.GHSAID, KindAdvisoryID, true)
 		if p.CVEID != nil {
 			ds.add(*p.CVEID, KindReservedCVE, true)

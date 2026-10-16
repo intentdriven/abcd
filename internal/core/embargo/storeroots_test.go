@@ -126,13 +126,13 @@ func TestStoreFoundPastManyMergedRoots(t *testing.T) {
 	wantStoreFound(t, cf.f.home, cf.f.repo.Root(), cf.s.Root)
 }
 
-// TestAnotherRepositorysStoreUnderAMergedRootIsLeftAlone: bar merges in the
-// history of foo, whose root is older than bar's, and foo has a store on
-// this machine under that root. bar holds no store, so its check reports
-// none; its first intake makes bar's own store under bar's own root; and
-// foo's store is neither read as bar's nor changed, so foo's check still
-// refuses foo's embargoed id.
-func TestAnotherRepositorysStoreUnderAMergedRootIsLeftAlone(t *testing.T) {
+// TestMergedInRepositorysStoreIsReadNotWritten: bar merges in the history
+// of foo, whose root is older than bar's, and foo has a store on this
+// machine under that root. bar holds no store, yet its check reads foo's
+// and refuses foo's embargoed id; its first intake makes bar's own store
+// under bar's own root; its check then reads both; and foo's store is never
+// changed, so foo's check still refuses foo's embargoed id.
+func TestMergedInRepositorysStoreIsReadNotWritten(t *testing.T) {
 	bar := newFixture(t)
 	foo := gittest.NewRepo(t)
 	foo.Write(".abcd/work/issues/open/.gitkeep", "")
@@ -153,9 +153,9 @@ func TestAnotherRepositorysStoreUnderAMergedRootIsLeftAlone(t *testing.T) {
 		t.Fatalf("bar's roots %q, %v; want foo's older root first", roots, err)
 	}
 
-	res, err := checkStdin(bar.home, bar.repo.Root(), "fixes "+ghsaOpen+"\n")
-	if err != nil || !res.NoStore || !res.Clean() {
-		t.Fatalf("bar's check = %+v, %v; want no store", res, err)
+	wantEmbargoedIDRefused(t, bar.home, bar.repo.Root())
+	if after := listTree(t, fooStore.Root); after != before {
+		t.Fatalf("bar's check changed foo's store:\nbefore %s\nafter  %s", before, after)
 	}
 	s, created, err := openStore(bar.home, bar.repo.Root())
 	if err != nil || !created {
@@ -164,14 +164,104 @@ func TestAnotherRepositorysStoreUnderAMergedRootIsLeftAlone(t *testing.T) {
 	if want := abcdhome.Path(bar.home, "worktrees", barRoot, StoreName); s.Root != want {
 		t.Fatalf("bar's store at %s; want it under bar's own root, %s", s.Root, want)
 	}
+	wantEmbargoedIDRefused(t, bar.home, bar.repo.Root())
 	if after := listTree(t, fooStore.Root); after != before {
 		t.Fatalf("foo's store changed:\nbefore %s\nafter  %s", before, after)
 	}
 	wantEmbargoedIDRefused(t, bar.home, foo.Root())
-	res, err = checkStdin(bar.home, bar.repo.Root(), "fixes "+ghsaOpen+"\n")
-	if err != nil || res.NoStore || !res.Clean() {
-		t.Fatalf("bar's check after its intake = %+v, %v; want bar's own empty store read", res, err)
+}
+
+// cloneOf clones the fixture's repository into a folder of its own, the way
+// a second checkout of the same project is made, and returns its root.
+func cloneOf(t *testing.T, f fixture) string {
+	t.Helper()
+	clone := filepath.Join(t.TempDir(), "clone")
+	for _, args := range [][]string{
+		{"clone", "-q", "file://" + f.repo.Root(), clone},
+		{"-C", clone, "config", "--local", "gc.auto", "0"},
+		{"-C", clone, "config", "--local", "core.fsmonitor", "false"},
+	} {
+		cmd := exec.Command("git", args...)
+		cmd.Env = f.repo.Env()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
 	}
+	return clone
+}
+
+// TestSecondCloneChecksAgainstTheFirstClonesStore: a second clone of the
+// same project, with no store of its own, reads the store the first clone
+// made under their shared root: its check refuses the first clone's
+// embargoed id and the store's own path, reports a store, and leaves that
+// store exactly as it was.
+func TestSecondCloneChecksAgainstTheFirstClonesStore(t *testing.T) {
+	cf := newCheckFixture(t)
+	b := cloneOf(t, cf.f)
+	before := listTree(t, cf.s.Root)
+	wantEmbargoedIDRefused(t, cf.f.home, b)
+	key := filepath.Base(filepath.Dir(cf.s.Root))
+	res, err := checkStdin(cf.f.home, b, "under worktrees/"+key+"/embargo/.abcd\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantKinds(t, res, KindStorePath)
+	if res.UnderEmbargo != 3 || res.IntakeAt == nil {
+		t.Fatalf("the second clone's check = %+v; want the first clone's store counted", res)
+	}
+	if after := listTree(t, cf.s.Root); after != before {
+		t.Fatalf("the second clone's check changed the first clone's store:\nbefore %s\nafter  %s", before, after)
+	}
+	if _, _, err := openStore(cf.f.home, b); err == nil {
+		t.Fatal("the second clone made or opened a store beside the first clone's")
+	}
+	if after := listTree(t, cf.s.Root); after != before {
+		t.Fatalf("the second clone's intake changed the first clone's store:\nbefore %s\nafter  %s", before, after)
+	}
+}
+
+// TestCheckRefusesAnUnreadableStoreAtARootsPlace: a store at a root's place
+// whose state file cannot be read refuses the second clone's check; it is
+// never skipped as though it held nothing.
+func TestCheckRefusesAnUnreadableStoreAtARootsPlace(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any file")
+	}
+	cf := newCheckFixture(t)
+	b := cloneOf(t, cf.f)
+	if err := os.Chmod(cf.s.StatePath(), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(cf.s.StatePath(), 0o600) })
+	res, err := checkStdin(cf.f.home, b, "a text\n")
+	if err == nil {
+		t.Fatalf("the check = %+v and no refusal", res)
+	}
+	mustRefuse(t, err, "state file")
+}
+
+// TestCheckRefusesANonStoreAtAMergedRootsPlace: with this repository's own
+// store registered, a plain folder at the place under a merged root still
+// refuses the check, as does that place unable to be examined: either may
+// hide a store whose records the check would otherwise miss.
+func TestCheckRefusesANonStoreAtAMergedRootsPlace(t *testing.T) {
+	cf := newCheckFixture(t)
+	other := mergeUnrelatedRoot(t, cf.f.repo)
+	place := abcdhome.Path(cf.f.home, "worktrees", other, StoreName)
+	if err := os.MkdirAll(place, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_, err := checkStdin(cf.f.home, cf.f.repo.Root(), "a text\n")
+	mustRefuse(t, err, "examined")
+	if os.Geteuid() == 0 {
+		return
+	}
+	if err := os.Chmod(filepath.Dir(place), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Dir(place), 0o700) })
+	_, err = checkStdin(cf.f.home, cf.f.repo.Root(), "a text\n")
+	mustRefuse(t, err, "examined")
 }
 
 // datedCommit commits what is staged in r, dated date, and returns the
