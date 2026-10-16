@@ -327,6 +327,11 @@ func TestRelayOriginsAreReadStrictly(t *testing.T) {
 		"https://Relay.Example.org/":        "https://relay.example.org",
 		"https://relay.example.org:8443":    "https://relay.example.org:8443",
 		"https://abcd-session.onrender.com": "https://abcd-session.onrender.com",
+		// A browser's origin never carries the scheme's default port, so
+		// neither does the relay's: GitHub matches a redirect_uri exactly.
+		"https://r.onrender.com:443":  "https://r.onrender.com",
+		"https://R.onrender.com:443/": "https://r.onrender.com",
+		"https://r.onrender.com:80":   "https://r.onrender.com:80",
 	} {
 		if got, err := NormalizeRelayOrigin(in); err != nil || got != want {
 			t.Errorf("%q = %q, %v; want %q", in, got, err, want)

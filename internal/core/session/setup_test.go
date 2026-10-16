@@ -76,6 +76,7 @@ func TestTheCallbackIsTheRelays(t *testing.T) {
 		"https://brief-relay.onrender.com":      "https://brief-relay.onrender.com/auth/callback",
 		"https://Brief-Relay.onrender.com/":     "https://brief-relay.onrender.com/auth/callback",
 		"https://relay.example.org:8443":        "https://relay.example.org:8443/auth/callback",
+		"https://brief-relay.onrender.com:443":  "https://brief-relay.onrender.com/auth/callback",
 		"http://brief-relay.onrender.com":       "",
 		"https://brief-relay.onrender.com/x":    "",
 		"https://brief-relay.onrender.com/?a=1": "",

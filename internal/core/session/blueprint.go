@@ -275,6 +275,12 @@ var relayHostRe = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.
 // NormalizeRelayOrigin reads a relay's address as an exact https origin,
 // lower-cased: https://host[:port] with nothing after it but an optional
 // slash. Anything else is refused, since the page trusts the relay it names.
+// The scheme's default port is dropped, as a browser's origin drops it (the
+// URL standard's serialization of an origin omits a port that is the
+// scheme's default, https://url.spec.whatwg.org/#origin): the page sends
+// the relay's callback as its URL.origin, and GitHub matches a redirect_uri
+// against the registered callback exactly, so the callback named here must
+// be spelled the same way.
 func NormalizeRelayOrigin(s string) (string, error) {
 	u, err := url.Parse(strings.TrimSpace(s))
 	if err != nil || u.Scheme != "https" || u.User != nil || u.Opaque != "" ||
@@ -282,7 +288,19 @@ func NormalizeRelayOrigin(s string) (string, error) {
 		!relayHostRe.MatchString(strings.ToLower(u.Host)) {
 		return "", fmt.Errorf("%q is not an https origin: give https://host[:port], with no path", s)
 	}
-	return "https://" + strings.ToLower(u.Host), nil
+	return "https://" + withoutDefaultPort(u.Scheme, strings.ToLower(u.Host)), nil
+}
+
+// withoutDefaultPort is host (host or host:port) without the port when it is
+// scheme's default: 443 for https, 80 for http.
+func withoutDefaultPort(scheme, host string) string {
+	switch {
+	case scheme == "https" && strings.HasSuffix(host, ":443"):
+		return strings.TrimSuffix(host, ":443")
+	case scheme == "http" && strings.HasSuffix(host, ":80"):
+		return strings.TrimSuffix(host, ":80")
+	}
+	return host
 }
 
 // renderRelays renders relays.json, naming origin as the one relay.
