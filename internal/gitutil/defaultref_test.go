@@ -63,3 +63,42 @@ func TestDefaultRefOutsideARepositoryIsEmpty(t *testing.T) {
 		t.Fatalf("DefaultRef outside a repository = %q, want \"\"", got)
 	}
 }
+
+// TestRemoteDefaultBranchNamesOnlyTheRemotesRef: the remote's default branch
+// as last fetched is its HEAD's target, then the conventional names under that
+// remote, and never a local branch, so a checkout with no remote-tracking
+// default answers "" rather than a branch the remote may not hold.
+func TestRemoteDefaultBranchNamesOnlyTheRemotesRef(t *testing.T) {
+	cases := []struct {
+		name  string
+		setup func(r *gittest.Repo)
+		want  string
+	}{
+		{"the remote's HEAD wins", func(r *gittest.Repo) {
+			r.Git("update-ref", "refs/remotes/origin/trunk", "HEAD")
+			r.Git("update-ref", "refs/remotes/origin/main", "HEAD")
+			r.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk")
+		}, "refs/remotes/origin/trunk"},
+		{"a dangling HEAD falls to the conventional names", func(r *gittest.Repo) {
+			r.Git("update-ref", "refs/remotes/origin/master", "HEAD")
+			r.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/gone")
+		}, "refs/remotes/origin/master"},
+		{"a local main alone is no answer", func(r *gittest.Repo) {}, ""},
+		{"another remote's branch is no answer", func(r *gittest.Repo) {
+			r.Git("update-ref", "refs/remotes/upstream/main", "HEAD")
+		}, ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := gittest.NewRepo(t)
+			r.Commit("c0")
+			c.setup(r)
+			if got := gitutil.RemoteDefaultBranch(r.Root(), "origin"); got != c.want {
+				t.Fatalf("RemoteDefaultBranch = %q, want %q", got, c.want)
+			}
+		})
+	}
+	if got := gitutil.RemoteDefaultBranch(t.TempDir(), "origin"); got != "" {
+		t.Fatalf("RemoteDefaultBranch outside a repository = %q, want \"\"", got)
+	}
+}
