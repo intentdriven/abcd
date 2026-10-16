@@ -83,3 +83,24 @@ func TestPushersRefusesAnOriginNotOnGitHub(t *testing.T) {
 		t.Fatalf("gh ran for an origin off github.com: %v", err)
 	}
 }
+
+// TestPushersPassesOverAnAppsPush is C17's app identity: a push made by an
+// app (an actor of type Bot, or a login ending in [bot], as a hosted session
+// pushes) says nothing of who sent the announcement, so it is passed over and
+// the sender stays claimed rather than reading as another account's push.
+func TestPushersPassesOverAnAppsPush(t *testing.T) {
+	a := strings.Repeat("a", 40)
+	b := strings.Repeat("b", 40)
+	c := strings.Repeat("c", 40)
+	zero := strings.Repeat("0", 40)
+	fakeActivity(t, `[{"before":"`+b+`","after":"`+a+`","actor":{"login":"claude","type":"Bot"}},`+
+		`{"before":"`+c+`","after":"`+b+`","actor":{"login":"some-app[bot]","type":"User"}},`+
+		`{"before":"`+zero+`","after":"`+c+`","actor":{"login":"maya","type":"User"}}]`)
+	got, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != (Push{Before: zero, After: c, Login: "maya"}) {
+		t.Fatalf("pushers = %+v; want only maya's push", got)
+	}
+}
