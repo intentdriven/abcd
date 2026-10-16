@@ -214,7 +214,7 @@ answerable for.
   project whose blast radius reaches strangers declares that radius before it
   may lower the rung. The carriers are itd-173 and itd-176, both drafts. The RFC
   stays open on the questions below, so the ruling is recorded in
-  `.abcd/work/DECISIONS.md` rather than in an ADR. Open question 1 is taken up
+  [dcn-2609230000000008](../../../work/decisions/dcn-2609230000000008-delivered-work-states-the-verification.md) rather than in an ADR. Open question 1 is taken up
   by the planning interview for an acceptance field on the intent
   (`iss-2608290956522870`).
 

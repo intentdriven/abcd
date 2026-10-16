@@ -9,7 +9,7 @@ found_during: "itd-179-fidelity-audit"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/issues"
-wontfix_reason: "DECISIONS 2026-09-09 parks every triage grounds refusal (resolved iss-2609091009111294), superseding the 2026-08-31 ruling for a forward-only terminal-record gate"
+wontfix_reason: "dcn-2609090000000001 parks every triage grounds refusal (resolved iss-2609091009111294), superseding the 2026-08-31 ruling for a forward-only terminal-record gate"
 ---
 
 a record authored straight into resolved never invokes capture resolve so the grounds obligation reaches only records that pass through the verb

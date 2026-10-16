@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/issues"
 lapsed_at: "2026-08-30T12:37:00Z"
-resolution: "the procedural remedy was adopted in the record; the content lapse is disclosed under DECISIONS 2026-08-28, and the mechanism gap is held by iss-2608301350287219"
+resolution: "the procedural remedy was adopted in the record; the content lapse is disclosed under dcn-2608280000000005, and the mechanism gap is held by iss-2608301350287219"
 impact: internal
 ---
 

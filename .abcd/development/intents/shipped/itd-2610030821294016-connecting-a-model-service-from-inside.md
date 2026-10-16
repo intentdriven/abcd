@@ -141,7 +141,7 @@ Per-criterion verdicts:
   evidence: internal/core/oracle/connect_guide_test.go:236 — "func TestGuideNarrowsWithoutASecondRequest(t *testing.T)"
   evidence: internal/core/oracle/connect_guide.go:69 — "const MaxCarriedBytes = 32 << 10"
   evidence: internal/core/oracle/connect_guide.go:649 — "func carry(ids []string) (kept []string, more int)"
-  evidence: .abcd/work/DECISIONS.md:2664 — "the guided connect carries at most 32 KiB of listed ids between turns, with the count not carried"
+  evidence: [dcn-2610040000000003](../../../work/decisions/dcn-2610040000000003-decided-without-a-question-the-person-s.md) — "the guided connect carries at most 32 KiB of listed ids between turns, with the count not carried"
   evidence: internal/surface/cli/ahoy_connect_guide_test.go:491 — "t.Run("300", func(t *testing.T)"
 - ac-3 — MET: Guide never calls Connect (only the write-free checkConnect) and ends in guideCommand; TestGuideWritesNothing snapshots ~/.abcd, the index, the abcd credential file and the fake keychain before and after a run to the end for the none, abcd and keychain homes against a keyless loopback stand-in, asserts byte-identity, zero keychain reaches and exactly one "command" printed; passes at HEAD.
   evidence: internal/core/credential/guide_test.go:133 — "func TestGuideWritesNothing(t *testing.T)"
@@ -214,7 +214,7 @@ Gap audit:
 - diverged:
   - 'Typing part of a name narrows the full list' is delivered over a 32 KiB carried prefix; past that budget a fragment matching none carried asks for the model's full name rather than narrowing (signed off 2026-10-04)
     evidence: internal/core/oracle/connect_guide.go:69 — "const MaxCarriedBytes = 32 << 10"
-    evidence: .abcd/work/DECISIONS.md:2664 — "the guided connect carries at most 32 KiB of listed ids between turns"
+    evidence: [dcn-2610040000000003](../../../work/decisions/dcn-2610040000000003-decided-without-a-question-the-person-s.md) — "the guided connect carries at most 32 KiB of listed ids between turns"
   - The end-to-end canary search (G6) is delivered for the abcd home only, not for the keychain home
     evidence: internal/surface/cli/ahoy_connect_guide_test.go:322 — "store := filepath.Join(os.Getenv("HOME"), ".abcd", "credentials.json")"
   - Suggestions match an existing connection's model only by exact id, so a differently spelled id on this service yields none

@@ -11,8 +11,9 @@ disciplined its appenders are.
 
 **Why.** The 2026-07-22 two-programme merge drew the line empirically. Across
 roughly thirty record files landing from two concurrent programmes, the only
-textual conflict anywhere was `.abcd/work/DECISIONS.md` — the one shared
-record that is a multi-writer append-only file. Every atomicised family
+textual conflict anywhere was the single decision log (since retired for one
+record per decision in `.abcd/work/decisions/`) — the one shared record that
+was a multi-writer append-only file. Every atomicised family
 (issues, specs, intents) merged file-clean, but collided on minted ids
 exactly where no detector was armed: the issue collisions (iss-110, iss-111)
 were caught mechanically by `issue_id_unique`, while the spec collisions

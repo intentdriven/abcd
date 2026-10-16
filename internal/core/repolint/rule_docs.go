@@ -21,7 +21,7 @@ import (
 // docs-lint severity: audit is an advisory conformance surface, and the
 // authoritative docs gate is `abcd lint docs` itself (which still exits 2 on a
 // blocker). Re-raising a docs blocker as an audit error would double-gate the
-// same check. (Recorded in DECISIONS.md.) A REFUSAL is not a finding: a config
+// same check. (Recorded in dcn-2607130000000007.) A REFUSAL is not a finding: a config
 // the target cannot load, or one it refuses to lint (a roots entry that does
 // not resolve), checked nothing, so it is an error (targetRefusal).
 type docsCurrency struct{}

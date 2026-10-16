@@ -189,7 +189,7 @@ On the correction this record exists for:
 **Accepted by the maintainer's ruling of 2026-09-09** on iss-2609091155525689
 that each original record describing the helper at its pre-consolidation home
 is superseded by its own record, recorded in
-[`.abcd/work/DECISIONS.md`](../../../work/DECISIONS.md). It is a new record
+[dcn-2609090000000004](../../../work/decisions/dcn-2609090000000004-adr-2609090717039680-is-superseded-by.md). It is a new record
 rather than an edit to adr-2609090717039680 by the standing instruction that
 an ADR is never amended and always superseded, so the original's decision text
 stands as written and this record carries the correction.

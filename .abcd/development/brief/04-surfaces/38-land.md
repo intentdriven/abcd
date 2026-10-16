@@ -7,7 +7,7 @@ allows (iss-2610150524235929, iss-2610150524246898, and the queue confirmation
 of iss-2610090642376032 for this verb). Before it, a branch landed outside the
 implement loop was pushed only if someone remembered to, and ready pull
 requests reached the merge queue one at a time. It is listed in the
-agents-and-hosts block, and its page is hidden from a person's `/abcd:` menu.
+person's records group beside `build`, and its page is on a person's `/abcd:` menu.
 
 ## Sub-verbs
 
@@ -141,7 +141,11 @@ this one code path (ruling R3).
   be stale; a forge that cannot be asked gets no gate and no push.
 - A pull request from another repository is never armed (it is set aside
   when this repository's own is listed beside it), and one whose head on the
-  forge is not the landed head is not armed.
+  forge is not the landed head is not armed. After a push that moved the
+  branch, the pull-request listing alone is read again every 2 s, with at
+  most 30 s of pauses in all (two real runs saw the forge lag the push by 12
+  and 14 s; each read keeps the forge client's own timeout), and a head
+  that never shows stops the step, naming the wait; nothing else repeats.
 - The merge rule is read from the ruleset mirror at `origin`'s default branch
   as just fetched, never at the branch's tip: equally out of the branch's
   reach as the merge base, and fresher, so the branch cannot change the rule

@@ -23,7 +23,8 @@ import (
 //     dependencies, wholesale rewrites. No interpretation.
 //   - Layer 2 (Recorded abandonment, abandoned.json) is what the project itself
 //     declared dead — superseded ADRs and intents, wontfix issues, an ADR's
-//     Alternatives-Considered section, rejected options named in a decision log.
+//     Alternatives-Considered section, rejected options named in a decision
+//     record or a frozen decision log.
 //   - Layer 3 (Interpretation, lessons.json) is host-delegated: an agent reads
 //     layers 1 and 2 and says what was tried and why. It CANNOT float free —
 //     every entry must cite layer-1/2 ids, and the Go validator drops an entry
@@ -82,7 +83,8 @@ const (
 	SignalAlternativesConsidered Signal = "alternatives-considered"
 	// SignalWontfixIssue is an issue moved to the wontfix/ ledger bucket.
 	SignalWontfixIssue Signal = "wontfix-issue"
-	// SignalRejectedOption is a decision-log line naming a rejected option.
+	// SignalRejectedOption is a decision record, or a frozen decision log's
+	// line, naming a rejected option.
 	SignalRejectedOption Signal = "rejected-option"
 )
 
@@ -300,9 +302,12 @@ func dependencyID(manifest string) string { return "dep-" + idClean(manifest) }
 // <adr-id>-alt (e.g. adr-12-alt).
 func adrAltID(adrID string) string { return adrID + "-alt" }
 
-// decisionID keys a rejected-option decision-log line by its 1-based line number
-// in DECISIONS.md: dec-L<line>. The line number is stable for an unchanged file
-// (the only stability the re-plan invariant requires).
+// decisionID keys a rejected-option line of a frozen decision log by its 1-based
+// line number: dec-L<line>. The line number is stable for an unchanged file
+// (the only stability the re-plan invariant requires), and a frozen log does
+// not change. A decision record is keyed by its own dcn id instead; the two
+// never collide, since a record id is digits after its prefix
+// (spc-2610110931381316, decision 14).
 func decisionID(line int) string { return fmt.Sprintf("dec-L%d", line) }
 
 // shortHex returns the first 12 hex characters of a commit SHA, lower-cased and

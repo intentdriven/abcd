@@ -1,0 +1,6 @@
+---
+id: dcn-2609150000000004
+slug: the-decisions-log-becomes-a-folder-of
+date: 2026-09-15
+---
+2026-09-15 — The decisions log becomes a folder of individually minted records with a derived index, and `DECISIONS.md` a symlink to that index for now (product thinker, reframing iss-2609100507439414 from "how does adoption propagate abcd's merge-attribute workaround into a managed repository" to "why do the two single append-to-the-bottom files conflict when the five one-file-per-record families did not once across 27 merges", the measurement in iss-2609100508570803). The shape applies to abcd and to every managed repository; the decisions-append gate (DA001–DA004) is retired by the shape, in the same change the shape lands. The rule is adr-2609151138420062, the capability itd-2609151138388536 in `drafts/`; the changelog's conflict class is itd-2609150819432059's and closes separately. The adoption question the product thinker was first asked — point at the conflict, fix it silently, or fix it and take over the changelog — is dissolved by the shape rather than answered. Rejected: keep the file and propagate the union attribute; the folder for abcd only; keep the file and accept the conflicts.

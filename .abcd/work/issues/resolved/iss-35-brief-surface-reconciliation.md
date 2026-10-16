@@ -7,7 +7,7 @@ category: "drift"
 source: "agent-finding"
 found_during: "2026-07-08 multi-agent review"
 found_at: ".abcd/development/brief/05-internals/08-skills.md"
-resolution: "graduation gate shipped and armed: surface_coverage record-lint blocker, 16 surface chapters, skills-to-commands relabel, machine-checked staged Status column, crosscheck wired as release gate; maintainer grill decision 2026-07-24 (DECISIONS.md); residue tracked as iss-122"
+resolution: "graduation gate shipped and armed: surface_coverage record-lint blocker, 16 surface chapters, skills-to-commands relabel, machine-checked staged Status column, crosscheck wired as release gate; maintainer grill decision 2026-07-24 (dcn-2607240000000001); residue tracked as iss-122"
 impact: internal
 ---
 

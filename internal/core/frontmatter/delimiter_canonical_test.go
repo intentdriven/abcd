@@ -29,6 +29,7 @@ var delimiterSites = map[string]delimiterSite{
 	// Writers: they emit a delimiter and judge none.
 	"internal/core/capture/serialize.go":         {2, "a WRITER: buildIssueText emits the block's two delimiters; the reader side is frontmatterBounds, which asks IsDelimiter and CloseAfter"},
 	"internal/core/decide/decide.go":             {2, "a WRITER: the ADR skeleton's two delimiters"},
+	"internal/core/decisions/record.go":          {2, "a WRITER: a decision record's two delimiters"},
 	"internal/core/intent/create.go":             {2, "a WRITER: the minted intent's two delimiters"},
 	"internal/core/intent/consistency.go":        {2, "a WRITER: the review record's two delimiters"},
 	"internal/core/spec/spec.go":                 {2, "a WRITER: the minted spec's two delimiters"},

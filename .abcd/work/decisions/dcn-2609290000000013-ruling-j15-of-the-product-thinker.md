@@ -1,0 +1,6 @@
+---
+id: dcn-2609290000000013
+slug: ruling-j15-of-the-product-thinker
+date: 2026-09-29
+---
+2026-09-29 — Ruling J15 of the product thinker, applied (lane routerRemoval, autonomous run A; Refs: iss-2608261550580260): the prompt router's removal signal for a client that snapshots injected rules is the FULL active-domain list on every prompt, and a name absent from it has stopped (the ruling, verbatim: "FULL ACTIVE-DOMAIN LIST each time (absence = stopped)"), not tombstones. The list rides the `--json` envelope of `abcd hook prompt-router`, the flag every verb takes for a machine reader, as `active` beside `text` and `injected`; the hook manifest keeps invoking the plain form, so the model's context is unchanged and a prompt that matches nothing still adds zero tokens. Two consequences taken by the lane rather than the ruling: an envelope whose prompt could not be evaluated (an unreadable payload, a `rules.json` that will not load) carries `error` and no `active` field, meaning "unknown, change nothing", so a typo never reads as every domain stopping; and the per-session ledger forgets a domain the turn it leaves the list, so its return re-injects its text once for a client that pruned it.
