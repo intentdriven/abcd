@@ -582,6 +582,37 @@ func TestTheDefaultBranchIsAskedOfOriginWhenThisCloneNamesNone(t *testing.T) {
 	noHead()
 }
 
+// TestAnOriginHEADNamingABranchCalledHEADIsRefused: origin's HEAD can point
+// at a branch literally named HEAD, refs/heads/HEAD. Its remote-tracking ref
+// would be refs/remotes/origin/HEAD, which is origin/HEAD itself, so the
+// answer is refused as naming no branch, the record is refused, and nothing
+// is written to origin/HEAD here.
+func TestAnOriginHEADNamingABranchCalledHEADIsRefused(t *testing.T) {
+	w := newWorld(t)
+	w.publish(".abcd/work/issues/open/iss-5-the-widget.md")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	runGit(t, w.bare, "update-ref", "refs/heads/HEAD", "refs/heads/main")
+	runGit(t, w.bare, "symbolic-ref", "HEAD", "refs/heads/HEAD")
+	runGit(t, w.bare, "update-ref", "-d", "refs/heads/main")
+	p.git("remote", "set-head", "origin", "-d")
+	p.git("update-ref", "-d", "refs/remotes/origin/main")
+	if got := p.git("ls-remote", "--symref", "origin", "HEAD"); !strings.Contains(got, "ref: refs/heads/HEAD\tHEAD") {
+		t.Fatalf("origin's HEAD does not name a branch called HEAD:\n%s", got)
+	}
+
+	_, err := p.announce("merging", "iss-5")
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "origin's HEAD does not name a branch") ||
+		!strings.HasSuffix(err.Error(), "no announcement was sent") {
+		t.Fatalf("announce with origin's HEAD at a branch called HEAD = %v; want it refused as naming no branch", err)
+	}
+	if got := p.git("for-each-ref", "refs/remotes/origin/HEAD"); got != "" {
+		t.Fatalf("origin/HEAD was written: %s", got)
+	}
+	if tip := w.statusTip("octo"); tip != "" {
+		t.Fatalf("a refused announcement reached origin: %s", tip)
+	}
+}
+
 // TestADefaultBranchThatCannotBeReadRefusesARecord: when the fetch could not
 // read the default branch this clone names, the record is not judged on a
 // stale copy, and is refused.

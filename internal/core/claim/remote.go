@@ -428,7 +428,8 @@ func originDefault(root string) string {
 // asks with `git ls-remote --symref origin HEAD`, which reads the remote's
 // advertisement and writes nothing here: origin/HEAD stays as the repository
 // has it, unset. An answer that names no branch, or a branch whose name is
-// not a valid ref, is an error, never a guess.
+// not a valid ref, is an error, never a guess. A branch literally named HEAD
+// names no branch: its remote-tracking ref would be origin/HEAD itself.
 func remoteDefault(root string) (string, error) {
 	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
 	trace(args...)
@@ -446,7 +447,7 @@ func remoteDefault(root string) (string, error) {
 			continue
 		}
 		branch, ok := strings.CutPrefix(target, "refs/heads/")
-		if !ok || branch == "" {
+		if !ok || branch == "" || branch == "HEAD" {
 			return "", errors.New("origin's HEAD does not name a branch")
 		}
 		if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
