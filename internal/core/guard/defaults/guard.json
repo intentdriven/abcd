@@ -705,7 +705,7 @@
         ]
       }
     },
-    "agent-launch-claude-bypass-mode": {
+    "agent-launch-claude-unchecked-mode": {
       "tier": "blocker",
       "pattern": {
         "command": "claude",

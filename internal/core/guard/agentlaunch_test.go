@@ -12,8 +12,8 @@ func TestGuardRefusesAnAgentLaunchWithItsChecksOff(t *testing.T) {
 	for line, id := range map[string]string{
 		`claude -p "fix the tests" --dangerously-skip-permissions`:    "agent-launch-claude-unchecked",
 		`claude --dangerously-skip-permissions`:                       "agent-launch-claude-unchecked",
-		`claude -p x --permission-mode bypassPermissions`:             "agent-launch-claude-bypass-mode",
-		`claude -p x --permission-mode=bypassPermissions`:             "agent-launch-claude-bypass-mode",
+		`claude -p x --permission-mode bypassPermissions`:             "agent-launch-claude-unchecked-mode",
+		`claude -p x --permission-mode=bypassPermissions`:             "agent-launch-claude-unchecked-mode",
 		`codex exec --dangerously-bypass-approvals-and-sandbox "fix"`: "agent-launch-codex-unchecked",
 		`codex exec --yolo "fix"`:                                     "agent-launch-codex-unchecked",
 		`codex -a never exec "fix"`:                                   "agent-launch-codex-never-asks",

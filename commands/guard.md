@@ -716,7 +716,7 @@ Starting another agent harness with its own permission checks turned off is a
 **block**, because that agent then runs every command with nobody asked and
 none of its commands reach this guard: `claude --dangerously-skip-permissions`
 (`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
-(`agent-launch-claude-bypass-mode`), `codex --dangerously-bypass-approvals-and-sandbox`
+(`agent-launch-claude-unchecked-mode`), `codex --dangerously-bypass-approvals-and-sandbox`
 or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
 (`agent-launch-codex-never-asks`), `codex -s danger-full-access`
 (`agent-launch-codex-sandbox-off`), `codex -c approval_policy=never` or
