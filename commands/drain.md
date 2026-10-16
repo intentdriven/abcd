@@ -159,8 +159,9 @@ what it did in `next`:
   ten, then hourly; a move before then reads nothing. It gives up as the outage
   gate does: a probe that fails eight hours into the hourly stage ends the
   drain with `stopped: "origin"` and `complete: true`, and `next` says what
-  failed, since when, the probes made and the lanes the drain opened; once
-  `git fetch origin` succeeds, the next `abcd drain` begins a new drain. The
+  failed, since when, the probes made and the lanes the drain opened; the
+  next `abcd drain` begins a new drain, waiting again if origin still cannot
+  be read. The
   text form reads "ended: the drain gave up waiting on origin".
   For `origin-head`, run `git remote set-head origin --auto` and
   `git fetch origin`. Tell the user, and run `abcd drain` again at or after

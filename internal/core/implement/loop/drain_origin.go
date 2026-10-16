@@ -342,7 +342,7 @@ func movePlan(repoRoot string, st *DrainState, rule drainrule.Rule, now time.Tim
 		st.OriginWait = w
 		if w.HourlySince != nil && s.GivesUp(*w.HourlySince, now) {
 			st.Stopped, st.EndedAt = DrainStoppedOrigin, &now
-			return capture.RuleOnlyPlan(rule), nil, fmt.Sprintf("%s, so the move plans nothing, and the drain gives up on %s as the outage gate gives up: %s has not been read since %s, %d probe(s) failed, hourly for %d hours since %s; the drain stops here with %d lane(s) opened; once `git fetch %s` succeeds, `abcd drain` begins a new drain",
+			return capture.RuleOnlyPlan(rule), nil, fmt.Sprintf("%s, so the move plans nothing, and the drain gives up on %s as the outage gate gives up: %s has not been read since %s, %d probe(s) failed, hourly for %d hours since %s; the drain stops here with %d lane(s) opened; the next `abcd drain` begins a new drain, waiting again if %s still cannot be read",
 				why, claim.Remote, claim.Remote, w.Since.UTC().Format(time.RFC3339), w.Probes, int(s.HourlyFor/time.Hour), w.HourlySince.UTC().Format(time.RFC3339), len(st.Lanes), claim.Remote), "", true, nil
 		}
 		w.NextProbeAt = s.Next(now, failures)

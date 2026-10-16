@@ -167,8 +167,8 @@ the drain's state as an origin probe and waits as the outage gate waits, on the
 shared schedule (one minute, five, ten, then hourly), a move before the next
 probe reading nothing. It gives up as that gate does: a probe failing eight
 hours into the hourly stage ends the drain with the stop reason `origin`,
-saying what failed, since when, and that a new drain begins once origin can be
-fetched again. It never plans from what the checkout last saw. The dry
+saying what failed, since when, and that the next invocation begins a new
+drain, which waits again if origin still cannot be read. It never plans from what the checkout last saw. The dry
 run fetches nothing: it plans from origin's default branch as last fetched and
 names the view's age, the commits the checkout is behind it, and the issues open
 in the checkout that branch has finished. Any reservation of a record finished

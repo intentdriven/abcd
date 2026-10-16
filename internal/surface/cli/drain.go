@@ -55,8 +55,8 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"nothing: it records the failure in the drain's state and waits as for an outage,\n" +
 			"looking again after one minute, five, ten, then hourly, and exits 0 saying when.\n" +
 			"A probe that fails eight hours into the hourly stage gives up, as the outage gate\n" +
-			"does: the drain ends (stopped \"origin\"), and once origin can be fetched again a\n" +
-			"new drain begins.\n\n" +
+			"does: the drain ends (stopped \"origin\"), and the next abcd drain begins a new\n" +
+			"drain, waiting again if origin still cannot be read.\n\n" +
 			"--dry-run shows every open issue's disposition, the eligible ones first in the\n" +
 			"order a drain takes them (by category, then severity, then the issues naming a\n" +
 			"file before the rest, then each account's own order on origin), and\n" +

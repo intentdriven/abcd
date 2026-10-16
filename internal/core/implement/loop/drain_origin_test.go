@@ -437,7 +437,7 @@ func TestADrainWaitingOnOriginFollowsTheOutageScheduleAndGivesUp(t *testing.T) {
 	if !res.Complete || res.Stopped != DrainStoppedOrigin || w.Probes != 7 {
 		t.Fatalf("eight hours into the hourly stage: stopped %q, complete %v, wait %+v; want stopped %q", res.Stopped, res.Complete, w, DrainStoppedOrigin)
 	}
-	for _, want := range []string{"could not fetch", t0.Format(time.RFC3339), "gives up", "`abcd drain` begins a new drain"} {
+	for _, want := range []string{"could not fetch", t0.Format(time.RFC3339), "gives up", "the next `abcd drain` begins a new drain, waiting again if origin still cannot be read"} {
 		if !strings.Contains(res.Next, want) {
 			t.Fatalf("next = %q; want it to say %q", res.Next, want)
 		}
