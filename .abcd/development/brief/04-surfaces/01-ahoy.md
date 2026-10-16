@@ -410,6 +410,10 @@ earlier version wrote wider is narrowed when abcd next writes it
 
 ```
 ~/.abcd.noindex/                       USER SCOPE — one per machine (machine-local state only)
+  .gitignore                     one * line, so a git repository in the home folder
+                                 never stages this folder; laid once, owner-only, and
+                                 never laid again once deleted (itd-2610140858048004)
+  gitignore-laid                 the marker recording that lay
   history/                       the REGISTRY only: identity and lineage keyed on the
                                  root-commit SHA. ahoy owns it; it holds no transcripts
   transcripts/<root-sha>/        the redacted transcript corpus, a SIBLING of the
@@ -421,6 +425,9 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  harvest; index.jsonl beside the homes registers them,
                                  never committed (itd-2609212137128014)
   worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
+                                 (NOT BUILT — itd-2609091014076309)
+  notes/<root-sha>/              the store's notes archive: a reclaimed worktree's
+                                 .abcd/.work.local/, redacted, beside a manifest
                                  (NOT BUILT — itd-2609091014076309)
   runs/<root-sha>/               an autonomous run's shared state: the run log, one
                                  claim per record, one record per joined session

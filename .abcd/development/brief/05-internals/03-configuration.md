@@ -557,13 +557,28 @@ acts on the scope that applies.
 
 **User scope, `~/.abcd.noindex/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
-lab store, the staged worktree store, the run state an autonomous run's sessions share
+lab store, the staged worktree store and its staged notes archive
+(`notes/<root-sha>/`, which nothing writes yet), the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
 ([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the machine layer of the layered configuration in `config.json`
-(its readers are the provider adapter's and the filing-time match's `match`
-keys, each read beneath the repo-scope `.abcd/config.json`, and its one write
-the provider block `ahoy connect` adds; every other config read resolves the
-repo-scope `.abcd/config.json` alone), the load check's two limits in
+(its readers are every key read through the layered reader,
+`internal/core/layered`: the provider adapter's `oracle` keys, the reviewer
+route's `oracle.review` and `oracle.rp`, the filing-time match's `match`, the
+`land` switches, `consistency.max_request_bytes`, the implement loop's `pace`
+and the runner routes under `roles` and `runner`, each read with the repo-scope
+`.abcd/config.json` above it, except `land`, whose layers are ANDed; the
+provider blocks, `oracle.rp`, `runner.<name>`, `interview.list` and
+`reservation.github_username` are honoured from the machine layer alone. Its one
+write is the provider block `ahoy connect` adds, and every other config read
+resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
+model-tier routing table in `oracle-routing.json` (read beneath the
+repository's `.abcd/config/oracle-routing.json`, and written owner-only on the
+install's answered consent), the status line's settings in `statusline.json`
+(written on the status-line offer's consent), the bootstrap's
+`cache-attestation` (the release whose published manifest the cached binary
+matched, without which install never promotes the cache to the owned PATH
+copy) and `release-mark` (the newest release this machine has installed or
+verified, raised by the bootstrap and recorded by `abcd update`), the load check's two limits in
 `load-limits` (read-only and never created, itd-2609231434459890), the external
 credentials adapters resolve by name through the credential store, whose abcd
 home is `credentials.json` and whose index is `credential-homes.json` (each
@@ -580,7 +595,10 @@ phase too: the shipped memory store is repo-scope), and the `sources/` corpus
 explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned
 PATH entry, the trusted configuration roots, and the checkouts whose transcripts
-are pulled in. **Never the design record.** The same inventory is drawn as a tree
+are pulled in. And it keeps itself out of a git repository in the home folder:
+a `.gitignore` holding `*`, laid once beside a `gitignore-laid` marker, so a
+person who deletes the ignore file is never overruled (`internal/core/homeignore`).
+**Never the design record.** The same inventory is drawn as a tree
 in [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md#what-abcd-manages--repos-and-abcdnoindex);
 the two are one list and must agree.
 
