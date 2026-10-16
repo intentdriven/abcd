@@ -261,16 +261,19 @@ func tokenHolder(root string, o Options) (Holder, error) {
 // several reservation acts, and each asked GitHub the same question again.
 // Only a definite answer, a valid login with a positive id, is kept; a failure
 // is returned and asked again by the next act. An injected Options.ForgeUser
-// never reaches this cache.
+// never reaches this cache. The key is computed again once the call returns,
+// and an answer whose key moved meanwhile (an account switched while gh was
+// answering) is returned but not kept.
 func forgeUser(root string) (string, int64, error) {
-	e := holderCache.entry(forgeKey(root))
+	k := forgeKey(root)
+	e := holderCache.entry(k)
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.known {
 		return e.login, e.id, nil
 	}
 	login, id, err := askForgeUser(root)
-	if err == nil && validUsername(login) && id > 0 {
+	if err == nil && validUsername(login) && id > 0 && forgeKey(root) == k {
 		e.login, e.id, e.known = login, id, true
 	}
 	return login, id, err

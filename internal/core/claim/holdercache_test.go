@@ -231,3 +231,33 @@ func TestGhsAccountStoreIsFoundTheWayGhFindsIt(t *testing.T) {
 		}
 	})
 }
+
+// An account switch that lands while gh is answering leaves the answer
+// belonging to neither store for certain, so it is not kept: the key is
+// computed again after the call, and an answer whose key moved is dropped.
+func TestAnAnswerWhoseAccountStoreMovedDuringTheCallIsNotKept(t *testing.T) {
+	r := newCheckout(t, "pat@example.com")
+	o := Options{Home: t.TempDir()}
+	hosts := ghAccountStore(t)
+	before := "github.com:\n    user: octo-person\n"
+	writeFile(t, hosts, before)
+	flip := filepath.Join(t.TempDir(), "switch-once")
+	writeFile(t, flip, "")
+	gh := stubForgeDuring(t, `{"login":"octo-person","id":4242}`,
+		"if [ -e '"+flip+"' ]; then rm -f '"+flip+"'; printf 'github.com:\\n    user: octo-other\\n' > \"$GH_CONFIG_DIR/hosts.yml\"; fi")
+	if _, err := ResolveHolder(r.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	if n := gh.calls(); n != 1 {
+		t.Fatalf("the first act asked the forge %d times; want once", n)
+	}
+	// The store is back as it was before the call: an answer kept under that
+	// key would be served now, though it was given across the switch.
+	writeFile(t, hosts, before)
+	if _, err := ResolveHolder(r.Root(), o); err != nil {
+		t.Fatal(err)
+	}
+	if n := gh.calls(); n != 2 {
+		t.Fatalf("an act after the store moved during the first call asked the forge %d times; want twice (no answer kept)", n)
+	}
+}
