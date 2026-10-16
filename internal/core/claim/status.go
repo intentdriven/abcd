@@ -722,7 +722,8 @@ type freshRun struct {
 
 // freshRuns picks from added (newest first) the commits this checkout has not
 // read, at most budget of them: the newest, or, when split, the newest half of
-// budget (rounded up) and the oldest for the rest of it. It answers them in
+// budget (rounded down) and the oldest for the rest of it, so a split share
+// of one takes the oldest and the read mark moves. It answers them in
 // runs, each a stretch of added none of whose commits was left out or read
 // before; the newest commit it left out ("" when it left none out); and
 // readTo, the place in added from which every commit beneath is read, before
@@ -746,7 +747,7 @@ func freshRuns(root string, added []string, budget int, split bool) (runs []fres
 	if len(unread) > budget {
 		newest := budget
 		if split {
-			newest = (budget + 1) / 2
+			newest = budget / 2
 		}
 		take = append(slices.Clone(unread[:newest]), unread[len(unread)-(budget-newest):]...)
 		next = added[unread[newest]]

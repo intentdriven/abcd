@@ -3,6 +3,7 @@ package claim
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -131,5 +132,30 @@ func TestABranchWithNothingNewIsNotCountedLeft(t *testing.T) {
 	pat.fetchOnly()
 	if v := pat.read(); v.BranchesLeft != 0 {
 		t.Fatalf("%d branches counted left; want none: bob holds nothing new", v.BranchesLeft)
+	}
+}
+
+// TestASplitShareOfOneTakesTheOldest: a branch an intake left unread, given
+// a share of one commit by the next, takes its oldest unread commit, and its
+// read mark moves up to it, so every walk of a branch left moves its mark.
+func TestASplitShareOfOneTakesTheOldest(t *testing.T) {
+	withIntakeCap(t, 1)
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	next := 1
+	w.refill("aaa", 3, &next)
+	oldest := strings.Fields(runGit(t, w.bare, "rev-list", "--reverse", StatusRefPrefix+"aaa"))[0]
+	ref := StatusTrackingPrefix + "aaa"
+	pat.fetchOnly()
+	pat.read()
+	if mark := statusBranches.lastRead(pat.dir, ref); mark != "" {
+		t.Fatalf("the first intake read aaa at %s; want it left unmarked, its oldest commits unread", mark)
+	}
+	pat.read()
+	if _, ok := keptAnnouncement(pat.dir, oldest); !ok {
+		t.Fatal("the second intake did not take in aaa's oldest unread commit")
+	}
+	if mark := statusBranches.lastRead(pat.dir, ref); mark != oldest {
+		t.Fatalf("aaa is read at %q after the second intake; want its oldest commit %s", mark, oldest)
 	}
 }
