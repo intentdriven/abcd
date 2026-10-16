@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -201,14 +202,9 @@ func TestStatusSaysAReadThatFailedAfterAFetchThatSucceeded(t *testing.T) {
 	if code, _, stderr := reserveRun(t, octo, "announce", "merging", "1012"); code != 0 {
 		t.Fatalf("announce: exit %d, %s", code, stderr)
 	}
-	// The read marks' directory is a file, so marking a branch read fails.
-	state := filepath.Join(pat, ".abcd", ".work.local", "status")
-	if err := os.MkdirAll(state, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(state, "read"), []byte("not a directory\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	// Every write the intake makes is best effort, so the read is made to
+	// fail through its test seam, after the fetch has succeeded.
+	t.Cleanup(claim.IntakeFailsForTest(errors.New("reading the status branches: the test made it fail")))
 	code, stdout, stderr := reserveRun(t, pat, "status")
 	if code != 1 || !strings.Contains(stdout, "abcd status — announcements as of the fetch 0m ago (") ||
 		!strings.Contains(stdout, "\n  not read: ") || strings.Contains(stdout, "nothing has fetched them here") {

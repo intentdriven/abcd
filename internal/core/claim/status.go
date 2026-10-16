@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -465,6 +466,9 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 	if tierPresent(root) != nil {
 		return in, nil
 	}
+	if err := intakeFailure.Load(); err != nil {
+		return in, *err
+	}
 	refs, err := statusRefs(ctx, root)
 	if err != nil {
 		return in, err
@@ -562,6 +566,19 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 		pruneStatus(ctx, root, now, refs)
 	}
 	return in, nil
+}
+
+// intakeFailure, when a test sets it (IntakeFailsForTest), is what every
+// intake answers before it reads anything.
+var intakeFailure atomic.Pointer[error]
+
+// IntakeFailsForTest makes every intake answer err until restore is called,
+// for a test in another package that needs the read after a fetch to fail:
+// every write the intake makes is best effort, so nothing on disk can make
+// it fail once the fetch before it succeeded.
+func IntakeFailsForTest(err error) (restore func()) {
+	intakeFailure.Store(&err)
+	return func() { intakeFailure.Store(nil) }
 }
 
 // statusRef is one status branch this checkout holds, as for-each-ref names
