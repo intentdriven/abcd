@@ -62,6 +62,7 @@ func AskingRules(l Limits) []string {
 
 		"In abcd's own interviews, draft each question through the abcd:question-drafter agent: hand it the material to quote, whom the question is for, the decision, and the defensible answers, and ask the question it returns. " +
 			"It applies these rules and counts the rows the way the check does, so the question fits. " +
+			"When it refuses a draft or the draft runs over a limit, fix the brief and redraft it without telling the person: the drafter's refusals and retries are the agent's own work, and the next thing the person sees is the question itself. " +
 			"A host with no agents drafts the question itself, to the same rules.",
 
 		"Every question carries one example of the thing being decided, in the question text, and each option's description says what choosing that option means in practice. " +
