@@ -394,10 +394,19 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 	}
 	ref := statusBranches.ref(p.branch)
 	branch = "abcd-status/" + p.branch
+	// refused is what origin said of the last push it refused, "" before any.
+	refused := ""
 	for attempt := 1; ; attempt++ {
 		sha, err := writeEmptyCommit(root, p.who, p.now, p.msg, tree, parent)
 		if err != nil {
-			return AnnounceResult{}, err
+			if pushes == 0 {
+				return AnnounceResult{}, err
+			}
+			// A push was made, so this is not a refusal that pushed nothing: it
+			// says what origin said of the last push and why the retry was not
+			// written, and the front door adds that a push was made.
+			return AnnounceResult{}, fmt.Errorf("%s; %s moved, and the announcement rebuilt on its new tip could not be written: %s",
+				refused, branch, withoutOutcome(err))
 		}
 		if beforePush != nil {
 			beforePush(root)
@@ -408,7 +417,7 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 			return AnnounceResult{Kind: p.msg.Kind, Item: p.msg.Item, Sender: p.msg.Sender, Branch: "abcd-status/" + p.branch,
 				SentAt: p.msg.SentAt, ExpiresAt: p.msg.ExpiresAt, Commit: sha, Attempts: attempt}, nil
 		}
-		refused := Remote + " refused the push: " + redacted(perr)
+		refused = Remote + " refused the push: " + redacted(perr)
 		// The tip check runs first, on every attempt, the last included: a lost
 		// race shows as a tip that moved, and a push refused while the tip
 		// stands was refused for another reason, so it is not retried and is
@@ -433,6 +442,16 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 		}
 		parent = next
 	}
+}
+
+// withoutOutcome is a refusal's text without the closing words that say what
+// was not done, for quoting inside a message that says it instead.
+func withoutOutcome(err error) string {
+	msg := redacted(err)
+	for _, end := range []string{nothingPushed, noAnnouncement} {
+		msg = strings.TrimSuffix(msg, "; "+end)
+	}
+	return msg
 }
 
 // statusTip is the commit the person's status branch ends in as just fetched,

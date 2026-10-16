@@ -249,6 +249,47 @@ func TestAPushRefusedForAnotherReasonIsNotSentAtOnce(t *testing.T) {
 	}
 }
 
+// TestARetryThatCannotBeWrittenSaysAPushWasMade: the first push loses a race,
+// and the rebuilt commit cannot be written (the outbound policy can no longer
+// be read). A push was made, so the failure does not say nothing was pushed: it
+// is an *AnnounceError counting the one push to abcd-status/octo, quoting what
+// origin said of it and why the retry was not written.
+func TestARetryThatCannotBeWrittenSaysAPushWasMade(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	q := w.clone("1234+octo@users.noreply.github.com", "")
+	beforePush = func(root string) {
+		if root != p.dir {
+			return
+		}
+		beforePush = nil
+		if _, err := q.announce("asking", "#7"); err != nil {
+			t.Errorf("the rival announcement: %v", err)
+		}
+		cfg := filepath.Join(p.dir, ".abcd", "config")
+		if err := os.MkdirAll(cfg, 0o755); err != nil {
+			t.Error(err)
+		}
+		if err := os.WriteFile(filepath.Join(cfg, "pii.json"), []byte("{not json"), 0o644); err != nil {
+			t.Error(err)
+		}
+	}
+	t.Cleanup(func() { beforePush = nil })
+
+	_, err := p.announce("merging", "#1012")
+	var ae *AnnounceError
+	if !errors.As(err, &ae) || errors.Is(err, ErrRefused) {
+		t.Fatalf("announce = %#v; want an *AnnounceError, not a refusal", err)
+	}
+	if ae.Pushes != 1 || ae.Branch != "abcd-status/octo" {
+		t.Fatalf("pushes %d to %q; want 1 to abcd-status/octo", ae.Pushes, ae.Branch)
+	}
+	if msg := err.Error(); strings.Contains(msg, nothingPushed) || !strings.Contains(msg, "origin refused the push") ||
+		!strings.Contains(msg, "outbound policy") {
+		t.Fatalf("announce = %q; want origin's refusal and the write failure, without %q", msg, nothingPushed)
+	}
+}
+
 // TestAnAnnouncementOutsideTheFixedFormIsRefusedBeforeAnyGit is C3 at the
 // writer: a kind outside the list, an item that is neither a record id nor a
 // pull-request number, and an expiry beyond 24 hours are each refused naming

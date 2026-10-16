@@ -116,8 +116,12 @@ func announceRefusal(err error) error {
 	var ae *claim.AnnounceError
 	if errors.As(err, &ae) && ae.Pushes > 0 {
 		branch := termsafe.Sanitize(ae.Branch)
-		return &exitError{Code: 2, Msg: fmt.Sprintf("%s; not sent as far as git reported, but origin refused %d earlier pushes to %s "+
-			"and a refused push may still have reached it: fetch origin and look at %s before announcing again", msg, ae.Pushes, branch, branch)}
+		pushes := fmt.Sprintf("%d earlier pushes", ae.Pushes)
+		if ae.Pushes == 1 {
+			pushes = "1 earlier push"
+		}
+		return &exitError{Code: 2, Msg: fmt.Sprintf("%s; not sent as far as git reported, but origin refused %s to %s "+
+			"and a refused push may still have reached it: fetch origin and look at %s before announcing again", msg, pushes, branch, branch)}
 	}
 	return &exitError{Code: 2, Msg: msg + "; not sent, and nothing was pushed"}
 }

@@ -208,6 +208,9 @@ func TestAnnounceSaysWhatBecameOfThePushOnAnUnclassedFailure(t *testing.T) {
 		{"after refused pushes", &claim.AnnounceError{Err: errors.New("git said nothing"), Pushes: 2, Branch: "abcd-status/octo"},
 			"abcd announce: git said nothing; not sent as far as git reported, but origin refused 2 earlier pushes to abcd-status/octo " +
 				"and a refused push may still have reached it: fetch origin and look at abcd-status/octo before announcing again", "nothing was pushed"},
+		{"after one refused push", &claim.AnnounceError{Err: errors.New("git said nothing"), Pushes: 1, Branch: "abcd-status/octo"},
+			"abcd announce: git said nothing; not sent as far as git reported, but origin refused 1 earlier push to abcd-status/octo " +
+				"and a refused push may still have reached it: fetch origin and look at abcd-status/octo before announcing again", "pushes"},
 		{"a refusal", &claim.NotSentError{Reason: "origin refused the push: no"},
 			"abcd announce: not sent: origin refused the push: no\n", "nothing was pushed"},
 	} {
