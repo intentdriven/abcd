@@ -423,7 +423,7 @@ func (p principleCheck) judge(repoRoot string, r schemaRecord) ([]Finding, error
 				seen[m] = true
 				if !principleEvidenceHandleRe.MatchString(m) && !condition.MarkerIDRe.MatchString(m) {
 					claim(f.line, "evidence member '"+m+"' is neither a record handle ("+recordid.CitedIDForms()+
-						") or a reading item (rdi-N) nor a scope-condition identity (cond- and sixteen digits)")
+						") nor a reading item (rdi-N) nor a scope-condition identity (cond- and sixteen digits)")
 					continue
 				}
 				evidence = append(evidence, m)
