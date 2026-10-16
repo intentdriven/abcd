@@ -190,7 +190,8 @@ type DrainResult struct {
 	Start *StartResult `json:"start"`
 	// Routed are the hand-backs this call routed; HandBacks every one the
 	// drain has routed; Flags the rule's hand-backs over the ledger as this
-	// call read it, each naming its rule, written nowhere.
+	// call read it, each naming its rule, written nowhere, less the issues
+	// this drain promoted itself (fieldFlags).
 	Routed    []DrainRoute `json:"routed"`
 	HandBacks []DrainRoute `json:"hand_backs"`
 	Flags     []DrainRoute `json:"flags"`
@@ -234,7 +235,8 @@ type DrainCounts struct {
 	Promotions      int `json:"promotions"`
 	DecisionRecords int `json:"decision_records"`
 	Homes           int `json:"homes"`
-	// RuleFlags are the rule's hand-backs over the ledger as this call read it.
+	// RuleFlags are the rule's hand-backs over the ledger as this call read it,
+	// less the issues this drain promoted itself, which Promotions counts.
 	RuleFlags  int        `json:"rule_flags"`
 	Judgements int        `json:"judgements"`
 	Passed     int        `json:"passed"`
@@ -357,7 +359,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	}
 	res := DrainResult{State: DrainStateRel, Started: started, Rule: plan.Record, Loosened: plan.Loosened,
 		Order: plan.Order, Dispositions: plan.Dispositions, Routed: []DrainRoute{}, Passed: []Excluded{},
-		Flags: fieldFlags(plan), Finished: []DrainFinished{}, Origin: origin}
+		Flags: fieldFlags(plan, st.HandBacks), Finished: []DrainFinished{}, Origin: origin}
 	// viewUnread is why the reservations this move fetched could not be read,
 	// and lapse what became of a judgement request whose hold lapsed.
 	viewUnread, lapse := "", ""
@@ -857,11 +859,22 @@ func drainCounts(repoRoot string, st DrainState, flags []DrainRoute, passed []Ex
 
 // fieldFlags are the rule's hand-backs over the ledger: each open issue the
 // rule hands back, flagged naming the rule that did. They are written nowhere
-// (decision 8: the classification is re-derived every run).
-func fieldFlags(plan capture.DrainPlan) []DrainRoute {
+// (decision 8: the classification is re-derived every run). An issue the
+// drain itself promoted, among routed, reads as promoted on every move after,
+// and that is the drain's own hand-back, counted once among routed's
+// promotions; it is not flagged as the rule's as well. A flag says which it
+// is by its fields: `from` is "field" and `route` is "rule", with the rule in
+// `rule`, where a promotion the drain routed has `route` "promoted" and its
+// draft.
+func fieldFlags(plan capture.DrainPlan, routed []DrainRoute) []DrainRoute {
 	out := []DrainRoute{}
 	for _, v := range plan.Dispositions {
 		if v.Outcome != capture.DrainHandBack {
+			continue
+		}
+		if v.Rule == capture.RulePromoted && slices.ContainsFunc(routed, func(r DrainRoute) bool {
+			return r.Route == RoutePromoted && r.Issue == v.ID
+		}) {
 			continue
 		}
 		out = append(out, DrainRoute{Issue: v.ID, From: "field", Kind: string(v.Rule), Route: RouteRule, Rule: string(v.Rule),

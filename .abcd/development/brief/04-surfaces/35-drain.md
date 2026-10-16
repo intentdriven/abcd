@@ -62,10 +62,12 @@ store with two accepted records carrying the fields. None of these falls back
 to the baseline or to a looser rule.
 
 The rule reads each issue's fields and nothing else: nothing open in
-`blocked_by`, a category the rule takes, a severity it takes, and a `remedy:`
-other than `none (filed automatically)`, the value an automatic filer writes
+`blocked_by`, no intent in `related_intents` (a consistency finding's aside,
+below), a category the rule takes, a
+severity it takes, and a `remedy:` other than `none (filed automatically)`, the value an automatic filer writes
 when it has no fix. Every open issue receives exactly one disposition, from the
-first rule that excludes it: skipped when blocked; handed back for `security`
+first rule that excludes it: skipped when blocked; handed back as `promoted`
+when its `related_intents` names an intent, for `security`
 (unless the record takes it), for a category outside the rule's set, for a
 severity outside it, for a remedy that waits on a ruling, and for a deferral
 that is live; ineligible without a remedy or with the automatic filers' value until
@@ -77,13 +79,27 @@ judges a criterion `NOT_MET` or `INCONCLUSIVE` captures one issue carrying the
 check it leaves owed (ruling DQ1c; [`05-intent.md`](05-intent.md)), and its
 remedy is the work that clears it: "fix, then re-run the audit" for a failed
 criterion, "re-run the audit" for an undecided one. The rule judges such a
-record by its fields as it judges any other: a failed audit's record is a
-`major` `bug`, which the baseline hands back on severity, and an undecided
-one's is a `minor` `inconsistency`, which the baseline takes.
+record by its fields as it judges any other, and the record names the audited
+intent in `related_intents`, so it is handed back as `promoted` whatever its
+severity: a failed audit's `major` `bug` and an undecided one's `minor`
+`inconsistency` alike are the intent's, paid through a re-run of its audit. A
+person's own build of the issue is let through the hand-back, the eligibility
+row naming the intent, when no other rule would hand it back: the rule is asked
+again with `promoted` set aside, so a failed audit's `major` issue is still
+refused on its severity, and the undecided audit's `minor` one is the lane
+route its reopened work takes (ruling DQ1a, which DQ1c subsumes;
+dcn-2610161519047899).
 
-Two hand-backs hold whatever the repository's record says, because each marks a
-decision a person still owes. A remedy that opens "Waits on" as words, followed
-by a blank, a colon or nothing (the shape a remedy takes when its fix waits on an
+Three hand-backs hold whatever the repository's record says. An issue whose
+`related_intents` names an intent is handed back under `promoted`, naming each
+intent: an intent already owns it, so a machine never takes it alone, and a
+promotion one drain made is never judged or worked again by another that reads
+the promoted record. A record the consistency pass files is the one exception:
+the two intents it names are the ones its contradiction is between, not intents
+that took it on, so it is judged by its other fields, and is ineligible, as any
+automatic filer's record is, until a person writes its remedy (ruling H12). The
+other two each mark a decision a person still owes. A
+remedy that opens "Waits on" as words, followed by a blank, a colon or nothing (the shape a remedy takes when its fix waits on an
 unanswered ruling, compared case-folded), is
 handed back under `waits-on-ruling`: taking it would make the ruling. A record
 whose `deferred_after` names the checkout's current anchor tag, the newest

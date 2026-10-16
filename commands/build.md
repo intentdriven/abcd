@@ -97,7 +97,14 @@ flag. The payload is `/abcd:reserve`'s: `act`, `record`, `holder`, `copy`,
 An issue id builds the loop's issue-keyed lane instead: `build <iss-N>` (an
 issue id by shape) checks that the repository's own drain rule takes the issue,
 read as `/abcd:drain --dry-run` reads it, and that no peer holds it, then opens
-one lane whose brief is the issue with its remedy as the work. The receipt must
+one lane whose brief is the issue with its remedy as the work. One hand-back is
+let through: an issue the drain hands back as `promoted` (its `related_intents`
+names an intent) is taken by a person's own build when no other rule would hand
+it back, and the `eligible` row names the intent it goes through; this is how an
+after-merge audit's owed check reaches a lane. The rule is asked again with
+`promoted` set aside, so a linked issue that security, category, severity,
+"Waits on", a deferral or a missing remedy still holds is refused with that
+reason, and every other hand-back is refused. The receipt must
 name the issue in `resolves`, and the landing resolves it. `/abcd:drain` starts
 these runs one at a time; see `/abcd:implement` for the lane's receipt and its
 hand-back.

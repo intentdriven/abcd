@@ -1123,15 +1123,22 @@ Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
 recorded decision: an accepted decision record whose frontmatter carries the four
 fields drain_categories, drain_severities, drain_security and drain_remedy. The
-rule reads the record's fields alone: nothing open in blocked_by; a category the
-rule takes; a severity it takes; and a remedy: field. abcd's strict baseline takes
-tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, and
-hands every security issue to a person. A repository's record may loosen those
-floors (major, critical, security), and every floor it loosens is named. An issue
-whose remedy opens "Waits on", or whose deferral past the current release tag is
-live, or names a release tag this checkout lacks, is always handed back. Every
-other open issue is handed back, listed as ineligible, or skipped naming its
-blocker, by the rule that excluded it.
+rule reads the issue's fields alone: nothing open in blocked_by; no intent in
+related_intents; a category the rule takes; a severity it takes; and a remedy:
+field. abcd's strict baseline takes tech-debt, documentation, inconsistency, drift,
+bug and ux at nitpick or minor, and hands every security issue to a person. A
+repository's record may loosen those floors (major, critical, security), and every
+floor it loosens is named. Three hand-backs hold whatever the record says. An issue
+whose related_intents names an intent is handed back as promoted, naming the
+intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit
+<itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still
+takes it; a record the consistency pass files is the exception, since the intents
+it names are the two it found contradicting: once a person has written its remedy,
+it is judged by its other fields as if it named no intent, and an intent it was
+promoted into still owns it. An issue whose remedy opens "Waits on", or whose
+deferral past the current release tag is live, or names a release tag this checkout
+lacks, is handed back too. Every other open issue is handed back, listed as
+ineligible, or skipped naming its blocker, by the rule that excluded it.
 
 In a checkout with a remote named origin, the ledger is read from origin's default
 branch, never from the checkout, which may be behind it: each move fetches the
@@ -1188,8 +1195,9 @@ user-visible change is promoted to an intent draft (`capture promote`, which
 stamps the issue's related_intents and nothing else); a trust or safety rule is
 flagged as needing a decision record, with the question; a design finding or a
 second package is flagged with the home the lane names. Every issue the rule
-hands back is flagged naming the rule. Nothing but the promotion is written to
-the ledger, and every hand-back is in the summary.
+hands back is flagged naming the rule, less one this drain promoted itself, which
+is counted once, as its promotion. Nothing but the promotion is written to the
+ledger, and every hand-back is in the summary.
 
 The drain is paced as a run is: its window and pause are --pace, --sub-agents and
 --fix-rounds as `abcd build` reads them, set when the drain begins. At the window's

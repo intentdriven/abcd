@@ -38,15 +38,22 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
 			"fields drain_categories, drain_severities, drain_security and drain_remedy. The\n" +
-			"rule reads the record's fields alone: nothing open in blocked_by; a category the\n" +
-			"rule takes; a severity it takes; and a remedy: field. abcd's strict baseline takes\n" +
-			"tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, and\n" +
-			"hands every security issue to a person. A repository's record may loosen those\n" +
-			"floors (major, critical, security), and every floor it loosens is named. An issue\n" +
-			"whose remedy opens \"Waits on\", or whose deferral past the current release tag is\n" +
-			"live, or names a release tag this checkout lacks, is always handed back. Every\n" +
-			"other open issue is handed back, listed as ineligible, or skipped naming its\n" +
-			"blocker, by the rule that excluded it.\n\n" +
+			"rule reads the issue's fields alone: nothing open in blocked_by; no intent in\n" +
+			"related_intents; a category the rule takes; a severity it takes; and a remedy:\n" +
+			"field. abcd's strict baseline takes tech-debt, documentation, inconsistency, drift,\n" +
+			"bug and ux at nitpick or minor, and hands every security issue to a person. A\n" +
+			"repository's record may loosen those floors (major, critical, security), and every\n" +
+			"floor it loosens is named. Three hand-backs hold whatever the record says. An issue\n" +
+			"whose related_intents names an intent is handed back as promoted, naming the\n" +
+			"intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit\n" +
+			"<itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still\n" +
+			"takes it; a record the consistency pass files is the exception, since the intents\n" +
+			"it names are the two it found contradicting: once a person has written its remedy,\n" +
+			"it is judged by its other fields as if it named no intent, and an intent it was\n" +
+			"promoted into still owns it. An issue whose remedy opens \"Waits on\", or whose\n" +
+			"deferral past the current release tag is live, or names a release tag this checkout\n" +
+			"lacks, is handed back too. Every other open issue is handed back, listed as\n" +
+			"ineligible, or skipped naming its blocker, by the rule that excluded it.\n\n" +
 			"In a checkout with a remote named origin, the ledger is read from origin's default\n" +
 			"branch, never from the checkout, which may be behind it: each move fetches the\n" +
 			"reservations and that branch first, under the drain's lock and before any judgement\n" +
@@ -100,8 +107,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"stamps the issue's related_intents and nothing else); a trust or safety rule is\n" +
 			"flagged as needing a decision record, with the question; a design finding or a\n" +
 			"second package is flagged with the home the lane names. Every issue the rule\n" +
-			"hands back is flagged naming the rule. Nothing but the promotion is written to\n" +
-			"the ledger, and every hand-back is in the summary.\n\n" +
+			"hands back is flagged naming the rule, less one this drain promoted itself, which\n" +
+			"is counted once, as its promotion. Nothing but the promotion is written to the\n" +
+			"ledger, and every hand-back is in the summary.\n\n" +
 			"The drain is paced as a run is: its window and pause are --pace, --sub-agents and\n" +
 			"--fix-rounds as `abcd build` reads them, set when the drain begins. At the window's\n" +
 			"end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and\n" +

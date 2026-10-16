@@ -49,6 +49,12 @@ An open issue is **eligible** when all of these hold, read from its fields
 alone:
 
 - no record in its `blocked_by` is still open;
+- its `related_intents` names no intent (an issue linked to an intent goes
+  through that intent, whatever the repository's record says), unless the
+  consistency pass filed it: the two intents such a record names are the ones
+  its contradiction is between, so once a person has written its remedy it is
+  judged by the other fields below as if it named no intent (an intent it was
+  promoted into, which names it back in `related_issues`, still owns it);
 - its category is one the rule takes;
 - its severity is one the rule takes;
 - it carries a `remedy:` (`abcd capture --remedy "<fix>"`, which every new
@@ -67,6 +73,7 @@ decides its one disposition:
 | `outcome` | `rule` | Meaning |
 | --- | --- | --- |
 | `skipped` | `blocked` | an open record blocks it; `blockers` names them |
+| `handback` | `promoted` | its `related_intents` names an intent, and the consistency pass did not file it; the reason names each intent once, at most three and then how many more, and the way through the intent: `abcd build <itd-N>`, or `abcd intent audit <itd-N>` for an audit's owed check |
 | `handback` | `security` | category `security`, a person's unless the rule sets `drain_security: take` |
 | `handback` | `category` | a category the rule does not take |
 | `handback` | `severity` | a severity the rule does not take (`major` and `critical` under the baseline) |
@@ -144,7 +151,8 @@ order, then the others grouped by outcome with their reasons. For an
 `abcd capture remedy <iss-N> "<fix>"` is what makes it a candidate, and name the
 ones an automatic filer wrote apart, since their reason says so. For a
 `waits-on-ruling` or `deferred` hand-back, say which ruling or release it waits
-on. Do not act on the list: a hand-back is a person's decision.
+on, and for a `promoted` one, which intent it goes through; a person's own
+`abcd build <iss-N>` still takes a `promoted` issue no other rule would hand back, naming the intent. Do not act on the list: a hand-back is a person's decision.
 
 ## The run
 
@@ -322,9 +330,13 @@ branch and ends it. The drain routes it:
 | `design-finding`, `second-package` | `home`: flagged with the `home` the lane names | nothing |
 | (fix rounds exhausted) | `home`: flagged, the issue staying open | nothing |
 
-Every issue the rule hands back is in `flags` with `route: "rule"` and the
-`rule` that excluded it; `flags` are re-derived at every move and written
-nowhere.
+Every issue the rule hands back is in `flags` with `from: "field"`,
+`route: "rule"` and the `rule` that excluded it; `flags` are re-derived at every
+move and written nowhere. An issue this drain promoted itself reads as
+`promoted` on every move after, and is not flagged again: it is counted once,
+in `hand_backs` with `route: "promoted"` and its `draft`. So the rule
+`promoted` is always a flag's `rule` field, and the route `promoted` always a
+hand-back's `route` field.
 
 ### The run's payload
 

@@ -215,6 +215,14 @@ func keyCheck(key string) (CheckRow, bool) {
 // issueCheck is the pre-start checks for an issue key (decision 10 on the
 // parent): the drained repository's own rule, read as the drain reads it, takes
 // the issue, and no peer holds it. The run then has one lane, for the issue.
+// One hand-back is let through, with a note naming the intents: promoted, an
+// issue linked to an intent, which a drain never takes alone and a person's
+// own build may, but only when promoted is the only reason it would be handed
+// back. The rule is asked again with promoted set aside, and an issue another
+// rule still holds (security, category, severity, "Waits on", a deferral, no
+// remedy) is refused with that rule's reason, as it would be without the link
+// (refining dcn-2610161428244461). The drain opens lanes for eligible issues
+// alone, so it never reaches this case.
 func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnapshot) (CheckResult, error) {
 	row := CheckRow{Name: CheckEligible}
 	var plan capture.DrainPlan
@@ -236,10 +244,34 @@ func issueCheck(repoRoot string, res CheckResult, session string, snap *peerSnap
 		return res, nil
 	}
 	i := slices.IndexFunc(plan.Dispositions, func(v capture.DrainVerdict) bool { return recordid.SameID(v.ID, res.Key) })
+	if i >= 0 && plan.Dispositions[i].Rule == capture.RulePromoted {
+		aside, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot, SetAsidePromoted: true})
+		if err != nil {
+			return res, err
+		}
+		// Another rule holds it, or the ledger moved and it is gone: the
+		// verdict without the link decides, so the refusal names that rule.
+		j := slices.IndexFunc(aside.Dispositions, func(v capture.DrainVerdict) bool { return recordid.SameID(v.ID, res.Key) })
+		if j < 0 || aside.Dispositions[j].Outcome != capture.DrainEligible {
+			plan, i = aside, j
+		}
+	}
 	switch {
 	case i < 0:
 		row.Detail = res.Key + " is not an open issue in this checkout's ledger"
 		row.Remedy = "name an open issue: `abcd drain --dry-run` lists every one with its disposition"
+	case plan.Dispositions[i].Rule == capture.RulePromoted:
+		// A person's own build is let through a hand-back, with a note
+		// (dcn-2610161040365515): a drain hands an issue linked to an intent
+		// back, and this is the lane route that leaves it, an after-merge
+		// audit's owed check among them (ruling DQ1a). Only promoted is let
+		// through, and only when no other rule would hand the issue back:
+		// every other hand-back is a decision the rule's record keeps a
+		// person's.
+		v := plan.Dispositions[i]
+		row.OK = true
+		row.Detail = fmt.Sprintf("%s: a drain hands it back under %s (promoted), and a person's own build takes it; %s", v.ID, plan.Record, v.Reason)
+		res.steps = []PendingStep{{Number: 1, Title: issueStepTitle(v)}}
 	case plan.Dispositions[i].Outcome != capture.DrainEligible:
 		v := plan.Dispositions[i]
 		row.Detail = fmt.Sprintf("%s is %s under %s (%s): %s", v.ID, v.Outcome, plan.Record, v.Rule, v.Reason)

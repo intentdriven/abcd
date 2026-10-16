@@ -1,0 +1,6 @@
+---
+id: dcn-2610161428244461
+slug: an-after-merge-audit-s-owed-check-issue
+date: 2026-10-16
+---
+2026-10-16 — An after-merge audit's owed-check issue reaches a lane through a person's own build, and a drain still hands it back as promoted (facilitator-on-delegation, drain-many-accounts step 4; a new record refining dcn-2610161401449155, since records are append-only): ruling DQ1a, that an undecided fidelity audit reopens the work and sends the feature back to a lane, is subsumed by ruling DQ1c, which says what reopening means for a shipped intent (it stays shipped and flagged, and one issue carries the owed check, dcn-2609300000000027), so DQ1a is met when that issue reaches a lane, and a person's abcd build <iss-N> remains the lane route for it: the eligibility check lets a promoted issue through with a note naming its intent, as dcn-2610161040365515 lets a person's own build through a hand-back, while every other hand-back is still refused. This overrides the resolution of iss-2608290820473197 where it says the captured issue is one "which a drain can take": a drain hands it back, and a person's build or abcd intent audit takes it (grounds: rulings DQ1a and DQ1c, dcn-2610161040365515, dcn-2610161401449155; iss-2610161015370582).
