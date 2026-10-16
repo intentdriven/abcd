@@ -232,9 +232,15 @@ on origin's default branch backs off, with a tip or without one
    A yes's tombstone is plain: nothing marks the issue judged on origin, so
    another account's drain may reserve it and ask the judgement again. The
    hold is taken once per request and never renewed by a poll: a request whose
-   reservation lapses unanswered is dropped, its reservation released, and the
-   issue asked again only after the drain's other eligible work
-   (dcn-2610161315385888). An issue whose `found_at` names no repository-relative path is
+   reservation lapses unanswered is dropped, and its reservation released at
+   once, before anything else in that move. The issue is not asked again in
+   that move, nor before a cool-down of the take-over margin (five minutes)
+   from it, so another account has a window to take it: it is passed over
+   meanwhile with the check `lapsed`, and a drain left with no other work
+   waits rather than ending. It is then asked again, on a new reservation,
+   only after the drain's other eligible work, and the lapse is forgotten once
+   it is asked again or answered (dcn-2610161315385888, refined by
+   dcn-2610161420314313). An issue whose `found_at` names no repository-relative path is
    handed back before any judgement over it, `from` `reservation`, with the
    reason "`<iss-N>` has no found_at path to reserve it with; handed back", and
    the drain moves on. An issue another copy holds in the move's view, or whose

@@ -119,7 +119,8 @@ type DrainState struct {
 	Judgements []DrainJudgement `json:"judgements,omitempty"`
 	// Lapsed are the judgement requests dropped unanswered once the hold the
 	// drain took for them lapsed, the latest last; their issues are asked
-	// again only after the drain's other eligible work (drain_hold.go).
+	// again only once a cool-down has passed, and then only after the
+	// drain's other eligible work (drain_hold.go).
 	Lapsed []DrainLapse `json:"lapsed,omitempty"`
 	// Stopped says why the drain ended, and EndedAt when; empty while it runs.
 	Stopped string     `json:"stopped,omitempty"`
@@ -457,19 +458,23 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		st.Judgements = append(st.Judgements, j)
 		st.Judging = nil
 		res.Judged = &j
+		pruneLapse(&st, j.Issue)
 	}
 
 	// The drain takes its judgement hold once per request (drain_hold.go): a
 	// request whose hold has lapsed unanswered is dropped and the hold
 	// released at once, before anything else in the move can reach the
-	// issue, and its issue asked again only after the drain's other eligible
-	// work, so a host that polls without answering never holds the issue past
-	// one lease (dcn-2610161315385888).
+	// issue, and its issue is asked again neither in this move nor before a
+	// cool-down of the take-over margin, and then only after the drain's
+	// other eligible work, so a host that polls without answering never
+	// holds the issue past one lease, and another account has a window to
+	// take it (dcn-2610161315385888, refined by dcn-2610161420314313).
 	if j := st.Judging; j != nil && j.Hold != nil && !now.Before(j.Hold.ExpiresAt) {
-		st.Lapsed = append(slices.DeleteFunc(st.Lapsed, func(l DrainLapse) bool { return l.Issue == j.Issue }),
-			DrainLapse{Issue: j.Issue, RequestedAt: j.RequestedAt, LapsedAt: j.Hold.ExpiresAt})
-		lapse = fmt.Sprintf("the judgement over %s was not answered before the reservation the drain took for it lapsed at %s, so the request is dropped; %s is asked again only once the drain has taken its other eligible work",
-			j.Issue, stamp(j.Hold.ExpiresAt), j.Issue)
+		l := DrainLapse{Issue: j.Issue, RequestedAt: j.RequestedAt, LapsedAt: j.Hold.ExpiresAt, DroppedAt: now}
+		pruneLapse(&st, j.Issue)
+		st.Lapsed = append(st.Lapsed, l)
+		lapse = fmt.Sprintf("the judgement over %s was not answered before the reservation the drain took for it lapsed at %s, so the request is dropped; %s is asked again no sooner than %s, and only after the drain's other eligible work",
+			j.Issue, stamp(j.Hold.ExpiresAt), j.Issue, stamp(l.coolDownEnds()))
 		if clause := holds.release(j.Issue); clause != "" {
 			lapse += "; " + clause
 		}
@@ -584,12 +589,26 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if err != nil {
 		return DrainResult{}, err
 	}
+	// cooling is the earliest a lapsed issue's cool-down this move waited
+	// out ends, zero when none: a drain left with only such issues waits
+	// for it rather than ending.
+	var cooling time.Time
 	for _, v := range lapsedLast(plan.Dispositions, st.Lapsed) {
 		if v.Outcome != capture.DrainEligible {
 			continue
 		}
 		if slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.Issue == v.ID }) ||
 			slices.ContainsFunc(st.HandBacks, func(r DrainRoute) bool { return r.Issue == v.ID }) {
+			continue
+		}
+		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {
+			ends := l.coolDownEnds()
+			if cooling.IsZero() || ends.Before(cooling) {
+				cooling = ends
+			}
+			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckLapsed,
+				Reason: fmt.Sprintf("its judgement request lapsed unanswered at %s, and it is asked again no sooner than %s, so another account has a window to take it",
+					stamp(l.LapsedAt), stamp(ends))})
 			continue
 		}
 		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID }); i >= 0 {
@@ -648,6 +667,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 			judging.Hold = judgeHold
 			st.Judging = &judging
+			pruneLapse(&st, v.ID)
 			res.Next = judgementMove(judging)
 			return finish(true)
 		}
@@ -687,6 +707,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		return finish(true)
 	}
 	st.Judging = nil
+	if !cooling.IsZero() {
+		at := stamp(cooling)
+		res.Next = fmt.Sprintf("nothing to ask before %s: the only eligible work left is a lapsed judgement request's issue, asked again once its cool-down has passed; run `abcd drain` again at or after %s", at, at)
+		return finish(true)
+	}
 	st.Stopped, st.EndedAt = DrainStoppedEmpty, &now
 	res.Next = fmt.Sprintf("nothing eligible is left: the drain opened %d lane(s) and ends here", len(st.Lanes))
 	return finish(true)

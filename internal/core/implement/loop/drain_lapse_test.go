@@ -59,9 +59,66 @@ func TestALapsedJudgementRequestIsDroppedAndAskedAgainOnlyAfterOtherWork(t *test
 		t.Fatalf("the drain records the lapsed request: %+v", st.Lapsed)
 	}
 
+	c.t = c.t.Add(claim.TakeoverMargin)
 	again := judge(t, repo, o, lapsed, JudgementYes, HandBackTrustRule, "the remedy moves a trust boundary")
 	if again.Judging == nil || again.Judging.Issue != secondIssue || again.Judging.Hold == nil || again.Judging.Hold.Commit == taken {
-		t.Fatalf("with the other work taken the lapsed issue is asked again on a new hold: %+v", again.Judging)
+		t.Fatalf("with the other work taken and the cool-down past, the lapsed issue is asked again on a new hold: %+v", again.Judging)
+	}
+	if st, _, _ := readDrain(repo.Root()); len(st.Lapsed) != 0 {
+		t.Fatalf("an issue asked again is no longer lapsed, so it does not sort last for the rest of the drain: %+v", st.Lapsed)
+	}
+	judge(t, repo, o, again, JudgementYes, HandBackTrustRule, "the remedy moves a trust boundary")
+	if st, _, _ := readDrain(repo.Root()); len(st.Lapsed) != 0 {
+		t.Fatalf("an answered issue is not lapsed: %+v", st.Lapsed)
+	}
+}
+
+// TestALapsedIssueWaitsOutItsCoolDownBeforeItIsAskedAgain: the one eligible
+// issue's request lapses; the move that drops it releases the hold and does
+// not ask again, nor does any move before the cool-down has passed, so
+// another account has a window to take the issue; the drain does not end
+// meanwhile, and names when it asks again; once the cool-down has passed,
+// the issue is asked again on a new hold and is no longer lapsed.
+func TestALapsedIssueWaitsOutItsCoolDownBeforeItIsAskedAgain(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	onlyIssueEligible(t, bare)
+	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
+	pace := "600/0"
+	_, taken := askFirst(t, repo, bare, Options{Now: c.now, Pace: &pace}, DrainOptions{})
+	o := Options{Now: c.now}
+
+	c.t = c.t.Add(lease.Default)
+	dropped := c.t
+	for _, at := range []time.Time{dropped, dropped.Add(claim.TakeoverMargin - time.Second)} {
+		c.t = at
+		res, err := Drain(repo.Root(), o, DrainOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		releasedOver(t, bare, secondIssue, taken)
+		if res.Judging != nil || res.Stopped != "" {
+			t.Fatalf("at %s the lapsed issue is not asked again and the drain goes on: %+v", at, res)
+		}
+		if e := passedFor(t, res, secondIssue); e.Check != CheckLapsed {
+			t.Fatalf("the lapsed issue is passed over for its cool-down: %+v", e)
+		}
+		if until := stamp(dropped.Add(claim.TakeoverMargin)); !strings.Contains(res.Next, until) {
+			t.Fatalf("the move names when the issue is asked again (%s): %q", until, res.Next)
+		}
+		if strings.Contains(res.Next, "asked again only once") && res.Judging != nil {
+			t.Fatalf("the move says the issue waits while asking it: %q", res.Next)
+		}
+	}
+	c.t = dropped.Add(claim.TakeoverMargin)
+	res, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Judging == nil || res.Judging.Issue != secondIssue || res.Judging.Hold == nil || res.Judging.Hold.Commit != refOf(t, bare, secondIssue) {
+		t.Fatalf("once the cool-down has passed the issue is asked again on a new hold: %+v", res.Judging)
+	}
+	if st, _, _ := readDrain(repo.Root()); len(st.Lapsed) != 0 {
+		t.Fatalf("the issue asked again is pruned from the lapsed requests: %+v", st.Lapsed)
 	}
 }
 
@@ -114,10 +171,10 @@ func TestALapsedOnlyIssueIsReleasedThenAskedAgainOnTheDrainsOwnHold(t *testing.T
 	updates := refUpdates(t, bare)
 
 	c.t = c.t.Add(lease.Default)
-	again := pollUntilAsked(t, repo.Root(), c, 0, 1)
-	if again.Judging == nil {
-		again = pollUntilAsked(t, repo.Root(), c, lease.Skew, 3)
+	if _, err := Drain(repo.Root(), Options{Now: c.now}, DrainOptions{}); err != nil {
+		t.Fatal(err)
 	}
+	again := pollUntilAsked(t, repo.Root(), c, lease.Skew, 3)
 	pushed := updates(claim.RefPrefix + secondIssue)
 	if len(pushed) == 0 {
 		t.Fatal("the lapse pushed nothing")
@@ -135,18 +192,23 @@ func TestALapsedOnlyIssueIsReleasedThenAskedAgainOnTheDrainsOwnHold(t *testing.T
 }
 
 // TestPollingWithoutAnAnswerNeverHoldsTheIssuePastOneLease: the one eligible
-// issue is polled every twenty minutes, unanswered, across four leases; every
+// issue is polled every four minutes, unanswered, across four leases; every
 // reservation of it origin shows live is the hold the awaited judgement
 // records, none outlives one lease, each is released by the poll that finds it
-// lapsed, and the issue is asked again on a new hold.
+// lapsed, and the issue is asked again on a new hold only once a cool-down of
+// at least the take-over margin has passed since that release.
 func TestPollingWithoutAnAnswerNeverHoldsTheIssuePastOneLease(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	onlyIssueEligible(t, bare)
 	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
 	pace := "600/0"
 	askFirst(t, repo, bare, Options{Now: c.now, Pace: &pace}, DrainOptions{})
-	const step = 20 * time.Minute
+	const step = 4 * time.Minute
 	holds := map[string]bool{}
+	// lapsedAt is when the last hold seen lapsed: a new hold is claimed no
+	// sooner than the cool-down after it, since the request is dropped no
+	// sooner than the lapse.
+	var lapsedAt time.Time
 	for end := c.t.Add(4 * lease.Default); c.t.Before(end); {
 		c.t = c.t.Add(step)
 		res, err := Drain(repo.Root(), Options{Now: c.now}, DrainOptions{})
@@ -157,6 +219,11 @@ func TestPollingWithoutAnAnswerNeverHoldsTheIssuePastOneLease(t *testing.T) {
 		if r.released {
 			continue
 		}
+		if !holds[r.commit] && !lapsedAt.IsZero() && r.claimed.Sub(lapsedAt) < claim.TakeoverMargin {
+			t.Fatalf("at %s the issue was reserved again %s after its last hold lapsed; want a cool-down of at least %s",
+				c.t, r.claimed.Sub(lapsedAt), claim.TakeoverMargin)
+		}
+		lapsedAt = r.expires
 		if !c.t.Before(r.expires) || r.expires.Sub(r.claimed) > lease.Default {
 			t.Fatalf("at %s origin holds %s past its lease: %+v", c.t, secondIssue, r)
 		}

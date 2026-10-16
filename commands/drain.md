@@ -210,8 +210,13 @@ what it did in `next`:
   tombstone that records no judgement, so another account's drain may reserve
   the issue later and ask the judgement again. The reservation is taken once
   per request and never renewed while you poll: a request still unanswered
-  when it lapses (two hours by default) is dropped, its reservation released,
-  and the issue asked again only after the drain's other eligible work. An
+  when it lapses (two hours by default) is dropped and its reservation
+  released at once, in the first move after the lapse. That move does not ask
+  the issue again, nor does any move within five minutes of it (the take-over
+  margin), so another account has a window to take it: meanwhile the issue is
+  passed over, check `lapsed`, naming when it is asked again, and a drain with
+  no other work waits rather than ending. After that it is asked again, on a
+  new reservation, only after the drain's other eligible work. An
   issue whose `found_at` names no repository-relative path cannot be reserved:
   it is handed back before any judgement is asked over it, `from:
   "reservation"`, with the reason `<iss-N> has no found_at path to reserve it

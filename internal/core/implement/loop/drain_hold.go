@@ -136,12 +136,44 @@ func (h *judgeHolds) settle(awaited *DrainJudging) []string {
 	return out
 }
 
+// CheckLapsed is the pass-over of an issue whose judgement request lapsed
+// unanswered, while its cool-down runs.
+const CheckLapsed = "lapsed"
+
 // DrainLapse is a judgement request the drain dropped unanswered: its issue,
-// when it was asked, and when the hold taken for it lapsed.
+// when it was asked, when the hold taken for it lapsed, and when the move that
+// dropped it released that hold. The issue is not asked again before its
+// cool-down has passed (coolDownEnds), so another account has a window to
+// take it, and then only after the drain's other eligible work; the entry is
+// pruned once the issue is asked again or answered.
 type DrainLapse struct {
 	Issue       string    `json:"issue"`
 	RequestedAt time.Time `json:"requested_at"`
 	LapsedAt    time.Time `json:"lapsed_at"`
+	DroppedAt   time.Time `json:"dropped_at"`
+}
+
+// coolDownEnds is when l's issue may be asked again: the take-over margin
+// after the move that dropped it, which is never the move it lapsed in.
+func (l DrainLapse) coolDownEnds() time.Time {
+	return l.DroppedAt.Add(claim.TakeoverMargin)
+}
+
+// lapseOf is the lapse st records for issue, if any.
+func lapseOf(st DrainState, issue string) (DrainLapse, bool) {
+	i := slices.IndexFunc(st.Lapsed, func(l DrainLapse) bool { return l.Issue == issue })
+	if i < 0 {
+		return DrainLapse{}, false
+	}
+	return st.Lapsed[i], true
+}
+
+// pruneLapse drops issue's lapse from st: it was asked again, or answered.
+func pruneLapse(st *DrainState, issue string) {
+	st.Lapsed = slices.DeleteFunc(st.Lapsed, func(l DrainLapse) bool { return l.Issue == issue })
+	if len(st.Lapsed) == 0 {
+		st.Lapsed = nil
+	}
 }
 
 // lapsedLast is the plan's verdicts in order, with the issues of lapsed
