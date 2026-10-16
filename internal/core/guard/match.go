@@ -346,14 +346,16 @@ func setsName(tok string, names []string) bool {
 }
 
 // exportsAny reports whether the command s exports one of names to the
-// commands after it in the shell: `export NAME` or `export NAME=…`. A name
-// a substitution prints can be export (nameCouldBe).
+// commands after it in the shell: `export NAME` or `export NAME=…`, and
+// `declare -x` or `typeset -x` with the same operands (exportOperands). A
+// name a substitution prints can be any of them (nameCouldBe).
 func exportsAny(s segment, names []string) bool {
 	for _, a := range commandSites(s) {
-		if !nameCouldBe(s.tokens[a.idx], "export") {
+		first, ok := exportOperands(s.tokens, a.idx)
+		if !ok {
 			continue
 		}
-		for _, tok := range s.tokens[a.idx+1:] {
+		for _, tok := range s.tokens[first:] {
 			if setsName(tok, names) {
 				return true
 			}
@@ -365,6 +367,43 @@ func exportsAny(s segment, names []string) bool {
 		}
 	}
 	return false
+}
+
+// exportOperands reports whether the command at site exports the names it is
+// given, and the index of its first operand. export always does. declare
+// and typeset do when an option among the words before their first operand
+// carries x (`-x`, `-gx`, `-rx`), as bash and zsh read it, and not when the
+// last such option is `+x`, which takes the export away; `--` ends the
+// options. A word a substitution prints can be an option, -x among them.
+func exportOperands(tokens []string, site int) (first int, ok bool) {
+	tok := tokens[site]
+	if nameCouldBe(tok, "export") {
+		return site + 1, true
+	}
+	if !nameCouldBe(tok, "declare") && !nameCouldBe(tok, "typeset") {
+		return 0, false
+	}
+	exports := false
+	i := site + 1
+	for ; i < len(tokens); i++ {
+		w := tokens[i]
+		if w == "--" {
+			i++
+			break
+		}
+		if isUnknown(w) {
+			// It can be an option, so the words after it can be too.
+			exports = exports || clusterCouldCarry(w, 'x')
+			continue
+		}
+		if len(w) < 2 || (w[0] != '-' && w[0] != '+') {
+			break
+		}
+		if strings.ContainsRune(w[1:], 'x') {
+			exports = w[0] == '-'
+		}
+	}
+	return i, exports
 }
 
 // directoryChanges names the builtins an `after_cd` entry reads as the

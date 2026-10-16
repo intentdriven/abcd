@@ -851,7 +851,8 @@
         "known_bad": [
           "OPENCODE_PERMISSION='{\"*\":\"allow\"}' opencode run x",
           "env OPENCODE_PERMISSION='{\"bash\":\"allow\"}' opencode run x",
-          "export OPENCODE_PERMISSION='{\"*\":\"allow\"}'; opencode run x"
+          "export OPENCODE_PERMISSION='{\"*\":\"allow\"}'; opencode run x",
+          "declare -x OPENCODE_PERMISSION='{\"*\":\"allow\"}'; opencode run x"
         ],
         "known_good": [
           "opencode run \"fix the tests\"",

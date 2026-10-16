@@ -127,7 +127,8 @@ type Pattern struct {
 	// environment variables for the command: as an assignment before it
 	// (`NAME=value cmd`), as an operand of a wrapper that sets the
 	// environment (`env NAME=value cmd`), or by an `export NAME` or `export
-	// NAME=value` earlier in the line. It is what reads a
+	// NAME=value` earlier in the line, or a `declare -x` or `typeset -x` of
+	// it, which exports it as export does. It is what reads a
 	// program that takes a setting from its environment as well as from its
 	// flags: opencode reads its permission setting from OPENCODE_PERMISSION.
 	// Names are compared exactly, as the environment does.

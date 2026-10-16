@@ -235,3 +235,42 @@ func TestGuardReadsARunnerShellString(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardReadsDeclareXAsAnExport: declare -x and typeset -x export a
+// variable as export does, so one that sets OPENCODE_PERMISSION before the
+// opencode a line starts is refused under the same entry. A declare that
+// does not export the variable, or takes the export away, is not.
+func TestGuardReadsDeclareXAsAnExport(t *testing.T) {
+	const id = "agent-launch-opencode-permission-env"
+	r := Defaults()
+	for _, line := range []string{
+		`declare -x OPENCODE_PERMISSION='{"*":"allow"}'; opencode run x`,
+		`typeset -x OPENCODE_PERMISSION='{"*":"allow"}'; opencode run x`,
+		`declare -gx OPENCODE_PERMISSION=x && opencode run x`,
+		`typeset -rx OPENCODE_PERMISSION=x; opencode run x`,
+		`declare -x -- OPENCODE_PERMISSION=x; opencode run x`,
+		`OPENCODE_PERMISSION=x; declare -x OPENCODE_PERMISSION; opencode run x`,
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+		if a := approveShell(clean(), NewFiles(t.TempDir()), line); a.Allow || a.EntryID != id {
+			t.Errorf("%q: the approver answered %+v, want a refusal under %q", line, a, id)
+		}
+	}
+	for _, line := range []string{
+		`declare OPENCODE_PERMISSION=x; opencode run x`,
+		`declare +x OPENCODE_PERMISSION=x; opencode run x`,
+		`declare -p OPENCODE_PERMISSION; opencode run x`,
+		`declare -x FOO=OPENCODE_PERMISSION; opencode run x`,
+		`declare -x OPENCODE_PERMISSION=x`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}

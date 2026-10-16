@@ -39,6 +39,7 @@ var wordReaders = map[string]string{
 	// match.go
 	"matchSegmentEnv":      "sitesNamed: every place the entry's command can sit; anyProgram marks a name nothing fixes",
 	"exportsAny":           "commandSites and nameCouldBe",
+	"exportOperands":       "nameCouldBe, and clusterCouldCarry on every unknown option word",
 	"runnerStartsAt":       "exempt: looks up a word walkToCommand already stepped as a runner; runnersAt reads a subcommand the line does not fix as every runner",
 	"newEntryMatcher":      "operandAcceptance over readWord",
 	"precededByCD":         "commandSites and nameCouldBeAny",
