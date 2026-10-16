@@ -41,8 +41,12 @@ leaves nothing to read. Then it asks the forge, through `gh api`
 call per status branch), who pushed each standing announcement it has not
 asked about before (C17). A push's record names the tip it left, so every
 first-parent commit after the tip it moved from takes the same pusher, at
-most the walk's limit per push, and a push made by an app is passed over,
-leaving its sender claimed. It pushes nothing.
+most the walk's limit per push, and a push made by an app judges no commit,
+leaving its sender claimed; when it is the newest push to the tip held here,
+the branch is not asked about again until its tip moves. One fetch asks about
+at most ten branches, the one waiting longest first, and a branch asked goes
+behind every branch still waiting, so each is asked within a bounded number
+of fetches. It pushes nothing.
 
 ## The intake
 

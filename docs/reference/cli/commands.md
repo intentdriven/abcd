@@ -4330,9 +4330,9 @@ origin, one whose name is not read and one past the 500 leave nothing to
 read; a copy that cannot be deleted is named, and the fetch goes on. Then
 it asks the forge (gh api, the repository's activity record) who pushed
 each standing announcement it has not asked about yet, on at most ten
-branches, the newest first: a sender is verified when the forge names the
-branch's owner, doubtful when it names someone else, and claimed when the
-forge cannot say or an app pushed it.
+branches, the one waiting longest first: a sender is verified when the
+forge names the branch's owner, doubtful when it names someone else, and
+claimed when the forge cannot say or an app pushed it.
 
 An announcement stands for its life from when this checkout first fetched it,
 not by the sender's clock. One whose sender is not its branch's owner, one

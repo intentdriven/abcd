@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -36,10 +37,11 @@ func activityFixture(t *testing.T, subs map[string]string) string {
 // as branch_creation, a forced one as force_push, and a merge made by a pull
 // request or a merge queue as pr_merge and merge_queue_merge, beside push:
 // each moves the branch, and is read as a push by its actor. A deletion moves
-// the branch to no commit and is passed over, as is an app's push, the merge
-// queue's among them: GitHub credits a merge queue's merge to the queue (type
-// Bot), and a pull request's merge to the person who merged it. The query
-// names no activity type, so none is lost to it.
+// the branch to no commit and is passed over. An app's push, the merge
+// queue's among them, is read as an app's (App): GitHub credits a merge
+// queue's merge to the queue (type Bot), and a pull request's merge to the
+// person who merged it. The query names no activity type, so none is lost to
+// it.
 func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
 	sha := func(c string) string { return strings.Repeat(c, 40) }
 	logPath := fakeActivity(t, activityFixture(t, map[string]string{
@@ -53,9 +55,11 @@ func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
 	}
 	want := []Push{
 		{Before: sha("1"), After: sha("2"), Login: "octo"},
+		{Before: sha("3"), After: sha("4"), Login: "hosted-app[bot]", App: true},
 		{Before: sha("5"), After: sha("6"), Login: "octo"},
 		{Before: sha("0"), After: sha("7"), Login: "mallory"},
 		{Before: sha("b"), After: sha("c"), Login: "octo"},
+		{Before: sha("9"), After: sha("a"), Login: "github-merge-queue[bot]", App: true},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("pushers = %+v; want %+v", got, want)
@@ -152,11 +156,11 @@ func TestPushersRefusesAnOriginNotOnGitHub(t *testing.T) {
 	}
 }
 
-// TestPushersPassesOverAnAppsPush is C17's app identity: a push made by an
-// app (an actor of type Bot, or a login ending in [bot]) says nothing of who
-// sent the announcement, so it is passed over and the sender stays claimed
-// rather than reading as another account's push.
-func TestPushersPassesOverAnAppsPush(t *testing.T) {
+// TestPushersMarksAnAppsPush is C17's app identity: a push made by an app (an
+// actor of type Bot, or a login ending in [bot]) says nothing of who sent the
+// announcement, so it is marked as an app's, which judges no commit and
+// leaves the sender claimed rather than reading as another account's push.
+func TestPushersMarksAnAppsPush(t *testing.T) {
 	a := strings.Repeat("a", 40)
 	b := strings.Repeat("b", 40)
 	c := strings.Repeat("c", 40)
@@ -168,17 +172,22 @@ func TestPushersPassesOverAnAppsPush(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != (Push{Before: zero, After: c, Login: "maya"}) {
-		t.Fatalf("pushers = %+v; want only maya's push", got)
+	want := []Push{
+		{Before: b, After: a, Login: "claude", App: true},
+		{Before: c, After: b, Login: "some-app[bot]", App: true},
+		{Before: zero, After: c, Login: "maya"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("pushers = %+v; want %+v: the apps' pushes marked, maya's not", got, want)
 	}
 }
 
-// TestPushersPassesOverAMergeQueuesMerge: GitHub credits a merge queue's
-// merge (merge_queue_merge) to the queue itself, github-merge-queue[bot] of
-// type Bot, which says nothing of who sent an announcement, so it is passed
-// over and the commits it carried stay claimed; a pull request's merge
-// (pr_merge) names the person who merged it, and is read.
-func TestPushersPassesOverAMergeQueuesMerge(t *testing.T) {
+// TestPushersMarksAMergeQueuesMerge: GitHub credits a merge queue's merge
+// (merge_queue_merge) to the queue itself, github-merge-queue[bot] of type
+// Bot, which says nothing of who sent an announcement, so it is marked as an
+// app's and the commits it carried stay claimed; a pull request's merge
+// (pr_merge) names the person who merged it, and is read as theirs.
+func TestPushersMarksAMergeQueuesMerge(t *testing.T) {
 	a := strings.Repeat("a", 40)
 	b := strings.Repeat("b", 40)
 	c := strings.Repeat("c", 40)
@@ -188,8 +197,12 @@ func TestPushersPassesOverAMergeQueuesMerge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[0] != (Push{Before: c, After: b, Login: "maya"}) {
-		t.Fatalf("pushers = %+v; want only maya's merge of a pull request", got)
+	want := []Push{
+		{Before: b, After: a, Login: "github-merge-queue[bot]", App: true},
+		{Before: c, After: b, Login: "maya"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("pushers = %+v; want %+v: the queue's merge marked, maya's not", got, want)
 	}
 }
 

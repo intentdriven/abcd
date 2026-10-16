@@ -114,9 +114,12 @@ var ErrStatusUnavailable = errors.New("the status could not be read")
 
 // Push is one push to a status branch as the forge's record of pushes holds
 // it: the tip it moved the branch from (Before, the zero name when the push
-// made the branch) and to (After), and the account that pushed.
+// made the branch) and to (After), and the account that pushed. App is true
+// when an app made the push: it then judges no commit it carried, which stays
+// claimed, but it still shows how far the record reaches.
 type Push struct {
 	Before, After, Pusher string
+	App                   bool
 }
 
 // PusherLookup asks the forge who pushed each update to the status branch
@@ -1418,25 +1421,39 @@ func pusherKept(root, commit string) pusherVerdict {
 var pusherBudget = 10 * time.Second
 
 // maxAskedBranches is the most status branches one fetch asks the forge
-// about, the newest first: the rest are counted and asked by a later fetch.
+// about, the one waiting longest first: the rest are counted and asked by a
+// later fetch.
 const maxAskedBranches = 10
+
+// askedRel names the turn each status branch waits at to be asked about, and
+// the tip of each the forge's record names an app as the newest to push
+// (keptAsked).
+const askedRel = "forge-asked"
 
 // checkSenders asks lookup, once per branch, who pushed each standing
 // announcement the forge was not yet asked about here, and keeps each login
 // the answer names that is a valid username (any other answer is kept as a
 // login that is not the owner's), and that it named none (noPusher). At most
-// maxAskedBranches branches are asked, the one whose newest such
-// announcement is newest first, and none once pusherBudget has passed; the
-// rest are counted, and asked by a later fetch. A push names only the tip it left, so each
+// maxAskedBranches branches are asked, and none once pusherBudget has passed;
+// the rest are counted, and asked by a later fetch. The branches are asked in
+// turn: the one waiting longest first, and among those that began waiting at
+// one fetch, the one whose newest such announcement is newest first; a branch
+// asked goes behind every branch still waiting, and one left unasked keeps
+// its turn, so every branch is asked within a bounded number of fetches. A
+// branch whose tip held here is the one the forge's record last named an
+// app's push to is not asked again until the tip moves: an app's push says
+// nothing of who sent what it carried, and asking again changes nothing. A
+// push names only the tip it left, so each
 // is placed by walking the first-parent line from that tip down to the tip
 // it moved from, at most the walk's limit of commits, under pusherBudget:
 // every commit of the push is judged by its pusher (placePushes). A commit two
 // pushes cover (a rewritten branch) takes a pusher other than the owner over
 // the owner. A branch whose record could not be placed in full keeps nothing
-// of it, and one whose record was not read in full (ErrPartialRecord) keeps
-// only another account named as a pusher. It returns why the forge could not
-// be asked, or its record could not be read or placed in full, "" when it
-// could.
+// of it, and one whose record was not read in full (ErrPartialRecord), or not
+// as far as the tip held here, or held against no tip because the branches
+// held here could not be read, keeps only another account named as a pusher.
+// It returns why the forge could not be asked, or its record could not be
+// read or placed in full, "" when it could.
 func checkSenders(root string, now time.Time, lookup PusherLookup, held map[string]bool) string {
 	ask := map[string][]string{}
 	var branches []string // newest first, as keptAnnouncements orders them
@@ -1448,25 +1465,53 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			ask[a.Branch] = append(ask[a.Branch], a.Commit)
 		}
 	}
+	if len(branches) == 0 {
+		return ""
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
 	defer cancel()
+	var failed []string
 	// The tip this checkout holds of each branch, which a record read in
 	// full names as some push's After.
 	tips := map[string]string{}
-	if len(branches) > 0 {
-		if refs, err := statusRefs(ctx, root); err == nil {
-			for _, r := range refs {
-				tips[strings.TrimPrefix(r.ref, StatusTrackingPrefix)] = r.sha
-			}
+	refs, err := senderRefs(ctx, root)
+	tipsKnown := err == nil
+	if tipsKnown {
+		for _, r := range refs {
+			tips[strings.TrimPrefix(r.ref, StatusTrackingPrefix)] = r.sha
 		}
+	} else {
+		failed = append(failed, "the status branches held here could not be read ("+termsafe.Sanitize(redacted(err))+
+			"), so whether the forge's record reaches each tip is not known, and a commit it does not name another account for stays claimed and is asked about again")
 	}
-	var failed []string
+	kept := keptAsked(root)
+	turn := kept.turn
+	turnOf := func(b string) int64 {
+		if e, ok := kept.at[b]; ok {
+			return e.turn
+		}
+		return turn
+	}
+	var queue []string
+	for _, b := range branches {
+		if e := kept.at[b]; tipsKnown && e.appTip != "" && e.appTip == tips[b] {
+			continue
+		}
+		queue = append(queue, b)
+	}
+	sort.SliceStable(queue, func(i, j int) bool { return turnOf(queue[i]) < turnOf(queue[j]) })
+	next := map[string]askedEntry{}
 	unasked := 0
-	for i, b := range branches {
+	for i, b := range queue {
 		if i >= maxAskedBranches || ctx.Err() != nil {
-			unasked = len(branches) - i
+			unasked = len(queue) - i
+			for _, b := range queue[i:] {
+				next[b] = askedEntry{turn: turnOf(b), appTip: kept.at[b].appTip}
+			}
 			break
 		}
+		// Asked: behind every branch still waiting.
+		next[b] = askedEntry{turn: turn + 1, appTip: kept.at[b].appTip}
 		pushed, err := lookup(ctx, root, b)
 		partial := errors.Is(err, ErrPartialRecord)
 		if err != nil && !partial {
@@ -1475,19 +1520,32 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 		}
 		// The forge records a push some time after it lands: a record that
 		// names no push to the tip held here has not caught up yet, and is
-		// read as one not read in full.
-		behind := !partial && !slices.ContainsFunc(pushed, func(p Push) bool { return tips[b] != "" && p.After == tips[b] })
-		partial = partial || behind
+		// read as one not read in full. With no tip known, nothing is held
+		// against one, and the record is read as not read in full too.
+		var atTip *Push
+		for i := range pushed {
+			if tips[b] != "" && pushed[i].After == tips[b] {
+				atTip = &pushed[i]
+				break
+			}
+		}
+		behind := tipsKnown && !partial && atTip == nil
+		partial = partial || behind || !tipsKnown
 		byCommit, err := placePushes(ctx, root, b, pushed)
 		if err != nil {
 			failed = append(failed, "abcd-status/"+b+": the forge's record of pushes was not placed in full: "+termsafe.Sanitize(redacted(err)))
 			continue
 		}
+		if atTip != nil && atTip.App {
+			// The newest push to the tip is an app's: kept as asked until the
+			// tip moves.
+			next[b] = askedEntry{turn: turn + 1, appTip: tips[b]}
+		}
 		const askedAgain = ", so a commit it does not name another account for stays claimed and is asked about again"
 		switch {
 		case behind:
 			failed = append(failed, "abcd-status/"+b+": the forge's record does not yet name the push of the tip held here"+askedAgain)
-		case partial:
+		case partial && tipsKnown && (atTip == nil || !atTip.App):
 			failed = append(failed, "abcd-status/"+b+": "+ErrPartialRecord.Error()+askedAgain)
 		}
 		for _, c := range ask[b] {
@@ -1507,16 +1565,99 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			writeStatusFile(root, pusherDir, c, []byte(login+"\n"))
 		}
 	}
+	// A tip an app pushed that is still the tip stays kept as asked.
+	for b, e := range kept.at {
+		if _, ok := next[b]; !ok && e.appTip != "" && (!tipsKnown || e.appTip == tips[b]) {
+			next[b] = e
+		}
+	}
+	keepAsked(root, turn+2, next)
 	if unasked > 0 {
 		what := fmt.Sprintf("%d status branches not asked about", unasked)
 		if unasked == 1 {
 			what = "1 status branch not asked about"
 		}
-		failed = append(failed, fmt.Sprintf("%s (one fetch asks about at most %d, the newest first, within %s); the next `abcd status` asks them",
+		failed = append(failed, fmt.Sprintf("%s (one fetch asks about at most %d, the longest waiting first, within %s); the next `abcd status` asks them",
 			what, maxAskedBranches, pusherBudget))
 	}
 	return strings.Join(failed, "; ")
 }
+
+// askedEntry is one status branch as askedRel keeps it: the turn it waits
+// at, and the tip the forge's record named an app's push to as the newest,
+// "" when none.
+type askedEntry struct {
+	turn   int64
+	appTip string
+}
+
+// askedSet is what askedRel keeps: each branch by name, and the turn the
+// next fetch counts from, past every turn kept.
+type askedSet struct {
+	turn int64
+	at   map[string]askedEntry
+}
+
+// maxAskedBytes bounds what keptAsked reads: a line per branch.
+const maxAskedBytes = 256 << 10
+
+// keptAsked is the set askedRel keeps; empty when none is kept or it does not
+// read. A line that does not read, or names a branch whose name is not read,
+// is passed over.
+func keptAsked(root string) askedSet {
+	s := askedSet{at: map[string]askedEntry{}}
+	data := readStatusFile(root, askedRel, maxAskedBytes)
+	if data == nil {
+		return s
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if n, err := strconv.ParseInt(lines[0], 10, 64); err == nil && n >= 0 {
+		s.turn = n
+	}
+	for _, l := range lines[1:] {
+		f := strings.Fields(l)
+		if len(f) != 3 || !statusName(f[1]) {
+			continue
+		}
+		n, err := strconv.ParseInt(f[0], 10, 64)
+		if err != nil || n < 0 {
+			continue
+		}
+		e := askedEntry{turn: n}
+		if gitutil.IsFullSHA(f[2]) {
+			e.appTip = f[2]
+		}
+		s.at[f[1]] = e
+		s.turn = max(s.turn, n+1)
+	}
+	return s
+}
+
+// keepAsked keeps each branch's turn and app's tip, and the turn the next
+// fetch counts from, replacing what was kept, unflushed and best effort: a
+// set not kept costs only the order of the next fetch's questions, or a
+// question asked again.
+func keepAsked(root string, turn int64, at map[string]askedEntry) {
+	var b strings.Builder
+	b.WriteString(strconv.FormatInt(turn, 10) + "\n")
+	names := make([]string, 0, len(at))
+	for name := range at {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		tip := at[name].appTip
+		if tip == "" {
+			tip = "-"
+		}
+		b.WriteString(strconv.FormatInt(at[name].turn, 10) + " " + name + " " + tip + "\n")
+	}
+	_ = writeUnflushedIn(root, statusBranches.stateDir, askedRel, []byte(b.String()))
+}
+
+// senderRefs is checkSenders' read of the status branches this checkout
+// holds: statusRefs, which a test replaces with one that fails.
+var senderRefs = statusRefs
 
 // placePushes maps each commit the pushes to abcd-status/<branch> carried to
 // its pusher, read from this checkout's copy under ctx: the first-parent
@@ -1528,7 +1669,8 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 // the walk cannot find: another account's then takes every commit the walk
 // read, since any of them may be its, and the owner's vouches for its After
 // alone. A commit two pushes carried takes the pusher that is not the owner.
-// A push whose After this checkout does not hold is passed over; one that
+// An app's push judges no commit and is passed over, as is a push whose
+// After this checkout does not hold; one that
 // ends ctx stops the placing, and ctx's error is answered with nothing
 // placed, since a commit an older push also carried may then read as the
 // owner's when it is not.
@@ -1544,7 +1686,8 @@ func placePushes(ctx context.Context, root, branch string, pushes []Push) (map[s
 		if h := placeHook; h != nil {
 			h(i)
 		}
-		if !gitutil.IsFullSHA(p.After) {
+		if p.App || !gitutil.IsFullSHA(p.After) {
+			// An app's push judges no commit it carried.
 			continue
 		}
 		held, err := hasCommitCtx(ctx, root, p.After)

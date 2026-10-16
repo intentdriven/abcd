@@ -129,3 +129,57 @@ func TestTheForgesRecordJudgesEachPushLikeActivity(t *testing.T) {
 		t.Fatalf("senders unchecked = %q; want the forge asked in full", got.SendersUnchecked)
 	}
 }
+
+// TestAnAppsPushToTheTipReachesIt is the forge adapter's answer when an app
+// made the newest push to the tip held here: the record has reached the tip,
+// so the fetch says nothing of a record behind it, and the commit the app's
+// push carried reads claimed.
+func TestAnAppsPushToTheTipReachesIt(t *testing.T) {
+	fixture, err := os.ReadFile(filepath.Join("..", "..", "core", "github", "testdata", "activity.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w := newReserveWorld(t)
+	octo := w.clone(t, "octo", octoMail)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	var tips []string
+	for _, item := range []string{"1", "2", "3", "4"} {
+		if code, _, stderr := reserveRun(t, octo, "announce", "merging", item); code != 0 {
+			t.Fatalf("announce: exit %d, %s", code, stderr)
+		}
+		tips = append(tips, gitCmd(t, w.origin, "rev-parse", claim.StatusRefPrefix+"octo"))
+	}
+	c1, c2, c3, c4 := tips[0], tips[1], tips[2], tips[3]
+	forgeAnswering(t, string(fixture), map[string]string{
+		"before-force": c1, "after-force": c2,
+		"before-bot": c3, "after-bot": c4,
+		"before-push": c2, "after-push": c3,
+		"after-creation":  c1,
+		"before-deletion": c2,
+		"before-queue":    c3, "after-queue": c4,
+		"before-pr": c1, "after-pr": c2,
+	})
+	gh := t.TempDir()
+	gitInitAt(t, gh)
+	gitCmd(t, gh, "remote", "add", "origin", "https://github.com/intentdriven/abcd.git")
+	real := statusPushers
+	statusPushers = func(ctx context.Context, _, branch string) ([]claim.Push, error) { return real(ctx, gh, branch) }
+	t.Cleanup(func() { statusPushers = real })
+
+	code, stdout, stderr := reserveRun(t, pat, "status", "--json")
+	if code != 0 {
+		t.Fatalf("status: exit %d, %s", code, stderr)
+	}
+	var got statusJSON
+	if err := json.Unmarshal([]byte(stdout), &got); err != nil {
+		t.Fatalf("--json: %v\n%s", err, stdout)
+	}
+	if got.SendersUnchecked != "" {
+		t.Fatalf("senders unchecked = %q; want the forge asked in full: an app's push names the tip", got.SendersUnchecked)
+	}
+	for _, a := range got.Announcements {
+		if a.Commit == c4 && a.Check != claim.SenderClaimed {
+			t.Fatalf("the app's commit reads %s; want claimed", a.Check)
+		}
+	}
+}

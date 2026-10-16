@@ -14,9 +14,11 @@ import (
 
 // Push is one push the forge's activity record holds: the tip it moved the
 // branch from (Before, forty zeros when the push made the branch) and to
-// (After), and the pushing account's login.
+// (After), and the pushing account's login. App is true when an app made the
+// push (appActor): its login then says nothing of who sent what it carried.
 type Push struct {
 	Before, After, Login string
+	App                  bool
 }
 
 // pushActivities are the activity types that move a branch to a commit: a
@@ -25,7 +27,7 @@ type Push struct {
 // made by a pull request or a merge queue (pr_merge, merge_queue_merge). Each
 // is read as a push by its actor: a pull request's merge names the person who
 // merged it, and a merge queue's names the queue itself, an app, so it is
-// passed over (appActor). A deletion moves the branch to no commit, and says
+// read as an app's (appActor). A deletion moves the branch to no commit, and says
 // nothing of one.
 var pushActivities = []string{"push", "force_push", "branch_creation", "pr_merge", "merge_queue_merge"}
 
@@ -44,9 +46,9 @@ const activityPage = 100
 // commit name that is not one, says nothing and is passed over; every login is the forge's
 // text, which a caller holds to its own grammar before showing it. An origin
 // that is not a github.com URL cannot be asked, and gh is not run for it. A
-// push made by an app (appActor) is passed over: the forge cannot say which
-// person it acted for, so the announcement's sender stays claimed. gh is
-// killed when ctx ends (runContext).
+// push made by an app (appActor) is answered with App set: the forge cannot
+// say which person it acted for, so it judges no commit, but it still names
+// the tip the record has reached. gh is killed when ctx ends (runContext).
 func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool, err error) {
 	origin, err := gitutil.Run(cwd, "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(origin) == "" {
@@ -79,13 +81,9 @@ func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool,
 			!gitutil.IsFullSHA(a.After) || a.After == zeroSHA || !gitutil.IsFullSHA(a.Before) {
 			continue
 		}
-		if appActor(a.Actor.Type, a.Actor.Login) {
-			// An app's push (the merge queue's, or any other app's) says
-			// nothing of who sent it: passed over, so the sender stays
-			// claimed.
-			continue
-		}
-		pushed = append(pushed, Push{Before: a.Before, After: a.After, Login: a.Actor.Login})
+		// An app's push (the merge queue's, or any other app's) says nothing
+		// of who sent it: marked, so the caller judges no commit by it.
+		pushed = append(pushed, Push{Before: a.Before, After: a.After, Login: a.Actor.Login, App: appActor(a.Actor.Type, a.Actor.Login)})
 	}
 	return pushed, len(acts) >= activityPage, nil
 }

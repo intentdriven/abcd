@@ -2,6 +2,7 @@ package claim
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -315,6 +316,117 @@ func TestARecordShortOfTheTipIsAskedAgain(t *testing.T) {
 	for i, c := range cs {
 		if got := pusherKept(pat.dir, c); got != (pusherVerdict{}) {
 			t.Fatalf("commit %d keeps %+v; want nothing kept", i, got)
+		}
+	}
+	pat.status(lookup)
+	if asked != 2 {
+		t.Fatalf("the forge was asked %d times; want the next fetch to ask again", asked)
+	}
+}
+
+// TestATipAnAppPushedIsNotAskedAgainUntilItMoves: the forge's record names an
+// app's push as the newest to the tip held here. The record has reached the
+// tip, so the fetch does not say it has not; the commit the app's push
+// carried stays claimed, never judged by the app's login; and the tip is kept
+// as asked, so the branch is not asked about again, even on a record not read
+// in full, until the tip moves.
+func TestATipAnAppPushedIsNotAskedAgainUntilItMoves(t *testing.T) {
+	w := newWorld(t)
+	octo := w.clone("6+octo@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	first := octo.announceAs("merging", "#1").Commit
+	octo.announceAs("merging", "#2")
+	asked := 0
+	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
+		if branch != "octo" {
+			return nil, nil
+		}
+		asked++
+		tip := w.statusTip("octo")
+		return []Push{
+			{Before: first, After: tip, Pusher: "hosted-app[bot]", App: true},
+			{Before: zeroCommit, After: first, Pusher: "octo"},
+		}, ErrPartialRecord
+	}
+	res := pat.status(lookup)
+	if strings.Contains(res.SendersUnchecked, "does not yet name") {
+		t.Fatalf("unchecked = %q; want no word that the record has not reached the tip", res.SendersUnchecked)
+	}
+	for _, a := range pat.read().Announcements {
+		if a.Commit != first && (a.Check != SenderClaimed || a.Pusher != "") {
+			t.Fatalf("the app's commit reads %s %q; want it claimed", a.Check, a.Pusher)
+		}
+	}
+	pat.status(lookup)
+	if asked != 1 {
+		t.Fatalf("the forge was asked %d times over two fetches; want once: the tip an app pushed is kept as asked", asked)
+	}
+	octo.announceAs("merging", "#3")
+	pat.status(lookup)
+	if asked != 2 {
+		t.Fatalf("the forge was asked %d times once the tip moved; want it asked again", asked)
+	}
+}
+
+// TestTheForgeIsAskedAboutEveryBranchInTurn: more branches wait to be asked
+// about than one fetch asks, and the forge answers none of them in full, so
+// none is ever settled. Each fetch asks first the branches waiting longest,
+// and each branch asked goes behind every branch still waiting, so every
+// branch is asked by the second fetch.
+func TestTheForgeIsAskedAboutEveryBranchInTurn(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	var all []string
+	for i := 0; i < maxAskedBranches+2; i++ {
+		b := "u" + strings.Repeat("x", i)
+		w.pushStatus(b, announcementMsg("merging", "#1", b, t0.Add(time.Duration(i)*time.Second), 30*time.Minute), "")
+		all = append(all, b)
+	}
+	asked := map[string]int{}
+	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
+		asked[branch]++
+		return nil, errors.New("the forge did not answer")
+	}
+	pat.status(lookup)
+	pat.status(lookup)
+	for _, b := range all {
+		if asked[b] == 0 {
+			t.Fatalf("after two fetches %s was never asked about (asked: %v); want every branch asked in turn", b, asked)
+		}
+	}
+}
+
+// TestAnUnreadTipDoesNotReadAsARecordBehind: when the status branches held
+// here cannot be read, no tip is known to hold the record against. The fetch
+// does not say of every branch that the record has not reached its tip; it
+// says the branches could not be read, and keeps nothing the record could
+// still change, so the next fetch asks again.
+func TestAnUnreadTipDoesNotReadAsARecordBehind(t *testing.T) {
+	_, pat, cs := octoBranch(t, 2)
+	pat.status(nil)
+	old := senderRefs
+	senderRefs = func(context.Context, string) ([]statusRef, error) {
+		return nil, errors.New("reading the status branches: git failed")
+	}
+	t.Cleanup(func() { senderRefs = old })
+	asked := 0
+	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
+		if branch != "octo" {
+			return nil, nil
+		}
+		asked++
+		return []Push{{Before: zeroCommit, After: cs[1], Pusher: "octo"}}, nil
+	}
+	res := pat.status(lookup)
+	if strings.Contains(res.SendersUnchecked, "does not yet name") {
+		t.Fatalf("unchecked = %q; want no word that the record has not reached the tip", res.SendersUnchecked)
+	}
+	if !strings.Contains(res.SendersUnchecked, "the status branches held here could not be read") {
+		t.Fatalf("unchecked = %q; want the failed read of the branches named", res.SendersUnchecked)
+	}
+	for i, c := range cs {
+		if got := pusherKept(pat.dir, c); got != (pusherVerdict{}) {
+			t.Fatalf("commit %d keeps %+v; want nothing kept while the tip is unknown", i, got)
 		}
 	}
 	pat.status(lookup)

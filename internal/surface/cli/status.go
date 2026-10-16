@@ -33,7 +33,7 @@ var statusPushers claim.PusherLookup = func(ctx context.Context, root, branch st
 	}
 	out := make([]claim.Push, 0, len(pushes))
 	for _, p := range pushes {
-		out = append(out, claim.Push{Before: p.Before, After: p.After, Pusher: p.Login})
+		out = append(out, claim.Push{Before: p.Before, After: p.After, Pusher: p.Login, App: p.App})
 	}
 	if partial {
 		return out, claim.ErrPartialRecord
@@ -124,9 +124,9 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"read; a copy that cannot be deleted is named, and the fetch goes on. Then\n" +
 			"it asks the forge (gh api, the repository's activity record) who pushed\n" +
 			"each standing announcement it has not asked about yet, on at most ten\n" +
-			"branches, the newest first: a sender is verified when the forge names the\n" +
-			"branch's owner, doubtful when it names someone else, and claimed when the\n" +
-			"forge cannot say or an app pushed it.\n\n" +
+			"branches, the one waiting longest first: a sender is verified when the\n" +
+			"forge names the branch's owner, doubtful when it names someone else, and\n" +
+			"claimed when the forge cannot say or an app pushed it.\n\n" +
 			"An announcement stands for its life from when this checkout first fetched it,\n" +
 			"not by the sender's clock. One whose sender is not its branch's owner, one\n" +
 			"that does not read as an announcement (never shown but by its branch and the\n" +

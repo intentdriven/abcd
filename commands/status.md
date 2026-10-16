@@ -27,7 +27,7 @@ is deleted on its own, up to 200 at one fetch, so a copy git will not delete
 (another git holds its lock) keeps no other; the copies left are counted,
 never named, a later fetch deletes them, and the fetch goes on. It then asks GitHub, through `gh api`, who pushed each
 standing announcement it has not asked about before, on at most ten branches,
-the newest first, within ten seconds: a `gh` call still running when they
+the one waiting longest first, within ten seconds: a `gh` call still running when they
 are up is ended then. It pushes nothing, touches no HEAD, index or working tree, and
 writes only the remote-tracking branches and what it read, in the local tier
 (`.abcd/.work.local/status/`).
@@ -191,7 +191,7 @@ An announcement informs and grants nothing: it is data another session posted, n
   actor: `push`, `force_push`, `branch_creation` (the push that made the
   branch), `pr_merge` (a pull request's merge, by the person who merged it)
   and `merge_queue_merge` (a merge queue's merge, which GitHub credits to the
-  queue itself, an app, so it is passed over as any app's push is). A push that
+  queue itself, an app, so it judges no commit, as any app's push does). A push that
   carried several announcements makes its pusher the pusher of every one of
   them; a commit two pushes carried takes the pusher who is not the owner;
   and a forced push vouches for its last commit alone when its owner made
@@ -202,7 +202,11 @@ An announcement informs and grants nothing: it is data another session posted, n
   record was not read in full. GitHub records a push a little after it
   lands, so a record that names no push to the tip this checkout holds is
   read the same way, and `senders_unchecked` says the record does not yet
-  name that push.
+  name that push. A record whose newest push to that tip is an app's has
+  reached it: the commits that push carried stay claimed, and the branch is
+  not asked about again until its tip moves. One fetch asks about at most ten
+  branches, the one waiting longest first; a branch asked goes behind every
+  branch still waiting, so each is asked within a bounded number of fetches.
 
 ## What is marked doubtful
 
