@@ -45,7 +45,7 @@ func TestDrainDryRunNamesWhatOriginFinished(t *testing.T) {
 
 	before := gitCmd(t, repo, "status", "--porcelain", "--untracked-files=all")
 	text := string(runCLI(t, "drain", "--dry-run"))
-	for _, want := range []string{"origin/main", "1 commit(s) behind", done, "finished on origin/main", open} {
+	for _, want := range []string{"origin/main", "1 commit(s) behind", done, "finished on origin/main", open, "drawn at this copy's first move"} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the dry-run text does not carry %q:\n%s", want, text)
 		}
@@ -55,8 +55,9 @@ func TestDrainDryRunNamesWhatOriginFinished(t *testing.T) {
 	}
 
 	var out struct {
-		DryRun       bool `json:"dry_run"`
-		Dispositions []struct {
+		DryRun                bool `json:"dry_run"`
+		OrderDrawnAtFirstMove bool `json:"order_drawn_at_first_move"`
+		Dispositions          []struct {
 			ID string `json:"id"`
 		} `json:"dispositions"`
 		Origin *struct {
@@ -67,6 +68,9 @@ func TestDrainDryRunNamesWhatOriginFinished(t *testing.T) {
 	}
 	if err := json.Unmarshal(runCLI(t, "drain", "--dry-run", "--json"), &out); err != nil {
 		t.Fatal(err)
+	}
+	if !out.OrderDrawnAtFirstMove {
+		t.Fatal("the --json preview of a copy with no key does not say its order is drawn at its first move")
 	}
 	if out.Origin == nil || out.Origin.Ref != "origin/main" || out.Origin.Behind != 1 || !slices.Equal(out.Origin.Finished, []string{done}) {
 		t.Fatalf("the --json origin = %+v; want origin/main, one commit behind, %s finished", out.Origin, done)

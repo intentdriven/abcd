@@ -106,6 +106,11 @@ type DrainPreview struct {
 	capture.DrainPlan
 	Origin       *DrainOrigin `json:"origin"`
 	OriginUnread string       `json:"origin_unread,omitempty"`
+	// OrderDrawnAtFirstMove is true when this copy has no key yet, so the
+	// preview takes each group oldest first: this copy's own order within
+	// each group is drawn at its first move, which mints the key, and the
+	// dry run, which writes nothing, mints none.
+	OrderDrawnAtFirstMove bool `json:"order_drawn_at_first_move"`
 }
 
 // DrainDryRun plans the drain as its next move would, from origin's default
@@ -123,10 +128,21 @@ func DrainDryRun(repoRoot string, now time.Time) (DrainPreview, error) {
 		v, _, why := lastFetchedOrigin(repoRoot)
 		if why == "" {
 			// The order is this copy's as its next move draws it, the key
-			// read and never minted: the dry run writes nothing.
-			plan, origin, err := planFromOrigin(repoRoot, v, now, drainSpread(repoRoot, claim.OwnCopyKey(repoRoot)))
+			// read and never minted: the dry run writes nothing. A copy with
+			// no key yet draws its own order at its first move, which mints
+			// the key, so until then the preview takes each group oldest
+			// first and says so.
+			spread := ""
+			if key := claim.OwnCopyKey(repoRoot); key != "" {
+				spread = drainSpread(repoRoot, key)
+			}
+			plan, origin, err := planFromOrigin(repoRoot, v, now, spread)
 			if err != nil {
 				return DrainPreview{}, err
+			}
+			if spread == "" {
+				pv.OrderDrawnAtFirstMove = true
+				plan.Order += "; this copy has no key yet, so this preview takes each group oldest first: its own order within each group is drawn at this copy's first move"
 			}
 			pv.DrainPlan, pv.Origin = plan, origin
 			return pv, nil
