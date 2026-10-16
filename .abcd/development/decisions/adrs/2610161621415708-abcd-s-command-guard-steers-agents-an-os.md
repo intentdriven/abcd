@@ -58,3 +58,6 @@ We will decide limiting the network as a separate, later record.
 - The guard keeping its place inside the boundary depends on iss-2610161612203555.
 - Platform limits become the intent's scope conditions: Go tools' TLS under Seatbelt, git over SSH behind a proxy, the keychain credential helper, `sandbox-exec`'s deprecation on macOS, nested bubblewrap, and Ubuntu's restriction on unprivileged user namespaces.
 - A brief invariant states the rule once this record is accepted.
+- The boundary sits behind a seam (`internal/core/fence`): a fence-neutral policy and one interface each mechanism implements, so the mechanism the spec picks (sandbox-runtime, `spc-2610161751056096`) can be replaced by another without changing the runner or the loop.
+- The mechanism is a program abcd does not ship, and a boundary has no native default to degrade to, so on the runner route it is a requirement: [adr-22](0022-bundled-deps-as-pluggable-adapters.md)'s first declared exception, proposed until the product thinker signs it off, with the person's off switch in their user layer in place of degradation.
+- A signing key is not opened to a confined agent. Where the person's commits are signed, the spec proposes that a confined agent commits unsigned and abcd signs outside the boundary when it lands the work, a question for the product thinker.
