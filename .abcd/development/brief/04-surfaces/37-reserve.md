@@ -48,7 +48,11 @@ of the configuration (`~/.abcd.noindex/config.json`), never the repository's
 own; and the account of the forge token `gh` resolves from this session's
 environment, which takes one
 call to GitHub's user endpoint (`gh api user`, through the one door to
-GitHub). When git's identity is not a person's (unset, or a machine's, as in a
+GitHub). That call is made once per process for each checkout and forge
+credential (spc-2610161044461448 step 17): a definite answer is kept under a
+key of the checkout root and a digest of the variables that pick gh and its
+token and of gh's `hosts.yml`, so a `gh auth switch` asks again, and a failure
+is never kept. When git's identity is not a person's (unset, or a machine's, as in a
 hosted container whose clone comes with a vendor identity while its token is
 the person's), the token alone names the holder, the machine key is skipped so
 that the author's address and the login come from the same account, and that

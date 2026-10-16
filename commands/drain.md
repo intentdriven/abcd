@@ -254,7 +254,17 @@ what it did in `next`:
   names: it is a person's until a person changes that record, and a
   reservation the drain pushes backs off it even when the view missed it. A
   reservation refused for a reason of this checkout's own (no
-  GitHub username, `origin` not answering) refuses the move, nothing opened.
+  GitHub username, `origin` not answering, `origin` a fork the repository
+  does not allow) refuses the move, nothing opened; one that could not ask
+  GitHub whether `origin` is a fork goes ahead, and the lane that starts on it
+  says so in its run record and in `start.fork_unchecked`, as `abcd reserve`
+  does. A peer this checkout cannot read (a sibling worktree git will not
+  answer for, one another account owns, or a ledger holding one id in two
+  folders) refuses the move once, after the move's housekeeping is done and
+  written and before any issue is judged or reserved (check `peers`),
+  naming each peer with the repair its reason calls for: never a removal, which
+  would delete the worktree's ignored files. Left alone, such a peer would
+  read as holding every issue, and the drain would pass each over and end.
   The lane's run then renews the reservation, fences its landing on it and
   tombstones it once it lands (`commands/implement.md`); when the lane is
   handed back instead, the step that hands it back pushes the tombstone,

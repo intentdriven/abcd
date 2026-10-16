@@ -290,7 +290,17 @@ on origin's default branch backs off, with a tip or without one
    naming its kind, who handed it back and when, and every reservation the
    drain pushes backs off a hand-back that stands, so one the view missed is
    passed over by the push. A reservation refused for this checkout's own reason (no
-   GitHub username, `origin` not answering) refuses the move. The run records the reservation, which its steps renew, fence
+   GitHub username, `origin` not answering, `origin` a fork the repository does
+   not allow) refuses the move; the fork check is made by the reservation taken
+   before the judgement, and one it could not make, or waived for the allowed
+   fork, is named in the run record and start result of the lane a no opens on
+   that reservation ([`37-reserve.md`](37-reserve.md)). A peer this checkout
+   cannot read refuses the move once, where per-issue contention begins, after
+   the move's housekeeping, which is written first, and before any issue is
+   judged or reserved, naming each peer with the repair its reason calls for and
+   never a removal (spc-2610161044461448 step 9, dcn-2610161040378713): what
+   such a peer holds is unknown, so left to the peers check it would read as
+   holding every issue. The run records the reservation, which its steps renew, fence
    and tombstone ([`27-implement.md`](27-implement.md)); every drain move
    renews, at half its lease, the reservation of each issue lane parked at
    land, so a pull request waiting on a person stays held while the drain
