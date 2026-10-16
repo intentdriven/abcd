@@ -192,6 +192,22 @@
       "evidence": "internal/core/decisions/record.go:226",
       "commit": "25ef6d8ec16483c318b233edbff05162d8a7793b",
       "applied": "2026-10-15T18:41:10Z"
+    },
+    {
+      "chapter": "38-land.md",
+      "sentence": "agents-and-hosts block, and its page is hidden from a person's `/abcd:` menu.",
+      "replacement": "person's records group beside `build`, and its page is on a person's `/abcd:` menu.",
+      "evidence": "commands/land.md:5",
+      "commit": "2a692195fd82fec4229e064a2fb0f15b34c80172",
+      "applied": "2026-10-16T05:32:44Z"
+    },
+    {
+      "chapter": "24-decide.md",
+      "sentence": "Decisions outnumber ADRs about eight to one, so the common act takes the short",
+      "replacement": "Decisions outnumber ADRs about six to one, so the common act takes the short",
+      "evidence": ".abcd/work/decisions/ (538 records) against .abcd/development/decisions/adrs/ (92 files)",
+      "commit": "2a692195fd82fec4229e064a2fb0f15b34c80172",
+      "applied": "2026-10-16T05:32:44Z"
     }
   ]
 }
