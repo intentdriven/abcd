@@ -375,3 +375,34 @@ func TestPeersNamesAWorktreeOutsideHomeByItsDirectoryName(t *testing.T) {
 	}
 	noOutsidePath("the peer-held refusal", stderr.String())
 }
+
+// A worktree whose git file points at a gitdir outside HOME is not read, and
+// git's reason names that gitdir by its absolute path. `abcd peers` shows the
+// reason as the drain and the build do, the gitdir by its last element alone,
+// never by the absolute local path (iss-2609281329007423's class).
+func TestPeersNamesABrokenGitdirOutsideHomeByItsName(t *testing.T) {
+	home, repo := peerCheckout(t)
+	broken := filepath.Join(home, "wt", "broken")
+	gitCmd(t, repo, "worktree", "add", "-q", "-b", "feat/broken", broken, "main")
+	outside := t.TempDir()
+	nowhere := filepath.Join(outside, "nowhere")
+	if err := os.WriteFile(filepath.Join(broken, ".git"), []byte("gitdir: "+nowhere+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	absForms := []string{outside}
+	if r, err := filepath.EvalSymlinks(outside); err == nil && r != outside {
+		absForms = append(absForms, r)
+	}
+	for _, args := range [][]string{{"peers", "--json"}, {"peers"}} {
+		out := string(runCLI(t, args...))
+		noHomePath(t, home, out)
+		for _, abs := range absForms {
+			if strings.Contains(out, abs) {
+				t.Errorf("%v prints the absolute gitdir under %s:\n%s", args, abs, out)
+			}
+		}
+		if !strings.Contains(out, "nowhere") {
+			t.Errorf("%v no longer says where the git file points, by its name:\n%s", args, out)
+		}
+	}
+}

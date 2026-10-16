@@ -353,6 +353,49 @@ func (r Report) Unjudged() []Peer {
 	return out
 }
 
+// NotReadShown is p's not-read reason as a surface prints it, with no
+// absolute local path in it: the peer's own directory as fsutil.DisplayPathsIn
+// names it, HOME as ~, the checkout at repoRoot as ., and any other absolute
+// path, such as where a broken git file points, by its last element alone
+// (iss-2609281329007423). Every surface that prints a reason prints this
+// form: the drain's refusal, the build's peers check and `abcd peers`.
+func (p Peer) NotReadShown(repoRoot string) string {
+	s := fsutil.DisplayPathsIn(p.NotRead, p.Path)
+	if filepath.IsAbs(repoRoot) {
+		s = fsutil.RedactRoot(s, repoRoot, ".")
+		if real, err := filepath.EvalSymlinks(repoRoot); err == nil && real != repoRoot {
+			s = fsutil.RedactRoot(s, real, ".")
+		}
+	}
+	return displayAbsPaths(s)
+}
+
+// displayAbsPaths replaces each absolute path left in s, one starting where a
+// path can (the start, or after a space, a quote, a bracket or an equals
+// sign, so a URL's // is left alone) and running to the next space or quote, with
+// fsutil.DisplayPath's form of it. A path in a message has no reliable end, so
+// one holding a space keeps the words after it; what it never keeps is the
+// directories above them.
+func displayAbsPaths(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] != '/' || (i > 0 && !strings.ContainsRune(" \t\n'\"([=", rune(s[i-1]))) {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		end := i + strings.IndexFunc(s[i:]+" ", func(r rune) bool { return strings.ContainsRune(" \t\n'\")]", r) })
+		tok := strings.TrimRight(s[i:end], ".,;:")
+		if tok == "/" {
+			b.WriteString(tok)
+		} else {
+			b.WriteString(fsutil.DisplayPath(tok))
+		}
+		i += len(tok)
+	}
+	return b.String()
+}
+
 // HeldHere reports whether this checkout holds id in any folder of its family.
 func (r Report) HeldHere(id string) bool { return len(r.here[recordid.CanonCitedID(id)]) > 0 }
 

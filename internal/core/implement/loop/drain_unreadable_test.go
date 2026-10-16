@@ -375,10 +375,46 @@ func TestAReasonCarriesNoAbsolutePath(t *testing.T) {
 	p := peers.Peer{Source: peers.SourceWorktree, Path: "/srv/peers/wt",
 		NotRead: "git refused to answer for it: fatal: not a git repository: /srv/elsewhere/nowhere at '" + root + "/.git/worktrees/wt' from " +
 			home + "/x and /srv/peers/wt/.git"}
-	got := notReadShown(root, p)
+	got := p.NotReadShown(root)
 	want := "git refused to answer for it: fatal: not a git repository: nowhere at './.git/worktrees/wt' from ~/x and wt/.git"
 	if got != want {
 		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+}
+
+// TestTheBuildSideHolderLineCarriesNoAbsoluteGitdir: the peers check a build
+// or a start runs names an unreadable peer as a holder with the same reason
+// the drain's refusal shows, so a broken git file pointing at a gitdir outside
+// HOME is named by its last element, never by the absolute local path git
+// reports (iss-2609281329007423's class).
+func TestTheBuildSideHolderLineCarriesNoAbsoluteGitdir(t *testing.T) {
+	repo := drainRepo(t)
+	broken := filepath.Join(t.TempDir(), "wt-broken")
+	repo.Git("worktree", "add", "-q", "-b", "lane-broken", broken)
+	nowhere := breakGitFile(t, broken)
+
+	snap, err := readPeers(repo.Root(), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := peersCheck(secondIssue, "open", "", snap, false)
+	if row.OK || !strings.Contains(row.Detail, "the worktree at wt-broken (branch lane-broken) could not be read") {
+		t.Fatalf("the check names the unreadable worktree as a holder: %+v", row)
+	}
+	dirs := []string{filepath.Dir(nowhere)}
+	if real, err := filepath.EvalSymlinks(filepath.Dir(nowhere)); err == nil {
+		dirs = append(dirs, real)
+	}
+	for _, d := range dirs {
+		if strings.Contains(row.Detail, d) {
+			t.Errorf("the holder line carries the absolute gitdir under %s: %q", d, row.Detail)
+		}
+	}
+	if absPathRe.MatchString(row.Detail) {
+		t.Errorf("the holder line carries an absolute path: %q", row.Detail)
+	}
+	if !strings.Contains(row.Detail, "nowhere") {
+		t.Errorf("the holder line still says where the git file points, by its name: %q", row.Detail)
 	}
 }
 

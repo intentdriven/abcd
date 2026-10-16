@@ -320,7 +320,10 @@ func readyRow(r intent.ReadyResult) CheckRow {
 // claims and the reservations as last fetched, read once and judged for any
 // number of records.
 type peerSnapshot struct {
-	rep    peers.Report
+	rep peers.Report
+	// root is the checkout the listing was read from, which a peer's not-read
+	// reason is shown relative to (peers.Peer.NotReadShown).
+	root   string
 	claims []implement.ClaimState
 	// reserved is the reservations on origin as this checkout last fetched
 	// them, read from disk alone (claim.View): no fetch and no push. It is nil
@@ -349,7 +352,7 @@ func readPeers(repoRoot string, now time.Time) (*peerSnapshot, error) {
 	if err != nil {
 		return nil, err
 	}
-	snap := &peerSnapshot{rep: rep, now: now}
+	snap := &peerSnapshot{rep: rep, root: repoRoot, now: now}
 	if err := snap.readReservations(repoRoot); err != nil {
 		return nil, err
 	}
@@ -434,7 +437,7 @@ func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations boo
 	// fails closed on it, as it does on an unreadable claim below.
 	row.unjudged = snap.rep.Unjudged()
 	for _, p := range row.unjudged {
-		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.DisplayPathsIn(p.NotRead, p.Path)+")")
+		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+p.NotReadShown(snap.root)+")")
 	}
 	for _, c := range snap.claims {
 		if (c.Live || c.Unreadable) && recordid.SameID(c.Record, id) {

@@ -111,7 +111,7 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("abcd peers: %w", err)
 			}
-			out := peersView(rep)
+			out := peersView(root, rep)
 			failed := addReservations(root, &out, time.Now())
 			if err := render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderPeers(w, out) }); err != nil {
 				return err
@@ -128,12 +128,15 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 
 // peersView is the report as a surface shows it: paths and reasons redacted,
 // each worktree named by fsutil.DisplayPath, so one outside HOME is its
-// directory name rather than an absolute local path (iss-2609281329007423).
-func peersView(rep peers.Report) peersOutput {
+// directory name rather than an absolute local path, and each not-read reason
+// by peers.Peer.NotReadShown, the form the drain and the build print, so a
+// path the reason names outside HOME is no absolute local path either
+// (iss-2609281329007423).
+func peersView(root string, rep peers.Report) peersOutput {
 	out := peersOutput{Sources: rep.Sources, DefaultRef: rep.DefaultRef, Live: rep.Live(), IDs: rep.IDCount(),
 		Peers: make([]peers.Peer, 0, len(rep.Peers)), Skipped: make([]peers.Skipped, 0, len(rep.Skipped))}
 	for _, p := range rep.Peers {
-		p.NotRead = fsutil.DisplayPathsIn(p.NotRead, p.Path)
+		p.NotRead = p.NotReadShown(root)
 		p.Path = fsutil.DisplayPath(p.Path)
 		out.Peers = append(out.Peers, p)
 	}
