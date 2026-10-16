@@ -406,7 +406,11 @@ written for the refused act; `3` contention (the record is claimed by another
 session, or the run state is locked) — back off and take other work. The
 outage probe gives `3` a meaning of its own, wait: the probe is not due, another
 session holds it, or a service is still down; and it exits `2` once the run gave
-up. The JSON form holds on every path: a refusal is the `{"abcd":"error",…}` envelope on stdout.
+up. The load check's wait exits `1` when it gives up at its timeout or cannot
+wait at all, because the hold it keeps under the abcd home cannot be placed,
+judged or written; with a command to run, it exits with that command's code,
+`128+N` when signal N killed it, or `127` when the command could not be
+started. The JSON form holds on every path: a refusal is the `{"abcd":"error",…}` envelope on stdout.
 
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
