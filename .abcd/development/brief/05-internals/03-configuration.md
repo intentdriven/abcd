@@ -864,7 +864,7 @@ session. It writes to two streams:
 
 | Stream | What it carries | Who reads it |
 |---|---|---|
-| **stdout** | the rendered block of the domains new this turn, and nothing else. A prompt that matches no domain, or matches only domains already injected unchanged this session, writes zero bytes | the host, which adds it to the model's context |
+| **stdout** | the rendered block of the domains new this turn, and nothing else. A prompt that matches no domain, or matches only domains already injected unchanged this session, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title | the host, which adds it to the model's context |
 | **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — plus the load's notes and refusals | the operator, out of band |
 
 **The machine reader's envelope.** With `--json`, the flag every verb takes for
@@ -889,7 +889,8 @@ the set names all twelve.
 
 | Field | Meaning |
 |---|---|
-| `text` | byte for byte what the plain form writes to stdout: empty on a turn with nothing new |
+| `text` | the rendered block, byte for byte what the plain form writes to stdout on every prompt but the one that sets the session's name, where the plain form wraps it in the titling object: empty on a turn with nothing new |
+| `session_title` | present only on the prompt that sets the session's name: the name the plain form sets as the title |
 | `injected` | the domains whose text `text` carries; an empty list when it carries none |
 | `active` | the FULL set of domain names in force this turn, sorted, on every evaluated prompt: every domain that is not dormant, plus a dormant one this prompt activated with `*NAME`. An empty list when nothing is in force, as under the kill switch |
 | `error` | present only when the router could not evaluate the prompt — an unreadable payload, or a `rules.json` that will not load |

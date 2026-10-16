@@ -51,6 +51,10 @@ const (
 	KeySevenDay ElementKey = "seven_day"
 	KeyIntents  ElementKey = "intents"
 	KeyIssues   ElementKey = "issues"
+	// KeySession is the session's name (itd-2610111707085098). It is not in
+	// order and has no switch: it is the session's own name, shown whenever
+	// the harness supplies one, directly after the badge.
+	KeySession ElementKey = "session"
 )
 
 // order is the fixed element order itd-200's commitments set: the badge, the
@@ -169,6 +173,13 @@ func renderRow(in Input, set Settings) Row {
 			// afterwards, so its position is the SAME fact as every other
 			// element's: move it in `order` and it moves in the row.
 			row.Elements = append(row.Elements, renderBadge(in.State, set.Presence))
+			// The session's name follows the badge, so the row says which
+			// session it belongs to before anything else, and the badge
+			// still leads every prefix of the row (ac-1, ac-10). An absent
+			// name drops, as every payload element does (itd-200).
+			if name := in.Payload.SessionName; name != "" {
+				row.Elements = append(row.Elements, Element{Key: KeySession, Rendered: name, Plain: name})
+			}
 			continue
 		}
 		if !set.Enabled(k) {

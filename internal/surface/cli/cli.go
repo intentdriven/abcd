@@ -1560,6 +1560,10 @@ type hookInput struct {
 	Prompt    string `json:"prompt"`
 	Source    string `json:"source"`
 	Event     string `json:"hook_event_name"`
+	// SessionTitle is the session's custom title on the session-start and
+	// prompt payloads: a name the person gave it or one a hook set earlier,
+	// never a generated one. Read by session naming (hook_session_name.go).
+	SessionTitle string `json:"session_title"`
 	// ToolName is supplied by the PostToolUse hook; read by `hook
 	// question-answered` only.
 	ToolName string `json:"tool_name"`
@@ -1647,6 +1651,9 @@ type routerView struct {
 	Recalled []string  `json:"recalled"`
 	Active   *[]string `json:"active,omitempty"`
 	Error    string    `json:"error,omitempty"`
+	// SessionTitle is the session's title when this prompt set it
+	// (hook_session_name.go), and absent on every other prompt.
+	SessionTitle string `json:"session_title,omitempty"`
 }
 
 // routerRefused is the prompt router's fail-open exit when it cannot evaluate
@@ -1704,7 +1711,17 @@ force this turn, so a name missing from it has stopped. error is present only
 when the prompt could not be evaluated, and then active is absent: the set is
 unknown. A memory.json that cannot be read is named on stderr and recalls
 nothing, and the rules still inject. Every outcome, an error included,
-exits 0, so the hook can never wedge a session.`,
+exits 0, so the hook can never wedge a session.
+
+On the first prompt of a session whose start reserved it a name, when the
+session has no title yet, plain stdout is instead one object that sets the
+title, with the text above as its additional context (empty when the rules
+could not be loaded):
+
+  {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+   "additionalContext": ..., "sessionTitle": ...}}
+
+and the --json envelope carries the name as session_title.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
@@ -1750,6 +1767,15 @@ exits 0, so the hook can never wedge a session.`,
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
+				// The title owed on this prompt is set even so: naming does
+				// not depend on the rules (hook_session_name.go).
+				if title := resendSessionTitle(cmd, in); title != "" {
+					if *asJSON {
+						return routerEmit(cmd, routerView{Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title})
+					}
+					emitTitled(cmd, "", title)
+					return nil
+				}
 				return routerRefused(cmd, *asJSON, err.Error())
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
@@ -1790,6 +1816,9 @@ exits 0, so the hook can never wedge a session.`,
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
 			text := res.Text + mem.Text
+			// The name this session's start reserved, set once at its first
+			// prompt (hook_session_name.go).
+			title := resendSessionTitle(cmd, in)
 			if *asJSON {
 				injected := res.Injected
 				if injected == nil {
@@ -1799,7 +1828,11 @@ exits 0, so the hook can never wedge a session.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active})
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title})
+			}
+			if title != "" {
+				emitTitled(cmd, text, title)
+				return nil
 			}
 			if text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), text)
@@ -1999,6 +2032,10 @@ exits 0, so the hook can never wedge a session.`,
 					cwd = wd
 				}
 			}
+			// Naming first, before the drain's time budget: it reserves the
+			// name the first prompt sets, and writes nothing to stdout
+			// (hook_session_name.go).
+			startSessionName(cmd, in, cwd)
 			var notices []string
 			// currentSHA is remembered so the cross-repository survey below can
 			// leave this repository out: the drain reports it entry by entry,
