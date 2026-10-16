@@ -19,10 +19,15 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Fourteen keys plus a `meta` block. Install asks about visibility, the docs target,
-the oracle backend, and the deep scan (the last only when visibility is private
-and the deep scanner is on `PATH`), and writes exactly those four values back.
-`attribution.hook` is written by `ahoy install --attribution`, and
+Sixteen keys plus a `meta` block. Install asks about visibility, the docs target,
+the oracle backend, the deep scan (the last only when visibility is private
+and the deep scanner is on `PATH`), and the README question (only of a person
+at a terminal, in a run without the approve-everything flag, once
+`.abcd/config.json` exists), and writes those values back; the README answer is
+`readme.parts`, a list of part names (`[]` for no), which
+`ahoy install --readme-parts` also sets in any run. Install also records
+`readme.created` when it creates `README.md`, and uninstall clears it once that
+file is gone. `attribution.hook` is written by `ahoy install --attribution`, and
 `outbound.hook` and `outbound.forge` together by `ahoy install --outbound`, the
 one outbound switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
@@ -92,6 +97,14 @@ writes them.
   "reservation": {
     "fork_origin": "refuse"             // "refuse" | "allow": whether a reservation is made on an origin
                                         //   push URL GitHub names a fork (04-surfaces/37-reserve.md)
+  },
+  "readme": {
+    "parts": ["licence", "links"],      // the README parts abcd keeps in README.md; [] is answered no and is
+                                        //   not asked again, an absent key is not yet answered. Written by
+                                        //   install's README question or `ahoy install --readme-parts`
+                                        //   (04-surfaces/01-ahoy.md)
+    "created": true                     // README.md was created by abcd; written by install, cleared by
+                                        //   uninstall once that file is gone
   }
 }
 ```
@@ -127,7 +140,7 @@ named one of origin's push URLs a fork, so a malformed value, or a misspelt key
 under `reservation`, refuses a reservation on a fork naming the file and never
 stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
-layer alone and is not one of the fourteen.
+layer alone and is not one of the sixteen.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
 block. This repository's own config carries four of these blocks — `docs`, `meta`,
