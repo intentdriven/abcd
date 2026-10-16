@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -26,10 +27,18 @@ type forgeStub struct {
 
 func stubForge(t *testing.T, answer string) *forgeStub {
 	t.Helper()
+	return stubForgeDuring(t, answer, "")
+}
+
+// stubForgeDuring is stubForge whose gh also runs the shell in during before
+// it answers, as a gh racing another process's `gh auth switch` would.
+func stubForgeDuring(t *testing.T, answer, during string) *forgeStub {
+	t.Helper()
 	dir := t.TempDir()
 	s := &forgeStub{t: t, log: filepath.Join(dir, "calls"), fail: filepath.Join(dir, "fail")}
 	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + s.log + "'\n" +
 		"if [ -e '" + s.fail + "' ]; then echo 'HTTP 401' >&2; exit 1; fi\n" +
+		during + "\n" +
 		"printf '%s' '" + answer + "'\n"
 	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
 		t.Fatal(err)
@@ -135,4 +144,90 @@ func TestTheHolderCacheKeepsOnlyADefiniteAnswerPerCheckoutAndCredential(t *testi
 	t.Setenv("GH_TOKEN", "another-credential")
 	ask(r.Root(), 5)
 	ask(r.Root(), 5)
+}
+
+// ghAccountStore points gh's configuration at a directory of the test's own
+// and returns the hosts.yml gh keeps its accounts in there.
+func ghAccountStore(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("GH_CONFIG_DIR", dir)
+	return filepath.Join(dir, "hosts.yml")
+}
+
+func writeFile(t *testing.T, path, body string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// With no token in the environment, gh's own account store decides the
+// account: `gh auth switch`, `login` and `logout` rewrite hosts.yml and change
+// no variable, so the cache must see the file.
+func TestRewritingGhsAccountStoreAsksTheForgeAgain(t *testing.T) {
+	r := newCheckout(t, "pat@example.com")
+	o := Options{Home: t.TempDir()}
+	hosts := ghAccountStore(t)
+	writeFile(t, hosts, "github.com:\n    user: octo-person\n")
+	gh := stubForge(t, `{"login":"octo-person","id":4242}`)
+	ask := func(wantCalls int, why string) {
+		t.Helper()
+		if _, err := ResolveHolder(r.Root(), o); err != nil {
+			t.Fatalf("%s: %v", why, err)
+		}
+		if n := gh.calls(); n != wantCalls {
+			t.Fatalf("%s: the forge was asked %d times; want %d", why, n, wantCalls)
+		}
+	}
+	ask(1, "the first act")
+	ask(1, "an act with the store unchanged")
+	writeFile(t, hosts, "github.com:\n    user: octo-other\n")
+	ask(2, "an act after gh auth switch rewrote hosts.yml")
+	ask(2, "an act with the switched store unchanged")
+	if err := os.Remove(hosts); err != nil {
+		t.Fatal(err)
+	}
+	ask(3, "an act after hosts.yml was removed")
+	ask(3, "an act with hosts.yml still missing")
+}
+
+// ghHostsFile finds hosts.yml the way gh finds its configuration directory,
+// and a relative directory resolves against the checkout gh runs in.
+func TestGhsAccountStoreIsFoundTheWayGhFindsIt(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "work", "checkout")
+	home := t.TempDir()
+	for _, c := range []struct {
+		name, ghConfig, xdg, appData string
+		want                         string
+	}{
+		{"GH_CONFIG_DIR first", "/gh-config", "/xdg", "/appdata", "/gh-config/hosts.yml"},
+		{"then XDG_CONFIG_HOME", "", "/xdg", "/appdata", "/xdg/gh/hosts.yml"},
+		{"a relative GH_CONFIG_DIR is the checkout's", "rel", "", "", filepath.Join(root, "rel", "hosts.yml")},
+		{"a relative XDG_CONFIG_HOME is the checkout's", "", "rel", "", filepath.Join(root, "rel", "gh", "hosts.yml")},
+		{"else the home's", "", "", "", filepath.Join(home, ".config", "gh", "hosts.yml")},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("GH_CONFIG_DIR", c.ghConfig)
+			t.Setenv("XDG_CONFIG_HOME", c.xdg)
+			t.Setenv("AppData", c.appData)
+			t.Setenv("HOME", home)
+			if got := ghHostsFile(root); got != filepath.FromSlash(c.want) {
+				t.Fatalf("ghHostsFile = %q; want %q", got, filepath.FromSlash(c.want))
+			}
+		})
+	}
+	t.Run("AppData on Windows only", func(t *testing.T) {
+		t.Setenv("GH_CONFIG_DIR", "")
+		t.Setenv("XDG_CONFIG_HOME", "")
+		t.Setenv("AppData", filepath.Join(home, "appdata"))
+		t.Setenv("HOME", home)
+		want := filepath.Join(home, ".config", "gh", "hosts.yml")
+		if runtime.GOOS == "windows" {
+			want = filepath.Join(home, "appdata", "GitHub CLI", "hosts.yml")
+		}
+		if got := ghHostsFile(root); got != want {
+			t.Fatalf("ghHostsFile = %q; want %q", got, want)
+		}
+	})
 }

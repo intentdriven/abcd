@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	toolid "github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/tools"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // noreplyRe matches GitHub's noreply commit addresses, both forms:
@@ -274,15 +276,31 @@ func forgeUser(root string) (string, int64, error) {
 	return login, id, err
 }
 
-// forgeCredentialEnv is the environment that decides which gh answers the user
-// endpoint and with which token: the PATH gh is found on, the tokens gh reads
-// for github.com ahead of its own store, and the directories that store is
-// found under.
+// forgeCredentialEnv is the environment that picks the gh that answers the
+// user endpoint and the token it answers with: the PATH gh is found on, the
+// tokens gh reads for github.com ahead of its own store, and the variables its
+// configuration directory is found from.
 var forgeCredentialEnv = []string{"PATH", "GH_TOKEN", "GITHUB_TOKEN", "GH_CONFIG_DIR", "XDG_CONFIG_HOME", "HOME", "AppData"}
 
-// holderCacheKey is what decides the user endpoint's answer: the checkout it is
-// asked from and a digest of the forge credential's environment. The digest,
-// never the token itself, is what the cache holds.
+// maxHostsBytes caps the read of gh's hosts.yml, which holds a few lines per
+// account.
+const maxHostsBytes = 256 << 10
+
+// holderCacheKey is what one cached answer is kept under: the checkout root,
+// and a digest of each variable in forgeCredentialEnv (set or not, and its
+// value) with a SHA-256 of the contents of the hosts.yml gh keeps its accounts
+// in. The root is in the key because gh runs in the checkout, so a relative
+// GH_CONFIG_DIR or XDG_CONFIG_HOME resolves against it: the same variables name
+// another account store from another checkout. hosts.yml is in it because,
+// with no token in the environment, that file decides the account, and `gh
+// auth switch`, `login` and `logout` rewrite it without changing a variable.
+//
+// The key covers nothing else. A token gh keeps in the system keychain is not
+// read: a refresh that rewrites only the keychain entry keeps the same account,
+// so the user endpoint's answer does not change. A missing or unreadable
+// hosts.yml (one ReadGuarded refuses, a symlinked one included) folds in as one
+// distinct empty value. The digest, never a token or the file, is what the
+// cache holds.
 type holderCacheKey struct {
 	root       string
 	credential [sha256.Size]byte
@@ -294,9 +312,34 @@ func forgeKey(root string) holderCacheKey {
 		v, set := os.LookupEnv(name)
 		fmt.Fprintf(h, "%s\x00%t\x00%d\x00%s\x00", name, set, len(v), v)
 	}
+	hosts, err := fsutil.ReadGuarded(ghHostsFile(root), maxHostsBytes)
+	fmt.Fprintf(h, "hosts.yml\x00%t\x00%x\x00", err == nil, sha256.Sum256(hosts))
 	k := holderCacheKey{root: filepath.Clean(root)}
 	copy(k.credential[:], h.Sum(nil))
 	return k
+}
+
+// ghHostsFile is the hosts.yml gh reads its accounts from when run in root,
+// found as gh finds its configuration directory: GH_CONFIG_DIR, else
+// $XDG_CONFIG_HOME/gh, else %AppData%/GitHub CLI on Windows, else
+// ~/.config/gh. A relative directory resolves against root, the working
+// directory gh is run in.
+func ghHostsFile(root string) string {
+	var dir string
+	if d := os.Getenv("GH_CONFIG_DIR"); d != "" {
+		dir = d
+	} else if d := os.Getenv("XDG_CONFIG_HOME"); d != "" {
+		dir = filepath.Join(d, "gh")
+	} else if d := os.Getenv("AppData"); runtime.GOOS == "windows" && d != "" {
+		dir = filepath.Join(d, "GitHub CLI")
+	} else {
+		home, _ := os.UserHomeDir()
+		dir = filepath.Join(home, ".config", "gh")
+	}
+	if !filepath.IsAbs(dir) {
+		dir = filepath.Join(root, dir)
+	}
+	return filepath.Join(dir, "hosts.yml")
 }
 
 // forgeCache is the process's answers from the user endpoint, one entry per
