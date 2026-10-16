@@ -497,7 +497,8 @@ func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
 	if ds.embargo == 0 {
 		return ds, nil
 	}
-	sha := gitutil.RootCommit(s.Checkout)
+	// The store's key, as storepath.Path forms it.
+	sha := gitutil.DefaultBranchRootCommit(s.Checkout)
 	forms := []string{s.Root, resolve(s.Root), "worktrees/" + sha + "/" + StoreName}
 	if home, err := os.UserHomeDir(); err == nil {
 		for _, h := range []string{filepath.Clean(home), resolve(home)} {

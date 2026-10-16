@@ -404,6 +404,32 @@ func RootCommitContext(ctx context.Context, root string) (string, error) {
 	return fields[0], nil
 }
 
+// DefaultBranchRootCommit is RootCommit for a store every checkout of the
+// repository must find in one place whatever it has checked out: the first
+// root commit of origin's default branch as last fetched (DefaultRef, when it
+// names a ref under refs/remotes/origin/), read with objects as stored
+// (core.useReplaceRefs=false, so a refs/replace/* ref cannot change the
+// answer). HEAD's root commit is read the same way only when origin has no
+// default branch here. With HEAD on the default branch, or one cut from it, it
+// is RootCommit's answer, so such a store's place is unchanged; with HEAD on an
+// orphan branch it is still the default branch's. "" when there is no root
+// commit to read, as RootCommit.
+func DefaultBranchRootCommit(root string) string {
+	rev := "HEAD"
+	if ref := DefaultRef(root); strings.HasPrefix(ref, "refs/remotes/origin/") {
+		rev = ref
+	}
+	out, err := RunLimited(root, 4096, "-c", "core.useReplaceRefs=false", "rev-list", "-n", "1", "--max-parents=0", rev, "--")
+	if err != nil {
+		return ""
+	}
+	fields := strings.Fields(out)
+	if len(fields) == 0 {
+		return ""
+	}
+	return fields[0]
+}
+
 // fullSHARe is a full object name: forty hex digits under SHA-1, sixty-four
 // under SHA-256, lower case as git prints them.
 var fullSHARe = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)

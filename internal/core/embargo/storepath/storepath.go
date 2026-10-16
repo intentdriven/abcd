@@ -17,10 +17,13 @@ const Name = "embargo"
 // Path is where the store of the repository at repoRoot lives under home:
 // worktrees/<root-sha>/embargo in abcd's home, keyed on the root commit so
 // every worktree of the repository finds the same store
-// (adr-2610031751065746). ok is false when the repository has no root commit
-// to key it on.
+// (adr-2610031751065746). The root commit is origin's default branch's, read
+// as stored (gitutil.DefaultBranchRootCommit), not HEAD's: a store that is
+// not found reads as nothing under embargo, so a checkout on an orphan branch
+// or behind a replace ref must still find it. ok is false when the repository
+// has no root commit to key it on.
 func Path(home, repoRoot string) (p string, ok bool) {
-	sha := gitutil.RootCommit(repoRoot)
+	sha := gitutil.DefaultBranchRootCommit(repoRoot)
 	if !gitutil.IsFullSHA(sha) {
 		return "", false
 	}
