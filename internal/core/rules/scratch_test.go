@@ -137,7 +137,8 @@ func TestScratchRuleSendsAHelperToAbcdsCommandsFirst(t *testing.T) {
 	for _, want := range []string{
 		"Before writing a helper script, check whether an abcd command already does the job",
 		"`abcd --help`", "command page",
-		"`abcd implement load --wait -- make preflight`, never a hand-written waiter",
+		"A preflight, for one, is a plain `make preflight`, which gates itself at `abcd implement load --wait`",
+		"a lone race run outside it is `abcd implement load --wait -- go test -race ./...`, never a hand-written waiter",
 		"LOAD's waiter rule",
 		"only when no command does",
 		"the main checkout's .abcd/.work.local/scratch/",
@@ -150,12 +151,23 @@ func TestScratchRuleSendsAHelperToAbcdsCommandsFirst(t *testing.T) {
 	if strings.Contains(helper, "pgrep") {
 		t.Errorf("the %s helper rule restates the LOAD waiter rule instead of pointing at it:\n%s", scratchDomain, helper)
 	}
+	// LOAD's waiter rule and the implement command page both say `make
+	// preflight` gates itself and needs no wrapper; the helper rule must not
+	// teach the wrapped form they refuse.
+	if strings.Contains(helper, "-- make preflight") {
+		t.Errorf("the %s helper rule wraps make preflight in the waiter, which LOAD and commands/implement.md say it needs no wrapper for:\n%s", scratchDomain, helper)
+	}
 
 	res := Inject(Defaults(), "write a script to queue the preflight", SessionState{}, 0)
 	if !slices.Contains(res.Injected, scratchDomain) {
 		t.Fatalf("a script to queue the preflight injected %v, want %s in it", res.Injected, scratchDomain)
 	}
-	if !strings.Contains(res.Text, "abcd implement load --wait -- make preflight") {
+	// LOAD rides along on this prompt and names the race-run form too, so the
+	// helper rule is found by its own preflight sentence.
+	if !strings.Contains(res.Text, "A preflight, for one, is a plain `make preflight`") {
 		t.Fatalf("the injected block does not carry the helper rule:\n%s", res.Text)
+	}
+	if strings.Contains(res.Text, "-- make preflight") {
+		t.Fatalf("the injected block teaches the wrapped make preflight form:\n%s", res.Text)
 	}
 }
