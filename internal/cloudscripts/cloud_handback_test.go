@@ -265,6 +265,10 @@ func TestHandBackRefusesAnItemThatIsNotARecordID(t *testing.T) {
 
 func TestHandBackPushesToWIPBranchThroughTheHook(t *testing.T) {
 	c := newForgeCase(t, trackingIssue)
+	// One clock reading for both hand-backs, as on a runner fast enough to
+	// make them in one second: the report's finished_at then cannot tell the
+	// two reports apart, and only what each says can.
+	c.fake("date", "echo 2026-10-16T00:00:00Z")
 	c.work("one.md")
 	trace := filepath.Join(t.TempDir(), "git-trace")
 	out, errOut, code := c.handBack([]string{"GIT_TRACE=" + trace}, "--item", handBackItem, "--state", "handed-back")
@@ -273,7 +277,7 @@ func TestHandBackPushesToWIPBranchThroughTheHook(t *testing.T) {
 	}
 	ref := "refs/heads/" + hostWIPPrefix + handBackItem
 	if got, head := c.originRef(ref), c.git("rev-parse", "HEAD"); got != head {
-		t.Fatalf("origin holds %q on %s, want the report commit %s", got, ref, head)
+		t.Fatalf("origin holds %q on %s, want the report commit %s\n%s%s", got, ref, head, out, errOut)
 	}
 	log := c.callLog()
 	if !strings.Contains(log, "git push origin HEAD:"+ref) {
@@ -300,7 +304,8 @@ func TestHandBackPushesToWIPBranchThroughTheHook(t *testing.T) {
 	c.write("two.md", "two\n", 0o644)
 	c.git("add", "two.md")
 	c.git("commit", "-q", "-m", "fix: two.md with no disclosure")
-	_, errOut, _ = c.handBack([]string{"FAKE_GH=1"}, "--item", handBackItem, "--state", "handed-back",
+	_, errOut, _ = c.scriptSplit([]string{"FAKE_GH=1"}, handBackScript, "--item", handBackItem, "--state", "handed-back",
+		"--did", "Added two.md.", "--failed", "Nothing failed.", "--needs", "A review of two.md.",
 		"--assisted-by", "Claude:claude-opus-5")
 	if got := c.originRef(ref); got != before {
 		t.Errorf("a push carrying a commit the attribution gate refuses moved %s to %s", ref, got)
