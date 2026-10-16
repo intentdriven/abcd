@@ -489,16 +489,34 @@ The version is derived from the impact the shipped records declare, and the
 tier and its reason are recorded so every published version is traceable to
 *why* it bumped.
 
-| Tier | Trigger |
-|---|---|
-| **Major** | Any shipped intent since the last release carries `impact: breaking`. |
-| **Minor** | No breaking, at least one `impact: additive`. |
-| **Patch** | Only `impact: fix` intents, or a release with no intent-tied change. |
+| Strongest impact in the cut | From `1.0.0` | Before `1.0.0` (`0.y.z`) |
+|---|---|---|
+| `breaking` | **Major** | **Minor** |
+| `additive` | **Minor** | **Patch** |
+| `fix` | **Patch** | **Patch** |
+| `internal`, or no record at all | no release (`empty-cut`) | no release (`empty-cut`) |
 
-Every intent carries an impact, set when the intent is shaped and enforced by
-the record lint (adr-31). At release, the cut gathers the intents shipped since
-the previous release and takes the highest-severity impact. A change not tied to
-any intent falls back to conventional-commit derivation.
+An intent's impact (adr-31) is required at the close that moves it to
+`shipped/`: the spec verb's close refuses to ship an intent that records none
+when none is given on the close, and moves nothing
+(`internal/core/intent/lifecycle.go`),
+and the record lint's `intent_impact_valid` rule flags an intent in `shipped/`
+without one. Before that close the field may be absent, since a draft or a
+planned intent can still be unjudged; wherever it is set, its value is checked
+in every bucket, by the same rule, which flags a value outside the enum and
+`internal` on an intent (`internal/core/lint/lint.go`). An issue declares its
+impact when it is resolved, which the capture verb's resolve refuses without. At release, the cut gathers the records that entered
+or left `intents/shipped/` and `issues/resolved/` since the previous release tag,
+leaving out an entering record whose `shipped_in:` names a release tag the
+previous tag already reaches, since that release carried its work; a value that
+names no such tag keeps the record in (`internal/core/changelog/shipped.go`),
+takes the highest-severity impact among
+them (`internal/core/changelog/impact.go`), and applies the table above
+(`DeriveNext`, `internal/core/changelog/version.go`). The records' declared
+impact is the only input: nothing derives a version from commit messages. A cut
+whose strongest impact is `internal`, or that holds no record, derives no
+version and is refused as `empty-cut` (`internal/core/release/emit.go`). No set
+of records derives `1.0.0` from a `0.y.z` base.
 
 ### Refusal kinds
 
@@ -514,7 +532,7 @@ would be wrong. There are ten, and an operator sees them as
 | `release-in-flight` | the newest changelog heading is ahead of the newest tag, so a release sits between its merge and its tag |
 | `unlabelled-record` | a record the cut adds carries no valid impact |
 | `uncommitted-records` | a record file in a terminal folder (`intents/shipped/`, `issues/resolved/`) differs from HEAD, where the cut reads it, so a spec close or resolve left uncommitted would be missing from the cut; every path is named, and no override waives it |
-| `stale-intent` | an intent in `planned/` has a spec that has closed |
+| `stale-intent` | an intent in `planned/` whose every realising spec has closed: it has at least one, and none is still open, so the record never moved to `shipped/`. A planned intent with one spec closed and another open is a partial delivery and is not refused |
 | `surface-guard` | the surface guardrail failed, or could not compare |
 | `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it; or an open issue record that differs from HEAD, where the gate reads the ledger, at any severity, every path named and no override waiving it |
 | `deleted-finding` | a consequential record the anchor held in `open/` is in no status directory at HEAD: the cut removed the finding instead of answering it |
