@@ -169,12 +169,20 @@ func TestASplitLedgerPeerIsToldToSettleItsLedger(t *testing.T) {
 }
 
 // TestAWorktreeOutsideHomeIsNamedByAPathAShellTakes: a worktree whose record
-// folders cannot be read, outside HOME, is told to settle its reason or, once
-// its work is spent, a plain `git worktree remove` naming it by a path a shell
-// takes, quoted; that command, run as printed, refuses while the worktree holds
-// uncommitted work and leaves it, and removes the worktree once it holds none.
+// folders cannot be read, outside HOME, holding a session's ignored files in
+// .abcd/.work.local/, is told to settle what its reason names and is offered
+// no command that removes it: a plain `git worktree remove` deletes ignored
+// files without asking, so the remedy says so, names .abcd/.work.local/, and
+// gives instead `git -C "<path>" status --ignored`, with the worktree named by
+// a path a shell takes, quoted; that command, run as printed through a shell,
+// lists the ignored files and leaves them where they are.
 func TestAWorktreeOutsideHomeIsNamedByAPathAShellTakes(t *testing.T) {
 	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	ignore, _ := os.ReadFile(filepath.Join(repo.Root(), ".gitignore"))
+	if !strings.Contains(string(ignore), ".abcd/.work.local/") {
+		repo.Write(".gitignore", string(ignore)+".abcd/.work.local/\n")
+		repo.Commit("ignore the local tier")
+	}
 	parent := filepath.Join(t.TempDir(), "a dir")
 	wt := filepath.Join(parent, "wt-sealed")
 	repo.Git("worktree", "add", "-q", "-b", "lane-sealed", wt)
@@ -184,6 +192,14 @@ func TestAWorktreeOutsideHomeIsNamedByAPathAShellTakes(t *testing.T) {
 	// A commit of its own keeps the worktree from reading as merged, and its
 	// open folder sealed is what cannot be read.
 	gitIn(t, wt, "commit", "-q", "--allow-empty", "-m", "the lane's own work")
+	next := filepath.Join(wt, ".abcd", ".work.local", "NEXT.md")
+	if err := os.MkdirAll(filepath.Dir(next), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(next, []byte("a peer's handover\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, wt, "check-ignore", "-q", ".abcd/.work.local/NEXT.md")
 	sealed := filepath.Join(wt, ".abcd", "work", "issues", "open")
 	if err := os.Chmod(sealed, 0); err != nil {
 		t.Fatal(err)
@@ -195,14 +211,24 @@ func TestAWorktreeOutsideHomeIsNamedByAPathAShellTakes(t *testing.T) {
 	if r.Check != CheckPeers || !strings.Contains(r.Reason, "the worktree at wt-sealed (branch lane-sealed) could not be read") {
 		t.Fatalf("the sealed worktree refuses the move, named by its folder in prose: %+v", r)
 	}
-	if strings.Contains(r.Remedy, "--force") {
-		t.Fatalf("the remedy never advises --force: %q", r.Remedy)
+	if !strings.Contains(r.Remedy, "wt-sealed (branch lane-sealed): settle what its reason names") {
+		t.Errorf("the remedy leads with settling what the reason names: %q", r.Remedy)
 	}
-	m := regexp.MustCompile("`(git worktree remove \"[^`]+\")`").FindStringSubmatch(r.Remedy)
+	for _, never := range []string{"--force", "git worktree remove", "refuses", "uncommitted"} {
+		if strings.Contains(r.Remedy, never) {
+			t.Errorf("the remedy never has %q: %q", never, r.Remedy)
+		}
+	}
+	for _, w := range []string{"deletes its ignored files", "`.abcd/.work.local/`", "keeps or moves"} {
+		if !strings.Contains(r.Remedy, w) {
+			t.Errorf("the remedy says removal deletes ignored files (%q): %q", w, r.Remedy)
+		}
+	}
+	m := regexp.MustCompile("`(git -C '[^`]+' status --ignored)`").FindStringSubmatch(r.Remedy)
 	if m == nil {
-		t.Fatalf("the remedy gives a plain git worktree remove, quoted: %q", r.Remedy)
+		t.Fatalf("the remedy gives git -C <path> status --ignored, quoted: %q", r.Remedy)
 	}
-	if strings.Contains(m[1], "remove \"wt-sealed\"") {
+	if strings.Contains(m[1], "-C 'wt-sealed'") {
 		t.Fatalf("the command names the worktree by a path, not its folder name: %q", m[1])
 	}
 	if err := os.Chmod(sealed, 0o755); err != nil {
@@ -210,48 +236,48 @@ func TestAWorktreeOutsideHomeIsNamedByAPathAShellTakes(t *testing.T) {
 	}
 
 	// Run as printed, through a shell, from the repository.
-	run := func() error {
-		cmd := exec.Command("sh", "-c", m[1])
-		cmd.Dir, cmd.Env = repo.Root(), gittest.Env(t)
-		return cmd.Run()
+	cmd := exec.Command("sh", "-c", m[1])
+	cmd.Dir, cmd.Env = repo.Root(), gittest.Env(t)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("%s, run as printed: %v\n%s", m[1], err, out)
 	}
-	work := filepath.Join(wt, "uncommitted.txt")
-	if err := os.WriteFile(work, []byte("a peer's work\n"), 0o644); err != nil {
-		t.Fatal(err)
+	if !strings.Contains(string(out), ".abcd/.work.local/") {
+		t.Fatalf("%s lists the ignored local tier: %s", m[1], out)
 	}
-	if err := run(); err == nil {
-		t.Fatalf("%s removed a worktree holding uncommitted work", m[1])
-	}
-	if _, err := os.Stat(work); err != nil {
-		t.Fatalf("the uncommitted work survives the command: %v", err)
-	}
-	if err := os.Remove(work); err != nil {
-		t.Fatal(err)
-	}
-	if err := run(); err != nil {
-		t.Fatalf("%s, run as printed, removes the spent worktree: %v", m[1], err)
-	}
-	if _, err := os.Stat(wt); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("the worktree is gone: %v", err)
+	if _, err := os.Stat(next); err != nil {
+		t.Fatalf("the ignored handover survives the check: %v", err)
 	}
 }
 
 // TestACommandPathIsOneAShellTakes: a path a command names is home-redacted
-// to $HOME, which a shell expands inside double quotes where it would not
-// expand ~, and is quoted whole, with what a double quote would read escaped;
-// outside HOME it is the path itself, never its folder name.
+// to "$HOME", the one part in double quotes, which a shell expands where it
+// would not expand ~; the rest is in single quotes, inside which no shell
+// expands anything, `!` included, with each ' written '\”; outside HOME the
+// path is single-quoted whole, the path itself and never its folder name. Each
+// form, read back by sh, is the path.
 func TestACommandPathIsOneAShellTakes(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	cases := map[string]string{
-		filepath.Join(home, "wt", "lane a"): `"$HOME/wt/lane a"`,
+		filepath.Join(home, "wt", "lane a"): `"$HOME"'/wt/lane a'`,
 		home:                                `"$HOME"`,
-		"/srv/wt/lane":                      `"/srv/wt/lane"`,
-		"/srv/w\"t/$x`y\\z":                 `"/srv/w\"t/\$x\` + "`" + `y\\z"`,
+		filepath.Join(home, "wt!x"):         `"$HOME"'/wt!x'`,
+		filepath.Join(home, "it's"):         `"$HOME"'/it'\''s'`,
+		"/srv/wt/lane":                      `'/srv/wt/lane'`,
+		"/srv/a dir/wt":                     `'/srv/a dir/wt'`,
+		"/srv/wt!1":                         `'/srv/wt!1'`,
+		"/srv/it's":                         `'/srv/it'\''s'`,
+		"/srv/w\"t/$x`y\\z":                 "'/srv/w\"t/$x`y\\z'",
 	}
 	for in, want := range cases {
-		if got := commandPath(in); got != want {
+		got := commandPath(in)
+		if got != want {
 			t.Errorf("commandPath(%q) = %s, want %s", in, got, want)
+		}
+		out, err := exec.Command("sh", "-c", "printf %s "+got).Output()
+		if err != nil || string(out) != in {
+			t.Errorf("sh reads %s back as %q (%v), want %q", got, out, err, in)
 		}
 	}
 }
@@ -259,10 +285,12 @@ func TestACommandPathIsOneAShellTakes(t *testing.T) {
 // TestEachUnreadableReasonGetsItsOwnRemedy: the remedy follows the peer's
 // reason. A broken git file is a plain `git worktree repair`; a ledger holding
 // one id in two folders is the reason's own advice; a worktree another account
-// owns says that account owns it, and offers no git command; a branch git
+// owns says that account owns it, and offers no git command; a worktree whose
+// owner cannot be read says so, and offers no command at all; a branch git
 // cannot list is settled or deleted; and a worktree that cannot be read for
-// another reason is settled or, once spent, removed by a plain
-// `git worktree remove`. None advises --force.
+// another reason is settled, with `git -C "<path>" status --ignored` to list
+// the ignored files a removal would delete, and no command that removes it.
+// None advises --force, and none claims git refuses to remove uncommitted work.
 func TestEachUnreadableReasonGetsItsOwnRemedy(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -271,6 +299,9 @@ func TestEachUnreadableReasonGetsItsOwnRemedy(t *testing.T) {
 	restore := swapPeerOwnerUID(func(p string) (uint32, error) {
 		if strings.HasSuffix(p, "theirs") {
 			return own + 1, nil
+		}
+		if strings.HasSuffix(p, "unowned") {
+			return 0, errors.New("stat: permission denied")
 		}
 		return own, nil
 	})
@@ -299,7 +330,14 @@ func TestEachUnreadableReasonGetsItsOwnRemedy(t *testing.T) {
 			[]string{"settle what its reason names, or delete the branch once its work is spent"}, []string{"git worktree"}},
 		{"a worktree whose folders cannot be read", peers.Peer{Source: peers.SourceWorktree, Branch: "b", Path: wt,
 			NotRead: "its record folders cannot be read: permission denied"},
-			[]string{"`git worktree remove \"$HOME/wt\"`", "refuses while it holds uncommitted work"}, []string{"repair"}},
+			[]string{"settle what its reason names", "`git -C \"$HOME\"'/wt' status --ignored`", "deletes its ignored files", "`.abcd/.work.local/`"},
+			[]string{"repair", "git worktree remove"}},
+		{"a worktree whose owner cannot be read", peers.Peer{Source: peers.SourceWorktree, Branch: "b", Path: filepath.Join(home, "unowned"),
+			NotRead: "its record folders cannot be read: permission denied"},
+			[]string{"its owner could not be read"}, []string{"`git", "repair", "remove `"}},
+		{"git's word for another account, owner unread", peers.Peer{Source: peers.SourceWorktree, Branch: "b", Path: filepath.Join(home, "unowned"),
+			NotRead: "git refused to answer for it: fatal: detected dubious ownership in repository at '" + filepath.Join(home, "unowned") + "'"},
+			[]string{"is owned by another account, not this account"}, []string{"`git"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -309,7 +347,7 @@ func TestEachUnreadableReasonGetsItsOwnRemedy(t *testing.T) {
 					t.Errorf("the remedy lacks %q: %q", w, got)
 				}
 			}
-			for _, n := range append(c.never, "--force") {
+			for _, n := range append(c.never, "--force", "refuses", "uncommitted") {
 				if strings.Contains(got, n) {
 					t.Errorf("the remedy has %q: %q", n, got)
 				}

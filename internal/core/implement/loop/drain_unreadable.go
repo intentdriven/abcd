@@ -52,21 +52,25 @@ func unreadableRefusal(repoRoot string, bad []peers.Peer) error {
 	return refuse(StageDrain, CheckPeers, "", reason, remedy)
 }
 
-// peerRemedy is the repair p's reason calls for. None forces anything: a
-// forced `git worktree remove` deletes the uncommitted work of a worktree,
-// a peer's included, so where removal is apt the remedy gives the plain form,
-// which refuses while there is any.
+// peerRemedy is the repair p's reason calls for. None removes a worktree:
+// what an unreadable peer holds is unknown, and even a plain
+// `git worktree remove`, which stops at tracked changes and untracked files,
+// deletes the worktree's ignored files without asking, a session's
+// .abcd/.work.local/ among them. Nor does any advise --force.
 //
 //   - A ledger holding one id in two folders: its reason's own advice, to move
 //     or remove one of each.
 //   - A worktree another account owns: that account owns it. This account
 //     cannot repair it, and no git command is offered.
+//   - A worktree whose owner cannot be read: it says so, and offers no
+//     command, since whose work it is cannot be told.
 //   - A worktree git would not answer for: `git worktree repair`, run in this
 //     repository with no argument, which points every worktree's git file back
 //     at it and touches no work.
 //   - Any other branch: settle what its reason names, or delete it once spent.
-//   - Any other worktree: settle what its reason names, or, once its work is
-//     spent, the plain `git worktree remove`.
+//   - Any other worktree: settle what its reason names, and before anyone
+//     removes it, `git -C "<path>" status --ignored` to list the ignored files
+//     a removal would delete, for whoever owns them to keep or move.
 func peerRemedy(p peers.Peer) string {
 	if strings.HasPrefix(p.NotRead, peers.NotReadSplit) {
 		return "move or remove one of each so the ledger says which status the record is in"
@@ -74,31 +78,48 @@ func peerRemedy(p peers.Peer) string {
 	if p.Source != peers.SourceWorktree {
 		return "settle what its reason names, or delete the branch once its work is spent"
 	}
-	if owner, ok := foreignOwner(p); ok {
+	switch owner, whose := worktreeOwner(p); whose {
+	case ownedElsewhere:
 		return "it is owned by " + owner + ", not this account, which cannot read or repair it; ask whoever uses that account to repair or remove it"
+	case ownerUnknown:
+		return "its owner could not be read, so whose work it holds is unknown and no command is offered; find which account owns it, and leave it to that account to settle"
 	}
 	if strings.HasPrefix(p.NotRead, peers.NotReadGitRefused) {
 		return "`git worktree repair`, run in this repository with no argument, points every worktree's git file back at it and touches no work"
 	}
-	return "settle what its reason names, or, once its work is spent, `git worktree remove " + commandPath(p.Path) +
-		"`, which refuses while it holds uncommitted work (a worktree another tool has locked is that tool's: ask it before removing it)"
+	return "settle what its reason names; no command to remove it is offered, because removing a worktree deletes its ignored files without asking, `.abcd/.work.local/` among them (a session's NEXT.md, scratch/, logs/ and transcripts/): `git -C " +
+		commandPath(p.Path) + " status --ignored` lists them, and whoever owns that work keeps or moves them before anyone removes the worktree (a worktree another tool has locked is that tool's: ask it first)"
 }
 
 // peerOwnerUID is the owner lookup peerRemedy reads, a var because a second
 // account is not something a test process can create.
 var peerOwnerUID = fsutil.OwnerUID
 
-// foreignOwner names the account that owns a worktree when it is not this
-// one: by its owner's uid where that can be read, or, where it cannot, by
-// git's own word that the worktree's owner is another account.
-func foreignOwner(p peers.Peer) (string, bool) {
-	if uid, err := peerOwnerUID(p.Path); err == nil && uid != uint32(os.Getuid()) {
-		return accountName(uid), true
+// ownership is what can be told of whose a worktree is.
+type ownership int
+
+const (
+	ownedHere      ownership = iota // this account owns it
+	ownedElsewhere                  // another account owns it
+	ownerUnknown                    // its owner could not be read
+)
+
+// worktreeOwner says whose p's worktree is, naming the account when it is
+// another one: by its owner's uid where that can be read, or by git's own word
+// that the worktree's owner is another account. A uid that cannot be read,
+// with no such word from git, is an owner unknown, never this account.
+func worktreeOwner(p peers.Peer) (string, ownership) {
+	uid, err := peerOwnerUID(p.Path)
+	if err == nil && uid != uint32(os.Getuid()) {
+		return accountName(uid), ownedElsewhere
 	}
 	if strings.Contains(p.NotRead, "dubious ownership") {
-		return "another account", true
+		return "another account", ownedElsewhere
 	}
-	return "", false
+	if err != nil {
+		return "", ownerUnknown
+	}
+	return "", ownedHere
 }
 
 // accountName names the account uid is: its username, or its uid where the
@@ -112,21 +133,22 @@ func accountName(uid uint32) string {
 }
 
 // commandPath is a path as a command the reader types names it: the path
-// itself, with HOME as $HOME, which a shell expands inside double quotes where
-// it would not expand ~, quoted whole with what a double quote reads escaped.
-// fsutil.DisplayPath is for prose: outside HOME it is a folder name, which no
-// command can act on.
+// itself, with HOME as "$HOME", which a shell expands inside double quotes
+// where it would not expand ~, and the rest in single quotes, inside which no
+// shell expands anything, the `!` an interactive bash or zsh would read as
+// history included, with each ' written '\”. A path outside HOME is
+// single-quoted whole. fsutil.DisplayPath is for prose: outside HOME it is a
+// folder name, which no command can act on.
 func commandPath(p string) string {
 	shown := fsutil.RedactHome(p)
 	if shown == "~" {
 		return `"$HOME"`
 	}
-	prefix := ""
+	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 	if rest, ok := strings.CutPrefix(shown, "~/"); ok {
-		prefix, shown = "$HOME/", rest
+		return `"$HOME"` + quote("/"+rest)
 	}
-	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, `$`, `\$`, "`", "\\`")
-	return `"` + prefix + r.Replace(shown) + `"`
+	return quote(shown)
 }
 
 // notReadShown is p's not-read reason with no absolute local path in it: the
