@@ -25,12 +25,12 @@ type forgeStub struct {
 	fail string
 }
 
-func stubForge(t *testing.T, answer string) *forgeStub {
+func stubHolderForge(t *testing.T, answer string) *forgeStub {
 	t.Helper()
 	return stubForgeDuring(t, answer, "")
 }
 
-// stubForgeDuring is stubForge whose gh also runs the shell in during before
+// stubForgeDuring is stubHolderForge whose gh also runs the shell in during before
 // it answers, as a gh racing another process's `gh auth switch` would.
 func stubForgeDuring(t *testing.T, answer, during string) *forgeStub {
 	t.Helper()
@@ -89,7 +89,7 @@ func resetHolderCache(t *testing.T) {
 func TestThreeReservationActsAskTheForgeForTheHolderOnce(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("pat@example.com", "")
-	gh := stubForge(t, `{"login":"octo-person","id":4242}`)
+	gh := stubHolderForge(t, `{"login":"octo-person","id":4242}`)
 	for _, c := range []struct {
 		req  Request
 		want Act
@@ -111,7 +111,7 @@ func TestThreeReservationActsAskTheForgeForTheHolderOnce(t *testing.T) {
 func TestTheHolderCacheKeepsOnlyADefiniteAnswerPerCheckoutAndCredential(t *testing.T) {
 	r := newCheckout(t, "pat@example.com")
 	o := Options{Home: t.TempDir()}
-	gh := stubForge(t, `{"login":"octo-person","id":4242}`)
+	gh := stubHolderForge(t, `{"login":"octo-person","id":4242}`)
 	want := Holder{Login: "octo-person", ID: 4242, NoReply: "4242+octo-person@users.noreply.github.com", Source: HolderFromToken}
 	ask := func(root string, wantCalls int) {
 		t.Helper()
@@ -170,7 +170,7 @@ func TestRewritingGhsAccountStoreAsksTheForgeAgain(t *testing.T) {
 	o := Options{Home: t.TempDir()}
 	hosts := ghAccountStore(t)
 	writeFile(t, hosts, "github.com:\n    user: octo-person\n")
-	gh := stubForge(t, `{"login":"octo-person","id":4242}`)
+	gh := stubHolderForge(t, `{"login":"octo-person","id":4242}`)
 	ask := func(wantCalls int, why string) {
 		t.Helper()
 		if _, err := ResolveHolder(r.Root(), o); err != nil {
@@ -267,7 +267,7 @@ func TestAnAnswerWhoseAccountStoreMovedDuringTheCallIsNotKept(t *testing.T) {
 func TestAFailedAskLeavesNoEntryInTheHolderCache(t *testing.T) {
 	r := newCheckout(t, "pat@example.com")
 	o := Options{Home: t.TempDir()}
-	gh := stubForge(t, `{"login":"octo-person","id":4242}`)
+	gh := stubHolderForge(t, `{"login":"octo-person","id":4242}`)
 	gh.failing(true)
 	for _, token := range []string{"one-credential", "another-credential"} {
 		t.Setenv("GH_TOKEN", token)
@@ -288,7 +288,7 @@ func TestAFailedAskLeavesNoEntryInTheHolderCache(t *testing.T) {
 func TestAWellFormedAnswerWithoutAnIDIsNotKept(t *testing.T) {
 	r := newCheckout(t, "pat@example.com")
 	o := Options{Home: t.TempDir()}
-	gh := stubForge(t, `{"login":"x","id":0}`)
+	gh := stubHolderForge(t, `{"login":"x","id":0}`)
 	for i := 1; i <= 2; i++ {
 		if _, err := ResolveHolder(r.Root(), o); !errors.Is(err, ErrRefused) {
 			t.Fatalf("act %d: %v; want a refusal", i, err)
