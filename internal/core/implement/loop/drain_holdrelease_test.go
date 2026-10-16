@@ -388,3 +388,25 @@ func TestAPollAfterTheHoldWasReleasedByHandReservesAgainBeforeAsking(t *testing.
 		t.Fatalf("the poll records the reservation it took again as the drain's hold: %+v", poll.Judging)
 	}
 }
+
+// TestAPanicReleasesTheReservationTakenForTheJudgement: a no opens the lane,
+// and Start panics; the panic still reaches the caller, and the reservation
+// the drain took for the judgement, on which no lane opened, is released on
+// the way out.
+func TestAPanicReleasesTheReservationTakenForTheJudgement(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	first, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	was := startLane
+	t.Cleanup(func() { startLane = was })
+	startLane = func(string, string, Options) (StartResult, error) { panic("the start blew up") }
+	path := writeAnswer(t, repo, first.Judging, judgementAnswer(first.Judging, JudgementNo, "", "the remedy changes neither"))
+	func() {
+		defer func() {
+			if r := recover(); r != "the start blew up" {
+				t.Fatalf("the panic reached the caller as %v", r)
+			}
+		}()
+		_, _ = Drain(repo.Root(), Options{}, DrainOptions{Judgement: path})
+	}()
+	releasedOver(t, bare, secondIssue, taken)
+}

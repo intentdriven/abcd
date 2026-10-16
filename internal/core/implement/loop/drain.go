@@ -307,17 +307,24 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		return DrainResult{}, err
 	}
 	// The drain's judgement holds this move knows (drain_hold.go): each it
-	// leaves unused is released on the way out. A move that fails writes no
-	// state, so the judgement awaited on disk keeps its hold, and every other
-	// hold the move took is released.
+	// leaves unused is released on the way out, on every path the process
+	// lives through, a panic included. persisted is the judgement awaited as
+	// the state on disk records it: a move that fails, or panics, before its
+	// write leaves the one read, which keeps its hold, and every other hold
+	// the move took on which no lane opened is released. Releasing is
+	// idempotent, so the settle here after finish's own pushes nothing more.
+	// A process killed outright runs no defer: its hold lapses after one
+	// lease.
 	holds := &judgeHolds{repoRoot: repoRoot, now: now}
 	if j := st.Judging; j != nil {
 		holds.add(j.Issue, j.Hold, false)
 	}
 	persisted := st.Judging
 	defer func() {
-		if err != nil {
-			holds.settle(persisted)
+		r := recover()
+		holds.settle(persisted)
+		if r != nil {
+			panic(r)
 		}
 	}()
 	started := false
@@ -376,6 +383,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if err := writeDrain(repoRoot, st); err != nil {
 				return DrainResult{}, err
 			}
+			persisted = st.Judging
 		}
 		res.Max, res.Pace, res.Lanes, res.HandBacks = st.Max, st.Pace, st.Lanes, st.HandBacks
 		res.Judging, res.Judgements = st.Judging, st.Judgements
