@@ -197,9 +197,19 @@ func (s Store) loadState() (State, error) {
 	if err != nil {
 		return State{}, refuseState("it could not be read within its size limit")
 	}
+	st, why := decodeState(data)
+	if why != "" {
+		return State{}, refuseState(why)
+	}
+	return st, nil
+}
+
+// decodeState is the state a state file's bytes hold, or why they are
+// refused: one strict JSON document, every field in shape.
+func decodeState(data []byte) (State, string) {
 	var st State
 	if err := jsonstrict.Decode(data, &st); err != nil {
-		return State{}, refuseState("it is not the state this abcd writes (" + jsonFault(err) + ")")
+		return State{}, "it is not the state this abcd writes (" + jsonFault(err) + ")"
 	}
 	if st.Advisories == nil {
 		st.Advisories = []Advisory{}
@@ -208,7 +218,7 @@ func (s Store) loadState() (State, error) {
 	// nothing pending. One that carries the list was written by no abcd.
 	if st.SchemaVersion == 1 {
 		if st.Pending != nil {
-			return State{}, refuseState("schema_version is 1, which has no pending list, and it carries one")
+			return State{}, "schema_version is 1, which has no pending list, and it carries one"
 		}
 		st.SchemaVersion = SchemaVersion
 	}
@@ -216,9 +226,9 @@ func (s Store) loadState() (State, error) {
 		st.Pending = []PendingAdvisory{}
 	}
 	if err := st.validate(); err != nil {
-		return State{}, refuseState(err.Error())
+		return State{}, err.Error()
 	}
-	return st, nil
+	return st, ""
 }
 
 // SaveState validates st and writes it atomically, owner-only. A state that
