@@ -88,7 +88,9 @@ func PrimaryWorktreeRoot(repoRoot string) (string, bool) {
 	if err != nil || gitDir == commonDir {
 		return "", false
 	}
-	wts, err := gitutil.ListWorktrees(repoRoot, maxWorktreeListing)
+	// Past the cap git's answer is refused, which is the resolution's designed
+	// failure mode.
+	wts, err := gitutil.ListWorktrees(repoRoot, gitutil.MaxWorktreeListing)
 	if err != nil || len(wts) == 0 {
 		return "", false
 	}
@@ -113,10 +115,6 @@ func PrimaryWorktreeRoot(repoRoot string) (string, bool) {
 	}
 	return primary, true
 }
-
-// maxWorktreeListing caps the worktree listing the resolution reads; past it
-// git's answer is refused, which is the resolution's designed failure mode.
-const maxWorktreeListing = 16 << 20
 
 // InheritedPrivate reports the private layer repoRoot inherits from its primary
 // checkout, or nil when there is nothing to inherit — repoRoot is not a linked

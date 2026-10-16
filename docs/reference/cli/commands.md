@@ -237,9 +237,9 @@ abcd banlist remove --private acme-internal
 
 ### `abcd build`
 
-Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
+Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
+**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 An issue id starts the loop's issue-keyed lane instead (below).
@@ -247,10 +247,28 @@ A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
 open question, has no unanswered claim section, is not held, names no unsettled blocker
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
-worktree or local branch holds it in another bucket, and no session holds a live claim
-on it; a peer or claim that cannot be read counts as holding it). A refusal names the
+worktree or local branch holds it in another bucket, no session holds a live claim on
+it, and no other copy holds a reservation on it on origin, as this checkout last fetched
+the reservations; a peer, claim or view that cannot be read counts as holding it). The
+check reads the reservations from disk alone, and names another copy's with its holder,
+its expiry and the view's age; this copy's own is never a holder. A refusal names the
 check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent
 instead of taking one named.
+
+In a checkout with a remote named origin, the run reserves its key there, as
+`abcd reserve` does, once the checks pass and before the run is created: a new run, and a
+resumed one, with the files the spec's `## Footprint` packages line names (an issue's
+found_at path for an issue id), so every other participant sees it is taken. A spec with
+no footprint, or an issue with no found_at path, is refused at the reservation and nothing
+is started. Another person's reservation, or your own from another computer, refuses
+the start as contention; --take-over moves your own live reservation from another copy
+to this one, never another person's. `abcd implement step` renews the reservation, fences
+the landing with it and releases it once the run lands; a run whose issue lane is handed
+back releases it then. --release pushes the tombstone over this copy's reservation on the
+key and changes nothing in the run's state: a later step meets it at the land fence, and
+`abcd build` again reserves it anew. --release takes no other flag. The reservation needs
+your GitHub username, read from a no-reply user.email or from
+reservation.github_username in ~/.abcd.noindex/config.json.
 
 When the checks pass, the run is created in this checkout's local tier,
 `.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,
@@ -320,8 +338,10 @@ Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is loc
 ```
       --fix-rounds string   the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer
       --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
+      --release             push the tombstone over this copy's reservation on the key, changing nothing in the run's state
       --session string      the host session's id in the shared run state; a new run claims the intent for it
       --sub-agents string   this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer
+      --take-over           move your own live reservation on the key from another copy to this one; never another person's
 ```
 
 **Example:**
@@ -3049,6 +3069,64 @@ instance itself. A sweep that passes lifts that halt.
 
 ```
 abcd lab sweep lab-260901000000-0123abc
+```
+
+### `abcd land`
+
+Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.
+
+**Usage:** `abcd land [<branch>] [flags]`
+
+abcd land [<branch>] [--no-push] [--no-enqueue]
+
+Land a branch whose work is committed: the checkout's current branch, or the one
+named, from the worktree that has it checked out. Each step can be resumed by
+running abcd land again.
+
+land runs the branch's own `make preflight` with your environment and
+credentials, so run it only on a branch whose content you trust.
+
+  1. Origin: every fetch and push URL of origin must be the repository the forge
+     client resolves, and the forge's default branch must be the one origin/HEAD
+     names here and not the branch; checked before anything runs.
+  2. Landed: origin's default branch is fetched; a head already on it has landed,
+     and so has one the forge lists a merged pull request of this repository's
+     branch at (a squash or rebase merge): land says so and stops, pushing,
+     gating and queueing nothing. A forge that cannot be asked gets no push.
+  3. Gate: when a preflight receipt already names the branch's head (in any
+     worktree, as the pre-push hook looks), the gate is skipped; otherwise
+     `make preflight` runs in the branch's checkout, its output on stderr, and the
+     head must be unchanged, a receipt present and origin's URLs as checked after
+     it. A repository whose make file declares no preflight target gets no push.
+  4. Push (land.push): a plain push of the gated commit to the branch's name on
+     origin, with the repository's hooks running, never forced, never the default
+     branch.
+  5. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
+     queue where the merge gate allows it (today: only where a merge queue gates the
+     default branch and a ruleset requires a person's approval), pinned to the
+     head, then confirmed in the queue. An arming someone else made is left as it
+     is. With no pull request it prints the `gh pr create` command and stops; it
+     never opens one.
+
+land.push and land.enqueue are read from .abcd/config.json (in the working
+directory's checkout and the branch's own) and ~/.abcd.noindex/config.json,
+default true, and off wins from any layer: any file can turn an act off and none
+can turn it back on. --no-push and --no-enqueue turn one off for this run. An act
+that is off says which layer turned it off; with both off nothing runs. With
+land.push off and land.enqueue on the gate still runs: arming says the head is
+ready, and readiness is the gate.
+
+Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an
+origin that is not the repository the forge client resolves (an SSH host alias
+included), and a pull request only another repository opened. Exit 0 when every
+step did its act or said why it stopped; exit 2 on a refusal, which names what
+was done before it.
+
+**Flags:**
+
+```
+      --no-enqueue   do not arm or queue the pull request this run
+      --no-push      do not push the branch this run; print the push command instead
 ```
 
 ### `abcd launch`

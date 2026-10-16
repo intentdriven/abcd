@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -231,5 +232,45 @@ func TestAHandedBackDrainLaneReleasesItsReservation(t *testing.T) {
 	}
 	if !strings.Contains(r.Wrote, "released the reservation on "+secondIssue) {
 		t.Fatalf("the route says the reservation was released: %q", r.Wrote)
+	}
+}
+
+// TestADrainRetriesAReleaseTheHandBackCouldNotPush: a lane handed back while
+// origin refuses the tombstone logs the failure as its own stage, not as a
+// release; once origin takes pushes again, the drain routing the hand-back
+// pushes the tombstone rather than reusing the failure's clause, so the issue
+// does not hold every drain off until its lease lapses.
+func TestADrainRetriesAReleaseTheHandBackCouldNotPush(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	hook := filepath.Join(bare, "hooks", "pre-receive")
+	refuseReservations := "#!/bin/sh\nwhile read old new ref; do case \"$ref\" in refs/heads/abcd-reserved/*) echo 'origin is closed' >&2; exit 1;; esac; done\nexit 0\n"
+	if err := os.WriteFile(hook, []byte(refuseReservations), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handBackLaneOf(t, repo, first.Start.RunID, Options{}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the page needs a decision", Home: "the brief"})
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); tomb.released {
+		t.Fatalf("origin refused the tombstone, yet it is there: %+v", tomb)
+	}
+	if note := recordNote(t, repo, first.Start.RunID, StageReservationReleaseFailed); !strings.Contains(note, "could not push the tombstone") {
+		t.Fatalf("the run record logs the failed release at its own stage: %q", note)
+	}
+	if note := recordNote(t, repo, first.Start.RunID, StageReservationReleased); note != "" {
+		t.Fatalf("a failed release is not logged as a release: %q", note)
+	}
+
+	if err := os.Remove(hook); err != nil {
+		t.Fatal(err)
+	}
+	next := drainToLane(t, repo, Options{}, DrainOptions{})
+	r := routeOf(t, next.HandBacks, secondIssue)
+	if tomb := originReservation(t, bare, claim.RefPrefix+secondIssue); !tomb.released || tomb.holder != "octo" {
+		t.Fatalf("the drain pushes the tombstone the hand-back could not: %+v", tomb)
+	}
+	if !strings.Contains(r.Wrote, "released the reservation on "+secondIssue) || strings.Contains(r.Wrote, "could not push") {
+		t.Fatalf("the route says the reservation was released, not the earlier failure: %q", r.Wrote)
 	}
 }

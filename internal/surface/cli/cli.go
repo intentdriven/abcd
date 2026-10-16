@@ -403,6 +403,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
 	root.AddCommand(newReserveCommand(&asJSON))
+	root.AddCommand(newLandCommand(&asJSON))
 	root.AddCommand(newDrainCommand(&asJSON))
 	root.AddCommand(newBuildCommand(&asJSON))
 	root.AddCommand(newLabCommand(&asJSON))
