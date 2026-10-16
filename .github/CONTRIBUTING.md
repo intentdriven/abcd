@@ -56,7 +56,7 @@ inbound = outbound statement is the whole of it.
 - **Local gates.** `make preflight` runs the load check first (load-check, a
   warning, never a failure), then the same build, vet, test and race
   steps locally, together with the fmt-check format gate, the lint-reviews,
-  lint-issues, lint-decisions, record-lint, issue-drift,
+  lint-issues, record-lint, issue-drift,
   docs-lint, check-attribution (the identity and trailers of the branch's
   commits) and site-render gates and both tagged eval lanes (smoke,
   evals-cold-reading, about five seconds each — the untagged test step compiles

@@ -31,4 +31,4 @@ The **gate cross-check detector** moves here from iss-37: every named gate, lint
 
 From the 2026-08-05 maintainer disposition on iss-43, a **candidate extension** of the detector's scope, to be settled alongside those two questions rather than committed to here: README capability and status claims, where a claimed-shipped capability resolves to a wired verb and a phase claim resolves against the roadmap (dropped from iss-43, whose one surviving instance is doc repair).
 
-Related fact recorded in DECISIONS.md under the iss-40 entry: 06-lint.md's `TM003`–`TM011` rows and the `H1` schema-load row claim "Delivered" schema validation that no Go code implements. That is the same phantom-claim class and is in scope for this issue.
+Related fact recorded in the iss-40 decision [dcn-2608020000000008](../../decisions/dcn-2608020000000008-iss-40-one-canonical-glossary-chosen-as.md): 06-lint.md's `TM003`–`TM011` rows and the `H1` schema-load row claim "Delivered" schema validation that no Go code implements. That is the same phantom-claim class and is in scope for this issue.

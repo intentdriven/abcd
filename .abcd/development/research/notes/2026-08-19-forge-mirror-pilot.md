@@ -1,7 +1,7 @@
 # Forge-mirror pilot — experiment record (2026-08-19)
 
 A hand-run of the forge-mirror protocol decided on 2026-08-19 (the
-ledger-canonical entry in `../../../work/DECISIONS.md`, grounded in
+ledger-canonical entry [dcn-2608190000000001](../../../work/decisions/dcn-2608190000000001-the-abcd-work-issues-ledger-is-the.md), grounded in
 [`2026-08-19-issue-ledger-forge-sync-sota.md`](2026-08-19-issue-ledger-forge-sync-sota.md)),
 executed per the script-first rule: the smallest documented protocol is run by
 hand and graded before any automation is filed. This note is the grading; the

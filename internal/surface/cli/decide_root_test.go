@@ -53,7 +53,7 @@ func mintDecision(t *testing.T, title string) (id, path string) {
 		ID   string `json:"id"`
 		Path string `json:"path"`
 	}
-	out := runCLI(t, "decide", title, "--json")
+	out := runCLI(t, "decide", "--adr", title, "--json")
 	if err := json.Unmarshal(out, &res); err != nil {
 		t.Fatalf("decide --json: not JSON: %v\n%s", err, out)
 	}
@@ -95,7 +95,7 @@ func TestDecideOutsideAnyRepositoryRefuses(t *testing.T) {
 	plain := realPath(t, t.TempDir())
 	t.Chdir(plain)
 
-	out, err := runCLIErr(t, "decide", "a decision minted outside any repository")
+	out, err := runCLIErr(t, "decide", "--adr", "a decision minted outside any repository")
 	if err == nil {
 		t.Fatalf("`abcd decide` outside a repository succeeded; it must refuse:\n%s", out)
 	}
@@ -124,7 +124,7 @@ func TestDecideRefusesARepoShapedTreeGitWillNotAnswerFor(t *testing.T) {
 	}
 	t.Chdir(planted)
 
-	out, err := runCLIErr(t, "decide", "a decision minted beneath a planted marker")
+	out, err := runCLIErr(t, "decide", "--adr", "a decision minted beneath a planted marker")
 	if err == nil {
 		t.Fatalf("a repo-shaped tree git will not answer for was accepted as a root:\n%s", out)
 	}
@@ -176,7 +176,7 @@ func TestDecideReportsAStrayDecisionStoreBelowTheCheckoutRoot(t *testing.T) {
 	}
 
 	t.Chdir(sub)
-	out, err := runCLIErr(t, "decide", "a decision minted beside a stray store")
+	out, err := runCLIErr(t, "decide", "--adr", "a decision minted beside a stray store")
 	if err != nil {
 		t.Fatalf("decide: %v\n%s", err, out)
 	}
@@ -263,7 +263,7 @@ func TestDecideRefusesACheckoutWhoseWorktreeSettingNamesAnAncestor(t *testing.T)
 	}
 	t.Chdir(co)
 
-	out, err := runCLIErr(t, "decide", "a decision minted under a widened worktree")
+	out, err := runCLIErr(t, "decide", "--adr", "a decision minted under a widened worktree")
 	if err == nil {
 		t.Fatalf("`abcd decide` accepted the checkout's parent as the store root:\n%s", out)
 	}

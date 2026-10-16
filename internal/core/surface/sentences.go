@@ -91,8 +91,8 @@ var sentences = map[string]string{
 	"abcd capture wontfix": "Move an open issue to wontfix/ with the reason it is not acted on: " +
 		"Writes the moved record; refuses an id this ledger does not hold.",
 
-	"abcd decide": "Mint an ADR id and lay the record's empty skeleton: " +
-		"Writes one proposed record into the decisions store; refuses a missing or unusable title.",
+	"abcd decide": "Record a decision, list them bare, or mint an ADR with --adr: " +
+		"Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.",
 
 	"abcd disembark": "Pack a repository into a lifeboat, probing and planning first: " +
 		"Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.",

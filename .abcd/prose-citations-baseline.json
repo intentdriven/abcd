@@ -109,7 +109,47 @@
     {
       "id": "iss-196",
       "class": "never-minted",
-      "note": "named by iss-200's `found_during` ('fix attempt for iss-196 blocked at pre-PR review') and by the 2026-09-05 entry in .abcd/work/DECISIONS.md, which rules that it be treated as superseded by iss-200. No file of this id was added in any commit on any branch: the narrower fix attempt was abandoned before its capture was committed. The mention is a true account of the run and is not illustrative or forward-looking, so no line marker would be honest."
+      "note": "named by iss-200's `found_during` ('fix attempt for iss-196 blocked at pre-PR review') and by the decision dcn-2608080000000002, which rules that it be treated as superseded by iss-200. No file of this id was added in any commit on any branch: the narrower fix attempt was abandoned before its capture was committed. The mention is a true account of the run and is not illustrative or forward-looking, so no line marker would be honest."
+    },
+    {
+      "id": "itd-9999",
+      "class": "illustrative",
+      "note": "a number written to demonstrate behaviour, at a site that cannot carry the line marker: the body of decision record dcn-2608020000000004, which is an entry of the retired single log migrated verbatim (itd-2609151138388536, criterion A8), so a marker would change the entry's words."
+    },
+    {
+      "id": "adr-9999",
+      "class": "illustrative",
+      "note": "a number written to demonstrate behaviour, at a site that cannot carry the line marker: the body of decision record dcn-2608020000000005, which is an entry of the retired single log migrated verbatim (itd-2609151138388536, criterion A8), so a marker would change the entry's words."
+    },
+    {
+      "id": "itd-2609041232354002",
+      "class": "forward-looking",
+      "note": "names an intent that exists only on a parked, unmerged branch, in the body of decision record dcn-2609250000000030, which says so itself (four on `readings/opening-run`, two on the Phase 9 branches); the body is an entry of the retired single log migrated verbatim (itd-2609151138388536, criterion A8) and cannot carry the line marker."
+    },
+    {
+      "id": "itd-2609041232363172",
+      "class": "forward-looking",
+      "note": "names an intent that exists only on a parked, unmerged branch, in the body of decision record dcn-2609250000000030, which says so itself (four on `readings/opening-run`, two on the Phase 9 branches); the body is an entry of the retired single log migrated verbatim (itd-2609151138388536, criterion A8) and cannot carry the line marker."
+    },
+    {
+      "id": "itd-2609041232387746",
+      "class": "forward-looking",
+      "note": "names an intent that exists only on a parked, unmerged branch, in the body of decision record dcn-2609250000000030, which says so itself (four on `readings/opening-run`, two on the Phase 9 branches); the body is an entry of the retired single log migrated verbatim (itd-2609151138388536, criterion A8) and cannot carry the line marker."
+    },
+    {
+      "id": "itd-2609041232398582",
+      "class": "forward-looking",
+      "note": "names an intent that exists only on a parked, unmerged branch, in the body of decision record dcn-2609250000000030, which says so itself (four on `readings/opening-run`, two on the Phase 9 branches); the body is an entry of the retired single log migrated verbatim (itd-2609151138388536, criterion A8) and cannot carry the line marker."
+    },
+    {
+      "id": "itd-2609051548103731",
+      "class": "forward-looking",
+      "note": "names an intent that exists only on a parked, unmerged branch, in the body of decision record dcn-2609250000000030, which says so itself (four on `readings/opening-run`, two on the Phase 9 branches); the body is an entry of the retired single log migrated verbatim (itd-2609151138388536, criterion A8) and cannot carry the line marker."
+    },
+    {
+      "id": "itd-2609051743587375",
+      "class": "forward-looking",
+      "note": "names an intent that exists only on a parked, unmerged branch, in the body of decision record dcn-2609250000000030, which says so itself (four on `readings/opening-run`, two on the Phase 9 branches); the body is an entry of the retired single log migrated verbatim (itd-2609151138388536, criterion A8) and cannot carry the line marker."
     }
   ]
 }

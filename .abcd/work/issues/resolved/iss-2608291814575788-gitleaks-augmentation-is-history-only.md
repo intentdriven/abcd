@@ -18,7 +18,7 @@ ultra-v0.6.8 altitude 2: the opt-in gitleaks augmentation is bolted onto history
 
 ## Remedy grounds (2026-09-29)
 
-- Why: the design is ruled in .abcd/work/DECISIONS.md (2026-09-25), so the remedy applies it; it supersedes the body's proposal to fold the adapter into internal/adapter/scanner, which the ruling shows is an import cycle.
+- Why: the design is ruled in [dcn-2609250000000025](../../decisions/dcn-2609250000000025-iss-2608291814575788-the-opt-in-gitleaks.md) (2026-09-25), so the remedy applies it; it supersedes the body's proposal to fold the adapter into internal/adapter/scanner, which the ruling shows is an import cycle.
 - Rejected: keeping the augmentation on history.Capture alone, which leaves every other scanner consumer without the opt-in the repository armed.
 
 ## Grounds

@@ -15,8 +15,6 @@ var bareRenderExceptions = map[string]string{
 	"build": "its one operand is the intent it starts or resumes a run for, so bare " +
 		"refuses as a usage error (exit 2) and writes nothing; the run's state renders " +
 		"through `abcd implement status`",
-	"decide": "its one operand is the quoted title it mints a record from, so bare " +
-		"refuses (exit 2) naming the form, and writes nothing",
 	"disembark": "a parent of stage sub-verbs that each act on a named repository or " +
 		"lifeboat; with no operand there is no state to render, so bare prints its sub-verbs",
 	"drain": "bare is the run itself, one move per invocation, so it is not a render; " +

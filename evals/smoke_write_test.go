@@ -162,22 +162,45 @@ func TestResolveMovesTheRecordAndWritesItsResolution(t *testing.T) {
 	}
 }
 
-// TestDecideMintsTheDecisionRecord runs decide, the committed-tier writer of a
-// decision record: the file it names exists, under the ADR store, and carries
-// the title it was given.
-func TestDecideMintsTheDecisionRecord(t *testing.T) {
+// TestDecideAdrMintsTheADRRecord runs decide --adr, the committed-tier writer
+// of an architecture decision record: the file it names exists, under the ADR
+// store, and carries the title it was given.
+func TestDecideAdrMintsTheADRRecord(t *testing.T) {
 	repo, home := scratchRepo(t)
 	const title = "Scratch decisions live in one folder"
 	var got struct{ ID, Slug, Title, Path string }
-	runJSON(t, repo, home, &got, "decide", title)
+	runJSON(t, repo, home, &got, "decide", "--adr", title)
 
 	if !strings.HasPrefix(got.ID, "adr-") || !kebab.MatchString(got.Slug) {
-		t.Fatalf("decide reported id=%q slug=%q", got.ID, got.Slug)
+		t.Fatalf("decide --adr reported id=%q slug=%q", got.ID, got.Slug)
 	}
 	if !strings.HasPrefix(got.Path, ".abcd/development/decisions/adrs/") {
-		t.Errorf("decide wrote %q, outside the ADR store", got.Path)
+		t.Errorf("decide --adr wrote %q, outside the ADR store", got.Path)
 	}
 	if rec := readRecord(t, repo, got.Path); !strings.Contains(rec, title) {
-		t.Errorf("the decision record lacks its title %q:\n%s", title, rec)
+		t.Errorf("the ADR lacks its title %q:\n%s", title, rec)
+	}
+}
+
+// TestDecideRecordsADecision runs decide with a sentence, the writer of one
+// decision record: the file it names exists, under the decisions folder, and
+// carries the text it was given after its date.
+func TestDecideRecordsADecision(t *testing.T) {
+	repo, home := scratchRepo(t)
+	if err := os.MkdirAll(filepath.Join(repo, ".abcd", "work"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	const text = "Scratch decisions live in one folder"
+	var got struct{ ID, Slug, Date, Path, Text string }
+	runJSON(t, repo, home, &got, "decide", text)
+
+	if !strings.HasPrefix(got.ID, "dcn-") || !kebab.MatchString(got.Slug) {
+		t.Fatalf("decide reported id=%q slug=%q", got.ID, got.Slug)
+	}
+	if !strings.HasPrefix(got.Path, ".abcd/work/decisions/") {
+		t.Errorf("decide wrote %q, outside the decisions folder", got.Path)
+	}
+	if rec := readRecord(t, repo, got.Path); !strings.Contains(rec, got.Date+" — "+text) {
+		t.Errorf("the decision record lacks its dated text %q:\n%s", text, rec)
 	}
 }

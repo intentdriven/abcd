@@ -1084,8 +1084,8 @@ func ingestLocked(repoRoot string, raw []byte, rcp string, lg auditLedgerOutcome
 // record is a noop and writes nothing. A payload that renders differently
 // replaces that block in place, after the same checks a first ingest makes:
 // this is how an auditor who has since weighed a reading-occasioned condition
-// block names its occasion and ingests again (the 2026-09-25 ruling in
-// .abcd/work/DECISIONS.md). A payload that does not validate is refused with
+// block names its occasion and ingests again (the 2026-09-25 ruling
+// dcn-2609250000000002). A payload that does not validate is refused with
 // nothing written rather than dead-lettered: quarantine is for a receipt still
 // owed a verdict, and a bad re-ingest must never replace a good one. It runs
 // under the store lock ingestLocked holds.

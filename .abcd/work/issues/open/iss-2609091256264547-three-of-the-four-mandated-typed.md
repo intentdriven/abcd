@@ -22,7 +22,7 @@ Deferred past v0.11.1: The product thinker's ruling M23 of 2026-09-23: support a
 
 ## Remedy grounds (2026-09-29)
 
-- Ruling M23 (2026-09-23, .abcd/work/DECISIONS.md) chose to build all four relations; duplicates and refines are schema-known on issues (internal/core/issueschema/issueschema.go), and reverses appears in no schema.
+- Ruling M23 (2026-09-23, [dcn-2609230000000010](../../decisions/dcn-2609230000000010-the-four-typed-relations.md)) chose to build all four relations; duplicates and refines are schema-known on issues (internal/core/issueschema/issueschema.go), and reverses appears in no schema.
 - The body-edge lint is the record's own detector and stops the prose-called-typed shape from recurring.
 - Rejected: narrowing the rule to the implemented words, which the ruling declined.
 

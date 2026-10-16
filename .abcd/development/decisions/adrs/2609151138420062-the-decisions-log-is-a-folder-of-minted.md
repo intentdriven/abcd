@@ -29,7 +29,7 @@ and conflicted on four of the eight merges that carried an entry; union is not
 safe there, because it duplicates the `###` headings, so that half needed a
 hand-written section-merging script kept only in the session's local tier. Both
 are recorded in
-[iss-2609100507439414](../../../work/issues/open/iss-2609100507439414-append-only-logs-conflict-on-every-merge.md).
+[iss-2609100507439414](../../../work/issues/resolved/iss-2609100507439414-append-only-logs-conflict-on-every-merge.md).
 
 **The five record families that never conflicted are all one file per entry.**
 The same run resolved 33 issues, shipped 5 intents, superseded 3 ADRs, held 3
@@ -112,7 +112,7 @@ disjoint file additions. The gate goes when the shape lands, in the same change,
 and nothing is left invoking it.
 
 The delivery is
-[itd-2609151138388536](../../intents/planned/itd-2609151138388536-append-only-logs-conflict-on-every-merge.md).
+[itd-2609151138388536](../../intents/shipped/itd-2609151138388536-append-only-logs-conflict-on-every-merge.md).
 This record is the rule; that intent is the capability, with the migration, the
 index assembly, the adoption path and the gate retirement as its acceptance
 criteria.

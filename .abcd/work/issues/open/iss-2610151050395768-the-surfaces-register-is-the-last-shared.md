@@ -13,3 +13,7 @@ remedy: "Make the surfaces register's chapter table and its two inline verb list
 ---
 
 After the release-gate manifest's derived values stop being stored (the chore/merge-hotspots branch, under review on 2026-10-15), the brief's 04-surfaces/README.md register is the main remaining line every surface-adding branch edits: its chapter table ends on the newest number and two of its rows are single-line inline lists of verbs, so two such branches conflict there. Measured on the ten surface-adding pull requests of 2026-09-24 to 2026-10-15: the table end in 8, the agents-and-hosts row in 5, the one-file-per-verb list in 5.
+
+## Progress (2026-10-15)
+
+The fix for iss-2608220150157511 (merged as #1024) generated one of the three lines this record measures: the one-file-per-verb list in `04-surfaces/README.md` is now the `commands` region, written from the `commands/` files by `go generate ./internal/surface/cli`, so it no longer conflicts. The chapter table and the agents-and-hosts row stay hand-kept, because their numbering, chapter mapping and "Serves" column are not derivable from the files; those two lines were 8 and 5 of the ten measured conflicts. The record's own remedy, one entry per line in a stable order, remains the fix for them.

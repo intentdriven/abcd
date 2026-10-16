@@ -96,7 +96,7 @@ Per-criterion verdicts:
   evidence: internal/surface/cli/identity.go:35 — "markMoved(identityCmd, "abcd lint identity")"
   evidence: internal/surface/cli/consolidate_test.go:311 — "func TestLintTargetsAreRegistered(t *testing.T) {"
   evidence: internal/surface/cli/consolidate_test.go:359 — "func TestBareLintRunsEveryTarget(t *testing.T) {"
-  evidence: .abcd/work/DECISIONS.md:2556 — "`identity render` proposes a correction, a distinct act, and stays"
+  evidence: [dcn-2609250000000023](../../../work/decisions/dcn-2609250000000023-how-itd-2609212130136102-s-consolidation.md) — "`identity render` proposes a correction, a distinct act, and stays"
 - ac-4 — MET: the snapshot records moved_to per stub (TestMovedSpellingsAreRecordedWithTheirSuccessor), the brief appendix omits a whole-moved stub and prints the successor where a bare form moved, the generated reference and the pages carry no section for an old spelling (TestReferenceNamesTheNewFormsOnly, TestReferenceUsageNeverOffersAMovedBareForm), and the intent declares impact: breaking, which DeriveNext maps to the breaking bump
   evidence: internal/surface/cli/consolidate_test.go:92 — "func TestMovedSpellingsAreRecordedWithTheirSuccessor(t *testing.T) {"
   evidence: internal/core/surface/appendix.go:120 — "fmt.Fprintf(&b, "### `%s`\n\nIt moved to `%s`.\n\n", p, c.MovedTo)"
@@ -123,9 +123,9 @@ Gap audit:
   - the intent's Why names `identity render` among the five spellings of one check folded into `lint`; the delivery moves the bare `identity` report to `lint identity` and keeps `identity render` (a proposal, a distinct act) as a live sub-verb documented in the brief, by the 2026-09-25 ruling
     evidence: internal/surface/cli/identity.go:38 — "Use: "render","
     evidence: .abcd/development/brief/04-surfaces/19-identity.md:160 — "### `abcd identity render`"
-    evidence: .abcd/work/DECISIONS.md:2556 — "`identity render` proposes a correction, a distinct act, and stays"
+    evidence: [dcn-2609250000000023](../../../work/decisions/dcn-2609250000000023-how-itd-2609212130136102-s-consolidation.md) — "`identity render` proposes a correction, a distinct act, and stays"
   - spec scope 3 says the old lint verbs become stubs for one release and the Approach names a follow-on remainder spec for their removal; the ruling records that no remainder spec is minted and the removal is captured as an issue instead
-    evidence: .abcd/work/DECISIONS.md:2556 — "The spec's remainder spec for removing the stubs is not minted"
+    evidence: [dcn-2609250000000023](../../../work/decisions/dcn-2609250000000023-how-itd-2609212130136102-s-consolidation.md) — "The spec's remainder spec for removing the stubs is not minted"
 - missing: (none)
 
 ## Grounds

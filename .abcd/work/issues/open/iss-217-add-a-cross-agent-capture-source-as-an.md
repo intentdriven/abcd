@@ -6,7 +6,7 @@ severity: "minor"
 category: "observation"
 source: "user-observation"
 found_during: "manual-capture"
-details: "SOTA-researched 2026-07-30, decision recorded (DECISIONS.md 2026-07-30): a cross-agent capture source is the current default SOTA upgrade once cross-harness compatibility becomes a concern, import-only over the native store via the pre-declared specstory-import seam. Candidate tool, target harness, and provider caveats are named in .abcd/development/research/notes/2026-07-30-session-recording-sota.md"
+details: "SOTA-researched 2026-07-30, decision recorded (dcn-2607300000000007): a cross-agent capture source is the current default SOTA upgrade once cross-harness compatibility becomes a concern, import-only over the native store via the pre-declared specstory-import seam. Candidate tool, target harness, and provider caveats are named in .abcd/development/research/notes/2026-07-30-session-recording-sota.md"
 suggested_fix: "Build the specified-but-unbuilt import path: parse the capture tool's per-session markdown and merge by timestamp/content hash through history.Capture(kind=specstory-import), so the two-stage fail-closed redaction applies to imported material; telemetry opt-out in any wiring, cloud/sharing tiers out of scope, the tool's in-repo history directory never tracked."
 related_issues: ["iss-95", "iss-96", "iss-125", "iss-157"]
 remedy: "Waits on ruling K (keep parked or close): if kept, name the trigger in this record (the first session a second harness produces) and, when it fires, build the import path in `internal/core/history` that parses the tool's per-session markdown and merges by timestamp and content hash through `history.Capture` on the pre-declared import kind, labelling tool and route separately per ruling J13, proven by a test that an imported transcript with a planted secret and home path lands redacted and a second import adds nothing; if closed, wontfix it with that reason and leave the pre-declared seam for a later intent."
@@ -41,7 +41,7 @@ SOTA survey (2026-07-30, `.abcd/development/research/notes/2026-07-30-session-re
   (hostnames) and iss-157 (network identifiers) have since been resolved by
   the scanner's network-pattern work.
 
-Decision (2026-07-30, DECISIONS.md): a cross-agent capture source is the
+Decision ([dcn-2607300000000007](../../decisions/dcn-2607300000000007-a-cross-agent-transcript-capture-source.md)): a cross-agent capture source is the
 **current default SOTA upgrade**, triggered when compatibility beyond Claude
 Code becomes a concern. Adoption shape is import-only over the native store;
 the native floor stays the default and capture degrades to it when the tool is

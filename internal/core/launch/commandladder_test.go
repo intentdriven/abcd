@@ -15,7 +15,7 @@ package launch
 //
 // Stated precisely, because a comfortable warrant nobody checked is exactly how
 // spc-21 caused iss-204. The plugins reference quoted in iss-205 covers "Skill
-// and agent content: anywhere the placeholder appears". `.abcd/work/DECISIONS.md`
+// and agent content: anywhere the placeholder appears". dcn-2608020000000002
 // (2026-08-02, iss-170) records only that the harness sets CLAUDE_PLUGIN_ROOT
 // inside HOOK invocations, and adds in as many words that this codebase has no
 // independent evidence for whether any other context also sets it.

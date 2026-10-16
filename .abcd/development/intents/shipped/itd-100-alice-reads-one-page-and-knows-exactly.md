@@ -77,7 +77,7 @@ Gap audit:
     evidence: docs/reference/terminology.md:45 — "captured as iss-138 rather than dressed up as a rejection"
     evidence: .abcd/development/brief/05-internals/08-skills.md:3 — "abcd ships zero skills"
   - every claim about abcd is verified against the committed record, never memory
-    evidence: .abcd/work/DECISIONS.md (delivered grill line, 2026-07-26) — "AP2 via new capture — record silent, REJECTS never invented"
+    evidence: [dcn-2607260000000001](../../../work/decisions/dcn-2607260000000001-itd-100-grill-settled-crosswalk-is-a.md) (delivered grill line, 2026-07-26) — "AP2 via new capture — record silent, REJECTS never invented"
   - the page ships wired into the user-facing surface with a CHANGELOG entry and an inspiration credit landed in the same change
     evidence: docs/reference/README.md:7 — "`terminology.md` (linked)"
     evidence: CHANGELOG.md (delivered hunk) — "A public terminology crosswalk at `docs/reference/terminology.md`"
@@ -92,4 +92,4 @@ Gap audit:
 - missing:
   - spc-15's conditional promise that deferring the structural docs-lint rule ("every table row carries at least one footnote") would be "recorded, not silent" — no such rule ships in the diff and no implement-time deferral record appears in the delivered DECISIONS.md line or ledger captures
     evidence: .abcd/development/specs/closed/spc-15-alice-reads-one-page-and-knows-exactly.md:46 — "If deferred, that is recorded, not silent"
-    evidence: .abcd/work/DECISIONS.md (delivered grill line, 2026-07-26) — "no mention of the structural lint-rule deferral"
+    evidence: [dcn-2607260000000001](../../../work/decisions/dcn-2607260000000001-itd-100-grill-settled-crosswalk-is-a.md) (delivered grill line, 2026-07-26) — "no mention of the structural lint-rule deferral"

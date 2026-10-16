@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/ahoy/store.go"
 remedy: "Create ~/.abcd through one helper that always uses 0o700 (the credential store's mode), and make each store's own files 0600; a test asserts the home's mode whichever verb creates it first."
-resolution: "Every writer creates abcd's home and each folder in it at abcdhome.DirMode (0700) whichever command runs first, the hook's bootstrap included (mkdir -m 0700); the path-entry record and the registry's index are written abcdhome.FileMode (0600), and one an earlier version wrote 0644 is narrowed at its next write; an existing home keeps its mode (DECISIONS.md 2026-10-04)."
+resolution: "Every writer creates abcd's home and each folder in it at abcdhome.DirMode (0700) whichever command runs first, the hook's bootstrap included (mkdir -m 0700); the path-entry record and the registry's index are written abcdhome.FileMode (0600), and one an earlier version wrote 0644 is narrowed at its next write; an existing home keeps its mode (dcn-2610040000000007)."
 impact: fix
 resolved_by:
   commit: "d6897d03e"

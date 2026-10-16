@@ -9,7 +9,7 @@ found_during: "Phase A readiness statement"
 origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/capture/reading.go"
-wontfix_reason: "DECISIONS 2026-09-09 parks the grounds gates as advisory until the reading work is rethought, so no new state-keyed grounds refusal is added"
+wontfix_reason: "dcn-2609090000000001 parks the grounds gates as advisory until the reading work is rethought, so no new state-keyed grounds refusal is added"
 ---
 
 The readings companion's section 4.3 says what a disposition's grounds must contain varies by state (a rejection names the purpose protected, an admission or a decline states why) and that the variation is a lint rule rather than four fields. Nothing enforces it: the disposition command refuses only a blank or whitespace-only grounds field, and no lint reads the grounds against the state. Held by protocol today; the readiness statement for Phase A records it as not held by mechanism.

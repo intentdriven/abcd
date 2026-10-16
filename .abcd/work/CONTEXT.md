@@ -5,7 +5,7 @@ Short and pointer-heavy; durable design truth lives in
 [`../development/`](../development/), personal session state in
 `../.work.local/NEXT.md` (local).
 
-This file is **status-free** (see `DECISIONS.md`, 2026-07-10): what is being
+This file is **status-free** (see [dcn-2607100000000005](decisions/dcn-2607100000000005-context-md-goes-status-free-it-keeps.md)): what is being
 worked on, what is next, and what has shipped are read live from the surfaces
 built for that — the issue ledger (`abcd capture list --open`), the roadmap
 dashboard (`../development/roadmap/README.md`), and the intent buckets — never
