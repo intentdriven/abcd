@@ -287,8 +287,9 @@ func (w writerArgs) sedTargets() []writeTarget {
 		switch {
 		case t == "--":
 			i = len(toks)
-		case t == "-i" || t == "-I" || strings.HasPrefix(t, "--in-place") ||
+		case strings.HasPrefix(t, "-i") || strings.HasPrefix(t, "-I") || strings.HasPrefix(t, "--in-place") ||
 			(isShortCluster(t) && (strings.ContainsAny(t[1:], "iI"))):
+			// -i with its backup suffix glued on (-i.bak) edits in place too.
 			inPlace = true
 		case t == "-e" || t == "-f" || strings.HasPrefix(t, "--expression") || strings.HasPrefix(t, "--file"):
 			scripted = true

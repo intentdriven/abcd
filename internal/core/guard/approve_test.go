@@ -183,7 +183,7 @@ func TestApproveLeavesScriptFilesToTheirInterpreter(t *testing.T) {
 // own voice.
 func TestApprovalIDsAreReserved(t *testing.T) {
 	for _, id := range []string{unnamedProgramEntryID, inlineCodeEntryID, checkNoteEntryID, registryEntryID, promptToolEntryID, promptInputEntryID,
-		protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID} {
+		protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID, unfixedPathEntryID, gitConfigWriteEntryID} {
 		if !containsString(reservedEntryIDs, id) {
 			t.Errorf("reservedEntryIDs lacks %q", id)
 		}
@@ -207,7 +207,7 @@ func TestApproveKeepsTheHostsOwnSafetyRefusals(t *testing.T) {
 		`cp hook.sh .git/hooks/pre-commit`:         protectedPathEntryID,
 		`printf '{}' > .mcp.json`:                  protectedPathEntryID,
 		`tee .claude/settings.json < x`:            protectedPathEntryID,
-		`git config --file ~/.gitconfig a.b c`:     protectedPathEntryID,
+		`git config --file ~/.gitconfig a.b c`:     gitConfigWriteEntryID,
 		`mkdir -p .husky && touch .husky/pre-push`: protectedPathEntryID,
 		`echo 1 > .envrc`:                          protectedPathEntryID,
 		`rm -rf /usr`:                              criticalRemovalEntryID,

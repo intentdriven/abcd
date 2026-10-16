@@ -275,6 +275,19 @@ type readCtx struct {
 	// readings counts the texts read, so a directory one reading names
 	// (shellState.dirGen) is never one another names.
 	readings int
+	// record asks the reading to keep, in line, every segment of the command
+	// line itself with the shell states it can run in, as the reading placed
+	// them: the approver (approve.go) judges the line's writes and removals
+	// from the same model the reading used.
+	record bool
+	line   []placedSeg
+}
+
+// placedSeg is one segment of the command line and every shell state it can
+// run in.
+type placedSeg struct {
+	seg    segment
+	states []*shellState
 }
 
 func newReadCtx(f *Files) *readCtx {
@@ -1041,6 +1054,11 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 	// the line runs, which a front door does not hand the guard as typed.
 	if run == nil {
 		signals = append(signals, r.forgeText(rc, segs, recs)...)
+		if rc.record {
+			for i, s := range segs {
+				rc.line = append(rc.line, placedSeg{seg: s, states: recs[i].states})
+			}
+		}
 	}
 
 	// The targets each segment points a shell at, in every state it can run

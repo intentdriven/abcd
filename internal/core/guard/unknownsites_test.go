@@ -142,23 +142,30 @@ var wordReaders = map[string]string{
 	"tarExtracts":        "exempt: reads tar's literal mode letters; an unknown mode word reads as no extraction, a write the reading misses",
 
 	// Grammar and registry readers, not command words.
-	"seqWidth":          "exempt: a brace sequence's number sign, before any word exists",
-	"padInt":            "exempt: writes a brace sequence's number sign, before any word exists",
-	"committedRegistry": "exempt: hands git its own options to read the committed registry; reads no command word",
-	"allReserved":       "exempt: reserved words are grammar, which no substitution prints",
-	"keywordAt":         "exempt: reserved words are grammar, which no substitution prints",
-	"emptyable":         "exempt: reads a parameter's name after its `$` (`-` is the option-letter parameter), never a command word",
-	"readHeredocDelim":  "exempt: the `<<-` operator is grammar",
-	"simpleParamEnd":    "exempt: reads the `$-` special parameter's name, grammar that makes the word unknown",
-	"spellParameterAt":  "exempt: reads a `${…}` expansion's `-` operator (`${HOME:-x}`), grammar that spells the variable and the default's word for arg_values",
-	"validatePattern":   "exempt: reads registry patterns, not command words",
-	"validEntryID":      "exempt: reads a registry id, not a command word",
+	"seqWidth":         "exempt: a brace sequence's number sign, before any word exists",
+	"padInt":           "exempt: writes a brace sequence's number sign, before any word exists",
+	"registryAt":       "exempt: hands git its own options to read the registry at a commit; reads no command word",
+	"allReserved":      "exempt: reserved words are grammar, which no substitution prints",
+	"keywordAt":        "exempt: reserved words are grammar, which no substitution prints",
+	"emptyable":        "exempt: reads a parameter's name after its `$` (`-` is the option-letter parameter), never a command word",
+	"readHeredocDelim": "exempt: the `<<-` operator is grammar",
+	"simpleParamEnd":   "exempt: reads the `$-` special parameter's name, grammar that makes the word unknown",
+	"spellParameterAt": "exempt: reads a `${…}` expansion's `-` operator (`${HOME:-x}`), grammar that spells the variable and the default's word for arg_values",
+	"validatePattern":  "exempt: reads registry patterns, not command words",
+	"validEntryID":     "exempt: reads a registry id, not a command word",
 
 	// approve.go: the approver refuses a word holding an unknown mark at every
 	// place it reads one, so an unknown word never reads as a clearance.
 	"approveShell":    "commandSites: every place a command can sit; a name holding an unknown mark is refused",
 	"criticalRemoval": "commandSites and precededByCD; an operand holding an unknown mark is refused as a critical target",
 	"pwshCode":        "exempt: compares a known word with PowerShell's parameter names; inlineCode refuses a word holding an unknown mark before it",
+
+	// approvepaths.go: the approver's reading of what a line writes.
+	"pathUses":         "commandSites and fixedToken; an operand holding an unknown mark is a target the line does not fix, which is refused",
+	"gitConfigRefusal": "sitesNamed, readGitConfig and firstOperands; an unknown subcommand is read as config",
+	"gitConfigWrite":   "isUnknown: an unknown word may be a scope, a mode or the key, and a write with one is refused",
+	"execPinKeys":      "exempt: reads gitutil's own -c pins, not a command word",
+	"factsFor":         "exempt: hands git its own options to read the repository's paths; reads no command word",
 }
 
 // TestEveryWordReaderGoesThroughUnknown is the grep the rule promises, run as a

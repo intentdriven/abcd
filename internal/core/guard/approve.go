@@ -14,8 +14,12 @@ package guard
 // approves: no entry and no signal, a warn included; no note about the check;
 // the registry the repository declares, in force and switched on; every
 // program the line runs named by the line, not by a variable, a substitution
-// or a glob; and no inline code handed to a non-shell interpreter, whose
-// payload the guard does not read. The guard is still a mistake filter, not a
+// or a glob; no inline code handed to a non-shell interpreter, whose
+// payload the guard does not read; and, read from the guard's own parse of
+// the line (approvepaths.go), no write or removal whose target the line does
+// not fix, none that reaches a path the harness protects, and no git command
+// that writes configuration outside the repository's own file or sets a key
+// that starts a program. The guard is still a mistake filter, not a
 // boundary (the check verb's help says what an allow does not see), and this
 // widens nothing past what it reads.
 
@@ -27,6 +31,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -50,8 +55,8 @@ const (
 	// promptInputEntryID: the shell prompt's input carries no command the
 	// guard can read.
 	promptInputEntryID = "prompt-input-unread"
-	// protectedPathEntryID: the line names a path the harness protects from
-	// writes (repository state, start-up files, its own configuration).
+	// protectedPathEntryID: the line writes or removes a path the harness
+	// protects (repository state, start-up files, its own configuration).
 	protectedPathEntryID = "protected-path"
 	// criticalRemovalEntryID: an rm or rmdir whose target is, or may be, a
 	// critical path: the root, a top-level directory, the home directory, the
@@ -59,7 +64,18 @@ const (
 	criticalRemovalEntryID = "critical-path-removal"
 	// sandboxEntryID: the shell call asks to run outside the host's sandbox.
 	sandboxEntryID = "sandbox-off"
+	// unfixedPathEntryID: a write or a removal whose target the line does
+	// not fix: a substitution's output, a variable's value, a glob, or a
+	// relative path after a change of directory the line leaves unknown.
+	unfixedPathEntryID = "path-not-fixed"
+	// gitConfigWriteEntryID: a git command that writes configuration outside
+	// the repository's own file, or sets a key that starts a program.
+	gitConfigWriteEntryID = "git-config-write"
 )
+
+// approveFoldsCase reports whether the filesystem folds case, so a protected
+// path matches in any case; a variable so a test can take either branch.
+var approveFoldsCase = fsutil.CaseFoldingFS
 
 // Approval is abcd's answer to one permission prompt.
 type Approval struct {
@@ -149,16 +165,17 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 		return refusal(registryEntryID, "the hazard registry is switched off in "+RepoRelPath+", so nothing was checked.",
 			"nothing while the registry is off; say so in the receipt.")
 	}
-	if files != nil {
-		r = r.ReadingFrom(files)
+	if files == nil {
+		files = NewFiles("")
 	}
+	r = r.ReadingFrom(files)
 	if len(command) > maxCommandBytes {
 		return fromDecision(syntheticDecision(VerdictBlock, commandTooLongSignal(), nil))
 	}
-	var rc *readCtx
-	if r.files != nil {
-		rc = newReadCtx(r.files)
-	}
+	// The reading keeps the line's segments with the states it placed them
+	// in, so the checks below read the line's writes from the same model.
+	rc := newReadCtx(r.files)
+	rc.record = true
 	v, err := r.judge(command, rc, nil)
 	switch {
 	case errors.Is(err, ErrUnparsableCommand):
@@ -170,24 +187,36 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 	if d := r.decide(v); d.Verdict != VerdictAllow {
 		return fromDecision(d)
 	}
-	if rc != nil && len(rc.notes) > 0 {
+	if len(rc.notes) > 0 {
 		return refusal(checkNoteEntryID, termsafe.Sanitize(strings.Join(rc.notes, " ")),
 			"a command whose every script exists and is a file the guard can read.")
 	}
-	if name, ok := protectedPath(command); ok {
-		return refusal(protectedPathEntryID,
-			"this line names "+name+", a path the harness never lets a command write without a person's yes, so abcd does not approve it unattended.",
-			"leave "+name+" alone, or say in the receipt that the task needs it changed.")
-	}
-	var dir, home string
-	if r.files != nil {
-		dir, home = r.files.dir, r.files.home
-	}
+	dir, home := r.files.dir, r.files.home
 	for i, s := range v.segs {
 		if target, ok := criticalRemoval(s, v.segs[:i], dir, home); ok {
 			return refusal(criticalRemovalEntryID,
 				"this removes "+termsafe.Sanitize(target)+", which is or may be the filesystem root, a top-level directory, the home directory, the working tree or a directory above it.",
 				"remove the files by their full paths below the working tree, spelled out.")
+		}
+	}
+	facts := factsFor(r.files)
+	vf := r.gitValueFlags()
+	for _, p := range placedLine(rc.line, v.segs) {
+		if a, ok := gitConfigRefusal(p.seg, vf); ok {
+			return a
+		}
+		for _, st := range p.states {
+			for _, u := range pathUses(rc, p.seg, st) {
+				if !u.ok {
+					return unfixedRefusal(u)
+				}
+				if name, ok := facts.protects(u); ok {
+					name = termsafe.Sanitize(fsutil.DisplayPath(name))
+					return refusal(protectedPathEntryID,
+						"this line writes or removes "+name+", a path the harness never lets a command change without a person's yes, so abcd does not approve it unattended.",
+						"leave "+name+" alone, or say in the receipt that the task needs it changed.")
+				}
+			}
 		}
 	}
 	for _, s := range v.segs {
@@ -212,31 +241,6 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 // gives: its id, its why and its successor.
 func fromDecision(d Decision) Approval {
 	return refusal(d.EntryID, termsafe.Sanitize(d.Why), termsafe.Sanitize(d.Successor))
-}
-
-// protectedNames are the paths the harness protects from writes (its own
-// documentation, "Protected paths", read 2026-10-16): in the mode that refused
-// every prompt a write there was refused, so naming one anywhere on the line,
-// a redirection's target included, is refused here too. The match is on the
-// text as written, so a quoted mention counts: the refusal errs toward a
-// person.
-var protectedNames = regexp.MustCompile(`(^|[^A-Za-z0-9_.-])(` +
-	`\.git|\.config/git|\.vscode|\.idea|\.husky|\.cargo|\.devcontainer|\.yarn|\.mvn|\.claude|` +
-	`\.gitconfig|\.gitmodules|\.bashrc|\.bash_profile|\.bash_login|\.bash_aliases|\.bash_logout|` +
-	`\.zshrc|\.zprofile|\.zshenv|\.zlogin|\.zlogout|\.profile|\.envrc|` +
-	`\.npmrc|\.yarnrc|\.yarnrc\.yml|\.pnp\.cjs|\.pnp\.loader\.mjs|\.pnpmfile\.cjs|bunfig\.toml|\.bunfig\.toml|` +
-	`\.bazelrc|\.bazelversion|\.bazeliskrc|\.pre-commit-config\.yaml|\.?lefthook\.ya?ml|` +
-	`gradle-wrapper\.properties|maven-wrapper\.properties|\.devcontainer\.json|\.ripgreprc|pyrightconfig\.json|` +
-	`\.mcp\.json|\.claude\.json` +
-	`)($|[^A-Za-z0-9_.-])`)
-
-// protectedPath names the first protected path the line spells.
-func protectedPath(command string) (string, bool) {
-	m := protectedNames.FindStringSubmatch(command)
-	if m == nil {
-		return "", false
-	}
-	return m[2], true
 }
 
 // criticalRemoval reports an rm or rmdir in s whose target is, or may be, a
