@@ -862,6 +862,28 @@
           "abcd capture \"an agent ran OPENCODE_PERMISSION=x opencode run\""
         ]
       }
+    },
+    "agent-launch-opencode-config-env": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "opencode",
+        "env": ["OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT"]
+      },
+      "why": "`OPENCODE_CONFIG` (a file to load) and `OPENCODE_CONFIG_CONTENT` (text merged last) give the opencode a line starts settings over its own configuration, permission rules among them, so the agent it starts can be made to run commands and write files without asking anyone, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it without `OPENCODE_CONFIG` and `OPENCODE_CONFIG_CONTENT`, so opencode's own configuration decides what it asks about (`opencode run \"<task>\"`).",
+      "fixtures": {
+        "known_bad": [
+          "OPENCODE_CONFIG='/tmp/open.json' opencode run x",
+          "OPENCODE_CONFIG_CONTENT='{\"permission\":\"allow\"}' opencode run x",
+          "export OPENCODE_CONFIG=/tmp/open.json; opencode run x"
+        ],
+        "known_good": [
+          "opencode run \"fix the tests\"",
+          "OPENCODE_CONFIG=/tmp/open.json echo hi",
+          "env -u OPENCODE_CONFIG opencode run x",
+          "abcd capture \"an agent ran OPENCODE_CONFIG=x opencode run\""
+        ]
+      }
     }
   }
 }

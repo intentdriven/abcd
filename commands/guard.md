@@ -742,7 +742,11 @@ name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
 its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
 starts — as an assignment before it, through `env`, or with an `export`,
 `declare -x` or `typeset -x` earlier in the line — is a **block** too (`agent-launch-opencode-permission-env`), and
-one that starts opencode without setting it is not. A harness started under
+one that starts opencode without setting it is not. So is a line that sets
+`OPENCODE_CONFIG`, a configuration file opencode loads, or
+`OPENCODE_CONFIG_CONTENT`, configuration text it merges last, for the opencode
+it starts (`agent-launch-opencode-config-env`), since either can carry
+permission rules over opencode's own configuration. A harness started under
 another name, a copied or linked binary run by that name, is not recognisable
 as a harness at this layer; the OS sandbox for launched agents
 (spc-2610161751056096) is what bounds what such a run can reach
