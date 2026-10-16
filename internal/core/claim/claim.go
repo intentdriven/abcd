@@ -140,6 +140,9 @@ const (
 	NotHeldAnotherPerson = "another_person"
 	NotHeldAnotherCopy   = "another_copy"
 	NotHeldLapsed        = "lapsed"
+	// NotHeldMoved: a release naming its Tip found this person's reservation
+	// from this copy at another commit, renewed or reserved again since.
+	NotHeldMoved = "moved"
 )
 
 // NotHeld is the refusal of an act that needs this person's own reservation

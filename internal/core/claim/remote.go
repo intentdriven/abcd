@@ -309,6 +309,10 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 	case !j.thisCopy:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherCopy, ErrRefused,
 			fmt.Sprintf("%s is held by your copy on another computer; release it there, or take it over here first; %s", p.id, nothingPushed))
+	case p.req.Tip != "" && j.Commit != p.req.Tip:
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldMoved, ErrRefused,
+			fmt.Sprintf("the reservation on %s is no longer commit %s: it was renewed or reserved again since, so it is left as it stands; %s",
+				p.id, p.req.Tip[:12], nothingPushed))
 	}
 	m := p.tombstone(j.Footprint)
 	return Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,

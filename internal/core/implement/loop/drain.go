@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -286,13 +287,34 @@ func Drain(repoRoot string, o Options, d DrainOptions) (DrainResult, error) {
 	return res, err
 }
 
+// drainView and startLane are claim.View and Start, seams a test replaces to
+// make the move's view unreadable or its lane's start fail.
+var (
+	drainView = claim.View
+	startLane = Start
+)
+
 // drainMove is Drain under the drain's lock.
-func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule drainrule.Rule) (DrainResult, error) {
+func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule drainrule.Rule) (_ DrainResult, err error) {
 	now := o.now()
 	st, live, err := readDrain(repoRoot)
 	if err != nil {
 		return DrainResult{}, err
 	}
+	// The drain's judgement holds this move knows (drain_hold.go): each it
+	// leaves unused is released on the way out. A move that fails writes no
+	// state, so the judgement awaited on disk keeps its hold, and every other
+	// hold the move took is released.
+	holds := &judgeHolds{repoRoot: repoRoot, now: now}
+	if j := st.Judging; j != nil {
+		holds.add(j.Issue, j.Hold, false)
+	}
+	persisted := st.Judging
+	defer func() {
+		if err != nil {
+			holds.settle(persisted)
+		}
+	}()
 	started := false
 	if !live {
 		pace, err := resolvePace(o.roots(repoRoot), flags)
@@ -324,7 +346,21 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	res := DrainResult{State: DrainStateRel, Started: started, Rule: plan.Record, Loosened: plan.Loosened,
 		Order: plan.Order, Dispositions: plan.Dispositions, Routed: []DrainRoute{}, Passed: []Excluded{},
 		Flags: fieldFlags(plan), Finished: []DrainFinished{}, Origin: origin}
+	// viewUnread is why the reservations this move fetched could not be read.
+	viewUnread := ""
 	finish := func(write bool) (DrainResult, error) {
+		// A drain that ends awaits nothing, and every judgement hold the move
+		// leaves unused is released before the state is written.
+		if st.Stopped != "" && st.Judging != nil {
+			st.Judging, write = nil, true
+		}
+		if clauses := holds.settle(st.Judging); len(clauses) > 0 {
+			res.Next += "; " + strings.Join(clauses, "; ")
+			write = true
+		}
+		if viewUnread != "" {
+			res.Next += "; " + viewUnread
+		}
 		if write {
 			st.UpdatedAt = now
 			if err := writeDrain(repoRoot, st); err != nil {
@@ -374,16 +410,19 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// read, where each reservation act's own fetch still judges the hold.
 	var view *claim.Snapshot
 	if origin != nil {
-		if snap, err := claim.View(repoRoot, now); err == nil {
-			view = &snap
+		if snap, err := drainView(repoRoot, now); err == nil {
+			view, holds.view = &snap, &snap
+		} else {
+			viewUnread = "the reservations this move fetched could not be read (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
+				"), so held work was judged by each reservation act alone, and the drain's own judgement hold by the commit it records"
 		}
 	}
 
 	// The host's answer to the judgement the drain awaits (scope 3): taken
 	// before anything else moves, so a refusal writes nothing. A yes routes the
 	// issue as a lane's hand-back of its kind is routed, and releases the
-	// reservation the drain took before it asked; a no lets the lane open
-	// below, on that reservation.
+	// reservation the drain took before it asked, and no other; a no lets the
+	// lane open below, on that reservation.
 	if d.Judgement != "" {
 		j, err := takeJudgement(repoRoot, d.Judgement, st, live, plan, now)
 		if err != nil {
@@ -394,17 +433,17 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if err != nil {
 				return DrainResult{}, err
 			}
-			if _, ok := ownHold(view, j.Issue, nil); ok {
-				clause, _ := releaseReservation(repoRoot, j.Issue, now)
+			if clause := holds.release(j.Issue); clause != "" {
 				r.Wrote += "; " + clause
 			}
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
-		} else if _, ok := ownHold(view, j.Issue, nil); ok && !j.Applied {
+		} else if !j.Applied {
 			// The issue left the eligible set since the request, so no lane
 			// opens on the reservation taken for it.
-			clause, _ := releaseReservation(repoRoot, j.Issue, now)
-			j.Note += "; " + clause
+			if clause := holds.release(j.Issue); clause != "" {
+				j.Note += "; " + clause
+			}
 		}
 		st.Judgements = append(st.Judgements, j)
 		st.Judging = nil
@@ -558,22 +597,34 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		hold, held := ownHold(view, v.ID, footprint)
 		if j := judgementFor(st, v.ID, remedyDigest(iss.Remedy)); j == nil || j.Answer != JudgementNo {
+			var hold *DrainHold
+			if p := st.Judging; p != nil && p.Issue == v.ID {
+				hold = p.Hold
+			}
 			if reserving && !held {
-				if _, _, _, err := reserveKey(repoRoot, v.ID, claim.Request{Footprint: footprint, TakeOver: o.TakeOver}, now); err != nil {
+				h, err := reserveForJudgement(repoRoot, v.ID, footprint, o.TakeOver, hold, now)
+				if err != nil {
 					if r, ok := AsRefusal(err); ok && r.Contention {
 						res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: termsafe.Sanitize(r.Reason)})
 						continue
 					}
 					return DrainResult{}, err
 				}
+				if h != nil {
+					// The push moved the tip past any hold the drain had
+					// recorded on the issue, so only the new one is its own.
+					holds.keep(v.ID)
+					holds.add(v.ID, h, true)
+				}
+				hold = h
 			}
-			superseded := releaseSuperseded(repoRoot, st, view, v.ID, now)
 			judging, err := requestJudgement(repoRoot, iss, v, st.Judging, now)
 			if err != nil {
 				return DrainResult{}, err
 			}
+			judging.Hold = hold
 			st.Judging = &judging
-			res.Next = judgementMove(judging) + superseded
+			res.Next = judgementMove(judging)
 			return finish(true)
 		}
 		st.Judging = nil
@@ -584,7 +635,8 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			lane.held = &heldReservation{at: hold.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
 				v.ID, claim.Remote, stamp(hold.EffectiveExpiry), strings.Join(hold.Footprint, ", "))}
 		}
-		started, err := Start(repoRoot, v.ID, lane)
+		holds.starting(v.ID)
+		started, err := startLane(repoRoot, v.ID, lane)
 		if err != nil {
 			r, ok := AsRefusal(err)
 			// A reservation refused for a reason of this checkout's own (no
@@ -596,15 +648,14 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			// The reason may quote what another writer chose (a reserved
 			// footprint), and the agent driving the drain reads it.
 			reason := termsafe.Sanitize(r.Reason)
-			if held {
-				// The reservation was the drain's, taken for the judgement;
-				// no lane holds it now.
-				clause, _ := releaseReservation(repoRoot, v.ID, now)
+			// A reservation the drain took for the judgement is no lane's now.
+			if clause := holds.release(v.ID); clause != "" {
 				reason += "; " + clause
 			}
 			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: reason})
 			continue
 		}
+		holds.keep(v.ID)
 		st.Lanes = append(st.Lanes, DrainLane{Issue: v.ID, RunID: started.RunID, OpenedAt: now, Outcome: DrainLaneInProgress})
 		res.Start = &started
 		res.Next = fmt.Sprintf("drive %s's lane, run %s: %s; run `abcd drain` again once it is handed back or its pull request is open",
@@ -629,23 +680,6 @@ func ownHold(view *claim.Snapshot, id string, footprint []string) (claim.Reserva
 		return claim.Reservation{}, false
 	}
 	return r, true
-}
-
-// releaseSuperseded releases the reservation the drain took for the judgement
-// it awaited, when it now asks over another issue (the order moved: an issue
-// new on origin, or a hold that lapsed), so the one it no longer asks over
-// does not hold others off until its lease lapses. It returns the move's
-// clause for it, "" when there is nothing to release.
-func releaseSuperseded(repoRoot string, st DrainState, view *claim.Snapshot, next string, now time.Time) string {
-	if st.Judging == nil || st.Judging.Issue == next ||
-		slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.Issue == st.Judging.Issue }) {
-		return ""
-	}
-	if _, ok := ownHold(view, st.Judging.Issue, nil); !ok {
-		return ""
-	}
-	clause, _ := releaseReservation(repoRoot, st.Judging.Issue, now)
-	return "; the judgement awaited over " + st.Judging.Issue + " is no longer asked, so its reservation is released: " + clause
 }
 
 // capPhrase names a drain's cap.
@@ -837,6 +871,10 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 	}
 	if !st.textWritten() {
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" carries text the drain never writes: a control, bidi or zero-width character in its rule, a lane, a hand-back or a judgement",
+			"the drain is the file's only writer; restore it or remove it")
+	}
+	if j := st.Judging; j != nil && j.Hold != nil && !gitutil.IsFullSHA(j.Hold.Commit) {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a judgement hold that is not a reservation commit",
 			"the drain is the file's only writer; restore it or remove it")
 	}
 	for _, l := range st.Lanes {

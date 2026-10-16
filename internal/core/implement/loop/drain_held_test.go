@@ -66,9 +66,15 @@ func TestAHeldIssueGetsNoPushAndNoJudgement(t *testing.T) {
 		t.Fatal(err)
 	}
 	held := refOf(t, bare, secondIssue)
+	pushes := countPushes(t, repo)
 	res, err := Drain(repo.Root(), Options{}, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
+	}
+	// An unchanged ref alone would also be what a refused push leaves: the
+	// move pushes once, the next issue's reservation, and nothing over Q's.
+	if n := pushes(); n != 1 {
+		t.Fatalf("the move pushed %d time(s); want one, the next issue's reservation", n)
 	}
 	if p := passedFor(t, res, secondIssue); p.Check != CheckReservation || !strings.Contains(p.Reason, secondIssue+" is reserved by quinn") ||
 		!strings.Contains(p.Reason, "no judgement") {

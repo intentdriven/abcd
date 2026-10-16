@@ -8,6 +8,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/lease"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // Options carries what a caller may set about the environment an act runs in.
@@ -67,6 +68,12 @@ type Request struct {
 	TakeOver bool
 	// Release pushes the tombstone instead.
 	Release bool
+	// Tip, with Release, names the one reservation commit the release may
+	// tombstone: a tip that has moved since (renewed or reserved again by
+	// hand, or replaced) is refused with a *NotHeld, NotHeldMoved, and nothing
+	// is pushed. Empty releases whatever reservation of this person's from
+	// this copy the tip holds.
+	Tip string
 	// Renew renews this person's own reservation from this copy, live or
 	// lapsed, and nothing else: an absent, unreadable or released tip, and one
 	// another person or another copy holds, is refused with a *NotHeld naming
@@ -113,6 +120,9 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	}
 	if req.Release && (len(req.Footprint) > 0 || req.TakeOver || req.Lease != 0) {
 		return nil, refuse("a release takes no footprint, take-over or lease; %s", nothingPushed)
+	}
+	if req.Tip != "" && (!req.Release || !gitutil.IsFullSHA(req.Tip)) {
+		return nil, refuse("only a release names the reservation commit it releases, by its full object name; %s", nothingPushed)
 	}
 	if req.Renew && (req.Release || req.TakeOver || len(req.Footprint) > 0) {
 		return nil, refuse("a renewal keeps its reservation's footprint, and takes no footprint, take-over or release; %s", nothingPushed)

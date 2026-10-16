@@ -81,6 +81,21 @@ type DrainJudging struct {
 	Request      string    `json:"request"`
 	Answer       string    `json:"answer"`
 	RequestedAt  time.Time `json:"requested_at"`
+	// Hold is the reservation the drain took on the issue to ask this
+	// judgement; nil when it took none (no origin, or this person already
+	// held the issue from this copy, which is theirs and never the drain's
+	// to release).
+	Hold *DrainHold `json:"hold,omitempty"`
+}
+
+// DrainHold is a reservation the drain took on an issue to judge it: the
+// commit its push made, and when it was claimed and lapses. The drain releases
+// that commit and no other, so a reservation this person made or renewed by
+// hand since is left as it stands.
+type DrainHold struct {
+	Commit    string    `json:"commit"`
+	ClaimedAt time.Time `json:"claimed_at"`
+	ExpiresAt time.Time `json:"expires_at"`
 }
 
 // DrainJudgement is one answer the drain took: the question's answer, the kind
