@@ -901,9 +901,10 @@ var pusherBudget = 10 * time.Second
 // login that is not the owner's). A push names only the tip it left, so each
 // is placed by walking the first-parent line from that tip down to the tip
 // it moved from, at most the walk's limit of commits, under pusherBudget:
-// every commit of the push is judged by its pusher. A commit two pushes
-// cover (a rewritten branch) takes a pusher other than the owner over the
-// owner. It returns why the forge could not be asked or its record could not
+// every commit of the push is judged by its pusher (placePushes). A commit two
+// pushes cover (a rewritten branch) takes a pusher other than the owner over
+// the owner. A branch whose record could not be placed in full keeps nothing
+// of it. It returns why the forge could not be asked or its record could not
 // be placed in full, "" when it could.
 func checkSenders(root string, now time.Time, lookup PusherLookup, held map[string]bool) string {
 	ask := map[string][]string{}
@@ -945,41 +946,68 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 }
 
 // placePushes maps each commit the pushes to abcd-status/<branch> carried to
-// its pusher: the first-parent commits after each push's Before up to and
-// including its After, at most the walk's limit per push, read from this
-// checkout's copy under ctx. A push whose After this checkout does not hold
-// is passed over; one that ends ctx stops the placing, and what was placed is
-// answered with ctx's error.
+// its pusher, read from this checkout's copy under ctx: the first-parent
+// commits from each push's After down to its Before, at most the walk's
+// limit per push. A push that made the branch (Before the zero name) carried
+// its whole line, as far as the walk reads it. A push whose Before is not on
+// that line, as far as the walk reads it (a forced push, or one that carried
+// more than the walk reads), carried commits from its After down to a place
+// the walk cannot find: another account's then takes every commit the walk
+// read, since any of them may be its, and the owner's vouches for its After
+// alone. A commit two pushes carried takes the pusher that is not the owner.
+// A push whose After this checkout does not hold is passed over; one that
+// ends ctx stops the placing, and ctx's error is answered with nothing
+// placed, since a commit an older push also carried may then read as the
+// owner's when it is not.
 func placePushes(ctx context.Context, root, branch string, pushes []Push) (map[string]string, error) {
 	ref := statusBranches.track(branch)
 	out := map[string]string{}
-	for _, p := range pushes {
+	place := func(c, pusher string) {
+		if prev, ok := out[c]; !ok || (sameHolder(prev, branch) && !sameHolder(pusher, branch)) {
+			out[c] = pusher
+		}
+	}
+	for i, p := range pushes {
+		if h := placeHook; h != nil {
+			h(i)
+		}
 		if !gitutil.IsFullSHA(p.After) {
 			continue
 		}
 		held, err := hasCommitCtx(ctx, root, p.After)
 		if err != nil {
-			return out, err
+			return nil, err
 		}
 		if !held {
 			continue
 		}
 		line, err := firstParentsCtx(ctx, root, ref, p.After, statusWalkLimit)
 		if err != nil {
-			return out, err
+			return nil, err
 		}
 		line, _ = upTo(line, statusWalkLimit)
-		for _, c := range line {
-			if c == p.Before {
-				break
+		carried := line
+		if p.Before != zeroCommit {
+			if i := slices.Index(line, p.Before); i >= 0 {
+				carried = line[:i]
+			} else if sameHolder(p.Pusher, branch) {
+				carried = line[:1]
 			}
-			if prev, ok := out[c]; !ok || (sameHolder(prev, branch) && !sameHolder(p.Pusher, branch)) {
-				out[c] = p.Pusher
-			}
+		}
+		for _, c := range carried {
+			place(c, p.Pusher)
 		}
 	}
 	return out, nil
 }
+
+// placeHook, when a test sets it, runs before placePushes places push i, so a
+// test can end the budget between two pushes.
+var placeHook func(i int)
+
+// zeroCommit is the forge's name for no commit: the tip a push that made the
+// branch moved it from.
+var zeroCommit = strings.Repeat("0", 40)
 
 // pruneStatus removes, best effort: every kept announcement whose life
 // ended more than seenKeep ago, with its shown marker and its pusher; every

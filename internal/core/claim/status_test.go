@@ -620,10 +620,6 @@ func TestABranchNameThatIsNotReadNeverReachesTheBlock(t *testing.T) {
 	}
 }
 
-// zeroCommit is the forge's name for the tip a push that made the branch
-// moved it from.
-var zeroCommit = strings.Repeat("0", 40)
-
 // TestEveryCommitOfAPushIsJudgedByItsPusher is C17 for a push that carried
 // more than one commit: the forge's record names the push's last commit, and
 // every first-parent commit after the tip it moved from is judged by the same
