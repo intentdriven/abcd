@@ -3100,8 +3100,10 @@ land runs the branch's own `make preflight` with your environment and
 credentials, so run it only on a branch whose content you trust.
 
   1. Origin: every fetch and push URL of origin must be the repository the forge
-     client resolves, and the forge's default branch must be the one origin/HEAD
-     names here and not the branch; checked before anything runs.
+     client resolves, and the forge's default branch must be the one origin
+     itself names (git ls-remote --symref origin HEAD) and not the branch;
+     checked before anything runs. A stale or missing local origin/HEAD is
+     reported and passed over, never written.
   2. Landed: origin's default branch is fetched; a head already on it has landed,
      and so has one the forge lists a merged pull request of this repository's
      branch at (a squash or rebase merge): land says so and stops, pushing,
