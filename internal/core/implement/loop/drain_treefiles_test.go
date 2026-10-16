@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -29,5 +30,22 @@ func TestTreeFilesTellsADirectoryAskedBesideAPathBeneathIt(t *testing.T) {
 		if got[p] != want[p] {
 			t.Errorf("%s: file %v; want %v", p, got[p], want[p])
 		}
+	}
+}
+
+// TestTreeFilesTellsAGitlinkIsNoFile: a found_at naming a submodule's
+// gitlink, whose commit this repository lacks, is not a file, and asking it
+// never errors the plan.
+func TestTreeFilesTellsAGitlinkIsNoFile(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	repo.Git("update-index", "--add", "--cacheinfo", "160000,"+strings.Repeat("0123456789", 4)+",vendor/sub")
+	repo.Git("-c", "commit.gpgsign=false", "commit", "-q", "-m", "a gitlink")
+	v := originView{ref: "refs/heads/main", commit: gitIn(t, repo.Root(), "rev-parse", "HEAD")}
+	got, err := treeFiles(repo.Root(), v)([]string{"vendor/sub", "vendor/sub/a.go"})
+	if err != nil {
+		t.Fatalf("a gitlink errored the plan: %v", err)
+	}
+	if got["vendor/sub"] || got["vendor/sub/a.go"] {
+		t.Fatalf("a gitlink, or a path beneath it, counted as a file: %v", got)
 	}
 }

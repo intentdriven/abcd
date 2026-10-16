@@ -190,10 +190,12 @@ func drainSpread(repoRoot, copyKey string) string {
 // treeFiles reports which of the paths named v's commit holds as a file (a
 // blob: a regular file or a symbolic link), through one `git cat-file
 // --batch-check` asking each path on its own line. A directory is not a file,
-// nor is a path the commit does not hold, so an issue naming either sorts
-// with those naming a directory or no path; and since each path is resolved
-// on its own, a directory asked beside a path beneath it is still a
-// directory, and the answer is one line per path, whatever lies beneath.
+// nor is a submodule's gitlink, nor a path the commit does not hold (one
+// beneath a gitlink or through a symbolic link among them), so an issue
+// naming any of them sorts with those naming a directory or no path; and
+// since each path is resolved on its own, a directory asked beside a path
+// beneath it is still a directory, and the answer is one line per path,
+// whatever lies beneath.
 func treeFiles(repoRoot string, v originView) func([]string) (map[string]bool, error) {
 	return func(paths []string) (map[string]bool, error) {
 		out := map[string]bool{}

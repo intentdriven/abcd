@@ -103,12 +103,16 @@ func (w *capBuilder) Write(p []byte) (int, error) {
 // TreePathTypes asks ONE isolated `git cat-file --batch-check` for the type
 // of what commit's tree holds at each path, one `<commit>:<path>` line on
 // stdin per path, and answers in the order asked: "blob" (a file or a
-// symbolic link), "tree", or "" for a path the tree does not hold (a
-// submodule whose commit this repository lacks answers so too). Each path is
-// resolved on its own, so a directory asked beside a path beneath it is still
-// answered as a tree, and the answer is one short line per path, whatever the
-// trees beneath hold. commit must be a full object name, and a path holding a
-// newline or a NUL, or none at all, never reaches git.
+// symbolic link, which git stores as a blob), "tree", "commit" for a
+// submodule's gitlink, or "" for a path the tree does not hold, a path
+// beneath a gitlink or through a symbolic link among them. Git answers a
+// gitlink "<sha> commit" when this repository holds the commit it names, and
+// "<sha> submodule", ignoring the format asked, when it does not (git 2.52);
+// both are "commit" here, never an error. Each path is resolved on its own,
+// so a directory asked beside a path beneath it is still answered as a tree,
+// and the answer is one short line per path, whatever the trees beneath hold.
+// commit must be a full object name, and a path holding a newline or a NUL,
+// or none at all, never reaches git.
 func TreePathTypes(root, commit string, paths []string) ([]string, error) {
 	if len(paths) == 0 {
 		return nil, nil
@@ -149,6 +153,9 @@ func TreePathTypes(root, commit string, paths []string) ([]string, error) {
 			continue
 		}
 		name, kind, ok := strings.Cut(line, " ")
+		if kind == "submodule" {
+			kind = "commit"
+		}
 		if !ok || !IsFullSHA(name) || (kind != "blob" && kind != "tree" && kind != "commit" && kind != "tag") {
 			return nil, fmt.Errorf("git cat-file --batch-check: answered %q for %s, an answer it does not document", line, paths[i])
 		}
