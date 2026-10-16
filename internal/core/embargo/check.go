@@ -467,8 +467,11 @@ func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
 	if ds.embargo == 0 {
 		return ds, nil
 	}
-	sha := gitutil.RootCommit(s.Checkout)
-	forms := []string{s.Root, resolve(s.Root), "worktrees/" + sha + "/" + StoreName}
+	// The worktree-store fragment is the found store's own: the root commit
+	// it is keyed on is its parent folder's name (storepath.Locate), which
+	// need not be the root git lists first.
+	key := filepath.Base(filepath.Dir(s.Root))
+	forms := []string{s.Root, resolve(s.Root), "worktrees/" + key + "/" + StoreName}
 	if home, err := os.UserHomeDir(); err == nil {
 		for _, h := range []string{filepath.Clean(home), resolve(home)} {
 			for _, root := range []string{s.Root, resolve(s.Root)} {

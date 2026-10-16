@@ -64,16 +64,21 @@ type Store struct {
 	Checkout string `json:"checkout"`
 }
 
-// storePath is where the store of the repository at repoRoot lives under
-// home: worktrees/<root-sha>/embargo in abcd's home, keyed on the root commit
-// so every worktree of the repository finds the same store
-// (adr-2610031751065746).
+// storePath is where the store of the repository at repoRoot is, or is to be
+// made, under home: storepath.Locate's answer, the one rule every reader and
+// writer of the store shares. Its refusals name neither a store nor a root.
 func storePath(home, repoRoot string) (string, error) {
-	p, ok := storepath.Path(home, repoRoot)
-	if !ok {
+	loc, err := storepath.Locate(home, repoRoot)
+	switch {
+	case errors.Is(err, storepath.ErrSeveralStores):
+		return "", refuse("an embargo store sits under more than one root commit of this repository's default branch, so which one holds the records cannot be told",
+			"keep the store that holds the records, move the other aside, then run it again")
+	case errors.Is(err, storepath.ErrRootsUnread):
+		return "", refuse("git could not list the root commits of this repository's default branch, so the embargo store cannot be found", "settle what git reports, then run it again")
+	case err != nil:
 		return "", refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
 	}
-	return p, nil
+	return loc.Path, nil
 }
 
 // openStore returns the store of the repository at repoRoot, making it on first
