@@ -1146,8 +1146,10 @@ drain, waiting again if origin still cannot be read.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
 order a drain takes them (by category, then severity, then the issues naming a
-file before the rest, then each account's own order on origin), and
-writes nothing. It fetches nothing either: it plans from origin's default branch as
+file before the rest, then each account's own order on origin, drawn from the
+holder git's identity names, when it names one, and the copy's key), and
+writes nothing; on a copy with no key yet it takes each group oldest first and
+says the copy's own order is drawn at its first move. It fetches nothing either: it plans from origin's default branch as
 last fetched, and says how old that view is, how many commits the checkout is
 behind it, and which issues open in the checkout it has already finished. The host
 judgement over each eligible remedy does not run; it can only ever hand an issue
@@ -1162,7 +1164,16 @@ remedy changes what a user sees or a trust boundary, and opens nothing. The host
 writes its answer where the request says and hands it back with --judgement <file>,
 which is validated strictly; a refused answer changes nothing. A yes hands the
 issue back before any lane opens, routed as a lane's hand-back of the same kind
-(below), and releases its reservation; a no lets the lane open on it. The judgement can never make an issue eligible:
+(below); a no lets the lane open on the reservation. The drain releases that
+reservation, and only it, with a fetch and one tombstone push whenever no lane will
+open on it: on a yes, on an answer over an issue that has left the eligible set,
+when the judgement is superseded (the order asks another issue, nothing eligible is
+left, the drain stops, or a no comes once the window has elapsed), when the lane's
+start is refused or fails, and when a request lapses unanswered. A yes's tombstone
+records no judgement, so another account may reserve and judge the issue again
+later. The reservation is taken once per request: one unanswered when it lapses is
+dropped and the issue asked again only after the drain's other eligible work. The
+judgement can never make an issue eligible:
 an answer over an issue that has left the eligible set decides nothing, and one over
 a remedy rewritten since the request is refused and asked again. Once judged, the
 drain hands the next eligible issue, in that order, to the implement loop's issue-keyed

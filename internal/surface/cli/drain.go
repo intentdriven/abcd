@@ -59,8 +59,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"drain, waiting again if origin still cannot be read.\n\n" +
 			"--dry-run shows every open issue's disposition, the eligible ones first in the\n" +
 			"order a drain takes them (by category, then severity, then the issues naming a\n" +
-			"file before the rest, then each account's own order on origin), and\n" +
-			"writes nothing. It fetches nothing either: it plans from origin's default branch as\n" +
+			"file before the rest, then each account's own order on origin, drawn from the\n" +
+			"holder git's identity names, when it names one, and the copy's key), and\n" +
+			"writes nothing; on a copy with no key yet it takes each group oldest first and\n" +
+			"says the copy's own order is drawn at its first move. It fetches nothing either: it plans from origin's default branch as\n" +
 			"last fetched, and says how old that view is, how many commits the checkout is\n" +
 			"behind it, and which issues open in the checkout it has already finished. The host\n" +
 			"judgement over each eligible remedy does not run; it can only ever hand an issue\n" +
@@ -74,7 +76,16 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"writes its answer where the request says and hands it back with --judgement <file>,\n" +
 			"which is validated strictly; a refused answer changes nothing. A yes hands the\n" +
 			"issue back before any lane opens, routed as a lane's hand-back of the same kind\n" +
-			"(below), and releases its reservation; a no lets the lane open on it. The judgement can never make an issue eligible:\n" +
+			"(below); a no lets the lane open on the reservation. The drain releases that\n" +
+			"reservation, and only it, with a fetch and one tombstone push whenever no lane will\n" +
+			"open on it: on a yes, on an answer over an issue that has left the eligible set,\n" +
+			"when the judgement is superseded (the order asks another issue, nothing eligible is\n" +
+			"left, the drain stops, or a no comes once the window has elapsed), when the lane's\n" +
+			"start is refused or fails, and when a request lapses unanswered. A yes's tombstone\n" +
+			"records no judgement, so another account may reserve and judge the issue again\n" +
+			"later. The reservation is taken once per request: one unanswered when it lapses is\n" +
+			"dropped and the issue asked again only after the drain's other eligible work. The\n" +
+			"judgement can never make an issue eligible:\n" +
 			"an answer over an issue that has left the eligible set decides nothing, and one over\n" +
 			"a remedy rewritten since the request is refused and asked again. Once judged, the\n" +
 			"drain hands the next eligible issue, in that order, to the implement loop's issue-keyed\n" +

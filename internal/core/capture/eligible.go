@@ -193,7 +193,7 @@ func waitsOnRuling(remedy string) bool {
 func drainOrder(r drainrule.Rule, spread bool) string {
 	then := "oldest first"
 	if spread {
-		then = "this drain's own order, a rendezvous hash of its holder, its copy and the issue id"
+		then = "this drain's own order, a rendezvous hash of the holder git's identity names (none when it names none), this copy's key and the issue id"
 	}
 	return "category " + strings.Join(r.Categories, ", ") + "; then " +
 		strings.Join(r.Severities, " before ") + "; then, within each, the issues naming a file before those naming a directory or no path; then " + then

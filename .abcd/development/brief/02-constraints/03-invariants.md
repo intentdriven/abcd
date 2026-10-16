@@ -37,8 +37,15 @@ The following are non-negotiable invariants — any architectural choice that vi
    the move plans from (`--dry-run` fetches nothing and reads that view as last
    fetched, with its age), reserving each issue before its judgement is asked
    (a fetch and one push; an issue or footprint another copy holds in the
-   move's view is passed over with neither, and a yes releases it with a
-   tombstone push) and
+   move's view is passed over with neither), releasing that reservation when
+   no lane will open on it (a fetch and one tombstone push over the commit the
+   drain's reservation made, and only while it is still the tip: on a yes; on
+   an answer over an issue that has left the eligible set; when the judgement
+   it was taken for is superseded, the order now asking another issue, nothing eligible
+   left, the drain stopping, or a no answered once the window has elapsed; on
+   a lane's start refused or failing; and on a request whose reservation
+   lapsed unanswered), pushing the tombstone a handed-back lane's step could
+   not push (a fetch and one push), and
    renewing, at half its lease, the reservation of each lane parked at land; and `implement step` and `implement receipt`, whose
    meaning includes renewing the run's reservation at half its lease, the land
    fence's fetch and renewal before a merge is armed, and the tombstone once

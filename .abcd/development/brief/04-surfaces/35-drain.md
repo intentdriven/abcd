@@ -124,16 +124,26 @@ record takes it; then by severity, `nitpick` before `minor` before `major`
 before `critical`, as far as the record takes them. Within each group of one
 category and one severity, the issues whose `found_at` names a file come before
 those naming a directory or no path, and each part is taken oldest first in a
-checkout with no remote named `origin`. A drain on `origin` takes each part in
-its own order instead: a rendezvous (highest random weight) hash of the holder
-this copy resolves to, the copy's key and the issue id, the first eight bytes
-of their sha256 read as a number, heaviest first (`spreadWeight` in
-`internal/core/capture/eligible.go`; dcn-2610161040368890). Each account, and
-each of one person's copies, keeps one order from move to move, and two of them
-start a group at different issues, so drains on several accounts spread across
-it with no coordinator. The record's lists are sets: the order is abcd's. The
-dry run states the order and lists the eligible issues first in it, then every
-other open issue by id.
+checkout with no remote named `origin`. Whether a path is a file is asked of the
+commit the ledger was read from, each path on its own; a path that commit does
+not hold (deleted since, or never there) is not a file, and sorts with the
+directories, as does, in a checkout's working tree, a link to a directory. A
+drain on `origin` takes each part in its own order instead: a rendezvous
+(highest random weight) hash of the holder git's identity names with no network
+act, the copy's key and the issue id, the first eight bytes of their sha256 read
+as a number, heaviest first (`spreadWeight` in
+`internal/core/capture/eligible.go`; dcn-2610161040368890). When git's identity
+names no holder, that part of the key is empty and the copy's key alone tells
+copies apart. Each account, and each of one person's copies, keeps one order
+from move to move, and two of them start a group at different issues, so drains
+on several accounts spread across it with no coordinator. The copy's key is
+minted at its first move, before that move plans, so the order the first move
+asks a judgement in is the one the next keeps. The record's lists are sets: the
+order is abcd's. The dry run states the order and lists the eligible issues
+first in it, then every other open issue by id; it mints no key, so on a copy
+that has none yet it takes each group oldest first and says, in `order` and in
+`order_drawn_at_first_move`, that the copy's own order is drawn at its first
+move.
 
 ## Loud loosening
 
@@ -205,9 +215,23 @@ on origin's default branch backs off, with a tip or without one
    `origin`, the issue is first reserved there before its judgement is asked,
    with the path its `found_at` names as the footprint (itd-2609091034175565,
    C37; spc-2610161044461448 step 2), so the reservation push is the
-   compare-and-swap that keeps two accounts from judging one issue: a yes
-   releases that reservation, and the lane a no opens starts on it with no
-   second push. An issue whose `found_at` names no repository-relative path is
+   compare-and-swap between accounts: while the drain's reservation holds, no
+   other account's drain reserves, judges or opens the issue, and the lane a no
+   opens starts on it with no second push. The judgement awaited records the
+   commit that reservation made (`judging.hold`), and the drain releases that
+   commit alone, by a tombstone, on every path that leaves it unused: a yes; an
+   answer over an issue that has left the eligible set; a judgement superseded (the order
+   now asking another issue, nothing eligible left, the drain stopping at its
+   cap, an outage or an origin give-up, or a no answered once the window has
+   elapsed); a lane's start refused or failing; and a request that lapsed.
+   Each is a fetch and one push, made only while that commit is still the tip,
+   so a reservation this person made or renewed by hand is left as it stands.
+   A yes's tombstone is plain: nothing marks the issue judged on origin, so
+   another account's drain may reserve it and ask the judgement again. The
+   hold is taken once per request and never renewed by a poll: a request whose
+   reservation lapses unanswered is dropped, its reservation released, and the
+   issue asked again only after the drain's other eligible work
+   (dcn-2610161315385888). An issue whose `found_at` names no repository-relative path is
    handed back before any judgement over it, `from` `reservation`, with the
    reason "`<iss-N>` has no found_at path to reserve it with; handed back", and
    the drain moves on. An issue another copy holds in the move's view, or whose

@@ -86,12 +86,14 @@ Eligible issues come first, in the order a drain takes them: by category
 `tech-debt`, `documentation`, `inconsistency`, `drift`, `bug`, `ux`, then
 `security` when the rule takes it; then by severity, `nitpick` first; then,
 within each group of one category and severity, the issues whose `found_at`
-names a file before those naming a directory or no path; then each part oldest
-first without `origin`, or, on `origin`, in this drain's own order: a
-rendezvous hash of the holder, this copy's key and the issue id, so every
-account and copy keeps one order from move to move and two of them start a
-group at different issues. The payload's `order` states the rule. Every other
-open issue follows, by id.
+names a file before those naming a directory or no path (a path origin's
+commit does not hold, and a link to a directory, count as no file); then each
+part oldest first without `origin`, or, on `origin`, in this drain's own order:
+a rendezvous hash of the holder git's identity names with no network act, this
+copy's key and the issue id, so every account and copy keeps one order from
+move to move and two of them start a group at different issues. When git's
+identity names no holder, the copy's key alone tells copies apart. The
+payload's `order` states the rule. Every other open issue follows, by id.
 
 ## Loosened floors
 
@@ -118,6 +120,10 @@ still handed back as live, lapsing only when the newer tag is fetched); `order` 
 `dispositions` holds one entry per open issue (`id`, `path`, `title`, `severity`,
 `category`, `outcome`, `rule`, `reason`, and `blockers` when skipped); `counts`
 totals them by outcome; `ledger` names the checkout and branch read.
+`order_drawn_at_first_move` is `true` when this copy has no key yet: the dry
+run mints none, so it takes each group oldest first, and `order` says the
+copy's own order within each group is drawn at its first move, which mints the
+key. Once the copy has a key, the dry run shows the order its next move takes.
 
 In a checkout with a remote named `origin`, the dry run plans from origin's
 default branch as this checkout last fetched it, and fetches nothing: `source`
@@ -187,8 +193,23 @@ what it did in `next`:
   drain reserves each issue on it before it asks the judgement over it, as
   `abcd reserve` does, with the path the issue's `found_at` names (a `:line`
   locator dropped) as the footprint, so every other person and computer sees it
-  is taken and no two accounts judge one issue. A `yes` releases that
-  reservation, and the lane a `no` opens starts on it, with no second push. An
+  is taken: while it holds, no other account's drain reserves, judges or opens
+  the issue. `judging.hold` records the reservation the drain took (`commit`,
+  `claimed_at`, `expires_at`), and the lane a `no` opens starts on it, with no
+  second push. The drain releases that reservation, and no other, whenever no
+  lane will open on it: on a `yes`; on an answer over an issue that has left
+  the eligible set; when the judgement is superseded (the order now asks another issue,
+  nothing eligible is left, the drain stops at its cap, on an outage or giving
+  up on origin, or a `no` comes once the window has elapsed); when the lane's
+  start is refused or fails; and when a request lapses. Each release is a fetch
+  and one tombstone push over the commit the drain's reservation made, made
+  only while that commit is still the tip, so a reservation you made or renewed
+  with `abcd reserve` is left as it stands. A `yes` releases with a plain
+  tombstone that records no judgement, so another account's drain may reserve
+  the issue later and ask the judgement again. The reservation is taken once
+  per request and never renewed while you poll: a request still unanswered
+  when it lapses (two hours by default) is dropped, its reservation released,
+  and the issue asked again only after the drain's other eligible work. An
   issue whose `found_at` names no repository-relative path cannot be reserved:
   it is handed back before any judgement is asked over it, `from:
   "reservation"`, with the reason `<iss-N> has no found_at path to reserve it

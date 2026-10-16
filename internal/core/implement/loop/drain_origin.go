@@ -174,8 +174,9 @@ func lastFetchedOrigin(repoRoot string) (v originView, kind, why string) {
 }
 
 // drainSpread is the key a drain on origin draws its own order within each
-// group from (capture.DrainPlanRequest.Spread): the holder this copy resolves
-// to with no network act, and the copy's key, so two accounts, and one
+// group from (capture.DrainPlanRequest.Spread): the holder git's identity
+// names, read with no network act and so empty when it names none, and the
+// copy's key, which alone then tells copies apart; so two accounts, and one
 // person's two copies, take a group in different orders, each the same at
 // every move. "" when neither can be told, which takes each group oldest first.
 func drainSpread(repoRoot, copyKey string) string {
