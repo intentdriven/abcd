@@ -3072,6 +3072,64 @@ instance itself. A sweep that passes lifts that halt.
 abcd lab sweep lab-260901000000-0123abc
 ```
 
+### `abcd land`
+
+Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.
+
+**Usage:** `abcd land [<branch>] [flags]`
+
+abcd land [<branch>] [--no-push] [--no-enqueue]
+
+Land a branch whose work is committed: the checkout's current branch, or the one
+named, from the worktree that has it checked out. Each step can be resumed by
+running abcd land again.
+
+land runs the branch's own `make preflight` with your environment and
+credentials, so run it only on a branch whose content you trust.
+
+  1. Origin: every fetch and push URL of origin must be the repository the forge
+     client resolves, and the forge's default branch must be the one origin/HEAD
+     names here and not the branch; checked before anything runs.
+  2. Landed: origin's default branch is fetched; a head already on it has landed,
+     and so has one the forge lists a merged pull request of this repository's
+     branch at (a squash or rebase merge): land says so and stops, pushing,
+     gating and queueing nothing. A forge that cannot be asked gets no push.
+  3. Gate: when a preflight receipt already names the branch's head (in any
+     worktree, as the pre-push hook looks), the gate is skipped; otherwise
+     `make preflight` runs in the branch's checkout, its output on stderr, and the
+     head must be unchanged, a receipt present and origin's URLs as checked after
+     it. A repository whose make file declares no preflight target gets no push.
+  4. Push (land.push): a plain push of the gated commit to the branch's name on
+     origin, with the repository's hooks running, never forced, never the default
+     branch.
+  5. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
+     queue where the merge gate allows it (today: only where a merge queue gates the
+     default branch and a ruleset requires a person's approval), pinned to the
+     head, then confirmed in the queue. An arming someone else made is left as it
+     is. With no pull request it prints the `gh pr create` command and stops; it
+     never opens one.
+
+land.push and land.enqueue are read from .abcd/config.json (in the working
+directory's checkout and the branch's own) and ~/.abcd.noindex/config.json,
+default true, and off wins from any layer: any file can turn an act off and none
+can turn it back on. --no-push and --no-enqueue turn one off for this run. An act
+that is off says which layer turned it off; with both off nothing runs. With
+land.push off and land.enqueue on the gate still runs: arming says the head is
+ready, and readiness is the gate.
+
+Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an
+origin that is not the repository the forge client resolves (an SSH host alias
+included), and a pull request only another repository opened. Exit 0 when every
+step did its act or said why it stopped; exit 2 on a refusal, which names what
+was done before it.
+
+**Flags:**
+
+```
+      --no-enqueue   do not arm or queue the pull request this run
+      --no-push      do not push the branch this run; print the push command instead
+```
+
 ### `abcd launch`
 
 Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.
