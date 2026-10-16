@@ -46,6 +46,13 @@ copy's key), `footprint`, `claimed_at`, `effective_expiry`, `commit`, and
 `commit`, `effective_expiry`, and `unreadable` when it could not be read. When
 origin's default branch could not be read, `derived_unchecked` says why: the
 act went on, but whether the record is already finished there was not checked.
+When GitHub could not say whether origin is a fork (gh missing, out of time or
+refused), origin's host is not github.com by name, a push URL could not be
+read, or a github.com URL does not name exactly one owner and one repository,
+`fork_unchecked` says why: the act went on, and the text reads `not checked: whether origin is a fork
+(…)`. When origin is the one fork the repository allows, `fork_allowed` names
+it as `<owner>/<name>` and the text reads `origin is a fork the repository
+allows (<owner>/<name>)`. Pass either on to the user.
 
 Tell the user what was reserved and until when.
 
@@ -83,6 +90,19 @@ reservations, counted across every record by username. A reservation past that
 is refused, naming the ten; a renewal, and a take-over of the user's own other
 copy, of a reservation still live are never refused by the cap, while renewing
 one that has lapsed counts as a new one. Release one first, if the user agrees.
+
+**Exit 2 on a fork origin.** A new reservation or a take-over asks GitHub
+whether each URL origin pushes to is a fork; a renewal and a release never ask.
+A fork is refused before anything is pushed, since a reservation there is
+invisible to everyone working on the repository it was made from. The refusal
+names that repository and the `git remote set-url` command that points origin
+there; relay it, and run the command only if the user agrees. When the fork is
+itself where everyone working on the repository reserves, the repository says
+so by setting `reservation.fork_origin` to that fork's `"<owner>/<name>"` in
+`.abcd/config.json` (the default is `"refuse"`); never set it to get past the
+refusal without the user's word. It allows that one fork only: a fork of it is
+refused naming both, and a value that is neither `"refuse"` nor one owner and
+one name is refused, naming the file, once origin is a fork.
 
 **Exit 2 is every other refusal**: an id that is not an issue or intent, no
 footprint, a path that is not repository-relative, a lease out of bounds, a

@@ -37,6 +37,8 @@ type reserveOutput struct {
 	Commit           string           `json:"commit"`
 	Replaced         *reserveReplaced `json:"replaced,omitempty"`
 	DerivedUnchecked string           `json:"derived_unchecked,omitempty"`
+	ForkUnchecked    string           `json:"fork_unchecked,omitempty"`
+	ForkAllowed      string           `json:"fork_allowed,omitempty"`
 	// HandedBack is the hand-back tombstone a reservation was made over, its
 	// record unchanged on origin's default branch since; note is the
 	// sentence the text form prints for it.
@@ -220,7 +222,9 @@ func reserveView(res claim.Result) reserveOutput {
 	out := reserveOutput{Act: res.Act, Record: res.Record, Holder: res.Holder, Copy: res.Copy,
 		Footprint: make([]string, 0, len(res.Footprint)), ClaimedAt: rfc3339(res.ClaimedAt),
 		EffectiveExpiry: rfc3339(res.ExpiresAt), Commit: res.Commit,
-		DerivedUnchecked: termsafe.Sanitize(fsutil.RedactHome(res.DerivedUnchecked))}
+		DerivedUnchecked: termsafe.Sanitize(fsutil.RedactHome(res.DerivedUnchecked)),
+		ForkUnchecked:    termsafe.Sanitize(fsutil.RedactHome(res.ForkUnchecked)),
+		ForkAllowed:      termsafe.Sanitize(res.ForkAllowed)}
 	for _, f := range res.Footprint {
 		out.Footprint = append(out.Footprint, termsafe.Sanitize(f))
 	}
@@ -272,6 +276,12 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if out.DerivedUnchecked != "" {
 		fmt.Fprintf(w, "  not checked: whether %s is already finished on origin's default branch (%s)\n", out.Record, out.DerivedUnchecked)
+	}
+	if out.ForkUnchecked != "" {
+		fmt.Fprintf(w, "  %s\n", claim.ForkUncheckedLine(out.ForkUnchecked))
+	}
+	if out.ForkAllowed != "" {
+		fmt.Fprintf(w, "  %s\n", claim.ForkAllowedLine(out.ForkAllowed))
 	}
 	if out.note != "" {
 		fmt.Fprintf(w, "  note: %s\n", out.note)
