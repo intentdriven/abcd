@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
@@ -397,7 +398,7 @@ func TestARepositoryWhoseHomeIsAForkMayAllowIt(t *testing.T) {
 				"a reservation on mallory/abcd is invisible to everyone working on octo/abcd; point origin at the fork the repository allows " +
 				"(git remote set-url origin git@github.com:octo/abcd.git)", ""},
 		{"another fork than the allowed one", "", `{"reservation":{"fork_origin":"octo/abcd"}}`, "mallory/abcd", fork,
-			"allows reservations only on the fork octo/abcd (reservation.fork_origin in ~/.abcd.noindex/config.json)", ""},
+			"allows reservations only on the fork octo/abcd (reservation.fork_origin in " + abcdhome.Display("config.json") + ")", ""},
 		{"the bare allow", `{"reservation":{"fork_origin":"allow"}}`, "", "octo/abcd", fork, ".abcd/config.json (repo layer): reservation.fork_origin", ""},
 		{"a value outside the two", `{"reservation":{"fork_origin":"yes"}}`, "", "octo/abcd", fork, ".abcd/config.json (repo layer): reservation.fork_origin", ""},
 		{"an owner and no name", `{"reservation":{"fork_origin":"octo/"}}`, "", "octo/abcd", fork, ".abcd/config.json (repo layer): reservation.fork_origin", ""},
