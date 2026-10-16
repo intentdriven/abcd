@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -46,9 +47,10 @@ func (n Notes) MarkShown() {
 	}
 }
 
-// statusReadHook, when a test sets it, runs at the start of the hook's read:
-// a read slowed past the budget.
-var statusReadHook func()
+// statusReadHook, when a test sets it, runs the hook's read in its place:
+// it calls read when it chooses, so a test holds the read past the budget
+// and lets it finish before the test's directories go.
+var statusReadHook atomic.Pointer[func(read func())]
 
 // PromptNotes is the prompt hook's status block, read from this checkout's
 // disk under ctx: ReadStatus, then every line not yet shown. A checkout with
@@ -68,11 +70,15 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 	}
 	done := make(chan answer, 1)
 	go func() {
-		if statusReadHook != nil {
-			statusReadHook()
+		read := func() {
+			v, err := readStatus(ctx, root, now, o, false)
+			done <- answer{v, err}
 		}
-		v, err := readStatus(ctx, root, now, o, false)
-		done <- answer{v, err}
+		if h := statusReadHook.Load(); h != nil {
+			(*h)(read)
+			return
+		}
+		read()
 	}()
 	var got answer
 	select {

@@ -394,8 +394,20 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 		}
 	}
 
-	statusReadHook = func() { time.Sleep(3 * time.Second) }
-	t.Cleanup(func() { statusReadHook = nil })
+	// The read waits until the test is done with it, then runs to its end
+	// before the test's directories are removed.
+	release, finished := make(chan struct{}), make(chan struct{})
+	hold := func(read func()) {
+		<-release
+		read()
+		close(finished)
+	}
+	statusReadHook.Store(&hold)
+	t.Cleanup(func() {
+		close(release)
+		<-finished
+		statusReadHook.Store(nil)
+	})
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	start = time.Now()
