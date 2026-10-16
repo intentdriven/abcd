@@ -41,7 +41,7 @@ func ledgerCommit(t *testing.T, dir string, blobs []string) originView {
 	for _, name := range []string{"open", "issues", "work", ".abcd"} {
 		tree = gitStdin(t, dir, "040000 tree "+tree+"\t"+name+"\n", "mktree")
 	}
-	commit := gitStdin(t, dir, "", "commit-tree", tree, "-m", "a ledger")
+	commit := gitStdin(t, dir, "", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit-tree", tree, "-m", "a ledger")
 	return originView{ref: "refs/remotes/origin/main", commit: commit}
 }
 
