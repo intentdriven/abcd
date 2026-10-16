@@ -236,6 +236,34 @@ func TestHandBackCommitsReportAloneAsLastCommit(t *testing.T) {
 	}
 }
 
+// TestHandBackTakesTheTrailerFromALongHistory: the default disclosure is read
+// from `git log` through a pipe. A reader that stops at the first value leaves
+// git writing into a closed pipe once the history outruns the pipe's buffer,
+// and under pipefail that SIGPIPE threw the value away: the merge queue saw the
+// refusal on a fast runner. One commit whose disclosure lines total far more
+// than any pipe buffer stands in for a long session, so the race always loses.
+func TestHandBackTakesTheTrailerFromALongHistory(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	var msg strings.Builder
+	msg.WriteString("fix: a long session\n\n")
+	for i := 0; i < 8000; i++ {
+		msg.WriteString(sessionTrailer + "\n")
+	}
+	c.write("long.md", "long\n", 0o644)
+	c.git("add", "long.md")
+	c.git("commit", "-q", "-m", msg.String())
+	_, errOut, _ := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if strings.Contains(errOut, "REFUSING --assisted-by") {
+		t.Fatalf("hand-back could not read the session's own disclosure from a long history:\n%s", errOut)
+	}
+	if got := c.git("log", "-1", "--format=%s"); !strings.HasPrefix(got, "chore(cloud): hand back the report on "+handBackItem) {
+		t.Fatalf("the last commit is %q, want the report commit\n%s", got, errOut)
+	}
+	if got := c.git("log", "-1", "--format=%B"); !strings.Contains(got, "\n"+sessionTrailer) {
+		t.Errorf("the report commit does not carry the session's own disclosure:\n%s", got)
+	}
+}
+
 func TestHandBackRefusesAnItemThatIsNotARecordID(t *testing.T) {
 	c := newForgeCase(t, trackingIssue)
 	c.work("one.md")

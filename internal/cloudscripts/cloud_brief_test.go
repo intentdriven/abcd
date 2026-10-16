@@ -2,6 +2,7 @@ package cloudscripts
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -691,6 +692,15 @@ func TestBriefRefusesUnpushedSpecEdits(t *testing.T) {
 		}},
 		{"a spec never added", func(c *cloudCase) {
 			c.write(".abcd/development/specs/open/spc-2610150000000009-another.md", "---\nid: spc\n---\n", 0o644)
+		}},
+		// More differing paths than a pipe buffer holds: the refusal names the
+		// first of them, and a reader that stops after one line must not leave
+		// the sort writing into a closed pipe, which under pipefail ended the
+		// script with no refusal at all.
+		{"thousands of specs never added", func(c *cloudCase) {
+			for i := 0; i < 3000; i++ {
+				c.write(fmt.Sprintf(".abcd/development/specs/open/spc-26101600%06d-a-spec-written-here-and-never-pushed.md", i), "---\nid: spc\n---\n", 0o644)
+			}
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

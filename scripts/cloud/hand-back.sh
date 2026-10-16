@@ -208,8 +208,10 @@ report="$report_dir/$item.md"
 if [ -z "$assisted" ]; then
 	if base="$(bash "$here/default-branch.sh" 2>/dev/null)" &&
 		fork="$(git merge-base "refs/remotes/origin/$base" HEAD 2>/dev/null)"; then
+		# awk reads to the end: a reader that stopped at the first value left
+		# git writing into a closed pipe, and pipefail then lost the value.
 		assisted="$(git log --format='%(trailers:key=Assisted-by,valueonly)' "$fork..HEAD" 2>/dev/null |
-			awk 'NF { print; exit }' | tr -d '\r')" || assisted=""
+			awk 'NF && !found { print; found = 1 }' | tr -d '\r')" || assisted=""
 	fi
 	[ -n "$assisted" ] ||
 		refuse "--assisted-by: no commit of this session carries an Assisted-by: trailer to take it from; pass --assisted-by <Vendor>:<model-version>."

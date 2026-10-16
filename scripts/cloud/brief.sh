@@ -178,7 +178,7 @@ if [ "$kind" = "a planned intent" ]; then
 	)" || refuse "$item: whether $dev/ here matches origin's default branch ($base) cannot be read."
 	if [ -n "$differs" ]; then
 		n="$(printf '%s\n' "$differs" | sort -u | grep -c .)"
-		first="$(printf '%s\n' "$differs" | sort -u | head -n 1)"
+		first="$(printf '%s\n' "$differs" | sort -u | sed -n 1p)"
 		refuse "$item: $n path(s) under $dev/ here differ from origin's default branch ($base), $first among them; push them first, or bring this checkout up to origin. An intent's readiness reads its specs and the records around it on this copy, while a cloud session reads origin's."
 	fi
 fi
