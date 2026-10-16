@@ -159,6 +159,8 @@ var wordReaders = map[string]string{
 	"approveShell":    "commandSites: every place a command can sit; a name holding an unknown mark is refused",
 	"criticalRemoval": "commandSites and precededByCD; an operand holding an unknown mark is refused as a critical target",
 	"pwshCode":        "exempt: compares a known word with PowerShell's parameter names; inlineCode refuses a word holding an unknown mark before it",
+	"clusterHas":      "isUnknown: a word the line does not fix may hold the flag",
+	"findDeletes":     "isUnknown: an unknown word after -exec may be rm, and one among the starting points is a start",
 
 	// approvepaths.go: the approver's reading of what a line writes.
 	"pathUses":         "commandSites and fixedToken; an operand holding an unknown mark is a target the line does not fix, which is refused",

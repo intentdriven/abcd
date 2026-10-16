@@ -58,9 +58,10 @@ const (
 	// protectedPathEntryID: the line writes or removes a path the harness
 	// protects (repository state, start-up files, its own configuration).
 	protectedPathEntryID = "protected-path"
-	// criticalRemovalEntryID: an rm or rmdir whose target is, or may be, a
-	// critical path: the root, a top-level directory, the home directory, the
-	// working tree or a directory above it.
+	// criticalRemovalEntryID: a removal, a move or a recursive change whose
+	// target is, or may be, a critical path: the root, a top-level directory,
+	// the home directory or one of its direct children, the working tree or
+	// a directory above it, or another checkout of the repository.
 	criticalRemovalEntryID = "critical-path-removal"
 	// sandboxEntryID: the shell call asks to run outside the host's sandbox.
 	sandboxEntryID = "sandbox-off"
@@ -191,15 +192,14 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 		return refusal(checkNoteEntryID, termsafe.Sanitize(strings.Join(rc.notes, " ")),
 			"a command whose every script exists and is a file the guard can read.")
 	}
-	dir, home := r.files.dir, r.files.home
+	facts := factsFor(r.files)
 	for i, s := range v.segs {
-		if target, ok := criticalRemoval(s, v.segs[:i], dir, home); ok {
+		if target, ok := criticalRemoval(s, v.segs[:i], facts); ok {
 			return refusal(criticalRemovalEntryID,
-				"this removes "+termsafe.Sanitize(target)+", which is or may be the filesystem root, a top-level directory, the home directory, the working tree or a directory above it.",
-				"remove the files by their full paths below the working tree, spelled out.")
+				"this removes, moves or recursively changes "+termsafe.Sanitize(target)+", which is or may be the filesystem root, a top-level directory, the home directory or a directory directly in it, the working tree or a directory above it, or another checkout of the repository.",
+				"change the files by their full paths below the working tree, spelled out.")
 		}
 	}
-	facts := factsFor(r.files)
 	vf := r.gitValueFlags()
 	for _, p := range placedLine(rc.line, v.segs) {
 		if a, ok := gitConfigRefusal(p.seg, vf); ok {
@@ -243,27 +243,47 @@ func fromDecision(d Decision) Approval {
 	return refusal(d.EntryID, termsafe.Sanitize(d.Why), termsafe.Sanitize(d.Successor))
 }
 
-// criticalRemoval reports an rm or rmdir in s whose target is, or may be, a
-// critical path, and the target as written. before is the segments ahead of s,
-// read for a directory change that leaves a relative target's directory
-// unknown.
-func criticalRemoval(s segment, before []segment, dir, home string) (string, bool) {
+// criticalRemoval reports a command in s that removes, moves or recursively
+// changes a path that is, or may be, a critical one, and the path as written:
+// an rm or rmdir of one; a find rooted at home or above that deletes (-delete,
+// or -exec rm); a move of one; an rsync that deletes into one; and a recursive
+// chmod, chown or chgrp of one. before is the segments ahead of s, read for a
+// directory change that leaves a relative target's directory unknown.
+func criticalRemoval(s segment, before []segment, f approveFacts) (string, bool) {
+	moved := precededByCD(before, s.chain)
 	for _, a := range commandSites(s) {
-		if b := filepath.Base(s.tokens[a.idx]); b != "rm" && b != "rmdir" {
+		var ops []int
+		critical := f.criticalDir
+		switch b := filepath.Base(s.tokens[a.idx]); b {
+		case "rm", "rmdir":
+			ops = operandsFrom(s, a.idx+1, nil)
+		case "find":
+			ops, critical = findDeletes(s, a.idx+1), f.homeOrAbove
+		case "mv":
+			ops = operandsFrom(s, a.idx+1, []string{"-S", "--suffix", "-t", "--target-directory"})
+			if !flagGiven(s, a.idx+1, "-t", "--target-directory") && len(ops) > 0 {
+				ops = ops[:len(ops)-1] // the destination stays
+			}
+		case "rsync":
+			if !flagGiven(s, a.idx+1, "--del") && !flagPrefixGiven(s, a.idx+1, "--delete") {
+				continue
+			}
+			if all := operandsFrom(s, a.idx+1, rsyncValueFlags); len(all) > 1 && !remoteSpec(s.tokens[all[len(all)-1]]) {
+				ops = all[len(all)-1:]
+			}
+		case "chmod", "chown", "chgrp":
+			if !flagGiven(s, a.idx+1, "--recursive") && !clusterHas(s, a.idx+1, 'R') {
+				continue
+			}
+			if ops = operandsFrom(s, a.idx+1, nil); len(ops) > 0 && !flagPrefixGiven(s, a.idx+1, "--reference") {
+				ops = ops[1:] // the mode, or the owner
+			}
+		default:
 			continue
 		}
-		moved := precededByCD(before, s.chain)
-		flags := true
-		for j := a.idx + 1; j < len(s.tokens); j++ {
+		for _, j := range ops {
 			op := s.tokens[j]
-			if flags && op == "--" {
-				flags = false
-				continue
-			}
-			if flags && strings.HasPrefix(op, "-") && op != "-" {
-				continue
-			}
-			if criticalTarget(op, s.globAt(j), moved, dir, home) {
+			if criticalTarget(op, s.globAt(j), moved, f, critical) {
 				return strings.NewReplacer(string(unknownMark), "$…", string(varMark), "$…").Replace(op), true
 			}
 		}
@@ -271,14 +291,114 @@ func criticalRemoval(s segment, before []segment, dir, home string) (string, boo
 	return "", false
 }
 
-// criticalTarget reports whether one removal operand is, or may be, a critical
-// path. An operand a variable or a substitution fills may be any path, and so
-// may a relative one after the line changed directory; a glob is judged by the
-// directory it expands in.
-func criticalTarget(op string, globbed, moved bool, dir, home string) bool {
+// operandsFrom is the indexes of s's operands from index from, stepping
+// options (and the value of each in valueFlags); a `--` ends the options.
+func operandsFrom(s segment, from int, valueFlags []string) []int {
+	return writerArgs{s: s, from: from}.operandIdx(valueFlags)
+}
+
+// flagGiven reports whether one of flags stands among s's words from index
+// from, alone or with its value glued on after `=`.
+func flagGiven(s segment, from int, flags ...string) bool {
+	for _, t := range s.tokens[from:] {
+		for _, f := range flags {
+			if t == f || strings.HasPrefix(t, f+"=") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// flagPrefixGiven reports whether a word from index from starts with prefix:
+// one of a family of long options (--delete, --delete-after …).
+func flagPrefixGiven(s segment, from int, prefix string) bool {
+	for _, t := range s.tokens[from:] {
+		if strings.HasPrefix(t, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
+// clusterHas reports whether a bundled short-flag word from index from holds
+// the letter c; a word the line does not fix may.
+func clusterHas(s segment, from int, c rune) bool {
+	for _, t := range s.tokens[from:] {
+		if isUnknown(t) || isShortCluster(t) && strings.ContainsRune(t[1:], c) {
+			return true
+		}
+	}
+	return false
+}
+
+// rsyncValueFlags are rsync's options that take their value as the next word.
+var rsyncValueFlags = []string{"-e", "--rsh", "-f", "--filter", "--exclude", "--include", "--exclude-from",
+	"--include-from", "--files-from", "-T", "--temp-dir", "--compare-dest", "--copy-dest", "--link-dest",
+	"-B", "--block-size", "--log-file", "--password-file", "--chmod", "--chown", "--rsync-path", "--partial-dir"}
+
+// remoteSpec reports whether an rsync operand names another host
+// (host:path, or rsync://), which no local check judges.
+func remoteSpec(op string) bool {
+	if strings.Contains(op, "://") {
+		return true
+	}
+	colon := strings.IndexByte(op, ':')
+	return colon > 0 && !strings.Contains(op[:colon], "/")
+}
+
+// findDeletes is the starting points of a find that deletes what it finds
+// (-delete, or -exec / -execdir / -ok / -okdir running rm, rmdir or unlink),
+// or nil for one that does not. With no starting point named, find starts
+// in ".".
+func findDeletes(s segment, from int) []int {
+	deletes := false
+	for i := from; i < len(s.tokens); i++ {
+		switch s.tokens[i] {
+		case "-delete":
+			deletes = true
+		case "-exec", "-execdir", "-ok", "-okdir":
+			if i+1 < len(s.tokens) {
+				switch filepath.Base(s.tokens[i+1]) {
+				case "rm", "rmdir", "unlink":
+					deletes = true
+				}
+				if isUnknown(s.tokens[i+1]) {
+					deletes = true
+				}
+			}
+		}
+	}
+	if !deletes {
+		return nil
+	}
+	var starts []int
+	i := from
+	for i < len(s.tokens) && (s.tokens[i] == "-H" || s.tokens[i] == "-L" || s.tokens[i] == "-P" || strings.HasPrefix(s.tokens[i], "-O") || s.tokens[i] == "-D") {
+		if s.tokens[i] == "-D" {
+			i++
+		}
+		i++
+	}
+	for ; i < len(s.tokens); i++ {
+		t := s.tokens[i]
+		if !isUnknown(t) && (strings.HasPrefix(t, "-") || t == "(" || t == "!" || t == ")") {
+			break
+		}
+		starts = append(starts, i)
+	}
+	return starts
+}
+
+// criticalTarget reports whether one operand is, or may be, a path critical
+// judges critical. An operand a variable or a substitution fills may be any
+// path, and so may a relative one after the line changed directory; a glob is
+// judged by the directory it expands in.
+func criticalTarget(op string, globbed, moved bool, f approveFacts, critical func(string) bool) bool {
 	if strings.ContainsRune(op, unknownMark) || strings.ContainsRune(op, varMark) {
 		return true
 	}
+	dir, home := f.dir, f.home
 	p := op
 	switch {
 	case p == "~" || strings.HasPrefix(p, "~/"):
@@ -302,30 +422,46 @@ func criticalTarget(op string, globbed, moved bool, dir, home string) bool {
 		for i, c := range parts {
 			if strings.ContainsAny(c, "*?[") {
 				p = filepath.Clean(string(filepath.Separator) + filepath.Join(parts[:i]...))
-				return criticalDir(p, dir, home) || p == filepath.Clean(dir)
+				return critical(p) || critical(fsutil.RealExistingPath(p)) || p == filepath.Clean(dir)
 			}
 		}
 	}
-	return criticalDir(p, dir, home)
+	// As written and with its existing directories resolved: the checkouts
+	// git lists are in their resolved spelling.
+	return critical(p) || critical(fsutil.RealExistingPath(p))
 }
 
 // criticalDir reports whether p, a clean absolute path, is the root, a
-// top-level directory, the home directory, or the working tree or a
-// directory above it.
-func criticalDir(p, dir, home string) bool {
-	if p == "/" || strings.Count(p, "/") == 1 {
+// top-level directory, the home directory or one of its direct children, the
+// working tree or a directory above it, or within or above another checkout
+// of the repository.
+func (f approveFacts) criticalDir(p string) bool {
+	if f.homeOrAbove(p) {
 		return true
 	}
-	if home != "" && p == filepath.Clean(home) {
+	if f.home != "" && fsutil.PathWithin(filepath.Dir(p), filepath.Clean(f.home), f.fold) {
+		if filepath.Dir(p) == filepath.Clean(f.home) || fsutil.FoldPath(filepath.Dir(p), f.fold) == fsutil.FoldPath(filepath.Clean(f.home), f.fold) {
+			return true
+		}
+	}
+	if f.dir != "" && fsutil.PathWithin(f.dir, p, f.fold) {
 		return true
 	}
-	if dir != "" {
-		d := filepath.Clean(dir)
-		if p == d || strings.HasPrefix(d+"/", p+"/") {
+	for _, o := range f.others {
+		if fsutil.PathWithin(o, p, f.fold) || (fsutil.PathWithin(p, o, f.fold) && (f.dir == "" || !fsutil.PathWithin(p, f.dir, f.fold))) {
 			return true
 		}
 	}
 	return false
+}
+
+// homeOrAbove reports whether p, a clean absolute path, is the root, a
+// top-level directory, or the home directory or a directory above it.
+func (f approveFacts) homeOrAbove(p string) bool {
+	if p == "/" || strings.Count(p, "/") == 1 {
+		return true
+	}
+	return f.home != "" && fsutil.PathWithin(filepath.Clean(f.home), p, f.fold)
 }
 
 // interpreters are the non-shell interpreters whose inline code the guard does
