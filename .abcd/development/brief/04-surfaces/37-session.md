@@ -151,19 +151,20 @@ text is put on the page as text, never as markup.
   link's fragment names, if the repository's `.abcd/relay/relays.json` names
   it, or else the first relay the file names; where the file cannot be read
   before sign-in, it asks in plain words whether the project's team sent the
-  link; that answer admits a guest's join in that tab, for at most twelve
-  hours, and never a sign-in. With none, it says live sessions are not set up yet and to ask the
+  link; that answer holds in that tab, for at most twelve hours. With none, it says live sessions are not set up yet and to ask the
   technical facilitator. The invite link carries the relay only when the
   guest's page could not find it alone.
-- **Signing in.** "Sign in with GitHub" is offered only through a relay the
-  repository's file names, or a local session's own page. On a cloud relay it
+- **Signing in.** "Sign in with GitHub" goes through a relay the repository's
+  file names, a confirmed one where the file cannot be read, or a local
+  session's own page. On a cloud relay it
   goes to GitHub's authorize page with PKCE and a random state, both held in
   session storage across the redirect, and with the relay's own
   `/auth/callback` as the redirect, the callback URL the team's app lists.
   GitHub returns the person to that relay, which sends them back to the page
   naming itself, and the page posts the code and verifier to that relay's
   `/auth/token` alone, refusing a return that names no relay or another one;
-  the relay exchanges only a code given for its own callback. In a local session, the page shows the device flow's code
+  the relay exchanges only a code given for its own callback, and the token
+  is presented only to that relay. In a local session, the page shows the device flow's code
   to confirm on github.com and asks the relay after it. There is no token
   field. The token is held in the page's memory only, and is presented to the
   relay as `verify`.

@@ -254,11 +254,10 @@ no entry: it is its own relay.
   there is no file to read, and the page cannot check the link's relay. It
   names the project and asks one plain question before a guest joins: "Only
   continue if someone on the project's team sent you this link." The answer
-  lets that person join as a guest, in that browser tab, for at most twelve
-  hours. It never lets the relay receive a sign-in: signing in with GitHub
-  works only through a relay the repository's file names, or a session on
-  the host's own computer, and the page says so in place of the sign-in
-  button.
+  holds for that browser tab, for at most twelve hours. Team members then
+  sign in with GitHub as they would on a public repository: GitHub returns
+  them only to the callback your app lists, and the page hands the sign-in to
+  that relay alone, whatever relay the link named.
 - With no relay in the link and none in the file, the page says that live
   sessions are not set up for this project yet, and to ask the technical
   facilitator.

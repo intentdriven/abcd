@@ -907,10 +907,9 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 	if gate < 0 || cfg < 0 || gate > cfg {
 		t.Errorf("startSignIn asks the relay before clearing it:\n%s", start)
 	}
-	// GitHub's code goes to the relay's exchange only when it is cleared for
-	// a sign-in: listed, or serving the page.
+	// GitHub's code goes to the relay's exchange only when it is cleared.
 	fin := functionBody(t, js, "finishSignIn")
-	gate, post := strings.Index(fin, "if (!relaySignInCleared())"), strings.Index(fin, `"/auth/token"`)
+	gate, post := strings.Index(fin, "if (!relayCleared())"), strings.Index(fin, `"/auth/token"`)
 	if gate < 0 || post < 0 || gate > post {
 		t.Errorf("finishSignIn posts the code before clearing the relay:\n%s", fin)
 	}
@@ -935,9 +934,9 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 		}
 	}
 	for fn, want := range map[string]string{
-		"afterOpen":       "if (githubToken && relaySignInCleared())",
-		"connectSignedIn": "if (!githubToken || !relaySignInCleared())",
-		"onJoined":        "githubToken && relaySignInCleared()",
+		"afterOpen":       "if (githubToken && relayTokenCleared())",
+		"connectSignedIn": "if (!githubToken || !relayTokenCleared())",
+		"onJoined":        "githubToken && relayTokenCleared()",
 		"hostClicked":     `if (!relayClearedFor("host")) return;`,
 		"openSocket":      "!relayCleared()",
 	} {
@@ -953,10 +952,9 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 	if !strings.Contains(functionBody(t, js, "confirmRelay"), "keepTrusted(all);") {
 		t.Error("a confirmed relay is not kept per repository")
 	}
-	// A token reaches only a relay cleared for a sign-in, never a confirmed
-	// one.
-	if b := functionBody(t, js, "relaySignInCleared"); strings.Contains(b, "confirmed") {
-		t.Errorf("relaySignInCleared admits a confirmed relay:\n%s", b)
+	// A token reaches only the relay it was signed in through.
+	if b := functionBody(t, js, "relayTokenCleared"); !strings.Contains(b, "session.relay === tokenRelay") {
+		t.Errorf("relayTokenCleared does not hold the token to the relay it was signed in through:\n%s", b)
 	}
 }
 

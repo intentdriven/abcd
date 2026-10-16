@@ -10,8 +10,10 @@ import (
 // to: the team's app lists the relay's own callback, the relay sends the
 // person on to the page naming itself, and the page posts the code to that
 // relay alone, never to one the invite link or the tab's storage names. A
-// relay the person confirmed, which the repository's list does not name,
-// serves guest joins and never receives a code.
+// relay the person confirmed, where the repository's list cannot be read,
+// may run the sign-in: GitHub sends the code only to a callback the team's
+// app lists. The token then goes for verification only to the relay GitHub
+// returned the person to.
 
 // pageHarness is the page's sign-in, storage and trust functions, with the
 // browser around them stubbed: storage, location, history and fetch, which
@@ -34,16 +36,25 @@ function readStartForm() {}
 function askTrust(action) { toasts.push("askTrust:" + action); }
 function recheckRelayList() {}
 function startDeviceSignIn() { toasts.push("device"); }
-async function presentHeldToken() { toasts.push("presented"); }
 function takeRejoin() { return false; }
+async function readRelayList() { return { state: anchor.state, relays: anchor.relays }; }
+const sent = [];
+let socket = false;
+function socketOpen() { return socket; }
+function sendJSON(msg) { sent.push({ relay: session.relay, msg }); }
+function openSocket() { sent.push({ relay: session.relay, msg: { type: "open" } }); }
 let heldToken = "";
+let githubToken = "";
+let tokenRelay = "";
 let signInOffered = null;
 const requests = [];
 let assigned = "";
 const location = { origin: "https://abcdesign.app", pathname: "/acme/brief/brief/", search: "", hash: "", assign: (u) => { assigned = u; } };
 globalThis.history = { replaceState: () => {} };
 const route = { slug: "acme/brief" };
-const session = { relay: "", code: "", name: "", everJoined: false };
+const session = { relay: "", code: "", name: "", everJoined: false, inRoom: false, verifying: false, rejoining: false };
+const rejoinToken = "";
+function proceed() {}
 let anchor = { state: "listed", relays: [] };
 let config = { client_id: "Iv1.abc", sign_in: true, app_type: "github-app", authorize_url: "https://github.com/login/oauth/authorize", flow: "web" };
 globalThis.fetch = async (url, init) => {
@@ -62,8 +73,8 @@ globalThis.fetch = async (url, init) => {
 	for _, fn := range []string{
 		"recall", "remember", "stashSignIn", "takeSignIn", "trustedRelays", "keepTrusted", "liveConfirmations", "confirmedRelays", "confirmRelay", "forgetRelay",
 		"pageURL", "relayOrigin", "normalizeCode", "b64url", "randomText", "isLoopbackOrigin", "relayConfig",
-		"relayStanding", "relayCleared", "relaySignInCleared", "standingRefusal", "relayClearedFor",
-		"startSignIn", "finishSignIn",
+		"relayStanding", "relayCleared", "relayTokenCleared", "standingRefusal", "relayClearedFor",
+		"startSignIn", "finishSignIn", "presentHeldToken", "connectSignedIn", "afterOpen",
 	} {
 		if regexp.MustCompile(`(?m)^(?:async )?function ` + fn + `\(`).MatchString(js) {
 			b.WriteString(functionBody(t, js, fn) + "\n")
@@ -76,11 +87,12 @@ func TestASignInCodeGoesOnlyToTheRelayGitHubReturnedTo(t *testing.T) {
 	const relay, other = "https://brief-relay.onrender.com", "https://other-relay.example.org"
 	script := pageHarness(t) + `
 const pending = (r) => ({ state: "s1.cGFnZQ", verifier: "v".repeat(43), relay: r, code: "", name: "" });
-async function attempt(name, { stored, returned, listed, confirmed, anchorState }) {
+async function attempt(name, { stored, returned, listed, confirmed, anchorState, linked }) {
   sessionStorage.m.clear();
-  requests.length = 0; toasts.length = 0; heldToken = "";
+  requests.length = 0; toasts.length = 0; sent.length = 0; heldToken = ""; githubToken = ""; tokenRelay = "";
   anchor = { state: anchorState || "listed", relays: listed || [] };
-  session.relay = "";
+  // The relay the invite link named, which main chose before the return.
+  session.relay = linked || "";
   if (confirmed) confirmRelay(confirmed);
   sessionStorage.setItem(KEY_SIGN_IN, JSON.stringify(pending(stored)));
   const q = new URLSearchParams({ code: "good-code", state: "s1.cGFnZQ" });
@@ -88,7 +100,10 @@ async function attempt(name, { stored, returned, listed, confirmed, anchorState 
   location.search = "?" + q.toString();
   await finishSignIn();
   const posts = requests.filter((r) => r.url.endsWith("/auth/token"));
-  out[name] = { posts: posts.map((p) => ({ url: p.url, redirect: p.body.redirect_uri })), held: heldToken !== "" };
+  out[name] = {
+    posts: posts.map((p) => ({ url: p.url, redirect: p.body.redirect_uri })),
+    verified: sent.filter((x) => x.msg.type === "open" || x.msg.type === "verify").map((x) => x.relay),
+  };
 }
 const out = {};
 (async () => {
@@ -98,33 +113,98 @@ const out = {};
   await attempt("stored-differs", { stored: "` + other + `", returned: "` + relay + `", listed: ["` + relay + `", "` + other + `"] });
   await attempt("unlisted", { stored: "` + other + `", returned: "` + other + `", listed: ["` + relay + `"] });
   await attempt("confirmed", { stored: "` + other + `", returned: "` + other + `", anchorState: "unknown", confirmed: "` + other + `" });
+  // The invite link named another relay than the one GitHub returned to.
+  await attempt("link-differs", { stored: "` + relay + `", returned: "` + relay + `", anchorState: "unknown", confirmed: "` + relay + `", linked: "` + other + `" });
   console.log(JSON.stringify(out));
 })();
 `
 	type result struct {
-		Posts []struct{ URL, Redirect string }
-		Held  bool
+		Posts    []struct{ URL, Redirect string }
+		Verified []string
 	}
 	var out map[string]result
 	runPage(t, script, &out)
-	got := out["returned"]
-	if len(got.Posts) != 1 || got.Posts[0].URL != relay+"/auth/token" || got.Posts[0].Redirect != relay+"/auth/callback" || !got.Held {
-		t.Errorf("the relay GitHub returned to: %+v, want one post to %s/auth/token naming its callback", got, relay)
+	// The code, and then the token, go to the relay GitHub returned to: a
+	// listed one, a confirmed one, and one other than the invite link named.
+	for name, to := range map[string]string{"returned": relay, "confirmed": other, "link-differs": relay} {
+		got := out[name]
+		if len(got.Posts) != 1 || got.Posts[0].URL != to+"/auth/token" || got.Posts[0].Redirect != to+"/auth/callback" {
+			t.Errorf("%s: posts %+v, want one post to %s/auth/token naming its callback", name, got.Posts, to)
+		}
+		if len(got.Verified) != 1 || got.Verified[0] != to {
+			t.Errorf("%s: the token went to %v, want %s alone", name, got.Verified, to)
+		}
 	}
 	for name, why := range map[string]string{
 		"no-relay":       "a code arriving with no relay named",
 		"another-relay":  "a code returned through a relay other than the one the sign-in started with",
 		"stored-differs": "a code whose stored relay differs from the one GitHub returned to",
 		"unlisted":       "a relay the repository's list does not name",
-		"confirmed":      "a relay the person confirmed but the repository does not list",
 	} {
-		if c := out[name]; len(c.Posts) != 0 || c.Held {
-			t.Errorf("%s: %+v, want no code sent anywhere", why, c)
+		if c := out[name]; len(c.Posts) != 0 || len(c.Verified) != 0 {
+			t.Errorf("%s: %+v, want no code and no token sent anywhere", why, c)
 		}
 	}
 }
 
-func TestASignInStartsOnlyThroughAListedRelayAndNamesItsCallback(t *testing.T) {
+// The token is presented for verification only to the relay it was signed
+// in through: never to a relay the invite link named that GitHub did not
+// return the person to, whichever way the page would present it.
+func TestTheTokenGoesOnlyToTheRelayItWasSignedInThrough(t *testing.T) {
+	const relay, other = "https://brief-relay.onrender.com", "https://other-relay.example.org"
+	script := pageHarness(t) + `
+const out = {};
+(async () => {
+  anchor = { state: "unknown", relays: [] };
+  confirmRelay("` + relay + `");
+  confirmRelay("` + other + `");
+  tokenRelay = "` + relay + `";
+  // A held token, with the page pointed at the link's relay.
+  session.relay = "` + other + `";
+  heldToken = "ghu_x";
+  await presentHeldToken(false);
+  out.present = { sent: sent.slice(), token: githubToken, held: heldToken };
+  // A token already in hand, on an open connection and on a new one.
+  githubToken = "ghu_x"; sent.length = 0;
+  socket = true;
+  connectSignedIn();
+  out.connect = sent.length;
+  githubToken = "ghu_x"; sent.length = 0;
+  afterOpen();
+  out.open = sent.filter((x) => x.msg.type === "verify").length;
+  // Pointed back at the relay it was signed in through, it goes there.
+  session.relay = "` + relay + `"; githubToken = "ghu_x"; sent.length = 0;
+  connectSignedIn();
+  out.own = sent.map((x) => x.relay + ":" + x.msg.type);
+  console.log(JSON.stringify(out));
+})();
+`
+	var out struct {
+		Present struct {
+			Sent        []any
+			Token, Held string
+		}
+		Connect, Open int
+		Own           []string
+	}
+	runPage(t, script, &out)
+	if len(out.Present.Sent) != 0 || out.Present.Token != "" || out.Present.Held != "" {
+		t.Errorf("a held token with the page on the link's relay: %+v, want it dropped and nothing sent", out.Present)
+	}
+	if out.Connect != 0 || out.Open != 0 {
+		t.Errorf("a token in hand reached the link's relay: connect %d, open %d", out.Connect, out.Open)
+	}
+	if len(out.Own) != 1 || out.Own[0] != relay+":verify" {
+		t.Errorf("the relay it was signed in through: %v, want one verify", out.Own)
+	}
+	for _, fn := range []string{"afterOpen", "connectSignedIn", "onJoined"} {
+		if !strings.Contains(functionBody(t, pageScript(t), fn), "relayTokenCleared()") {
+			t.Errorf("%s presents the token without checking the relay it was signed in through", fn)
+		}
+	}
+}
+
+func TestASignInStartsThroughAClearedRelayAndNamesItsCallback(t *testing.T) {
 	const relay = "https://brief-relay.onrender.com"
 	script := pageHarness(t) + `
 const out = {};
@@ -138,18 +218,19 @@ const out = {};
   const kept = JSON.parse(sessionStorage.getItem(KEY_SIGN_IN));
   out.listed = { redirect: u.searchParams.get("redirect_uri"), page, kept: kept.relay };
 
-  // A relay the person confirmed, which the repository does not list: no
-  // sign-in starts, nothing is asked of it, and the page says why.
+  // A relay the person confirmed, where the repository's list cannot be
+  // read, runs the sign-in the same way: GitHub sends the code only to the
+  // callback the team's app lists.
   assigned = ""; requests.length = 0; toasts.length = 0; sessionStorage.m.clear();
   anchor = { state: "unknown", relays: [] };
   session.relay = "https://other-relay.example.org";
   confirmRelay(session.relay);
   await startSignIn();
-  out.confirmed = { assigned, asked: requests.length, toasts: toasts.slice() };
-  // Unconfirmed, the same: no confirmation is offered for a sign-in.
-  sessionStorage.m.clear(); toasts.length = 0;
+  out.confirmed = { redirect: assigned ? new URL(assigned).searchParams.get("redirect_uri") : "", toasts: toasts.slice() };
+  // Unconfirmed, the page asks first and starts nothing.
+  assigned = ""; sessionStorage.m.clear(); toasts.length = 0;
   await startSignIn();
-  out.unconfirmed = { assigned, asked: requests.length, toasts: toasts.slice() };
+  out.unconfirmed = { redirect: assigned, toasts: toasts.slice() };
   console.log(JSON.stringify(out));
 })();
 `
@@ -158,8 +239,7 @@ const out = {};
 			Redirect, Page, Kept string
 		}
 		Confirmed, Unconfirmed struct {
-			Assigned string
-			Asked    int
+			Redirect string
 			Toasts   []string
 		}
 	}
@@ -167,23 +247,16 @@ const out = {};
 	if out.Listed.Redirect != relay+"/auth/callback" || out.Listed.Page != "https://abcdesign.app/acme/brief/brief/" || out.Listed.Kept != relay {
 		t.Errorf("a listed relay: %+v, want redirect_uri %s/auth/callback and the page in the state", out.Listed, relay)
 	}
-	for name, c := range map[string]struct {
-		Assigned string
-		Asked    int
-		Toasts   []string
-	}{"confirmed": out.Confirmed, "unconfirmed": out.Unconfirmed} {
-		if c.Assigned != "" || c.Asked != 0 || len(c.Toasts) != 1 || c.Toasts[0] != "signInUnlisted" {
-			t.Errorf("%s relay: %+v, want no sign-in, nothing asked of it, and the plain reason", name, c)
-		}
+	if out.Confirmed.Redirect != "https://other-relay.example.org/auth/callback" {
+		t.Errorf("a confirmed relay: %+v, want the sign-in to its own callback", out.Confirmed)
 	}
-	js := pageScript(t)
-	if !strings.Contains(js, `signInUnlisted: "`) {
-		t.Error("the page has no words for a sign-in through a relay its project does not list")
+	if out.Unconfirmed.Redirect != "" || len(out.Unconfirmed.Toasts) != 1 || out.Unconfirmed.Toasts[0] != "askTrust:signin" {
+		t.Errorf("an unconfirmed relay: %+v, want the confirmation asked and no sign-in", out.Unconfirmed)
 	}
 }
 
-// A confirmation covers guest joins, for this tab only, and lapses after a
-// bounded time: it is kept in session storage, never local storage.
+// A confirmation lasts this tab, and lapses after a bounded time: it is kept
+// in session storage, never local storage.
 func TestAConfirmationLastsTheTabAndLapses(t *testing.T) {
 	script := pageHarness(t) + `
 const out = {};

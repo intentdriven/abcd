@@ -305,11 +305,12 @@ the page says the link does not lead to this project's own session. Only
 GitHub's 404 means there is no list to read (a private repository before
 sign-in, or no file): then a relay from the link reaches nothing until the
 person answers one plain question naming the repository ("Only continue if
-someone on the owner/repo team sent you this link"). The answer lets the
-person join as a guest, is kept for that browser tab and at most twelve
-hours, and never lets the relay receive a sign-in: GitHub sign-in goes only
-through a relay the file names, or a page `start` serves, and the page says so
-in place of the sign-in button. Any other failure to read the list (a 403, a 429,
+someone on the owner/repo team sent you this link"). The answer is kept for
+that browser tab and at most twelve hours. Members of a private repository
+then sign in as on a public one: GitHub returns them only to the callback the
+team's app lists, and the page presents the code and the token only to the
+relay GitHub returned them to, never to another relay a link named. Any other
+failure to read the list (a 403, a 429,
 a 5xx, no network) refuses the relay with "try again in a moment", and asks
 nothing. With no relay at all, the page says live sessions are not set up for
 this project yet and to ask the technical facilitator. So the team commits

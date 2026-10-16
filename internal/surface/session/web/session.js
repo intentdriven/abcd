@@ -17,10 +17,11 @@
 // pre-filled issues. The GitHub token
 // is held in this module's memory only; it is never stored, put in a URL or
 // logged, and it reaches a relay only once the repository's committed relay
-// list names that relay, or the relay serves this page itself. GitHub's
-// sign-in code goes only to the relay GitHub returned the person to, through
-// the callback the team's app lists. A relay the person confirmed, where the
-// list cannot be read, serves a guest's join and nothing more. The relay's
+// list names that relay, the relay serves this page itself, or, where the
+// list cannot be read, the person has confirmed it; and only to the relay
+// GitHub returned the person to after signing in. GitHub's sign-in code goes
+// only to that relay, through the callback the team's app lists, and never
+// to a relay the invite link or this tab's storage names. The relay's
 // rejoin token, which brings this participant
 // back to the session after a dropped connection or a reload, is not a GitHub
 // token: it is kept in memory and in this tab's session storage.
@@ -49,7 +50,6 @@ const WORDS = Object.freeze({
   trustOnly: "Only continue if someone on the project's team sent you this link.",
   trustYes: "Someone on the team sent it",
   signInNotSetUp: "Signing in with GitHub is not set up for this project yet. Ask your technical facilitator. You can still join as a guest.",
-  signInUnlisted: "Signing in with GitHub is not available through this link, because the page cannot check it against the project's own settings. You can still join as a guest.",
   signInBusy: "Too many sign-ins are in progress. Wait a few minutes, then try again.",
   framedRefused: "This page does not run inside another page. Open it in its own tab:",
   joinHeading: "Join the live session",
@@ -223,9 +223,9 @@ const KEY_SIGN_IN = "abcd.session.sign-in";
 const KEY_REJOIN = "abcd.session.rejoin";
 // The relays a person confirmed, per repository, each with when:
 // { "owner/repo": [{ relay, at }] }, in this tab's session storage. A
-// confirmation is the person's word that the team sent this link: it covers
-// guest joins in this tab, and lapses after CONFIRM_LIFE, the most a session
-// lasts, so a restored tab does not carry it on.
+// confirmation is the person's word that the team sent this link: it lasts
+// this tab, across GitHub's sign-in redirect, and lapses after CONFIRM_LIFE,
+// the most a session lasts, so a restored tab does not carry it on.
 const KEY_TRUSTED = "abcd.session.confirmed-relays";
 const CONFIRM_LIFE = 12 * 60 * 60 * 1000;
 // Where an earlier page kept confirmations, in local storage and for good.
@@ -305,6 +305,10 @@ function forgetRelay(relay) {
 // ---------------------------------------------------------------------------
 let githubToken = "";
 let heldToken = "";
+// tokenRelay is the relay the token was signed in through: the one GitHub
+// returned the person to (the web flow), or the one that served this page
+// (the device flow). The token is presented to it alone.
+let tokenRelay = "";
 
 // ---------------------------------------------------------------------------
 // The rejoin token: the relay gives one to each participant, and presenting
@@ -517,7 +521,7 @@ function afterOpen() {
     sendJSON({ type: "rejoin", token: rejoinToken });
     return;
   }
-  if (githubToken && relaySignInCleared()) {
+  if (githubToken && relayTokenCleared()) {
     session.verifying = true;
     sendJSON({ type: "verify", token: githubToken, repo: route.slug });
     return;
@@ -772,7 +776,7 @@ function onJoined(msg) {
   setStatus(session.synced ? WORDS.connected : WORDS.syncing, false);
   // Back by the rejoin token after signing in on this page: the relay has not
   // seen this sign-in yet.
-  if (rejoined && githubToken && relaySignInCleared() && !session.login && session.role !== "member") sendJSON({ type: "verify", token: githubToken });
+  if (rejoined && githubToken && relayTokenCleared() && !session.login && session.role !== "member") sendJSON({ type: "verify", token: githubToken });
   renderAll();
 }
 
@@ -1164,11 +1168,9 @@ async function startSignIn() {
   if (framed()) return;
   if (!session.relay) { toast(WORDS.notSetUp); return; }
   if (!session.everJoined) readStartForm();
-  // No sign-in starts through a relay the repository does not name: a relay
-  // the person confirmed, where the list cannot be read, serves guest joins
-  // alone, and is asked nothing for a sign-in.
-  const standing = relayStanding(session.relay);
-  if (standing === "confirmed" || standing === "unconfirmed") { toast(WORDS.signInUnlisted); renderAll(); return; }
+  // No sign-in starts through a relay the repository does not name, or, where
+  // its list cannot be read, one the person has not confirmed. GitHub then
+  // sends the code only to a callback the team's app lists.
   if (!relayClearedFor("signin")) return;
   let cfg;
   try { cfg = await relayConfig(); } catch { toast(WORDS.cannotConnect); return; }
@@ -1226,14 +1228,9 @@ async function finishSignIn() {
   session.code = normalizeCode(pending.code);
   session.name = typeof pending.name === "string" ? pending.name : "";
   if (session.code) updateFragment();
-  // GitHub's code goes to the relay's exchange only while the repository
-  // still lists the relay, or the relay serves this page.
-  if (!relaySignInCleared()) {
-    const standing = relayStanding(session.relay);
-    toast(standing === "confirmed" || standing === "unconfirmed" ? WORDS.signInUnlisted : standingRefusal(standing));
-    renderAll();
-    return true;
-  }
+  // GitHub's code goes to the relay's exchange only while the relay is still
+  // cleared for this repository.
+  if (!relayCleared()) { toast(standingRefusal(relayStanding(session.relay))); renderAll(); return true; }
   setStatus(WORDS.signingIn, false);
   try {
     const res = await fetch(session.relay + "/auth/token", {
@@ -1246,6 +1243,7 @@ async function finishSignIn() {
     if (res.status === 429) { setStatus("", false); toast(WORDS.signInBusy); return true; }
     if (!res.ok || typeof out.access_token !== "string" || out.access_token === "") throw new Error("exchange");
     heldToken = out.access_token;
+    tokenRelay = returnedVia;
   } catch {
     setStatus("", false);
     toast(WORDS.signInFailed);
@@ -1329,6 +1327,7 @@ function pollDevice() {
     if (got && got.status === 200 && typeof out.access_token === "string" && out.access_token !== "") {
       stopDeviceSignIn();
       heldToken = out.access_token;
+      tokenRelay = d.relay;
       takeRejoin();
       await presentHeldToken(false);
       return;
@@ -1343,15 +1342,16 @@ function pollDevice() {
   }, d.interval * 1000);
 }
 
-// presentHeldToken gives the held token to the relay, once the relay is
-// cleared for a sign-in: listed by the repository, or serving this page. With
-// a token, the page first asks api.github.com alone for the repository's
-// relay list, which a private repository shows only then: a list that does
-// not name the relay refuses it, and forgets any confirmation. A relay that
-// serves this page itself is the page's own origin and needs no list.
+// presentHeldToken gives the held token to the relay it was signed in
+// through, and to no other, once that relay is cleared. With a token, the
+// page first asks api.github.com alone for the repository's relay list, which
+// a private repository shows only then: a list that does not name the relay
+// refuses it, and forgets any confirmation. A relay that serves this page
+// itself is the page's own origin and needs no list.
 async function presentHeldToken(checked) {
   if (!heldToken) return;
   const relay = session.relay;
+  if (!relay || relay !== tokenRelay) { heldToken = ""; return; }
   if (!checked && anchor.state !== "listed" && anchor.state !== "self") {
     const seen = await readRelayList(heldToken);
     // A list the token shows decides. One GitHub would not show for a reason
@@ -1367,12 +1367,8 @@ async function presentHeldToken(checked) {
     renderAll();
     return;
   }
-  if (standing !== "listed" && standing !== "self") {
-    heldToken = "";
-    if (standing === "confirmed" || standing === "unconfirmed") toast(WORDS.signInUnlisted);
-    renderAll();
-    return;
-  }
+  if (standing === "unconfirmed") { askTrust("token"); return; }
+  if (standing !== "listed" && standing !== "confirmed" && standing !== "self") { heldToken = ""; return; }
   githubToken = heldToken;
   heldToken = "";
   connectSignedIn();
@@ -1381,7 +1377,7 @@ async function presentHeldToken(checked) {
 // connectSignedIn presents the token: on the open connection when there is
 // one, or on a new one.
 function connectSignedIn() {
-  if (!githubToken || !relaySignInCleared()) { githubToken = ""; return; }
+  if (!githubToken || !relayTokenCleared()) { githubToken = ""; return; }
   setStatus(WORDS.signingIn, false);
   if (socketOpen()) {
     session.verifying = !session.inRoom;
@@ -1487,12 +1483,11 @@ function relayCleared() {
   const standing = relayStanding(session.relay);
   return standing === "self" || standing === "listed" || standing === "confirmed";
 }
-// relaySignInCleared says the relay may have a sign-in: GitHub's code, and
-// the token after it. Only a relay the repository lists, or one that serves
-// this page, may; a confirmed relay serves guest joins alone.
-function relaySignInCleared() {
-  const standing = relayStanding(session.relay);
-  return standing === "self" || standing === "listed";
+// relayTokenCleared says the token may go to the relay: it is cleared, and
+// it is the relay the token was signed in through. A relay an invite link
+// names, which GitHub did not return the person to, never has the token.
+function relayTokenCleared() {
+  return relayCleared() && session.relay !== "" && session.relay === tokenRelay;
 }
 // standingRefusal says, in plain words and with no address, why a relay that
 // is not cleared gets nothing.
@@ -1561,7 +1556,9 @@ function trustAnswered(yes) {
   confirmRelay(p.relay);
   renderAll();
   refreshSignIn();
-  if (p.action === "join") joinClicked();
+  if (p.action === "signin") startSignIn();
+  else if (p.action === "token") presentHeldToken(true);
+  else if (p.action === "join") joinClicked();
   else if (p.action === "host") hostClicked();
 }
 
@@ -2843,7 +2840,7 @@ function renderTop() {
   if (session.login) who = WORDS.signedInAs + " " + session.login;
   else if (session.inRoom && session.name) who = session.name;
   ui.who.textContent = who;
-  ui.signInTop.hidden = !(session.inRoom && session.role === "guest" && !session.over) || signInOffered === false || !relaySignInCleared();
+  ui.signInTop.hidden = !(session.inRoom && session.role === "guest" && !session.over) || signInOffered === false;
   ui.submit.hidden = !(session.synced && session.role === "member" && !session.over);
   ui.status.textContent = statusText;
   ui.status.className = statusBad ? "status bad" : "status";
@@ -2869,14 +2866,11 @@ function renderStart() {
   ui.retry.hidden = anchor.state !== "unavailable";
   const usable = !notice;
   const invited = !!linkCode;
-  // A relay the repository does not list serves a guest's join and no
-  // sign-in, and the page says so in place of the button.
-  const unlisted = standing === "confirmed" || standing === "unconfirmed";
-  const canSignIn = !session.login && signInOffered !== false && !unlisted;
+  const canSignIn = !session.login && signInOffered !== false;
   ui.signedIn.textContent = session.login
     ? WORDS.signedInAs + " " + session.login + (session.member ? "" : ". " + WORDS.notMember)
     : "";
-  ui.signInNote.textContent = !usable || session.login ? "" : unlisted ? WORDS.signInUnlisted : signInOffered === false ? WORDS.signInNotSetUp : "";
+  ui.signInNote.textContent = usable && signInOffered === false ? WORDS.signInNotSetUp : "";
   ui.startCard.hidden = !usable || invited;
   ui.signInStart.hidden = !canSignIn;
   ui.hostRow.hidden = !(session.login && session.member);
