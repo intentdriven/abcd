@@ -159,7 +159,6 @@ func TestApproveRefusesTargetsTheLineDoesNotFix(t *testing.T) {
 		{`cd "$D" && echo x > out.txt`, notFixed},
 		{`cd $(mktemp -d) && touch x`, notFixed},
 		{`touch $(date +%s).txt`, notFixed},
-		{`rm build/*.o`, notFixed},
 		{`rm "$x"/y`, notFixed},
 		{`mv $a b.txt`, notFixed},
 		{`ln -s "$T" sub/l`, notFixed},
@@ -167,6 +166,8 @@ func TestApproveRefusesTargetsTheLineDoesNotFix(t *testing.T) {
 		{`cd sub && echo x > out.txt`, nil},
 		{`echo x > sub/out.txt`, nil},
 		{`rm -f sub/out.txt`, nil},
+		// A glob removal inside the tree that no protected name can match.
+		{`rm sub/*.o`, nil},
 	})
 }
 
@@ -257,7 +258,7 @@ func TestApproveRefusesGitConfigThatReachesBeyondTheRepository(t *testing.T) {
 		{`git config $K v`, refused},
 		{`git config -e`, refused},
 		{`git -c core.fsmonitor=./x.sh status`, refused},
-		{`git -c core.sshCommand=./x.sh fetch`, refused},
+		{`git -c core.sshCommand='python3 -c x' fetch`, refused},
 		{`git -c core.hooksPath=/tmp/h checkout main`, refused},
 		{`GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.pager GIT_CONFIG_VALUE_0=./x.sh git log`, refused},
 		{`git config user.name x`, nil},

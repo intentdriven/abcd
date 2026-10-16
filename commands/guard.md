@@ -198,7 +198,11 @@ A shell command is approved only when the guard reads it whole and clears it:
   pipes to or from a command, or is a variable; a `sed` script with the `e`
   command or the `e` flag of `s`; `tar`'s options that run a program
   (`--checkpoint-action`, `--to-command`, `--use-compress-program`, `-I` and
-  the like); a `vim` or `ex` command (`-c`, `--cmd`, `+`) holding a `!`;
+  the like); a `vim` or `ex` command (`-c`, `--cmd`, `+`) holding a `!`.
+  The words after a script's name, or after python's `-m` module, are the
+  script's, so `node app.js -p 3000` and `python3 -m pytest -c pytest.ini` are
+  approved; a word is taken for the script only where it cannot be the value
+  of the flag before it (`node --title app.js -e …` is still refused);
 - every write or removal names its target in full (`path-not-fixed`). The
   targets are read from the guard's own parse of the line: redirections, the
   writers its write model lists (`tee`, `cp`, `mv`, `install`, `ln`, `dd`,
@@ -210,7 +214,15 @@ A shell command is approved only when the guard reads it whole and clears it:
   `touch`, `mkdir`, `chmod`, `chown`, `truncate`, `rm`, `rmdir`, `unlink`,
   `mv`'s sources and `ln`'s link targets. A target held in a variable, a
   substitution's output or a glob, or a relative name after a change of
-  directory the line leaves unknown, is refused;
+  directory the line leaves unknown, is refused. A glob removal whose fixed
+  directory is inside the working tree is the exception: it is approved unless
+  a protected name could match the glob, either one its literal text aims at
+  (`build/.git*`, `.env*`), read with the shell's default that a name starting
+  with a dot is matched only by a pattern that spells the dot, or one already
+  standing in that directory, or a protected path below it (`tools/*` where
+  `core.hooksPath` is `tools/hooks`). So `rm -rf build/*` and `rm -f build/*.o`
+  are approved. A relative name after a `cd` the line spells out and joins
+  with `&&` is read in that directory;
 - no write or removal reaches a protected path (`protected-path`), judged with
   its existing directories resolved through symlinks and its case folded where
   the filesystem folds it: the git common directory (its hooks and config
@@ -237,7 +249,11 @@ A shell command is approved only when the guard reads it whole and clears it:
   `core.sshCommand`, an alias, a filter or diff driver, a credential helper,
   the signing keys and the like) or `core.worktree`, which moves the working
   tree git writes to another directory, or opens the editor, and no git
-  command sets such a key for itself with `-c`, `--config-env` or `GIT_CONFIG_*`
+  command sets such a key for itself with `-c`, `--config-env` or `GIT_CONFIG_*`,
+  except `-c core.pager=<command>` or `-c core.sshCommand=<command>` with a
+  command the line spells out, which is judged as the command git runs and
+  approved when it is clean, unless an earlier part of the line writes or
+  removes a file (`git -c core.pager=cat log` is approved)
   (`git-config-write`). Reading configuration, and setting an ordinary key in
   the repository's own file, is approved;
 - nothing removes, moves or recursively changes (`chmod -R`, `chown -R`) a

@@ -1438,7 +1438,8 @@ the line rather than by a variable, a substitution or a glob. Beyond the
 registry, it refuses:
 
   - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,
-    osascript, lua or Rscript -e, deno eval and PowerShell -Command;
+    osascript, lua or Rscript -e, deno eval and PowerShell -Command; a flag
+    after the script's name, or after python's -m module, is the script's;
   - code on the standard input (a pipe, a here-document, a here-string or a
     redirected file) of one of those interpreters, or of ex, when no script
     file is named;
@@ -1448,7 +1449,9 @@ registry, it refuses:
     --use-compress-program, -I and the like); a vim or ex command (-c, --cmd,
     +) holding a !;
   - a write or removal whose target the line does not spell out (a variable,
-    a substitution, a glob, or a name after an unknown change of directory);
+    a substitution, a glob, or a name after an unknown change of directory),
+    except a glob removal in a directory inside the working tree that no
+    protected name could match;
   - a write or removal reaching a protected path, with its directories
     resolved through symlinks and case folded where the filesystem folds it:
     the git common directory and its hooks, each checkout's .git, the home
@@ -1463,7 +1466,8 @@ registry, it refuses:
   - git config with --global, --system or --file on a write, setting a key
     that starts a program (core.hooksPath, core.pager, an alias and the like)
     or core.worktree, or opening the editor, and any git command setting such
-    a key for itself;
+    a key for itself, but for -c core.pager or core.sshCommand set to a
+    command the line spells out, which is judged as that command;
   - removing, moving or recursively changing the root, a top-level directory,
     the home directory or a directory directly in it, the working tree or a
     directory above it, or another checkout of the repository; a find that

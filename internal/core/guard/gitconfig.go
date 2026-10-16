@@ -269,6 +269,9 @@ type gitConfigRead struct {
 	// keys is every key set, folded, in the order read; a key a
 	// substitution prints is unknownText.
 	keys []string
+	// flagValues is the value of each key a `-c key=value` word sets, by
+	// its index in keys.
+	flagValues map[int]string
 }
 
 // readGitConfig reads the configuration one git segment sets in its own text.
@@ -334,6 +337,12 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 				switch {
 				case ok:
 					c.add(k, v)
+					if !isUnknown(k) {
+						if c.flagValues == nil {
+							c.flagValues = map[int]string{}
+						}
+						c.flagValues[len(c.keys)-1] = v
+					}
 				case isUnknown(k):
 					// No `=` it spells, but its output may hold one.
 					c.add(k, "")

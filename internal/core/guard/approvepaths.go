@@ -40,6 +40,8 @@ type approveFacts struct {
 	// launched working tree and the run's own directories, which stay
 	// writable inside it.
 	userLayer, own []string
+	// tree is the launched working tree, each spelling.
+	tree []string
 	// removable is where a removal may reach: the launched working tree, the
 	// run's own directories and the temporary directories, each spelling.
 	removable []string
@@ -139,7 +141,8 @@ func factsFor(f *Files) approveFacts {
 		}
 	}
 	if filepath.IsAbs(f.dir) {
-		facts.own = append(facts.own, both(f.dir)...)
+		facts.tree = both(f.dir)
+		facts.own = append(facts.own, facts.tree...)
 	}
 	for _, d := range f.runDirs {
 		facts.own = append(facts.own, both(d)...)
@@ -170,6 +173,9 @@ type pathUse struct {
 	// rel marks a relative name after a change of directory the line leaves
 	// unknown: the name is spelled out, the directory it is in is not.
 	rel bool
+	// glob, on a removal the line names by a glob, is the pattern after the
+	// directory it lists (path), the part of the word the line does fix.
+	glob string
 	// bound marks a removal judged only for where it is (a find's starting
 	// point that it deletes below, rsync --delete's destination), not as a
 	// removal of every protected path inside it.
@@ -302,6 +308,10 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			}
 		case "rm", "rmdir", "unlink":
 			for _, i := range w.operandIdx(nil) {
+				if u, ok := globRemoval(rc, s, st, i); ok {
+					out = append(out, u)
+					continue
+				}
 				out = append(out, at(i, true))
 			}
 		case "mv":
@@ -340,6 +350,95 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 		}
 	}
 	return out
+}
+
+// globRemoval reads operand i of s, when it is a glob the line otherwise
+// fixes, as the directory it lists and the pattern after it: `build/*.o` is
+// build and `*.o`. ok is false for any other operand.
+func globRemoval(rc *readCtx, s segment, st *shellState, i int) (pathUse, bool) {
+	tok := s.tokens[i]
+	if !s.globAt(i) || isUnknown(tok) || strings.ContainsRune(tok, varMark) {
+		return pathUse{}, false
+	}
+	first := strings.IndexAny(tok, "*?[")
+	if first < 0 {
+		return pathUse{}, false
+	}
+	dir, rest := ".", tok
+	if slash := strings.LastIndexByte(tok[:first], '/'); slash >= 0 {
+		dir, rest = tok[:slash], tok[slash+1:]
+		if dir == "" {
+			dir = "/"
+		}
+	}
+	p, ok := st.resolve(rc, dir, strings.HasPrefix(dir, "~"))
+	return pathUse{path: p, ok: ok, remove: true, written: tok, glob: rest, rel: !ok && st.relativeUnknown(dir)}, true
+}
+
+// maxGlobEntries bounds the entries of a globbed directory the approver reads
+// for a protected name already standing there.
+const maxGlobEntries = 4096
+
+// globReaches names the protected path or name a glob removal u could reach,
+// if it could reach one: its directory protected (a write into it would be),
+// a protected name a component with literal text spells or can match, an
+// entry standing in its directory that the pattern can match and that is or
+// holds a protected path, or a protected path below its directory whose
+// first name there the pattern can match. A pattern matches a name that
+// starts with a dot only where it spells the dot, as the shell does by
+// default; an entry already in the directory is matched either way.
+func (f approveFacts) globReaches(u pathUse) (string, bool) {
+	if name, ok := f.protects(pathUse{path: u.path, ok: true}); ok {
+		return name, true
+	}
+	fold := func(x string) string { return fsutil.FoldPath(x, f.fold) }
+	comps := strings.Split(u.glob, "/")
+	for _, c := range comps {
+		// A component of wildcards alone (`*`, `?*`) aims at nothing in
+		// particular: what it can reach is what stands in the directory,
+		// read below. One with literal text is read for the names it aims at.
+		if strings.Trim(c, "*?") == "" {
+			continue
+		}
+		for _, n := range protectedNames {
+			if fold(c) == fold(n) || strings.ContainsAny(c, "*?[") && shellGlobMatch(fold(c), fold(n)) {
+				return n, true
+			}
+		}
+	}
+	if d, err := os.Open(u.path); err == nil {
+		entries, _ := d.ReadDir(maxGlobEntries)
+		_ = d.Close()
+		for _, e := range entries {
+			if !globMatches(fold(comps[0]), fold(e.Name())) {
+				continue
+			}
+			if name, ok := f.protects(pathUse{path: filepath.Join(u.path, e.Name()), ok: true, remove: true}); ok {
+				return name, true
+			}
+		}
+	}
+	for _, p := range f.protected {
+		if p == u.path || !fsutil.PathWithin(p, u.path, f.fold) {
+			continue
+		}
+		if rel, err := filepath.Rel(u.path, p); err == nil {
+			if c1, _, _ := strings.Cut(filepath.ToSlash(rel), "/"); shellGlobMatch(fold(comps[0]), fold(c1)) {
+				return p, true
+			}
+		}
+	}
+	return "", false
+}
+
+// shellGlobMatch reports whether a glob component matches name the way the
+// shell expands it by default: a name that starts with a dot only by a
+// pattern that spells the dot.
+func shellGlobMatch(pattern, name string) bool {
+	if strings.HasPrefix(name, ".") && !strings.HasPrefix(pattern, ".") {
+		return false
+	}
+	return globMatches(pattern, name)
 }
 
 // unfixedRefusal is the refusal of a write or a removal whose target the line
@@ -509,17 +608,29 @@ func startsProgram(key string) bool {
 	return false
 }
 
+// commandKeys are the program keys, folded, whose value is the command git
+// runs for that one invocation (through a shell, as a bang alias is): a
+// `-c` setting of one to a command the line fixes is read as that command.
+var commandKeys = []string{"core.pager", "core.sshcommand"}
+
 // gitConfigRefusal reports a git command in s that writes configuration
 // outside the repository's own file or sets a key that starts a program:
 // `git config` with --global, --system or --file on a write, or setting such
 // a key, or opening the editor; and any git command setting such a key for
-// itself (-c, --config-env, GIT_CONFIG_*).
-func gitConfigRefusal(s segment, valueFlags []string) (Approval, bool) {
+// itself (-c, --config-env, GIT_CONFIG_*). A `-c` setting of one of
+// commandKeys to a value the line fixes is not refused when clean, which
+// judges the value as the command line git runs, approves it.
+func gitConfigRefusal(s segment, valueFlags []string, clean func(string) bool) (Approval, bool) {
 	for _, site := range sitesNamed(s, "git") {
 		args := s.tokens[site.idx+1:]
-		for _, k := range readGitConfig(s.tokens[:site.idx], args, valueFlags).keys {
+		read := readGitConfig(s.tokens[:site.idx], args, valueFlags)
+		for i, k := range read.keys {
 			if movesTree(k) {
 				return refusal(gitConfigWriteEntryID, treeKeyWhy(k), "the same git command without the setting."), true
+			}
+			if v, ok := read.flagValues[i]; ok && containsString(commandKeys, k) && clean != nil &&
+				!isUnknown(v) && !strings.ContainsRune(v, varMark) && clean(v) {
+				continue
 			}
 			if startsProgram(k) {
 				return refusal(gitConfigWriteEntryID,

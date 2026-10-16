@@ -168,6 +168,13 @@ func runFrom(dir, command string) string {
 // approveShell answers a prompt for one shell command line, read against ld's
 // registry with files as the directory it runs in.
 func approveShell(ld Loaded, files *Files, command string) Approval {
+	return approveShellAt(ld, files, command, 0)
+}
+
+// approveShellAt is approveShell at depth: a command a git setting on the
+// line runs (commandKeys) is judged one level down, and one that sets such a
+// command again is not judged further, and refused.
+func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval {
 	switch ld.Posture {
 	case LoadUnavailable:
 		return refusal(registryEntryID, "no hazard registry is loaded, so nothing was checked.",
@@ -228,14 +235,47 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 		}
 	}
 	vf := r.gitValueFlags()
+	// wrote is set once a segment of the line writes or removes a path: a
+	// command a git setting runs after that is judged against files the line
+	// may have changed, so it is not judged on its own.
+	wrote := false
 	for _, p := range placed {
-		if a, ok := gitConfigRefusal(p.seg, vf); ok {
+		// A command a git setting runs is judged as run from the working
+		// tree, so only where the reading placed git there.
+		states := p.states
+		clean := func(v string) bool {
+			if strings.TrimSpace(v) == "" {
+				return true // no pager
+			}
+			if depth > 0 || wrote {
+				return false
+			}
+			for _, st := range states {
+				if !st.dirOK || st.dir != r.files.dir {
+					return false
+				}
+			}
+			return approveShellAt(ld, files, v, depth+1).Allow
+		}
+		if a, ok := gitConfigRefusal(p.seg, vf, clean); ok {
 			return a
 		}
 		for _, st := range p.states {
 			for _, u := range pathUses(rc, p.seg, st) {
+				wrote = true
 				if u.bound && !u.ok {
 					// Its starting point is the critical check's to judge.
+					continue
+				}
+				if u.ok && u.glob != "" {
+					// A glob removal inside the working tree is approved
+					// unless a protected name could match it.
+					if !facts.within(u.path, facts.tree) {
+						return unfixedRefusal(pathUse{remove: true, written: u.written})
+					}
+					if name, ok := facts.globReaches(u); ok {
+						return protectedRefusal(name)
+					}
 					continue
 				}
 				if !u.ok {
@@ -251,10 +291,7 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 					continue
 				}
 				if name, ok := facts.protects(u); ok {
-					name = termsafe.Sanitize(fsutil.DisplayPath(name))
-					return refusal(protectedPathEntryID,
-						"this line writes or removes "+name+", a path the harness never lets a command change without a person's yes, so abcd does not approve it unattended.",
-						"leave "+name+" alone, or say in the receipt that the task needs it changed.")
+					return protectedRefusal(name)
 				}
 			}
 		}
@@ -280,6 +317,15 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 		}
 	}
 	return Approval{Allow: true}
+}
+
+// protectedRefusal is the refusal of a write or removal reaching name, a
+// protected path.
+func protectedRefusal(name string) Approval {
+	name = termsafe.Sanitize(fsutil.DisplayPath(name))
+	return refusal(protectedPathEntryID,
+		"this line writes or removes "+name+", a path the harness never lets a command change without a person's yes, so abcd does not approve it unattended.",
+		"leave "+name+" alone, or say in the receipt that the task needs it changed.")
 }
 
 // fromDecision is the refusal a guard verdict that is not a clean allow
@@ -536,15 +582,54 @@ var interpreters = []struct {
 	// word, when set, judges a flag word on its own: PowerShell takes a
 	// parameter by any prefix that names it alone, and bundles none.
 	word func(low string) bool
+	// module, when set, is the short flag that names a module to run, after
+	// which every word is the module's (python -m).
+	module string
+	// plain are the interpreter's flags that take no value, and plainShort
+	// the letters of a bundled cluster of them: a script named right after
+	// one is the script. After any other flag the next word may be that
+	// flag's value, so it is not taken for the script.
+	plain      []string
+	plainShort string
+	// glued are the short flags that take their value glued on (perl
+	// -Ilib): such a word is a flag and its value, so the next word may be
+	// the script.
+	glued string
 }{
-	{name: regexp.MustCompile(`^(python|pypy)[0-9.]*$`), short: "c"},
-	{name: regexp.MustCompile(`^(node|nodejs|bun)$`), short: "ep", long: []string{"--eval", "--print"}},
+	{name: regexp.MustCompile(`^(python|pypy)[0-9.]*$`), short: "c", module: "m", plainShort: "bBdEhiIOPqsSuvVx", glued: "WX"},
+	{name: regexp.MustCompile(`^(node|nodejs|bun)$`), short: "ep", long: []string{"--eval", "--print"},
+		plain: []string{"--inspect", "--inspect-brk", "--inspect-wait", "--enable-source-maps", "--no-warnings",
+			"--trace-warnings", "--trace-deprecation", "--throw-deprecation", "--pending-deprecation", "--no-deprecation",
+			"--watch", "--test", "--expose-gc", "--preserve-symlinks", "--abort-on-uncaught-exception",
+			"--experimental-vm-modules", "--experimental-strip-types", "--no-experimental-strip-types", "-i", "--interactive"}},
 	{name: regexp.MustCompile(`^deno$`), sub: "eval"},
-	{name: regexp.MustCompile(`^perl[0-9.]*$`), short: "eE"},
-	{name: regexp.MustCompile(`^ruby[0-9.]*$`), short: "e"},
+	{name: regexp.MustCompile(`^perl[0-9.]*$`), short: "eE", glued: "IMm"},
+	{name: regexp.MustCompile(`^ruby[0-9.]*$`), short: "e", glued: "Ir"},
 	{name: regexp.MustCompile(`^php[0-9.]*$`), short: "r"},
 	{name: regexp.MustCompile(`^(osascript|lua[0-9.]*|luajit|Rscript)$`), short: "e"},
 	{name: regexp.MustCompile(`^(?i:pwsh|powershell)(\.exe)?$`), word: pwshCode},
+}
+
+// scriptAfter reports whether an operand right after prev is the script an
+// interpreter runs rather than prev's value: prev is the interpreter, a word
+// that is not a flag (a flag's value), a flag with its value glued on after
+// `=` or glued to its letter (one of glued's), or one of the flags that take
+// no value (plain, or a cluster of plainShort's letters).
+func scriptAfter(plain []string, plainShort, glued, prev string) bool {
+	switch {
+	case !strings.HasPrefix(prev, "-"), strings.Contains(prev, "="), containsString(plain, prev):
+		return true
+	case len(prev) > 2 && prev[1] != '-' && strings.ContainsRune(glued, rune(prev[1])):
+		return true
+	case plainShort != "" && shortCluster.MatchString(prev):
+		for _, c := range prev[1:] {
+			if !strings.ContainsRune(plainShort, c) {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 // pwshCode reports whether low, a lower-cased word, is PowerShell's -Command
@@ -564,7 +649,12 @@ var shortCluster = regexp.MustCompile(`^-[A-Za-z]{1,5}$`)
 // inlineCode reports whether the command at tokens[idx] is an interpreter
 // handed inline code, and the interpreter's name. A word after it that holds
 // a substitution's output or a variable's value may be any flag, so it counts
-// as one that hands code: spell the script's path, and the run is read.
+// as one that hands code: spell the script's path, and the run is read. The
+// words after the script's name, or after python's -m module, are the
+// script's, so the reading stops there; a word is taken for the script only
+// where it cannot be the value of the flag before it: right after the
+// interpreter, after a flag given with `=`, after a flag that takes no value
+// (plain), or after a word that was itself a flag's value.
 func inlineCode(tokens []string, idx int) (string, bool) {
 	name := filepath.Base(tokens[idx])
 	for _, in := range interpreters {
@@ -572,8 +662,15 @@ func inlineCode(tokens []string, idx int) (string, bool) {
 			continue
 		}
 		for i, tok := range tokens[idx+1:] {
-			if strings.ContainsRune(tok, unknownMark) || strings.ContainsRune(tok, varMark) {
+			if isUnknown(tok) || strings.ContainsRune(tok, varMark) {
 				return name, true
+			}
+			if in.module != "" && strings.HasPrefix(tok, "-"+in.module) {
+				return "", false // the module, and the words that are its own
+			}
+			if !strings.HasPrefix(tok, "-") && tok != "" && scriptAfter(in.plain, in.plainShort, in.glued, tokens[idx+i]) &&
+				!(in.sub != "" && i == 0 && tok == in.sub) {
+				return "", false // the script, and the words that are its own
 			}
 			if in.word != nil && in.word(strings.ToLower(tok)) {
 				return name, true

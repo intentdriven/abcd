@@ -348,12 +348,17 @@ its text:
 - code the guard does not read handed to an interpreter: inline (`python -c`,
   `node -e` and the like), on the standard input of one that names no script
   file, in an awk program or a sed script that runs a command, in tar's options
-  that run a program, or in a vim or ex command holding a `!`;
+  that run a program, or in a vim or ex command holding a `!`; the words after a
+  script's name, or after python's `-m` module, are the script's, not the
+  interpreter's;
 - a write or removal whose target the line does not fix: the targets are the
   ones the guard's write model resolves, in every shell state the reading placed
   the command in, with the operands of the commands that change, remove or link
   a path; a variable, a substitution's output, a glob or a name after an unknown
-  change of directory may be any file;
+  change of directory may be any file. A glob removal whose fixed directory is
+  inside the working tree is approved unless a protected name could match it:
+  one its literal text aims at, a name starting with a dot only by a pattern
+  that spells the dot, or one already standing in that directory;
 - a write or removal reaching a protected path, compared after the target's
   existing directories are resolved through symlinks and its case folded where
   the filesystem folds it: the git common directory with its hooks and config,
@@ -373,7 +378,10 @@ its text:
   system scope, or a file it names), setting a key that starts a program (the keys `gitutil.ExecPins` pins and the others git
   documents) or `core.worktree`, which moves the working tree git writes to
   another directory, or opening the editor, and any git command setting such a
-  key for itself;
+  key for itself, except a `-c` setting of `core.pager` or `core.sshCommand` to
+  a command the line spells out, which is judged as the command git runs, the
+  way a bang alias is, and approved when clean and no earlier part of the line
+  writes or removes a file;
 - removing, moving or recursively changing a path that is, or may be, the root,
   a top-level directory, the home directory or one of its direct children, the
   working tree or a directory above it, or another checkout of the repository;
