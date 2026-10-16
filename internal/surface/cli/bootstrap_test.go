@@ -108,6 +108,20 @@ func bootstrapRequires(t *testing.T) {
 // literal drifting in the script, a typo in the constant — would leave every
 // case below pointed at the REAL GitHub while reporting a pass, which is exactly
 // the fixture-hides-the-bug failure an earlier round already shipped once.
+// withoutGhPolicy is the script without its gh_policy assignment. That line
+// names release.yml's certificate identity, a URL gh compares with the signing
+// certificate and never fetches, so it is the one line that names the release
+// origin without being a fetch origin.
+func withoutGhPolicy(body string) string {
+	var kept []string
+	for _, line := range strings.Split(body, "\n") {
+		if !strings.HasPrefix(line, "gh_policy=") {
+			kept = append(kept, line)
+		}
+	}
+	return strings.Join(kept, "\n")
+}
+
 func bootstrapFixtureScript(t *testing.T, base string) string {
 	t.Helper()
 	src, err := os.ReadFile(bootstrapScript(t))
@@ -129,7 +143,7 @@ func bootstrapFixtureScript(t *testing.T, base string) string {
 		body = strings.Replace(body, quoted, `"`+base+`"`, 1)
 	}
 	for _, origin := range []string{bootstrapAPIOrigin, bootstrapReleaseOrigin} {
-		if strings.Contains(body, origin) {
+		if strings.Contains(withoutGhPolicy(body), origin) {
 			t.Fatalf("the rewritten script still names %q, so the fixture substitution did not take effect", origin)
 		}
 	}
@@ -1347,7 +1361,7 @@ func TestBootstrapFetchOriginsAreConstants(t *testing.T) {
 		t.Errorf("unrecognised environment reference $%s in a non-comment line — every environment read must be CLAUDE_PLUGIN_ROOT, CLAUDE_PLUGIN_DATA, HOME, or a name this script assigns itself: %q", read.name, read.line)
 	}
 	for _, origin := range []string{bootstrapReleaseOrigin, bootstrapAPIOrigin} {
-		if n := strings.Count(body, origin); n != 1 {
+		if n := strings.Count(withoutGhPolicy(body), origin); n != 1 {
 			t.Errorf("the script must hold %q as a single literal, found %d", origin, n)
 		}
 	}

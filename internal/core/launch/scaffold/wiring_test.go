@@ -278,6 +278,8 @@ var trustedContext = map[string]any{
 	"steps.detect.outputs.need_release":  "true",
 	"steps.detect.outputs.release_ref":   "",
 	"steps.receipts.outputs.content_sha": strings.Repeat("b", 40),
+	"steps.draft.outputs.id":             "4242",
+	"needs.release.outputs.release_id":   "4242",
 	"env.CONTENT_SHA":                    strings.Repeat("b", 40),
 	"cancelled()":                        false,
 	"success()":                          true,

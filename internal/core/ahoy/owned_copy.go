@@ -43,8 +43,8 @@ func cacheAssetName() string { return "abcd-" + runtime.GOOS + "-" + runtime.GOA
 
 // ghAttestationVerifyCommand is the hand check of a downloaded release asset's
 // build provenance, the same policy abcd update and ahoy install verify in
-// process: signed by this repository's release workflow, from the commit the
-// release tag names. hooks/bootstrap.sh and the install one-liner run this
+// process: signed by this repository's release workflow on main, built from
+// main on a GitHub-hosted runner, at the commit the release tag names. hooks/bootstrap.sh and the install one-liner run this
 // when gh is present. With no tag known the commit is named as a placeholder.
 func ghAttestationVerifyCommand(file, tag string) string {
 	// The command is pasted into a shell, so a tag outside the release-tag
@@ -52,7 +52,9 @@ func ghAttestationVerifyCommand(file, tag string) string {
 	if !ReleaseTagShape.MatchString(tag) {
 		tag = "<release tag>"
 	}
-	return "gh attestation verify " + file + " --repo intentdriven/abcd --signer-workflow intentdriven/abcd/.github/workflows/release.yml" +
+	return "gh attestation verify " + file + " --repo intentdriven/abcd" +
+		" --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main" +
+		" --source-ref refs/heads/main --deny-self-hosted-runners" +
 		" --source-digest $(gh api repos/intentdriven/abcd/commits/" + tag + " -H 'Accept: application/vnd.github.sha')"
 }
 

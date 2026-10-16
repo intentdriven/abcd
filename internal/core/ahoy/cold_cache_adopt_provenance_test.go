@@ -296,6 +296,27 @@ func TestHandCheckNeverSplicesAnUnshapedTag(t *testing.T) {
 	}
 }
 
+// TestHandCheckHoldsTheSignerToReleaseYMLOnMain: the advised command verifies
+// the policy abcd update and ahoy install verify in process — release.yml on
+// main, built from main at the tag's commit, on a GitHub-hosted runner.
+func TestHandCheckHoldsTheSignerToReleaseYMLOnMain(t *testing.T) {
+	cmd := ghAttestationVerifyCommand("abcd", "v0.13.4")
+	for _, want := range []string{
+		" --repo intentdriven/abcd ",
+		" --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main ",
+		" --source-ref refs/heads/main ",
+		" --deny-self-hosted-runners ",
+		" --source-digest $(gh api repos/intentdriven/abcd/commits/v0.13.4 ",
+	} {
+		if !strings.Contains(cmd, want) {
+			t.Errorf("the hand check must carry %q: %s", strings.TrimSpace(want), cmd)
+		}
+	}
+	if strings.Contains(cmd, "--signer-workflow") {
+		t.Errorf("the hand check must name the exact certificate identity with --cert-identity: %s", cmd)
+	}
+}
+
 // TestColdCopyOlderThanTheMarkIsUnverified: with no cache, the copy's release
 // comes from its own build metadata, so an older release's genuine build
 // would verify as itself. The newest-release mark holds the cold path to the
