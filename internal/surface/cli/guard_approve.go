@@ -43,8 +43,9 @@ var protocolRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
 func newGuardApproveCommand() *cobra.Command {
 	var dir, base string
+	var runDirs []string
 	cmd := &cobra.Command{
-		Use: "approve --dir <working-tree> --base <commit>",
+		Use: "approve --dir <working-tree> --base <commit> [--run-dir <dir>]...",
 		Long: "Answers the permission prompts of an agent abcd started without a terminal,\n" +
 			"over MCP on stdio: the claude runner starts it, as the one server of a launch\n" +
 			"whose role's contract grants the shell, and names its tool, approve, as the\n" +
@@ -74,7 +75,13 @@ func newGuardApproveCommand() *cobra.Command {
 			"    resolved through symlinks and case folded where the filesystem folds it:\n" +
 			"    the git common directory and its hooks, each checkout's .git, the home\n" +
 			"    shell start-up files and git configuration, the host's settings, .mcp.json,\n" +
-			"    .abcd/guard.json, and the names the host protects in any working tree;\n" +
+			"    .abcd/guard.json, abcd's own folder in the home directory (its\n" +
+			"    trusted-roots, rules.json, config.json and the rest, but for the run's\n" +
+			"    own worktree kept there), and the names the host protects in any\n" +
+			"    working tree;\n" +
+			"  - a removal whose target lies outside the working tree, the run's own\n" +
+			"    directories (each --run-dir) and the temporary directory; a write\n" +
+			"    outside the working tree is judged by the protected paths alone;\n" +
 			"  - git config with --global, --system or --file on a write, setting a key\n" +
 			"    that starts a program (core.hooksPath, core.pager, an alias and the like),\n" +
 			"    or opening the editor, and any git command setting such a key for itself;\n" +
@@ -102,17 +109,23 @@ func newGuardApproveCommand() *cobra.Command {
 			if !gitutil.IsFullSHA(base) {
 				return &exitError{Code: 2, Msg: "guard approve: --base must name the commit the run started on by its full object name"}
 			}
+			for _, d := range runDirs {
+				if !filepath.IsAbs(d) || filepath.Clean(d) != d {
+					return &exitError{Code: 2, Msg: "guard approve: --run-dir must name a directory of the run as a clean absolute path"}
+				}
+			}
 			return serveApprover(cmd.InOrStdin(), cmd.OutOrStdout(), func(tool string, input json.RawMessage) (guard.Approval, json.RawMessage) {
 				// Each prompt reads the registry afresh, as the hook does, so
 				// a run judges against the repository as it stands, and only
 				// where that is at least as strong as it was at the base.
 				ld := guard.LoadRepoAt(rulesRoot(dir, cmd.ErrOrStderr()), base)
-				return guard.ApprovePrompt(ld, guard.NewFiles(dir), tool, input)
+				return guard.ApprovePrompt(ld, guard.NewFiles(dir).WithRunDirs(runDirs...), tool, input)
 			})
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", "", "the working tree the agent runs in, as an absolute path")
 	cmd.Flags().StringVar(&base, "base", "", "the commit the run started on, by its full object name")
+	cmd.Flags().StringArrayVar(&runDirs, "run-dir", nil, "a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable")
 	return cmd
 }
 

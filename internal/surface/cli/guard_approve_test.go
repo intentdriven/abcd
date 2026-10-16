@@ -209,3 +209,41 @@ func TestGuardApproveRefusesARelativeDirectory(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardApproveLetsARemovalReachTheRunsOwnDirectories: a removal outside
+// the working tree is refused, except in a directory --run-dir names, the
+// run's own; a --run-dir that is not a clean absolute path is refused.
+func TestGuardApproveLetsARemovalReachTheRunsOwnDirectories(t *testing.T) {
+	dir, base := approverRepo(t)
+	// Outside the temporary directory, where the test's home may be; the
+	// lines are judged, never run.
+	run := "/abcd-approve-test-run-dir-never-created"
+	other := "/abcd-approve-test-elsewhere-never-created"
+	lines := []string{
+		callLine(t, 1, "Bash", map[string]any{"command": "rm -f " + filepath.Join(run, "receipt.json")}),
+		callLine(t, 2, "Bash", map[string]any{"command": "rm -f " + filepath.Join(other, "receipt.json")}),
+	}
+	stdout, stderr, code := runGuard(strings.Join(lines, "\n")+"\n", "guard", "approve", "--dir="+dir, "--base="+base, "--run-dir="+run)
+	if code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr)
+	}
+	replies := map[string]rpcReply{}
+	for _, l := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		var r rpcReply
+		if err := json.Unmarshal([]byte(l), &r); err != nil {
+			t.Fatalf("stdout line %q: %v", l, err)
+		}
+		replies[string(r.ID)] = r
+	}
+	if b, msg, _ := answer(t, replies["1"]); b != "allow" {
+		t.Errorf("a removal in the run's own directory: %s %q", b, msg)
+	}
+	if b, msg, _ := answer(t, replies["2"]); b != "deny" || !strings.Contains(msg, "removal-outside-tree") {
+		t.Errorf("a removal outside the tree and the run's directories: %s %q", b, msg)
+	}
+	for _, bad := range []string{"--run-dir=rel", "--run-dir=" + run + "/../x"} {
+		if stdout, _, code := runGuard("", "guard", "approve", "--dir="+dir, "--base="+base, bad); code != 2 || stdout != "" {
+			t.Errorf("%s: exit %d, stdout %q", bad, code, stdout)
+		}
+	}
+}

@@ -151,6 +151,21 @@ type Files struct {
 	// statCalls counts the filesystem lookups made, so a test can prove the
 	// site bound holds before any lookup (maxScriptTargets).
 	statCalls int
+	// runDirs are the directories a headless run keeps its own files in
+	// (its brief and its receipt), outside the working tree: the approver
+	// lets a removal reach them.
+	runDirs []string
+}
+
+// WithRunDirs returns f with dirs as the run's own directories, each a clean
+// absolute path; any other is left out.
+func (f *Files) WithRunDirs(dirs ...string) *Files {
+	for _, d := range dirs {
+		if filepath.IsAbs(d) && filepath.Clean(d) == d && !containsString(f.runDirs, d) {
+			f.runDirs = append(f.runDirs, d)
+		}
+	}
+	return f
 }
 
 // statResult is one cached lookup of a path.

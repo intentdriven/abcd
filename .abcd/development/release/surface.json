@@ -1501,6 +1501,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "run-dir",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
         }
       ]
     },

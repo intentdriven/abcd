@@ -73,6 +73,10 @@ const (
 	// gitConfigWriteEntryID: a git command that writes configuration outside
 	// the repository's own file, or sets a key that starts a program.
 	gitConfigWriteEntryID = "git-config-write"
+	// outsideRemovalEntryID: a removal whose fixed target lies outside the
+	// launched working tree, the run's own directories and the temporary
+	// directory.
+	outsideRemovalEntryID = "removal-outside-tree"
 )
 
 // approveFoldsCase reports whether the filesystem folds case, so a protected
@@ -230,8 +234,21 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 		}
 		for _, st := range p.states {
 			for _, u := range pathUses(rc, p.seg, st) {
+				if u.bound && !u.ok {
+					// Its starting point is the critical check's to judge.
+					continue
+				}
 				if !u.ok {
 					return unfixedRefusal(u)
+				}
+				if facts.outsideRemoval(u) {
+					name := termsafe.Sanitize(fsutil.DisplayPath(u.path))
+					return refusal(outsideRemovalEntryID,
+						"this removes "+name+", which lies outside the working tree the agent was started in, the run's own directories and the temporary directory, so abcd does not approve it unattended.",
+						"remove only files inside the working tree, or say in the receipt which file outside it should go.")
+				}
+				if u.bound {
+					continue
 				}
 				if name, ok := facts.protects(u); ok {
 					name = termsafe.Sanitize(fsutil.DisplayPath(name))
@@ -382,26 +399,37 @@ func remoteSpec(op string) bool {
 // or nil for one that does not. With no starting point named, find starts
 // in ".".
 func findDeletes(s segment, from int) []int {
-	deletes := false
+	if !findDeleting(s, from) {
+		return nil
+	}
+	return findStarts(s, from)
+}
+
+// findDeleting reports whether the find whose words start at from deletes
+// what it finds: -delete, or -exec / -execdir / -ok / -okdir running rm,
+// rmdir or unlink, or a command the line does not fix.
+func findDeleting(s segment, from int) bool {
 	for i := from; i < len(s.tokens); i++ {
 		switch s.tokens[i] {
 		case "-delete":
-			deletes = true
+			return true
 		case "-exec", "-execdir", "-ok", "-okdir":
 			if i+1 < len(s.tokens) {
 				switch filepath.Base(s.tokens[i+1]) {
 				case "rm", "rmdir", "unlink":
-					deletes = true
+					return true
 				}
 				if isUnknown(s.tokens[i+1]) {
-					deletes = true
+					return true
 				}
 			}
 		}
 	}
-	if !deletes {
-		return nil
-	}
+	return false
+}
+
+// findStarts is a find's starting points, from index from.
+func findStarts(s segment, from int) []int {
 	var starts []int
 	i := from
 	for i < len(s.tokens) && (s.tokens[i] == "-H" || s.tokens[i] == "-L" || s.tokens[i] == "-P" || strings.HasPrefix(s.tokens[i], "-O") || s.tokens[i] == "-D") {

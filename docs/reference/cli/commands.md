@@ -1420,7 +1420,7 @@ Judge a shell command against the hazard registry before it runs: Writes nothing
 
 Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.
 
-**Usage:** `abcd guard approve --dir <working-tree> --base <commit> [flags]`
+**Usage:** `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
 
 Answers the permission prompts of an agent abcd started without a terminal,
 over MCP on stdio: the claude runner starts it, as the one server of a launch
@@ -1453,7 +1453,13 @@ registry, it refuses:
     resolved through symlinks and case folded where the filesystem folds it:
     the git common directory and its hooks, each checkout's .git, the home
     shell start-up files and git configuration, the host's settings, .mcp.json,
-    .abcd/guard.json, and the names the host protects in any working tree;
+    .abcd/guard.json, abcd's own folder in the home directory (its
+    trusted-roots, rules.json, config.json and the rest, but for the run's
+    own worktree kept there), and the names the host protects in any
+    working tree;
+  - a removal whose target lies outside the working tree, the run's own
+    directories (each --run-dir) and the temporary directory; a write
+    outside the working tree is judged by the protected paths alone;
   - git config with --global, --system or --file on a write, setting a key
     that starts a program (core.hooksPath, core.pager, an alias and the like),
     or opening the editor, and any git command setting such a key for itself;
@@ -1479,8 +1485,9 @@ start it. It exits 0 when its input ends.
 **Flags:**
 
 ```
-      --base string   the commit the run started on, by its full object name
-      --dir string    the working tree the agent runs in, as an absolute path
+      --base string           the commit the run started on, by its full object name
+      --dir string            the working tree the agent runs in, as an absolute path
+      --run-dir stringArray   a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
 ```
 
 **Example:**

@@ -359,9 +359,16 @@ its text:
   the filesystem folds it: the git common directory with its hooks and config,
   each hooks directory core.hooksPath names, each checkout's `.git`, the home
   shell start-up files and git configuration, the host's settings directories,
-  `.mcp.json` and `.abcd/guard.json`, and the names the harness's own list
-  protects in any working tree. A line that only names one of them is not a
-  write;
+  `.mcp.json` and `.abcd/guard.json`, abcd's own folder in the home directory
+  (its trusted-roots, rules.json, config.json and the rest of the user layer,
+  the run's own worktree kept there excepted), and the names the harness's own
+  list protects in any working tree. A line that only names one of them is not
+  a write;
+- a removal whose fixed target lies outside the launched working tree, the
+  run's own directories (the brief's and the receipt's, which the runner names
+  to the approver) and the temporary directory. Writes outside the working tree are judged by
+  the protected set alone: bounding them is the OS sandbox's job
+  (spc-2610161751056096), not the approver's (dcn-2610161930191632);
 - `git config` writing outside the repository's own file (its global or
   system scope, or a file it names), setting a key that starts a program (the keys `gitutil.ExecPins` pins and the others git
   documents), or opening the editor, and any git command setting such a key for
@@ -708,6 +715,7 @@ Sub-verbs: none.
 |---|---|
 | `--base` | string |
 | `--dir` | string |
+| `--run-dir` | stringArray |
 
 ### `abcd guard check`
 

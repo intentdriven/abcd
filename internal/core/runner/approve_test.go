@@ -56,7 +56,8 @@ func TestAShellLaunchCarriesTheGuardApprover(t *testing.T) {
 	f := newFake(t, "ok", Claude)
 	c := newClaude("")
 	c.approver = "/opt/abcd/bin/abcd"
-	if _, _, err := c.Run(context.Background(), f.shellRequest("implementer")); err != nil {
+	req := f.shellRequest("implementer")
+	if _, _, err := c.Run(context.Background(), req); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	argv := f.argv(t, Claude)
@@ -84,9 +85,14 @@ func TestAShellLaunchCarriesTheGuardApprover(t *testing.T) {
 	if len(cfg.MCPServers) != 1 || !ok {
 		t.Fatalf("--mcp-config servers = %+v; want abcd alone", cfg.MCPServers)
 	}
-	if srv.Type != "stdio" || srv.Command != c.approver ||
-		!slices.Equal(srv.Args, []string{"guard", "approve", "--dir=" + f.repo, "--base=" + fakeBase}) {
-		t.Errorf("the approver server = %+v", srv)
+	// The run's own directories, the brief's and the receipt's, are named
+	// so a removal of the run's own files there is approved.
+	wantArgs := []string{"guard", "approve", "--dir=" + f.repo, "--base=" + fakeBase, "--run-dir=" + filepath.Dir(req.Brief)}
+	if d := filepath.Dir(req.Receipt); d != filepath.Dir(req.Brief) {
+		wantArgs = append(wantArgs, "--run-dir="+d)
+	}
+	if srv.Type != "stdio" || srv.Command != c.approver || !slices.Equal(srv.Args, wantArgs) {
+		t.Errorf("the approver server = %+v; want args %q", srv, wantArgs)
 	}
 	if argv[len(argv)-2] != "--" {
 		t.Errorf("the prompt is not behind the end-of-options marker: %q", argv)
@@ -260,7 +266,8 @@ func TestARunnerLaunchsPromptsAreAnsweredByTheGuard(t *testing.T) {
 	if err := json.Unmarshal([]byte(answers["go test ./..."]), &clean); err != nil {
 		t.Fatal(err)
 	}
-	if clean.Behavior != "allow" || clean.UpdatedInput["command"] != "go test ./..." {
-		t.Errorf("the clean command was answered %+v; want allow with the command judged", clean)
+	// It runs from the working tree it was judged for.
+	if clean.Behavior != "allow" || clean.UpdatedInput["command"] != "cd -- '"+f.repo+"' && go test ./..." {
+		t.Errorf("the clean command was answered %+v; want allow with the command judged, run from the working tree", clean)
 	}
 }

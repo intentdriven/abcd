@@ -77,15 +77,20 @@ func grantsShell(tools []string) bool { return slices.Contains(tools, "Bash") }
 // approverConfig is the --mcp-config value that starts the approver: one
 // stdio server, abcd's own binary, judging commands against the registry of
 // the working tree the role runs in, as it stood at base, the commit the run
-// started on.
-func (c *ClaudeCLI) approverConfig(dir, base string) string {
+// started on, with runDirs, the run's own directories, named so a removal
+// may reach them.
+func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
 	type server struct {
 		Type    string   `json:"type"`
 		Command string   `json:"command"`
 		Args    []string `json:"args"`
 	}
+	args := []string{"guard", "approve", "--dir=" + dir, "--base=" + base}
+	for _, d := range runDirs {
+		args = append(args, "--run-dir="+d)
+	}
 	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {"abcd": {
-		Type: "stdio", Command: c.approver, Args: []string{"guard", "approve", "--dir=" + dir, "--base=" + base},
+		Type: "stdio", Command: c.approver, Args: args,
 	}}})
 	return string(raw)
 }
@@ -106,23 +111,23 @@ func (c *ClaudeCLI) args(req Request) []string {
 		"--no-session-persistence",
 		"--permission-mode", mode,
 	}
-	tools := req.Tools
-	if shell {
-		// The guard answers for the shell, so the harness asks it rather
-		// than running every command unasked.
-		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
-		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base), "--strict-mcp-config",
-			"--permission-prompt-tool="+ApproverTool)
-	}
-	if len(tools) > 0 {
-		a = append(a, "--allowedTools="+strings.Join(tools, ","))
-	}
 	// The brief and the receipt sit in the run's own directory: a lane's,
 	// outside the working tree the role runs in, or an interview's turns,
 	// inside the repository's local tier. Either is added explicitly.
 	dirs := []string{filepath.Dir(req.Brief)}
 	if d := filepath.Dir(req.Receipt); d != dirs[0] {
 		dirs = append(dirs, d)
+	}
+	tools := req.Tools
+	if shell {
+		// The guard answers for the shell, so the harness asks it rather
+		// than running every command unasked.
+		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs), "--strict-mcp-config",
+			"--permission-prompt-tool="+ApproverTool)
+	}
+	if len(tools) > 0 {
+		a = append(a, "--allowedTools="+strings.Join(tools, ","))
 	}
 	for _, d := range dirs {
 		a = append(a, "--add-dir="+d)

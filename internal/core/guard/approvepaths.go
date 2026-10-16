@@ -10,10 +10,12 @@ package guard
 // through symlinks, folding case where the filesystem folds it.
 
 import (
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -33,7 +35,19 @@ type approveFacts struct {
 	// others are the repository's other checkouts: the main one and every
 	// registered worktree but the launched one.
 	others []string
+	// userLayer is abcd's own folder in the home directory, each spelling:
+	// the files that decide what abcd trusts on the machine. own are the
+	// launched working tree and the run's own directories, which stay
+	// writable inside it.
+	userLayer, own []string
+	// removable is where a removal may reach: the launched working tree, the
+	// run's own directories and the temporary directories, each spelling.
+	removable []string
 }
+
+// approveTempDirs is the temporary directories a removal may reach: the
+// system's, and /tmp; a variable so a test can name its own.
+var approveTempDirs = func() []string { return []string{os.TempDir(), "/tmp"} }
 
 // homeStartupFiles are the files a login or interactive shell reads from the
 // home directory at start-up, and the directories some shells read whole.
@@ -124,7 +138,20 @@ func factsFor(f *Files) approveFacts {
 			add(filepath.Join(t, filepath.FromSlash(rel)))
 		}
 	}
+	if filepath.IsAbs(f.dir) {
+		facts.own = append(facts.own, both(f.dir)...)
+	}
+	for _, d := range f.runDirs {
+		facts.own = append(facts.own, both(d)...)
+	}
+	facts.removable = append(facts.removable, facts.own...)
+	for _, d := range approveTempDirs() {
+		if d = filepath.Clean(d); filepath.IsAbs(d) {
+			facts.removable = append(facts.removable, both(d)...)
+		}
+	}
 	if filepath.IsAbs(f.home) {
+		facts.userLayer = both(abcdhome.Path(f.home))
 		facts.trees = append(facts.trees, both(f.home)...)
 		for _, rel := range append(append([]string(nil), homeStartupFiles...), ".gitconfig", ".config/git", ".claude", ".claude.json") {
 			add(filepath.Join(f.home, filepath.FromSlash(rel)))
@@ -143,6 +170,10 @@ type pathUse struct {
 	// rel marks a relative name after a change of directory the line leaves
 	// unknown: the name is spelled out, the directory it is in is not.
 	rel bool
+	// bound marks a removal judged only for where it is (a find's starting
+	// point that it deletes below, rsync --delete's destination), not as a
+	// removal of every protected path inside it.
+	bound bool
 }
 
 // unplaced is the shell state of a segment the reading did not place (a
@@ -223,6 +254,32 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			return false
 		}
 		switch strings.ToLower(path.Base(tok)) {
+		case "find":
+			// What a find deletes is below its starting points ("." with
+			// none named).
+			if !findDeleting(s, a.idx+1) {
+				break
+			}
+			starts := findStarts(s, a.idx+1)
+			if len(starts) == 0 {
+				out = append(out, pathUse{path: st.dir, ok: st.dirOK && st.dir != "", remove: true, written: ".", bound: true})
+			}
+			for _, i := range starts {
+				u := at(i, true)
+				u.bound = true
+				out = append(out, u)
+			}
+		case "rsync":
+			if !flagGiven(s, a.idx+1, "--del") && !flagPrefixGiven(s, a.idx+1, "--delete") {
+				break
+			}
+			if idx := w.operandIdx(rsyncValueFlags); len(idx) > 1 {
+				if tok, ok := fixedToken(s, idx[len(idx)-1]); !ok || !remoteSpec(tok) {
+					u := at(idx[len(idx)-1], true)
+					u.bound = true
+					out = append(out, u)
+				}
+			}
 		case "touch":
 			for _, i := range w.operandIdx([]string{"-d", "-t", "-r", "--date", "--reference"}) {
 				out = append(out, at(i, false))
@@ -323,11 +380,38 @@ func (f approveFacts) protects(u pathUse) (string, bool) {
 				return p, true
 			}
 		}
+		for _, l := range f.userLayer {
+			if (fsutil.PathWithin(c, l, f.fold) || (u.remove && fsutil.PathWithin(l, c, f.fold))) && !f.within(c, f.own) {
+				return l, true
+			}
+		}
 		if name, ok := f.protectedName(c); ok {
 			return name, true
 		}
 	}
 	return "", false
+}
+
+// within reports whether p is in one of dirs, or is one.
+func (f approveFacts) within(p string, dirs []string) bool {
+	for _, d := range dirs {
+		if fsutil.PathWithin(p, d, f.fold) {
+			return true
+		}
+	}
+	return false
+}
+
+// outsideRemoval reports whether u is a removal whose fixed target lies
+// outside where a removal may reach (removable), judged as written and with
+// its existing directories resolved through symlinks (its own last name not
+// followed: a removal removes the link).
+func (f approveFacts) outsideRemoval(u pathUse) bool {
+	if !u.remove || !u.ok || u.path == "" {
+		return false
+	}
+	resolved := filepath.Join(fsutil.RealExistingPath(filepath.Dir(u.path)), filepath.Base(u.path))
+	return !f.within(u.path, f.removable) || !f.within(resolved, f.removable)
 }
 
 // protectedName reports a protected name among p's components, read relative

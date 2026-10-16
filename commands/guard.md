@@ -159,7 +159,7 @@ invalid UTF-8, or is over 4096 bytes.
 ## `approve` — answering a headless agent's permission prompts
 
 ```bash
-abcd guard approve --dir=<the agent's working tree> --base=<the commit the run started on>
+abcd guard approve --dir=<the agent's working tree> --base=<the commit the run started on> [--run-dir=<the run's own directory>]...
 ```
 
 You never run this yourself. When abcd starts an agent through its claude
@@ -217,10 +217,21 @@ A shell command is approved only when the guard reads it whole and clears it:
   included), each directory `core.hooksPath` names, each checkout's `.git`, the
   home directory's shell start-up files, `~/.gitconfig` and `~/.config/git`,
   the host's settings (`~/.claude`, `~/.claude.json`, a checkout's `.claude/`),
-  `.mcp.json`, `.abcd/guard.json`, and the names the host protects in any
-  working tree (`.husky/`, `.vscode/`, `.envrc`, `.npmrc` and the like). A
-  removal of a directory holding one counts. A line that only names one of
-  them, to read it, is not a write;
+  `.mcp.json`, `.abcd/guard.json`, abcd's own folder in the home directory
+  (`~/.abcd.noindex/`: its `trusted-roots`, `rules.json`, `config.json` and
+  the rest of the layer, though the run's own worktree kept under
+  `~/.abcd.noindex/worktrees/` stays writable), and the names the host
+  protects in any working tree (`.husky/`, `.vscode/`, `.envrc`, `.npmrc` and
+  the like). A removal of a directory holding one counts. A line that only
+  names one of them, to read it, is not a write;
+- no removal reaches outside the working tree (`removal-outside-tree`): a
+  removal (`rm`, `rmdir`, `unlink`, `mv`'s sources, a `find` that deletes, an
+  `rsync --delete`) whose target lies outside the launched working tree, the
+  run's own directories (the brief's and the receipt's, which the runner
+  passes as `--run-dir`) and the temporary directory (`$TMPDIR`, `/tmp`) is
+  refused, so `rm -rf ~/Documents/x` and `rm ~/.ssh/id_ed25519` are. A write
+  outside the working tree is judged by the protected paths alone; the OS
+  sandbox for launched agents (spc-2610161751056096) is what bounds those;
 - no `git config` with `--global`, `--system` or `--file` writes, sets a key
   that starts a program (`core.hooksPath`, `core.fsmonitor`, `core.pager`,
   `core.sshCommand`, an alias, a filter or diff driver, a credential helper,
