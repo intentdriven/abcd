@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md"
 remedy: "Add the (convention) mark to the surface_history bullet at 05-intent.md:504."
-resolution: "05-intent.md marks the surface_history bullet (convention), says no shipped check reads the field, and places IL012 in the later-phase IL0xx design"
+resolution: "05-intent.md marks the surface_history bullet (convention), says no shipped check reads the field, and calls IL012 a legacy code that names no shipped rule"
 impact: internal
 ---
 
