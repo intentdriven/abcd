@@ -34,6 +34,7 @@ import (
 	"net/netip"
 	"net/url"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -41,6 +42,7 @@ import (
 
 	"github.com/coder/websocket"
 	core "github.com/intentdriven/abcd/internal/core/session"
+	"github.com/intentdriven/abcd/internal/core/site"
 	"github.com/intentdriven/abcd/internal/surface/session/web"
 )
 
@@ -102,7 +104,11 @@ const (
 type Config struct {
 	// Origins, each an exact scheme://host[:port], replace the default
 	// allowlist (DefaultOrigin and any loopback page) when given: a relay
-	// serving a page from its own origin admits nothing else.
+	// serving a page from its own origin admits nothing else. An entry may
+	// go on to name the page's base path, as `abcd session page --base-path`
+	// writes it (https://host/abcdesign/): the web sign-in's callback then
+	// forwards only to a session page under exactly that path on that origin.
+	// An entry without one, and every default, is the page at the root.
 	Origins []string
 	// BehindProxy trusts the last X-Forwarded-For entry as the client's
 	// address, which is right only behind a proxy that sets it.
@@ -160,8 +166,11 @@ const (
 type Server struct {
 	cfg     Config
 	origins map[string]bool // the given origins; nil admits the default list
-	relay   *core.Relay
-	client  *http.Client
+	// bases are the base paths each given origin's session page is served
+	// under, each as site.NormaliseBasePath returns it ("/" is the root).
+	bases  map[string][]string
+	relay  *core.Relay
+	client *http.Client
 	// hosts are the Host headers answered; nil answers any.
 	hosts map[string]bool
 	// page is the session page as the relay serves it, when ServePage.
@@ -196,15 +205,19 @@ func New(cfg Config) (*Server, error) {
 		return nil, ErrNoRepositories
 	}
 	var origins map[string]bool
+	var bases map[string][]string
 	for _, o := range cfg.Origins {
 		if origins == nil {
-			origins = map[string]bool{}
+			origins, bases = map[string]bool{}, map[string][]string{}
 		}
-		n, ok := normalizeOrigin(o)
+		n, base, ok := normalizePageEntry(o)
 		if !ok {
-			return nil, fmt.Errorf("%q is not an origin: give scheme://host[:port], over http or https, with no path or wildcard", o)
+			return nil, fmt.Errorf("%q is not an origin: give scheme://host[:port], over http or https, with no wildcard, then the page's base path if it has one, as plain path segments", o)
 		}
 		origins[n] = true
+		if !slices.Contains(bases[n], base) {
+			bases[n] = append(bases[n], base)
+		}
 	}
 	if cfg.GitHubAPI == "" {
 		cfg.GitHubAPI = DefaultGitHubAPI
@@ -240,7 +253,7 @@ func New(cfg Config) (*Server, error) {
 		}
 		hosts[h] = true
 	}
-	s := &Server{cfg: cfg, origins: origins, hosts: hosts, client: &c, peers: map[*peer]struct{}{}, devices: map[string]*deviceLogin{}}
+	s := &Server{cfg: cfg, origins: origins, bases: bases, hosts: hosts, client: &c, peers: map[*peer]struct{}{}, devices: map[string]*deviceLogin{}}
 	if cfg.ServePage {
 		s.page = web.RelayFiles()
 	}
@@ -329,6 +342,41 @@ func normalizeOrigin(s string) (string, bool) {
 		return "", false
 	}
 	return u.Scheme + "://" + strings.ToLower(u.Host), true
+}
+
+// normalizePageEntry reads one origin entry: an exact origin, as
+// normalizeOrigin reads it, then optionally the page's base path, plain path
+// segments by the site builder's own rule (site.NormaliseBasePath, which
+// `abcd session page --base-path` applies too), with or without its trailing
+// slash. It returns the origin and the base path, "/" for none.
+func normalizePageEntry(s string) (string, string, bool) {
+	u, err := url.Parse(s)
+	if err != nil || u.RawPath != "" || u.Opaque != "" {
+		return "", "", false
+	}
+	base, err := site.NormaliseBasePath(u.Path)
+	if err != nil {
+		return "", "", false
+	}
+	u.Path = ""
+	n, ok := normalizeOrigin(u.String())
+	if !ok {
+		return "", "", false
+	}
+	return n, base, true
+}
+
+// pageBases are the base paths a session page on origin (as normalizeOrigin
+// returns it) is served under: the ones its entry names, or, with no origins
+// given, the root of every origin the default list admits.
+func (s *Server) pageBases(origin string) []string {
+	if s.origins != nil {
+		return s.bases[origin]
+	}
+	if s.originAllowed(origin) {
+		return []string{"/"}
+	}
+	return nil
 }
 
 // originAllowed judges a request's Origin: one of the given origins exactly,

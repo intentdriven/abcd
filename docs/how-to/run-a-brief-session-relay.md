@@ -124,7 +124,9 @@ already in `render.yaml`, and prints the rest.
    `render.yaml` also names, in `ABCD_SESSION_ORIGINS`, the session pages the
    relay admits: `https://abcdesign.app`, unless you serve the page yourself,
    in which case name your site's https address with
-   `--origin https://<your site>` (repeatable). Once the team's GitHub App is
+   `--origin https://<your site>` (repeatable), followed by the page's base
+   path if you serve it below one (`--origin https://<your site>/<base path>/`).
+   Once the team's GitHub App is
    recorded in `.abcd/relay/github-app.json`, it carries the app's public
    client id too.
 
@@ -298,7 +300,12 @@ on a static host of your choice.
    relay, write the blueprint with `--origin https://<your site>`, which sets
    `ABCD_SESSION_ORIGINS` in `render.yaml`. By default a relay admits a page
    from `https://abcdesign.app` or from this computer; the origins you name
-   replace that list, so the relay then admits your page alone.
+   replace that list, so the relay then admits your page alone. If you
+   served the page below a base path, name it after your site's address,
+   exactly as you gave it to `--base-path`:
+   `--origin https://owner.github.io/<repo>/`. The relay's sign-in sends the
+   person back only to the session page under that path, so other pages on
+   the same address never receive it.
 
 The page will not run inside another site's frame. A static host cannot tell
 browsers to refuse framing, so the page refuses it itself and shows only a

@@ -268,6 +268,18 @@ func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
 	if _, err := WriteBlueprint(BlueprintRequest{Root: t.TempDir(), Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos, Origins: []string{"http://pages.example.org"}}); err == nil {
 		t.Error("an http page origin was written into the blueprint")
 	}
+	// A page served below a base path is named with it, as `abcd session
+	// page --base-path` writes it: the relay's sign-in forwards only there.
+	based, err := WriteBlueprint(BlueprintRequest{Root: t.TempDir(), Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos,
+		Origins: []string{"https://Pages.Example.org:443/abcdesign", "https://abcdesign.app/"}})
+	if err != nil || strings.Join(based.Origins, ",") != "https://pages.example.org/abcdesign/,https://abcdesign.app" {
+		t.Errorf("a page origin with a base path: %v %v", based.Origins, err)
+	}
+	for _, bad := range []string{"https://pages.example.org/x/../y/", "https://pages.example.org/a b/", "https://pages.example.org//", "https://pages.example.org/a?x=1"} {
+		if _, err := WriteBlueprint(BlueprintRequest{Root: t.TempDir(), Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos, Origins: []string{bad}}); err == nil {
+			t.Errorf("page origin %q was written into the blueprint", bad)
+		}
+	}
 
 	root := t.TempDir()
 	res, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos})

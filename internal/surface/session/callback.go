@@ -36,9 +36,12 @@ const CallbackPath = "/auth/callback"
 // and its own address, base64url.
 const maxSignInState = 2048
 
-// pagePathRe is a session page's path: an optional base path, then
-// /<owner>/<repo>/brief/.
-var pagePathRe = regexp.MustCompile(`^((?:/[A-Za-z0-9._~-]+)*)/([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9._-]{1,100})/brief/$`)
+// pageRouteRe is a session page's path after its base path:
+// <owner>/<repo>/brief/. The base path is the one the page's origin entry
+// names (Server.pageBases), never read from the path itself: a static origin
+// can carry other publishers' pages beside the session page, and a code is
+// forwarded only to the page's own base path.
+var pageRouteRe = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9-]{0,38})/([A-Za-z0-9._-]{1,100})/brief/$`)
 
 // ownOrigin is the relay's origin as the request reached it: https, or http
 // for a loopback host, where a local relay is reached directly.
@@ -68,7 +71,8 @@ func isLoopbackName(h string) bool {
 
 // statePage reads the session page a sign-in started from out of its state,
 // and reports whether the relay may send a code there: an origin it admits,
-// a session page's path for a repository it serves, and nothing else.
+// a session page's path under exactly the base path that origin's entry
+// names, for a repository it serves, and nothing else.
 func (s *Server) statePage(state string) (string, bool) {
 	if state == "" || len(state) > maxSignInState {
 		return "", false
@@ -86,11 +90,8 @@ func (s *Server) statePage(state string) (string, bool) {
 		u.Fragment != "" || strings.Contains(string(raw), "#") || u.RawPath != "" {
 		return "", false
 	}
-	if !s.originAllowed(u.Scheme + "://" + u.Host) {
-		return "", false
-	}
-	m := pagePathRe.FindStringSubmatch(u.Path)
-	if m == nil {
+	origin, ok := normalizeOrigin(u.Scheme + "://" + u.Host)
+	if !ok || !s.originAllowed(origin) {
 		return "", false
 	}
 	for _, seg := range strings.Split(u.Path, "/") {
@@ -98,10 +99,16 @@ func (s *Server) statePage(state string) (string, bool) {
 			return "", false
 		}
 	}
-	if !s.relay.Serves(m[2] + "/" + m[3]) {
-		return "", false
+	for _, base := range s.pageBases(origin) {
+		rest, under := strings.CutPrefix(u.Path, base)
+		if !under {
+			continue
+		}
+		if m := pageRouteRe.FindStringSubmatch(rest); m != nil && s.relay.Serves(m[1]+"/"+m[2]) {
+			return origin + u.Path, true
+		}
 	}
-	return u.Scheme + "://" + strings.ToLower(u.Host) + u.Path, true
+	return "", false
 }
 
 // serveCallback takes GitHub's return from the web sign-in and sends the

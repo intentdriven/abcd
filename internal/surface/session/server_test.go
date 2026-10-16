@@ -602,12 +602,13 @@ func TestTailnetVisitorsAreLimitedSeparately(t *testing.T) {
 }
 
 func TestOriginsAreParsedStrictly(t *testing.T) {
-	for _, o := range []string{"https://ok.example", "http://ok.example:8080"} {
+	for _, o := range []string{"https://ok.example", "http://ok.example:8080", "https://ok.example/", "https://ok.example/abcdesign/", "https://ok.example/a/b"} {
 		if _, err := New(Config{Origins: []string{o}, LoopbackOnly: true}); err != nil {
 			t.Errorf("%s refused: %v", o, err)
 		}
 	}
-	for _, o := range []string{"*", "ok.example", "https://ok.example/path", "ftp://ok.example", "https://*.example"} {
+	for _, o := range []string{"*", "ok.example", "ftp://ok.example", "https://*.example", "https://ok.example/../",
+		"https://ok.example/a/../b/", "https://ok.example/a%20b/", "https://ok.example//", "https://ok.example/a?x=1", "https://ok.example/a#f"} {
 		if _, err := New(Config{Origins: []string{o}, LoopbackOnly: true}); err == nil {
 			t.Errorf("%s accepted", o)
 		}

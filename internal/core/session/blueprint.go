@@ -156,7 +156,8 @@ type BlueprintRequest struct {
 	// RelayOrigin is the deployed relay's https origin; given, relays.json
 	// names it, and absent, no relays.json is written.
 	RelayOrigin string
-	// Origins are the page origins the relay admits, each an https origin;
+	// Origins are the page origins the relay admits, each an https origin
+	// followed by the page's base path when it has one (NormalizePageOrigin);
 	// none is DefaultPageOrigin.
 	Origins []string
 	// ClientID is the team's GitHub App's public client id, which repository
@@ -303,6 +304,41 @@ func withoutDefaultPort(scheme, host string) string {
 	return host
 }
 
+// pageSegmentRe is one plain path segment of a page's base path: the URL's
+// unreserved characters, the rule the site builder's base path follows
+// (site.NormaliseBasePath), which `abcd session page --base-path` applies.
+var pageSegmentRe = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
+
+// NormalizePageOrigin reads a session page's address as the relay admits it:
+// an https origin, as NormalizeRelayOrigin reads it, then the page's base
+// path when it is served below one, as plain path segments with one trailing
+// slash (https://host/abcdesign/). The relay's web sign-in forwards a code
+// only to a session page under exactly that path on that origin, so the
+// base path is part of the entry rather than left open.
+func NormalizePageOrigin(s string) (string, error) {
+	refuse := fmt.Errorf("%q is not a session page's https origin: give https://host[:port], then the page's base path if it has one, as plain path segments", s)
+	u, err := url.Parse(strings.TrimSpace(s))
+	if err != nil || u.RawPath != "" {
+		return "", refuse
+	}
+	p := u.Path
+	u.Path = ""
+	origin, err := NormalizeRelayOrigin(u.String())
+	if err != nil {
+		return "", refuse
+	}
+	if p == "" || p == "/" {
+		return origin, nil
+	}
+	base := strings.TrimSuffix(strings.TrimPrefix(p, "/"), "/")
+	for _, seg := range strings.Split(base, "/") {
+		if seg == "." || seg == ".." || !pageSegmentRe.MatchString(seg) {
+			return "", refuse
+		}
+	}
+	return origin + "/" + base + "/", nil
+}
+
 // renderRelays renders relays.json, naming origin as the one relay.
 func renderRelays(release, origin string) []byte {
 	quoted, _ := json.Marshal(origin)
@@ -310,14 +346,15 @@ func renderRelays(release, origin string) []byte {
 }
 
 // pageOrigins is the page origins a blueprint names: those given, each
-// normalized, or DefaultPageOrigin.
+// normalized by NormalizePageOrigin, base path and all, or
+// DefaultPageOrigin.
 func pageOrigins(given []string) ([]string, error) {
 	if len(given) == 0 {
 		return []string{DefaultPageOrigin}, nil
 	}
 	out := make([]string, 0, len(given))
 	for _, o := range given {
-		n, err := NormalizeRelayOrigin(o)
+		n, err := NormalizePageOrigin(o)
 		if err != nil {
 			return nil, err
 		}
@@ -328,8 +365,8 @@ func pageOrigins(given []string) ([]string, error) {
 
 // renderBlueprint renders the two files for release, pinned to digest, the
 // SHA-256 of release's abcd-linux-amd64, serving repos (each owner/name) and
-// admitting pages from origins (each an https origin, as NormalizeRelayOrigin
-// reads it; none is DefaultPageOrigin), so nothing in either needs escaping
+// admitting pages from origins (each as NormalizePageOrigin reads it; none
+// is DefaultPageOrigin), so nothing in either needs escaping
 // inside the quoted list. It reads and writes nothing.
 func renderBlueprint(release, digest string, repos, origins []string) map[string][]byte {
 	return renderBlueprintAt(release, digest, repos, origins, "", RootBlueprint)
@@ -394,7 +431,9 @@ services:
         sync: false
       # The origins of the session pages this relay admits, as a comma
       # list of https origins: abcdesign.app unless the blueprint was told
-      # others. It is not a secret.
+      # others. An entry for a page served below a base path names it
+      # (https://host/base/), and the sign-in returns only to a page under
+      # exactly that path. It is not a secret.
       - key: ` + OriginsEnv + `
         value: "` + strings.Join(origins, ",") + `"
       # The repositories this relay serves sessions for, read from the

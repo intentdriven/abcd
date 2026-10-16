@@ -161,7 +161,8 @@ text is put on the page as text, never as markup.
   session storage across the redirect, and with the relay's own
   `/auth/callback` as the redirect, the callback URL the team's app lists.
   GitHub returns the person to that relay, which sends them back to the page
-  naming itself, and the page posts the code and verifier to that relay's
+  naming itself, only to a session page under the base path the page's
+  origin entry names (the root unless the entry names one), and the page posts the code and verifier to that relay's
   `/auth/token` alone, refusing a return that names no relay or another one;
   the relay exchanges only a code given for its own callback, and the token
   is presented only to that relay. In a local session, the page shows the device flow's code

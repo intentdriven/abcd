@@ -672,7 +672,7 @@ func TestSessionServeReadsItsOriginsFromTheEnvironment(t *testing.T) {
 		t.Error("--origin did not replace ABCD_SESSION_ORIGINS")
 	}
 	_ = stop()
-	t.Setenv("ABCD_SESSION_ORIGINS", "https://pages.example.org/path")
+	t.Setenv("ABCD_SESSION_ORIGINS", "https://pages.example.org/x/../y/")
 	_, err := runCLIStdinErr(t, "", "session", "serve", "--listen", "127.0.0.1:0")
 	if exitCode(err) != 2 || !strings.Contains(err.Error(), "ABCD_SESSION_ORIGINS") {
 		t.Fatalf("a malformed ABCD_SESSION_ORIGINS: %v, want exit 2 naming it", err)
@@ -696,6 +696,15 @@ func TestSessionBlueprintNamesThePageOrigins(t *testing.T) {
 	}
 	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1", "--origin", "http://pages.example.org"); exitCode(err) != 2 {
 		t.Fatalf("an http page origin: %v, want exit 2", err)
+	}
+	// A page served below a base path is named with it.
+	runCLI(t, "session", "blueprint", "--release", "v0.17.1", "--origin", "https://acme.github.io/brief")
+	data, _ = os.ReadFile(filepath.Join(repo, "render.yaml"))
+	if !strings.Contains(string(data), "value: \"https://acme.github.io/brief/\"") {
+		t.Fatalf("render.yaml does not name the page's base path:\n%s", data)
+	}
+	if _, err := runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.1", "--origin", "https://acme.github.io/x/../"); exitCode(err) != 2 {
+		t.Fatalf("a base path with a dot segment: %v, want exit 2", err)
 	}
 }
 

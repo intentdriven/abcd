@@ -339,6 +339,9 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"at /healthz. It admits a browser only from https://abcdesign.app or a loopback\n" +
 			"page, or, when --origin is given, from exactly the origins it names, and otherwise, when\n" +
 			sessionOriginsEnv + " is set, from exactly the origins that comma list names.\n" +
+			"An entry for a page served below a base path names it, as abcd session page\n" +
+			"--base-path wrote it (https://host/base/); the callback forwards a sign-in only\n" +
+			"to the page's own base path, the root for an entry that names none.\n" +
 			"Sign-in goes through the team's GitHub App only, and nobody pastes a token: the\n" +
 			"relay takes only a GitHub App user access token. Its client id is read from\n" +
 			"--client-id or " + sessionClientIDEnv + ", and its secret from\n" +
@@ -437,7 +440,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 	}
 	c.Flags().StringVar(&listen, "listen", session.DefaultListen, "the address to listen on: an IP address (or localhost) and a port; anything but loopback is listening beyond this computer")
 	c.Flags().BoolVar(&behindProxy, "behind-proxy", false, "trust the last X-Forwarded-For entry as the client's address; only for the team relay behind its host's proxy")
-	c.Flags().StringArrayVar(&origins, "origin", nil, "a page origin to admit, as scheme://host[:port] (repeatable; also "+sessionOriginsEnv+"); given, it replaces the default of https://abcdesign.app and loopback pages")
+	c.Flags().StringArrayVar(&origins, "origin", nil, "a page origin to admit, as scheme://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; also "+sessionOriginsEnv+"); given, it replaces the default of https://abcdesign.app and loopback pages")
 	c.Flags().StringArrayVar(&repos, "repo", nil, "a repository to serve sessions for, as owner/name (repeatable; also "+sessionReposEnv+")")
 	c.Flags().StringArrayVar(&owners, "owner", nil, "a GitHub user or organisation whose every repository to serve sessions for (repeatable)")
 	c.Flags().StringVar(&clientID, "client-id", "", "the team's GitHub sign-in app's public client id (default: "+sessionClientIDEnv+")")
@@ -459,7 +462,8 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			"checkout's origin repository on github.com, named in render.yaml as\n" +
 			sessionReposEnv + ", a plain value; it refuses a checkout without one.\n\n" +
 			"render.yaml also names, in " + sessionOriginsEnv + ", the page origins the relay\n" +
-			"admits: each --origin, an https origin, or " + coresession.DefaultPageOrigin + " by default, and,\n" +
+			"admits: each --origin, an https origin followed by the page's base path when it\n" +
+			"is served below one, or " + coresession.DefaultPageOrigin + " by default, and,\n" +
 			"once repository setup has recorded the team's GitHub App in\n" +
 			".abcd/relay/" + coresession.AppFile + ", its public client id, so Render's form asks\n" +
 			"only for the secret. A root render.yaml the team wrote is never touched: the\n" +
@@ -496,7 +500,7 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 				}
 			}
 			for _, o := range pageOrigins {
-				if _, err := coresession.NormalizeRelayOrigin(o); err != nil {
+				if _, err := coresession.NormalizePageOrigin(o); err != nil {
 					return &exitError{Code: 2, Msg: prefix + "--origin " + err.Error() + " (nothing written)"}
 				}
 			}
@@ -554,7 +558,7 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			})
 		},
 	}
-	c.Flags().StringArrayVar(&pageOrigins, "origin", nil, "a session page origin the relay admits, as https://host[:port] (repeatable; default "+coresession.DefaultPageOrigin+")")
+	c.Flags().StringArrayVar(&pageOrigins, "origin", nil, "a session page origin the relay admits, as https://host[:port], followed by the page's base path when it is served below one, as https://host/base/ (repeatable; default "+coresession.DefaultPageOrigin+")")
 	c.Flags().StringVar(&relayOrigin, "relay-origin", "", "the deployed relay's https origin, as https://host[:port]; given, .abcd/relay/relays.json names it as the relay this repository trusts")
 	c.Flags().StringVar(&release, "release", "", "the abcd release tag to pin, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)")
 	return c

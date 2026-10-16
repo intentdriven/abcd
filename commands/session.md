@@ -163,7 +163,10 @@ connection itself comes from loopback. By default it admits a page from
 `https://abcdesign.app` or loopback; `--origin` (repeatable) replaces that
 list, so the relay then admits exactly the origins named, and without
 `--origin` so does `ABCD_SESSION_ORIGINS`, a comma list of origins, which the
-blueprint sets on the team's relay. `--json` prints the
+blueprint sets on the team's relay. An entry for a page served below a base
+path names it after the origin, as `page --base-path` wrote it
+(`https://<host>/<base>/`); the sign-in's callback forwards only to the
+page's own base path, the root for an entry that names none. `--json` prints the
 start line as an object with `url`, `loopback`, `behind_proxy`, `sign_in`,
 `repos`, `owners`, `any_repository` and `hint`.
 
@@ -235,7 +238,8 @@ in the Dockerfile. `--release` defaults to this abcd's own version when that is
 a release. `render.yaml` sets `ABCD_SESSION_REPOS` to this checkout's origin
 repository on github.com, the one the relay serves, and `ABCD_SESSION_ORIGINS`
 to the session page origins the relay admits: `https://abcdesign.app`, or each
-https origin `--origin` (repeatable) names. With `--relay-origin`, the
+https origin `--origin` (repeatable) names, followed by the page's base path
+when it is served below one (`https://<host>/<base>/`). With `--relay-origin`, the
 deployed relay's https origin once Render has given it one, it also writes
 `.abcd/relay/relays.json`, naming that relay as the one the repository
 trusts; the session page reads it. It then prints the callback URL the
@@ -287,7 +291,9 @@ whose 404 fallback serves `404.html`, such as GitHub Pages, is how
 the site's root, or from under `--base-path` when the site is served below one
 (a project's GitHub Pages address, `owner.github.io/<repo>/`), so it then opens
 at `<base-path>/<owner>/<repo>/brief/`; the base path is plain path segments,
-and an address without the trailing slash is sent on to it. The page connects
+and an address without the trailing slash is sent on to it. A relay admits a
+page served below a base path through an `--origin` naming it,
+`https://<host>/<base>/`. The page connects
 only to the relay the person names and to `api.github.com`, and it sends the
 person to `github.com` for sign-in and to open the pre-filled issues a session
 sends. The directory is the one the user names; never publish or deploy it for
