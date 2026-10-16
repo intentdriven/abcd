@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -67,12 +68,51 @@ func noReservations(t *testing.T, bare string) {
 	}
 }
 
+// setSeverity rewrites id's open record in the checkout at dir to severity.
+func setSeverity(t *testing.T, dir, id, severity string) {
+	t.Helper()
+	matches, _ := filepath.Glob(filepath.Join(dir, ".abcd", "work", "issues", "open", id+"-*.md"))
+	if len(matches) != 1 {
+		t.Fatalf("%s holds no open record of %s", dir, id)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var out []string
+	for _, ln := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(ln, "severity: ") {
+			ln = "severity: " + strconv.Quote(severity)
+		}
+		out = append(out, ln)
+	}
+	if err := os.WriteFile(matches[0], []byte(strings.Join(out, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // TestABehindClonesMovePassesOverAnIssueResolvedOnOrigin: Quinn resolves the
 // head of the queue on origin; Pat's checkout, one commit behind, neither
 // reserves, judges nor opens a lane for it, and takes the next issue instead.
+// That issue is major in Pat's checkout and lowered to minor on origin in the
+// same commit, so the lane opens only because its start check judges it by the
+// move's plan from origin, not by the checkout's ledger.
 func TestABehindClonesMovePassesOverAnIssueResolvedOnOrigin(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
-	resolveOnOrigin(t, bare, secondIssue)
+	pushFromOtherCopy(t, bare, "raise "+eligibleIssue, func(dir string) { setSeverity(t, dir, eligibleIssue, "major") })
+	repo.Git("fetch", "-q", "origin")
+	repo.Git("merge", "-q", "--ff-only", "origin/main")
+	pushFromOtherCopy(t, bare, "resolve "+secondIssue+", lower "+eligibleIssue, func(dir string) {
+		setSeverity(t, dir, eligibleIssue, "minor")
+		matches, _ := filepath.Glob(filepath.Join(dir, ".abcd", "work", "issues", "open", secondIssue+"-*.md"))
+		if len(matches) != 1 {
+			t.Fatalf("origin holds no open record of %s", secondIssue)
+		}
+		if err := os.MkdirAll(filepath.Join(dir, ".abcd", "work", "issues", "resolved"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		gitIn(t, dir, "mv", matches[0], filepath.Join(dir, ".abcd", "work", "issues", "resolved", filepath.Base(matches[0])))
+	})
 
 	res, err := Drain(repo.Root(), Options{}, DrainOptions{})
 	if err != nil {
