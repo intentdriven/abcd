@@ -1,7 +1,12 @@
 package capture
 
 import (
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
+	"os"
+	"path"
+	"path/filepath"
 	"slices"
 	"sort"
 	"strings"
@@ -10,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/launch"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -182,16 +188,23 @@ func waitsOnRuling(remedy string) bool {
 	return rest == "" || rest[0] == ':' || rest[0] == ' ' || rest[0] == '\t' || rest[0] == '\n' || rest[0] == '\r'
 }
 
-// drainOrder states the ordering rule r takes eligible issues in.
-func drainOrder(r drainrule.Rule) string {
+// drainOrder states the ordering rule r takes eligible issues in, spread or
+// not (spreadOrder).
+func drainOrder(r drainrule.Rule, spread bool) string {
+	then := "oldest first"
+	if spread {
+		then = "this drain's own order, a rendezvous hash of its holder, its copy and the issue id"
+	}
 	return "category " + strings.Join(r.Categories, ", ") + "; then " +
-		strings.Join(r.Severities, " before ") + "; then oldest first"
+		strings.Join(r.Severities, " before ") + "; then, within each, the issues naming a file before those naming a directory or no path; then " + then
 }
 
 // orderEligible sorts eligible verdicts by the drain order: category, then
-// severity, then oldest first (ascending id number; ids are minted in time
-// order, the hand-numbered ordinals before the timestamp ids).
-func orderEligible(vs []DrainVerdict, r drainrule.Rule) {
+// severity, then the issues whose found_at names a file before the rest
+// (fileScoped), then each part oldest first (ascending id number; ids are
+// minted in time order, the hand-numbered ordinals before the timestamp ids),
+// or, with a spread key, in that key's own order (spreadOrder).
+func orderEligible(vs []DrainVerdict, r drainrule.Rule, fileScoped map[string]bool, spread string) {
 	sort.SliceStable(vs, func(i, j int) bool {
 		a, b := vs[i], vs[j]
 		if ca, cb := slices.Index(r.Categories, string(a.Category)), slices.Index(r.Categories, string(b.Category)); ca != cb {
@@ -200,8 +213,74 @@ func orderEligible(vs []DrainVerdict, r drainrule.Rule) {
 		if sa, sb := slices.Index(r.Severities, string(a.Severity)), slices.Index(r.Severities, string(b.Severity)); sa != sb {
 			return sa < sb
 		}
+		if fa, fb := fileScoped[a.ID], fileScoped[b.ID]; fa != fb {
+			return fa
+		}
+		if spread != "" {
+			if wa, wb := spreadWeight(spread, a.ID), spreadWeight(spread, b.ID); wa != wb {
+				return wa > wb
+			}
+		}
 		return issNumber(a.ID) < issNumber(b.ID)
 	})
+}
+
+// spreadWeight is an issue's rendezvous (highest random weight) hash under a
+// spread key: the first eight bytes of sha256(spread, NUL, id), the heaviest
+// taken first. Each account's key gives it its own stable order over a group,
+// and two keys disagree on the head of a group as often as chance allows, so
+// drains on several accounts and copies spread across a group with no
+// coordinator (spreadOrder; dcn-2610161040368890).
+func spreadWeight(spread, id string) uint64 {
+	sum := sha256.Sum256([]byte(spread + "\x00" + id))
+	return binary.BigEndian.Uint64(sum[:8])
+}
+
+// fileScopedIssues reports, by id, the eligible issues whose found_at names a
+// file rather than a directory: the path is asked of dirs, or, when it is
+// nil, looked up in the checkout's working tree. An issue whose found_at names
+// no path is not file-scoped, nor is one naming a directory.
+func fileScopedIssues(repoRoot string, vs []DrainVerdict, issues []Issue, dirs func([]string) (map[string]bool, error)) (map[string]bool, error) {
+	byID := make(map[string]Issue, len(issues))
+	for _, iss := range issues {
+		byID[iss.ID] = iss
+	}
+	paths := map[string]string{}
+	var asked []string
+	for _, v := range vs {
+		p, ok := foundAtPath(byID[v.ID].FoundAt)
+		if !ok {
+			continue
+		}
+		p = path.Clean(p)
+		if !fsutil.ValidRelPath(p) {
+			continue
+		}
+		paths[v.ID] = p
+		if !slices.Contains(asked, p) {
+			asked = append(asked, p)
+		}
+	}
+	if dirs == nil {
+		dirs = func(ps []string) (map[string]bool, error) {
+			out := map[string]bool{}
+			for _, p := range ps {
+				if fi, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(p))); err == nil && fi.IsDir() {
+					out[p] = true
+				}
+			}
+			return out, nil
+		}
+	}
+	isDir, err := dirs(asked)
+	if err != nil {
+		return nil, fmt.Errorf("telling the eligible issues naming a file from those naming a directory: %w", err)
+	}
+	out := make(map[string]bool, len(paths))
+	for id, p := range paths {
+		out[id] = !isDir[p]
+	}
+	return out, nil
 }
 
 // DrainPlanRequest is the input to PlanDrain.
@@ -212,6 +291,14 @@ type DrainPlanRequest struct {
 	// checkout's: a commit's, as a drain reads origin's default branch
 	// (treeledger.go). The rule and the release tags are still the checkout's.
 	Ledger *TreeLedger
+	// Spread is the key an account's own order within each group is drawn
+	// from (the drain's holder and copy key, spreadOrder); "" takes each
+	// group's parts oldest first.
+	Spread string
+	// Dirs reports which of the paths named are directories where the ledger
+	// was read (a drain's, origin's default branch); nil looks in the
+	// checkout's working tree.
+	Dirs func(paths []string) (map[string]bool, error)
 }
 
 // DrainPlan is what a drain would do over the open ledger, and writes nothing:
@@ -299,7 +386,11 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 		rest = append(rest, DrainVerdict{ID: id, Path: sk.Path, Outcome: DrainUnreadable, Rule: RuleUnreadable,
 			Reason: fmt.Sprintf("the reader refuses the record at its %s stage: %s", sk.Layer, termsafe.Sanitize(sk.Error))})
 	}
-	orderEligible(eligible, rule)
+	fileScoped, err := fileScopedIssues(repoRoot, eligible, lr.Issues, req.Dirs)
+	if err != nil {
+		return DrainPlan{}, err
+	}
+	orderEligible(eligible, rule, fileScoped, req.Spread)
 	sort.SliceStable(rest, func(i, j int) bool { return issNumber(rest[i].ID) < issNumber(rest[j].ID) })
 	plan := DrainPlan{
 		Record:        rule.Record,
@@ -308,7 +399,7 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 		Anchor:        anchor.tag,
 		AnchorUnknown: anchor.unknown,
 		AnchorStale:   anchor.stale,
-		Order:         drainOrder(rule),
+		Order:         drainOrder(rule, req.Spread != ""),
 		Dispositions:  append(append([]DrainVerdict{}, eligible...), rest...),
 		Counts:        map[DrainOutcome]int{},
 		open:          make(map[string]Issue, len(lr.Issues)),

@@ -84,9 +84,14 @@ eligible issue before its lane opens, the host judgement over its remedy
 
 Eligible issues come first, in the order a drain takes them: by category
 `tech-debt`, `documentation`, `inconsistency`, `drift`, `bug`, `ux`, then
-`security` when the rule takes it; then by severity, `nitpick` first; then
-oldest first. The payload's `order` states the rule. Every other open issue
-follows, by id.
+`security` when the rule takes it; then by severity, `nitpick` first; then,
+within each group of one category and severity, the issues whose `found_at`
+names a file before those naming a directory or no path; then each part oldest
+first without `origin`, or, on `origin`, in this drain's own order: a
+rendezvous hash of the holder, this copy's key and the issue id, so every
+account and copy keeps one order from move to move and two of them start a
+group at different issues. The payload's `order` states the rule. Every other
+open issue follows, by id.
 
 ## Loosened floors
 
@@ -178,15 +183,20 @@ what it did in `next`:
   could not tell. Do not open the lane, edit the record or fix anything while
   judging.
 - **It reserves the issue.** In a checkout with a remote named `origin`, the
-  drain reserves each issue on it as the issue's lane starts, as `abcd reserve`
-  does, with the path the issue's `found_at` names (a `:line` locator dropped)
-  as the footprint, so every other person and computer sees it is taken. An
+  drain reserves each issue on it before it asks the judgement over it, as
+  `abcd reserve` does, with the path the issue's `found_at` names (a `:line`
+  locator dropped) as the footprint, so every other person and computer sees it
+  is taken and no two accounts judge one issue. A `yes` releases that
+  reservation, and the lane a `no` opens starts on it, with no second push. An
   issue whose `found_at` names no repository-relative path cannot be reserved:
   it is handed back before any judgement is asked over it, `from:
   "reservation"`, with the reason `<iss-N> has no found_at path to reserve it
   with; handed back`, and the drain moves to the next issue. An issue another
-  person holds is passed over (`passed`, check `reservation`, naming the
-  holder), and a reservation refused for a reason of this checkout's own (no
+  copy holds in the move's view, or whose footprint shares a path with another
+  copy's live reservation, is passed over before anything is pushed or asked
+  (`passed`, check `reservation`, naming the holder), with no fetch beyond the
+  move's one; one the push itself finds held is passed over the same way. A
+  reservation refused for a reason of this checkout's own (no
   GitHub username, `origin` not answering) refuses the move, nothing opened.
   The lane's run then renews the reservation, fences its landing on it and
   tombstones it once it lands (`commands/implement.md`); when the lane is

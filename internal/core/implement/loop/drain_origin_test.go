@@ -144,12 +144,14 @@ func TestABehindClonesMovePassesOverAnIssueResolvedOnOrigin(t *testing.T) {
 // TestAnIssueOpenOnOriginAndAbsentHereIsJudgedAndOpened: Quinn files an issue
 // on origin that Pat's checkout has never fetched into its working tree; Pat's
 // drain judges it over origin's remedy and opens its lane from origin's record.
+// It is tech-debt, the group the order takes first, since within one group
+// each account takes its own order.
 func TestAnIssueOpenOnOriginAndAbsentHereIsJudgedAndOpened(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	const remedy = "Name the new flag on the drain page."
 	pushFromOtherCopy(t, bare, "file "+originIssue, func(dir string) {
 		if _, err := capture.Capture(capture.CaptureRequest{RepoRoot: dir, Text: "The drain page misses a flag (" + originIssue + ")",
-			Severity: capture.SeverityMinor, Category: capture.Category("documentation"), Source: "manual-test", Slug: "flag",
+			Severity: capture.SeverityMinor, Category: capture.Category("tech-debt"), Source: "manual-test", Slug: "flag",
 			FoundDuring: "the loop's tests", FoundAt: "commands/drain.md", ForceID: originIssue, Remedy: remedy}); err != nil {
 			t.Fatalf("capture on origin: %v", err)
 		}

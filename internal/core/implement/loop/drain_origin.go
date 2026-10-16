@@ -122,7 +122,9 @@ func DrainDryRun(repoRoot string, now time.Time) (DrainPreview, error) {
 	if has {
 		v, _, why := lastFetchedOrigin(repoRoot)
 		if why == "" {
-			plan, origin, err := planFromOrigin(repoRoot, v, now)
+			// The order is this copy's as its next move draws it, the key
+			// read and never minted: the dry run writes nothing.
+			plan, origin, err := planFromOrigin(repoRoot, v, now, drainSpread(repoRoot, claim.OwnCopyKey(repoRoot)))
 			if err != nil {
 				return DrainPreview{}, err
 			}
@@ -155,14 +157,48 @@ func lastFetchedOrigin(repoRoot string) (v originView, kind, why string) {
 	return originView{ref: ref, commit: sha}, "", ""
 }
 
-// planFromOrigin plans the drain from the ledger v's commit holds, and
-// describes the view at now.
-func planFromOrigin(repoRoot string, v originView, now time.Time) (capture.DrainPlan, *DrainOrigin, error) {
+// drainSpread is the key a drain on origin draws its own order within each
+// group from (capture.DrainPlanRequest.Spread): the holder this copy resolves
+// to with no network act, and the copy's key, so two accounts, and one
+// person's two copies, take a group in different orders, each the same at
+// every move. "" when neither can be told, which takes each group oldest first.
+func drainSpread(repoRoot, copyKey string) string {
+	holder := strings.ToLower(claim.ReaderHolder(repoRoot, claim.Options{}))
+	if holder == "" && copyKey == "" {
+		return ""
+	}
+	return holder + "\x00" + copyKey
+}
+
+// treeDirs reports which of the paths named v's commit holds as a directory,
+// through one listing of the commit's tree.
+func treeDirs(repoRoot string, v originView) func([]string) (map[string]bool, error) {
+	return func(paths []string) (map[string]bool, error) {
+		out := map[string]bool{}
+		if len(paths) == 0 {
+			return out, nil
+		}
+		entries, err := baseTree{root: repoRoot, sha: v.commit}.listPaths(paths, false)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range entries {
+			if e.kind == "tree" && slices.Contains(paths, e.path) {
+				out[e.path] = true
+			}
+		}
+		return out, nil
+	}
+}
+
+// planFromOrigin plans the drain from the ledger v's commit holds, each group
+// in spread's order, and describes the view at now.
+func planFromOrigin(repoRoot string, v originView, now time.Time, spread string) (capture.DrainPlan, *DrainOrigin, error) {
 	ledger, err := treeLedger(repoRoot, v)
 	if err != nil {
 		return capture.DrainPlan{}, nil, err
 	}
-	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot, Ledger: ledger})
+	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot, Ledger: ledger, Spread: spread, Dirs: treeDirs(repoRoot, v)})
 	if err != nil {
 		return capture.DrainPlan{}, nil, err
 	}
@@ -314,7 +350,14 @@ func movePlan(repoRoot string, st *DrainState, rule drainrule.Rule, now time.Tim
 		return capture.RuleOnlyPlan(rule), nil, fmt.Sprintf("%s, so the move plans nothing: it never plans from what this checkout last saw; it waits on %s as for an outage (probe %d since %s) and looks again at or after %s; run `abcd drain` again then",
 			why, claim.Remote, w.Probes, w.Since.UTC().Format(time.RFC3339), at), "", true, nil
 	}
-	if plan, origin, err = planFromOrigin(repoRoot, v, now); err != nil {
+	// The copy's key is minted before the first plan draws the order from
+	// it, so the order a move asks a judgement in is the one the next move
+	// keeps (the first reservation would otherwise mint it in between).
+	key, err := claim.CopyKey(repoRoot)
+	if err != nil {
+		return plan, nil, "", "", false, err
+	}
+	if plan, origin, err = planFromOrigin(repoRoot, v, now, drainSpread(repoRoot, key)); err != nil {
 		return plan, nil, "", "", false, err
 	}
 	if w := st.OriginWait; w != nil {

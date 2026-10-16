@@ -1,8 +1,10 @@
 package claim
 
 import (
+	"fmt"
 	"path"
 	"strings"
+	"time"
 )
 
 // MaxLive is the most live reservations one person may hold, counted by
@@ -104,4 +106,37 @@ func sharedPath(a, b string) (string, bool) {
 		return a, true
 	}
 	return "", false
+}
+
+// Contention is why a reservation of id with footprint would back off on the
+// view s at now, as crowding and the record's own tip would judge it: id
+// reserved by another copy (live, or unreadable within its hold), or a path of
+// footprint shared with another copy's live reservation of another record. ""
+// when nothing in the view holds it off; this copy's own reservations never
+// do. It reads the view alone, so a caller passes over held work with no
+// fetch and no push; the reservation act itself, whose push is the
+// compare-and-swap, still judges what origin holds by then.
+func (s Snapshot) Contention(id string, footprint []string, now time.Time) string {
+	if r, ok := s.Lookup(id); ok && r.Copy != CopyThis {
+		switch {
+		case r.State == StateLive:
+			return fmt.Sprintf("%s is reserved by %s until %s, %s", id, r.Holder, stamp(r.EffectiveExpiry), s.AsOf(now))
+		case r.State == StateUnreadable && now.Before(r.EffectiveExpiry):
+			return fmt.Sprintf("%s has an unreadable reservation holding it until %s, %s", id, stamp(r.EffectiveExpiry), s.AsOf(now))
+		}
+	}
+	for _, r := range s.Reservations {
+		if r.State != StateLive || r.Record == id || r.Copy == CopyThis {
+			continue
+		}
+		for _, want := range footprint {
+			for _, held := range r.Footprint {
+				if shared, ok := sharedPath(want, held); ok {
+					return fmt.Sprintf("%s is in the footprint of %s, reserved by %s until %s, %s",
+						echo(shared), r.Record, r.Holder, stamp(r.EffectiveExpiry), s.AsOf(now))
+				}
+			}
+		}
+	}
+	return ""
 }

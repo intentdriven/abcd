@@ -282,11 +282,17 @@ const maxBaseListing = 8 << 20
 // list is `git ls-tree -l` of the base at path: a file names itself, and
 // "dir/" names the directory's entries, one level deep unless recursive.
 func (b baseTree) list(path string, recursive bool) ([]baseEntry, error) {
+	return b.listPaths([]string{path}, recursive)
+}
+
+// listPaths is list over several paths, in one listing: a directory named
+// without its trailing slash names itself.
+func (b baseTree) listPaths(paths []string, recursive bool) ([]baseEntry, error) {
 	args := []string{"ls-tree", "-l", "-z", "--full-tree"}
 	if recursive {
 		args = append(args, "-r")
 	}
-	out, err := gitutil.RunCapped(b.root, maxBaseListing, append(args, b.sha, "--", path)...)
+	out, err := gitutil.RunCapped(b.root, maxBaseListing, append(append(args, b.sha, "--"), paths...)...)
 	if err != nil {
 		return nil, err
 	}

@@ -73,6 +73,10 @@ type Options struct {
 	// noReserve starts a run on an origin without reserving its key: a test
 	// fixture that stands a run up and takes its reservation by hand sets it.
 	noReserve bool
+	// held is the reservation the drain took on the issue before it asked
+	// the judgement over it: the lane a no opens starts on it, and
+	// reserveStart pushes nothing. Nil, the start reserves as it always has.
+	held *heldReservation
 	// plan is the drain plan an issue's start check reads in place of the
 	// checkout's ledger: the drain sets it to the plan its move read from
 	// origin's default branch (drain_origin.go). Nil, the check reads the

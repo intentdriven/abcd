@@ -121,9 +121,19 @@ Eligible issues are taken by category in the order `tech-debt`,
 `documentation`, `inconsistency`, `drift`, `bug`, `ux` (clean-ups and text
 first, on the evidence that they merge most often), then `security` when the
 record takes it; then by severity, `nitpick` before `minor` before `major`
-before `critical`, as far as the record takes them; then oldest first. The
-record's lists are sets: the order is abcd's. The dry run states the order and
-lists the eligible issues first in it, then every other open issue by id.
+before `critical`, as far as the record takes them. Within each group of one
+category and one severity, the issues whose `found_at` names a file come before
+those naming a directory or no path, and each part is taken oldest first in a
+checkout with no remote named `origin`. A drain on `origin` takes each part in
+its own order instead: a rendezvous (highest random weight) hash of the holder
+this copy resolves to, the copy's key and the issue id, the first eight bytes
+of their sha256 read as a number, heaviest first (`spreadWeight` in
+`internal/core/capture/eligible.go`; dcn-2610161040368890). Each account, and
+each of one person's copies, keeps one order from move to move, and two of them
+start a group at different issues, so drains on several accounts spread across
+it with no coordinator. The record's lists are sets: the order is abcd's. The
+dry run states the order and lists the eligible issues first in it, then every
+other open issue by id.
 
 ## Loud loosening
 
@@ -192,15 +202,21 @@ on origin's default branch backs off, with a tip or without one
    the implement loop for the issue and names the run. An issue the loop's own
    checks refuse (a peer holds it) is passed over, named with the check. When
    none is left, the drain ends and says so. In a checkout with a remote named
-   `origin`, the issue is first reserved there as its lane starts, with the
-   path its `found_at` names as the footprint (itd-2609091034175565, C37): an
-   issue whose `found_at` names no repository-relative path is handed back
-   before any judgement over it, `from` `reservation`, with the reason
-   "`<iss-N>` has no found_at path to reserve it with; handed back", and the
-   drain moves on; one another person holds is passed over with the check
-   `reservation`, naming the holder; and a reservation refused for this
-   checkout's own reason (no GitHub username, `origin` not answering) refuses
-   the move. The run records the reservation, which its steps renew, fence
+   `origin`, the issue is first reserved there before its judgement is asked,
+   with the path its `found_at` names as the footprint (itd-2609091034175565,
+   C37; spc-2610161044461448 step 2), so the reservation push is the
+   compare-and-swap that keeps two accounts from judging one issue: a yes
+   releases that reservation, and the lane a no opens starts on it with no
+   second push. An issue whose `found_at` names no repository-relative path is
+   handed back before any judgement over it, `from` `reservation`, with the
+   reason "`<iss-N>` has no found_at path to reserve it with; handed back", and
+   the drain moves on. An issue another copy holds in the move's view, or whose
+   footprint shares a path with another copy's live reservation, is passed over
+   with the check `reservation`, naming the holder, before anything is pushed
+   or asked, so passing over held work adds no fetch to the move's one; one
+   the reservation push itself finds held (a race since the fetch) is passed
+   over the same way. A reservation refused for this checkout's own reason (no
+   GitHub username, `origin` not answering) refuses the move. The run records the reservation, which its steps renew, fence
    and tombstone ([`27-implement.md`](27-implement.md)); every drain move
    renews, at half its lease, the reservation of each issue lane parked at
    land, so a pull request waiting on a person stays held while the drain

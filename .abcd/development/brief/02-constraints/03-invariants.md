@@ -35,7 +35,10 @@ The following are non-negotiable invariants — any architectural choice that vi
    one tombstone push; `drain`, whose meaning includes one fetch of the
    reservations and origin's default branch at the start of every move, which
    the move plans from (`--dry-run` fetches nothing and reads that view as last
-   fetched, with its age), reserving each issue as its lane starts and
+   fetched, with its age), reserving each issue before its judgement is asked
+   (a fetch and one push; an issue or footprint another copy holds in the
+   move's view is passed over with neither, and a yes releases it with a
+   tombstone push) and
    renewing, at half its lease, the reservation of each lane parked at land; and `implement step` and `implement receipt`, whose
    meaning includes renewing the run's reservation at half its lease, the land
    fence's fetch and renewal before a merge is armed, and the tombstone once

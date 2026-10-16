@@ -58,20 +58,23 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"does: the drain ends (stopped \"origin\"), and once origin can be fetched again a\n" +
 			"new drain begins.\n\n" +
 			"--dry-run shows every open issue's disposition, the eligible ones first in the\n" +
-			"order a drain takes them (by category, then severity, then oldest first), and\n" +
+			"order a drain takes them (by category, then severity, then the issues naming a\n" +
+			"file before the rest, then each account's own order on origin), and\n" +
 			"writes nothing. It fetches nothing either: it plans from origin's default branch as\n" +
 			"last fetched, and says how old that view is, how many commits the checkout is\n" +
 			"behind it, and which issues open in the checkout it has already finished. The host\n" +
 			"judgement over each eligible remedy does not run; it can only ever hand an issue\n" +
 			"back.\n\n" +
 			"Without --dry-run, each invocation performs one move of the drain and exits. Before\n" +
-			"the next eligible issue's lane opens, the host judges its remedy: the drain writes\n" +
+			"the next eligible issue's lane opens, the host judges its remedy: on origin, the\n" +
+			"drain first reserves the issue (passing over, with no push, any issue or footprint\n" +
+			"another copy holds), then writes\n" +
 			"a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the\n" +
 			"remedy changes what a user sees or a trust boundary, and opens nothing. The host\n" +
 			"writes its answer where the request says and hands it back with --judgement <file>,\n" +
 			"which is validated strictly; a refused answer changes nothing. A yes hands the\n" +
 			"issue back before any lane opens, routed as a lane's hand-back of the same kind\n" +
-			"(below); a no lets the lane open. The judgement can never make an issue eligible:\n" +
+			"(below), and releases its reservation; a no lets the lane open on it. The judgement can never make an issue eligible:\n" +
 			"an answer over an issue that has left the eligible set decides nothing, and one over\n" +
 			"a remedy rewritten since the request is refused and asked again. Once judged, the\n" +
 			"drain hands the next eligible issue, in that order, to the implement loop's issue-keyed\n" +

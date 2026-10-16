@@ -351,6 +351,10 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (at *time.Time, n
 	if o.noReserve {
 		return nil, "", false, nil
 	}
+	if o.held != nil {
+		t := o.held.at
+		return &t, o.held.note, false, nil
+	}
 	ok, err := claim.HasOrigin(repoRoot)
 	if err != nil || !ok {
 		return nil, "", false, err
@@ -362,6 +366,16 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (at *time.Time, n
 		}
 	}
 	return reserveKey(repoRoot, chk.Key, claim.Request{Footprint: fp, TakeOver: o.TakeOver}, o.now())
+}
+
+// heldReservation is the reservation a drain took on an issue before it
+// asked the judgement over it, as the move's view shows it: when it was
+// claimed, and the run record's line for it. The lane a no opens starts on
+// it with no second push; it is not fresh, so a start that then fails leaves
+// it to the drain, which releases it.
+type heldReservation struct {
+	at   time.Time
+	note string
 }
 
 // reserveResumed is a resumed run's reservation: `abcd build` over a run in

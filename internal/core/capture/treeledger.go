@@ -114,9 +114,10 @@ func listTree(l *TreeLedger) ([]Issue, []SkipRecord, error) {
 }
 
 // RuleOnlyPlan is the plan of a drain move that read no ledger: the rule, its
-// record, the floors it loosens and its order, with no disposition.
+// record, the floors it loosens and its order (a move reading origin, whose order is
+// spread per account), with no disposition.
 func RuleOnlyPlan(rule drainrule.Rule) DrainPlan {
-	return DrainPlan{Record: rule.Record, Rule: rule, Loosened: rule.Loosened, Order: drainOrder(rule),
+	return DrainPlan{Record: rule.Record, Rule: rule, Loosened: rule.Loosened, Order: drainOrder(rule, true),
 		Dispositions: []DrainVerdict{}, Counts: map[DrainOutcome]int{}}
 }
 
