@@ -74,7 +74,7 @@ A prompt that matches no domain injects nothing (zero added tokens).
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`, `SCRATCH`, `SHELL`, `GRILL`. Each carries recall keywords and its rules, bundled
+`OPINIONS`, `LOAD`, `SHELL`, `GRILL`, `SCRATCH`. Each carries recall keywords and its rules, bundled
 in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 `OPINIONS` points at the canonical conventions under
 `.abcd/development/principles/` rather than copying them. `LOAD` carries the
@@ -95,10 +95,14 @@ check in `abcd guard hook` enforces, and recalls on words of asking and
 choosing, so it lands in most sessions. A repository that does not want it
 silences it with `{"GRILL": {"state": "dormant"}}` in `.abcd/rules.json`.
 `SCRATCH` says where a session's working files go: what a later turn,
-session or agent reruns or reads goes in `.abcd/.work.local/scratch/` (or
-`logs/`), a verifier's copy under `~/.abcd.noindex/`, and the host's own
-scratchpad keeps only the turn's throwaway files, since a reboot or a new
-session loses it.
+session or agent reruns or reads (a helper script, a queue ticket, a handover)
+goes in the main checkout's `.abcd/.work.local/scratch/` (or `logs/`) or a
+directory under `~/.abcd.noindex/`, never in a linked worktree's local tier,
+which `git worktree remove` deletes with the worktree; a file for that
+worktree's own work alone may stay in its own tier. A verifier's copy goes in a
+directory of its own under `~/.abcd.noindex/` keyed on the root-commit SHA, and
+the host's own scratchpad keeps only the turn's throwaway files, since a reboot
+or a new session loses it.
 
 ### Reset triggers
 
@@ -292,9 +296,10 @@ with `*CONCURRENCY` to force it).
 - **A verifier works on a copy** (`git -C <wt> archive HEAD | tar -x -C
   <scratch>`), never on a live worktree, and a merge, commit, push or gate run
   proves the tree clean **immediately before the act** (itd-193). The copy goes
-  outside every working tree: the session's scratchpad or a directory under
-  `~/.abcd.noindex/`, never `.abcd/.work.local/scratch/`, where every verb run
-  from it reads the worktree around it instead.
+  outside every working tree, in a directory of its own under `~/.abcd.noindex/`
+  keyed on the root-commit SHA (the session's scratchpad only for a copy the
+  same turn makes and discards), never `.abcd/.work.local/scratch/`, where every
+  verb run from it reads the worktree around it instead.
 - **A session cutting a release has the final say on what merges before its
   tag.** A change ready while a peer is mid-cut is handed over as a pull
   request and merged or held on the cutting session's ruling.

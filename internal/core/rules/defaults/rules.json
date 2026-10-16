@@ -77,9 +77,9 @@
     },
     "SCRATCH": {
       "state": "active",
-      "recall": ["scratch", "scratchpad", "tmp", "temporary", "script", "helper", "watcher", "queue", "handover"],
+      "recall": ["scratch", "scratchpad", "tmp", "temporary", "script", "watcher", "handover"],
       "rules": [
-        "Keep what is used again in the checkout, not in the host's scratchpad: anything a later turn, session or agent reruns or reads — a helper script, a queue ticket, a log, pull-request text, a handover — goes in the checkout's .abcd/.work.local/scratch/ (logs/ for run output), and a verifier's copy goes under ~/.abcd.noindex/, outside every working tree. The host's scratchpad (the temporary folder under /tmp it hands each session) holds only throwaway files for the turn at hand, because it does not survive a reboot or a new session. What stays out of tracked directories is the LIFEBOAT rule on runtime artefacts, and where a tool may create directories is the OPINIONS rule that the user's directory is theirs."
+        "Keep what is used again out of the host's scratchpad: anything a later turn, session or agent reruns or reads — a helper script, a queue ticket, a log, pull-request text, a handover — goes in the main checkout's .abcd/.work.local/scratch/ (logs/ for run output) or a directory under ~/.abcd.noindex/, never in a linked worktree's .abcd/.work.local/, which git worktree remove deletes with the worktree and without asking; a file for that worktree's own work alone may stay in its own tier. A verifier's copy goes outside every working tree, in a directory of its own under ~/.abcd.noindex/ keyed on the root-commit SHA (the session's scratchpad only for a copy the same turn makes and discards). The host's scratchpad (the temporary folder it hands each session) holds only throwaway files for the turn at hand, because it does not survive a reboot or a new session. LIFEBOAT's runtime-artefacts rule says what stays out of tracked directories; OPINIONS' user's-directory rule says where a tool may create one."
       ]
     },
     "PII": {
