@@ -491,10 +491,12 @@ const maxLeftBytes = 128 << 10
 // a turn after every branch already waiting, and one left without a walk
 // keeps the turn it was first left at, so no branch waits behind more than
 // the branches left before it, however many appear or move after it. A
-// branch the cap cut short before takes in half its share from its newest
-// unread commits and the rest from its oldest (freshRuns), and is marked read
-// at the newest commit beneath which every commit is read, so each unread
-// commit is read within a bounded number of intakes.
+// branch already left, cut short by the cap or left without a walk, takes in
+// half its share, rounded down, from its newest unread commits and the rest
+// from its oldest (freshRuns), and is marked read at the newest commit
+// beneath which every commit is read, so each unread commit is read within a
+// bounded number of intakes while the commits above the mark stay within the
+// walk's limit; past it the branch is shown as doubtful.
 // A branch whose name is not a lower-case username is tallied, never read and
 // never kept. One whose tip is not a commit, or whose walk could not verify
 // continuity (it moved back or was rewritten, ran past the walk's limit,

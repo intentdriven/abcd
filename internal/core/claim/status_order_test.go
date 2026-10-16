@@ -10,9 +10,10 @@ import (
 
 // The order one intake reads the status branches in, and the commits of each:
 // every branch left unread is walked before any branch read since, in the
-// order they were left, and a branch the cap cut short before takes in its
-// oldest unread commits beside its newest, so no commit is left unread for
-// more than a bounded number of intakes, however often the branches move.
+// order they were left, and a branch already left takes in its oldest unread
+// commits beside its newest, so no commit is left unread for more than a
+// bounded number of intakes while the commits above a branch's mark stay
+// within the walk's limit.
 
 // withIntakeCap lowers maxIntakeCommits to n for the test.
 func withIntakeCap(t *testing.T, n int) {

@@ -65,9 +65,9 @@ marked read at its tip, and is kept with the turn it was left at. The next
 intake walks every branch left unread before any other, the one left first
 first; a branch walked and left again goes behind every branch already
 waiting, and one left without a walk keeps its turn, so no branch waits
-behind more than the branches left before it. Once the cap has cut a branch
-short, it takes half its share from its newest unread commits and the rest
-from its oldest, and is marked read at the newest commit beneath which every
+behind more than the branches left before it. A branch already left, cut
+short by the cap or left without a walk, takes half its share, rounded down,
+from its newest unread commits and the rest from its oldest, and is marked read at the newest commit beneath which every
 commit is read, so every unread commit is read within a bounded number of
 intakes while the commits above the mark stay within the walk's limit of
 1,000. Once more than that lies above the mark, the walk reads only the
