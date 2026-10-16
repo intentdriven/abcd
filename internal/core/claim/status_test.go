@@ -194,9 +194,10 @@ func TestHistoryAFirstReadBringsInIsNotNews(t *testing.T) {
 }
 
 // TestAFailedFetchIsSaidAndNeverShownAsSilence is C10: a failed fetch is shown
-// as unread since the last read, with git's reason, for each namespace on its
-// own; a fetch that succeeds clears it; a checkout with no shared remote shows
-// nothing.
+// as unread since the last read, for each namespace on its own: the block in
+// fixed words, never git's own text, and `abcd status`'s line with git's
+// reason; a fetch that succeeds clears it; a checkout with no shared remote
+// shows nothing.
 func TestAFailedFetchIsSaidAndNeverShownAsSilence(t *testing.T) {
 	w := newWorld(t)
 	maya := w.clone("5+maya@users.noreply.github.com", "")
@@ -211,18 +212,23 @@ func TestAFailedFetchIsSaidAndNeverShownAsSilence(t *testing.T) {
 		t.Fatal("the reservations' fetch from a gone origin succeeded")
 	}
 	got := pat.notes()
-	if !strings.Contains(got, "- reservations unread since 14:00 UTC: ") || strings.Contains(got, "status unread") {
+	if !strings.Contains(got, "- reservations unread since 14:00 UTC: the last fetch failed; `abcd status` says why\n") || strings.Contains(got, "status unread") {
 		t.Fatalf("after the reservations' fetch failed, the block:\n%s\nwant the reservations unread since 14:00 alone", got)
 	}
 	if _, err := FetchStatus(pat.dir, nil, pat.opts()); err == nil {
 		t.Fatal("FetchStatus from a gone origin succeeded")
 	}
 	got = pat.notes()
-	if !strings.Contains(got, "- status unread since 14:00 UTC: ") || !strings.Contains(got, "gone.git") {
-		t.Fatalf("after the status fetch failed, the block:\n%s\nwant the status unread since 14:00 with git's reason", got)
+	if !strings.Contains(got, "- status unread since 14:00 UTC: the last fetch failed; `abcd status` says why\n") || strings.Contains(got, "gone.git") ||
+		strings.Contains(got, "fatal") {
+		t.Fatalf("after the status fetch failed, the block:\n%s\nwant the status unread since 14:00 in fixed words, and none of git's", got)
 	}
-	if v := pat.read(); v.Unread == nil || v.ReservationsUnread == nil || !v.Unread.Since.Equal(t0) {
+	v := pat.read()
+	if v.Unread == nil || v.ReservationsUnread == nil || !v.Unread.Since.Equal(t0) {
 		t.Fatalf("view unread = %+v, %+v; want both kept", v.Unread, v.ReservationsUnread)
+	}
+	if line := UnreadReasonLine("status", *v.Unread); !strings.HasPrefix(line, "status unread since 14:00 UTC: ") || !strings.Contains(line, "gone.git") {
+		t.Fatalf("`abcd status`'s line = %q; want git's reason", line)
 	}
 
 	pat.git("remote", "set-url", "origin", w.bare)

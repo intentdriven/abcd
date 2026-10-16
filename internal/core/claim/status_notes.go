@@ -459,13 +459,27 @@ func UnreadNamesLine(n int) string {
 	return fmt.Sprintf("%d status branches whose names are not read", n)
 }
 
-// UnreadLine is how the block and `abcd status` say a namespace's last
-// fetch failed (C10): "status unread since 09:12 UTC: <reason>", from when it
-// was last read, or from when the fetch failed when it never was.
+// UnreadLine is how the block says a namespace's last fetch failed (C10), in
+// fixed words, never git's: its text, a remote's own words among it, never
+// reaches a session's context. "status unread since 09:12 UTC: the last fetch
+// failed; `abcd status` says why", from when it was last read, or "status
+// never read here: the fetch at 09:12 UTC failed; ..." when it never was.
 func UnreadLine(what string, u Unread) string {
+	if u.Since.IsZero() {
+		return fmt.Sprintf("%s never read here: the fetch at %s UTC failed; `abcd status` says why", what, u.FailedAt.Format("15:04"))
+	}
+	return fmt.Sprintf("%s unread since %s UTC: the last fetch failed; `abcd status` says why", what, u.Since.Format("15:04"))
+}
+
+// UnreadReasonLine is how `abcd status` says it, with git's reason,
+// home-redacted: "status unread since 09:12 UTC: <reason>".
+func UnreadReasonLine(what string, u Unread) string { return unreadLine(what, u, u.Reason) }
+
+// unreadLine is a failed fetch's line, ending in reason.
+func unreadLine(what string, u Unread, reason string) string {
 	since := u.Since
 	if since.IsZero() {
-		return termsafe.Sanitize(fmt.Sprintf("%s never read here: the fetch at %s UTC failed: %s", what, u.FailedAt.Format("15:04"), u.Reason))
+		return termsafe.Sanitize(fmt.Sprintf("%s never read here: the fetch at %s UTC failed: %s", what, u.FailedAt.Format("15:04"), reason))
 	}
-	return termsafe.Sanitize(fmt.Sprintf("%s unread since %s UTC: %s", what, since.Format("15:04"), u.Reason))
+	return termsafe.Sanitize(fmt.Sprintf("%s unread since %s UTC: %s", what, since.Format("15:04"), reason))
 }

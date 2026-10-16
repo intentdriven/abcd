@@ -224,7 +224,7 @@ func (out *statusOutput) addStatus(v claim.StatusView, now time.Time) {
 		u    *claim.Unread
 	}{{"status", v.Unread}, {"reservations", v.ReservationsUnread}} {
 		if u.u != nil {
-			out.Unread = append(out.Unread, claim.UnreadLine(u.what, *u.u))
+			out.Unread = append(out.Unread, claim.UnreadReasonLine(u.what, *u.u))
 		}
 	}
 }
