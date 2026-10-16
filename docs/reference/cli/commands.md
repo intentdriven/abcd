@@ -2020,10 +2020,15 @@ command (`--wait -- make preflight`) takes that ancestor's place, ahead of every
 queued waiter. Once it finds all of that clear it waits
 a random 15s to 1m0s and checks everything again, and opens only if the
 re-check is clear too, so two starters in one quiet minute do not start together.
+With a command it then shows itself as running it and looks once more 2s
+later, before starting it: across accounts, which share no hold, two waiters whose
+start and pid disagree can open in one moment, and the one with the higher pid
+stands back, gives up its hold, re-draws its jitter and waits again (at most 3
+times), while the lower pid runs its command.
 The load limit is twice the cores because a busy multi-session machine already
 idles near one core-count of load, so a limit of the cores never opens; one
-waiter at a time is kept by the process table and the hold below, not by the
-load number; and one race run adds about a core-count, so admitting below twice
+waiter at a time is kept by the process table, the hold below and that last
+look, not by the load number; and one race run adds about a core-count, so admitting below twice
 the cores bounds the peak near three times them, under the extreme limit.
 A race run is a process executing go whose go command is `test` with -race, a
 preflight a make whose goals name preflight, and a waiter an abcd running

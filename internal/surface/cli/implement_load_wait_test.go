@@ -203,3 +203,49 @@ func TestImplementLoadWaitNamesAnotherAccountsPreflight(t *testing.T) {
 		t.Fatalf("%d settle lines, want 1:\n%s", n, out)
 	}
 }
+
+// TestImplementLoadWaitMarksUntilTheCommandStarts: the command form shows in
+// the process table as running its command from the moment it opens, by its
+// mark, and stops the mark once the command has started.
+func TestImplementLoadWaitMarksUntilTheCommandStarts(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	marked, stopped := 0, 0
+	prev := loadMark
+	loadMark = func() (func(), error) {
+		marked++
+		return func() { stopped++ }, nil
+	}
+	t.Cleanup(func() { loadMark = prev })
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", "exit 0")
+	if code != 0 || marked != 1 || stopped != 1 {
+		t.Fatalf("exit %d, marked %d, stopped %d; want 0, one mark, stopped once\n%s%s", code, marked, stopped, out, errOut)
+	}
+}
+
+// TestImplementLoadWaitSaysWhenItStandsBack: a waiter whose last look finds
+// another waiter opened in the same moment with the lower pid says so, names
+// it, and opens later.
+func TestImplementLoadWaitSaysWhenItStandsBack(t *testing.T) {
+	opener := []machineload.Proc{
+		{PID: 40001, PPID: 1, PGID: 40001, UID: 502, Age: time.Hour, Name: "abcd"},
+		{PID: 40002, PPID: 40001, PGID: 40001, UID: 502, Name: "sleep"},
+	}
+	free := machine(3, 3, 3)
+	waitFixture(t, free, free, machine(3, 3, 3, opener...), free)
+	loadArgsReader = func(pids []int) (map[int][]string, error) {
+		out := map[int][]string{}
+		for _, p := range pids {
+			if p == 40001 {
+				out[p] = []string{"implement", "load", "--wait", "--", "make", "preflight"}
+			}
+		}
+		return out, nil
+	}
+	prev := loadMark
+	loadMark = func() (func(), error) { return func() {}, nil }
+	t.Cleanup(func() { loadMark = prev })
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", "exit 0")
+	if code != 0 || !strings.Contains(out, "standing back") || !strings.Contains(out, "pid 40001") {
+		t.Fatalf("exit %d; want 0 and a line standing back from pid 40001\n%s%s", code, out, errOut)
+	}
+}

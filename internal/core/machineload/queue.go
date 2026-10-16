@@ -28,14 +28,17 @@ import (
 // Every waiter reads the same table and orders the queue the same way, by when
 // each waiter started, earliest first, with a tie going to the lower pid
 // (queueOrder), and counts a queued waiter as ahead only when that one is
-// ahead by start and has the lower pid as well, so two waiters at one gate
-// agree on which goes first without writing anything. Pid order alone starved
-// a waiter once the machine's process ids wrapped: every later waiter with a
-// lower pid queued ahead of it (iss-2610161634043273). Start order alone
-// deadlocked against waiters built before it, which still wait on every lower
-// pid: a young waiter with a low pid waited on older ones with higher pids,
-// and they on it. Each is judged from its arguments, never from a pattern
-// over a command line, as a race run is (race.go).
+// ahead by start and has the lower pid as well, so every wait on a queued
+// waiter points at a lower pid and no two queued waiters wait on each other,
+// without writing anything: two whose start and pid agree agree on which goes
+// first, and two whose start and pid disagree wait on neither
+// (implement.WaitLoad keeps such a pair from running at once). Pid order
+// alone starved a waiter once the machine's process ids wrapped: every later
+// waiter with a lower pid queued ahead of it (iss-2610161634043273). Start
+// order alone deadlocked against waiters built before it, which still wait on
+// every lower pid: a young waiter with a low pid waited on older ones with
+// higher pids, and they on it. Each is judged from its arguments, never from
+// a pattern over a command line, as a race run is (race.go).
 
 // makePrograms are the base names make runs under.
 var makePrograms = []string{"make", "gmake"}
@@ -139,8 +142,8 @@ type Ahead struct {
 	// Preflights are the make preflights running, not queued at their gate.
 	Preflights []int
 	// Waiters are the waiters queued ahead of this one (ahead by start, earlier
-	// or within StartTolerance of it, and with a lower pid; queueOrder) or
-	// running the command they gate, in pid order.
+	// or in the same tie group, and with a lower pid; queueOrder) or running
+	// the command they gate, in pid order.
 	Waiters []int
 }
 
@@ -206,9 +209,10 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 		// waiter's own read of the table says. Two waiters whose start and pid
 		// disagree, as across a pid wrap, wait on neither: the earlier start,
 		// with the higher pid, is no longer held behind every later start with
-		// a lower one, and the waiter's settle wait and re-check, and within
-		// one account its hold, keep the two from opening in one moment
-		// (implement.WaitLoad).
+		// a lower one, and the waiter's settle wait and re-check, within one
+		// account its hold, and across accounts the command form's look just
+		// before it starts its command (JustOpened), keep the two from running
+		// at once (implement.WaitLoad).
 		queue := []Proc{{PID: self.PID}}
 		if p, ok := byPID[self.PID]; ok {
 			queue[0] = p
@@ -329,4 +333,44 @@ func GoTestParallelism(snap Snapshot) int {
 	floor := max(1, cores/4)
 	budget := DefaultWaitFactor*cores - int(math.Ceil(snap.Load1))
 	return min(cores, max(floor, budget))
+}
+
+// JustOpened returns, in pid order, the waiters outside self's process and its
+// ancestors that are running their command and opened within window of the
+// snapshot: a waiter with a child other than ps is running its command, and it
+// opened when its oldest such child started. An opener reads it just before it
+// starts its command (implement.WaitLoad): two waiters whose start and pid
+// disagree wait on neither, and across accounts no hold keeps them from
+// opening in one moment, so each looks once more, and the one with the higher
+// pid stands back from the other. A child under a second old on macOS reads an
+// age of zero, which is within any window.
+func JustOpened(snap Snapshot, self Self, args map[int][]string, window time.Duration) []int {
+	if !snap.HasProcs {
+		return nil
+	}
+	byPID := make(map[int]Proc, len(snap.Procs))
+	for _, p := range snap.Procs {
+		byPID[p.PID] = p
+	}
+	since := map[int]time.Duration{}
+	for _, p := range snap.Procs {
+		if p.Name == psProgram {
+			continue
+		}
+		if parent, ok := byPID[p.PPID]; ok && isAbcdName(parent.Name) {
+			if a, seen := since[p.PPID]; !seen || p.Age > a {
+				since[p.PPID] = p.Age
+			}
+		}
+	}
+	chain := lineage(snap.Procs, self.PID)
+	var out []int
+	for pid, age := range since {
+		if chain[pid] || age > window || !isLoadWaiter(args[pid]) {
+			continue
+		}
+		out = append(out, pid)
+	}
+	sort.Ints(out)
+	return out
 }

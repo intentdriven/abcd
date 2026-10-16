@@ -615,8 +615,11 @@ func TestQueueAPidWrapStarvesNoWaiter(t *testing.T) {
 	}
 	for _, pid := range []int{96274, 96300} {
 		m, ok := admitted[pid]
-		if !ok || m > 12 {
-			t.Fatalf("the early waiter %d was admitted at minute %d (admitted: %v), want within ten minutes of arriving", pid, m, ok)
+		if !ok {
+			t.Fatalf("the early waiter %d was never admitted (admitted: %v), want by minute 12", pid, admitted)
+		}
+		if m > 12 {
+			t.Fatalf("the early waiter %d was admitted at minute %d (admitted: %v), want by minute 12", pid, m, admitted)
 		}
 	}
 }
@@ -633,5 +636,61 @@ func TestQueueTwoWaitersThatDisagreeWaitOnNeither(t *testing.T) {
 		if got := QueueAhead(snap, Self{PID: pid, UID: otherUID}, args); len(got.Waiters) != 0 {
 			t.Fatalf("waiter %d sees %v ahead, want nothing: start and pid disagree", pid, got.Waiters)
 		}
+	}
+}
+
+// TestJustOpenedNamesWaitersThatOpenedWithinTheWindow: an opener's look just
+// before it starts its command (implement.WaitLoad) names the other waiters
+// that are running their command and opened within the window: a waiter's
+// oldest child other than ps is no older than it. A waiter that has run its
+// command for longer opened before this one's open look and would have shut
+// it, a waiter whose one child is ps is reading the machine, and the waiter's
+// own ancestors never count.
+func TestJustOpenedNamesWaitersThatOpenedWithinTheWindow(t *testing.T) {
+	const window = 4 * time.Second
+	procs, args := waiterChain()
+	snap := Snapshot{HasLoad: true, Cores: 16, Procs: procs, HasProcs: true}
+	add := func(pid int, children ...Proc) {
+		w, a := peerWaiter(pid, 1, otherUID)
+		snap.Procs = append(snap.Procs, w...)
+		args = merge(args, a)
+		snap.Procs = append(snap.Procs, children...)
+	}
+	// Opened a second ago: its marker child, then its command beside it.
+	add(30001, Proc{PID: 30002, PPID: 30001, UID: otherUID, Age: time.Second, Name: "sleep"},
+		Proc{PID: 30003, PPID: 30001, UID: otherUID, Name: "make"})
+	// Opened at the window's edge.
+	add(31001, Proc{PID: 31002, PPID: 31001, UID: otherUID, Age: window, Name: "make"})
+	// Running its command for ten minutes.
+	add(32001, Proc{PID: 32002, PPID: 32001, UID: otherUID, Age: 10 * time.Minute, Name: "make"})
+	// Reading the machine.
+	add(33001, Proc{PID: 33002, PPID: 33001, UID: otherUID, Name: "ps"})
+	// Queued.
+	add(34001)
+	// An abcd that is no waiter, with a fresh child.
+	snap.Procs = append(snap.Procs,
+		Proc{PID: 35001, PPID: 1, UID: otherUID, Age: time.Minute, Name: "abcd"},
+		Proc{PID: 35002, PPID: 35001, UID: otherUID, Name: "git"})
+	args[35001] = []string{"status"}
+	if got := JustOpened(snap, waiter, args, window); !reflect.DeepEqual(got, []int{30001, 31001}) {
+		t.Fatalf("just opened = %v, want the two waiters that opened within %s, 30001 and 31001", got, window)
+	}
+
+	// An inner waiter's own ancestor opened a moment ago; it is the work this
+	// waiter is part of, never another opener.
+	inner := Self{PID: 20001, UID: callerUID}
+	snap = Snapshot{HasLoad: true, Cores: 16, HasProcs: true, Procs: []Proc{
+		{PID: 1, PPID: 0, PGID: 1, UID: rootUID, Age: time.Hour, Name: "launchd"},
+		{PID: 15001, PPID: 1, PGID: 15001, UID: callerUID, Age: time.Hour, Name: "abcd"},
+		{PID: 15002, PPID: 15001, PGID: 15001, UID: callerUID, Age: time.Second, Name: "make"},
+		{PID: 20001, PPID: 15002, PGID: 15001, UID: callerUID, Name: "abcd"},
+	}}
+	args = map[int][]string{
+		15001: {"implement", "load", "--wait", "--", "make", "preflight"},
+		15002: {"preflight"},
+		20001: {"implement", "load", "--wait", "--", "go", "test", "-race", "./..."},
+	}
+	if got := JustOpened(snap, inner, args, window); len(got) != 0 {
+		t.Fatalf("just opened = %v for an inner waiter, want nothing: its ancestor is its own work", got)
 	}
 }
