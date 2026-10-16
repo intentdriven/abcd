@@ -156,11 +156,11 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 // reservation verb here would resolve, and Own whether it is also from this
 // copy. JudgedHolds reads it, for MergeHolds, which judges a merge from it for
 // the land fence and `abcd land`, and for `abcd peers`, which shows each hold
-// by the same rule (Hold.Line); `abcd status` and the prompt hook are to
-// render them in step 3 of spc-2610150728396006 and do not yet.
+// by the same rule (Hold.Line), as `abcd status` and the prompt hook do. It
+// reads the release reservations' tips alone.
 func ReleaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	now = now.UTC().Truncate(time.Second)
-	snap, err := View(root, now)
+	snap, err := viewOf(root, now, true, IsRelease)
 	if err != nil {
 		return nil, err
 	}

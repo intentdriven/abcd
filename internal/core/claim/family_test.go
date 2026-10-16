@@ -111,7 +111,8 @@ func TestOneFetchReadsEveryNamespaceAndStampsEach(t *testing.T) {
 
 // TestAFailedFetchOfAnotherNamespaceNamesItsOwnWords: the reservations'
 // refusal keeps its words, and every other fetch names what it read and what
-// was not done; neither stamps.
+// was not done; neither stamps, and each keeps that its fetch failed, with
+// git's reason, for a reader to say (itd-2609151838312703 C10).
 func TestAFailedFetchOfAnotherNamespaceNamesItsOwnWords(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -123,8 +124,13 @@ func TestAFailedFetchOfAnotherNamespaceNamesItsOwnWords(t *testing.T) {
 		!strings.HasSuffix(err.Error(), "; nothing was read") || !strings.Contains(fe.Reason, "gone.git") {
 		t.Fatalf("fetch = %v; want the failure in the fetch's own words", err)
 	}
-	if _, err := os.Stat(filepath.Join(p.dir, filepath.FromSlash(testNamespace.stateDir))); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("a failed fetch made the namespace's state: %v", err)
+	for _, ns := range []namespace{reservations, testNamespace} {
+		if _, err := os.Stat(filepath.Join(p.dir, filepath.FromSlash(ns.stampRel()))); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("a failed fetch stamped %s: %v", ns.noun, err)
+		}
+		if u := unreadOf(p.dir, ns); u == nil || !u.FailedAt.Equal(t0) || !strings.Contains(u.Reason, "gone.git") || !u.Since.IsZero() {
+			t.Fatalf("%s's failure kept as %+v; want it at %s with git's reason", ns.noun, u, t0)
+		}
 	}
 	if _, err := fetch(p.dir, t0, "nothing was read"); !errors.Is(err, ErrRefused) {
 		t.Fatalf("a fetch of no namespace = %v; want a refusal", err)

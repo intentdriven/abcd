@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -82,6 +83,13 @@ type history struct {
 // merge onto the branch cannot pull another line's history into it; it says
 // when one was passed (Merged).
 func (ns namespace) since(root, ref string, limit int) (history, error) {
+	return ns.sinceCtx(context.Background(), root, ref, limit)
+}
+
+// sinceCtx is since bound to ctx: every git command the walk runs is killed
+// when ctx ends, and the walk then fails with ctx's error, so a reader on a
+// deadline (the prompt hook) is never held past it.
+func (ns namespace) sinceCtx(ctx context.Context, root, ref string, limit int) (history, error) {
 	if limit < 1 || limit > maxWalk {
 		return history{}, fmt.Errorf("a walk reads 1 to %d commits, not %d", maxWalk, limit)
 	}
@@ -89,7 +97,7 @@ func (ns namespace) since(root, ref string, limit int) (history, error) {
 		return history{}, err
 	}
 	h := history{Since: ns.lastRead(root, ref)}
-	name, typ, ok, err := resolveRef(root, ref)
+	name, typ, ok, err := resolveRefCtx(ctx, root, ref)
 	if err != nil || !ok {
 		return h, err
 	}
@@ -101,11 +109,11 @@ func (ns namespace) since(root, ref string, limit int) (history, error) {
 	if h.Since == h.Tip {
 		return h, nil
 	}
-	line, merges, err := tipLine(root, ref, h.Tip, limit)
+	line, merges, err := tipLineCtx(ctx, root, ref, h.Tip, limit)
 	if err != nil {
 		return history{}, err
 	}
-	if err := h.place(root, ref, line, limit); err != nil {
+	if err := h.place(ctx, root, ref, line, limit); err != nil {
 		return history{}, err
 	}
 	// Added is always a prefix of line.
@@ -115,7 +123,7 @@ func (ns namespace) since(root, ref string, limit int) (history, error) {
 
 // place sets Added, More and Rewritten from the tip's line, reading the
 // mark's own line when the mark is not in the tip's window.
-func (h *history) place(root, ref string, line []string, limit int) error {
+func (h *history) place(ctx context.Context, root, ref string, line []string, limit int) error {
 	if h.Since == "" {
 		h.Added, h.More = upTo(line, limit)
 		return nil
@@ -124,7 +132,7 @@ func (h *history) place(root, ref string, line []string, limit int) error {
 		h.Added = line[:i]
 		return nil
 	}
-	held, err := hasCommit(root, h.Since)
+	held, err := hasCommitCtx(ctx, root, h.Since)
 	if err != nil {
 		return fmt.Errorf("reading %s's mark: %w", ref, err)
 	}
@@ -136,7 +144,7 @@ func (h *history) place(root, ref string, line []string, limit int) error {
 	// The mark is not on the tip's line as far as it was read: the branch was
 	// rewritten if the tip's line meets the mark's below the mark, or ends
 	// without meeting it; otherwise it only ran past the window.
-	old, err := firstParents(root, ref, h.Since, limit)
+	old, err := firstParentsCtx(ctx, root, ref, h.Since, limit)
 	if err != nil {
 		return err
 	}
@@ -167,13 +175,18 @@ func upTo(line []string, limit int) ([]string, bool) {
 // commit has in fewer bytes than naming them all, and the bound is what keeps
 // a writer's commit from growing this read.
 func tipLine(root, ref, tip string, limit int) (line []string, merges []bool, err error) {
-	out, err := storedGit(root, (limit+1)*3*(len(tip)+1)+1,
+	return tipLineCtx(context.Background(), root, ref, tip, limit)
+}
+
+// tipLineCtx is tipLine bound to ctx.
+func tipLineCtx(ctx context.Context, root, ref, tip string, limit int) (line []string, merges []bool, err error) {
+	out, err := storedGitCtx(ctx, root, (limit+1)*3*(len(tip)+1)+1,
 		"rev-list", "--first-parent", "--parents", "--max-count="+strconv.Itoa(limit+1), tip, "--")
 	if err != nil {
 		if !strings.Contains(err.Error(), "exceeded") {
 			return nil, nil, fmt.Errorf("reading %s: %w", ref, err)
 		}
-		line, err := firstParents(root, ref, tip, limit)
+		line, err := firstParentsCtx(ctx, root, ref, tip, limit)
 		return line, nil, err
 	}
 	for _, l := range strings.Split(out, "\n") {
@@ -196,7 +209,12 @@ func tipLine(root, ref, tip string, limit int) (line []string, merges []bool, er
 // the walk reads no more than it prints. The `--` ends the revisions, so a
 // file named as the commit is never read as a path.
 func firstParents(root, ref, commit string, limit int) ([]string, error) {
-	out, err := storedGit(root, (limit+1)*(len(commit)+1)+1,
+	return firstParentsCtx(context.Background(), root, ref, commit, limit)
+}
+
+// firstParentsCtx is firstParents bound to ctx.
+func firstParentsCtx(ctx context.Context, root, ref, commit string, limit int) ([]string, error) {
+	out, err := storedGitCtx(ctx, root, (limit+1)*(len(commit)+1)+1,
 		"rev-list", "--first-parent", "--max-count="+strconv.Itoa(limit+1), commit, "--")
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", ref, err)
@@ -218,12 +236,21 @@ func firstParents(root, ref, commit string, limit int) ([]string, error) {
 // cannot tell it from a failure, so `cat-file -e`, whose exit 1 is "no such
 // object", tells them apart.
 func hasCommit(root, commit string) (bool, error) {
+	return hasCommitCtx(context.Background(), root, commit)
+}
+
+// hasCommitCtx is hasCommit bound to ctx: the type read is killed when ctx
+// ends, and a ctx that has ended is answered before the missing-object read.
+func hasCommitCtx(ctx context.Context, root, commit string) (bool, error) {
 	if !gitutil.IsFullSHA(commit) {
 		return false, nil
 	}
-	typ, err := storedGit(root, 64, "cat-file", "-t", commit)
+	typ, err := storedGitCtx(ctx, root, 64, "cat-file", "-t", commit)
 	if err == nil {
 		return strings.TrimSpace(typ) == "commit", nil
+	}
+	if cerr := ctx.Err(); cerr != nil {
+		return false, cerr
 	}
 	args := []string{"cat-file", "-e", commit}
 	trace(args...)

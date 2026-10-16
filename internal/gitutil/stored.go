@@ -1,6 +1,8 @@
 package gitutil
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -35,4 +37,44 @@ func RunCappedAsStored(root string, maxBytes int, args ...string) (string, error
 // (asStored).
 func RunCappedExitOneAsStored(root string, maxBytes int, args ...string) ([]byte, bool, error) {
 	return runCappedExitOneCmd(asStored(isolatedGit(root, args...)), maxBytes, args)
+}
+
+// RunCappedBytesAsStoredContext is RunCappedAsStored bound to ctx, with stdin
+// as the command's standard input ("" for none), returning stdout verbatim:
+// for a deadline-bound read of history as stored, a batch of objects named on
+// standard input among them. When ctx ends first, git is killed
+// (isolatedGitContext) and the error wraps ctx's own; output past maxBytes is
+// an error saying the cap was exceeded, never a truncated answer. A WaitDelay
+// miss over a git that answered is asked once more, as RunLimitedContext asks
+// it, and a second miss is ErrGitTimedOut.
+func RunCappedBytesAsStoredContext(ctx context.Context, root, stdin string, maxBytes int, args ...string) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	run := func() ([]byte, bool, error) {
+		cmd := asStored(isolatedGitContext(ctx, root, args...))
+		if stdin != "" {
+			cmd.Stdin = strings.NewReader(stdin)
+		}
+		return runBoundedCmd(cmd, maxBytes)
+	}
+	out, overflowed, err := run()
+	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
+		out, overflowed, err = run()
+		if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
+			return nil, fmt.Errorf("git %s: %w: its output was still open when the wait for it ran out, on a retry too (%w)",
+				strings.Join(args, " "), ErrGitTimedOut, err)
+		}
+	}
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if overflowed {
+		return nil, fmt.Errorf("git %s: output exceeded the %d-byte cap; the answer would be truncated, and a truncated history is a wrong one",
+			strings.Join(args, " "), maxBytes)
+	}
+	return out, nil
 }

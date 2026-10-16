@@ -128,6 +128,13 @@ func View(root string, now time.Time) (Snapshot, error) {
 // whose fetch could not read origin's default branch does not trust the copy
 // this clone holds of it.
 func view(root string, now time.Time, derive bool) (Snapshot, error) {
+	return viewOf(root, now, derive, nil)
+}
+
+// viewOf is view over the subjects only admits (every subject when only is
+// nil): a reader that needs the releases alone (ReleaseHolds) reads no other
+// tip, and origin's default branch only when a record is there to derive.
+func viewOf(root string, now time.Time, derive bool, only func(subject string) bool) (Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)
 	snap := Snapshot{FetchedAt: lastFetched(root, reservations), Reservations: []Reservation{}}
 	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
@@ -137,7 +144,7 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 	var refs []string
 	for _, ref := range strings.Fields(out) {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
-		if canon, err := reservableID(id); err == nil && canon == id {
+		if canon, err := reservableID(id); err == nil && canon == id && (only == nil || only(id)) {
 			refs = append(refs, ref)
 		}
 	}
@@ -149,7 +156,8 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
 	var finished map[string][]string
-	if ref := originDefault(root); derive && ref != "" {
+	records := slices.ContainsFunc(refs, func(ref string) bool { return !IsRelease(strings.TrimPrefix(ref, TrackingPrefix)) })
+	if ref := originDefault(root); derive && records && ref != "" {
 		if finished, err = peers.FoldersAt(root, ref); err != nil {
 			return snap, fmt.Errorf("reading %s: %s", gitutil.ShortRef(ref), redacted(err))
 		}

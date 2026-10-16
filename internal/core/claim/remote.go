@@ -548,7 +548,7 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 	}
 	args := []string{"fetch", "--prune", "--no-tags", Remote}
 	for _, ns := range spaces {
-		args = append(args, ns.refspec())
+		args = append(args, ns.refspecs()...)
 		args = append(args, ns.also...)
 	}
 	withDefault := args
@@ -564,6 +564,11 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 		_, ferr = gitutil.Net(root, args...)
 	}
 	if ferr != nil {
+		// Each namespace keeps that its fetch failed, and why, for every
+		// reader to say rather than show the last view as current (C10).
+		for _, ns := range spaces {
+			noteFetchFailure(root, ns, now, redacted(ferr))
+		}
 		e := &FetchError{Reason: redacted(ferr)}
 		if what := nouns(spaces); what != reservations.noun || outcome != noReservation {
 			e.what, e.outcome = what, outcome
@@ -572,8 +577,10 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 	}
 	for _, ns := range spaces {
 		if err := stampFetch(root, ns, now); err != nil {
+			noteFetchFailure(root, ns, now, "fetched, but could not record when: "+redacted(err))
 			return "", refuse("fetched %s, but could not record when: %s; %s", ns.noun, redacted(err), outcome)
 		}
+		clearFetchFailure(root, ns)
 	}
 	return gap, nil
 }
