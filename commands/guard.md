@@ -666,7 +666,11 @@ server included; looking (`lsof -i :8080`, `fuser 8080/tcp`) is not. The
 package runners — `npx`, `npm exec` (and `npm x`), `pnpm dlx`, `pnpm exec`,
 `yarn dlx`, `bunx` and `bun x` — are read as wrappers whose first operand is
 the program they run, a version after it (`kill-port@latest`) included, so a
-blocker behind one is read as the blocker; their `-c` string is not read. The search is followed through a group (`{ pgrep
+blocker behind one is read as the blocker. The shell string a runner hands to
+a shell is read as a script, as a `bash -c` string is: the value of `-c` or
+`--call` after `npx` or `npm exec`, and the command words after `pnpm exec -c`
+or `--shell-mode`, so a blocker inside it is read as the blocker too; a `-c`
+after the program a runner starts is that program's own. The search is followed through a group (`{ pgrep
 …; } | xargs kill`) and into one, to every command in it (`pgrep … | { sleep 1;
 xargs kill; }`), through a shell string that runs it (`kill $(sh -c 'pgrep
 …')`), and into a shell string that `xargs` runs or that reads the pipe or a

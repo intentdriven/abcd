@@ -185,3 +185,53 @@ func TestAnEnvPatternIsValidatedAndOverridden(t *testing.T) {
 		t.Errorf("the lesson does not name the variable: %s", got)
 	}
 }
+
+// TestGuardReadsARunnerShellString: npx -c, npm exec -c (and --call) and
+// pnpm exec -c (and --shell-mode) hand a string to a shell, so the string
+// is read as a script, as a bash -c string is, and a launch inside it
+// meets the same entries. A -c after the runner's program belongs to that
+// program, not to the runner.
+func TestGuardReadsARunnerShellString(t *testing.T) {
+	r := Defaults()
+	const claudeID = "agent-launch-claude-unchecked"
+	cases := map[string]string{
+		`npx -c 'claude -p x --dangerously-skip-permissions'`:                                     claudeID,
+		`npx --call 'claude --dangerously-skip-permissions'`:                                      claudeID,
+		`npx --call='claude --dangerously-skip-permissions'`:                                      claudeID,
+		`npx -y -c 'echo start && claude --dangerously-skip-permissions'`:                         claudeID,
+		`npm exec -c 'claude --dangerously-skip-permissions'`:                                     claudeID,
+		`npm x -c 'claude --dangerously-skip-permissions'`:                                        claudeID,
+		`npm exec --call 'claude --dangerously-skip-permissions'`:                                 claudeID,
+		`npm exec -p @anthropic-ai/claude-code -c 'claude --dangerously-skip-permissions'`:        claudeID,
+		`npm exec --package=@anthropic-ai/claude-code -c 'claude --dangerously-skip-permissions'`: claudeID,
+		`pnpm exec -c 'claude --dangerously-skip-permissions'`:                                    claudeID,
+		`pnpm exec --shell-mode 'cd sub && claude --dangerously-skip-permissions'`:                claudeID,
+		`pnpm exec --filter web -c 'claude --dangerously-skip-permissions'`:                       claudeID,
+		`pnpm exec -c 'echo hi; opencode run --auto x'`:                                           "agent-launch-opencode-auto",
+		`npx -c 'OPENCODE_PERMISSION=x opencode run x'`:                                           "agent-launch-opencode-permission-env",
+		`npm exec -c 'codex exec --yolo fix'`:                                                     "agent-launch-codex-unchecked",
+	}
+	for line, id := range cases {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+		if a := approveShell(clean(), NewFiles(t.TempDir()), line); a.Allow || a.EntryID != id {
+			t.Errorf("%q: the approver answered %+v, want a refusal under %q", line, a, id)
+		}
+	}
+	for _, line := range []string{
+		`npx -c 'eslint . && echo ok'`,
+		`npm exec -c 'prettier --write .'`,
+		`pnpm exec -c 'echo claude --dangerously-skip-permissions'`,
+		`npx eslint -c 'claude --dangerously-skip-permissions'`,
+		`pnpm exec eslint -c 'claude --dangerously-skip-permissions'`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}

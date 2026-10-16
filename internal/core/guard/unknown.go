@@ -1568,8 +1568,8 @@ func walkToCommand(tokens []string) (out []arrival, capped bool) {
 			}
 			switch {
 			case isRunner:
-				for _, runner := range runners {
-					push(state{pos: st.pos + 2, mode: walkOptions, wrapper: runner, noglob: st.noglob})
+				for _, rs := range runners {
+					push(state{pos: rs.at, mode: walkOptions, wrapper: rs.wrapper, noglob: st.noglob})
 				}
 			case wrappers[w]:
 				push(state{pos: st.pos + 1, mode: walkOptions, wrapper: w, noglob: st.noglob || w == "noglob"})

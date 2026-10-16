@@ -1400,6 +1400,11 @@ func payloadsOf(s segment) []payloadRef {
 		add(kindEnvS, familyEnvS, v.value, v.trailing, true)
 	}
 	out = append(out, execStringPayloads(s.tokens, arrivals)...)
+	// A package runner's shell string (`npx -c '<script>'`, `pnpm exec -c
+	// '<script>'`) is read as a shell's `-c` string is.
+	for _, p := range runnerShellPayloads(s.tokens, arrivals) {
+		add(kindShell, familyShell, p, nil, false)
+	}
 	for _, p := range promptPayloads(s.tokens) {
 		add(kindShell, familyShell, p, nil, false)
 	}

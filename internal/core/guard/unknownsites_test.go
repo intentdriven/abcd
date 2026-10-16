@@ -39,6 +39,7 @@ var wordReaders = map[string]string{
 	// match.go
 	"matchSegmentEnv":      "sitesNamed: every place the entry's command can sit; anyProgram marks a name nothing fixes",
 	"exportsAny":           "commandSites and nameCouldBe",
+	"runnerStartsAt":       "exempt: looks up a word walkToCommand already stepped as a runner; runnersAt reads a subcommand the line does not fix as every runner",
 	"newEntryMatcher":      "operandAcceptance over readWord",
 	"precededByCD":         "commandSites and nameCouldBeAny",
 	"steppedBeforeCommand": "vanishable (Tier 2's start filter)",
@@ -76,9 +77,11 @@ var wordReaders = map[string]string{
 	"longEnvTakesValue":      "exempt: reads the known option name scanEnvSplits hands it after reading the word by the rule",
 
 	// execstring.go
-	"execStringPayloads": "commandArrivals and nameCouldBe",
-	"scanExecString":     "readWord, flagCouldBe and clusterCouldCarry on every word",
-	"clusteredPayload":   "exempt: reads the known word scanExecString hands it",
+	"execStringPayloads":  "commandArrivals and nameCouldBe",
+	"scanExecString":      "readWord, flagCouldBe and clusterCouldCarry on every word",
+	"clusteredPayload":    "exempt: reads the known word scanExecString hands it",
+	"scanRunnerShell":     "readWord and unknownFlagCouldBe on every word",
+	"runnerShellPayloads": "exempt: reads only the words walkToCommand stepped as a runner, by the arrival it records; scanRunnerShell reads the runner's options by the rule",
 
 	// gitconfig.go, hookspath.go, stash.go, gitabbrev.go
 	"expandGitAliasesAt":     "sitesNamed",

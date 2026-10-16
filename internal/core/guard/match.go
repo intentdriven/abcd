@@ -99,32 +99,51 @@ var runnerSubcommands = map[string]map[string]string{
 	"bun":  {"x": "bunx"},
 }
 
-// runnersAt reports the runner wrappers the word at pos of tokens can start,
-// in name order, when name, its lower-cased basename, is a package manager
-// whose next word is a runner subcommand (one wrapper), or a word the line
-// does not fix (every runner subcommand that manager has).
-func runnersAt(name string, tokens []string, pos int) []string {
+// runnerStart is one runner a package manager word can start: the wrapper it
+// is read as (wrapperValueFlags names its options) and the index of the first
+// word after its subcommand, where the runner's own options begin.
+type runnerStart struct {
+	wrapper string
+	at      int
+}
+
+// runnersAt reports the runners the word at pos of tokens can start, in name
+// order, when name, its lower-cased basename, is a package manager whose next
+// word is a runner subcommand (one runner), or a word the line does not fix
+// (every runner subcommand that manager has).
+func runnersAt(name string, tokens []string, pos int) []runnerStart {
 	subs, ok := runnerSubcommands[name]
 	if !ok || pos+1 >= len(tokens) {
 		return nil
 	}
 	next := tokens[pos+1]
 	if w, ok := subs[next]; ok {
-		return []string{w}
+		return []runnerStart{{wrapper: w, at: pos + 2}}
 	}
 	if !isUnknown(next) {
 		return nil
 	}
 	seen := map[string]bool{}
-	var out []string
+	var out []runnerStart
 	for _, w := range subs {
 		if !seen[w] {
 			seen[w] = true
-			out = append(out, w)
+			out = append(out, runnerStart{wrapper: w, at: pos + 2})
 		}
 	}
-	sort.Strings(out)
+	sort.Slice(out, func(i, j int) bool { return out[i].wrapper < out[j].wrapper })
 	return out
+}
+
+// runnerStartsAt is every runner the word at idx of tokens starts: a one-word
+// runner (npx, bunx) at the word after it, or a package manager's runner
+// subcommand (runnersAt).
+func runnerStartsAt(tokens []string, idx int) []runnerStart {
+	w := strings.ToLower(path.Base(tokens[idx]))
+	if packageRunners[w] {
+		return []runnerStart{{wrapper: w, at: idx + 1}}
+	}
+	return runnersAt(w, tokens, idx)
 }
 
 // packagePrograms names, by the package that ships it, the program a package
