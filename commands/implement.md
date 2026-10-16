@@ -684,8 +684,9 @@ of your own. Gate every other `go test -race` on a shared machine with
 carries that string, and never opened. `--wait` blocks until the one-minute
 load average is below the wait limit (`wait-load`, by default twice the online
 core count), no other `go test -race` run is live, no other `make preflight`
-is running, and no other waiter is ahead of it in the queue (a lower pid) or
-running its command, under any account. All of that is read from the process
+is running, and no other waiter is ahead of it in the queue (one that started
+earlier, the lower pid first when two started within two seconds of each
+other) or running its command, under any account. All of that is read from the process
 table, which shows every account's processes, judged from each process's
 arguments with the waiter's own process and ancestors excluded: no file another
 account can write is read; the gate reads only the process table. A waiter queued ahead of yours still delays yours, under

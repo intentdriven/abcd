@@ -76,7 +76,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"one-minute load average is below the wait limit (`wait-load <load>` in the same\n" +
 			"file; by default twice the online core count), no other `go test -race` run is\n" +
 			"live, no other `make preflight` is running and no other waiter is ahead of it in\n" +
-			"the queue (a lower pid) or running its command, under any account: all of it is\n" +
+			"the queue (one that started earlier, the lower pid first when two started within\n" +
+			"two seconds of each other) or running its command, under any account: all of it is\n" +
 			"read from the process table, which shows every account's processes: no file\n" +
 			"another account can write is read; the gate reads only the process table (and,\n" +
 			"for the wait limit, your own load-limits). A waiter ahead of yours still delays\n" +
