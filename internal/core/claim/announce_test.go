@@ -502,8 +502,9 @@ func TestTheAnnouncementValidatorAdmitsOnlyItsTrailers(t *testing.T) {
 
 // TestARecordAbsentFromTheDefaultBranchIsRefused is C4: a record id that is
 // not on origin's default branch as just fetched is refused before the push,
-// saying the record is not public yet, and so is any record id when no default
-// branch was fetched at all; a pull request needs neither.
+// saying the record is not public yet. With no origin/HEAD here, the default
+// branch is asked of origin and judged the same way; a pull request needs
+// neither.
 func TestARecordAbsentFromTheDefaultBranchIsRefused(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -524,15 +525,61 @@ func TestARecordAbsentFromTheDefaultBranchIsRefused(t *testing.T) {
 		}
 	}
 
+	// update-ref -d through the symbolic ref deletes origin/main as well, so
+	// this clone names no default branch of origin at all.
 	p.git("update-ref", "-d", "refs/remotes/origin/HEAD")
-	_, err = p.announce("merged", "iss-5")
-	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "no default branch of origin was fetched here") ||
-		!strings.Contains(err.Error(), "git remote set-head origin --auto") {
-		t.Fatalf("announce with no origin/HEAD = %v; want the refusal naming the fix", err)
+	if _, err := p.announce("merged", "iss-5"); err != nil {
+		t.Fatalf("announce with no origin/HEAD = %v; want origin asked for its default branch", err)
 	}
 	if _, err := p.announce("merged", "#1012"); err != nil {
 		t.Fatalf("a pull request with no origin/HEAD: %v", err)
 	}
+}
+
+// TestTheDefaultBranchIsAskedOfOriginWhenThisCloneNamesNone: a clone with no
+// origin/HEAD, whose default branch has no conventional name, asks origin
+// which branch is its default (git ls-remote --symref, which reads and writes
+// nothing here) and judges the record on that branch as just fetched. It never
+// writes origin/HEAD. When origin cannot be asked, the record is refused,
+// saying what was tried and that nothing was sent.
+func TestTheDefaultBranchIsAskedOfOriginWhenThisCloneNamesNone(t *testing.T) {
+	w := newWorld(t)
+	w.publish(".abcd/work/issues/open/iss-5-the-widget.md")
+	runGit(t, w.bare, "branch", "-m", "main", "release")
+	runGit(t, w.bare, "symbolic-ref", "HEAD", "refs/heads/release")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	p.git("remote", "set-head", "origin", "-d")
+	noHead := func() {
+		t.Helper()
+		if got := p.git("for-each-ref", "refs/remotes/origin/HEAD"); got != "" {
+			t.Fatalf("origin/HEAD was written: %s", got)
+		}
+	}
+	noHead()
+
+	if _, err := p.announce("merging", "iss-5"); err != nil {
+		t.Fatalf("announce iss-5, on origin's default branch: %v", err)
+	}
+	noHead()
+	_, err := p.announce("merging", "iss-6")
+	want := "iss-6 is not on origin's default branch as last fetched (release), so it is not public yet: an announcement names only a public record; no announcement was sent"
+	if !errors.Is(err, ErrRefused) || err.Error() != want {
+		t.Fatalf("announce iss-6 = %v; want %q", err, want)
+	}
+	noHead()
+
+	before := w.statusTip("octo")
+	p.git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "absent.git"))
+	_, err = p.announce("merged", "iss-5")
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "git ls-remote --symref origin HEAD") ||
+		!strings.Contains(err.Error(), "whether iss-5 is public cannot be told") || !strings.HasSuffix(err.Error(), "no announcement was sent") ||
+		strings.Contains(err.Error(), "set-head") {
+		t.Fatalf("announce with origin unreachable = %v; want the refusal saying what was tried", err)
+	}
+	if tip := w.statusTip("octo"); tip != before {
+		t.Fatalf("a refused announcement reached origin: %s", tip)
+	}
+	noHead()
 }
 
 // TestADefaultBranchThatCannotBeReadRefusesARecord: when the fetch could not

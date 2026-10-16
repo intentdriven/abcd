@@ -396,12 +396,22 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 	if err != nil {
 		return AnnounceResult{}, refuse("%s; %s", redacted(err), nothingPushed)
 	}
-	gap, err := fetch(root, p.now, noAnnouncement, statusBranches)
+	defaultRef := originDefault(root)
+	if p.record && defaultRef == "" {
+		// This clone names no default branch of origin: origin is asked
+		// which it is, for this check alone, and nothing here is changed.
+		if defaultRef, err = remoteDefault(root); err != nil {
+			return AnnounceResult{}, refuse("no default branch of %s was fetched here (this clone has no %s/HEAD), and asking %s which branch is its default "+
+				"(git ls-remote --symref %s HEAD) failed: %s, so whether %s is public cannot be told; %s",
+				Remote, Remote, Remote, Remote, redacted(err), p.msg.Item, noAnnouncement)
+		}
+	}
+	gap, err := fetchWith(root, p.now, noAnnouncement, defaultRef, statusBranches)
 	if err != nil {
 		return AnnounceResult{}, err
 	}
 	if p.record {
-		if err := publicOnDefault(root, p.msg.Item, gap); err != nil {
+		if err := publicOnDefault(root, p.msg.Item, defaultRef, gap); err != nil {
 			return AnnounceResult{}, err
 		}
 	}
@@ -521,15 +531,12 @@ func statusTip(root, branch string) (string, error) {
 }
 
 // publicOnDefault refuses a record absent from origin's default branch as
-// just fetched (C4), read through peers.FoldersAt, the reader the derived
-// release reads by; and refuses any record when no default branch was
-// fetched, or the fetch could not read it (gap), since a stale copy cannot say
-// what is public now.
-func publicOnDefault(root, id, gap string) error {
-	ref := originDefault(root)
+// just fetched into ref (C4), read through peers.FoldersAt, the reader the
+// derived release reads by; and refuses any record when the fetch could not
+// read it (gap), since a stale copy cannot say what is public now.
+func publicOnDefault(root, id, ref, gap string) error {
 	if ref == "" {
-		return refuse("no default branch of %s was fetched here (this clone has no %s/HEAD), so whether %s is public cannot be told; "+
-			"run git remote set-head %s --auto, then retry; %s", Remote, Remote, id, Remote, noAnnouncement)
+		return refuse("no default branch of %s was fetched here, so whether %s is public cannot be told; %s", Remote, id, noAnnouncement)
 	}
 	if gap != "" {
 		return refuse("%s, so whether %s is public cannot be told; %s", gap, id, noAnnouncement)

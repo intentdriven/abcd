@@ -422,6 +422,41 @@ func originDefault(root string) string {
 	return ref
 }
 
+// remoteDefault asks origin which branch is its default, for a clone that
+// names none (no origin/HEAD, and no conventional branch name fetched), and
+// returns that branch's remote-tracking ref, refs/remotes/origin/<branch>. It
+// asks with `git ls-remote --symref origin HEAD`, which reads the remote's
+// advertisement and writes nothing here: origin/HEAD stays as the repository
+// has it, unset. An answer that names no branch, or a branch whose name is
+// not a valid ref, is an error, never a guess.
+func remoteDefault(root string) (string, error) {
+	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
+	trace(args...)
+	out, err := gitutil.Net(root, args...)
+	if err != nil {
+		return "", errors.New(redacted(err))
+	}
+	for _, line := range strings.Split(out, "\n") {
+		rest, ok := strings.CutPrefix(line, "ref: ")
+		if !ok {
+			continue
+		}
+		target, name, ok := strings.Cut(rest, "\t")
+		if !ok || name != "HEAD" {
+			continue
+		}
+		branch, ok := strings.CutPrefix(target, "refs/heads/")
+		if !ok || branch == "" {
+			return "", errors.New("origin's HEAD does not name a branch")
+		}
+		if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
+			return "", errors.New("origin's HEAD names a branch whose name is not a valid ref")
+		}
+		return "refs/remotes/" + Remote + "/" + branch, nil
+	}
+	return "", errors.New("origin did not name a default branch")
+}
+
 // originPresent refuses a checkout with no remote named origin, naming the
 // remotes it has; what names what lives there ("reservations").
 func originPresent(root, what string) error {
@@ -473,6 +508,13 @@ func echoName(n string) string {
 // before it keep their stamps, each true, and it and those after it keep the
 // stamp of their last fetch that recorded one.
 func fetch(root string, now time.Time, outcome string, spaces ...namespace) (gap string, err error) {
+	return fetchWith(root, now, outcome, originDefault(root), spaces...)
+}
+
+// fetchWith is fetch with the default branch's remote-tracking ref named by
+// the caller: ref is refs/remotes/origin/<branch>, or "" to fetch the
+// namespaces alone.
+func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namespace) (gap string, err error) {
 	if len(spaces) == 0 {
 		return "", refuse("a fetch names no namespace; %s", outcome)
 	}
@@ -480,7 +522,6 @@ func fetch(root string, now time.Time, outcome string, spaces ...namespace) (gap
 	for _, ns := range spaces {
 		args = append(args, ns.refspec())
 	}
-	ref := originDefault(root)
 	withDefault := args
 	if ref != "" {
 		branch := strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/")

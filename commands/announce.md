@@ -59,9 +59,11 @@ origin. Relay the reason; each names the field and the limit, or what to set.
   `24h`, or any further word after the item.
 - **Not public yet.** A record that is not on origin's default branch as just
   fetched is refused, since an announcement is public the moment it is pushed:
-  merge or push the record first. Any record is refused when this clone
-  fetched no default branch (run `git remote set-head origin --auto`) or the
-  fetch could not read it. A pull request needs neither.
+  merge or push the record first. When this clone names no default branch of
+  origin, abcd asks origin which it is (`git ls-remote --symref origin HEAD`,
+  which changes nothing here) and fetches that branch for this check. Any
+  record is refused when origin cannot be asked or the fetch could not read the
+  branch. A pull request needs neither.
 - **Under embargo.** A record the embargo store on this machine holds for an
   advisory not yet published is refused, through the same check
   `/abcd:embargo` runs. When that store exists but cannot be checked, every
