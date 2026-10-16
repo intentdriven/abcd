@@ -22,20 +22,16 @@ var (
 	receiptlessRowRe   = regexp.MustCompile(`(?m)^\s*"([^"]*)"\s*$`)
 )
 
-// committedHook reads the committed pre-push hook from the checkout the test
-// runs in, and its root.
+// committedHook reads the committed pre-push hook from the source tree the
+// test file sits in, and that tree's root.
 func committedHook(t *testing.T) (root, hook string) {
 	t.Helper()
-	c := newPrePushCase(t)
-	data, err := os.ReadFile(filepath.Join(c.dir, ".githooks", "pre-push"))
+	root = prePushSourceRoot(t)
+	data, err := os.ReadFile(filepath.Join(root, ".githooks", "pre-push"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	top, err := c.run(".", "git", "rev-parse", "--show-toplevel")
-	if err != nil {
-		t.Fatalf("not in a git checkout: %s", top)
-	}
-	return strings.TrimSpace(top), string(data)
+	return root, string(data)
 }
 
 // receiptlessRows is the hook's table, each row split into its four fields.
@@ -65,7 +61,7 @@ func TestPrePushReceiptlessPrefixesAreDeclaredWithARulingAndAShapeCheck(t *testi
 		t.Fatalf("the receipt-less table is %q; want the reservation row, then the status row, each in four fields", rows)
 	}
 	for _, row := range rows {
-		prefix, shape, ruling, end := row[0], row[1], row[2], row[3]
+		prefix, shape, ruling := row[0], row[1], row[2]
 		if !strings.HasSuffix(prefix, "/") || strings.ContainsAny(prefix, "*?[ ") {
 			t.Errorf("prefix %q is not a plain branch prefix ending in a slash", prefix)
 		}
@@ -82,9 +78,14 @@ func TestPrePushReceiptlessPrefixesAreDeclaredWithARulingAndAShapeCheck(t *testi
 		if !strings.HasPrefix(ruling, "adr-") || len(matches) != 1 {
 			t.Errorf("prefix %q names the ruling %q, which is no ADR in the decisions store", prefix, ruling)
 		}
-		if !strings.Contains(end, "<name>") && end != "never" {
-			t.Errorf("prefix %q names %q as the act that ends a ref there, without the <name> it ends", prefix, end)
-		}
+	}
+	// A reservation ends by an act naming the branch; a status branch is kept
+	// for ever. Neither may drift into the other's form.
+	if end := rows[0][3]; !strings.Contains(end, "<name>") {
+		t.Errorf("the reservation row names %q as the act that ends a ref there, without the <name> it ends", end)
+	}
+	if end := rows[1][3]; end != "never" {
+		t.Errorf("the status row names %q as the act that ends a ref there; want never", end)
 	}
 }
 
