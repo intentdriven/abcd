@@ -903,10 +903,22 @@ type seenEntry struct {
 // statusFile is rel, a file under the status state directory.
 func statusFile(rel string) string { return statusBranches.stateDir + "/" + rel }
 
+// statusSub is the status state directory's sub-directory sub, or the
+// directory itself when sub is "".
+func statusSub(sub string) string {
+	if sub == "" {
+		return statusBranches.stateDir
+	}
+	return statusFile(sub)
+}
+
 // seenKept reports whether commit was already read here: its kept file
 // reads back as an entry with the time it was first fetched. A file that
-// does not (one a write cut short left empty or partial, since it is written
-// without a flush) is removed, best effort, and the commit is read again.
+// reads but does not parse as one (a write cut short left it empty or
+// partial, since it is written without a flush) is removed, best effort, and
+// the commit is read again. A file that does not read at all for now (it may
+// not be opened, or the read failed) is left as it is: the commit is read
+// again, and its file written again over it.
 func seenKept(root, commit string) bool {
 	r, err := os.OpenRoot(root)
 	if err != nil {
@@ -923,8 +935,11 @@ func seenKeptIn(r *os.Root, commit string) bool {
 	if errors.Is(err, fs.ErrNotExist) {
 		return false
 	}
+	if err != nil {
+		return false
+	}
 	var e seenEntry
-	if err == nil && json.Unmarshal(data, &e) == nil {
+	if json.Unmarshal(data, &e) == nil {
 		if _, err := time.Parse(time.RFC3339, e.FirstFetched); err == nil {
 			return true
 		}
@@ -1042,14 +1057,14 @@ func readStatusFile(root, rel string, max int64) []byte {
 }
 
 // statusEntries is the names of the files under the status state directory's
-// sub; nil when it cannot be read.
+// sub (the directory itself when sub is ""); nil when it cannot be read.
 func statusEntries(root, sub string) []fs.DirEntry {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return nil
 	}
 	defer r.Close()
-	f, err := r.Open(statusFile(sub))
+	f, err := r.Open(statusSub(sub))
 	if err != nil {
 		return nil
 	}
@@ -1572,7 +1587,8 @@ var zeroCommit = strings.Repeat("0", 40)
 const tmpKeep = time.Minute
 
 // pruneStatus removes, best effort: every temporary file a write cut off left
-// behind (older than tmpKeep, by the wall clock); every kept announcement whose life
+// behind (older than tmpKeep, by the wall clock), in the state directory
+// itself or any directory under it; every kept announcement whose life
 // ended more than seenKeep ago, with its shown marker and its pusher; every
 // other shown marker older than shownKeep (a block's file of the lines one
 // prompt showed, a line's own marker an earlier build kept, or an
@@ -1586,7 +1602,7 @@ func pruneStatus(ctx context.Context, root string, now time.Time, refs []statusR
 		return
 	}
 	defer r.Close()
-	for _, sub := range []string{seenDir, shownDir, doubtDir, pusherDir, path.Base(statusBranches.readDir())} {
+	for _, sub := range []string{"", seenDir, shownDir, doubtDir, pusherDir, path.Base(statusBranches.readDir())} {
 		for _, e := range statusEntries(root, sub) {
 			if ctx.Err() != nil {
 				return
@@ -1598,7 +1614,7 @@ func pruneStatus(ctx context.Context, root string, now time.Time, refs []statusR
 			// By the wall clock: a write running beside this one renames its
 			// file within moments, so only one older than tmpKeep was cut off.
 			if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > tmpKeep {
-				_ = r.Remove(statusFile(sub + "/" + name))
+				_ = r.Remove(statusSub(sub) + "/" + name)
 			}
 		}
 	}

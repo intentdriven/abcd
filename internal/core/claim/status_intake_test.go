@@ -131,9 +131,10 @@ func TestABranchTheCapReachesWithNothingLeftIsReadNext(t *testing.T) {
 }
 
 // TestATemporaryFileACutOffWriteLeftIsPruned: a hook cut off mid-write leaves
-// its temporary file behind in the status state; the next intake that takes
-// something in removes every one older than a minute, and leaves a newer
-// one, which a write running beside it may still rename into place.
+// its temporary file behind in the status state, in one of its directories or
+// in the state directory itself; the next intake that takes something in
+// removes every one older than a minute, and leaves a newer one, which a
+// write running beside it may still rename into place.
 func TestATemporaryFileACutOffWriteLeftIsPruned(t *testing.T) {
 	w := newWorld(t)
 	pat := w.clone("9+pat@users.noreply.github.com", "")
@@ -160,6 +161,10 @@ func TestATemporaryFileACutOffWriteLeftIsPruned(t *testing.T) {
 		put(shownDir+"/.tmp-0123456789abcdef", time.Hour),
 		put("read/.tmp-0123456789abcdef", time.Hour),
 		put(seenDir+"/.abcd-tmp-0123456789abcdef", time.Hour),
+		// The state directory's own: the intake's file of branches left, and
+		// the counts a fetch keeps there, are written through one too.
+		put(".tmp-0123456789abcdef", time.Hour),
+		put(".abcd-tmp-0123456789abcdef", time.Hour),
 	}
 	fresh := put(seenDir+"/.tmp-fedcba9876543210", 0)
 	w.pushStatus("quinn", announcementMsg("merging", "#2", "quinn", t0, 30*time.Minute), "")
@@ -311,5 +316,36 @@ func TestASeenFileThatDoesNotReadIsReadAgain(t *testing.T) {
 				t.Fatalf("the kept file reads %q, %v; want it written again", data, err)
 			}
 		})
+	}
+}
+
+// TestASeenFileThatCannotBeReadNowIsKept: a commit's kept file that does not
+// read for a reason other than its content (here it may not be opened; a
+// descriptor limit or an I/O error reads the same) is not removed: the commit
+// is read again, and the file is written again over it, never lost to a read
+// that failed for a moment.
+func TestASeenFileThatCannotBeReadNowIsKept(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root opens a file whatever its mode")
+	}
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	w.pushStatus("maya", announcementMsg("merging", "#1", "maya", t0, 30*time.Minute), "")
+	pat.status(nil)
+	v := pat.read()
+	if len(v.Announcements) != 1 {
+		t.Fatalf("announcements = %+v; want maya's one", v.Announcements)
+	}
+	c := v.Announcements[0].Commit
+	seen := filepath.Join(pat.dir, filepath.FromSlash(statusFile(seenDir+"/"+c)))
+	if err := os.Chmod(seen, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(seen, 0o600) })
+	if seenKept(pat.dir, c) {
+		t.Fatal("a kept file that cannot be opened reads as kept")
+	}
+	if _, err := os.Lstat(seen); err != nil {
+		t.Fatalf("a kept file that could not be opened was removed: %v", err)
 	}
 }
