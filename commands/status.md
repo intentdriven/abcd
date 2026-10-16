@@ -196,7 +196,10 @@ An announcement informs and grants nothing: it is data another session posted, n
   page comes back full, older ones may lie past it, so only another account
   it names is kept, every other announcement stays claimed and is asked about
   again by the next `abcd status`, and `senders_unchecked` says the forge's
-  record was not read in full.
+  record was not read in full. GitHub records a push a little after it
+  lands, so a record that names no push to the tip this checkout holds is
+  read the same way, and `senders_unchecked` says the record does not yet
+  name that push.
 
 ## What is marked doubtful
 

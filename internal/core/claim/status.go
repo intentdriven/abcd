@@ -1332,6 +1332,16 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
 	defer cancel()
+	// The tip this checkout holds of each branch, which a record read in
+	// full names as some push's After.
+	tips := map[string]string{}
+	if len(branches) > 0 {
+		if refs, err := statusRefs(ctx, root); err == nil {
+			for _, r := range refs {
+				tips[strings.TrimPrefix(r.ref, StatusTrackingPrefix)] = r.sha
+			}
+		}
+	}
 	var failed []string
 	unasked := 0
 	for i, b := range branches {
@@ -1345,14 +1355,22 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			failed = append(failed, "abcd-status/"+b+": "+termsafe.Sanitize(redacted(err)))
 			continue
 		}
+		// The forge records a push some time after it lands: a record that
+		// names no push to the tip held here has not caught up yet, and is
+		// read as one not read in full.
+		behind := !partial && !slices.ContainsFunc(pushed, func(p Push) bool { return tips[b] != "" && p.After == tips[b] })
+		partial = partial || behind
 		byCommit, err := placePushes(ctx, root, b, pushed)
 		if err != nil {
 			failed = append(failed, "abcd-status/"+b+": the forge's record of pushes was not placed in full: "+termsafe.Sanitize(redacted(err)))
 			continue
 		}
-		if partial {
-			failed = append(failed, "abcd-status/"+b+": "+ErrPartialRecord.Error()+
-				", so a commit it does not name another account for stays claimed and is asked about again")
+		const askedAgain = ", so a commit it does not name another account for stays claimed and is asked about again"
+		switch {
+		case behind:
+			failed = append(failed, "abcd-status/"+b+": the forge's record does not yet name the push of the tip held here"+askedAgain)
+		case partial:
+			failed = append(failed, "abcd-status/"+b+": "+ErrPartialRecord.Error()+askedAgain)
 		}
 		for _, c := range ask[b] {
 			login, ok := byCommit[c]

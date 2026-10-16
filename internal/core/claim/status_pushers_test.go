@@ -161,8 +161,8 @@ func TestAPlacingCutShortKeepsNothing(t *testing.T) {
 
 // TestTheForgeIsAskedOfABoundedNumberOfBranchesNewestFirst: one fetch asks
 // the forge about at most maxAskedBranches branches, the newest first, and
-// says how many it left for the next; a commit the forge's record did not
-// cover is not asked about again, so the next fetch asks only the rest.
+// says how many it left for the next; a commit the forge answered for is not
+// asked about again, so the next fetch asks only the rest.
 func TestTheForgeIsAskedOfABoundedNumberOfBranchesNewestFirst(t *testing.T) {
 	w := newWorld(t)
 	pat := w.clone("9+pat@users.noreply.github.com", "")
@@ -175,7 +175,7 @@ func TestTheForgeIsAskedOfABoundedNumberOfBranchesNewestFirst(t *testing.T) {
 	var asked []string
 	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		asked = append(asked, branch)
-		return []Push{}, nil
+		return []Push{{Before: zeroCommit, After: w.statusTip(branch), Pusher: branch}}, nil
 	}
 	res := pat.status(lookup)
 	if strings.Join(asked, " ") != strings.Join(order[:maxAskedBranches], " ") {
@@ -289,5 +289,36 @@ func TestEachForgeLookupEndsAtTheBudget(t *testing.T) {
 	}
 	if !strings.Contains(res.SendersUnchecked, "1 status branch not asked about") {
 		t.Fatalf("unchecked = %q; want the one left counted", res.SendersUnchecked)
+	}
+}
+
+// TestARecordShortOfTheTipIsAskedAgain: the forge records a push some time
+// after it lands, so a record whose page is not full but names no push to
+// the tip held here is one the forge has not caught up on yet. It is read as
+// a record not read in full: no commit it leaves open is kept as asked, not
+// even as covered by no push, the fetch says so, and the next fetch asks
+// again.
+func TestARecordShortOfTheTipIsAskedAgain(t *testing.T) {
+	_, pat, cs := octoBranch(t, 2)
+	asked := 0
+	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
+		if branch != "octo" {
+			return nil, nil
+		}
+		asked++
+		return []Push{{Before: zeroCommit, After: cs[0], Pusher: "octo"}}, nil
+	}
+	res := pat.status(lookup)
+	if want := "abcd-status/octo: the forge's record does not yet name the push of the tip held here"; !strings.Contains(res.SendersUnchecked, want) {
+		t.Fatalf("unchecked = %q; want %q", res.SendersUnchecked, want)
+	}
+	for i, c := range cs {
+		if got := pusherKept(pat.dir, c); got != (pusherVerdict{}) {
+			t.Fatalf("commit %d keeps %+v; want nothing kept", i, got)
+		}
+	}
+	pat.status(lookup)
+	if asked != 2 {
+		t.Fatalf("the forge was asked %d times; want the next fetch to ask again", asked)
 	}
 }

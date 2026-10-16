@@ -566,7 +566,8 @@ func TestStatusListsEveryoneWithTheReservationsAndTheHold(t *testing.T) {
 
 // TestASenderIsCheckedAgainstTheForgesRecord is C17: the forge's record of who
 // pushed names the branch's owner (verified), someone else (doubtful, named),
-// or nothing (claimed); a forge that cannot be asked leaves the sender
+// or, in a record that reaches the tip, no push that carried the commit
+// (claimed); a forge that cannot be asked leaves the sender
 // claimed and says why; a commit the forge answered for, naming a pusher or
 // none, is not asked about again.
 func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
@@ -579,7 +580,8 @@ func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 	m := maya.announceAs("merging", "#1012")
 	q := quinn.announceAs("asking", "#7")
 	zed.announceAs("merged", "#8")
-	ann.announceAs("answered", "#9")
+	a9 := ann.announceAs("answered", "#9")
+	a10 := ann.announceAs("answered", "#10")
 	asked := map[string]int{}
 	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		asked[branch]++
@@ -590,6 +592,9 @@ func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 			return []Push{{Before: zeroCommit, After: q.Commit, Pusher: "mallory"}}, nil
 		case "zed":
 			return nil, errors.New("gh is not on PATH")
+		case "ann":
+			// The record reaches the tip, and no push it holds carried #9.
+			return []Push{{Before: a9.Commit, After: a10.Commit, Pusher: "ann"}}, nil
 		}
 		return []Push{}, nil
 	}
@@ -599,16 +604,17 @@ func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 	}
 	lines := map[string]string{}
 	for _, a := range pat.read().Announcements {
-		lines[a.Branch] = a.Line(w.clock())
+		lines[a.Item] = a.Line(w.clock())
 	}
-	for branch, want := range map[string]string{
-		"maya":  "@maya (verified): merging #1012, for 30 min",
-		"quinn": "@quinn (doubtful: the forge's record names @mallory as its pusher): asking #7, for 30 min",
-		"zed":   "@zed (claimed): merged #8, for 30 min",
-		"ann":   "@ann (claimed): answered #9, for 30 min",
+	for item, want := range map[string]string{
+		"#1012": "@maya (verified): merging #1012, for 30 min",
+		"#7":    "@quinn (doubtful: the forge's record names @mallory as its pusher): asking #7, for 30 min",
+		"#8":    "@zed (claimed): merged #8, for 30 min",
+		"#9":    "@ann (claimed): answered #9, for 30 min",
+		"#10":   "@ann (verified): answered #10, for 30 min",
 	} {
-		if lines[branch] != want {
-			t.Fatalf("%s's line = %q; want %q", branch, lines[branch], want)
+		if lines[item] != want {
+			t.Fatalf("%s's line = %q; want %q", item, lines[item], want)
 		}
 	}
 	pat.status(lookup)

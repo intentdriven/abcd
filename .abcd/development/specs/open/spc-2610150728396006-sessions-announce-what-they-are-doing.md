@@ -86,7 +86,7 @@ Nothing else is carried. The commit is authored as the person, as reservations a
   - **The brief:** invariants 7 and 10 gain clauses naming `abcd announce`, `abcd status` and the status branch, written in the change that builds them.
 - **C16, C17:**
   - **C16:** `abcd status` lists announcements newest first, with sender, kind, item, time and time left. Beside them it lists who holds which reservation, and any release being cut. `--json` gives the same.
-  - **C17:** each new update's pusher is read from the forge's activity record (`GET /repos/{owner}/{repo}/activity?ref=`). The sender shows as verified when the record names the branch's owner, doubtful when it names someone else, and claimed when the forge cannot say. Claimed is the native default; the forge lookup is the adapter (invariant 2).
+  - **C17:** each new update's pusher is read from the forge's activity record (`GET /repos/{owner}/{repo}/activity?ref=`). The sender shows as verified when the record names the branch's owner, doubtful when it names someone else, and claimed when the forge cannot say. Claimed is the native default; the forge lookup is the adapter (invariant 2). A record whose page is not full but names no push to the tip this checkout holds is one the forge has not caught up on, and is read as a record not read in full: nothing it leaves open is kept, and the next fetch asks again (decided in step 3's fix round 4, dcn-2610161907326838).
 
 **Surfaces.** `abcd announce` joins the agents' command set beside `abcd reserve`. `abcd status` joins the people's set. Each has a plugin command page, so it is reachable from both the CLI and the plugin markdown surface.
 
