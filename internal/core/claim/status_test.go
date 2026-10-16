@@ -11,8 +11,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // Reading the announcements (itd-2609151838312703, spc-2610150728396006 step
@@ -842,12 +840,12 @@ func TestTheStatusFetchNamesItsBranchesOnStdin(t *testing.T) {
 	}
 }
 
-// TestMarkingAFloodShownFitsThePrompt is C12 for the write after the read:
-// with every write flushed as a shipped binary flushes it, a prompt that
-// shows or counts 300 new announcements reads them and keeps them all as
-// shown inside the hook's one second, and the next prompt shows none again.
+// TestMarkingAFloodShownFitsThePrompt is C12 for the write after the read: a
+// prompt that shows or counts 300 new announcements reads them and keeps them
+// all as shown in one unflushed write, well inside the hook's second (about
+// 120 ms on a loaded developer machine; the bound allows four times that),
+// and the next prompt shows none again.
 func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
-	t.Setenv(fsutil.SkipFlushEnv, "0")
 	w := newWorld(t)
 	pat := w.clone("9+pat@users.noreply.github.com", "")
 	var msgs []string
@@ -866,8 +864,8 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	n.MarkShown()
 	took := time.Since(start)
 	t.Logf("reading and marking 300 announcements took %s", took)
-	if took > time.Second {
-		t.Fatalf("reading and marking 300 announcements took %s; want under the hook's second", took)
+	if took > 500*time.Millisecond {
+		t.Fatalf("reading and marking 300 announcements took %s; want it near its cost, under 500 ms", took)
 	}
 	if !strings.Contains(n.Text, "- and 290 more: `abcd status` lists them all\n") {
 		t.Fatalf("the block:\n%s\nwant 290 counted", n.Text)

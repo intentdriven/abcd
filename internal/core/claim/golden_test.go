@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // goldenAct is what one reservation act sent and left behind, byte for byte:
@@ -115,11 +116,32 @@ func TestAReservationActIsByteForByteWhatItWas(t *testing.T) {
 	}
 }
 
+// stdinOfFetches puts a stand-in git on PATH that passes every command to the
+// real git, and appends to the file it returns every byte a `git fetch
+// --stdin` reads on its standard input, as git reads it.
+func stdinOfFetches(t *testing.T) string {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git unavailable")
+	}
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "stdin.log")
+	script := "#!/bin/sh\nfetch=0 stdin=0\nfor a in \"$@\"; do\n\tcase \"$a\" in fetch) fetch=1 ;; --stdin) stdin=1 ;; esac\ndone\n" +
+		"if [ $fetch = 1 ] && [ $stdin = 1 ]; then\n\ttee -a " + shellquote.Single(logPath) + " | " + shellquote.Single(real) + " \"$@\"\n\texit $?\nfi\n" +
+		"exec " + shellquote.Single(real) + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return logPath
+}
+
 // TestTheStatusFetchIsTheCommandItWas holds `abcd status`'s fetch to its
 // bytes: one fetch reading its per-branch refspecs on stdin, with the
 // reservations' globbed refspec, their release tags and the default branch
-// on the command line, and the refspecs it sends, one forced refspec per
-// branch origin lists by a name the reader reads, sorted.
+// on the command line, and on its standard input, as git read it, one forced
+// refspec per branch origin lists by a name the reader reads, sorted.
 func TestTheStatusFetchIsTheCommandItWas(t *testing.T) {
 	w := newWorld(t)
 	maya := w.clone("5+maya@users.noreply.github.com", "")
@@ -127,6 +149,7 @@ func TestTheStatusFetchIsTheCommandItWas(t *testing.T) {
 	pat := w.clone("9+pat@users.noreply.github.com", "")
 	octo.announceAs("merging", "#1")
 	maya.announceAs("merging", "#2")
+	stdinLog := stdinOfFetches(t)
 	log := traced(t)
 	pat.status(nil)
 	var fetches [][]string
@@ -142,17 +165,13 @@ func TestTheStatusFetchIsTheCommandItWas(t *testing.T) {
 	if len(fetches) != 1 || !slices.Equal(fetches[0], want) {
 		t.Fatalf("fetches = %q; want the one command %q", fetches, want)
 	}
-	names, _, _, err := listStatusBranches(pat.dir)
+	got, err := os.ReadFile(stdinLog)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("no fetch read its stdin: %v", err)
 	}
-	status := statusBranches
-	status.only = names
-	stdin := []string{
-		"+refs/heads/abcd-status/maya:refs/remotes/origin/abcd-status/maya",
-		"+refs/heads/abcd-status/octo:refs/remotes/origin/abcd-status/octo",
-	}
-	if got := status.refspecs(); !slices.Equal(got, stdin) {
-		t.Fatalf("the refspecs on stdin = %q; want %q", got, stdin)
+	stdin := "+refs/heads/abcd-status/maya:refs/remotes/origin/abcd-status/maya\n" +
+		"+refs/heads/abcd-status/octo:refs/remotes/origin/abcd-status/octo\n"
+	if string(got) != stdin {
+		t.Fatalf("the fetch read on stdin %q; want %q", got, stdin)
 	}
 }
