@@ -1448,11 +1448,13 @@ registry, it refuses:
     options that run a program (--checkpoint-action, --to-command,
     --use-compress-program, -I and the like); a vim or ex command (-c, --cmd,
     +) holding a !;
-  - a write or removal whose target the line does not spell out (a variable,
+  - a write the guard's write model reads (redirections and a list of known
+    writers, so a program outside the list writes unread), or a removal,
+    whose target the line does not spell out (a variable,
     a substitution, a glob, or a name after an unknown change of directory),
     except a glob removal in a directory inside the working tree that no
     protected name could match;
-  - a write or removal reaching a protected path, with its directories
+  - such a write, or a removal, reaching a protected path, with its directories
     resolved through symlinks and case folded where the filesystem folds it:
     the git common directory and its hooks, each checkout's .git, the home
     shell start-up files and git configuration, the host's settings, .mcp.json,
@@ -1481,6 +1483,11 @@ the shell's directory from one call to the next. Everything else is refused with
 and what to run instead, which the harness hands the agent, so the agent can
 rewrite the command. A prompt for any tool but the shell is refused, since
 nobody is there to approve it.
+
+The file tools the role is granted (--allowedTools on the launch) write
+without asking the approver, and the abcd binary that answers is not among
+the paths it protects; the OS sandbox for launched agents
+(spc-2610161751056096) is what bounds those writes.
 
 The guard is a mistake filter, not a security boundary (see `abcd guard
 check --help` for what an allow does not see), and this adds no sandbox.

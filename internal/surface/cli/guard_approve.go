@@ -70,11 +70,13 @@ func newGuardApproveCommand() *cobra.Command {
 			"    options that run a program (--checkpoint-action, --to-command,\n" +
 			"    --use-compress-program, -I and the like); a vim or ex command (-c, --cmd,\n" +
 			"    +) holding a !;\n" +
-			"  - a write or removal whose target the line does not spell out (a variable,\n" +
+			"  - a write the guard's write model reads (redirections and a list of known\n" +
+			"    writers, so a program outside the list writes unread), or a removal,\n" +
+			"    whose target the line does not spell out (a variable,\n" +
 			"    a substitution, a glob, or a name after an unknown change of directory),\n" +
 			"    except a glob removal in a directory inside the working tree that no\n" +
 			"    protected name could match;\n" +
-			"  - a write or removal reaching a protected path, with its directories\n" +
+			"  - such a write, or a removal, reaching a protected path, with its directories\n" +
 			"    resolved through symlinks and case folded where the filesystem folds it:\n" +
 			"    the git common directory and its hooks, each checkout's .git, the home\n" +
 			"    shell start-up files and git configuration, the host's settings, .mcp.json,\n" +
@@ -102,6 +104,10 @@ func newGuardApproveCommand() *cobra.Command {
 			"and what to run instead, which the harness hands the agent, so the agent can\n" +
 			"rewrite the command. A prompt for any tool but the shell is refused, since\n" +
 			"nobody is there to approve it.\n\n" +
+			"The file tools the role is granted (--allowedTools on the launch) write\n" +
+			"without asking the approver, and the abcd binary that answers is not among\n" +
+			"the paths it protects; the OS sandbox for launched agents\n" +
+			"(spc-2610161751056096) is what bounds those writes.\n\n" +
 			"The guard is a mistake filter, not a security boundary (see `abcd guard\n" +
 			"check --help` for what an allow does not see), and this adds no sandbox.\n" +
 			"It never touches the person's host settings, and interactive sessions never\n" +

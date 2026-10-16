@@ -351,7 +351,9 @@ its text:
   that run a program, or in a vim or ex command holding a `!`; the words after a
   script's name, or after python's `-m` module, are the script's, not the
   interpreter's;
-- a write or removal whose target the line does not fix: the targets are the
+- a write the guard's write model reads, or a removal, whose target the line
+  does not fix (the write model is a list of known writers, so a program
+  outside it writes without being read): the targets are the
   ones the guard's write model resolves, in every shell state the reading placed
   the command in, with the operands of the commands that change, remove or link
   a path; a variable, a substitution's output, a glob or a name after an unknown
@@ -373,7 +375,7 @@ its text:
   run's own directories (the brief's and the receipt's, which the runner names
   to the approver) and the temporary directory. Writes outside the working tree are judged by
   the protected set alone: bounding them is the OS sandbox's job
-  (spc-2610161751056096), not the approver's (dcn-2610161930191632);
+  (spc-2610161751056096), not the approver's (dcn-2610161930191632); <!-- record-lint: forward-looking -->
 - `git config` writing outside the repository's own file (its global or
   system scope, or a file it names), setting a key that starts a program (the keys `gitutil.ExecPins` pins and the others git
   documents) or `core.worktree`, which moves the working tree git writes to
@@ -403,6 +405,15 @@ a prompt for any tool but the shell, is refused with the guard's reason and
 successor, which the harness hands the agent so it can rewrite the command. The
 checks read the line itself: a script the line runs is read for the registry's
 hazards, not for its own writes.
+
+What the approver does not cover, plainly: the file tools the role is granted
+on the launch (the contract's tools other than the shell, which the runner
+grants without a prompt) write without asking the approver, so the protected
+paths bound only the shell's writes; a script the line runs writes unread, and
+a command that writes into a directory is judged by that directory, not by the
+files that land inside it; and the abcd binary that answers the prompts is not
+among the paths it protects. Bounding all of those is the OS sandbox for
+launched agents (spc-2610161751056096), not the approver. <!-- record-lint: forward-looking -->
 
 What this widens, plainly: on such a launch, a shell command the harness would
 have refused for want of a person, such as a compound line its parser cannot

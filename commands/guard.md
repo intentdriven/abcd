@@ -203,9 +203,11 @@ A shell command is approved only when the guard reads it whole and clears it:
   script's, so `node app.js -p 3000` and `python3 -m pytest -c pytest.ini` are
   approved; a word is taken for the script only where it cannot be the value
   of the flag before it (`node --title app.js -e …` is still refused);
-- every write or removal names its target in full (`path-not-fixed`). The
-  targets are read from the guard's own parse of the line: redirections, the
-  writers its write model lists (`tee`, `cp`, `mv`, `install`, `ln`, `dd`,
+- every write the guard's write model reads, and every removal, names its
+  target in full (`path-not-fixed`). The write model is a list of known
+  writers, so a program outside it writes without being read. The targets are
+  read from the guard's own parse of the line: redirections, the writers its
+  write model lists (`tee`, `cp`, `mv`, `install`, `ln`, `dd`,
   `curl -o`, `wget -O`, `sed -i` and a sed script's `w`, `patch`,
   `git checkout`/`restore`/`clone`, `tar -x`, `unzip`, `rsync`'s destination,
   `go build -o`, `sort -o`, `ditto`'s destination, `split`'s prefix, `uniq`'s
@@ -280,7 +282,16 @@ as it was, with every prompt refused unasked. The opencode runner has no
 per-launch prompt answerer, so its launches keep the permissions opencode's own
 configuration sets. A script the line runs is read for the registry's hazards
 as everywhere, but the checks above read the line itself, not the script's own
-writes.
+writes, and a command that writes into a directory (`tar -x`, `unzip -d`,
+`cp -r`, `git apply`, `git checkout`) is judged by that directory, not by the
+files that land inside it.
+
+What the approver does not cover, plainly. The file tools the role is granted
+on the launch (`--allowedTools`: reading, editing and writing files) write
+without asking the approver, so the protected paths above bound only the shell.
+The abcd binary that answers the prompts is not among the paths it protects.
+Bounding those writes is the OS sandbox for launched agents
+(spc-2610161751056096), not the approver.
 
 ## Registry and overrides
 
