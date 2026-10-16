@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/assistedby"
-	toolid "github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -63,10 +62,33 @@ var announcementFamily = &family{
 	shorten: "an announcement carries no free text, so this is a defect in abcd",
 }
 
-// statusBranches is the status branches' namespace. The whole namespace is
-// fetched, never one branch: a fetch naming a branch origin does not hold yet
-// (a person's first announcement) fails.
+// statusBranches is the status branches' namespace. It is never fetched by a
+// glob: two names that differ only in case (abcd-status/octo and
+// abcd-status/Octo) break a globbed fetch on a case-insensitive filesystem.
+// Nor is a branch named blind, since a fetch naming a branch origin does not
+// hold yet (a person's first announcement) fails. Origin is listed first, and
+// each branch it holds whose name is a lower-case username is fetched by its
+// own refspec (fetchStatus).
 var statusBranches = namespace{remote: StatusRefPrefix, tracking: StatusTrackingPrefix, stateDir: tierRelDir + "/status", noun: "the status branches"}
+
+// fetchStatus is announce's read of the remote: it lists the status branches
+// on origin (listStatusBranches), then fetches, in one command, each one whose
+// name is a lower-case username, by its own refspec, with origin's default
+// branch when ref names it (fetchWith). listed reports whether origin holds
+// the sender's own branch, so a copy of it this checkout kept from before is
+// never taken for its tip.
+func fetchStatus(root string, now time.Time, ref, branch string) (gap string, listed bool, err error) {
+	names, _, _, err := listStatusBranches(root)
+	if err != nil {
+		return "", false, &FetchError{Reason: redacted(err), what: statusBranches.noun, outcome: noAnnouncement}
+	}
+	ns := statusBranches
+	ns.only = names
+	if gap, err = fetchWith(root, now, noAnnouncement, ref, ns); err != nil {
+		return "", false, err
+	}
+	return gap, slices.Contains(names, branch), nil
+}
 
 // noAnnouncement ends a refusal met reading or writing the remote.
 const noAnnouncement = "no announcement was sent"
@@ -293,9 +315,14 @@ type preparedAnnouncement struct {
 }
 
 // prepareAnnouncement checks a request in the order the refusals promise: the
-// kind, the item and the expiry before any git runs (C3), then the person's
-// git identity, refused when it is a tool's before anything is written, then
-// the holder and the working copy, then the composed message, read back
+// kind, the item and the expiry before any git runs (C3), then the working
+// copy and the origin check, which refuse on the checkout's own facts, then
+// the person's git identity and the sender, through the one holder resolver
+// a reservation's prepare uses (resolveHolder, the forge token's user
+// endpoint included), so a checkout refused locally never asks GitHub whose
+// account the token is. When git's identity is not a person's (unset, or a
+// machine's), the token's account authors the announcement, and the identity
+// git had is shown nowhere. Last comes the composed message, read back
 // through the validator and measured against the cap and the outbound policy.
 func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*preparedAnnouncement, error) {
 	if !slices.Contains(AnnouncementKinds, req.Kind) {
@@ -317,35 +344,25 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 	// minimum is a whole second, so it stays inside them).
 	life = life.Truncate(time.Second)
 	p := &preparedAnnouncement{root: root, home: o.home(), now: o.now(), record: record}
-	if p.who, err = gitIdentity(root); err != nil {
-		return nil, err
-	}
-	// An announcement is authored by git's own identity, so a checkout whose
-	// git has neither half is refused before anything is written: git would
-	// otherwise compose one from the machine's name, which a public commit
-	// must never carry.
-	if p.who.Name == "" || p.who.Email == "" {
-		return nil, refuse("git has no user.name or user.email to author the announcement; set them, then retry; %s", nothingPushed)
-	}
-	// A hosted container's default identity is a tool's. An announcement is
-	// authored as the person who sends it, so it is refused here, before a
-	// copy key, an object or a ref is written, and the refusal never repeats
-	// the identity it rejected.
-	if toolid.IsToolIdentity(toolid.RoleAuthor, p.who.Name, p.who.Email) {
-		return nil, refuse("abcd cannot yet work out whose GitHub account this session uses: git's user.name and user.email here "+
-			"name a tool, not a person, and an announcement is authored as the person who sends it; a coming change reads the "+
-			"person from the session's forge account instead; no announcement was sent, and %s", nothingPushed)
-	}
-	// The sender is named from git's identity or the machine key alone: an
-	// announcement does not yet ask the forge token (net false).
-	holder, err := resolveHolder(root, p.who, o, false)
-	if err != nil {
-		return nil, err
-	}
-	sender := holder.Login
 	key, err := copyKey(root)
 	if err != nil {
 		return nil, err
+	}
+	if err := originPresent(root, "announcements"); err != nil {
+		return nil, err
+	}
+	if p.who, err = gitIdentity(root); err != nil {
+		return nil, err
+	}
+	h, err := resolveHolder(root, p.who, o, true)
+	if err != nil {
+		return nil, err
+	}
+	sender := h.Login
+	if !p.who.person() {
+		// Git's identity is unset or a machine's: the token's account authors
+		// the announcement, so that identity never reaches a commit.
+		p.who = identity{Name: h.Login, Email: h.NoReply}
 	}
 	p.msg = announcement{Kind: req.Kind, Item: item, Sender: sender, Copy: key, SentAt: p.now, ExpiresAt: p.now.Add(life),
 		AssistedBy: o.assistedBy()}
@@ -361,12 +378,13 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 }
 
 // Announce sends one announcement: it checks and composes it, asks the
-// embargo check (C5), fetches the status branches and the default branch in
-// one fetch (the status branches alone in a second when the default branch
-// cannot be read), refuses a record the default branch does not hold (C4),
+// embargo check (C5), lists the status branches on origin and fetches each one
+// whose name is a lower-case username, by its own refspec, with the default
+// branch in one fetch (the status branches alone in a second when the default
+// branch cannot be read), refuses a record the default branch does not hold (C4),
 // writes one empty-tree commit on the sender's status branch as the person,
 // and makes one plain push. Each refused push is followed by one fetch, the
-// last included: a branch that now holds the commit means the push landed
+// last included (after the same listing): a branch that now holds the commit means the push landed
 // although git reported it refused, and it is sent; a branch that moved means
 // a race lost to another of the person's sessions, and the commit is rebuilt
 // on the tip that won and pushed again, up to three times (C2); a branch that
@@ -399,9 +417,6 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 		return AnnounceResult{}, refuse("an announcement about %s is refused: the embargo store on this machine holds it, or text the announcement carries, under embargo; %s",
 			p.msg.Item, nothingPushed)
 	}
-	if err := originPresent(root, "announcements"); err != nil {
-		return AnnounceResult{}, err
-	}
 	tree, err := emptyTree(root)
 	if err != nil {
 		return AnnounceResult{}, refuse("%s; %s", redacted(err), nothingPushed)
@@ -416,7 +431,7 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 				Remote, Remote, Remote, Remote, redacted(err), p.msg.Item, noAnnouncement)
 		}
 	}
-	gap, err := fetchWith(root, p.now, noAnnouncement, defaultRef, statusBranches)
+	gap, listed, err := fetchStatus(root, p.now, defaultRef, p.branch)
 	if err != nil {
 		return AnnounceResult{}, err
 	}
@@ -425,7 +440,7 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 			return AnnounceResult{}, err
 		}
 	}
-	parent, err := statusTip(root, p.branch)
+	parent, err := statusTip(root, p.branch, listed)
 	if err != nil {
 		return AnnounceResult{}, err
 	}
@@ -465,11 +480,12 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 		// branch cannot be read back, whether the push landed is not known, so
 		// it is not called "not sent": it is an *AnnounceError counting the
 		// push.
-		if _, ferr := fetch(root, p.now, noAnnouncement, statusBranches); ferr != nil {
+		_, listed, ferr := fetchStatus(root, p.now, originDefault(root), p.branch)
+		if ferr != nil {
 			return AnnounceResult{}, fmt.Errorf("%s; %s could not be fetched afterwards to see whether the push landed: %s",
 				refused, branch, withoutOutcome(ferr))
 		}
-		next, terr := statusTip(root, p.branch)
+		next, terr := statusTip(root, p.branch, listed)
 		if terr != nil {
 			return AnnounceResult{}, fmt.Errorf("%s; %s could not be fetched afterwards to see whether the push landed: %s",
 				refused, branch, withoutOutcome(terr))
@@ -524,8 +540,11 @@ func withoutOutcome(err error) string {
 }
 
 // statusTip is the commit the person's status branch ends in as just fetched,
-// "" when origin holds none yet.
-func statusTip(root, branch string) (string, error) {
+// "" when origin holds none yet: listed is whether origin's listing named it.
+func statusTip(root, branch string, listed bool) (string, error) {
+	if !listed {
+		return "", nil
+	}
 	ref := statusBranches.track(branch)
 	name, typ, ok, err := resolveRef(root, ref)
 	if err != nil {

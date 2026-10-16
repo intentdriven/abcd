@@ -2,6 +2,7 @@ package claim
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -676,12 +677,53 @@ func vendorIdentity() (name, email string) {
 	return "Cla" + "ude", "noreply" + "@" + "anthro" + "pic.com"
 }
 
-// TestAToolsGitIdentityIsRefusedBeforeAnythingIsWritten: under a tool's git
-// identity, announce refuses before it writes anything (no copy key, no
-// object, no fetch, no push), whether or not the machine names a username,
-// and the refusal names the cause and the fix without the identity it
-// rejected.
-func TestAToolsGitIdentityIsRefusedBeforeAnythingIsWritten(t *testing.T) {
+// announceForge is announce with the session's forge token answered by f.
+func (p *participant) announceForge(kind, item string, f *forgeFake) (AnnounceResult, error) {
+	o := p.opts()
+	o.Embargo = (&embargoProbe{}).check
+	o.ForgeUser = f.user
+	return Announce(p.dir, AnnounceRequest{Kind: kind, Item: item}, o)
+}
+
+// tokenPerson is the account the fake forge token answers for, and the
+// identity its account authors a commit as.
+const (
+	tokenLogin  = "octo-person"
+	tokenID     = 4242
+	tokenAuthor = "octo-person <4242+octo-person@users.noreply.github.com>"
+)
+
+// shownNowhere fails the test when the vendor identity appears in any of
+// shown, in a commit, a trailer or a ref name in any of dirs, or in an
+// argument abcd gave git.
+func shownNowhere(t *testing.T, log *gitLog, shown string, dirs ...string) {
+	t.Helper()
+	name, email := vendorIdentity()
+	var all strings.Builder
+	all.WriteString(shown)
+	for _, dir := range dirs {
+		all.WriteString(runGit(t, dir, "log", "--all", "--format=%an%n%ae%n%cn%n%ce%n%B"))
+		all.WriteString(runGit(t, dir, "for-each-ref", "--format=%(refname)"))
+	}
+	for _, leak := range []string{name, email, "anthro"} {
+		if strings.Contains(strings.ToLower(all.String()), strings.ToLower(leak)) {
+			t.Errorf("the vendor identity is shown (%q):\n%s", leak, all.String())
+		}
+		if log != nil && log.anyArgContains(leak) {
+			t.Errorf("abcd passed the vendor identity (%q) to git", leak)
+		}
+	}
+}
+
+// TestAToolsGitIdentityIsSentAsTheTokensAccount is the product thinker's
+// ruling of 2026-10-15 for announce: a hosted container's clone carries an AI
+// vendor's git identity while its forge token is the person's. abcd works out
+// the person from the token, as reserve does (#1037), whether or not the
+// machine names a username (the machine key is skipped, since the author's
+// address must come from the token's own account), and the token's account
+// authors and commits the announcement. The vendor identity appears in no
+// result, commit, trailer, ref or git argument.
+func TestAToolsGitIdentityIsSentAsTheTokensAccount(t *testing.T) {
 	name, email := vendorIdentity()
 	for label, home := range map[string]string{
 		"no username configured": "",
@@ -692,62 +734,114 @@ func TestAToolsGitIdentityIsRefusedBeforeAnythingIsWritten(t *testing.T) {
 			p := w.clone(email, home)
 			p.git("config", "user.name", name)
 			log := traced(t)
-			_, err := p.announce("merging", "#1012")
-			if !errors.Is(err, ErrRefused) || err == nil {
-				t.Fatalf("announce = %v; want a refusal", err)
+			forge := &forgeFake{login: tokenLogin, id: tokenID}
+			res, err := p.announceForge("merging", "#1012", forge)
+			if err != nil {
+				t.Fatalf("announce = %v; want it sent as the token's account", err)
 			}
-			msg := err.Error()
-			for _, part := range []string{"abcd cannot yet work out whose GitHub account this session uses",
-				"forge account", "no announcement was sent", "nothing was pushed"} {
-				if !strings.Contains(msg, part) {
-					t.Errorf("the refusal lacks %q: %s", part, msg)
-				}
+			if forge.calls != 1 {
+				t.Fatalf("the forge was asked %d times; want once", forge.calls)
 			}
-			// No step is put to the person: abcd will read the identity itself.
-			for _, step := range []string{"git config", "set ", "retry"} {
-				if strings.Contains(msg, step) {
-					t.Errorf("the refusal asks for a manual step (%q): %s", step, msg)
-				}
+			tip := w.statusTip(tokenLogin)
+			if res.Sender != tokenLogin || res.Branch != "abcd-status/"+tokenLogin || tip == "" || res.Commit != tip {
+				t.Fatalf("result %+v, origin's tip %q; want it sent as %s", res, tip, tokenLogin)
 			}
-			for _, leak := range []string{name, email, "anthro"} {
-				if strings.Contains(strings.ToLower(msg), strings.ToLower(leak)) {
-					t.Errorf("the refusal echoes the rejected identity (%q): %s", leak, msg)
-				}
+			if who := runGit(t, w.bare, "log", "-1", "--format=%an <%ae>|%cn <%ce>", tip); who != tokenAuthor+"|"+tokenAuthor {
+				t.Fatalf("author|committer = %q; want the token's account in both roles", who)
 			}
-			for _, sub := range log.subcommands() {
-				if sub != "config" {
-					t.Errorf("git %s ran before the refusal; want only the identity read", sub)
-				}
+			if msg := w.remoteMessage(tip); !strings.Contains(msg, "Abcd-Sender: "+tokenLogin+"\n") {
+				t.Fatalf("the announcement does not name the token's account as sender:\n%s", msg)
 			}
-			if _, err := os.Stat(filepath.Join(p.dir, filepath.FromSlash(copyKeyRel))); err == nil {
-				t.Errorf("the copy key was minted before the refusal")
-			}
-			if refs := runGit(t, w.bare, "for-each-ref", "refs/heads/abcd-status/"); refs != "" {
-				t.Errorf("origin holds %s", refs)
-			}
-			for _, dir := range []string{w.bare, p.dir} {
-				all := runGit(t, dir, "log", "--all", "--format=%an %ae %cn %ce %B")
-				if strings.Contains(strings.ToLower(all), "anthro") {
-					t.Errorf("a commit in %s carries the rejected identity", filepath.Base(dir))
-				}
-			}
+			shownNowhere(t, log, fmt.Sprintf("%+v", res), w.bare, p.dir)
 		})
 	}
 }
 
-// TestAnAddressThatNamesNoUsernameIsRefusedNamingTheFix: a person whose
+// TestAToolsGitIdentityWithNoAnsweringTokenIsRefusedShowingItNowhere: when
+// the token cannot say whose account it is, and its error even names the
+// vendor identity, announce refuses with the failure's class, before any
+// fetch or push, asking for no manual step, and shows the identity nowhere.
+func TestAToolsGitIdentityWithNoAnsweringTokenIsRefusedShowingItNowhere(t *testing.T) {
+	name, email := vendorIdentity()
+	w := newWorld(t)
+	p := w.clone(email, "")
+	p.git("config", "user.name", name)
+	log := traced(t)
+	_, err := p.announceForge("merging", "#1012", &forgeFake{err: errors.New("gh: HTTP 401 for " + name + " <" + email + ">")})
+	if !errors.Is(err, ErrRefused) {
+		t.Fatalf("announce = %v; want a refusal", err)
+	}
+	msg := err.Error()
+	for _, part := range []string{"could not work out whose GitHub account this session uses", "nothing was sent or pushed"} {
+		if !strings.Contains(msg, part) {
+			t.Errorf("the refusal lacks %q: %s", part, msg)
+		}
+	}
+	for _, gone := range []string{"cannot yet", "coming change", "git config", "set ", "retry"} {
+		if strings.Contains(msg, gone) {
+			t.Errorf("the refusal carries %q: %s", gone, msg)
+		}
+	}
+	for _, sub := range log.subcommands() {
+		if sub == "fetch" || sub == "push" || sub == "ls-remote" {
+			t.Errorf("git %s ran before the refusal", sub)
+		}
+	}
+	if refs := runGit(t, w.bare, "for-each-ref", "refs/heads/abcd-status/"); refs != "" {
+		t.Errorf("origin holds %s", refs)
+	}
+	shownNowhere(t, log, msg, w.bare, p.dir)
+}
+
+// TestAPersonWithNoNoReplyAddressIsSentAsTheTokensAccount: a person whose
 // user.email is not a GitHub no-reply address and whose machine names no
-// username is refused, told what to set (build note 2).
-func TestAnAddressThatNamesNoUsernameIsRefusedNamingTheFix(t *testing.T) {
+// username is not refused naming a fix: the token names the sender, and the
+// person's own git identity still authors the announcement, as a
+// reservation's does.
+func TestAPersonWithNoNoReplyAddressIsSentAsTheTokensAccount(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("pat@example.com", "")
-	_, err := p.announce("merging", "#1012")
-	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "reservation.github_username") ||
-		!strings.Contains(err.Error(), "no-reply address") {
-		t.Fatalf("announce = %v; want the refusal naming both fixes", err)
+	forge := &forgeFake{login: tokenLogin, id: tokenID}
+	res, err := p.announceForge("merging", "#1012", forge)
+	if err != nil || res.Sender != tokenLogin || forge.calls != 1 {
+		t.Fatalf("announce = %+v, %v after %d forge calls; want it sent as %s", res, err, forge.calls, tokenLogin)
 	}
-	if tip := w.statusTip("pat"); tip != "" {
-		t.Fatalf("origin holds %s", tip)
+	if who := runGit(t, w.bare, "log", "-1", "--format=%an <%ae>", w.statusTip(tokenLogin)); who != "Pat Example <pat@example.com>" {
+		t.Fatalf("author = %q; want the person's own git identity", who)
+	}
+}
+
+// TestAnAnnouncementWithNoGitIdentityIsAuthoredAsTheTokensAccount: a checkout
+// whose git has no user.name is not refused: the token's account sends and
+// authors the announcement, so git never composes an author from the
+// machine's name.
+func TestAnAnnouncementWithNoGitIdentityIsAuthoredAsTheTokensAccount(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	p.git("config", "user.name", "")
+	res, err := p.announceForge("merging", "#1012", &forgeFake{login: tokenLogin, id: tokenID})
+	if err != nil || res.Sender != tokenLogin {
+		t.Fatalf("announce = %+v, %v; want it sent as %s", res, err, tokenLogin)
+	}
+	if who := runGit(t, w.bare, "log", "-1", "--format=%an <%ae>|%cn <%ce>", res.Commit); who != tokenAuthor+"|"+tokenAuthor {
+		t.Fatalf("author|committer = %q; want the token's account in both roles", who)
+	}
+}
+
+// TestAnAnnouncementRefusedLocallyNeverAsksTheForge: a check that can refuse
+// on the checkout's own facts (here, no remote named origin) runs before the
+// holder, so a checkout refused locally never asks GitHub whose account the
+// token is, as reserve's prepare promises.
+func TestAnAnnouncementRefusedLocallyNeverAsksTheForge(t *testing.T) {
+	name, email := vendorIdentity()
+	w := newWorld(t)
+	p := w.clone(email, "")
+	p.git("config", "user.name", name)
+	p.git("remote", "remove", "origin")
+	forge := &forgeFake{login: tokenLogin, id: tokenID}
+	_, err := p.announceForge("merging", "#1012", forge)
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "announcements live on the remote named origin") || forge.calls != 0 {
+		t.Fatalf("announce = %v after %d forge calls; want the no-origin refusal and no forge call", err, forge.calls)
 	}
 }
 
@@ -774,25 +868,92 @@ func TestAnUnclassedAnnounceFailureCountsThePushesTried(t *testing.T) {
 	}
 }
 
-// TestAnAnnouncementWithNoGitIdentityNamesTheAnnouncement: a checkout whose
-// git has no user.name is refused before anything is written, the refusal
-// naming the announcement it would author, not a reservation. A reservation
-// from the same checkout needs no git identity: the session's forge token
-// names its holder and authors it, so it asks the token, and its refusal when
-// the token cannot answer never carries the announcement's wording.
-func TestAnAnnouncementWithNoGitIdentityNamesTheAnnouncement(t *testing.T) {
+// twinOnOrigin gives origin a status branch named twin pointing at commit,
+// written straight into the packed refs beside the others, sorted as git
+// sorts them: no case-insensitive filesystem holds two loose refs whose names
+// differ only in case.
+func (w *world) twinOnOrigin(twin, commit string) {
+	w.t.Helper()
+	runGit(w.t, w.bare, "pack-refs", "--all")
+	packed := filepath.Join(w.bare, "packed-refs")
+	data, err := os.ReadFile(packed)
+	if err != nil {
+		w.t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	header, refs := lines[0], append(lines[1:], commit+" "+StatusRefPrefix+twin)
+	slices.SortFunc(refs, func(a, b string) int {
+		_, ra, _ := strings.Cut(a, " ")
+		_, rb, _ := strings.Cut(b, " ")
+		return strings.Compare(ra, rb)
+	})
+	if err := os.WriteFile(packed, []byte(header+"\n"+strings.Join(refs, "\n")+"\n"), 0o644); err != nil {
+		w.t.Fatal(err)
+	}
+}
+
+// TestACaseCollidingStatusBranchDoesNotStopAnAnnouncement is build note 25:
+// origin holds abcd-status/octo beside abcd-status/Octo, which a globbed fetch
+// cannot write on a case-insensitive filesystem, so a glob would refuse every
+// announcement there. announce lists origin's status branches first
+// (git ls-remote) and fetches each lower-case username by its own refspec:
+// the sender's branch is fetched and extended, and the twin is never fetched.
+func TestACaseCollidingStatusBranchDoesNotStopAnAnnouncement(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
-	p.git("config", "user.name", "")
-	_, err := p.announce("merging", "#1012")
-	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "to author the announcement") || strings.Contains(err.Error(), "reservation") {
-		t.Fatalf("announce = %v; want the refusal naming the announcement", err)
+	first, err := p.announce("merging", "#1012")
+	if err != nil {
+		t.Fatalf("the first announcement: %v", err)
 	}
-	fake := &forgeFake{err: errors.New("no token")}
-	o := p.opts()
-	o.ForgeUser = fake.user
-	_, err = Reserve(p.dir, Request{Record: "iss-5", Footprint: []string{"README.md"}}, o)
-	if !errors.Is(err, ErrRefused) || strings.Contains(err.Error(), "announcement") || fake.calls != 1 {
-		t.Fatalf("reserve = %v after %d token call(s); want one call and the token's refusal", err, fake.calls)
+	// The twin ends in a commit of its own, so the two names cannot share one
+	// loose ref here by chance.
+	other := runGit(t, w.bare, "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "a twin")
+	w.twinOnOrigin("Octo", other)
+	if refs := runGit(t, w.bare, "for-each-ref", "--format=%(refname)", StatusRefPrefix); !strings.Contains(refs, StatusRefPrefix+"Octo") ||
+		!strings.Contains(refs, StatusRefPrefix+"octo") {
+		t.Fatalf("origin holds %q; want both names", refs)
+	}
+	w.set(t0.Add(time.Minute))
+	log := traced(t)
+	next, err := p.announce("merged", "#1012")
+	if err != nil {
+		t.Fatalf("announce beside a case-colliding twin = %v; want it sent", err)
+	}
+	if w.parentOf(next.Commit) != first.Commit || w.statusTip("octo") != next.Commit {
+		t.Fatalf("the announcement %+v is not the child of %s at the tip", next, first.Commit)
+	}
+	if refs := p.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); strings.Contains(refs, "Octo") {
+		t.Fatalf("the twin named Octo was fetched: %s", refs)
+	}
+	subs := log.subcommands()
+	if i, j := slices.Index(subs, "ls-remote"), slices.Index(subs, "fetch"); i < 0 || j < 0 || i > j {
+		t.Fatalf("git ran %v; want the status branches listed before the fetch", subs)
+	}
+	log.mu.Lock()
+	defer log.mu.Unlock()
+	for _, c := range log.cmds {
+		if c[0] == "fetch" && strings.Contains(strings.Join(c, " "), "*") {
+			t.Fatalf("the fetch named a glob: git %s", strings.Join(c, " "))
+		}
+	}
+}
+
+// TestAnAnnouncementWithNothingToFetchFetchesNothingElse: with no status
+// branch on origin and no default branch named here, the fetch names no
+// refspec at all, so it is not run (a bare `git fetch origin` would fetch
+// whatever the clone is configured to); the announcement is still sent.
+func TestAnAnnouncementWithNothingToFetchFetchesNothingElse(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	p.git("update-ref", "-d", "refs/remotes/origin/HEAD")
+	p.git("update-ref", "-d", "refs/remotes/origin/main")
+	if _, err := p.announce("merging", "#1012"); err != nil {
+		t.Fatalf("announce = %v; want it sent", err)
+	}
+	if w.statusTip("octo") == "" {
+		t.Fatal("the announcement did not reach origin")
+	}
+	if refs := p.git("for-each-ref", "--format=%(refname)", "refs/remotes/origin/main"); refs != "" {
+		t.Fatalf("the fetch brought in %s, which it did not name", refs)
 	}
 }

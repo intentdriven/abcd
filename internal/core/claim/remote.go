@@ -557,6 +557,7 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 	if len(listed) > 0 {
 		args = []string{"fetch", "--prune", "--no-tags", "--stdin", Remote}
 	}
+	bare := len(args)
 	for _, ns := range spaces {
 		if ns.only == nil {
 			args = append(args, ns.refspecs()...)
@@ -572,17 +573,25 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 		branch := strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/")
 		withDefault = append(append([]string(nil), args...), "+refs/heads/"+branch+":"+ref)
 	}
+	// A fetch naming no refspec at all (a listed namespace origin holds
+	// nothing of, and no default branch) is not run: a bare `git fetch
+	// origin` would fetch whatever this clone is configured to.
 	var ferr error
 	if len(listed) > 0 {
 		ferr = stdinFetchFloor()
 	}
 	if ferr == nil {
-		trace(withDefault...)
-		_, ferr = gitutil.NetInput(root, stdin, withDefault...)
+		if len(withDefault) > bare || len(listed) > 0 {
+			trace(withDefault...)
+			_, ferr = gitutil.NetInput(root, stdin, withDefault...)
+		}
 		if ferr != nil && ref != "" {
 			gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
-			trace(args...)
-			_, ferr = gitutil.NetInput(root, stdin, args...)
+			ferr = nil
+			if len(args) > bare || len(listed) > 0 {
+				trace(args...)
+				_, ferr = gitutil.NetInput(root, stdin, args...)
+			}
 		}
 	}
 	if ferr != nil {

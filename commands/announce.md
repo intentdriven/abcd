@@ -15,16 +15,20 @@ agent's, beside `/abcd:reserve`. An announcement informs and grants nothing:
 it never approves, lends or hands over anything. What is really a hold is a
 reservation (`/abcd:reserve`), not an announcement.
 
-**What it does to the remote.** The command's documented meaning is a fetch
-and a push: it fetches every status branch and origin's default branch, then
-writes one commit to your own status branch, `abcd-status/<your GitHub
+**What it does to the remote.** The command's documented meaning is a listing,
+a fetch and a push: it lists the status branches on origin first (`git
+ls-remote`, which changes nothing here), fetches each one named by a lower-case
+GitHub username, by name, with origin's default branch, then writes one commit to your own status branch, `abcd-status/<your GitHub
 username in lower case>` on the remote named `origin`, and to nothing else.
 The commit changes no file (its tree is the empty tree); its trailers carry the
 kind, the item, you as sender, this working copy, the time sent and the
 expiry, and nothing else. The push is a plain fast-forward with the
 repository's hooks running, never forced and never with `--no-verify`, and it
-touches no HEAD, index or working tree here. Announcements are public and
-permanent: a status branch is never deleted.
+touches no HEAD, index or working tree here. When git's identity does not name
+the sender (below), it also makes one read-only call to GitHub's user endpoint,
+through `gh`, to learn whose account the forge token `gh` resolves from this
+session's environment belongs to, as `/abcd:reserve` does. Announcements are
+public and permanent: a status branch is never deleted.
 
 ## Announce
 
@@ -68,19 +72,24 @@ origin. Relay the reason; each names the field and the limit, or what to set.
   advisory not yet published is refused, through the same check
   `/abcd:embargo` runs. When that store exists but cannot be checked, every
   announcement is refused, never let through.
-- **Whose account.** The sender is your GitHub username, read from `git config
-  user.email` when it is a GitHub no-reply address, or from
-  `reservation.github_username` in `~/.abcd.noindex/config.json`; the
-  repository's own configuration is never read for it. A git identity that
-  names a tool rather than a person, the default in a hosted container, is
-  refused before anything is written, and the refusal never shows that
-  identity: abcd cannot yet tell whose account such a session uses, and a
-  coming change reads it from the session's forge account. Relay the refusal
-  as it is; it asks the user to change nothing.
+- **Whose account.** The sender is your GitHub username, worked out as
+  `/abcd:reserve`'s holder is, from the first of these that names it: `git
+  config user.email` when it is a GitHub no-reply address;
+  `reservation.github_username` in `~/.abcd.noindex/config.json`; and the
+  account the session's own GitHub token belongs to, through one call to
+  GitHub's user endpoint. The repository's own configuration is never read for
+  it. When git's identity is not a person's (unset, or a machine's, as in a
+  hosted cloud session), the token alone names the sender and that account
+  authors the announcement commit; the identity git had is shown nowhere.
+  When nothing names the sender (the token could not be asked or did not
+  answer), the refusal names the failure's class and never the identity it
+  rejected. Relay it as it is; it asks the user to change nothing.
 - **Not sent.** A push that lost a race to another of the user's sessions is
   rebuilt on the tip that won and pushed again, up to three times. After that,
   or when origin refuses the push for any other reason, the refusal starts
-  `not sent:` and says why. Do not retry in a loop. A push git reports as
+  `not sent:` and says why. Each refused push is followed by one more listing
+  and fetch, to tell a push that landed anyway from a lost race. Do not retry
+  in a loop. A push git reports as
   refused that origin took anyway is reported sent, not sent twice.
 - **May have reached origin.** When a push was made and what became of it
   cannot be read back (the fetch after it failed, or the rebuilt commit could

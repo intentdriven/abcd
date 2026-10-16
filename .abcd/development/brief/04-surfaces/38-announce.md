@@ -45,13 +45,20 @@ fast-forward push, the repository's hooks running. Its subject is
 GitHub username as resolved), the working copy (`Abcd-Copy`, the key a
 reservation uses), the time sent (`Abcd-Sent-At`), the expiry
 (`Abcd-Expires-At`) and abcd's composed `Assisted-by: abcd:<version>` label,
-and nothing else. The commit is authored as the person. Nothing touches HEAD,
-the index or the working tree.
+and nothing else. The commit is authored as the person: their own git identity
+when it is a person's, and otherwise the account the session's forge token
+belongs to. Nothing touches HEAD, the index or the working tree.
 
-The verb fetches every status branch and origin's default branch in one fetch,
-and the status branches alone in a second when the default branch cannot be
-read; a fetch of one status branch fails while origin holds none. Each refused
-push is followed by one more fetch. A push git reported refused that the branch
+The verb first lists the status branches on origin (`git ls-remote`), then
+fetches each one whose name is a lower-case GitHub username, by its own
+refspec, with origin's default branch in one fetch, and the status branches
+alone in a second when the default branch cannot be read. It never fetches the
+namespace by a glob: a branch whose name differs from another only in case
+(`abcd-status/Octo` beside `abcd-status/octo`) would break such a fetch on a
+case-insensitive filesystem, so a name that is not a lower-case username is
+not fetched at all; and it never names a branch the listing did not show,
+since a fetch of a branch origin does not hold fails. Each refused push is
+followed by one more listing and fetch. A push git reported refused that the branch
 now holds landed, and is reported sent. A push that lost a race to another of
 the same person's sessions is rebuilt on the tip that won and pushed again, up
 to three times, and then refused as `not sent:` with the reason; a push refused
@@ -84,13 +91,18 @@ not a refusal: exit 2 says a refused push may still have reached origin.
   published is refused through the embargo check, which also reads the whole
   message; a store that exists but cannot be checked refuses every
   announcement.
-- A git identity that names a tool rather than a person is refused before
-  anything is written, saying abcd cannot yet tell whose account the session
-  uses (a coming change reads it from the session's forge account), and never
-  naming the identity it rejected. The
-  sender is read as a reservation's holder is: user.email when it is a GitHub
-  no-reply address, or `reservation.github_username` in the machine
-  configuration.
+- No GitHub account to send as is refused before any fetch or push, naming
+  the failure's class and never the identity it rejected. The sender is
+  resolved by the one resolver a reservation's holder is
+  (`internal/core/claim`), in the same order: user.email when it is a GitHub
+  no-reply address, then `reservation.github_username` in the machine
+  configuration, then the session's forge token, asked through one call to
+  GitHub's user endpoint whose account it is. When git's identity is not a
+  person's (unset, or a machine's as the attribution gate judges an author),
+  the token alone is used, its account authors and commits the announcement,
+  and the identity git had appears in no output, commit, trailer or ref. The
+  working copy and the remote named `origin` are checked first, so a checkout
+  refused on its own facts never asks GitHub.
 
 ## Exits
 

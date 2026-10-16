@@ -161,32 +161,67 @@ func TestAnnounceIsHeldToTheEmbargoStore(t *testing.T) {
 	})
 }
 
-// TestAnnounceNeverShowsAToolsIdentity: under a tool's git identity, the
-// shape a hosted container gives a session by default, the verb refuses at
-// exit 2 naming the fix, and the identity appears in no output, commit or ref.
-// The identity is built here so its literal sits in no file.
+// TestAnnounceNeverShowsAToolsIdentity is the product thinker's ruling of
+// 2026-10-15 at announce's front door: under a tool's git identity, the shape
+// a hosted container gives a session by default, the verb works out the
+// person from the session's forge token, as reserve does, and sends as that
+// person, in text and in --json; the token's account authors and commits
+// the announcement. When the token cannot answer, and its error even names the
+// identity, the verb refuses at exit 2 naming the failure's class. Either way
+// the identity appears in no output, commit, trailer or ref. The identity is
+// built here so its literal sits in no file.
 func TestAnnounceNeverShowsAToolsIdentity(t *testing.T) {
 	w := newReserveWorld(t)
 	name, email := "Cla"+"ude", "noreply"+"@"+"anthro"+"pic.com"
 	p := w.clone(t, "p", email)
 	gitCmd(t, p, "config", "user.name", name)
-	for _, args := range [][]string{{"announce", "merging", "#1012"}, {"announce", "merging", "#1012", "--json"}} {
-		code, stdout, stderr := reserveRun(t, p, args...)
-		if code != 2 || !strings.Contains(stdout+stderr, "abcd cannot yet work out whose GitHub account this session uses") ||
-			strings.Contains(stdout+stderr, "git config") {
-			t.Fatalf("%v: exit %d, stderr %q; want the refusal naming the cause", args, code, stderr)
+	calls := fakeForge(t, "octo-person", 4242, nil)
+
+	var shown strings.Builder
+	code, stdout, stderr := reserveRun(t, p, "announce", "merging", "#1012")
+	if code != 0 || !strings.Contains(stdout, `sent "merging #1012" as octo-person on abcd-status/octo-person`) {
+		t.Fatalf("exit %d, stdout %q, stderr %q; want it sent as the token's account", code, stdout, stderr)
+	}
+	shown.WriteString(stdout + stderr)
+	code, stdout, stderr = reserveRun(t, p, "announce", "merged", "#1012", "--json")
+	var got announceJSON
+	if err := json.Unmarshal([]byte(stdout), &got); code != 0 || err != nil || got.Sender != "octo-person" || got.Branch != "abcd-status/octo-person" {
+		t.Fatalf("--json: exit %d, %v, %+v, stderr %q; want it sent as the token's account", code, err, got, stderr)
+	}
+	shown.WriteString(stdout + stderr)
+	if calls.n == 0 {
+		t.Fatal("the forge was never asked; the sender cannot have come from the token")
+	}
+	const person = "octo-person <4242+octo-person@users.noreply.github.com>"
+	if who := gitCmd(t, w.origin, "log", "--format=%an <%ae>|%cn <%ce>", "refs/heads/abcd-status/octo-person"); who != person+"|"+person+"\n"+person+"|"+person {
+		t.Fatalf("the announcements are authored and committed by\n%s\nwant %s in both roles", who, person)
+	}
+
+	q := w.clone(t, "q", email)
+	gitCmd(t, q, "config", "user.name", name)
+	fakeForge(t, "", 0, errors.New("gh: HTTP 401 for "+name+" <"+email+">"))
+	for _, args := range [][]string{{"announce", "merging", "#1013"}, {"announce", "merging", "#1013", "--json"}} {
+		code, stdout, stderr := reserveRun(t, q, args...)
+		// A --json refusal is the error document on stdout; the text one is on
+		// stderr.
+		if code != 2 || !strings.Contains(stdout+stderr, "could not work out whose GitHub account this session uses") ||
+			strings.Contains(stdout+stderr, "git config") || strings.Contains(stdout+stderr, "coming change") {
+			t.Fatalf("%v with a failing token: exit %d, stdout %q, stderr %q; want the token refusal naming no manual step", args, code, stdout, stderr)
 		}
-		if out := strings.ToLower(stdout + stderr); strings.Contains(out, "anthro") || strings.Contains(out, strings.ToLower(name)) {
-			t.Fatalf("%v: the output shows the rejected identity:\n%s%s", args, stdout, stderr)
+		shown.WriteString(stdout + stderr)
+	}
+	for _, dir := range []string{w.origin, p, q} {
+		shown.WriteString(gitCmd(t, dir, "log", "--all", "--format=%an%n%ae%n%cn%n%ce%n%B"))
+		shown.WriteString(gitCmd(t, dir, "for-each-ref", "--format=%(refname)"))
+	}
+	all := strings.ToLower(shown.String())
+	for _, leak := range []string{name, email, "anthro"} {
+		if strings.Contains(all, strings.ToLower(leak)) {
+			t.Fatalf("the tool's identity %q is shown:\n%s", leak, shown.String())
 		}
 	}
-	for _, dir := range []string{w.origin, p} {
-		if refs := gitCmd(t, dir, "for-each-ref", "--format=%(refname)", "refs/heads/abcd-status/", "refs/remotes/origin/abcd-status/"); refs != "" {
-			t.Fatalf("a status ref was written in %s: %s", filepath.Base(dir), refs)
-		}
-		if all := gitCmd(t, dir, "log", "--all", "--format=%an %ae %cn %ce %B"); strings.Contains(strings.ToLower(all), "anthro") {
-			t.Fatalf("a commit in %s carries the rejected identity", filepath.Base(dir))
-		}
+	if !strings.Contains(shown.String(), "Abcd-Sender: octo-person") {
+		t.Fatalf("the announcement does not name the token's account as sender:\n%s", shown.String())
 	}
 }
 

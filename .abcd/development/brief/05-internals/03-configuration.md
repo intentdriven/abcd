@@ -1184,8 +1184,14 @@ names, so what a hook invokes is still checked where it is spelled.
 **The hook wiring, and why it is shaped this way.** `bootstrap.sh` either copies a
 re-verified artefact out of the persistent download cache, or resolves the latest
 release tag and downloads the pinned asset, verified against that release's own
-checksums; its build strings are printed instructions to the operator for the cases
-it cannot provision. `SessionStart` runs one chained command rather than siblings,
+checksums and held to the build-provenance policy abcd's own update applies: where
+the GitHub CLI is installed, recent enough and signed in, its attestation check
+must find the asset signed by this repository's release workflow on `main`, built
+from `main` on a GitHub-hosted runner, from the commit the release tag names, and
+a failed check, or a release commit it cannot resolve, installs nothing. Where the
+GitHub CLI cannot run that check, the checksums stand alone and the success notice
+warns so, naming the check to run by hand. Its build strings are printed
+instructions to the operator for the cases it cannot provision. `SessionStart` runs one chained command rather than siblings,
 because siblings would run in parallel and share one stdin.
 
 `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `PreCompact`
