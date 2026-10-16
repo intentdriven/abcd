@@ -8,6 +8,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -194,15 +195,17 @@ type eligibilityOption int
 const setAsidePromoted eligibilityOption = iota + 1
 
 // promotedIntents is every intent the issue's related_intents names, each
-// once, in the record's order, and none for a record the consistency pass
-// filed, whose related_intents names the intents its contradiction is between
-// (consistencyFinding). The reader has already refused a record whose
-// list holds an entry that is not an intent id (`itd-` and digits) or names
-// one twice, so no entry is blank; the de-duplication serves a caller that
-// builds an Issue by hand.
+// once, in the record's order. For a record the consistency pass filed
+// (consistencyFinding), related_intents names the intents its contradiction
+// is between, which do not own the work (ruling H12), so only the intents
+// that name it back are counted: the pair `capture promote` writes, which
+// PlanDrain reads into iss.backLinked. The reader has already refused a
+// record whose list holds an entry that is not an intent id (`itd-` and
+// digits) or names one twice, so no entry is blank; the de-duplication serves
+// a caller that builds an Issue by hand.
 func promotedIntents(iss Issue) []string {
 	if consistencyFinding(iss) {
-		return nil
+		return iss.backLinked
 	}
 	var ids []string
 	for _, id := range iss.RelatedIntents {
@@ -338,6 +341,9 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 	if err != nil {
 		return DrainPlan{}, err
 	}
+	if err := readBackLinks(repoRoot, lr.Issues); err != nil {
+		return DrainPlan{}, err
+	}
 	var opts []eligibilityOption
 	if req.SetAsidePromoted {
 		opts = append(opts, setAsidePromoted)
@@ -382,6 +388,29 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 		plan.Counts[v.Outcome]++
 	}
 	return plan, nil
+}
+
+// readBackLinks fills backLinked on every record the consistency pass filed
+// that names an intent, from one read of the intent store for the whole plan,
+// and reads nothing when no such record is open: the promoted rule's question
+// for those records (promotedIntents). A store that cannot be read refuses
+// the plan, since not knowing whether an intent owns a finding never lets it
+// through.
+func readBackLinks(repoRoot string, issues []Issue) error {
+	asks := func(iss Issue) bool { return consistencyFinding(iss) && len(iss.RelatedIntents) > 0 }
+	if !slices.ContainsFunc(issues, asks) {
+		return nil
+	}
+	corpus, err := intent.Load(repoRoot)
+	if err != nil {
+		return err
+	}
+	for i := range issues {
+		if asks(issues[i]) {
+			issues[i].backLinked = backLinkedIntents(corpus, issues[i].ID, issues[i].RelatedIntents, "")
+		}
+	}
+	return nil
 }
 
 // deferralAnchor is the release tag a deferral is judged against: the tag, or

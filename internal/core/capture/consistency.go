@@ -151,8 +151,11 @@ const (
 // inconsistency too, found during `abcd intent audit ingest`). Its
 // related_intents names the intents its contradiction is between, so the
 // drain's promoted rule does not read it as linked to an intent that took it
-// on (ruling H12, dcn-2609290000000016: the record is skipped until a person
-// writes a real remedy, and then a drain may take it). finding_ref is not the
+// on (ruling H12, dcn-2609290000000016: the record is ineligible while it
+// carries the machine remedy, and once a person writes a real one it is judged
+// by its other fields as if it named no intent). An intent it was promoted
+// into, which names it back in related_issues, still owns it (promotedIntents).
+// finding_ref is not the
 // test, since a record the pass filed before keys existed carries none.
 func consistencyFinding(iss Issue) bool {
 	return iss.Category == consistencyCategory && iss.Source == consistencySource &&

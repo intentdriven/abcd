@@ -494,3 +494,66 @@ func TestAConsistencyFindingIsNotPromotedByTheIntentsItContradicts(t *testing.T)
 		t.Errorf("a finding a person wrote a remedy for: %s/%s (%s), want eligible", v.Outcome, v.Rule, v.Reason)
 	}
 }
+
+// TestAPromotedConsistencyFindingIsHandedBackAsPromoted: the H12 exemption
+// covers the intents the pass named, not one the finding was promoted into.
+// `capture promote` writes the pair — the new draft in the finding's
+// related_intents, the finding in the draft's related_issues — so the draft
+// owns the work and a drain hands the finding back as promoted, naming the
+// draft and neither intent the contradiction is between (invariant 19). The
+// exemption still holds of the named pair: before the promotion the finding
+// is skipped while it carries the machine remedy and eligible once a person
+// writes one.
+func TestAPromotedConsistencyFindingIsHandedBackAsPromoted(t *testing.T) {
+	root := consistencyLedgerRepo(t)
+	writeRuleRecord(t, root, drainrule.ProposalFrontmatter())
+	payload := consistencyPayloadWith(t, root, []any{map[string]any{
+		"class": "premise_contradiction", "severity": "minor",
+		"summary":     "itd-10 and itd-11 disagree on how many specs an intent owns",
+		"explanation": "One says exactly one spec for life; the other says one or more.",
+		"ends": []any{
+			map[string]any{"path": cxA, "quote": cxQuoteA},
+			map[string]any{"path": cxB, "quote": cxQuoteB},
+		},
+	}})
+	res, err := IngestConsistency(root, payload, "2026-09-26", nil)
+	if err != nil || len(res.Filed) != 1 {
+		t.Fatalf("ingest = %+v, %v; want one record filed", res, err)
+	}
+	finding := res.Filed[0]
+	plan := func() DrainPlan {
+		t.Helper()
+		p, err := PlanDrain(DrainPlanRequest{RepoRoot: root})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+
+	if v := verdictOf(t, plan(), finding); v.Outcome != DrainIneligible || v.Rule != RuleRemedy {
+		t.Errorf("the machine remedy: %s/%s (%s), want ineligible/remedy", v.Outcome, v.Rule, v.Reason)
+	}
+	if _, err := SetRemedy(RemedyRequest{RepoRoot: root, ID: finding, Remedy: "reword itd-10's press release to allow several specs"}); err != nil {
+		t.Fatal(err)
+	}
+	if v := verdictOf(t, plan(), finding); v.Outcome != DrainEligible || v.Rule != RuleFields {
+		t.Errorf("a person's remedy, no promotion: %s/%s (%s), want eligible/fields", v.Outcome, v.Rule, v.Reason)
+	}
+
+	pr, err := Promote(PromoteRequest{RepoRoot: root, ID: finding, Grounds: testGrounds})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := verdictOf(t, plan(), finding)
+	if v.Outcome != DrainHandBack || v.Rule != RulePromoted {
+		t.Fatalf("promoted into %s: %s/%s (%s), want handback/promoted", pr.IntentID, v.Outcome, v.Rule, v.Reason)
+	}
+	if !strings.Contains(v.Reason, "`abcd build "+pr.IntentID+"`") {
+		t.Errorf("the reason %q does not send the reader to %s", v.Reason, pr.IntentID)
+	}
+	for _, named := range []string{"itd-10", "itd-11"} {
+		if strings.Contains(v.Reason, named) {
+			t.Errorf("the reason %q names %s, an intent the contradiction is between, as an owner", v.Reason, named)
+		}
+	}
+}

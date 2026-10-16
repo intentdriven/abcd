@@ -147,6 +147,11 @@ type Issue struct {
 	// read for the drain's live-deferral hand-back and not surfaced: the cut
 	// reads the pair from the committed record itself.
 	deferredAfter string
+	// backLinked is, for a record the consistency pass filed, every intent its
+	// related_intents names that names it back in related_issues: the pair
+	// `capture promote` writes (see backLinkedIntents). PlanDrain fills it from
+	// one read of the intent store per plan; nothing stores or surfaces it.
+	backLinked []string
 	// BlockedByOpen is the derived subset of BlockedBy whose targets are still in
 	// open/ (the priority projection populated by List/Status). Not a stored
 	// field: an empty slice means the issue is unblocked.
