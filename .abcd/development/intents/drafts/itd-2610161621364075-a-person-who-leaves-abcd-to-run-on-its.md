@@ -91,6 +91,10 @@ Ruled by the product thinker on 2026-10-16, in the planning interview:
 4. **Who is covered and the network limit are settled by the split (facilitator, recorded without a question).** Part A covers only the agents abcd's runner launches; the person's own session is part B's; the network promise belongs to part C. No question was put because ruling 1 leaves one defensible answer for each.
 5. **Planned now, built after its two dependencies (facilitator, recorded without a question).** It builds on the worktree store, and the guard reaches each launched agent only once iss-2610161612203555 lands; planning does not wait on either, building does. One defensible answer, so no question was put.
 
+6. **Which fence (Q8).** While abcd launches Claude, through the Claude Code harness or the claude CLI, the fence is Anthropic's own. The product thinker prefers a state-of-the-art open-source fence abcd adopts, and abcd does not build its own, which would be beyond what abcd is. The choice is revisited when abcd supports another harness (Codex, for one), and how opencode launches are fenced today is open. Anthropic's sandbox-runtime is itself open source (Apache-2.0) and wraps any process, so planning checks first whether it already meets the preference for every harness, against the other open-source options, before anything is built.
+7. **A computer that cannot put up the fence (Q9): the run stops until the person acts.** The person can turn the fence off for their own computer only, in their user layer under `~/.abcd.noindex/`, never in a project.
+8. **Go build caches inside the fence (Tech Q1): a fresh cache per run.** A run cannot plant anything in the person's later builds, at the cost of cold builds and race runs.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
