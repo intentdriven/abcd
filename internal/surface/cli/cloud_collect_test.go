@@ -2,7 +2,9 @@ package cli
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -50,6 +52,10 @@ func reportCommit(item, did string) cloudCommit {
 //	FAKE_MAKE       make's exit code (default 0); on 0 a `preflight` mints a
 //	                receipt for HEAD where make ran, as the real target does
 //	FAKE_MAKE_OUT   a line make prints
+//	COLLECT_STDOUT  the file collect's standard output goes to, when a test
+//	                sends it to one: make copies what it holds so far to
+//	                $CALLS.stdout-at-make, the ordering marker of what collect
+//	                printed before preflight ran
 func newCollectCase(t *testing.T) *cloudCase {
 	t.Helper()
 	c := newForgeCase(t, "")
@@ -68,6 +74,7 @@ echo "fake go: unexpected $*" >&2
 exit 3`)
 	c.fake("make", `if [ "${1:-}" = -C ]; then cd "$2" || exit 9; shift 2; fi
 echo "make $* in $(pwd -P)" >>"$CALLS"
+if [ -n "${COLLECT_STDOUT:-}" ]; then cat "$COLLECT_STDOUT" >"$CALLS.stdout-at-make"; fi
 if [ -n "${FAKE_MAKE_OUT:-}" ]; then printf '%s\n' "$FAKE_MAKE_OUT"; fi
 code="${FAKE_MAKE:-0}"
 if [ "$code" = 0 ] && [ "$*" = preflight ]; then
@@ -384,20 +391,35 @@ func TestCollectIgnoresAnyCloudReceipt(t *testing.T) {
 }
 
 // toolingPaths are the paths whose change on a cloud branch would let the
-// cloud's own code decide what collect runs as the person: the build file
-// preflight runs, the hooks, the scripts, the workflows, the module files and
-// any top-level hidden directory, a host's settings among them (matched by
-// shape, so the made-up host's directory stands in for every one).
+// cloud's own code decide how collect's preflight is built and gated as the
+// person: the build file preflight runs, the hooks, the scripts, the
+// workflows, the module and workspace files, a vendored dependency, the gates'
+// settings and baselines at the top of .abcd/ (and its config/), and any
+// top-level hidden directory, a host's settings among them (matched by shape,
+// so the made-up host's directory stands in for every one).
 var toolingPaths = []string{
 	"Makefile", "GNUmakefile", ".githooks/pre-push", "scripts/preflight-receipt.sh", ".github/workflows/ci.yml",
-	".testhost/settings.json", "go.mod", "go.sum",
+	".testhost/settings.json", "go.mod", "go.sum", "go.work", "go.work.sum", "vendor/example.com/m/m.go",
+	".abcd/record-lint.json", ".abcd/docs-lint.json", ".abcd/site.json", ".abcd/site-baseline.json",
+	".abcd/citations-baseline.json", ".abcd/prose-citations-baseline.json", ".abcd/rules.json",
+	".abcd/config/pii.json",
 }
 
 // TestCollectRefusesToolingChangesByDefault: before anything is made, collect
 // refuses a branch whose commits change the tooling, printing the diffstat of
-// those paths, unless --allow-tooling-changes is passed. With tooling changes
-// refused, the gates that run are the default branch's own.
+// those paths, unless --allow-tooling-changes is passed. The refusal keeps the
+// build and gate machinery as the default branch has it; the records under
+// .abcd/development/ and .abcd/work/ are no tooling and stay collectable.
 func TestCollectRefusesToolingChangesByDefault(t *testing.T) {
+	t.Run("records stay allowed", func(t *testing.T) {
+		c := newCollectCase(t)
+		c.pushCloud(collectItem, workCommit(".abcd/development/specs/open/spc-1-a.md", "docs: a spec"),
+			workCommit(".abcd/work/issues/open/iss-1-a.md", "chore: an issue"), reportCommit(collectItem, "Did it."))
+		out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
+		if code != 0 {
+			t.Fatalf("collect refused records under .abcd/development/ and .abcd/work/ (exit %d)\n%s%s", code, out, errOut)
+		}
+	})
 	for _, rel := range toolingPaths {
 		t.Run(rel, func(t *testing.T) {
 			c := newCollectCase(t)
@@ -519,4 +541,196 @@ func TestCollectCherryPickUsesThePersonsHooks(t *testing.T) {
 	if !strings.Contains(log, "person hook ran") {
 		t.Errorf("the cherry-pick did not run the person's own hooks:\n%s", log)
 	}
+}
+
+// pushCloudTree is pushCloud for paths a working tree cannot hold as written:
+// a case variant of a path the tree already has, on a file system that folds
+// case, or bytes the file system would normalise. Each commit is made with
+// git's plumbing in a temporary index, so its paths are exactly the test's.
+// It returns the tip.
+func (c *cloudCase) pushCloudTree(item string, commits ...cloudCommit) string {
+	c.t.Helper()
+	tmp := c.t.TempDir()
+	index := filepath.Join(tmp, "index")
+	env := []string{"GIT_INDEX_FILE=" + index,
+		"GIT_AUTHOR_NAME=" + cloudAuthor, "GIT_AUTHOR_EMAIL=" + cloudMail,
+		"GIT_COMMITTER_NAME=" + cloudAuthor, "GIT_COMMITTER_EMAIL=" + cloudMail}
+	plumb := func(args ...string) string {
+		c.t.Helper()
+		out, err := c.runEnv(c.dir, env, "git", args...)
+		if err != nil {
+			c.t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(out)
+	}
+	parent := c.git("rev-parse", "origin/main")
+	plumb("read-tree", parent)
+	for n, cc := range commits {
+		for rel, body := range cc.files {
+			src := filepath.Join(tmp, "blob")
+			if err := os.WriteFile(src, []byte(body), 0o644); err != nil {
+				c.t.Fatal(err)
+			}
+			blob := plumb("hash-object", "-w", "--", src)
+			plumb("update-index", "--add", "--cacheinfo", "100644,"+blob+","+rel)
+		}
+		tree := plumb("write-tree")
+		msgFile := filepath.Join(tmp, "msg"+strconv.Itoa(n))
+		if err := os.WriteFile(msgFile, []byte(cc.msg), 0o644); err != nil {
+			c.t.Fatal(err)
+		}
+		parent = plumb("commit-tree", tree, "-p", parent, "-F", msgFile)
+	}
+	c.git("-c", "core.hooksPath=/dev/null", "push", "-q", "origin", "+"+parent+":refs/heads/"+hostWIPPrefix+item)
+	c.resetCalls()
+	return parent
+}
+
+// TestCollectRefusesCaseVariantToolingPath: the tooling rule matches a path
+// whatever its case, as check-wip-source.sh matches its segment, since a file
+// system that folds case writes SCRIPTS/x.sh into scripts/.
+func TestCollectRefusesCaseVariantToolingPath(t *testing.T) {
+	for _, rel := range []string{"SCRIPTS/x.sh", "MAKEFILE", "Go.mod", ".GitHub/workflows/x.yml", ".ABCD/record-lint.json"} {
+		t.Run(rel, func(t *testing.T) {
+			c := newCollectCase(t)
+			c.pushCloudTree(collectItem, workCommit("one.md", "fix: one"), workCommit(rel, "chore: tooling"),
+				reportCommit(collectItem, "Did it."))
+			out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
+			if code == 0 {
+				t.Fatalf("collect accepted a branch changing %s\n%s%s", rel, out, errOut)
+			}
+			if !strings.Contains(errOut, "--allow-tooling-changes") || !strings.Contains(errOut, rel) {
+				t.Errorf("the refusal does not name %s as tooling\n%s", rel, errOut)
+			}
+			c.madeNothing(t, collectItem)
+		})
+	}
+	t.Run("the local tier in another case", func(t *testing.T) {
+		c := newCollectCase(t)
+		c.pushCloudTree(collectItem, workCommit("one.md", "fix: one"),
+			workCommit(".ABCD/.Work.Local/preflight-receipts/x", "chore: a receipt"), reportCommit(collectItem, "Did it."))
+		out, errOut, code := c.scriptSplit(nil, collectScript, collectItem, "--allow-tooling-changes")
+		if code == 0 || !strings.Contains(errOut, "local tier") {
+			t.Fatalf("collect accepted the local tier in another case (exit %d)\n%s%s", code, out, errOut)
+		}
+		c.madeNothing(t, collectItem)
+	})
+}
+
+// TestCollectRefusesCaseCollidingAddedPath: an added path whose case-folded
+// form is another path's, in the default branch's tree or in the copy's, would
+// overwrite that path on a file system that folds case. It is refused whatever
+// the flags say.
+func TestCollectRefusesCaseCollidingAddedPath(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		commits []cloudCommit
+		path    string
+	}{
+		{"a variant of the default branch's file", []cloudCommit{workCommit("SEED.md", "fix: seed")}, "SEED.md"},
+		{"a variant of the default branch's script", []cloudCommit{workCommit("SCRIPTS/check-attribution.sh", "fix: gate")},
+			"SCRIPTS/check-attribution.sh"},
+		{"two variants in the copy", []cloudCommit{workCommit("notes.md", "fix: notes"), workCommit("Notes.md", "fix: Notes")}, "Notes.md"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newCollectCase(t)
+			c.pushCloudTree(collectItem, append(tc.commits, reportCommit(collectItem, "Did it."))...)
+			out, errOut, code := c.scriptSplit(nil, collectScript, collectItem, "--allow-tooling-changes")
+			if code == 0 {
+				t.Fatalf("collect accepted %s\n%s%s", tc.path, out, errOut)
+			}
+			if !strings.Contains(errOut, "case") || !strings.Contains(errOut, tc.path) {
+				t.Errorf("the refusal does not name %s as a case collision\n%s", tc.path, errOut)
+			}
+			c.madeNothing(t, collectItem)
+		})
+	}
+	t.Run("a path in its own case collides with nothing", func(t *testing.T) {
+		c := newCollectCase(t)
+		c.pushCloudTree(collectItem, workCommit("Readme.md", "docs: a readme"), reportCommit(collectItem, "Did it."))
+		out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
+		if code != 0 {
+			t.Fatalf("collect refused a path no other path folds to (exit %d)\n%s%s", code, out, errOut)
+		}
+	})
+}
+
+// TestCollectMatchesNonASCIIPaths: git quotes a path holding a non-ASCII byte
+// ("scripts/\303\251.sh") unless it is read NUL-separated, and a quoted path
+// matches no pattern. The paths are read with -z, so such a path is matched as
+// it is.
+func TestCollectMatchesNonASCIIPaths(t *testing.T) {
+	c := newCollectCase(t)
+	c.pushCloudTree(collectItem, workCommit("one.md", "fix: one"), workCommit("scripts/\u00e9.sh", "chore: tooling"),
+		reportCommit(collectItem, "Did it."))
+	out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
+	if code == 0 {
+		t.Fatalf("collect accepted a branch changing scripts/\u00e9.sh\n%s%s", out, errOut)
+	}
+	if !strings.Contains(errOut, "--allow-tooling-changes") {
+		t.Errorf("the refusal is not the tooling refusal\n%s", errOut)
+	}
+	c.madeNothing(t, collectItem)
+}
+
+// TestCollectShowsWhatWillRunBeforePreflight: preflight on the collected copy
+// runs that copy's code as the person, its tests and its Go-written gates
+// included. Before it runs, collect says so on standard output, with the full
+// diffstat of the collected commits, so the person sees what code will run.
+// The fake make copies what standard output holds when it starts.
+func TestCollectShowsWhatWillRunBeforePreflight(t *testing.T) {
+	run := func(t *testing.T, c *cloudCase, args ...string) string {
+		t.Helper()
+		f, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		cmd := exec.Command("bash", append([]string{filepath.Join(c.dir, filepath.FromSlash(collectScript))}, args...)...)
+		cmd.Dir = c.dir
+		cmd.Env = append(append([]string{}, c.env...), "COLLECT_STDOUT="+f.Name())
+		var errb strings.Builder
+		cmd.Stdout, cmd.Stderr = f, &errb
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("collect: %v\n%s", err, errb.String())
+		}
+		snap, err := os.ReadFile(c.calls + ".stdout-at-make")
+		if err != nil {
+			t.Fatalf("make never ran, or wrote no marker: %v\n%s", err, errb.String())
+		}
+		return string(snap)
+	}
+
+	t.Run("the default", func(t *testing.T) {
+		c := newCollectCase(t)
+		c.pushCloud(collectItem, workCommit("one.md", "fix: one"), workCommit("docs/two.md", "fix: two"),
+			reportCommit(collectItem, "Did it."))
+		before := run(t, c, collectItem)
+		for _, want := range []string{
+			"runs the collected copy's code on this computer, as you",
+			"its tests and its Go-written gates",
+			"decision 9",
+			"build and gate machinery",
+			"one.md", "docs/two.md", "2 files changed",
+		} {
+			if !strings.Contains(before, want) {
+				t.Errorf("before make ran, standard output did not say %q:\n%s", want, before)
+			}
+		}
+		if strings.Contains(before, ".abcd/work/cloud-reports") {
+			t.Errorf("the diffstat counts the report, which is not collected:\n%s", before)
+		}
+	})
+
+	t.Run("with tooling changes allowed", func(t *testing.T) {
+		c := newCollectCase(t)
+		c.pushCloud(collectItem, workCommit("scripts/new.sh", "chore: tooling"), reportCommit(collectItem, "Did it."))
+		before := run(t, c, collectItem, "--allow-tooling-changes")
+		for _, want := range []string{"runs the collected copy's code on this computer, as you", "scripts/new.sh",
+			"the build and gate machinery is the copy's too"} {
+			if !strings.Contains(before, want) {
+				t.Errorf("before make ran, standard output did not say %q:\n%s", want, before)
+			}
+		}
+	})
 }

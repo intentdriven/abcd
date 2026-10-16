@@ -4,7 +4,10 @@
 #
 #   0. the place, before anything else: the connector's is_remote check. Off
 #      the cloud (a brief started on the person's own computer) it prints the
-#      report text, commits, pushes and posts nothing, and exits 1;
+#      report text, commits, pushes and posts nothing, and exits 1. A
+#      connector that cannot be resolved (none declared, or several and none
+#      named) cannot say where this runs, so it stops the same way, the
+#      report printed;
 #   1. refuse, writing nothing, unless the item is one record id, the state is
 #      handed-back or stopped, and the three texts are given;
 #   2. compose the report: a short frontmatter (item, state, channel,
@@ -144,16 +147,23 @@ compose() {
 	fi
 }
 
-if [ -z "$connector" ]; then
-	connector="$(bash "$here/connector.sh" default)" || exit 1
-fi
-is_remote="$(bash "$here/connector.sh" get "$connector" is_remote)" || exit 1
-if ! "$is_remote" </dev/null >/dev/null 2>&1; then
+# stop_here <why> prints the report for the transcript and stops, having
+# committed, pushed and posted nothing.
+stop_here() {
 	item="$(clean "$item")" state="$(clean "$state")"
 	did="$(clean "$did")" failed="$(clean "$failed")" needs="$(clean "$needs")"
-	echo "hand-back: STOPPING: this is not running in the environment the brief was written for, so nothing was committed, pushed or posted. The report follows, so this transcript holds it." >&2
+	echo "hand-back: STOPPING: $1, so nothing was committed, pushed or posted. The report follows, so this transcript holds it." >&2
 	compose transcript
 	exit 1
+}
+
+unresolved="the host connector could not be resolved (scripts/cloud/connector.sh says why), so where this runs cannot be told"
+if [ -z "$connector" ]; then
+	connector="$(bash "$here/connector.sh" default)" || stop_here "$unresolved"
+fi
+is_remote="$(bash "$here/connector.sh" get "$connector" is_remote)" || stop_here "$unresolved"
+if ! "$is_remote" </dev/null >/dev/null 2>&1; then
+	stop_here "this is not running in the environment the brief was written for"
 fi
 
 # --- 1. What is handed back --------------------------------------------------
@@ -279,7 +289,11 @@ shown() {
 }
 
 # scrub <text> prints text with every identity shown() names, and anything
-# shaped like an address, replaced.
+# shaped like an address, replaced. Addresses go first, the known ones and
+# then the shape, and then the names, each longest first: a name replaced
+# first inside its own address (pat in pat@example.org) would leave
+# "<identity>@example.org", which the shape no longer matches, so the domain
+# would be shown.
 scrub() {
 	local text="$1" who
 	{
@@ -291,12 +305,24 @@ scrub() {
 			git log --format='%an%n%ae%n%cn%n%ce' "$fork..HEAD" 2>/dev/null || true
 		fi
 	} | sed -e 's/ [0-9][0-9]* [-+][0-9][0-9]*$//' -e 's/^\(.*\) <\([^<>]*\)>$/\1\
-\2/' | awk 'length($0) > 0' | sort -u >"$tmp/identities"
+\2/' | awk 'length($0) > 0 { print length($0) "\t" $0 }' | sort -u | sort -t "$(printf '\t')" -k1,1nr |
+		cut -f 2- >"$tmp/identities"
+	# The known addresses, longest first.
 	while IFS= read -r who; do
-		[ -n "$who" ] || continue
-		text="${text//"$who"/<identity>}"
+		case "$who" in
+		*@*) text="${text//"$who"/<address>}" ;;
+		esac
 	done <"$tmp/identities"
-	printf '%s\n' "$text" | sed -E 's/[^[:space:]<>()"'"'"']+@[^[:space:]<>()"'"'"']+/<address>/g'
+	# Anything else shaped like one.
+	text="$(printf '%s\n' "$text" | sed -E 's/[^[:space:]<>()"'"'"']+@[^[:space:]<>()"'"'"']+/<address>/g')"
+	# Then the names, longest first.
+	while IFS= read -r who; do
+		case "$who" in
+		*@*) ;;
+		*) text="${text//"$who"/<identity>}" ;;
+		esac
+	done <"$tmp/identities"
+	printf '%s\n' "$text"
 }
 
 # Where the session's own commits leave the default branch, for the identities

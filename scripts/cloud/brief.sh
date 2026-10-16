@@ -16,7 +16,11 @@
 #      record there, blob for blob: readiness (1) is judged on this copy while
 #      the cloud session reads origin's, so a record with changes not on
 #      origin's default branch, committed or not, is refused until they are
-#      pushed;
+#      pushed. An intent's readiness reads more than its record (the spec
+#      store, and the linked spec's body and steps), so for an intent the
+#      whole of .abcd/development/ here must match origin's default branch:
+#      any path there that differs, committed or not, tracked or not, is
+#      refused until it is pushed, or this checkout is brought up to origin;
 #   3. the composed brief holds no path on this computer (its home, the
 #      checkout), no session link and no secret shape, and passes
 #      `abcd lint outbound --label brief` (C4);
@@ -162,6 +166,22 @@ here_blob="$(git hash-object -- "$record" 2>/dev/null)" || here_blob=""
 there_blob="$(git rev-parse -q --verify "refs/remotes/origin/$base:$record" 2>/dev/null)" || there_blob=""
 [ -n "$here_blob" ] && [ "$here_blob" = "$there_blob" ] ||
 	refuse "$item: the record $record has changes not on origin's default branch ($base); push them first. Its readiness is judged on this copy, while a cloud session reads origin's."
+# An intent's readiness gate (abcd intent ready, internal/core/intent/ready.go)
+# reads the intent corpus and the spec store, and the linked spec's body and
+# steps: every one of them under .abcd/development/. Simplest sound: the
+# whole folder here, working tree and untracked files included, is origin's.
+if [ "$kind" = "a planned intent" ]; then
+	dev=".abcd/development"
+	differs="$(
+		git diff --no-renames --name-only "refs/remotes/origin/$base" -- "$dev/" &&
+			git ls-files --others --exclude-standard -- "$dev/"
+	)" || refuse "$item: whether $dev/ here matches origin's default branch ($base) cannot be read."
+	if [ -n "$differs" ]; then
+		n="$(printf '%s\n' "$differs" | sort -u | grep -c .)"
+		first="$(printf '%s\n' "$differs" | sort -u | head -n 1)"
+		refuse "$item: $n path(s) under $dev/ here differ from origin's default branch ($base), $first among them; push them first, or bring this checkout up to origin. An intent's readiness reads its specs and the records around it on this copy, while a cloud session reads origin's."
+	fi
+fi
 
 # --- 3. Compose, and check what was composed ---------------------------------
 

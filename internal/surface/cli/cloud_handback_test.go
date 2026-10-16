@@ -48,7 +48,7 @@ func newForgeCase(t *testing.T, tracking string) *cloudCase {
 	if err := os.WriteFile(logged, []byte("#!/bin/sh\necho \"abcd $*\" >>\"$CALLS\"\nexec '"+bin+"' \"$@\"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	c.env = append(c.env, "ABCD_BIN="+logged, "ABCD_OUTBOUND_BIN="+bin, "FAKE_ABCD="+logged)
+	c.env = append(c.env, "ABCD_BIN="+c.localAbcd(logged), "ABCD_OUTBOUND_BIN="+bin, "FAKE_ABCD="+logged)
 
 	top := exec.Command("git", "rev-parse", "--show-toplevel")
 	top.Env = gittest.Env(t)
@@ -609,7 +609,7 @@ func TestHandBackReadsTheOutboundChecksOwnExitCode(t *testing.T) {
 	c := newForgeCase(t, trackingIssue)
 	c.work("one.md")
 	head := c.git("rev-parse", "HEAD")
-	out, errOut, code := c.handBack([]string{"ABCD_BIN=" + c.fakeOutbound("2"), "FAKE_ABCD=" + c.fakeOutbound("2")},
+	out, errOut, code := c.handBack([]string{"ABCD_BIN=" + c.localAbcd(c.fakeOutbound("2")), "FAKE_ABCD=" + c.fakeOutbound("2")},
 		"--item", handBackItem, "--state", "handed-back", "--assisted-by", "Claude:claude-opus-5")
 	if code != 1 {
 		t.Fatalf("an outbound check that could not run: exit %d, want 1\n%s%s", code, out, errOut)
@@ -651,5 +651,114 @@ func TestHandBackBuildsAbcdOnceWithoutABCDBIN(t *testing.T) {
 	}
 	if len(c.forgeCalls()) != 1 {
 		t.Errorf("the comment was posted %d times, want once", len(c.forgeCalls()))
+	}
+}
+
+// TestHandBackScrubLeavesNoDomain: what a failed push's output may show has
+// every identity replaced, addresses first and the longest string first. A
+// name that is the start of the checkout's address (pat, pat@example.org)
+// replaced first would leave "<identity>@example.org", the domain shown.
+func TestHandBackScrubLeavesNoDomain(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.git("config", "user.name", "pat")
+	c.git("config", "user.email", "pat@example.org")
+	c.work("one.md")
+	c.originRefuses("the proxy refuses this push by pat@example.org")
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+	}
+	calls := c.forgeCalls()
+	if len(calls) != 1 {
+		t.Fatalf("the fallback called the forge %d times, want once\n%s", len(calls), errOut)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal([]byte(calls[0].stdin), &payload); err != nil {
+		t.Fatalf("the comment's request body is not JSON: %v\n%s", err, calls[0].stdin)
+	}
+	if !strings.Contains(payload["body"], "remote:") {
+		t.Fatalf("the comment does not carry the remote's line, so the scrub is untested:\n%s", payload["body"])
+	}
+	for where, text := range map[string]string{"stdout": out, "stderr": errOut, "the comment": payload["body"]} {
+		for _, s := range []string{"example.org", "pat@"} {
+			if strings.Contains(text, s) {
+				t.Errorf("%s shows %q of the identity:\n%s", where, s, text)
+			}
+		}
+	}
+}
+
+// TestHandBackPrintsReportWhenConnectorCannotBeResolved: with no connector to
+// say where it runs (two declared, so none is the default), the hand-back
+// cannot tell the cloud from the person's computer. It commits, pushes and
+// posts nothing, and still prints the report, so the transcript holds it.
+func TestHandBackPrintsReportWhenConnectorCannotBeResolved(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.work("one.md")
+	c.declare("other", "name=other\nwip_prefix=other/abcd-wip/\nis_remote=is-remote.sh\n")
+	head := c.git("rev-parse", "HEAD")
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "stopped", "--assisted-by", "Claude:claude-opus-5")
+	if code != 1 {
+		t.Fatalf("a hand-back with no resolvable connector exited %d, want 1\n%s%s", code, out, errOut)
+	}
+	for _, w := range []string{"item: " + handBackItem, "Fixed the walk over the readings folder.", "Nothing failed.", "A review of the walk."} {
+		if !strings.Contains(out, w) {
+			t.Errorf("the report's %q was not printed\nstdout:\n%s\nstderr:\n%s", w, out, errOut)
+		}
+	}
+	if !strings.Contains(errOut, "connector") {
+		t.Errorf("the hand-back does not say the connector could not be resolved\n%s", errOut)
+	}
+	if got := c.git("rev-parse", "HEAD"); got != head {
+		t.Errorf("the hand-back committed %s", got)
+	}
+	for _, line := range strings.Split(c.callLog(), "\n") {
+		if strings.HasPrefix(line, "git ") && (strings.Contains(" "+line+" ", " push ") || strings.Contains(" "+line+" ", " commit ")) {
+			t.Errorf("the hand-back ran %s", line)
+		}
+	}
+	if c.forgeCalls() != nil {
+		t.Errorf("the hand-back posted to the forge: %+v", c.forgeCalls())
+	}
+}
+
+// TestHandBackFallbackRefersToNothingDropped: the fallback shows only the
+// hook's own pre-push: lines and the remote's, and drops every other line, the
+// connector loader's diagnostic among them. So a kept line never points at a
+// diagnostic "above": the comment would point at nothing. The declaration the
+// hook reads is the one HEAD commits, so a bad one committed and a good one in
+// the working tree make the hand-back resolve its connector and the hook
+// refuse the push.
+func TestHandBackFallbackRefersToNothingDropped(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.work("one.md")
+	conf := "scripts/cloud/connectors/claude/connector.conf"
+	good, err := os.ReadFile(filepath.Join(c.dir, filepath.FromSlash(conf)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.write(conf, string(good)+"exempt=all\n", 0o644)
+	c.git("add", "--", conf)
+	c.git("commit", "-q", "-m", "chore: a declaration\n\n"+sessionTrailer)
+	c.write(conf, string(good), 0o644)
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+	}
+	calls := c.forgeCalls()
+	if len(calls) != 1 {
+		t.Fatalf("the fallback called the forge %d times, want once\n%s", len(calls), errOut)
+	}
+	var payload map[string]string
+	if err := json.Unmarshal([]byte(calls[0].stdin), &payload); err != nil {
+		t.Fatalf("the comment's request body is not JSON: %v\n%s", err, calls[0].stdin)
+	}
+	if !strings.Contains(payload["body"], "pre-push:") {
+		t.Fatalf("the comment carries no line of the hook's, so the scenario is untested:\n%s", payload["body"])
+	}
+	for where, text := range map[string]string{"stderr": errOut, "the comment": payload["body"]} {
+		if strings.Contains(text, "above") {
+			t.Errorf("%s points at a diagnostic \"above\" that the fallback dropped:\n%s", where, text)
+		}
 	}
 }

@@ -214,8 +214,12 @@ func TestPrePushRefusesWIPFailingAttribution(t *testing.T) {
 			if err == nil || !strings.Contains(out, "no passing preflight") {
 				t.Fatalf("a create carrying a commit with %s passed without a receipt (err %v)\n%s", name, err, out)
 			}
-			if !strings.Contains(out, "check-attribution: FAILED") {
-				t.Errorf("the refusal does not show the attribution gate's finding\n%s", out)
+			if !strings.Contains(out, "the pushed commits fail the attribution gate") ||
+				!strings.Contains(out, "run scripts/check-attribution.sh commits ") {
+				t.Errorf("the refusal does not say the attribution gate refused, and how to see why\n%s", out)
+			}
+			if strings.Contains(out, "check-attribution: FAILED") {
+				t.Errorf("the hook repeats the attribution gate's own findings, which may name an identity\n%s", out)
 			}
 			if got := c.remoteRef(wipRef); got != "" {
 				t.Errorf("the remote moved to %s although the push was refused", got)
@@ -236,6 +240,33 @@ func TestPrePushRefusesWIPFailingAttribution(t *testing.T) {
 				t.Errorf("the remote holds %q, want %s untouched", got, first)
 			}
 		})
+	}
+}
+
+// TestPrePushWIPAttributionRefusalNamesNoIdentity: the attribution gate's
+// findings name the identity it refuses. On a direct `git push` the hook keeps
+// them to itself and prints a fixed sentence instead, so a vendor-authored
+// work-in-progress push is refused without the hook ever printing the
+// vendor's name or address (cloud_setup_test.go's vendorName and vendorMail).
+func TestPrePushWIPAttributionRefusalNamesNoIdentity(t *testing.T) {
+	c := newWIPCase(t)
+	c.write("bad.md", "bad\n", 0o644)
+	c.git("add", "bad.md")
+	c.git("-c", "user.name="+vendorName, "-c", "user.email="+vendorMail, "commit", "-q", "-m", "fix: the walk\n\n"+assisted)
+	out, err := c.push("origin", "HEAD:"+wipRef)
+	if err == nil || !strings.Contains(out, "no passing preflight") {
+		t.Fatalf("a vendor-authored work-in-progress push passed without a receipt (err %v)\n%s", err, out)
+	}
+	if got := c.remoteRef(wipRef); got != "" {
+		t.Errorf("the remote moved to %s although the push was refused", got)
+	}
+	if !strings.Contains(out, "the pushed commits fail the attribution gate: an author or committer is not a person's, or a trailer is missing") {
+		t.Errorf("the refusal does not give the fixed sentence\n%s", out)
+	}
+	for _, s := range []string{vendorName, vendorMail, vendorMail[strings.Index(vendorMail, "@")+1:]} {
+		if strings.Contains(out, s) {
+			t.Errorf("the hook printed the refused identity's %q:\n%s", s, out)
+		}
 	}
 }
 

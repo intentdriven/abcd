@@ -18,13 +18,19 @@
 #      handover carried on a branch is another machine's), or when the
 #      attribution gate (scripts/check-attribution.sh commits) refuses them.
 #      The commits must already name the person as author: collect never
-#      rewrites authorship. Refuse, too, when the work changes the tooling
-#      (the build file, scripts/, go.mod, go.sum, and every top-level hidden
-#      directory but .abcd/: the hooks, the workflows, a host's settings),
-#      printing the diffstat of those paths, unless
-#      --allow-tooling-changes is passed: preflight on the collected tree runs
-#      that tree's code as the person, so by default the gates that run are
-#      the default branch's own;
+#      rewrites authorship. Refuse, too, an added path whose case-folded form
+#      is another path's, in the default branch's tree or the copy's (on a
+#      file system that folds case, SCRIPTS/gate.sh overwrites
+#      scripts/gate.sh), whatever the flags say. And refuse when the work
+#      changes the tooling, the build and gate machinery: the build file,
+#      scripts/, go.mod, go.sum, go.work, go.work.sum, vendor/, the gates'
+#      settings and baselines at the top of .abcd/ (every .abcd/*.json, and
+#      .abcd/config/), and every top-level hidden directory but .abcd/ (the
+#      hooks, the workflows, a host's settings), printing the diffstat of
+#      those paths, unless --allow-tooling-changes is passed. Paths are read
+#      NUL-separated, so git never quotes one, and matched case-folded, so
+#      neither a quoted name nor a capital steps round a pattern. The records
+#      under .abcd/development/ and .abcd/work/ are no tooling;
 #   3. make a worktree in the machine store,
 #      ~/.abcd.noindex/worktrees/<root-sha>/collect-<item-id>/
 #      (adr-2610031751065746; <root-sha> is the full name of the repository's
@@ -33,7 +39,9 @@
 #      work onto it, the report commits left out, with the hooks of the
 #      person's own checkout (core.hooksPath by absolute path), never hooks a
 #      collected commit put in the worktree;
-#   4. run `make preflight` there, through
+#   4. print, on standard output, what is about to run and the full diffstat
+#      of the collected commits against origin's default branch; then run
+#      `make preflight` there, through
 #      `go run ./cmd/abcd implement load --wait -- make -C <worktree> preflight`,
 #      the machine's one waiter, so it waits while another preflight or race
 #      run is live. The waiter is run from this checkout, not from the
@@ -46,6 +54,18 @@
 # It pushes nothing, ever. Any receipt the cloud session made is ignored: the
 # verdict is this run's preflight alone, and the receipt printed is the one it
 # minted here, for the collected commit (decision 9).
+#
+# What runs, and as whom: collect runs the collected copy's code on the
+# person's computer, as the person. Preflight builds and runs that copy's Go
+# code, its tests and its Go-written gates included (go test, go run
+# ./cmd/abcd, the evals), with the person's credentials in reach. That is the
+# cost decision 9 accepted, and step 4 says so before preflight starts, with
+# the diffstat of what will run. The tooling refusal does not make the gates
+# the default branch's: it only keeps the build and gate machinery (the build
+# file, scripts/, the hooks, CI and the gates' settings) as the default branch
+# has it, so the cloud session cannot choose which gates run or mint a receipt
+# without running them. There is no confirmation prompt: collect is run on
+# purpose, and what it is about to run is printed first.
 #
 # Usage: collect.sh <item-id> [--allow-tooling-changes] [--connector <name>]
 #   (default connector: the only one declared)
@@ -131,13 +151,37 @@ tip="$(git rev-parse --verify --quiet "refs/remotes/origin/$wip^{commit}")" ||
 
 # --- 2. The shape of the branch -------------------------------------------------
 
-# paths <commit> lists what one commit changes against its parent.
+tmpd="$(mktemp -d "${TMPDIR:-/tmp}/abcd-collect.XXXXXX")"
+trap '/bin/rm -rf -- "$tmpd"' EXIT
+
+# fold prints a path with its ASCII letters in lower case, the case-folding
+# check-wip-source.sh applies, so a capital never steps round a pattern.
+fold() {
+	printf '%s' "$1" | LC_ALL=C tr 'A-Z' 'a-z'
+}
+
+# paths <commit> sets P to what one commit changes against its parent, one
+# path per line. git writes them NUL-separated (-z), so it quotes none: a
+# quoted name ("scripts/\303\251.sh") would match no pattern below. A path
+# holding a line break is refused, since it could not be told from two.
+P=""
 paths() {
-	git diff-tree --no-commit-id --name-only -r --no-renames "$1"
+	local p
+	P=""
+	git diff-tree -z --no-commit-id --name-only -r --no-renames "$1" >"$tmpd/paths" ||
+		refuse "git could not list what commit ${1:0:12} changes."
+	while IFS= read -r -d '' p; do
+		case "$p" in
+		*$'\n'*) refuse "commit ${1:0:12} on $wip changes a path holding a line break; collect lands no such path." ;;
+		esac
+		P="${P:+$P
+}$p"
+	done <"$tmpd/paths"
 }
 
 parents="$(git rev-list --parents -n 1 "$tip" | wc -w | tr -d ' ')"
-[ "$parents" -eq 2 ] && [ "$(paths "$tip")" = "$report" ] ||
+paths "$tip"
+[ "$parents" -eq 2 ] && [ "$P" = "$report" ] ||
 	refuse "the last commit on $wip is not the report commit alone (one commit changing $report and nothing else); the hand-back writes it last."
 
 fork="$(git merge-base "$base" "$tip")" ||
@@ -151,58 +195,90 @@ fork="$(git merge-base "$base" "$tip")" ||
 # below.
 work=""
 for sha in $(git rev-list --reverse "$fork..$tip^"); do
-	[ "$(paths "$sha")" = "$report" ] && continue
+	paths "$sha"
+	[ "$P" = "$report" ] && continue
 	work="${work:+$work
 }$sha"
 done
 [ -n "$work" ] ||
 	refuse "$wip carries the report and no work: there is nothing to collect. Read the report with scripts/cloud/list.sh."
-while IFS= read -r sha; do
-	while IFS= read -r p; do
-		case "$p" in
-		"$report_dir"/*)
-			refuse "commit ${sha:0:12} on $wip changes $p: a report under $report_dir/ never lands on the default branch."
-			;;
-		"$LOCAL_TIER"/* | "$LOCAL_TIER")
-			refuse "commit ${sha:0:12} on $wip carries $p from $LOCAL_TIER/, the local tier, which never travels: a receipt or a handover made on another machine is never read here."
-			;;
-		esac
-	done <<<"$(paths "$sha")"
-done <<<"$work"
 
-# The tooling: what preflight runs, and as whom. preflight on the collected
-# tree runs that tree's code as the person, so a change to the build file, the
-# scripts, the module files, or a top-level hidden directory (the hooks in
-# .githooks/, the workflows in .github/, a host's settings directory; every one
-# but .abcd/, the records) would let the cloud session decide which gates run,
-# or mint a receipt without running any. The hidden directories are matched by
-# shape, so no host is named here (C12). Refused unless the person says
-# --allow-tooling-changes, so by default the gates that run are the default
-# branch's own.
+# The tooling: the build and gate machinery, which decides how the collected
+# copy is built and which gates run on it. A change to it would let the cloud
+# session choose the gates, or mint a receipt without running any: the build
+# file, the scripts, the module and workspace files, a vendored dependency,
+# the gates' settings and baselines at the top of .abcd/ (record-lint.json,
+# docs-lint.json, site.json, the citation and site baselines, rules.json,
+# config.json and the rest of .abcd/*.json, and .abcd/config/), and a
+# top-level hidden directory (the hooks in .githooks/, the workflows in
+# .github/, a host's settings directory; every one but .abcd/, whose records
+# under development/ and work/ are no tooling). The hidden directories are
+# matched by shape, so no host is named here (C12). The path is folded first.
 is_tooling() {
 	case "$1" in
-	Makefile | GNUmakefile | makefile | go.mod | go.sum | scripts/*) return 0 ;;
+	makefile | gnumakefile | go.mod | go.sum | go.work | go.work.sum | scripts/* | vendor/*) return 0 ;;
+	.abcd/config/*) return 0 ;;
+	.abcd/*/*) return 1 ;;
+	.abcd/*.json) return 0 ;;
 	.abcd/*) return 1 ;;
 	.*/*) return 0 ;;
 	esac
 	return 1
 }
+
+report_f="$(fold "$report_dir")"
+tier_f="$(fold "$LOCAL_TIER")"
 tooling=""
+: >"$tmpd/added"
 while IFS= read -r sha; do
+	paths "$sha"
 	while IFS= read -r p; do
-		if [ -n "$p" ] && is_tooling "$p"; then
+		[ -n "$p" ] || continue
+		f="$(fold "$p")"
+		case "$f" in
+		"$report_f"/*)
+			refuse "commit ${sha:0:12} on $wip changes $p: a report under $report_dir/ never lands on the default branch."
+			;;
+		"$tier_f"/* | "$tier_f")
+			refuse "commit ${sha:0:12} on $wip carries $p from $LOCAL_TIER/, the local tier, which never travels: a receipt or a handover made on another machine is never read here."
+			;;
+		esac
+		if is_tooling "$f"; then
 			tooling="${tooling:+$tooling
 }$p"
 		fi
-	done <<<"$(paths "$sha")"
+	done <<<"$P"
+	git diff-tree -z --no-commit-id --name-only -r --no-renames --diff-filter=A "$sha" | tr '\0' '\n' >>"$tmpd/added" ||
+		refuse "git could not list what commit ${sha:0:12} adds."
 done <<<"$work"
+
 if [ -n "$tooling" ] && [ -z "$allow_tooling" ]; then
-	tooling="$(printf '%s\n' "$tooling" | sort -u)"
-	echo "collect: the session's commits change the tooling collect would run as you:" >&2
-	# shellcheck disable=SC2046 # one path per line, none with a space (git quotes those)
-	git diff --stat=200 --no-renames "$fork" "$tip^" -- $(printf '%s\n' "$tooling") >&2 || true
-	printf '%s\n' "$tooling" | sed 's/^/  changed: /' >&2
-	refuse "the work changes the tooling (the build file, scripts/, go.mod, go.sum or a top-level hidden directory such as .githooks/ or .github/), and preflight on the collected tree would run that code as you. Read the changes above; collect them only by passing --allow-tooling-changes."
+	tooling="$(printf '%s\n' "$tooling" | LC_ALL=C sort -u)"
+	echo "collect: the session's commits change the build and gate machinery collect would run as you:" >&2
+	specs=()
+	while IFS= read -r p; do specs+=("$p"); done <<<"$tooling"
+	git --literal-pathspecs diff --stat=200 --no-renames "$fork" "$tip^" -- "${specs[@]}" >&2 || true
+	printf '%s\n' "$tooling" | LC_ALL=C tr -d '\001-\011\013-\037\177' | sed 's/^/  changed: /' >&2
+	refuse "the work changes the tooling (the build file, scripts/, the module or workspace files, vendor/, the gates' settings at the top of .abcd/, or a top-level hidden directory such as .githooks/ or .github/), which decides how the collected copy is built and gated as you. Read the changes above; collect them only by passing --allow-tooling-changes."
+fi
+
+# Case collisions: an added path whose case-folded form is another path's, in
+# the default branch's tree or in the copy's (or another added one), would
+# overwrite that path on a file system that folds case. Refused whatever the
+# flags say: no flag makes an overwrite the person can read in a diffstat.
+{
+	git ls-tree -r -z --name-only "$base"
+	git ls-tree -r -z --name-only "$tip^"
+} | tr '\0' '\n' >"$tmpd/tree" || refuse "git could not list the trees the work lands in."
+collide="$(LC_ALL=C awk '
+	length($0) == 0 { next }
+	FILENAME == ARGV[1] { added[$0] = 1 }
+	!($0 in seen) { seen[$0] = 1; n[tolower($0)]++ }
+	END { for (a in added) if (n[tolower(a)] > 1) print a }
+' "$tmpd/added" "$tmpd/tree" | LC_ALL=C sort)"
+if [ -n "$collide" ]; then
+	printf '%s\n' "$collide" | LC_ALL=C tr -d '\001-\011\013-\037\177' | sed 's/^/  collides: /' >&2
+	refuse "the work adds a path whose name differs only in case from another path's (above), and on a file system that folds case it would overwrite that path. Rename it in the session's branch."
 fi
 
 # The attribution gate over the work alone, the report commit left out. Its
@@ -256,7 +332,20 @@ if ! out="$(git -C "$wt" -c core.hooksPath="$root/.githooks" cherry-pick --allow
 fi
 head="$(git -C "$wt" rev-parse HEAD)"
 
-# --- 4. Preflight, waiting its turn ------------------------------------------------
+# --- 4. What will run, then preflight, waiting its turn ----------------------------
+
+# On standard output, before preflight starts: what runs, as whom, and the
+# full diffstat of the collected commits against origin's default branch.
+printf "collect: make preflight now runs the collected copy's code on this computer, as you: its Go code, its tests and its Go-written gates included (go test, go run ./cmd/abcd, the evals). That is the cost decision 9 accepted.\n"
+if [ -n "$allow_tooling" ]; then
+	printf "collect: --allow-tooling-changes was passed, so the build and gate machinery is the copy's too (the build file, scripts/, the hooks, CI and the gates' settings, as the session left them).\n"
+else
+	printf "collect: the tooling refusal only keeps the build and gate machinery (the build file, scripts/, the hooks, CI and the gates' settings) as origin's %s has it.\n" "$default"
+fi
+printf "collect: the collected commits change, against origin's %s:\n" "$default"
+git -C "$wt" diff --stat=200 --no-renames "$base" "$head" ||
+	failed "git could not show what the collected commits change."
+
 
 log_dir="$wt/$LOCAL_TIER/logs"
 mkdir -p "$log_dir"

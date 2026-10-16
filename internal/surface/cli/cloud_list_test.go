@@ -324,7 +324,7 @@ func TestListReadsPeersOwnExitCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	c.resetCalls()
-	rows, _, errOut := c.listRows([]string{"ABCD_BIN=" + peers, "FAKE_ABCD=" + peers})
+	rows, _, errOut := c.listRows([]string{"ABCD_BIN=" + c.localAbcd(peers), "FAKE_ABCD=" + peers})
 	if !strings.Contains(errOut, "the reservations could not be read (abcd peers exited 2)") {
 		t.Errorf("the list did not read peers' own exit code, 2:\n%s", errOut)
 	}

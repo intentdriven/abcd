@@ -8,10 +8,14 @@
 # through `go run` can never tell a refusal from a check that could not run.
 # A built binary's exit code is abcd's own.
 #
-#   - ABCD_BIN, when it names an executable file, is printed as it is: a
-#     binary the caller built from this checkout (the cloud setup builds one
-#     per session start and exports it; a test sets its own). It is never a
-#     way to point at an installed abcd, which is whatever was last released.
+#   - ABCD_BIN is printed as it is only when it names the binary the cloud
+#     setup builds in this checkout, .abcd/.work.local/cloud/bin/abcd (built
+#     per session start and exported, connectors/<host>/setup.sh): a regular,
+#     executable file, not a symlink, whose folder, resolved with pwd -P, is
+#     this checkout's .abcd/.work.local/cloud/bin, resolved the same way.
+#     Anything else (an installed abcd, which is whatever was last released;
+#     another checkout's build; a variable left set on another machine) is
+#     ignored, with a note, and abcd is built.
 #   - Otherwise abcd is built, once, with `go build -o <dir>/abcd ./cmd/abcd`
 #     from the checkout's root, and that path is printed. <dir> is the
 #     caller's own temporary directory, which its exit trap removes.
@@ -29,9 +33,21 @@ if [ $# -ne 1 ] || [ -z "$1" ] || [ ! -d "$1" ]; then
 	exit 2
 fi
 
-if [ -n "${ABCD_BIN:-}" ] && [ -f "$ABCD_BIN" ] && [ -x "$ABCD_BIN" ]; then
-	printf '%s\n' "$ABCD_BIN"
-	exit 0
+# setup_built <path> succeeds when path is the setup's binary in this checkout.
+setup_built() {
+	local want got
+	[ -f "$1" ] && [ ! -L "$1" ] && [ -x "$1" ] && [ "$(basename -- "$1")" = abcd ] || return 1
+	want="$(cd "$root/.abcd/.work.local/cloud/bin" 2>/dev/null && pwd -P)" || return 1
+	got="$(cd "$(dirname -- "$1")" 2>/dev/null && pwd -P)" || return 1
+	[ -n "$want" ] && [ "$want" = "$got" ]
+}
+
+if [ -n "${ABCD_BIN:-}" ]; then
+	if setup_built "$ABCD_BIN"; then
+		printf '%s\n' "$ABCD_BIN"
+		exit 0
+	fi
+	echo "abcd-bin: ABCD_BIN names no binary the cloud setup built in this checkout (.abcd/.work.local/cloud/bin/abcd), so abcd is built from the checkout instead." >&2
 fi
 
 out="$1/abcd"

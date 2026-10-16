@@ -198,7 +198,11 @@ to preview) refuses, writing nothing, unless:
    the embargo store all fail this (C13, "not yet public"). The record here
    must also be the same blob as origin's, since readiness is judged on this
    copy while the session reads origin's: a record with changes not on
-   origin's default branch is refused until they are pushed;
+   origin's default branch is refused until they are pushed. An intent's
+   readiness gate reads more than its record (the spec store, and the linked
+   spec's body and steps), so for an intent no path under
+   `.abcd/development/` may differ between this working tree, untracked files
+   included, and origin's default branch;
 3. the item is not under embargo: when the embargo store
    (`~/.abcd.noindex/worktrees/<root-sha>/embargo/`) exists on this machine,
    the composed brief and the item's record are passed through `abcd
@@ -224,6 +228,10 @@ The scripts that read abcd's answers (`brief.sh`, `hand-back.sh`, `list.sh`)
 branch on its exit codes, and `go run` turns every non-zero exit into 1, so
 each runs a binary built from this checkout once per run, or the one
 `ABCD_BIN` names, through `scripts/cloud/abcd-bin.sh`; never `go run`.
+`ABCD_BIN` is honoured only when it names the binary the cloud setup builds
+in this checkout, `.abcd/.work.local/cloud/bin/abcd` (a regular executable
+file, not a symlink, its folder resolved with `pwd -P` on both sides); any
+other value, on any machine, is ignored and abcd is built.
 
 `begin.sh` runs the connector's `is_remote` script first: outside the cloud it
 prints that it is not running in the environment the brief was written for and
@@ -247,7 +255,9 @@ followed by exactly one record id (`iss-`, `itd-` or `spc-` followed by sixteen
 digits, or an ordinal `itd-`/`iss-` id) and nothing else, and (b)
 `scripts/check-attribution.sh commits <base> <local_sha>` passes over the
 pushed range (`<remote_sha>..<local_sha>` on an update; from the merge base
-with `origin/<default>` on a create); its record is adr-2610120937435856. The
+with `origin/<default>` on a create; the gate's findings name the identity
+they refuse, so the hook discards them and prints a fixed sentence naming the
+command that shows them); its record is adr-2610120937435856. The
 default-branch refusal and the non-fast-forward refusal stay ahead of every
 entry. The hook's header comment gains the entry and its reason.
 
@@ -283,11 +293,13 @@ fix its text), commits it alone as the branch's last commit (attribution-clean,
 `Assisted-by:`), and pushes `HEAD:refs/heads/<wip_prefix><item-id>` through the
 committed hook (never `--no-verify`). Its first act is the connector's
 `is_remote` check: off the cloud it prints the report and commits, pushes and
-posts nothing. It judges the checkout's identity before it commits, and never
+posts nothing, and a connector that cannot be resolved (so where it runs
+cannot be told) stops the same way, the report printed. It judges the checkout's identity before it commits, and never
 repeats raw git or hook output, so a refused identity is shown nowhere. When
 the push fails, it posts the same report with `channel: issue-comment` and why
 the push failed (a fixed reason, with only the hook's and the remote's own
-lines, identities replaced) as a comment on the
+lines, identities replaced: addresses first, then names, each longest first,
+so no domain survives) as a comment on the
 tracking issue (`cloud.conf`'s `tracking_issue`) through `gh api
 repos/{owner}/{repo}/issues/{n}/comments --input -`, after the same outbound
 check. When both fail it exits 1 and prints the report, so the transcript still
@@ -321,14 +333,32 @@ is ignored: receipts live in the local tier and never travel, and collect never
 reads one from the branch (decision 9). Earlier report commits (one per
 earlier hand-back, each changing only this item's report) are left out as the
 last one is. Before anything is made, collect refuses work that changes the
-build file, `scripts/`, `go.mod`, `go.sum` or any top-level hidden directory
-but `.abcd/` (`.githooks/`, `.github/`, `.claude/`; matched by shape, so the
+tooling, the build and gate machinery: the build file, `scripts/`, `go.mod`,
+`go.sum`, `go.work`, `go.work.sum`, `vendor/`, the gates' settings and
+baselines at the top of `.abcd/` (every `.abcd/*.json`, such as
+`record-lint.json`, `docs-lint.json`, `site.json` and the citation and site
+baselines, and `.abcd/config/`), and any top-level hidden directory but
+`.abcd/` (`.githooks/`, `.github/`, `.claude/`; matched by shape, so the
 script names no host), printing their diffstat, unless
-`--allow-tooling-changes` is passed,
-and it cherry-picks with the person's own checkout's hooks, never the
-worktree's. Preflight on a copy runs that copy's code as the person; with
-tooling changes refused by default, the gates that run are the default
-branch's own.
+`--allow-tooling-changes` is passed. The records under `.abcd/development/`
+and `.abcd/work/` are no tooling. Paths are read NUL-separated, so git quotes
+none, and matched case-folded, so neither a quoted non-ASCII name nor a
+capital steps round a pattern. Whatever the flags, collect refuses an added
+path whose case-folded form is another path's, in the default branch's tree
+or the copy's, since on a file system that folds case it overwrites that
+path. It cherry-picks with the person's own checkout's hooks, never the
+worktree's.
+
+Collect runs the collected copy's code on the person's computer, as the
+person: preflight builds and runs that copy's Go code, its tests and its
+Go-written gates included (`go test`, `go run ./cmd/abcd`, the evals). That is
+the cost decision 9 accepted. The tooling refusal does not make the gates the
+default branch's; it only keeps the build and gate machinery (the build file,
+scripts, hooks, CI and the gates' settings) as the default branch has it, so
+the session cannot choose which gates run or mint a receipt without running
+them. Before preflight starts, collect prints this on standard output with the
+full diffstat of the collected commits against `origin/<default>`, so the
+person sees what code will run; there is no confirmation prompt.
 
 ## Steps
 
@@ -357,13 +387,13 @@ branch's own.
 5. The brief (**build-alone**)
    - criteria: C4, C13
    - packages: scripts/cloud/brief.sh, scripts/cloud/brief.md.tmpl, internal/surface/cli
-   - tests: TestBriefNamesEveryPart (item, author, first step, the no-skip and go-run rules, branch from the connector's prefix, hand-back and fallback); TestBriefCarriesNoSessionLinkHomePathOrSecret; TestBriefRefusesUnreadyIntent; TestBriefAcceptsOpenIssueAndReadyIntent; TestBriefRefusesItemNotOnRemoteDefault (a draft never pushed; a record only on a local branch); TestBriefRefusesEmbargoedItem (a fixture embargo store and a fake `abcd embargo check` exiting 2); TestBriefFailsClosedWhenEmbargoCheckCannotRun (store present, verb unknown); TestBriefWithoutStoreSkipsEmbargoCheck; TestBriefReadsNoAuthorFromThisComputer; TestBriefReadsAbcdsRealExitCodes (`go run` collapses an exit 2 to 1; the brief builds abcd once, or uses `ABCD_BIN`, and reads 2 as 2); TestBriefChecksTheRecordAgainstTheEmbargo (the real abcd, a real store from `abcd embargo intake` over a fake `gh`, a record naming an embargoed title refused); TestBriefRefusesRecordWithUnpushedEdits
+   - tests: TestBriefNamesEveryPart (item, author, first step, the no-skip and go-run rules, branch from the connector's prefix, hand-back and fallback); TestBriefCarriesNoSessionLinkHomePathOrSecret; TestBriefRefusesUnreadyIntent; TestBriefAcceptsOpenIssueAndReadyIntent; TestBriefRefusesItemNotOnRemoteDefault (a draft never pushed; a record only on a local branch); TestBriefRefusesEmbargoedItem (a fixture embargo store and a fake `abcd embargo check` exiting 2); TestBriefFailsClosedWhenEmbargoCheckCannotRun (store present, verb unknown); TestBriefWithoutStoreSkipsEmbargoCheck; TestBriefReadsNoAuthorFromThisComputer; TestBriefReadsAbcdsRealExitCodes (`go run` collapses an exit 2 to 1; the brief builds abcd once, or uses `ABCD_BIN`, and reads 2 as 2); TestBriefChecksTheRecordAgainstTheEmbargo (the real abcd, a real store from `abcd embargo intake` over a fake `gh`, a record naming an embargoed title refused); TestBriefRefusesRecordWithUnpushedEdits; TestBriefRefusesUnpushedSpecEdits (an intent with any path under `.abcd/development/` differing from origin's); TestAbcdBinIgnoresAForeignABCDBIN
 6. The push hook's work-in-progress entry (**build-alone**, after `feat/reserve-on-remote` has landed its declared list on the default branch; until then this step waits)
    - criteria: C7 (the hook half), C12
    - needs: 2
    - waits on: the reservation build's declared list of receipt-less prefixes reaching the default branch (`feat/reserve-on-remote`; landed by pull request #1004, so this step is free); the session-announcement build (spc-2610150728396006) adds a row to the same table, so the two rows are coordinated with that build
    - packages: .githooks/pre-push, internal/surface/cli/githook_prepush_test.go; internal/core/guard/defaults if the guard registry refuses the session's push (add it as a `known_good`, as the reservation step did)
-   - tests: TestPrePushAdmitsWIPWithoutReceipt (create and update); TestPrePushRefusesOtherHostBranchWithoutReceipt (`claude/fix-x`); TestPrePushRefusesWIPWithBadRecordID (none, two ids, a trailing path); TestPrePushRefusesWIPFailingAttribution (an AI co-author trailer; no `Assisted-by:`); TestPrePushRefusesOnBadDeclaration; TestPrePushWIPStillRefusesForcePush; TestPrePushDefaultBranchStillRefused; the reservation entry's tests pass unchanged
+   - tests: TestPrePushAdmitsWIPWithoutReceipt (create and update); TestPrePushRefusesOtherHostBranchWithoutReceipt (`claude/fix-x`); TestPrePushRefusesWIPWithBadRecordID (none, two ids, a trailing path); TestPrePushRefusesWIPFailingAttribution (an AI co-author trailer; no `Assisted-by:`); TestPrePushRefusesOnBadDeclaration; TestPrePushWIPStillRefusesForcePush; TestPrePushWIPAttributionRefusalNamesNoIdentity (the hook prints a fixed sentence, never the gate's findings); TestPrePushDefaultBranchStillRefused; the reservation entry's tests pass unchanged
 7. The required check and the ruleset (**build-alone** for the job and the mirror; **needs the person** to apply the ruleset)
    - criteria: C7 (the boundary half)
    - packages: scripts/check-wip-source.sh, scripts/check-wip-source-cases.sh, .github/workflows/ci.yml, .abcd/work/rulesets/main-protection.json, internal/core/lint
@@ -374,7 +404,7 @@ branch's own.
    - needs: 2
    - packages: scripts/cloud/hand-back.sh, scripts/cloud/cloud.conf (the tracking issue number from step 1), internal/surface/cli
    - until the person has created the tracking issue, `cloud.conf` carries `tracking_issue=` empty and the fallback refuses by name ("no tracking issue configured") and prints the report; it never posts anywhere else
-   - tests: TestHandBackCommitsReportAloneAsLastCommit; TestHandBackPushesToWIPBranchThroughTheHook (no `--no-verify` in any argv); TestHandBackFallsBackToIssueCommentWhenPushFails (fake `gh` records the REST call and body); TestHandBackRefusesReportFailingOutbound; TestHandBackReportNamesItsChannel; TestHandBackPrintsReportWhenBothFail; TestHandBackReadsTheOutboundChecksOwnExitCode; TestHandBackBuildsAbcdOnceWithoutABCDBIN
+   - tests: TestHandBackCommitsReportAloneAsLastCommit; TestHandBackPushesToWIPBranchThroughTheHook (no `--no-verify` in any argv); TestHandBackFallsBackToIssueCommentWhenPushFails (fake `gh` records the REST call and body); TestHandBackRefusesReportFailingOutbound; TestHandBackReportNamesItsChannel; TestHandBackPrintsReportWhenBothFail; TestHandBackReadsTheOutboundChecksOwnExitCode; TestHandBackBuildsAbcdOnceWithoutABCDBIN; TestHandBackScrubLeavesNoDomain (addresses before names, longest first); TestHandBackPrintsReportWhenConnectorCannotBeResolved; TestHandBackFallbackRefersToNothingDropped
 9. Starting a session through the connector (**build-alone**; proved live in step 12)
    - criteria: C10, C5
    - needs: 2, 5
@@ -390,7 +420,7 @@ branch's own.
     - criteria: C9
     - needs: 8
     - packages: scripts/cloud/collect.sh, internal/surface/cli
-    - tests (fake `make`): TestCollectLeavesReportCommitOut; TestCollectRefusesBranchWithoutReportTip; TestCollectRefusesAttributionFailure; TestCollectRunsPreflightInMachineStoreWorktree; TestCollectPassPrintsBranchAndPushesNothing; TestCollectFailurePushesNothingAndKeepsWorktree; TestCollectIgnoresAnyCloudReceipt
+    - tests (fake `make`): TestCollectLeavesReportCommitOut; TestCollectRefusesBranchWithoutReportTip; TestCollectRefusesAttributionFailure; TestCollectRunsPreflightInMachineStoreWorktree; TestCollectPassPrintsBranchAndPushesNothing; TestCollectFailurePushesNothingAndKeepsWorktree; TestCollectIgnoresAnyCloudReceipt; TestCollectRefusesToolingChangesByDefault; TestCollectRefusesCaseVariantToolingPath; TestCollectRefusesCaseCollidingAddedPath; TestCollectMatchesNonASCIIPaths; TestCollectShowsWhatWillRunBeforePreflight
 12. The live run end to end, and the close (**needs the person**)
     - criteria: C1, C10, C11 proved in a real hosted session; C6, C8, C9 seen working
     - needs: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11

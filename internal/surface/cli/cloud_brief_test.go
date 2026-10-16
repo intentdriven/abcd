@@ -542,7 +542,7 @@ func TestBriefReadsAbcdsRealExitCodes(t *testing.T) {
 				bin = strings.TrimPrefix(kv, "FAKE_ABCD=")
 			}
 		}
-		out, errOut, code := c.scriptSplit([]string{"ABCD_BIN=" + bin, "FAKE_EMBARGO=2"}, briefScript, fixtureIssue)
+		out, errOut, code := c.scriptSplit([]string{"ABCD_BIN=" + c.localAbcd(bin), "FAKE_EMBARGO=2"}, briefScript, fixtureIssue)
 		if code != 1 || out != "" || !strings.Contains(errOut, held) {
 			t.Errorf("an embargo refusal through ABCD_BIN exited %d with stdout %q, want the embargo refusal\n%s", code, out, errOut)
 		}
@@ -583,7 +583,7 @@ const embargoTitle = "Sample Overflow In The Example Parser"
 func TestBriefChecksTheRecordAgainstTheEmbargo(t *testing.T) {
 	bin := outboundChecker(t)
 	c := newCloudCase(t)
-	c.env = append(c.env, "ABCD_BIN="+bin)
+	c.env = append(c.env, "ABCD_BIN="+c.localAbcd(bin))
 	advisory := `{"ghsa_id":"GHSA-xxxx-xxxx-xxxx","cve_id":null,"summary":"` + embargoTitle + `",` +
 		`"description":"the report","severity":"high","state":"triage","vulnerabilities":[]}`
 	c.fake("gh", `echo "gh $*" >>"$CALLS"
@@ -663,4 +663,57 @@ func TestBriefRefusesRecordWithUnpushedEdits(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestBriefRefusesUnpushedSpecEdits: `abcd intent ready` reads more than the
+// intent's record: the spec store, the linked spec's body and steps among it.
+// The cloud session reads origin's copy of all of them, so the brief refuses
+// an intent while any path under .abcd/development/ here differs from origin's
+// default branch: an edit not committed, one committed and not pushed, and a
+// spec never added.
+func TestBriefRefusesUnpushedSpecEdits(t *testing.T) {
+	spec := ".abcd/development/specs/open/spc-2610150000000008-a-fixture-item.md"
+	for _, tc := range []struct {
+		name string
+		edit func(c *cloudCase)
+	}{
+		{"a spec edit not committed", func(c *cloudCase) {
+			c.write(spec, "---\nid: spc\n---\n\n# Edited here\n", 0o644)
+		}},
+		{"a spec edit committed but not pushed", func(c *cloudCase) {
+			c.write(spec, "---\nid: spc\n---\n\n# Edited here\n", 0o644)
+			c.git("add", "--", spec)
+			c.git("-c", "user.name=Seed Person", "-c", "user.email=seed@example.com", "-c", "core.hooksPath=/dev/null",
+				"commit", "-q", "-m", "edit the spec")
+		}},
+		{"a spec never added", func(c *cloudCase) {
+			c.write(".abcd/development/specs/open/spc-2610150000000009-another.md", "---\nid: spc\n---\n", 0o644)
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newBriefCase(t)
+			c.commitRecord(intentRecord("planned", fixtureIntent), true)
+			c.commitRecord(spec, true)
+			tc.edit(c)
+			c.resetCalls()
+			out, errOut, code := c.scriptSplit(nil, briefScript, fixtureIntent)
+			if code != 1 || out != "" {
+				t.Fatalf("exited %d with stdout %q, want a refusal printing no brief\n%s", code, out, errOut)
+			}
+			if !strings.Contains(errOut, ".abcd/development/") || !strings.Contains(errOut, "push") {
+				t.Errorf("the refusal does not say the design records here differ from origin's\n%s", errOut)
+			}
+			if log := c.callLog(); strings.Contains(log, "lint outbound") || strings.Contains(log, "embargo") {
+				t.Errorf("a brief was composed while the records differ from origin's:\n%s", log)
+			}
+		})
+	}
+	t.Run("an issue is judged on its record alone", func(t *testing.T) {
+		c := newBriefCase(t)
+		c.commitRecord(issueRecord(fixtureIssue), true)
+		c.write(spec, "---\nid: spc\n---\n\n# Not pushed\n", 0o644)
+		if out, errOut, code := c.scriptSplit(nil, briefScript, fixtureIssue); code != 0 || !strings.Contains(out, fixtureIssue) {
+			t.Errorf("an open issue was refused for a spec edit its readiness never reads (exit %d)\n%s", code, errOut)
+		}
+	})
 }

@@ -218,6 +218,29 @@ func (c *cloudCase) callLog() string {
 	return string(b)
 }
 
+// localAbcdRel is where the cloud setup builds abcd in a checkout, and the one
+// place scripts/cloud/abcd-bin.sh takes ABCD_BIN from.
+const localAbcdRel = ".abcd/.work.local/cloud/bin/abcd"
+
+// localAbcd puts an abcd at localAbcdRel in the clone that runs target, and
+// returns its path for ABCD_BIN. The local tier is ignored, as the real
+// checkout's .gitignore ignores it, so the stand-in is no change to the tree.
+func (c *cloudCase) localAbcd(target string) string {
+	c.t.Helper()
+	exclude := filepath.Join(c.dir, ".git", "info", "exclude")
+	b, _ := os.ReadFile(exclude)
+	if !strings.Contains(string(b), "\n.abcd/.work.local/\n") {
+		if err := os.MkdirAll(filepath.Dir(exclude), 0o755); err != nil {
+			c.t.Fatal(err)
+		}
+		if err := os.WriteFile(exclude, append(b, []byte("\n.abcd/.work.local/\n")...), 0o644); err != nil {
+			c.t.Fatal(err)
+		}
+	}
+	c.write(localAbcdRel, "#!/bin/sh\nexec '"+target+"' \"$@\"\n", 0o755)
+	return filepath.Join(c.dir, filepath.FromSlash(localAbcdRel))
+}
+
 const connectorScript = "scripts/cloud/connector.sh"
 
 // declare writes one connector's declaration, with an is-remote script beside
