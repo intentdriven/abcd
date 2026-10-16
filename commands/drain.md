@@ -86,8 +86,10 @@ Eligible issues come first, in the order a drain takes them: by category
 `tech-debt`, `documentation`, `inconsistency`, `drift`, `bug`, `ux`, then
 `security` when the rule takes it; then by severity, `nitpick` first; then,
 within each group of one category and severity, the issues whose `found_at`
-names a file before those naming a directory or no path (a path origin's
-commit does not hold, and a link to a directory, count as no file); then each
+names a file before those naming a directory or no path (a symbolic link is a
+file wherever it points, as git stores it; a path origin's commit does not
+hold, a submodule, and a path through a link count as no file, in the working
+tree as on origin); then each
 part oldest first without `origin`, or, on `origin`, in this drain's own order:
 a rendezvous hash of the holder git's identity names with no network act, this
 copy's key and the issue id, so every account and copy keeps one order from

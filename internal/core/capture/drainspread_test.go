@@ -7,6 +7,9 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // Each account's order within a group (spc-2610161044461448 step 2;
@@ -149,11 +152,13 @@ func TestAPathAbsentWhereTheLedgerWasReadIsNotFileScoped(t *testing.T) {
 	}
 }
 
-// TestTheWorkingTreeReadsASymlinkToADirectoryAsADirectory: with no commit to
-// ask, the working tree is looked in; a found_at naming a symbolic link to a
-// directory is a directory there, and one naming a path the tree no longer
-// holds is not file-scoped either, so both sort after an issue naming a file.
-func TestTheWorkingTreeReadsASymlinkToADirectoryAsADirectory(t *testing.T) {
+// TestTheWorkingTreeReadsASymlinkAsGitStoresIt: with no commit to ask, the
+// working tree is looked in, and a path is classified as git would store it:
+// a symbolic link to a directory is a file entry, as git stores a link as a
+// blob, a path through that link is not in the tree, and one the tree no
+// longer holds is not file-scoped either; so the link's issue sorts with the
+// file's, oldest first, and the other two after them.
+func TestTheWorkingTreeReadsASymlinkAsGitStoresIt(t *testing.T) {
 	f := newDrainFixture(t)
 	if err := os.MkdirAll(filepath.Join(f.repo, "internal", "pkg"), 0o755); err != nil {
 		t.Fatal(err)
@@ -164,10 +169,46 @@ func TestTheWorkingTreeReadsASymlinkToADirectoryAsADirectory(t *testing.T) {
 	f.fileAt("iss-70", SeverityMinor, "bug", "internal/link/")
 	f.fileAt("iss-71", SeverityMinor, "bug", "internal/gone.go")
 	f.fileAt("iss-72", SeverityMinor, "bug", "internal/kept.go")
+	f.fileAt("iss-73", SeverityMinor, "bug", "internal/link/a.go")
 	if err := os.Remove(filepath.Join(f.repo, "internal", "gone.go")); err != nil {
 		t.Fatal(err)
 	}
-	if got, want := f.eligibleOrder(""), []string{"iss-72", "iss-70", "iss-71"}; !slices.Equal(got, want) {
+	if got, want := f.eligibleOrder(""), []string{"iss-70", "iss-72", "iss-71", "iss-73"}; !slices.Equal(got, want) {
 		t.Fatalf("eligible order = %v; want %v", got, want)
+	}
+}
+
+// TestTheWorkingTreeAndACommitAgreeOnASymlink: the working-tree fallback and
+// the commit's own answer (gitutil.TreePathTypes, as a drain on origin asks
+// it) classify the same paths alike: a link to a directory and a link to a
+// file are files, a path through a link is not, a directory is not, and a
+// file is.
+func TestTheWorkingTreeAndACommitAgreeOnASymlink(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("dir/a.go", "package dir\n")
+	for link, to := range map[string]string{"link": "dir", "flink": "dir/a.go"} {
+		if err := os.Symlink(to, filepath.Join(r.Root(), link)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r.Commit("links")
+	head := strings.TrimSpace(r.Git("rev-parse", "HEAD"))
+	paths := []string{"link", "link/a.go", "flink", "dir", "dir/a.go"}
+	types, err := gitutil.TreePathTypes(r.Root(), head, paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktree, err := worktreeFiles(r.Root())(paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]bool{"link": true, "flink": true, "dir/a.go": true}
+	for i, p := range paths {
+		if got := types[i] == "blob"; got != want[p] {
+			t.Errorf("the commit: %s is a file %v; want %v", p, got, want[p])
+		}
+		if worktree[p] != want[p] {
+			t.Errorf("the working tree: %s is a file %v; want %v", p, worktree[p], want[p])
+		}
 	}
 }

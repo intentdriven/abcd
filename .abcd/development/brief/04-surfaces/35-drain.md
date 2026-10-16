@@ -127,7 +127,10 @@ those naming a directory or no path, and each part is taken oldest first in a
 checkout with no remote named `origin`. Whether a path is a file is asked of the
 commit the ledger was read from, each path on its own; a path that commit does
 not hold (deleted since, or never there) is not a file, and sorts with the
-directories, as does, in a checkout's working tree, a link to a directory. A
+directories, as do a submodule's gitlink and a path through a symbolic link. A
+symbolic link itself is a file wherever it points, since git stores it as a
+blob, and a checkout's working tree, read where there is no commit to ask, is
+classified the same way, following no link. A
 drain on `origin` takes each part in its own order instead: a rendezvous
 (highest random weight) hash of the holder git's identity names with no network
 act, the copy's key and the issue id, the first eight bytes of their sha256 read

@@ -238,7 +238,7 @@ func spreadWeight(spread, id string) uint64 {
 
 // fileScopedIssues reports, by id, the eligible issues whose found_at names a
 // file: the path is asked of files, or, when it is nil, looked up in the
-// checkout's working tree, following a symbolic link. An issue whose found_at
+// checkout's working tree as git would store it (worktreeFiles). An issue whose found_at
 // names no path is not file-scoped, nor is one naming a directory, nor one
 // naming a path that is not there (deleted since, or never present): each
 // sorts with the issues naming a directory or no path.
@@ -264,17 +264,7 @@ func fileScopedIssues(repoRoot string, vs []DrainVerdict, issues []Issue, files 
 		}
 	}
 	if files == nil {
-		files = func(ps []string) (map[string]bool, error) {
-			out := map[string]bool{}
-			for _, p := range ps {
-				// Stat follows a link, so a link to a directory is a
-				// directory; a path that is not there is not a file.
-				if fi, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(p))); err == nil && fi.Mode().IsRegular() {
-					out[p] = true
-				}
-			}
-			return out, nil
-		}
+		files = worktreeFiles(repoRoot)
 	}
 	isFile, err := files(asked)
 	if err != nil {
@@ -285,6 +275,47 @@ func fileScopedIssues(repoRoot string, vs []DrainVerdict, issues []Issue, files 
 		out[id] = isFile[p]
 	}
 	return out, nil
+}
+
+// worktreeFiles reports which of the paths named the working tree holds as a
+// file, as git would store each: a regular file or a symbolic link, wherever
+// it points, since git stores a link as a blob, so a link to a directory is a
+// file here as it is on origin. A path through a link is no file, as git
+// holds nothing beneath one, nor is a directory or a path that is not there.
+func worktreeFiles(repoRoot string) func([]string) (map[string]bool, error) {
+	return func(ps []string) (map[string]bool, error) {
+		out := map[string]bool{}
+		for _, p := range ps {
+			if worktreeFile(repoRoot, p) {
+				out[p] = true
+			}
+		}
+		return out, nil
+	}
+}
+
+// worktreeFile reports whether the clean relative path p is a file entry in
+// the working tree at repoRoot: every component before the last a real
+// directory, never a link (Lstat, which follows none), and the last a regular
+// file or a link.
+func worktreeFile(repoRoot, p string) bool {
+	parts := strings.Split(p, "/")
+	at := repoRoot
+	for i, part := range parts {
+		at = filepath.Join(at, part)
+		fi, err := os.Lstat(at)
+		if err != nil {
+			return false
+		}
+		if i < len(parts)-1 {
+			if !fi.IsDir() {
+				return false
+			}
+			continue
+		}
+		return fi.Mode().IsRegular() || fi.Mode()&os.ModeSymlink != 0
+	}
+	return false
 }
 
 // DrainPlanRequest is the input to PlanDrain.
