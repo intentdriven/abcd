@@ -387,6 +387,36 @@ func TestHandBackFallsBackToIssueCommentWhenPushFails(t *testing.T) {
 	}
 }
 
+// TestHandBackNamesTheHookAfterALongRefusal: the reason says the committed
+// pre-push hook refused the push however much the hook printed. A grep -q fed
+// by printf stops reading at its first match, and under pipefail the printf
+// killed by the closed pipe turned the match into a miss. A stand-in hook
+// refuses with more lines than any pipe buffer holds.
+func TestHandBackNamesTheHookAfterALongRefusal(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.work("one.md")
+	c.write(".githooks/pre-push", `#!/bin/sh
+i=0
+while [ $i -lt 12000 ]; do echo "pre-push: line $i of a long refusal"; i=$((i + 1)); done
+exit 1
+`, 0o755)
+	_, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("hand-back whose push was refused and whose comment posted exited %d\n%.2000s", code, errOut)
+	}
+	calls := c.forgeCalls()
+	if len(calls) != 1 {
+		t.Fatalf("the fake gh was called %d times, want once", len(calls))
+	}
+	var payload map[string]string
+	if err := json.Unmarshal([]byte(calls[0].stdin), &payload); err != nil {
+		t.Fatalf("the comment's request body is not JSON: %v", err)
+	}
+	if !strings.Contains(payload["body"], "the committed pre-push hook refused it") {
+		t.Errorf("after a long refusal the report does not say the hook refused the push:\n%.2000s", payload["body"])
+	}
+}
+
 // handBackSessionID is a synthetic opaque session id, built at run time
 // (secret-shaped-fixtures-at-runtime), for a report the outbound check refuses.
 var handBackSessionID = testsecret.Synthetic(62, 22)

@@ -373,11 +373,15 @@ if [ -z "$why" ]; then
 		exit 0
 	fi
 	why="the push to $branch failed (exit $rc)"
-	if printf '%s\n' "$out" | grep -q '^pre-push:'; then
-		why="$why: the committed pre-push hook refused it"
-	fi
+	# Matched in the shell, not by printf into grep -q: under pipefail that
+	# pipe read as no match once the output outran the pipe's buffer.
+	case $'\n'"$out" in
+	*$'\n'pre-push:*) why="$why: the committed pre-push hook refused it" ;;
+	esac
+	# The sentence, then the output's last lines: the comment carries twenty
+	# lines in all, and the sentence is never the line cut.
 	[ -z "$out" ] || why="$why; what git and the remote said:
-$out"
+$(printf '%s\n' "$out" | tail -n 19)"
 fi
 
 # --- 5. The fallback: the tracking issue -------------------------------------
