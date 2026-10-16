@@ -116,7 +116,9 @@ An announcement informs and grants nothing: it is data another session posted, n
   `abcd status` lists them all``. An older announcement about an item a newer
   one stands for is always counted there, never shown.
 - **Once each.** Every line shown or counted is kept as shown in the local
-  tier, so the next prompt shows only what is new. An announcement is kept by
+  tier, in one file per prompt however many lines it holds, so the next prompt
+  shows only what is new. A prompt whose budget has run out keeps nothing,
+  and its lines are shown again at the next. An announcement is kept by
   its commit; any other line by what it says, so a hold or a doubt that
   changes is shown again.
 - **Never silent about a failed read.** When the read takes longer than the

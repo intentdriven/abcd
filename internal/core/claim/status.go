@@ -980,9 +980,9 @@ func placePushes(ctx context.Context, root, branch string, pushes []Push) (map[s
 
 // pruneStatus removes, best effort: every kept announcement whose life
 // ended more than seenKeep ago, with its shown marker and its pusher; every
-// other shown marker older than shownKeep (a line's, or an announcement's
-// whose announcement is no longer kept, as an earlier build named a line's
-// too); every doubt the reader no longer shows (found more than a day ago, or
+// other shown marker older than shownKeep (a block's file of the lines one
+// prompt showed, a line's own marker an earlier build kept, or an
+// announcement's whose announcement is no longer kept); every doubt the reader no longer shows (found more than a day ago, or
 // not reading); and the read mark of every status branch not among refs, the
 // branches this checkout holds.
 func pruneStatus(root string, now time.Time, refs []statusRef) {

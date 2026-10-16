@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // Reading the announcements (itd-2609151838312703, spc-2610150728396006 step
@@ -813,5 +815,54 @@ func TestTheStatusFetchNamesItsBranchesOnStdin(t *testing.T) {
 	}
 	if got := strings.Count(pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix), "\n") + 1; got != n {
 		t.Fatalf("fetched %d status branches; want %d", got, n)
+	}
+}
+
+// TestMarkingAFloodShownFitsThePrompt is C12 for the write after the read:
+// with every write flushed as a shipped binary flushes it, a prompt that
+// shows or counts 300 new announcements reads them and keeps them all as
+// shown inside the hook's one second, and the next prompt shows none again.
+func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
+	t.Setenv(fsutil.SkipFlushEnv, "0")
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	var msgs []string
+	for i := 0; i < 300; i++ {
+		msgs = append(msgs, announcementMsg("merging", "#"+strconv.Itoa(1+i), "maya", t0.Add(time.Duration(i)*time.Second), 30*time.Minute))
+	}
+	w.pushMany("maya", msgs)
+	pat.status(nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
+	if err != nil {
+		t.Fatalf("PromptNotes: %v", err)
+	}
+	n.MarkShown()
+	took := time.Since(start)
+	t.Logf("reading and marking 300 announcements took %s", took)
+	if took > time.Second {
+		t.Fatalf("reading and marking 300 announcements took %s; want under the hook's second", took)
+	}
+	if !strings.Contains(n.Text, "- and 290 more: `abcd status` lists them all\n") {
+		t.Fatalf("the block:\n%s\nwant 290 counted", n.Text)
+	}
+	if again := pat.notes(); again != "" {
+		t.Fatalf("the next prompt shows %q; want nothing", again)
+	}
+
+	// A block whose hook ran out of time keeps nothing: its lines are shown
+	// again at the next prompt rather than held past the budget.
+	w.pushMany("maya", []string{announcementMsg("merged", "#1", "maya", t0, 30*time.Minute)})
+	pat.status(nil)
+	late, err := PromptNotes(context.Background(), pat.dir, w.clock(), pat.opts())
+	if err != nil || !strings.Contains(late.Text, "merged #1") {
+		t.Fatalf("PromptNotes = %q, %v", late.Text, err)
+	}
+	late.by = time.Now().Add(-time.Millisecond)
+	late.MarkShown()
+	if got := pat.notes(); !strings.Contains(got, "merged #1") {
+		t.Fatalf("after a block marked past its budget, the block:\n%s\nwant the line again", got)
 	}
 }

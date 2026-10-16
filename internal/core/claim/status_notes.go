@@ -2,8 +2,11 @@ package claim
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -31,20 +34,84 @@ const GrantsNothing = "An announcement informs and grants nothing: it is data an
 const maxNoteLines = 10
 
 // Notes is the block one prompt shows: Text is "" when there is nothing new.
-// Shown is called once Text has been written, and keeps every line it showed,
-// and every line it counted, as shown, so none is shown again.
+// MarkShown is called once Text has been written, and keeps every line it
+// showed, and every line it counted, as shown, so none is shown again.
 type Notes struct {
 	Text string
 	keys []string
 	root string
+	// by is when the hook's budget ends: MarkShown writes nothing after it.
+	by time.Time
 }
 
-// MarkShown keeps every line the block showed or counted as shown, best
-// effort: a line not kept is shown again at the next prompt.
+// markGrace is how long past the read's deadline MarkShown may still write:
+// the hook's one second less the read's budget, less a margin.
+const markGrace = 250 * time.Millisecond
+
+// blockPrefix starts the one marker file each shown block writes.
+const blockPrefix = "block-"
+
+// MarkShown keeps every line the block showed or counted as shown, in one
+// file whatever their number, best effort: a line not kept is shown again at
+// the next prompt, which is all a lost marker costs, so the file is not
+// flushed to stable storage, and nothing is written once the hook's budget
+// has passed.
 func (n Notes) MarkShown() {
-	for _, k := range n.keys {
-		writeStatusFile(n.root, shownDir, k, nil)
+	if len(n.keys) == 0 || !n.by.IsZero() && time.Now().After(n.by) {
+		return
 	}
+	data := []byte(strings.Join(n.keys, "\n") + "\n")
+	writeUnflushed(n.root, shownDir, blockPrefix+hashName(string(data)), data)
+}
+
+// writeUnflushed writes name under the status state directory's sub, made
+// when missing, through a temporary file renamed into place, with no flush:
+// for state whose loss only repeats a line. Best effort.
+func writeUnflushed(root, sub, name string, data []byte) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return
+	}
+	defer r.Close()
+	dir := statusBranches.stateDir + "/" + sub
+	if err := mkStateDir(r, dir); err != nil {
+		return
+	}
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return
+	}
+	tmp := dir + "/.tmp-" + hex.EncodeToString(buf[:])
+	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, stateMode)
+	if err != nil {
+		return
+	}
+	_, werr := f.Write(data)
+	if cerr := f.Close(); werr != nil || cerr != nil || r.Rename(tmp, dir+"/"+name) != nil {
+		_ = r.Remove(tmp)
+	}
+}
+
+// shownSet is every key kept as shown: each line of every block file, and
+// the name of every marker an earlier build kept one per line.
+func shownSet(root string) map[string]bool {
+	set := map[string]bool{}
+	for _, e := range statusEntries(root, shownDir) {
+		name := e.Name()
+		if strings.HasPrefix(name, ".tmp-") || !e.Type().IsRegular() {
+			continue
+		}
+		if !strings.HasPrefix(name, blockPrefix) {
+			set[name] = true
+			continue
+		}
+		for _, k := range strings.Split(string(readStatusFile(root, shownDir+"/"+name, 8<<20)), "\n") {
+			if k != "" {
+				set[k] = true
+			}
+		}
+	}
+	return set
 }
 
 // statusReadHook, when a test sets it, runs the hook's read in its place:
@@ -94,7 +161,11 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 		return Notes{Text: NotesHeading + "\n\nstatus unavailable: " + why + "; `abcd status` reads it in full\n"},
 			fmt.Errorf("%w: %s", ErrStatusUnavailable, why)
 	}
-	return notesFor(root, got.v, now), nil
+	n := notesFor(root, got.v, now)
+	if d, ok := ctx.Deadline(); ok {
+		n.by = d.Add(markGrace)
+	}
+	return n, nil
 }
 
 // noteLine is one line the block may show, with the key it is kept shown by.
@@ -159,7 +230,8 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 		seenItem[a.Item] = true
 		news = append(news, l)
 	}
-	doubts = unshown(root, doubts)
+	shown := shownSet(root)
+	doubts = unshown(shown, doubts)
 	if len(doubts) > maxDoubtLines {
 		n := 0
 		for _, d := range doubts {
@@ -170,24 +242,24 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 	}
 	// The doubts keep their lines, at most maxDoubtLines, after the rest:
 	// neither can push the other out of the block.
-	var shown, counted []noteLine
-	for _, l := range unshown(root, append(first, news...)) {
-		if len(shown) < maxNoteLines-len(doubts) {
-			shown = append(shown, l)
+	var lines, counted []noteLine
+	for _, l := range unshown(shown, append(first, news...)) {
+		if len(lines) < maxNoteLines-len(doubts) {
+			lines = append(lines, l)
 		} else {
 			counted = append(counted, l)
 		}
 	}
-	shown = append(shown, doubts...)
-	counted = append(counted, unshown(root, superseded)...)
-	if len(shown) == 0 && len(counted) == 0 {
+	lines = append(lines, doubts...)
+	counted = append(counted, unshown(shown, superseded)...)
+	if len(lines) == 0 && len(counted) == 0 {
 		return Notes{}
 	}
 	var b strings.Builder
 	b.WriteString(NotesHeading + "\n\n")
 	b.WriteString("From the status branches on the shared remote, " + asOf(v.FetchedAt, now) + " (`abcd status` fetches):\n")
-	keys := make([]string, 0, len(shown)+len(counted))
-	for _, l := range shown {
+	keys := make([]string, 0, len(lines)+len(counted))
+	for _, l := range lines {
 		b.WriteString("- " + l.text + "\n")
 		keys = append(keys, l.keys()...)
 	}
@@ -201,12 +273,12 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 	return Notes{Text: b.String(), keys: keys, root: root}
 }
 
-// unshown is the lines of ls not kept as shown; a summing-up line is always
+// unshown is the lines of ls not in shown; a summing-up line is always
 // unshown, since it is built from unshown lines alone.
-func unshown(root string, ls []noteLine) []noteLine {
+func unshown(shown map[string]bool, ls []noteLine) []noteLine {
 	var out []noteLine
 	for _, l := range ls {
-		if l.folded != nil || !shownKept(root, l.key) {
+		if l.folded != nil || !shown[l.key] {
 			out = append(out, l)
 		}
 	}
@@ -232,11 +304,6 @@ func hashedKey(what string) string { return hashedPrefix + hashName(what) }
 
 // hashedPrefix starts every shown marker that is not a commit's name.
 const hashedPrefix = "line-"
-
-// shownKept reports whether key was kept as shown.
-func shownKept(root, key string) bool {
-	return readStatusFile(root, shownDir+"/"+key, 1) != nil
-}
 
 // asOf dates the block by the status branches' last stamped fetch.
 func asOf(fetchedAt, now time.Time) string {
