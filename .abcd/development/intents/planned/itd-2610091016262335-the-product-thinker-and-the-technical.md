@@ -10,15 +10,15 @@ severity: minor
 origin: researcher-authored
 production_mode: hand-written
 related_intents: [itd-2610052000411162, itd-2610040740122709, itd-2610040740135705, itd-2610091010348892]
-related_adrs: [adr-2610091016270711]
+related_adrs: [adr-2610091016270711, adr-2610161400542916]
 supersedes: [itd-2610052000411162, itd-2610052000424067]
 ---
 
-# A team edits its brief together live on abcdesign.app during a call
+# A team edits its brief together live during a call, on abcdesign.app or on the host's own computer
 
 ## Press Release
 
-> During a team call, a product thinker opens their project's brief at abcdesign.app/<owner>/<repo>/brief/ and hosts a session. Teammates join by scanning a QR code or typing a short code, from a laptop, an iPad or a phone, and everyone edits the brief together, seeing each other's changes as they type. Team members sign in with GitHub and their changes are credited to them; a guest's change waits until a team member approves it. The team decides how their work goes back: each edit as its own GitHub issue, credited to its author or to the team member who approved it, or the whole session as one pull request once they are done. The session runs on the host's own machine or the team's own relay; abcd runs and holds nothing.
+> During a team call, a product thinker opens their project's brief and starts a live session. Teammates follow the invite link or scan its QR code, on a laptop, an iPad or a phone, and land straight on the brief, its press release first. Members of the project's GitHub organisation sign in with GitHub and edit directly, and each change is credited to them. A domain expert or a stakeholder from outside joins as a guest with just their name and suggests changes, which a team member applies or declines. Nobody is asked for a server address or a key. When they are done, the team sends the work back as one pull request, or as one GitHub issue per change. For most projects the session runs on the team's own relay and the page is at abcdesign.app. For a sensitive project it runs on the host's own computer, reached only over the team's private Tailscale network, and nothing goes to abcdesign.app. abcd runs and holds nothing.
 
 ## Why This Matters
 
@@ -32,30 +32,42 @@ We expect a team to shape its brief together during a call, because the editing 
 
 - An abcd-managed repository on GitHub, public or private. <!-- cond: cond-2610141709436596 -->
 - A team small enough to meet in one call, in a meeting tool such as Teams or Stoa. <!-- cond: cond-2610141709438833 -->
-- The host runs the session on their own machine reachable over Tailscale, or the team has deployed abcd's relay blueprint to its own account once. <!-- cond: cond-2610141709437811 -->
+- The team set up live sessions once, at repository setup: its own GitHub App, and its own relay on its own hosting account, the host's computer on Tailscale, or both. <!-- cond: cond-2610141709437811 -->
 - The brief only; intents, decision records and the brief's other surroundings are later intents. <!-- cond: cond-2610141709433162 -->
 - A current browser on a laptop, an iPad or a phone. <!-- cond: cond-2610141709439113 -->
 
 ## Acceptance Criteria
 
-_Drafted 2026-10-14 from the product thinker's rulings; accepted as drafted the same day (Decisions)._
+_Drafted 2026-10-14 from the product thinker's rulings and accepted as drafted the same day; rewritten 2026-10-16 to the design the product thinker approved that day (Decisions). The setup criteria at the end are built by a later lane._
 
-- **Given** an abcd-managed repository and a team member whose machine or team relay runs a session, **when** they open abcdesign.app/<owner>/<repo>/brief/ and host a session, **then** the page shows the brief, a QR code and a short join code.
-- **Given** a hosted session, **when** a teammate scans the QR code or types the code on a laptop, an iPad or a phone, **then** they see the brief and every participant's changes as they are typed.
+- **Given** a project whose team set up cloud sessions, **when** a team member opens abcdesign.app/<owner>/<repo>/brief/, signs in with GitHub and starts a session, **then** they see the brief's press release, a QR code and a short join code, and nothing on the page asks them for a server address or a key.
+- **Given** a project whose team set up local sessions, **when** the host runs `abcd session start` on their own computer, **then** it prints the one Tailscale step and a link; opening the link shows the same page, served from the host's computer, where signing in means confirming a short code on github.com; and nothing reaches abcdesign.app.
+- **Given** a running session, **when** a teammate opens the invite link or scans the QR code on a laptop, an iPad or a phone, **then** they land on the brief's press release and see every participant's changes as they are typed.
 - **Given** a participant who signs in with GitHub and can change the repository, **when** they edit the brief, **then** each change is credited to them.
-- **Given** a participant who joined only by code, **when** they edit the brief, **then** the change shows as a suggestion until a team member approves it, and the approval names that team member.
+- **Given** a guest who joined with only their name, **when** they select a passage and suggest a change, **then** it waits until a team member applies or declines it, and the record names that team member.
+- **Given** someone outside the host's tailnet with whom the host has shared the computer through Tailscale, **when** they open a local session's invite link, **then** they join it as a guest.
+- **Given** a project with no live sessions set up, **when** anyone opens its brief page, **then** the page says plainly that live sessions are not set up for this project yet and to ask the technical facilitator, and it asks them for nothing.
 - **Given** two participants changing the same passage at the same time, **when** both changes arrive, **then** neither is lost and both see the same result.
 - **Given** a team that chooses to send edits one by one, **when** they send an edit, **then** it becomes its own GitHub issue credited to its author, or to the team member who approved it.
 - **Given** a team that chooses one pull request, **when** they finish, **then** one pull request is opened containing the session's changes and naming every credited member.
 - **Given** any session, **when** it runs from start to finish, **then** no request reaches a server abcd runs, and abcd holds no key.
-- (technical) **Given** the team's own GitHub sign-in app, **when** anyone signs in, **then** its secret stays on the team's relay or host machine and never reaches a browser or abcd; pasting a personal access token works as the fallback.
+- (technical) **Given** the team's own GitHub App, **when** anyone signs in through a cloud relay, **then** GitHub's web flow is used and the app's secret stays on that relay; **and when** anyone signs in to a local session, **then** GitHub's device flow is used and no secret exists on the host's computer.
+- (technical) **Given** any token other than a GitHub App user access token, **when** it reaches the relay, **then** it is refused before GitHub is asked; and the page has no field to paste a token into.
+- (technical) **Given** an invite link that names a relay the repository's `.abcd/relay/relays.json` does not name, **when** it is opened, **then** nothing is sent to that relay, and the page says the link does not lead to the project's own session, showing no address.
+- (technical) **Given** a local session, **when** a request names a host or a page origin other than the computer's tailnet name or loopback, **then** it is refused before anything is read; and the page's files come from a fixed route table, never from a requested path.
 - (technical) **Given** a pull request from a session, **when** it is opened, **then** its commit is authored by the person who submitted it, carries a co-author line for every credited team member, and an "Approved-by:" line beside each guest's display name for each approved guest change.
 - (technical) **Given** a single edit too long for a pre-filled issue link, **when** the team sends it as an issue, **then** it is offered as a pull request instead, measured on the link as GitHub receives it.
 - (technical) **Given** the relay blueprint, **when** a team deploys it to a free account, **then** one deploy serves the team's sessions, and the relay keeps no copy of the brief after a session closes.
+- (setup) **Given** repository setup on a project without live sessions, **when** it runs, **then** it asks "Set up live brief sessions?" with Yes, No and Later. Later asks again at the next setup run and when someone tries to start a session. No never asks again, and the setup step stays runnable by hand.
+- (setup) **Given** a Yes, **when** setup goes on, **then** it asks "Where may sessions run?" with Local, Cloud and Both.
+- (setup) **Given** Cloud, **when** the technical facilitator sets it up, **then** it takes two one-click steps: creating the team's GitHub App from a pre-filled manifest, and deploying the relay with Render's Deploy button, whose own form asks for the secrets. abcd writes the files and records the relay's address itself.
+- (setup) **Given** Local, **when** the technical facilitator sets it up, **then** the team's GitHub App is created from a pre-filled manifest with no secret kept, its device flow switched on and the app installed on the repository, and abcd records its public client id itself.
+- (setup) **Given** any setup, **when** it finishes, **then** abcd runs no server that holds project content or a key.
 
 ## Open Questions
 
 - The decision record for this trust boundary (adr-2610091016270711) is written from the 2026-10-14 rulings at planning.
+- Local sessions still need a GitHub App registered once (2026-10-16, adr-2610161400542916). GitHub's device flow needs the client id of a GitHub App that has its device flow switched on, and a manifest cannot switch it on. The app must also be installed on the repository. No secret is kept and no server is deployed, but the product thinker was told local sessions need no account and no cloud setup, which overstates it. Put back to the product thinker: is it the team's own app, registered once at setup, or a shared app abcd owns, which each organisation installs?
 
 ## Audit Notes
 
@@ -90,6 +102,16 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 - 2026-10-14: asked whether team sessions allow private projects in the first release, now that a session runs only on the team's own machine or relay and abcd sees nothing, the product thinker chose "Allow private projects now": the first release serves private repositories as well as public ones, which lifts, for this intent, the same day's "public projects only" ruling (made when the shared copy would have sat on a server abcd runs). The team keeps its own relay safe, and the first release handles sign-in for private repositories.
 - 2026-10-14: walked through the rewritten press release, the product thinker changed how the work goes back, verbatim: "the team decides: individual edits as issues, credited to the author or approver, or a collective pull request once done". The press release above carries that change; it replaces the earlier "the host sends a small change as a GitHub issue or the whole session as one pull request naming everyone" and the earlier rule that the person picks by the size of the change.
 - 2026-10-14: offered the criteria walk on the drafted Why This Matters, Mechanism, Scope Conditions and Acceptance Criteria, the product thinker answered, verbatim: "auto-approve all". Every drafted criterion, the technical ones included, is accepted as written.
+
+- 2026-10-16: the product thinker tested the draft page and could not use it. Its first screen asked for a relay address, then for a pasted GitHub token, and the brief appeared only after hosting and picking a file (iss-2610161332024554). The product thinker then approved a new design, restated here:
+  - **Purpose.** A maintainer invites others, such as organisation members, domain experts and stakeholders, to discuss and edit the project's brief live. At least the host signs in with GitHub.
+  - **Who edits.** Organisation members sign in with GitHub and edit directly. Anyone else joins as a guest with just a name and only suggests changes, which a member applies or declines, as the draft has it.
+  - **No relay address on screen, ever.** In a cloud session the page finds the team's relay from the repository's `.abcd/relay/relays.json` or from the invite link. Where the project has no session set up, the page says plainly that live sessions are not set up yet and to ask the technical facilitator. It never asks the person for technical input.
+  - **No token pasting at all,** on the page or in the relay.
+  - **The brief first.** The page opens straight onto the brief, press release first, once a session is joined, in plain words throughout, because its audience is product thinkers and domain experts.
+  - **Two ways to host, both kept.** In the cloud, the team's relay runs on its own hosting account (Render), the page is at abcdesign.app, and members use "Sign in with GitHub". Locally, for sensitive projects, the session runs on the host's own computer, reached over Tailscale Serve on the tailnet only. That computer runs the relay and serves the page itself, so nothing goes to abcdesign.app, and sign-in uses GitHub's device flow, so no secret sits on it. Outsiders reach a local session when the host shares the computer with them through Tailscale, and they join as guests.
+  - **Setup at repository setup.** Setup asks whether to set up live brief sessions (Yes, No or Later), then where sessions may run (Local, Cloud or Both). Later asks again at the next setup run and when someone tries to start a session. No never asks again, and the step stays runnable by hand. Cloud takes two one-click steps: create the team's GitHub App from a pre-filled manifest, and deploy the relay with Render's Deploy button, which asks for the secrets on Render's own form. abcd writes the files and records the relay's address itself, and never runs a server holding project content or a key. A later lane builds this part.
+- 2026-10-16, decided by the facilitator on state-of-the-art grounds, which the product thinker allows for a technical choice (adr-2610161400542916): a cloud relay keeps GitHub's web flow, and its one secret stays on the team's relay. The device flow would remove that secret, but it is open to remote phishing with the app's public client id, GitHub limits it to 50 code submissions an hour per app, and it sends every member to a second tab. A local session uses the device flow, the only GitHub sign-in that needs no secret. Tailscale Serve's identity headers are not used: a Tailscale login says nothing about write access to the repository.
 
 ## Grounds
 
