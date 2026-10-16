@@ -221,6 +221,9 @@ func pushRejection(stdout string, err error) error {
 // decide is the push table: the result an act will report, the message it
 // writes and the parent it writes it on, or the refusal.
 func decide(p *prepared, j judged) (Result, message, string, error) {
+	// A release and a renewal take their own rows before the finished-record
+	// back-off below: the holder's tombstone still lands, and a renewal is told
+	// the default branch released it, which the land fence reads.
 	if p.req.Release {
 		return decideRelease(p, j)
 	}

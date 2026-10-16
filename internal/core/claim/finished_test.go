@@ -9,7 +9,10 @@ import (
 // A record finished on origin's default branch is not reserved (spc-2610161044461448
 // step 1, iss-2610160957404827): any reservation act other than a release or a
 // renewal backs off, whether or not a reservation tip exists for it, and nothing
-// is pushed. The listing still counts such a tip released (C15).
+// is pushed. The listing still counts such a tip released (C15). A release and
+// a renewal keep their own rows: the holder's release still pushes its
+// tombstone, and a renewal is told the reservation is released by the default
+// branch, which the land fence reads.
 
 // finishOnMain moves id's record into folder on origin's default branch.
 func (w *world) finishOnMain(id, folder string) {
@@ -103,5 +106,46 @@ func TestAReservationOfARecordFinishedOnTheDefaultBranchBacksOff(t *testing.T) {
 		t.Cleanup(func() { beforePush = nil })
 		_, err := q.reserve("iss-5", "b.go")
 		wantFinishedBackOff(t, w, "iss-5", err, ptip)
+	})
+}
+
+// TestAReleaseOrRenewalOfAFinishedRecordKeepsItsOwnRow: the finished-record
+// back-off is a reservation's, not a release's or a renewal's. The holder's
+// release of a record finished on origin's default branch pushes its
+// tombstone, and a renewal of it is the *NotHeld that names the derived
+// release, never the reservation's back-off.
+func TestAReleaseOrRenewalOfAFinishedRecordKeepsItsOwnRow(t *testing.T) {
+	t.Run("renew", func(t *testing.T) {
+		w := newWorld(t)
+		p := w.clone("1234+octo@users.noreply.github.com", "")
+		first, err := p.reserve("iss-5", "a.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.finishOnMain("iss-5", "resolved")
+		_, err = p.do(Request{Record: "iss-5", Renew: true})
+		var nh *NotHeld
+		if !errors.As(err, &nh) || nh.Why != NotHeldReleased || !nh.Derived || !errors.Is(err, ErrBackOff) {
+			t.Fatalf("renewing a finished record = %v; want the *NotHeld naming the derived release", err)
+		}
+		if got := w.remoteTip("iss-5"); got != first.Commit {
+			t.Fatalf("the renewal pushed: tip %q, want %q", got, first.Commit)
+		}
+	})
+	t.Run("release", func(t *testing.T) {
+		w := newWorld(t)
+		p := w.clone("1234+octo@users.noreply.github.com", "")
+		first, err := p.reserve("iss-5", "a.go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		w.finishOnMain("iss-5", "resolved")
+		rel, err := p.do(Request{Record: "iss-5", Release: true})
+		if err != nil || rel.Act != ActReleased {
+			t.Fatalf("releasing a finished record = %+v, %v; want its tombstone pushed", rel, err)
+		}
+		if got := w.remoteTip("iss-5"); got == first.Commit || got != rel.Commit {
+			t.Fatalf("origin's tip = %q; want the tombstone %q over %q", got, rel.Commit, first.Commit)
+		}
 	})
 }
