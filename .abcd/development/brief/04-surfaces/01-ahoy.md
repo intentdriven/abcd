@@ -1299,6 +1299,7 @@ Sub-verbs: none.
 | `--dev` | bool |
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
+| `--live-sessions` | string |
 | `--oracle-backend` | string |
 | `--outbound-forge` | bool |
 | `--outbound-hook` | bool |

@@ -80,12 +80,15 @@ func TestBlueprintMatchesItsGoldens(t *testing.T) {
 	if strings.Join(rel.asked, ",") != "v0.17.1/checksums.txt" {
 		t.Fatalf("fetched %v, want the release's checksums alone", rel.asked)
 	}
-	for _, f := range []string{"Dockerfile", "render.yaml"} {
-		data, err := os.ReadFile(filepath.Join(root, ".abcd", "relay", f))
+	for f, at := range map[string]string{"Dockerfile": filepath.Join(root, ".abcd", "relay", "Dockerfile"), "render.yaml": filepath.Join(root, "render.yaml")} {
+		data, err := os.ReadFile(at)
 		if err != nil {
 			t.Fatal(err)
 		}
 		golden(t, f+".golden", data)
+	}
+	if res.BlueprintPath != "render.yaml" || !res.DeployButton {
+		t.Fatalf("the Blueprint is not where Render's Deploy button reads it: %+v", res)
 	}
 	for _, f := range res.Files {
 		if f.State != "written" {
@@ -153,7 +156,7 @@ func TestBlueprintRefusesToOverwriteAnEditedFile(t *testing.T) {
 
 	// Edited: refused, and neither file is touched.
 	docker := filepath.Join(root, ".abcd", "relay", "Dockerfile")
-	yaml := filepath.Join(root, ".abcd", "relay", "render.yaml")
+	yaml := filepath.Join(root, "render.yaml")
 	edited := []byte(strings.Replace(string(mustRead(t, yaml)), "plan: free", "plan: starter", 1))
 	if err := os.WriteFile(yaml, edited, 0o644); err != nil {
 		t.Fatal(err)
@@ -161,7 +164,7 @@ func TestBlueprintRefusesToOverwriteAnEditedFile(t *testing.T) {
 	before := mustRead(t, docker)
 	_, err = WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.2", Fetch: goodRelease(), Repos: testRepos})
 	var ref *BlueprintRefusal
-	if !errors.As(err, &ref) || len(ref.Edited) != 1 || ref.Edited[0] != ".abcd/relay/render.yaml" {
+	if !errors.As(err, &ref) || len(ref.Edited) != 1 || ref.Edited[0] != "render.yaml" {
 		t.Fatalf("err = %v, want a refusal naming render.yaml", err)
 	}
 	if string(mustRead(t, yaml)) != string(edited) || string(mustRead(t, docker)) != string(before) {
@@ -362,5 +365,58 @@ func TestBlueprintRefusesAReleaseWithoutTheSessionVerb(t *testing.T) {
 		if !c.ok && (err == nil || !strings.Contains(err.Error(), "abcd session") || len(rel.asked) != 0) {
 			t.Errorf("%s (running %q): %v, fetched %v; want a refusal naming abcd session, before any fetch", c.release, c.running, err, rel.asked)
 		}
+	}
+}
+
+// TestBlueprintSitsAtTheRootForTheDeployButton: Render's Deploy button takes
+// only the repository (and a branch) and reads the Blueprint at the
+// repository's root (render.com/docs/deploy-to-render,
+// render.com/docs/infrastructure-as-code), so render.yaml is written there. A
+// root render.yaml the team wrote themselves is never touched: the Blueprint
+// goes under .abcd/relay/ instead, to be picked by its Blueprint Path on
+// Render's New Blueprint form, and the result says the button does not apply.
+// The team's GitHub App client id, public, is written as a plain value, so
+// Render's form asks only for the secret.
+func TestBlueprintSitsAtTheRootForTheDeployButton(t *testing.T) {
+	root := t.TempDir()
+	res, err := WriteBlueprint(BlueprintRequest{Root: root, Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos, ClientID: "Iv23liAbC"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	yaml := string(mustRead(t, filepath.Join(root, "render.yaml")))
+	for _, want := range []string{
+		"- key: ABCD_SESSION_GITHUB_CLIENT_ID\n        value: \"Iv23liAbC\"",
+		"- key: ABCD_SESSION_GITHUB_CLIENT_SECRET\n        sync: false",
+		"dockerfilePath: ./.abcd/relay/Dockerfile",
+		"render.com/deploy?repo=https://github.com/acme/brief",
+	} {
+		if !strings.Contains(yaml, want) {
+			t.Errorf("render.yaml lacks %q:\n%s", want, yaml)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(root, ".abcd", "relay", "render.yaml")); err == nil {
+		t.Error("a second Blueprint was written under .abcd/relay/")
+	}
+	if res.DeployURL != "https://render.com/deploy?repo=https://github.com/acme/brief" {
+		t.Errorf("deploy url = %q", res.DeployURL)
+	}
+
+	own := t.TempDir()
+	theirs := []byte("services:\n  - type: web\n    name: their-app\n")
+	if err := os.WriteFile(filepath.Join(own, "render.yaml"), theirs, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err = WriteBlueprint(BlueprintRequest{Root: own, Release: "v0.17.1", Fetch: goodRelease(), Repos: testRepos})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(mustRead(t, filepath.Join(own, "render.yaml"))) != string(theirs) {
+		t.Fatal("the team's own render.yaml was changed")
+	}
+	if res.BlueprintPath != ".abcd/relay/render.yaml" || res.DeployButton || res.DeployURL != "" {
+		t.Fatalf("beside the team's own render.yaml: %+v", res)
+	}
+	if y := string(mustRead(t, filepath.Join(own, ".abcd", "relay", "render.yaml"))); !strings.Contains(y, "Blueprint Path") {
+		t.Errorf("the Blueprint under .abcd/relay/ does not say how to pick it:\n%s", y)
 	}
 }

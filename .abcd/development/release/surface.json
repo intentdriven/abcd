@@ -274,6 +274,13 @@
           "hidden": false
         },
         {
+          "name": "live-sessions",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "oracle-backend",
           "shorthand": "",
           "type": "string",
@@ -3586,13 +3593,13 @@
       "hidden": false,
       "group": "set-up",
       "block": "people",
-      "sentence": "Start a live brief session on this computer, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb.",
+      "sentence": "Set up live brief sessions, start one here, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd session blueprint",
       "hidden": false,
-      "sentence": "Write the team relay's Render blueprint and Dockerfile, pinned to a release's checksum: Writes .abcd/relay/; refuses an edited file or no GitHub origin.",
+      "sentence": "Write the team relay's Render blueprint and Dockerfile, pinned to a release: Writes render.yaml and .abcd/relay/; refuses an edited file or no GitHub origin.",
       "flags": [
         {
           "name": "origin",
@@ -3688,9 +3695,37 @@
       ]
     },
     {
+      "path": "abcd session setup",
+      "hidden": false,
+      "sentence": "Set up live brief sessions with the team's own GitHub sign-in app: Writes its client id, the answer and the blueprint; refuses no GitHub origin or no answer.",
+      "flags": [
+        {
+          "name": "relay-origin",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "where",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd session start",
       "hidden": false,
-      "sentence": "Start a live brief session on this computer, reached over your tailnet: Writes nothing; refuses no recorded GitHub App, no Tailscale or no GitHub origin.",
+      "sentence": "Start a live brief session on this computer, over your tailnet: Writes only an answer it asks; refuses no recorded GitHub App, no Tailscale or no GitHub origin.",
       "flags": [
         {
           "name": "client-id",

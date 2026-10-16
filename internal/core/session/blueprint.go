@@ -17,10 +17,20 @@ import (
 )
 
 // The blueprint (spc-2610141709430146 step 2): `abcd session blueprint` writes
-// a Render Blueprint and a Dockerfile under .abcd/relay/, so a team deploys its
-// own relay once to its own account. The Dockerfile downloads the released
-// abcd binary for linux/amd64 and checks it against the digest that release's
-// checksums.txt published, fetched and pinned when the files are written.
+// a Render Blueprint and a Dockerfile, so a team deploys its own relay once to
+// its own account. The Dockerfile downloads the released abcd binary for
+// linux/amd64 and checks it against the digest that release's checksums.txt
+// published, fetched and pinned when the files are written.
+//
+// The Blueprint is render.yaml at the repository's root (step 6). Render's
+// Deploy button takes only the repository's URL, with an optional
+// /tree/<branch>, and documents no parameter naming another Blueprint path
+// (https://render.com/docs/deploy-to-render); Render reads the Blueprint "at
+// your repository's root" by default, and only its New Blueprint form takes a
+// custom Blueprint Path (https://render.com/docs/infrastructure-as-code). So
+// the one-click deploy needs the root file. A root render.yaml the team wrote
+// for itself is never touched: the Blueprint is then written under
+// .abcd/relay/, to be picked by its Blueprint Path on that form.
 
 // ReposEnv is the environment variable `abcd session serve` reads the
 // repositories it serves from, as a comma list; the blueprint sets it.
@@ -40,8 +50,21 @@ const DefaultPageOrigin = "https://abcdesign.app"
 // reads it from the repository as its trust anchor for relays.
 const RelaysFile = "relays.json"
 
-// BlueprintDir is where the blueprint is written, relative to the checkout.
+// BlueprintDir is where the blueprint's other files are written, relative to
+// the checkout.
 const BlueprintDir = ".abcd/relay"
+
+// RootBlueprint is the Blueprint's path when the root is free: the one
+// Render's Deploy button reads.
+const RootBlueprint = "render.yaml"
+
+// renderDeploy is Render's Deploy button's target; the repository's URL
+// follows it.
+const renderDeploy = "https://render.com/deploy?repo="
+
+// RenderDeployURL is the Deploy button's link for the repository owner/name
+// on github.com (https://render.com/docs/deploy-to-render).
+func RenderDeployURL(repo string) string { return renderDeploy + "https://github.com/" + repo }
 
 // relayAsset is the release asset the relay runs: Render builds and runs on
 // linux/amd64.
@@ -136,6 +159,10 @@ type BlueprintRequest struct {
 	// Origins are the page origins the relay admits, each an https origin;
 	// none is DefaultPageOrigin.
 	Origins []string
+	// ClientID is the team's GitHub App's public client id, which repository
+	// setup records; given, render.yaml carries it as a plain value, so
+	// Render's form asks only for the secret.
+	ClientID string
 }
 
 // The states a blueprint file can be left in.
@@ -160,6 +187,13 @@ type BlueprintResult struct {
 	Repos   []string        `json:"repos"`
 	Origins []string        `json:"origins"`
 	Files   []BlueprintFile `json:"files"`
+	// BlueprintPath is where render.yaml was written: RootBlueprint, or
+	// under BlueprintDir beside a root render.yaml the team wrote.
+	BlueprintPath string `json:"blueprint_path"`
+	// DeployButton reports that Render's Deploy button deploys it, which it
+	// does only from the root; DeployURL is then the button's link.
+	DeployButton bool   `json:"deploy_button"`
+	DeployURL    string `json:"deploy_url,omitempty"`
 }
 
 // BlueprintRefusal is the refusal to overwrite a file someone edited, or one
@@ -175,6 +209,17 @@ func (r *BlueprintRefusal) Error() string {
 
 // blueprintFiles is the order the files are written and reported in.
 var blueprintFiles = []string{"Dockerfile", "render.yaml"}
+
+// stamped reports whether data carries abcd's blueprint stamp, edited since
+// or not: a file without one is someone else's.
+func stamped(data []byte) bool {
+	line, rest, _ := bytes.Cut(data, []byte("\n"))
+	if string(line) == "{" {
+		line, _, _ = bytes.Cut(rest, []byte("\n"))
+		return jsonHeaderRe.Match(line)
+	}
+	return headerRe.Match(line)
+}
 
 // headerRe reads a blueprint file's first line: the release it pins and the
 // digest of everything after that line, as written. jsonHeaderRe is the same
@@ -266,6 +311,14 @@ func pageOrigins(given []string) ([]string, error) {
 // reads it; none is DefaultPageOrigin), so nothing in either needs escaping
 // inside the quoted list. It reads and writes nothing.
 func renderBlueprint(release, digest string, repos, origins []string) map[string][]byte {
+	return renderBlueprintAt(release, digest, repos, origins, "", RootBlueprint)
+}
+
+// renderBlueprintAt is renderBlueprint with the team's client id (a plain
+// value when given, which ValidClientID has checked, else asked for by
+// Render's form) and the path render.yaml is written at, which its comment
+// names the way to deploy from.
+func renderBlueprintAt(release, digest string, repos, origins []string, clientID, at string) map[string][]byte {
 	if len(origins) == 0 {
 		origins = []string{DefaultPageOrigin}
 	}
@@ -284,12 +337,24 @@ ENV PORT=10000
 EXPOSE 10000
 CMD ["sh", "-c", "exec abcd session serve --listen \"0.0.0.0:${PORT}\" --behind-proxy"]
 `
+	how := `# Dockerfile under .abcd/relay/. Deploy it with Render's Deploy button,
+# ` + RenderDeployURL(repos[0]) + `,
+# or on Render choose New, then Blueprint, and pick this repository.`
+	if at != RootBlueprint {
+		how = `# Dockerfile beside this file. On Render, choose New, then Blueprint, pick this
+# repository and set the Blueprint Path to ` + at + `.`
+	}
+	clientEnv := `      - key: ABCD_SESSION_GITHUB_CLIENT_ID
+        sync: false`
+	if clientID != "" {
+		clientEnv = `      - key: ABCD_SESSION_GITHUB_CLIENT_ID
+        value: "` + clientID + `"`
+	}
 	yaml := `# The team's own brief session relay: one free web service built from the
-# Dockerfile beside this file. On Render, choose New, then Blueprint, pick this
-# repository and set the Blueprint path to .abcd/relay/render.yaml. One deploy
-# serves all of the team's sessions. A session lives in the relay's memory
-# only, so a redeploy ends every open session; that is why autoDeploy is off.
-# abcd refuses to overwrite this file once it is edited.
+` + how + `
+# One deploy serves all of the team's sessions. A session lives in the relay's
+# memory only, so a redeploy ends every open session; that is why autoDeploy
+# is off. abcd refuses to overwrite this file once it is edited.
 services:
   - type: web
     name: abcd-session-relay
@@ -301,10 +366,9 @@ services:
     autoDeploy: false
     envVars:
       # The team's own GitHub App, the only kind of sign-in app the relay
-      # takes. Set both in Render's dashboard (the service's Environment),
-      # never in git. The secret stays on the relay; the client id is public.
-      - key: ABCD_SESSION_GITHUB_CLIENT_ID
-        sync: false
+      # takes. Render's form asks for the secret when the relay is created;
+      # it is never in git and stays on the relay. The client id is public.
+` + clientEnv + `
       - key: ABCD_SESSION_GITHUB_CLIENT_SECRET
         sync: false
       # The origins of the session pages this relay admits, as a comma
@@ -362,6 +426,9 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 		}
 		relayOrigin = o
 	}
+	if req.ClientID != "" && !ValidClientID(req.ClientID) {
+		return res, fmt.Errorf("%q is not a GitHub App's client id", req.ClientID)
+	}
 	if req.Fetch == nil {
 		return res, errors.New("no way to read the release's checksums")
 	}
@@ -382,44 +449,66 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 		return res, fmt.Errorf("%s's checksums.txt names no %s", req.Release, relayAsset)
 	}
 	res.Digest = digest
-	files := renderBlueprint(req.Release, digest, req.Repos, origins)
-	names := append([]string(nil), blueprintFiles...)
-	if relayOrigin != "" {
-		files[RelaysFile] = renderRelays(req.Release, relayOrigin)
-		names = append(names, RelaysFile)
-	}
-
 	if !fsutil.IsRealDir(req.Root) {
 		return res, fmt.Errorf("%s is not a directory", req.Root)
 	}
-	// Judge both files before writing either, so a refusal writes nothing.
+	root, err := os.OpenRoot(req.Root)
+	if err != nil {
+		return res, err
+	}
+	defer root.Close()
+	// The Blueprint goes to the root, where the Deploy button reads it,
+	// unless the root holds a render.yaml the team wrote.
+	at := RootBlueprint
+	switch have, err := fsutil.ReadGuardedInRoot(root, RootBlueprint, maxBlueprintRead); {
+	case errors.Is(err, os.ErrNotExist):
+	case err != nil:
+		return res, fmt.Errorf("reading %s: %w", RootBlueprint, err)
+	case !stamped(have):
+		at = BlueprintDir + "/" + RootBlueprint
+	}
+	res.BlueprintPath = at
+	if at == RootBlueprint {
+		res.DeployButton, res.DeployURL = true, RenderDeployURL(req.Repos[0])
+	}
+	byName := renderBlueprintAt(req.Release, digest, req.Repos, origins, req.ClientID, at)
+	paths := map[string]string{"Dockerfile": BlueprintDir + "/Dockerfile", "render.yaml": at}
+	files := map[string][]byte{}
+	var names []string
+	for _, name := range blueprintFiles {
+		files[paths[name]] = byName[name]
+		names = append(names, paths[name])
+	}
+	if relayOrigin != "" {
+		rel := BlueprintDir + "/" + RelaysFile
+		files[rel] = renderRelays(req.Release, relayOrigin)
+		names = append(names, rel)
+	}
+
+	// Judge every file before writing any, so a refusal writes nothing.
 	ok, err = fsutil.ProbeRealDirAll(req.Root, BlueprintDir)
 	if err != nil {
 		return res, fmt.Errorf("%s/ is not a plain directory: %w", BlueprintDir, err)
 	}
 	states := map[string]string{}
 	var edited []string
-	if ok {
-		root, err := os.OpenRoot(req.Root)
-		if err != nil {
-			return res, err
+	for _, rel := range names {
+		if !ok && strings.HasPrefix(rel, BlueprintDir+"/") {
+			states[rel] = BlueprintWritten
+			continue
 		}
-		defer root.Close()
-		for _, name := range names {
-			rel := BlueprintDir + "/" + name
-			have, err := fsutil.ReadGuardedInRoot(root, rel, maxBlueprintRead)
-			switch {
-			case errors.Is(err, os.ErrNotExist):
-				states[name] = BlueprintWritten
-			case err != nil:
-				return res, fmt.Errorf("reading %s: %w", rel, err)
-			case bytes.Equal(have, files[name]):
-				states[name] = BlueprintUnchanged
-			case untouched(have):
-				states[name] = BlueprintReplaced
-			default:
-				edited = append(edited, rel)
-			}
+		have, err := fsutil.ReadGuardedInRoot(root, rel, maxBlueprintRead)
+		switch {
+		case errors.Is(err, os.ErrNotExist):
+			states[rel] = BlueprintWritten
+		case err != nil:
+			return res, fmt.Errorf("reading %s: %w", rel, err)
+		case bytes.Equal(have, files[rel]):
+			states[rel] = BlueprintUnchanged
+		case untouched(have):
+			states[rel] = BlueprintReplaced
+		default:
+			edited = append(edited, rel)
 		}
 	}
 	if len(edited) > 0 {
@@ -428,19 +517,13 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 	if err := fsutil.EnsureRealDirAll(req.Root, BlueprintDir, 0o755); err != nil {
 		return res, fmt.Errorf("creating %s/: %w", BlueprintDir, err)
 	}
-	root, err := os.OpenRoot(req.Root)
-	if err != nil {
-		return res, err
-	}
-	defer root.Close()
-	for _, name := range names {
-		rel := BlueprintDir + "/" + name
-		state := states[name]
+	for _, rel := range names {
+		state := states[rel]
 		if state == "" {
 			state = BlueprintWritten
 		}
 		if state != BlueprintUnchanged {
-			if err := fsutil.WriteFileAtomicInRoot(root, rel, files[name], 0o644); err != nil {
+			if err := fsutil.WriteFileAtomicInRoot(root, rel, files[rel], 0o644); err != nil {
 				return res, fmt.Errorf("writing %s: %w", rel, err)
 			}
 		}

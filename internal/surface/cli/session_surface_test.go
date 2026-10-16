@@ -73,7 +73,7 @@ func TestSessionBlueprintWritesThePinnedFiles(t *testing.T) {
 	repo := managedSessionRepo(t)
 	rel := swapSessionRelease(t)
 	out := string(runCLI(t, "session", "blueprint", "--release", "v0.17.1"))
-	for _, want := range []string{".abcd/relay/Dockerfile", ".abcd/relay/render.yaml", "v0.17.1", sessionDigest, "checksums.txt", "Blueprint path"} {
+	for _, want := range []string{".abcd/relay/Dockerfile", "written render.yaml", "v0.17.1", sessionDigest, "checksums.txt", "https://render.com/deploy?repo=https://github.com/acme/brief"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output does not say %q:\n%s", want, out)
 		}
@@ -137,8 +137,12 @@ func TestSessionBlueprintRefusals(t *testing.T) {
 	}
 
 	runCLI(t, "session", "blueprint", "--release", "v0.17.1")
-	yaml := filepath.Join(repo, ".abcd", "relay", "render.yaml")
-	if err := os.WriteFile(yaml, []byte("services: []\n"), 0o644); err != nil {
+	yaml := filepath.Join(repo, "render.yaml")
+	edited, err := os.ReadFile(yaml)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(yaml, bytes.Replace(edited, []byte("plan: free"), []byte("plan: starter"), 1), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	_, err = runCLIStdinErr(t, "", "session", "blueprint", "--release", "v0.17.2")
@@ -423,7 +427,7 @@ func TestSessionBlueprintServesTheOriginRepository(t *testing.T) {
 	if !strings.Contains(out, "acme/brief") {
 		t.Errorf("output does not name the served repository:\n%s", out)
 	}
-	yaml, err := os.ReadFile(filepath.Join(repo, ".abcd", "relay", "render.yaml"))
+	yaml, err := os.ReadFile(filepath.Join(repo, "render.yaml"))
 	if err != nil || !bytes.Contains(yaml, []byte("- key: ABCD_SESSION_REPOS\n        value: \"acme/brief\"")) {
 		t.Fatalf("render.yaml: %v\n%s", err, yaml)
 	}
@@ -642,12 +646,12 @@ func TestSessionBlueprintNamesThePageOrigins(t *testing.T) {
 	repo := managedSessionRepo(t)
 	swapSessionRelease(t)
 	runCLI(t, "session", "blueprint", "--release", "v0.17.1")
-	data, err := os.ReadFile(filepath.Join(repo, ".abcd", "relay", "render.yaml"))
+	data, err := os.ReadFile(filepath.Join(repo, "render.yaml"))
 	if err != nil || !strings.Contains(string(data), "- key: ABCD_SESSION_ORIGINS\n        value: \"https://abcdesign.app\"") {
 		t.Fatalf("render.yaml: %v\n%s", err, data)
 	}
 	runCLI(t, "session", "blueprint", "--release", "v0.17.1", "--origin", "https://pages.example.org", "--origin", "https://abcdesign.app")
-	data, _ = os.ReadFile(filepath.Join(repo, ".abcd", "relay", "render.yaml"))
+	data, _ = os.ReadFile(filepath.Join(repo, "render.yaml"))
 	if !strings.Contains(string(data), "value: \"https://pages.example.org,https://abcdesign.app\"") {
 		t.Fatalf("render.yaml does not name the given origins:\n%s", data)
 	}

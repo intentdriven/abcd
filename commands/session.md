@@ -1,7 +1,7 @@
 ---
 name: session
-description: "Start a live brief session on this computer, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb."
-argument-hint: "[start|serve|blueprint|page]"
+description: "Set up live brief sessions, start one here, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb."
+argument-hint: "[setup|start|serve|blueprint|page]"
 block: people
 ---
 
@@ -37,12 +37,66 @@ There are two ways to run a session, both the team's own:
 
 ## Status
 
-Bare invocation prints the four sub-verbs and writes nothing. A running relay's
+Bare invocation prints the five sub-verbs and writes nothing. A running relay's
 sessions live in that process's memory alone, so there is no state to report.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" session --help
 ```
+
+## Setup
+
+Live sessions are set up once per project, at repository setup:
+`abcd ahoy install` asks "Set up live brief sessions?" (Yes, No or Decide
+later) and, on a yes, "Where may sessions run?" (Local, Cloud or Both), and
+records the answer as `sessions.live` in `.abcd/config.json` (see
+`/abcd:ahoy`). The steps themselves are `setup`, which runs by hand at any
+time, a no included:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" session setup [--where local|cloud|both] [--release <vMAJOR.MINOR.PATCH>] [--relay-origin <https origin>]
+```
+
+It waits for the person in a browser, for up to an hour, so never run it from
+this session: tell the user to run `abcd session setup` in a Terminal of their
+own, in the project's checkout. Where sessions may run comes from `--where`,
+else from the recorded answer, else from the question, asked at a terminal;
+the answer is recorded.
+
+1. **The team's own GitHub sign-in app.** Each team registers its own; abcd
+   owns no shared app. `setup` prints an address on this computer whose page
+   opens GitHub's new-app page with the app filled in from a manifest:
+   Contents and Pull requests read and write, Metadata read, no webhook, not
+   public, and, for the cloud, the session page as its callback. The person
+   checks the name and clicks Create GitHub App. GitHub sends the browser
+   back, and `setup` keeps only the app's public client id, in
+   `.abcd/relay/github-app.json`. The client secret, the webhook secret and
+   the private key GitHub hands back are never written or shown. An app
+   already recorded is kept, and nothing is created twice.
+2. **Installing it** on the repository, on the page `setup` names.
+3. **Enable Device Flow.** A manifest cannot tick it. For Local or Both,
+   `setup` names the app's settings page and says to tick Enable Device Flow
+   there, since local sessions sign in with it. For Cloud alone it says to
+   leave it off: anyone holding the app's public client id can start a device
+   sign-in.
+4. **For the cloud,** it writes the relay's blueprint, as `blueprint` does,
+   with the app's client id in it, and gives Render's Deploy button. Render's
+   form asks for `ABCD_SESSION_GITHUB_CLIENT_SECRET`, which the person
+   generates on the app's settings page and pastes straight into that field,
+   so no secret passes through abcd. Once Render shows the relay's address,
+   `setup --relay-origin https://<relay>` records it in
+   `.abcd/relay/relays.json`, where the session page finds it.
+
+Relay its steps as printed. It asks `api.github.com` whether the owner is an
+organisation (whose apps are registered on the organisation's own page) and
+converts the app GitHub created; for the cloud it reads the release's
+checksums. `--json` returns `repo`, `where`, `recorded`, `client_id`,
+`app_created`, `app_settings`, `app_install`, `blueprint`, `relay_origin` and
+`steps`. It refuses (exit 2, nothing written) outside a checkout abcd manages
+or one whose origin is not on github.com, with nothing saying where sessions
+may run off a terminal, on a `--where` other than local, cloud or both, and on
+a `--relay-origin` for local sessions alone. Creating someone's GitHub App is
+an act on their account, so it never runs without the user asking for it.
 
 ## Start
 
@@ -71,8 +125,11 @@ loopback address, as hosts and as page origins. It listens on
 `127.0.0.1:8787`, or `--port`. `--json` prints `url`, `link`, `repo`,
 `tailnet`, `serve_step` and `sign_in`.
 
-It refuses (exit 2, nothing started) outside a checkout whose origin is on
-github.com, without a client id ("sign-in is not set up for this project"),
+While the live brief session question is unanswered, a person at a terminal
+is asked it first, as repository setup asks it; an answer is recorded, and a
+yes points to `setup`. It refuses (exit 2, nothing started) outside a checkout
+whose origin is on github.com, without a client id ("sign-in is not set up for
+this project", naming `abcd session setup`),
 with a `github-app.json` that holds a secret or no usable client id, when
 Tailscale is not installed or not running, and on a port it cannot listen on.
 
@@ -152,8 +209,9 @@ everywhere in ten minutes.
 "${CLAUDE_PLUGIN_ROOT}/abcd" session blueprint --release <vMAJOR.MINOR.PATCH> [--relay-origin <https origin>]
 ```
 
-It writes `.abcd/relay/render.yaml`, a Render Blueprint declaring one free web
-service, and `.abcd/relay/Dockerfile`, which downloads the named abcd
+It writes `render.yaml`, a Render Blueprint declaring one free web service,
+at the repository's root, and `.abcd/relay/Dockerfile`, which downloads the
+named abcd
 release's linux/amd64 binary and checks it against the SHA-256 that release's
 `checksums.txt` publishes. It reads that checksum from the release page when it
 writes the files (the one network read it makes, named on stderr) and pins it
@@ -164,7 +222,17 @@ to the session page origins the relay admits: `https://abcdesign.app`, or each
 https origin `--origin` (repeatable) names. With `--relay-origin`, the
 deployed relay's https origin once Render has given it one, it also writes
 `.abcd/relay/relays.json`, naming that relay as the one the repository
-trusts; the session page reads it. A file left exactly as abcd wrote it is
+trusts; the session page reads it. Once repository setup has recorded the
+team's GitHub App, `render.yaml` carries its public client id, so Render's
+form asks only for the secret.
+
+The Blueprint sits at the root because Render's Deploy button takes only the
+repository's URL (and a branch) and reads the Blueprint at the root; only
+Render's New Blueprint form takes another Blueprint Path. A root `render.yaml`
+the team wrote is never touched: the Blueprint then goes to
+`.abcd/relay/render.yaml`, picked by its Blueprint Path on that form. While the
+live brief session question is unanswered, a person at a terminal is asked it
+first. A file left exactly as abcd wrote it is
 replaced; one that was edited, or that abcd did not write, is never
 overwritten, and then nothing is written (exit 2). It refuses outside a
 checkout abcd manages, in a checkout whose origin is not on github.com, a
@@ -175,12 +243,14 @@ for the linux/amd64 binary.
 
 Relay what it prints: each file and whether it was written, replaced or left
 unchanged, the release and checksum pinned, and the next steps. The user
-commits both files, chooses New, then Blueprint, on Render, picks the
-repository, sets the Blueprint path to `.abcd/relay/render.yaml`, and sets
-`ABCD_SESSION_GITHUB_CLIENT_ID` and `ABCD_SESSION_GITHUB_CLIENT_SECRET` in the
-service's Environment. `--json` returns `release`, `asset`, `sha256`,
-`checksums_url`, `repos`, `origins` and `files`, each file with its `path` and
-`state`.
+commits and pushes the files, then deploys with Render's Deploy button
+(`https://render.com/deploy?repo=https://github.com/<owner>/<repo>`), or, with
+the Blueprint under `.abcd/relay/`, chooses New, then Blueprint, on Render,
+picks the repository and sets the Blueprint Path; Render's form asks for
+`ABCD_SESSION_GITHUB_CLIENT_SECRET`, and for the client id too where none is
+recorded. `--json` returns `release`, `asset`, `sha256`, `checksums_url`,
+`repos`, `origins`, `files`, each file with its `path` and `state`,
+`blueprint_path`, `deploy_button` and `deploy_url`.
 
 ## Page
 

@@ -1,9 +1,11 @@
 # `/abcd:session` — The Brief Session's Relay
 
-`/abcd:session` starts a live brief session on the host's own computer, runs
-the relay a team's cloud sessions go through, writes the blueprint that
-deploys it as the team's own relay, and writes the static page the session is
-held on (itd-2610091016262335, spc-2610141709430146 steps 1 to 5). The page
+`/abcd:session` sets up live brief sessions for a project (the team's own
+GitHub sign-in app, from a pre-filled manifest), starts a live brief session
+on the host's own computer, runs the relay a team's cloud sessions go through,
+writes the blueprint that deploys it as the team's own relay, and writes the
+static page the session is held on (itd-2610091016262335, spc-2610141709430146
+steps 1 to 6). The page
 never shows or asks for a relay address or a token
 ([adr-2610161400542916](../../decisions/adrs/2610161400542916-the-brief-session-page-asks-nobody-for-a.md)). abcd runs no relay
 and holds no key
@@ -29,6 +31,7 @@ to GitHub is the spec's later step.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `setup` | — | shipped |
 | `start` | — | shipped |
 | `serve` | — | shipped |
 | `blueprint` | — | shipped |
@@ -191,7 +194,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd session`
 
-Sub-verbs: `abcd session blueprint`, `abcd session page`, `abcd session serve`, `abcd session start`.
+Sub-verbs: `abcd session blueprint`, `abcd session page`, `abcd session serve`, `abcd session setup`, `abcd session start`.
 
 Flags: none.
 
@@ -226,6 +229,16 @@ Sub-verbs: none.
 | `--origin` | stringArray |
 | `--owner` | stringArray |
 | `--repo` | stringArray |
+
+### `abcd session setup`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--relay-origin` | string |
+| `--release` | string |
+| `--where` | string |
 
 ### `abcd session start`
 

@@ -3844,6 +3844,11 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					out.ReadmeTool = append(out.ReadmeTool, hostCall(a))
 				}
 			}
+			if res.Sessions != nil {
+				for _, a := range res.Sessions.Asks {
+					out.SessionsTool = append(out.SessionsTool, hostCall(a))
+				}
+			}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				fmt.Fprintf(w, "abcd ahoy — %s\n", res.FolderKind)
 				fmt.Fprintf(w, "  plugin root: %s\n", res.PluginRootStatus)
@@ -3955,6 +3960,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		answersPath   string
 		answeredIn    string
 		readmeParts   string
+		liveSessions  string
 	)
 	installCmd := &cobra.Command{
 		Use:  "install",
@@ -3975,6 +3981,14 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					return &exitError{Code: 2, Msg: "abcd ahoy install: " + perr.Error() + "; nothing was written"}
 				}
 				opts.ReadmeParts = readmeParts
+			}
+			// The live brief session answer (spc-2610141709430146 step 6):
+			// refused, naming the answers, before anything is written.
+			if cmd.Flags().Changed("live-sessions") {
+				if perr := ahoy.ParseLiveSessions(liveSessions); perr != nil {
+					return &exitError{Code: 2, Msg: "abcd ahoy install: " + perr.Error() + "; nothing was written"}
+				}
+				opts.LiveSessions = liveSessions
 			}
 			opts.OutboundHook = outboundHook
 			opts.OutboundForge = outboundForge
@@ -4100,6 +4114,9 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					default:
 						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
+					if slices.Contains(res.OptionalSkipped, ahoy.SessionsOfferGapID) {
+						fmt.Fprint(w, "    the live brief session question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --live-sessions "+ahoy.LiveSessionsChoices+"\n")
+					}
 				}
 			}); rerr != nil {
 				return rerr
@@ -4135,6 +4152,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringSliceVar(&installTools, "install-tool", nil, "answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI")
 	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
 	installCmd.Flags().StringVar(&readmeParts, "readme-parts", "", "answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
+	installCmd.Flags().StringVar(&liveSessions, "live-sessions", "", "answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up")
 	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
 	ahoyCmd.AddCommand(installCmd)
 
@@ -4469,6 +4487,8 @@ func optionalSkipReason(id string) string {
 		return "an agent tool's own conventions file that only repeats AGENTS.md is removed from the project only against a prompt answered at a terminal"
 	case ahoy.ReadmeOfferGapID:
 		return "which parts of README.md abcd keeps current is the owner's choice, so abcd writes none until --readme-parts or the README question answers it"
+	case ahoy.SessionsOfferGapID:
+		return "whether the team edits its brief live, and where sessions may run, is the owner's choice, so abcd records nothing until --live-sessions or the question answers it"
 	}
 	return ""
 }

@@ -124,6 +124,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
+      --live-sessions string    answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --outbound-forge          opt this repo into the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which it refuses when they carry a live agent-session URL or a tool attribution footer; it writes no hook and names no binary, and the choice is recorded in .abcd/config.json as outbound.forge, so a later install without the flag keeps it
       --outbound-hook           opt this repo into the committed commit-msg hook that refuses a commit message carrying a live agent-session URL or a tool attribution footer; it runs only the abcd named by git config --local abcd.binary and lets the commit through with one warning when none is set; the choice is recorded, so a later install without the flag keeps the hook
@@ -4058,13 +4059,14 @@ abcd scribe ingest --scribe-json scribe.json --dispositions dispositions.md
 
 ### `abcd session`
 
-Start a live brief session on this computer, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb.
+Set up live brief sessions, start one here, or run, deploy or write the team's relay and page: Writes nothing bare; refuses an unknown sub-verb.
 
 **Usage:** `abcd session`
 
-Start a live brief session on this computer, run the relay a team's cloud
-sessions go through, write the blueprint that deploys that relay to the team's
-own Render account, or write the session's static page for the team to serve.
+Set up live brief sessions for this project, start one on this computer, run
+the relay a team's cloud sessions go through, write the blueprint that deploys
+that relay to the team's own Render account, or write the session's static page
+for the team to serve.
 The relay holds each session's edits in memory only, as opaque bytes, and drops
 them when the host closes the session or nobody has been connected for half an
 hour; it writes nothing to disk and logs nothing. abcd runs no relay of its own:
@@ -4075,12 +4077,13 @@ Bare `abcd session` prints this help and writes nothing.
 
 #### `abcd session blueprint`
 
-Write the team relay's Render blueprint and Dockerfile, pinned to a release's checksum: Writes .abcd/relay/; refuses an edited file or no GitHub origin.
+Write the team relay's Render blueprint and Dockerfile, pinned to a release: Writes render.yaml and .abcd/relay/; refuses an edited file or no GitHub origin.
 
 **Usage:** `abcd session blueprint [flags]`
 
-Write the team's own relay deployment into this checkout: .abcd/relay/render.yaml,
-a Render Blueprint declaring one free web service, and .abcd/relay/Dockerfile,
+Write the team's own relay deployment into this checkout: render.yaml, a Render
+Blueprint declaring one free web service, at the repository's root, where
+Render's Deploy button reads it, and .abcd/relay/Dockerfile,
 which downloads the released abcd binary for linux/amd64 and checks it against
 the SHA-256 that release's checksums.txt publishes. The checksum is read from the
 release page when the files are written (the one network read this verb makes,
@@ -4089,7 +4092,15 @@ checkout's origin repository on github.com, named in render.yaml as
 ABCD_SESSION_REPOS, a plain value; it refuses a checkout without one.
 
 render.yaml also names, in ABCD_SESSION_ORIGINS, the page origins the relay
-admits: each --origin, an https origin, or https://abcdesign.app by default.
+admits: each --origin, an https origin, or https://abcdesign.app by default, and,
+once repository setup has recorded the team's GitHub App in
+.abcd/relay/github-app.json, its public client id, so Render's form asks
+only for the secret. A root render.yaml the team wrote is never touched: the
+Blueprint then goes to .abcd/relay/render.yaml, picked by its Blueprint Path on
+Render's New Blueprint form.
+
+While the live brief session question is unanswered, a person at a terminal is
+asked it first, as repository setup asks it.
 
 --relay-origin names the deployed relay's https origin, once Render has given it
 one; the verb then also writes .abcd/relay/relays.json, naming it as the relay
@@ -4190,9 +4201,49 @@ Exit 2 on a refusal, with nothing started.
       --repo stringArray     a repository to serve sessions for, as owner/name (repeatable; also ABCD_SESSION_REPOS)
 ```
 
+#### `abcd session setup`
+
+Set up live brief sessions with the team's own GitHub sign-in app: Writes its client id, the answer and the blueprint; refuses no GitHub origin or no answer.
+
+**Usage:** `abcd session setup [flags]`
+
+Set up live brief sessions for this project, the step repository setup asks
+about (Set up live brief sessions? Where may sessions run?). It runs by hand at any
+time, a no at repository setup included. Where sessions may run comes from
+--where, else from .abcd/config.json (sessions.live), else, at a terminal, from
+the question; the answer is recorded there.
+
+It registers the team's own GitHub sign-in app through GitHub's App manifest
+flow: it prints an address on this computer whose page opens GitHub with the app
+filled in (Contents and Pull requests read and write, Metadata read, no
+webhook), and the person clicks Create GitHub App. It keeps only the app's public
+client id, in .abcd/relay/github-app.json; the client secret, the webhook
+secret and the private key GitHub hands back are never written or shown. An app
+already recorded is kept.
+
+It then says what is left, with GitHub's own pages: installing the app on the
+repository; for local sessions, ticking Enable Device Flow on the app's settings
+page, which a manifest cannot do; for the cloud only, leaving it off. For the
+cloud it writes the relay's blueprint (as abcd session blueprint does) and gives
+Render's Deploy button, whose form asks for the client secret, which the person
+generates on the app's settings page and pastes straight in. --relay-origin
+records the deployed relay's address in .abcd/relay/relays.json.
+
+It asks api.github.com whether the owner is an organisation, and converts the
+app GitHub created; for the cloud it reads the release's checksums. It waits up
+to an hour for the app to be created. Exit 2 on a refusal, with nothing written.
+
+**Flags:**
+
+```
+      --relay-origin string   the deployed relay's https origin, once Render shows it, as https://host[:port]; recorded in .abcd/relay/relays.json
+      --release string        the abcd release the cloud relay pins, as vMAJOR.MINOR.PATCH (default: this abcd's own version, when it is a release)
+      --where string          where sessions may run: local, cloud or both (default: the answer recorded in .abcd/config.json)
+```
+
 #### `abcd session start`
 
-Start a live brief session on this computer, reached over your tailnet: Writes nothing; refuses no recorded GitHub App, no Tailscale or no GitHub origin.
+Start a live brief session on this computer, over your tailnet: Writes only an answer it asks; refuses no recorded GitHub App, no Tailscale or no GitHub origin.
 
 **Usage:** `abcd session start [flags]`
 
@@ -4206,7 +4257,9 @@ members sign in with GitHub's device flow: the page shows a short code to confir
 on github.com, so no secret sits on this computer. The GitHub App's public client
 id comes from --client-id, ABCD_SESSION_GITHUB_CLIENT_ID, or
 .abcd/relay/github-app.json, which repository setup writes; without
-one it refuses, since nobody could sign in. Anyone else joins as a guest with a
+one it refuses, since nobody could sign in, and a person at a terminal is first
+asked the live brief session question while it is unanswered. Anyone else joins
+as a guest with a
 name, and suggests changes.
 
 It asks Tailscale for this computer's tailnet name and changes nothing in

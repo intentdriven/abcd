@@ -1,10 +1,11 @@
-# abcd session blueprint v0.17.1 sha256:c8860c05a3fa375791e84746d809e8af831a50eea480f1ed3c08b9ef11b7612e
+# abcd session blueprint v0.17.1 sha256:e10dbdfe4dfb179544219c93b0d384bfa3d9eb223763830b8b4fccc47d848a8d
 # The team's own brief session relay: one free web service built from the
-# Dockerfile beside this file. On Render, choose New, then Blueprint, pick this
-# repository and set the Blueprint path to .abcd/relay/render.yaml. One deploy
-# serves all of the team's sessions. A session lives in the relay's memory
-# only, so a redeploy ends every open session; that is why autoDeploy is off.
-# abcd refuses to overwrite this file once it is edited.
+# Dockerfile under .abcd/relay/. Deploy it with Render's Deploy button,
+# https://render.com/deploy?repo=https://github.com/acme/brief,
+# or on Render choose New, then Blueprint, and pick this repository.
+# One deploy serves all of the team's sessions. A session lives in the relay's
+# memory only, so a redeploy ends every open session; that is why autoDeploy
+# is off. abcd refuses to overwrite this file once it is edited.
 services:
   - type: web
     name: abcd-session-relay
@@ -16,8 +17,8 @@ services:
     autoDeploy: false
     envVars:
       # The team's own GitHub App, the only kind of sign-in app the relay
-      # takes. Set both in Render's dashboard (the service's Environment),
-      # never in git. The secret stays on the relay; the client id is public.
+      # takes. Render's form asks for the secret when the relay is created;
+      # it is never in git and stays on the relay. The client id is public.
       - key: ABCD_SESSION_GITHUB_CLIENT_ID
         sync: false
       - key: ABCD_SESSION_GITHUB_CLIENT_SECRET

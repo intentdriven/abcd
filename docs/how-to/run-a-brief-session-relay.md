@@ -21,7 +21,41 @@ Pick one route, or set up both:
   anyone with the invite link can reach it.
 
 Both routes sign team members in through the team's own
-[GitHub App](#set-up-the-teams-github-app).
+[GitHub App](#set-up-the-teams-github-app). Each team registers its own; abcd
+owns no shared app.
+
+## Set up live sessions once
+
+Repository setup asks about live sessions: `abcd ahoy install` asks
+"Set up live brief sessions?" and, on a yes, "Where may sessions run?"
+(Local, Cloud or Both). It records the answer in `.abcd/config.json`. A no is
+never asked again; deciding later asks again at the next setup run and when
+someone runs `abcd session start`. To answer without being asked, pass
+`--live-sessions local`, `cloud`, `both` or `none` to `abcd ahoy install`.
+
+Then, in the project's checkout, in a Terminal window of its own:
+
+```bash
+abcd session setup
+```
+
+It works by hand at any time, after a no too; `--where local|cloud|both`
+says where sessions may run when nothing is recorded yet. It does the steps
+below in order and prints what is left to you:
+
+1. It prints an address on your computer. Open it: GitHub opens with the
+   team's sign-in app filled in. Check its name and click
+   **Create GitHub App**. abcd keeps only the app's public client id, in
+   `.abcd/relay/github-app.json`; it never keeps or shows the app's secrets.
+   Creating an app for an organisation takes someone who may manage its apps.
+2. Install the app on the repository, on the page it names.
+3. For local sessions, tick **Enable Device Flow** on the app's settings page,
+   which it names; GitHub's pre-filled form cannot tick it. For the cloud
+   alone, leave it off.
+4. For the cloud, commit and push the files it writes, deploy the relay with
+   Render's **Deploy** button, paste the app's client secret into Render's
+   form, and record the relay's address, as
+   [the Render route](#on-the-teams-own-relay-on-render) describes.
 
 ## On your own computer, over Tailscale
 
@@ -64,6 +98,9 @@ address, and admits only the page it serves itself.
 
 ## On the team's own relay, on Render
 
+`abcd session setup` does steps 1 and 3 itself, with the team's client id
+already in `render.yaml`, and prints the rest.
+
 1. In the project's checkout, write the blueprint:
 
    ```bash
@@ -73,15 +110,23 @@ address, and admits only the page it serves itself.
    Name the abcd release the relay should run: one that includes the
    `abcd session` command, since the relay runs it. Left out, the release is
    the abcd you are running; an older release is refused. The command writes
-   `.abcd/relay/render.yaml` and `.abcd/relay/Dockerfile`. The Dockerfile
-   downloads that release's linux/amd64 binary and checks it against the
-   checksum the release published, which the command reads from the release
-   page and pins in the file. It never overwrites a file you edited.
+   `render.yaml` at the repository's root and `.abcd/relay/Dockerfile`. The
+   Dockerfile downloads that release's linux/amd64 binary and checks it
+   against the checksum the release published, which the command reads from
+   the release page and pins in the file. It never overwrites a file you
+   edited.
+
+   `render.yaml` sits at the root because Render's Deploy button reads the
+   Blueprint there and takes no other path. If your repository already has a
+   `render.yaml` of its own, abcd leaves it alone and writes its Blueprint to
+   `.abcd/relay/render.yaml` instead.
 
    `render.yaml` also names, in `ABCD_SESSION_ORIGINS`, the session pages the
    relay admits: `https://abcdesign.app`, unless you serve the page yourself,
    in which case name your site's https address with
-   `--origin https://<your site>` (repeatable).
+   `--origin https://<your site>` (repeatable). Once the team's GitHub App is
+   recorded in `.abcd/relay/github-app.json`, it carries the app's public
+   client id too.
 
    The relay serves sessions only for this repository, which `render.yaml`
    names in `ABCD_SESSION_REPOS` from the checkout's `origin`. To serve more,
@@ -90,27 +135,34 @@ address, and admits only the page it serves itself.
    without it, so nobody else can hold its sessions with a repository of their
    own.
 
-2. Commit both files and push them.
+2. Commit the files and push them.
 
-3. On Render, choose **New**, then **Blueprint**, pick the repository, and set
-   the Blueprint path to `.abcd/relay/render.yaml`. Render creates one free web
-   service that runs `abcd session serve` behind its own proxy.
+3. Deploy with Render's Deploy button, the link the command prints:
+   `https://render.com/deploy?repo=https://github.com/<owner>/<repo>`. Render
+   creates one free web service that runs `abcd session serve` behind its own
+   proxy. For a private repository, install Render's own GitHub App on it
+   first. With the Blueprint under `.abcd/relay/`, choose **New**, then
+   **Blueprint** on Render instead, pick the repository, and set the
+   Blueprint Path to `.abcd/relay/render.yaml`.
 
-4. In the service's **Environment**, set `ABCD_SESSION_GITHUB_CLIENT_ID` and
-   `ABCD_SESSION_GITHUB_CLIENT_SECRET` from your
-   [GitHub App](#set-up-the-teams-github-app). With both, team members sign in
+4. Render's form asks for `ABCD_SESSION_GITHUB_CLIENT_SECRET`, and for
+   `ABCD_SESSION_GITHUB_CLIENT_ID` where none was recorded. On your
+   [GitHub App](#set-up-the-teams-github-app)'s settings page, under
+   **Client secrets**, generate a new client secret and paste it straight into
+   that field: it never passes through abcd. With both, team members sign in
    with one click. Without them, nobody can sign in, and only guests can join.
 
 5. Once Render shows the service's address, name it as the relay the
    repository trusts, and commit the file this writes:
 
    ```bash
-   abcd session blueprint --release <vMAJOR.MINOR.PATCH> --relay-origin https://<your service>.onrender.com
+   abcd session setup --relay-origin https://<your service>.onrender.com
    ```
 
-   It adds `.abcd/relay/relays.json`, which the session page reads from the
-   repository to find the relay that belongs to it. Nobody types the address
-   anywhere.
+   (`abcd session blueprint --release <vMAJOR.MINOR.PATCH> --relay-origin …`
+   does the same.) It adds `.abcd/relay/relays.json`, which the session page
+   reads from the repository to find the relay that belongs to it. Nobody
+   types the address anywhere.
 
 The blueprint turns automatic deploys off: a session lives in the relay's
 memory, so a redeploy ends every open session. Deploy by hand between calls.
@@ -129,17 +181,21 @@ trust cannot use it on your other repositories. The relay asks GitHub for the
 person's login and whether they may push to the repository, and keeps neither
 the sign-in nor anything else once it has the answer.
 
+`abcd session setup` registers it from a pre-filled form and records its
+client id; the steps below are what it fills in, for registering it by hand.
+
 1. On GitHub, register a new GitHub App under the team's organisation or your
    account. Give it exactly the repository permissions the page uses, and no
    others: **Contents** read and write, **Pull requests** read and write, and
-   **Metadata** read. Install it on the repositories your sessions are for,
-   and only those.
+   **Metadata** read. It needs no webhook. Install it on the repositories your
+   sessions are for, and only those.
 2. For sessions on the team's relay: set its callback URL to the address the
-   session page is served from, `https://abcdesign.app/`. That address goes
-   live when abcd publishes the page there; until then, serve the page
-   yourself with `abcd session page`, use its address as the callback URL,
-   and admit its origin with `--origin`. Generate a client secret and give
-   both to the relay through its environment:
+   session page is served from,
+   `https://abcdesign.app/<owner>/<repo>/brief/`. That address goes live when
+   abcd publishes the page there; until then, serve the page yourself with
+   `abcd session page`, use its address as the callback URL, and admit its
+   origin with `--origin`. Generate a client secret and give both to the
+   relay through its environment:
    - `ABCD_SESSION_GITHUB_CLIENT_ID`: the client id, which is public.
    - `ABCD_SESSION_GITHUB_CLIENT_SECRET`: the secret. The relay reads it by
      this name, adds it only to its own exchange with GitHub, and never logs
