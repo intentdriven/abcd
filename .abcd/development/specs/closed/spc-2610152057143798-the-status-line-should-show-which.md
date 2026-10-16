@@ -9,7 +9,7 @@ production_mode: hand-written
 
 ## Summary
 
-This spec delivers [itd-2610111707085098](../../intents/planned/itd-2610111707085098-the-status-line-should-show-which.md). Every session abcd's hooks run in names itself with the next persona name: Alice, Bob, Carol, through the repository's persona list, then Alice Two, Bob Two and so on. The name is unique across the machine. Session start reserves the name; the first prompt sets it, and from then on it shows in the status line, in the prompt border and in the session list. A name the person gave is never replaced.
+This spec delivers [itd-2610111707085098](../../intents/shipped/itd-2610111707085098-the-status-line-should-show-which.md). Every session abcd's hooks run in names itself with the next persona name: Alice, Bob, Carol, through the repository's persona list, then Alice Two, Bob Two and so on. The name is unique across the machine. Session start reserves the name; the first prompt sets it, and from then on it shows in the status line, in the prompt border and in the session list. A name the person gave is never replaced.
 
 **What the host offers, proved live on 2026-10-15 (Claude Code 2.1.301; the intent's decisions 5 and 6).**
 
