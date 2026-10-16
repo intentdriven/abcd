@@ -95,6 +95,16 @@ func (h *judgeHolds) release(issue string) string {
 	return clause
 }
 
+// forget marks issue's hold at commit as done with nothing to release: the
+// move's view no longer shows it at the tip.
+func (h *judgeHolds) forget(issue, commit string) {
+	for i := range h.held {
+		if h.held[i].issue == issue && h.held[i].hold.Commit == commit {
+			h.held[i].done = true
+		}
+	}
+}
+
 // starting marks issue's holds as the ones a lane is about to start on.
 func (h *judgeHolds) starting(issue string) {
 	for i := range h.held {

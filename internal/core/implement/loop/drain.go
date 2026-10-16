@@ -644,10 +644,21 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if j := judgementFor(st, v.ID, remedyDigest(iss.Remedy)); j == nil || j.Answer != JudgementNo {
 			// The drain's hold is taken once per request: a request awaited
 			// over this issue keeps the one it took, and a poll never renews
-			// it (dcn-2610161315385888).
+			// it (dcn-2610161315385888). It is kept only while the move's view
+			// still shows its commit at the tip: one released or renewed by
+			// hand since, or released by a move whose state write then
+			// failed, is no hold any longer, so the issue is reserved again
+			// (or, renewed by hand, left on the person's own reservation)
+			// before the judgement is asked.
 			var judgeHold *DrainHold
 			if p := st.Judging; p != nil && p.Issue == v.ID {
 				judgeHold = p.Hold
+				if judgeHold != nil && view != nil {
+					if r, ok := view.Lookup(v.ID); !ok || r.Commit != judgeHold.Commit {
+						holds.forget(v.ID, judgeHold.Commit)
+						judgeHold = nil
+					}
+				}
 			}
 			if reserving && !held && judgeHold == nil {
 				h, err := reserveForJudgement(repoRoot, v.ID, footprint, o.TakeOver, now)

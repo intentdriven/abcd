@@ -363,3 +363,28 @@ func TestAYesLeavesAReservationThisPersonMadeByHand(t *testing.T) {
 		}
 	})
 }
+
+// TestAPollAfterTheHoldWasReleasedByHandReservesAgainBeforeAsking: this
+// person releases the drain's reservation by hand while the judgement is
+// awaited; the next poll does not ask on the hold it recorded, which origin no
+// longer shows, but reserves again first and records that reservation, so
+// origin shows a live drain hold over the person's tombstone.
+func TestAPollAfterTheHoldWasReleasedByHandReservesAgainBeforeAsking(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	_, taken := askFirst(t, repo, bare, Options{}, DrainOptions{})
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, claim.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	tombstone := refOf(t, bare, secondIssue)
+	poll, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := originReservation(t, bare, claim.RefPrefix+secondIssue)
+	if r.released || r.parent != tombstone || r.holder != "octo" {
+		t.Fatalf("origin's reservation after the poll = %+v; want a live one over the tombstone %s", r, tombstone)
+	}
+	if h := poll.Judging.Hold; poll.Judging.Issue != secondIssue || h == nil || h.Commit != r.commit || h.Commit == taken {
+		t.Fatalf("the poll records the reservation it took again as the drain's hold: %+v", poll.Judging)
+	}
+}
