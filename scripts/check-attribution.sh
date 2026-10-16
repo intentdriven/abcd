@@ -83,8 +83,10 @@ NONE_RE='^Assisted-by: [Nn]one$'
 # line and to ABCD_ANY_RE).
 #
 # It is ONE fixed form, not a free-text escape: the vendor is the literal `abcd`,
-# and the version is `dev` or a release version exactly as the release workflow
-# admits a tag. ABCD_ANY_RE finds every trailer that names abcd as its vendor, in
+# and the version is `dev` or a release version of the shape the release
+# workflow admits a tag in, bounded: numbers of at most three digits, and a
+# pre-release and a build part of at most two SemVer identifiers of at most
+# twelve characters each, so a version is never a sentence. ABCD_ANY_RE finds every trailer that names abcd as its vendor, in
 # any case, and the gate refuses one that is not ABCD_RE (an empty or free-text
 # version, `ABCD:`), although TRAILER_RE's generic <Vendor>:<model-version> shape
 # would otherwise take most of them: a malformed abcd label is an artefact
@@ -92,7 +94,7 @@ NONE_RE='^Assisted-by: [Nn]one$'
 #
 # Like None, it is not a bypass: claiming it for text a model or a person wrote is
 # a false disclosure, and the reviewer reading the diff is the check on it.
-ABCD_RE='^Assisted-by: abcd:(dev|v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$'
+ABCD_RE='^Assisted-by: abcd:(dev|v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(-[0-9A-Za-z-]{1,12}(\.[0-9A-Za-z-]{1,12})?)?(\+[0-9A-Za-z-]{1,12}(\.[0-9A-Za-z-]{1,12})?)?)$'
 ABCD_ANY_RE='^Assisted-by: [Aa][Bb][Cc][Dd]:'
 
 # Footers a tool emits by default. These name a tool outside the two credit

@@ -20,10 +20,20 @@ import "regexp"
 // Vendor is the vendor half of the label: abcd itself, never a model's vendor.
 const Vendor = "abcd"
 
-// ReleaseVersionPattern is a release version as the release workflow admits a
-// tag (.github/workflows/release.yml, "Refuse a tag that is not a vX.Y.Z
-// release tag").
-const ReleaseVersionPattern = `v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?`
+// ReleaseVersionPattern is a release version of the shape the release
+// workflow admits a tag in (.github/workflows/release.yml, "Refuse a tag that
+// is not a vX.Y.Z release tag"), bounded: each number at most three digits,
+// then an optional SemVer pre-release and an optional build part, each at
+// most two dot-separated identifiers of at most twelve characters. The whole
+// version is at most 62 characters, so the label carries a version and never
+// a sentence. A tag outside the bound is not copied into a label: its build
+// composes as a development build (labelVersion).
+const ReleaseVersionPattern = `v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}` +
+	`(-` + versionIdentifier + `(\.` + versionIdentifier + `)?)?` +
+	`(\+` + versionIdentifier + `(\.` + versionIdentifier + `)?)?`
+
+// versionIdentifier is one SemVer identifier, bounded in length.
+const versionIdentifier = `[0-9A-Za-z-]{1,12}`
 
 // DevLabel is the version half for a binary built without a release version: a
 // development build, which says so rather than borrowing a release's name.
