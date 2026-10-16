@@ -11,7 +11,7 @@ production_mode: hand-written
 found_at: "internal/core/claim/holder.go"
 remedy: "Cache the resolved holder for the run"
 related_intents: [itd-2610161016401115]
-resolution: "The real gh api user call in internal/core/claim/holder.go keeps its answer for the process, keyed on the checkout and a digest of the forge credential's environment; only a definite answer is kept, so three reservation acts ask the forge once (TestThreeReservationActsAskTheForgeForTheHolderOnce)."
+resolution: "The real gh api user call in internal/core/claim/holder.go keeps its answer for the process, keyed on the checkout and a digest of the forge credential's environment and of the contents of gh's hosts.yml, so an account switch, login or logout asks again; only a definite answer whose key did not move during the call is kept, so three reservation acts ask the forge once (TestThreeReservationActsAskTheForgeForTheHolderOnce)."
 impact: fix
 resolved_by:
   intent: "itd-2610161016401115"
