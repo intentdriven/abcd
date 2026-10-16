@@ -520,3 +520,24 @@ func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 		t.Fatalf("asked = %v; want each known pusher asked once, and each unknown one again", asked)
 	}
 }
+
+// TestTheNewerAnnouncementOfASecondStandsForItsItem: two announcements about
+// one item, sent and first fetched in the same second, are told apart by the
+// order the branch holds them in, so the newer stands for the item whatever
+// their commit names; each round's older one was shown at the prompt before.
+func TestTheNewerAnnouncementOfASecondStandsForItsItem(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	for round := 1; round <= 8; round++ {
+		item := "#" + strconv.Itoa(round)
+		maya.announceAs("merging", item)
+		pat.status(nil)
+		pat.notes()
+		maya.announceAs("merged", item)
+		pat.status(nil)
+		if got := pat.notes(); !strings.Contains(got, "- @maya (claimed): merged "+item+", for 30 min\n") {
+			t.Fatalf("round %d, the block:\n%s\nwant the newer announcement shown", round, got)
+		}
+	}
+}

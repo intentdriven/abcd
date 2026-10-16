@@ -113,6 +113,10 @@ type Announcement struct {
 	// FirstFetched is when this checkout first read it, and Until when it
 	// stops standing: FirstFetched plus the life it was sent with (C9).
 	FirstFetched, Until time.Time
+	// order is where the intake read it: later on the branch, or read by a
+	// later intake, is larger. It tells apart two first fetched, and sent, in
+	// one second.
+	order int64
 	// Check is SenderVerified, SenderClaimed or SenderDoubtful; Doubtful is
 	// the reason when doubtful, and Pusher the login the forge named when it
 	// is the forge's record that makes it so (a valid username, else "").
@@ -371,8 +375,11 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 			if err != nil {
 				return in, err
 			}
-			for _, c := range fresh {
-				keepSeen(root, name, c, read[c], now)
+			// fresh is newest first, so the newest takes the largest order;
+			// the base is the wall clock's, so a later intake orders after.
+			base := time.Now().UnixNano()
+			for i, c := range fresh {
+				keepSeen(root, name, c, read[c], now, base+int64(len(fresh)-1-i))
 				in.taken++
 			}
 		}
@@ -505,6 +512,7 @@ type seenEntry struct {
 	SentAt       string `json:"sent_at,omitempty"`
 	ExpiresAt    string `json:"expires_at,omitempty"`
 	Unreadable   string `json:"unreadable,omitempty"`
+	Order        int64  `json:"order,omitempty"`
 }
 
 // statusFile is rel, a file under the status state directory.
@@ -523,8 +531,8 @@ func seenKept(root, commit string) bool {
 
 // keepSeen keeps commit, read on branch, as first fetched at now, best
 // effort: one not kept is read again by the next intake.
-func keepSeen(root, branch, commit string, read readAnnouncement, now time.Time) {
-	e := seenEntry{Branch: branch, FirstFetched: stamp(now)}
+func keepSeen(root, branch, commit string, read readAnnouncement, now time.Time, order int64) {
+	e := seenEntry{Branch: branch, FirstFetched: stamp(now), Order: order}
 	if read.h.Unreadable != "" {
 		e.Unreadable = read.h.Unreadable
 	} else {
@@ -593,7 +601,8 @@ func statusEntries(root, sub string) []fs.DirEntry {
 
 // keptAnnouncements is every announcement kept here that still stands at
 // now, and every unreadable one first read in the last day, newest first: by
-// when this checkout first read it, then by the time it carries. Each kept
+// when this checkout first read it, then, on one branch, by the order the
+// branch holds them in, and across branches by the time each carries. Each kept
 // file is read back through the same grammar its fields were held to, so a
 // file that does not read is passed over.
 func keptAnnouncements(root string, now time.Time) []Announcement {
@@ -621,8 +630,16 @@ func keptAnnouncements(root string, now time.Time) []Announcement {
 		if !out[i].FirstFetched.Equal(out[j].FirstFetched) {
 			return out[i].FirstFetched.After(out[j].FirstFetched)
 		}
+		// On one branch, the order the branch holds them in; across branches,
+		// the time each carries.
+		if out[i].Branch == out[j].Branch && out[i].order != out[j].order {
+			return out[i].order > out[j].order
+		}
 		if !out[i].SentAt.Equal(out[j].SentAt) {
 			return out[i].SentAt.After(out[j].SentAt)
+		}
+		if out[i].order != out[j].order {
+			return out[i].order > out[j].order
 		}
 		return out[i].Commit < out[j].Commit
 	})
@@ -646,7 +663,7 @@ func keptAnnouncement(root, commit string) (Announcement, bool) {
 	if err != nil {
 		return Announcement{}, false
 	}
-	a := Announcement{Branch: e.Branch, Commit: commit, FirstFetched: first.UTC()}
+	a := Announcement{Branch: e.Branch, Commit: commit, FirstFetched: first.UTC(), order: e.Order}
 	if e.Unreadable != "" {
 		a.Unreadable, a.Check = fixedReason(e.Unreadable), SenderDoubtful
 		return a, true
