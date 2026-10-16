@@ -432,7 +432,9 @@ func TestAnUnreadableTipPastItsHoldIsTakenOverNamingTheCommit(t *testing.T) {
 	}
 }
 
-// TestATerminalRecordOnTheDefaultBranchReleasesItsReservation is C15.
+// TestATerminalRecordOnTheDefaultBranchReleasesItsReservation is C15: the
+// view counts the tip released, and since spc-2610161044461448 step 1 the
+// record is not reserved again (iss-2610160957404827).
 func TestATerminalRecordOnTheDefaultBranchReleasesItsReservation(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -447,9 +449,9 @@ func TestATerminalRecordOnTheDefaultBranchReleasesItsReservation(t *testing.T) {
 	w.seed.Write(".abcd/work/issues/resolved/iss-5-the-widget.md", "---\nid: iss-5\n---\n# The widget\n")
 	w.seed.Commit("resolve iss-5")
 	w.seed.Git("push", "-q", "origin", "main")
-	res, err := q.reserve("iss-5", "b.go")
-	if err != nil || res.Act != ActReserved || w.parentOf(w.remoteTip("iss-5")) != first.Commit {
-		t.Fatalf("after iss-5 reached resolved/ on main: %+v, %v; want P's live reservation counted released", res, err)
+	_, err = q.reserve("iss-5", "b.go")
+	if !errors.Is(err, ErrBackOff) || w.remoteTip("iss-5") != first.Commit {
+		t.Fatalf("after iss-5 reached resolved/ on main: %v; want the back-off, P's tip left as it stands", err)
 	}
 	// An unreadable tip on a finished record counts as released too, within
 	// what would otherwise be its hold.
@@ -457,9 +459,21 @@ func TestATerminalRecordOnTheDefaultBranchReleasesItsReservation(t *testing.T) {
 	w.seed.Write(".abcd/work/issues/wontfix/iss-6-the-gadget.md", "---\nid: iss-6\n---\n# The gadget\n")
 	w.seed.Commit("wontfix iss-6")
 	w.seed.Git("push", "-q", "origin", "main")
-	res, err = q.reserve("iss-6", "b.go")
-	if err != nil || res.Act != ActReserved || w.parentOf(w.remoteTip("iss-6")) != bad {
-		t.Fatalf("over an unreadable tip on a wontfix record: %+v, %v; want it counted released", res, err)
+	_, err = q.reserve("iss-6", "b.go")
+	if !errors.Is(err, ErrBackOff) || w.remoteTip("iss-6") != bad {
+		t.Fatalf("over an unreadable tip on a wontfix record: %v; want the back-off, the tip left as it stands", err)
+	}
+	snap, err := View(q.dir, w.clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range snap.Reservations {
+		if r.State != StateReleased || r.ReleasedBy != ReleasedByDefaultBranch {
+			t.Fatalf("the view shows %s as %s by %q; want it released by the default branch", r.Record, r.State, r.ReleasedBy)
+		}
+	}
+	if len(snap.Reservations) != 2 {
+		t.Fatalf("the view = %+v; want both tips", snap.Reservations)
 	}
 }
 

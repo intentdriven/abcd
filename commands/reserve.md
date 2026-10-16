@@ -147,7 +147,9 @@ take-over or lease. Only the holder's own reservation from this copy is
 released (exit 2 otherwise); a release already made exits 0 as
 `already_released` and pushes nothing. A record that is resolved, won't-fixed,
 shipped or superseded on origin's default branch counts as released whatever
-its reservation says.
+its reservation says, and is not reserved again: a reservation or take-over of
+it backs off (exit 3) saying it is finished on origin's default branch, with a
+tip or without one, and pushes nothing.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

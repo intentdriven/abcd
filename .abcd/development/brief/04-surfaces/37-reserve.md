@@ -97,8 +97,10 @@ five minutes, and a release by tombstone. Moving the same person's
 reservation from another copy needs the take-over flag; it never moves another
 person's. A record resolved, won't-fixed,
 shipped or superseded on origin's default branch counts as released whatever
-its reservation says; when that branch cannot be read, the act goes on and the
-output says the check was skipped.
+its reservation says, and is not reserved again: every act but a release or a
+renewal backs off over it, with a tip or without one, and pushes nothing
+(spc-2610161044461448 step 1); when that branch cannot be read, the act goes on
+and the output says the check was skipped.
 
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past ten live reservations, counted by username

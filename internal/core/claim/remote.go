@@ -185,6 +185,9 @@ func lostRace(p *prepared, tree string, before judged, perr error) error {
 	if derr == nil {
 		return pushFailed
 	}
+	if j.derived {
+		return derr
+	}
 	// A renewal or a release that met another's tip says so in its own
 	// terms, which its caller reads.
 	var nh *NotHeld
@@ -228,6 +231,11 @@ func decide(p *prepared, j judged) (Result, message, string, error) {
 	res := Result{Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt, ExpiresAt: m.ExpiresAt}
 	now := p.now
 	switch {
+	case j.derived:
+		// A record finished on origin's default branch is not reserved, with
+		// a tip or without one: the work it names is done (iss-2610160957404827).
+		return Result{}, message{}, "", backOff("%s is finished on %s's default branch, so there is nothing to reserve; take other work; %s",
+			p.id, Remote, nothingPushed)
 	case !j.present:
 		res.Act = ActReserved
 		return res, m, "", nil
@@ -364,17 +372,18 @@ func judge(p *prepared, tree string) (judged, error) {
 		return judged{}, refuse("could not read the reservation on %s: %s; %s", p.id, redacted(err), noReservation)
 	}
 	j := judged{tip: t, present: ok}
-	if !ok {
-		return j, nil
-	}
 	// A default branch the fetch could not read derives nothing: the copy
-	// this clone holds may be stale, so it is not read.
+	// this clone holds may be stale, so it is not read. It is read whether or
+	// not a tip exists, since a finished record is not reserved either way.
 	if p.derivedGap == "" {
 		j.derived, err = terminalOnDefault(p.root, p.id)
 	}
 	if err != nil {
 		return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
 			p.id, redacted(err), noReservation)
+	}
+	if !ok {
+		return j, nil
 	}
 	if t.Unreadable != "" {
 		j.verdict = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)
