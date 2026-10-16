@@ -35,10 +35,11 @@ func activityFixture(t *testing.T, subs map[string]string) string {
 // TestPushersReadsEveryPushLikeActivity: GitHub records a branch's first push
 // as branch_creation, a forced one as force_push, and a merge made by a pull
 // request or a merge queue as pr_merge and merge_queue_merge, beside push:
-// each moves the branch, and its actor is the account that moved it, so all
-// five are read. A deletion moves the branch to no commit and is passed over,
-// as is an app's push. The query names no activity type, so none is lost to
-// it.
+// each moves the branch, and is read as a push by its actor. A deletion moves
+// the branch to no commit and is passed over, as is an app's push, the merge
+// queue's among them: GitHub credits a merge queue's merge to the queue (type
+// Bot), and a pull request's merge to the person who merged it. The query
+// names no activity type, so none is lost to it.
 func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
 	sha := func(c string) string { return strings.Repeat(c, 40) }
 	logPath := fakeActivity(t, activityFixture(t, map[string]string{
@@ -55,7 +56,6 @@ func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
 		{Before: sha("5"), After: sha("6"), Login: "octo"},
 		{Before: sha("0"), After: sha("7"), Login: "mallory"},
 		{Before: sha("b"), After: sha("c"), Login: "octo"},
-		{Before: sha("9"), After: sha("a"), Login: "mallory"},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("pushers = %+v; want %+v", got, want)
@@ -153,9 +153,9 @@ func TestPushersRefusesAnOriginNotOnGitHub(t *testing.T) {
 }
 
 // TestPushersPassesOverAnAppsPush is C17's app identity: a push made by an
-// app (an actor of type Bot, or a login ending in [bot], as a hosted session
-// pushes) says nothing of who sent the announcement, so it is passed over and
-// the sender stays claimed rather than reading as another account's push.
+// app (an actor of type Bot, or a login ending in [bot]) says nothing of who
+// sent the announcement, so it is passed over and the sender stays claimed
+// rather than reading as another account's push.
 func TestPushersPassesOverAnAppsPush(t *testing.T) {
 	a := strings.Repeat("a", 40)
 	b := strings.Repeat("b", 40)
@@ -170,6 +170,26 @@ func TestPushersPassesOverAnAppsPush(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != (Push{Before: zero, After: c, Login: "maya"}) {
 		t.Fatalf("pushers = %+v; want only maya's push", got)
+	}
+}
+
+// TestPushersPassesOverAMergeQueuesMerge: GitHub credits a merge queue's
+// merge (merge_queue_merge) to the queue itself, github-merge-queue[bot] of
+// type Bot, which says nothing of who sent an announcement, so it is passed
+// over and the commits it carried stay claimed; a pull request's merge
+// (pr_merge) names the person who merged it, and is read.
+func TestPushersPassesOverAMergeQueuesMerge(t *testing.T) {
+	a := strings.Repeat("a", 40)
+	b := strings.Repeat("b", 40)
+	c := strings.Repeat("c", 40)
+	fakeActivity(t, `[{"before":"`+b+`","after":"`+a+`","activity_type":"merge_queue_merge","actor":{"login":"github-merge-queue[bot]","type":"Bot"}},`+
+		`{"before":"`+c+`","after":"`+b+`","activity_type":"pr_merge","actor":{"login":"maya","type":"User"}}]`)
+	got, _, err := Pushers(context.Background(), originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 1 || got[0] != (Push{Before: c, After: b, Login: "maya"}) {
+		t.Fatalf("pushers = %+v; want only maya's merge of a pull request", got)
 	}
 }
 

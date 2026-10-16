@@ -22,9 +22,11 @@ type Push struct {
 // pushActivities are the activity types that move a branch to a commit: a
 // push, a forced push, the push that made the branch (GitHub records a
 // branch's first push as branch_creation, its before forty zeros), and a merge
-// made by a pull request or a merge queue (pr_merge, merge_queue_merge), whose
-// actor is the account that moved the branch. Each is read as a push. A
-// deletion moves the branch to no commit, and says nothing of one.
+// made by a pull request or a merge queue (pr_merge, merge_queue_merge). Each
+// is read as a push by its actor: a pull request's merge names the person who
+// merged it, and a merge queue's names the queue itself, an app, so it is
+// passed over (appActor). A deletion moves the branch to no commit, and says
+// nothing of one.
 var pushActivities = []string{"push", "force_push", "branch_creation", "pr_merge", "merge_queue_merge"}
 
 // activityPage is how many activities one ask reads: the forge's one page.
@@ -78,8 +80,9 @@ func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool,
 			continue
 		}
 		if appActor(a.Actor.Type, a.Actor.Login) {
-			// An app's push (a hosted session's) says nothing of who sent
-			// it: passed over, so the sender stays claimed.
+			// An app's push (the merge queue's, or any other app's) says
+			// nothing of who sent it: passed over, so the sender stays
+			// claimed.
 			continue
 		}
 		pushed = append(pushed, Push{Before: a.Before, After: a.After, Login: a.Actor.Login})

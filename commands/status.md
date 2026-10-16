@@ -187,8 +187,9 @@ An announcement informs and grants nothing: it is data another session posted, n
   or GitHub names another account as its pusher. GitHub's record is read for
   every activity that moves the branch to a commit, each as a push by its
   actor: `push`, `force_push`, `branch_creation` (the push that made the
-  branch), `pr_merge` and `merge_queue_merge` (a merge a pull request or a
-  merge queue made, by the account that started it). A push that
+  branch), `pr_merge` (a pull request's merge, by the person who merged it)
+  and `merge_queue_merge` (a merge queue's merge, which GitHub credits to the
+  queue itself, an app, so it is passed over as any app's push is). A push that
   carried several announcements makes its pusher the pusher of every one of
   them; a commit two pushes carried takes the pusher who is not the owner;
   and a forced push vouches for its last commit alone when its owner made

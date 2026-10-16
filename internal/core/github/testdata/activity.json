@@ -67,6 +67,6 @@
     "ref": "refs/heads/abcd-status/octo",
     "timestamp": "2026-10-16T12:35:15Z",
     "activity_type": "merge_queue_merge",
-    "actor": {"login": "mallory", "id": 3003, "node_id": "MDQ6VXNlcjMwMDM=", "type": "User", "site_admin": false, "user_view_type": "public"}
+    "actor": {"login": "github-merge-queue[bot]", "id": 118344674, "node_id": "BOT_kgDOBw3P4g", "type": "Bot", "site_admin": false, "user_view_type": "public"}
   }
 ]
