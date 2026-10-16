@@ -413,6 +413,25 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		return res, nil
 	}
+	// refuseMoved is a refusal past the move's housekeeping: what the move
+	// already did, a judgement it took, a lane it finished and a hand-back it
+	// routed, is written to a live drain first, so the next move does not do
+	// it again, and the refusal says what was finished. A drain this move
+	// began writes nothing.
+	refuseMoved := func(err error) (DrainResult, error) {
+		if live {
+			st.UpdatedAt = now
+			if werr := writeDrain(repoRoot, st); werr != nil {
+				return DrainResult{}, werr
+			}
+		}
+		if r, ok := AsRefusal(err); ok {
+			if note := finishedNote(res.Finished); note != "" {
+				r.Reason += "; before refusing, this move " + note
+			}
+		}
+		return DrainResult{}, err
+	}
 
 	// A move that could not read origin plans nothing: no judgement is taken,
 	// no lane is read or opened, and the answer given waits for the next move.
@@ -582,6 +601,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		return finish(true)
 	}
 
+	// A peer this checkout cannot read refuses the move once, here, where
+	// per-issue contention begins, rather than holding every issue (step 9):
+	// the housekeeping above, which no peer's holding bears on, is done first.
+	if err := unreadablePeers(repoRoot); err != nil {
+		return refuseMoved(err)
+	}
+
 	// The next eligible issue in the drain order, less any this drain has
 	// taken or handed back and any this checkout already has a run for. Its
 	// lane opens only once the host judgement over its remedy has answered no
@@ -714,14 +740,24 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				v.ID, claim.Remote, stamp(hold.EffectiveExpiry), strings.Join(hold.Footprint, ", "))}
 		}
 		holds.starting(v.ID)
+		if drainBeforeStart != nil {
+			drainBeforeStart(v.ID)
+		}
 		started, err := startLane(repoRoot, v.ID, lane)
 		if err != nil {
 			r, ok := AsRefusal(err)
 			// A reservation refused for a reason of this checkout's own (no
-			// username, origin not answering) stops the drain's move; another's
-			// hold passes over the issue.
+			// username, origin not answering, the reservations unreadable
+			// here) stops the drain's move; another's hold passes over the
+			// issue. Either way the judgement taken above is kept.
 			if !ok || (r.Stage == StageReservation && !r.Contention) {
-				return DrainResult{}, err
+				return refuseMoved(err)
+			}
+			// A peer the start's own check could not read, there since the
+			// move's check above, stops the move with the move's refusal:
+			// it would hold every issue after this one as well.
+			if err := unreadableRefusal(repoRoot, r.unjudged); err != nil {
+				return refuseMoved(err)
 			}
 			// The reason may quote what another writer chose (a reserved
 			// footprint), and the agent driving the drain reads it.
