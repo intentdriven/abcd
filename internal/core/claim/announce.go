@@ -72,16 +72,24 @@ var announcementFamily = &family{
 var statusBranches = namespace{remote: StatusRefPrefix, tracking: StatusTrackingPrefix, stateDir: tierRelDir + "/status", noun: "the status branches"}
 
 // fetchStatus is announce's read of the remote: it lists the status branches
-// on origin (listStatusBranches), then fetches, in one command, each one whose
-// name is a lower-case username, by its own refspec, with origin's default
-// branch when ref names it (fetchWith). listed reports whether origin holds
-// the sender's own branch, so a copy of it this checkout kept from before is
+// on origin (listStatusBranches, the listing `abcd status` makes), then
+// fetches, in one command, each one whose name is a lower-case username, by
+// its own refspec, with origin's default branch when ref names it
+// (fetchWith). Before the fetch it does what FetchStatus does with the
+// listing: it keeps the tally of the names not read and deletes every copy of
+// a status branch the fetch does not name (dropUnlisted), so the reader never
+// finds a fetch newer than the tally it kept, nor reads a branch origin no
+// longer holds as fetched now. listed reports whether origin holds the
+// sender's own branch, so a copy of it this checkout kept from before is
 // never taken for its tip.
 func fetchStatus(root string, now time.Time, ref, branch string) (gap string, listed bool, err error) {
-	names, _, _, err := listStatusBranches(root)
+	names, skipped, past, err := listStatusBranches(root)
 	if err != nil {
+		noteFetchFailure(root, statusBranches, now, redacted(err))
 		return "", false, &FetchError{Reason: redacted(err), what: statusBranches.noun, outcome: noAnnouncement}
 	}
+	keepSkipped(root, skipped, past, now)
+	statusBranches.dropUnlisted(root, names)
 	ns := statusBranches
 	ns.only = names
 	if gap, err = fetchWith(root, now, noAnnouncement, ref, ns); err != nil {
