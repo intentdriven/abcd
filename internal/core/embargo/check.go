@@ -152,13 +152,17 @@ type heldStore struct {
 // hold that --allow does not name. Inputs are read before the store, so a
 // refusal to read one is the same with or without a store.
 //
-// The deny set is the union of every store the repository's history reaches
+// The deny set is the union of every store under this home
 // (storepath.Reachable): this checkout's own, verified as every sub-verb
-// verifies it, and every live store at the place under a root of the
-// default branch, whoever's it is, read and never written (readOtherStore).
-// A place that holds anything else, or cannot be examined, refuses the
-// check. Only with no store of its own and none at any root's place is
-// nothing under embargo, and the check passes saying so.
+// verifies it, and every other live store at worktrees/<key>/embargo there,
+// whatever repository it belongs to, read and never written
+// (readOtherStore). No root commit decides which stores are read, so a
+// shallow clone or rewritten history reads the same stores. A place that
+// holds anything else, or cannot be examined, refuses the check, as does a
+// store this repository registered under another home. Only with no store
+// of its own and no live store under this home is nothing under embargo,
+// and the check passes saying so. A store under another home that this
+// repository never registered is not read.
 func Check(req CheckRequest) (CheckResult, error) {
 	now := clock(req.Now)
 	if strings.TrimSpace(req.Range) == "" && len(req.Files) == 0 {
@@ -188,7 +192,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	}
 	if reach.Own == "" && len(reach.Others) == 0 {
 		res.NoStore = true
-		res.Note = "nothing is under embargo on this machine: there is no embargo store for this repository"
+		res.Note = "nothing is under embargo on this machine: there is no embargo store under this home"
 		return res, nil
 	}
 	var stores []heldStore
@@ -526,10 +530,10 @@ func buildDenySet(stores []heldStore, allowed map[string]bool) (denySet, error) 
 		// parent folder's name, which need not be any root the history has
 		// now.
 		key := filepath.Base(filepath.Dir(h.root))
-		forms := []string{h.root, resolve(h.root), "worktrees/" + key + "/" + StoreName}
+		forms := []string{h.root, storepath.Resolve(h.root), "worktrees/" + key + "/" + StoreName}
 		if homeErr == nil {
-			for _, hd := range []string{filepath.Clean(home), resolve(home)} {
-				for _, root := range []string{h.root, resolve(h.root)} {
+			for _, hd := range []string{filepath.Clean(home), storepath.Resolve(home)} {
+				for _, root := range []string{h.root, storepath.Resolve(h.root)} {
 					if rel, err := filepath.Rel(hd, root); err == nil && rel != "." && !strings.HasPrefix(rel, "..") {
 						forms = append(forms, "~/"+filepath.ToSlash(rel))
 					}

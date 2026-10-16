@@ -16,15 +16,22 @@
 // checkout cloned afresh; a folder left at the place the store would be made
 // is then refused, never taken for "no store".
 //
+// A worktree of the repository at that shape under some other home (abcd
+// once run under sudo, a sandbox or an aliased HOME) is the store this
+// repository registered, so it is refused (ErrStoreUnderAnotherHome), never
+// read as "no store" and never answered with a second store here.
+//
 // Which stores the outbound check reads is a wider question (Reachable):
-// this checkout's own, and every live store at the place under a root of the
-// default branch, whoever's it is, since another clone of the same project,
-// or a project whose history this one merged in, holds records that are
-// under embargo here too. Those are read, and never written.
+// every live store under this home, whatever repository it belongs to,
+// found by listing the worktree store rather than by any root commit, so a
+// second clone whose roots miss the store's key (a shallow clone, rewritten
+// history) still reads it. Those that are not this checkout's own are read,
+// and never written.
 package storepath
 
 import (
 	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -46,6 +53,12 @@ var ErrWorktreesUnread = errors.New("the repository's worktrees could not be lis
 // told, so none is chosen.
 var ErrSeveralStores = errors.New("more than one embargo store is a worktree of the repository")
 
+// ErrStoreUnderAnotherHome is the answer of Locate and Reachable when git
+// lists a worktree of the repository at the shape of a store under some
+// other home: the store this repository registered lives there, so this home
+// would read as holding nothing, and a store made here would be a second one.
+var ErrStoreUnderAnotherHome = errors.New("the embargo store this repository registered lives under another home")
+
 // ErrRootsUnread is Locate's answer, with no store registered, when git
 // could not list the default branch's root commits to key a new store on.
 var ErrRootsUnread = errors.New("the root commits of the default branch could not be read")
@@ -61,11 +74,12 @@ var ErrNoRootCommit = errors.New("the default branch has no root commit to key t
 // is never answered as "no store".
 var ErrPlaceTaken = errors.New("something that is not a store of this repository sits where its embargo store would be made")
 
-// ErrPlaceUnread is Reachable's answer when the place under a root of the
-// default branch holds something that is not a live worktree, or cannot be
-// examined: it may be a store whose records the check would otherwise miss,
-// so it is never skipped.
-var ErrPlaceUnread = errors.New("something that is not a readable store sits where an embargo store this repository's history reaches would be")
+// ErrPlaceUnread is Reachable's answer when the worktree store under the
+// home cannot be listed, or a place worktrees/<key>/embargo in it holds
+// something that is not a live worktree, or cannot be examined: it may be a
+// store whose records the check would otherwise miss, so it is never
+// skipped.
+var ErrPlaceUnread = errors.New("something that is not a readable store sits where an embargo store under this home would be")
 
 // ErrNoFreePlace is Locate's answer, with no store registered, when the place
 // under every root of the default branch holds another repository's store.
@@ -88,51 +102,57 @@ type Location struct {
 //
 // Finding: every worktree of the repository (gitutil.EachWorktree) whose path
 // is a store's (IsStorePath) is a store. Exactly one is the store, whatever
-// its key; more than one is ErrSeveralStores; a listing git could not give is
+// its key; more than one is ErrSeveralStores; one under another home is
+// ErrStoreUnderAnotherHome; a listing git could not give is
 // ErrWorktreesUnread, never "none".
 //
-// Making, when none is registered: the key is a root commit of the default
-// branch (gitutil.DefaultBranchRoots), oldest first, so a repository with one
-// root keeps the place it always had. A place holding another repository's
-// live store is passed over and never touched; the first place where nothing
-// is, is the answer; a place holding anything else, or that cannot be
-// examined, is ErrPlaceTaken.
+// Making, when none is registered: the place under each root of the default
+// branch (placesUnderRoots), oldest first, so a repository with one root
+// keeps the place it always had. A place holding another repository's live
+// store is passed over and never touched; the first free place is the
+// answer; a place holding anything else, or that cannot be examined, is
+// ErrPlaceTaken; with every place another's, ErrNoFreePlace.
 func Locate(home, repoRoot string) (Location, error) {
 	if p, err := registeredStore(home, repoRoot); err != nil || p != "" {
 		return Location{Path: p, Registered: p != ""}, err
 	}
-	own, err := gitutil.RevParseAbsPath(repoRoot, "--git-common-dir")
-	if err != nil {
-		return Location{}, ErrWorktreesUnread
-	}
-	roots, err := gitutil.DefaultBranchRoots(repoRoot)
-	if err != nil {
-		return Location{}, ErrRootsUnread
-	}
-	if len(roots) == 0 {
-		return Location{}, ErrNoRootCommit
-	}
-	for _, sha := range roots {
-		p := place(home, sha)
-		switch _, err := os.Lstat(p); {
-		case errors.Is(err, fs.ErrNotExist):
-			return Location{Path: p}, nil
-		case err != nil:
-			return Location{}, ErrPlaceTaken
-		case !anotherRepositorysStore(p, own):
-			return Location{}, ErrPlaceTaken
+	loc, found := Location{}, ErrNoFreePlace
+	err := placesUnderRoots(home, repoRoot, func(p string, k placeKind) bool {
+		switch k {
+		case placeAnothers:
+			return true
+		case placeFree:
+			loc, found = Location{Path: p}, nil
+		default:
+			found = ErrPlaceTaken
 		}
+		return false
+	})
+	if err != nil {
+		return Location{}, err
 	}
-	return Location{}, ErrNoFreePlace
+	return loc, found
 }
 
 // registeredStore is the path of the one worktree of the repository at
-// repoRoot that is a store under home, "" when none is.
+// repoRoot that is a store under home, "" when none is. A worktree of the
+// store's shape under any other home counts as a store too: one alone there
+// is ErrStoreUnderAnotherHome, and with another it is one of several.
 func registeredStore(home, repoRoot string) (string, error) {
 	var found []string
+	here, elsewhere := "", false
 	err := gitutil.EachWorktree(repoRoot, func(w gitutil.Worktree) {
-		if key := filepath.Base(filepath.Dir(w.Path)); !w.Bare && IsStorePath(home, w.Path) && !slices.Contains(found, key) {
-			found = append(found, key)
+		mine := IsStorePath(home, w.Path)
+		if w.Bare || (!mine && !HasStoreShape(w.Path)) {
+			return
+		}
+		if r := Resolve(w.Path); !slices.Contains(found, r) {
+			found = append(found, r)
+			if mine {
+				here = place(home, filepath.Base(filepath.Dir(filepath.Clean(w.Path))))
+			} else {
+				elsewhere = true
+			}
 		}
 	})
 	switch {
@@ -140,86 +160,169 @@ func registeredStore(home, repoRoot string) (string, error) {
 		return "", ErrWorktreesUnread
 	case len(found) > 1:
 		return "", ErrSeveralStores
-	case len(found) == 1:
-		return place(home, found[0]), nil
+	case elsewhere:
+		return "", ErrStoreUnderAnotherHome
 	}
-	return "", nil
+	return here, nil
+}
+
+// placeKind is what sits at a place the store could be made.
+type placeKind int
+
+const (
+	placeFree     placeKind = iota // nothing
+	placeOwn                       // a live worktree of this repository
+	placeAnothers                  // a live worktree of another repository
+	placeTaken                     // anything else, or the place cannot be examined
+)
+
+// placesUnderRoots hands fn the place under each root of the default branch
+// (gitutil.DefaultBranchRoots, read as stored), oldest first, with what sits
+// there, until fn returns false. A root listing git could not give is
+// ErrRootsUnread, and no root at all ErrNoRootCommit.
+func placesUnderRoots(home, repoRoot string, fn func(p string, k placeKind) bool) error {
+	own, err := gitutil.RevParseAbsPath(repoRoot, "--git-common-dir")
+	if err != nil {
+		return ErrWorktreesUnread
+	}
+	roots, err := gitutil.DefaultBranchRoots(repoRoot)
+	if err != nil {
+		return ErrRootsUnread
+	}
+	if len(roots) == 0 {
+		return ErrNoRootCommit
+	}
+	for _, sha := range roots {
+		if p := place(home, sha); !fn(p, classify(p, own)) {
+			break
+		}
+	}
+	return nil
+}
+
+// classify is what sits at p, for the repository whose common dir is own:
+// nothing; a live worktree (liveWorktree) of that repository or of another;
+// or anything less, such as a plain folder or a worktree whose repository
+// is gone, or a place that cannot be examined, which is taken.
+func classify(p, own string) placeKind {
+	switch _, err := os.Lstat(p); {
+	case errors.Is(err, fs.ErrNotExist):
+		return placeFree
+	case err != nil, !liveWorktree(p):
+		return placeTaken
+	}
+	common, err := gitutil.RevParseAbsPath(p, "--git-common-dir")
+	switch {
+	case err != nil:
+		return placeTaken
+	case Resolve(common) == Resolve(own):
+		return placeOwn
+	}
+	return placeAnothers
 }
 
 // Reach is every store the outbound check of a repository reads.
 type Reach struct {
 	// Own is the repository's registered store (Locate), "" when none is.
 	Own string
-	// Others is every live store at the place under a root of the default
-	// branch that is not Own: another clone's of the same project, or the
-	// store of a project whose history this one merged in.
+	// Others is every other live store under the home, in path order:
+	// another clone's of the same project, or another project's.
 	Others []string
 }
 
 // Reachable is the one rule for which stores the outbound check of the
-// repository at repoRoot reads, and it makes and changes nothing. Own is
-// found as Locate finds the store, with Locate's refusals. Others are the
-// places under every root of the default branch (gitutil.DefaultBranchRoots,
-// read as stored): a place where nothing is, is passed; a live worktree of
-// any repository is read, whoever's it is; anything else there, or a place
-// that cannot be examined, is ErrPlaceUnread, never skipped. A listing of
-// the roots git could not give is ErrRootsUnread; no root and no store of
-// its own is ErrNoRootCommit, as Locate answers it.
+// repository at repoRoot reads, and it makes and changes nothing.
+//
+// Own is found as Locate finds the store, with Locate's refusals for the
+// worktree listing, several stores and a store under another home. Others
+// are read from the worktree store under home (liveStores): every place
+// worktrees/<key>/embargo, the key a full object name, holding a live
+// worktree of any repository, whoever's it is, but Own. A place holding
+// anything else, or that cannot be examined, and a worktree store that
+// cannot be listed, are ErrPlaceUnread, never skipped. No root commit is
+// read: the roots decide only where a new store is made.
+//
+// Its one known limit: a store under another home that this repository
+// never registered (another clone's, made under sudo or a sandbox) is not
+// read.
 func Reachable(home, repoRoot string) (Reach, error) {
 	own, err := registeredStore(home, repoRoot)
 	if err != nil {
 		return Reach{}, err
 	}
-	roots, err := gitutil.DefaultBranchRoots(repoRoot)
+	live, err := liveStores(home)
 	if err != nil {
-		return Reach{}, ErrRootsUnread
-	}
-	if len(roots) == 0 && own == "" {
-		return Reach{}, ErrNoRootCommit
+		return Reach{}, err
 	}
 	r := Reach{Own: own}
-	for _, sha := range roots {
-		p := place(home, sha)
-		if own != "" && resolve(p) == resolve(own) {
-			continue
+	for _, p := range live {
+		if own == "" || Resolve(p) != Resolve(own) {
+			r.Others = append(r.Others, p)
 		}
-		switch _, err := os.Lstat(p); {
-		case errors.Is(err, fs.ErrNotExist):
-			continue
-		case err != nil, !liveWorktree(p):
-			return Reach{}, ErrPlaceUnread
-		}
-		r.Others = append(r.Others, p)
 	}
 	return r, nil
+}
+
+// maxKeyName bounds an entry name of the worktree store that liveStores
+// looks under: a key is a full object name, at most sixty-four characters,
+// so a longer name is passed over unread.
+const maxKeyName = 64
+
+// liveStores is every live store under home, in path order: the worktree
+// store's entries are read a batch at a time, and each named by a full
+// object name is a key whose place worktrees/<key>/embargo is examined.
+// Nothing there is passed over; a live worktree (liveWorktree) is a store;
+// anything else there, a place that cannot be examined, and a worktree store
+// that cannot be listed are ErrPlaceUnread. No worktree store is no store.
+func liveStores(home string) ([]string, error) {
+	dir, err := os.Open(abcdhome.Path(home, "worktrees"))
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, ErrPlaceUnread
+	}
+	defer dir.Close()
+	var stores []string
+	for {
+		names, err := dir.Readdirnames(256)
+		for _, name := range names {
+			if len(name) > maxKeyName || !gitutil.IsFullSHA(name) {
+				continue
+			}
+			p := place(home, name)
+			switch _, err := os.Lstat(p); {
+			case errors.Is(err, fs.ErrNotExist):
+				continue
+			case err != nil, !liveWorktree(p):
+				return nil, ErrPlaceUnread
+			}
+			stores = append(stores, p)
+		}
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return nil, ErrPlaceUnread
+		}
+	}
+	slices.Sort(stores)
+	return stores, nil
 }
 
 // place is the store's path under key.
 func place(home, key string) string { return abcdhome.Path(home, "worktrees", key, Name) }
 
-// anotherRepositorysStore reports whether p is a live worktree of a
-// repository other than the one whose common dir is own: git in p names p
-// as its working tree and another common dir, and that repository lists p
-// among its worktrees. Anything less (a plain folder, a worktree whose
-// repository is gone) is not shown to be another's.
-func anotherRepositorysStore(p, own string) bool {
-	if !liveWorktree(p) {
-		return false
-	}
-	common, err := gitutil.RevParseAbsPath(p, "--git-common-dir")
-	return err == nil && resolve(common) != resolve(own)
-}
-
 // liveWorktree reports whether p is a live worktree of some repository: git
 // in p names p as its working tree, and that repository lists p among its
 // worktrees.
 func liveWorktree(p string) bool {
-	if top, err := gitutil.Toplevel(p); err != nil || resolve(top) != resolve(p) {
+	if top, err := gitutil.Toplevel(p); err != nil || Resolve(top) != Resolve(p) {
 		return false
 	}
 	listed := false
 	err := gitutil.EachWorktree(p, func(w gitutil.Worktree) {
-		if resolve(w.Path) == resolve(p) {
+		if Resolve(w.Path) == Resolve(p) {
 			listed = true
 		}
 	})
@@ -236,7 +339,7 @@ func IsStorePath(home, p string) bool {
 	}
 	base := abcdhome.Path(home, "worktrees")
 	dir := filepath.Dir(filepath.Dir(filepath.Clean(p)))
-	return dir == base || resolve(dir) == resolve(base)
+	return dir == base || Resolve(dir) == Resolve(base)
 }
 
 // HasStoreShape reports whether p, in its spelling or with its links
@@ -244,7 +347,7 @@ func IsStorePath(home, p string) bool {
 // reader that must never open a store whoever's home it is in, or when no
 // home can be named, skips every path of that shape.
 func HasStoreShape(p string) bool {
-	for _, q := range []string{filepath.Clean(p), resolve(p)} {
+	for _, q := range []string{filepath.Clean(p), Resolve(p)} {
 		if !shaped(q) {
 			continue
 		}
@@ -262,11 +365,12 @@ func shaped(p string) bool {
 	return filepath.Base(p) == Name && gitutil.IsFullSHA(filepath.Base(filepath.Dir(p)))
 }
 
-// resolve is filepath.EvalSymlinks over the longest existing prefix of p, with
+// Resolve is filepath.EvalSymlinks over the longest existing prefix of p, with
 // the rest joined on: a path not made yet, or a store's folder deleted while
 // git still lists it, still resolves through the links above it (macOS's
-// /var is one).
-func resolve(p string) string {
+// /var is one). It is the one spelling every comparison of store and
+// checkout paths makes.
+func Resolve(p string) string {
 	p = filepath.Clean(p)
 	var rest []string
 	for {

@@ -75,8 +75,8 @@ func locate(home, top string) (storepath.Location, error) {
 }
 
 // reachable is every store the outbound check of the repository at top
-// reads under home: storepath.Reachable's answer, its refusals worded as
-// locate words them.
+// reads under home (storepath.Reachable: its own and every other live store
+// there), its refusals worded as locate words them.
 func reachable(home, top string) (storepath.Reach, error) {
 	r, err := storepath.Reachable(home, top)
 	return r, worded(err)
@@ -91,6 +91,9 @@ func worded(err error) error {
 	case errors.Is(err, storepath.ErrWorktreesUnread):
 		return refuse("git could not list this repository's worktrees, so whether it has an embargo store cannot be told",
 			"settle what `git worktree list --porcelain` reports, then run it again")
+	case errors.Is(err, storepath.ErrStoreUnderAnotherHome):
+		return refuse("the embargo store this repository registered lives under another home than the one abcd runs with, so this home would read as holding nothing under embargo",
+			"run abcd with that home, the HOME it had when the store was made")
 	case errors.Is(err, storepath.ErrSeveralStores):
 		return refuse("more than one embargo store is a worktree of this repository, so which one holds the records cannot be told",
 			"inspect each with `git worktree list`, keep the one holding the records, remove the other with `git worktree remove <path>`, then run it again")
@@ -102,7 +105,7 @@ func worded(err error) error {
 		return refuse("the place this repository's embargo store would be made could not be examined, or holds a folder that is no worktree of this repository nor of another repository on this machine, perhaps a store git has lost track of",
 			"look under abcd's worktree store, keep any private records the folder holds, move it aside, then run `abcd embargo intake`")
 	case errors.Is(err, storepath.ErrPlaceUnread):
-		return refuse("a place under a root of this repository's history, where an embargo store is kept, could not be examined, or holds a folder that is no live worktree of any repository on this machine, perhaps a store git has lost track of, so what is under embargo cannot be told",
+		return refuse("abcd's worktree store could not be listed, or a place in it where an embargo store is kept could not be examined or holds a folder that is no live worktree of any repository on this machine, perhaps a store git has lost track of, so what is under embargo cannot be told",
 			"look under abcd's worktree store, keep any private records the folder holds, move it aside, then run it again")
 	case errors.Is(err, storepath.ErrNoFreePlace):
 		return errNoFreePlace
@@ -113,9 +116,10 @@ func worded(err error) error {
 
 // errNoFreePlace is locate's refusal for storepath.ErrNoFreePlace: this
 // repository has no store, and one cannot be made without touching
-// another's.
+// another's. It names no path: the person finds the store in the checkout
+// that owns it.
 var errNoFreePlace = refuse("every place this repository's embargo store could be made already holds another repository's store, which is left alone",
-	"run the embargo sub-verbs from the checkout that store belongs to")
+	"run the embargo sub-verbs from the checkout that owns the store sitting there, or, in that checkout, run `git worktree move <store> <a place under that checkout's own root>` to free the place, then run it again here")
 
 // registered returns the store at a registered location, refusing a
 // registration whose folder is gone or cannot be examined.
@@ -130,17 +134,17 @@ func registered(loc storepath.Location, top string) (Store, error) {
 	return Store{Root: loc.Path, Checkout: top}, nil
 }
 
-// readOtherStore reads the state of a store the check reaches that is not
-// this checkout's own: another clone's of the same project, or the store of
-// a project whose history this one merged in. It is read and never written,
-// and it is not held to Verify's "a worktree of this repository": its
-// records are under embargo here whoever's they are. The state is read
-// inside the store's folder (os.Root), so no link in it can lead the read
-// out of the store, and held to loadState's checks: a regular file, this
-// account's alone, within its cap, in shape.
+// readOtherStore reads the state of a store the check reads that is not
+// this checkout's own: another clone's of the same project, or another
+// project's under the same home. It is read and never written, and it is
+// not held to Verify's "a worktree of this repository": its records are
+// private to the same person, so they are under embargo here too. The state
+// is read inside the store's folder (os.Root), so no link in it can lead the
+// read out of the store, and held to loadState's checks: a regular file,
+// this account's alone, within its cap, in shape.
 func readOtherStore(root string) (State, error) {
 	bad := func(why string) error {
-		return refuse("the state file of an embargo store this repository's history reaches is refused: "+why,
+		return refuse("the state file of another embargo store under this home is refused: "+why,
 			"settle it from the checkout that store belongs to, then run it again")
 	}
 	if !fsutil.IsRealDir(root) {
@@ -379,29 +383,10 @@ func (s Store) refuseTracked(st State) error {
 }
 
 // inside reports whether p is dir or lies beneath it, after resolving the
-// symlinks of the longest part of each that exists.
+// symlinks of the longest part of each that exists (storepath.Resolve).
 func inside(p, dir string) bool {
-	rel, err := filepath.Rel(resolve(dir), resolve(p))
+	rel, err := filepath.Rel(storepath.Resolve(dir), storepath.Resolve(p))
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func samePath(a, b string) bool { return resolve(a) == resolve(b) }
-
-// resolve is filepath.EvalSymlinks over the longest existing prefix of p, with
-// the rest joined on: a path not made yet still resolves through the links
-// above it (macOS's /var is one).
-func resolve(p string) string {
-	p = filepath.Clean(p)
-	var rest []string
-	for {
-		if r, err := filepath.EvalSymlinks(p); err == nil {
-			return filepath.Join(append([]string{r}, rest...)...)
-		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			return filepath.Join(append([]string{p}, rest...)...)
-		}
-		rest = append([]string{filepath.Base(p)}, rest...)
-		p = parent
-	}
-}
+func samePath(a, b string) bool { return storepath.Resolve(a) == storepath.Resolve(b) }

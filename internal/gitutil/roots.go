@@ -31,13 +31,16 @@ const maxRootLine = 4096
 // It is read as git writes it, with no cap on its length, so one merge of
 // many parentless commits cannot make it unreadable.
 //
-// No commits to read is an empty list and no error; a git failure, or a line
-// of a shape git never writes, is an error.
+// No commits to read (HEAD names no commit: `rev-parse --verify --quiet`
+// exits 1) is an empty list and no error; any other failure of git, there
+// or listing the roots, or a line of a shape git never writes, is an error.
 func DefaultBranchRoots(root string) ([]string, error) {
 	rev := "HEAD"
 	if ref := DefaultRef(root); strings.HasPrefix(ref, "refs/remotes/origin/") {
 		rev = ref
-	} else if _, err := Run(root, "rev-parse", "--verify", "--quiet", "HEAD^{commit}", "--"); err != nil {
+	} else if _, noCommit, err := RunCappedExitOne(root, maxRootLine, "rev-parse", "--verify", "--quiet", "HEAD^{commit}", "--"); err != nil {
+		return nil, fmt.Errorf("git rev-parse HEAD: %w", err)
+	} else if noCommit {
 		return nil, nil
 	}
 	args := []string{"-c", "core.useReplaceRefs=false", "rev-list", "--max-parents=0", "--timestamp", rev, "--"}

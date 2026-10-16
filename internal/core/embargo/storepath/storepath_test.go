@@ -125,16 +125,91 @@ func TestLocateFindsTheRegisteredStoreUnderAnyKey(t *testing.T) {
 	}
 }
 
-// TestLocateIgnoresAStoreUnderAnotherHome: a store-shaped worktree under
-// some other home is not this home's store.
-func TestLocateIgnoresAStoreUnderAnotherHome(t *testing.T) {
+// TestStoreUnderAnotherHomeIsRefused: a store-shaped worktree of the
+// repository under some other home (sudo, a sandbox or an aliased HOME) is
+// the store this repository registered, so both Locate and Reachable refuse:
+// read as "no store", the check would pass clean and Locate would make a
+// second store here.
+func TestStoreUnderAnotherHomeIsRefused(t *testing.T) {
+	home := t.TempDir()
+	r, _ := newRepo(t, "2020-01-01T00:00:00Z")
+	addStore(t, r, t.TempDir(), key40)
+	if loc, err := storepath.Locate(home, r.Root()); !errors.Is(err, storepath.ErrStoreUnderAnotherHome) {
+		t.Fatalf("Locate = %+v, %v; want ErrStoreUnderAnotherHome", loc, err)
+	}
+	if reach, err := storepath.Reachable(home, r.Root()); !errors.Is(err, storepath.ErrStoreUnderAnotherHome) {
+		t.Fatalf("Reachable = %+v, %v; want ErrStoreUnderAnotherHome", reach, err)
+	}
+}
+
+// TestReachableReadsEveryLiveStoreUnderTheHome: the stores the check reads
+// are this repository's own and every live store under the home, whatever
+// repository it belongs to and whatever its key, in path order; a store
+// under another home is not read, and a folder under a key that is no full
+// object name is no store and is passed over.
+func TestReachableReadsEveryLiveStoreUnderTheHome(t *testing.T) {
 	home := t.TempDir()
 	r, root := newRepo(t, "2020-01-01T00:00:00Z")
-	addStore(t, r, t.TempDir(), key40)
-	loc, err := storepath.Locate(home, r.Root())
-	if err != nil || loc.Registered || loc.Path != abcdhome.Path(home, "worktrees", root, storepath.Name) {
-		t.Fatalf("Locate = %+v, %v; want this home's place, not registered", loc, err)
+	own := addStore(t, r, home, root)
+	other, _ := newRepo(t, "2001-01-01T00:00:00Z")
+	b := addStore(t, other, home, key64)
+	addStore(t, other, t.TempDir(), key40) // under another home: not read
+	third, _ := newRepo(t, "2010-01-01T00:00:00Z")
+	c := addStore(t, third, home, key40)
+	if err := os.MkdirAll(abcdhome.Path(home, "worktrees", "not-a-key", storepath.Name), 0o700); err != nil {
+		t.Fatal(err)
 	}
+	reach, err := storepath.Reachable(home, r.Root())
+	if err != nil || reach.Own != own || strings.Join(reach.Others, ",") != c+","+b {
+		t.Fatalf("Reachable = %+v, %v; want own %s and others [%s %s]", reach, err, own, c, b)
+	}
+}
+
+// TestReachableRefusesAPlaceThatIsNoLiveStore: a folder at a store's place
+// under any key, whatever repository the key names, that is no live
+// worktree, is refused, never passed over: it may be a store git lost track
+// of.
+func TestReachableRefusesAPlaceThatIsNoLiveStore(t *testing.T) {
+	home := t.TempDir()
+	r, _ := newRepo(t, "2020-01-01T00:00:00Z")
+	if err := os.MkdirAll(abcdhome.Path(home, "worktrees", key64, storepath.Name), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if reach, err := storepath.Reachable(home, r.Root()); !errors.Is(err, storepath.ErrPlaceUnread) {
+		t.Fatalf("Reachable = %+v, %v; want ErrPlaceUnread", reach, err)
+	}
+}
+
+// TestLocateRefusesRootsItCannotRead: with no store registered, a root
+// listing git fails, one with a line of a shape git never writes, and a HEAD
+// git fails to resolve are each ErrRootsUnread, and a repository with no
+// commit is ErrNoRootCommit: none is a place to make the store.
+func TestLocateRefusesRootsItCannotRead(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		when []string
+		out  string
+		code int
+	}{
+		{"a failed listing", []string{"rev-list", "--max-parents=0"}, "", 128},
+		{"a line of an unexpected shape", []string{"rev-list", "--max-parents=0"}, "yesterday " + key40 + "\n", 0},
+		{"a HEAD git fails to resolve", []string{"rev-parse", "HEAD^{commit}"}, "", 128},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			home := t.TempDir()
+			r, _ := newRepo(t, "2020-01-01T00:00:00Z")
+			gittest.ShimGit(t, tc.when, tc.out, tc.code)
+			if loc, err := storepath.Locate(home, r.Root()); !errors.Is(err, storepath.ErrRootsUnread) {
+				t.Fatalf("Locate = %+v, %v; want ErrRootsUnread", loc, err)
+			}
+		})
+	}
+	t.Run("no commit", func(t *testing.T) {
+		r := gittest.NewRepo(t)
+		if loc, err := storepath.Locate(t.TempDir(), r.Root()); !errors.Is(err, storepath.ErrNoRootCommit) {
+			t.Fatalf("Locate = %+v, %v; want ErrNoRootCommit", loc, err)
+		}
+	})
 }
 
 // TestLocateRefusesSeveralStores: two registered stores are refused.
