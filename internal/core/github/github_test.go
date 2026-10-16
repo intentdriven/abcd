@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
@@ -135,5 +136,26 @@ func TestPlainNameIsAnchored(t *testing.T) {
 		if got := PlainName(name); got != want {
 			t.Errorf("PlainName(%q) = %v, want %v", name, got, want)
 		}
+	}
+}
+
+// TestRunnerTimeoutWrapsErrTimeout: a gh that does not answer within Timeout
+// is reported as ErrTimeout, which callers tell apart by errors.Is rather than
+// by matching the message.
+func TestRunnerTimeoutWrapsErrTimeout(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	dir := t.TempDir()
+	script := "#!/usr/bin/env bash\nexec sleep 10\n"
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	defer func(d time.Duration) { Timeout = d }(Timeout)
+	Timeout = 200 * time.Millisecond
+	_, err := API(t.TempDir(), nil, "user")
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("a gh that never answers gave %v; want an error wrapping ErrTimeout", err)
 	}
 }

@@ -54,7 +54,7 @@ Ruled by the product thinker on 2026-09-21, in the interview that filed and plan
 1. Report, never refuse (adr-2609212115255771, decision 3).
 2. The target moves forward at the cut, so the field never goes stale.
 3. The field is optional and lives on the intent alone.
-4. A target the cut passes becomes `next`, whatever the following release is numbered, never a version number: the product thinker's ruling BS1 of 2026-09-29 (the dated entry of that day in `.abcd/work/DECISIONS.md`). The version a cut derives is the one it cuts, so a number written at the cut would name a release already out, which decision 2 exists to prevent. A target the cut passes is `next` (it named this release) or a tag at or below the one cut; a tag above it is still ahead and stays. Criterion 3 is worded to the ruling.
+4. A target the cut passes becomes `next`, whatever the following release is numbered, never a version number: the product thinker's ruling BS1 of 2026-09-29 (the dated entry of that day, [dcn-2609290000000007](../../../work/decisions/dcn-2609290000000007-the-product-thinker-answered-twenty-six.md)). The version a cut derives is the one it cuts, so a number written at the cut would name a release already out, which decision 2 exists to prevent. A target the cut passes is `next` (it named this release) or a tag at or below the one cut; a tag above it is still ahead and stays. Criterion 3 is worded to the ruling.
 
 ## Open Questions
 

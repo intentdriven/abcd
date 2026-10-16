@@ -317,8 +317,11 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 	// minimum is a whole second, so it stays inside them).
 	life = life.Truncate(time.Second)
 	p := &preparedAnnouncement{root: root, home: o.home(), now: o.now(), record: record}
-	if p.who, err = gitIdentity(root, "the announcement"); err != nil {
+	if p.who, err = gitIdentity(root); err != nil {
 		return nil, err
+	}
+	if p.who.Name == "" || p.who.Email == "" {
+		return nil, refuse("git has no user.name or user.email to author the announcement; set them, then retry; %s", nothingPushed)
 	}
 	// A hosted container's default identity is a tool's. An announcement is
 	// authored as the person who sends it, so it is refused here, before a
@@ -329,10 +332,11 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 			"name a tool, not a person, and an announcement is authored as the person who sends it; a coming change reads the "+
 			"person from the session's forge account instead; no announcement was sent, and %s", nothingPushed)
 	}
-	sender, err := resolveHolder(root, p.home, p.who.Email)
+	h, err := resolveHolder(root, p.who, o, false)
 	if err != nil {
 		return nil, err
 	}
+	sender := h.Login
 	key, err := copyKey(root)
 	if err != nil {
 		return nil, err

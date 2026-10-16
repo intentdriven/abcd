@@ -1030,8 +1030,16 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.",
-      "flags": []
+      "sentence": "Record a decision, list them bare, or mint an ADR with --adr: Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.",
+      "flags": [
+        {
+          "name": "adr",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd disembark",
@@ -3500,6 +3508,13 @@
           "name": "footprint",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "holder",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },

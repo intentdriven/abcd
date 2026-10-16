@@ -35,7 +35,7 @@ var outsideSentinels = map[string]string{
 	".abcd/development/intents/planned/itd-1-x.md":    "SENTINEL-INTENT",
 	".abcd/development/specs/open/spc-1-x.md":         "SENTINEL-SPEC",
 	".abcd/development/decisions/adrs/0001-x.md":      "SENTINEL-DECISION",
-	".abcd/work/DECISIONS.md":                         "SENTINEL-WORKING-DECISIONS",
+	".abcd/work/decisions/dcn-2609250000000001-x.md":  "SENTINEL-WORKING-DECISIONS",
 	".abcd/.work.local/NEXT.md":                       "SENTINEL-LOCAL-TIER",
 	".abcd/.work.local/transcripts/aaaa/records/x.md": "SENTINEL-LOCAL-TRANSCRIPT",
 }

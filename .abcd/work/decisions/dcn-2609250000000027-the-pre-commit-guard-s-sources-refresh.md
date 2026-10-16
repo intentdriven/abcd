@@ -1,0 +1,6 @@
+---
+id: dcn-2609250000000027
+slug: the-pre-commit-guard-s-sources-refresh
+date: 2026-09-25
+---
+2026-09-25 — The pre-commit guard's sources refresh (itd-76) finds its binary two ways until the product thinker rules on iss-2609250834251447, and the ruling may widen the second (finding 1 of the sources-lane review, adopted by the orchestrator as the safe shape). This repository's copy builds `./cmd/abcd` from the checkout, as `.githooks/commit-msg` does, and never runs an installed abcd; a tree that does not build is one warning line and the commit proceeds. The copy `abcd ahoy` scaffolds refreshes only when the clone opts in with `git config --local abcd.sourcesBinary <absolute path>`, a path to an executable regular file with no PATH search and never an environment variable, and otherwise prints one line and proceeds. That answers none of the three questions the ruling holds (how a scaffolded hook finds abcd, fail open or closed, default or opt-in): it is the shape that leaves them open, so AC3 holds in this repository and in a managed repository that opted in. In both copies the refresh updates an existing keyed private store only, relays the binary's own line, and names a legacy store's migration once per working tree (implementer of the sources fix round).

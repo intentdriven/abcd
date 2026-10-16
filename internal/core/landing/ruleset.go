@@ -23,12 +23,10 @@ var MergeMethods = map[string]string{"MERGE": "--merge", "SQUASH": "--squash", "
 
 // MergeRule is the ruleset mirror read at a commit: the merge queue's method
 // ("" when no merge queue gates the default branch), whether an active
-// ruleset on the default branch requires a person's approval (ruling AM1),
-// and whether a mirror exists at all.
+// ruleset on the default branch requires a person's approval (ruling AM1).
 type MergeRule struct {
 	Method   string
 	Approval bool
-	Mirrored bool
 }
 
 // MirrorError is a ruleset mirror that cannot be read into a merge rule:
@@ -132,7 +130,6 @@ func ReadMergeRule(repoRoot, base, def, at string) (MergeRule, error) {
 			r.Method = m
 		}
 	}
-	r.Mirrored = count > 0
 	return r, nil
 }
 

@@ -24,16 +24,53 @@ record's page (`abcd <record-id>`), as [`08-abcd.md`](08-abcd.md) states.
 | Verb | Bucket | Status |
 |---|---|---|
 
-## The two forms
+## The forms
 
 The verb takes one record, an issue or an intent in canonical id form, the two
 families a build or a drain takes, and does one of two things: it reserves the
-record, or it releases this copy's reservation of it. A reservation names every
+record, or it releases this copy's reservation of it. A third form, the
+holder query, takes no record and is described under "The holder" below. A reservation names every
 repository-relative path the work will change, one path to a flag, never split
 on commas, and the footprint is required. Its lease is from one minute to 24
 hours, two hours by default. A release takes no footprint, take-over or lease.
 Bare `abcd reserve` refuses as a usage error and points at `abcd peers`, which
 lists the reservations. The flags are in the appendix below.
+
+## The holder
+
+The holder is the person's GitHub username, worked out by the one holder
+resolver in `internal/core/claim` (invariant 10). When git's identity, read
+under the person's own configuration, is a person's (`user.name` and
+`user.email` both set, and not a machine identity as the attribution gate
+judges an author), the holder comes from the first of: `user.email` when it is
+a GitHub no-reply address; `reservation.github_username` in the machine layer
+of the configuration (`~/.abcd.noindex/config.json`), never the repository's
+own; and the account of the forge token `gh` resolves from this session's
+environment, which takes one
+call to GitHub's user endpoint (`gh api user`, through the one door to
+GitHub). When git's identity is not a person's (unset, or a machine's, as in a
+hosted container whose clone comes with a vendor identity while its token is
+the person's), the token alone names the holder, the machine key is skipped so
+that the author's address and the login come from the same account, and that
+account authors and commits the reservation as `<login>
+<id+login@users.noreply.github.com>`. The identity git had is then shown
+nowhere: in no output, commit, trailer, ref name or refusal. When no source
+names the holder the act is refused, the refusal naming the class of the
+failure and never the git identity it rejected.
+
+Only an explicit act asks the user endpoint: a reservation, a renewal, a
+take-over, a release, and the holder query. The renders that read reservations (the
+board, a record's page and `abcd peers`) never do, and when only the token
+could name the reader they treat the reader as unknown.
+
+The holder query prints `would reserve as <login> (from <source>)`, the
+source being `git`, `config` or `token`, or as JSON the document
+`{"login", "id", "noreply", "source"}` (`id` and `noreply` when known). It may
+make that one user-endpoint call in the same two cases as a reservation: when
+git's identity is a person's but neither its address nor the machine layer
+names the holder, and when git's identity is not a person's, whatever the
+machine layer says. It takes no record id and no other flag, and reserves,
+writes and pushes nothing. It exits 0 when the account is known and 2 when not.
 
 ## What it writes
 
@@ -129,6 +166,7 @@ Sub-verbs: none.
 | Flag | Type |
 |---|---|
 | `--footprint` | stringArray |
+| `--holder` | bool |
 | `--lease` | duration |
 | `--release` | bool |
 | `--take-over` | bool |

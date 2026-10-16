@@ -92,8 +92,8 @@ var caseFoldingFS = fsutil.CaseFoldingFS
 // the root is then cwd, as it is for any non-repo directory, and a .abcd at the
 // working directory is read. That is the working-directory read the refusal
 // below also leaves standing; making it refuse is a posture change, not a
-// bound on the walk (iss-2609251522588539, and its entry of 2026-09-25 in
-// .abcd/work/DECISIONS.md).
+// bound on the walk (iss-2609251522588539, and its entry of 2026-09-25,
+// dcn-2609250000000011).
 //
 // "Not a repository" and "a repository git will not answer for" are DIFFERENT
 // outcomes and only the first resolves to cwd with no walk. abcd runs git under

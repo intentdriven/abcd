@@ -510,7 +510,7 @@ func newSourceLedgerCommand(asJSON *bool, corpusFlag *string) *cobra.Command {
 	}
 	f := cmd.Flags()
 	f.StringVar(&repo, "repo", "", "the ledger's repository handle (default: this checkout's root commit, 12 hex digits)")
-	f.StringVar(&decision, "decision", "", "the decision influenced: a DECISIONS.md date, an ADR or intent id, or free text")
+	f.StringVar(&decision, "decision", "", "the decision influenced: a decision id, an ADR or intent id, or free text")
 	f.StringVar(&claim, "claim", "", "what was decided or claimed")
 	f.StringVar(&key, "source", "", "the source key")
 	f.StringVar(&locator, "locator", "", "where in the source (pp., §)")

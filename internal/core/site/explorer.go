@@ -40,6 +40,7 @@ const (
 	routeGraph        = "record/graph/"
 	routeFoundations  = "record/foundations/"
 	routeDevelopment  = "record/development/"
+	routeDecisionLog  = "record/decision-log/"
 	routeHealth       = "record/health/"
 	routeContributors = "contributors/"
 	routeReferences   = "references/"
@@ -133,6 +134,12 @@ func newExplorer(c *composer, export RecordExport, bib *Bibliography, recordRoot
 		e.glossaryByPath[en.Path] = en
 	}
 	e.terms = newTermLinker(entries)
+	// A decision is a record with a page of its own and a link target like any
+	// other; it is only the chart's node list it is kept out of.
+	for _, n := range export.Decisions {
+		e.byID[n.ID] = n
+		e.byPath[n.Path] = n
+	}
 	for _, n := range export.Nodes {
 		e.byID[n.ID] = n
 		e.byPath[n.Path] = n
@@ -221,6 +228,11 @@ func (e *explorer) Pages() (map[string]string, error) {
 			return nil, err
 		}
 	}
+	if e.hasDecisionLog() {
+		if err := add(routeDecisionLog, e.decisionLogPage); err != nil {
+			return nil, err
+		}
+	}
 	if e.hasReferences() {
 		if err := add(routeReferences, e.referencesPage); err != nil {
 			return nil, err
@@ -238,12 +250,14 @@ func (e *explorer) Pages() (map[string]string, error) {
 			pages[en.Route+"index.html"] = html
 		}
 	}
-	for _, n := range e.export.Nodes {
-		html, err := e.recordPage(n)
-		if err != nil {
-			return nil, err
+	for _, nodes := range [][]ExportNode{e.export.Nodes, e.export.Decisions} {
+		for _, n := range nodes {
+			html, err := e.recordPage(n)
+			if err != nil {
+				return nil, err
+			}
+			pages[RecordRoute(n)+"index.html"] = html
 		}
-		pages[RecordRoute(n)+"index.html"] = html
 	}
 	return pages, nil
 }
@@ -298,6 +312,9 @@ func (e *explorer) subnav(active string) string {
 	}
 	if e.hasDevelopment() {
 		tabs = append(tabs, tab{routeDevelopment, e.c.ui.RecordNav.Development})
+	}
+	if e.hasDecisionLog() {
+		tabs = append(tabs, tab{routeDecisionLog, e.c.ui.RecordNav.DecisionLog})
 	}
 	if e.pages.graph {
 		tabs = append(tabs, tab{routeGraph, e.c.ui.RecordNav.Graph})
@@ -487,6 +504,12 @@ func (e *explorer) dashboard() (string, error) {
 			sub = sub[:2]
 		}
 		b.WriteString(tileLinked(e.tileHref(typ), strconv.Itoa(n), ui.Tiles.ForType(typ), sub, ""))
+	}
+	// The decision records are counted apart from the stores above: they are
+	// not on the chart those tiles count for, and their one page is the log.
+	if e.hasDecisionLog() {
+		b.WriteString(tileLinked("/"+routeDecisionLog, strconv.Itoa(len(e.export.Decisions)),
+			ui.RecordNav.DecisionLog, nil, ""))
 	}
 
 	// The genealogy sits directly under the counts, folded shut: it is how the

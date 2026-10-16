@@ -38,7 +38,7 @@ func TestOpenQuestionsCountsListItemsAndNothingElse(t *testing.T) {
 
 // TestOpenQuestionsReadsTheSettledConvention pins the two markers the record
 // uses for a settled section, taken from the planned intents that carry them
-// (the 2026-09-25 DECISIONS entry): a section that opens with an italic
+// (the 2026-09-25 decision dcn-2609250000000028): a section that opens with an italic
 // "_All resolved …_" line (itd-111, itd-93), and an item explicitly marked
 // resolved or deferred (itd-76, itd-60, itd-117, itd-111). It stays
 // fail-closed: an item led "Open", an item that only points elsewhere, a
@@ -57,7 +57,7 @@ func TestOpenQuestionsReadsTheSettledConvention(t *testing.T) {
 			"- **Sampled re-surfacing** — graduated to its own\n  capture, iss-230.\n" +
 			"- **Refusal breadth** — resolved: deliberately narrow.\n", nil},
 		{"all four resolved (itd-93)", head +
-			"_All four resolved in the 2026-07-24 grill (see DECISIONS.md,\n2026-07-24 entries)._\n\n" +
+			"_All four resolved in the 2026-07-24 grill (see dcn-2607240000000003\nand dcn-2607240000000005)._\n\n" +
 			"- **Which surface scaffolds it?** RESOLVED: a `launch` sub-verb.\n", nil},
 		{"explicitly deferred, bold after the lead (itd-76)", head +
 			"- Ledger ownership once work spans machines: **explicitly deferred** (ruling, 2026-08-16).\n", nil},

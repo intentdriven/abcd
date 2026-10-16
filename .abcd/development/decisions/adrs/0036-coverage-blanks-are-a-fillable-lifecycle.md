@@ -14,7 +14,7 @@ related_adrs: [adr-35]
 
 ## Context
 
-[adr-35](0035-lifeboat-as-coverage-experiment.md) made a blank a first-class result: the coverage probe reports, for every brief section it cannot ground, what it searched and **the question a human must answer**. M2 built that — `abcd disembark probe` produces a per-section `{status, searched, question}` report, and the cross-repo aggregate settled the brief structure. The 2026-07-15 gate decision (recorded in `DECISIONS.md`) then made an operative call: `product/personas` is **manual** — not derivable from a repository, ever, and always a human's to write.
+[adr-35](0035-lifeboat-as-coverage-experiment.md) made a blank a first-class result: the coverage probe reports, for every brief section it cannot ground, what it searched and **the question a human must answer**. M2 built that — `abcd disembark probe` produces a per-section `{status, searched, question}` report, and the cross-repo aggregate settled the brief structure. The 2026-07-15 gate decision (recorded as [dcn-2607150000000001](../../../work/decisions/dcn-2607150000000001-the-lifeboat-coverage-experiment-s.md)) then made an operative call: `product/personas` is **manual** — not derivable from a repository, ever, and always a human's to write.
 
 That decision exposed a hole the plan implied but never named: **the coverage report knows what to ask, but nothing says who answers, or when, or where.** Three facts force the issue:
 

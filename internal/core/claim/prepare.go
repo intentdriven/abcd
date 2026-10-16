@@ -23,6 +23,11 @@ type Options struct {
 	// Embargo is the embargo check an announcement is held to (C5); nil
 	// refuses every announcement, since an unchecked one is never let through.
 	Embargo EmbargoCheck
+	// ForgeUser answers whose GitHub account the forge token gh resolves from
+	// the session's environment belongs to (login and numeric id): the user endpoint, asked only by an
+	// explicit act when git's identity names no holder. nil means the real
+	// call, `gh api user`; tests set it so none touches the network.
+	ForgeUser func(root string) (login string, id int64, err error)
 }
 
 func (o Options) now() time.Time {
@@ -96,12 +101,15 @@ type prepared struct {
 
 // prepare checks a request in the order the refusals promise: the id before
 // any ref name is formed, then the footprint and the lease before any git
-// runs, then the person's identity, holder and working copy from the
-// checkout. A reservation's message, and the tombstone that would release it,
+// runs, then the working copy and the caller's local checks (local, such as
+// Reserve's origin check), then the person's identity and holder. Every check
+// that can refuse on the checkout's own facts runs before the holder, so a
+// checkout refused locally never asks GitHub whose account the token is. A
+// reservation's message, and the tombstone that would release it,
 // are composed and measured against the cap and the outbound policy here too,
 // so a message that may not be written is refused before anything reaches the
 // remote, and a reservation accepted is one that can be released.
-func prepare(root string, req Request, o Options) (*prepared, error) {
+func prepare(root string, req Request, o Options, local ...func(root string) error) (*prepared, error) {
 	id, err := reservableID(req.Record)
 	if err != nil {
 		return nil, err
@@ -131,14 +139,26 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 		return nil, refuse("lease %s is outside %s to %s; %s", term, lease.Min, lease.Max, nothingPushed)
 	}
 	p := &prepared{root: root, id: id, req: req, lease: term, now: o.now(), label: o.assistedBy()}
-	if p.who, err = gitIdentity(root, "the reservation"); err != nil {
-		return nil, err
-	}
-	if p.holder, err = resolveHolder(root, o.home(), p.who.Email); err != nil {
-		return nil, err
-	}
 	if p.copy, err = copyKey(root); err != nil {
 		return nil, err
+	}
+	for _, check := range local {
+		if err := check(root); err != nil {
+			return nil, err
+		}
+	}
+	if p.who, err = gitIdentity(root); err != nil {
+		return nil, err
+	}
+	h, err := resolveHolder(root, p.who, o, true)
+	if err != nil {
+		return nil, err
+	}
+	p.holder = h.Login
+	if !p.who.person() {
+		// Git's identity is unset or a machine's: the token's account authors
+		// the reservation, so that identity never reaches a commit.
+		p.who = identity{Name: h.Login, Email: h.NoReply}
 	}
 	if !req.Release && !req.Renew {
 		// The reservation is measured by the longer of its own message and the

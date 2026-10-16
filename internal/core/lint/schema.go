@@ -34,6 +34,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -53,10 +54,12 @@ var (
 	// "no handle at all", which turns a well-formed link into a false blocker and
 	// leaves its reverse direction unchecked. `rdi` is here because a reading
 	// record's `duplicates:` and `refines:` may name an earlier reading item
-	// (ruling DQ2b, adr-2609300821558671), and that link must resolve too.
-	recordHandleRe = regexp.MustCompile(`(?i)\b(adr|itd|iss|spc|rdi)-(\d+)\b`)
+	// (ruling DQ2b, adr-2609300821558671), and that link must resolve too. `dcn`
+	// is here because a decision record is a record family like the four
+	// (itd-2609151138388536): a typed link may name one, and must resolve.
+	recordHandleRe = regexp.MustCompile(`(?i)\b(adr|itd|iss|spc|dcn|rdi)-(\d+)\b`)
 	// The same handle, anchored: a whole frontmatter id value and nothing else.
-	recordHandleFullRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc)-(\d+)$`)
+	recordHandleFullRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc|dcn)-(\d+)$`)
 	// A frontmatter id of ANY store, parsed by shape rather than against the
 	// cross-reference vocabulary above. The two are deliberately different sets:
 	// the vocabulary says which prefixes may appear in a cross-reference FIELD,
@@ -67,7 +70,7 @@ var (
 	anyHandleFullRe = regexp.MustCompile(`(?i)^([a-z]+)-(\d+)$`)
 	// recordHandleKinds renders the legal prefixes for a message, composed from the
 	// stores rather than spelled as a literal so it cannot drift from the pattern.
-	recordHandleKinds = "adr-N, itd-N, spc-N, or iss-N"
+	recordHandleKinds = "adr-N, itd-N, spc-N, iss-N, or dcn-N"
 	// Filename → id number for each store. An ADR filename is the zero-padded
 	// sequential form (0012-<slug>.md); the other three carry the prose handle and
 	// borrow the recordid resolver's OWN grammar, not a looser local copy.
@@ -84,6 +87,9 @@ var (
 	intentFileNumRe = recordid.FilenameNumRe("itd")
 	specFileNumRe   = recordid.FilenameNumRe("spc")
 	issueFileNumRe  = recordid.FilenameNumRe("iss")
+	// A decision record's filename is the prose-handle grammar too:
+	// dcn-<N>-<slug>.md, in one flat folder (adr-2610110925465593).
+	decisionFileNumRe = recordid.FilenameNumRe(decisions.Family)
 	// The reading families' filename and bucket grammars. A run directory is
 	// named for the run that minted it; a disposition directory is named for the
 	// ITEM it answers, which is what makes the status signal one directory probe
@@ -491,6 +497,20 @@ var recordStores = []recordStore{
 			why:   "a reframe is keyed to the reading record that occasioned it, and a join naming nothing joins nothing",
 			oneOf: issueschema.ReframeOccasionFamilies,
 		}}},
+	// The decision records (itd-2609151138388536, spc-2610110931381316): one
+	// flat folder of dcn-<id>-<slug>.md files, one per decision. Its required
+	// set is core/decisions' ONE declaration, the list the folder's reader
+	// refuses a record without, and that reader validates before it reads —
+	// decisions.List skips a record Parse refuses, and the record dispatcher
+	// reports it as skipped on read — so the store fails closed. It does not
+	// declare readerRefusesDuplicateKey: Parse does refuse a duplicated key, but
+	// that leg's refusal message is the issue ledger's own account, so the dcn
+	// store takes the store-neutral account instead. What only a decision must
+	// satisfy — its date is its id's stamp and the date its body opens with —
+	// is checkDecisionRecordShape's.
+	{prefix: decisions.Family, noun: "decision", nodeType: "decision",
+		fileNumRe: decisionFileNumRe, fileFamily: decisions.Family, filename: decisions.Family + "-<N>-<slug>.md",
+		requiredFields: decisions.Required, readerFailsClosed: true},
 	// The principles family (adr-2609021016270132, spc-2609020626042471): flat,
 	// slug-keyed, and declaring no required set here, because an untyped entry —
 	// a prose file with no frontmatter, which is every entry the family held when
@@ -723,12 +743,14 @@ func checkRecordSchema(repoRoot string, cfg RuleConfig) ([]Finding, error) {
 		out = append(out, checkRecordFilenameSlug(r, cfg.Severity, judged)...)
 		out = append(out, checkIssueRecordShape(r, cfg.Severity, judged)...)
 		out = append(out, checkReframeRecordShape(r, cfg.Severity, judged)...)
+		out = append(out, checkDecisionRecordShape(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordRequiredFields(r, cfg.Severity, judged)...)
 		out = append(out, checkRecordUnknownFields(r, cfg.Severity)...)
 		out = append(out, checkRecordJoins(r, index, retired, cfg)...)
 		out = append(out, checkRecordBucketField(r, cfg.Severity)...)
 		if len(out) == before {
 			out = append(out, checkIssueReaderParity(r, cfg.Severity)...)
+			out = append(out, checkDecisionReaderParity(r, cfg.Severity)...)
 		}
 		out = append(out, checkIssueBodyRenders(r, cfg.Severity)...)
 		out = append(out, checkRecordGroundsBullets(r, cfg.Severity)...)
@@ -2509,4 +2531,91 @@ func setextUnderlineLines(lines []string) []int {
 		out = append(out, i+1)
 	}
 	return out
+}
+
+// decisionBodyDateRe reads the date a decision record's body opens with.
+var decisionBodyDateRe = regexp.MustCompile(`^([0-9]{4}-[0-9]{2}-[0-9]{2})`)
+
+// checkDecisionRecordShape judges what only a decision record must satisfy:
+// its `date` is the day its id's mint stamp carries, and the date its body
+// opens with. The record states its date three times — in the id, in the
+// field, in the body's first words — because the id orders it, the field is
+// what a reader lists it by, and the body reads like the line of the old log
+// it replaces (spc-2610110931381316, "The record"). Three statements of one
+// fact are one fact only while they agree, and the folder's reader
+// (decisions.Parse) refuses a record where they do not, so a disagreement is a
+// record every decision surface skips.
+//
+// An absent or blank date is the required-fields leg's to report; this leg
+// stays silent on it rather than adding a second finding.
+func checkDecisionRecordShape(r schemaRecord, severity string, judged map[string]bool) []Finding {
+	if r.store.prefix != decisions.Family {
+		return nil
+	}
+	f, present := r.fields["date"]
+	if !present || r.valueEmpty("date", f) {
+		return nil
+	}
+	date := r.scalar(f.value)
+	line := f.line
+	if line == 0 {
+		line = 1
+	}
+	finding := func(msg string) []Finding {
+		mark(judged, "date")
+		return []Finding{{File: r.rel, Line: line, RuleID: ruleRecordSchema, Severity: severity, Message: msg}}
+	}
+	const skipped = "; the decisions reader refuses the record, so every decision surface skips it"
+	stamp := recordid.DateFromStamp(strconv.Itoa(r.num))
+	if stamp == "" {
+		return finding("the id " + r.handle() + " carries no mint stamp to date it by; a decision id is " +
+			decisions.Family + "- plus the twelve-digit UTC stamp it was minted at and four digits" + skipped)
+	}
+	if date != stamp {
+		return finding("date '" + date + "' is not the day its id's stamp carries " + stamp +
+			"; a decision's date is read off its id, never off a second clock" + skipped)
+	}
+	lines := strings.Split(strings.ReplaceAll(r.content, "\r\n", "\n"), "\n")
+	first := ""
+	for _, ln := range lines[min(recordBodyStart(lines), len(lines)):] {
+		if strings.TrimSpace(ln) != "" {
+			first = ln
+			break
+		}
+	}
+	m := decisionBodyDateRe.FindStringSubmatch(first)
+	if m == nil {
+		return finding("the body does not open with the record's date, " + date +
+			"; a decision's body is `<date> — <text>`, as each entry of the retired log was" + skipped)
+	}
+	if m[1] != date {
+		return finding("date '" + date + "' disagrees with the date its body opens with " + m[1] + skipped)
+	}
+	return nil
+}
+
+// checkDecisionReaderParity hands a decision record to the folder's reader
+// itself, decisions.Parse, and reports a refusal: the issue store's parity leg,
+// for the same reason. The store declares readerFailsClosed, so a record the
+// reader refuses is skipped by every decision surface, and a gate that judged it
+// by its own reading of the grammar would pass a record no surface reads — a
+// zero-padded filename id, for one, is the same handle to this rule's numeric
+// compare and a disagreement to the reader. It runs only where no other leg has
+// spoken about the record, so a defect a leg already named is not named twice,
+// and it stays silent on a duplicated key, which the scan has already reported.
+func checkDecisionReaderParity(r schemaRecord, severity string) []Finding {
+	if r.store.prefix != decisions.Family {
+		return nil
+	}
+	if len(frontmatterDuplicates(strings.Split(r.content, "\n"))) > 0 {
+		return nil
+	}
+	if _, err := decisions.Parse(r.rel, []byte(r.content)); err != nil {
+		return []Finding{{
+			File: r.rel, Line: 1, RuleID: ruleRecordSchema, Severity: severity,
+			Message: "the decisions reader refuses this record (" + err.Error() +
+				") and skips it, so it is invisible to every decision surface while it sits in the folder",
+		}}
+	}
+	return nil
 }

@@ -162,7 +162,7 @@ lands Approach steps 1, 2 and 6 and leaves the spec open.
 
 **The layered resolver** has one home, `internal/core/layered`, and every
 consumer reads through it. Both file families are recorded in
-`.abcd/work/DECISIONS.md` (2026-09-25):
+[dcn-2609250000000005](../../../work/decisions/dcn-2609250000000005-the-layered-configuration-resolver-has.md):
 
 - `layered.Config`: `.abcd/config.json` and `~/.abcd/config.json`, holding
   `pace.*`, `oracle.review`, `roles.<role>.runner` and `match.threshold`;
@@ -198,7 +198,7 @@ Its API:
 Also delivered: the tier enum, the bundled proposal and its roster test, and the
 ceiling clamp.
 
-**Two rulings this part took** (DECISIONS, 2026-09-25):
+**Two rulings this part took** ([dcn-2609250000000006](../../../work/decisions/dcn-2609250000000006-two-rulings-for-the-model-tier-routing.md)):
 
 - The bundled proposal applies only once a repository or machine table exists,
   and a `--route` accepts nothing.
@@ -246,7 +246,7 @@ Approach steps 3, 4 and 5 and closes this spec with a remainder.
   the request document, outside the hashed prompt.
 - The receipt is a `route` member on every ingest's result.
 
-**Shape decisions** (recorded in `.abcd/work/DECISIONS.md`, 2026-09-25):
+**Shape decisions** (recorded in [dcn-2609250000000008](../../../work/decisions/dcn-2609250000000008-three-shape-rulings-for-the-model-tier.md)):
 
 - The verbs are seven, not eight. `memory ingest` has no roster agent: its
   distiller is the host session.
@@ -276,6 +276,6 @@ Fix round 1 on the same branch (autonomous run A, 2026-09-25), after review:
   other agent, before anything runs, rather than merging or ignoring it. The
   refusal names the invocation, not the verb. The plan's "a second flag for
   another agent merges" (item 7 above) is superseded; the ruling is in
-  `.abcd/work/DECISIONS.md` (2026-09-25).
+  [dcn-2609250000000009](../../../work/decisions/dcn-2609250000000009-one-route-per-delegating-invocation-for.md).
 - The request `spec close` emits when it ships an intent carries the
   `## Routing` section, as `intent audit <itd-N>` does.

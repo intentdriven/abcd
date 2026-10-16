@@ -1,0 +1,6 @@
+---
+id: dcn-2609010000000006
+slug: the-strict-up-to-date-policy-stays-in
+date: 2026-09-01
+---
+2026-09-01 — The strict up-to-date policy stays in front of the merge queue, and the branch update is automated instead (maintainer, ruling on iss-2609012202237613 against the two directions it names). Every auto-merge pull request opened tonight sat `BEHIND` outside the queue until a hand-run update, because auto-merge enqueues only a CLEAN pull request and the strict policy makes a behind pull request never CLEAN; the queue that exists to test a pull request against the current base therefore never received it. The queue's group commit does gate the merged result, so dropping strict would preserve the duplicate-id gate iss-172 records as an invariant, but the maintainer keeps strict and ships iss-172's first rung: `scripts/pr-keep-current.sh` walks every armed pull request and asks the forge to merge the base into any that is `BEHIND` and not queued, `--watch` repeating until none is armed. Rejected for now: relaxing strict (belt and braces are kept on purpose); a scaffolded update-branch workflow (rung 2, still needing a token whose pushes trigger checks, carried by itd-107). CONTRIBUTING no longer claims branches never need updating.

@@ -43,7 +43,7 @@ const (
 // github.event.before`. A merge_group payload carries NEITHER — it names its
 // base as `merge_group.base_sha` — so on a merge-queue entry the expression
 // resolved to the empty string and each step took its own no-base branch: the
-// issue-resolution range check and the decisions-append check announced "no
+// issue-resolution range check and the decisions-append check (since retired) announced "no
 // usable base ref for this event" and exited 0, and record-lint downgraded to
 // its unarmed run. That inverts the protection. The queue entry is the run that
 // actually gates the merge, and the ONLY run that sees the final base after a
@@ -167,7 +167,7 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 					"    -> %q\n"+
 					"  want %q — %s\n\n"+
 					"A step that cannot name a base takes its no-base branch: the issue-resolution "+
-					"and decisions-append checks announce that they were skipped and exit 0, and "+
+					"check announces that it was skipped and exits 0, and "+
 					"record-lint drops its unbumped-edit arm. Extend the fallback chain so this "+
 					"event resolves a base, or make the step judge the event itself.",
 					rel, step.envLine["BASE_SHA"], step.name, ev.name, raw, actionsexpr.Stringify(got), ev.want, ev.why)
@@ -178,8 +178,7 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 			// refuse a base rather than assume the expression only ever yields
 			// a good one. Either shape counts: comparing against the
 			// placeholder, or asking git whether the commit exists.
-			if !strings.Contains(step.body, absentSHA) && !strings.Contains(step.body, "git cat-file -e") &&
-				!delegatesBaseGuard(step.body) {
+			if !strings.Contains(step.body, absentSHA) && !strings.Contains(step.body, "git cat-file -e") {
 				t.Errorf("%s line %d, step %q accepts whatever BASE_SHA holds without refusing an "+
 					"unusable base.\n\nThe nightly and dispatched runs hand it the empty string by "+
 					"design. Guard on an empty value and on %q, or probe with `git cat-file -e`, "+
@@ -195,55 +194,15 @@ func TestEveryRangeScopedGateResolvesABaseOnEveryEvent(t *testing.T) {
 		t.Errorf("no step in %s declares a `BASE_SHA:` env; the env parser has lost its shape, "+
 			"and this gate is asserting nothing", rel)
 	}
-	if inScope < 3 {
+	if inScope < 2 {
 		t.Errorf("%s holds %d range-scoped gate(s) declaring BASE_SHA without judging the event "+
-			"themselves (%d exempt); three existed when this test was written — record-lint's "+
-			"`-agent-diff` arm, the issue-resolution range check, and the decisions-append check.\n\n"+
-			"This is a FLOOR, not the set: the set is derived, so a fourth gate is covered by "+
+			"themselves (%d exempt); two remained when the decisions-append check was retired with "+
+			"the single decision log — record-lint's `-agent-diff` arm and the issue-resolution range "+
+			"check.\n\n"+
+			"This is a FLOOR, not the set: the set is derived, so a third gate is covered by "+
 			"existing. A count below the floor means either the step parser lost its shape or a "+
 			"gate stopped being range-scoped, and both deserve a look.", rel, inScope, exempt)
 	}
-}
-
-// baseGuardingGates are the range gates that derive their own base through
-// gitutil.ResolveRangeBase — the one Go derivation of "is this base usable",
-// which announces a skip for an empty value or the all-zeroes placeholder and
-// refuses a sha that resolves to nothing. A step that hands BASE_SHA straight to
-// one of them has not skipped the guard; it has moved it where it is written
-// once and tested (TestResolveRangeBase, TestDecisionsAppendSkipsWithoutAUsableBase
-// and TestDecisionsAppendFaults). A gate joins this list only with such a test.
-//
-// Each entry is a WHOLE run line, matched exactly: the exemption covers the
-// step, so the step's entire script must be the delegated invocation. A
-// substring match would let a step keep the allowed command and hand BASE_SHA
-// to a second, unguarded one beside it.
-var baseGuardingGates = []string{
-	`go run ./cmd/record-lint decisions-append "$BASE_SHA" HEAD`,
-}
-
-var runLineRe = regexp.MustCompile(`^\s*run:\s*(.*)$`)
-
-// delegatesBaseGuard reports whether a step's script is exactly one allowed
-// base-guarding invocation: a single single-line `run:` whose value is an
-// entry of baseGuardingGates. A block scalar (`run: |`), a second `run:` key,
-// a trailing comment or anything else on the line fails closed, and the step
-// is then held to the explicit guard like any other.
-func delegatesBaseGuard(body string) bool {
-	var runs []string
-	for _, l := range strings.Split(body, "\n") {
-		if m := runLineRe.FindStringSubmatch(l); m != nil {
-			runs = append(runs, strings.TrimSpace(m[1]))
-		}
-	}
-	if len(runs) != 1 {
-		return false
-	}
-	for _, g := range baseGuardingGates {
-		if runs[0] == g {
-			return true
-		}
-	}
-	return false
 }
 
 // withoutSubtree nulls every context path under a prefix — the payload subtree
@@ -354,46 +313,4 @@ func judgesTheEventItself(step workflowStep) bool {
 		return false
 	}
 	return eventNameRe.MatchString(step.body)
-}
-
-// TestBaseGuardDelegationCoversTheWholeStep holds the delegation exemption to
-// the step, not to a substring of it. A step earns it only when its whole
-// script IS the base-guarding gate's invocation: a step that keeps the
-// allowed command and also hands BASE_SHA to something else has an unguarded
-// use, and the exemption must not cover it.
-func TestBaseGuardDelegationCoversTheWholeStep(t *testing.T) {
-	const gate = `go run ./cmd/record-lint decisions-append "$BASE_SHA" HEAD`
-	step := func(run string) string {
-		return "steps:\n" +
-			"      - name: Decisions ledger is append-only\n" +
-			"        env:\n" +
-			"          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}\n" +
-			"        run: " + run + "\n"
-	}
-	block := func(lines ...string) string {
-		return "|\n          " + strings.Join(lines, "\n          ")
-	}
-	cases := []struct {
-		name string
-		yaml string
-		want bool
-	}{
-		{"the gate's invocation alone is delegated", step(gate), true},
-		{"a second, unguarded use on the same line is not", step(gate + ` && git log --oneline "$BASE_SHA"..HEAD`), false},
-		{"a second, unguarded use on its own line is not", step(block(gate, `git diff "$BASE_SHA" HEAD`)), false},
-		{"a second use spelled with braces is not", step(block(gate, `git diff "${BASE_SHA}" HEAD`)), false},
-		{"the gate's text inside another command is not", step(`echo ` + gate), false},
-		{"the gate's text in a comment above another command is not", step(block("# "+gate, `git diff "$BASE_SHA" HEAD`)), false},
-	}
-	for _, c := range cases {
-		t.Run(c.name, func(t *testing.T) {
-			steps, err := workflowSteps(c.yaml)
-			if err != nil || len(steps) != 1 {
-				t.Fatalf("fixture parsed into %d step(s), err %v", len(steps), err)
-			}
-			if got := delegatesBaseGuard(steps[0].body); got != c.want {
-				t.Fatalf("delegatesBaseGuard = %v, want %v, for the step:\n%s", got, c.want, steps[0].body)
-			}
-		})
-	}
 }

@@ -15,7 +15,7 @@ resolved_by:
   commit: "08e3f5e3"
 ---
 
-The shell guard reported a command whose program name is a command substitution under whichever registry entry fired first, with that entry lesson: killall-by-name telling an agent to stop a build command by its pid, where the way past the recorded over-block is to spell the program name. The over-block is also wider than the DECISIONS line states: any command word whose basename ends in a substitution, with any operand (review4-guard finding 4).
+The shell guard reported a command whose program name is a command substitution under whichever registry entry fired first, with that entry lesson: killall-by-name telling an agent to stop a build command by its pid, where the way past the recorded over-block is to spell the program name. The over-block is also wider than the decision [dcn-2609250000000015](../../decisions/dcn-2609250000000015-correction-to-the-entry-above-on-the.md) states: any command word whose basename ends in a substitution, with any operand (review4-guard finding 4).
 
 ## Grounds
 

@@ -1,0 +1,6 @@
+---
+id: dcn-2608300000000015
+slug: itd-179-round-4-the-grounds-floor-s
+date: 2026-08-30
+---
+2026-08-30 — itd-179 round-4: the grounds floor's character half counts LETTERS (`MinTextLetters = 20`, `isTextLetter`) and is asked AFTER the unit half. Both halves stay, as the round-3 entry above requires — what changes is the unit each is measured in and the order they are asked in. A rune count is answered by whatever occupies a rune: `a b c` plus seventeen dots cleared twenty "characters" carrying three letters of reasoning, and a text of Hangul fillers cleared the whole floor while rendering as nothing end to end. Rejected: asking the letter count first, which makes the scriptio-continua refusal unreachable — every unit that refusal speaks for is a single letter, so a text with twenty letters has twenty units and can never be below the three-unit floor, and one with fewer would be refused for its letters instead. Rejected: filtering only the zero-width format characters, which leaves the filler class open because U+115F, U+1160, U+3164 and U+FFA0 are category Lo; `unicode.Other_Default_Ignorable_Code_Point` names exactly those four letters and nothing else. Corpus: the 25 recorded grounds texts in the tree are refused by neither the old floor nor the new one.

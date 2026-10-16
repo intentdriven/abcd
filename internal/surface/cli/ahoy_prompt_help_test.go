@@ -119,7 +119,7 @@ func TestStdinPrompterSaysWhereAFlaglessAnswerIsChangedLater(t *testing.T) {
 func TestAhoyInstallShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
 	hermeticEnv(t)
 	tracked := gittest.NewRepo(t)
-	tracked.Write(".abcd/work/DECISIONS.md", "- a decision\n")
+	tracked.Write(".abcd/work/decisions/README.md", "# Decisions\n")
 	tracked.Commit("record tier")
 	untracked := gittest.NewRepo(t)
 

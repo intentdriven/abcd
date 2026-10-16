@@ -57,8 +57,8 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   not a question; the same word and colon mid-sentence are prose.
   Every other list item is a question whatever it says: one led `**Open`, one
   that only points to another record, and one that merely mentions deferral
-  all count (the 2026-09-25 entry in `.abcd/work/DECISIONS.md`, and its
-  2026-09-28 correction).
+  all count (the 2026-09-25 decision [dcn-2609250000000028](../../../work/decisions/dcn-2609250000000028-the-build-s-open-question-check-reads.md), and its
+  2026-09-28 correction [dcn-2609280000000008](../../../work/decisions/dcn-2609280000000008-correction-to-the-2026-09-25-entry-on.md)).
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to
@@ -565,8 +565,11 @@ still the base's: the intent and the spec whole, the conventions of `AGENTS.md` 
 section between `<!-- working-conventions … -->` and
 `<!-- /working-conventions -->` when it marks one, the whole file when it does
 not), and the decisions the intent cites (each ADR id in the intent, with its
-title and path, and every entry of `.abcd/work/DECISIONS.md` that names the
-intent or its spec). It opens by naming each source and the base it was read
+title and path; every decision record in `.abcd/work/decisions/` whose text
+names the intent or its spec, in id order, with any such file the record reader
+refuses named rather than quoted; and, in a managed repository that kept its
+frozen single log, every entry of it naming either). An issue lane's brief
+quotes the decisions naming the issue the same way. It opens by naming each source and the base it was read
 at, then gives the lane (the spec step it builds, the worktree, the branch), the
 spec's steps before the lane's (itd-2609212103565953, criterion 4), each with
 what landed it — the `landed:` line the spec at the base records, and the lane

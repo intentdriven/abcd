@@ -41,14 +41,11 @@ go.work.sum
 
 # Tier 3 — local-only working material (session/agent handover, scratch, logs).
 # Committed dev material lives in .abcd/development/ (durable record) and
-# .abcd/work/ (shared CONTEXT.md + DECISIONS.md); only Tier 3 is local.
+# .abcd/work/ (shared CONTEXT.md + decisions/); only Tier 3 is local.
 .abcd/.work.local/
 
 # capture ledger allocator lock (runtime artefact)
 .abcd/work/issues/.iss-alloc.lock
-
-# decision-log append lock (runtime artefact)
-.abcd/work/.decisions.lock
 
 # bibliography export for LaTeX toolchains — derived on demand from
 # .abcd/development/research/references.csl.json, never committed

@@ -1,0 +1,6 @@
+---
+id: dcn-2610120000000002
+slug: an-existing-abcd-home-is-narrowed-to-the
+date: 2026-10-12
+---
+2026-10-12 — An existing abcd home is narrowed to the account's alone, reversing the 2026-10-04 decision that it keeps the mode it has (iss-2610120949163534), on the security standard ruling of 2026-10-11 (abcd fixes the risks it adds): a home made 0755 by an earlier abcd or by hand leaves every folder abcd keeps in it (worktrees, runs, history, lab, sources) readable by the other accounts in the home directory's group. At the CLI front door, before any verb runs, a ~/.abcd.noindex this account owns that is a real directory has its group and other bits removed (fsutil.NarrowToOwner, on the opened descriptor, never following a symlink); a symlinked home, one another account owns and an absent one are left alone, and nothing below the home is walked or re-moded, because closing the home closes everything in it. A lane worktree git adds into the store is narrowed the same way after the add. Writers keep their contract that a folder they find keeps its mode; only the home itself is narrowed. Not chosen: re-moding every folder below the home, which would change folders a person may have opened deliberately and gains nothing once the home is closed.
