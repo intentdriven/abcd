@@ -77,7 +77,7 @@ block's own fields.
 
 ## The prompt hook's block
 
-`abcd hook prompt-router` appends a `## STATUS` block to the text it injects
+The prompt hook appends a `## STATUS` block to the text it injects
 when this checkout holds something it has not shown: a failed fetch per
 namespace, a release being cut ("release v0.16.0 being cut by @maya: merges
 are held", C8), a doubtful branch, and the newest announcement per item, at
