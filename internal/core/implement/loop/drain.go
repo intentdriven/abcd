@@ -368,15 +368,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			st.Judging, write = nil, true
 		}
 		if clauses := holds.settle(st.Judging); len(clauses) > 0 {
-			res.Next += "; " + strings.Join(clauses, "; ")
+			res.Next = joinNext(append([]string{res.Next}, clauses...)...)
 			write = true
 		}
 		if lapse != "" {
-			res.Next += "; " + lapse
+			res.Next = joinNext(res.Next, lapse)
 			write = true
 		}
 		if viewUnread != "" {
-			res.Next += "; " + viewUnread
+			res.Next = joinNext(res.Next, viewUnread)
 		}
 		if write {
 			st.UpdatedAt = now
@@ -392,10 +392,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		res.NextEligibleAt, res.Stopped, res.Complete = st.NextEligibleAt, st.Stopped, st.Stopped != ""
 		if note := finishedNote(res.Finished); note != "" {
-			res.Next = note + "; " + res.Next
+			res.Next = joinNext(note, res.Next)
 		}
 		if recovered != "" {
-			res.Next = recovered + "; " + res.Next
+			res.Next = joinNext(recovered, res.Next)
 		}
 		res.OriginWait = st.OriginWait
 		res.Counts = drainCounts(repoRoot, st, res.Flags, res.Passed)
@@ -403,7 +403,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// outage stop is taken before the lane in progress is read, so a
 		// drain can stop with a lane still mid-flight.
 		if res.Complete && res.Counts.PullRequests == 0 && res.Counts.LanesOpened > 0 && res.Counts.InProgress == 0 {
-			res.Next += "; no lane ended in a pull request, which is a normal ending: every lane's outcome and hand-back is above"
+			res.Next = joinNext(res.Next, "no lane ended in a pull request, which is a normal ending: every lane's outcome and hand-back is above")
 		}
 		if i := slices.IndexFunc(st.Lanes, func(l DrainLane) bool { return l.Outcome == DrainLaneInProgress }); i >= 0 {
 			l := st.Lanes[i]
@@ -734,6 +734,18 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	st.Stopped, st.EndedAt = DrainStoppedEmpty, &now
 	res.Next = fmt.Sprintf("nothing eligible is left: the drain opened %d lane(s) and ends here", len(st.Lanes))
 	return finish(true)
+}
+
+// joinNext joins the clauses of a move's next step that are not empty with
+// "; ", so a step that was empty never starts or ends with the separator.
+func joinNext(parts ...string) string {
+	kept := make([]string, 0, len(parts))
+	for _, p := range parts {
+		if p != "" {
+			kept = append(kept, p)
+		}
+	}
+	return strings.Join(kept, "; ")
 }
 
 // ownHold is this copy's live reservation of id in view, when its footprint

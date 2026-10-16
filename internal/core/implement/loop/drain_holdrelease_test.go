@@ -410,3 +410,22 @@ func TestAPanicReleasesTheReservationTakenForTheJudgement(t *testing.T) {
 	}()
 	releasedOver(t, bare, secondIssue, taken)
 }
+
+// TestAMovesNextJoinsOnlyTheClausesItHas: the clauses a move adds to its next
+// step are joined by "; " with no empty clause between or around them, so a
+// next step that was empty never starts with the separator.
+func TestAMovesNextJoinsOnlyTheClausesItHas(t *testing.T) {
+	for _, c := range []struct {
+		parts []string
+		want  string
+	}{
+		{[]string{"", "released the reservation"}, "released the reservation"},
+		{[]string{"ask the judgement", "", "released the reservation"}, "ask the judgement; released the reservation"},
+		{[]string{"", ""}, ""},
+		{[]string{"the view could not be read", ""}, "the view could not be read"},
+	} {
+		if got := joinNext(c.parts...); got != c.want {
+			t.Errorf("joinNext(%q) = %q; want %q", c.parts, got, c.want)
+		}
+	}
+}
