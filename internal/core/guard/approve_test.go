@@ -23,7 +23,7 @@ func TestApproveAllowsWhatTheGuardClears(t *testing.T) {
 		"python3 scripts/check.py",
 		`git commit -m "$(cat msg.txt)"`,
 	} {
-		if a := ApproveShell(clean(), NewFiles(dir), c); !a.Allow {
+		if a := approveShell(clean(), NewFiles(dir), c); !a.Allow {
 			t.Errorf("%q: refused (%s): %s", c, a.EntryID, a.Reason)
 		}
 	}
@@ -33,7 +33,7 @@ func TestApproveAllowsWhatTheGuardClears(t *testing.T) {
 // guard's own sentence, the why and the successor, so the agent can rewrite
 // the command.
 func TestApproveRefusesAHazardWithItsReason(t *testing.T) {
-	a := ApproveShell(clean(), NewFiles(t.TempDir()), "git push --force origin main")
+	a := approveShell(clean(), NewFiles(t.TempDir()), "git push --force origin main")
 	if a.Allow {
 		t.Fatal("a force push was approved")
 	}
@@ -46,7 +46,7 @@ func TestApproveRefusesAHazardWithItsReason(t *testing.T) {
 // TestApproveRefusesAWarn: a warn is a command the guard cannot vouch for, so
 // unattended it is refused, not run with the warning shown to nobody.
 func TestApproveRefusesAWarn(t *testing.T) {
-	a := ApproveShell(clean(), NewFiles(t.TempDir()), "git reset --hard origin/main")
+	a := approveShell(clean(), NewFiles(t.TempDir()), "git reset --hard origin/main")
 	if a.Allow || a.EntryID != "git-reset-hard" {
 		t.Fatalf("a warn-tier hazard: %+v", a)
 	}
@@ -63,7 +63,7 @@ func TestApproveRefusesAScriptItCannotRead(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "big.sh"), []byte(big), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	a := ApproveShell(clean(), NewFiles(dir), "sh big.sh")
+	a := approveShell(clean(), NewFiles(dir), "sh big.sh")
 	if a.Allow {
 		t.Fatal("a script the guard did not read was approved")
 	}
@@ -99,7 +99,7 @@ func TestApproveRefusesWhatTheGuardDidNotRead(t *testing.T) {
 		`python3 $FLAGS 'x'`:            inlineCodeEntryID,
 		`sh missing.sh`:                 checkNoteEntryID,
 	} {
-		a := ApproveShell(clean(), NewFiles(dir), c)
+		a := approveShell(clean(), NewFiles(dir), c)
 		if a.Allow {
 			t.Errorf("%q was approved", c)
 			continue
@@ -124,7 +124,7 @@ func TestApproveRefusesWithoutTheRegistryInForce(t *testing.T) {
 		"dropped":     {Registry: Defaults(), Posture: LoadRepoDropped, Err: errors.New("bad guard.json")},
 		"unavailable": {Posture: LoadUnavailable},
 	} {
-		if a := ApproveShell(ld, NewFiles(t.TempDir()), "go test ./..."); a.Allow || a.Reason == "" {
+		if a := approveShell(ld, NewFiles(t.TempDir()), "go test ./..."); a.Allow || a.Reason == "" {
 			t.Errorf("%s: %+v", name, a)
 		}
 	}
@@ -173,7 +173,7 @@ func TestApprovePromptJudgesOnlyTheShell(t *testing.T) {
 // file, with its own flags, is not handed inline code.
 func TestApproveLeavesScriptFilesToTheirInterpreter(t *testing.T) {
 	for _, c := range []string{"pwsh -File build.ps1", "perl -Ilib -Mstrict t/run.pl", "node --version", "ruby -rjson x.rb", "deno run main.ts"} {
-		if a := ApproveShell(clean(), NewFiles(t.TempDir()), c); !a.Allow {
+		if a := approveShell(clean(), NewFiles(t.TempDir()), c); !a.Allow {
 			t.Errorf("%q: refused (%s): %s", c, a.EntryID, a.Reason)
 		}
 	}
@@ -222,7 +222,7 @@ func TestApproveKeepsTheHostsOwnSafetyRefusals(t *testing.T) {
 		`rm "$f"`:                                  criticalRemovalEntryID,
 		`rm -rf ~bob`:                              criticalRemovalEntryID,
 	} {
-		a := ApproveShell(clean(), NewFiles(dir), c)
+		a := approveShell(clean(), NewFiles(dir), c)
 		if a.Allow {
 			t.Errorf("%q was approved", c)
 			continue
@@ -235,7 +235,7 @@ func TestApproveKeepsTheHostsOwnSafetyRefusals(t *testing.T) {
 	}
 	for _, c := range []string{"rm -rf build", "rm -f /tmp/abcd-x/out.txt", "rm -rf " + filepath.Join(dir, "build"),
 		"git add .gitignore", "cat .github/workflows/ci.yml > ci.copy", "rm -- -weird-name"} {
-		if a := ApproveShell(clean(), NewFiles(dir), c); !a.Allow {
+		if a := approveShell(clean(), NewFiles(dir), c); !a.Allow {
 			t.Errorf("%q: refused (%s): %s", c, a.EntryID, a.Reason)
 		}
 	}

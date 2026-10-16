@@ -156,7 +156,7 @@ var wordReaders = map[string]string{
 
 	// approve.go: the approver refuses a word holding an unknown mark at every
 	// place it reads one, so an unknown word never reads as a clearance.
-	"ApproveShell":    "commandSites: every place a command can sit; a name holding an unknown mark is refused",
+	"approveShell":    "commandSites: every place a command can sit; a name holding an unknown mark is refused",
 	"criticalRemoval": "commandSites and precededByCD; an operand holding an unknown mark is refused as a critical target",
 	"pwshCode":        "exempt: compares a known word with PowerShell's parameter names; inlineCode refuses a word holding an unknown mark before it",
 }

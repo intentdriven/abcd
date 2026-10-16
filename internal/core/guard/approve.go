@@ -100,7 +100,7 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 			"the shell call carries no command string the guard can read, so nothing was checked.",
 			"the same call with its command as one plain string."), nil
 	}
-	a := ApproveShell(ld, files, command)
+	a := approveShell(ld, files, command)
 	if !a.Allow {
 		return a, nil
 	}
@@ -111,9 +111,9 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 	return a, updated
 }
 
-// ApproveShell answers a prompt for one shell command line, read against ld's
+// approveShell answers a prompt for one shell command line, read against ld's
 // registry with files as the directory it runs in.
-func ApproveShell(ld Loaded, files *Files, command string) Approval {
+func approveShell(ld Loaded, files *Files, command string) Approval {
 	switch ld.Posture {
 	case LoadUnavailable:
 		return refusal(registryEntryID, "no hazard registry is loaded, so nothing was checked.",
