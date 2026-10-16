@@ -94,6 +94,12 @@ type tip struct {
 	// DatedFromFetch is true when WrittenAt is not the commit's date, which
 	// could not be read, but when this copy first fetched the tip.
 	DatedFromFetch bool
+	// FirstSeen is when this copy first fetched the commit, set whenever
+	// that time is kept; it is kept for a tip whose own date (its claimed-at,
+	// or its commit date when it is unreadable) was more than lease.Skew
+	// ahead of a fetch or act here, and for an undated tip. It is the time
+	// lease.Judge counts a tip dated ahead of it from (seen).
+	FirstSeen time.Time
 }
 
 // The reasons a tip is unreadable. Each is fixed text: nothing a writer chose

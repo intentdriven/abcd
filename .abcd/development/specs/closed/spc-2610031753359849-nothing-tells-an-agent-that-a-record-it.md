@@ -851,7 +851,8 @@ These are the facilitator's design calls; none changes a criterion.
     its lease plus the margin (65 minutes for the default) can be taken over
     between its own renewals, and a reservation never renewed is open to a
     take-over once its holder's clock is behind by more than its lease; a
-    clock ahead is clamped to a day from the reader's now.
+    claim dated more than five minutes ahead of the reader counts from when
+    that copy first fetched it.
   - The cap and the overlap are best-effort under a race: each is judged on
     the view fetched just before the push, and each reservation is its own
     ref, so two pushes for two records cannot see each other. A collision on
