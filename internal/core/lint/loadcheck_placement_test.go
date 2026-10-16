@@ -259,7 +259,7 @@ func TestPreflightGatesItsTestStages(t *testing.T) {
 // raceGateCall is the race gate make preflight runs its race stage behind, so
 // one race stage runs at a time whatever load.preflights admits to the test
 // stages (iss-2610161639025702).
-const raceGateCall = "go run ./cmd/abcd implement load --wait --race"
+const raceGateCall = "go run ./cmd/abcd implement load --race-gate"
 
 // TestPreflightGatesItsRaceStage: the race stage waits at the race gate after
 // the unit stage and before it derives its -p, so the -p reflects the load as

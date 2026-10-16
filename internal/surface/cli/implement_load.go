@@ -43,7 +43,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	var wait, race bool
 	var timeout time.Duration
 	cmd := &cobra.Command{
-		Use: "load --site preflight|eval-harness | --wait [--race] [--timeout <duration>] [-- <command>...]",
+		Use: "load --site preflight|eval-harness | --wait|--race-gate [--timeout <duration>] [-- <command>...]",
 		Long: "Read the machine's load averages and process table once and warn when a program\n" +
 			"outside the running work has used nearly all the CPU it could get for longer than\n" +
 			"the stray limit, or when the one-minute load average is above the extreme limit.\n" +
@@ -103,21 +103,32 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"one when it first finds the machine free, and nothing more until it opens, and\n" +
 			"gives up after --timeout (" + implement.WaitDefaultTimeout.String() + " by default), exiting 1 and naming what it\n" +
 			"was still waiting on. --json reports what it waited on and for how long.\n\n" +
-			"With --race it waits at the race gate instead, which `make preflight` runs before\n" +
-			"its race stage: it is shut only while another `go test -race` run is live, a race\n" +
-			"waiter is ahead of it (in the same order) or running its command, the load is at\n" +
-			"the wait limit, or a hold is in force, so one race stage runs at a time. A waiter\n" +
-			"without --race never queues behind a race waiter, and a preflight whose waiter is\n" +
-			"at its race gate is in its test stages.\n\n" +
+			"With --race-gate in place of --wait it waits at the race gate, which `make\n" +
+			"preflight` runs before its race stage; it is spelt without --wait because an\n" +
+			"older abcd reads any `implement load --wait` as a waiter at its first gate, and\n" +
+			"would count a preflight at its race gate as queued, not in its tests, so the two\n" +
+			"are refused together. At one preflight at a time, the default, it opens at once,\n" +
+			"without reading the machine, taking a hold or waiting a jitter, so a preflight's\n" +
+			"race stage follows its tests exactly as before. Above one it is shut only while\n" +
+			"another `go test -race` run is live, a race waiter is ahead of it (in the same\n" +
+			"order) or running its command, the load is at the wait limit, or a hold is in\n" +
+			"force, so one race stage runs at a time. A first gate's waiter never queues\n" +
+			"behind a race waiter, and a preflight whose waiter is at its race gate is in its\n" +
+			"test stages.\n\n" +
 			"How many preflights may be in their test stages at once is your own machine's\n" +
 			"setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
 			"environment, which wins, for a trial; a whole number from 1 to " + strconv.Itoa(implement.MaxPreflightSlots) + ", 1 by default,\n" +
 			"and never read from a repository file, so a checkout cannot raise the machine's\n" +
-			"load. At 1 the gate reads as above. Above 1 it opens while fewer than that many\n" +
-			"other preflights or waiters running their command are in their test stages (a\n" +
-			"`--wait -- make preflight` counts once), a waiter queued ahead still shuts it, and\n" +
-			"a live race run does not shut it by itself; the load limit still does. A value\n" +
-			"it cannot use refuses the wait, naming where it was set.\n\n" +
+			"load. The most is " + strconv.Itoa(implement.MaxPreflightSlots) + " for a measured trial, and it rises once a measured trial\n" +
+			"supports more. At 1 both gates read as before the setting existed. Above 1 the\n" +
+			"first gate opens while fewer than that many other preflights or waiters running\n" +
+			"their command are in their test stages (a `--wait -- make preflight` counts\n" +
+			"once), a waiter queued ahead still shuts it, and a live race run does not shut\n" +
+			"it by itself; the load limit still does, and the race gate keeps race stages one\n" +
+			"at a time. A value it cannot use refuses the wait, naming where it was set; so\n" +
+			"does a `" + abcdhome.Display("config.json") + "` that cannot be read (writable by others, not\n" +
+			"valid JSON, or an unknown key under `load`), naming the file and how to fix it,\n" +
+			"and since the first gate stops, so does `make preflight`.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "`, and every other waiter of that account stays shut while\n" +
 			"it is in force; a hold taken by the waiter's own ancestor does not shut it.\n" +
@@ -135,8 +146,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			if len(args) == 0 {
 				return nil
 			}
-			if !wait {
-				return &exitError{Code: 2, Msg: "abcd implement load: a command to run is given only with --wait, after `--` (nothing checked)"}
+			if !wait && !race {
+				return &exitError{Code: 2, Msg: "abcd implement load: a command to run is given only with --wait or --race-gate, after `--` (nothing checked)"}
 			}
 			if cmd.ArgsLenAtDash() != 0 {
 				return &exitError{Code: 2, Msg: "abcd implement load: the command to run goes after `--`: abcd implement load --wait -- <command> (nothing waited for)"}
@@ -144,9 +155,16 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if wait {
+			if wait && race {
+				return &exitError{Code: 2, Msg: "abcd implement load: --race-gate waits on its own, so it takes no --wait: an older abcd reads any --wait as a waiter at its first gate (nothing waited for)"}
+			}
+			if wait || race {
 				if cmd.Flags().Changed("site") {
-					return &exitError{Code: 2, Msg: "abcd implement load: --wait takes no --site; the site names where the warning runs (nothing waited for)"}
+					flag := "--wait"
+					if race {
+						flag = "--race-gate"
+					}
+					return &exitError{Code: 2, Msg: "abcd implement load: " + flag + " takes no --site; the site names where the warning runs (nothing waited for)"}
 				}
 				if timeout < 0 {
 					return &exitError{Code: 2, Msg: "abcd implement load: --timeout must not be negative (nothing waited for)"}
@@ -154,10 +172,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 				return runLoadWait(cmd, *asJSON, timeout, race, args)
 			}
 			if cmd.Flags().Changed("timeout") {
-				return &exitError{Code: 2, Msg: "abcd implement load: --timeout is for --wait (nothing checked)"}
-			}
-			if cmd.Flags().Changed("race") {
-				return &exitError{Code: 2, Msg: "abcd implement load: --race is for --wait: it names the gate a wait waits at (nothing checked)"}
+				return &exitError{Code: 2, Msg: "abcd implement load: --timeout is for --wait or --race-gate (nothing checked)"}
 			}
 			if !slices.Contains(implement.LoadSites(), site) {
 				return &exitError{Code: 2, Msg: fmt.Sprintf("abcd implement load: --site %q is not one of: %s (nothing checked)",
@@ -175,8 +190,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&site, "site", "", "where the check runs: "+enumHelp(implement.LoadSites()))
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
-	cmd.Flags().BoolVar(&race, "race", false, "with --wait, wait at the race gate: only another go test -race run, a race waiter ahead, the load and the hold shut it")
-	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait, give up after this long and exit 1")
+	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the hold")
+	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1")
 	return cmd
 }
 
@@ -281,6 +296,10 @@ func renderLoadWait(w io.Writer, res implement.WaitResult) {
 	case implement.WaitTimedOut:
 		fmt.Fprintf(w, "load gate still shut after %s: %s\n", waited, waitConditions(res))
 	case implement.WaitOpen:
+		if res.Gate == implement.GateRace && res.Slots <= 1 {
+			fmt.Fprintf(w, "race gate open at once: %s\n", res.Reason)
+			break
+		}
 		hold := "the hold its own caller took stands"
 		if h := res.Hold; h != nil {
 			if h.Form == implement.HoldCommand {

@@ -23,11 +23,11 @@ import (
 //   - a `make preflight` that is not queued at its own gate: it is running its
 //     gates or its tests;
 //   - an `abcd implement load --wait` queued ahead of this one, or running the
-//     command it gates.
+//     command it gates (a race gate's waiter, `--race-gate`, never is).
 //
 // That is with one slot, the default (Ahead.Shut): above one, the running
 // preflights and the waiters running their commands shut it only once they
-// take every slot. A race waiter (`--wait --race`) is in a queue of its own
+// take every slot. A race waiter (`--race-gate`) is in a queue of its own
 // (RaceAhead), and never in the first gate's.
 //
 // Every waiter reads the same table and orders the queue the same way, by when
@@ -84,23 +84,30 @@ func isPreflightMake(args []string) bool {
 }
 
 // isLoadWaiter reports whether args, abcd's arguments after the program name,
-// run `implement load` with --wait set before any `--` (after which the words
+// run a waiter at either gate: `implement load` with --wait (the first gate)
+// or --race-gate (the race gate) set before any `--` (after which the words
 // are the gated command's). A flag before the verb path (--json) is skipped.
 func isLoadWaiter(args []string) bool {
-	wait, _ := waiterFlags(args)
-	return wait
+	wait, race := waiterFlags(args)
+	return wait || race
 }
 
-// isRaceWaiter reports whether args are a waiter's at the race gate: `implement
-// load --wait --race`, both flags before any `--`. A race waiter waits for the
-// race stage and is never in the first gate's queue (RaceAhead).
+// isRaceWaiter reports whether args are a waiter's at the race gate:
+// `implement load --race-gate`, the flag before any `--`. A race waiter waits
+// for the race stage and is never in the first gate's queue (RaceAhead).
+//
+// The race gate is spelt without --wait on purpose. Every abcd released
+// before it reads any `implement load --wait` as a waiter at its first gate,
+// so a preflight at a race gate spelt `--wait --race` would read to an older
+// waiter as queued, not in its test stages, and that waiter would open beside
+// it, its own ungated race stage overlapping this one's.
 func isRaceWaiter(args []string) bool {
-	wait, race := waiterFlags(args)
-	return wait && race
+	_, race := waiterFlags(args)
+	return race
 }
 
 // waiterFlags reads args as isLoadWaiter does: whether they run `implement
-// load` with --wait set, and whether --race is set, each before any `--`.
+// load` with --wait set, and whether --race-gate is set, each before any `--`.
 func waiterFlags(args []string) (wait, race bool) {
 	var verb []string
 	for _, a := range args {
@@ -112,7 +119,7 @@ func waiterFlags(args []string) (wait, race bool) {
 			wait = err == nil && b
 			continue
 		}
-		if v, ok := strings.CutPrefix(a, "--race="); ok {
+		if v, ok := strings.CutPrefix(a, "--race-gate="); ok {
 			b, err := strconv.ParseBool(v)
 			race = err == nil && b
 			continue
@@ -121,7 +128,7 @@ func waiterFlags(args []string) (wait, race bool) {
 			wait = true
 			continue
 		}
-		if a == "--race" {
+		if a == "--race-gate" {
 			race = true
 			continue
 		}

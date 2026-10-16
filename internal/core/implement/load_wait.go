@@ -35,10 +35,11 @@ import (
 // load_slots.go); above one, the first gate opens while fewer than that many
 // other units of work are in their test stages (machineload.Ahead.Shut), a
 // waiter queued ahead still shuts it, and a live race run does not shut it
-// by itself. The race gate (WaitRequest.Race, `--wait --race`), which `make
-// preflight` runs before its race stage, is shut only by another race run, a
-// race waiter ahead (machineload.RaceAhead), the load and the hold, so one race
-// stage runs at a time whatever the slot count.
+// by itself. The race gate (WaitRequest.Race, `--race-gate`), which `make
+// preflight` runs before its race stage, opens at once with one slot, so a
+// preflight's race stage follows its tests exactly as before; above one it is
+// shut only by another race run, a race waiter ahead (machineload.RaceAhead),
+// the load and the hold, so one race stage runs at a time.
 //
 // The process table is the cross-account half (iss-2610140638074587): it
 // shows every account's processes: no file another account can write is read;
@@ -181,10 +182,11 @@ type WaitRequest struct {
 	Poll time.Duration
 	// Command asks for the command form's hold.
 	Command bool
-	// Race waits at the race gate (`--race`), before a race stage, instead of
-	// the first gate: it is shut only by another go test -race run, a race
-	// waiter ahead of it, the load and the hold, so one race stage runs at a
-	// time whatever the slot count (PreflightSlots).
+	// Race waits at the race gate (`--race-gate`), before a race stage,
+	// instead of the first gate. With one slot (PreflightSlots) it opens at
+	// once, without a look, a hold or a jitter; above one it is shut only by
+	// another go test -race run, a race waiter ahead of it, the load and the
+	// hold, so one race stage runs at a time.
 	Race bool
 	// OnWait is called once, at the first look that finds the gate shut.
 	OnWait func(WaitResult)
@@ -242,8 +244,8 @@ type WaitResult struct {
 	// Gate is the gate waited at, GateTests or GateRace.
 	Gate string `json:"gate"`
 	// Slots is how many preflights may be in their test stages at once, and
-	// SlotsSource where that came from (PreflightSlots). The race gate reads
-	// it only to report it.
+	// SlotsSource where that came from (PreflightSlots). With one, the race
+	// gate opens at once.
 	Slots       int    `json:"slots,omitempty"`
 	SlotsSource string `json:"slots_source,omitempty"`
 }
@@ -305,6 +307,16 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	defer root.Close()
 	if res.Slots, res.SlotsSource, err = PreflightSlots(getenv, home); err != nil {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
+	}
+	if req.Race && res.Slots <= 1 {
+		// One preflight at a time: the first gate admitted this preflight's
+		// tests alone, so its race stage follows them at once, as it did
+		// before the race gate existed. No look, no hold (the preflight's own
+		// first gate's settle hold would otherwise keep it shut for up to
+		// WaitSettle), no jitter.
+		res.Status = WaitOpen
+		res.Reason = "one preflight at a time may be in its test stages, so the race stage follows its tests at once"
+		return res, nil
 	}
 
 	start := now()

@@ -111,11 +111,12 @@ func TestImplementLoadWaitRefusesAnUnusableSlotSetting(t *testing.T) {
 	}
 }
 
-// TestImplementLoadWaitRaceGate: --wait --race waits for another race run to
-// exit, and its closing line names the race gate.
+// TestImplementLoadWaitRaceGate: with two slots, --race-gate waits for
+// another race run to exit, and its closing line names the race gate.
 func TestImplementLoadWaitRaceGate(t *testing.T) {
 	waitFixture(t, machine(3, 3, 3, liveRace), machine(3, 3, 3))
-	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--race")
+	t.Setenv(implement.PreflightSlotsEnv, "2")
+	code, out, errOut := implementCLI(t, "implement", "load", "--race-gate")
 	if code != 0 {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
 	}
@@ -129,12 +130,63 @@ func TestImplementLoadWaitRaceGate(t *testing.T) {
 	}
 }
 
-// TestImplementLoadRaceNeedsWait: --race names a gate, so it is refused
-// without --wait.
-func TestImplementLoadRaceNeedsWait(t *testing.T) {
+// TestImplementLoadRaceGateOpensAtOnceWithOneSlot: at one slot, the default,
+// the race gate opens at once beside a live race run and a loaded machine,
+// and says why.
+func TestImplementLoadRaceGateOpensAtOnceWithOneSlot(t *testing.T) {
+	waitFixture(t, machine(40, 40, 40, liveRace))
+	code, out, errOut := implementCLI(t, "implement", "load", "--race-gate", "--timeout", "1m")
+	want := "race gate open at once: one preflight at a time may be in its test stages, so the race stage follows its tests at once\n"
+	if code != 0 || out != want {
+		t.Fatalf("exit %d, want 0 and exactly %q:\n%s%s", code, want, out, errOut)
+	}
+}
+
+// TestImplementLoadRaceGateTakesNoWait: --race-gate waits on its own, and is
+// refused beside --wait, which an older abcd reads as a first gate's waiter,
+// and beside --site; --timeout without either is refused.
+func TestImplementLoadRaceGateTakesNoWait(t *testing.T) {
 	loadFixture(t, machine(3, 3, 3), nil)
-	code, _, errOut := implementCLI(t, "implement", "load", "--site", "preflight", "--race")
-	if code != 2 || !strings.Contains(errOut, "--race is for --wait") {
-		t.Fatalf("exit %d, want 2 refusing --race without --wait:\n%s", code, errOut)
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"implement", "load", "--wait", "--race-gate"}, "--race-gate waits on its own, so it takes no --wait"},
+		{[]string{"implement", "load", "--race-gate", "--site", "preflight"}, "takes no --site"},
+		{[]string{"implement", "load", "--site", "preflight", "--timeout", "1m"}, "--timeout is for --wait or --race-gate"},
+	} {
+		code, _, errOut := implementCLI(t, c.args...)
+		if code != 2 || !strings.Contains(errOut, c.want) {
+			t.Errorf("%q: exit %d, want 2 with %q:\n%s", c.args, code, c.want, errOut)
+		}
+	}
+}
+
+// TestImplementLoadWaitNamesAnUnreadableMachineConfig: a group-writable
+// ~/.abcd.noindex/config.json fails the first gate, and so make preflight,
+// with a refusal that names the file and says how to fix it.
+func TestImplementLoadWaitNamesAnUnreadableMachineConfig(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	home, _ := os.UserHomeDir()
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	cfg := abcdhome.Path(home, "config.json")
+	if err := os.WriteFile(cfg, []byte(`{"load": {"preflights": 2}}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(cfg, 0o660); err != nil {
+		t.Fatal(err)
+	}
+	code, _, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "1m")
+	file := abcdhome.Display("config.json")
+	for _, want := range []string{
+		"abcd implement load --wait: nothing was waited for: the machine configuration " + file + " cannot be read for load.preflights",
+		"writable by group or other",
+		"To fix it, keep " + file + " a regular file you own that nobody else can write (chmod go-w " + file + ")",
+	} {
+		if code != 1 || !strings.Contains(errOut, want) {
+			t.Errorf("exit %d, want 1 with %q:\n%s", code, want, errOut)
+		}
 	}
 }

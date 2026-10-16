@@ -289,19 +289,30 @@ starts (`machineload.GoTestParallelism`: twice the cores less the load, at most
 the cores, at least a quarter of them), and on a CI runner the gate opens at
 once and go's own default stands.
 
-Before its race stage `make preflight` waits again, at the race gate
-(`--wait --race`): it is shut only by another live `go test -race` run, a race
-waiter queued ahead of it in the same start-time order or running its command,
-the load limit and the hold, so one race stage runs at a time. A first gate's
-waiter never queues there, a race waiter never queues at the first gate, and a
-preflight whose waiter is at its race gate counts as in its test stages. How
-many preflights the first gate admits to their test stages at once is the
-person's own machine setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
+Before its race stage `make preflight` waits again, at the race gate, which
+has its own flag and never carries the first gate's wait flag (the two are
+refused together): every abcd released before the race gate reads any load
+check carrying the wait flag as a first gate's waiter, so it would read a
+preflight at a race gate spelt with it as queued, not in its test stages, and
+open beside it. At one preflight at a
+time the race gate opens at once, with no look at the machine, no hold, no
+jitter and no settle, so the preflight runs exactly as before. Above one it is
+shut only by another live `go test -race` run, a race waiter queued ahead of
+it in the same start-time order or running its command, the load limit and
+the hold, so one race stage runs at a time. A first gate's waiter never queues
+there, a race waiter never queues at the first gate, and a preflight whose
+waiter is at its race gate counts as in its test stages. How many preflights
+the first gate admits to their test stages at once is the person's own machine
+setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
 `~/.abcd.noindex/config.json`, read through the layered configuration with the
 machine layer alone, or `ABCD_LOAD_PREFLIGHTS` in the environment for a trial;
-one by default, from 1 to 4, a bad value refused naming where it was set, and no
+one by default, from 1 to 2 until a measured trial supports more
+(dcn-2610161814279204), a bad value refused naming where it was set, and no
 repository file ever read for it, because a checkout must not raise the
-machine's load. At one the first gate reads exactly as above. Above one it
+machine's load. A machine `config.json` that cannot be read (writable by
+others, not valid JSON, an unknown key in its load object) refuses the wait, and so
+the preflight, with a message naming the file and how to fix it. At one the
+first gate reads exactly as above. Above one it
 admits a waiter while fewer than that many units of work are in their test
 stages (a running preflight, or a waiter running its command, counted once
 where one runs beneath the other), a waiter queued ahead still shuts it, a live
@@ -497,7 +508,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
-| `--race` | bool |
+| `--race-gate` | bool |
 | `--site` | string |
 | `--timeout` | duration |
 | `--wait` | bool |

@@ -1,7 +1,12 @@
 package machineload
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -127,7 +132,8 @@ func TestQueueCountsACommandAndItsPreflightOnce(t *testing.T) {
 }
 
 // raceStagePreflight is another account's make preflight at pid whose race
-// gate's waiter is queued: its sh runs go run, whose abcd waits with --race.
+// gate's waiter is queued: its sh runs go run, whose abcd waits with
+// --race-gate.
 func raceStagePreflight(pid int, age time.Duration) ([]Proc, map[int][]string) {
 	procs := []Proc{
 		{PID: pid, PPID: 1, PGID: pid, UID: otherUID, Age: 9 * time.Minute, Name: "make"},
@@ -137,8 +143,8 @@ func raceStagePreflight(pid int, age time.Duration) ([]Proc, map[int][]string) {
 	}
 	args := map[int][]string{
 		pid:     {"preflight"},
-		pid + 2: {"run", "./cmd/abcd", "implement", "load", "--wait", "--race", "--timeout", "2h"},
-		pid + 3: {"implement", "load", "--wait", "--race", "--timeout", "2h"},
+		pid + 2: {"run", "./cmd/abcd", "implement", "load", "--race-gate", "--timeout", "2h"},
+		pid + 3: {"implement", "load", "--race-gate", "--timeout", "2h"},
 	}
 	return procs, args
 }
@@ -162,22 +168,113 @@ func TestQueueReadsAPreflightAtItsRaceGateAsInItsTests(t *testing.T) {
 	}
 }
 
-// TestIsRaceWaiter: a race waiter is a waiter with --race before any `--`.
+// TestIsRaceWaiter: a race waiter is an `implement load --race-gate`, the
+// flag before any `--`; a first gate's waiter (--wait) is never one.
 func TestIsRaceWaiter(t *testing.T) {
 	for _, c := range []struct {
-		args []string
-		want bool
+		args       []string
+		race, wait bool
 	}{
-		{[]string{"implement", "load", "--wait", "--race"}, true},
-		{[]string{"implement", "load", "--race", "--wait", "--timeout", "2h"}, true},
-		{[]string{"implement", "load", "--wait", "--race=true"}, true},
-		{[]string{"implement", "load", "--wait", "--race=false"}, false},
-		{[]string{"implement", "load", "--wait"}, false},
-		{[]string{"implement", "load", "--race"}, false},
-		{[]string{"implement", "load", "--wait", "--", "go", "test", "--race"}, false},
+		{[]string{"implement", "load", "--race-gate"}, true, true},
+		{[]string{"implement", "load", "--race-gate", "--timeout", "2h"}, true, true},
+		{[]string{"implement", "load", "--race-gate=true"}, true, true},
+		{[]string{"implement", "load", "--race-gate=false"}, false, false},
+		{[]string{"implement", "load", "--wait"}, false, true},
+		{[]string{"implement", "load", "--race"}, false, false},
+		{[]string{"implement", "load", "--wait", "--", "go", "test", "--race-gate"}, false, true},
+		{[]string{"implement", "load", "--", "abcd", "implement", "load", "--race-gate"}, false, false},
 	} {
-		if got := isRaceWaiter(c.args); got != c.want {
-			t.Errorf("isRaceWaiter(%q) = %v, want %v", c.args, got, c.want)
+		if got := isRaceWaiter(c.args); got != c.race {
+			t.Errorf("isRaceWaiter(%q) = %v, want %v", c.args, got, c.race)
+		}
+		if got := isLoadWaiter(c.args); got != c.wait {
+			t.Errorf("isLoadWaiter(%q) = %v, want %v", c.args, got, c.wait)
+		}
+	}
+}
+
+// baseIsLoadWaiter is the waiter-recognition rule of the base commit,
+// ea4865caa, copied verbatim: the rule every abcd released before the race
+// gate applies to the process table. It reads any `implement load` with
+// --wait as a waiter at its first gate.
+func baseIsLoadWaiter(args []string) bool {
+	var verb []string
+	wait := false
+	for _, a := range args {
+		if a == "--" {
+			break
+		}
+		if v, ok := strings.CutPrefix(a, "--wait="); ok {
+			b, err := strconv.ParseBool(v)
+			wait = err == nil && b
+			continue
+		}
+		if a == "--wait" {
+			wait = true
+			continue
+		}
+		if !strings.HasPrefix(a, "-") && len(verb) < 2 {
+			verb = append(verb, a)
+		}
+	}
+	return wait && slices.Equal(verb, []string{"implement", "load"})
+}
+
+// preflightGateArgs returns the arguments abcd gets from each `go run
+// ./cmd/abcd implement load` line of the Makefile's preflight recipe: the
+// first gate's, before the unit stage, and the race gate's, before the race
+// stage.
+func preflightGateArgs(t *testing.T) (first, race []string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "Makefile"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const call = "go run ./cmd/abcd "
+	var gates [][]string
+	in := false
+	for _, l := range strings.Split(string(raw), "\n") {
+		if strings.HasPrefix(l, "preflight:") {
+			in = true
+			continue
+		}
+		if in && !strings.HasPrefix(l, "\t") {
+			break
+		}
+		if l = strings.TrimSpace(l); in && strings.HasPrefix(l, call+"implement load ") {
+			gates = append(gates, strings.Fields(strings.TrimPrefix(l, call)))
+		}
+	}
+	if len(gates) != 2 {
+		t.Fatalf("the preflight recipe runs %d load gates, want 2 (the first gate and the race gate): %q", len(gates), gates)
+	}
+	return gates[0], gates[1]
+}
+
+// TestARaceGateIsNotAFirstGateWaiterToAnOlderAbcd: an abcd released before
+// the race gate reads any `implement load --wait` as a waiter at its first
+// gate. Spelt with --wait, a preflight at its race gate would read to it as
+// queued at its first gate, not in its test stages, so an older waiter would
+// open beside it and its ungated race stage overlap this one's, even with one
+// slot. The race gate is spelt without --wait, so the base commit's rule does
+// not match it, and the first gate still does.
+func TestARaceGateIsNotAFirstGateWaiterToAnOlderAbcd(t *testing.T) {
+	first, race := preflightGateArgs(t)
+	if !baseIsLoadWaiter(first) || isRaceWaiter(first) {
+		t.Fatalf("first gate %q: base rule %v, race %v; want a first gate's waiter to both", first, baseIsLoadWaiter(first), isRaceWaiter(first))
+	}
+	if baseIsLoadWaiter(race) {
+		t.Fatalf("race gate %q: the base commit's rule reads it as a first gate's waiter, so an older abcd counts a preflight at its race gate as queued", race)
+	}
+	if !isRaceWaiter(race) {
+		t.Fatalf("race gate %q: not a race waiter to this abcd", race)
+	}
+	for _, a := range race {
+		if a == "--" {
+			break
+		}
+		if a == "--wait" || strings.HasPrefix(a, "--wait=") {
+			t.Fatalf("race gate %q carries a --wait token", race)
 		}
 	}
 }
@@ -187,7 +284,7 @@ func TestIsRaceWaiter(t *testing.T) {
 // gate, or a preflight in its unit stage, is not ahead of it.
 func TestRaceAheadOrdersRaceWaitersOnly(t *testing.T) {
 	procs, args := waiterChain()
-	args[60000] = []string{"implement", "load", "--wait", "--race", "--timeout", "2h"}
+	args[60000] = []string{"implement", "load", "--race-gate", "--timeout", "2h"}
 	procs[3].Age = time.Minute
 	unit, unitArgs := otherPreflight(80000)
 	first, firstArgs := peerWaiter(50001, 1, otherUID)

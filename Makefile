@@ -294,23 +294,26 @@ asking-sync-check:
 # waited on, and on a CI runner it opens at once. How many preflights may be in
 # their test stages at once is the person's own machine setting, never the
 # checkout's: load.preflights in ~/.abcd.noindex/config.json, or
-# ABCD_LOAD_PREFLIGHTS in the environment for a trial, one by default
-# (iss-2610161639025702). Above one, the gate admits a preflight while fewer
-# than that many others are in their test stages, a live race run does not
-# shut it by itself, and a waiter queued ahead still does. The race stage
-# waits at its own gate (`--wait --race`), shut while another go test -race run
-# or race waiter ahead is live or the load is at the limit, so one race stage
-# runs at a time whatever the setting. Each test stage then takes a go test -p
-# derived from the online cores and the load as the stage starts, at most the
-# cores divided by the setting (cmd/test-parallelism), so one run cannot
-# saturate the machine.
+# ABCD_LOAD_PREFLIGHTS in the environment for a trial, one by default and two
+# at most until a measured trial supports more (iss-2610161639025702). The race
+# stage waits at its own gate (`--race-gate`, spelt without --wait so an older
+# abcd never reads a preflight there as queued at its first gate). At one, the
+# race gate opens at once, so the preflight runs exactly as before. Above one,
+# the first gate admits a preflight while fewer than that many others are in
+# their test stages, a live race run does not shut it by itself, and a waiter
+# queued ahead still does; and the race gate is shut while another go test
+# -race run or race waiter ahead is live or the load is at the limit, so one
+# race stage runs at a time. Each test stage then takes a go test -p derived
+# from the online cores and the load as the stage starts, at most the cores
+# divided by the setting (cmd/test-parallelism), so one run cannot saturate
+# the machine.
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go run ./cmd/abcd implement load --wait --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -p "$$p" ./...
-	go run ./cmd/abcd implement load --wait --race --timeout 2h
+	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -race -p "$$p" -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"

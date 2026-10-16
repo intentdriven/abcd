@@ -94,6 +94,73 @@ func TestPreflightSlotsRefusesABadValue(t *testing.T) {
 	}
 }
 
+// TestPreflightSlotsIsCappedAtTwoUntilMeasured: the product thinker approved
+// a measured trial of two preflights at once (dcn-2610161814279204), so two is
+// the most either place may set; three and four are refused, saying the limit
+// rises once a measured trial supports it.
+func TestPreflightSlotsIsCappedAtTwoUntilMeasured(t *testing.T) {
+	if MaxPreflightSlots != 2 {
+		t.Fatalf("MaxPreflightSlots = %d, want 2 until a measured trial supports more", MaxPreflightSlots)
+	}
+	const why = "the limit rises once a measured trial supports it"
+	for _, v := range []string{"3", "4"} {
+		_, _, err := PreflightSlots(slotsEnv(v), t.TempDir())
+		if err == nil || !strings.Contains(err.Error(), PreflightSlotsEnv) || !strings.Contains(err.Error(), why) {
+			t.Errorf("%s=%s: err = %v, want a refusal naming the variable and saying %q", PreflightSlotsEnv, v, err, why)
+		}
+		home := t.TempDir()
+		writeMachineConfig(t, home, `{"load": {"preflights": `+v+`}}`)
+		_, _, err = PreflightSlots(noEnv, home)
+		if err == nil || !strings.Contains(err.Error(), "config.json") || !strings.Contains(err.Error(), why) {
+			t.Errorf("load.preflights %s: err = %v, want a refusal naming config.json and saying %q", v, err, why)
+		}
+	}
+}
+
+// TestPreflightSlotsNamesTheFileAndTheFix: a machine config.json that fails
+// to read (group-writable, not valid JSON, or an unknown key under load) still
+// fails the wait loudly, as the layered reader's rule says, and the refusal
+// names the file and says how to fix it, so a default user whose make
+// preflight stops at its first gate can act on it.
+func TestPreflightSlotsNamesTheFileAndTheFix(t *testing.T) {
+	file := abcdhome.Display("config.json")
+	for _, c := range []struct {
+		name, body string
+		mode       os.FileMode
+		cause      string
+	}{
+		{"group-writable", `{"load": {"preflights": 2}}`, 0o660, "writable by group or other"},
+		{"invalid", `{"load": {"preflights": 2}`, 0o600, "not valid JSON"},
+		{"unknown key", `{"load": {"preflight": 2}}`, 0o600, "unknown key load.preflight"},
+	} {
+		home := t.TempDir()
+		writeMachineConfig(t, home, c.body)
+		if err := os.Chmod(filepath.Join(abcdhome.Path(home), "config.json"), c.mode); err != nil {
+			t.Fatal(err)
+		}
+		_, _, err := PreflightSlots(noEnv, home)
+		if err == nil {
+			t.Errorf("%s: no refusal", c.name)
+			continue
+		}
+		msg := err.Error()
+		for _, want := range []string{
+			"the machine configuration " + file + " cannot be read for " + PreflightSlotsKey,
+			c.cause,
+			"To fix it, keep " + file + " a regular file you own that nobody else can write (chmod go-w " + file + ")",
+			`whose "load" names no key but "preflights", a whole number from 1 to 2`,
+			"or move it aside, which drops every machine setting it holds, and one preflight at a time applies",
+		} {
+			if !strings.Contains(msg, want) {
+				t.Errorf("%s: refusal lacks %q:\n%s", c.name, want, msg)
+			}
+		}
+		if strings.Contains(msg, home) {
+			t.Errorf("%s: refusal carries the home path:\n%s", c.name, msg)
+		}
+	}
+}
+
 // TestPreflightSlotsIgnoresTheRepository: a checkout's .abcd/config.json is
 // never read for it, even when the process runs inside that checkout.
 func TestPreflightSlotsIgnoresTheRepository(t *testing.T) {
@@ -197,12 +264,13 @@ func TestWaitRefusesAnUnusableSlotSetting(t *testing.T) {
 	}
 }
 
-// TestWaitRaceGateRefusesWhileARaceRunIsLive: the race gate stays shut while
-// another go test -race run is live, and opens once it exits.
+// TestWaitRaceGateRefusesWhileARaceRunIsLive: with two slots the race gate
+// stays shut while another go test -race run is live, and opens once it exits.
 func TestWaitRaceGateRefusesWhileARaceRunIsLive(t *testing.T) {
 	race := poll{load: 3, procs: []machineload.Proc{raceRun(70000, 1)}}
 	clock := &fakeClock{now: waitT0}
 	req := waitReq(t.TempDir(), 60000, clock, race, race, poll{load: 3})
+	req.Getenv = slotsEnv("2")
 	req.Race = true
 	res, err := WaitLoad(req)
 	if err != nil {
@@ -213,9 +281,9 @@ func TestWaitRaceGateRefusesWhileARaceRunIsLive(t *testing.T) {
 	}
 }
 
-// TestWaitRaceGateAdmitsBesideAUnitStage: the race gate is not shut by a
-// preflight in its unit stage, a first gate's waiter or the slot count; only
-// a race run, a race waiter ahead, the load and the hold shut it.
+// TestWaitRaceGateAdmitsBesideAUnitStage: with two slots the race gate is not
+// shut by a preflight in its unit stage or a first gate's waiter; only a race
+// run, a race waiter ahead, the load and the hold shut it.
 func TestWaitRaceGateAdmitsBesideAUnitStage(t *testing.T) {
 	unit, args := otherAccountsPreflight(80000)
 	early := []machineload.Proc{
@@ -226,6 +294,7 @@ func TestWaitRaceGateAdmitsBesideAUnitStage(t *testing.T) {
 	args[50001] = []string{"implement", "load", "--wait"}
 	clock := &fakeClock{now: waitT0}
 	req := waitReq(t.TempDir(), 60000, clock, poll{load: 3, procs: append(unit, early...), args: args})
+	req.Getenv = slotsEnv("2")
 	req.Race = true
 	res, err := WaitLoad(req)
 	if err != nil {
@@ -236,10 +305,11 @@ func TestWaitRaceGateAdmitsBesideAUnitStage(t *testing.T) {
 	}
 
 	// An earlier race waiter is ahead of it.
-	args[50000] = []string{"run", "./cmd/abcd", "implement", "load", "--wait", "--race"}
-	args[50001] = []string{"implement", "load", "--wait", "--race"}
+	args[50000] = []string{"run", "./cmd/abcd", "implement", "load", "--race-gate"}
+	args[50001] = []string{"implement", "load", "--race-gate"}
 	clock = &fakeClock{now: waitT0}
 	req = waitReq(t.TempDir(), 60000, clock, poll{load: 3, procs: early, args: args})
+	req.Getenv = slotsEnv("2")
 	req.Race = true
 	req.Timeout = time.Minute
 	res, err = WaitLoad(req)
@@ -253,6 +323,7 @@ func TestWaitRaceGateAdmitsBesideAUnitStage(t *testing.T) {
 	// The load limit still shuts it.
 	clock = &fakeClock{now: waitT0}
 	req = waitReq(t.TempDir(), 60000, clock, poll{load: 40})
+	req.Getenv = slotsEnv("2")
 	req.Race = true
 	req.Timeout = time.Minute
 	res, err = WaitLoad(req)
@@ -261,6 +332,63 @@ func TestWaitRaceGateAdmitsBesideAUnitStage(t *testing.T) {
 	}
 	if res.Status != WaitTimedOut || !reflect.DeepEqual(res.Still, []string{WaitOnLoad}) {
 		t.Fatalf("result = %+v, want a timeout still on [load]", res)
+	}
+}
+
+// TestWaitRaceGateOpensAtOnceWithOneSlot: with one slot, the default, a
+// preflight's tests run alone, so its race stage follows them at once, as it
+// did before the race gate existed: the race gate opens without reading the
+// machine, without judging or taking a hold (the preflight's own first gate's
+// settle hold among them), and without the settle jitter, however loaded the
+// machine and whatever race run is live.
+func TestWaitRaceGateOpensAtOnceWithOneSlot(t *testing.T) {
+	home := t.TempDir()
+	clock := &fakeClock{now: waitT0}
+	// The preflight's own first gate opens and takes its settle hold.
+	first, err := WaitLoad(waitReq(home, 59000, clock, poll{load: 3}))
+	if err != nil || first.Status != WaitOpen || first.Hold == nil {
+		t.Fatalf("first gate = %+v, %v; want open with a hold", first, err)
+	}
+	holdPath := filepath.Join(abcdhome.Path(home), WaitHoldFileName)
+	before, err := os.ReadFile(holdPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	clock = &fakeClock{now: waitT0.Add(30 * time.Second)}
+	req := waitReq(home, 60000, clock, poll{load: 40, procs: []machineload.Proc{raceRun(70000, 1)}})
+	req.Race = true
+	req.Read = func() (machineload.Snapshot, error) {
+		t.Fatal("the race gate read the machine with one slot")
+		return machineload.Snapshot{}, nil
+	}
+	req.Sleep = func(d time.Duration) { t.Fatalf("the race gate slept %s with one slot", d) }
+	req.Jitter = func() time.Duration { t.Fatal("the race gate drew a settle jitter with one slot"); return 0 }
+	res, err := WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitOpen || res.Gate != GateRace || res.Slots != 1 || res.Hold != nil || res.Holder != nil ||
+		res.Polls != 0 || res.WaitedS != 0 || len(res.WaitedOn) != 0 || res.Reason == "" {
+		t.Fatalf("result = %+v, want the race gate open at once with one slot, no look, no hold, and a reason", res)
+	}
+	after, err := os.ReadFile(holdPath)
+	if err != nil || string(after) != string(before) {
+		t.Fatalf("the first gate's hold changed under the race gate: %v\nbefore %s\nafter  %s", err, before, after)
+	}
+
+	// With two slots the same race gate reads the machine and stays shut.
+	clock = &fakeClock{now: waitT0}
+	req = waitReq(t.TempDir(), 60000, clock, poll{load: 3, procs: []machineload.Proc{raceRun(70000, 1)}})
+	req.Getenv = slotsEnv("2")
+	req.Race = true
+	req.Timeout = time.Minute
+	res, err = WaitLoad(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Status != WaitTimedOut || !reflect.DeepEqual(res.Still, []string{WaitOnRaceRun}) {
+		t.Fatalf("result = %+v, want two slots' race gate still on [race-run]", res)
 	}
 }
 

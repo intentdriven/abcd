@@ -641,7 +641,7 @@ real directory (a symlink in its place, say) is named changed.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement load --site preflight|eval-harness [--json]
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement load --wait [--race] [--timeout <duration>] [--json] [-- <command>...]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement load --wait|--race-gate [--timeout <duration>] [--json] [-- <command>...]
 ```
 
 `make preflight` runs this first and the eval harness runs it once at its
@@ -713,31 +713,55 @@ exiting 1 and naming what it still waited on (`still`: `load`, `race-run`,
 `preflight`, `waiter`, `lock` or `unreadable`). `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
 platform), `waited_on` and `waited_s`, with the `gate` it waited at
-(`tests` or `race`) and, at the tests gate, `slots` and `slots_source`.
+(`tests` or `race`), `slots` and `slots_source`.
 
-Before its race stage `make preflight` waits again, at the race gate:
-`implement load --wait --race` stays shut only while another `go test -race`
-run is live, a race waiter queued ahead of it (by the same start-time order)
-or running its command is, the load is at the wait limit, or a hold is in
-force, so there is one race stage at a time whatever the first gate admits. A
-preflight waiting there has passed its first gate and counts as in its test
-stages.
+Before its race stage `make preflight` waits again, at the race gate,
+`implement load --race-gate`. It is spelt without `--wait`, and the two are
+refused together: an abcd released before the race gate reads any `implement
+load --wait` as a waiter at its first gate, so a preflight waiting at a race
+gate spelt with it would read to that older waiter as queued, not in its test
+stages, and the older waiter would open beside it. At one preflight at a time,
+the default, the race gate opens at once, without reading the machine, judging
+or taking a hold, or waiting a jitter, so the race stage follows the tests
+straight away, as it did before the gate existed (it prints `race gate open at
+once`). Above one it stays shut while another `go test -race` run is live, a
+race waiter queued ahead of it (by the same start-time order) or running its
+command is, the load is at the wait limit, or a hold is in force (the
+preflight's own first gate's two-minute hold among them), so there is one race
+stage at a time whatever the first gate admits. A preflight waiting there has
+passed its first gate and counts as in its test stages.
 
 How many preflights may be in their test stages at once is the person's own
 machine setting, never a repository's, so a checkout cannot raise the
 machine's load: `load.preflights` in `~/.abcd.noindex/config.json` (a whole
-number from 1 to 4, read through the same guarded read as every machine
+number from 1 to 2, read through the same guarded read as every machine
 setting), or `ABCD_LOAD_PREFLIGHTS` in the waiter's environment, which wins,
-for a trial without a file edit. It is 1 by default, and the gates then read
-exactly as described above. Above 1, the first gate admits a preflight while
-fewer than that many other preflights or waiters running their command are in
-their test stages (`--wait -- make preflight` counts once), a waiter queued
-ahead still shuts it, and a live race run does not shut it by itself; the
-load limit still does. Each stage's `go test -p` is then at most the cores
-divided by the setting, so two concurrent stages do not each take the whole
-machine. A value that is not a whole number from 1 to 4 refuses the wait,
-naming where it was set; a `load.preflights` in a repository's
-`.abcd/config.json` is never read.
+for a trial without a file edit. Two is the most for now, for a measured trial
+of two preflights at once; 3 and 4 are refused, saying the limit rises once a
+measured trial supports it. It is 1 by default, and the preflight then runs
+exactly as before the setting existed: the first gate reads as described
+above, and the race gate opens at once. What 2 adds: the first gate admits a
+preflight while fewer than that many other preflights or waiters running their
+command are in their test stages (`--wait -- make preflight` counts once), a
+waiter queued ahead still shuts it, and a live race run does not shut it by
+itself; the load limit still does, and the race gate waits as described
+above. Each stage's `go test -p` is then at most the cores divided by the
+setting, so two concurrent stages do not each take the whole machine. A value
+that is not a whole number from 1 to 2 refuses the wait, naming where it was
+set; a `load.preflights` in a repository's `.abcd/config.json` is never read.
+
+A `~/.abcd.noindex/config.json` that cannot be read refuses the wait too, at
+either gate, even for someone who never set `load.preflights` (only an
+`ABCD_LOAD_PREFLIGHTS` in the environment, which is read first, skips the
+file): one that others can write, one that is not valid JSON, or
+one with a key under `load` other than `preflights`. Like every guarded read
+of a machine setting it fails loudly rather than read past the file and
+silently drop what it sets, and since the first gate stops, so does `make
+preflight`. The refusal names the file and how to fix it: keep it a regular
+file you own that nobody else can write (`chmod go-w
+~/.abcd.noindex/config.json`), holding one valid JSON object whose `load` names
+no key but `preflights`; or move it aside, which drops every machine setting it
+holds, and one preflight at a time applies.
 
 Within one account the waiter that opens also writes a hold,
 `~/.abcd.noindex/load-wait.json`, and every other waiter of that account waits
