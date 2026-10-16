@@ -313,6 +313,22 @@ The page will not run inside another site's frame. A static host cannot tell
 browsers to refuse framing, so the page refuses it itself and shows only a
 link that opens it in its own tab.
 
+### The page's two designs
+
+The session page comes in two designs, so your team can try both:
+
+- **Guided**, the default: large cards with numbered areas, and a "What
+  happens next" note on each step.
+- **Shared**: a team bar along the top showing who is here, with the brief
+  beneath it; the documents and the suggestions sit in panels at either side,
+  and inviting people and sending to GitHub are icon buttons in the bar.
+
+Press Ctrl+[ or Ctrl+] to switch between them; it is Ctrl on every computer,
+a Mac included. The page remembers each person's choice in their own browser.
+In either design, Alt+Shift+D shows or hides the documents and Alt+Shift+S
+the panel on the right, and Escape closes whatever is open on top. On a
+phone, the panels open as sheets from the bottom of the screen.
+
 ## Who can join
 
 - Anyone the host gives the invite link or the join code to joins as a guest,

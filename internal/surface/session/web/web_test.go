@@ -348,22 +348,32 @@ func TestPageScriptKeepsTheTokenAndTheDOMSafe(t *testing.T) {
 	// The only addresses it names are GitHub's API, its sign-in pages (the
 	// web flow's and the device flow's) and its site, where a pre-filled
 	// issue opens.
-	urls := regexp.MustCompile(`(?i)\b(?:https?|wss?)://[^\s"'`+"`"+`)]*`).FindAllString(js, -1)
+	// SVG's namespace is the one other: a name the inline icons are made in,
+	// never fetched, spelled once, in its constant.
+	const svgNS = `const SVG_NS = "http://www.w3.org/2000/svg";`
+	if strings.Count(js, "http://www.w3.org/2000/svg") != 1 || !strings.Contains(js, svgNS) {
+		t.Error("session.js names SVG's namespace outside its one constant")
+	}
+	urls := regexp.MustCompile(`(?i)\b(?:https?|wss?)://[^\s"'`+"`"+`)]*`).FindAllString(strings.Replace(js, svgNS, "", 1), -1)
 	for _, u := range urls {
 		if u != "https://api.github.com" && u != "https://github.com/login/oauth/authorize" && u != "https://github.com/login/device" && u != "https://github.com" && u != "https://" {
 			t.Errorf("session.js names %q", u)
 		}
 	}
-	// localStorage is written in one place, which remembers the display name,
-	// and nothing else.
+	// localStorage is written in one place, which remembers the display name
+	// and the viewer's design, and nothing else.
 	if n := strings.Count(js, "localStorage.setItem("); n != 1 || !strings.Contains(js, "function remember(key, value) {\n  try { localStorage.setItem(key, value); }") {
 		t.Errorf("localStorage.setItem appears %d times, or outside remember()", n)
 	}
 	remembers := regexp.MustCompile(`remember\(([^)]*)\)`).FindAllStringSubmatch(js, -1)
 	for _, m := range remembers {
-		if m[1] != "key, value" && m[1] != "KEY_NAME, session.name" {
-			t.Errorf("remember(%s): only the display name is remembered", m[1])
+		if m[1] != "key, value" && m[1] != "KEY_NAME, session.name" && m[1] != "KEY_DESIGN, design" {
+			t.Errorf("remember(%s): only the display name and the design are remembered", m[1])
 		}
+	}
+	// The design remembered is one of the page's own, never anything read.
+	if sw := functionBody(t, js, "switchDesign"); !strings.Contains(sw, "design = DESIGNS[") {
+		t.Errorf("switchDesign stores something besides one of the page's designs:\n%s", sw)
 	}
 	// Session storage holds the sign-in's state and verifier across GitHub's
 	// redirect, the rejoin token across a reload, and this tab's confirmed

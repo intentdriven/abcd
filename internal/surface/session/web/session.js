@@ -170,6 +170,109 @@ const WORDS = Object.freeze({
   guestCursor: "guest",
   notesHeading: "Warnings",
   pathRefused: "Not sent: this file is not one of the brief's files the session started from:",
+  // The two designs (Guided, the default, and Shared), switched with
+  // Ctrl+[ and Ctrl+]. A word with {repo}, {owner}, {name} or {n} has the
+  // value put in by say(), and is shown with textContent like every other.
+  designGuided: "Switched to the guided design",
+  designShared: "Switched to the shared design",
+  heroTitle: "Talk through the {repo} brief, together",
+  heroLede: "This is where the {repo} team reads and edits the project brief at the same time, and invites others to suggest changes. Nothing changes in the project until the team approves it.",
+  heroLedeShared: "Talk through the {repo} brief with your team and your guests, live, and change it together.",
+  sharedTitle: "{repo} brief",
+  invitedTitle: "You're invited to discuss the {repo} brief",
+  invitedLede: "The team is going through its brief right now and would like your view.",
+  brandSub: "Project brief · {owner}",
+  teamHeading: "I'm on the {repo} team",
+  codeHint: "Someone on the team gave you six letters and numbers. Type them here to join as a guest.",
+  nameHint: "Everyone in the session will see this name next to your suggestions.",
+  whatNext: "What happens next",
+  nextSignIn: "Sign in or enter a code",
+  nextHere: "You are here.",
+  nextJoin: "Join the session",
+  nextJoinHint: "You see the brief and who else is here.",
+  nextWork: "Work on it together",
+  nextWorkHint: "Edit, or suggest changes as a guest.",
+  nextSend: "Send it for approval",
+  nextSendHint: "A team member sends the changes to GitHub.",
+  nextInvited: "Once you join, the brief opens in front of you. You see who else is there, with a coloured name flag wherever they are working.",
+  nextNotSetUp: "Once live sessions are on, this page shows a button to start one. You will not need to set anything up yourself.",
+  nextChose: "Chose to sign in",
+  nextChoseHint: "On this computer.",
+  nextConfirm: "Confirm on GitHub",
+  nextOpens: "The session opens",
+  nextOpensHint: "You start or join the session.",
+  nextGuest: "When the team is done, a team member sends the changes to GitHub for approval. You can leave whenever you like; your suggestions stay with the team.",
+  askHeading: "Want to ask them now?",
+  askHint: "Copy this message and send it however you normally would.",
+  askMessage: "Hi, could you turn on live brief sessions for {slug}? I would like to go through the brief with the team: {page}",
+  askCopy: "Copy the message",
+  askCopied: "Message copied.",
+  deviceIntro: "Signing in on this computer takes one extra step: you confirm a short code on GitHub's website.",
+  deviceNote: "Note this code",
+  deviceOpenTitle: "Open GitHub and type it in",
+  deviceOpenHint: "GitHub opens in a new tab. Type the code there, then confirm.",
+  deviceBack: "Come back here",
+  deviceBackHint: "This page moves on by itself. Keep it open.",
+  bannerHost: "You're hosting the {repo} brief session",
+  bannerMember: "You're editing the {repo} brief with your team",
+  bannerGuest: "Welcome, {name}. You're a guest in the {repo} session",
+  bannerMemberHelp: "Edit the text directly; everyone sees your changes as you type. Review guests' suggestions on the right. When the team is happy, send it all to GitHub.",
+  bannerGuestHelp: "You can read everything. To suggest a change, select some words in the text, then press Suggest a change. A team member applies or declines it.",
+  hereCount: "{n} here",
+  liveHere: "Live · {n} here",
+  documents: "Documents",
+  documentsHint: "Pick one to open it.",
+  showDocuments: "Show the documents",
+  hideDocuments: "Hide the documents",
+  reviewPeople: "Review and people",
+  suggestFollow: "Suggest and follow",
+  showPanel: "Show",
+  hidePanel: "Hide",
+  close: "Close",
+  done: "Done",
+  briefArea: "The brief",
+  editHelp: "Click into the text to edit it.",
+  readHelp: "Select words in the text to suggest a change.",
+  readOnly: "Read only: suggest changes instead of editing",
+  savedForEveryone: "Saved for everyone as you type.",
+  sugReview: "Suggestions to review",
+  sugHelp: "Guests cannot edit. Apply a suggestion to put it into the text, or decline it.",
+  sugWaiting: "Suggestions waiting",
+  sugSub: "Guests suggest; the team decides. Applying puts the new words in the brief for everyone at once.",
+  sugShort: "Suggestions",
+  mineHelp: "What happened to the changes you have suggested so far.",
+  mineSub: "The team sees each one and applies or declines it. You see the outcome here.",
+  noMine: "You have not suggested anything yet.",
+  wordsWas: "Was",
+  wordsNow: "Now",
+  wordsSuggested: "Suggested",
+  youSelected: "You selected",
+  whoHere: "Who's here",
+  hereNow: "Here now",
+  thisSession: "This session",
+  sessionInfoMember: "Changes save for everyone as you type. Guests suggest; the team decides.",
+  sessionInfoGuest: "You suggest changes; the team applies or declines them.",
+  youShort: "You",
+  signedInShort: "Signed in",
+  joinedAsGuest: "Joined as a guest",
+  inviteSomeone: "Invite someone",
+  inviteHelp: "Share the link, or let them scan the code or type it in.",
+  invitePeople: "Invite people",
+  inviteTitle: "Invite people to this session",
+  scanHint: "Scan with a phone",
+  joinCode: "Join code",
+  copyCode: "Copy code",
+  codeCopied: "Code copied.",
+  finishHeading: "Finished? Send it to GitHub",
+  finishHelp: "Everything from this session goes back to GitHub, naming everyone who took part. Nothing in the project changes until someone on the team accepts it there.",
+  submitMore: "Send to GitHub…",
+  sendTip: "Turn this session into proposed changes on GitHub",
+  suggestTip: "Select words in the brief, then suggest new ones",
+  whatChanged: "What changed",
+  sendReassure: "Sending only proposes the changes. The brief on GitHub stays exactly as it is until someone on the team accepts them.",
+  backToSession: "Back to the session",
+  sessionBar: "Session",
+  whoIsHere: "Who is here",
 });
 
 // ---------------------------------------------------------------------------
@@ -241,9 +344,20 @@ const REJOIN_RE = /^[A-Za-z0-9_-]{22}$/;
 // attribute, so a remote one is used only when it is exactly this.
 const HEX_COLOUR_RE = /^#[0-9a-fA-F]{6}$/;
 const COLOURS = ["#2f6fdb", "#c2410c", "#15803d", "#9333ea", "#b91c1c", "#0e7490", "#a16207", "#be185d"];
+// The page's two designs, the first the default, and the key that keeps a
+// viewer's choice in this browser. The choice is a look, never a secret.
+const DESIGNS = ["guided", "shared"];
+const KEY_DESIGN = "abcd.session.design";
+// The widths at which a sidebar becomes a sheet (a phone) and the right one
+// a slide-over (a tablet, or a narrow window), per design.
+const PHONE_MAX = 600;
+const SLIDE_MAX = { guided: 1240, shared: 1300 };
+// The page's icons are inline SVG, drawn from these paths; the namespace is
+// a name, never fetched.
+const SVG_NS = "http://www.w3.org/2000/svg";
 
 // ---------------------------------------------------------------------------
-// Storage: only the display name is remembered; the relays the person
+// Storage: only the display name and the viewer's design are remembered; the relays the person
 // confirmed are kept for this tab, and the sign-in's PKCE verifier waits in
 // session storage across GitHub's redirect. Every access may throw (private
 // windows, blocked storage).
@@ -2562,6 +2676,7 @@ function submitSession() {
     showSendResult("", false);
     renderSend();
   }
+  applyLayout();
 }
 
 function showSendResult(text, bad, href) {
@@ -2582,9 +2697,14 @@ doc.on("update", () => {
   sendTimer = setTimeout(() => renderSend(), 600);
 });
 
+function closeSend() {
+  ui.send.hidden = true;
+  applyLayout();
+}
+
 function renderSend() {
   if (!ui.send || ui.send.hidden) return;
-  if (session.role !== "member" || session.over) { ui.send.hidden = true; return; }
+  if (session.role !== "member" || session.over) { closeSend(); return; }
   const mode = effectiveMeta().mode === "issues" ? "issues" : "pr";
   const analysis = analyse();
   const all = analysis.flatMap((f) => f.passages);
@@ -2609,11 +2729,13 @@ function renderSend() {
       }
     }
     ui.sendList.append(el("li", { class: "passage" },
-      el("div", { class: "from", text: relPath(p.path) + " · " + linesLabel(p) }),
-      el("div", { class: "credit", text: creditLines(p).join("\n") }),
-      el("del", { text: p.before }),
-      el("ins", { text: p.after }),
-      actions.childElementCount ? actions : null));
+      icon(fileIcon(p.path)),
+      el("div", { class: "passage-body" },
+        el("div", { class: "from", text: relPath(p.path) + " · " + linesLabel(p) }),
+        el("div", { class: "credit", text: creditLines(p).join("\n") }),
+        el("del", { text: p.before }),
+        el("ins", { text: p.after }),
+        actions.childElementCount ? actions : null)));
   }
   if (mode === "pr") {
     ui.sendActions.append(el("button", {
@@ -2624,7 +2746,7 @@ function renderSend() {
   }
   ui.sendActions.append(
     el("button", { type: "button", text: WORDS.sendRefresh, onclick: () => renderSend() }),
-    el("button", { type: "button", text: WORDS.sendClose, onclick: () => { ui.send.hidden = true; } }));
+    el("button", { type: "button", class: "back", text: WORDS.backToSession, onclick: () => closeSend() }));
 }
 
 
@@ -2647,7 +2769,7 @@ function openFile(path) {
     return;
   }
   currentPath = path;
-  ui.filetitle.textContent = path;
+  ui.filetitle.textContent = prettyName(path) + " · " + relPath(path);
   const extensions = [
     keymap.of([...yUndoManagerKeymap]),
     basicSetup,
@@ -2679,6 +2801,193 @@ files.observe(() => {
 });
 
 // ---------------------------------------------------------------------------
+// The two designs. Guided (the default) and Shared are one page, one set of
+// elements and one set of logic: the design is an attribute the stylesheet
+// reads, and a few parts (the documents, the people, the suggestions, the
+// invite, the editor) move into the design's own places. Ctrl+[ and Ctrl+]
+// switch on every platform, the Mac included; Alt+Shift+D and Alt+Shift+S
+// show and hide the two sidebars; Escape closes the overlay on top.
+// ---------------------------------------------------------------------------
+let design = DESIGNS[0];
+// The sidebars: shown or hidden on a wide screen; on a phone, the sheets
+// that are open (they start closed). Kept here, outside any screen, so it
+// lasts through every change of screen, width and design.
+const layout = { left: true, right: true, pleft: false, pright: false, sheet: "", invite: false };
+
+// storedDesign is the design this viewer chose last, or the default.
+function storedDesign() {
+  const d = recall(KEY_DESIGN);
+  return DESIGNS.includes(d) ? d : DESIGNS[0];
+}
+function switchDesign(step) {
+  const i = DESIGNS.indexOf(design);
+  design = DESIGNS[(i + step + DESIGNS.length) % DESIGNS.length];
+  remember(KEY_DESIGN, design);
+  applyLayout();
+  toast(design === "shared" ? WORDS.designShared : WORDS.designGuided);
+}
+
+// shortcut names what a key press asks for: the design switch on Ctrl+[ and
+// Ctrl+] (never Cmd), a sidebar on Alt+Shift+D or Alt+Shift+S (read from the
+// key's place, so a Mac's Option characters do not matter), or Escape.
+function shortcut(e) {
+  if (e.key === "Escape") return "escape";
+  if (e.metaKey) return "";
+  if (e.ctrlKey && !e.altKey) {
+    if (e.code === "BracketLeft" || e.key === "[") return "design-prev";
+    if (e.code === "BracketRight" || e.key === "]") return "design-next";
+    return "";
+  }
+  if (e.altKey && e.shiftKey && !e.ctrlKey) {
+    if (e.code === "KeyD") return "left";
+    if (e.code === "KeyS") return "right";
+  }
+  return "";
+}
+function onKey(e) {
+  const action = shortcut(e);
+  if (!action) return;
+  if (action === "escape") {
+    if (closeTop()) { e.preventDefault(); e.stopPropagation(); }
+    return;
+  }
+  if ((action === "left" || action === "right") && !inWorkspace()) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (action === "design-prev") switchDesign(-1);
+  else if (action === "design-next") switchDesign(1);
+  else toggleSide(action);
+}
+
+function viewWidth() {
+  return document.documentElement.clientWidth || window.innerWidth || 0;
+}
+function inWorkspace() {
+  return !!ui.work && !ui.work.hidden;
+}
+
+// closeTop closes the overlay on top, and says whether there was one: the
+// relay confirmation (which is then refused), the Send panel, the invite
+// card, the guest's suggestion popover, a phone's sheet, then a slide-over.
+function closeTop() {
+  if (ui.trust && !ui.trust.hidden) { trustAnswered(false); return true; }
+  if (ui.send && !ui.send.hidden) { ui.send.hidden = true; applyLayout(); return true; }
+  if (layout.invite) { layout.invite = false; applyLayout(); return true; }
+  if (design === "shared" && ui.suggestForm && !ui.suggestForm.hidden) { ui.suggestForm.hidden = true; applyLayout(); return true; }
+  if (!inWorkspace()) return false;
+  const w = viewWidth();
+  if (w <= PHONE_MAX) {
+    if (layout.sheet) { layout.sheet = ""; applyLayout(); return true; }
+    if (layout.pleft || layout.pright) { layout.pleft = false; layout.pright = false; applyLayout(); return true; }
+    return false;
+  }
+  if (w <= SLIDE_MAX[design] && layout.right) { layout.right = false; applyLayout(); return true; }
+  return false;
+}
+
+// defaultSheet is the right sidebar's first panel on a guided phone.
+function defaultSheet() {
+  return session.role === "member" ? "sugs" : "suggest";
+}
+function toggleSide(side) {
+  const phone = viewWidth() <= PHONE_MAX;
+  if (phone && design === "shared") {
+    if (side === "left") { layout.pleft = !layout.pleft; if (layout.pleft) layout.pright = false; }
+    else { layout.pright = !layout.pright; if (layout.pright) layout.pleft = false; }
+  } else if (phone && side === "right") {
+    layout.sheet = layout.sheet ? "" : defaultSheet();
+  } else {
+    layout[side] = !layout[side];
+  }
+  applyLayout();
+}
+function openSheet(name) {
+  layout.sheet = name;
+  applyLayout();
+}
+
+// sideShown says whether a sidebar shows, at this width and in this design.
+function sideShown(side) {
+  if (viewWidth() > PHONE_MAX) return layout[side];
+  if (design === "shared") return side === "left" ? layout.pleft : layout.pright;
+  return side === "left" ? layout.left : !!layout.sheet;
+}
+
+// applyLayout writes the design and the sidebars' state where the
+// stylesheet reads it, names the toggles for what they would do, and moves
+// the shared parts into the design's places.
+function applyLayout() {
+  document.documentElement.dataset.design = design;
+  if (!ui.app) return;
+  const L = sideShown("left");
+  const R = sideShown("right");
+  ui.app.dataset.left = L ? "shown" : "hidden";
+  ui.app.dataset.right = R ? "shown" : "hidden";
+  ui.app.dataset.sheet = viewWidth() <= PHONE_MAX && design === "guided" ? layout.sheet : "";
+  ui.app.dataset.overlay = !ui.send.hidden ? "send" : layout.invite ? "invite" : "";
+  const rightName = session.role === "guest" ? WORDS.suggestFollow : WORDS.reviewPeople;
+  const sharedRight = session.role === "guest" ? WORDS.mySuggestionsHeading : WORDS.sugShort;
+  const leftTip = L ? WORDS.hideDocuments : WORDS.showDocuments;
+  const rightTip = (R ? WORDS.hidePanel : WORDS.showPanel) + " " + (design === "shared" ? sharedRight : rightName).toLowerCase();
+  for (const b of [ui.gLeft, ui.sLeft]) {
+    b.setAttribute("aria-pressed", String(L));
+    b.setAttribute("aria-label", leftTip);
+  }
+  for (const b of [ui.gRight, ui.sRight]) {
+    b.setAttribute("aria-pressed", String(R));
+    b.setAttribute("aria-label", rightTip);
+  }
+  ui.gLeft.title = leftTip + " (Alt+Shift+D)";
+  ui.gRight.title = rightTip + " (Alt+Shift+S)";
+  ui.sLeft.dataset.tip = leftTip;
+  ui.sRight.dataset.tip = rightTip;
+  ui.gRightLabel.textContent = rightName;
+  ui.sRightLabel.textContent = sharedRight;
+  ui.gSideTitle.textContent = rightName;
+  ui.inviteToggle.setAttribute("aria-expanded", String(layout.invite));
+  for (const box of [ui.suggestBox, ui.sugBox, ui.mineBox, ui.rosterBox, ui.inviteBox]) {
+    box.classList.toggle("is-open", !!layout.sheet && box.dataset.panel === layout.sheet);
+  }
+  for (const tab of ui.tabs) tab.setAttribute("aria-pressed", String((tab.dataset.sheet || "") === layout.sheet));
+  placeParts();
+  renderTop();
+  fitTiles();
+  // The invite card opens under its button.
+  if (layout.invite && design === "shared" && viewWidth() > PHONE_MAX) {
+    const r = ui.inviteToggle.getBoundingClientRect();
+    ui.sShare.style.setProperty("--share-r", Math.max(12, Math.round(viewWidth() - (r.left + r.width / 2) - 90)) + "px");
+  }
+}
+
+// placeParts moves the parts both designs show into this design's places.
+let placedFor = "";
+function placeParts() {
+  if (placedFor === design) return;
+  placedFor = design;
+  if (design === "shared") {
+    ui.sDocs.append(ui.files);
+    ui.sPeople.append(ui.rosterBox);
+    ui.sInsp.append(ui.notesBox, ui.sugBox, ui.mineBox);
+    ui.sShare.append(ui.inviteBox);
+    ui.sPop.append(ui.suggestBox);
+    ui.sDoc.append(ui.page);
+  } else {
+    ui.gDocs.append(ui.files);
+    ui.gSide.append(ui.notesBox, ui.suggestBox, ui.sugBox, ui.mineBox, ui.rosterBox, ui.inviteBox);
+    ui.gPaper.append(ui.page);
+  }
+  if (view) view.requestMeasure();
+}
+
+// fitTiles folds the people in the shared team bar into one summary when
+// they do not fit whole: a tile is never cut.
+function fitTiles() {
+  if (!ui.hud) return;
+  ui.hud.classList.remove("crowded");
+  if (design === "shared" && ui.tiles.scrollWidth > ui.tiles.clientWidth + 1) ui.hud.classList.add("crowded");
+}
+
+// ---------------------------------------------------------------------------
 // Rendering.
 // ---------------------------------------------------------------------------
 const ui = {};
@@ -2687,10 +2996,116 @@ let statusBad = false;
 function setStatus(text, bad) {
   statusText = text;
   statusBad = bad;
-  if (ui.status) {
-    ui.status.textContent = text;
-    ui.status.className = bad ? "status bad" : "status";
+  paintStatus();
+}
+// paintStatus writes the status into each place a design shows it.
+function paintStatus() {
+  if (!ui.statuses) return;
+  for (const s of ui.statuses) {
+    s.textContent = statusText;
+    s.classList.toggle("bad", statusBad);
   }
+  const n = session.roster.length;
+  const live = !statusBad && (statusText === WORDS.connected || !statusText);
+  ui.liveDot.textContent = live ? say(WORDS.liveHere, { n }) : statusText;
+  ui.liveDot.classList.toggle("bad", !live);
+  ui.hudStatus.textContent = live ? WORDS.connected : statusText;
+  ui.hudLive.classList.toggle("bad", !live);
+  ui.hudCount.textContent = say(WORDS.hereCount, { n });
+}
+
+// say puts values into a word's {placeholders}; the result is shown with
+// textContent like any other text.
+function say(word, values) {
+  return word.replace(/\{([a-z]+)\}/g, (m, k) => (Object.prototype.hasOwnProperty.call(values, k) ? String(values[k]) : m));
+}
+
+// The page's icons, as path data: [d] is stroked, [d, opacity] filled.
+const ICONS = Object.freeze({
+  doc: ["M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M14 3v5h5M8.5 12.5h7M8.5 16h7"],
+  faq: ["M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 3.5V17A2.5 2.5 0 0 1 4 14.5z", "M10 8.7a2 2 0 1 1 2.6 1.9c-.4.2-.6.5-.6.9v.4M12 14.2h.01"],
+  person: ["M12 11.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7z", "M5 20c.7-3.6 3.5-6 7-6s6.3 2.4 7 6"],
+  people: ["M9 11.7a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4z", "M3.5 19c.5-3.2 2.7-5 5.5-5s5 1.8 5.5 5", "M16.8 11.8a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z", "M15.6 14.2c2.6-.3 4.6 1.3 5 4.3"],
+  noentry: ["M12 20.5a8.5 8.5 0 1 0 0-17 8.5 8.5 0 0 0 0 17z", "M6 6l12 12"],
+  panelLeft: [["M5 5.5h4.5v13H5a1.5 1.5 0 0 1-1.5-1.5V7A1.5 1.5 0 0 1 5 5.5z", ".28"], "M6 5.5h12a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 16V8A2.5 2.5 0 0 1 6 5.5z", "M9.5 5.5v13"],
+  panelRight: [["M14.5 5.5H19A1.5 1.5 0 0 1 20.5 7v10a1.5 1.5 0 0 1-1.5 1.5h-4.5z", ".28"], "M6 5.5h12a2.5 2.5 0 0 1 2.5 2.5v8a2.5 2.5 0 0 1-2.5 2.5H6A2.5 2.5 0 0 1 3.5 16V8A2.5 2.5 0 0 1 6 5.5z", "M14.5 5.5v13"],
+  invite: ["M10 11.9a3.4 3.4 0 1 0 0-6.8 3.4 3.4 0 0 0 0 6.8z", "M3.5 19.5c.5-3.4 3-5.4 6.5-5.4 1.4 0 2.6.3 3.6.9M18 13.5v6M15 16.5h6"],
+  send: ["M20.5 3.5L10.2 13.8", "M20.5 3.5l-6.3 17-4-6.7-6.7-4z"],
+  check: ["M5 12.5l4.5 4.5L19 7.5"],
+  x: ["M6.5 6.5l11 11M17.5 6.5l-11 11"],
+  copy: ["M11 8.5h6a2.5 2.5 0 0 1 2.5 2.5v6a2.5 2.5 0 0 1-2.5 2.5h-6A2.5 2.5 0 0 1 8.5 17v-6A2.5 2.5 0 0 1 11 8.5z", "M15.5 8.5V6.5a2 2 0 0 0-2-2h-7a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h2"],
+  pencil: ["M4.5 19.5l1-4.2L15.8 5a2 2 0 0 1 2.9 0l.3.3a2 2 0 0 1 0 2.9L8.7 18.5z", "M13.8 7l3.2 3.2"],
+  eye: ["M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z", "M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"],
+  bubble: ["M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v8a2.5 2.5 0 0 1-2.5 2.5H11l-4.5 3.5V17A2.5 2.5 0 0 1 4 14.5z", "M8 9h8M8 12.5h5"],
+  right: ["M9 5l7 7-7 7"],
+  out: ["M9 5h10v10M19 5L6 18"],
+  brief: ["M7 3h7l5 5v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z", "M14 3v5h5", "M8.5 13.5l2 2 4-4.5"],
+  laptop: ["M6 5h12a1.5 1.5 0 0 1 1.5 1.5v9h-15v-9A1.5 1.5 0 0 1 6 5z", "M2.5 19h19"],
+  hand: ["M8 12V6a1.5 1.5 0 0 1 3 0v5M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v7c0 4-2.5 7.5-6.5 7.5-2.5 0-4-1.3-5.5-3.5L3.6 14a1.5 1.5 0 0 1 2.4-1.8L8 14.5"],
+  clock: ["M12 20.5a8.5 8.5 0 1 0 0-17 8.5 8.5 0 0 0 0 17z", "M12 7.5V12l3 2"],
+  keypad: ["M5 6h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z", "M7 10h.01M11 10h.01M15 10h.01M7 14h10"],
+  shield: ["M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z", "M8.5 12l2.5 2.5 4.5-5"],
+  next: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 8l4 4-4 4M8 12h8"],
+  refresh: ["M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4"],
+  github: [["M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.7c-2.78.6-3.37-1.34-3.37-1.34-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.6.07-.6 1 .07 1.53 1.03 1.53 1.03.9 1.52 2.34 1.08 2.91.83.09-.65.35-1.09.63-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.98 1.03-2.68-.1-.25-.45-1.27.1-2.65 0 0 .84-.27 2.75 1.02a9.6 9.6 0 0 1 5 0c1.91-1.29 2.75-1.02 2.75-1.02.55 1.38.2 2.4.1 2.65.64.7 1.03 1.59 1.03 2.68 0 3.84-2.34 4.69-4.57 4.93.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2z", "1"]],
+});
+function icon(name, cls) {
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("viewBox", "0 0 24 24");
+  svg.setAttribute("class", cls ? "i " + cls : "i");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  for (const part of ICONS[name] || []) {
+    const path = document.createElementNS(SVG_NS, "path");
+    if (Array.isArray(part)) {
+      path.setAttribute("d", part[0]);
+      path.setAttribute("class", "fill");
+      path.setAttribute("opacity", part[1]);
+    } else {
+      path.setAttribute("d", part);
+    }
+    svg.append(path);
+  }
+  return svg;
+}
+// fileIcon picks a document's icon from its name.
+function fileIcon(path) {
+  const name = path.slice(path.lastIndexOf("/") + 1).toLowerCase();
+  if (/faq|question/.test(name)) return "faq";
+  if (/who|audience|user|customer|people/.test(name)) return "person";
+  if (/scope|non-goal|not-/.test(name)) return "noentry";
+  return "doc";
+}
+// prettyName is a document's name as a reader says it: "01-press-release.md"
+// is "Press release".
+function prettyName(path) {
+  const name = path.slice(path.lastIndexOf("/") + 1);
+  const words = name.replace(/\.md$/i, "").replace(/^[0-9]+[-_. ]*/, "").replace(/[-_]+/g, " ").trim();
+  if (/^faq$/i.test(words)) return "FAQ";
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : name;
+}
+// avatar is a person's initial on their colour. The colour comes from the
+// page's own list, never from another participant.
+function avatar(name, id, cls) {
+  const a = el("span", { class: cls ? "av " + cls : "av", "aria-hidden": "true", text: ([...String(name || "").trim()][0] || "?").toUpperCase() });
+  const n = Number(String(id || "").replace(/^p/, "")) || 0;
+  a.style.setProperty("--pc", COLOURS[n % COLOURS.length]);
+  return a;
+}
+// closeButton is every overlay's Close: an X, top right, named "Close".
+function closeButton(onclick) {
+  return el("button", { type: "button", class: "close", "aria-label": WORDS.close, "data-tip": WORDS.close, "data-key": "Esc", onclick }, icon("x"));
+}
+// areaHead is a guided card's numbered title, with the phone sheet's Done.
+function areaHead(text, extra) {
+  return el("div", { class: "card-head g-only" },
+    el("h2", { class: "area-title" }, el("span", { class: "num", "aria-hidden": "true" }), el("span", { text }), extra || null),
+    el("button", { type: "button", class: "btn small sheet-close", text: WORDS.done, onclick: () => openSheet("") }));
+}
+// nextSteps is the guided design's "What happens next" as numbered steps.
+function nextSteps(steps) {
+  return el("ol", { class: "steps" }, ...steps.map(([title, hint, state]) =>
+    el("li", { class: state || "" }, el("div", {}, el("strong", { text: title }), hint ? el("span", { text: hint }) : null))));
 }
 
 function build() {
@@ -2701,98 +3116,292 @@ function build() {
     app.append(el("p", { class: "notice", text: WORDS.wrongAddress }), ui.toast);
     return false;
   }
+  ui.app = app;
+  app.classList.add("app");
+  design = storedDesign();
   document.title = route.slug + " · " + WORDS.title;
-  ui.status = el("span", { class: "status" });
-  ui.who = el("span", { class: "who" });
-  ui.signInTop = el("button", { type: "button", text: WORDS.signIn, onclick: () => startSignIn() });
-  ui.submit = el("button", { type: "button", class: "primary", text: WORDS.submit, onclick: () => submitSession() });
-  const bar = el("header", { class: "bar" },
-    el("h1", { text: route.slug + " · " + WORDS.title }), ui.status, el("span", { class: "spacer" }),
-    ui.who, ui.signInTop, ui.submit);
+  const repo = route.repo;
+
+  // Where the status shows: the guided app bar, the shared team bar's Live
+  // and, before a session, under the shared page's title.
+  ui.status = el("span", { class: "status g-only" });
+  ui.heroStatus = el("p", { class: "status s-only", role: "status" });
+  ui.statuses = [ui.status, ui.heroStatus];
+  ui.liveDot = el("span", { class: "live-dot", role: "status" });
+  ui.hudStatus = el("b");
+  ui.hudCount = el("small");
+  ui.hudLive = el("div", { class: "hud-live" }, el("span", { class: "dot", "aria-hidden": "true" }), el("span", {}, ui.hudStatus, ui.hudCount));
+
+  ui.signInTop = el("button", { type: "button", class: "btn small", text: WORDS.signIn, onclick: () => startSignIn() });
+  ui.submit = el("button", { type: "button", class: "btn primary tb-send tip-r", "aria-label": WORDS.submit, "data-tip": WORDS.sendTip, "data-key": "", onclick: () => submitSession() },
+    icon("send"), el("span", { class: "lbl", "aria-hidden": "true", text: WORDS.submit }));
+  ui.suggestTop = el("button", { type: "button", class: "btn primary tb-send tip-r", "aria-label": WORDS.suggest, "data-tip": WORDS.suggestTip, "data-key": "", onclick: () => openSuggestForm() },
+    icon("pencil"), el("span", { class: "lbl", "aria-hidden": "true", text: WORDS.suggest }));
+
+  // The sidebar toggles: in the guided app bar, and at the two ends of the
+  // shared toolbar. Their names and tooltips say what they would do.
+  ui.gLeft = el("button", { type: "button", class: "btn small tb-toggle live-only", "aria-keyshortcuts": "Alt+Shift+D", onclick: () => toggleSide("left") },
+    icon("panelLeft"), el("span", { class: "tb-label", text: WORDS.documents }));
+  ui.gRightLabel = el("span", { class: "tb-label" });
+  ui.gRight = el("button", { type: "button", class: "btn small tb-toggle live-only", "aria-keyshortcuts": "Alt+Shift+S", onclick: () => toggleSide("right") },
+    icon("panelRight"), ui.gRightLabel);
+  ui.sLeft = el("button", { type: "button", class: "tbtn tg-left", "aria-keyshortcuts": "Alt+Shift+D", "data-key": "Alt+Shift+D", onclick: () => toggleSide("left") },
+    icon("panelLeft"), el("span", { class: "lbl", "aria-hidden": "true", text: WORDS.documents }));
+  ui.sRightLabel = el("span", { class: "lbl", "aria-hidden": "true" });
+  ui.rightCount = el("span", { class: "count", "aria-hidden": "true" });
+  ui.sRight = el("button", { type: "button", class: "tbtn tg-right", "aria-keyshortcuts": "Alt+Shift+S", "data-key": "Alt+Shift+S", onclick: () => toggleSide("right") },
+    icon("panelRight"), ui.sRightLabel, ui.rightCount);
+
+  // The guided app bar.
+  ui.gMe = el("div", { class: "me" });
+  const bar = el("header", { class: "top g-only" },
+    ui.gLeft, el("span", { class: "tb-sep live-only" }),
+    el("div", { class: "logo" }, icon("brief")),
+    el("div", { class: "names" }, el("div", { class: "project", text: repo }), el("div", { class: "sub", text: say(WORDS.brandSub, { owner: route.owner }) })),
+    el("span", { class: "spacer" }), ui.status, ui.gMe,
+    el("span", { class: "tb-sep live-only" }), ui.gRight);
 
   // The start screen. It asks for nothing technical: no relay address and no
   // token (adr-2610161400542916). It shows what the page can do here, in
   // plain words, or why it cannot.
+  ui.heroTitleGuided = el("span", { class: "g-only" });
+  ui.heroTitleShared = el("span", { class: "s-only" });
+  ui.heroTitle = el("h1", { tabindex: "-1" }, ui.heroTitleGuided, ui.heroTitleShared);
+  ui.heroLede = el("p", { class: "lede g-only" });
+  ui.heroLedeShared = el("p", { class: "lede s-only" });
+  ui.hero = el("header", { class: "card hero" },
+    el("div", { class: "appicon s-only" }, icon("brief")),
+    el("div", { class: "hero-names" }, el("p", { class: "eyebrow s-only", text: route.owner + " / " + repo }), ui.heroTitle),
+    ui.heroLede, ui.heroLedeShared, ui.heroStatus);
   ui.notice = el("p");
-  ui.retry = el("button", { type: "button", hidden: true, text: WORDS.tryAgain, onclick: () => recheckRelayList() });
-  ui.noticeCard = el("section", { class: "card", hidden: true, role: "status" }, ui.notice, el("div", { class: "row" }, ui.retry));
-  ui.code = el("input", { id: "code", autocomplete: "off", spellcheck: "false", maxlength: "12", autocapitalize: "characters" });
+  ui.retry = el("button", { type: "button", class: "btn primary", hidden: true, text: WORDS.tryAgain, onclick: () => recheckRelayList() });
+  ui.noticeCard = el("section", { class: "card notice-card", hidden: true, role: "status" },
+    el("div", { class: "illus s-only" }, icon("hand")), ui.notice, el("div", { class: "row" }, ui.retry));
+  ui.askMessage = el("div", { class: "quote-box" });
+  ui.askCard = el("section", { class: "card ask-card", hidden: true },
+    el("h2", { text: WORDS.askHeading }), el("p", { class: "hint", text: WORDS.askHint }), ui.askMessage,
+    el("div", { class: "row" }, el("button", { type: "button", class: "btn primary", text: WORDS.askCopy, onclick: () => copyText(ui.askMessage.textContent, WORDS.askCopied) })));
+  ui.code = el("input", { id: "code", class: "code-input", autocomplete: "off", spellcheck: "false", maxlength: "12", autocapitalize: "characters", placeholder: "K7M2QX" });
   ui.name = el("input", { id: "name", autocomplete: "nickname", maxlength: "40" });
   ui.mode = el("select", { id: "mode" },
     el("option", { value: "pr", text: WORDS.modePR }), el("option", { value: "issues", text: WORDS.modeIssues }));
   ui.signedIn = el("p", { class: "state" });
   ui.signInNote = el("p", { class: "state" });
-  ui.signInStart = el("button", { type: "button", class: "primary", text: WORDS.signIn, onclick: () => startSignIn() });
-  ui.hostRow = el("div", { hidden: true },
+  ui.signInStart = el("button", { type: "button", class: "btn primary block", onclick: () => startSignIn() }, icon("github"), WORDS.signIn);
+  ui.hostRow = el("div", { class: "host-row", hidden: true },
     el("label", { for: "mode", text: WORDS.modeLabel }), ui.mode,
-    el("div", { class: "row" }, el("button", { type: "button", class: "primary", text: WORDS.host, onclick: () => hostClicked() })));
-  ui.startCard = el("section", { class: "card", hidden: true },
-    el("h2", { text: WORDS.startHeading }), el("p", { text: WORDS.startHint }),
+    el("div", { class: "row" }, el("button", { type: "button", class: "btn primary block", text: WORDS.host, onclick: () => hostClicked() })));
+  ui.startCard = el("section", { class: "card choice", hidden: true },
+    el("div", { class: "card-ic", "aria-hidden": "true" }, icon("people")),
+    el("h2", { text: say(WORDS.teamHeading, { repo }) }), el("p", { text: WORDS.startHint }),
     el("p", { class: "owner" }, ownerNotice()),
-    el("div", { class: "row" }, ui.signInStart), ui.hostRow);
+    el("div", { class: "choice-act" }, ui.signInStart, ui.hostRow));
   // Joining: with a code from the invite link, members sign in and everyone
   // else gives a name; without one, a smaller form takes a code given aloud.
+  ui.signInJoin = el("button", { type: "button", class: "btn primary block", onclick: () => startSignIn() }, icon("github"), WORDS.signIn);
+  ui.joinMembers = el("section", { class: "card choice", hidden: true },
+    el("div", { class: "card-ic", "aria-hidden": "true" }, icon("pencil")),
+    el("h2", { text: say(WORDS.teamHeading, { repo }) }),
+    el("p", { text: WORDS.joinMembers }), el("p", { class: "owner" }, ownerNotice()),
+    el("div", { class: "choice-act" }, ui.signInJoin));
   ui.joinTitle = el("h2");
-  ui.signInJoin = el("button", { type: "button", class: "primary", text: WORDS.signIn, onclick: () => startSignIn() });
-  ui.joinMembers = el("div", {},
-    el("p", { text: WORDS.joinMembers }), el("p", { class: "owner" }, ownerNotice()), el("div", { class: "row" }, ui.signInJoin));
   ui.joinGuests = el("p", { text: WORDS.joinGuests });
-  ui.codeRow = el("div", {}, el("label", { for: "code", text: WORDS.codeLabel }), ui.code);
-  ui.joinButton = el("button", { type: "submit", class: "primary", text: WORDS.join });
-  ui.joinCard = el("form", { class: "card", hidden: true, onsubmit: (e) => { e.preventDefault(); joinClicked(); } },
-    ui.joinTitle, ui.joinMembers, ui.joinGuests, ui.codeRow,
-    el("label", { for: "name", text: WORDS.nameLabel }), ui.name,
-    el("div", { class: "row" }, ui.joinButton));
+  ui.codeHint = el("p", { text: WORDS.codeHint });
+  ui.codeRow = el("div", { class: "field-group" }, el("label", { for: "code", text: WORDS.codeLabel }), ui.code);
+  ui.joinButton = el("button", { type: "submit", class: "btn primary block" });
+  ui.joinCard = el("form", { class: "card choice", hidden: true, onsubmit: (e) => { e.preventDefault(); joinClicked(); } },
+    el("div", { class: "card-ic", "aria-hidden": "true" }, icon("bubble")),
+    ui.joinTitle, ui.joinGuests, ui.codeHint,
+    el("div", { class: "choice-form" }, ui.codeRow,
+      el("div", { class: "field-group" }, el("label", { for: "name", text: WORDS.nameLabel }), ui.name, el("p", { class: "hint", text: WORDS.nameHint }))),
+    el("div", { class: "choice-act" }, ui.joinButton));
+  ui.nextStart = el("div", { class: "next g-only", role: "note" });
+  ui.start = el("div", { class: "start" },
+    el("div", { class: "narrow" }, ui.hero, ui.noticeCard, ui.askCard,
+      el("div", { class: "signed" }, ui.signedIn, ui.signInNote),
+      el("div", { class: "choices" }, ui.startCard, ui.joinMembers, ui.joinCard),
+      ui.nextStart));
+
   // GitHub's device flow: the code to confirm on github.com, which the page
   // opens in a new tab.
-  ui.deviceCode = el("div", { class: "code", "aria-live": "polite" });
-  ui.deviceOpen = el("a", { class: "button primary", href: GITHUB_DEVICE, target: "_blank", rel: "noopener noreferrer", text: WORDS.deviceOpen });
+  ui.deviceCode = el("div", { class: "code bigcode", "aria-live": "polite" });
+  ui.deviceOpen = el("a", { class: "button primary", href: GITHUB_DEVICE, target: "_blank", rel: "noopener noreferrer", text: WORDS.deviceOpen }, icon("out"));
   ui.device = el("section", { class: "card device", hidden: true, role: "dialog", "aria-labelledby": "device-heading" },
-    el("h2", { id: "device-heading", text: WORDS.deviceHeading }),
-    el("p", { text: WORDS.deviceStep1 }), el("div", { class: "row" }, ui.deviceOpen),
-    el("p", { text: WORDS.deviceStep2 }), ui.deviceCode,
-    el("div", { class: "row" },
-      el("button", { type: "button", text: WORDS.deviceCopy, onclick: () => copyText(ui.deviceCode.textContent, WORDS.deviceCopied) }),
-      el("button", { type: "button", text: WORDS.cancel, onclick: () => stopDeviceSignIn(true) })),
-    el("p", { class: "state", text: WORDS.deviceWaiting }));
-  ui.start = el("div", { class: "start" }, ui.noticeCard, ui.signedIn, ui.signInNote, ui.startCard, ui.joinCard);
+    el("div", { class: "device-head" },
+      el("div", { class: "illus s-only" }, icon("laptop")),
+      el("div", {}, el("p", { class: "eyebrow s-only", text: route.owner + " / " + repo }), el("h2", { id: "device-heading", text: WORDS.deviceHeading })),
+      el("p", { class: "lead", text: WORDS.deviceIntro })),
+    el("div", { class: "numbered" },
+      el("div", { class: "n" }, el("b", { "aria-hidden": "true", text: "1" }), el("div", {},
+        el("h3", { text: WORDS.deviceNote }),
+        el("div", { class: "devcode" }, ui.deviceCode,
+          el("button", { type: "button", class: "btn small", onclick: () => copyText(ui.deviceCode.textContent, WORDS.deviceCopied) }, icon("copy"), WORDS.deviceCopy)))),
+      el("div", { class: "n" }, el("b", { "aria-hidden": "true", text: "2" }), el("div", {},
+        el("h3", { text: WORDS.deviceOpenTitle }), el("p", { class: "hint", text: WORDS.deviceOpenHint }),
+        el("div", { class: "row" }, ui.deviceOpen))),
+      el("div", { class: "n" }, el("b", { "aria-hidden": "true", text: "3" }), el("div", {},
+        el("h3", { text: WORDS.deviceBack }),
+        el("div", { class: "waiting" }, el("span", { class: "spinner", "aria-hidden": "true" }),
+          el("div", {}, el("strong", { class: "state", text: WORDS.deviceWaiting }), el("span", { class: "hint", text: WORDS.deviceBackHint })))))),
+    el("div", { class: "row device-cancel" }, el("button", { type: "button", class: "btn", text: WORDS.cancel, onclick: () => stopDeviceSignIn(true) })),
+    el("div", { class: "next g-only", role: "note" },
+      el("h2", {}, icon("next"), WORDS.whatNext), // g-only: the guided design's alone
+      nextSteps([[WORDS.nextChose, WORDS.nextChoseHint, "done"], [WORDS.nextConfirm, WORDS.nextHere, "here"], [WORDS.nextOpens, WORDS.nextOpensHint]])));
 
-  // The workspace.
-  ui.files = el("nav", { class: "files", "aria-label": WORDS.filesHeading });
+  // The workspace's parts, which each design places for itself.
+  ui.files = el("div", { class: "docs" });
   ui.filetitle = el("div", { class: "filetitle" });
   ui.editor = el("div", { class: "editor" });
+  ui.page = el("div", { class: "page" }, ui.filetitle, ui.editor);
+  ui.notesList = el("ul");
+  ui.notesBox = el("section", { class: "notes", role: "alert", hidden: true }, el("h2", { text: WORDS.notesHeading }), ui.notesList);
+  ui.people = el("ul", { class: "people" });
+  ui.rosterBox = el("section", { class: "box area", "data-panel": "people", "aria-label": WORDS.whoHere }, areaHead(WORDS.whoHere), ui.people);
+  ui.sugCount = el("span", { class: "count" });
+  ui.sugList = el("div", { class: "sugs" });
+  ui.sugBox = el("section", { class: "box area", "data-panel": "sugs", "aria-label": WORDS.suggestionsHeading, hidden: true },
+    areaHead(WORDS.sugReview, ui.sugCount), el("p", { class: "area-help g-only", text: WORDS.sugHelp }), ui.sugList);
+  ui.mineList = el("ul", { class: "my-sugs" });
+  ui.mineBox = el("section", { class: "box area", "data-panel": "mine", "aria-label": WORDS.mySuggestionsHeading, hidden: true },
+    areaHead(WORDS.mySuggestionsHeading), el("p", { class: "area-help g-only", text: WORDS.mineHelp }), ui.mineList);
+  ui.inviteBody = el("div", { class: "invite-body" });
+  ui.inviteBox = el("section", { class: "box area invite-box", "data-panel": "invite", "aria-label": WORDS.inviteHeading, hidden: true },
+    areaHead(WORDS.inviteSomeone), el("p", { class: "area-help g-only", text: WORDS.inviteHelp }), ui.inviteBody);
+  // The guest's suggestion: a card in Guided, a popover in Shared.
   ui.quote = el("div", { class: "quote" });
   ui.replacement = el("textarea", { id: "replacement", maxlength: String(MAX_REPLACEMENT) });
-  ui.suggestForm = el("form", { hidden: true, onsubmit: (e) => { e.preventDefault(); if (sendSuggestion(ui.replacement.value)) ui.suggestForm.hidden = true; } },
-    ui.quote, el("label", { for: "replacement", text: WORDS.replacementLabel }), ui.replacement,
+  ui.suggestForm = el("form", { class: "suggest-form", hidden: true, onsubmit: (e) => { e.preventDefault(); if (sendSuggestion(ui.replacement.value)) { ui.suggestForm.hidden = true; applyLayout(); } } },
+    el("div", { class: "field-group" }, el("span", { class: "field", text: WORDS.youSelected }), ui.quote),
+    el("div", { class: "field-group" }, el("label", { for: "replacement", text: WORDS.replacementLabel }), ui.replacement),
     el("div", { class: "row" },
-      el("button", { type: "submit", class: "primary", text: WORDS.send }),
-      el("button", { type: "button", text: WORDS.cancel, onclick: () => { ui.suggestForm.hidden = true; } })));
-  ui.suggestButton = el("button", { type: "button", text: WORDS.suggest, onclick: () => openSuggestForm() });
-  ui.guestbar = el("div", { class: "guestbar", hidden: true },
-    el("p", { class: "state", text: WORDS.guestHint }), el("div", { class: "row" }, ui.suggestButton), ui.suggestForm);
-  ui.side = el("aside", { class: "side" });
+      el("button", { type: "submit", class: "btn primary", text: WORDS.send }),
+      el("button", { type: "button", class: "btn", text: WORDS.cancel, onclick: () => { ui.suggestForm.hidden = true; applyLayout(); } })));
+  ui.suggestButton = el("button", { type: "button", class: "btn primary", onclick: () => openSuggestForm() }, icon("pencil"), WORDS.suggest);
+  ui.suggestBox = el("section", { class: "box area guest-panel", "data-panel": "suggest", "aria-label": WORDS.suggest, hidden: true },
+    areaHead(WORDS.suggest), el("h3", { class: "s-only pop-title", text: WORDS.suggest }),
+    el("p", { class: "area-help g-only", text: WORDS.guestHint }),
+    el("div", { class: "row g-only" }, ui.suggestButton), ui.suggestForm);
+
+  // The guided workspace: a banner, then the documents, the brief and the
+  // numbered areas, and the way to GitHub.
+  ui.bannerTitle = el("h1", { tabindex: "-1" });
+  ui.bannerHelp = el("p");
+  ui.gDocs = el("div", { class: "docs-slot" });
+  ui.gPaper = el("div", { class: "paper" });
+  ui.readonlyTag = el("div", { class: "readonly-tag" }, icon("eye"), WORDS.readOnly);
+  ui.briefHelp = el("p", { class: "area-help" });
+  ui.editHint = el("p", { class: "edit-hint" }, icon("check"), WORDS.savedForEveryone);
+  ui.gSideTitle = el("h2");
+  ui.gSide = el("aside", { class: "side" },
+    el("div", { class: "inspector-head" }, ui.gSideTitle,
+      el("button", { type: "button", class: "btn small", text: WORDS.close, onclick: () => toggleSide("right") })));
+  ui.submitG = el("button", { type: "button", class: "btn primary", onclick: () => submitSession() }, icon("send"), WORDS.submitMore);
+  ui.finish = el("section", { class: "card finish full area", "aria-label": WORDS.sendHeading },
+    el("div", {}, el("h2", { class: "area-title" }, el("span", { class: "num", "aria-hidden": "true" }), el("span", { text: WORDS.finishHeading })),
+      el("p", { class: "area-help", text: WORDS.finishHelp })),
+    el("div", { class: "actions" }, ui.submitG));
+  ui.nextLive = el("div", { class: "next g-only", role: "note" },
+    el("h2", {}, icon("next"), WORDS.whatNext), // g-only: the guided design's alone
+    el("p", { class: "one", text: WORDS.nextGuest }));
+  ui.tabs = [
+    ["", "doc", WORDS.briefArea, "all"], ["sugs", "bubble", WORDS.sugShort, "member"], ["suggest", "pencil", WORDS.suggest, "guest"],
+    ["mine", "clock", WORDS.mySuggestionsHeading, "guest"], ["people", "people", WORDS.whoHere, "all"], ["invite", "invite", WORDS.invitePeople, "host"],
+  ].map(([sheet, ic, text, who]) => el("button", { type: "button", class: "tab", "data-sheet": sheet, "data-who": who, onclick: () => openSheet(sheet) },
+    icon(ic), el("span", { text })));
+  ui.tabCount = el("b", { class: "tab-count", "aria-hidden": "true" });
+  ui.tabs[1].append(ui.tabCount);
+  const guided = el("div", { class: "g-live g-only" },
+    el("section", { class: "card banner" }, el("div", {}, ui.bannerTitle, ui.bannerHelp), el("div", { class: "banner-acts" }, ui.liveDot)),
+    el("div", { class: "live-grid" },
+      el("nav", { class: "card docs-card", "aria-label": WORDS.documents },
+        el("h2", { class: "side-title" }, icon("doc"), el("span", { text: WORDS.documents })),
+        el("p", { class: "hint", text: WORDS.documentsHint }), ui.gDocs),
+      el("section", { class: "card brief-card area", "aria-label": WORDS.briefArea },
+        el("div", { class: "card-head" }, el("h2", { class: "area-title" }, el("span", { class: "num", "aria-hidden": "true" }), el("span", { text: WORDS.briefArea }))),
+        ui.briefHelp, ui.readonlyTag, ui.gPaper, ui.editHint),
+      ui.gSide, ui.finish),
+    ui.nextLive,
+    el("nav", { class: "tabbar", "aria-label": WORDS.sessionBar }, ...ui.tabs));
+
+  // The shared workspace: a floating toolbar over the document, a sidebar
+  // of documents and people, an inspector of suggestions, and overlays.
+  ui.sDocs = el("div", { class: "docs-slot" });
+  ui.sPeople = el("div", { class: "people-slot" });
+  ui.sbInfo = el("p", { class: "sb-info" });
+  ui.sFoot = el("div", { class: "sb-foot" });
+  ui.sSidebar = el("nav", { class: "sidebar glass", id: "s-docs", "aria-label": WORDS.documents },
+    el("div", { class: "sb-head" }, el("span", { class: "appicon sm" }, icon("brief")),
+      el("span", {}, el("b", { text: repo }), el("small", { text: say(WORDS.brandSub, { owner: route.owner }) }))),
+    el("h2", { class: "sb-ttl", text: repo }),
+    closeButton(() => toggleSide("left")),
+    el("p", { class: "sb-label", text: WORDS.documents }), ui.sDocs,
+    el("p", { class: "sb-label", text: WORDS.hereNow }), ui.sPeople,
+    el("p", { class: "sb-label", text: WORDS.thisSession }), ui.sbInfo, ui.sFoot);
+  ui.guestBanner = el("p", { class: "banner" }, icon("bubble"), el("span", { text: WORDS.guestHint }));
+  ui.sDoc = el("div", { class: "doc-slot" });
+  ui.tiles = el("ul", { class: "tiles" });
+  ui.hudSum = el("button", { type: "button", class: "hud-sum", onclick: () => { if (!sideShown("left")) toggleSide("left"); } });
+  ui.inviteToggle = el("button", { type: "button", class: "ibtn hud-inv tip-r", "aria-label": WORDS.invitePeople, "aria-haspopup": "dialog", "data-tip": WORDS.invitePeople, "data-key": "", onclick: () => { layout.invite = !layout.invite; applyLayout(); } }, icon("invite"));
+  ui.hud = el("div", { class: "hud glass", role: "group", "aria-label": WORDS.whoIsHere }, ui.hudLive, ui.tiles, ui.hudSum, ui.inviteToggle);
+  ui.inspTitle = el("h2");
+  ui.inspCount = el("span", { class: "count" });
+  ui.inspSub = el("p", { class: "insp-sub" });
+  ui.sInsp = el("div", { class: "insp-list" });
+  ui.sPop = el("div", { class: "popover glass-strong", role: "dialog", "aria-label": WORDS.suggest }, closeButton(() => { ui.suggestForm.hidden = true; applyLayout(); }));
+  ui.sShare = el("div", { class: "share glass-strong", role: "dialog", "aria-label": WORDS.invitePeople },
+    closeButton(() => { layout.invite = false; applyLayout(); }),
+    el("div", { class: "share-h" }, el("span", { class: "appicon sm" }, icon("invite")),
+      el("div", {}, el("b", { text: WORDS.inviteTitle }), el("small", { text: say(WORDS.brandSub, { owner: route.owner }) }))));
+  const shared = el("div", { class: "s-live s-only" },
+    ui.sSidebar,
+    el("div", { class: "main" }, el("div", { class: "docscroll" }, el("article", { class: "doc" }, ui.guestBanner, ui.sDoc))),
+    el("div", { class: "toolbar", role: "toolbar", "aria-label": WORDS.sessionBar },
+      el("div", { class: "tcap tc-left glass" }, ui.sLeft), ui.hud, ui.submit, ui.suggestTop,
+      el("div", { class: "tcap tc-right glass" }, ui.sRight)),
+    el("aside", { class: "inspector glass", id: "s-side", "aria-label": WORDS.suggestionsHeading },
+      closeButton(() => toggleSide("right")),
+      el("div", { class: "insp-h" }, ui.inspTitle, ui.inspCount), ui.inspSub, ui.sInsp),
+    ui.sPop, ui.sShare,
+    el("div", { class: "scrim", onclick: () => closeTop() }));
+
+  // Sending the session to GitHub: a screen of its own in Guided, a sheet
+  // over the session in Shared.
   ui.sendIntro = el("p", { class: "state" });
-  ui.sendList = el("ul");
-  ui.sendActions = el("div", { class: "row" });
+  ui.sendList = el("ul", { class: "changes" });
+  ui.sendActions = el("div", { class: "row actions" });
   ui.sendResult = el("p", { class: "state", role: "status", "aria-live": "polite" });
-  ui.send = el("section", { class: "send", hidden: true, "aria-label": WORDS.sendHeading },
-    el("h2", { text: WORDS.sendHeading }), ui.sendIntro, ui.sendList, ui.sendActions, ui.sendResult);
-  ui.work = el("div", { class: "work", hidden: true },
-    ui.files, el("section", { class: "center" }, ui.send, ui.filetitle, ui.editor, ui.guestbar), ui.side);
+  ui.send = el("section", { class: "send glass-strong", hidden: true, role: "dialog", "aria-labelledby": "send-heading" },
+    closeButton(() => closeSend()),
+    el("div", { class: "send-in card" },
+      el("div", { class: "send-h" }, el("span", { class: "appicon sm soft s-only" }, icon("send")),
+        el("div", {}, el("h2", { id: "send-heading", text: WORDS.sendHeading }), ui.sendIntro)),
+      el("h3", { text: WORDS.whatChanged }), ui.sendList),
+    el("div", { class: "send-foot card" },
+      el("div", { class: "reassure" }, icon("shield"), el("p", { text: WORDS.sendReassure })),
+      ui.sendActions, ui.sendResult));
+  ui.work = el("div", { class: "work", hidden: true }, guided, shared, ui.send);
 
   // The confirmation a relay the repository's list cannot speak for needs
   // before any sign-in, name or suggestion reaches it, shown over the start
   // screen or a session. It names the project and no address.
   ui.trustOwner = el("p", { class: "owner" });
-  ui.trustCancel = el("button", { type: "button", text: WORDS.cancel, onclick: () => trustAnswered(false) });
-  ui.trust = el("section", { class: "card trust", hidden: true, role: "alertdialog", "aria-labelledby": "trust-heading" },
+  ui.trustCancel = el("button", { type: "button", class: "btn", text: WORDS.cancel, onclick: () => trustAnswered(false) });
+  ui.trust = el("section", { class: "card trust glass-strong", hidden: true, role: "alertdialog", "aria-labelledby": "trust-heading" },
+    el("div", { class: "s-only" }, closeButton(() => trustAnswered(false))),
     el("h2", { id: "trust-heading", text: WORDS.trustHeading }),
     ui.trustOwner, el("p", { text: WORDS.trustQuestion }), el("p", { class: "only", text: WORDS.trustOnly }),
     el("div", { class: "row" },
-      el("button", { type: "button", class: "primary", text: WORDS.trustYes, onclick: () => trustAnswered(true) }), ui.trustCancel));
+      el("button", { type: "button", class: "btn primary", text: WORDS.trustYes, onclick: () => trustAnswered(true) }), ui.trustCancel));
 
   app.append(bar, ui.trust, ui.device, ui.start, ui.work, ui.toast);
+  window.addEventListener("keydown", onKey, true);
+  let resizing = 0;
+  window.addEventListener("resize", () => {
+    cancelAnimationFrame(resizing);
+    resizing = requestAnimationFrame(() => applyLayout());
+  });
+  if (typeof ResizeObserver === "function") new ResizeObserver(() => fitTiles()).observe(ui.hud);
+  applyLayout();
   return true;
 }
 
@@ -2831,19 +3440,45 @@ function openSuggestForm() {
   ui.quote.textContent = text;
   ui.replacement.value = text;
   ui.suggestForm.hidden = false;
+  if (viewWidth() <= PHONE_MAX) {
+    if (design === "guided") layout.sheet = "suggest";
+    else { layout.pleft = false; layout.pright = false; }
+  }
+  applyLayout();
   ui.replacement.focus();
 }
 
+// renderTop shows who this is, the sign-in a guest may still make, and the
+// way to GitHub, in each design's place for them.
 function renderTop() {
-  if (!ui.who) return;
+  if (!ui.gMe) return;
   let who = "";
-  if (session.login) who = WORDS.signedInAs + " " + session.login;
+  if (session.login) who = session.login;
   else if (session.inRoom && session.name) who = session.name;
-  ui.who.textContent = who;
+  const me = session.roster.find((p) => p.id === session.myId);
+  clear(ui.gMe);
+  clear(ui.sFoot);
+  if (who) {
+    ui.gMe.append(avatar(who, session.myId, "md"), el("span", { class: "who", text: session.login ? WORDS.signedInAs + " " + who : who }), me ? badge(me) : null);
+    ui.sFoot.append(avatar(who, session.myId, "sm"),
+      el("span", {}, who, el("small", { text: session.role === "guest" ? WORDS.joinedAsGuest : WORDS.signedInShort + (session.host ? " · " + WORDS.badgeHost : "") })));
+  }
   ui.signInTop.hidden = !(session.inRoom && session.role === "guest" && !session.over) || signInOffered === false;
+  (design === "shared" ? ui.sFoot : ui.gMe).append(ui.signInTop);
   ui.submit.hidden = !(session.synced && session.role === "member" && !session.over);
-  ui.status.textContent = statusText;
-  ui.status.className = statusBad ? "status bad" : "status";
+  ui.finish.hidden = ui.submit.hidden;
+  ui.suggestTop.hidden = !(session.synced && session.role === "guest" && !session.over);
+  ui.sbInfo.textContent = session.role === "guest" ? WORDS.sessionInfoGuest : WORDS.sessionInfoMember;
+  const name = session.name || WORDS.badgeGuest;
+  ui.bannerTitle.textContent = session.role === "guest" ? say(WORDS.bannerGuest, { name, repo: route.repo })
+    : say(session.host ? WORDS.bannerHost : WORDS.bannerMember, { repo: route.repo });
+  ui.bannerHelp.textContent = session.role === "guest" ? WORDS.bannerGuestHelp : WORDS.bannerMemberHelp;
+  ui.briefHelp.textContent = session.role === "guest" ? WORDS.readHelp : WORDS.editHelp;
+  ui.readonlyTag.hidden = session.role === "member";
+  ui.editHint.hidden = session.role !== "member";
+  ui.guestBanner.hidden = session.role !== "guest" || session.over;
+  ui.nextLive.hidden = session.role !== "guest";
+  paintStatus();
 }
 
 function renderStart() {
@@ -2851,6 +3486,7 @@ function renderStart() {
   const inSession = session.everJoined || session.over;
   ui.start.hidden = inSession;
   ui.work.hidden = !inSession || session.seeding;
+  ui.app.dataset.screen = ui.work.hidden ? "start" : "work";
   if (inSession) return;
   // What stands in the way, in plain words and with no address: no session
   // set up, a link that is not the project's own, or GitHub out of reach.
@@ -2864,9 +3500,16 @@ function renderStart() {
   ui.notice.textContent = notice;
   ui.noticeCard.hidden = !notice;
   ui.retry.hidden = anchor.state !== "unavailable";
+  const notSetUp = notice === WORDS.notSetUp;
+  ui.askCard.hidden = !notSetUp;
+  ui.askMessage.textContent = say(WORDS.askMessage, { slug: route.slug, page: pageURL() });
   const usable = !notice;
   const invited = !!linkCode;
   const canSignIn = !session.login && signInOffered !== false;
+  ui.heroTitleGuided.textContent = say(invited ? WORDS.invitedTitle : WORDS.heroTitle, { repo: route.repo });
+  ui.heroTitleShared.textContent = say(invited ? WORDS.invitedTitle : WORDS.sharedTitle, { repo: route.repo });
+  ui.heroLede.textContent = invited ? WORDS.invitedLede : say(WORDS.heroLede, { repo: route.repo });
+  ui.heroLedeShared.textContent = invited ? WORDS.invitedLede : say(WORDS.heroLedeShared, { repo: route.repo });
   ui.signedIn.textContent = session.login
     ? WORDS.signedInAs + " " + session.login + (session.member ? "" : ". " + WORDS.notMember)
     : "";
@@ -2875,17 +3518,28 @@ function renderStart() {
   ui.signInStart.hidden = !canSignIn;
   ui.hostRow.hidden = !(session.login && session.member);
   ui.joinCard.hidden = !usable;
-  ui.joinTitle.textContent = invited ? WORDS.joinHeading : WORDS.haveCode;
-  ui.joinMembers.hidden = !invited || !canSignIn;
+  ui.joinTitle.textContent = invited ? WORDS.join : WORDS.haveCode;
+  ui.joinMembers.hidden = !usable || !invited || !canSignIn;
   ui.joinGuests.hidden = !invited;
+  ui.codeHint.hidden = invited;
   ui.codeRow.hidden = invited;
   ui.joinButton.textContent = invited ? WORDS.join : WORDS.joinWithCode;
+  // What happens next, in the guided design: the steps from here, or what
+  // follows once sessions are set up.
+  clear(ui.nextStart);
+  ui.nextStart.hidden = !(usable || notSetUp);
+  ui.nextStart.append(el("h2", {}, icon("next"), WORDS.whatNext)); // g-only: ui.nextStart is the guided design's alone
+  if (notSetUp) ui.nextStart.append(el("p", { class: "one", text: WORDS.nextNotSetUp }));
+  else if (invited) ui.nextStart.append(el("p", { class: "one", text: WORDS.nextInvited }));
+  else {
+    ui.nextStart.append(nextSteps([[WORDS.nextSignIn, WORDS.nextHere, "here"], [WORDS.nextJoin, WORDS.nextJoinHint],
+      [WORDS.nextWork, WORDS.nextWorkHint], [WORDS.nextSend, WORDS.nextSendHint]]));
+  }
 }
 
 function renderFiles() {
   if (!ui.files) return;
   clear(ui.files);
-  ui.files.append(el("h2", { text: WORDS.filesHeading }));
   const paths = [...files.keys()].sort();
   let folder = null;
   for (const p of paths) {
@@ -2898,88 +3552,136 @@ function renderFiles() {
     }
     ui.files.append(el("button", {
       type: "button",
-      text: cut < 0 ? rel : rel.slice(cut + 1),
+      class: "doc-tab",
+      title: rel,
       "aria-current": p === currentPath ? "true" : "false",
-      onclick: () => openFile(p),
-    }));
+      onclick: () => { openFile(p); if (viewWidth() <= PHONE_MAX && design === "shared" && layout.pleft) { layout.pleft = false; applyLayout(); } },
+    }, icon(fileIcon(p)), el("b", { class: "t", text: prettyName(p) }), el("small", { text: cut < 0 ? rel : rel.slice(cut + 1) }), icon("right", "chev")));
   }
 }
 
 function renderGuestBar() {
-  if (!ui.guestbar) return;
+  if (!ui.suggestBox) return;
   const guest = session.role === "guest" && session.synced && !session.over && !!view;
-  ui.guestbar.hidden = !guest;
+  ui.suggestBox.hidden = !guest;
+  if (!guest && design === "shared") ui.suggestForm.hidden = true;
   if (guest) ui.suggestButton.disabled = view.state.selection.main.empty;
 }
 
 function badge(p) {
   if (p.host) return el("span", { class: "badge host", text: WORDS.badgeHost });
-  return el("span", { class: "badge", text: p.role === "member" ? WORDS.badgeMember : WORDS.badgeGuest });
+  return el("span", { class: p.role === "member" ? "badge member" : "badge guest", text: p.role === "member" ? WORDS.badgeMember : WORDS.badgeGuest });
 }
 
 function renderSide() {
-  if (!ui.side) return;
-  clear(ui.side);
-  if (notes.length) {
-    ui.side.append(el("section", { class: "notes", role: "alert" }, el("h2", { text: WORDS.notesHeading }),
-      el("ul", {}, ...notes.map((n) => el("li", { text: n })))));
-  }
-  if (session.host && session.code && !session.seeding && !session.over) {
+  if (!ui.app) return;
+  clear(ui.notesList);
+  for (const n of notes) ui.notesList.append(el("li", { text: n }));
+  ui.notesBox.hidden = notes.length === 0;
+
+  const hosting = session.host && session.code && !session.seeding && !session.over;
+  ui.inviteBox.hidden = !hosting;
+  ui.inviteToggle.hidden = !hosting;
+  if (!hosting) layout.invite = false;
+  clear(ui.inviteBody);
+  if (hosting) {
     const url = inviteURL();
     let img = null;
     try {
       const qr = qrcode(0, "M");
       qr.addData(url);
       qr.make();
-      img = el("img", { src: qr.createDataURL(6, 2), alt: WORDS.inviteHint });
+      img = el("img", { class: "qr", src: qr.createDataURL(6, 2), alt: WORDS.inviteHint });
     } catch { img = null; }
     const mode = el("select", { id: "mode-live", onchange: (e) => { doc.transact(() => meta.set("mode", e.target.value)); } },
       el("option", { value: "pr", text: WORDS.modePR }), el("option", { value: "issues", text: WORDS.modeIssues }));
     mode.value = effectiveMeta().mode === "issues" ? "issues" : "pr";
-    ui.side.append(el("section", { class: "invite" },
-      el("h2", { text: WORDS.inviteHeading }), img,
-      el("div", { class: "code", text: session.code, "aria-label": WORDS.codeLabel }),
-      el("p", { class: "state", text: WORDS.inviteHint }),
-      el("div", { class: "row" },
-        el("button", { type: "button", text: WORDS.copyLink, onclick: () => copyLink(url) }),
-        el("button", { type: "button", text: WORDS.newCode, onclick: () => sendJSON({ type: "rotate" }) }),
-        el("button", { type: "button", text: WORDS.endSession, onclick: () => { if (confirm(WORDS.endConfirm)) sendJSON({ type: "close" }); } })),
-      el("label", { for: "mode-live", text: WORDS.modeLabel }), mode));
+    ui.inviteBody.append(
+      el("div", { class: "invite" },
+        el("div", { class: "qr-wrap" }, img, el("span", { class: "qr-cap s-only", text: WORDS.scanHint })),
+        el("div", { class: "stack" },
+          el("span", { class: "hint", text: WORDS.joinCode }),
+          el("div", { class: "code joincode", "aria-label": WORDS.codeLabel + ": " + [...session.code].join(" ") },
+            ...[...session.code].map((c) => el("span", { "aria-hidden": "true", text: c }))),
+          el("p", { class: "code-hint", text: WORDS.inviteHint }),
+          el("button", { type: "button", class: "btn small primary", onclick: () => copyLink(url) }, icon("copy"), WORDS.copyLink))),
+      el("div", { class: "targets" },
+        el("button", { type: "button", class: "btn small", onclick: () => copyText(session.code, WORDS.codeCopied) }, icon("copy"), WORDS.copyCode),
+        el("button", { type: "button", class: "btn small", onclick: () => sendJSON({ type: "rotate" }) }, icon("refresh"), WORDS.newCode),
+        el("button", { type: "button", class: "btn small danger", onclick: () => { if (confirm(WORDS.endConfirm)) sendJSON({ type: "close" }); } }, icon("x"), WORDS.endSession)),
+      el("div", { class: "field-group" }, el("label", { for: "mode-live", text: WORDS.modeLabel }), mode));
   }
 
-  const list = el("ul");
+  // Who is here: a list in each design, and the tiles of the shared team bar.
+  clear(ui.people);
+  clear(ui.tiles);
+  clear(ui.hudSum);
+  const stack = el("span", { class: "stack" });
   for (const p of session.roster) {
-    list.append(el("li", {}, p.name || p.login || "", badge(p), p.id === session.myId ? " " + WORDS.you : ""));
+    const name = p.name || p.login || "";
+    const isMe = p.id === session.myId;
+    ui.people.append(el("li", { class: isMe ? "person me" : "person" },
+      avatar(name, p.id), el("span", { class: "nm" }, name, isMe ? " " + WORDS.you : ""), badge(p)));
+    ui.tiles.append(el("li", { class: isMe ? "tile me" : "tile" }, avatar(name, p.id),
+      el("span", { class: "tile-n" }, isMe ? WORDS.youShort : name, badge(p))));
+    if (stack.childElementCount < 4) stack.append(avatar(name, p.id, "xs"));
   }
-  ui.side.append(el("section", { class: "roster" }, el("h2", { text: WORDS.rosterHeading }), list));
+  const here = say(WORDS.hereCount, { n: session.roster.length });
+  ui.hudSum.append(stack, el("span", { class: "txt" }, el("b", { text: here })), icon("right"));
+  ui.hudSum.setAttribute("aria-label", here + ". " + WORDS.showDocuments);
 
-  if (session.role === "member" && session.synced) {
-    const items = el("ul");
+  // The suggestions waiting for a member, and a guest's own.
+  const member = session.role === "member" && session.synced;
+  ui.sugBox.hidden = !member;
+  clear(ui.sugList);
+  let waiting = 0;
+  if (member) {
     for (const s of suggestions.values()) {
       if (!s || typeof s.id !== "string" || suggestionsDone.has(s.id) || !validSuggestion(s.body)) continue;
-      items.append(el("li", { class: "suggestion" },
-        el("div", { class: "from", text: WORDS.suggestedBy + " " + s.from + " · " + s.body.path.replace(BRIEF_PREFIX, "") }),
-        el("del", { text: s.body.quote.exact }),
-        el("ins", { text: s.body.replacement }),
-        el("div", { class: "row" },
-          el("button", { type: "button", class: "primary", text: WORDS.apply, onclick: () => applySuggestion(s.id) }),
-          el("button", { type: "button", text: WORDS.decline, onclick: () => declineSuggestion(s.id) }))));
+      waiting++;
+      ui.sugList.append(el("article", { class: "sug" },
+        el("div", { class: "sug-h" }, avatar(s.from, "", "sm guest-av"),
+          el("div", { class: "who" }, el("b", {}, WORDS.suggestedBy + " " + s.from, " ", el("span", { class: "badge guest", text: WORDS.badgeGuest })),
+            el("small", { text: prettyName(s.body.path) + " · " + s.body.path.replace(BRIEF_PREFIX, "") }))),
+        el("div", { class: "diff" },
+          el("div", { class: "old" }, el("span", { class: "k" }, el("span", { class: "g-only", text: WORDS.wordsNow }), el("span", { class: "s-only", text: WORDS.wordsWas })), el("del", { text: s.body.quote.exact })),
+          el("div", { class: "new" }, el("span", { class: "k" }, el("span", { class: "g-only", text: WORDS.wordsSuggested }), el("span", { class: "s-only", text: WORDS.wordsNow })), el("ins", { text: s.body.replacement }))),
+        el("div", { class: "acts" },
+          el("button", { type: "button", class: "btn small primary apply", text: WORDS.apply, onclick: () => applySuggestion(s.id) }),
+          el("button", { type: "button", class: "btn small decline", text: WORDS.decline, onclick: () => declineSuggestion(s.id) }))));
     }
-    ui.side.append(el("section", { class: "suggestions" }, el("h2", { text: WORDS.suggestionsHeading }),
-      items.childElementCount ? items : el("p", { class: "state", text: WORDS.noSuggestions })));
+    if (!waiting) ui.sugList.append(el("p", { class: "state empty", text: WORDS.noSuggestions }));
   }
 
-  if (session.role === "guest" && mine.length) {
-    const items = el("ul");
+  const guest = session.role === "guest";
+  ui.mineBox.hidden = !guest || !session.synced;
+  clear(ui.mineList);
+  if (guest) {
     for (const s of mine) {
       const done = suggestionsDone.get(s.id);
-      items.append(el("li", { class: "suggestion" },
+      const [cls, ic, word] = done === "applied" ? ["ok", "check", WORDS.applied] : done === "declined" ? ["no", "x", WORDS.declined] : ["wait", "clock", WORDS.waiting];
+      ui.mineList.append(el("li", { class: "mine-item" },
+        el("div", { class: "mine-h" }, el("b", { text: prettyName(s.body.path || "") }), el("span", { class: "status " + cls }, icon(ic), word)),
         el("del", { text: s.body.quote.exact }),
-        el("ins", { text: s.body.replacement }),
-        el("div", { class: "state", text: done === "applied" ? WORDS.applied : done === "declined" ? WORDS.declined : WORDS.waiting })));
+        el("ins", { text: s.body.replacement })));
     }
-    ui.side.append(el("section", { class: "suggestions" }, el("h2", { text: WORDS.mySuggestionsHeading }), items));
+    if (!mine.length) ui.mineList.append(el("li", { class: "state empty", text: WORDS.noMine }));
   }
+
+  // The counts and the right sidebar's names, for this role.
+  const count = member ? waiting : guest ? mine.length : 0;
+  for (const c of [ui.sugCount, ui.inspCount, ui.rightCount, ui.tabCount]) {
+    c.textContent = String(count);
+    c.hidden = count === 0;
+  }
+  ui.inspTitle.textContent = guest ? WORDS.mySuggestionsHeading : WORDS.sugWaiting;
+  ui.inspSub.textContent = guest ? WORDS.mineSub : WORDS.sugSub;
+  for (const tab of ui.tabs) {
+    const who = tab.dataset.who;
+    tab.hidden = !(who === "all" || (who === "member" && session.role === "member") || (who === "guest" && guest) || (who === "host" && hosting));
+  }
+  paintStatus();
+  fitTiles();
 }
 
 async function copyLink(url) {
@@ -2995,6 +3697,7 @@ function renderAll() {
   renderStart();
   renderSide();
   renderGuestBar();
+  applyLayout();
   if (session.synced && !session.seeding && !view && files.size > 0) {
     openFile(firstFile());
   } else if (view && session.over) {
