@@ -282,3 +282,19 @@ func TestAFailedAskLeavesNoEntryInTheHolderCache(t *testing.T) {
 		t.Fatalf("two failed asks left %d entries in the holder cache; want none", n)
 	}
 }
+
+// A well-formed answer that names no account (a valid login with no positive
+// id) is refused and never kept: each act asks again.
+func TestAWellFormedAnswerWithoutAnIDIsNotKept(t *testing.T) {
+	r := newCheckout(t, "pat@example.com")
+	o := Options{Home: t.TempDir()}
+	gh := stubForge(t, `{"login":"x","id":0}`)
+	for i := 1; i <= 2; i++ {
+		if _, err := ResolveHolder(r.Root(), o); !errors.Is(err, ErrRefused) {
+			t.Fatalf("act %d: %v; want a refusal", i, err)
+		}
+		if n := gh.calls(); n != i {
+			t.Fatalf("act %d asked the forge %d times in all; want %d", i, n, i)
+		}
+	}
+}
