@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/11-history.md"
 remedy: "Say at 11-history.md:192-203 that the Go entrypoints always exit 0 while the shell wrappers exit 1 when no binary resolves or a legacy ~/.abcd stands."
-resolution: "11-history.md now scopes the always-exit-0 claim to the staging entrypoints and states that their shell wrappers exit 1 when no binary resolves or a legacy ~/.abcd stands"
+resolution: "11-history.md now scopes the always-exit-0 claim to the staging entrypoints and states that their shell wrappers exit 1 when no binary resolves, or when a legacy ~/.abcd stands with no plugin binary in the plugin root"
 impact: internal
 ---
 
