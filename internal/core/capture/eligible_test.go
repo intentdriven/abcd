@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -661,15 +662,40 @@ func TestAbcdsOwnDrainRuleIsTheStrictBaseline(t *testing.T) {
 	}
 	// Invariant 19 states the promoted clause the rule enforces
 	// (spc-2610161044461448 step 4): an issue an intent owns is never a
-	// machine's to take alone.
-	if !strings.Contains(string(inv), promotedClause) {
-		t.Errorf("invariant 19 does not state the promoted clause %q", promotedClause)
+	// machine's to take alone. The clause is looked for in invariant 19's own
+	// text, so a copy elsewhere on the page does not stand in for it.
+	inv19, ok := invariantText(string(inv), 19)
+	if !ok {
+		t.Fatal("the brief's invariants page carries no invariant 19")
 	}
+	for _, clause := range []string{promotedClause, consistencyClause} {
+		if !strings.Contains(inv19, clause) {
+			t.Errorf("invariant 19 does not state the clause %q", clause)
+		}
+	}
+}
+
+// invariantText is the paragraph of the invariants page that opens as
+// invariant n ("n. **"), up to the blank line that ends it.
+func invariantText(page string, n int) (string, bool) {
+	start := strings.Index("\n"+page, "\n"+strconv.Itoa(n)+". **")
+	if start < 0 {
+		return "", false
+	}
+	para := page[start:]
+	if end := strings.Index(para, "\n\n"); end >= 0 {
+		para = para[:end]
+	}
+	return para, true
 }
 
 // promotedClause is invariant 19's clause for an issue an intent owns, word for
 // word, so dropping or rewording it in the brief fails here.
 const promotedClause = "an issue whose `related_intents` names an intent is handed back by the rule `promoted`, so a machine never takes alone an issue an intent already owns"
+
+// consistencyClause is invariant 19's exception to the promoted clause for
+// the consistency pass's own records (ruling H12, dcn-2610161425496537).
+const consistencyClause = "a record the consistency pass files is not one, since the intents it names are the two its contradiction is between"
 
 // TestADeferralIsHandedBackWhenTheCheckoutHoldsNoReleaseTag: a shallow clone
 // (fetch-depth 1, the unattended drain's likely checkout) fetches no tags, so
