@@ -1170,8 +1170,11 @@ open on it: on a yes, on an answer over an issue that has left the eligible set,
 when the judgement is superseded (the order asks another issue, nothing eligible is
 left, the drain stops, or a no comes once the window has elapsed), when the lane's
 start is refused or fails, and when a request lapses unanswered. A yes's tombstone
-records no judgement, so another account may reserve and judge the issue again
-later. The reservation is taken once per request: one unanswered when it lapses is
+publishes the hand-back on origin, its kind and the blob id of the issue's record
+there, as a lane's hand-back does: every account's drain passes the issue over,
+pushing and asking nothing, until a person changes that record, and a promotion
+this checkout cannot make, not holding the record as origin does, is left to a
+checkout that can. The reservation is taken once per request: one unanswered when it lapses is
 dropped and the issue asked again only after the drain's other eligible work. The
 judgement can never make an issue eligible:
 an answer over an issue that has left the eligible set decides nothing, and one over

@@ -226,8 +226,18 @@ on origin's default branch backs off, with a tip or without one
    elapsed); a lane's start refused or failing; and a request that lapsed.
    Each is a fetch and one push, made only while that commit is still the tip,
    so a reservation this person made or renewed by hand is left as it stands.
-   A yes's tombstone is plain: nothing marks the issue judged on origin, so
-   another account's drain may reserve it and ask the judgement again. The
+   A yes's tombstone publishes the hand-back on origin
+   (spc-2610161044461448 step 3, dcn-2610161040365515): it names the yes's
+   kind (`Abcd-Handed-Back`) and the blob id of the issue's record on origin's
+   default branch (`Abcd-Record`), the closed form
+   [`37-reserve.md`](37-reserve.md) states, so no account's drain reserves,
+   judges or opens the issue again until a person changes that record there.
+   A user-visible yes over an issue this checkout does not hold as origin's
+   default branch does (absent here, or held here as another record, judged
+   by git's object name for this checkout's file) promotes nothing here: the
+   route is a flag whose home is a checkout that holds the record, and the
+   hand-back is published all the same, so the promotion is left to a person
+   whose checkout can make it. The
    hold is taken once per request and never renewed by a poll: a request whose
    reservation lapses unanswered is dropped, its reservation released, and the
    issue asked again only after the drain's other eligible work
@@ -239,14 +249,21 @@ on origin's default branch backs off, with a tip or without one
    with the check `reservation`, naming the holder, before anything is pushed
    or asked, so passing over held work adds no fetch to the move's one; one
    the reservation push itself finds held (a race since the fetch) is passed
-   over the same way. A reservation refused for this checkout's own reason (no
+   over the same way. An issue whose tip in the move's view is a hand-back
+   that stands, from any copy on any account, is passed over the same way,
+   naming its kind, who handed it back and when, and every reservation the
+   drain pushes backs off a hand-back that stands, so one the view missed is
+   passed over by the push. A reservation refused for this checkout's own reason (no
    GitHub username, `origin` not answering) refuses the move. The run records the reservation, which its steps renew, fence
    and tombstone ([`27-implement.md`](27-implement.md)); every drain move
    renews, at half its lease, the reservation of each issue lane parked at
    land, so a pull request waiting on a person stays held while the drain
    moves; a lane handed back has its reservation tombstoned by the step that
-   hands it back, or by the drain's route when that step's push failed, and
-   the route the drain writes names the outcome. Without `origin`
+   hands it back, or by the drain's route when that step's push failed, the
+   tombstone publishing the hand-back with the lane's kind (`unachievable` for
+   a lane stopped after its fix rounds), and the route the drain writes names
+   the outcome. A run `abcd build <iss-N>` started publishes its lane's
+   hand-back the same way. Without `origin`
    nothing is reserved.
 
 The host's answer is taken first of all, before the window clock and the
@@ -335,6 +352,11 @@ branch, records the discarded head, and ends the lane. The drain then routes it:
 | `trust-rule` | flagged as needing a decision record, the lane's reason as the question | nothing; no record is minted |
 | `design-finding`, `second-package` | flagged with the home the lane names | nothing |
 | a lane stopped after its fix rounds | flagged, the issue staying open with the last findings | nothing |
+
+Whatever the route, the issue's reservation is released by a tombstone that
+publishes the hand-back on origin, naming its kind (a lane stopped after its
+fix rounds as `unachievable`) and the record's blob, which every drain passes
+over until a person changes the record (above).
 
 Every issue the rule itself hands back (by category, severity, security, a
 ruling or a deferral) is flagged in the summary naming the rule. Every route is

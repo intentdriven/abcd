@@ -608,7 +608,7 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	switch {
 	case out.HandBack != nil:
 		handBackLane(st, &lane, *out.HandBack, out.Note, now)
-		releaseOnHandBack(repoRoot, st, now)
+		releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
 		st.Lanes[i] = lane
 		st.UpdatedAt = now
 		res := laneResult(*st, lane, "", nil)

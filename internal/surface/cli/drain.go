@@ -82,8 +82,11 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"when the judgement is superseded (the order asks another issue, nothing eligible is\n" +
 			"left, the drain stops, or a no comes once the window has elapsed), when the lane's\n" +
 			"start is refused or fails, and when a request lapses unanswered. A yes's tombstone\n" +
-			"records no judgement, so another account may reserve and judge the issue again\n" +
-			"later. The reservation is taken once per request: one unanswered when it lapses is\n" +
+			"publishes the hand-back on origin, its kind and the blob id of the issue's record\n" +
+			"there, as a lane's hand-back does: every account's drain passes the issue over,\n" +
+			"pushing and asking nothing, until a person changes that record, and a promotion\n" +
+			"this checkout cannot make, not holding the record as origin does, is left to a\n" +
+			"checkout that can. The reservation is taken once per request: one unanswered when it lapses is\n" +
 			"dropped and the issue asked again only after the drain's other eligible work. The\n" +
 			"judgement can never make an issue eligible:\n" +
 			"an answer over an issue that has left the eligible set decides nothing, and one over\n" +

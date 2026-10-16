@@ -109,6 +109,9 @@ _Empty. Populated by intent-auditor when intent moves to shipped/._
 - 2026-10-16, facilitator-on-delegation (dcn-2610161040378713): an unreadable sibling worktree refuses the move once, before any reservation or judgement.
 - 2026-10-16, facilitator-on-delegation (dcn-2610161040385152): generated files are declared with the forge's linguist-generated attribute and never count as an overlap; a person's own overlapping reserve warns; drain reservations keep the back-off between one person's copies; a lane's reservation narrows to the files it changed.
 - 2026-10-16, facilitator-on-delegation (dcn-2610161044187673): the pre-pass's questions are answered. Brief invariant 7 is amended for each new drain network act in the step that adds it, invariant 19 gains the clause on issues naming an intent, a published hand-back is a judgement kept on the reservation and not a classification written onto the issue, and each sibling overlap is kept both.
+- 2026-10-16, facilitator-on-delegation (dcn-2610161412287479): a hand-back tombstone names one of seven kinds, the drain's four, unachievable, stuck and closed, and a tip carrying anything else on those trailers is unreadable.
+- 2026-10-16, facilitator-on-delegation (dcn-2610161412283450): a hand-back stands while origin's default branch holds the record at the blob its tombstone names; only a blob read there that differs lifts it, and a record that branch does not hold in one file gets a plain tombstone, saying why.
+- 2026-10-16, facilitator-on-delegation (dcn-2610161412284018): every issue lane's hand-back is published, `abcd build`'s included; a drain passes over a standing one from its view before any push, its reservation backing off one the view missed; a checkout holds a record as origin does when git's object name for its file equals origin's blob.
 
 ## Grounds
 

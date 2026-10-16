@@ -204,9 +204,14 @@ what it did in `next`:
   start is refused or fails; and when a request lapses. Each release is a fetch
   and one tombstone push over the commit the drain's reservation made, made
   only while that commit is still the tip, so a reservation you made or renewed
-  with `abcd reserve` is left as it stands. A `yes` releases with a plain
-  tombstone that records no judgement, so another account's drain may reserve
-  the issue later and ask the judgement again. The reservation is taken once
+  with `abcd reserve` is left as it stands. A `yes` releases with a tombstone
+  that publishes the hand-back on `origin`: its kind (`Abcd-Handed-Back`) and
+  the blob id of the issue's record on origin's default branch
+  (`Abcd-Record`), never free text. A user-visible `yes` over an issue this
+  checkout does not hold as origin's default branch does (absent here, or
+  held here as another record) promotes nothing here: the route is a flag
+  whose `wrote` says why and whose `home` names the checkout that can promote
+  it, and the hand-back is published all the same. The reservation is taken once
   per request and never renewed while you poll: a request still unanswered
   when it lapses (two hours by default) is dropped, its reservation released,
   and the issue asked again only after the drain's other eligible work. An
@@ -217,13 +222,20 @@ what it did in `next`:
   copy holds in the move's view, or whose footprint shares a path with another
   copy's live reservation, is passed over before anything is pushed or asked
   (`passed`, check `reservation`, naming the holder), with no fetch beyond the
-  move's one; one the push itself finds held is passed over the same way. A
+  move's one; one the push itself finds held is passed over the same way. An
+  issue whose tip on `origin` is a hand-back, from any copy on any account,
+  is passed over the same way, naming the kind, who handed it back and when,
+  while origin's default branch holds its record at the blob the tombstone
+  names: it is a person's until a person changes that record, and a
+  reservation the drain pushes backs off it even when the view missed it. A
   reservation refused for a reason of this checkout's own (no
   GitHub username, `origin` not answering) refuses the move, nothing opened.
   The lane's run then renews the reservation, fences its landing on it and
   tombstones it once it lands (`commands/implement.md`); when the lane is
-  handed back instead, the step that hands it back pushes the tombstone, and
-  the route's `wrote` says so as the drain routes the hand-back; a tombstone
+  handed back instead, the step that hands it back pushes the tombstone,
+  publishing the hand-back with its kind (`unachievable` for a lane stopped
+  after its fix rounds), and the route's `wrote` says so as the drain routes
+  the hand-back; a tombstone
   that step could not push (`origin` not answering) the drain pushes then. Without `origin` there
   is nowhere to reserve, and nothing is.
 - **It opens a lane.** The next eligible issue in the order, once judged `no`

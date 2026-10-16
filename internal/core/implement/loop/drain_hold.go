@@ -60,7 +60,7 @@ func (h *judgeHolds) add(issue string, hold *DrainHold, fresh bool) {
 // the tip has moved on there is nothing to release: the clause says so for a
 // reservation this person holds from this copy (renewed or reserved again by
 // hand), and is "" for any other (released, or another's).
-func (h *judgeHolds) releaseOne(k *judgeHold) string {
+func (h *judgeHolds) releaseOne(k *judgeHold, kind string) string {
 	k.done = true
 	if !k.fresh && h.view != nil {
 		if r, ok := h.view.Lookup(k.issue); !ok || r.Commit != k.hold.Commit {
@@ -70,20 +70,21 @@ func (h *judgeHolds) releaseOne(k *judgeHold) string {
 			return ""
 		}
 	}
-	c, _ := releaseReservationAt(h.repoRoot, k.issue, k.hold.Commit, h.now)
+	c, _ := releaseReservationAt(h.repoRoot, k.issue, k.hold.Commit, kind, h.now)
 	return c
 }
 
 // release releases issue's holds now and returns the move's clause for them,
-// "" when it knows none.
-func (h *judgeHolds) release(issue string) string {
+// "" when it knows none. A kind other than "" publishes the hand-back on the
+// tombstone (releaseReservation).
+func (h *judgeHolds) release(issue, kind string) string {
 	clause := ""
 	for i := range h.held {
 		k := &h.held[i]
 		if k.done || k.issue != issue {
 			continue
 		}
-		c := h.releaseOne(k)
+		c := h.releaseOne(k, kind)
 		if c == "" {
 			continue
 		}
@@ -127,7 +128,7 @@ func (h *judgeHolds) settle(awaited *DrainJudging) []string {
 		if !k.starting && awaited != nil && awaited.Issue == k.issue && awaited.Hold != nil && awaited.Hold.Commit == k.hold.Commit {
 			continue
 		}
-		c := h.releaseOne(k)
+		c := h.releaseOne(k, "")
 		if c == "" {
 			continue
 		}

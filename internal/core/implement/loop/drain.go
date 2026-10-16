@@ -438,11 +438,14 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			return DrainResult{}, err
 		}
 		if j.Applied && j.Answer == JudgementYes {
-			r, err := routeHandBack(repoRoot, j.Issue, DrainFromJudgement, HandBack{Kind: j.Kind, Reason: j.Reason}, now)
+			r, err := routeHandBack(repoRoot, j.Issue, DrainFromJudgement, HandBack{Kind: j.Kind, Reason: j.Reason}, origin, now)
 			if err != nil {
 				return DrainResult{}, err
 			}
-			if clause := holds.release(j.Issue); clause != "" {
+			// The release publishes the hand-back on origin, so no other
+			// account's drain judges the issue again while its record stands
+			// (spc-2610161044461448 step 3).
+			if clause := holds.release(j.Issue, j.Kind); clause != "" {
 				r.Wrote += "; " + clause
 			}
 			st.HandBacks = append(st.HandBacks, r)
@@ -450,7 +453,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		} else if !j.Applied {
 			// The issue left the eligible set since the request, so no lane
 			// opens on the reservation taken for it.
-			if clause := holds.release(j.Issue); clause != "" {
+			if clause := holds.release(j.Issue, ""); clause != "" {
 				j.Note += "; " + clause
 			}
 		}
@@ -539,13 +542,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				l.Issue, l.RunID, l.RunID)
 			return finish(true)
 		case DrainLaneHandedBack:
-			r, err := routeHandBack(repoRoot, l.Issue, "lane", *hb, now)
+			r, err := routeHandBack(repoRoot, l.Issue, "lane", *hb, origin, now)
 			if err != nil {
 				return DrainResult{}, err
 			}
 			// The issue is a person's again: its reservation is released
 			// rather than left to hold others off until it lapses.
-			if rel := releaseHandedBack(repoRoot, run, now); rel != "" {
+			if rel := releaseHandedBack(repoRoot, run, *hb, now); rel != "" {
 				r.Wrote += "; " + rel
 			}
 			st.HandBacks = append(st.HandBacks, r)
@@ -609,6 +612,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 		}
 		if view != nil {
+			// A hand-back published on origin, by any copy, stands until a
+			// person changes the issue's record there: the drain passes it
+			// over before anything is pushed or asked (spc-2610161044461448
+			// step 3).
+			if why := view.HandBack(v.ID, now); why != "" {
+				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckReservation,
+					Reason: termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked: it is a person's until its record changes"})
+				continue
+			}
 			if why := view.Contention(v.ID, footprint, now); why != "" {
 				// The reason quotes what another writer chose (a reserved
 				// footprint), and the agent driving the drain reads it.
@@ -651,6 +663,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		lane := o
 		lane.reserve = footprint
 		lane.plan = &plan
+		lane.drain = true
 		if held {
 			lane.held = &heldReservation{at: hold.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
 				v.ID, claim.Remote, stamp(hold.EffectiveExpiry), strings.Join(hold.Footprint, ", "))}
@@ -669,7 +682,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			// footprint), and the agent driving the drain reads it.
 			reason := termsafe.Sanitize(r.Reason)
 			// A reservation the drain took for the judgement is no lane's now.
-			if clause := holds.release(v.ID); clause != "" {
+			if clause := holds.release(v.ID, ""); clause != "" {
 				reason += "; " + clause
 			}
 			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: reason})
@@ -803,10 +816,31 @@ func fieldFlags(plan capture.DrainPlan) []DrainRoute {
 // promote`, which stamps the issue's related_intents and nothing else); every
 // other kind is a flag and writes nothing. A promotion a killed call already
 // made is found, not made twice.
-func routeHandBack(repoRoot, issue, from string, hb HandBack, now time.Time) (DrainRoute, error) {
+//
+// A move planned from origin (origin not nil) promotes only an issue this
+// checkout holds as origin's default branch does: one absent here, or held
+// here as another record, is not promoted here, and the route says why. The
+// hand-back is still published on origin by the release that follows
+// (spc-2610161044461448 step 3), so a person whose checkout holds the record
+// promotes it.
+func routeHandBack(repoRoot, issue, from string, hb HandBack, origin *DrainOrigin, now time.Time) (DrainRoute, error) {
 	r := DrainRoute{Issue: issue, From: from, Kind: hb.Kind, Reason: hb.Reason, Wrote: "nothing: a flag in this summary", At: &now}
 	switch hb.Kind {
 	case HandBackUserVisible:
+		// A promotion a killed call already made is found first: it has
+		// changed this checkout's record, which origin's no longer matches.
+		if into, err := promotedDraft(repoRoot, issue); err == nil && into != "" {
+			r.Route, r.Draft = RoutePromoted, into
+			r.Wrote = "intent draft " + r.Draft + ", and " + issue + "'s related_intents names it"
+			return r, nil
+		}
+		if why, err := notHeldAsOrigin(repoRoot, issue, origin); err != nil {
+			return DrainRoute{}, err
+		} else if why != "" {
+			r.Route, r.Home = RouteHome, "a checkout that holds "+issue+" as "+claim.Remote+"'s default branch does: `abcd capture promote "+issue+"` there"
+			r.Wrote = "nothing here: " + why + ", so it is not promoted here"
+			return r, nil
+		}
 		r.Route = RoutePromoted
 		pr, err := capture.Promote(capture.PromoteRequest{RepoRoot: repoRoot, ID: issue})
 		switch {
