@@ -14,6 +14,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/peers"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -287,6 +288,31 @@ func TestACommandPathIsOneAShellTakes(t *testing.T) {
 		out, err := exec.Command("sh", "-c", "printf %s "+got).Output()
 		if err != nil || string(out) != in {
 			t.Errorf("sh reads %s back as %q (%v), want %q", got, out, err, in)
+		}
+	}
+}
+
+// TestACommandPathKnowsHomeInAnotherCase: on a filesystem that folds case,
+// HOME spelled in another case is still HOME, as fsutil.RedactHome reads it,
+// so the remedy never prints the account's home directory whole.
+func TestACommandPathKnowsHomeInAnotherCase(t *testing.T) {
+	if !fsutil.CaseFoldingFS() {
+		t.Skip("this filesystem does not fold case")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	upper := strings.ToUpper(home)
+	if upper == home {
+		t.Skip("HOME has no letters to fold")
+	}
+	cases := map[string]string{
+		upper:          `"$HOME"`,
+		upper + "/wt":  `"$HOME"'/wt'`,
+		upper + "x/wt": "'" + upper + "x/wt'",
+	}
+	for in, want := range cases {
+		if got := commandPath(in); got != want {
+			t.Errorf("commandPath(%q) = %s, want %s", in, got, want)
 		}
 	}
 }

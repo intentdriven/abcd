@@ -144,15 +144,22 @@ func accountName(uid uint32) string {
 // directory, in its own spelling or its symlink-resolved one: HOME met
 // anywhere else in the path is the path's own bytes, and fsutil.RedactHome,
 // which redacts it wherever it starts a path in a message, would print a
-// different path there.
+// different path there. Where the filesystem folds case, HOME in another case
+// is HOME, as fsutil.RedactHome reads it.
 func commandPath(p string) string {
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+	same := func(a, b string) bool { return a == b }
+	if fsutil.CaseFoldingFS() {
+		same = strings.EqualFold
+	}
 	for _, h := range homeSpellings() {
-		if p == h {
-			return `"$HOME"`
+		if len(p) < len(h) || !same(p[:len(h)], h) {
+			continue
 		}
-		if rest, ok := strings.CutPrefix(p, h+"/"); ok {
-			return `"$HOME"` + quote("/"+rest)
+		if rest := p[len(h):]; rest == "" {
+			return `"$HOME"`
+		} else if rest[0] == '/' {
+			return `"$HOME"` + quote(rest)
 		}
 	}
 	return quote(p)
