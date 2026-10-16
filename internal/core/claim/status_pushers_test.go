@@ -220,3 +220,36 @@ func TestTheForgeIsNotAskedPastItsBudget(t *testing.T) {
 		t.Fatalf("unchecked = %q; want the one left counted", res.SendersUnchecked)
 	}
 }
+
+// TestAPartialRecordKeepsOnlyAnotherAccountNamed: a record not read in full
+// (ErrPartialRecord) keeps another account it names as a pusher, which no
+// older push can make less doubtful, and keeps nothing for a commit only the
+// owner's pushes cover or no push covers, so each is asked about again; the
+// fetch says the record was not read in full.
+func TestAPartialRecordKeepsOnlyAnotherAccountNamed(t *testing.T) {
+	_, pat, cs := octoBranch(t, 3)
+	asked := 0
+	lookup := func(_, branch string) ([]Push, error) {
+		if branch != "octo" {
+			return nil, nil
+		}
+		asked++
+		return []Push{
+			{Before: cs[1], After: cs[2], Pusher: "mallory"},
+			{Before: cs[0], After: cs[1], Pusher: "octo"},
+		}, ErrPartialRecord
+	}
+	res := pat.status(lookup)
+	if !strings.Contains(res.SendersUnchecked, "abcd-status/octo: the forge's record was not read in full") {
+		t.Fatalf("unchecked = %q; want the record said not read in full", res.SendersUnchecked)
+	}
+	for i, want := range []pusherVerdict{{}, {}, {asked: true, known: true, login: "mallory"}} {
+		if got := pusherKept(pat.dir, cs[i]); got != want {
+			t.Fatalf("commit %d keeps %+v; want %+v", i, got, want)
+		}
+	}
+	pat.status(lookup)
+	if asked != 2 {
+		t.Fatalf("the forge was asked %d times; want the next fetch to ask again", asked)
+	}
+}

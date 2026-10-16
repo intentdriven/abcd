@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -25,10 +26,16 @@ type Push struct {
 // deletion moves the branch to no commit, and says nothing of one.
 var pushActivities = []string{"push", "force_push", "branch_creation", "pr_merge", "merge_queue_merge"}
 
+// activityPage is how many activities one ask reads: the forge's one page.
+const activityPage = 100
+
 // Pushers is the forge's record of who pushed to ref (a full ref under
 // refs/heads/) on the repository origin names: its activity record's pushes
 // (`GET /repos/{owner}/{repo}/activity`, the newest hundred of any type, read
-// for the types in pushActivities), newest first (itd-2609151838312703 C17).
+// for the types in pushActivities), newest first (itd-2609151838312703 C17),
+// and whether that page came back full (partial): older activities may then
+// lie past it, unread, so a commit no push on it covers is one the record
+// was not read far enough to say about.
 // The query names no type, since it takes only one and a first push or a
 // forced one would then never be answered. An entry with no actor, or a
 // commit name that is not one, says nothing and is passed over; every login is the forge's
@@ -36,19 +43,19 @@ var pushActivities = []string{"push", "force_push", "branch_creation", "pr_merge
 // that is not a github.com URL cannot be asked, and gh is not run for it. A
 // push made by an app (appActor) is passed over: the forge cannot say which
 // person it acted for, so the announcement's sender stays claimed.
-func Pushers(cwd, ref string) ([]Push, error) {
+func Pushers(cwd, ref string) (pushes []Push, partial bool, err error) {
 	origin, err := gitutil.Run(cwd, "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(origin) == "" {
-		return nil, fmt.Errorf("this checkout has no origin remote to ask about")
+		return nil, false, fmt.Errorf("this checkout has no origin remote to ask about")
 	}
 	owner, name, err := ParseRemote(strings.TrimSpace(origin))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	q := url.Values{"ref": {ref}, "per_page": {"100"}}
+	q := url.Values{"ref": {ref}, "per_page": {strconv.Itoa(activityPage)}}
 	out, err := API(cwd, nil, "repos/"+owner+"/"+name+"/activity?"+q.Encode())
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	var acts []struct {
 		Before string `json:"before"`
@@ -60,7 +67,7 @@ func Pushers(cwd, ref string) ([]Push, error) {
 		} `json:"actor"`
 	}
 	if err := json.Unmarshal(out, &acts); err != nil {
-		return nil, fmt.Errorf("the forge's activity record did not parse: %v", err)
+		return nil, false, fmt.Errorf("the forge's activity record did not parse: %v", err)
 	}
 	pushed := []Push{}
 	for _, a := range acts {
@@ -75,7 +82,7 @@ func Pushers(cwd, ref string) ([]Push, error) {
 		}
 		pushed = append(pushed, Push{Before: a.Before, After: a.After, Login: a.Actor.Login})
 	}
-	return pushed, nil
+	return pushed, len(acts) >= activityPage, nil
 }
 
 // zeroSHA is the forge's name for no commit: the tip a deletion leaves.

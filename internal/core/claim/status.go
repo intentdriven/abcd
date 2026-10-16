@@ -121,8 +121,17 @@ type Push struct {
 // abcd-status/<branch> on origin (C17): its record of pushes, newest first. A
 // commit no push in the answer covers is one the forge cannot say about, and
 // its sender stays claimed; an error leaves every sender claimed, with the
-// reason. The front door wires it to the forge adapter; nil asks nothing.
+// reason, but ErrPartialRecord, answered beside the pushes that were read
+// when the record was not read in full. The front door wires it to the forge
+// adapter; nil asks nothing.
 type PusherLookup func(root, branch string) ([]Push, error)
+
+// ErrPartialRecord is a PusherLookup's answer, beside the pushes it read,
+// when the forge's record was not read in full: older pushes may lie past
+// what was read. Nothing it leaves open is kept as asked: a commit no push
+// read covers, or one only the owner's pushes cover, is asked about again,
+// and only another account named as its pusher is kept.
+var ErrPartialRecord = errors.New("the forge's record was not read in full")
 
 // Announcement is one announcement as a reader shows it. Every value in it is
 // either fixed text or a field held to its grammar by the announcement's
@@ -1123,8 +1132,10 @@ const maxAskedBranches = 10
 // every commit of the push is judged by its pusher (placePushes). A commit two
 // pushes cover (a rewritten branch) takes a pusher other than the owner over
 // the owner. A branch whose record could not be placed in full keeps nothing
-// of it. It returns why the forge could not be asked or its record could not
-// be placed in full, "" when it could.
+// of it, and one whose record was not read in full (ErrPartialRecord) keeps
+// only another account named as a pusher. It returns why the forge could not
+// be asked, or its record could not be read or placed in full, "" when it
+// could.
 func checkSenders(root string, now time.Time, lookup PusherLookup, held map[string]bool) string {
 	ask := map[string][]string{}
 	var branches []string // newest first, as keptAnnouncements orders them
@@ -1146,7 +1157,8 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			break
 		}
 		pushed, err := lookup(root, b)
-		if err != nil {
+		partial := errors.Is(err, ErrPartialRecord)
+		if err != nil && !partial {
 			failed = append(failed, "abcd-status/"+b+": "+termsafe.Sanitize(redacted(err)))
 			continue
 		}
@@ -1155,8 +1167,17 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			failed = append(failed, "abcd-status/"+b+": the forge's record of pushes was not placed in full: "+termsafe.Sanitize(redacted(err)))
 			continue
 		}
+		if partial {
+			failed = append(failed, "abcd-status/"+b+": "+ErrPartialRecord.Error()+
+				", so a commit it does not name another account for stays claimed and is asked about again")
+		}
 		for _, c := range ask[b] {
 			login, ok := byCommit[c]
+			if partial && (!ok || sameHolder(login, b)) {
+				// An older push past what was read may still name another
+				// account: nothing is kept that it could change.
+				continue
+			}
 			if !ok {
 				writeStatusFile(root, pusherDir, c, []byte(noPusher+"\n"))
 				continue

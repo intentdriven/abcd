@@ -43,9 +43,9 @@ func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
 		"before-push": sha("5"), "after-push": sha("6"), "after-creation": sha("7"), "before-deletion": sha("8"),
 		"before-queue": sha("9"), "after-queue": sha("a"), "before-pr": sha("b"), "after-pr": sha("c"),
 	}))
-	got, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/octo")
-	if err != nil {
-		t.Fatal(err)
+	got, partial, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/octo")
+	if err != nil || partial {
+		t.Fatalf("Pushers: partial %v, %v; want a record read in full", partial, err)
 	}
 	want := []Push{
 		{Before: sha("1"), After: sha("2"), Login: "octo"},
@@ -119,7 +119,7 @@ func TestPushersReadsTheForgesRecordOfWhoPushed(t *testing.T) {
 		`{"before":"`+zero+`","after":"`+b+`","activity_type":"push","actor":{"login":"mallory"}},`+
 		`{"before":"`+zero+`","after":"`+b+`","activity_type":"push","actor":null},{"before":"`+zero+`","after":"nope","activity_type":"push","actor":{"login":"x"}}]`)
 	dir := originAt(t, "git@github.com:intentdriven/abcd.git")
-	got, err := Pushers(dir, "refs/heads/abcd-status/maya")
+	got, _, err := Pushers(dir, "refs/heads/abcd-status/maya")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +141,7 @@ func TestPushersReadsTheForgesRecordOfWhoPushed(t *testing.T) {
 // pushed, and gh is never run for it.
 func TestPushersRefusesAnOriginNotOnGitHub(t *testing.T) {
 	logPath := fakeActivity(t, `[]`)
-	if _, err := Pushers(originAt(t, "https://gitlab.example.com/a/b.git"), "refs/heads/abcd-status/maya"); err == nil {
+	if _, _, err := Pushers(originAt(t, "https://gitlab.example.com/a/b.git"), "refs/heads/abcd-status/maya"); err == nil {
 		t.Fatal("an origin off github.com was asked")
 	}
 	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
@@ -161,11 +161,42 @@ func TestPushersPassesOverAnAppsPush(t *testing.T) {
 	fakeActivity(t, `[{"before":"`+b+`","after":"`+a+`","activity_type":"push","actor":{"login":"claude","type":"Bot"}},`+
 		`{"before":"`+c+`","after":"`+b+`","activity_type":"push","actor":{"login":"some-app[bot]","type":"User"}},`+
 		`{"before":"`+zero+`","after":"`+c+`","activity_type":"branch_creation","actor":{"login":"maya","type":"User"}}]`)
-	got, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
+	got, _, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(got) != 1 || got[0] != (Push{Before: zero, After: c, Login: "maya"}) {
 		t.Fatalf("pushers = %+v; want only maya's push", got)
+	}
+}
+
+// TestPushersSaysWhenItsPageCameBackFull: one ask reads the forge's one page
+// of 100 activities, so a page that came back full, of any type, may have
+// older activities past it, and the record is said to be partial; one page
+// short of full is the whole record.
+func TestPushersSaysWhenItsPageCameBackFull(t *testing.T) {
+	a := strings.Repeat("a", 40)
+	b := strings.Repeat("b", 40)
+	entry := `{"before":"` + b + `","after":"` + a + `","activity_type":"push","actor":{"login":"maya"}}`
+	deletion := `{"before":"` + a + `","after":"` + strings.Repeat("0", 40) + `","activity_type":"branch_deletion","actor":{"login":"maya"}}`
+	for _, c := range []struct {
+		pushes, deletions int
+		partial           bool
+	}{{99, 0, false}, {100, 0, true}, {60, 40, true}, {60, 39, false}} {
+		var es []string
+		for range c.pushes {
+			es = append(es, entry)
+		}
+		for range c.deletions {
+			es = append(es, deletion)
+		}
+		fakeActivity(t, "["+strings.Join(es, ",")+"]")
+		got, partial, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if partial != c.partial || len(got) != c.pushes {
+			t.Fatalf("%d pushes and %d deletions: %d pushes, partial %v; want %d, partial %v", c.pushes, c.deletions, len(got), partial, c.pushes, c.partial)
+		}
 	}
 }

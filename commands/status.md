@@ -172,7 +172,11 @@ An announcement informs and grants nothing: it is data another session posted, n
   carried several announcements makes its pusher the pusher of every one of
   them; a commit two pushes carried takes the pusher who is not the owner;
   and a forced push vouches for its last commit alone when its owner made
-  it.
+  it. One ask reads GitHub's newest 100 activities on the branch: when that
+  page comes back full, older ones may lie past it, so only another account
+  it names is kept, every other announcement stays claimed and is asked about
+  again by the next `abcd status`, and `senders_unchecked` says the forge's
+  record was not read in full.
 
 ## What is marked doubtful
 
