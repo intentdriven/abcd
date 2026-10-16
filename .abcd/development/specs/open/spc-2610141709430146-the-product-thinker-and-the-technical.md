@@ -178,6 +178,7 @@ abcdesign.app is published from a repository of its own, intentdriven/abcdesign,
 5. The page asks nobody for a relay address or a token (adr-2610161400542916, iss-2610161332024554): the page finds its relay, opens onto the press release in plain words, and signs in through the web flow on a cloud relay or the device flow on a local session; `verify` takes only a GitHub App user access token; `abcd session start` runs a local session that serves its own page
    - packages: internal/surface/session, internal/surface/session/web, internal/surface/cli, commands/session.md, docs/
    - tests: internal/surface/session, internal/surface/session/web, internal/surface/cli
+   - landed: 9baf9b93c
 6. Setting up live sessions at repository setup: the two questions, the GitHub App manifest, the device-flow switch for local sessions, Render's Deploy button and the recorded relay address (a later lane)
    - packages: internal/core/ahoy, internal/surface/cli, commands/ahoy.md, docs/
    - tests: internal/core/ahoy, internal/surface/cli
