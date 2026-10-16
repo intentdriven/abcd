@@ -352,15 +352,20 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 
 // Announce sends one announcement: it checks and composes it, asks the
 // embargo check (C5), fetches the status branches and the default branch in
-// one fetch, refuses a record the default branch does not hold (C4), writes
-// one empty-tree commit on the sender's status branch as the person, and makes
-// one plain push. A push that lost a race to another of the person's sessions
-// is rebuilt on the tip that won and pushed again, up to three times (C2);
-// after that, or on a push refused for any other reason, it is a
-// *NotSentError. Each refused push is followed by one fetch, the last
-// included, so the refusal says which of the two it was. Nothing is ever
-// forced. A refusal pushes nothing. Any other error is an *AnnounceError
-// counting the pushes tried before it.
+// one fetch (the status branches alone in a second when the default branch
+// cannot be read), refuses a record the default branch does not hold (C4),
+// writes one empty-tree commit on the sender's status branch as the person,
+// and makes one plain push. Each refused push is followed by one fetch, the
+// last included: a branch that now holds the commit means the push landed
+// although git reported it refused, and it is sent; a branch that moved means
+// a race lost to another of the person's sessions, and the commit is rebuilt
+// on the tip that won and pushed again, up to three times (C2); a branch that
+// stands means a push refused for another reason. The last two end, when not
+// retried, as a *NotSentError, the one refusal made after pushes. Nothing is
+// ever forced. Every other refusal pushes nothing. Any other error is an
+// *AnnounceError counting the pushes tried before it, among them a failure
+// after a push (the fetch that would show whether it landed, or the rebuilt
+// commit's write).
 func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, err error) {
 	pushes, branch := 0, ""
 	defer func() { err = announceFailure(err, pushes, branch) }()

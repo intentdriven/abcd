@@ -43,7 +43,8 @@ Nothing else is carried. The commit is authored as the person, as reservations a
 
 **When abcd touches the network.** Decision 14 and invariant 7 settle this:
 
-- `abcd announce` fetches the default branch and the sender's own status branch, then pushes.
+- `abcd announce` fetches the default branch and every status branch, the whole `abcd-status/` namespace, then pushes.
+  - **Amended 2026-10-16 in the step 2 review:** this line said the sender's own status branch. A fetch naming one branch fails while origin holds none, which is the case at a person's first announcement, so the whole namespace is fetched, as invariant 7 states.
 - `abcd status` fetches every status branch, the reservations and the default branch, then reads the forge's activity record for each new update (C17).
 - The land step fetches the reservations before it judges a release hold (C7).
 - The prompt hook only renders the last completed fetch from disk, with its age (C12), and never touches the network.

@@ -194,8 +194,10 @@ user.email when it is a GitHub no-reply address, or from
 reservation.github_username in the machine configuration; a tool's git
 identity is refused, since an announcement is authored as the person.
 
-Exit 0 when the announcement reached origin; exit 2 on every refusal, and when
-it was not sent. Nothing is pushed on a refusal.
+Exit 0 when the announcement reached origin; exit 2 on every refusal, when it
+was not sent, and when a push was made but whether it landed cannot be told.
+Nothing is pushed on a refusal except "not sent", which follows pushes origin
+refused; the unknown outcome says a refused push may still have reached origin.
 
 **Flags:**
 

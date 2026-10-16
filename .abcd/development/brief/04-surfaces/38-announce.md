@@ -48,11 +48,14 @@ reservation uses), the time sent (`Abcd-Sent-At`), the expiry
 and nothing else. The commit is authored as the person. Nothing touches HEAD,
 the index or the working tree.
 
-The verb fetches every status branch and origin's default branch in one fetch;
-a fetch of one status branch fails while origin holds none. A push that lost a
-race to another of the same person's sessions is rebuilt on the tip that won
-and pushed again, up to three times, and then refused as `not sent:` with the
-reason; a push refused while the tip stands is refused at once. Nothing is
+The verb fetches every status branch and origin's default branch in one fetch,
+and the status branches alone in a second when the default branch cannot be
+read; a fetch of one status branch fails while origin holds none. Each refused
+push is followed by one more fetch. A push git reported refused that the branch
+now holds landed, and is reported sent. A push that lost a race to another of
+the same person's sessions is rebuilt on the tip that won and pushed again, up
+to three times, and then refused as `not sent:` with the reason; a push refused
+while the tip stands is refused at once. Nothing is
 ever forced. The committed pre-push hook lets a push under `abcd-status/`
 through without a preflight receipt only as a fast-forward of commits that
 change no file, refuses a deletion, and gates every other push as any branch
@@ -62,7 +65,10 @@ is; a hosted session runs no hook, so there the ruleset on
 
 ## What it refuses
 
-Every refusal pushes nothing.
+Every refusal pushes nothing, except `not sent:`, the one refusal made after
+pushes, each of which origin refused. A push made whose outcome cannot be read
+back (the fetch after it failed, or the rebuilt commit could not be written) is
+not a refusal: exit 2 says a refused push may still have reached origin.
 
 - A kind outside the list, an item outside its grammar and an expiry outside
   its bounds are refused before git runs, naming the field and the limit.

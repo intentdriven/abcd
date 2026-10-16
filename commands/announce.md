@@ -50,8 +50,9 @@ Tell the user what went out and until when.
 
 ## When it refuses
 
-**Exit 2 is every refusal**, and nothing is pushed on any of them. Relay the
-reason; each names the field and the limit, or what to set.
+**Exit 2 is every refusal.** Nothing is pushed on a refusal except "not sent"
+below, the one refusal that follows pushes, every one of them refused by
+origin. Relay the reason; each names the field and the limit, or what to set.
 
 - **Not the fixed form.** A kind outside the list, an item that is neither an
   issue or intent id nor a pull-request number, an expiry outside `1m` to
@@ -77,7 +78,12 @@ reason; each names the field and the limit, or what to set.
 - **Not sent.** A push that lost a race to another of the user's sessions is
   rebuilt on the tip that won and pushed again, up to three times. After that,
   or when origin refuses the push for any other reason, the refusal starts
-  `not sent:` and says why. Do not retry in a loop.
+  `not sent:` and says why. Do not retry in a loop. A push git reports as
+  refused that origin took anyway is reported sent, not sent twice.
+- **May have reached origin.** When a push was made and what became of it
+  cannot be read back (the fetch after it failed, or the rebuilt commit could
+  not be written), exit 2 says a refused push may still have reached origin
+  and names the status branch: fetch and look at it before announcing again.
 - No local tier (`.abcd/.work.local/`, which `/abcd:ahoy install` creates), no
   remote named `origin`, or a fetch origin refused.
 
