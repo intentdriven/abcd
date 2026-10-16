@@ -64,11 +64,11 @@ func TestDefaultRefOutsideARepositoryIsEmpty(t *testing.T) {
 	}
 }
 
-// TestRemoteDefaultBranchNamesOnlyTheRemotesRef: the remote's default branch
+// TestTrackedDefaultBranchNamesOnlyTheRemotesRef: the remote's default branch
 // as last fetched is its HEAD's target, then the conventional names under that
 // remote, and never a local branch, so a checkout with no remote-tracking
 // default answers "" rather than a branch the remote may not hold.
-func TestRemoteDefaultBranchNamesOnlyTheRemotesRef(t *testing.T) {
+func TestTrackedDefaultBranchNamesOnlyTheRemotesRef(t *testing.T) {
 	cases := []struct {
 		name  string
 		setup func(r *gittest.Repo)
@@ -93,8 +93,8 @@ func TestRemoteDefaultBranchNamesOnlyTheRemotesRef(t *testing.T) {
 			r := gittest.NewRepo(t)
 			r.Commit("c0")
 			c.setup(r)
-			if got := gitutil.RemoteDefaultBranch(r.Root(), "origin"); got != c.want {
-				t.Fatalf("RemoteDefaultBranch = %q, want %q", got, c.want)
+			if got := gitutil.TrackedDefaultBranch(r.Root(), "origin"); got != c.want {
+				t.Fatalf("TrackedDefaultBranch = %q, want %q", got, c.want)
 			}
 		})
 	}
@@ -102,10 +102,10 @@ func TestRemoteDefaultBranchNamesOnlyTheRemotesRef(t *testing.T) {
 	r := gittest.NewRepo(t)
 	r.Commit("c0")
 	r.Git("update-ref", "refs/remotes/upstream/main", "HEAD")
-	if got := gitutil.RemoteDefaultBranch(r.Root(), "upstream"); got != "refs/remotes/upstream/main" {
-		t.Fatalf("RemoteDefaultBranch(upstream) = %q, want refs/remotes/upstream/main", got)
+	if got := gitutil.TrackedDefaultBranch(r.Root(), "upstream"); got != "refs/remotes/upstream/main" {
+		t.Fatalf("TrackedDefaultBranch(upstream) = %q, want refs/remotes/upstream/main", got)
 	}
-	if got := gitutil.RemoteDefaultBranch(t.TempDir(), "origin"); got != "" {
-		t.Fatalf("RemoteDefaultBranch outside a repository = %q, want \"\"", got)
+	if got := gitutil.TrackedDefaultBranch(t.TempDir(), "origin"); got != "" {
+		t.Fatalf("TrackedDefaultBranch outside a repository = %q, want \"\"", got)
 	}
 }
