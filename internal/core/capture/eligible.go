@@ -21,10 +21,13 @@ import (
 // Which categories and severities a drain may take, and whether it takes
 // security issues, is the drained repository's own decision, read from its own
 // decision record by core/drainrule (rulings BX2 and H11); a repository without
-// one is refused. Two hand-backs hold whatever that record says: a remedy that
-// waits on a ruling, and a deferral that is live at the current anchor tag or
-// whose liveness the checkout cannot read (no release tag, a tag it lacks, or
-// a value that is not a release tag).
+// one is refused. Three hand-backs hold whatever that record says: an issue
+// whose related_intents names an intent (promoted; spc-2610161044461448 step
+// 4), which goes through that intent, a record the consistency pass files
+// aside (ruling H12, dcn-2610161425496537); a remedy that waits on a ruling;
+// and a deferral that is live at the current anchor tag or whose liveness the
+// checkout cannot read (no release tag, a tag it lacks, or a value that is not
+// a release tag).
 //
 // Nothing here writes. The plan is what a drain WOULD do; the run that hands
 // each eligible issue to an issue-keyed lane is the implement loop's
@@ -39,7 +42,9 @@ const (
 	// The host judgement over the remedy (scope 3) may still hand it back; it
 	// can never make an issue eligible.
 	DrainEligible DrainOutcome = "eligible"
-	// DrainHandBack: the issue is a person's, by severity or category.
+	// DrainHandBack: the issue is not a drain's to take alone: it goes through
+	// the intent its related_intents names (promoted), or it is a person's, by
+	// category, severity, a remedy waiting on a ruling or a live deferral.
 	DrainHandBack DrainOutcome = "handback"
 	// DrainIneligible: a field the rule reads is missing (the remedy), or holds
 	// the machine value an automatic filer writes in place of one.
