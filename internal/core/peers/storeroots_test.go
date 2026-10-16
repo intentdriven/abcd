@@ -68,33 +68,66 @@ func (f *fixture) wantStoresSkipped(n int) {
 	}
 }
 
+// ownStore is where this repository's embargo store is made: under its own
+// root commit.
+func (f *fixture) ownStore() string {
+	f.t.Helper()
+	return abcdhome.Path(f.home, "worktrees", gitutil.RootCommit(f.here()), storepath.Name)
+}
+
 // TestPeersSkipsEmbargoStoreWhicheverRootGitListsFirst: after an empty-diff
 // merge of an unrelated root, which `rev-list` now meets first, the store
 // made under the repository's own root is still skipped unread.
 func TestPeersSkipsEmbargoStoreWhicheverRootGitListsFirst(t *testing.T) {
 	f := newFixture(t)
-	store, ok := storepath.Path(f.home, f.here())
-	if !ok {
-		t.Fatal("the fixture repository has no root commit to key the embargo store on")
-	}
-	f.addStore(store)
+	f.addStore(f.ownStore())
 	f.mergeUnrelatedRoot()
 	f.wantStoresSkipped(1)
 }
 
-// TestPeersSkipsEveryEmbargoStoreUnderTwoRoots: with a store under each of
-// two roots of the default branch, the store's owner refuses to choose, and
-// the listing skips both unread.
-func TestPeersSkipsEveryEmbargoStoreUnderTwoRoots(t *testing.T) {
+// TestPeersSkipsEveryEmbargoStore: with two embargo stores registered, one
+// under a merged root and one under a key that is no root at all, the
+// store's owner refuses to choose, and the listing skips every one unread.
+func TestPeersSkipsEveryEmbargoStore(t *testing.T) {
 	f := newFixture(t)
-	first, ok := storepath.Path(f.home, f.here())
-	if !ok {
-		t.Fatal("the fixture repository has no root commit to key the embargo store on")
-	}
-	f.addStore(first)
+	f.addStore(f.ownStore())
 	other := f.mergeUnrelatedRoot()
 	f.addStore(abcdhome.Path(f.home, "worktrees", other, storepath.Name))
-	f.wantStoresSkipped(2)
+	f.addStore(abcdhome.Path(f.home, "worktrees", strings.Repeat("ab", 20), storepath.Name))
+	f.wantStoresSkipped(3)
+}
+
+// TestPeersSkipsEmbargoStorePastManyMergedRoots: a merge that brings in
+// 1,400 parentless commits does not expose the store: it is skipped unread.
+func TestPeersSkipsEmbargoStorePastManyMergedRoots(t *testing.T) {
+	f := newFixture(t)
+	f.addStore(f.ownStore())
+	f.repo.MergeParentlessRoots(1400)
+	f.wantStoresSkipped(1)
+}
+
+// TestPeersSkipsEmbargoStoreWhenItCannotBeLocated: when the store's own
+// lookup fails (here the store's lock reason is longer than any field the
+// lookup's listing reads), the listing still skips the store unread.
+func TestPeersSkipsEmbargoStoreWhenItCannotBeLocated(t *testing.T) {
+	f := newFixture(t)
+	store := f.ownStore()
+	f.addStore(store)
+	gitfile, err := os.ReadFile(filepath.Join(store, ".git"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, ok := strings.CutPrefix(strings.TrimSpace(string(gitfile)), "gitdir: ")
+	if !ok {
+		t.Fatal("the store's .git is not a gitfile")
+	}
+	if err := os.WriteFile(filepath.Join(admin, "locked"), []byte(strings.Repeat("r", 2<<20)), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storepath.Locate(f.home, f.here()); err == nil {
+		t.Fatal("the store's lookup succeeded, so the fixture proves nothing")
+	}
+	f.wantStoresSkipped(1)
 }
 
 // This file spawns git, so it imports gittest (TestTestGitCallsAreHermetic).

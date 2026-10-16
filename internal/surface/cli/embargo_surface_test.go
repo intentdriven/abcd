@@ -91,10 +91,11 @@ func jsonKeys(t *testing.T, doc string) []string {
 // on at exit 2, saying what to do, and writes nothing.
 func TestEmbargoSurfaceRefusals(t *testing.T) {
 	r := embargoSurfaceRepo(t)
-	store, ok := storepath.Path(os.Getenv("HOME"), r.Root())
-	if !ok {
-		t.Fatal("the fixture repository has no root commit to key the embargo store on")
+	loc, err := storepath.Locate(os.Getenv("HOME"), r.Root())
+	if err != nil || loc.Registered {
+		t.Fatalf("the fixture repository's store place: %+v, %v", loc, err)
 	}
+	store := loc.Path
 	for _, tc := range []struct {
 		args []string
 		want string

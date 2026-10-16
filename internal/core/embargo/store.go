@@ -64,21 +64,53 @@ type Store struct {
 	Checkout string `json:"checkout"`
 }
 
-// storePath is where the store of the repository at repoRoot is, or is to be
-// made, under home: storepath.Locate's answer, the one rule every reader and
-// writer of the store shares. Its refusals name neither a store nor a root.
-func storePath(home, repoRoot string) (string, error) {
-	loc, err := storepath.Locate(home, repoRoot)
+// locate is where the store of the repository at top is, or is to be made,
+// under home: storepath.Locate's answer, the one rule every reader and
+// writer of the store shares, with each of its refusals worded for the
+// person. Its refusals name neither a store nor a key. A caller that only
+// reads takes errNoFreePlace for "no store".
+func locate(home, top string) (storepath.Location, error) {
+	loc, err := storepath.Locate(home, top)
 	switch {
+	case err == nil:
+		return loc, nil
+	case errors.Is(err, storepath.ErrWorktreesUnread):
+		return loc, refuse("git could not list this repository's worktrees, so whether it has an embargo store cannot be told",
+			"settle what `git worktree list --porcelain` reports, then run it again")
 	case errors.Is(err, storepath.ErrSeveralStores):
-		return "", refuse("an embargo store sits under more than one root commit of this repository's default branch, so which one holds the records cannot be told",
-			"keep the store that holds the records, move the other aside, then run it again")
+		return loc, refuse("more than one embargo store is a worktree of this repository, so which one holds the records cannot be told",
+			"inspect each with `git worktree list`, keep the one holding the records, remove the other with `git worktree remove <path>`, then run it again")
 	case errors.Is(err, storepath.ErrRootsUnread):
-		return "", refuse("git could not list the root commits of this repository's default branch, so the embargo store cannot be found", "settle what git reports, then run it again")
-	case err != nil:
-		return "", refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
+		return loc, refuse("git could not list the root commits of this repository's default branch, so no embargo store can be made", "settle what git reports, then run it again")
+	case errors.Is(err, storepath.ErrNoRootCommit):
+		return loc, refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
+	case errors.Is(err, storepath.ErrPlaceTaken):
+		return loc, refuse("the place this repository's embargo store would be made could not be examined, or holds a folder that is no worktree of this repository nor of another repository on this machine, perhaps a store git has lost track of",
+			"look under abcd's worktree store, keep any private records the folder holds, move it aside, then run `abcd embargo intake`")
+	case errors.Is(err, storepath.ErrNoFreePlace):
+		return loc, errNoFreePlace
+	default:
+		return loc, refuse("the embargo store could not be located", "run it again")
 	}
-	return loc.Path, nil
+}
+
+// errNoFreePlace is locate's refusal for storepath.ErrNoFreePlace: this
+// repository has no store, and one cannot be made without touching
+// another's.
+var errNoFreePlace = refuse("every place this repository's embargo store could be made already holds another repository's store, which is left alone",
+	"run the embargo sub-verbs from the checkout that store belongs to")
+
+// registered returns the store at a registered location, refusing a
+// registration whose folder is gone or cannot be examined.
+func registered(loc storepath.Location, top string) (Store, error) {
+	switch _, err := os.Lstat(loc.Path); {
+	case errors.Is(err, fs.ErrNotExist):
+		return Store{}, refuse("the embargo store is registered as a worktree of this repository, but its folder is gone",
+			"if it was removed on purpose, run `git worktree prune`, then run it again")
+	case err != nil:
+		return Store{}, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
+	}
+	return Store{Root: loc.Path, Checkout: top}, nil
 }
 
 // openStore returns the store of the repository at repoRoot, making it on first
@@ -90,23 +122,24 @@ func openStore(home, repoRoot string) (s Store, created bool, err error) {
 	if err != nil {
 		return Store{}, false, refuse("this is not inside a git checkout", "run it from the repository's checkout")
 	}
-	p, err := storePath(home, top)
+	loc, err := locate(home, top)
 	if err != nil {
 		return Store{}, false, err
 	}
-	s = Store{Root: p, Checkout: top}
-	if inside(p, top) {
-		return Store{}, false, refuse("the embargo store would sit inside this checkout, where its records are one `git add` from the public history",
-			"run abcd with a home directory outside the repository")
-	}
-	switch _, err := os.Lstat(p); {
-	case errors.Is(err, fs.ErrNotExist):
+	if loc.Registered {
+		if s, err = registered(loc, top); err != nil {
+			return Store{}, false, err
+		}
+	} else {
+		s = Store{Root: loc.Path, Checkout: top}
+		if inside(s.Root, top) {
+			return Store{}, false, refuse("the embargo store would sit inside this checkout, where its records are one `git add` from the public history",
+				"run abcd with a home directory outside the repository")
+		}
 		if err := s.create(home); err != nil {
 			return Store{}, false, err
 		}
 		created = true
-	case err != nil:
-		return Store{}, false, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
 	}
 	if _, err := s.Verify(); err != nil {
 		return Store{}, created, err
@@ -122,16 +155,16 @@ func openExisting(home, repoRoot string) (Store, State, error) {
 	if err != nil {
 		return Store{}, State{}, refuse("this is not inside a git checkout", "run it from the repository's checkout")
 	}
-	p, err := storePath(home, top)
+	loc, err := locate(home, top)
+	if err == errNoFreePlace || (err == nil && !loc.Registered) {
+		return Store{}, State{}, refuse("there is no embargo store for this repository on this machine", "run `abcd embargo intake` first")
+	}
 	if err != nil {
 		return Store{}, State{}, err
 	}
-	s := Store{Root: p, Checkout: top}
-	switch _, err := os.Lstat(p); {
-	case errors.Is(err, fs.ErrNotExist):
-		return Store{}, State{}, refuse("there is no embargo store for this repository on this machine", "run `abcd embargo intake` first")
-	case err != nil:
-		return Store{}, State{}, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
+	s, err := registered(loc, top)
+	if err != nil {
+		return Store{}, State{}, err
 	}
 	st, err := s.Verify()
 	if err != nil {

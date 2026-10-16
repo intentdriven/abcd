@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -167,19 +166,23 @@ func Check(req CheckRequest) (CheckResult, error) {
 	}
 	res := CheckResult{Allowed: allowList, Findings: []CheckFinding{}, Commits: len(commits), Files: len(texts)}
 
-	p, err := storePath(req.Home, top)
-	if err != nil {
-		return CheckResult{}, err
-	}
-	switch _, err := os.Lstat(p); {
-	case errors.Is(err, fs.ErrNotExist):
+	// No store registered, with the place one would be made free or holding
+	// only other repositories' stores, is the one answer of "no store"; every
+	// other answer locate cannot give cleanly is a refusal.
+	loc, err := locate(req.Home, top)
+	if err == errNoFreePlace || (err == nil && !loc.Registered) {
 		res.NoStore = true
 		res.Note = "nothing is under embargo on this machine: there is no embargo store for this repository"
 		return res, nil
-	case err != nil:
-		return CheckResult{}, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
 	}
-	s, st, err := openExisting(req.Home, top)
+	if err != nil {
+		return CheckResult{}, err
+	}
+	s, err := registered(loc, top)
+	if err != nil {
+		return CheckResult{}, err
+	}
+	st, err := s.Verify()
 	if err != nil {
 		return CheckResult{}, err
 	}
@@ -442,7 +445,7 @@ func patchPath(p string) string {
 // buildDenySet is the deny set of a store's state: every advisory under
 // embargo (embargoed), and, while any is, the store's location on this
 // machine in every form a text could name it: absolute, home-relative, and
-// the worktree-store fragment keyed on this repository's root commit. The
+// the worktree-store fragment under the store's own key. The
 // relative paths inside any store (StateRel, DraftDirRel) are not in the set:
 // abcd's own source names them, and they say nothing of where this machine
 // keeps its records.
@@ -467,9 +470,9 @@ func buildDenySet(s Store, st State, allowed map[string]bool) (denySet, error) {
 	if ds.embargo == 0 {
 		return ds, nil
 	}
-	// The worktree-store fragment is the found store's own: the root commit
-	// it is keyed on is its parent folder's name (storepath.Locate), which
-	// need not be the root git lists first.
+	// The worktree-store fragment is the found store's own: its key is its
+	// parent folder's name (storepath.Locate), which need not be any root
+	// the history has now.
 	key := filepath.Base(filepath.Dir(s.Root))
 	forms := []string{s.Root, resolve(s.Root), "worktrees/" + key + "/" + StoreName}
 	if home, err := os.UserHomeDir(); err == nil {
