@@ -45,7 +45,8 @@ type Reservation struct {
 	Footprint []string
 	ClaimedAt time.Time
 	// EffectiveExpiry is when it stops holding: the lease clamped to a day,
-	// or an unreadable tip's hold.
+	// or an unreadable tip's hold. A tip dated more than lease.Skew ahead of
+	// the reader counts from when this copy first fetched it (lease.Judge).
 	EffectiveExpiry time.Time
 	// State is StateLive, StateExpired, StateReleased or StateUnreadable.
 	State string

@@ -138,12 +138,9 @@ behind by more than half the lease plus the margin (65 minutes for the
 default two hours) can be taken over between its own renewals, and a
 reservation made once and never renewed by a clock behind by more than its
 lease is open to a take-over as soon as another copy fetches it. A
-reservation claimed more than five minutes ahead of the reader's clock is
-counted from when this copy first fetched it, kept in the local tier, so it
-holds at most a day from that first fetch however far ahead it is dated, and
-an unreadable one whose commit date is that far ahead holds its two hours from
-the first fetch in the same way; one dated less than five minutes ahead is
-judged by its own times. Keep the machines that reserve on network time.
+reservation dated more than five minutes ahead of the reader counts from when
+that copy first fetched it, so it holds at most a day from then. Keep the
+machines that reserve on network time.
 
 **The holder** is the user's GitHub username, read from `git config
 user.email` when it is a GitHub no-reply address, or from

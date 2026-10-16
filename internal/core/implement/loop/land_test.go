@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/ghcontract"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -38,10 +39,14 @@ const noQueueRuleset = `{"bypass_actors":[],"conditions":{"ref_name":{"exclude":
 // body the forge holds), state (the pull request's state), mergeable.json (its
 // mergeability; MERGEABLE when absent), footer (a line the
 // "harness" appends to a body at creation), refuse-disarm (present, the forge
-// refuses to withdraw an armed merge). It never reaches a network.
-const stubGH = `#!/bin/sh
-d="$(cd "$(dirname "$0")" && pwd)"
+// refuses to withdraw an armed merge). It never reaches a network, and it
+// refuses a --json field the real forge client refuses (ghcontract).
+var stubGH = "#!/bin/sh\n" + ghcontract.Shell() + stubGHBody
+
+// stubGHBody is stubGH after the field check's definition.
+const stubGHBody = `d="$(cd "$(dirname "$0")" && pwd)"
 printf '%s\n' "$*" >> "$d/gh.log"
+ghcontract_check "$@"
 body_from() {
   while [ $# -gt 0 ]; do
     case "$1" in
@@ -132,7 +137,9 @@ func newLandFixtureWith(t *testing.T, files map[string]string) *landFixture {
 	}
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
 
-	start, err := Start(repo.Root(), "itd-10", Options{})
+	// The fixture's run holds no reservation: a test that wants one takes it
+	// (reserveRun), at the time it chooses.
+	start, err := Start(repo.Root(), "itd-10", Options{noReserve: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,8 +321,8 @@ func TestTheLandingClosesTheSpecResolvesTheCapturesAndArmsTheMerge(t *testing.T)
 
 	// Armed by the ruleset's method.
 	f.step(t)
-	if log := f.ghLog(t); !strings.Contains(log, "pr merge 7 --auto --merge") {
-		t.Fatalf("the merge is armed by the ruleset's merge-queue method:\n%s", log)
+	if log := f.ghLog(t); !strings.Contains(log, "pr merge 7 --auto --merge --match-head-commit="+l.HeadSHA) {
+		t.Fatalf("the merge is armed by the ruleset's merge-queue method, pinned to the pushed head %s:\n%s", l.HeadSHA, log)
 	}
 
 	// Not merged yet: the loop waits, and cleans nothing up.

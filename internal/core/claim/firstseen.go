@@ -12,10 +12,10 @@ import (
 // whose writer's clock runs far ahead lapses a lease after it was first seen
 // here instead of holding a lease from every reading. The first time is kept
 // where an undated tip's is (firstFetched, undatedRelDir), one file per
-// commit, so a later fetch does not restart it.
+// commit, so a later fetch does not restart it, and once kept it is the
+// tip's FirstSeen at every reading.
 
-// readSeen is readTip, with the tip's first sighting set when it is dated
-// ahead of fetchedAt (seen).
+// readSeen is readTip, with the tip's first sighting set (seen).
 func readSeen(root, record, ref, tree string, fetchedAt time.Time, keep bool) (tip, bool, error) {
 	t, ok, err := readTip(root, record, ref, tree, fetchedAt, keep)
 	if err != nil || !ok {
@@ -24,18 +24,26 @@ func readSeen(root, record, ref, tree string, fetchedAt time.Time, keep bool) (t
 	return seen(root, t, fetchedAt, keep), true, nil
 }
 
-// seen gives a tip whose own date (its claimed-at, or its commit date when it
-// is unreadable) is more than lease.Skew ahead of fetchedAt the time this
-// copy first fetched it. A reader at a later now than fetchedAt counts from it
-// only a tip still ahead of its own now (lease.Judge); one ahead of fetchedAt
-// alone is judged by its own dates.
+// seen gives a tip the time this copy first fetched it whenever one is kept,
+// whatever the tip's date is now, so lease.Judge counts it the same way at
+// every reading. With keep, a tip whose own date (its claimed-at, or its
+// commit date when it is unreadable) is more than lease.Skew ahead of
+// fetchedAt and has no time kept is kept as first fetched at fetchedAt.
+// Without keep (the view) nothing is kept, and a tip with no time kept has no
+// FirstSeen: lease.Judge then counts one dated ahead from the reader's now, as
+// the act that would keep it does, never from an earlier fetch that may not
+// have brought it.
 func seen(root string, t tip, fetchedAt time.Time, keep bool) tip {
+	if at, ok := keptFetch(root, t.Commit, fetchedAt, keep); ok {
+		t.FirstSeen = at
+		return t
+	}
 	date := t.ClaimedAt
 	if t.Unreadable != "" {
 		date = t.WrittenAt
 	}
-	if lease.Ahead(date, fetchedAt) {
-		t.FirstSeen = firstFetched(root, t.Commit, fetchedAt, keep)
+	if keep && lease.Ahead(date, fetchedAt) {
+		t.FirstSeen = firstFetched(root, t.Commit, fetchedAt, true)
 	}
 	return t
 }

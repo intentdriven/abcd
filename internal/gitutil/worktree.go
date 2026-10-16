@@ -11,6 +11,12 @@ type Worktree struct {
 	Bare   bool
 }
 
+// MaxWorktreeListing is the cap a caller listing a repository's worktrees
+// passes ListWorktrees when it has no reason for another: a listing is a few
+// hundred bytes a worktree, and 16 MiB bounds a planted repository without
+// refusing a real one.
+const MaxWorktreeListing = 16 << 20
+
 // ListWorktrees lists every working tree of the repository at root, the main
 // one first (git documents that order), with its output capped at maxBytes as
 // RunCapped caps it.

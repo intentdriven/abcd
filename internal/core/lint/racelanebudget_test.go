@@ -32,10 +32,11 @@ import (
 // the event the lane was ejected on, and a job ceiling above it is unreachable
 // there: the queue gives up first, with no job failure to read. So no leg of
 // the check job may carry a timeout-minutes above the cap the ruleset mirror
-// records. Under ruling Z (2026-09-28, the technical facilitator) the cap is 45
-// minutes and the macOS leg follows it, while the ubuntu leg keeps 30; the job
-// declares that as one matrix expression, which checkLegTimeouts reads leg by
-// leg. The step's -timeout still earns its place under that cap: it lifts the
+// records. Ruling Z (2026-09-28, the technical facilitator) raised the macOS
+// leg alone, while the ubuntu leg keeps 30; the job declares that as one matrix
+// expression, which checkLegTimeouts reads leg by leg. The queue's cap is 90
+// minutes since 2026-10-11 and the macOS leg's is 60 since 2026-10-15, below
+// it, so on that leg the job's own ceiling is the binding one. The step's -timeout still earns its place under that cap: it lifts the
 // ten-minute per-package default, so a slow package fails on the job's clock
 // rather than at ten minutes. Raising the queue's cap is an admin act on the
 // live ruleset, left to the technical facilitator; this test reads the mirror,
@@ -122,6 +123,10 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 					"false. Raise the live ruleset's cap (an admin act) before the job's",
 					where, leg.os, leg.minutes, queue, rulesetMirror)
 			}
+			if leg.os == "macos-latest" && leg.minutes != checkMacOSCeilingMinutes*time.Minute {
+				t.Errorf("%s: the macos-latest leg's timeout-minutes is %s; want %dm, the ceiling "+
+					"the technical facilitator set on 2026-10-15", where, leg.minutes, checkMacOSCeilingMinutes)
+			}
 			// Ruling Z raised the macOS leg alone; every other leg keeps 30.
 			if leg.os != "macos-latest" && leg.minutes != 30*time.Minute {
 				t.Errorf("%s: the %s leg's timeout-minutes is %s; ruling Z (2026-09-28) raised only "+
@@ -147,11 +152,20 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	}
 }
 
+// checkMacOSCeilingMinutes is the macOS leg's timeout-minutes in ci.yml's check
+// job: 45 under ruling Z (2026-09-28), 60 since 2026-10-15, when merge-queue
+// macOS runs had grown from 31-35 to 34-40 minutes. It stays below the merge
+// queue's check response timeout, which the budget test reads from the mirror.
+const checkMacOSCeilingMinutes = 60
+
+// checkWarnLeadMinutes is how far ahead of the macOS leg's ceiling the warning
+// step fires: ruling Z's cancel policy (2026-09-28) set the line ten minutes
+// under the cap, so a speed lane opens before anything is cancelled.
+const checkWarnLeadMinutes = 10
+
 // checkWarnAfterMinutes is where the macOS leg of ci.yml's check job warns that
-// it is nearing its ceiling: ruling Z's cancel policy (2026-09-28) sets it at 35
-// minutes, ten under the 45-minute cap, so a speed lane opens before the queue
-// cancels anything.
-const checkWarnAfterMinutes = 35
+// it is nearing its ceiling: checkWarnLeadMinutes under checkMacOSCeilingMinutes.
+const checkWarnAfterMinutes = checkMacOSCeilingMinutes - checkWarnLeadMinutes
 
 // checkWarnStep is the name of that warning step in the check job.
 const checkWarnStep = "Warn when the check nears the queue's cap"
@@ -182,14 +196,20 @@ func TestCheckJobWarnsBeforeTheQueueCap(t *testing.T) {
 	}
 	warn, _ := strconv.Atoi(m[1])
 	if warn != checkWarnAfterMinutes {
-		t.Errorf("%s step %q warns after %d minutes; the cancel policy of ruling Z sets %d",
-			where, checkWarnStep, warn, checkWarnAfterMinutes)
+		t.Errorf("%s step %q warns after %d minutes; want %d, %d under the macos-latest leg's "+
+			"%d-minute ceiling (the cancel policy of ruling Z)",
+			where, checkWarnStep, warn, checkWarnAfterMinutes, checkWarnLeadMinutes, checkMacOSCeilingMinutes)
 	}
 	warnAfter := time.Duration(warn) * time.Minute
 	for _, leg := range checkLegTimeouts(t, where, job) {
 		if leg.os == "macos-latest" && warnAfter >= leg.minutes {
 			t.Errorf("%s step %q warns after %s, not below the macos-latest leg's %s ceiling; "+
 				"the job is cancelled before the warning can fire", where, checkWarnStep, warnAfter, leg.minutes)
+		}
+		if lead := time.Duration(checkWarnLeadMinutes) * time.Minute; leg.os == "macos-latest" && leg.minutes-warnAfter != lead {
+			t.Errorf("%s step %q warns after %s, %s before the macos-latest leg's %s ceiling; "+
+				"the cancel policy of ruling Z puts the line %s before it", where, checkWarnStep,
+				warnAfter, leg.minutes-warnAfter, leg.minutes, lead)
 		}
 	}
 	if queue := mergeQueueResponseTimeout(t, root); warnAfter >= queue {

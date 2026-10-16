@@ -28,8 +28,8 @@ const (
 
 // Skew is how far ahead of the reader's clock a claim may be dated and still
 // be judged by its own dates: the allowance for two honest clocks that differ
-// by a little. A claim dated further ahead is counted from when the reader
-// first saw it (Stamp.FirstSeen).
+// by a little. A claim dated further ahead of when the reader first saw it
+// (Stamp.FirstSeen) is counted from that sighting.
 const Skew = 5 * time.Minute
 
 // Stamp is what a claim says about its own lifetime, as read.
@@ -46,9 +46,10 @@ type Stamp struct {
 	// reservation commit's committer date.
 	WrittenAt time.Time
 	// FirstSeen is when the reader first saw this claim, kept by the reader
-	// rather than read from the claim. It is read only when the claim's own
-	// date (ClaimedAt, or WrittenAt when unreadable) is more than Skew ahead
-	// of now; zero then counts from now.
+	// rather than read from the claim; zero when nothing recorded it. A claim
+	// whose own date (ClaimedAt, or WrittenAt when unreadable) is more than
+	// Skew after FirstSeen is counted from FirstSeen at every reading. With no
+	// FirstSeen, a claim dated more than Skew ahead of now is counted from now.
 	FirstSeen time.Time
 }
 
@@ -56,9 +57,9 @@ type Stamp struct {
 type Verdict struct {
 	// EffectiveExpiry is when the claim stops holding: a readable claim's
 	// expiry clamped to a day after it was claimed (or after now, when it is
-	// dated a little ahead of the reader, or after it was first seen, when it
-	// is dated more than Skew ahead), or an unreadable one's WrittenAt (or
-	// now, or its first sighting, on the same terms) plus the grace.
+	// dated ahead of the reader, or after it was first seen, when it was dated
+	// more than Skew ahead of that sighting), or an unreadable one's WrittenAt
+	// (or now, or its first sighting, on the same terms) plus the grace.
 	EffectiveExpiry time.Time
 	// Live is true while now is before EffectiveExpiry.
 	Live bool
@@ -69,16 +70,21 @@ type Verdict struct {
 
 // Judge says whether a claim holds at now. A readable claim's effective expiry
 // is min(ExpiresAt, min(from, now) + Max) and an unreadable one is held until
-// min(from, now) + grace, where from is the claim's own date (ClaimedAt, or
-// WrittenAt when unreadable) unless that date is more than Skew ahead of now,
-// when from is FirstSeen (now when FirstSeen is zero).
+// min(from, now) + grace, where from is:
+//
+//   - FirstSeen, when the claim's own date (ClaimedAt, or WrittenAt when
+//     unreadable) is more than Skew after FirstSeen: the claim was dated ahead
+//     when the reader first saw it, and stays counted from that sighting at
+//     every later reading, however the reader's clock has moved since;
+//   - now, when no FirstSeen is recorded and the claim's own date is more
+//     than Skew ahead of now;
+//   - otherwise the claim's own date.
 //
 // So neither a far-ahead clock nor a hand-edited expiry can hold a record past
-// a day from its claim: a claim dated a little ahead of the reader, within
-// the Skew two honest clocks may differ by, is clamped from the reader's now,
-// and one dated further ahead is counted from when the reader first saw it,
-// so it lapses a day after that sighting rather than holding for a day from
-// every reading.
+// a day from its claim or its first sighting, and for a fixed stamp with a
+// sighting the expiry never moves later as time passes. A claim dated within
+// Skew of its sighting, as two honest clocks may differ, is judged exactly as
+// it would be with no sighting recorded.
 func Judge(s Stamp, grace time.Duration, now time.Time) Verdict {
 	if s.Unreadable {
 		exp := earlier(from(s.WrittenAt, s.FirstSeen, now), now).Add(grace)
@@ -91,21 +97,24 @@ func Judge(s Stamp, grace time.Duration, now time.Time) Verdict {
 	return Verdict{EffectiveExpiry: exp, Live: now.Before(exp)}
 }
 
-// Ahead reports whether a claim dated at is more than Skew ahead of now, the
-// claim Judge counts from its first sighting instead of from its own date.
+// Ahead reports whether a claim dated at is more than Skew ahead of now (or
+// of a first sighting), the claim Judge counts from that sighting instead of
+// from its own date.
 func Ahead(at, now time.Time) bool { return at.After(now.Add(Skew)) }
 
-// from is the time a claim dated at is counted from at now: at itself, or
-// when it is more than Skew ahead, its first sighting (now when there is
-// none).
+// from is the time a claim dated at is counted from at now: its first
+// sighting when it was dated more than Skew ahead of that sighting, a test
+// made against the recorded sighting and never against now, so its answer
+// does not change as time passes; now when no sighting is recorded and it is
+// more than Skew ahead of now; else at itself.
 func from(at, firstSeen, now time.Time) time.Time {
-	if !Ahead(at, now) {
-		return at
-	}
-	if firstSeen.IsZero() {
+	switch {
+	case !firstSeen.IsZero() && Ahead(at, firstSeen):
+		return firstSeen
+	case firstSeen.IsZero() && Ahead(at, now):
 		return now
 	}
-	return firstSeen
+	return at
 }
 
 // earlier is the earlier of two times.

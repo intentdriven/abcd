@@ -74,8 +74,9 @@ a directory holding the other, is refused, unless that reservation is the same
 person's from this copy, naming the deeper of the two paths,
 the other record, its holder and its expiry; a renewal the verb makes names
 its footprint and is checked the same way, so a footprint is never widened onto
-another reservation, while the implement loop's renewal, which keeps the tip's
-footprint, is not checked. The cap and the overlap are judged on the view just
+another reservation, while the implement loop's renewal of a live reservation,
+which keeps the tip's footprint, is not checked, and one that revives a lapsed
+reservation is checked like a new one. The cap and the overlap are judged on the view just
 fetched and are not compared-and-swapped, since each reservation is its own
 branch: two people reserving at once can both pass them, so both are
 best-effort under a race. A collision on one record is atomic, the plain push
@@ -90,18 +91,11 @@ Expiry is the holder's clock judged by the reader's, and the five-minute
 take-over margin is the only skew it absorbs: a holder whose clock runs behind
 by more than half its lease plus the margin can be taken over between its own
 renewals, and a reservation never renewed is open to a take-over once the
-holder's clock is behind by more than its lease. No bound read on the
-reader's side holds for a clock behind: the commit date is written by the same
-clock, and the time this copy first saw a tip cannot tell a holder's slow
-clock from a late fetch. A clock ahead is bounded on the reader's side: a
-claim dated more than `lease.Skew` (five minutes, the take-over margin) ahead
-of the reader's now is counted from when this copy first fetched its commit,
-kept per commit in the local tier beside the undated tips' times, so it holds
-at most a day from that first fetch rather than a day from every reading; an
-unreadable tip whose commit date is that far ahead holds its two hours from
-the first fetch in the same way. The reservations' fetch records the time for
-every tip that needs one, so the view, which writes nothing, counts from it
-too. A claim dated within the five minutes is judged by its own times.
+holder's clock is behind by more than its lease. A reservation dated more than
+five minutes ahead of the reader counts from when that copy first fetched it,
+so it holds at most a day from then. No bound read on the reader's side holds
+for a slow clock: the commit date is written by the same clock, and the time
+this copy first saw a tip cannot tell a holder's slow clock from a late fetch.
 
 ## The release hold
 

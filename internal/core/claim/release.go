@@ -22,8 +22,8 @@ import (
 // lease.Max, a day, so a cut that waits overnight on its checks or its
 // approval outlasts its own lease; a slower cut renews it by reserving it
 // again from the same copy. Without a renewal no reservation holds past
-// lease.Max from its claim, or, when it is claimed more than lease.Skew ahead
-// of this copy's clock, past lease.Max from when this copy first fetched it
+// lease.Max from its claim, or, when it was claimed more than lease.Skew ahead
+// of when this copy first fetched it, past lease.Max from that first fetch
 // (lease.Judge); an unreadable one holds for lease.Default on the same terms.
 
 // releasePrefix begins every release subject.
