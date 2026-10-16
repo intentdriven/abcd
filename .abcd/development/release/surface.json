@@ -1489,6 +1489,13 @@
       "sentence": "Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
       "flags": [
         {
+          "name": "base",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "dir",
           "shorthand": "",
           "type": "string",

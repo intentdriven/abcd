@@ -666,6 +666,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--base` | string |
 | `--dir` | string |
 
 ### `abcd guard check`

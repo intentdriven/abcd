@@ -1420,24 +1420,54 @@ Judge a shell command against the hazard registry before it runs: Writes nothing
 
 Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.
 
-**Usage:** `abcd guard approve --dir <working-tree> [flags]`
+**Usage:** `abcd guard approve --dir <working-tree> --base <commit> [flags]`
 
 Answers the permission prompts of an agent abcd started without a terminal,
 over MCP on stdio: the claude runner starts it, as the one server of a launch
 whose role's contract grants the shell, and names its tool, approve, as the
 harness's permission prompt tool. Each prompt is judged against the hazard
-registry of the working tree --dir names, read afresh for every prompt.
+registry of the working tree --dir names, read afresh for every prompt, and
+in force only where it is at least as strong as the registry at --base, the
+commit the run started on: any weakening since then, of a warn or a blocker,
+committed or not, refuses every command.
 
 A shell command is approved only when the guard reads it whole and clears
 it: no registry entry and no reading signal, a warn included; no note about
-the check, such as a script that does not exist; the registry the repository
-declares, loaded and switched on; every program named by the line rather
-than by a variable, a substitution or a glob; and no inline code handed to a
-non-shell interpreter (python -c, node -e, perl -e and the like). It runs
-with exactly the input judged. Everything else is refused with the guard's
-reason and what to run instead, which the harness hands the agent, so the
-agent can rewrite the command. A prompt for any tool but the shell is
-refused, since nobody is there to approve it.
+the check, such as a script that does not exist; and every program named by
+the line rather than by a variable, a substitution or a glob. Beyond the
+registry, it refuses:
+
+  - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,
+    osascript, lua or Rscript -e, deno eval and PowerShell -Command;
+  - code on the standard input (a pipe, a here-document, a here-string or a
+    redirected file) of one of those interpreters, or of ex, when no script
+    file is named;
+  - an awk program that calls system(, pipes to or from a command, or is a
+    variable; a sed script with the e command or the e flag of s; tar's
+    options that run a program (--checkpoint-action, --to-command,
+    --use-compress-program, -I and the like); a vim or ex command (-c, --cmd,
+    +) holding a !;
+  - a write or removal whose target the line does not spell out (a variable,
+    a substitution, a glob, or a name after an unknown change of directory);
+  - a write or removal reaching a protected path, with its directories
+    resolved through symlinks and case folded where the filesystem folds it:
+    the git common directory and its hooks, each checkout's .git, the home
+    shell start-up files and git configuration, the host's settings, .mcp.json,
+    .abcd/guard.json, and the names the host protects in any working tree;
+  - git config with --global, --system or --file on a write, setting a key
+    that starts a program (core.hooksPath, core.pager, an alias and the like),
+    or opening the editor, and any git command setting such a key for itself;
+  - removing, moving or recursively changing the root, a top-level directory,
+    the home directory or a directory directly in it, the working tree or a
+    directory above it, or another checkout of the repository; a find that
+    deletes from home or above; an rsync --delete into such a directory;
+  - a call asking to run outside the host's sandbox.
+
+An approved call runs with the command judged and its description, and
+nothing else it carried. Everything else is refused with the guard's reason
+and what to run instead, which the harness hands the agent, so the agent can
+rewrite the command. A prompt for any tool but the shell is refused, since
+nobody is there to approve it.
 
 The guard is a mistake filter, not a security boundary (see `abcd guard
 check --help` for what an allow does not see), and this adds no sandbox.
@@ -1447,13 +1477,14 @@ start it. It exits 0 when its input ends.
 **Flags:**
 
 ```
-      --dir string   the working tree the agent runs in, as an absolute path
+      --base string   the commit the run started on, by its full object name
+      --dir string    the working tree the agent runs in, as an absolute path
 ```
 
 **Example:**
 
 ```
-abcd guard approve --dir /work/example-repo
+abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567
 ```
 
 #### `abcd guard check`

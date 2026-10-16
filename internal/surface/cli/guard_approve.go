@@ -55,14 +55,39 @@ func newGuardApproveCommand() *cobra.Command {
 			"committed or not, refuses every command.\n\n" +
 			"A shell command is approved only when the guard reads it whole and clears\n" +
 			"it: no registry entry and no reading signal, a warn included; no note about\n" +
-			"the check, such as a script that does not exist; the registry the repository\n" +
-			"declares, loaded and switched on; every program named by the line rather\n" +
-			"than by a variable, a substitution or a glob; and no inline code handed to a\n" +
-			"non-shell interpreter (python -c, node -e, perl -e and the like). It runs\n" +
-			"with exactly the input judged. Everything else is refused with the guard's\n" +
-			"reason and what to run instead, which the harness hands the agent, so the\n" +
-			"agent can rewrite the command. A prompt for any tool but the shell is\n" +
-			"refused, since nobody is there to approve it.\n\n" +
+			"the check, such as a script that does not exist; and every program named by\n" +
+			"the line rather than by a variable, a substitution or a glob. Beyond the\n" +
+			"registry, it refuses:\n\n" +
+			"  - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,\n" +
+			"    osascript, lua or Rscript -e, deno eval and PowerShell -Command;\n" +
+			"  - code on the standard input (a pipe, a here-document, a here-string or a\n" +
+			"    redirected file) of one of those interpreters, or of ex, when no script\n" +
+			"    file is named;\n" +
+			"  - an awk program that calls system(, pipes to or from a command, or is a\n" +
+			"    variable; a sed script with the e command or the e flag of s; tar's\n" +
+			"    options that run a program (--checkpoint-action, --to-command,\n" +
+			"    --use-compress-program, -I and the like); a vim or ex command (-c, --cmd,\n" +
+			"    +) holding a !;\n" +
+			"  - a write or removal whose target the line does not spell out (a variable,\n" +
+			"    a substitution, a glob, or a name after an unknown change of directory);\n" +
+			"  - a write or removal reaching a protected path, with its directories\n" +
+			"    resolved through symlinks and case folded where the filesystem folds it:\n" +
+			"    the git common directory and its hooks, each checkout's .git, the home\n" +
+			"    shell start-up files and git configuration, the host's settings, .mcp.json,\n" +
+			"    .abcd/guard.json, and the names the host protects in any working tree;\n" +
+			"  - git config with --global, --system or --file on a write, setting a key\n" +
+			"    that starts a program (core.hooksPath, core.pager, an alias and the like),\n" +
+			"    or opening the editor, and any git command setting such a key for itself;\n" +
+			"  - removing, moving or recursively changing the root, a top-level directory,\n" +
+			"    the home directory or a directory directly in it, the working tree or a\n" +
+			"    directory above it, or another checkout of the repository; a find that\n" +
+			"    deletes from home or above; an rsync --delete into such a directory;\n" +
+			"  - a call asking to run outside the host's sandbox.\n\n" +
+			"An approved call runs with the command judged and its description, and\n" +
+			"nothing else it carried. Everything else is refused with the guard's reason\n" +
+			"and what to run instead, which the harness hands the agent, so the agent can\n" +
+			"rewrite the command. A prompt for any tool but the shell is refused, since\n" +
+			"nobody is there to approve it.\n\n" +
 			"The guard is a mistake filter, not a security boundary (see `abcd guard\n" +
 			"check --help` for what an allow does not see), and this adds no sandbox.\n" +
 			"It never touches the person's host settings, and interactive sessions never\n" +

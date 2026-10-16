@@ -232,6 +232,11 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 					"this hands "+termsafe.Sanitize(name)+" inline code, which the guard does not read, so it has not checked what runs.",
 					"write the code to a file and run the file, or do the work with shell commands the guard reads.")
 			}
+			if name, ok := otherCode(s, a.idx); ok {
+				return refusal(inlineCodeEntryID,
+					"this hands "+termsafe.Sanitize(name)+" code to run (on its standard input, in an awk program or sed script that runs a command, in a tar option that runs a program, or in a vim command holding a !), which the guard does not read, so it has not checked what runs.",
+					"write the code to a file and run the file, or do the work with shell commands the guard reads.")
+			}
 		}
 	}
 	return Approval{Allow: true}

@@ -254,6 +254,20 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			for _, i := range idx {
 				out = append(out, at(i, true))
 			}
+		case "sed":
+			// The files a sed script's w commands write, as sed opens them:
+			// no tilde expansion, relative to the directory it runs in.
+			scripts, _ := sedScripts(s, a.idx)
+			for _, sc := range scripts {
+				_, ws, _ := sedReads(sc)
+				for _, name := range ws {
+					if name == "" || name == "/dev/stdout" || name == "/dev/stderr" {
+						continue
+					}
+					p, ok := st.resolve(rc, name, false)
+					out = append(out, pathUse{path: p, ok: ok, written: name})
+				}
+			}
 		case "ln":
 			// A link to a protected path is a way to write it.
 			idx := w.operandIdx([]string{"-S", "--suffix", "-t", "--target-directory"})
