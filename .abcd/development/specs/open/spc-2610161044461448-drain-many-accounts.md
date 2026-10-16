@@ -137,6 +137,7 @@ Steps 4, 11, 12 and 15 to 18 read only what the step 1 fetch brought, and change
 15. Accept --take-over on drain (itd-2610161016401115; resolves iss-2610161015422306)
    - packages: internal/core/implement/loop, internal/surface/cli, commands
    - tests: loop: drain --take-over moves this holder's reservation from another copy; the advice for that case names the flag; cli: the flag is listed in help and the generated reference
+   - note: the move's view passes over an issue this person's other copy holds (`Snapshot.Contention` in `internal/core/claim/crowd.go`) before any reservation act, so as it stands `--take-over` never reaches that copy's reservation; with the flag given, the pass-over lets this person's other copy through to the reservation act, which takes it over.
 16. Carry pace and sub-agents into every lane, take new ones while running, and re-admit changed records (itd-2610161016401115; resolves iss-2610161015417715, iss-2610161015457468)
    - packages: internal/core/implement/loop, internal/surface/cli
    - tests: loop: the second and later lanes run on the drain's pace and ceiling; a running drain takes and records a new --pace and --sub-agents and applies them from the next lane and stage; a handed-back issue whose record blob changed on origin is judged again; a finished handed-back run no longer passes its issue over
