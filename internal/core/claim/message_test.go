@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -46,6 +47,54 @@ func TestAReservationMessageCarriesItsTrailers(t *testing.T) {
 	back, reason := parseMessage("iss-2609020716570699", got)
 	if reason != "" || !back.released() || !slices.Equal(back.Footprint, m.Footprint) || back.Holder != "octo" {
 		t.Fatalf("the tombstone reads back as %+v (%q)", back, reason)
+	}
+}
+
+// TestAReservationStillReadsAnInexactTrailer guards the reservation's
+// tolerance: a trailer indented, with its key in another case, or spaced around
+// the colon or the value reads exactly as the canonical line does, as it did
+// before the collector began marking such lines for the announcement's
+// validator, which refuses them. Each shape is tried on every trailer line at
+// once, the tombstone's released-at and the attribution included.
+func TestAReservationStillReadsAnInexactTrailer(t *testing.T) {
+	const record = "iss-2609020716570699"
+	m := message{
+		Record: record, Holder: "octo", Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55",
+		Footprint: []string{"internal/core/claim/claim.go", "commands/reserve.md"},
+		ClaimedAt: t0, ExpiresAt: t0.Add(time.Hour), ReleasedAt: t0.Add(time.Hour), AssistedBy: "abcd:v0.9.0",
+	}
+	canonical := m.text()
+	want, reason := parseMessage(record, canonical)
+	if reason != "" || !want.released() || want.Holder != "octo" || len(want.Footprint) != 2 || want.AssistedBy != "abcd:v0.9.0" {
+		t.Fatalf("the canonical message reads as %+v (%q)", want, reason)
+	}
+	subject, body, _ := strings.Cut(canonical, "\n\n")
+	for _, tc := range []struct {
+		name  string
+		shape func(key, val string) string
+	}{
+		{"indented", func(k, v string) string { return "  " + k + ": " + v }},
+		{"tab-indented", func(k, v string) string { return "\t" + k + ": " + v }},
+		{"lower-case key", func(k, v string) string { return strings.ToLower(k) + ": " + v }},
+		{"upper-case key", func(k, v string) string { return strings.ToUpper(k) + ": " + v }},
+		{"spaced around the colon", func(k, v string) string { return k + " :  " + v }},
+		{"no space after the colon", func(k, v string) string { return k + ":" + v }},
+		{"space-padded value", func(k, v string) string { return k + ":   " + v + "   " }},
+		{"all at once", func(k, v string) string { return " " + strings.ToLower(k) + "\t:  " + v + " " }},
+	} {
+		var lines []string
+		for _, l := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+			k, v, ok := strings.Cut(l, ": ")
+			if !ok {
+				t.Fatalf("the canonical trailer %q has no colon", l)
+			}
+			lines = append(lines, tc.shape(k, v))
+		}
+		text := subject + "\n\n" + strings.Join(lines, "\n") + "\n"
+		got, reason := parseMessage(record, text)
+		if reason != "" || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: %q reads as %+v (%q); want %+v", tc.name, text, got, reason, want)
+		}
 	}
 }
 
