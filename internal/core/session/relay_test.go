@@ -710,9 +710,9 @@ func TestSlowPeerIsDropped(t *testing.T) {
 // tailnet address is its own key while other IPv6 addresses are counted by /64.
 func TestAddressKeyCountsATailnetAddressAlone(t *testing.T) {
 	for in, want := range map[string]string{
-		"fd7a:115c:a1e0::a1":                      "fd7a:115c:a1e0::a1",
-		"fd7a:115c:a1e0:ab12:4843:cd96:6258:b240": "fd7a:115c:a1e0:ab12:4843:cd96:6258:b240",
-		"100.101.102.103":                         "100.101.102.103",
+		"fd7a:115c:a1e0::a1":                      "fd7a:115c:a1e0::a1",                      // abcd-lint:allow: a tailnet address, the shape under test
+		"fd7a:115c:a1e0:ab12:4843:cd96:6258:b240": "fd7a:115c:a1e0:ab12:4843:cd96:6258:b240", // abcd-lint:allow: a tailnet address, the shape under test
+		"100.101.102.103":                         "100.101.102.103",                         // abcd-lint:allow: a tailnet address, the shape under test
 		"2001:db8:1:2::a":                         "2001:db8:1::/48",
 		"2001:db8:1:ffff::a":                      "2001:db8:1::/48",
 		"::ffff:192.0.2.1":                        "192.0.2.1",

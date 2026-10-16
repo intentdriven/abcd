@@ -514,16 +514,16 @@ func TestGitHubVerifier(t *testing.T) {
 
 func TestClientAddressTrustsForwardedOnlyBehindAProxy(t *testing.T) {
 	r := httptest.NewRequest(http.MethodGet, "/session", nil)
-	r.RemoteAddr = "10.0.0.1:5555"
+	r.RemoteAddr = "192.0.2.1:5555"
 	r.Header.Set("X-Forwarded-For", "203.0.113.9, 198.51.100.4")
-	if got := clientAddress(r, false, false); got != "10.0.0.1" {
+	if got := clientAddress(r, false, false); got != "192.0.2.1" {
 		t.Errorf("not behind a proxy: %q, want the socket's address", got)
 	}
 	if got := clientAddress(r, true, false); got != "198.51.100.4" {
 		t.Errorf("behind a proxy: %q, want the entry the proxy added", got)
 	}
 	r.Header.Del("X-Forwarded-For")
-	if got := clientAddress(r, true, false); got != "10.0.0.1" {
+	if got := clientAddress(r, true, false); got != "192.0.2.1" {
 		t.Errorf("behind a proxy with no header: %q, want the socket's address", got)
 	}
 }
@@ -547,16 +547,16 @@ func TestClientAddressOnTheTailnetRoute(t *testing.T) {
 		loopback bool
 		want     string
 	}{
-		{"tailnet IPv4 through Serve", at("127.0.0.1:5555", "100.101.102.103"), true, "100.101.102.103"},
-		{"tailnet IPv6 through Serve", at("[::1]:5555", "fd7a:115c:a1e0::a1"), true, "fd7a:115c:a1e0::a1"},
-		{"a forged header from a non-loopback peer", at("192.0.2.7:5555", "100.64.0.1"), true, "192.0.2.7"},
-		{"a relay not bound to loopback alone", at("127.0.0.1:5555", "100.64.0.1"), false, "127.0.0.1"},
+		{"tailnet IPv4 through Serve", at("127.0.0.1:5555", "100.101.102.103"), true, "100.101.102.103"},    // abcd-lint:allow: a tailnet address, the shape under test
+		{"tailnet IPv6 through Serve", at("[::1]:5555", "fd7a:115c:a1e0::a1"), true, "fd7a:115c:a1e0::a1"},  // abcd-lint:allow: a tailnet address, the shape under test
+		{"a forged header from a non-loopback peer", at("192.0.2.7:5555", "100.64.0.1"), true, "192.0.2.7"}, // abcd-lint:allow: a tailnet address, the shape under test
+		{"a relay not bound to loopback alone", at("127.0.0.1:5555", "100.64.0.1"), false, "127.0.0.1"},     // abcd-lint:allow: a tailnet address, the shape under test
 		{"no header", at("127.0.0.1:5555"), true, "127.0.0.1"},
 		{"an empty header", at("127.0.0.1:5555", ""), true, "127.0.0.1"},
 		{"not an address", at("127.0.0.1:5555", "not-an-ip"), true, "127.0.0.1"},
-		{"an address with a port", at("127.0.0.1:5555", "100.64.0.1:443"), true, "127.0.0.1"},
-		{"a list Serve never sends", at("127.0.0.1:5555", "100.64.0.1, 100.64.0.2"), true, "127.0.0.1"},
-		{"two header lines", at("127.0.0.1:5555", "100.64.0.1", "100.64.0.2"), true, "127.0.0.1"},
+		{"an address with a port", at("127.0.0.1:5555", "100.64.0.1:443"), true, "127.0.0.1"},           // abcd-lint:allow: a tailnet address, the shape under test
+		{"a list Serve never sends", at("127.0.0.1:5555", "100.64.0.1, 100.64.0.2"), true, "127.0.0.1"}, // abcd-lint:allow: a tailnet address, the shape under test
+		{"two header lines", at("127.0.0.1:5555", "100.64.0.1", "100.64.0.2"), true, "127.0.0.1"},       // abcd-lint:allow: a tailnet address, the shape under test
 		{"an address outside the tailnet", at("127.0.0.1:5555", "203.0.113.9"), true, "127.0.0.1"},
 	} {
 		if got := clientAddress(c.r, false, c.loopback); got != c.want {
@@ -579,7 +579,7 @@ func TestTailnetVisitorsAreLimitedSeparately(t *testing.T) {
 	hosted, _ := host.until("hosted")
 	code := hosted["code"].(string)
 
-	for _, pair := range [][2]string{{"100.101.102.103", "100.64.0.9"}, {"fd7a:115c:a1e0::a1", "fd7a:115c:a1e0::b2"}} {
+	for _, pair := range [][2]string{{"100.101.102.103", "100.64.0.9"}, {"fd7a:115c:a1e0::a1", "fd7a:115c:a1e0::b2"}} { // abcd-lint:allow: a tailnet address, the shape under test
 		mal := f.dialFrom(t, origin, pair[0])
 		for i := 0; i < 2; i++ {
 			mal.sendJSON(map[string]string{"type": "join", "code": "ZZZZZZ", "name": "Mal"})
@@ -946,7 +946,7 @@ func TestANonReadingPeerStaysBounded(t *testing.T) {
 func TestClientAddressBehindRendersProxy(t *testing.T) {
 	at := func(xff ...string) *http.Request {
 		r := httptest.NewRequest(http.MethodGet, "/session", nil)
-		r.RemoteAddr = "10.0.0.1:5555"
+		r.RemoteAddr = "192.0.2.1:5555"
 		for _, v := range xff {
 			r.Header.Add("X-Forwarded-For", v)
 		}
@@ -958,13 +958,13 @@ func TestClientAddressBehindRendersProxy(t *testing.T) {
 		want string
 	}{
 		{"the proxy's entry alone", at("203.0.113.9"), "203.0.113.9"},
-		{"a forged entry before the proxy's", at("100.64.0.1, 198.51.100.4, 203.0.113.9"), "203.0.113.9"},
-		{"a forged line before the proxy's", at("100.64.0.1", "203.0.113.9"), "203.0.113.9"},
-		{"IPv6", at("6.6.6.6, 2001:db8::7"), "2001:db8::7"},
+		{"a forged entry before the proxy's", at("192.0.2.77, 198.51.100.4, 203.0.113.9"), "203.0.113.9"},
+		{"a forged line before the proxy's", at("192.0.2.77", "203.0.113.9"), "203.0.113.9"},
+		{"IPv6", at("192.0.2.66, 2001:db8::7"), "2001:db8::7"},
 		{"a mapped address", at("::ffff:203.0.113.9"), "203.0.113.9"},
-		{"not an address", at("6.6.6.6, nonsense"), "10.0.0.1"},
-		{"an address with a port", at("203.0.113.9:443"), "10.0.0.1"},
-		{"a trailing comma", at("203.0.113.9, "), "10.0.0.1"},
+		{"not an address", at("192.0.2.66, nonsense"), "192.0.2.1"},
+		{"an address with a port", at("203.0.113.9:443"), "192.0.2.1"},
+		{"a trailing comma", at("203.0.113.9, "), "192.0.2.1"},
 	} {
 		if got := clientAddress(c.r, true, false); got != c.want {
 			t.Errorf("%s: %q, want %q", c.name, got, c.want)

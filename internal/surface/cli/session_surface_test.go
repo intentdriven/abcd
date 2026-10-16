@@ -293,16 +293,16 @@ func TestSessionServeOnLoopbackCountsTailnetVisitorsApart(t *testing.T) {
 		t.Cleanup(func() { _ = ws.CloseNow() })
 		return ws
 	}
-	mal := dial("100.101.102.103")
+	mal := dial("100.101.102.103") // abcd-lint:allow: a tailnet address, the shape under test
 	for i := 0; i < coresession.New(coresession.Options{}).Limits().MaxFailedJoins; i++ {
 		if got := join(mal); got != "bad-code" {
 			t.Fatalf("wrong code %d: %q, want bad-code", i, got)
 		}
 	}
-	if got := join(dial("100.101.102.103")); got != "too-many-tries" {
+	if got := join(dial("100.101.102.103")); got != "too-many-tries" { // abcd-lint:allow: a tailnet address, the shape under test
 		t.Fatalf("the address past its limit: %q, want too-many-tries", got)
 	}
-	if got := join(dial("100.64.0.9")); got != "bad-code" {
+	if got := join(dial("100.64.0.9")); got != "bad-code" { // abcd-lint:allow: a tailnet address, the shape under test
 		t.Fatalf("another tailnet address: %q, want bad-code, not held up by the first", got)
 	}
 }
