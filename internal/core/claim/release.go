@@ -176,8 +176,8 @@ func releaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	return holds, nil
 }
 
-// ReleaseHoldsForTest is releaseHolds, for a test in another package that
-// holds what this checkout sees before a fetch.
+// ReleaseHoldsForTest is releaseHolds, for the implement loop's tests of the
+// release hold, which read it from outside this package.
 func ReleaseHoldsForTest(root string, now time.Time, o Options) ([]Hold, error) {
 	return releaseHolds(root, now, o)
 }

@@ -42,6 +42,6 @@ func releaseHold(root, home string) (string, error) {
 	return clean(m.Notice()), nil
 }
 
-// ReleaseHoldForTest is releaseHold, for the land fence's parity tests,
-// which hold the two judgements to one rule.
+// ReleaseHoldForTest is releaseHold, for the implement loop's parity test,
+// which reads it from outside this package.
 func ReleaseHoldForTest(root, home string) (string, error) { return releaseHold(root, home) }
