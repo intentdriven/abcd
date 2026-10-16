@@ -179,10 +179,8 @@ Each of these is shown with its reason, and every other branch is still read:
   file: none of its text is shown, only its branch and the reason;
 - a branch that was rewritten rather than added to, passed a merge, or gained
   more than one read covers since it was last read here, or holds more than
-  one read covers when it is first read here while something beneath what
-  was read could still stand: the oldest commit read does not read as an
-  announcement, or was sent less than a day and an hour ago ("continuity not
-  verified");
+  one read covers when it is first read here, whatever times its commits
+  carry ("continuity not verified");
 - a branch under `abcd-status/` whose name is not a GitHub username in lower
   case: it is counted, never named and never fetched, since two names that
   differ only in case break every fetch on a case-insensitive filesystem, and

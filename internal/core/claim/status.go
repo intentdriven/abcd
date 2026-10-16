@@ -433,8 +433,8 @@ type intake struct {
 // at now, then marks the branch read at its tip. A branch whose name is not a
 // lower-case username is tallied, never read and never kept. One whose tip is
 // not a commit, or whose walk could not verify continuity (it moved back or
-// was rewritten, ran past the walk's limit since the mark, or on a first read
-// while something beneath what it read could still stand, or passed a merge)
+// was rewritten, ran past the walk's limit, on a first read as on any other,
+// or passed a merge)
 // is kept as doubtful, and every other branch is still read. It writes only
 // the local tier; a checkout
 // without one keeps nothing and reads nothing. When ctx ends, what was read
@@ -516,10 +516,10 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 				in.taken++
 			}
 		}
-		if h.More && h.Since == "" && mayStandBeneath(root, read, h.Added[len(h.Added)-1], now) {
-			// A first read: a live announcement may sit under more than one
-			// read covers (dcn-2610161100416718), but only while what lies
-			// beneath the oldest commit read could still stand.
+		if h.More && h.Since == "" {
+			// A first read past the walk's limit is doubtful whatever its
+			// commits carry: within the bounded walk nothing settles whether
+			// a line beneath it can still stand (dcn-2610161737571276).
 			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtMore, Tip: h.Tip, FoundAt: now})
 		}
 		if err := ctx.Err(); err != nil {
@@ -535,38 +535,6 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 		pruneStatus(ctx, root, now, refs)
 	}
 	return in, nil
-}
-
-// mayStandBeneath reports whether a commit beneath oldest, the oldest commit a
-// first read took in, could still stand at now. A branch only grows, so each
-// commit beneath was sent before oldest, and an announcement stands at most
-// MaxAnnouncementLife, counted from its first fetch only while its own expiry
-// is less than announcementSlack past (C9): when oldest was sent, by the time
-// it carries, more than both ago, nothing beneath it can stand. The same slack
-// covers a sender's clock that ran a little ahead of an earlier one. When
-// oldest does not read as an announcement, what lies beneath it cannot be
-// dated, and it may stand. read is the batch this intake read; oldest is
-// looked up in what is kept when it is not there.
-func mayStandBeneath(root string, read map[string]readAnnouncement, oldest string, now time.Time) bool {
-	var sent time.Time
-	if r, ok := read[oldest]; ok {
-		if r.h.Unreadable != "" {
-			return true
-		}
-		sent = r.a.SentAt
-	} else {
-		data := readStatusFile(root, seenDir+"/"+oldest, 4096)
-		var e seenEntry
-		if data == nil || json.Unmarshal(data, &e) != nil || e.Unreadable != "" {
-			return true
-		}
-		t, err := time.Parse(time.RFC3339, e.SentAt)
-		if err != nil {
-			return true
-		}
-		sent = t
-	}
-	return now.Before(sent.Add(MaxAnnouncementLife + announcementSlack))
 }
 
 // statusRef is one status branch this checkout holds, as for-each-ref names
