@@ -76,11 +76,17 @@ type Result struct {
 	HandedBack *HandBack
 	// HandBackUnpublished is why a release whose tombstone would have marked
 	// a hand-back, one asked for or one it kept (HandBackKept), pushed a plain
-	// tombstone or nothing instead: origin's default branch holds no one
-	// record of it to name, the record changed since the hand-back was judged,
-	// or the tombstone with the hand-back would pass the message cap. "" when
-	// the hand-back was published, or none was due.
+	// tombstone or nothing instead: origin's default branch could not be
+	// read (HandBackUnread), or holds no one record of it to name, the record
+	// changed since the hand-back was judged, or the tombstone with the
+	// hand-back would pass the message cap. "" when the hand-back was
+	// published, or none was due.
 	HandBackUnpublished string
+	// HandBackUnread is true when HandBackUnpublished is because origin's
+	// default branch could not be read for the record's blob at all: the
+	// hand-back asked for is still due, and a later release may publish it.
+	// Every other reason ends it.
+	HandBackUnread bool
 	// HandBackKept is the hand-back a plain release carried forward: the
 	// released reservation was made over that hand-back's tombstone, and its
 	// record is unchanged on origin's default branch since, so the tombstone
@@ -406,7 +412,7 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 	res := Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
 		ExpiresAt: m.ExpiresAt}
 	if p.req.HandBack != "" {
-		res.HandBackUnpublished = p.markHandBack(&m, j)
+		res.HandBackUnpublished, res.HandBackUnread = p.markHandBack(&m, j)
 		return res, m, j.Commit, nil
 	}
 	// A plain release of a reservation made over a hand-back that still
@@ -423,20 +429,21 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 
 // markHandBack names the hand-back asked for on m, the tombstone a release
 // pushes over j, with the record's blob on origin's default branch, and
-// returns why it named none instead: no one record of it there to name, or a
-// record other than the one the hand-back was judged over (HandBackBlob).
-func (p *prepared) markHandBack(m *message, j judged) string {
+// returns why it named none instead: the branch could not be read (unread is
+// then true), no one record of it there to name, or a record other than the
+// one the hand-back was judged over (HandBackBlob).
+func (p *prepared) markHandBack(m *message, j judged) (why string, unread bool) {
 	switch {
 	case j.blob == "" && j.blobUnread != "":
-		return fmt.Sprintf("%s's default branch could not be read (%s), so the tombstone marks no hand-back", Remote, j.blobUnread)
+		return fmt.Sprintf("%s's default branch could not be read (%s), so the tombstone marks no hand-back", Remote, j.blobUnread), true
 	case j.blob == "":
-		return fmt.Sprintf("%s's default branch as last fetched holds no one record of %s, so the tombstone marks no hand-back", Remote, p.id)
+		return fmt.Sprintf("%s's default branch as last fetched holds no one record of %s, so the tombstone marks no hand-back", Remote, p.id), false
 	case p.req.HandBackBlob != "" && p.req.HandBackBlob != j.blob:
 		return fmt.Sprintf("%s's record on %s's default branch has changed since the hand-back was judged, so the tombstone marks no hand-back: a person's edit re-admits it",
-			p.id, Remote)
+			p.id, Remote), false
 	}
 	m.HandedBack, m.RecordBlob = p.req.HandBack, j.blob
-	return ""
+	return "", false
 }
 
 // releasedAlready is a release's row over a tip already released by a
@@ -468,8 +475,8 @@ func releasedAlready(p *prepared, j judged) (Result, message, string, error) {
 		}
 	}
 	m := p.tombstone(j.Footprint)
-	if why := p.markHandBack(&m, j); why != "" {
-		done.HandBackUnpublished = why
+	if why, unread := p.markHandBack(&m, j); why != "" {
+		done.HandBackUnpublished, done.HandBackUnread = why, unread
 		return done, message{}, "", nil
 	}
 	return Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,

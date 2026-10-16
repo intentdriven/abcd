@@ -12,9 +12,11 @@ package loop
 // the issue's next release on origin, a tombstone that marks no hand-back, as
 // that tombstone's child, fenced on that commit and on the blob the yes was
 // judged over (claim.Request.HandBackBlob). A tip already marking a hand-back,
-// a record finished or changed on origin's default branch, and a record origin
-// holds in no one file each end it with nothing to publish
-// (dcn-2610161826443524).
+// a record finished or changed on origin's default branch, a record origin
+// holds in no one file, and a tombstone the hand-back would take past the cap
+// each end it with nothing to publish, and the move says it was dropped and
+// why; a default branch of origin that could not be read keeps it pending
+// (dcn-2610161826443524, refined by dcn-2610161931130911).
 
 import (
 	"slices"
@@ -62,9 +64,11 @@ func pend(st *DrainState, issue, kind, blob, why string, now time.Time) string {
 
 // publishPending publishes, at now, each pending hand-back whose issue's tip
 // in view is a release marking no hand-back, and ends each that is no longer
-// due; it returns the move's clause for each it ended. A pending hand-back
-// whose tip still holds (live, lapsed, unreadable, another's) waits on, and so
-// does one whose release did not reach origin. Without a view it waits too.
+// due; it returns the move's clause for each it ended, saying whether it was
+// published or dropped, and why. A pending hand-back whose tip still holds
+// (live, lapsed, unreadable, another's) waits on, and so does one whose
+// release did not reach origin, or met a default branch of origin that could
+// not be read. Without a view it waits too.
 func publishPending(repoRoot string, st *DrainState, view *claim.Snapshot, now time.Time) []string {
 	if view == nil || len(st.PendingHandBacks) == 0 {
 		return nil
@@ -87,7 +91,14 @@ func publishPending(repoRoot string, st *DrainState, view *claim.Snapshot, now t
 				kept = append(kept, p)
 				continue
 			}
+			// A release that pushed no hand-back ends it only when it is no
+			// longer due (the record changed, origin holds no one record of
+			// it, the cap, or a tip that already marks one), and says so.
 			c := "published the hand-back of " + p.Issue + " pending since " + stamp(p.At) + " over its release " + shortSHA(r.Commit) + ": " + rel.clause
+			if !rel.published {
+				c = "dropped the hand-back of " + p.Issue + " pending since " + stamp(p.At) + " unpublished, as it is no longer due at its release " +
+					shortSHA(r.Commit) + ": " + rel.clause
+			}
 			out = append(out, c)
 			noteRoute(st, p.Issue, c)
 		}

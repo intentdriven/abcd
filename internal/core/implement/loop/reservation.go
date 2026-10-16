@@ -305,12 +305,15 @@ func releaseReservationAt(repoRoot, id, tip, kind string, now time.Time) (clause
 // tip gave for a reason of its own: the reservation still holds, so the
 // release is due again), and, for a release asked to publish a hand-back,
 // why the hand-back is not on origin and is still due ("" when it was
-// published, or is no longer due: the record changed, or origin holds no one
-// record of it, or the tip already marks one).
+// published, or is no longer due: the record changed, origin holds no one
+// record of it, the tombstone would pass the cap, or the tip already marks
+// one). A default branch that could not be read keeps it due. published is
+// true only when this release's push put the hand-back on origin.
 type released struct {
-	clause  string
-	failed  bool
-	pending string
+	clause    string
+	failed    bool
+	pending   string
+	published bool
 }
 
 // releaseAt is the one release the loop makes: claim's release of id, fenced
@@ -327,13 +330,21 @@ func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) (out release
 	var nh *claim.NotHeld
 	switch {
 	case err == nil && res.Act == claim.ActAlreadyReleased && kind != "" && res.HandBackUnpublished != "":
-		return released{clause: "the reservation on " + id + " was already released; " + res.HandBackUnpublished}
+		out = released{clause: "the reservation on " + id + " was already released; " + res.HandBackUnpublished}
+		if res.HandBackUnread {
+			out.pending = out.clause
+		}
+		return out
 	case err == nil && res.Act == claim.ActAlreadyReleased:
 		return released{clause: "the reservation on " + id + " was already released"}
 	case err == nil && kind != "" && res.HandBackUnpublished != "":
-		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
+		out = released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
+		if res.HandBackUnread {
+			out.pending = out.clause
+		}
+		return out
 	case err == nil && kind != "":
-		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
+		return released{published: true, clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
 			", so no drain takes it again until its record changes on " + claim.Remote + "'s default branch"}
 	case err == nil && res.HandBackKept != nil:
 		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackKept.KeptNote(id)}
