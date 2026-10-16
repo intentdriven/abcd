@@ -123,3 +123,22 @@ func TestDefaultBranchRootsListsEveryRoot(t *testing.T) {
 		}
 	})
 }
+
+// TestDefaultBranchRootsReadsEveryRootOfALargeMerge: a merge that brings in
+// 1,400 parentless commits, about 73 KB of rev-list answer, is read whole and
+// in order, never refused for its size: one merged change must not stop
+// every reader of the list.
+func TestDefaultBranchRootsReadsEveryRootOfALargeMerge(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("README.md", "a project\n")
+	r.Commit("c0")
+	root := r.Git("rev-parse", "HEAD")
+	r.MergeParentlessRoots(1400)
+	got, err := gitutil.DefaultBranchRoots(r.Root())
+	if err != nil {
+		t.Fatalf("DefaultBranchRoots: %v", err)
+	}
+	if len(got) != 1401 || got[0] != root {
+		t.Fatalf("DefaultBranchRoots listed %d roots, first %q; want 1401, the repository's own root %s first", len(got), got[0], root)
+	}
+}

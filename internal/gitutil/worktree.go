@@ -74,3 +74,65 @@ func ParseWorktreeList(out, sep string) []Worktree {
 	}
 	return wts
 }
+
+// maxWorktreeField bounds one field of the streamed listing: a path, an
+// object name, or a lock or prune reason. A path is a few KiB at most; the
+// bound is far past that, so only a planted reason meets it.
+const maxWorktreeField = 1 << 20
+
+// EachWorktree streams every working tree of the repository at root to fn,
+// the main one first, as ListWorktrees parses them, without capping the
+// listing's total length: a repository with many worktrees is read whole.
+// One field past maxWorktreeField is an error, never a record cut short.
+//
+// It asks for the NUL-separated form first and falls back to the
+// newline-separated form, as ListWorktrees does, only when git refused the
+// first before handing over any field; a failure partway is returned.
+func EachWorktree(root string, fn func(Worktree)) error {
+	n, err := eachWorktree(root, 0, fn)
+	if err == nil || n > 0 {
+		return err
+	}
+	_, err = eachWorktree(root, '\n', fn)
+	return err
+}
+
+func eachWorktree(root string, sep byte, fn func(Worktree)) (int, error) {
+	args := []string{"worktree", "list", "--porcelain"}
+	if sep == 0 {
+		args = append(args, "-z")
+	}
+	var cur *Worktree
+	n, err := streamFields(isolatedGit(root, args...), sep, maxWorktreeField, func(field string) error {
+		if sep == '\n' {
+			field = strings.TrimSuffix(field, "\r")
+		}
+		key, val, _ := strings.Cut(field, " ")
+		if key == "worktree" {
+			if cur != nil {
+				fn(*cur)
+			}
+			cur = &Worktree{Path: val}
+			return nil
+		}
+		if cur == nil {
+			return nil
+		}
+		switch key {
+		case "HEAD":
+			cur.Head = val
+		case "branch":
+			cur.Branch = val
+		case "bare":
+			cur.Bare = true
+		}
+		return nil
+	})
+	if err != nil {
+		return n, err
+	}
+	if cur != nil {
+		fn(*cur)
+	}
+	return n, nil
+}
