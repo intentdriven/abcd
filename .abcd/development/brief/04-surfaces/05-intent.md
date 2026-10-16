@@ -566,7 +566,7 @@ For bundle-member intents, this role runs *per intent* against the same delivere
 
 Role 1 records per-criterion verdicts; **itd-50 adds the POLICY that decides what happens to a recorded verdict.** The policy rides the review-queue drainer on the run seam (adr-27) — it is NEVER in the pure on-close lifecycle hook (the lifecycle close stays a pure data function; the mode logic lives in the drainer/policy layer).
 
-**Three audit-loop modes, facilitator-elected per intent** via the `audit_mode` frontmatter key:
+**Two audit-loop modes, facilitator-elected per intent** via the `audit_mode` frontmatter key:
 
 - **`record-only`** (the default, and today's behaviour) — a `NOT_MET` is written to `## Audit Notes`; no re-work is triggered. An **absent** `audit_mode` key resolves to `record-only` (additive, spc-28/spc-43-compatible — predecessor store).
 - **`loop-to-acceptance`** — a `NOT_MET` re-opens the linked work and iterates against the same acceptance criteria until they read `MET`, bounded by `audit_budget` (the spec-grain SHIP/NEEDS_WORK fix-loop lifted to the intent grain). See `05-internals/03-configuration.md` for the `audit_mode` / `audit_budget` keys, the default budget (`3`), and the fail-closed rule for a malformed/zero/negative budget.
