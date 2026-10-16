@@ -750,7 +750,12 @@ permission rules over opencode's own configuration. A harness started under
 another name, a copied or linked binary run by that name, is not recognisable
 as a harness at this layer; the OS sandbox for launched agents
 (spc-2610161751056096) is what bounds what such a run can reach
-(iss-2610162027075062). <!-- record-lint: forward-looking -->
+(iss-2610162027075062). The list of agent launches is a mistake filter: it
+steers an agent that starts another harness by an ordinary route, a harness
+started by any route outside it (another name, a copied binary, a
+configuration file it reads) is bounded by that sandbox and not by the list,
+so a further form is added when it is common, not to close the class
+(dcn-2610162040034117). <!-- record-lint: forward-looking -->
 
 A recursive delete of the filesystem root or the home directory (`/`, `/*`,
 `~`, `$HOME`, `${HOME}`, each also with a trailing `/`, `/*` or `/*/`, and the

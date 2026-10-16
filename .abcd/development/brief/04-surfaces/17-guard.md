@@ -420,7 +420,12 @@ among the paths it protects. The registry's agent-launch entries recognise a
 harness by its program name, by the package that ships it and behind the
 launchers the registry steps, so a harness started under another name, a copied
 or linked binary run by that name, is not recognisable at this layer
-(iss-2610162027075062). Bounding all of those is the OS sandbox for launched
+(iss-2610162027075062). The list of agent launches is a mistake filter: it
+steers an agent that starts another harness by an ordinary route, a harness
+started by any route outside it (another name, a copied binary, a
+configuration file it reads) is bounded by the OS sandbox and not by the list,
+so a further form is added when it is common, not to close the class
+(dcn-2610162040034117). Bounding all of those is the OS sandbox for launched
 agents (spc-2610161751056096), not the approver. <!-- record-lint: forward-looking -->
 
 What this widens, plainly: on such a launch, a shell command the harness would
