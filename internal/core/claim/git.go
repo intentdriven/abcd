@@ -110,6 +110,23 @@ func storedGitCtx(ctx context.Context, root string, maxBytes int, args ...string
 	return strings.TrimRight(string(out), " \t\r\n"), nil
 }
 
+// storedRefs reads every ref under prefix as stored, under ctx, line by line
+// (gitutil.EachAsStoredContext), so however many this checkout holds the
+// listing is read: each ref and its object, in git's ref order, to each. A
+// line past maxListingLine, whose ref name is cut, is handed to each with
+// cut set, its object still named.
+func storedRefs(ctx context.Context, root, prefix string, each func(ref, sha string, cut bool)) error {
+	args := []string{"for-each-ref", "--format=%(objectname) %(refname)", prefix}
+	trace(args...)
+	return gitutil.EachAsStoredContext(ctx, root, maxListingLine, func(line string) {
+		sha, ref, ok := strings.Cut(line, " ")
+		if !ok || !gitutil.IsFullSHA(sha) || !strings.HasPrefix(ref, prefix) {
+			return
+		}
+		each(ref, sha, len(line) >= maxListingLine)
+	}, args...)
+}
+
 // storedGitInput is storedGitCtx with stdin as git's standard input and
 // stdout returned verbatim: a batch of objects named one per line
 // (`cat-file --batch`), read in one command rather than one per object.

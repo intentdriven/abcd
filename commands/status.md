@@ -19,9 +19,10 @@ the first 500 status branches whose names are GitHub usernames in lower case,
 in `origin`'s order, and `origin`'s default branch. Before the fetch it
 deletes each remote-tracking branch under `abcd-status/` that is not among
 the names it fetches, so a status branch deleted on `origin` leaves nothing
-behind. When git will not delete them together, each is deleted on its own,
-so a copy git will not delete (another git holds its lock) keeps no other;
-the copies left are counted, never named, and the fetch goes on. It then asks GitHub, through `gh api`, who pushed each
+behind, however many it holds. When git will not delete them together, each
+is deleted on its own, up to 200 at one fetch, so a copy git will not delete
+(another git holds its lock) keeps no other; the copies left are counted,
+never named, a later fetch deletes them, and the fetch goes on. It then asks GitHub, through `gh api`, who pushed each
 standing announcement it has not asked about before, on at most ten branches,
 the newest first, within ten seconds: a `gh` call still running when they
 are up is ended then. It pushes nothing, touches no HEAD, index or working tree, and

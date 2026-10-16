@@ -567,22 +567,18 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 type statusRef struct{ ref, sha string }
 
 // statusRefs is every status branch this checkout holds, in git's ref order,
-// read in one command as stored, under ctx. A fetch of the whole namespace
-// (`abcd announce`'s) may bring in as many as origin holds, so the read is
-// bounded only as dropUnlisted's is; an intake reads at most
-// maxStatusBranches of them.
+// read as stored, under ctx, line by line (storedRefs): a fetch of the whole
+// namespace (`abcd announce`'s) may bring in as many as origin holds, and
+// however many that is the listing is read; an intake reads at most
+// maxStatusBranches of them. A ref whose name is too long to read whole is
+// kept by what was read of it, a name that is not read, and so is counted.
 func statusRefs(ctx context.Context, root string) ([]statusRef, error) {
-	out, err := storedGitCtx(ctx, root, 16<<20, "for-each-ref", "--format=%(refname) %(objectname)", StatusTrackingPrefix)
+	var refs []statusRef
+	err := storedRefs(ctx, root, StatusTrackingPrefix, func(ref, sha string, _ bool) {
+		refs = append(refs, statusRef{ref: ref, sha: sha})
+	})
 	if err != nil {
 		return nil, fmt.Errorf("reading the status branches: %s", redacted(err))
-	}
-	var refs []statusRef
-	for _, l := range strings.Split(out, "\n") {
-		f := strings.Fields(l)
-		if len(f) != 2 || !strings.HasPrefix(f[0], StatusTrackingPrefix) || !gitutil.IsFullSHA(f[1]) {
-			continue
-		}
-		refs = append(refs, statusRef{ref: f[0], sha: f[1]})
 	}
 	return refs, nil
 }

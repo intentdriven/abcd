@@ -3,8 +3,10 @@ package claim
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -160,5 +162,97 @@ func TestADropThatFailsForOneCopyDeletesTheRest(t *testing.T) {
 		if got := strings.Contains(refs, StatusTrackingPrefix+b); got != kept {
 			t.Fatalf("refs after the drop:\n%s\nwant %s kept %v", refs, b, kept)
 		}
+	}
+}
+
+// TestADropPastTheListingsSizeStillDeletes: however many copies of status
+// branches this checkout holds, past any bound on one listing's size (here
+// more than 16 MiB of them, as a fetch of the whole namespace can bring), the
+// drop reads them line by line and deletes them, and the intake reads what
+// is left.
+func TestADropPastTheListingsSizeStillDeletes(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	maya.announceAs("merging", "#1012")
+	pat.status(nil)
+	tip := strings.TrimSpace(pat.git("rev-parse", StatusTrackingPrefix+"maya"))
+	packed := filepath.Join(pat.dir, ".git", "packed-refs")
+	pat.git("pack-refs", "--all")
+	data, err := os.ReadFile(packed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Each entry with the peeled line that follows it, if any, kept together.
+	var entries []string
+	for _, l := range strings.Split(strings.TrimRight(string(data), "\n"), "\n") {
+		switch {
+		case strings.HasPrefix(l, "#"):
+		case strings.HasPrefix(l, "^") && len(entries) > 0:
+			entries[len(entries)-1] += "\n" + l
+		default:
+			entries = append(entries, l)
+		}
+	}
+	pad := strings.Repeat("x", 200)
+	const n = 60000
+	for i := range n {
+		entries = append(entries, fmt.Sprintf("%s %sX%s%06d", tip, StatusTrackingPrefix, pad, i))
+	}
+	ref := func(e string) string { f := strings.Fields(e); return f[1] }
+	sort.Slice(entries, func(i, j int) bool { return ref(entries[i]) < ref(entries[j]) })
+	body := "# pack-refs with: peeled fully-peeled sorted \n" + strings.Join(entries, "\n") + "\n"
+	if len(body) <= 16<<20 {
+		t.Fatalf("the listing is %d bytes; want it past 16 MiB", len(body))
+	}
+	if err := os.WriteFile(packed, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res := pat.status(nil)
+	if res.NotDropped != "" {
+		t.Fatalf("not dropped = %q; want every copy deleted", res.NotDropped)
+	}
+	if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); refs != StatusTrackingPrefix+"maya" {
+		t.Fatalf("status copies after the drop: %d bytes; want only maya's", len(refs))
+	}
+	if v := pat.read(); len(v.Announcements) != 1 || v.Announcements[0].Item != "#1012" {
+		t.Fatalf("announcements = %+v; want maya's", v.Announcements)
+	}
+}
+
+// TestADropOneAtATimeIsBounded: once git refuses the batch, one try deletes
+// at most maxDropEach copies one at a time, and counts the rest as left; a
+// later fetch deletes them.
+func TestADropOneAtATimeIsBounded(t *testing.T) {
+	old := maxDropEach
+	maxDropEach = 2
+	t.Cleanup(func() { maxDropEach = old })
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	names := []string{"amy", "bob", "cal", "dee", "eve"}
+	for _, b := range append(names, "maya") {
+		w.pushStatus(b, announcementMsg("merging", "#1", b, t0, 30*time.Minute), "")
+	}
+	pat.status(nil)
+	for _, b := range names {
+		runGit(t, w.bare, "update-ref", "-d", StatusRefPrefix+b)
+	}
+	lock := filepath.Join(pat.dir, ".git", filepath.FromSlash(StatusTrackingPrefix+"amy.lock"))
+	if err := os.WriteFile(lock, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// Two tries of two each, in ref order: amy, held, comes first in each, so
+	// each try deletes one other, and three of the five are left.
+	if res := pat.status(nil); !strings.HasPrefix(res.NotDropped, "3 copies of status branches") {
+		t.Fatalf("not dropped = %q; want three left counted", res.NotDropped)
+	}
+	if err := os.Remove(lock); err != nil {
+		t.Fatal(err)
+	}
+	if res := pat.status(nil); res.NotDropped != "" {
+		t.Fatalf("a later fetch, the lock gone: not dropped = %q", res.NotDropped)
+	}
+	if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); refs != StatusTrackingPrefix+"maya" {
+		t.Fatalf("status copies after a later fetch:\n%s\nwant only maya's", refs)
 	}
 }

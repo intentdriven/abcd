@@ -78,3 +78,29 @@ func RunCappedBytesAsStoredContext(ctx context.Context, root, stdin string, maxB
 	}
 	return out, nil
 }
+
+// EachAsStoredContext runs one git command as stored (asStored) under ctx,
+// for a command whose output may run to any length (a listing of every ref
+// under a prefix a fetch of a whole namespace can fill): each line of stdout
+// is handed to each as it is read, without its newline, and none is kept, so
+// no bound on the whole output applies. A line longer than maxLine bytes is
+// handed cut to its first maxLine. git is killed when ctx ends, and ctx's
+// error is then answered; a failure carries git's bounded stderr.
+func EachAsStoredContext(ctx context.Context, root string, maxLine int, each func(line string), args ...string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
+	}
+	cmd := asStored(isolatedGitContext(ctx, root, args...))
+	w := &lineSink{max: maxLine, each: each}
+	e := &capWriter{remaining: 4096}
+	cmd.Stdout, cmd.Stderr = w, e
+	err := cmd.Run()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return fmt.Errorf("git %s: %w", strings.Join(args, " "), ctxErr)
+	}
+	if err != nil {
+		return fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
+	}
+	w.flush()
+	return nil
+}

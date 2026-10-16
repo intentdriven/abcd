@@ -7,8 +7,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // namespace is one family of branches on origin that the fetch reads as one
@@ -93,43 +91,60 @@ func (ns namespace) dropUnlisted(root string, keep []string) (left string) {
 	return fmt.Sprintf("%d copies of status branches origin no longer lists, or whose names are not read, could not be deleted here, so they are read as last fetched: %s", n, why)
 }
 
+// maxDropEach is the most copies one try of dropUnlisted deletes one at a
+// time, once git has refused them together. A test lowers it.
+var maxDropEach = 200
+
 // dropOnce is one try of dropUnlisted: how many deletions it could not make,
 // and why; 0 when it made them all, and -1 when it could not list them.
 func (ns namespace) dropOnce(root string, keep []string) (int, string) {
-	out, err := storedGitCtx(context.Background(), root, 16<<20, "for-each-ref", "--format=%(refname) %(objectname)", ns.tracking)
+	var del strings.Builder
+	var stale [][2]string
+	cut := 0
+	err := storedRefs(context.Background(), root, ns.tracking, func(ref, sha string, long bool) {
+		name := strings.TrimPrefix(ref, ns.tracking)
+		switch {
+		case long:
+			// Its name was not read whole, so it cannot be named to delete.
+			cut++
+		case name != "" && !slices.Contains(keep, name):
+			fmt.Fprintf(&del, "option no-deref\ndelete %s %s\n", ref, sha)
+			stale = append(stale, [2]string{ref, sha})
+		}
+	})
 	if err != nil {
 		return -1, redacted(err)
 	}
-	var del strings.Builder
-	var stale [][2]string
-	for _, l := range strings.Split(out, "\n") {
-		f := strings.Fields(l)
-		if len(f) != 2 || !gitutil.IsFullSHA(f[1]) {
-			continue
-		}
-		name, ok := strings.CutPrefix(f[0], ns.tracking)
-		if !ok || slices.Contains(keep, name) {
-			continue
-		}
-		fmt.Fprintf(&del, "option no-deref\ndelete %s %s\n", f[0], f[1])
-		stale = append(stale, [2]string{f[0], f[1]})
-	}
 	if len(stale) == 0 {
+		if cut > 0 {
+			return cut, fmt.Sprintf("a ref name longer than %d bytes is not read whole", maxListingLine)
+		}
 		return 0, ""
 	}
 	if _, err := storedGitInput(context.Background(), root, del.String(), 64<<10, "update-ref", "--stdin"); err == nil {
+		if cut > 0 {
+			return cut, fmt.Sprintf("a ref name longer than %d bytes is not read whole", maxListingLine)
+		}
 		return 0, ""
 	}
 	// git applies the batch all or none, so one copy it cannot delete keeps
-	// every other: each is then deleted on its own, and only those left are
+	// every other: each is then deleted on its own, at most maxDropEach of
+	// them, the rest left for a later fetch, and only those left are
 	// counted, with the first one's reason. A lock another git holds fails
 	// each at once rather than after git's wait for it, so a held lock costs
 	// one command per copy, never a second each.
-	n, why := 0, ""
+	n, why := cut, ""
+	if cut > 0 {
+		why = fmt.Sprintf("a ref name longer than %d bytes is not read whole", maxListingLine)
+	}
+	if len(stale) > maxDropEach {
+		n += len(stale) - maxDropEach
+		stale = stale[:maxDropEach]
+	}
 	for _, r := range stale {
 		if _, err := storedGitCtx(context.Background(), root, 64<<10, "-c", "core.filesRefLockTimeout=0", "-c", "core.packedRefsTimeout=0",
 			"update-ref", "--no-deref", "-d", r[0], r[1]); err != nil {
-			if n == 0 {
+			if why == "" {
 				why = redacted(err)
 			}
 			n++
