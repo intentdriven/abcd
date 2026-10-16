@@ -38,13 +38,56 @@ import (
 // id-bearing family prefixes, a hyphen, and a bare decimal N. It is exported
 // because every ingest boundary that accepts a citation must bound and shape the
 // string BEFORE it is looked up or echoed, and they must all agree on the shape.
-var CitedIDRe = regexp.MustCompile(`^(?:adr|itd|iss|spc|dcn)-[0-9]+$`)
+// Its families are familyRoots' prefixes, so a family the resolver reads is one
+// a citation may name, and no other.
+var CitedIDRe = regexp.MustCompile(`^(?:` + familyAlternation() + `)-[0-9]+$`)
 
 // citedIDPartsRe splits a cited id into its family and its number, folding case.
 // It is CitedIDRe's grammar with the two halves captured, and it exists so the
 // canonicaliser below cannot drift from the shape every ingest boundary bounds a
 // citation with.
-var citedIDPartsRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc|dcn)-([0-9]+)$`)
+var citedIDPartsRe = regexp.MustCompile(`(?i)^(` + familyAlternation() + `)-([0-9]+)$`)
+
+// CitedFamilies returns the id-bearing family prefixes a citation may name, in
+// familyRoots' order: the one list CitedIDRe is built from. It is exported for
+// a caller that has to recognise or describe those families in a shape of its
+// own (the inbox's rewrite of a sender's ids, a refusal naming what a citation
+// may be), so that caller cannot keep a copy that misses a family when one is
+// added. The slice is fresh on every call; a caller may keep or change it.
+func CitedFamilies() []string {
+	out := make([]string, len(familyRoots))
+	for i, fam := range familyRoots {
+		out[i] = fam.prefix
+	}
+	return out
+}
+
+// CitedIDForms describes the cited grammar in words for a refusal to quote:
+// every family as `<prefix>-N`, comma-separated, the last after "or" (`itd-N,
+// spc-N, iss-N, adr-N, or dcn-N`). It is derived from CitedFamilies, so a
+// message saying what a citation may be says what CitedIDRe accepts.
+func CitedIDForms() string {
+	fams := CitedFamilies()
+	forms := make([]string, len(fams))
+	for i, f := range fams {
+		forms[i] = f + "-N"
+	}
+	if len(forms) < 2 {
+		return strings.Join(forms, "")
+	}
+	return strings.Join(forms[:len(forms)-1], ", ") + ", or " + forms[len(forms)-1]
+}
+
+// familyAlternation is CitedFamilies as a regular-expression alternation. The
+// prefixes are quoted although each is plain letters, so a family spelt with a
+// metacharacter could never widen the grammar.
+func familyAlternation() string {
+	fams := CitedFamilies()
+	for i, f := range fams {
+		fams[i] = regexp.QuoteMeta(f)
+	}
+	return strings.Join(fams, "|")
+}
 
 // CanonCitedID folds a cited id into the one spelling Lookup keys on: lower-case
 // family, number with its leading zeros trimmed. "" when the string is not a

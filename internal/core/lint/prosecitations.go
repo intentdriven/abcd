@@ -670,7 +670,7 @@ func loadProseBaseline(repoRoot, rel string) (map[string]ProseBaselineEntry, err
 		switch {
 		case recordid.CanonCitedID(e.ID) == "":
 			return nil, &configError{ruleProseCitationResolves + ": " + rel + ": " + quote(e.ID) +
-				" is not a record id (adr-N, itd-N, iss-N, spc-N)"}
+				" is not a record id (" + recordid.CitedIDForms() + ")"}
 		case recordid.CanonCitedID(e.ID) != e.ID:
 			return nil, &configError{ruleProseCitationResolves + ": " + rel + ": " + quote(e.ID) +
 				" is not canonical; write it as " + recordid.CanonCitedID(e.ID) +
