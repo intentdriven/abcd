@@ -157,3 +157,66 @@ func TestAPlacingCutShortKeepsNothing(t *testing.T) {
 		t.Fatalf("asked %d times; want the cut-short branch asked again", asked)
 	}
 }
+
+// TestTheForgeIsAskedOfABoundedNumberOfBranchesNewestFirst: one fetch asks
+// the forge about at most maxAskedBranches branches, the newest first, and
+// says how many it left for the next; a commit the forge's record did not
+// cover is not asked about again, so the next fetch asks only the rest.
+func TestTheForgeIsAskedOfABoundedNumberOfBranchesNewestFirst(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	var order []string
+	for i := 0; i < maxAskedBranches+2; i++ {
+		b := "u" + strings.Repeat("x", i)
+		w.pushStatus(b, announcementMsg("merging", "#1", b, t0.Add(time.Duration(i)*time.Second), 30*time.Minute), "")
+		order = append([]string{b}, order...)
+	}
+	var asked []string
+	lookup := func(_, branch string) ([]Push, error) {
+		asked = append(asked, branch)
+		return []Push{}, nil
+	}
+	res := pat.status(lookup)
+	if strings.Join(asked, " ") != strings.Join(order[:maxAskedBranches], " ") {
+		t.Fatalf("asked %v; want the newest %d, newest first: %v", asked, maxAskedBranches, order[:maxAskedBranches])
+	}
+	if !strings.Contains(res.SendersUnchecked, "2 status branches not asked about") {
+		t.Fatalf("unchecked = %q; want the two left named by count", res.SendersUnchecked)
+	}
+	asked = nil
+	if res := pat.status(lookup); res.SendersUnchecked != "" {
+		t.Fatalf("the second fetch's unchecked = %q; want none", res.SendersUnchecked)
+	}
+	if strings.Join(asked, " ") != strings.Join(order[maxAskedBranches:], " ") {
+		t.Fatalf("the second fetch asked %v; want only the two left: %v", asked, order[maxAskedBranches:])
+	}
+	asked = nil
+	pat.status(lookup)
+	if len(asked) != 0 {
+		t.Fatalf("a third fetch asked %v; want nothing asked again", asked)
+	}
+}
+
+// TestTheForgeIsNotAskedPastItsBudget: a forge that answers slowly uses up
+// the budget, and no further branch is asked about; the rest are counted.
+func TestTheForgeIsNotAskedPastItsBudget(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	w.pushStatus("aa", announcementMsg("merging", "#1", "aa", t0, 30*time.Minute), "")
+	w.pushStatus("bb", announcementMsg("merging", "#2", "bb", t0.Add(time.Second), 30*time.Minute), "")
+	old := pusherBudget
+	pusherBudget = 100 * time.Millisecond
+	t.Cleanup(func() { pusherBudget = old })
+	var asked []string
+	res := pat.status(func(_, branch string) ([]Push, error) {
+		asked = append(asked, branch)
+		time.Sleep(2 * pusherBudget)
+		return []Push{}, nil
+	})
+	if len(asked) != 1 || asked[0] != "bb" {
+		t.Fatalf("asked %v; want only the newest before the budget ran out", asked)
+	}
+	if !strings.Contains(res.SendersUnchecked, "1 status branch not asked about") {
+		t.Fatalf("unchecked = %q; want the one left counted", res.SendersUnchecked)
+	}
+}

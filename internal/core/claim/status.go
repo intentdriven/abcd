@@ -942,30 +942,48 @@ func keptSkipped(root string) (skippedState, error) {
 	return s, nil
 }
 
-// pusherVerdict is what the forge said of who pushed one announcement.
+// pusherVerdict is what the forge said of who pushed one announcement: asked
+// is true once its record was placed in full for the branch, and known when it
+// named a pusher.
 type pusherVerdict struct {
-	known bool
-	login string
+	asked, known bool
+	login        string
 }
+
+// noPusher is kept for a commit the forge's record, placed in full, did not
+// cover: it is not asked about again for as long as its announcement is
+// kept (seenKeep past its life), and its sender stays claimed.
+const noPusher = "?"
 
 // pusherKept is the forge's answer kept for commit.
 func pusherKept(root, commit string) pusherVerdict {
 	data := readStatusFile(root, pusherDir+"/"+commit, 128)
 	login := strings.TrimSpace(string(data))
-	if data == nil || login == "" {
+	switch {
+	case data == nil || login == "":
 		return pusherVerdict{}
+	case login == noPusher:
+		return pusherVerdict{asked: true}
 	}
-	return pusherVerdict{known: true, login: login}
+	return pusherVerdict{asked: true, known: true, login: login}
 }
 
-// pusherBudget bounds the walks that place each push's commits: past it, a
-// push not yet placed leaves its commits claimed, and the check says so.
+// pusherBudget bounds one fetch's questions to the forge and the walks that
+// place each answer: past it, no further branch is asked about, a push not
+// yet placed keeps nothing, and the check says so.
 var pusherBudget = 10 * time.Second
 
+// maxAskedBranches is the most status branches one fetch asks the forge
+// about, the newest first: the rest are counted and asked by a later fetch.
+const maxAskedBranches = 10
+
 // checkSenders asks lookup, once per branch, who pushed each standing
-// announcement whose pusher is not kept here, and keeps each login the
-// answer names that is a valid username (any other answer is kept as a
-// login that is not the owner's). A push names only the tip it left, so each
+// announcement the forge was not yet asked about here, and keeps each login
+// the answer names that is a valid username (any other answer is kept as a
+// login that is not the owner's), and that it named none (noPusher). At most
+// maxAskedBranches branches are asked, the one whose newest such
+// announcement is newest first, and none once pusherBudget has passed; the
+// rest are counted, and asked by a later fetch. A push names only the tip it left, so each
 // is placed by walking the first-parent line from that tip down to the tip
 // it moved from, at most the walk's limit of commits, under pusherBudget:
 // every commit of the push is judged by its pusher (placePushes). A commit two
@@ -975,20 +993,24 @@ var pusherBudget = 10 * time.Second
 // be placed in full, "" when it could.
 func checkSenders(root string, now time.Time, lookup PusherLookup, held map[string]bool) string {
 	ask := map[string][]string{}
+	var branches []string // newest first, as keptAnnouncements orders them
 	for _, a := range keptAnnouncements(root, now, held) {
-		if a.Unreadable == "" && a.Standing(now) && !pusherKept(root, a.Commit).known {
+		if a.Unreadable == "" && a.Standing(now) && !pusherKept(root, a.Commit).asked {
+			if _, ok := ask[a.Branch]; !ok {
+				branches = append(branches, a.Branch)
+			}
 			ask[a.Branch] = append(ask[a.Branch], a.Commit)
 		}
 	}
-	branches := make([]string, 0, len(ask))
-	for b := range ask {
-		branches = append(branches, b)
-	}
-	sort.Strings(branches)
 	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
 	defer cancel()
 	var failed []string
-	for _, b := range branches {
+	unasked := 0
+	for i, b := range branches {
+		if i >= maxAskedBranches || ctx.Err() != nil {
+			unasked = len(branches) - i
+			break
+		}
 		pushed, err := lookup(root, b)
 		if err != nil {
 			failed = append(failed, "abcd-status/"+b+": "+termsafe.Sanitize(redacted(err)))
@@ -997,10 +1019,12 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 		byCommit, err := placePushes(ctx, root, b, pushed)
 		if err != nil {
 			failed = append(failed, "abcd-status/"+b+": the forge's record of pushes was not placed in full: "+termsafe.Sanitize(redacted(err)))
+			continue
 		}
 		for _, c := range ask[b] {
 			login, ok := byCommit[c]
 			if !ok {
+				writeStatusFile(root, pusherDir, c, []byte(noPusher+"\n"))
 				continue
 			}
 			if !validUsername(login) {
@@ -1008,6 +1032,14 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			}
 			writeStatusFile(root, pusherDir, c, []byte(login+"\n"))
 		}
+	}
+	if unasked > 0 {
+		what := fmt.Sprintf("%d status branches not asked about", unasked)
+		if unasked == 1 {
+			what = "1 status branch not asked about"
+		}
+		failed = append(failed, fmt.Sprintf("%s (one fetch asks about at most %d, the newest first, within %s); the next `abcd status` asks them",
+			what, maxAskedBranches, pusherBudget))
 	}
 	return strings.Join(failed, "; ")
 }

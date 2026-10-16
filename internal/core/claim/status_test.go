@@ -518,7 +518,8 @@ func TestStatusListsEveryoneWithTheReservationsAndTheHold(t *testing.T) {
 // TestASenderIsCheckedAgainstTheForgesRecord is C17: the forge's record of who
 // pushed names the branch's owner (verified), someone else (doubtful, named),
 // or nothing (claimed); a forge that cannot be asked leaves the sender
-// claimed and says why; a pusher once known is not asked again.
+// claimed and says why; a commit the forge answered for, naming a pusher or
+// none, is not asked about again.
 func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 	w := newWorld(t)
 	maya := w.clone("5+maya@users.noreply.github.com", "")
@@ -562,8 +563,8 @@ func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 		}
 	}
 	pat.status(lookup)
-	if asked["maya"] != 1 || asked["quinn"] != 1 || asked["zed"] != 2 || asked["ann"] != 2 {
-		t.Fatalf("asked = %v; want each known pusher asked once, and each unknown one again", asked)
+	if asked["maya"] != 1 || asked["quinn"] != 1 || asked["zed"] != 2 || asked["ann"] != 1 {
+		t.Fatalf("asked = %v; want each pusher the forge named, or did not, asked once, and one it could not be asked about asked again", asked)
 	}
 }
 
