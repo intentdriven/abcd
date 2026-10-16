@@ -221,12 +221,19 @@ func planFromOrigin(repoRoot string, v originView, now time.Time, spread string)
 	return plan, o, nil
 }
 
+// maxLedgerBatch caps what one move's read of the open records may answer:
+// each distinct record once, headers included. A ledger past it is refused,
+// not buffered.
+const maxLedgerBatch = 64 << 20
+
 // treeLedger reads the issue ledger's status folders out of v's commit: every
 // file's name, and the content of each record in open/. The records are read
 // through one `git cat-file --batch`, so a move starts the same few processes
 // however long the ledger is; each is first judged as baseTree.blob judges
 // one (a regular file, within issueschema.RecordReadLimit), and only those it
-// would read are asked for.
+// would read are asked for, each distinct object once: records that name one
+// blob share its one read and its one text. What the batch answers is bounded
+// by maxLedgerBatch, and a ledger past it is refused before anything is read.
 func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 	at := baseTree{root: repoRoot, sha: v.commit}
 	source := gitutil.ShortRef(v.ref) + " at " + shortSHA(v.commit)
@@ -235,7 +242,9 @@ func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 		return nil, fmt.Errorf("reading the ledger of %s: %w", source, err)
 	}
 	l := &capture.TreeLedger{Source: source}
-	var want []int
+	// want maps each file read to its object's place in the batch.
+	want := map[int]int{}
+	asked := map[string]int{}
 	var objects []string
 	budget := 0
 	for _, e := range entries {
@@ -249,27 +258,42 @@ func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 			if err := at.readable(e, issueschema.RecordReadLimit); err != nil {
 				f.Unread = err.Error()
 			} else {
-				want, objects = append(want, len(l.Files)), append(objects, e.object)
-				// The answer is the header and the content, as the listing
-				// sized it, and the newline after.
-				budget += len(e.object) + 32 + int(e.size)
+				k, seen := asked[e.object]
+				if !seen {
+					k = len(objects)
+					asked[e.object], objects = k, append(objects, e.object)
+					// The answer is the header and the content, as the
+					// listing sized it, and the newline after.
+					budget += len(e.object) + 32 + int(e.size)
+				}
+				want[len(l.Files)] = k
 			}
 		}
 		l.Files = append(l.Files, f)
+	}
+	if budget > maxLedgerBatch {
+		return nil, fmt.Errorf("reading the ledger of %s: its open records come to %d bytes, past the %d MiB one move reads; nothing was read", source, budget, maxLedgerBatch>>20)
 	}
 	got, err := gitutil.CatFileBatch(repoRoot, objects, budget)
 	if err != nil {
 		return nil, fmt.Errorf("reading the ledger of %s: %w", source, err)
 	}
-	for k, i := range want {
+	// One text per object, which every file naming it shares.
+	texts := make([]string, len(got))
+	for k, o := range got {
+		if !o.Missing && o.Type == "blob" {
+			// Trimmed at the end as a single read's answer is (gitutil.RunCapped).
+			texts[k] = strings.TrimRight(string(o.Content), " \t\r\n")
+		}
+	}
+	for i, k := range want {
 		switch o := got[k]; {
 		case o.Missing:
 			l.Files[i].Unread = "the base holds no object " + o.Name
 		case o.Type != "blob":
 			l.Files[i].Unread = fmt.Sprintf("the base holds it as a %s, not a regular file", o.Type)
 		default:
-			// Trimmed at the end as a single read's answer is (gitutil.RunCapped).
-			l.Files[i].Text = strings.TrimRight(string(o.Content), " \t\r\n")
+			l.Files[i].Text = texts[k]
 		}
 	}
 	return l, nil
