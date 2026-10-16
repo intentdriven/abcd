@@ -448,8 +448,16 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  (oracle.api.<provider>) the provider setup writes,
                                  and the only file a provider block may sit in;
                                  that write holds .config.json.lock beside it
-  memory/                        user-scope memory (personal, cross-project — a later
-                                 phase; the shipped store is repo-scope .abcd/memory/)
+  memory.json                    the machine layer of the memory notes: the person's
+                                 own notes, which agents write through the memory
+                                 verb and which it removes at the person's request;
+                                 each is tied to the repository it was written in
+                                 unless written for every project. The prompt router
+                                 recalls them beside the project's .abcd/memory.json,
+                                 a person's reviewed commit, whose note wins an id
+                                 both hold
+  memory/                        curated cross-project memory pages (a later phase;
+                                 nothing resolves it today)
   sources/                       the local sources corpus the library verb maintains
                                  and /abcd:library reads. Created only by its explicit
                                  init: absent means every other corpus verb and the

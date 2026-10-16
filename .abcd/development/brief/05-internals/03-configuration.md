@@ -592,8 +592,17 @@ across the read and the write as the provider block's write holds
 `config.json`'s, so concurrent setups lose nothing), the
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see
-[the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later
-phase too: the shipped memory store is repo-scope), and the `sources/` corpus
+[the rules layers](#the-rules-layers--bundled-user-repo) below), the machine
+layer of the memory notes in `memory.json` (the person's own notes, which agents
+write through `abcd memory add` and `abcd memory remove` takes out at the
+person's request; read through the rules user layer's guard, a regular file this
+account owns that no one else can write, within 256 KiB, and never created by a
+read; each note is tied to the repository it was written in unless it was added
+with `--everywhere`; [the prompt router](#the-prompt-routers-output) recalls them
+beside the repository's `.abcd/memory.json`, whose notes a person commits in a
+reviewed change and the verb never writes, as one set in which a project note
+shadows a personal note with the same id), curated cross-project memory pages
+under `memory/` (a later phase: nothing resolves it today), and the `sources/` corpus
 `/abcd:library` reads and writes (abcd never creates that one unasked: only its
 explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned
@@ -702,8 +711,10 @@ than a gap install would try and fail to close.
 three-tier layout below, the config file with its `meta` block, the rules
 overrides, the per-surface machine records under `config/`, the lint and site
 configuration records, the identity and positioning registry, the citation
-baseline, and the native spec store. A `memory/` namespace is written
-where memory is curated. **The home for project work.** There is no in-tree
+baseline, the native spec store, and the project's memory notes in
+`memory.json` (the layer the prompt router recalls above the machine's
+`~/.abcd.noindex/memory.json`, written by a person in a reviewed change, never by
+`abcd memory`). A `memory/` namespace is written where memory is curated. **The home for project work.** There is no in-tree
 lifeboat directory: the lifeboat is out-of-tree output at an operator-chosen
 destination. Two namespaces are not part of it either: `logbook/`, a retired name,
 and `rp/`, staged with its adapter.
