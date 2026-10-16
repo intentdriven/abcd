@@ -142,10 +142,11 @@ func TestAnnounceIsHeldToTheEmbargoStore(t *testing.T) {
 	t.Run("a store that cannot be checked", func(t *testing.T) {
 		w := newReserveWorld(t)
 		p := w.clone(t, "p", octoMail)
-		store, ok := storepath.PathForTest(w.home, p)
-		if !ok {
-			t.Fatal("the fixture has no root commit to key the store on")
+		loc, err := storepath.Locate(w.home, p)
+		if err != nil || loc.Registered {
+			t.Fatalf("the fixture's store place: %+v, %v", loc, err)
 		}
+		store := loc.Path
 		// A plain directory where the store's worktree belongs is a store the
 		// check refuses to read.
 		if err := os.MkdirAll(store, 0o700); err != nil {

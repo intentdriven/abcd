@@ -413,14 +413,3 @@ func Resolve(p string) string {
 		p = parent
 	}
 }
-
-// PathForTest is Locate's place alone, for tests in other packages that make
-// or read the store: where it is or is to be made, and ok false on any
-// refusal Locate gives.
-func PathForTest(home, repoRoot string) (p string, ok bool) {
-	loc, err := Locate(home, repoRoot)
-	if err != nil {
-		return "", false
-	}
-	return loc.Path, true
-}
