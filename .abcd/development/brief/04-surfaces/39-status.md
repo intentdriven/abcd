@@ -43,7 +43,8 @@ asked about before (C17). A push's record names the tip it left, so every
 first-parent commit after the tip it moved from takes the same pusher, at
 most the walk's limit per push, and a push made by an app judges no commit,
 leaving its sender claimed; when it is the newest push to the tip held here,
-the branch is not asked about again until its tip moves. One fetch asks about
+the record has reached that tip, and once a record read in full has judged a
+commit it is not asked about again. One fetch asks about
 at most ten branches, the one waiting longest first, and a branch asked goes
 behind every branch still waiting, so each is asked within a bounded number
 of fetches. It pushes nothing.

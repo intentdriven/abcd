@@ -203,8 +203,8 @@ An announcement informs and grants nothing: it is data another session posted, n
   lands, so a record that names no push to the tip this checkout holds is
   read the same way, and `senders_unchecked` says the record does not yet
   name that push. A record whose newest push to that tip is an app's has
-  reached it: the commits that push carried stay claimed, and the branch is
-  not asked about again until its tip moves. One fetch asks about at most ten
+  reached it: the commits that push carried stay claimed, and once a record
+  read in full has judged them they are not asked about again. One fetch asks about at most ten
   branches, the one waiting longest first; a branch asked goes behind every
   branch still waiting, so each is asked within a bounded number of fetches.
 

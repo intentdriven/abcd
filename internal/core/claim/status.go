@@ -1425,8 +1425,7 @@ var pusherBudget = 10 * time.Second
 // later fetch.
 const maxAskedBranches = 10
 
-// askedRel names the turn each status branch waits at to be asked about, and
-// the tip of each the forge's record names an app as the newest to push
+// askedRel names the turn each status branch waits at to be asked about
 // (keptAsked).
 const askedRel = "forge-asked"
 
@@ -1440,12 +1439,12 @@ const askedRel = "forge-asked"
 // one fetch, the one whose newest such announcement is newest first; a branch
 // asked goes behind every branch still waiting, and one left unasked keeps
 // its turn, so every branch is asked within a bounded number of fetches. A
-// branch whose tip held here is the one the forge's record last named an
-// app's push to is not asked again until the tip moves: an app's push says
-// nothing of who sent what it carried, and asking again changes nothing. A
-// push names only the tip it left, so each
-// is placed by walking the first-parent line from that tip down to the tip
-// it moved from, at most the walk's limit of commits, under pusherBudget:
+// branch leaves the queue once every standing announcement on it is asked
+// about: a record read in full, an app's push to the tip held here included,
+// keeps a verdict for every commit asked (noPusher for one an app's push
+// carried), and one not read in full is asked about again. A push names only
+// the tip it left, so each is placed by walking the first-parent line from
+// that tip down to the tip it moved from, at most the walk's limit of commits, under pusherBudget:
 // every commit of the push is judged by its pusher (placePushes). A commit two
 // pushes cover (a rewritten branch) takes a pusher other than the owner over
 // the owner. A branch whose record could not be placed in full keeps nothing
@@ -1487,31 +1486,25 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 	kept := keptAsked(root)
 	turn := kept.turn
 	turnOf := func(b string) int64 {
-		if e, ok := kept.at[b]; ok {
-			return e.turn
+		if n, ok := kept.at[b]; ok {
+			return n
 		}
 		return turn
 	}
-	var queue []string
-	for _, b := range branches {
-		if e := kept.at[b]; tipsKnown && e.appTip != "" && e.appTip == tips[b] {
-			continue
-		}
-		queue = append(queue, b)
-	}
+	queue := branches
 	sort.SliceStable(queue, func(i, j int) bool { return turnOf(queue[i]) < turnOf(queue[j]) })
-	next := map[string]askedEntry{}
+	next := map[string]int64{}
 	unasked := 0
 	for i, b := range queue {
 		if i >= maxAskedBranches || ctx.Err() != nil {
 			unasked = len(queue) - i
 			for _, b := range queue[i:] {
-				next[b] = askedEntry{turn: turnOf(b), appTip: kept.at[b].appTip}
+				next[b] = turnOf(b)
 			}
 			break
 		}
 		// Asked: behind every branch still waiting.
-		next[b] = askedEntry{turn: turn + 1, appTip: kept.at[b].appTip}
+		next[b] = turn + 1
 		pushed, err := lookup(ctx, root, b)
 		partial := errors.Is(err, ErrPartialRecord)
 		if err != nil && !partial {
@@ -1536,16 +1529,11 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			failed = append(failed, "abcd-status/"+b+": the forge's record of pushes was not placed in full: "+termsafe.Sanitize(redacted(err)))
 			continue
 		}
-		if atTip != nil && atTip.App {
-			// The newest push to the tip is an app's: kept as asked until the
-			// tip moves.
-			next[b] = askedEntry{turn: turn + 1, appTip: tips[b]}
-		}
 		const askedAgain = ", so a commit it does not name another account for stays claimed and is asked about again"
 		switch {
 		case behind:
 			failed = append(failed, "abcd-status/"+b+": the forge's record does not yet name the push of the tip held here"+askedAgain)
-		case partial && tipsKnown && (atTip == nil || !atTip.App):
+		case partial && tipsKnown:
 			failed = append(failed, "abcd-status/"+b+": "+ErrPartialRecord.Error()+askedAgain)
 		}
 		for _, c := range ask[b] {
@@ -1565,12 +1553,6 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			writeStatusFile(root, pusherDir, c, []byte(login+"\n"))
 		}
 	}
-	// A tip an app pushed that is still the tip stays kept as asked.
-	for b, e := range kept.at {
-		if _, ok := next[b]; !ok && e.appTip != "" && (!tipsKnown || e.appTip == tips[b]) {
-			next[b] = e
-		}
-	}
 	keepAsked(root, turn+2, next)
 	if unasked > 0 {
 		what := fmt.Sprintf("%d status branches not asked about", unasked)
@@ -1583,19 +1565,11 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 	return strings.Join(failed, "; ")
 }
 
-// askedEntry is one status branch as askedRel keeps it: the turn it waits
-// at, and the tip the forge's record named an app's push to as the newest,
-// "" when none.
-type askedEntry struct {
-	turn   int64
-	appTip string
-}
-
-// askedSet is what askedRel keeps: each branch by name, and the turn the
-// next fetch counts from, past every turn kept.
+// askedSet is what askedRel keeps: the turn each branch waits at, by name,
+// and the turn the next fetch counts from, past every turn kept.
 type askedSet struct {
 	turn int64
-	at   map[string]askedEntry
+	at   map[string]int64
 }
 
 // maxAskedBytes bounds what keptAsked reads: a line per branch.
@@ -1605,7 +1579,7 @@ const maxAskedBytes = 256 << 10
 // read. A line that does not read, or names a branch whose name is not read,
 // is passed over.
 func keptAsked(root string) askedSet {
-	s := askedSet{at: map[string]askedEntry{}}
+	s := askedSet{at: map[string]int64{}}
 	data := readStatusFile(root, askedRel, maxAskedBytes)
 	if data == nil {
 		return s
@@ -1615,29 +1589,21 @@ func keptAsked(root string) askedSet {
 		s.turn = n
 	}
 	for _, l := range lines[1:] {
-		f := strings.Fields(l)
-		if len(f) != 3 || !statusName(f[1]) {
+		turn, name, ok := strings.Cut(l, " ")
+		n, err := strconv.ParseInt(turn, 10, 64)
+		if !ok || err != nil || n < 0 || !statusName(name) {
 			continue
 		}
-		n, err := strconv.ParseInt(f[0], 10, 64)
-		if err != nil || n < 0 {
-			continue
-		}
-		e := askedEntry{turn: n}
-		if gitutil.IsFullSHA(f[2]) {
-			e.appTip = f[2]
-		}
-		s.at[f[1]] = e
+		s.at[name] = n
 		s.turn = max(s.turn, n+1)
 	}
 	return s
 }
 
-// keepAsked keeps each branch's turn and app's tip, and the turn the next
-// fetch counts from, replacing what was kept, unflushed and best effort: a
-// set not kept costs only the order of the next fetch's questions, or a
-// question asked again.
-func keepAsked(root string, turn int64, at map[string]askedEntry) {
+// keepAsked keeps each branch's turn, and the turn the next fetch counts
+// from, replacing what was kept, unflushed and best effort: a set not kept
+// costs only the order of the next fetch's questions.
+func keepAsked(root string, turn int64, at map[string]int64) {
 	var b strings.Builder
 	b.WriteString(strconv.FormatInt(turn, 10) + "\n")
 	names := make([]string, 0, len(at))
@@ -1646,11 +1612,7 @@ func keepAsked(root string, turn int64, at map[string]askedEntry) {
 	}
 	sort.Strings(names)
 	for _, name := range names {
-		tip := at[name].appTip
-		if tip == "" {
-			tip = "-"
-		}
-		b.WriteString(strconv.FormatInt(at[name].turn, 10) + " " + name + " " + tip + "\n")
+		b.WriteString(strconv.FormatInt(at[name], 10) + " " + name + "\n")
 	}
 	_ = writeUnflushedIn(root, statusBranches.stateDir, askedRel, []byte(b.String()))
 }

@@ -324,47 +324,109 @@ func TestARecordShortOfTheTipIsAskedAgain(t *testing.T) {
 	}
 }
 
-// TestATipAnAppPushedIsNotAskedAgainUntilItMoves: the forge's record names an
-// app's push as the newest to the tip held here. The record has reached the
-// tip, so the fetch does not say it has not; the commit the app's push
-// carried stays claimed, never judged by the app's login; and the tip is kept
-// as asked, so the branch is not asked about again, even on a record not read
-// in full, until the tip moves.
-func TestATipAnAppPushedIsNotAskedAgainUntilItMoves(t *testing.T) {
+// TestATipAnAppPushedReachesTheRecord: the forge's record names an app's
+// push as the newest to the tip held here. The record has reached the tip, so
+// the fetch does not say it has not, and the commit the app's push carried
+// stays claimed, never judged by the app's login. A record read in full keeps
+// a verdict for every commit asked about, so the next fetch asks nothing; one
+// not read in full is asked about again, and the fetch says so.
+func TestATipAnAppPushedReachesTheRecord(t *testing.T) {
+	for _, short := range []bool{false, true} {
+		w := newWorld(t)
+		octo := w.clone("6+octo@users.noreply.github.com", "")
+		pat := w.clone("9+pat@users.noreply.github.com", "")
+		first := octo.announceAs("merging", "#1").Commit
+		octo.announceAs("merging", "#2")
+		asked := 0
+		lookup := func(_ context.Context, _, branch string) ([]Push, error) {
+			if branch != "octo" {
+				return nil, nil
+			}
+			asked++
+			tip := w.statusTip("octo")
+			pushes := []Push{
+				{Before: first, After: tip, Pusher: "hosted-app[bot]", App: true},
+				{Before: zeroCommit, After: first, Pusher: "octo"},
+			}
+			if short {
+				return pushes, ErrPartialRecord
+			}
+			return pushes, nil
+		}
+		res := pat.status(lookup)
+		if strings.Contains(res.SendersUnchecked, "does not yet name") {
+			t.Fatalf("short %v: unchecked = %q; want no word that the record has not reached the tip", short, res.SendersUnchecked)
+		}
+		if got := strings.Contains(res.SendersUnchecked, ErrPartialRecord.Error()); got != short {
+			t.Fatalf("short %v: unchecked = %q; want the record not read in full named only when it was not", short, res.SendersUnchecked)
+		}
+		for _, a := range pat.read().Announcements {
+			if a.Commit != first && (a.Check != SenderClaimed || a.Pusher != "") {
+				t.Fatalf("short %v: the app's commit reads %s %q; want it claimed", short, a.Check, a.Pusher)
+			}
+		}
+		pat.status(lookup)
+		want := 1
+		if short {
+			want = 2
+		}
+		if asked != want {
+			t.Fatalf("short %v: the forge was asked %d times over two fetches; want %d", short, asked, want)
+		}
+	}
+}
+
+// TestAnAnnouncementReadAfterAnAppsTipIsAskedAbout: bob posts A, then more
+// announcements than one intake takes in, the last pushed by an app. The
+// first intake stops short of A, and the fetch asks the forge about bob's
+// branch, whose tip the app pushed. The next intake reads A, and a later
+// fetch at the same tip asks about it: the forge's record judges it.
+func TestAnAnnouncementReadAfterAnAppsTipIsAskedAbout(t *testing.T) {
+	withIntakeCap(t, 3)
 	w := newWorld(t)
-	octo := w.clone("6+octo@users.noreply.github.com", "")
+	bob := w.clone("7+bob@users.noreply.github.com", "")
 	pat := w.clone("9+pat@users.noreply.github.com", "")
-	first := octo.announceAs("merging", "#1").Commit
-	octo.announceAs("merging", "#2")
+	a := bob.announceAs("merging", "#1").Commit
+	var cs []string
+	for _, item := range []string{"#2", "#3", "#4"} {
+		cs = append(cs, bob.announceAs("merging", item).Commit)
+	}
 	asked := 0
 	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
-		if branch != "octo" {
+		if branch != "bob" {
 			return nil, nil
 		}
 		asked++
-		tip := w.statusTip("octo")
 		return []Push{
-			{Before: first, After: tip, Pusher: "hosted-app[bot]", App: true},
-			{Before: zeroCommit, After: first, Pusher: "octo"},
-		}, ErrPartialRecord
-	}
-	res := pat.status(lookup)
-	if strings.Contains(res.SendersUnchecked, "does not yet name") {
-		t.Fatalf("unchecked = %q; want no word that the record has not reached the tip", res.SendersUnchecked)
-	}
-	for _, a := range pat.read().Announcements {
-		if a.Commit != first && (a.Check != SenderClaimed || a.Pusher != "") {
-			t.Fatalf("the app's commit reads %s %q; want it claimed", a.Check, a.Pusher)
-		}
+			{Before: cs[1], After: cs[2], Pusher: "hosted-app[bot]", App: true},
+			{Before: zeroCommit, After: cs[1], Pusher: "bob"},
+		}, nil
 	}
 	pat.status(lookup)
 	if asked != 1 {
-		t.Fatalf("the forge was asked %d times over two fetches; want once: the tip an app pushed is kept as asked", asked)
+		t.Fatalf("the forge was asked %d times at the first fetch; want once", asked)
 	}
-	octo.announceAs("merging", "#3")
-	pat.status(lookup)
-	if asked != 2 {
-		t.Fatalf("the forge was asked %d times once the tip moved; want it asked again", asked)
+	if _, ok := keptAnnouncement(pat.dir, a); ok {
+		t.Fatal("the first intake read A; want it left past the cap")
+	}
+	pat.read()
+	if _, ok := keptAnnouncement(pat.dir, a); !ok {
+		t.Fatal("the second intake did not read A")
+	}
+	res := pat.status(lookup)
+	found := false
+	for _, an := range pat.read().Announcements {
+		if an.Commit != a {
+			continue
+		}
+		found = true
+		if an.Check != SenderVerified && !strings.Contains(res.SendersUnchecked, "not asked about") {
+			t.Fatalf("A reads %s, the forge was asked %d times, and unchecked = %q; want A asked about or counted unchecked",
+				an.Check, asked, res.SendersUnchecked)
+		}
+	}
+	if !found {
+		t.Fatal("A is not among the announcements read")
 	}
 }
 

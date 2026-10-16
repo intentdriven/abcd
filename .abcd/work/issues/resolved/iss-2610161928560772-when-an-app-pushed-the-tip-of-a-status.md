@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/claim"
 remedy: "Keep a mark for a tip whose newest covering push came from an app, and ask again only when the tip moves."
-resolution: "An app's push is now read as an app's: when it is the newest push to the tip held here, the record has reached the tip, the tip is kept as asked and the branch is not asked about again until the tip moves; the fetch also asks every branch in turn."
+resolution: "An app's push is now read as an app's: when it is the newest push to the tip held here, the record has reached the tip, so a record read in full keeps a verdict for every commit asked about and the branch is not asked about again; the fetch also asks every branch in turn."
 impact: fix
 resolved_by:
   commit: "835db98d6"
