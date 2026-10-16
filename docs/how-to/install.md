@@ -288,8 +288,9 @@ update.
 Where the agent harness renders a status line by running a command, `abcd ahoy
 install` offers to make that line abcd's own in the repositories abcd manages.
 It explains the offer, asks once, and lets you switch each element after the
-badge on or off. On consent the line leads with a badge saying whether abcd is
-here and whose answer the loop is waiting on, followed by the repository, the
+badge on or off, all but the session name. On consent the line leads with a
+badge saying whether abcd is here and whose answer the loop is waiting on,
+followed by the session's name, the repository, the
 branch, the model, the context and usage figures, and the record's intent and
 issue counts; in every other repository the status command you had before runs
 untouched, because abcd records it and hands the payload straight through.
@@ -329,6 +330,50 @@ untrusted.
 
 Run `abcd ahoy uninstall` before you remove abcd. It puts back the status
 command you had before, keeping a copy of the file first.
+
+### Session names
+
+Each session abcd's hooks run in takes a name, so you can tell sessions apart
+and address one by name. The names are the repository's personas in order
+(Alice, Bob, Carol and on through the list), then the same names again as
+Alice Two, Bob Two and so on. The name is chosen when the session starts, so
+the order is the order sessions start in, and it appears from the session's
+first prompt: in its prompt border, in the status line directly after the
+badge, and in the harness's session list.
+
+- **Your own name wins.** A session you name yourself, when you start it or
+  at any point after, keeps your name, and abcd sets none. The one exception
+  is a fork of it once abcd has given another session that same name: the
+  fork takes the name as abcd's, and at its start or any later resume takes
+  the next free name while a session holding that name is running.
+- **A name lasts the session.** A compacted or resumed session keeps its name.
+  The one exception: if a session that is running now was given that name
+  while this one was not running, the resumed session takes the next free name at its first
+  prompt, so two running sessions never share one. A forked session starts
+  with the name of the session it came from; when abcd gave that name and that
+  session is still running, the fork takes the next free name at its own first
+  prompt.
+- **abcd never gives two running sessions the same name**, across every
+  repository on the machine; a name you type yourself is not checked against
+  the names abcd gave, so it can match one. A name is not handed out again
+  while any named session is still running, and naming starts again at the
+  first persona once every named session has ended, by exit or by a crash.
+  abcd remembers the names it gave to the newest 512 sessions; a session
+  resumed after that record is gone keeps its title without holding the name,
+  so a later session can be given it too.
+- **The repository chooses the names.** They come from the `personas` list in
+  `.abcd/development/personas.json`. Every name there must be one word of two
+  to sixteen plain letters (A to Z), a capital first and lower case after it,
+  with none repeated; otherwise
+  abcd uses its own list (Alice to Nia) for the whole repository and says so
+  in one line on the hook's error output.
+- **Where it is kept.** The names in use are recorded in
+  `~/.abcd.noindex/sessions/names.json`, readable and writable by your account
+  alone. abcd tells a running session from an ended one by its process, which
+  it reads on macOS and Linux; elsewhere sessions are not named.
+- **Naming never holds a session up.** If the record cannot be read or written
+  within two seconds, or the process list cannot be read, the session starts
+  unnamed and one line on the hook's error output says why.
 
 ## Where your session transcripts are kept
 

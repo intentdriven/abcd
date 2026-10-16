@@ -99,11 +99,8 @@ func (j judged) released() bool {
 // tip it judged allows. A refusal pushes nothing; a failure leaves nothing
 // locally but an unreferenced commit git's collection removes.
 func Reserve(root string, req Request, o Options) (Result, error) {
-	p, err := prepare(root, req, o)
+	p, err := prepare(root, req, o, func(root string) error { return originPresent(root, "reservations") })
 	if err != nil {
-		return Result{}, err
-	}
-	if err := originPresent(root, "reservations"); err != nil {
 		return Result{}, err
 	}
 	tree, err := emptyTree(root)

@@ -776,7 +776,10 @@ func TestAnUnclassedAnnounceFailureCountsThePushesTried(t *testing.T) {
 
 // TestAnAnnouncementWithNoGitIdentityNamesTheAnnouncement: a checkout whose
 // git has no user.name is refused before anything is written, the refusal
-// naming the announcement it would author, not a reservation.
+// naming the announcement it would author, not a reservation. A reservation
+// from the same checkout needs no git identity: the session's forge token
+// names its holder and authors it, so it asks the token, and its refusal when
+// the token cannot answer never carries the announcement's wording.
 func TestAnAnnouncementWithNoGitIdentityNamesTheAnnouncement(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -785,7 +788,11 @@ func TestAnAnnouncementWithNoGitIdentityNamesTheAnnouncement(t *testing.T) {
 	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "to author the announcement") || strings.Contains(err.Error(), "reservation") {
 		t.Fatalf("announce = %v; want the refusal naming the announcement", err)
 	}
-	if _, err := p.reserve("iss-5", "README.md"); err == nil || !strings.Contains(err.Error(), "to author the reservation") {
-		t.Fatalf("reserve = %v; want the reservation's wording unchanged", err)
+	fake := &forgeFake{err: errors.New("no token")}
+	o := p.opts()
+	o.ForgeUser = fake.user
+	_, err = Reserve(p.dir, Request{Record: "iss-5", Footprint: []string{"README.md"}}, o)
+	if !errors.Is(err, ErrRefused) || strings.Contains(err.Error(), "announcement") || fake.calls != 1 {
+		t.Fatalf("reserve = %v after %d token call(s); want one call and the token's refusal", err, fake.calls)
 	}
 }

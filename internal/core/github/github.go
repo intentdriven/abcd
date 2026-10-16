@@ -37,7 +37,10 @@ const Host = "github.com"
 
 // Timeout bounds each `gh` call. A subprocess reading from the network with no
 // bound is a verb that hangs a session indefinitely on a stalled connection.
-const Timeout = 30 * time.Second
+var Timeout = 30 * time.Second
+
+// ErrTimeout is what Run's error wraps when gh did not answer within Timeout.
+var ErrTimeout = errors.New("gh did not answer")
 
 // MaxOutputBytes caps what is read back from `gh`, stdout and stderr each
 // (trust boundary): the response is remote-controlled, and an unbounded read
@@ -116,7 +119,7 @@ func Run(cwd string, stdin []byte, args ...string) ([]byte, error) {
 	cmd.Stderr = &limitedWriter{w: &errBuf, remaining: MaxOutputBytes}
 	if err := cmd.Run(); err != nil {
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("gh did not answer within %s", Timeout)
+			return nil, fmt.Errorf("%w within %s", ErrTimeout, Timeout)
 		}
 		msg := strings.TrimSpace(errBuf.String())
 		if msg == "" {

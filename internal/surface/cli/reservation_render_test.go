@@ -71,7 +71,8 @@ type boardStatusJSON struct {
 // the view's age from disk alone, and `abcd build <itd-N>` and `abcd build
 // next` refuse P's reserved intent at their peers check from disk alone. A reservation P makes after that fetch is
 // not seen, the fetch stamp is not moved, the origin can be gone, and no HTTP
-// request is made.
+// request is made. No render asks the forge's user endpoint either, even for a
+// reader whose git identity is a machine's: only `reserve` asks it.
 func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	w := newReserveWorld(t)
 	reservedRecords(t, w)
@@ -100,6 +101,13 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	if err := os.Rename(w.origin, w.origin+".away"); err != nil {
 		t.Fatal(err)
 	}
+
+	// Q's git identity is now a machine's, so a holder lookup that used the
+	// network would ask the forge's user endpoint; gh is a stub that records
+	// every call, and the renders must make none.
+	gitCmd(t, q, "config", "user.name", "renovate[bot]")
+	gitCmd(t, q, "config", "user.email", "29139614+renovate[bot]@users.noreply.github.com")
+	ghCalls := stubGH(t, `{"login":"quinn","id":99}`)
 
 	var hits int32
 	origTransport := http.DefaultTransport
@@ -181,5 +189,48 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	}
 	if n := atomic.LoadInt32(&hits); n != 0 {
 		t.Fatalf("the renders made %d network request(s)", n)
+	}
+	if calls := ghCalls(); len(calls) != 0 {
+		t.Fatalf("the renders asked GitHub through gh: %q", calls)
+	}
+	// The user endpoint is asked only where documented: `reserve --holder`
+	// (and the reservation acts), once, for the token's account.
+	code, text, errOut = reserveRun(t, q, "reserve", "--holder")
+	if code != 0 || text != "would reserve as quinn (from token)\n" {
+		t.Fatalf("reserve --holder: exit %d\n%s%s", code, text, errOut)
+	}
+	if calls := ghCalls(); len(calls) != 1 || calls[0] != "api --hostname github.com user" {
+		t.Fatalf("reserve --holder asked gh %q; want the user endpoint once", calls)
+	}
+}
+
+// stubGH puts a gh first on PATH that answers every call with answer and
+// records its arguments; the returned func lists the calls so far, one line
+// each.
+func stubGH(t *testing.T, answer string) func() []string {
+	t.Helper()
+	return stubGHScript(t, "printf '%s' '"+answer+"'\n")
+}
+
+// stubGHScript is stubGH with body, a shell fragment, in place of the answer:
+// it may write to stderr and exit as it likes.
+func stubGHScript(t *testing.T, body string) func() []string {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\n" + body
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return func() []string {
+		raw, err := os.ReadFile(log)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 	}
 }

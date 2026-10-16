@@ -1562,6 +1562,10 @@ type hookInput struct {
 	Prompt    string `json:"prompt"`
 	Source    string `json:"source"`
 	Event     string `json:"hook_event_name"`
+	// SessionTitle is the session's custom title on the session-start and
+	// prompt payloads: a name the person gave it or one a hook set earlier,
+	// never a generated one. Read by session naming (hook_session_name.go).
+	SessionTitle string `json:"session_title"`
 	// ToolName is supplied by the PostToolUse hook; read by `hook
 	// question-answered` only.
 	ToolName string `json:"tool_name"`
@@ -1649,6 +1653,9 @@ type routerView struct {
 	Recalled []string  `json:"recalled"`
 	Active   *[]string `json:"active,omitempty"`
 	Error    string    `json:"error,omitempty"`
+	// SessionTitle is the session's title when this prompt set it
+	// (hook_session_name.go), and absent on every other prompt.
+	SessionTitle string `json:"session_title,omitempty"`
 }
 
 // routerRefused is the prompt router's fail-open exit when it cannot evaluate
@@ -1714,7 +1721,17 @@ announcement, release hold, doubtful branch and failed fetch, once, newest
 first, at most ten lines and a count of the rest. It is read from disk alone,
 under a deadline inside the hook's budget, and says the status is
 unavailable when the deadline passes first. A rules.json that will not load
-does not switch it off: text then carries the block alone, beside the error.`,
+does not switch it off: text then carries the block alone, beside the error.
+
+On the first prompt of a session whose start reserved it a name, when the
+session has no title yet, plain stdout is instead one object that sets the
+title, with the text above as its additional context (the status block
+alone, or empty, when the rules could not be loaded):
+
+  {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+   "additionalContext": ..., "sessionTitle": ...}}
+
+and the --json envelope carries the name as session_title.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
@@ -1765,6 +1782,16 @@ does not switch it off: text then carries the block alone, beside the error.`,
 				// (spc-2610150728396006 step 3).
 				status := routerStatus(cmd, root)
 				defer status.MarkShown()
+				// The title owed on this prompt is set even so: naming does
+				// not depend on the rules (hook_session_name.go). The status
+				// block, when there is one, is the context it is set with.
+				if title := resendSessionTitle(cmd, in); title != "" {
+					if *asJSON {
+						return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title})
+					}
+					emitTitled(cmd, status.Text, title)
+					return nil
+				}
 				if status.Text != "" && !*asJSON {
 					fmt.Fprint(cmd.OutOrStdout(), status.Text)
 					return nil
@@ -1815,10 +1842,14 @@ does not switch it off: text then carries the block alone, beside the error.`,
 			// The status block (itd-2609151838312703 C6, C8, C10 to C12,
 			// C18): what the last fetch of the status branches brought that
 			// this checkout has not shown, from disk alone, inside its own
-			// budget, after the rules and the memory notes.
+			// budget, after the rules and the memory notes. It joins text
+			// before the title is read, so both emit paths below carry it.
 			status := routerStatus(cmd, root)
 			defer status.MarkShown()
 			text = joinBlocks(text, status.Text)
+			// The name this session's start reserved, set once at its first
+			// prompt (hook_session_name.go).
+			title := resendSessionTitle(cmd, in)
 			if *asJSON {
 				injected := res.Injected
 				if injected == nil {
@@ -1828,7 +1859,11 @@ does not switch it off: text then carries the block alone, beside the error.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active})
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title})
+			}
+			if title != "" {
+				emitTitled(cmd, text, title)
+				return nil
 			}
 			if text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), text)
@@ -2028,6 +2063,10 @@ does not switch it off: text then carries the block alone, beside the error.`,
 					cwd = wd
 				}
 			}
+			// Naming first, before the drain's time budget: it reserves the
+			// name the first prompt sets, and writes nothing to stdout
+			// (hook_session_name.go).
+			startSessionName(cmd, in, cwd)
 			var notices []string
 			// currentSHA is remembered so the cross-repository survey below can
 			// leave this repository out: the drain reports it entry by entry,
