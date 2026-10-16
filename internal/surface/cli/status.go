@@ -281,20 +281,22 @@ func renderStatus(w io.Writer, out statusOutput) {
 	fmt.Fprintln(w, out.Grants)
 }
 
-// statusBudget bounds the prompt hook's status read (C12): it runs inside
-// the hook's one-second budget, after the drain and the rules, so a slow read
-// says the status is unavailable rather than hold the prompt.
-var statusBudget = 600 * time.Millisecond
+// hookBudget is the prompt hook's whole budget (C12), counted from the hook's
+// start: the status read takes what the drain, the rules and the memory notes
+// leave of it, at most 600 ms (claim.PromptNotes), and leaves the hook time to
+// write the block and mark it shown. A test lowers it.
+var hookBudget = time.Second
 
 // routerStatus is the prompt hook's status block for the checkout at root,
-// read under statusBudget (claim.PromptNotes). A read that could not be made
-// is named on stderr, and its block says the status is unavailable. The
-// caller marks the block shown once it has written it.
-func routerStatus(cmd *cobra.Command, root string) claim.Notes {
+// read, rendered and kept shown before deadline, the hook's one deadline
+// (claim.PromptNotes). A read that could not be made is named on stderr, and
+// its block says the status is unavailable. The caller marks the block shown
+// once it has written it.
+func routerStatus(cmd *cobra.Command, root string, deadline time.Time) claim.Notes {
 	if root == "" {
 		return claim.Notes{}
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), statusBudget)
+	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	now := time.Now().UTC().Truncate(time.Second)
 	n, err := claim.PromptNotes(ctx, root, now, claim.Options{Now: func() time.Time { return now }})

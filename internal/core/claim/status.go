@@ -474,7 +474,7 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 	// Pruning reads every kept file, so it runs only when something new was
 	// read in, never at every prompt.
 	if in.taken > 0 {
-		pruneStatus(root, now, refs)
+		pruneStatus(ctx, root, now, refs)
 	}
 	return in, nil
 }
@@ -1082,14 +1082,18 @@ var zeroCommit = strings.Repeat("0", 40)
 // prompt showed, a line's own marker an earlier build kept, or an
 // announcement's whose announcement is no longer kept); every doubt the reader no longer shows (found more than a day ago, or
 // not reading); and the read mark of every status branch not among refs, the
-// branches this checkout holds.
-func pruneStatus(root string, now time.Time, refs []statusRef) {
+// branches this checkout holds. It runs inside the read, so it stops when ctx
+// ends, and what it did not reach is pruned by a later intake.
+func pruneStatus(ctx context.Context, root string, now time.Time, refs []statusRef) {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return
 	}
 	defer r.Close()
 	for _, e := range statusEntries(root, seenDir) {
+		if ctx.Err() != nil {
+			return
+		}
 		c := e.Name()
 		if !gitutil.IsFullSHA(c) {
 			continue
@@ -1108,6 +1112,9 @@ func pruneStatus(root string, now time.Time, refs []statusRef) {
 		}
 	}
 	for _, e := range statusEntries(root, shownDir) {
+		if ctx.Err() != nil {
+			return
+		}
 		if gitutil.IsFullSHA(e.Name()) && seenKept(root, e.Name()) {
 			continue
 		}
@@ -1116,6 +1123,9 @@ func pruneStatus(root string, now time.Time, refs []statusRef) {
 		}
 	}
 	for _, e := range statusEntries(root, doubtDir) {
+		if ctx.Err() != nil {
+			return
+		}
 		data := readStatusFile(root, doubtDir+"/"+e.Name(), 4096)
 		var d struct {
 			Branch  string `json:"branch"`
@@ -1133,6 +1143,9 @@ func pruneStatus(root string, now time.Time, refs []statusRef) {
 		held[path.Base(statusBranches.markRel(ref.ref))] = true
 	}
 	for _, e := range statusEntries(root, path.Base(statusBranches.readDir())) {
+		if ctx.Err() != nil {
+			return
+		}
 		if !held[e.Name()] {
 			_ = r.Remove(statusBranches.readDir() + "/" + e.Name())
 		}

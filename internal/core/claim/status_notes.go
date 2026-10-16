@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -17,9 +18,9 @@ import (
 // The prompt hook's status block (C6, C8, C10 to C12, C18): each announcement
 // this checkout has not shown, each doubt, each release hold and each failed
 // fetch, shown once, from this checkout's disk alone, as of the last fetch
-// with its age. It never touches the network, and is read inside a budget the
-// caller sets, so a slow read says the status is unavailable rather than hold
-// the prompt.
+// with its age. It never touches the network, and is read, rendered and kept
+// shown inside the one deadline the hook sets at its start, so a slow read
+// says the status is unavailable rather than hold the prompt.
 
 // NotesHeading opens the block.
 const NotesHeading = "## STATUS"
@@ -40,13 +41,27 @@ type Notes struct {
 	Text string
 	keys []string
 	root string
-	// by is when the hook's budget ends: MarkShown writes nothing after it.
+	// by is when MarkShown may last start a write: the hook's deadline less
+	// promptWriteReserve. Zero when the hook set no deadline.
 	by time.Time
 }
 
-// markGrace is how long past the read's deadline MarkShown may still write:
-// the hook's one second less the read's budget, less a margin.
-const markGrace = 250 * time.Millisecond
+// promptReadBudget is the most the status read takes of the hook's budget
+// (C12): it gets what is left of the hook's deadline less
+// promptMarkReserve, and never more than this.
+var promptReadBudget = 600 * time.Millisecond
+
+// promptMarkReserve is what the read leaves of the hook's deadline for the
+// hook to write the block and mark it shown.
+const promptMarkReserve = 150 * time.Millisecond
+
+// promptWriteReserve is how long before the hook's deadline MarkShown last
+// starts its one write.
+const promptWriteReserve = 50 * time.Millisecond
+
+// promptReads counts every read PromptNotes has started and not seen end,
+// so a test waits for each before its directories go.
+var promptReads sync.WaitGroup
 
 // blockPrefix starts the one marker file each shown block writes.
 const blockPrefix = "block-"
@@ -54,8 +69,8 @@ const blockPrefix = "block-"
 // MarkShown keeps every line the block showed or counted as shown, in one
 // file whatever their number, best effort: a line not kept is shown again at
 // the next prompt, which is all a lost marker costs, so the file is not
-// flushed to stable storage, and nothing is written once the hook's budget
-// has passed.
+// flushed to stable storage, and nothing is written once the hook's deadline
+// is near.
 func (n Notes) MarkShown() {
 	if len(n.keys) == 0 || !n.by.IsZero() && time.Now().After(n.by) {
 		return
@@ -93,10 +108,14 @@ func writeUnflushed(root, sub, name string, data []byte) {
 }
 
 // shownSet is every key kept as shown: each line of every block file, and
-// the name of every marker an earlier build kept one per line.
-func shownSet(root string) map[string]bool {
+// the name of every marker an earlier build kept one per line. It stops, with
+// ctx's error, when ctx ends.
+func shownSet(ctx context.Context, root string) (map[string]bool, error) {
 	set := map[string]bool{}
 	for _, e := range statusEntries(root, shownDir) {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		name := e.Name()
 		if strings.HasPrefix(name, ".tmp-") || !e.Type().IsRegular() {
 			continue
@@ -111,7 +130,7 @@ func shownSet(root string) map[string]bool {
 			}
 		}
 	}
-	return set
+	return set, nil
 }
 
 // statusReadHook, when a test sets it, runs the hook's read in its place:
@@ -120,38 +139,60 @@ func shownSet(root string) map[string]bool {
 var statusReadHook atomic.Pointer[func(read func())]
 
 // PromptNotes is the prompt hook's status block, read from this checkout's
-// disk under ctx: ReadStatus, then every line not yet shown. A checkout with
-// no remote named origin, or without its local tier, where nothing can be
-// kept as shown, shows nothing. When ctx ends before the read does, or the
-// read fails, the block is one line saying the status is unavailable and
-// why, and the answer is ErrStatusUnavailable, wrapped: the hook never waits
-// past ctx and never shows nothing in place of a read it could not make.
+// disk: ReadStatus, then every line not yet shown. ctx carries the hook's
+// one deadline, set at its start: the read and the render run beside a timer
+// under what is left of it less promptMarkReserve, at most promptReadBudget,
+// and the block's MarkShown writes nothing past it. A checkout with no remote
+// named origin, or without its local tier, where nothing can be kept as
+// shown, shows nothing. When the read's deadline passes before the read
+// ends, or the read fails, the block is one line saying the status is
+// unavailable and why, and the answer is ErrStatusUnavailable, wrapped: the
+// hook never waits past its deadline and never shows nothing in place of a
+// read it could not make.
 func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (Notes, error) {
 	if tierPresent(root) != nil {
 		return Notes{}, nil
 	}
 	now = now.UTC().Truncate(time.Second)
+	readBy := time.Now().Add(promptReadBudget)
+	hookBy, bounded := ctx.Deadline()
+	if bounded && hookBy.Add(-promptMarkReserve).Before(readBy) {
+		readBy = hookBy.Add(-promptMarkReserve)
+	}
+	rctx, cancel := context.WithDeadline(ctx, readBy)
+	defer cancel()
 	type answer struct {
-		v   StatusView
+		n   Notes
 		err error
 	}
-	done := make(chan answer, 1)
-	go func() {
-		read := func() {
-			v, err := ReadStatus(ctx, root, now, o)
-			done <- answer{v, err}
-		}
-		if h := statusReadHook.Load(); h != nil {
-			(*h)(read)
-			return
-		}
-		read()
-	}()
 	var got answer
-	select {
-	case got = <-done:
-	case <-ctx.Done():
-		got.err = ctx.Err()
+	if rctx.Err() != nil {
+		// Nothing is left of the deadline: no read is started.
+		got.err = rctx.Err()
+	} else {
+		done := make(chan answer, 1)
+		promptReads.Add(1)
+		go func() {
+			defer promptReads.Done()
+			read := func() {
+				v, err := ReadStatus(rctx, root, now, o)
+				var n Notes
+				if err == nil {
+					n, err = notesFor(rctx, root, v, now)
+				}
+				done <- answer{n, err}
+			}
+			if h := statusReadHook.Load(); h != nil {
+				(*h)(read)
+				return
+			}
+			read()
+		}()
+		select {
+		case got = <-done:
+		case <-rctx.Done():
+			got.err = rctx.Err()
+		}
 	}
 	if got.err != nil {
 		why := "it could not be read: " + termsafe.Sanitize(redacted(got.err))
@@ -161,9 +202,9 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 		return Notes{Text: NotesHeading + "\n\nstatus unavailable: " + why + "; `abcd status` reads it in full\n"},
 			fmt.Errorf("%w: %s", ErrStatusUnavailable, why)
 	}
-	n := notesFor(root, got.v, now)
-	if d, ok := ctx.Deadline(); ok {
-		n.by = d.Add(markGrace)
+	n := got.n
+	if bounded {
+		n.by = hookBy.Add(-promptWriteReserve)
 	}
 	return n, nil
 }
@@ -186,10 +227,11 @@ const maxDoubtLines = 2
 // doubts (each branch found doubtful, each commit that does not read as an
 // announcement, the count of names not read), summed up in one line when
 // there are more than maxDoubtLines and always kept a place, at most
-// maxNoteLines in all, then a count of the rest.
-func notesFor(root string, v StatusView, now time.Time) Notes {
+// maxNoteLines in all, then a count of the rest. It reads what is kept shown
+// under ctx, and answers ctx's error when ctx ends first.
+func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (Notes, error) {
 	if !v.Origin {
-		return Notes{}
+		return Notes{}, nil
 	}
 	var first, news, doubts []noteLine
 	for _, u := range []struct {
@@ -235,7 +277,10 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 		seenItem[a.Item] = true
 		news = append(news, l)
 	}
-	shown := shownSet(root)
+	shown, err := shownSet(ctx, root)
+	if err != nil {
+		return Notes{}, err
+	}
 	doubts = unshown(shown, doubts)
 	if len(doubts) > maxDoubtLines {
 		n := 0
@@ -258,7 +303,7 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 	lines = append(lines, doubts...)
 	counted = append(counted, unshown(shown, superseded)...)
 	if len(lines) == 0 && len(counted) == 0 {
-		return Notes{}
+		return Notes{}, nil
 	}
 	var b strings.Builder
 	b.WriteString(NotesHeading + "\n\n")
@@ -275,7 +320,7 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 		fmt.Fprintf(&b, "- and %d more: `abcd status` lists them all\n", len(counted))
 	}
 	b.WriteString(GrantsNothing + "\n")
-	return Notes{Text: b.String(), keys: keys, root: root}
+	return Notes{Text: b.String(), keys: keys, root: root}, nil
 }
 
 // unshown is the lines of ls not in shown; a summing-up line is always

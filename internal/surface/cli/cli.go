@@ -1734,6 +1734,10 @@ alone, or empty, when the rules could not be loaded):
 and the --json envelope carries the name as session_title.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The hook's one deadline (C12), set before anything else runs:
+			// the status block is read, rendered and kept shown inside what
+			// the drain, the rules and the memory notes leave of it.
+			deadline := time.Now().Add(hookBudget)
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
@@ -1780,7 +1784,7 @@ and the --json envelope carries the name as session_title.`,
 				// The status block is the status reader's, not the rules':
 				// a rules.json that will not load does not switch it off
 				// (spc-2610150728396006 step 3).
-				status := routerStatus(cmd, root)
+				status := routerStatus(cmd, root, deadline)
 				defer status.MarkShown()
 				// The title owed on this prompt is set even so: naming does
 				// not depend on the rules (hook_session_name.go). The status
@@ -1844,7 +1848,7 @@ and the --json envelope carries the name as session_title.`,
 			// this checkout has not shown, from disk alone, inside its own
 			// budget, after the rules and the memory notes. It joins text
 			// before the title is read, so both emit paths below carry it.
-			status := routerStatus(cmd, root)
+			status := routerStatus(cmd, root, deadline)
 			defer status.MarkShown()
 			text = joinBlocks(text, status.Text)
 			// The name this session's start reserved, set once at its first

@@ -392,8 +392,9 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	log := traced(t)
 	start := time.Now()
 	got := pat.notes()
-	// The origin would hang for 30 s; the margin is for a loaded machine.
-	if took := time.Since(start); took > 2*time.Second {
+	// The origin would hang for 30 s; the block reads disk alone, inside the
+	// hook's second.
+	if took := time.Since(start); took > time.Second {
 		t.Fatalf("the block took %s; want it never to wait on the network", took)
 	}
 	if !strings.Contains(got, "merging #1012") {
@@ -406,25 +407,25 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	}
 
 	// The read waits until the test is done with it, then runs to its end
-	// before the test's directories are removed.
-	release, finished := make(chan struct{}), make(chan struct{})
+	// before the test's directories are removed: the cleanup waits for every
+	// read PromptNotes started, and for none when it started none.
+	release := make(chan struct{})
 	hold := func(read func()) {
 		<-release
 		read()
-		close(finished)
 	}
 	statusReadHook.Store(&hold)
 	t.Cleanup(func() {
 		close(release)
-		<-finished
+		promptReads.Wait()
 		statusReadHook.Store(nil)
 	})
-	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	start = time.Now()
 	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
-	// The read is held until the test ends; the budget is 300 ms.
-	if took := time.Since(start); took > 2*time.Second {
+	// The read is held until the test ends; the hook's deadline is a second.
+	if took := time.Since(start); took > time.Second {
 		t.Fatalf("a slow read held the prompt for %s", took)
 	}
 	if !errors.Is(err, ErrStatusUnavailable) || !strings.Contains(n.Text, "status unavailable: reading it here took longer than this prompt allows") {
