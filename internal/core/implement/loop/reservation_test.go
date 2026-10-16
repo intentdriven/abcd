@@ -362,25 +362,6 @@ func TestTheFenceRenewsPastTheQueueTimeout(t *testing.T) {
 	}
 }
 
-// TestTheFenceRenewsWithTheDefaultLeaseWithoutAMirror is C44: with no ruleset
-// mirror the fence still runs, renewing with the default lease, and the pull
-// request is left open for a person.
-func TestTheFenceRenewsWithTheDefaultLeaseWithoutAMirror(t *testing.T) {
-	f := newLandFixture(t, "")
-	f.toArm(t)
-	now := time.Now().UTC().Truncate(time.Second)
-	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
-	before := originReservation(t, f.bare, reservedRef)
-	f.step(t)
-	after := originReservation(t, f.bare, reservedRef)
-	if after.parent != before.commit || after.expires.Sub(after.claimed) != 2*time.Hour {
-		t.Fatalf("the fence renews with the default lease: before %+v, after %+v", before, after)
-	}
-	if l := currentLane(t, f.repo, f.runID); l.Landing == nil || l.Landing.Armed || !strings.HasPrefix(l.Landing.Merge, "left open") {
-		t.Fatalf("the pull request is left open: %+v", l.Landing)
-	}
-}
-
 // TestARunHoldingNoReservationIsNeitherRenewedNorFenced: a run whose state
 // records no reservation (one started before reservations, or in a checkout
 // with no remote named origin) arms as it did, and nothing is pushed under

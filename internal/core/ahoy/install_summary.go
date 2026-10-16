@@ -37,6 +37,9 @@ const (
 	writeAttributionHook         writeKind = "attribution-hook"
 	writeOutboundHook            writeKind = "outbound-hook"
 	writeOutboundForge           writeKind = "outbound-forge"
+	writeOutboundBinary          writeKind = "outbound-binary"
+	writeOutboundShim            writeKind = "outbound-shim"
+	writeOutboundChain           writeKind = "outbound-chain"
 	writeSessionStore            writeKind = "session-store"
 	writeConventionsBlock        writeKind = "conventions-block"
 	writeConventionsBlockRemoved writeKind = "conventions-block-removed"
@@ -59,7 +62,7 @@ const (
 // repository's own files first, then this machine, then the optional extras.
 var allWriteKinds = []writeKind{
 	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
-	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeRules, writeConventionsBlock,
+	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeOutboundBinary, writeOutboundShim, writeOutboundChain, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
 }
@@ -124,12 +127,27 @@ var writeKindHelp = map[writeKind]SummaryItem{
 	writeOutboundHook: {
 		What:   "Added a commit-message check that stops a commit whose message carries a live AI-session link or an AI tool's sign-off line.",
 		Why:    "Once pushed, either one can be removed from the repository's history only by rewriting it.",
-		Action: "Tell the check where abcd is, once per clone: git config --local abcd.binary /absolute/path/to/abcd. Until then it warns and lets each commit through.",
+		Action: "In each clone, run abcd ahoy install --outbound once: it tells the check where the abcd it verified is and, where git has no hooks path set and no commit-msg hook of its own, places abcd's copy of the check in the hooks directory the clone's worktrees share (.git/hooks in the main checkout); a note says why when it could do neither. Until a clone names an abcd, the check warns and lets each commit through.",
 	},
 	writeOutboundForge: {
 		What:   "Switched on a check that stops your AI assistant posting a pull request, issue or comment whose text carries a live AI-session link or an AI tool's sign-off line.",
 		Why:    "The forge keeps the earlier version of anything posted, so either one cannot be taken back once it is sent.",
 		Action: "Nothing. Your assistant is told what to remove when a post is stopped.",
+	},
+	writeOutboundBinary: {
+		What:   "Told this clone's commit-message check where abcd is: abcd.binary in .git/config now names the abcd command this install verified.",
+		Why:    "The check runs only an abcd named by an absolute path outside the repository, never one found on the command path or in the repository's own files.",
+		Action: "Nothing. It is this clone's own setting and is never committed; to undo it, run git config --local --unset abcd.binary.",
+	},
+	writeOutboundShim: {
+		What:   "Switched on this clone's commit-message check: abcd's own copy of it is now the commit-msg hook in the hooks directory the clone's worktrees share (.git/hooks in the main checkout), which git runs on every commit.",
+		Why:    "No hooks path was set and no commit-msg hook was there, so this needed no setting changed; the copy runs only the abcd that abcd.binary names, never anything the repository carries.",
+		Action: "Nothing. It is this clone's own hook and is never committed; abcd never replaces a commit-msg hook it did not write. The abcd it runs is not checked again at commit time. To undo it, delete hooks/commit-msg in the directory git rev-parse --git-common-dir names.",
+	},
+	writeOutboundChain: {
+		What:   "Saved abcd's own copy of the commit-message check as hooks/abcd-commit-msg in the directory the clone's worktrees share (.git/hooks in the main checkout), a name git never runs.",
+		Why:    "git runs a commit-msg hook abcd did not write, or none at all, and abcd never replaces a hook or changes a hooks setting, so the check runs only once your own hook calls this copy.",
+		Action: "Add the line the note gives to the commit-msg hook git runs: it blocks a commit only when abcd refuses the message, and lets it through when abcd is missing. To undo it, delete hooks/abcd-commit-msg in the directory git rev-parse --git-common-dir names.",
 	},
 	writeRules: {
 		What:   "Created .abcd/rules.json, which switches abcd's working-rule reminders on or off for this repository.",

@@ -2,7 +2,10 @@ package claim
 
 import (
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -77,4 +80,69 @@ func runGitStdin(t *testing.T, dir, stdin string, args ...string) string {
 		t.Fatalf("git %v: %v", args, err)
 	}
 	return string(out)
+}
+
+// TestAnOversizedTipIsDatedAsStoredNotAsReplaced: a replace ref (one a fetch
+// can bring in, under remote.origin.fetch = +refs/replace/*:refs/replace/*)
+// standing a small commit dated 2100 in for an oversized tip does not lend the
+// tip its date: the tip is judged too big from the object as stored, and is
+// held from that object's own commit date.
+func TestAnOversizedTipIsDatedAsStoredNotAsReplaced(t *testing.T) {
+	r := newCheckout(t, "pat@example.com")
+	tree := r.Git("hash-object", "-w", "-t", "tree", "/dev/null")
+	ref := hostileTip(t, r, "iss-5", "abcd reservation: iss-5\n\n"+strings.Repeat("x", 9000)+"\n", tree, t0)
+	sha := r.Git("rev-parse", ref)
+	later := time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+	path := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(path, []byte("abcd reservation: iss-5\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("replace", sha, commitAt(t, r, tree, path, later))
+	// The replacement is live for a git that honours it: the tip reads as
+	// dated 2100.
+	if got := r.Git("show", "-s", "--format=%ct", sha); got != strconv.FormatInt(later.Unix(), 10) {
+		t.Fatalf("the replace ref is not in effect: show --format=%%ct %s = %q", sha, got)
+	}
+	got, ok, err := readTip(r.Root(), "iss-5", ref, tree, t0.Add(time.Hour), true)
+	if err != nil || !ok || got.Unreadable != reasonObjectTooBig {
+		t.Fatalf("tip = %+v, %v, %v; want unreadable: %s", got, ok, err, reasonObjectTooBig)
+	}
+	if !got.WrittenAt.Equal(t0) || got.DatedFromFetch {
+		t.Fatalf("an oversized tip behind a replace ref is dated %s (from fetch: %v); want its own commit date %s, not %s",
+			got.WrittenAt, got.DatedFromFetch, t0, later)
+	}
+}
+
+// TestATipThatIsNotACommitStaysUnreadableBehindAReplaceRef: a tracking ref
+// naming a blob that a replace ref stands a commit in for reads as the blob it
+// is, unreadable and dated from the first fetch, and the view lists it as
+// unreadable rather than refusing the listing. The walk reads its type as
+// stored too.
+func TestATipThatIsNotACommitStaysUnreadableBehindAReplaceRef(t *testing.T) {
+	r := newCheckout(t, "pat@example.com")
+	tree := r.Git("hash-object", "-w", "-t", "tree", "/dev/null")
+	blob := strings.TrimSpace(runGitStdin(t, r.Root(), "not a commit\n", "hash-object", "-w", "--stdin"))
+	r.Git("update-ref", trackingName("iss-5"), blob)
+	path := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(path, []byte("abcd reservation: iss-5\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r.Git("replace", "-f", blob, commitAt(t, r, tree, path, t0))
+	// The replacement is live for a git that honours it: the blob reads as a
+	// commit.
+	if got := r.Git("cat-file", "-t", blob); got != "commit" {
+		t.Fatalf("the replace ref is not in effect: cat-file -t %s = %q", blob, got)
+	}
+	got, ok, err := readTip(r.Root(), "iss-5", trackingName("iss-5"), tree, t0, false)
+	if err != nil || !ok || got.Commit != blob || got.Unreadable != reasonNoObject || !got.DatedFromFetch {
+		t.Fatalf("a blob tip behind a replace ref = %+v, %v, %v; want it unreadable (%s), dated from the fetch", got, ok, err, reasonNoObject)
+	}
+	snap, err := View(r.Root(), t0)
+	if err != nil || len(snap.Reservations) != 1 || snap.Reservations[0].State != StateUnreadable {
+		t.Fatalf("the view of a blob tip behind a replace ref = %+v, %v; want it listed as unreadable", snap, err)
+	}
+	r.Git("update-ref", testNamespace.track("blob"), blob)
+	if h, err := testNamespace.since(r.Root(), testNamespace.track("blob"), 10); err != nil || h.Tip != blob || h.Unreadable != reasonNoObject {
+		t.Fatalf("a walk of a blob tip behind a replace ref = %+v, %v; want it unreadable", h, err)
+	}
 }

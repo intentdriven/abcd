@@ -73,3 +73,24 @@ func TestHooksPathsKeepsAValueHoldingANewlineWhole(t *testing.T) {
 		t.Fatalf("got %q, %v", got, err)
 	}
 }
+
+// TestHooksPathsKeepsAnEmptyValue: git reads core.hooksPath set to the empty
+// value as set, and then runs no hook from the git directory's hooks/, so the
+// empty value is kept as git's answer, after the values before it.
+func TestHooksPathsKeepsAnEmptyValue(t *testing.T) {
+	repo := newRepo(t, "")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("GIT_CONFIG_GLOBAL", filepath.Join(home, ".gitconfig"))
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
+	if err := os.WriteFile(filepath.Join(home, ".gitconfig"), []byte("[core]\n\thooksPath = /global-hooks\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := runGit(t, repo, "config", "core.hooksPath", ""); err != nil {
+		t.Fatalf("%v: %s", err, out)
+	}
+	got, err := gitutil.HooksPaths(repo)
+	if err != nil || !slices.Equal(got, []string{"/global-hooks", ""}) {
+		t.Fatalf("got %q, %v", got, err)
+	}
+}
