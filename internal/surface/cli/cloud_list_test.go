@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -118,7 +119,7 @@ func TestListShowsHandedBackStoppedAndWorking(t *testing.T) {
 	if len(rows) != 5 {
 		t.Errorf("list shows %d rows, want 5\n%s", len(rows), out)
 	}
-	if !strings.Contains(c.callLog(), "go run ./cmd/abcd peers --json") {
+	if !strings.Contains(c.callLog(), "abcd peers --json") {
 		t.Errorf("the reservations were not read through abcd peers:\n%s", c.callLog())
 	}
 	if n := strings.Count(errOut, "fallback channel"); n != 1 {
@@ -306,5 +307,34 @@ func TestListWritesOnlyRemoteTrackingRefs(t *testing.T) {
 		} else if b != s {
 			t.Errorf("the list changed .git/%s", rel)
 		}
+	}
+}
+
+// TestListReadsPeersOwnExitCode: abcd peers exits 1 when the reservations
+// could not be fetched (its answer is still the last fetched) and 2 when it
+// could not run at all (its answer is an error object). Through `go run` both
+// read as 1, and the error object would be read as reservations.
+func TestListReadsPeersOwnExitCode(t *testing.T) {
+	c := newForgeCase(t, "")
+	c.pushWIP(itemHanded, reportText(itemHanded, "handed-back", "branch", "Fixed the walk over the readings folder."))
+	peers := filepath.Join(filepath.Dir(c.bin), "abcd-peers-2")
+	body := "#!/bin/sh\necho \"abcd $*\" >>\"$CALLS\"\n" +
+		"echo '{\"abcd\":\"error\",\"error\":\"outside a git checkout\",\"exit_code\":2}'\nexit 2\n"
+	if err := os.WriteFile(peers, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c.resetCalls()
+	rows, _, errOut := c.listRows([]string{"ABCD_BIN=" + peers, "FAKE_ABCD=" + peers})
+	if !strings.Contains(errOut, "the reservations could not be read (abcd peers exited 2)") {
+		t.Errorf("the list did not read peers' own exit code, 2:\n%s", errOut)
+	}
+	if strings.Contains(errOut, "as last fetched") {
+		t.Errorf("the list read peers' error object as the last fetched reservations:\n%s", errOut)
+	}
+	if got := rows[itemHanded]; got[1] != "handed-back" {
+		t.Errorf("the branches are no longer listed when peers cannot run: %q", got)
+	}
+	if regexp.MustCompile(`(?m)^go `).MatchString(c.callLog()) {
+		t.Errorf("with ABCD_BIN set the list ran go:\n%s", c.callLog())
 	}
 }

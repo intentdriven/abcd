@@ -55,7 +55,7 @@ func TestSettingsFileShape(t *testing.T) {
 			market.Name: map[string]any{"source": map[string]any{"source": "github", "repo": repo}},
 		},
 		"enabledPlugins": map[string]any{market.Plugins[0].Name + "@" + market.Name: true},
-		"attribution":    map[string]any{"commit": "", "sessionUrl": false},
+		"attribution":    map[string]any{"commit": "", "pr": "", "sessionUrl": false},
 	}
 	for k, v := range want {
 		if !reflect.DeepEqual(settings[k], v) {

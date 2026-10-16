@@ -5,14 +5,16 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
 
 // The brief (scripts/cloud/brief.sh and brief.md.tmpl, C4 and C13),
 // spc-2610120941441282 step 5. The fixture is newCloudCase's clone with a
-// bare origin; every abcd verb the script calls goes through a fake `go` on
-// PATH (fakeAbcd), whose answer each test decides, so nothing here builds abcd.
+// bare origin; every abcd verb the script calls goes through a fake abcd
+// (fakeAbcd), whose answer each test decides, so only the tests that say so
+// build the real one.
 
 const (
 	briefScript   = "scripts/cloud/brief.sh"
@@ -29,27 +31,35 @@ func intentRecord(bucket, id string) string {
 	return ".abcd/development/intents/" + bucket + "/" + id + "-a-fixture-item.md"
 }
 
-// fakeAbcd replaces the fixture's `go` with one that answers the three abcd
-// verbs the brief runs, each by an environment variable a test sets:
+// fakeAbcd stands in for abcd itself: a fake `abcd` binary, written at
+// $FAKE_ABCD, that answers the three verbs the brief runs, each by an
+// environment variable a test sets:
 //
 //	FAKE_READY     intent ready's exit code (default 0)
 //	FAKE_EMBARGO   embargo check's exit code, or `unknown` for a binary that
 //	               has no such verb (default 0)
 //	FAKE_OUTBOUND  lint outbound's exit code (default 0)
 //
-// The text embargo check was given is kept beside the call log, so a test can
-// prove it was the composed brief.
+// Each call logs `abcd <argv>`. The texts embargo check was given are kept
+// beside the call log, so a test can prove which they were.
+//
+// The fixture's `go` gives that binary both ways a script can reach abcd:
+// `go build -o <path> ./cmd/abcd` copies it to <path> (FAKE_BUILD, when set,
+// is the build's exit code instead), and `go run ./cmd/abcd ...` runs it the
+// way the real `go run` does, turning every non-zero exit into 1. So a script
+// still branching on `go run`'s exit code reads what it would really read.
 func (c *cloudCase) fakeAbcd() {
 	c.t.Helper()
-	c.fake("go", `echo "go $*" >>"$CALLS"
-if [ "${1:-}" != run ] || [ "${2:-}" != ./cmd/abcd ]; then echo "fake go: unexpected $*" >&2; exit 3; fi
-shift 2
+	fakeAbcd := filepath.Join(filepath.Dir(c.bin), "fake-abcd")
+	body := `#!/bin/sh
+echo "abcd $*" >>"$CALLS"
 case "${1:-} ${2:-}" in
 "intent ready") exit "${FAKE_READY:-0}" ;;
 "embargo check")
+	: >"$CALLS.embargo-text"
 	prev=""
 	for a in "$@"; do
-		if [ "$prev" = --file ]; then cat "$a" >"$CALLS.embargo-text"; fi
+		if [ "$prev" = --file ]; then cat "$a" >>"$CALLS.embargo-text"; echo "$a" >>"$CALLS.embargo-files"; fi
 		prev="$a"
 	done
 	if [ "${FAKE_EMBARGO:-0}" = unknown ]; then
@@ -59,9 +69,31 @@ case "${1:-} ${2:-}" in
 	exit "${FAKE_EMBARGO:-0}" ;;
 "lint outbound") exit "${FAKE_OUTBOUND:-0}" ;;
 esac
-echo "fake go: unexpected abcd $*" >&2
-exit 3`)
+echo "fake abcd: unexpected $*" >&2
+exit 3
+`
+	if err := os.WriteFile(fakeAbcd, []byte(body), 0o755); err != nil {
+		c.t.Fatal(err)
+	}
+	c.env = append(c.env, "FAKE_ABCD="+fakeAbcd)
+	c.fake("go", goFakeForAbcd)
 }
+
+// goFakeForAbcd is the fixture's `go` for a test whose abcd is $FAKE_ABCD:
+// a build copies it, and a run collapses its exit code as the real go run does.
+const goFakeForAbcd = `echo "go $*" >>"$CALLS"
+if [ "${1:-}" = build ] && [ "${2:-}" = -o ] && [ $# -eq 4 ] && [ "$4" = ./cmd/abcd ]; then
+	if [ -n "${FAKE_BUILD:-}" ]; then echo "fake go: the build failed" >&2; exit "$FAKE_BUILD"; fi
+	cat "$FAKE_ABCD" >"$3" && chmod +x "$3"
+	exit
+fi
+if [ "${1:-}" = run ] && [ "${2:-}" = ./cmd/abcd ]; then
+	shift 2
+	"$FAKE_ABCD" "$@" || exit 1
+	exit 0
+fi
+echo "fake go: unexpected $*" >&2
+exit 3`
 
 // commitRecord writes a record and commits it on the current branch; push
 // sends the branch to origin.
@@ -237,7 +269,7 @@ func TestBriefRefusesUnreadyIntent(t *testing.T) {
 	if !strings.Contains(errOut, "not ready") {
 		t.Errorf("the refusal does not say the intent is not ready\n%s", errOut)
 	}
-	if log := c.callLog(); !strings.Contains(log, "go run ./cmd/abcd intent ready "+fixtureIntent+" --json") {
+	if log := c.callLog(); !strings.Contains(log, "abcd intent ready "+fixtureIntent+" --json") {
 		t.Errorf("the readiness gate was not asked:\n%s", log)
 	}
 	// A readiness gate that cannot run is a refusal too.
@@ -367,7 +399,7 @@ func TestBriefRefusesEmbargoedItem(t *testing.T) {
 	if !strings.Contains(errOut, "embargo") {
 		t.Errorf("the refusal does not name the embargo\n%s", errOut)
 	}
-	if !strings.Contains(c.callLog(), "go run ./cmd/abcd embargo check --file ") {
+	if !strings.Contains(c.callLog(), "abcd embargo check --file ") {
 		t.Errorf("the embargo check was not run over a file:\n%s", c.callLog())
 	}
 	checked, err := os.ReadFile(c.calls + ".embargo-text")
@@ -438,5 +470,197 @@ func TestBriefReadsNoAuthorFromThisComputer(t *testing.T) {
 				t.Errorf("brief asked git for an identity: %q", l)
 			}
 		}
+	}
+}
+
+// TestBriefReadsAbcdsRealExitCodes: the brief branches on abcd's exit codes
+// (2 is the embargo check's refusal; 1 a gate's refusal, anything else a gate
+// that could not run), and `go run` turns every non-zero exit into 1. So the
+// brief runs a binary built from this checkout, once per run, or the one
+// ABCD_BIN names.
+func TestBriefReadsAbcdsRealExitCodes(t *testing.T) {
+	t.Run("go run collapses an exit code", func(t *testing.T) {
+		if _, err := exec.LookPath("go"); err != nil {
+			t.Skip("go unavailable")
+		}
+		mod := t.TempDir()
+		for name, body := range map[string]string{
+			"go.mod":  "module exitcode\n\ngo 1.21\n",
+			"main.go": "package main\n\nimport \"os\"\n\nfunc main() { os.Exit(2) }\n",
+		} {
+			if err := os.WriteFile(filepath.Join(mod, name), []byte(body), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}
+		run := exec.Command("go", "run", ".")
+		run.Dir = mod
+		run.Env = append(os.Environ(), "GOWORK=off", "GOTOOLCHAIN=local", "GOFLAGS=")
+		out, err := run.CombinedOutput()
+		if code := cloudExitCode(t, err); code != 1 {
+			t.Fatalf("go run of a program exiting 2 exited %d, want 1 (the collapse this test is about)\n%s", code, out)
+		}
+	})
+
+	held := "it is held under embargo"
+	for _, tc := range []struct {
+		name, env, want, never string
+	}{
+		{"the embargo check's refusal", "FAKE_EMBARGO=2", held, "could not run"},
+		{"a readiness gate that cannot run", "FAKE_READY=2", "readiness gate (abcd intent ready) could not run (exit 2)", "it is not ready:"},
+		{"an outbound check that cannot run", "FAKE_OUTBOUND=2", "could not run (exit 2)", "fails the outbound check"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newBriefCase(t)
+			c.commitRecord(intentRecord("planned", fixtureIntent), true)
+			c.embargoStore()
+			c.resetCalls()
+			out, errOut, code := c.scriptSplit([]string{tc.env}, briefScript, fixtureIntent)
+			if code != 1 || out != "" {
+				t.Fatalf("exited %d with stdout %q, want a refusal printing no brief\n%s", code, out, errOut)
+			}
+			if !strings.Contains(errOut, tc.want) || strings.Contains(errOut, tc.never) {
+				t.Errorf("the refusal does not read abcd's own exit code: want %q and never %q\n%s", tc.want, tc.never, errOut)
+			}
+			log := c.callLog()
+			if n := strings.Count(log, "go build -o "); n != 1 {
+				t.Errorf("abcd was built %d times, want once per run:\n%s", n, log)
+			}
+			if strings.Contains(log, "go run") {
+				t.Errorf("the brief still runs abcd through go run, which collapses its exit code:\n%s", log)
+			}
+		})
+	}
+
+	t.Run("ABCD_BIN names a prebuilt binary", func(t *testing.T) {
+		c := newBriefCase(t)
+		c.commitRecord(issueRecord(fixtureIssue), true)
+		c.embargoStore()
+		c.resetCalls()
+		bin := ""
+		for _, kv := range c.env {
+			if strings.HasPrefix(kv, "FAKE_ABCD=") {
+				bin = strings.TrimPrefix(kv, "FAKE_ABCD=")
+			}
+		}
+		out, errOut, code := c.scriptSplit([]string{"ABCD_BIN=" + bin, "FAKE_EMBARGO=2"}, briefScript, fixtureIssue)
+		if code != 1 || out != "" || !strings.Contains(errOut, held) {
+			t.Errorf("an embargo refusal through ABCD_BIN exited %d with stdout %q, want the embargo refusal\n%s", code, out, errOut)
+		}
+		if log := c.callLog(); regexp.MustCompile(`(?m)^go `).MatchString(log) {
+			t.Errorf("with ABCD_BIN set the brief ran go:\n%s", log)
+		}
+
+		// A value that is not an executable file is not used: abcd is built.
+		c.resetCalls()
+		out, errOut, code = c.scriptSplit([]string{"ABCD_BIN=" + filepath.Join(t.TempDir(), "absent")}, briefScript, fixtureIssue)
+		if code != 0 || !strings.Contains(out, fixtureIssue) {
+			t.Errorf("with ABCD_BIN naming no file the brief exited %d\n%s", code, errOut)
+		}
+		if n := strings.Count(c.callLog(), "go build -o "); n != 1 {
+			t.Errorf("with ABCD_BIN naming no file abcd was built %d times, want once:\n%s", n, c.callLog())
+		}
+	})
+
+	t.Run("a build that fails is a refusal", func(t *testing.T) {
+		c := newBriefCase(t)
+		c.commitRecord(issueRecord(fixtureIssue), true)
+		out, errOut, code := c.scriptSplit([]string{"FAKE_BUILD=1"}, briefScript, fixtureIssue)
+		if code != 1 || out != "" || !strings.Contains(errOut, "could not be built") {
+			t.Errorf("a failed build exited %d with stdout %q, want a refusal saying abcd could not be built\n%s", code, out, errOut)
+		}
+	})
+}
+
+// embargoTitle is the fixture advisory's title, an invented one
+// (examples-use-reserved-identifiers), long enough for the check to match.
+const embargoTitle = "Sample Overflow In The Example Parser"
+
+// TestBriefChecksTheRecordAgainstTheEmbargo runs the real abcd, built from this
+// checkout, against a real embargo store: the store is made by `abcd embargo
+// intake`, reading one advisory in triage from a fake `gh`. The brief carries
+// the item's id and path, never its text, so the check is also given the
+// item's record: a record naming an embargoed advisory's title is refused.
+func TestBriefChecksTheRecordAgainstTheEmbargo(t *testing.T) {
+	bin := outboundChecker(t)
+	c := newCloudCase(t)
+	c.env = append(c.env, "ABCD_BIN="+bin)
+	advisory := `{"ghsa_id":"GHSA-xxxx-xxxx-xxxx","cve_id":null,"summary":"` + embargoTitle + `",` +
+		`"description":"the report","severity":"high","state":"triage","vulnerabilities":[]}`
+	c.fake("gh", `echo "gh $*" >>"$CALLS"
+for a in "$@"; do case "$a" in
+	state=triage) echo '[`+advisory+`]'; exit 0 ;;
+	state=*) echo '[]'; exit 0 ;;
+esac; done
+echo '`+advisory+`'`)
+
+	clean, named := issueRecord(fixtureIssue), issueRecord("iss-2610150000000009")
+	for rel, body := range map[string]string{
+		clean: "---\nid: fixture\n---\n\n# A fixture item\n\nThe walk skips a folder.\n",
+		named: "---\nid: fixture\n---\n\n# A fixture item\n\nFix the " + embargoTitle + " before it is published.\n",
+	} {
+		c.write(rel, body, 0o644)
+	}
+	c.git("add", "-A")
+	c.git("-c", "user.name=Seed Person", "-c", "user.email=seed@example.com", "-c", "core.hooksPath=/dev/null",
+		"commit", "-q", "-m", "two records")
+	c.git("-c", "core.hooksPath=/dev/null", "push", "-q", "origin", "main")
+
+	// Intake reads origin as a github.com repository; the brief fetches from
+	// the bare one.
+	c.git("remote", "set-url", "origin", "https://github.com/example/example.git")
+	if out, err := c.run(c.dir, bin, "embargo", "intake"); err != nil {
+		t.Fatalf("abcd embargo intake: %v\n%s", err, out)
+	}
+	c.git("remote", "set-url", "origin", c.origin)
+
+	out, errOut, code := c.scriptSplit(nil, briefScript, fixtureIssue)
+	if code != 0 || !strings.Contains(out, fixtureIssue) {
+		t.Fatalf("a record naming no embargoed advisory: the brief exited %d\n%s", code, errOut)
+	}
+	out, errOut, code = c.scriptSplit(nil, briefScript, "iss-2610150000000009")
+	if code != 1 || out != "" {
+		t.Fatalf("a record naming an embargoed advisory's title: the brief exited %d with stdout %q, want a refusal\n%s", code, out, errOut)
+	}
+	if !strings.Contains(errOut, "held under embargo") {
+		t.Errorf("the refusal does not say the item is held under embargo\n%s", errOut)
+	}
+	if strings.Contains(errOut, embargoTitle) {
+		t.Errorf("the refusal repeats the embargoed title\n%s", errOut)
+	}
+}
+
+// TestBriefRefusesRecordWithUnpushedEdits: readiness is judged on this
+// computer's copy of the record, and the cloud session reads origin's. So the
+// two must be the same blob.
+func TestBriefRefusesRecordWithUnpushedEdits(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		commit bool
+	}{
+		{"an edit not committed", false},
+		{"an edit committed but not pushed", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c := newBriefCase(t)
+			rel := intentRecord("planned", fixtureIntent)
+			c.commitRecord(rel, true)
+			c.write(rel, "---\nid: fixture\n---\n\n# A fixture item, edited here\n", 0o644)
+			if tc.commit {
+				c.git("add", "--", rel)
+				c.git("-c", "user.name=Seed Person", "-c", "user.email=seed@example.com", "-c", "core.hooksPath=/dev/null",
+					"commit", "-q", "-m", "edit "+rel)
+			}
+			c.resetCalls()
+			out, errOut, code := c.scriptSplit(nil, briefScript, fixtureIntent)
+			if code != 1 || out != "" {
+				t.Fatalf("exited %d with stdout %q, want a refusal printing no brief\n%s", code, out, errOut)
+			}
+			if !strings.Contains(errOut, "changes not on origin's default branch") || !strings.Contains(errOut, "push them first") {
+				t.Errorf("the refusal does not say the record has changes not on origin\n%s", errOut)
+			}
+			if log := c.callLog(); strings.Contains(log, "lint outbound") || strings.Contains(log, "embargo") {
+				t.Errorf("a brief was composed for a record that differs from origin's:\n%s", log)
+			}
+		})
 	}
 }

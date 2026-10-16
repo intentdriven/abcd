@@ -9,7 +9,10 @@
 #      prefix a host connector declares (connector.sh, so nothing here names a
 #      host, C12), fetched with pruning into refs/remotes/origin/, and the
 #      report file on each branch's tip, read with `git show`;
-#   2. the reservations: `go run ./cmd/abcd peers --json`, which fetches every
+#   2. the reservations: `abcd peers --json`, run through a binary built from
+#      this checkout, or the one ABCD_BIN names (scripts/cloud/abcd-bin.sh),
+#      since its exit code (1 not fetched, 2 could not run) is read and `go run`
+#      turns every non-zero exit into 1. It fetches every
 #      `refs/heads/abcd-reserved/*` from origin with pruning (the refspec
 #      internal/core/claim uses) and judges each one live, expired, released
 #      or unreadable by the one lease rule. Liveness is never re-derived here
@@ -186,8 +189,15 @@ done <<<"$prefixes"
 # --- 2. The reservations -------------------------------------------------------
 
 rc=0
-peers="$(go run ./cmd/abcd peers --json 2>"$tmp/peers.err" </dev/null)" || rc=$?
-if [ "$rc" -le 1 ] && [ -n "$peers" ]; then
+peers="" abcd=""
+if ! abcd="$(bash "$here/abcd-bin.sh" "$tmp" 2>"$tmp/build.err")"; then
+	note "the reservations could not be read (abcd could not be built from this checkout: go build ./cmd/abcd; $(tail -n 1 "$tmp/build.err" | cut -c1-200)), so no session shows as working."
+else
+	peers="$("$abcd" peers --json 2>"$tmp/peers.err" </dev/null)" || rc=$?
+fi
+if [ -z "$abcd" ]; then
+	:
+elif [ "$rc" -le 1 ] && [ -n "$peers" ]; then
 	[ "$rc" -eq 0 ] ||
 		note "the reservations could not be fetched from origin; they are as last fetched ($(tail -n 1 "$tmp/peers.err" | cut -c1-200))."
 	# Indented JSON, one key per line: a "record" names the reservation and
@@ -200,7 +210,7 @@ if [ "$rc" -le 1 ] && [ -n "$peers" ]; then
 			printf '%s\tr\t\tlive\t\t\n' "$item"
 		done >>"$rows" || true
 else
-	note "the reservations could not be read (go run ./cmd/abcd peers exited $rc), so no session shows as working."
+	note "the reservations could not be read (abcd peers exited $rc), so no session shows as working."
 fi
 
 # --- 3. The fallback channel: the tracking issue's comments ---------------------

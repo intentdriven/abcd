@@ -41,6 +41,9 @@ var cloudFixtureFiles = []string{
 var cloudScrubbed = []string{
 	"PATH=", "GIT_AUTHOR_NAME=", "GIT_AUTHOR_EMAIL=", "GIT_COMMITTER_NAME=", "GIT_COMMITTER_EMAIL=",
 	"EMAIL=", "CLAUDE_CODE_REMOTE=", "FAKE_UID=", "FAKE_GOVERSION=", "FAKE_GOMODCACHE=",
+	// A binary built from this checkout, and the host's file of variables for
+	// later shells: a test sets each, or none is set.
+	"ABCD_BIN=", "ABCD_OUTBOUND_BIN=", "CLAUDE_ENV_FILE=",
 }
 
 func newCloudCase(t *testing.T) *cloudCase {

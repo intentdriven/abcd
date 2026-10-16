@@ -11,7 +11,12 @@
 #
 #   1. a normal user `abcd`, with no sudo and no extra group, owning the
 #      checkout. If the user cannot be made it says so and exits 1, before
-#      anything else: every check runs as that user or not at all (decision 8);
+#      anything else: every check runs as that user or not at all (decision 8).
+#      Then the checkout is trusted for root in git's system configuration
+#      (`git config --system --add safe.directory <checkout>`, once): from git
+#      2.35.2 git refuses a repository another user owns, so without it every
+#      git command run as root in the checkout, the host's own included, would
+#      stop there;
 #   2. gitleaks at the version .github/workflows/ci.yml pins (GITLEAKS_VERSION,
 #      read from that file as data, so there is one pin), downloaded and
 #      checksum-verified exactly as the CI job does, then installed to
@@ -19,6 +24,19 @@
 #   3. as `abcd`: the toolchain go.mod declares, resolved through
 #      scripts/pinned-toolchain.sh (so `go run ./cmd/abcd` works), and
 #      core.hooksPath=.githooks in the checkout, so the committed hooks run;
+#   3b. as `abcd`: abcd itself, built once from the checkout into its local
+#      tier, .abcd/.work.local/cloud/bin/abcd (`go build`, rebuilt at every
+#      session start, so it is the checkout's own as the session found it; a
+#      session that changes abcd's own checks is judged by the abcd it started
+#      with until the next start). The pre-push hook checks
+#      every commit of a work-in-progress push with `abcd lint outbound`, and
+#      through `go run` each check would build abcd inside the push, past the
+#      push transport's idle timeout on a cold cache. The path is handed to the
+#      session's later shells through the host's file of variables
+#      (CLAUDE_ENV_FILE, which every later Bash command runs first):
+#      ABCD_OUTBOUND_BIN for the attribution gate (scripts/check-attribution.sh)
+#      and ABCD_BIN for the cloud scripts (scripts/cloud/abcd-bin.sh), each
+#      written once;
 #   4. the checkout's LOCAL author identity, from the session's forge token,
 #      through the one primitive: `go run ./cmd/abcd reserve --holder --json`,
 #      which prints {"login","id","noreply","source"}. user.name is the login
@@ -100,6 +118,18 @@ if ! chown -R "$USER_NAME:$USER_NAME" "$root"; then
 fi
 say "user $USER_NAME ($made, no sudo) owns the checkout; run every later command as it (runuser -u $USER_NAME --)."
 
+# The checkout now belongs to another user than root, which git refuses to
+# work in as root unless the checkout is trusted. Read first, so it is added
+# once however often the setup runs.
+trusted="$(git config --system --get-all safe.directory 2>/dev/null)" || trusted=""
+if grep -Fxq -- "$root" <<<"$trusted"; then
+	say "git trusts the checkout for root (safe.directory, system configuration) already."
+elif git config --system --add safe.directory "$root"; then
+	say "git trusts the checkout for root (safe.directory, system configuration), so git run as root works in it."
+else
+	miss "git's system configuration could not be given the checkout as a safe.directory, so git run as root in it refuses it."
+fi
+
 # --- 2. gitleaks ----------------------------------------------------------------------
 
 gitleaks_step() {
@@ -165,6 +195,39 @@ if as_abcd git -C "$root" config --local core.hooksPath .githooks; then
 else
 	miss "core.hooksPath could not be set in the checkout."
 fi
+
+# --- 3b. abcd, built once for the session's later shells ------------------------------
+
+bin_rel=".abcd/.work.local/cloud/bin/abcd"
+abcd_step() {
+	local bin="$root/$bin_rel" var line
+	if ! as_abcd mkdir -p "$root/.abcd/.work.local/cloud/bin" ||
+		! as_abcd go build -o "$bin" ./cmd/abcd </dev/null >/dev/null 2>&1 || [ ! -x "$bin" ]; then
+		miss "abcd could not be built from the checkout (go build ./cmd/abcd, as $USER_NAME), so every push builds it per commit."
+		return 0
+	fi
+	case "$bin" in
+	*"'"* | *$'\n'*)
+		say "abcd built at $bin_rel; its path cannot be written as a variable, so set ABCD_OUTBOUND_BIN and ABCD_BIN to it in each shell."
+		return 0
+		;;
+	esac
+	if [ -z "${CLAUDE_ENV_FILE:-}" ]; then
+		say "abcd built at $bin_rel; no file of variables for later shells was given, so set ABCD_OUTBOUND_BIN and ABCD_BIN to it in each shell."
+		return 0
+	fi
+	for var in ABCD_OUTBOUND_BIN ABCD_BIN; do
+		line="export $var='$bin'"
+		if ! grep -Fxq -- "$line" "$CLAUDE_ENV_FILE" 2>/dev/null; then
+			printf '%s\n' "$line" >>"$CLAUDE_ENV_FILE" || {
+				miss "abcd built at $bin_rel, but $var could not be written to the file of variables for later shells."
+				return 0
+			}
+		fi
+	done
+	say "abcd built at $bin_rel and handed to later shells as ABCD_OUTBOUND_BIN and ABCD_BIN."
+}
+abcd_step
 
 # --- 4. The author identity, from the forge token ----------------------------------------
 

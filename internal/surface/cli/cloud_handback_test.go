@@ -19,9 +19,11 @@ import (
 // same work-in-progress entry a cloud session's does. origin's URL is a plain
 // github.com one, rewritten by git's own insteadOf to the bare repository, so
 // the script reads a forge owner and name while every push and fetch stays on
-// this disk. abcd's verbs run through a binary built from this checkout (the
-// fake `go` execs it), so the outbound check judging a report is the real one;
-// the forge's REST interface is a fake `gh` that records each call.
+// this disk. abcd's verbs run through a binary built from this checkout, named
+// by ABCD_BIN through a wrapper that logs each call, so the outbound check
+// judging a report is the real one; the fixture's `go` builds by copying that
+// binary and runs it collapsing its exit code, as the real `go run` does. The
+// forge's REST interface is a fake `gh` that records each call.
 
 const (
 	handBackScript = "scripts/cloud/hand-back.sh"
@@ -42,7 +44,11 @@ func newForgeCase(t *testing.T, tracking string) *cloudCase {
 	t.Helper()
 	bin := outboundChecker(t)
 	c := newCloudCase(t)
-	c.env = append(c.env, "ABCD_BIN="+bin, "ABCD_OUTBOUND_BIN="+bin)
+	logged := filepath.Join(filepath.Dir(c.bin), "abcd-logged")
+	if err := os.WriteFile(logged, []byte("#!/bin/sh\necho \"abcd $*\" >>\"$CALLS\"\nexec '"+bin+"' \"$@\"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	c.env = append(c.env, "ABCD_BIN="+logged, "ABCD_OUTBOUND_BIN="+bin, "FAKE_ABCD="+logged)
 
 	top := exec.Command("git", "rev-parse", "--show-toplevel")
 	top.Env = gittest.Env(t)
@@ -81,10 +87,7 @@ func newForgeCase(t *testing.T, tracking string) *cloudCase {
 	// computer overrides the marker with its own value.
 	c.env = append(c.env, remoteMarker)
 
-	c.fake("go", `echo "go $*" >>"$CALLS"
-if [ "${1:-}" = run ] && [ "${2:-}" = ./cmd/abcd ]; then shift 2; exec "$ABCD_BIN" "$@"; fi
-echo "fake go: unexpected $*" >&2
-exit 3`)
+	c.fake("go", goFakeForAbcd)
 	c.fakeForge()
 	c.resetCalls()
 	return c
@@ -342,8 +345,8 @@ func TestHandBackFallsBackToIssueCommentWhenPushFails(t *testing.T) {
 	if len(payload) != 1 {
 		t.Errorf("the request body carries more than the comment: %v", payload)
 	}
-	if !strings.Contains(c.callLog(), "go run ./cmd/abcd lint outbound --label report") {
-		t.Errorf("the comment was not passed through the outbound check:\n%s", c.callLog())
+	if n := strings.Count(c.callLog(), "abcd lint outbound --label report"); n != 2 {
+		t.Errorf("the outbound check ran %d times, want twice (the report, then the comment):\n%s", n, c.callLog())
 	}
 	if !strings.Contains(out+errOut, "#"+trackingIssue) {
 		t.Errorf("the hand-back does not say where the report went:\n%s%s", out, errOut)
@@ -584,5 +587,69 @@ func TestHandBackUnstagesReportWhenCommitFails(t *testing.T) {
 	}
 	if !strings.Contains(errOut, "could not be committed") {
 		t.Errorf("the hand-back does not say the commit failed:\n%s", errOut)
+	}
+}
+
+// fakeOutbound writes a stand-in abcd whose lint outbound exits code, and
+// returns its path.
+func (c *cloudCase) fakeOutbound(code string) string {
+	c.t.Helper()
+	p := filepath.Join(filepath.Dir(c.bin), "abcd-outbound-"+code)
+	body := "#!/bin/sh\necho \"abcd $*\" >>\"$CALLS\"\necho 'the check could not read its input' >&2\nexit " + code + "\n"
+	if err := os.WriteFile(p, []byte(body), 0o755); err != nil {
+		c.t.Fatal(err)
+	}
+	return p
+}
+
+// TestHandBackReadsTheOutboundChecksOwnExitCode: lint outbound exits 1 for a
+// refused report and 2 for a check that could not run, and the hand-back acts
+// differently on each. Through `go run` both read as 1.
+func TestHandBackReadsTheOutboundChecksOwnExitCode(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.work("one.md")
+	head := c.git("rev-parse", "HEAD")
+	out, errOut, code := c.handBack([]string{"ABCD_BIN=" + c.fakeOutbound("2"), "FAKE_ABCD=" + c.fakeOutbound("2")},
+		"--item", handBackItem, "--state", "handed-back", "--assisted-by", "Claude:claude-opus-5")
+	if code != 1 {
+		t.Fatalf("an outbound check that could not run: exit %d, want 1\n%s%s", code, out, errOut)
+	}
+	if !strings.Contains(errOut, "could not run (exit 2)") || strings.Contains(errOut, "fails the outbound check") {
+		t.Errorf("the hand-back did not read the check's own exit code, 2:\n%s", errOut)
+	}
+	if !strings.Contains(out, "item: "+handBackItem) {
+		t.Errorf("a report the check could not judge is not printed for the transcript:\n%s", out)
+	}
+	if got := c.git("rev-parse", "HEAD"); got != head {
+		t.Errorf("a report the check could not judge was committed as %s", got)
+	}
+	if regexp.MustCompile(`(?m)^go `).MatchString(c.callLog()) {
+		t.Errorf("with ABCD_BIN set the hand-back ran go:\n%s", c.callLog())
+	}
+}
+
+// TestHandBackBuildsAbcdOnceWithoutABCDBIN: with no ABCD_BIN the hand-back
+// builds abcd from this checkout once, and both outbound checks (the report,
+// then the comment when the push fails) use that one binary.
+func TestHandBackBuildsAbcdOnceWithoutABCDBIN(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.work("one.md")
+	c.originRefuses("the proxy refuses this branch")
+	out, errOut, code := c.handBack([]string{"ABCD_BIN="}, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("hand-back exited %d\n%s%s", code, out, errOut)
+	}
+	log := c.callLog()
+	if n := strings.Count(log, "go build -o "); n != 1 {
+		t.Errorf("abcd was built %d times, want once per run:\n%s", n, log)
+	}
+	if strings.Contains(log, "go run") {
+		t.Errorf("the hand-back still runs abcd through go run:\n%s", log)
+	}
+	if n := strings.Count(log, "abcd lint outbound --label report"); n != 2 {
+		t.Errorf("the outbound check ran %d times, want twice:\n%s", n, log)
+	}
+	if len(c.forgeCalls()) != 1 {
+		t.Errorf("the comment was posted %d times, want once", len(c.forgeCalls()))
 	}
 }

@@ -110,8 +110,9 @@ branch name and the remote test from the connector.
   `extraKnownMarketplaces` and `enabledPlugins` keys; the build session
   confirms the exact key names against the host's settings reference before
   writing them, and names the page it read in the commit);
-- switches off the host's AI co-author line and session link
-  (`attribution.commit`, `attribution.sessionUrl`, same confirmation);
+- switches off the host's AI co-author line, its pull-request footer and its
+  session link (`attribution.commit`, `attribution.pr`,
+  `attribution.sessionUrl`, same confirmation);
 - runs `scripts/cloud/connectors/claude/setup.sh` from a `SessionStart` hook.
   The script's first line exits 0 doing nothing unless `is-remote.sh` passes,
   so on the person's computer the hook does nothing (C11).
@@ -128,14 +129,23 @@ release.
 
 1. Create a normal user `abcd` (no sudo), give it the checkout (`chown -R`),
    and refuse to go on if the user cannot be created; it says so and exits 1
-   (the scope condition is then falsified, see step 1).
+   (the scope condition is then falsified, see step 1). Then trust the
+   checkout for root in git's system configuration (`git config --system
+   --add safe.directory <checkout>`, once): from git 2.35.2 git refuses a
+   repository another user owns, the host's own git commands included.
 2. Install gitleaks at the version `.github/workflows/ci.yml` pins
    (`GITLEAKS_VERSION`, read from the file, so there is one pin), checksum
    verified exactly as the CI job does.
 3. As `abcd`: resolve the declared toolchain through
    `scripts/pinned-toolchain.sh` (so `go run ./cmd/abcd` works) and set
    `core.hooksPath=.githooks` in the checkout (the probe of 2026-10-15 found it
-   unset in a hosted clone, so the committed hooks never ran there).
+   unset in a hosted clone, so the committed hooks never ran there). Then
+   build abcd once into `.abcd/.work.local/cloud/bin/abcd` and hand its path
+   to the session's later shells through the host's file of variables
+   (`CLAUDE_ENV_FILE`, which a `SessionStart` hook may append `export` lines
+   to and every later Bash command runs first) as `ABCD_OUTBOUND_BIN` (the
+   attribution gate, so a work-in-progress push does not build abcd once per
+   commit inside the push) and `ABCD_BIN` (the cloud scripts).
 4. Set the checkout's local author identity from the environment's forge
    token (the intent's decisions 17 and 18): the token's login as
    `user.name` and `<id>+<login>@users.noreply.github.com` as `user.email`,
@@ -180,16 +190,21 @@ warning line otherwise. It writes nothing anywhere (a test compares
 to preview) refuses, writing nothing, unless:
 
 1. the item is ready: an open issue record under `.abcd/work/issues/open/`, or a
-   planned intent for which `go run ./cmd/abcd intent ready <id> --json` exits
+   planned intent for which `abcd intent ready <id> --json` exits
    0 (decision 7);
 2. the item is public: after `git fetch origin`, its record path exists in the
    remote default branch's tree (`git cat-file -e origin/<default>:<path>`); a
    draft never pushed, a record only on a local branch, and a private record in
-   the embargo store all fail this (C13, "not yet public");
+   the embargo store all fail this (C13, "not yet public"). The record here
+   must also be the same blob as origin's, since readiness is judged on this
+   copy while the session reads origin's: a record with changes not on
+   origin's default branch is refused until they are pushed;
 3. the item is not under embargo: when the embargo store
    (`~/.abcd.noindex/worktrees/<root-sha>/embargo/`) exists on this machine,
-   the composed brief is passed through `go run ./cmd/abcd embargo check
-   --file <brief>`, and a store that exists while the verb is unknown or
+   the composed brief and the item's record are passed through `abcd
+   embargo check --file <brief> --file <record>` (the brief carries only the
+   item's id and path; the record's text may name an advisory's title), and
+   a store that exists while the verb is unknown or
    cannot run is a refusal, never a pass (C13, "held under embargo"; fail
    closed). With no store, nothing is under embargo on this machine.
 
@@ -201,9 +216,14 @@ skipped, every abcd verb is `go run ./cmd/abcd`, every commit carries
 `Assisted-by:` and no co-author trailer, reserve the item with `abcd reserve`
 once it is on the default branch); the branch, the connector's `wip_prefix`
 followed by the item id; and the hand-back, `scripts/cloud/hand-back.sh` with
-the report fields. Before it is printed or sent, the brief passes `go run
-./cmd/abcd lint outbound --label brief`, and a check that it holds no `$HOME`
-path and no session link (C4).
+the report fields. Before it is printed or sent, the brief passes `abcd lint
+outbound --label brief`, and a check that it holds no `$HOME` path and no
+session link (C4).
+
+The scripts that read abcd's answers (`brief.sh`, `hand-back.sh`, `list.sh`)
+branch on its exit codes, and `go run` turns every non-zero exit into 1, so
+each runs a binary built from this checkout once per run, or the one
+`ABCD_BIN` names, through `scripts/cloud/abcd-bin.sh`; never `go run`.
 
 `begin.sh` runs the connector's `is_remote` script first: outside the cloud it
 prints that it is not running in the environment the brief was written for and
@@ -257,7 +277,7 @@ workflow reports blocks every merge.
 `hand-back.sh --state <handed-back|stopped> --did <text> --failed <text>
 --needs <text>` writes `.abcd/work/cloud-reports/<item-id>.md` (a short
 frontmatter: `item`, `state`, `channel`, `finished_at`; then the three
-sections), runs `go run ./cmd/abcd lint outbound --label report` over it and
+sections), runs `abcd lint outbound --label report` over it and
 refuses to send a report that fails (it prints the finding so the session can
 fix its text), commits it alone as the branch's last commit (attribution-clean,
 `Assisted-by:`), and pushes `HEAD:refs/heads/<wip_prefix><item-id>` through the
@@ -333,11 +353,11 @@ branch's own.
    - waits on: step 1's outcome on non-root running
    - packages: scripts/cloud/connectors/claude/setup.sh, .claude/settings.json, internal/surface/cli, internal/core/lint
    - waits on: the token-identity verb from spc-2610150728396006's step 2 reaching the default branch, for the identity half only
-   - tests: TestSetupDoesNothingOffCloud; TestSetupSetsIdentityFromToken (a fake verb returning login and id; `user.name` and `user.email` set locally); TestSetupLookupFailureSetsNothingAndSaysSoOnce (the container's identity appears in no output, commit, ref or trailer); TestSetupReadsGitleaksPinFromCI (the version it would install equals ci.yml's); TestSetupRefusesWhenUserCannotBeCreated (a fake `useradd` failing); TestSetupIsIdempotent (fakes for `useradd`, `chown`, the download and `su`, run twice); TestSettingsFileShape (plugin enabled from this repository's marketplace, both attribution keys off, one SessionStart hook naming setup.sh, nothing else)
+   - tests: TestSetupDoesNothingOffCloud; TestSetupSetsIdentityFromToken (a fake verb returning login and id; `user.name` and `user.email` set locally); TestSetupLookupFailureSetsNothingAndSaysSoOnce (the container's identity appears in no output, commit, ref or trailer); TestSetupReadsGitleaksPinFromCI (the version it would install equals ci.yml's); TestSetupRefusesWhenUserCannotBeCreated (a fake `useradd` failing); TestSetupIsIdempotent (fakes for `useradd`, `chown`, the download and `su`, run twice); TestSettingsFileShape (plugin enabled from this repository's marketplace, the three attribution keys off, one SessionStart hook naming setup.sh, nothing else); TestSetupTrustsTheCheckoutForRoot (one safe.directory entry, the checkout, however often it runs); TestSetupBuildsAbcdForLaterShells (built as `abcd` into the local tier, both exports written once, a failed build exported nowhere)
 5. The brief (**build-alone**)
    - criteria: C4, C13
    - packages: scripts/cloud/brief.sh, scripts/cloud/brief.md.tmpl, internal/surface/cli
-   - tests: TestBriefNamesEveryPart (item, author, first step, the no-skip and go-run rules, branch from the connector's prefix, hand-back and fallback); TestBriefCarriesNoSessionLinkHomePathOrSecret; TestBriefRefusesUnreadyIntent; TestBriefAcceptsOpenIssueAndReadyIntent; TestBriefRefusesItemNotOnRemoteDefault (a draft never pushed; a record only on a local branch); TestBriefRefusesEmbargoedItem (a fixture embargo store and a fake `abcd embargo check` exiting 2); TestBriefFailsClosedWhenEmbargoCheckCannotRun (store present, verb unknown); TestBriefWithoutStoreSkipsEmbargoCheck; TestBriefReadsNoAuthorFromThisComputer
+   - tests: TestBriefNamesEveryPart (item, author, first step, the no-skip and go-run rules, branch from the connector's prefix, hand-back and fallback); TestBriefCarriesNoSessionLinkHomePathOrSecret; TestBriefRefusesUnreadyIntent; TestBriefAcceptsOpenIssueAndReadyIntent; TestBriefRefusesItemNotOnRemoteDefault (a draft never pushed; a record only on a local branch); TestBriefRefusesEmbargoedItem (a fixture embargo store and a fake `abcd embargo check` exiting 2); TestBriefFailsClosedWhenEmbargoCheckCannotRun (store present, verb unknown); TestBriefWithoutStoreSkipsEmbargoCheck; TestBriefReadsNoAuthorFromThisComputer; TestBriefReadsAbcdsRealExitCodes (`go run` collapses an exit 2 to 1; the brief builds abcd once, or uses `ABCD_BIN`, and reads 2 as 2); TestBriefChecksTheRecordAgainstTheEmbargo (the real abcd, a real store from `abcd embargo intake` over a fake `gh`, a record naming an embargoed title refused); TestBriefRefusesRecordWithUnpushedEdits
 6. The push hook's work-in-progress entry (**build-alone**, after `feat/reserve-on-remote` has landed its declared list on the default branch; until then this step waits)
    - criteria: C7 (the hook half), C12
    - needs: 2
@@ -354,7 +374,7 @@ branch's own.
    - needs: 2
    - packages: scripts/cloud/hand-back.sh, scripts/cloud/cloud.conf (the tracking issue number from step 1), internal/surface/cli
    - until the person has created the tracking issue, `cloud.conf` carries `tracking_issue=` empty and the fallback refuses by name ("no tracking issue configured") and prints the report; it never posts anywhere else
-   - tests: TestHandBackCommitsReportAloneAsLastCommit; TestHandBackPushesToWIPBranchThroughTheHook (no `--no-verify` in any argv); TestHandBackFallsBackToIssueCommentWhenPushFails (fake `gh` records the REST call and body); TestHandBackRefusesReportFailingOutbound; TestHandBackReportNamesItsChannel; TestHandBackPrintsReportWhenBothFail
+   - tests: TestHandBackCommitsReportAloneAsLastCommit; TestHandBackPushesToWIPBranchThroughTheHook (no `--no-verify` in any argv); TestHandBackFallsBackToIssueCommentWhenPushFails (fake `gh` records the REST call and body); TestHandBackRefusesReportFailingOutbound; TestHandBackReportNamesItsChannel; TestHandBackPrintsReportWhenBothFail; TestHandBackReadsTheOutboundChecksOwnExitCode; TestHandBackBuildsAbcdOnceWithoutABCDBIN
 9. Starting a session through the connector (**build-alone**; proved live in step 12)
    - criteria: C10, C5
    - needs: 2, 5
@@ -365,7 +385,7 @@ branch's own.
     - criteria: C8
     - needs: 2, 8
     - packages: scripts/cloud/list.sh, internal/surface/cli
-    - tests (bare origin fixture, fake `gh`): TestListShowsHandedBackStoppedAndWorking (the working one from a reservation branch); TestListShowsFallbackCommentReport; TestListReadsNoTranscript (no path under any transcript store is opened); TestListWritesOnlyRemoteTrackingRefs
+    - tests (bare origin fixture, fake `gh`): TestListShowsHandedBackStoppedAndWorking (the working one from a reservation branch); TestListShowsFallbackCommentReport; TestListReadsNoTranscript (no path under any transcript store is opened); TestListWritesOnlyRemoteTrackingRefs; TestListReadsPeersOwnExitCode (peers' exit 2 is a source not read, never the last fetched reservations)
 11. The collect (**build-alone**)
     - criteria: C9
     - needs: 8

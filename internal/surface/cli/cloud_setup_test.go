@@ -45,6 +45,11 @@ func holderJSON(login, noreply, source string) string {
 //	FAKE_SHA          the checksum tool's exit code (default 0)
 //	FAKE_HOLDER       what the token-identity verb prints on standard output
 //	FAKE_HOLDER_EXIT  its exit code (default 0)
+//	FAKE_BUILD        the build of abcd's exit code when set (it fails)
+//
+// git's system configuration is a file of the test's own ($STATE/gitconfig,
+// through GIT_CONFIG_SYSTEM), so the setup's root-wide trust of the checkout
+// is read back from there and never reaches the machine's.
 //
 // Made users are files under $STATE; `install` puts the gitleaks the fake tar
 // unpacked first on PATH, so a second run finds it in place.
@@ -78,7 +83,8 @@ func newSetupCase(t *testing.T) *cloudCase {
 			t.Fatal(err)
 		}
 	}
-	c.env = append(c.env, "STATE="+state, "BIN_DIR="+c.bin, "FAKE_GOROOT="+goroot)
+	c.env = append(c.env, "STATE="+state, "BIN_DIR="+c.bin, "FAKE_GOROOT="+goroot,
+		"GIT_CONFIG_SYSTEM="+filepath.Join(state, "gitconfig"))
 
 	c.fake("id", `echo "id $*" >>"$CALLS"
 case "$*" in
@@ -123,6 +129,9 @@ chmod +x "$BIN_DIR/gitleaks"`)
 case "$*" in
 "env GOVERSION") echo go0.0.0 ;;
 "env GOROOT") echo "$FAKE_GOROOT" ;;
+"build -o "*" ./cmd/abcd")
+	if [ -n "${FAKE_BUILD:-}" ]; then echo "fake go: the build failed" >&2; exit "$FAKE_BUILD"; fi
+	printf '#!/bin/sh\necho built abcd\n' >"$3" && chmod +x "$3" ;;
 "run ./cmd/abcd reserve --holder --json")
 	if [ -n "${FAKE_HOLDER:-}" ]; then printf '%s\n' "$FAKE_HOLDER"; fi
 	echo "abcd reserve: git's identity is $(git config user.name) <$(git config user.email)>" >&2
@@ -207,8 +216,13 @@ func TestSetupSetsIdentityFromToken(t *testing.T) {
 			t.Errorf("%s was not written with git config --local, as abcd:\n%s", key, log)
 		}
 	}
-	if strings.Contains(log, "--global") || strings.Contains(log, "--system") {
+	if strings.Contains(log, "--global") {
 		t.Errorf("setup wrote configuration outside the checkout:\n%s", log)
+	}
+	for _, l := range regexp.MustCompile(`(?m)^.*--system.*$`).FindAllString(log, -1) {
+		if !strings.Contains(l, " safe.directory") {
+			t.Errorf("setup wrote system configuration other than the checkout's trust: %s", l)
+		}
 	}
 	if !strings.Contains(out, tokenLogin) {
 		t.Errorf("setup does not say whose identity it set\n%s", out)
@@ -421,4 +435,124 @@ func TestSetupIsIdempotent(t *testing.T) {
 	if n, m := strings.Count(first, "\n"), strings.Count(second, "\n"); n != m {
 		t.Errorf("the second setup printed %d lines, the first %d; one line per prerequisite each time\n%s\n--\n%s", m, n, first, second)
 	}
+}
+
+// systemTrust is every safe.directory value git's system configuration holds.
+func (c *cloudCase) systemTrust() []string {
+	c.t.Helper()
+	out, err := c.run(c.dir, "git", "config", "--system", "--get-all", "safe.directory")
+	if err != nil {
+		return nil
+	}
+	return strings.Fields(out)
+}
+
+// TestSetupTrustsTheCheckoutForRoot: once the checkout belongs to abcd, git
+// run as root in it (the host's own commands, or a hand-back run as root)
+// refuses it as of dubious ownership. So the setup trusts exactly that
+// checkout in git's system configuration, once however often it runs.
+func TestSetupTrustsTheCheckoutForRoot(t *testing.T) {
+	c := newSetupCase(t)
+	env := append(setupRemote, "FAKE_HOLDER="+holderJSON(tokenLogin, tokenNoReply, "token"))
+	first, code := c.script(env, setupScript)
+	if code != 0 {
+		t.Fatalf("setup exited %d\n%s", code, first)
+	}
+	if got := c.systemTrust(); len(got) != 1 || got[0] != c.dir {
+		t.Fatalf("git's system configuration trusts %q, want the checkout alone, %q", got, c.dir)
+	}
+	if !regexp.MustCompile(`(?m)^git config --system --add safe.directory \S+$`).MatchString(c.callLog()) {
+		t.Errorf("the trust was not added with git config --system --add, as root:\n%s", c.callLog())
+	}
+	if !strings.Contains(first, "safe.directory") {
+		t.Errorf("setup prints no line for the checkout's trust\n%s", first)
+	}
+	c.resetCalls()
+	second, code := c.script(env, setupScript)
+	if code != 0 {
+		t.Fatalf("the second setup exited %d\n%s", code, second)
+	}
+	if got := c.systemTrust(); len(got) != 1 || got[0] != c.dir {
+		t.Errorf("after a second setup git's system configuration trusts %q, want the checkout once", got)
+	}
+	if strings.Contains(c.callLog(), "--add safe.directory") {
+		t.Errorf("the second setup added the trust again:\n%s", c.callLog())
+	}
+}
+
+// TestSetupBuildsAbcdForLaterShells: the pre-push hook checks every commit of
+// a work-in-progress push with abcd lint outbound, and through `go run` each
+// check would build abcd inside the push. So the setup builds abcd once, as
+// abcd, into the local tier, and hands its path to the session's later shells
+// through the host's file of variables (CLAUDE_ENV_FILE): ABCD_OUTBOUND_BIN for
+// the attribution gate, ABCD_BIN for the cloud scripts.
+func TestSetupBuildsAbcdForLaterShells(t *testing.T) {
+	bin := filepath.Join(".abcd", ".work.local", "cloud", "bin", "abcd")
+	holder := "FAKE_HOLDER=" + holderJSON(tokenLogin, tokenNoReply, "token")
+
+	t.Run("built and exported once", func(t *testing.T) {
+		c := newSetupCase(t)
+		envFile := filepath.Join(t.TempDir(), "session.env")
+		env := append(append([]string{}, setupRemote...), holder, "CLAUDE_ENV_FILE="+envFile)
+		for run := 1; run <= 2; run++ {
+			out, code := c.script(env, setupScript)
+			if code != 0 {
+				t.Fatalf("setup run %d exited %d\n%s", run, code, out)
+			}
+			if !strings.Contains(out, bin) {
+				t.Errorf("setup run %d does not say where it built abcd\n%s", run, out)
+			}
+		}
+		path := filepath.Join(c.dir, bin)
+		if st, err := os.Stat(path); err != nil || st.Mode()&0o111 == 0 {
+			t.Fatalf("no executable abcd at %s (%v)", path, err)
+		}
+		if !regexp.MustCompile(`(?m)^as-abcd go build -o \S+/` + regexp.QuoteMeta(filepath.ToSlash(bin)) + ` ./cmd/abcd$`).MatchString(c.callLog()) {
+			t.Errorf("abcd was not built as the user abcd into the local tier:\n%s", c.callLog())
+		}
+		b, err := os.ReadFile(envFile)
+		if err != nil {
+			t.Fatalf("the variables file was not written: %v", err)
+		}
+		for _, want := range []string{"export ABCD_OUTBOUND_BIN='" + path + "'", "export ABCD_BIN='" + path + "'"} {
+			if n := strings.Count(string(b), want+"\n"); n != 1 {
+				t.Errorf("the variables file carries %q %d times after two setups, want once:\n%s", want, n, b)
+			}
+		}
+		if strings.Count(string(b), "\n") != 2 {
+			t.Errorf("the variables file carries more than the two exports:\n%s", b)
+		}
+	})
+
+	t.Run("no variables file", func(t *testing.T) {
+		c := newSetupCase(t)
+		out, code := c.script(append(append([]string{}, setupRemote...), holder), setupScript)
+		if code != 0 {
+			t.Fatalf("setup exited %d\n%s", code, out)
+		}
+		if _, err := os.Stat(filepath.Join(c.dir, bin)); err != nil {
+			t.Errorf("abcd was not built: %v", err)
+		}
+		if !strings.Contains(out, "ABCD_OUTBOUND_BIN") {
+			t.Errorf("setup does not say the binary could not be handed to later shells\n%s", out)
+		}
+	})
+
+	t.Run("a build that fails", func(t *testing.T) {
+		c := newSetupCase(t)
+		envFile := filepath.Join(t.TempDir(), "session.env")
+		out, code := c.script(append(append([]string{}, setupRemote...), holder, "FAKE_BUILD=1", "CLAUDE_ENV_FILE="+envFile), setupScript)
+		if code == 0 {
+			t.Errorf("setup exited 0 with abcd not built\n%s", out)
+		}
+		if !strings.Contains(out, "NOT IN PLACE") || !strings.Contains(out, "abcd could not be built") {
+			t.Errorf("setup does not say abcd could not be built\n%s", out)
+		}
+		if b, err := os.ReadFile(envFile); err == nil && strings.Contains(string(b), "ABCD_") {
+			t.Errorf("a binary that was not built was exported:\n%s", b)
+		}
+		if !strings.Contains(c.callLog(), "reserve --holder") {
+			t.Errorf("a failed build stopped the rest of the setup:\n%s", c.callLog())
+		}
+	})
 }

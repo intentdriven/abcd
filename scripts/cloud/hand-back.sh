@@ -10,7 +10,7 @@
 #   2. compose the report: a short frontmatter (item, state, channel,
 #      finished_at) and three sections, what the session did, what failed and
 #      what it needs from the person. It passes
-#      `go run ./cmd/abcd lint outbound --label report` or nothing is written:
+#      `abcd lint outbound --label report` or nothing is written:
 #      the finding is printed, so the session can fix its text and run this
 #      again;
 #   3. judge the checkout's author and committer identity first, as begin.sh
@@ -46,6 +46,11 @@
 # (decision 18). Of a failed push's output only the hook's own `pre-push:`
 # lines and the remote's `remote:` lines are kept, with every name and address
 # the checkout or the pushed commits carry replaced (shown()).
+#
+# abcd runs through a binary built from this checkout, once per run, or the
+# one ABCD_BIN names (scripts/cloud/abcd-bin.sh), never through `go run`: the
+# outbound check's exit code says whether the report was refused (1) or the
+# check could not run (2), and `go run` turns every non-zero exit into 1.
 #
 # The channel field says where the report went: `branch` in the committed
 # file, `issue-comment` in the comment.
@@ -216,22 +221,27 @@ trap '/bin/rm -rf -- "$tmp"' EXIT
 lint=""
 outbound() {
 	local rc=0
-	lint="$(go run ./cmd/abcd lint outbound --label report "$1" 2>&1)" || rc=$?
+	lint="$("$abcd" lint outbound --label report "$1" 2>&1)" || rc=$?
 	return "$rc"
 }
 
 compose branch >"$tmp/report.md"
+if ! abcd="$(bash "$here/abcd-bin.sh" "$tmp")"; then
+	echo "hand-back: abcd could not be built from this checkout (go build ./cmd/abcd), so the outbound check could not run and the report was not sent. It follows, so this transcript holds it." >&2
+	cat "$tmp/report.md"
+	exit 1
+fi
 rc=0
 outbound "$tmp/report.md" || rc=$?
 case "$rc" in
 0) ;;
 1)
 	printf '%s\n' "$lint" >&2
-	refuse "the report fails the outbound check (go run ./cmd/abcd lint outbound); the finding is above. Fix its text and hand back again."
+	refuse "the report fails the outbound check (abcd lint outbound); the finding is above. Fix its text and hand back again."
 	;;
 *)
 	printf '%s\n' "$lint" >&2
-	echo "hand-back: the outbound check (go run ./cmd/abcd lint outbound) could not run (exit $rc), so the report was not sent. It follows, so this transcript holds it." >&2
+	echo "hand-back: the outbound check (abcd lint outbound) could not run (exit $rc), so the report was not sent. It follows, so this transcript holds it." >&2
 	cat "$tmp/report.md"
 	exit 1
 	;;
@@ -371,7 +381,7 @@ rc=0
 outbound "$tmp/comment.md" || rc=$?
 if [ "$rc" -ne 0 ]; then
 	printf '%s\n' "$lint" >&2
-	neither "the comment fails the outbound check (go run ./cmd/abcd lint outbound, exit $rc), so it was not posted"
+	neither "the comment fails the outbound check (abcd lint outbound, exit $rc), so it was not posted"
 fi
 
 # The request body, {"body": "<the comment>"}, as JSON: backslash, quote and

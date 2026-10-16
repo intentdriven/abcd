@@ -8,19 +8,31 @@
 #
 #   1. the item is ready to build: an open issue record under
 #      .abcd/work/issues/open/, or a planned intent for which
-#      `go run ./cmd/abcd intent ready <id> --json` exits 0 (decision 7);
+#      `abcd intent ready <id> --json` exits 0 (decision 7);
 #   2. the item is public: after `git fetch origin`, its record's path exists
 #      in the tree of origin's default branch (`git cat-file -e`). A draft never
 #      pushed, a record only on another branch and a private record all fail
-#      here, before any brief is composed (C13);
+#      here, before any brief is composed (C13). And the record here is the
+#      record there, blob for blob: readiness (1) is judged on this copy while
+#      the cloud session reads origin's, so a record with changes not on
+#      origin's default branch, committed or not, is refused until they are
+#      pushed;
 #   3. the composed brief holds no path on this computer (its home, the
 #      checkout), no session link and no secret shape, and passes
-#      `go run ./cmd/abcd lint outbound --label brief` (C4);
+#      `abcd lint outbound --label brief` (C4);
 #   4. the item is not under embargo: when the embargo store
 #      (~/.abcd.noindex/worktrees/<root-sha>/embargo/) exists on this machine,
-#      the composed brief passes `go run ./cmd/abcd embargo check --file`. A
+#      the composed brief and the item's record pass
+#      `abcd embargo check --file <brief> --file <record>`. The brief carries
+#      only the item's id and path, while the check matches advisory ids, CVE
+#      ids and titles, which a record's text may name. A
 #      store that exists while that check cannot run is a refusal, never a pass
 #      (fail closed). With no store, nothing is under embargo here.
+#
+# Every abcd verb above runs through a binary built from this checkout, once
+# per run, or the one ABCD_BIN names (scripts/cloud/abcd-bin.sh), never through
+# `go run`: the steps branch on abcd's exit codes, and `go run` turns every
+# non-zero exit into 1. A binary that cannot be built is a refusal.
 #
 # The brief names no author. It states the rule that every commit is authored
 # under the identity the setup took from the forge token (decision 17), and
@@ -74,6 +86,18 @@ done
 
 cd "$root"
 
+tmpd="$(mktemp -d "${TMPDIR:-/tmp}/abcd-brief.XXXXXX")"
+trap '/bin/rm -rf -- "$tmpd"' EXIT
+
+# need_abcd <what> sets $abcd to the binary, building it on first use; when it
+# cannot be built, what needed it could not run, and the brief is refused.
+abcd=""
+need_abcd() {
+	[ -z "$abcd" ] || return 0
+	abcd="$(bash "$here/abcd-bin.sh" "$tmpd")" ||
+		refuse "abcd could not be built from this checkout (go build ./cmd/abcd), so $1 could not run; the build's output is above."
+}
+
 if [ -z "$connector" ]; then
 	connector="$(bash "$here/connector.sh" default)" || exit 1
 fi
@@ -107,17 +131,18 @@ fi
 [[ "$record" =~ $SAFE_RE ]] || refuse "$item: its record's file name $record holds characters a brief does not carry."
 
 if [ "$kind" = "a planned intent" ]; then
+	need_abcd "$item's readiness gate (abcd intent ready)"
 	rc=0
-	gate="$(go run ./cmd/abcd intent ready "$item" --json 2>&1)" || rc=$?
+	gate="$("$abcd" intent ready "$item" --json 2>&1)" || rc=$?
 	case "$rc" in
 	0) ;;
 	1)
 		printf '%s\n' "$gate" >&2
-		refuse "$item: it is not ready: its readiness gate (go run ./cmd/abcd intent ready) does not pass; the checks are above."
+		refuse "$item: it is not ready: its readiness gate (abcd intent ready) does not pass; the checks are above."
 		;;
 	*)
 		printf '%s\n' "$gate" >&2
-		refuse "$item: its readiness gate (go run ./cmd/abcd intent ready) could not run (exit $rc), so it is not known to be ready."
+		refuse "$item: its readiness gate (abcd intent ready) could not run (exit $rc), so it is not known to be ready."
 		;;
 	esac
 fi
@@ -133,6 +158,10 @@ git rev-parse -q --verify "refs/remotes/origin/$base^{commit}" >/dev/null ||
 	refuse "$item: origin's default branch, $base, was not fetched, so whether it is public cannot be read."
 git cat-file -e "refs/remotes/origin/$base:$record" 2>/dev/null ||
 	refuse "$item: it is not public yet: its record $record is not on origin's default branch ($base). Push it there first; a cloud session's work is public, so nothing private is handed to one."
+here_blob="$(git hash-object -- "$record" 2>/dev/null)" || here_blob=""
+there_blob="$(git rev-parse -q --verify "refs/remotes/origin/$base:$record" 2>/dev/null)" || there_blob=""
+[ -n "$here_blob" ] && [ "$here_blob" = "$there_blob" ] ||
+	refuse "$item: the record $record has changes not on origin's default branch ($base); push them first. Its readiness is judged on this copy, while a cloud session reads origin's."
 
 # --- 3. Compose, and check what was composed ---------------------------------
 
@@ -145,8 +174,7 @@ esac
 [[ "$report_dir" =~ $SAFE_RE ]] ||
 	refuse "scripts/cloud/cloud.conf: report_dir must be a relative path inside the checkout."
 
-tmp="$(mktemp "${TMPDIR:-/tmp}/abcd-brief.XXXXXX")"
-trap 'rm -f -- "$tmp"' EXIT
+tmp="$tmpd/brief.md"
 
 sed -e "s|{{ITEM}}|$item|g" -e "s|{{RECORD}}|$record|g" -e "s|{{BASE}}|$base|g" \
 	-e "s|{{BRANCH}}|$branch|g" -e "s|{{REPORT_DIR}}|$report_dir|g" \
@@ -175,17 +203,18 @@ found "a home path" '(^|[^A-Za-z0-9_.-])/(Users|home)/[A-Za-z0-9._-]+'
 found "a session link" 'https?://[^[:space:]]*session[_/=-]'
 found "a secret" 'gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|xox[abeprs]-[A-Za-z0-9-]{10,}|sk-[A-Za-z0-9_-]{20,}'
 
+need_abcd "the outbound check (abcd lint outbound)"
 rc=0
-lint="$(go run ./cmd/abcd lint outbound --label brief "$tmp" 2>&1)" || rc=$?
+lint="$("$abcd" lint outbound --label brief "$tmp" 2>&1)" || rc=$?
 case "$rc" in
 0) ;;
 1)
 	printf '%s\n' "$lint" >&2
-	refuse "the brief for $item fails the outbound check (go run ./cmd/abcd lint outbound); the finding is above."
+	refuse "the brief for $item fails the outbound check (abcd lint outbound); the finding is above."
 	;;
 *)
 	printf '%s\n' "$lint" >&2
-	refuse "the outbound check (go run ./cmd/abcd lint outbound) could not run (exit $rc), so the brief for $item is unchecked."
+	refuse "the outbound check (abcd lint outbound) could not run (exit $rc), so the brief for $item is unchecked."
 	;;
 esac
 
@@ -198,17 +227,18 @@ root_sha="$(git rev-list -n 1 --max-parents=0 HEAD 2>/dev/null)" || root_sha=""
 	refuse "this repository's root commit cannot be read, so whether an embargo store exists on this machine cannot be read."
 store="$HOME/.abcd.noindex/worktrees/$root_sha/embargo"
 if [ -e "$store" ] || [ -L "$store" ]; then
+	need_abcd "the embargo check (abcd embargo check)"
 	rc=0
-	check="$(go run ./cmd/abcd embargo check --file "$tmp" 2>&1)" || rc=$?
+	check="$("$abcd" embargo check --file "$tmp" --file "$record" 2>&1)" || rc=$?
 	case "$rc" in
 	0) ;;
 	2)
 		printf '%s\n' "$check" >&2
-		refuse "$item: it is held under embargo: the embargo check refuses its brief (go run ./cmd/abcd embargo check); the finding is above."
+		refuse "$item: it is held under embargo: the embargo check refuses its brief or its record (abcd embargo check); the finding is above."
 		;;
 	*)
 		printf '%s\n' "$check" >&2
-		refuse "$item: an embargo store exists on this machine and its check (go run ./cmd/abcd embargo check) could not run (exit $rc); an unchecked brief is never passed."
+		refuse "$item: an embargo store exists on this machine and its check (abcd embargo check) could not run (exit $rc); an unchecked item is never passed."
 		;;
 	esac
 fi
