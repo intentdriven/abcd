@@ -207,10 +207,15 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 	for _, d := range v.Doubts {
 		doubts = append(doubts, noteLine{key: hashedKey("doubt\x00" + d.Branch + "\x00" + d.Reason + "\x00" + d.Tip), text: DoubtLine(d), weight: 1})
 	}
-	if v.UnreadNames > 0 {
+	switch {
+	case v.UnreadNamesUnknown:
+		doubts = append(doubts, noteLine{key: hashedKey("unread-names-unknown"),
+			text: UnreadNamesUnknownLine + "; `abcd status` says how to list them", weight: 1})
+	case v.UnreadNames > 0:
 		// Counted, never named: a pusher chose each name. The line is kept
-		// shown by the set it counts, so a new name shows it again.
-		doubts = append(doubts, noteLine{key: hashedKey("unread-names\x00" + strings.Join(v.unreadNames, "\x00")),
+		// shown by the digest of the set it counts, so a new name shows it
+		// again.
+		doubts = append(doubts, noteLine{key: hashedKey("unread-names\x00" + v.unreadKey),
 			text: UnreadNamesLine(v.UnreadNames) + "; `abcd status` says how to list them", weight: v.UnreadNames})
 	}
 	// The newest announcement per item; the rest are counted.
@@ -367,6 +372,9 @@ func DoubtLine(d BranchDoubt) string {
 	}
 	return termsafe.Sanitize(name + " (doubtful): " + d.Reason)
 }
+
+// UnreadNamesUnknownLine says the count of names not read could not be read.
+const UnreadNamesUnknownLine = "status branches whose names are not read: how many could not be read here"
 
 // UnreadNamesLine counts the status branches whose names are not read (C11),
 // "2 status branches whose names are not read": the names themselves are

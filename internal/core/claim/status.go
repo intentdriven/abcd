@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 	"io/fs"
 	"os"
 	"path"
@@ -181,11 +182,18 @@ type StatusView struct {
 	// Doubts is every status branch read as doubtful whose name is a
 	// lower-case username, by name.
 	Doubts []BranchDoubt
-	// UnreadNames counts the status branches whose names are not read: no
-	// such name is carried, since a pusher chose it (unreadNames keys the
-	// line that counts them, and never leaves this package).
+	// UnreadNames counts the status branches whose names are not read: the
+	// larger of origin's last listing's count and the count of such branches
+	// this checkout holds a copy of (a fetch of the whole namespace brings
+	// them). No such name is carried, since a pusher chose it; unreadKey,
+	// built from a digest of the full names, keys the line that counts them,
+	// and never leaves this package.
 	UnreadNames int
-	unreadNames []string
+	// UnreadNamesUnknown is true when what origin's last listing counted
+	// could not be read back: UnreadNames then counts only the copies held
+	// here, and says nothing of origin.
+	UnreadNamesUnknown bool
+	unreadKey          string
 	// Holds is every release being cut, judged as the merge hold judges them
 	// (JudgedHolds).
 	Holds []Hold
@@ -259,13 +267,14 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 
 // listStatusBranches asks origin which status branches it holds (`git
 // ls-remote origin refs/heads/abcd-status/*`): the names that are lower-case
-// GitHub usernames, sorted, and every other name, which is not fetched.
-func listStatusBranches(root string) (names, skipped []string, err error) {
+// GitHub usernames, sorted, and the tally of every other name, which is not
+// fetched and is never kept.
+func listStatusBranches(root string) (names []string, skipped nameTally, err error) {
 	args := []string{"ls-remote", "--refs", Remote, StatusRefPrefix + "*"}
 	trace(args...)
 	out, err := gitutil.Net(root, args...)
 	if err != nil {
-		return nil, nil, errors.New(redacted(err))
+		return nil, skipped, errors.New(redacted(err))
 	}
 	names = []string{}
 	for _, line := range strings.Split(out, "\n") {
@@ -280,12 +289,38 @@ func listStatusBranches(root string) (names, skipped []string, err error) {
 		if statusName(name) {
 			names = append(names, name)
 		} else {
-			skipped = append(skipped, name)
+			skipped.add(name)
 		}
 	}
 	sort.Strings(names)
-	sort.Strings(skipped)
 	return names, skipped, nil
+}
+
+// nameTally counts names a reader does not read, without keeping them: how
+// many, and a digest of every name in full, in the order they were added, so
+// two sets are told apart however long or alike their names. Both listings it
+// counts (origin's and this checkout's refs) name branches in git's ref
+// order.
+type nameTally struct {
+	n int
+	h hash.Hash
+}
+
+// add counts name.
+func (t *nameTally) add(name string) {
+	if t.h == nil {
+		t.h = sha256.New()
+	}
+	t.n++
+	t.h.Write([]byte(hashName(name)))
+}
+
+// digest is the tally's digest; "" when it counted nothing.
+func (t nameTally) digest() string {
+	if t.h == nil {
+		return ""
+	}
+	return hex.EncodeToString(t.h.Sum(nil))
 }
 
 // statusName reports whether name, after abcd-status/, is a branch the reader
@@ -321,15 +356,15 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	}
 	v.Announcements = keptAnnouncements(root, now, in.held)
 	for _, d := range keptDoubts(root, now) {
-		switch {
-		case !statusName(d.Branch):
-			v.unreadNames = append(v.unreadNames, d.Branch)
-		case in.held == nil || in.held[d.Branch]:
-			// A doubt of a branch this checkout no longer holds is not shown.
+		// A doubt of a branch this checkout no longer holds is not shown.
+		if in.held == nil || in.held[d.Branch] {
 			v.Doubts = append(v.Doubts, d)
 		}
 	}
-	v.UnreadNames = len(v.unreadNames)
+	listed, err := keptSkipped(root)
+	v.UnreadNamesUnknown = err != nil
+	v.UnreadNames = max(listed.Count, in.unread.n)
+	v.unreadKey = listed.Digest + "\x00" + in.unread.digest()
 	return v, ctx.Err()
 }
 
@@ -339,13 +374,17 @@ type intake struct {
 	taken int
 	// held is every status branch this checkout holds, by name.
 	held map[string]bool
+	// unread tallies the status branches this checkout holds whose names are
+	// not read.
+	unread nameTally
 }
 
 // takeIn reads every status branch this checkout holds from where it last
 // read it (namespace.since, under ctx), reads each commit the walk added and
 // this checkout has not read before, in one bounded batch, keeps each as seen
 // at now, then marks the branch read at its tip. A branch whose name is not a
-// lower-case username, whose tip is not a commit, or whose walk could not
+// lower-case username is tallied, never read and never kept. One whose tip is
+// not a commit, or whose walk could not
 // verify continuity (it moved back or was rewritten, ran past the walk's
 // limit, since the mark or on a first read, or passed a merge) is kept as
 // doubtful, and every
@@ -369,7 +408,7 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 	for _, r := range refs {
 		name := strings.TrimPrefix(r.ref, StatusTrackingPrefix)
 		if !statusName(name) {
-			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtBranchName, Tip: r.sha, FoundAt: now})
+			in.unread.add(name)
 			continue
 		}
 		if statusBranches.lastRead(root, r.ref) == r.sha {
@@ -756,7 +795,7 @@ func fixedReason(reason string) string {
 // read again at every prompt is not written again at every prompt.
 func keepDoubt(root string, d BranchDoubt) {
 	for _, k := range keptDoubts(root, d.FoundAt) {
-		if k.Branch == boundedName(d.Branch) && k.Reason == d.Reason && k.Tip == d.Tip && !k.FoundAt.IsZero() && k.Tip != "" {
+		if k.Branch == d.Branch && k.Reason == d.Reason && k.Tip == d.Tip && !k.FoundAt.IsZero() && k.Tip != "" {
 			return
 		}
 	}
@@ -779,22 +818,10 @@ func hashName(v string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// maxNameRunes bounds a branch name a doubt keeps and a render shows.
-const maxNameRunes = 80
-
-// boundedName is a branch name terminal-safe and bounded, for keeping and
-// showing.
-func boundedName(n string) string {
-	n = termsafe.Sanitize(n)
-	if r := []rune(n); len(r) > maxNameRunes {
-		n = string(r[:maxNameRunes-3]) + "..."
-	}
-	return n
-}
-
-// keptDoubts is every status branch kept as doubtful: each found in the last
-// day by an intake, and each name origin's last listing held that is not
-// read, sorted by name.
+// keptDoubts is every status branch kept as doubtful, each found in the last
+// day by an intake, sorted by name. Only a branch whose name is read is kept
+// as doubtful; a file naming any other (one an earlier build kept) is passed
+// over.
 func keptDoubts(root string, now time.Time) []BranchDoubt {
 	byName := map[string]BranchDoubt{}
 	for _, e := range statusEntries(root, doubtDir) {
@@ -805,7 +832,7 @@ func keptDoubts(root string, now time.Time) []BranchDoubt {
 			Tip     string `json:"tip"`
 			FoundAt string `json:"found_at"`
 		}
-		if data == nil || json.Unmarshal(data, &d) != nil || e.Name() != hashName(d.Branch) {
+		if data == nil || json.Unmarshal(data, &d) != nil || e.Name() != hashName(d.Branch) || !statusName(d.Branch) {
 			continue
 		}
 		found, err := time.Parse(time.RFC3339, d.FoundAt)
@@ -815,12 +842,7 @@ func keptDoubts(root string, now time.Time) []BranchDoubt {
 		if d.Tip != "" && !gitutil.IsFullSHA(d.Tip) {
 			continue
 		}
-		byName[d.Branch] = BranchDoubt{Branch: boundedName(d.Branch), Reason: doubtReason(d.Reason), Tip: d.Tip, FoundAt: found.UTC()}
-	}
-	for _, s := range keptSkipped(root) {
-		if _, ok := byName[s.Branch]; !ok {
-			byName[s.Branch] = s
-		}
+		byName[d.Branch] = BranchDoubt{Branch: d.Branch, Reason: doubtReason(d.Reason), Tip: d.Tip, FoundAt: found.UTC()}
 	}
 	out := make([]BranchDoubt, 0, len(byName))
 	for _, d := range byName {
@@ -834,45 +856,53 @@ func keptDoubts(root string, now time.Time) []BranchDoubt {
 // stand-in for anything else a file holds.
 func doubtReason(reason string) string {
 	switch reason {
-	case DoubtBranchName, DoubtRewritten, DoubtMore, DoubtMerged, "its tip " + reasonNoObject:
+	case DoubtRewritten, DoubtMore, DoubtMerged, "its tip " + reasonNoObject:
 		return reason
 	}
 	return "it could not be read"
 }
 
-// keepSkipped keeps the names origin's listing held that are not read,
-// replacing the last listing's.
-func keepSkipped(root string, names []string, now time.Time) {
-	kept := make([]string, 0, len(names))
-	for _, n := range names {
-		kept = append(kept, boundedName(n))
-	}
-	data, err := json.Marshal(struct {
-		ListedAt string   `json:"listed_at"`
-		Names    []string `json:"names"`
-	}{stamp(now), kept})
+// skippedState is what origin's last listing held that is not read: how many
+// names and their tally's digest, never the names, so its size never grows
+// with theirs.
+type skippedState struct {
+	ListedAt string `json:"listed_at"`
+	Count    int    `json:"count"`
+	Digest   string `json:"digest,omitempty"`
+}
+
+// keepSkipped keeps the tally of the names origin's listing held that are
+// not read, replacing the last listing's.
+func keepSkipped(root string, t nameTally, now time.Time) {
+	data, err := json.Marshal(skippedState{ListedAt: stamp(now), Count: t.n, Digest: t.digest()})
 	if err != nil {
 		return
 	}
 	writeStatusFile(root, "", skippedRel, data)
 }
 
-// keptSkipped is origin's last listing's names that are not read, as doubts.
-func keptSkipped(root string) []BranchDoubt {
-	data := readStatusFile(root, skippedRel, 64<<10)
-	var s struct {
-		ListedAt string   `json:"listed_at"`
-		Names    []string `json:"names"`
+// keptSkipped is origin's last listing's tally of names that are not read:
+// the zero state when nothing here listed origin, and an error when what was
+// kept cannot be read back, so a reader says the count is unknown rather than
+// count none.
+func keptSkipped(root string) (skippedState, error) {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return skippedState{}, err
 	}
-	if data == nil || json.Unmarshal(data, &s) != nil {
-		return nil
+	defer r.Close()
+	data, err := fsutil.ReadGuardedInRoot(r, statusFile(skippedRel), 4096)
+	if errors.Is(err, fs.ErrNotExist) {
+		return skippedState{}, nil
 	}
-	at, _ := time.Parse(time.RFC3339, s.ListedAt)
-	var out []BranchDoubt
-	for _, n := range s.Names {
-		out = append(out, BranchDoubt{Branch: boundedName(n), Reason: DoubtBranchName, FoundAt: at.UTC()})
+	if err != nil {
+		return skippedState{}, err
 	}
-	return out
+	var s skippedState
+	if err := json.Unmarshal(data, &s); err != nil || s.Count < 0 {
+		return skippedState{}, errors.New("the count of status branch names not read does not parse")
+	}
+	return s, nil
 }
 
 // pusherVerdict is what the forge said of who pushed one announcement.
@@ -1051,9 +1081,10 @@ func pruneStatus(root string, now time.Time, refs []statusRef) {
 	for _, e := range statusEntries(root, doubtDir) {
 		data := readStatusFile(root, doubtDir+"/"+e.Name(), 4096)
 		var d struct {
+			Branch  string `json:"branch"`
 			FoundAt string `json:"found_at"`
 		}
-		if data != nil && json.Unmarshal(data, &d) == nil {
+		if data != nil && json.Unmarshal(data, &d) == nil && statusName(d.Branch) {
 			if found, err := time.Parse(time.RFC3339, d.FoundAt); err == nil && now.Sub(found) < MaxAnnouncementLife {
 				continue
 			}

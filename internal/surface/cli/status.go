@@ -40,13 +40,14 @@ var statusPushers claim.PusherLookup = func(root, branch string) ([]claim.Push, 
 // statusOutput is the --json document of `abcd status`: the status view, the
 // announcements, the doubtful branches, the count of status branches whose
 // names are not read (never the names: a pusher chose each, and an agent
-// reads this output), what could not be read, and the reservations block
+// reads this output; null when the count could not be read), what could not
+// be read, and the reservations block
 // `abcd peers` lists, in the same fields.
 type statusOutput struct {
 	StatusView       statusView        `json:"status_view"`
 	Announcements    []announcementRow `json:"announcements"`
 	Doubtful         []doubtRow        `json:"doubtful"`
-	UnreadNames      int               `json:"unread_names"`
+	UnreadNames      *int              `json:"unread_names"`
 	Unread           []string          `json:"unread"`
 	SendersUnchecked string            `json:"senders_unchecked,omitempty"`
 	LocalTierMissing bool              `json:"local_tier_missing,omitempty"`
@@ -144,7 +145,7 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			now := time.Now().UTC().Truncate(time.Second)
 			o := claim.Options{Now: func() time.Time { return now }}
 			fetched, ferr := claim.FetchStatus(root, statusPushers, o)
-			out := statusOutput{Grants: claim.GrantsNothing}
+			out := statusOutput{Grants: claim.GrantsNothing, UnreadNames: new(int)}
 			// One read of the reservations (View, in the block) and one of
 			// the holds (ReadStatus's), shared by the listing and the view.
 			failed, listed := out.reservationsBlock.fillView(root, now, fetched.Gap, ferr)
@@ -209,7 +210,11 @@ func (out *statusOutput) addStatus(v claim.StatusView, now time.Time) {
 	for _, d := range v.Doubts {
 		out.Doubtful = append(out.Doubtful, doubtRow{Branch: "abcd-status/" + d.Branch, Reason: d.Reason, Tip: d.Tip, Text: claim.DoubtLine(d)})
 	}
-	out.UnreadNames = v.UnreadNames
+	n := v.UnreadNames
+	out.UnreadNames = &n
+	if v.UnreadNamesUnknown {
+		out.UnreadNames = nil
+	}
 	for _, u := range []struct {
 		what string
 		u    *claim.Unread
@@ -260,10 +265,14 @@ func renderStatus(w io.Writer, out statusOutput) {
 	for _, d := range out.Doubtful {
 		fmt.Fprintln(w, "  "+d.Text)
 	}
-	if out.UnreadNames > 0 {
-		// Counted, never named: git itself lists the names, outside this
-		// output, for a person who wants them.
-		fmt.Fprintln(w, "  "+claim.UnreadNamesLine(out.UnreadNames)+", so not shown: `git ls-remote origin 'refs/heads/abcd-status/*'` lists every name")
+	// Counted, never named: git itself lists the names, outside this
+	// output, for a person who wants them.
+	const listNames = "`git ls-remote origin 'refs/heads/abcd-status/*'` lists every name"
+	switch {
+	case out.UnreadNames == nil:
+		fmt.Fprintln(w, "  "+claim.UnreadNamesUnknownLine+": "+listNames)
+	case out.UnreadNames != nil && *out.UnreadNames > 0:
+		fmt.Fprintln(w, "  "+claim.UnreadNamesLine(*out.UnreadNames)+", so not shown: "+listNames)
 	}
 	if out.SendersUnchecked != "" {
 		fmt.Fprintln(w, "  not checked against the forge, so shown as claimed: "+out.SendersUnchecked)
