@@ -192,7 +192,7 @@ megabytes: the long, dense sessions most worth keeping
 sub-agent finishes, writing that agent's own transcript with the lineage that
 says which session and which agent produced it — and its exit code matters in a
 way `session-end`'s does not, because `SubagentStop` is a BLOCKING event, so
-every failure path there is a diagnostic and an exit 0. The session-start entrypoint
+every failure path in the entrypoint is a diagnostic and an exit 0. The session-start entrypoint
 drains staging into the store through the same fail-closed capture path, where
 there is a real time budget; it takes main-thread transcripts before sub-agent
 ones and bounds the pass by bytes as well as count, so a truncated pass stores
@@ -200,9 +200,13 @@ the part that makes the rest legible. Whatever the budget leaves is reported
 rather than dropped, because a repo with a dozen missed sessions must not stall
 the user's first prompt.
 
-Because both staging entrypoints exit 0 on every path, the exit code cannot say
+Both staging entrypoints exit 0 on every path, so their exit code cannot say
 whether a transcript was kept, and their error-stream line is prose rather than
-a contract. A programmatic caller asks for the machine-readable form, and each
+a contract. The shell wrappers the host registers for the two events,
+`hooks/session-end.sh` and `hooks/subagent-stop.sh`, hand over to the
+entrypoint when a binary resolves, and themselves exit 1 when none does: no
+plugin binary and no vouched-for one on the search path, or a legacy `~/.abcd`
+standing with no plugin binary in the plugin root. A programmatic caller asks for the machine-readable form, and each
 entrypoint then writes exactly one result line to its output stream on every
 path: whether the transcript was captured, how (newly staged, re-staged over
 older bytes, or already staged), which session and sub-agent it belongs to, and
