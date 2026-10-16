@@ -91,7 +91,9 @@ var packageRunners = map[string]bool{"npx": true, "bunx": true}
 // runnerSubcommands names the package managers whose subcommand makes them a
 // runner as npx is, and the wrapper each subcommand is read as: `npm exec`
 // (and its alias `npm x`), `pnpm dlx`, `pnpm exec`, `yarn dlx` and `bun x`.
-// A subcommand the line does not fix can be any of the runner's.
+// A subcommand the line does not fix can be any of the runner's. The
+// manager's own options before it are read by wrapperValueFlags under the
+// manager's name.
 var runnerSubcommands = map[string]map[string]string{
 	"npm":  {"exec": "npm exec", "x": "npm exec"},
 	"pnpm": {"dlx": "pnpm dlx", "exec": "pnpm exec"},
@@ -108,30 +110,61 @@ type runnerStart struct {
 }
 
 // runnersAt reports the runners the word at pos of tokens can start, in name
-// order, when name, its lower-cased basename, is a package manager whose next
-// word is a runner subcommand (one runner), or a word the line does not fix
-// (every runner subcommand that manager has).
+// order, when name, its lower-cased basename, is a package manager whose
+// subcommand is a runner subcommand (one runner), or a word the line does not
+// fix (every runner subcommand that manager has). The manager's own options
+// before the subcommand are stepped, with the value each of its value flags
+// takes (wrapperValueFlags under the manager's name): `pnpm --filter web exec`
+// and `npm --prefix sub exec` start the runner `pnpm exec` and `npm exec` do.
+// Each word is read every way readWord reads it.
 func runnersAt(name string, tokens []string, pos int) []runnerStart {
 	subs, ok := runnerSubcommands[name]
-	if !ok || pos+1 >= len(tokens) {
+	if !ok {
 		return nil
 	}
-	next := tokens[pos+1]
-	if w, ok := subs[next]; ok {
-		return []runnerStart{{wrapper: w, at: pos + 2}}
-	}
-	if !isUnknown(next) {
-		return nil
-	}
-	seen := map[string]bool{}
+	valueFlags := wrapperValueFlags[name]
+	got := map[runnerStart]bool{}
 	var out []runnerStart
-	for _, w := range subs {
-		if !seen[w] {
-			seen[w] = true
-			out = append(out, runnerStart{wrapper: w, at: pos + 2})
+	add := func(rs runnerStart) {
+		if !got[rs] {
+			got[rs] = true
+			out = append(out, rs)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].wrapper < out[j].wrapper })
+	seen := map[int]bool{}
+	stack := []int{pos + 1}
+	for len(stack) > 0 {
+		i := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if i >= len(tokens) || seen[i] {
+			continue
+		}
+		seen[i] = true
+		tally(1)
+		tok := tokens[i]
+		if w, ok := subs[tok]; ok {
+			add(runnerStart{wrapper: w, at: i + 1})
+			continue
+		}
+		r := readWord(tok, valueFlags)
+		if r.operand && isUnknown(tok) {
+			for _, w := range subs {
+				add(runnerStart{wrapper: w, at: i + 1})
+			}
+		}
+		if r.vanish || r.flag {
+			stack = append(stack, i+1)
+		}
+		if r.takes {
+			stack = append(stack, i+2)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].wrapper != out[j].wrapper {
+			return out[i].wrapper < out[j].wrapper
+		}
+		return out[i].at < out[j].at
+	})
 	return out
 }
 
@@ -188,8 +221,9 @@ func packageName(tok string) string {
 // the FOLLOWING token, so the walk to command position steps over the value
 // rather than reading it as the command (`sudo -u bob rm -rf *` is an `rm`).
 //
-// The table is deliberately explicit and small: only wrappers in the set above,
-// only flags those wrappers actually document, and only the separate-token form
+// The table is deliberately explicit and small: only wrappers in the set above
+// and the package managers whose subcommand starts one (runnerSubcommands),
+// only flags those programs actually document, and only the separate-token form
 // — a `--flag=value` carries its value in the same token and needs no entry.
 // Booleans (`sudo -n`, `env -i`, `time -p`) need no entry either; they are
 // stepped over as flags. A value flag the table does not name is NOT stepped
@@ -251,6 +285,22 @@ var wrapperValueFlags = map[string][]string{
 	// resume from. NOT -c/--shell-mode, which takes nothing and hands the
 	// command to a shell.
 	"pnpm exec": {"--filter", "-F", "--resume-from"},
+	// A package manager's own value flags, read before its runner subcommand
+	// (runnersAt): `npm --prefix sub exec`, `pnpm --filter web exec`, `yarn
+	// --cwd sub dlx`. npm's are its documented configuration options with a
+	// short form or a path or name value; pnpm's are its documented global
+	// options (directory, filtering, reporting); yarn's only global value
+	// flag is --cwd. A boolean (`pnpm -r`, `npm --yes`) needs no entry.
+	"npm": {
+		"-C", "--prefix", "-w", "--workspace", "-L", "--location",
+		"--loglevel", "--userconfig", "--globalconfig", "--cache", "--registry",
+	},
+	"pnpm": {
+		"-C", "--dir", "--filter", "-F", "--filter-prod", "--test-pattern",
+		"--changed-files-ignore-pattern", "--reporter", "--loglevel",
+		"--workspace-concurrency",
+	},
+	"yarn": {"--cwd"},
 	// `setsid`, `eatmydata`, `proxychains` and `taskset` take no value flags.
 }
 

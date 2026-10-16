@@ -274,3 +274,49 @@ func TestGuardReadsDeclareXAsAnExport(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardReadsARunnerBehindManagerOptions: a package manager's own
+// options before its subcommand (pnpm --filter, npm --prefix, yarn --cwd)
+// leave the runner the subcommand starts as it is, so the program behind
+// it meets the same entries.
+func TestGuardReadsARunnerBehindManagerOptions(t *testing.T) {
+	r := Defaults()
+	const claudeID = "agent-launch-claude-unchecked"
+	for _, line := range []string{
+		`pnpm --filter web exec claude --dangerously-skip-permissions`,
+		`pnpm -F web exec claude --dangerously-skip-permissions`,
+		`pnpm --filter=web exec claude --dangerously-skip-permissions`,
+		`pnpm -C sub dlx @anthropic-ai/claude-code --dangerously-skip-permissions`,
+		`pnpm --dir sub exec claude --dangerously-skip-permissions`,
+		`pnpm -r --filter web exec claude --dangerously-skip-permissions`,
+		`pnpm --filter web exec -c 'claude --dangerously-skip-permissions'`,
+		`npm --prefix sub exec -- claude --dangerously-skip-permissions`,
+		`npm -C sub exec claude --dangerously-skip-permissions`,
+		`npm -w pkg exec claude --dangerously-skip-permissions`,
+		`npm --loglevel silent x -- claude --dangerously-skip-permissions`,
+		`npm --prefix sub exec -c 'claude --dangerously-skip-permissions'`,
+		`yarn --cwd sub dlx claude --dangerously-skip-permissions`,
+		`yarn --cwd sub dlx @anthropic-ai/claude-code --dangerously-skip-permissions`,
+	} {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != claudeID {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, claudeID)
+		}
+		if a := approveShell(clean(), NewFiles(t.TempDir()), line); a.Allow || a.EntryID != claudeID {
+			t.Errorf("%q: the approver answered %+v, want a refusal under %q", line, a, claudeID)
+		}
+	}
+	for _, line := range []string{
+		`pnpm --filter web test`,
+		`npm --prefix sub run build`,
+		`yarn --cwd sub install`,
+		`pnpm --filter web exec claude -p "fix the tests"`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}

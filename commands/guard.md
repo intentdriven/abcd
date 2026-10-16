@@ -666,7 +666,11 @@ server included; looking (`lsof -i :8080`, `fuser 8080/tcp`) is not. The
 package runners — `npx`, `npm exec` (and `npm x`), `pnpm dlx`, `pnpm exec`,
 `yarn dlx`, `bunx` and `bun x` — are read as wrappers whose first operand is
 the program they run, a version after it (`kill-port@latest`) included, so a
-blocker behind one is read as the blocker. The shell string a runner hands to
+blocker behind one is read as the blocker. The package manager's own options
+before its subcommand are stepped with their values (`pnpm --filter web exec`,
+`npm --prefix sub exec`, `yarn --cwd sub dlx`), by each manager's documented
+global value flags; one it does not know leaves the runner unread, and a
+blocker behind it takes the fail-safe warning. The shell string a runner hands to
 a shell is read as a script, as a `bash -c` string is: the value of `-c` or
 `--call` after `npx` or `npm exec`, and the command words after `pnpm exec -c`
 or `--shell-mode`, so a blocker inside it is read as the blocker too; a `-c`
