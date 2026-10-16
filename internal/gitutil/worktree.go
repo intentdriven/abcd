@@ -48,29 +48,91 @@ func ListWorktrees(root string, maxBytes int) ([]Worktree, error) {
 // is ignored.
 func ParseWorktreeList(out, sep string) []Worktree {
 	var wts []Worktree
+	p := porcelain{lines: sep == "\n", emit: func(w Worktree) { wts = append(wts, w) }}
 	for _, field := range strings.Split(out, sep) {
-		if sep == "\n" {
-			// A CRLF-emitting git's line end. In the -z form a trailing CR is
-			// part of the path and stays.
-			field = strings.TrimSuffix(field, "\r")
-		}
-		key, val, _ := strings.Cut(field, " ")
-		if key == "worktree" {
-			wts = append(wts, Worktree{Path: val})
-			continue
-		}
-		if len(wts) == 0 {
-			continue
-		}
-		cur := &wts[len(wts)-1]
-		switch key {
-		case "HEAD":
-			cur.Head = val
-		case "branch":
-			cur.Branch = val
-		case "bare":
-			cur.Bare = true
-		}
+		p.field(field)
 	}
+	p.end()
 	return wts
+}
+
+// porcelain folds the attributes of a porcelain worktree listing, one at a
+// time, into records, handing each to emit once the next record opens or the
+// listing ends: the one parser ParseWorktreeList and EachWorktree share.
+type porcelain struct {
+	lines bool // the newline-separated form, whose line ends may carry a CR
+	emit  func(Worktree)
+	cur   *Worktree
+}
+
+func (p *porcelain) field(field string) {
+	if p.lines {
+		// A CRLF-emitting git's line end. In the -z form a trailing CR is
+		// part of the path and stays.
+		field = strings.TrimSuffix(field, "\r")
+	}
+	key, val, _ := strings.Cut(field, " ")
+	if key == "worktree" {
+		p.end()
+		p.cur = &Worktree{Path: val}
+		return
+	}
+	if p.cur == nil {
+		return
+	}
+	switch key {
+	case "HEAD":
+		p.cur.Head = val
+	case "branch":
+		p.cur.Branch = val
+	case "bare":
+		p.cur.Bare = true
+	}
+}
+
+// end hands over the record being read, if any.
+func (p *porcelain) end() {
+	if p.cur != nil {
+		p.emit(*p.cur)
+		p.cur = nil
+	}
+}
+
+// maxWorktreeField bounds one field of the streamed listing: a path, an
+// object name, or a lock or prune reason. A path is a few KiB at most; the
+// bound is far past that, so only a planted reason meets it.
+const maxWorktreeField = 1 << 20
+
+// EachWorktree streams every working tree of the repository at root to fn,
+// the main one first, as ListWorktrees parses them, without capping the
+// listing's total length: a repository with many worktrees is read whole.
+// One field past maxWorktreeField is an error, never a record cut short.
+//
+// It asks for the NUL-separated form first and falls back to the
+// newline-separated form, as ListWorktrees does, only when git refused the
+// first before handing over any field; a failure partway is returned.
+func EachWorktree(root string, fn func(Worktree)) error {
+	n, err := eachWorktree(root, 0, fn)
+	if err == nil || n > 0 {
+		return err
+	}
+	_, err = eachWorktree(root, '\n', fn)
+	return err
+}
+
+func eachWorktree(root string, sep byte, fn func(Worktree)) (int, error) {
+	args := []string{"worktree", "list", "--porcelain"}
+	if sep == 0 {
+		args = append(args, "-z")
+	}
+	p := porcelain{lines: sep == '\n', emit: fn}
+	n, err := streamFields(isolatedGit(root, args...), sep, maxWorktreeField, func(field string) error {
+		p.field(field)
+		return nil
+	})
+	if err != nil {
+		return n, err
+	}
+	p.end()
+	return n, nil
 }

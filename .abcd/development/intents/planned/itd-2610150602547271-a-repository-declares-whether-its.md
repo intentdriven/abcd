@@ -1,8 +1,8 @@
 ---
 id: itd-2610150602547271
 slug: a-repository-declares-whether-its
-spec_id: null
-kind: null
+spec_id: spc-2610161609350616
+kind: standalone
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-97]
@@ -58,11 +58,11 @@ So a path that forgets to ask is still stopped.
 
 ## Scope Conditions
 
-- A repository abcd manages, with `.abcd/config.json` and a GitHub remote the
+- A repository abcd manages, with `.abcd/config.json` and a GitHub remote the <!-- cond: cond-2610161609359243 -->
   `gh` client can reach.
-- One facilitator mode per repository. A team of product thinkers (itd-99)
+- One facilitator mode per repository. A team of product thinkers (itd-99) <!-- cond: cond-2610161609350397 -->
   and per-branch modes are outside it.
-- Merges abcd itself starts, through `abcd land`, the build loop, or a shell
+- Merges abcd itself starts, through `abcd land`, the build loop, or a shell <!-- cond: cond-2610161609354767 -->
   command the guard judges. A person merging in the forge's web page is
   untouched.
 
@@ -87,6 +87,10 @@ So a path that forgets to ask is still stopped.
   `gh pr merge --auto`, `gh pr merge` aimed at a queue, and the GraphQL
   `enqueuePullRequest` mutation, whoever runs them. It reads the mode through
   the same resolver.
+- **Proof of review.** In `auto`, the merge gate arms only a head that a
+  review receipt names: one receipt per commit, written when the review pair's
+  verdicts for that commit pass the stop rule, and found from any worktree the
+  way preflight receipts are.
 - **abcd's own repository** sets `facilitator.mode: auto` in its committed
   config, in the same change, so its sessions keep queueing.
 
@@ -96,9 +100,6 @@ So a path that forgets to ask is still stopped.
 - Changing any repository's forge settings, rulesets or queue.
 - Gating the push of a non-default branch. A push is not a merge
   (ruling below).
-- Proving the review pair ran. "Ready" means preflight, the review pair, the
-  stop rule and CI. This slice trusts the caller for the review pair (see Open
-  Questions).
 
 ## Acceptance Criteria
 
@@ -109,6 +110,10 @@ So a path that forgets to ask is still stopped.
   gating the default branch, **when** `abcd land` reaches a passing branch with
   an open pull request, **then** the pull request is in the queue when land
   exits, with no earlier entry awaited.
+- **Given** `facilitator.mode: auto` and no review receipt names the branch's
+  head commit, **when** `abcd land` reaches its open pull request, **then** it
+  arms nothing and says the head has no recorded review pair, naming the
+  commit.
 - **Given** `auto` in the repository's config and `human` in
   `~/.abcd.noindex/config.json`, **when** anything resolves the mode, **then**
   it is `human`, and the board names the machine file as the layer that set
@@ -126,14 +131,7 @@ So a path that forgets to ask is still stopped.
 
 ## Open Questions
 
-- **How does `auto` know the review pair ran?** Today the review pair leaves
-  receipts only for build-loop lanes. A hand or cloud branch carries no
-  machine-checkable proof. Options: require a review receipt keyed to the
-  head commit, or trust the caller for this slice. A facilitator question for
-  planning.
-- **Does `human` keep AM1's arming where the forge itself holds the merge for
-  an approval?** itd-97's criterion says refuse arming outright. This slice
-  follows it. Confirm in planning.
+_None recorded yet._
 
 ## Decisions
 
@@ -148,14 +146,29 @@ So a path that forgets to ask is still stopped.
   merge is facilitator work, not an action reserved for the product thinker.
   Auto-merge never means unreviewed: the reviews are automated, not skipped.
 - 2026-10-15, the product thinker: abcd and the repositories it manages take
-  one code path, with no special case for abcd ("if it works for abcd, it
-  should work for abcd-managed repos").
+  one code path, with no special case for abcd, because building abcd also
+  tests the process its managed repositories follow.
 - 2026-10-15, agreed with the release-cutting session: the push of a
   non-default branch after a passing preflight is not gated by the mode.
   The facilitator's approval point is the merge.
 - 2026-10-15, the product thinker: until this intent ships, `abcd land` keeps
   AM1 as the merge gate's stand-in.
 
+- 2026-10-16, the technical facilitator on the product thinker's delegation
+  (planning): `auto` arms only a head a review receipt names, because the
+  product thinker ruled on 2026-10-15 that automated merging is never
+  unreviewed merging (the reviews are automated, not skipped), and a hand or
+  cloud branch otherwise carries no proof the review pair ran.
+- 2026-10-16, the technical facilitator on the product thinker's delegation
+  (planning): `human` refuses arming outright, also where the forge would hold
+  the merge for an approval, as itd-97's criterion for the human facilitator
+  requires; a person merges.
+- 2026-10-16, the product thinker: this intent moves to planned.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: one declared facilitator mode, one merge gate every merging path asks, and a guard on the merge commands keep merges where a repository's owners want them; shown wrong if a merge abcd starts happens while the mode is human, or if auto arms a head no review receipt names
