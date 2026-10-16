@@ -50,7 +50,14 @@ const (
 // there); a failure's error carries git's bounded stderr. On a failure both are
 // scrubbed of credential URLs (ScrubURLCredentials) before they are cut.
 func Net(dir string, args ...string) (string, error) {
-	return runHooked(dir, true, args)
+	return runHooked(dir, true, "", args)
+}
+
+// NetInput is Net with stdin fed to the command: a `git fetch --stdin` reads
+// its refspecs there, one per line, so however many a fetch names, none
+// lengthens its command line past the system's argument limit.
+func NetInput(dir, stdin string, args ...string) (string, error) {
+	return runHooked(dir, true, stdin, args)
 }
 
 // LocalGit runs one git command that reaches no remote (a commit, a read of
@@ -61,11 +68,12 @@ func Net(dir string, args ...string) (string, error) {
 // hook through GIT_CONFIG_PARAMETERS, and its batch-mode ssh command) changes
 // how a hook of the repository's runs. Its bounds and its output are Net's.
 func LocalGit(dir string, args ...string) (string, error) {
-	return runHooked(dir, false, args)
+	return runHooked(dir, false, "", args)
 }
 
-// runHooked is Net (network true) and LocalGit (false).
-func runHooked(dir string, network bool, args []string) (string, error) {
+// runHooked is Net (network true) and LocalGit (false), with stdin fed to
+// the command when it is not "".
+func runHooked(dir string, network bool, stdin string, args []string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), NetTimeout)
 	defer cancel()
 	full := []string{"-c", "core.quotePath=false"}
@@ -79,6 +87,9 @@ func runHooked(dir string, network bool, args []string) (string, error) {
 		if ssh := netSSHCommand(dir); ssh != "" {
 			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
 		}
+	}
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr

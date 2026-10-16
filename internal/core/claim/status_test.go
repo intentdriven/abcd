@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -757,5 +758,41 @@ func TestAStatusBranchDeletedOnOriginLeavesNothingBehind(t *testing.T) {
 	}
 	if got := pat.notes(); strings.Contains(got, "zed") {
 		t.Fatalf("the block shows the deleted branch:\n%s", got)
+	}
+}
+
+// TestTheStatusFetchNamesItsBranchesOnStdin: each status branch is fetched
+// by its own refspec, and thousands of them would pass the system's
+// argument limit, so the refspecs travel on `git fetch --stdin`: the command
+// line carries none of them, however many branches origin lists, and every
+// one is still fetched.
+func TestTheStatusFetchNamesItsBranchesOnStdin(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	tip := w.pushStatus("u0", announcementMsg("merging", "#1", "u0", t0, 30*time.Minute), "")
+	var refs strings.Builder
+	const n = 120
+	for i := 1; i < n; i++ {
+		fmt.Fprintf(&refs, "create %su%d %s\n", StatusRefPrefix, i, tip)
+	}
+	runGitStdin(t, w.bare, refs.String(), "update-ref", "--stdin")
+	log := traced(t)
+	pat.status(nil)
+	var fetches [][]string
+	for _, c := range log.cmds {
+		if c[0] == "fetch" {
+			fetches = append(fetches, c)
+		}
+	}
+	if len(fetches) != 1 || !slices.Contains(fetches[0], "--stdin") {
+		t.Fatalf("fetches = %q; want one fetch reading its refspecs on stdin", fetches)
+	}
+	for _, a := range fetches[0] {
+		if strings.Contains(a, "abcd-status/") {
+			t.Fatalf("the fetch's command line names a status branch: %q", fetches[0])
+		}
+	}
+	if got := strings.Count(pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix), "\n") + 1; got != n {
+		t.Fatalf("fetched %d status branches; want %d", got, n)
 	}
 }

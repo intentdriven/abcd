@@ -543,10 +543,29 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 	if len(spaces) == 0 {
 		return "", refuse("a fetch names no namespace; %s", outcome)
 	}
-	args := []string{"fetch", "--prune", "--no-tags", Remote}
+	// A namespace that names each branch (only) may name thousands: those
+	// refspecs travel on stdin (`git fetch --stdin`), never on the command
+	// line, which the system's argument limit bounds. A globbed refspec stays
+	// on the command line.
+	var listed []string
 	for _, ns := range spaces {
-		args = append(args, ns.refspecs()...)
+		if ns.only != nil {
+			listed = append(listed, ns.refspecs()...)
+		}
+	}
+	args := []string{"fetch", "--prune", "--no-tags", Remote}
+	if len(listed) > 0 {
+		args = []string{"fetch", "--prune", "--no-tags", "--stdin", Remote}
+	}
+	for _, ns := range spaces {
+		if ns.only == nil {
+			args = append(args, ns.refspecs()...)
+		}
 		args = append(args, ns.also...)
+	}
+	stdin := ""
+	if len(listed) > 0 {
+		stdin = strings.Join(listed, "\n") + "\n"
 	}
 	withDefault := args
 	if ref != "" {
@@ -554,11 +573,11 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 		withDefault = append(append([]string(nil), args...), "+refs/heads/"+branch+":"+ref)
 	}
 	trace(withDefault...)
-	_, ferr := gitutil.Net(root, withDefault...)
+	_, ferr := gitutil.NetInput(root, stdin, withDefault...)
 	if ferr != nil && ref != "" {
 		gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
 		trace(args...)
-		_, ferr = gitutil.Net(root, args...)
+		_, ferr = gitutil.NetInput(root, stdin, args...)
 	}
 	if ferr != nil {
 		// Each namespace keeps that its fetch failed, and why, for every
