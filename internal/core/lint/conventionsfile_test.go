@@ -202,7 +202,8 @@ func TestAgentsMDDetailMovedUnderTheLoaderIsRecalled(t *testing.T) {
 // which offered the scratchpad as an equal home, must be gone. The itd-193
 // discipline and the users-directory principle, which both forms lean on, and
 // the bundled SCRATCH rule, which every managed repository receives, are held
-// to the same words.
+// to the same words, and so is the bundled OPINIONS rule that points at the
+// principle: it once let a verifier's copy go in the checkout's own local tier.
 func TestVerifierCopyGoesOutsideEveryWorkingTree(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	body := readRepoFile(t, root, "AGENTS.md")
@@ -253,9 +254,19 @@ func TestVerifierCopyGoesOutsideEveryWorkingTree(t *testing.T) {
 		t.Fatal("the binary bundles no SCRATCH domain rule")
 	}
 
+	opinions := ""
+	for _, r := range rules.Defaults().Domains["OPINIONS"].Rules {
+		if strings.Contains(r, "principles/the-users-directory-is-theirs.md") {
+			opinions = r
+		}
+	}
+	if opinions == "" {
+		t.Fatal("the binary bundles no OPINIONS rule pointing at principles/the-users-directory-is-theirs.md")
+	}
+
 	for name, text := range map[string]string{
 		"AGENTS.md": short, "the CONCURRENCY domain": long, "itd-193": itd193, "the users-directory principle": principle,
-		"the bundled SCRATCH rule": scratch,
+		"the bundled SCRATCH rule": scratch, "the bundled OPINIONS users-directory rule": opinions,
 	} {
 		// Code spans are markup, not words: `~/.abcd.noindex/` and the bare
 		// path read the same.
