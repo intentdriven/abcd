@@ -79,6 +79,13 @@ What this intent can honestly promise is bounded by where abcd starts processes.
    - Ubuntu 24.04 and later restrict unprivileged user namespaces by default, which blocks bubblewrap until the person allows it.
 8. **Depends on the guard reaching each launch.** abcd's guard keeps teaching inside the sandbox only once iss-2610161612203555, being built now, restores it to each launch; today the launch loads no hooks. This is recorded in words rather than as `blocked_by`, which names intents only. Should planning wait for that issue to resolve, or plan now and build after?
 
+## Decisions
+
+Ruled by the product thinker on 2026-10-16, in the planning interview:
+
+1. **Split into three parts.** (A) The agents abcd's runner launches run inside a sandbox the operating system enforces; this record carries part A. (B) Drains and builds the person's own session drives report how isolated they are, since abcd never changes the person's host settings and cannot fence that session. (C) Limiting which hosts a run may reach is a later, separate feature. Parts B and C are filed as their own drafts before planning goes on.
+2. **Kept apart from the worktree store, building on it.** The store (itd-2609091014076309) says where a launched agent's copy lives; this record says what the agent may reach from it. This one waits for the store to ship.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
