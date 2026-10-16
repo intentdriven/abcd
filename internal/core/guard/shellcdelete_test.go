@@ -77,6 +77,8 @@ func TestShellCRefusalStaysNarrow(t *testing.T) {
 		`bash -c 'echo $HOME; rm -f /tmp/a.png'`,
 		`bash -c 'D=/x; ls "$D"; rm -f /x/old.png'`,
 		`bash -c 'for f in $X; do echo "$f"; done; rmdir /x/empty'`,
+		// A cd to a literal directory decides nothing either.
+		`bash -c 'cd /x; rm -f a.png'`,
 	} {
 		d, err := r.Check(cmd)
 		if err != nil {
