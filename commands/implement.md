@@ -533,13 +533,13 @@ nothing unless it is still this person's, from this copy, and live: it names
 the other person and the expiry, says the reservation moved to your copy on
 another computer, or says it was released (reserve it again with `abcd build
 <id>`), and a fetch origin does not answer is named too, each as contention
-(exit 3 when nothing else moves). When it holds, the fence renews it for a day
-wherever a ruleset mirror exists at the lane's base: every landing there waits
-on a person, either the approval the armed merge needs (an approving review,
-or a code owner's) or the merge of a pull request left open for one, and
-either can wait overnight; a day is also past any merge queue's
-`check_response_timeout_minutes`. With no mirror at all the lease is the
-default two hours. Past the fence the reservation holds only
+(exit 3 when nothing else moves). When it holds, the fence renews it for a
+day, with a ruleset mirror at the lane's base or without one: every landing
+waits on a person, either the approval the armed merge needs (an approving
+review, or a code owner's) or the merge of a pull request left open for one,
+as a checkout with no mirror always leaves it, and either can wait overnight;
+a day is also past any merge queue's `check_response_timeout_minutes`. Past
+the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
 whatever its stage, an implementer's long stage included, so does handing an
 agent's receipt back with `receipt`, and each `abcd drain` move does for a
@@ -547,7 +547,15 @@ drain's lane parked at land. A run nobody steps, hands a receipt to or drains
 over for longer than its lease loses the reservation, and another person may
 then take the record over. A step or a receipt that finds the reservation held
 by another person or copy says so in its answer and logs `reservation_lost` in
-the run record, once. A run whose state records no
+the run record, once. A run keyed by an issue whose lane is handed back
+releases its reservation as the step hands it back: it pushes the tombstone
+while the reservation is still this copy's and logs `reservation_released`
+with the outcome, since the issue is the person's again; a fetch or push that
+fails is logged `reservation_release_failed` instead. For a lane a drain
+opened, the drain routing the hand-back pushes the tombstone again. A run
+`build <iss-N>` started has no drain routing it, so nothing retries a failed
+release: its reservation lapses with its lease. An intent's run keeps
+its reservation through a hand-back, for the lanes it still holds. A run whose state records no
 reservation is neither renewed nor fenced.
 
 Every landing step is recorded as it completes, so a killed `step` repeats the

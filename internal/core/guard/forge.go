@@ -28,7 +28,7 @@ import (
 //
 // It is the repository's choice and never abcd's default (abcd-fixes-what-it-
 // adds): it runs only where `.abcd/config.json` carries `outbound.forge: true`,
-// which `abcd ahoy install --outbound-forge` writes. That is a fact about the
+// which `abcd ahoy install --outbound` writes. That is a fact about the
 // repository and the text, not about the command's words, so no Pattern can say
 // it; the guard raises it under reserved ids of its own, as git-stash-shared-
 // stack does.

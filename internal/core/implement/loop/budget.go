@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -75,10 +76,10 @@ func estimateShares(cfg *runner.Config, steps int, audits bool) []budgetShare {
 
 // quota asks the named runner for its remaining quota: through the Quota seam
 // when a test sets it, else the runner configuration. The query runs under
-// ghTimeout, the bound the loop already puts on one call to a remote service,
+// landing.ForgeTimeout, the bound the loop already puts on one call to a remote service,
 // so a runner that reports its quota over I/O cannot hang the start.
 func (o Options) quota(name string) (runner.Quota, bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), ghTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), landing.ForgeTimeout)
 	defer cancel()
 	if o.Quota != nil {
 		return o.Quota(ctx, name)

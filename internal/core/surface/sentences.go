@@ -58,7 +58,7 @@ var sentences = map[string]string{
 		"Writes that layer's store; refuses a public entry curated by hand.",
 
 	"abcd build": "Start the loop that takes one READY intent to delivered: " +
-		"Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
+		"Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.",
 	"abcd build next": "Pick the readiest planned intent and start its run: " +
 		"Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.",
 
@@ -356,6 +356,9 @@ var sentences = map[string]string{
 
 	"abcd announce": "Post a fixed-form announcement on the shared remote: " +
 		"Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+
+	"abcd land": "Push a branch whose preflight passed and queue its pull request: " +
+		"Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
 
 	"abcd reserve": "Reserve an issue or intent on the shared remote, or release it: " +
 		"Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",

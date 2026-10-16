@@ -48,6 +48,7 @@ are wiring rather than user-facing surface are listed separately under
 | 37 | `/abcd:memory` | shipped | Keep short lessons an agent would otherwise relearn, stamped with who wrote them, when and in which session, and refused when they would hold a secret, a private name or a network address | [`37-memory.md`](37-memory.md) |
 | 37 | `/abcd:reserve` | shipped | Reserve an issue or intent on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
 | 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
+| 38 | `/abcd:land` | shipped | Push a branch once its preflight passed and queue its pull request where the merge gate allows, resumable by running it again | [`38-land.md`](38-land.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -143,7 +144,7 @@ the command's sentence (the section below).
 | Block | Group | Verbs |
 |---|---|---|
 | people | set-up | `ahoy`, `dashboard`, `update`, and the framework's `help` and `completion` |
-| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `library` |
+| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
@@ -236,7 +237,9 @@ what a drain would do renders through its dry run. Bare `abcd announce`
 refuses as a usage error naming the kinds, because its two operands are the
 kind and the item it announces. Bare `abcd reserve` refuses
 as a usage error because its one operand is the record it reserves; the
-reservations render through `abcd peers`. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
+reservations render through `abcd peers`. Bare `abcd land` is the landing of
+the checkout's current branch, so it acts rather than renders; it refuses on
+the default branch, a detached HEAD or uncommitted work and pushes nothing. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
 because their reports are `abcd lint identity` and `abcd ahoy --remote`. Bare `abcd report` opens the editor on a
 terminal and refuses anywhere else, because it files a report rather than
 rendering one, and bare `abcd statusline` renders abcd's row only in a managed
@@ -346,7 +349,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 <!-- index: commands -->
 `abcd`, `ahoy`, `announce`, `banlist`, `build`, `capture`, `dashboard`,
 `decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`, `guard`, `history`,
-`ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`, `launch`,
+`ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`, `land`, `launch`,
 `library`, `lint`, `memory`, `mode`, `peers`, `reading`, `reflect`, `report`,
 `reserve`, `scribe`, `site`, `update`.
 <!-- /index -->
