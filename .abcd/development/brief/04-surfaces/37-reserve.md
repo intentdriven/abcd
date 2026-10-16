@@ -104,7 +104,13 @@ branch `abcd-reserved/rel-vX.Y.Z` (itd-2609151838312703 C7 and C8,
 spc-2610150728396006 step 4, resolving iss-2609091037191879). While it is live,
 every other session's land step refuses to arm its merge, naming the holder and
 the release, and leaves the pull request open; `abcd peers` shows the line
-"release v0.16.0 being cut by @maya: merges are held". The subject is `rel-v`
+"release v0.16.0 being cut by @maya: merges are held", judged by the merge
+hold's own rule (`claim.JudgedHolds`, iss-2610160415393242): the cutting
+copy's own release is shown as "you are cutting release v0.16.0 from this
+copy: every other session's merges are held", and a release dated ahead whose
+first sighting the checkout cannot keep is shown as not counted, in land's
+notice's words, with `own` and `unsighted` on each `release_holds` row of
+`peers --json`. The subject is `rel-v`
 and three plain numbers, with no leading zero and no suffix, so one release
 never makes two branches. It differs from a record's reservation in four ways:
 

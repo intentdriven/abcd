@@ -113,6 +113,22 @@ func (h Hold) Text() string {
 	return fmt.Sprintf("release %s being cut by @%s: merges are held", h.Release, h.Holder)
 }
 
+// Line is the line a listing shows a judged hold by (JudgedHolds), by the
+// rule the merge hold counts it with: the cutting copy's own release as the
+// cut it is making ("you are cutting release v0.16.0 from this copy: every
+// other session's merges are held"), a release dated ahead whose first
+// sighting this copy cannot keep as not counted, in the words `abcd land`'s
+// notice uses, and any other by Text.
+func (h Hold) Line() string {
+	switch {
+	case h.Own:
+		return fmt.Sprintf("you are cutting release %s from this copy: every other session's merges are held", h.Release)
+	case h.Unsighted:
+		return h.notCounted() + " merges"
+	}
+	return h.Text()
+}
+
 // Holds is every release the view shows being cut at now: each live release
 // reservation, and each unreadable one within its hold, in the view's order.
 // It reads nothing; Own is left false.
@@ -138,9 +154,9 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 // reservations, from disk alone: no fetch, no push and nothing written
 // (invariant 7). Each hold's Mine says whether it is under the username a
 // reservation verb here would resolve, and Own whether it is also from this
-// copy. MergeHolds judges a merge from it, for the land fence and `abcd land`.
-// `abcd peers` renders the holds from its own view through Snapshot.Holds
-// instead, with the same lines; `abcd status` and the prompt hook are to
+// copy. JudgedHolds reads it, for MergeHolds, which judges a merge from it for
+// the land fence and `abcd land`, and for `abcd peers`, which shows each hold
+// by the same rule (Hold.Line); `abcd status` and the prompt hook are to
 // render them in step 3 of spc-2610150728396006 and do not yet.
 func ReleaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	now = now.UTC().Truncate(time.Second)

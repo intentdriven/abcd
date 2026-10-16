@@ -100,39 +100,44 @@ func (m MergeHold) Notice() string {
 	if len(m.Ahead) == 0 {
 		return ""
 	}
-	ahead := fmt.Sprintf("dated more than %d minutes ahead of this clock", lease.Skew/time.Minute)
 	lines := make([]string, 0, len(m.Ahead))
 	for _, h := range m.Ahead {
-		var what string
-		switch {
-		case h.Unreadable != "" && h.Undated:
-			what = fmt.Sprintf("release %s is held by an unreadable reservation (%s) whose date cannot be read", h.Release, h.Unreadable)
-		case h.Unreadable != "":
-			what = fmt.Sprintf("release %s is held by an unreadable reservation (%s) %s", h.Release, h.Unreadable, ahead)
-		case h.Mine:
-			what = fmt.Sprintf("release %s is reserved by your copy on another computer with a date more than %d minutes ahead of this clock",
-				h.Release, lease.Skew/time.Minute)
-		default:
-			what = fmt.Sprintf("release %s is reserved by %s with a date more than %d minutes ahead of this clock",
-				h.Release, h.Holder, lease.Skew/time.Minute)
-		}
-		lines = append(lines, what+", and this checkout cannot keep when it first saw it ("+tierRelDir+
-			"/ is missing or cannot be written), so it is not counted as holding this merge")
+		lines = append(lines, h.notCounted()+" this merge")
 	}
 	return strings.Join(lines, "; ")
 }
 
+// notCounted names a release dated ahead whose first sighting this copy
+// cannot keep, up to what it is not counted as holding: "release v0.16.0 is
+// reserved by quinn with a date more than 5 minutes ahead of this clock, and
+// this checkout cannot keep when it first saw it (...), so it is not counted
+// as holding". The caller names what.
+func (h Hold) notCounted() string {
+	ahead := fmt.Sprintf("dated more than %d minutes ahead of this clock", lease.Skew/time.Minute)
+	var what string
+	switch {
+	case h.Unreadable != "" && h.Undated:
+		what = fmt.Sprintf("release %s is held by an unreadable reservation (%s) whose date cannot be read", h.Release, h.Unreadable)
+	case h.Unreadable != "":
+		what = fmt.Sprintf("release %s is held by an unreadable reservation (%s) %s", h.Release, h.Unreadable, ahead)
+	case h.Mine:
+		what = fmt.Sprintf("release %s is reserved by your copy on another computer with a date more than %d minutes ahead of this clock",
+			h.Release, lease.Skew/time.Minute)
+	default:
+		what = fmt.Sprintf("release %s is reserved by %s with a date more than %d minutes ahead of this clock",
+			h.Release, h.Holder, lease.Skew/time.Minute)
+	}
+	return what + ", and this checkout cannot keep when it first saw it (" + tierRelDir +
+		"/ is missing or cannot be written), so it is not counted as holding"
+}
+
 // MergeHolds is the merge hold as this checkout last fetched the
-// reservations (ReleaseHolds without this copy's own): for a caller whose own
+// reservations (JudgedHolds without this copy's own): for a caller whose own
 // act has just fetched them, as the land fence's renewal does. It fetches
-// nothing and pushes nothing; it keeps, in the local tier, this copy's first
-// sighting of each release reservation that needs one, so every path that
-// judges a merge counts a release dated ahead from the same sighting. A
-// release that needs one and has none kept is returned in Ahead, not Holds.
+// nothing and pushes nothing. A release that needs a first sighting and has
+// none kept is returned in Ahead, not Holds.
 func MergeHolds(root string, now time.Time, o Options) (MergeHold, error) {
-	now = now.UTC().Truncate(time.Second)
-	keepFirstFetched(root, now, IsRelease)
-	holds, err := ReleaseHolds(root, now, o)
+	holds, err := JudgedHolds(root, now, o)
 	if err != nil {
 		return MergeHold{}, err
 	}
@@ -147,6 +152,20 @@ func MergeHolds(root string, now time.Time, o Options) (MergeHold, error) {
 		}
 	}
 	return m, nil
+}
+
+// JudgedHolds is every release being cut as this checkout last fetched the
+// reservations (ReleaseHolds), judged by the merge hold's rule: it first
+// keeps, in the local tier, this copy's first sighting of each release
+// reservation that needs one, so every path that judges a merge counts a
+// release dated ahead from the same sighting, and each hold's Own and
+// Unsighted then say whether MergeHolds counts it. MergeHolds counts from
+// it; `abcd peers` shows it, each hold by its Line. It fetches nothing and
+// pushes nothing.
+func JudgedHolds(root string, now time.Time, o Options) ([]Hold, error) {
+	now = now.UTC().Truncate(time.Second)
+	keepFirstFetched(root, now, IsRelease)
+	return ReleaseHolds(root, now, o)
 }
 
 // FetchMergeHold fetches the reservations and origin's release tags, then

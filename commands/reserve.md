@@ -74,7 +74,12 @@ pass, so the cutting session checks for armed pull requests and merge-queue
 entries after reserving and again before merging the release pull request
 (`/abcd:launch`, "Before step 1"), and tells people working in the repository
 by hand to hold. `/abcd:peers` shows the line "release
-v0.16.0 being cut by @octo: merges are held". The fetch every act makes reads
+v0.16.0 being cut by @octo: merges are held", by the same rule the hold
+counts with: in the cutting copy it shows "you are cutting release v0.16.0
+from this copy: every other session's merges are held", and a release dated
+more than five minutes ahead whose first sighting this checkout cannot keep
+is shown as not counted, in the words `abcd land`'s notice uses; `peers
+--json`'s `release_holds` rows say so with `own` and `unsighted`. The fetch every act makes reads
 `origin`'s release tags with the reservations, into `refs/abcd/release-tags/`,
 and never touches this checkout's own tags. Those are ordinary refs in this
 checkout, so `git log --all` lists the commits they name and `git push

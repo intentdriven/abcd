@@ -61,8 +61,10 @@ type reservationRow struct {
 
 // holdRow is one release being cut, as the listing shows it: its release and
 // subject, its holder (absent when the reservation is unreadable, with the
-// reason), whose copy it is when it is this one's, until when it holds, and
-// the line every surface shows it by.
+// reason), whose copy it is when it is this one's, until when it holds,
+// whether it is this copy's own cut (own) or dated ahead with no first
+// sighting kept here (unsighted), neither of which the merge hold counts
+// (claim.MergeHolds), and the line it is shown by.
 type holdRow struct {
 	Release         string `json:"release"`
 	Subject         string `json:"subject"`
@@ -70,6 +72,8 @@ type holdRow struct {
 	Copy            string `json:"copy,omitempty"`
 	EffectiveExpiry string `json:"effective_expiry"`
 	Unreadable      string `json:"unreadable,omitempty"`
+	Own             bool   `json:"own"`
+	Unsighted       bool   `json:"unsighted"`
 	Text            string `json:"text"`
 }
 
@@ -374,9 +378,20 @@ func addReservations(root string, out *peersOutput, now time.Time) (failed strin
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
-	for _, h := range snap.Holds(now) {
+	// The holds are judged by the merge hold's own rule, so the listing counts
+	// a release exactly as the land fence and `abcd land` do.
+	holds, herr := claim.JudgedHolds(root, now, claim.Options{Now: func() time.Time { return now }})
+	if herr != nil {
+		msg := termsafe.Sanitize(fsutil.RedactHome(herr.Error()))
+		if failed != "" {
+			return failed + "; " + msg
+		}
+		return msg
+	}
+	for _, h := range holds {
 		out.ReleaseHolds = append(out.ReleaseHolds, holdRow{Release: h.Release, Subject: h.Subject, Holder: h.Holder,
-			Copy: h.Copy, EffectiveExpiry: rfc3339(h.EffectiveExpiry), Unreadable: h.Unreadable, Text: termsafe.Sanitize(h.Text())})
+			Copy: h.Copy, EffectiveExpiry: rfc3339(h.EffectiveExpiry), Unreadable: h.Unreadable, Own: h.Own,
+			Unsighted: h.Unsighted, Text: termsafe.Sanitize(h.Line())})
 	}
 	return failed
 }
