@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/21-update.md"
 remedy: "Rewrite .abcd/development/brief/04-surfaces/21-update.md:48 to match the shipped surface: A bare update whose latest release is older than ~/.abcd.noindex/release-mark is refused with shape `older-than-mark` (internal/surface/cli/update.go:107); the update writes release-mark and naming an older tag lowers it (update --help). The chapter documents…"
+resolution: "The update chapter now says the verb records the release it installed or verified as this machine's newest release, that a bare update only raises the mark, that naming an older release is the one way to lower it, and that the bootstrap raises it too; the older-than-mark refusal is described beside the other post-dispatch refusals"
+impact: fix
+resolved_by:
+  commit: "04dbf3608"
 ---
 
 The brief at .abcd/development/brief/04-surfaces/21-update.md:48 says: The verb takes an optional release tag; with none, it resolves the latest (no further condition on the bare form). The shipped surface differs: A bare update whose latest release is older than ~/.abcd.noindex/release-mark is refused with shape `older-than-mark` (internal/surface/cli/update.go:107); the update writes release-mark and naming an older tag lowers it (update --help). The chapter documents neither the release-mark record nor this refusal. (v0.14.2 release crosscheck, undocumented-surface, raised by opus in a16.)
