@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/05-intent.md"
 remedy: "Change 'Three audit-loop modes' to 'Two' at 05-intent.md:569, or name the third mode."
+resolution: "05-intent.md now counts two audit-loop modes, matching the two it lists (record-only, loop-to-acceptance)"
+impact: internal
 ---
 
 The brief at .abcd/development/brief/04-surfaces/05-intent.md:569 says 'Three audit-loop modes, facilitator-elected per intent via the audit_mode frontmatter key', but lists only two beneath it: record-only and loop-to-acceptance.

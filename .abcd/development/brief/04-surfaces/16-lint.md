@@ -137,9 +137,13 @@ not-applicable rule reads as skipped rather than as passed or failed.
 The verb can lint a repo other than the current working directory.
 
 
-**No gate in this repository invokes it.** The verb backs onboarding and runs
-when a human types it; wiring it into CI is a separate decision, tracked as
-iss-2608231000561060.
+**No gate in this repository invokes bare `abcd lint`.** The v1 rule set backs
+onboarding and runs when a human types it; wiring it into CI is a separate
+decision, tracked as iss-2608231000561060. Three of its targets are gated:
+the docs target runs in the `docs-lint` make target and in CI, the site target
+in the `site-render` make target and in CI, and the outbound target in the
+commit-msg hook, `scripts/check-attribution.sh` and CI's attribution workflow;
+the identity target runs in no gate.
 
 ## The v1 rule set
 
