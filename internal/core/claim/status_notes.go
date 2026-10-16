@@ -2,11 +2,8 @@ package claim
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -80,31 +77,10 @@ func (n Notes) MarkShown() {
 }
 
 // writeUnflushed writes name under the status state directory's sub, made
-// when missing, through a temporary file renamed into place, with no flush:
-// for state whose loss only repeats a line. Best effort.
+// when missing, through a temporary file renamed into place, with no flush
+// (writeUnflushedIn). Best effort.
 func writeUnflushed(root, sub, name string, data []byte) {
-	r, err := os.OpenRoot(root)
-	if err != nil {
-		return
-	}
-	defer r.Close()
-	dir := statusBranches.stateDir + "/" + sub
-	if err := mkStateDir(r, dir); err != nil {
-		return
-	}
-	var buf [8]byte
-	if _, err := rand.Read(buf[:]); err != nil {
-		return
-	}
-	tmp := dir + "/.tmp-" + hex.EncodeToString(buf[:])
-	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, stateMode)
-	if err != nil {
-		return
-	}
-	_, werr := f.Write(data)
-	if cerr := f.Close(); werr != nil || cerr != nil || r.Rename(tmp, dir+"/"+name) != nil {
-		_ = r.Remove(tmp)
-	}
+	_ = writeUnflushedIn(root, statusBranches.stateDir+"/"+sub, name, data)
 }
 
 // shownSet is every key kept as shown: each line of every block file, and

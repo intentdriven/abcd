@@ -114,7 +114,8 @@ Without `--json`, the verb prints, in order:
 The prompt hook appends a `## STATUS` block to the text it injects at a
 prompt when this checkout holds something it has not shown yet. It reads only
 what the last fetch left on disk and never touches the network, under a
-deadline inside the hook's one-second budget:
+deadline inside the hook's one-second budget, and takes in at most 100 new
+commits at one prompt:
 
 ```
 ## STATUS
@@ -180,7 +181,8 @@ Each of these is shown with its reason, and every other branch is still read:
 - a branch that was rewritten rather than added to, passed a merge, or gained
   more than one read covers since it was last read here, or holds more than
   one read covers when it is first read here, whatever times its commits
-  carry ("continuity not verified");
+  carry, or gained more new commits than one read takes in: at most 100 in
+  all, the newest of each branch first ("continuity not verified");
 - a branch under `abcd-status/` whose name is not a GitHub username in lower
   case: it is counted, never named and never fetched, since two names that
   differ only in case break every fetch on a case-insensitive filesystem, and

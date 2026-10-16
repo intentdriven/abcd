@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"path"
 	"slices"
 	"strconv"
 	"strings"
@@ -261,9 +262,11 @@ func hasCommitCtx(ctx context.Context, root, commit string) (bool, error) {
 }
 
 // markRead records that this checkout has read the branch at ref up to
-// commit, the mark the next walk starts from. A checkout without its local
-// tier keeps no mark (the tier is never created here), so its every walk
-// reads as never read.
+// commit, the mark the next walk starts from, unflushed and best effort: a
+// mark not kept costs only the walk made again, whose commits already read
+// are kept as read. It refuses only a ref outside the namespace and a commit
+// that is not one. A checkout without its local tier keeps no mark (the tier
+// is never created here), so its every walk reads as never read.
 func (ns namespace) markRead(root, ref, commit string) error {
 	if err := ns.owns(ref); err != nil {
 		return err
@@ -274,15 +277,9 @@ func (ns namespace) markRead(root, ref, commit string) error {
 	if tierPresent(root) != nil {
 		return nil
 	}
-	r, err := os.OpenRoot(root)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
-	if err := mkStateDir(r, ns.readDir()); err != nil {
-		return err
-	}
-	return fsutil.WriteFileAtomicInRoot(r, ns.markRel(ref), []byte(commit+"\n"), stateMode)
+	rel := ns.markRel(ref)
+	_ = writeUnflushedIn(root, path.Dir(rel), path.Base(rel), []byte(commit+"\n"))
+	return nil
 }
 
 // lastRead is the commit ref's mark names; "" when there is none or it does

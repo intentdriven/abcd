@@ -2,6 +2,7 @@ package claim
 
 import (
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -80,6 +81,12 @@ const maxListingLine = 4096
 // in: a branch that gained more since this checkout last read it reads as
 // doubtful (DoubtMore). A test lowers it.
 var statusWalkLimit = maxWalk
+
+// maxIntakeCommits is the most new commits one intake takes in, across every
+// status branch, the newest of each branch first: a branch with more past it
+// is marked read at its tip and reads as doubtful (DoubtMore). It bounds what
+// the prompt hook's read writes before its deadline.
+var maxIntakeCommits = 100
 
 // The status state's files, under statusBranches.stateDir.
 const (
@@ -429,16 +436,18 @@ type intake struct {
 
 // takeIn reads every status branch this checkout holds from where it last
 // read it (namespace.since, under ctx), reads each commit the walk added and
-// this checkout has not read before, in one bounded batch, keeps each as seen
-// at now, then marks the branch read at its tip. A branch whose name is not a
-// lower-case username is tallied, never read and never kept. One whose tip is
-// not a commit, or whose walk could not verify continuity (it moved back or
-// was rewritten, ran past the walk's limit, on a first read as on any other,
-// or passed a merge)
-// is kept as doubtful, and every other branch is still read. It writes only
-// the local tier; a checkout
-// without one keeps nothing and reads nothing. When ctx ends, what was read
-// is kept, the branch at hand is not marked, and ctx's error is answered.
+// this checkout has not read before, in one bounded batch per branch, keeps
+// each as seen at now, then marks the branch read at its tip. It takes in at
+// most maxIntakeCommits new commits in all, the newest of each branch first.
+// A branch whose name is not a lower-case username is tallied, never read and
+// never kept. One whose tip is not a commit, or whose walk could not verify
+// continuity (it moved back or was rewritten, ran past the walk's limit,
+// on a first read as on any other, or passed a merge), or that gained more
+// new commits than the intake had left to take in, is kept as doubtful, and
+// every other branch is still read. It writes only the local tier, unflushed;
+// a checkout without one keeps nothing and reads nothing. When ctx ends, what
+// was read is kept, the branch at hand is not marked, and ctx's error is
+// answered.
 func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 	var in intake
 	if tierPresent(root) != nil {
@@ -483,20 +492,35 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 			}
 			continue
 		}
+		// One doubt per branch, the first that applies. A first read past the
+		// walk's limit is doubtful whatever its commits carry: within the
+		// bounded walk nothing settles whether a line beneath it can still
+		// stand (dcn-2610161100416718, as refined).
+		reason := ""
 		switch {
 		case h.Since != "" && h.Rewritten:
-			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtRewritten, Tip: h.Tip, FoundAt: now})
-		case h.More && h.Since != "":
-			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtMore, Tip: h.Tip, FoundAt: now})
+			reason = DoubtRewritten
+		case h.More:
+			reason = DoubtMore
 		case h.Merged:
-			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtMerged, Tip: h.Tip, FoundAt: now})
+			reason = DoubtMerged
 		}
 		var fresh []string
-		var read map[string]readAnnouncement
 		for _, c := range h.Added {
 			if !seenKept(root, c) {
 				fresh = append(fresh, c)
 			}
+		}
+		// At most maxIntakeCommits new commits in all, the newest of each
+		// branch first: the rest are not read, and the branch is doubtful.
+		if left := maxIntakeCommits - in.taken; len(fresh) > left {
+			fresh = fresh[:max(left, 0)]
+			if reason == "" {
+				reason = DoubtMore
+			}
+		}
+		if reason != "" {
+			keepDoubt(root, BranchDoubt{Branch: name, Reason: reason, Tip: h.Tip, FoundAt: now})
 		}
 		if len(fresh) > 0 {
 			if tree == "" {
@@ -504,23 +528,14 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 					return in, err
 				}
 			}
-			read, err = readAnnouncements(ctx, root, tree, fresh)
+			read, err := readAnnouncements(ctx, root, tree, fresh)
 			if err != nil {
 				return in, err
 			}
-			// fresh is newest first, so the newest takes the largest order;
-			// the base is the wall clock's, so a later intake orders after.
-			base := time.Now().UnixNano()
-			for i, c := range fresh {
-				keepSeen(root, name, c, read[c], now, base+int64(len(fresh)-1-i))
-				in.taken++
-			}
-		}
-		if h.More && h.Since == "" {
-			// A first read past the walk's limit is doubtful whatever its
-			// commits carry: within the bounded walk nothing settles whether
-			// a line beneath it can still stand (dcn-2610161737571276).
-			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtMore, Tip: h.Tip, FoundAt: now})
+			// The order's base is the wall clock's, so a later intake orders
+			// after.
+			keepSeen(root, name, fresh, read, now, time.Now().UnixNano())
+			in.taken += len(fresh)
 		}
 		if err := ctx.Err(); err != nil {
 			return in, err
@@ -671,21 +686,33 @@ func seenKept(root, commit string) bool {
 	return err == nil
 }
 
-// keepSeen keeps commit, read on branch, as first fetched at now, best
-// effort: one not kept is read again by the next intake.
-func keepSeen(root, branch, commit string, read readAnnouncement, now time.Time, order int64) {
-	e := seenEntry{Branch: branch, FirstFetched: stamp(now), Order: order}
-	if read.h.Unreadable != "" {
-		e.Unreadable = read.h.Unreadable
-	} else {
-		a := read.a
-		e.Kind, e.Item, e.Sender, e.SentAt, e.ExpiresAt = a.Kind, a.Item, a.Sender, stamp(a.SentAt), stamp(a.ExpiresAt)
-	}
-	data, err := json.Marshal(e)
+// keepSeen keeps each of commits, read on branch, as first fetched at now,
+// through one open of the root, unflushed and best effort: one not kept is
+// read again by the next intake. commits is newest first, and the newest
+// takes the largest order, from base.
+func keepSeen(root, branch string, commits []string, read map[string]readAnnouncement, now time.Time, base int64) {
+	r, err := os.OpenRoot(root)
 	if err != nil {
 		return
 	}
-	writeStatusFile(root, seenDir, commit, data)
+	defer r.Close()
+	dir := statusFile(seenDir)
+	if err := mkStateDir(r, dir); err != nil {
+		return
+	}
+	for i, c := range commits {
+		e := seenEntry{Branch: branch, FirstFetched: stamp(now), Order: base + int64(len(commits)-1-i)}
+		if a := read[c]; a.h.Unreadable != "" {
+			e.Unreadable = a.h.Unreadable
+		} else {
+			e.Kind, e.Item, e.Sender, e.SentAt, e.ExpiresAt = a.a.Kind, a.a.Item, a.a.Sender, stamp(a.a.SentAt), stamp(a.a.ExpiresAt)
+		}
+		data, err := json.Marshal(e)
+		if err != nil {
+			continue
+		}
+		_ = writeUnflushedAt(r, dir, c, data)
+	}
 }
 
 // writeStatusFile writes name under the status state directory's sub, made
@@ -704,6 +731,52 @@ func writeStatusFile(root, sub, name string, data []byte) {
 		return
 	}
 	_ = fsutil.WriteFileAtomicInRoot(r, dir+"/"+name, data, stateMode)
+}
+
+// tmpPrefix starts the temporary file writeUnflushedIn writes before it
+// renames it into place.
+const tmpPrefix = ".tmp-"
+
+// writeUnflushedIn writes name under dir, a directory under the local tier
+// made when missing, through a temporary file renamed into place, with no
+// flush to stable storage: for state whose loss costs only a read made again
+// or a line shown again, written where the prompt hook's deadline applies.
+// A temporary file a write cut off leaves behind is removed by pruneStatus.
+func writeUnflushedIn(root, dir, name string, data []byte) error {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	if err := mkStateDir(r, dir); err != nil {
+		return err
+	}
+	return writeUnflushedAt(r, dir, name, data)
+}
+
+// writeUnflushedAt is writeUnflushedIn through r, into dir, which exists.
+func writeUnflushedAt(r *os.Root, dir, name string, data []byte) error {
+	var buf [8]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return err
+	}
+	tmp := dir + "/" + tmpPrefix + hex.EncodeToString(buf[:])
+	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, stateMode)
+	if err != nil {
+		return err
+	}
+	_, werr := f.Write(data)
+	cerr := f.Close()
+	if werr == nil {
+		werr = cerr
+	}
+	if werr == nil {
+		werr = r.Rename(tmp, dir+"/"+name)
+	}
+	if werr != nil {
+		_ = r.Remove(tmp)
+	}
+	return werr
 }
 
 // readStatusFile is rel under the status state directory, at most max bytes;
@@ -884,9 +957,10 @@ func fixedReason(reason string) string {
 	return "it does not read as an announcement"
 }
 
-// keepDoubt keeps d, replacing what was kept for its branch. A doubt kept
-// already, for the same reason at the same tip, is left as it is, so a doubt
-// read again at every prompt is not written again at every prompt.
+// keepDoubt keeps d, replacing what was kept for its branch, unflushed and
+// best effort: a doubt not kept is found again when its branch next moves. A
+// doubt kept already, for the same reason at the same tip, is left as it is,
+// so a doubt read again at every prompt is not written again at every prompt.
 func keepDoubt(root string, d BranchDoubt) {
 	for _, k := range keptDoubts(root, d.FoundAt) {
 		if k.Branch == d.Branch && k.Reason == d.Reason && k.Tip == d.Tip && !k.FoundAt.IsZero() && k.Tip != "" {
@@ -902,7 +976,7 @@ func keepDoubt(root string, d BranchDoubt) {
 	if err != nil {
 		return
 	}
-	writeStatusFile(root, doubtDir, hashName(d.Branch), data)
+	writeUnflushed(root, doubtDir, hashName(d.Branch), data)
 }
 
 // hashName names a file for a value a writer chose, so it never becomes a

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // Reading the announcements (itd-2609151838312703, spc-2610150728396006 step
@@ -476,7 +478,11 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 // "the newest per item" from "the newest ten": that item is shown once, by
 // its latest kind, and the next item takes the freed line. The
 // count is of every announcement not shown, an item's older ones among them.
+// The intake's own cap is lifted, so one fetch takes in the whole flood.
 func TestAFloodIsSummedUp(t *testing.T) {
+	old := maxIntakeCommits
+	maxIntakeCommits = 500
+	t.Cleanup(func() { maxIntakeCommits = old })
 	w := newWorld(t)
 	pat := w.clone("9+pat@users.noreply.github.com", "")
 	var msgs []string
@@ -872,12 +878,13 @@ func TestTheStatusFetchNamesItsBranchesOnStdin(t *testing.T) {
 	}
 }
 
-// TestMarkingAFloodShownFitsThePrompt is C12 for the write after the read: a
-// prompt that shows or counts 300 new announcements reads them and keeps them
-// all as shown in one unflushed write, well inside the hook's second (about
-// 120 ms on a loaded developer machine; the bound allows four times that),
-// and the next prompt shows none again.
+// TestMarkingAFloodShownFitsThePrompt is C12 for the write after the read:
+// with flushing on, as a shipped binary writes, a prompt whose read is the
+// first to take in 300 new announcements reads what one intake takes and
+// keeps every line it showed or counted as shown in one unflushed file, well
+// inside the hook's second, and the next prompt shows none again.
 func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
+	t.Setenv(fsutil.SkipFlushEnv, "0")
 	w := newWorld(t)
 	pat := w.clone("9+pat@users.noreply.github.com", "")
 	var msgs []string
@@ -885,8 +892,9 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 		msgs = append(msgs, announcementMsg("merging", "#"+strconv.Itoa(1+i), "maya", t0.Add(time.Duration(i)*time.Second), 30*time.Minute))
 	}
 	w.pushMany("maya", msgs)
-	pat.status(nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 600*time.Millisecond)
+	pat.fetchOnly()
+	t.Cleanup(promptReads.Wait)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	start := time.Now()
 	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
@@ -899,8 +907,22 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	if took > 500*time.Millisecond {
 		t.Fatalf("reading and marking 300 announcements took %s; want it near its cost, under 500 ms", took)
 	}
-	if !strings.Contains(n.Text, "- and 290 more: `abcd status` lists them all\n") {
-		t.Fatalf("the block:\n%s\nwant 290 counted", n.Text)
+	// One intake takes in the newest maxIntakeCommits; the block shows nine
+	// of them and the branch's doubt, and counts the rest.
+	want := fmt.Sprintf("- and %d more: `abcd status` lists them all\n", maxIntakeCommits-(maxNoteLines-1))
+	if !strings.Contains(n.Text, want) || !strings.Contains(n.Text, "abcd-status/maya (doubtful): "+DoubtMore) {
+		t.Fatalf("the block:\n%s\nwant %q and maya doubtful", n.Text, want)
+	}
+	shownFiles := func() []string {
+		t.Helper()
+		var names []string
+		for _, e := range statusEntries(pat.dir, shownDir) {
+			names = append(names, e.Name())
+		}
+		return names
+	}
+	if got := shownFiles(); len(got) != 1 || !strings.HasPrefix(got[0], blockPrefix) {
+		t.Fatalf("shown/ holds %q after one block; want one block file", got)
 	}
 	if again := pat.notes(); again != "" {
 		t.Fatalf("the next prompt shows %q; want nothing", again)
@@ -916,7 +938,13 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	}
 	late.by = time.Now().Add(-time.Millisecond)
 	late.MarkShown()
+	if got := shownFiles(); len(got) != 1 {
+		t.Fatalf("shown/ holds %q after a block marked past its budget; want only the first block's file", got)
+	}
 	if got := pat.notes(); !strings.Contains(got, "merged #1") {
 		t.Fatalf("after a block marked past its budget, the block:\n%s\nwant the line again", got)
+	}
+	if got := shownFiles(); len(got) != 2 {
+		t.Fatalf("shown/ holds %q after two blocks marked; want one file per block", got)
 	}
 }

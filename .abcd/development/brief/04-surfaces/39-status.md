@@ -48,10 +48,14 @@ leaving its sender claimed. It pushes nothing.
 
 One intake serves the verb and the prompt hook. It walks each status branch
 from where this checkout last read it (the bounded history walk of step 1),
-reads every commit the walk added that this checkout has not read before, in
-one batch of two `git cat-file` commands whatever their number, each through
-the announcement's own validator, and keeps in `.abcd/.work.local/status/`
-the announcement's validated fields and when this checkout first fetched it.
+reads every commit the walk added that this checkout has not read before, at
+most 100 in one intake, the newest of each branch first, in one batch of two
+`git cat-file` commands per branch, each through the announcement's own
+validator, and keeps in `.abcd/.work.local/status/` the announcement's
+validated fields and when this checkout first fetched it. What it keeps there
+is written without a flush to stable storage: losing it costs only a read
+made again, and a flood of new announcements then fits the prompt hook's
+deadline.
 The commit's raw text is never kept and never shown. An announcement stands
 for the life it was sent with from that first fetch, not by the sender's
 clock (C9); one whose own expiry passed more than an hour before the first
@@ -65,8 +69,9 @@ while every other branch is still read (C11): an announcement whose sender is
 not its branch's owner; a commit that does not read as an announcement, such
 as one that changes a file, shown only by its branch and the reason; a branch
 that moved back or was rewritten, passed a merge, or gained more than one read
-covers since it was last read here, or holds more than one read covers at its
-first read here ("continuity not verified"); and a branch
+covers since it was last read here, holds more than one read covers at its
+first read here, or gained more new commits than one intake takes in
+("continuity not verified"); and a branch
 whose name is not a lower-case username, counted and never named.
 
 ## What it shows
