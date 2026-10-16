@@ -351,17 +351,26 @@ func (b baseTree) record(dir, family, id string) ([]baseEntry, error) {
 // blob is the content of a regular file the base carries, refused when the
 // base holds a link or anything but a file there, or when it passes limit.
 func (b baseTree) blob(e baseEntry, limit int64) ([]byte, error) {
-	if e.kind != "blob" || (e.mode != "100644" && e.mode != "100755") {
-		return nil, fmt.Errorf("the base holds it as mode %s %s, not a regular file", e.mode, e.kind)
-	}
-	if e.size < 0 || e.size > limit {
-		return nil, fmt.Errorf("it is %d bytes, past the %d-byte cap", e.size, limit)
+	if err := b.readable(e, limit); err != nil {
+		return nil, err
 	}
 	out, err := gitutil.RunCapped(b.root, int(limit), "cat-file", "blob", e.object)
 	if err != nil {
 		return nil, err
 	}
 	return []byte(out), nil
+}
+
+// readable is why blob refuses e, nil when it reads it: anything but a regular
+// file, or one past limit.
+func (b baseTree) readable(e baseEntry, limit int64) error {
+	if e.kind != "blob" || (e.mode != "100644" && e.mode != "100755") {
+		return fmt.Errorf("the base holds it as mode %s %s, not a regular file", e.mode, e.kind)
+	}
+	if e.size < 0 || e.size > limit {
+		return fmt.Errorf("it is %d bytes, past the %d-byte cap", e.size, limit)
+	}
+	return nil
 }
 
 // describeADR is the cited ADR as the base holds it, routed by the id its

@@ -184,7 +184,11 @@ func planFromOrigin(repoRoot string, v originView, now time.Time) (capture.Drain
 }
 
 // treeLedger reads the issue ledger's status folders out of v's commit: every
-// file's name, and the content of each record in open/.
+// file's name, and the content of each record in open/. The records are read
+// through one `git cat-file --batch`, so a move starts the same few processes
+// however long the ledger is; each is first judged as baseTree.blob judges
+// one (a regular file, within issueschema.RecordReadLimit), and only those it
+// would read are asked for.
 func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 	at := baseTree{root: repoRoot, sha: v.commit}
 	source := gitutil.ShortRef(v.ref) + " at " + shortSHA(v.commit)
@@ -193,6 +197,9 @@ func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 		return nil, fmt.Errorf("reading the ledger at %s: %w", source, err)
 	}
 	l := &capture.TreeLedger{Source: source}
+	var want []int
+	var objects []string
+	budget := 0
 	for _, e := range entries {
 		rest, _ := strings.CutPrefix(e.path, recordid.IssuesRelDir+"/")
 		folder, name, ok := strings.Cut(rest, "/")
@@ -201,14 +208,31 @@ func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 		}
 		f := capture.LedgerFile{Folder: folder, Path: e.path}
 		if folder == string(capture.StateOpen) && strings.HasPrefix(name, "iss-") {
-			b, err := at.blob(e, issueschema.RecordReadLimit)
-			if err != nil {
+			if err := at.readable(e, issueschema.RecordReadLimit); err != nil {
 				f.Unread = err.Error()
 			} else {
-				f.Text = string(b)
+				want, objects = append(want, len(l.Files)), append(objects, e.object)
+				// The answer is the header and the content, as the listing
+				// sized it, and the newline after.
+				budget += len(e.object) + 32 + int(e.size)
 			}
 		}
 		l.Files = append(l.Files, f)
+	}
+	got, err := gitutil.CatFileBatch(repoRoot, objects, budget)
+	if err != nil {
+		return nil, fmt.Errorf("reading the ledger at %s: %w", source, err)
+	}
+	for k, i := range want {
+		switch o := got[k]; {
+		case o.Missing:
+			l.Files[i].Unread = "the base holds no object " + o.Name
+		case o.Type != "blob":
+			l.Files[i].Unread = fmt.Sprintf("the base holds it as a %s, not a regular file", o.Type)
+		default:
+			// Trimmed at the end as a single read's answer is (gitutil.RunCapped).
+			l.Files[i].Text = strings.TrimRight(string(o.Content), " \t\r\n")
+		}
 	}
 	return l, nil
 }

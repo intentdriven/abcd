@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -432,4 +433,83 @@ func TestADrainWaitingOnOriginFollowsTheOutageScheduleAndGivesUp(t *testing.T) {
 		t.Fatalf("the drain did not end: live %v, ended %v", live, st.EndedAt)
 	}
 	noReservations(t, bare)
+}
+
+// TestTheTreeLedgerReadsEveryOpenRecordThroughOneCatFile: planning reads the
+// open records of origin's commit through one `git cat-file` process, however
+// many there are, and each record keeps the verdict a read of it alone gives:
+// one past the size cap and a link are refused by the listing, a malformed one
+// is read and refused by the ledger's reader, and the valid records on either
+// side of them are read whole.
+func TestTheTreeLedgerReadsEveryOpenRecordThroughOneCatFile(t *testing.T) {
+	const (
+		validFirst = "iss-2609300000000001"
+		oversize   = "iss-2609300000000002"
+		malformed  = "iss-2609300000000003"
+		link       = "iss-2609300000000004"
+		validLast  = "iss-2609300000000005"
+	)
+	repo := briefRepo(t, agentsMarked)
+	issueRepoRule(t, repo)
+	fileIssueAt(t, repo, validFirst, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md:3")
+	fileIssueAt(t, repo, validLast, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md:3")
+	open := filepath.Join(repo.Root(), ".abcd", "work", "issues", "open")
+	repo.Write(".abcd/work/issues/open/"+oversize+"-big.md", "---\nid: "+oversize+"\n---\n"+strings.Repeat("x", int(issueschema.RecordReadLimit)))
+	repo.Write(".abcd/work/issues/open/"+malformed+"-bad.md", "---\nid: [unclosed\nseverity: minor\n")
+	if err := os.Symlink("../../../../AGENTS.md", filepath.Join(open, link+"-link.md")); err != nil {
+		t.Fatal(err)
+	}
+	repo.Commit("a mixed ledger")
+	v := originView{ref: "refs/remotes/origin/main", commit: strings.TrimSpace(repo.Git("rev-parse", "HEAD"))}
+
+	calls := gittest.SlowPipeGit(t, "cat-file", 0)
+	l, err := treeLedger(repo.Root(), v)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := calls(); n != 1 {
+		t.Fatalf("reading the ledger ran git cat-file %d time(s); want one batch", n)
+	}
+	// Each record's verdict is the one a read of it alone gives.
+	at := baseTree{root: repo.Root(), sha: v.commit}
+	entries, err := at.list(".abcd/work/issues/open/", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := 0
+	for _, e := range entries {
+		i := slices.IndexFunc(l.Files, func(f capture.LedgerFile) bool { return f.Path == e.path })
+		if i < 0 {
+			t.Fatalf("the ledger lacks %s", e.path)
+		}
+		f := l.Files[i]
+		want, werr := at.blob(e, issueschema.RecordReadLimit)
+		switch {
+		case werr != nil:
+			if f.Unread != werr.Error() || f.Text != "" {
+				t.Fatalf("%s: unread %q, text %d bytes; want unread %q", e.path, f.Unread, len(f.Text), werr)
+			}
+		case f.Unread != "" || f.Text != string(want):
+			t.Fatalf("%s: unread %q, text %q; want %q", e.path, f.Unread, f.Text, want)
+		default:
+			read++
+		}
+	}
+	if read != 3 {
+		t.Fatalf("%d record(s) read whole; want the two valid ones and the malformed one", read)
+	}
+	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repo.Root(), Ledger: l})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{validFirst, validLast} {
+		if _, ok := plan.OpenIssue(id); !ok {
+			t.Fatalf("the plan lacks %s, read after a refused record: %+v", id, plan.Dispositions)
+		}
+	}
+	for _, id := range []string{oversize, malformed, link} {
+		if _, ok := plan.OpenIssue(id); ok {
+			t.Fatalf("the plan takes %s, which the reader refuses", id)
+		}
+	}
 }
