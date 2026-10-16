@@ -22,15 +22,17 @@
 // read as "no store" and never answered with a second store here.
 //
 // Which stores the outbound check reads is a wider question (Reachable):
-// every live store under this home, whatever repository it belongs to,
-// found by listing the worktree store rather than by any root commit, so a
-// second clone whose roots miss the store's key (a shallow clone, rewritten
-// history) still reads it. Those that are not this checkout's own are read,
-// and never written.
+// every place a store sits under this home, whatever repository it belongs
+// to and whether or not git still lists it, found by listing the worktree
+// store rather than by any root commit, so a second clone whose roots miss
+// the store's key (a shallow clone, rewritten history) still reads it, and a
+// store whose checkout was deleted still has its records read. Those that
+// are not this checkout's own are read, and never written.
 package storepath
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -75,17 +77,21 @@ var ErrNoRootCommit = errors.New("the default branch has no root commit to key t
 var ErrPlaceTaken = errors.New("something that is not a store of this repository sits where its embargo store would be made")
 
 // ErrPlaceUnread is Reachable's answer when the worktree store under the
-// home cannot be listed, or a place worktrees/<key>/embargo in it holds
-// something that is not a live worktree, or cannot be examined: it may be a
-// store whose records the check would otherwise miss, so it is never
-// skipped.
-var ErrPlaceUnread = errors.New("something that is not a readable store sits where an embargo store under this home would be")
+// home cannot be listed, or a place worktrees/<key>/embargo in it cannot be
+// examined: it may be a store whose records the check would otherwise miss,
+// so it is never skipped.
+var ErrPlaceUnread = errors.New("a place where an embargo store under this home would be cannot be examined")
 
 // ErrNoFreePlace is Locate's answer, with no store registered, when the place
 // under every root of the default branch holds another repository's store.
 // This repository has no store; one cannot be made here without touching
 // another's.
 var ErrNoFreePlace = errors.New("every place the embargo store could be made holds another repository's store")
+
+// ErrPlaceHeldByAClone is ErrNoFreePlace when each store sitting at those
+// places is a clone's of the same project, under a root of that clone's own
+// default branch: moving it under its own root could not free the place.
+var ErrPlaceHeldByAClone = fmt.Errorf("%w, each a clone's of the same project", ErrNoFreePlace)
 
 // Location is where a repository's embargo store is, or is to be made.
 type Location struct {
@@ -111,15 +117,18 @@ type Location struct {
 // keeps the place it always had. A place holding another repository's live
 // store is passed over and never touched; the first free place is the
 // answer; a place holding anything else, or that cannot be examined, is
-// ErrPlaceTaken; with every place another's, ErrNoFreePlace.
+// ErrPlaceTaken; with every place another's, ErrNoFreePlace, or
+// ErrPlaceHeldByAClone when each of those stores sits under a root of its
+// own repository's default branch (keyedOnOwnRoot).
 func Locate(home, repoRoot string) (Location, error) {
 	if p, err := registeredStore(home, repoRoot); err != nil || p != "" {
 		return Location{Path: p, Registered: p != ""}, err
 	}
-	loc, found := Location{}, ErrNoFreePlace
+	loc, found, clones := Location{}, ErrNoFreePlace, true
 	err := placesUnderRoots(home, repoRoot, func(p string, k placeKind) bool {
 		switch k {
 		case placeAnothers:
+			clones = clones && keyedOnOwnRoot(p)
 			return true
 		case placeFree:
 			loc, found = Location{Path: p}, nil
@@ -128,10 +137,21 @@ func Locate(home, repoRoot string) (Location, error) {
 		}
 		return false
 	})
-	if err != nil {
+	switch {
+	case err != nil:
 		return Location{}, err
+	case found == ErrNoFreePlace && clones:
+		return loc, ErrPlaceHeldByAClone
 	}
 	return loc, found
+}
+
+// keyedOnOwnRoot reports whether the store at p sits under a root of its
+// own repository's default branch, as a clone of the same project's store
+// does under the root they share; false when those roots cannot be read.
+func keyedOnOwnRoot(p string) bool {
+	roots, err := gitutil.DefaultBranchRoots(p)
+	return err == nil && slices.Contains(roots, filepath.Base(filepath.Dir(p)))
 }
 
 // registeredStore is the path of the one worktree of the repository at
@@ -171,7 +191,6 @@ type placeKind int
 
 const (
 	placeFree     placeKind = iota // nothing
-	placeOwn                       // a live worktree of this repository
 	placeAnothers                  // a live worktree of another repository
 	placeTaken                     // anything else, or the place cannot be examined
 )
@@ -201,9 +220,10 @@ func placesUnderRoots(home, repoRoot string, fn func(p string, k placeKind) bool
 }
 
 // classify is what sits at p, for the repository whose common dir is own:
-// nothing; a live worktree (liveWorktree) of that repository or of another;
-// or anything less, such as a plain folder or a worktree whose repository
-// is gone, or a place that cannot be examined, which is taken.
+// nothing; a live worktree (liveWorktree) of another repository; or
+// anything else, which is taken: a plain folder, a worktree whose
+// repository is gone, a place that cannot be examined, and a live worktree
+// of this repository that registeredStore did not find there.
 func classify(p, own string) placeKind {
 	switch _, err := os.Lstat(p); {
 	case errors.Is(err, fs.ErrNotExist):
@@ -212,11 +232,8 @@ func classify(p, own string) placeKind {
 		return placeTaken
 	}
 	common, err := gitutil.RevParseAbsPath(p, "--git-common-dir")
-	switch {
-	case err != nil:
+	if err != nil || Resolve(common) == Resolve(own) {
 		return placeTaken
-	case Resolve(common) == Resolve(own):
-		return placeOwn
 	}
 	return placeAnothers
 }
@@ -225,9 +242,14 @@ func classify(p, own string) placeKind {
 type Reach struct {
 	// Own is the repository's registered store (Locate), "" when none is.
 	Own string
-	// Others is every other live store under the home, in path order:
-	// another clone's of the same project, or another project's.
+	// Others is every other place a store sits under the home, in path
+	// order: another clone's of the same project, or another project's,
+	// live or not.
 	Others []string
+	// NotLive is how many of Others are no live worktree (liveWorktree):
+	// a store whose repository or checkout is gone, a copy git does not
+	// list, or a plain folder.
+	NotLive int
 }
 
 // Reachable is the one rule for which stores the outbound check of the
@@ -235,12 +257,14 @@ type Reach struct {
 //
 // Own is found as Locate finds the store, with Locate's refusals for the
 // worktree listing, several stores and a store under another home. Others
-// are read from the worktree store under home (liveStores): every place
-// worktrees/<key>/embargo, the key a full object name, holding a live
-// worktree of any repository, whoever's it is, but Own. A place holding
-// anything else, or that cannot be examined, and a worktree store that
-// cannot be listed, are ErrPlaceUnread, never skipped. No root commit is
-// read: the roots decide only where a new store is made.
+// are read from the worktree store under home (storePlaces): every place
+// worktrees/<key>/embargo, the key a full object name, where anything sits,
+// whoever's it is and whether or not it is a live worktree, but Own. Whether
+// a store is live decides nothing of what is read, since what is held comes
+// from its state file alone; NotLive only counts those that are not. A place
+// that cannot be examined, and a worktree store that cannot be listed, are
+// ErrPlaceUnread, never skipped. No root commit is read: the roots decide
+// only where a new store is made.
 //
 // Its one known limit: a store under another home that this repository
 // never registered (another clone's, made under sudo or a sandbox) is not
@@ -250,31 +274,35 @@ func Reachable(home, repoRoot string) (Reach, error) {
 	if err != nil {
 		return Reach{}, err
 	}
-	live, err := liveStores(home)
+	places, err := storePlaces(home)
 	if err != nil {
 		return Reach{}, err
 	}
 	r := Reach{Own: own}
-	for _, p := range live {
-		if own == "" || Resolve(p) != Resolve(own) {
-			r.Others = append(r.Others, p)
+	for _, p := range places {
+		if own != "" && Resolve(p) == Resolve(own) {
+			continue
+		}
+		r.Others = append(r.Others, p)
+		if !liveWorktree(p) {
+			r.NotLive++
 		}
 	}
 	return r, nil
 }
 
-// maxKeyName bounds an entry name of the worktree store that liveStores
+// maxKeyName bounds an entry name of the worktree store that storePlaces
 // looks under: a key is a full object name, at most sixty-four characters,
 // so a longer name is passed over unread.
 const maxKeyName = 64
 
-// liveStores is every live store under home, in path order: the worktree
-// store's entries are read a batch at a time, and each named by a full
-// object name is a key whose place worktrees/<key>/embargo is examined.
-// Nothing there is passed over; a live worktree (liveWorktree) is a store;
-// anything else there, a place that cannot be examined, and a worktree store
-// that cannot be listed are ErrPlaceUnread. No worktree store is no store.
-func liveStores(home string) ([]string, error) {
+// storePlaces is every place under home where a store sits, in path order:
+// the worktree store's entries are read a batch at a time, and each named by
+// a full object name is a key whose place worktrees/<key>/embargo is
+// examined. Nothing there is passed over; anything there is a store; a place
+// that cannot be examined and a worktree store that cannot be listed are
+// ErrPlaceUnread. No worktree store is no store.
+func storePlaces(home string) ([]string, error) {
 	dir, err := os.Open(abcdhome.Path(home, "worktrees"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
@@ -294,7 +322,7 @@ func liveStores(home string) ([]string, error) {
 			switch _, err := os.Lstat(p); {
 			case errors.Is(err, fs.ErrNotExist):
 				continue
-			case err != nil, !liveWorktree(p):
+			case err != nil:
 				return nil, ErrPlaceUnread
 			}
 			stores = append(stores, p)

@@ -240,19 +240,19 @@ func TestCheckRefusesAnUnreadableStoreAtARootsPlace(t *testing.T) {
 	mustRefuse(t, err, "state file")
 }
 
-// TestCheckRefusesANonStoreAtAMergedRootsPlace: with this repository's own
-// store registered, a plain folder at the place under a merged root still
-// refuses the check, as does that place unable to be examined: either may
-// hide a store whose records the check would otherwise miss.
-func TestCheckRefusesANonStoreAtAMergedRootsPlace(t *testing.T) {
+// TestCheckRefusesAMergedRootsPlaceThatCannotBeExamined: with this
+// repository's own store registered, a plain folder at the place under a
+// merged root is read as a store holding nothing, so the check still reads
+// its own; that place unable to be examined refuses the check: it may hide
+// a store whose records the check would otherwise miss.
+func TestCheckRefusesAMergedRootsPlaceThatCannotBeExamined(t *testing.T) {
 	cf := newCheckFixture(t)
 	other := mergeUnrelatedRoot(t, cf.f.repo)
 	place := abcdhome.Path(cf.f.home, "worktrees", other, StoreName)
 	if err := os.MkdirAll(place, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, err := checkStdin(cf.f.home, cf.f.repo.Root(), "a text\n")
-	mustRefuse(t, err, "examined")
+	wantEmbargoedIDRefused(t, cf.f.home, cf.f.repo.Root())
 	if os.Geteuid() == 0 {
 		return
 	}
@@ -260,7 +260,7 @@ func TestCheckRefusesANonStoreAtAMergedRootsPlace(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = os.Chmod(filepath.Dir(place), 0o700) })
-	_, err = checkStdin(cf.f.home, cf.f.repo.Root(), "a text\n")
+	_, err := checkStdin(cf.f.home, cf.f.repo.Root(), "a text\n")
 	mustRefuse(t, err, "examined")
 }
 

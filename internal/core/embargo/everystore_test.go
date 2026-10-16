@@ -219,12 +219,13 @@ func TestCheckRefusesAnotherStoresStateNotThisAccountsAlone(t *testing.T) {
 	})
 }
 
-// TestCheckRefusesAFolderUnderAnyKeyThatIsNoLiveStore: a folder at a store's
-// place under a key no root of this repository names refuses the check, as
-// one under a root does: it may be a store git lost track of. A folder under
+// TestCheckReadsAFolderUnderAnyKeyThatIsNoLiveStore: a folder at a store's
+// place under a key no root of this repository names is read as a store,
+// and with no state file it holds nothing: the check passes, reports a
+// store, and notes one store read with no live registration. A folder under
 // a name that is no key, or a worktree of another name under a key, is no
 // store and is passed over: with nothing else there, there is no store.
-func TestCheckRefusesAFolderUnderAnyKeyThatIsNoLiveStore(t *testing.T) {
+func TestCheckReadsAFolderUnderAnyKeyThatIsNoLiveStore(t *testing.T) {
 	f := newFixture(t)
 	for _, p := range []string{
 		abcdhome.Path(f.home, "worktrees", "not-a-key", StoreName),
@@ -241,6 +242,123 @@ func TestCheckRefusesAFolderUnderAnyKeyThatIsNoLiveStore(t *testing.T) {
 	if err := os.MkdirAll(abcdhome.Path(f.home, "worktrees", strings.Repeat("cd", 20), StoreName), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, err = checkStdin(f.home, f.repo.Root(), "a text\n")
-	mustRefuse(t, err, "examined")
+	res, err = checkStdin(f.home, f.repo.Root(), "a text\n")
+	if err != nil || res.NoStore || !res.Clean() || res.UnderEmbargo != 0 {
+		t.Fatalf("the check = %+v, %v; want a store read, holding nothing, clean", res, err)
+	}
+	if !strings.Contains(res.Note, "1 embargo store") {
+		t.Fatalf("note %q; want it to count the one store with no live registration", res.Note)
+	}
+}
+
+// deadStore makes an unrelated project's store holding st, then deletes
+// that project's checkout, so the store's .git names a folder that is gone.
+func deadStore(t *testing.T, home string, st State) Store {
+	t.Helper()
+	s := unrelatedStore(t, home, st)
+	if err := os.RemoveAll(s.Checkout); err != nil {
+		t.Fatal(err)
+	}
+	return s
+}
+
+// TestCheckReadsADeadStoresRecords: a store whose repository's checkout was
+// deleted is no live worktree, but its state is read as any other store's:
+// its held id is refused, the check does not refuse, and the note counts
+// that store, naming no path.
+func TestCheckReadsADeadStoresRecords(t *testing.T) {
+	f := newFixture(t)
+	s := deadStore(t, f.home, sampleState())
+	res, err := checkStdin(f.home, f.repo.Root(), "fixes "+ghsaOpen+"\n")
+	if err != nil {
+		t.Fatalf("the check refused: %v", err)
+	}
+	if res.NoStore || len(res.Findings) != 1 || res.Clean() {
+		t.Fatalf("the check = %+v; want the dead store read and its id refused once", res)
+	}
+	if !strings.Contains(res.Note, "1 embargo store") {
+		t.Fatalf("note %q; want it to count the one store with no live registration", res.Note)
+	}
+	for _, p := range []string{s.Root, s.Checkout, f.home, filepath.Base(filepath.Dir(s.Root))} {
+		if strings.Contains(res.Note, p) {
+			t.Fatalf("note %q names %q", res.Note, p)
+		}
+	}
+}
+
+// TestCheckRefusesADeadStoresUnreadableState: a dead store whose state file
+// cannot be read refuses the check, as a live one's does: it is never read
+// as holding nothing.
+func TestCheckRefusesADeadStoresUnreadableState(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root reads any file")
+	}
+	f := newFixture(t)
+	s := deadStore(t, f.home, sampleState())
+	if err := os.Chmod(s.StatePath(), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(s.StatePath(), 0o600) })
+	_, err := checkStdin(f.home, f.repo.Root(), "a text\n")
+	mustRefuse(t, err, "state file")
+}
+
+// TestCheckRefusesAStoreUnderADeletedHome: this repository's store was made
+// under another home that has since been deleted, so git marks that worktree
+// prunable. The check still refuses, and says that `git worktree prune`
+// removes the stale registration; once it is run, there is no store.
+func TestCheckRefusesAStoreUnderADeletedHome(t *testing.T) {
+	f := newFixture(t)
+	elsewhere := t.TempDir()
+	if _, _, err := openStore(elsewhere, f.repo.Root()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(elsewhere); err != nil {
+		t.Fatal(err)
+	}
+	if out := f.repo.Git("worktree", "list", "--porcelain"); !strings.Contains(out, "prunable") {
+		t.Fatalf("git does not mark the store prunable:\n%s", out)
+	}
+	_, err := checkStdin(f.home, f.repo.Root(), "a text\n")
+	mustRefuse(t, err, "another home")
+	mustRefuse(t, err, "git worktree prune")
+	f.repo.Git("worktree", "prune")
+	res, err := checkStdin(f.home, f.repo.Root(), "a text\n")
+	if err != nil || !res.NoStore {
+		t.Fatalf("the check after the prune = %+v, %v; want no store", res, err)
+	}
+}
+
+// TestNoFreePlaceAdviceFitsWhoHoldsThePlace: with no store of its own and
+// the one place under its root holding another repository's store, intake
+// refuses with advice that fits who holds it.
+//   - A clone of the same project, its store under the root they share: run
+//     the sub-verbs from that checkout, and no move, which could not free
+//     the place.
+//   - Another project, its store under a key that is no root of its own:
+//     move that store, keeping it at a worktrees/<root>/embargo place.
+func TestNoFreePlaceAdviceFitsWhoHoldsThePlace(t *testing.T) {
+	t.Run("a clone of the same project", func(t *testing.T) {
+		cf := newCheckFixture(t)
+		_, _, err := openStore(cf.f.home, cloneOf(t, cf.f))
+		mustRefuse(t, err, "another clone of this project")
+		mustRefuse(t, err, "from that clone's checkout")
+		if strings.Contains(err.Error(), "git worktree move") {
+			t.Fatalf("the refusal %q advises a move that cannot free the place", err)
+		}
+	})
+	t.Run("another project", func(t *testing.T) {
+		f := newFixture(t)
+		other := gittest.NewRepo(t)
+		other.Write("README.md", "another project\n")
+		datedCommit(t, other, "2011-01-01T00:00:00Z", "its own root")
+		place := abcdhome.Path(f.home, "worktrees", gitutil.RootCommit(f.repo.Root()), StoreName)
+		if err := os.MkdirAll(filepath.Dir(place), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		other.Git("worktree", "add", "-q", "--detach", place)
+		_, _, err := openStore(f.home, f.repo.Root())
+		mustRefuse(t, err, "git worktree move")
+		mustRefuse(t, err, "worktrees/<root>/embargo")
+	})
 }

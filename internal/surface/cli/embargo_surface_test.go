@@ -224,3 +224,14 @@ func TestEmbargoCountsReadAsEnglish(t *testing.T) {
 		}
 	}
 }
+
+// TestEmbargoCheckRendersItsNote: a check that read a store with no live
+// worktree registration says so in its text form too, not only in --json.
+func TestEmbargoCheckRendersItsNote(t *testing.T) {
+	const note = "1 embargo store under this home was read with no live worktree registration; its records stay under embargo"
+	var b bytes.Buffer
+	renderEmbargoCheck(&b, embargo.CheckResult{Note: note, Findings: []embargo.CheckFinding{}})
+	if !strings.Contains(b.String(), "note: "+note+"\n") {
+		t.Fatalf("the text form is %q; want the note on a line of its own", b.String())
+	}
+}

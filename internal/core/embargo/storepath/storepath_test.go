@@ -2,6 +2,7 @@ package storepath_test
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -165,18 +166,84 @@ func TestReachableReadsEveryLiveStoreUnderTheHome(t *testing.T) {
 	}
 }
 
-// TestReachableRefusesAPlaceThatIsNoLiveStore: a folder at a store's place
-// under any key, whatever repository the key names, that is no live
-// worktree, is refused, never passed over: it may be a store git lost track
-// of.
-func TestReachableRefusesAPlaceThatIsNoLiveStore(t *testing.T) {
+// TestReachableReadsAPlaceThatIsNoLiveStore: a folder at a store's place
+// under any key that is no live worktree is still read, never passed over
+// and never a refusal: a plain folder, a store whose repository's checkout
+// was deleted (its .git names a folder that is gone), and a copy of a store
+// git does not list there. NotLive counts them; a live store is not counted.
+// A place that cannot be examined is ErrPlaceUnread.
+func TestReachableReadsAPlaceThatIsNoLiveStore(t *testing.T) {
 	home := t.TempDir()
 	r, _ := newRepo(t, "2020-01-01T00:00:00Z")
-	if err := os.MkdirAll(abcdhome.Path(home, "worktrees", key64, storepath.Name), 0o700); err != nil {
+	plain := abcdhome.Path(home, "worktrees", key64, storepath.Name)
+	if err := os.MkdirAll(plain, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	gone, _ := newRepo(t, "2001-01-01T00:00:00Z")
+	dead := addStore(t, gone, home, strings.Repeat("c3", 20))
+	if err := os.RemoveAll(gone.Root()); err != nil {
+		t.Fatal(err)
+	}
+	live, _ := newRepo(t, "2010-01-01T00:00:00Z")
+	listed := addStore(t, live, home, key40)
+	copied := copyStore(t, listed, abcdhome.Path(home, "worktrees", strings.Repeat("d4", 20), storepath.Name))
+
+	reach, err := storepath.Reachable(home, r.Root())
+	if want := strings.Join([]string{listed, plain, dead, copied}, ","); err != nil || reach.Own != "" ||
+		strings.Join(reach.Others, ",") != want || reach.NotLive != 3 {
+		t.Fatalf("Reachable = %+v, %v; want others %s, three not live", reach, err, want)
+	}
+
+	if os.Geteuid() == 0 {
+		return
+	}
+	if err := os.Chmod(filepath.Dir(plain), 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(filepath.Dir(plain), 0o700) })
 	if reach, err := storepath.Reachable(home, r.Root()); !errors.Is(err, storepath.ErrPlaceUnread) {
-		t.Fatalf("Reachable = %+v, %v; want ErrPlaceUnread", reach, err)
+		t.Fatalf("Reachable with a place that cannot be examined = %+v, %v; want ErrPlaceUnread", reach, err)
+	}
+}
+
+// copyStore copies the store at from, its .git file and its README, to the
+// place to, where git does not list it, and returns to.
+func copyStore(t *testing.T, from, to string) string {
+	t.Helper()
+	if err := os.MkdirAll(to, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{".git", "README.md"} {
+		data, err := os.ReadFile(filepath.Join(from, name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(to, name), data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return to
+}
+
+// TestReachableReadsPastTheFirstBatch: the worktree store's entries are
+// read a batch at a time, and every place is read, however many come
+// before it: with more places than one batch holds, each is in Others.
+func TestReachableReadsPastTheFirstBatch(t *testing.T) {
+	home := t.TempDir()
+	r, _ := newRepo(t, "2020-01-01T00:00:00Z")
+	const plain = 300
+	for i := range plain {
+		key := fmt.Sprintf("%040x", i+1)
+		if err := os.MkdirAll(abcdhome.Path(home, "worktrees", key, storepath.Name), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	other, _ := newRepo(t, "2001-01-01T00:00:00Z")
+	store := addStore(t, other, home, strings.Repeat("f", 40))
+	reach, err := storepath.Reachable(home, r.Root())
+	if err != nil || len(reach.Others) != plain+1 || reach.Others[plain] != store || reach.NotLive != plain {
+		t.Fatalf("Reachable = %d others, %d not live, %v; want %d, the last the live store %s, and %d not live",
+			len(reach.Others), reach.NotLive, err, plain+1, store, plain)
 	}
 }
 
@@ -253,8 +320,40 @@ func TestLocateHasNoFreePlaceBesideAnotherCheckoutsStore(t *testing.T) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("clone: %v\n%s", err, out)
 	}
-	if loc, err := storepath.Locate(home, second); !errors.Is(err, storepath.ErrNoFreePlace) {
-		t.Fatalf("Locate = %+v, %v; want ErrNoFreePlace", loc, err)
+	if loc, err := storepath.Locate(home, second); !errors.Is(err, storepath.ErrNoFreePlace) || !errors.Is(err, storepath.ErrPlaceHeldByAClone) {
+		t.Fatalf("Locate = %+v, %v; want ErrNoFreePlace, held by a clone", loc, err)
+	}
+}
+
+// TestLocateHasNoFreePlaceUnderAnotherProjectsStore: the one place under
+// this repository's root holds the store of another project, whose own
+// roots do not name that place: there is no free place, and it is not held
+// by a clone of this project, so that store could be moved under its own
+// root.
+func TestLocateHasNoFreePlaceUnderAnotherProjectsStore(t *testing.T) {
+	home := t.TempDir()
+	r, root := newRepo(t, "2020-01-01T00:00:00Z")
+	other, _ := newRepo(t, "2001-01-01T00:00:00Z")
+	addStore(t, other, home, root)
+	loc, err := storepath.Locate(home, r.Root())
+	if !errors.Is(err, storepath.ErrNoFreePlace) || errors.Is(err, storepath.ErrPlaceHeldByAClone) {
+		t.Fatalf("Locate = %+v, %v; want ErrNoFreePlace, not held by a clone", loc, err)
+	}
+}
+
+// TestLocateRefusesACopyOfAStoreGitDoesNotList: a copy of another
+// repository's store at the place, its .git naming that store's
+// registration, is no live worktree, since its repository lists only the
+// store itself: the place is taken, never passed over as another's.
+func TestLocateRefusesACopyOfAStoreGitDoesNotList(t *testing.T) {
+	home := t.TempDir()
+	r, root := newRepo(t, "2020-01-01T00:00:00Z")
+	other, _ := newRepo(t, "2001-01-01T00:00:00Z")
+	listed := filepath.Join(t.TempDir(), "listed")
+	other.Git("worktree", "add", "-q", "--detach", listed)
+	copyStore(t, listed, abcdhome.Path(home, "worktrees", root, storepath.Name))
+	if loc, err := storepath.Locate(home, r.Root()); !errors.Is(err, storepath.ErrPlaceTaken) {
+		t.Fatalf("Locate = %+v, %v; want ErrPlaceTaken", loc, err)
 	}
 }
 

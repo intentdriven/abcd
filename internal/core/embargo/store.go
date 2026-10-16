@@ -68,15 +68,15 @@ type Store struct {
 // under home: storepath.Locate's answer, the one rule every reader and
 // writer of the store shares, with each of its refusals worded for the
 // person. Its refusals name neither a store nor a key. A caller that only
-// reads takes errNoFreePlace for "no store".
+// reads takes isNoFreePlace for "no store".
 func locate(home, top string) (storepath.Location, error) {
 	loc, err := storepath.Locate(home, top)
 	return loc, worded(err)
 }
 
 // reachable is every store the outbound check of the repository at top
-// reads under home (storepath.Reachable: its own and every other live store
-// there), its refusals worded as locate words them.
+// reads under home (storepath.Reachable: its own and every other store
+// there, live or not), its refusals worded as locate words them.
 func reachable(home, top string) (storepath.Reach, error) {
 	r, err := storepath.Reachable(home, top)
 	return r, worded(err)
@@ -93,7 +93,7 @@ func worded(err error) error {
 			"settle what `git worktree list --porcelain` reports, then run it again")
 	case errors.Is(err, storepath.ErrStoreUnderAnotherHome):
 		return refuse("the embargo store this repository registered lives under another home than the one abcd runs with, so this home would read as holding nothing under embargo",
-			"run abcd with that home, the HOME it had when the store was made")
+			"run abcd with that home, the HOME it had when the store was made; if that home no longer exists, `git worktree prune` removes the stale registration")
 	case errors.Is(err, storepath.ErrSeveralStores):
 		return refuse("more than one embargo store is a worktree of this repository, so which one holds the records cannot be told",
 			"inspect each with `git worktree list`, keep the one holding the records, remove the other with `git worktree remove <path>`, then run it again")
@@ -105,8 +105,10 @@ func worded(err error) error {
 		return refuse("the place this repository's embargo store would be made could not be examined, or holds a folder that is no worktree of this repository nor of another repository on this machine, perhaps a store git has lost track of",
 			"look under abcd's worktree store, keep any private records the folder holds, move it aside, then run `abcd embargo intake`")
 	case errors.Is(err, storepath.ErrPlaceUnread):
-		return refuse("abcd's worktree store could not be listed, or a place in it where an embargo store is kept could not be examined or holds a folder that is no live worktree of any repository on this machine, perhaps a store git has lost track of, so what is under embargo cannot be told",
-			"look under abcd's worktree store, keep any private records the folder holds, move it aside, then run it again")
+		return refuse("abcd's worktree store could not be listed, or a place in it where an embargo store is kept could not be examined, so what is under embargo cannot be told",
+			"check the permissions under abcd's worktree store, then run it again")
+	case errors.Is(err, storepath.ErrPlaceHeldByAClone):
+		return errPlaceHeldByAClone
 	case errors.Is(err, storepath.ErrNoFreePlace):
 		return errNoFreePlace
 	default:
@@ -117,9 +119,21 @@ func worded(err error) error {
 // errNoFreePlace is locate's refusal for storepath.ErrNoFreePlace: this
 // repository has no store, and one cannot be made without touching
 // another's. It names no path: the person finds the store in the checkout
-// that owns it.
+// that owns it. A store moved anywhere but a worktrees/<root>/embargo place
+// is no longer found, so the move it advises keeps that shape.
 var errNoFreePlace = refuse("every place this repository's embargo store could be made already holds another repository's store, which is left alone",
-	"run the embargo sub-verbs from the checkout that owns the store sitting there, or, in that checkout, run `git worktree move <store> <a place under that checkout's own root>` to free the place, then run it again here")
+	"run the embargo sub-verbs from the checkout that owns the store sitting there, or, in that checkout, run `git worktree move <store> <a place under that checkout's own root>` to free the place, then run it again here; the store must stay at a `worktrees/<root>/embargo` place under abcd's home, where it is still found")
+
+// errPlaceHeldByAClone is locate's refusal for
+// storepath.ErrPlaceHeldByAClone: the store sitting there is another
+// clone's of this project, under the root they share, so no move frees the
+// place, and that clone's checkout is where the sub-verbs run.
+var errPlaceHeldByAClone = refuse("every place this repository's embargo store could be made already holds the store of another clone of this project, under the root they share, which is left alone",
+	"run the embargo sub-verbs from that clone's checkout, which owns the store")
+
+// isNoFreePlace reports whether err is either of locate's refusals for no
+// free place, which a caller that only reads takes for "no store".
+func isNoFreePlace(err error) bool { return err == errNoFreePlace || err == errPlaceHeldByAClone }
 
 // registered returns the store at a registered location, refusing a
 // registration whose folder is gone or cannot be examined.
@@ -220,7 +234,7 @@ func openExisting(home, repoRoot string) (Store, State, error) {
 		return Store{}, State{}, refuse("this is not inside a git checkout", "run it from the repository's checkout")
 	}
 	loc, err := locate(home, top)
-	if err == errNoFreePlace || (err == nil && !loc.Registered) {
+	if isNoFreePlace(err) || (err == nil && !loc.Registered) {
 		return Store{}, State{}, refuse("there is no embargo store for this repository on this machine", "run `abcd embargo intake` first")
 	}
 	if err != nil {

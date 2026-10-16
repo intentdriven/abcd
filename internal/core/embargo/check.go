@@ -154,15 +154,18 @@ type heldStore struct {
 //
 // The deny set is the union of every store under this home
 // (storepath.Reachable): this checkout's own, verified as every sub-verb
-// verifies it, and every other live store at worktrees/<key>/embargo there,
-// whatever repository it belongs to, read and never written
-// (readOtherStore). No root commit decides which stores are read, so a
-// shallow clone or rewritten history reads the same stores. A place that
-// holds anything else, or cannot be examined, refuses the check, as does a
-// store this repository registered under another home. Only with no store
-// of its own and no live store under this home is nothing under embargo,
-// and the check passes saying so. A store under another home that this
-// repository never registered is not read.
+// verifies it, and whatever else sits at worktrees/<key>/embargo there,
+// whatever repository it belongs to and whether or not git still lists it,
+// read and never written (readOtherStore): a store whose checkout was
+// deleted keeps its records under embargo, and a folder with no state file
+// holds nothing. The Note counts the stores read with no live registration,
+// naming none. No root commit decides which stores are read, so a shallow
+// clone or rewritten history reads the same stores. A place that cannot be
+// examined, a state file that cannot be read or is of the wrong shape, and
+// a store this repository registered under another home refuse the check.
+// Only with no store of its own and nothing at any place under this home is
+// nothing under embargo, and the check passes saying so. A store under
+// another home that this repository never registered is not read.
 func Check(req CheckRequest) (CheckResult, error) {
 	now := clock(req.Now)
 	if strings.TrimSpace(req.Range) == "" && len(req.Files) == 0 {
@@ -219,6 +222,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 		return CheckResult{}, err
 	}
 	res.UnderEmbargo = ds.embargo
+	res.Note = notLiveNote(reach.NotLive)
 	res.IntakeAt = oldestIntake(stores)
 	res.IntakeStale = res.IntakeAt == nil || now.Sub(*res.IntakeAt) > staleIntake
 
@@ -468,6 +472,18 @@ func patchPath(p string) string {
 		return ""
 	}
 	return strings.TrimPrefix(p, "b/")
+}
+
+// notLiveNote is the check's note for n stores read with no live worktree
+// registration, a count that names no path; "" for none.
+func notLiveNote(n int) string {
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return "1 embargo store under this home was read with no live worktree registration; its records stay under embargo"
+	}
+	return fmt.Sprintf("%d embargo stores under this home were read with no live worktree registration; their records stay under embargo", n)
 }
 
 // oldestIntake is the oldest intake of the stores read, nil when one has
