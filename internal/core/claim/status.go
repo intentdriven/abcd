@@ -384,11 +384,11 @@ type intake struct {
 // this checkout has not read before, in one bounded batch, keeps each as seen
 // at now, then marks the branch read at its tip. A branch whose name is not a
 // lower-case username is tallied, never read and never kept. One whose tip is
-// not a commit, or whose walk could not
-// verify continuity (it moved back or was rewritten, ran past the walk's
-// limit, since the mark or on a first read, or passed a merge) is kept as
-// doubtful, and every
-// other branch is still read. It writes only the local tier; a checkout
+// not a commit, or whose walk could not verify continuity (it moved back or
+// was rewritten, ran past the walk's limit since the mark, or on a first read
+// while something beneath what it read could still stand, or passed a merge)
+// is kept as doubtful, and every other branch is still read. It writes only
+// the local tier; a checkout
 // without one keeps nothing and reads nothing. When ctx ends, what was read
 // is kept, the branch at hand is not marked, and ctx's error is answered.
 func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
@@ -428,14 +428,13 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 		switch {
 		case h.Since != "" && h.Rewritten:
 			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtRewritten, Tip: h.Tip, FoundAt: now})
-		case h.More:
-			// A first read too: a live announcement may sit under more than
-			// one read covers.
+		case h.More && h.Since != "":
 			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtMore, Tip: h.Tip, FoundAt: now})
 		case h.Merged:
 			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtMerged, Tip: h.Tip, FoundAt: now})
 		}
 		var fresh []string
+		var read map[string]readAnnouncement
 		for _, c := range h.Added {
 			if !seenKept(root, c) {
 				fresh = append(fresh, c)
@@ -447,7 +446,7 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 					return in, err
 				}
 			}
-			read, err := readAnnouncements(ctx, root, tree, fresh)
+			read, err = readAnnouncements(ctx, root, tree, fresh)
 			if err != nil {
 				return in, err
 			}
@@ -458,6 +457,12 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 				keepSeen(root, name, c, read[c], now, base+int64(len(fresh)-1-i))
 				in.taken++
 			}
+		}
+		if h.More && h.Since == "" && mayStandBeneath(root, read, h.Added[len(h.Added)-1], now) {
+			// A first read: a live announcement may sit under more than one
+			// read covers (dcn-2610161100416718), but only while what lies
+			// beneath the oldest commit read could still stand.
+			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtMore, Tip: h.Tip, FoundAt: now})
 		}
 		if err := ctx.Err(); err != nil {
 			return in, err
@@ -472,6 +477,38 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 		pruneStatus(root, now, refs)
 	}
 	return in, nil
+}
+
+// mayStandBeneath reports whether a commit beneath oldest, the oldest commit a
+// first read took in, could still stand at now. A branch only grows, so each
+// commit beneath was sent before oldest, and an announcement stands at most
+// MaxAnnouncementLife, counted from its first fetch only while its own expiry
+// is less than announcementSlack past (C9): when oldest was sent, by the time
+// it carries, more than both ago, nothing beneath it can stand. The same slack
+// covers a sender's clock that ran a little ahead of an earlier one. When
+// oldest does not read as an announcement, what lies beneath it cannot be
+// dated, and it may stand. read is the batch this intake read; oldest is
+// looked up in what is kept when it is not there.
+func mayStandBeneath(root string, read map[string]readAnnouncement, oldest string, now time.Time) bool {
+	var sent time.Time
+	if r, ok := read[oldest]; ok {
+		if r.h.Unreadable != "" {
+			return true
+		}
+		sent = r.a.SentAt
+	} else {
+		data := readStatusFile(root, seenDir+"/"+oldest, 4096)
+		var e seenEntry
+		if data == nil || json.Unmarshal(data, &e) != nil || e.Unreadable != "" {
+			return true
+		}
+		t, err := time.Parse(time.RFC3339, e.SentAt)
+		if err != nil {
+			return true
+		}
+		sent = t
+	}
+	return now.Before(sent.Add(MaxAnnouncementLife + announcementSlack))
 }
 
 // statusRef is one status branch this checkout holds, as for-each-ref names
