@@ -15,7 +15,7 @@ impact: fix
 resolved_by:
   intent: "itd-2610120738075547"
   spec: "spc-2610120941441282"
-  commit: "f79a50a00"
+  commit: "5d5c6b981"
 ---
 
 A hosted cloud session's clone carries the host's default vendor identity as its git author, not the person's: the cloud probe of 2026-10-15 found it in the clone's git config, while the forge credited the push to the person's own account through the token. The product thinker ruled the same day that this vendor identity must not be shown anywhere, in no commit, ref, trailer or output, and that no person should have to set it by hand ('Who has to remember what? No manual steps.'). Session announcements (itd-2609151838312703) already fall back to the token's login for their own commits; every other commit a cloud session makes still carries the vendor identity until its setup sets the person's.
