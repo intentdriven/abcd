@@ -1,9 +1,14 @@
 package claim
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
+	"slices"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // namespace is one family of branches on origin that the fetch reads as one
@@ -55,6 +60,39 @@ func (ns namespace) refspecs() []string {
 		specs = append(specs, "+"+ns.ref(name)+":"+ns.track(name))
 	}
 	return specs
+}
+
+// dropUnlisted deletes every tracking ref of the namespace this checkout
+// holds whose name is not in keep, the names origin's listing named and the
+// fetch reads, in one `git update-ref --stdin` whose every deletion names the
+// commit it removes. A fetch that names each branch by its own refspec
+// (only) never prunes a branch origin no longer holds, so the listing that
+// sets only drops the rest first: what is left under the namespace is what
+// the fetch then refreshes.
+func (ns namespace) dropUnlisted(root string, keep []string) error {
+	out, err := storedGitCtx(context.Background(), root, 16<<20, "for-each-ref", "--format=%(refname) %(objectname)", ns.tracking)
+	if err != nil {
+		return fmt.Errorf("listing %s held here: %s", ns.noun, redacted(err))
+	}
+	var del strings.Builder
+	for _, l := range strings.Split(out, "\n") {
+		f := strings.Fields(l)
+		if len(f) != 2 || !gitutil.IsFullSHA(f[1]) {
+			continue
+		}
+		name, ok := strings.CutPrefix(f[0], ns.tracking)
+		if !ok || slices.Contains(keep, name) {
+			continue
+		}
+		fmt.Fprintf(&del, "delete %s %s\n", f[0], f[1])
+	}
+	if del.Len() == 0 {
+		return nil
+	}
+	if _, err := storedGitInput(context.Background(), root, del.String(), 64<<10, "update-ref", "--stdin"); err != nil {
+		return fmt.Errorf("dropping %s origin no longer lists: %s", ns.noun, redacted(err))
+	}
+	return nil
 }
 
 // ref is the full ref of the branch name in the namespace on origin, and

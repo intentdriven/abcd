@@ -729,3 +729,33 @@ func TestTheStatusStateIsPruned(t *testing.T) {
 		}
 	}
 }
+
+// TestAStatusBranchDeletedOnOriginLeavesNothingBehind: a fetch that names
+// each status branch by its own refspec never prunes one origin no longer
+// holds, so the listing that precedes it deletes every tracking ref under
+// the status namespace origin no longer names, and the reader shows nothing
+// read from a branch this checkout no longer holds.
+func TestAStatusBranchDeletedOnOriginLeavesNothingBehind(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	zed := w.clone("8+zed@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	maya.announceAs("merging", "#1012")
+	zed.announceAs("asking", "#7")
+	pat.status(nil)
+	if v := pat.read(); len(v.Announcements) != 2 {
+		t.Fatalf("announcements = %+v; want maya's and zed's", v.Announcements)
+	}
+	runGit(t, w.bare, "update-ref", "-d", StatusRefPrefix+"zed")
+	pat.status(nil)
+	if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); strings.Contains(refs, "zed") || !strings.Contains(refs, "maya") {
+		t.Fatalf("tracking refs after zed was deleted on origin: %q; want maya's alone", refs)
+	}
+	v := pat.read()
+	if len(v.Announcements) != 1 || v.Announcements[0].Branch != "maya" {
+		t.Fatalf("announcements = %+v; want maya's alone", v.Announcements)
+	}
+	if got := pat.notes(); strings.Contains(got, "zed") {
+		t.Fatalf("the block shows the deleted branch:\n%s", got)
+	}
+}

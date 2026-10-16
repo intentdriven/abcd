@@ -209,7 +209,10 @@ type StatusFetch struct {
 // announcement whose pusher is not yet known here (C17). A checkout with no
 // remote named origin answers ErrNoOrigin. A listing or a fetch that fails is
 // kept in the local tier, its time and reason, for every reader to say (C10),
-// and answers its *FetchError.
+// and answers its *FetchError. Before the fetch, every tracking ref under the
+// status namespace that is not among the names it fetches is deleted
+// (dropUnlisted): a branch deleted on origin, or one whose name is not read,
+// leaves nothing to read; a deletion that fails is a failed fetch.
 func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, error) {
 	now := o.now()
 	ok, err := HasOrigin(root)
@@ -224,6 +227,13 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 		noteFetchFailure(root, statusBranches, now, redacted(err))
 		return StatusFetch{}, &FetchError{Reason: redacted(err), what: statusBranches.noun, outcome: "nothing was fetched"}
 	}
+	// Only the names origin lists, and of them only those the fetch reads,
+	// are kept: the named refspecs prune nothing, and a branch left from an
+	// earlier fetch would read as fetched now.
+	if err := statusBranches.dropUnlisted(root, names); err != nil {
+		noteFetchFailure(root, statusBranches, now, err.Error())
+		return StatusFetch{}, &FetchError{Reason: err.Error(), what: statusBranches.noun, outcome: "nothing was fetched"}
+	}
 	status := statusBranches
 	status.only = names
 	gap, err := fetch(root, now, "nothing was fetched", reservations, status)
@@ -234,12 +244,13 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	keepFirstFetched(root, now, nil)
 	var res StatusFetch
 	res.Gap = gap
-	if _, err := takeIn(context.Background(), root, now); err != nil {
+	in, err := takeIn(context.Background(), root, now)
+	if err != nil {
 		// The reader takes it in again and names what it could not read.
 		return res, nil
 	}
 	if lookup != nil {
-		res.SendersUnchecked = checkSenders(root, now, lookup)
+		res.SendersUnchecked = checkSenders(root, now, lookup, in.held)
 	}
 	return res, nil
 }
@@ -302,15 +313,18 @@ func readStatus(ctx context.Context, root string, now time.Time, o Options, full
 	v := StatusView{Origin: true, FetchedAt: lastFetched(root, statusBranches)}
 	v.Unread = unreadOf(root, statusBranches)
 	v.ReservationsUnread = unreadOf(root, reservations)
-	if _, err := takeIn(ctx, root, now); err != nil {
+	in, err := takeIn(ctx, root, now)
+	if err != nil {
 		return StatusView{}, err
 	}
-	v.Announcements = keptAnnouncements(root, now)
+	v.Announcements = keptAnnouncements(root, now, in.held)
 	for _, d := range keptDoubts(root, now) {
-		if statusName(d.Branch) {
-			v.Doubts = append(v.Doubts, d)
-		} else {
+		switch {
+		case !statusName(d.Branch):
 			v.unreadNames = append(v.unreadNames, d.Branch)
+		case in.held == nil || in.held[d.Branch]:
+			// A doubt of a branch this checkout no longer holds is not shown.
+			v.Doubts = append(v.Doubts, d)
 		}
 	}
 	v.UnreadNames = len(v.unreadNames)
@@ -329,6 +343,8 @@ func readStatus(ctx context.Context, root string, now time.Time, o Options, full
 type intake struct {
 	// taken is how many commits it read.
 	taken int
+	// held is every status branch this checkout holds, by name.
+	held map[string]bool
 }
 
 // takeIn reads every status branch this checkout holds from where it last
@@ -350,6 +366,10 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 	refs, err := statusRefs(ctx, root)
 	if err != nil {
 		return in, err
+	}
+	in.held = map[string]bool{}
+	for _, r := range refs {
+		in.held[strings.TrimPrefix(r.ref, StatusTrackingPrefix)] = true
 	}
 	tree := ""
 	for _, r := range refs {
@@ -622,13 +642,14 @@ func statusEntries(root, sub string) []fs.DirEntry {
 	return entries
 }
 
-// keptAnnouncements is every announcement kept here that still stands at
-// now, and every unreadable one first read in the last day, newest first: by
+// keptAnnouncements is every announcement kept here, read on a branch in
+// held (every branch, when held is nil), that still stands at now, and every
+// unreadable one first read in the last day, newest first: by
 // when this checkout first read it, then, on one branch, by the order the
 // branch holds them in, and across branches by the time each carries. Each kept
 // file is read back through the same grammar its fields were held to, so a
 // file that does not read is passed over.
-func keptAnnouncements(root string, now time.Time) []Announcement {
+func keptAnnouncements(root string, now time.Time, held map[string]bool) []Announcement {
 	var out []Announcement
 	for _, e := range statusEntries(root, seenDir) {
 		c := e.Name()
@@ -636,7 +657,7 @@ func keptAnnouncements(root string, now time.Time) []Announcement {
 			continue
 		}
 		a, ok := keptAnnouncement(root, c)
-		if !ok {
+		if !ok || held != nil && !held[a.Branch] {
 			continue
 		}
 		if a.Unreadable != "" {
@@ -890,9 +911,9 @@ var pusherBudget = 10 * time.Second
 // cover (a rewritten branch) takes a pusher other than the owner over the
 // owner. It returns why the forge could not be asked or its record could not
 // be placed in full, "" when it could.
-func checkSenders(root string, now time.Time, lookup PusherLookup) string {
+func checkSenders(root string, now time.Time, lookup PusherLookup, held map[string]bool) string {
 	ask := map[string][]string{}
-	for _, a := range keptAnnouncements(root, now) {
+	for _, a := range keptAnnouncements(root, now, held) {
 		if a.Unreadable == "" && a.Standing(now) && !pusherKept(root, a.Commit).known {
 			ask[a.Branch] = append(ask[a.Branch], a.Commit)
 		}
