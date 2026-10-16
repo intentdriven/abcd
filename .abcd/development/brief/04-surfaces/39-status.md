@@ -57,7 +57,8 @@ while every other branch is still read (C11): an announcement whose sender is
 not its branch's owner; a commit that does not read as an announcement, such
 as one that changes a file, shown only by its branch and the reason; a branch
 that moved back or was rewritten, passed a merge, or gained more than one read
-covers since it was last read here ("continuity not verified"); and a branch
+covers since it was last read here, or holds more than one read covers at its
+first read here ("continuity not verified"); and a branch
 whose name is not a lower-case username.
 
 ## What it shows

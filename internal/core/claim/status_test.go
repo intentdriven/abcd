@@ -318,7 +318,7 @@ func TestCaseCollidingStatusBranchesStillReadTheRest(t *testing.T) {
 // (build note 24): a branch rewritten since this checkout read it, one that
 // gained more than one read covers, and one whose new commits pass a merge
 // are each shown as doubtful, and their new announcements are still read. A
-// first read that runs past the window is not doubtful.
+// first read that runs past the window is doubtful too (the next test).
 func TestAStatusBranchWhoseContinuityIsNotVerifiedIsDoubtful(t *testing.T) {
 	old := statusWalkLimit
 	statusWalkLimit = 3
@@ -331,8 +331,8 @@ func TestAStatusBranchWhoseContinuityIsNotVerifiedIsDoubtful(t *testing.T) {
 	base := w.pushMany("quinn", []string{announcementMsg("asking", "#20", "quinn", t0, 30*time.Minute)})
 	w.pushMany("zed", []string{announcementMsg("asking", "#30", "zed", t0, 30*time.Minute)})
 	pat.status(nil)
-	if v := pat.read(); len(v.Doubts) != 0 {
-		t.Fatalf("a first read past the window = %+v; want no doubt", v.Doubts)
+	if v := pat.read(); len(v.Doubts) != 1 || v.Doubts[0].Branch != "maya" || v.Doubts[0].Reason != DoubtMore {
+		t.Fatalf("a first read past the window = %+v; want maya doubtful", v.Doubts)
 	}
 
 	w.pushMany("maya", []string{msg("#6"), msg("#7"), msg("#8"), msg("#9")})
@@ -614,5 +614,32 @@ func TestEveryCommitOfAPushIsJudgedByItsPusher(t *testing.T) {
 		if checks[c] != want {
 			t.Fatalf("checks = %v; want %s %q", checks, c, want)
 		}
+	}
+}
+
+// TestAFirstReadPastTheWindowIsDoubtful (decided in step 3's fix round): a
+// branch this checkout never read that holds more than one read covers is
+// doubtful, even when nothing it read still stands, so a live announcement
+// buried under a thousand ended ones is never passed over in silence.
+func TestAFirstReadPastTheWindowIsDoubtful(t *testing.T) {
+	old := statusWalkLimit
+	statusWalkLimit = 3
+	t.Cleanup(func() { statusWalkLimit = old })
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	gone := func(item string) string {
+		return announcementMsg("merged", item, "maya", t0.Add(-3*time.Hour), 30*time.Minute)
+	}
+	w.pushMany("maya", []string{announcementMsg("merging", "#1", "maya", t0, 30*time.Minute), gone("#2"), gone("#3"), gone("#4"), gone("#5")})
+	pat.status(nil)
+	v := pat.read()
+	if len(v.Announcements) != 0 {
+		t.Fatalf("announcements = %+v; want none read standing", v.Announcements)
+	}
+	if len(v.Doubts) != 1 || v.Doubts[0].Branch != "maya" || v.Doubts[0].Reason != DoubtMore {
+		t.Fatalf("doubts = %+v; want maya's first read past the window doubtful", v.Doubts)
+	}
+	if got := pat.notes(); !strings.Contains(got, "- abcd-status/maya (doubtful): "+DoubtMore+"\n") {
+		t.Fatalf("the block:\n%s\nwant maya doubtful", got)
 	}
 }

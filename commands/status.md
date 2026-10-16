@@ -67,8 +67,8 @@ Each of these is shown with its reason, and every other branch is still read:
 - a commit that does not read as an announcement, such as one that changes a
   file: none of its text is shown, only its branch and the reason;
 - a branch that was rewritten rather than added to, passed a merge, or gained
-  more than one read covers since it was last read here ("continuity not
-  verified");
+  more than one read covers since it was last read here, or holds more than
+  one read covers when it is first read here ("continuity not verified");
 - a branch under `abcd-status/` whose name is not a GitHub username in lower
   case: it is named, and never fetched, since two names that differ only in
   case break every fetch on a case-insensitive filesystem.

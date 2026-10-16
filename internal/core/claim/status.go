@@ -336,7 +336,8 @@ type intake struct {
 // at now, then marks the branch read at its tip. A branch whose name is not a
 // lower-case username, whose tip is not a commit, or whose walk could not
 // verify continuity (it moved back or was rewritten, ran past the walk's
-// limit since the mark, or passed a merge) is kept as doubtful, and every
+// limit, since the mark or on a first read, or passed a merge) is kept as
+// doubtful, and every
 // other branch is still read. It writes only the local tier; a checkout
 // without one keeps nothing and reads nothing. When ctx ends, what was read
 // is kept, the branch at hand is not marked, and ctx's error is answered.
@@ -373,7 +374,9 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 		switch {
 		case h.Since != "" && h.Rewritten:
 			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtRewritten, Tip: h.Tip, FoundAt: now})
-		case h.Since != "" && h.More:
+		case h.More:
+			// A first read too: a live announcement may sit under more than
+			// one read covers.
 			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtMore, Tip: h.Tip, FoundAt: now})
 		case h.Merged:
 			keepDoubt(root, BranchDoubt{Branch: name, Reason: DoubtMerged, Tip: h.Tip, FoundAt: now})
