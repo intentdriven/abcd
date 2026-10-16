@@ -231,7 +231,16 @@ what it did in `next`:
   checkout does not hold as origin's default branch does (absent here, or
   held here as another record) promotes nothing here: the route is a flag
   whose `wrote` says why and whose `home` names the checkout that can promote
-  it, and the hand-back is published all the same. The reservation is taken once
+  it, and the hand-back is published all the same. A `yes` whose hold the
+  move cannot release with the hand-back on it (you renewed or reserved the
+  issue again by hand, another took it over, you released it, or the drain
+  took none because you held the issue live) says in `wrote` that the
+  hand-back is not yet published, and why, and keeps it in
+  `pending_hand_backs`; a later move whose view shows the issue released by a
+  tombstone that marks no hand-back publishes it over that release, fenced on
+  it and on the blob the `yes` was judged over, so your own reserve and
+  release never erase it. A record changed or finished on origin's default
+  branch since ends it with nothing published. The reservation is taken once
   per request and never renewed while you poll: a request still unanswered
   when it lapses (two hours by default) is dropped and its reservation
   released at once, in the first move after the lapse. That move does not ask
@@ -258,7 +267,11 @@ what it did in `next`:
   does not allow) refuses the move, nothing opened; one that could not ask
   GitHub whether `origin` is a fork goes ahead, and the lane that starts on it
   says so in its run record and in `start.fork_unchecked`, as `abcd reserve`
-  does. A peer this checkout cannot read (a sibling worktree git will not
+  does, in whichever move the lane opens; a lane whose own reservation renews
+  a judgement's hold that lapsed asks again. A move refused once it has done
+  anything (a judgement taken, a hand-back routed, a lane finished) writes
+  that first, and its refusal says whether the answer given was taken, so it
+  is never given twice. A peer this checkout cannot read (a sibling worktree git will not
   answer for, one another account owns, or a ledger holding one id in two
   folders) refuses the move once, after the move's housekeeping is done and
   written and before any issue is judged or reserved (check `peers`),
@@ -363,7 +376,11 @@ the run this move started; `routed` are the hand-backs this move routed and
 none; `judged` is the answer this move took and `judgements` every one the
 drain has taken (`issue`, `remedy_sha256`, `answer`, `kind`, `reason`,
 `applied`, `note`, `at`), `applied` being `false`, with the `note` saying why,
-for an answer over an issue that left the eligible set before it was taken;
+for an answer over an issue that left the eligible set before it was taken,
+and `hold` the reservation it was asked on;
+`pending_hand_backs` are the hand-backs routed and not yet published on
+`origin` (`issue`, `kind`, `blob`, `why`, `at`), which the text form lists as
+`hand-back pending:` lines;
 `flags` are the rule's
 hand-backs; `passed` names an eligible issue this move did not take, with why;
 `dispositions` is the plan; `finished` lists the merged lanes this move took

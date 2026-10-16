@@ -165,7 +165,10 @@ dcn-2610161040378209): a reservation pushed to a fork is invisible to every
 account working on the repository it was made from, so it holds nothing for
 them. A plain `reserve` the judgement finds a renewal of this copy's own
 reservation asks nothing, and neither does an asked-for renewal nor a
-release. Every URL git pushes origin to is asked about, each push URL git
+release. A reservation a drain makes (`Drain`) that renews this copy's own
+lapsed reservation is the drain's hold afresh from that push, the hold a lane
+then opens on, so it asks as a fresh reservation does; a drain's renewal of a
+live one asks nothing. Every URL git pushes origin to is asked about, each push URL git
 resolves for origin rather than only the first, in each form git takes for github.com: the three it writes, and with
 them userinfo, a port, `ssh.github.com` over ssh, ssh or scp with no user, and
 a host in any case. When any one of them is a repository the forge names a

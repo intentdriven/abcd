@@ -67,7 +67,8 @@ The following are non-negotiable invariants — any architectural choice that vi
    asks nothing about that repository; a call that failed is held a minute
    and made again by the next act after that, at most one a minute for a
    repository. A renewal (however it was asked for) and a release never make
-   it, and an unanswered call lets the act through with a warning
+   it, but for a drain's reservation that renews this copy's lapsed one,
+   which is the drain's hold afresh and makes it as a fresh one does, and an unanswered call lets the act through with a warning
    (spc-2610161044461448, step 10). `reserve --holder`'s meaning is that user-endpoint
    call alone, and nothing else, made in either of two cases: (a) git's
    identity is a person's but carries neither a GitHub no-reply address nor a

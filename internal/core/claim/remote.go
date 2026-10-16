@@ -165,9 +165,12 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	// The fork check follows the judgement, so only an act that reserves
 	// afresh (a reservation or a take-over, never a renewal or a release,
 	// however it was asked for) asks the forge, and precedes the commit and
-	// the push, so a fork is refused before anything is pushed.
+	// the push, so a fork is refused before anything is pushed. A drain's
+	// reservation that renews this copy's lapsed one is afresh too: that push
+	// makes it the drain's hold, which a lane opens on, so it asks as a fresh
+	// one does (spc-2610161044461448 step 10; the review of steps 1 to 18).
 	forkUnchecked, forkAllowed := "", ""
-	if !p.req.Release && res.Act != ActRenewed {
+	if !p.req.Release && (res.Act != ActRenewed || p.req.Drain && !res.RenewedLive) {
 		if forkUnchecked, forkAllowed, err = checkFork(root, p.now, o.home()); err != nil {
 			return Result{}, err
 		}

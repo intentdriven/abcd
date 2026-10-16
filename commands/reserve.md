@@ -92,7 +92,9 @@ copy, of a reservation still live are never refused by the cap, while renewing
 one that has lapsed counts as a new one. Release one first, if the user agrees.
 
 **Exit 2 on a fork origin.** A new reservation or a take-over asks GitHub
-whether each URL origin pushes to is a fork; a renewal and a release never ask.
+whether each URL origin pushes to is a fork; a renewal and a release never ask,
+except a drain's reservation that renews your lapsed one, which is the drain's
+hold afresh and asks as a new one does.
 A fork is refused before anything is pushed, since a reservation there is
 invisible to everyone working on the repository it was made from. The refusal
 names that repository and the `git remote set-url` command that points origin

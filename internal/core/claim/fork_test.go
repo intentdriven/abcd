@@ -460,3 +460,37 @@ func TestTheMachineHolderKeySitsBesideTheForkKey(t *testing.T) {
 		t.Fatalf("%+v %v; want the reservation made as octo, warned of the allowed fork", res, err)
 	}
 }
+
+// TestADrainsRenewalOfALapsedHoldAsksTheForge: a reservation a drain makes
+// that renews this copy's own lapsed reservation is the drain's fresh hold
+// from that push on, so it asks the forge as a fresh reservation does, and
+// says when it could not; a drain's renewal of a live one, and a person's
+// plain reserve that renews a lapsed one, ask nothing.
+func TestADrainsRenewalOfALapsedHoldAsksTheForge(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	f := stubForge(t, github.Repo{}, errors.New("unreachable"))
+	originOnGitHub(t, "https://github.com/octo/abcd.git")
+	drain := Request{Record: "iss-5", Footprint: []string{"a.go"}, Drain: true}
+	if _, err := p.do(drain); err != nil {
+		t.Fatal(err)
+	}
+	f.asked = nil
+	w.set(t0.Add(30 * time.Minute))
+	if res, err := p.do(drain); err != nil || res.Act != ActRenewed || !res.RenewedLive || len(f.asked) != 0 {
+		t.Fatalf("a drain's renewal of a live hold = %+v, %v, asked %v; want it renewed asking nothing", res, err, f.asked)
+	}
+	w.set(t0.Add(3 * time.Hour))
+	res, err := p.do(drain)
+	if err != nil || res.Act != ActRenewed || res.RenewedLive {
+		t.Fatalf("a drain's renewal of a lapsed hold = %+v, %v", res, err)
+	}
+	if len(f.asked) != 1 || !strings.HasPrefix(res.ForkUnchecked, "octo/abcd: ") {
+		t.Fatalf("a drain's renewal of a lapsed hold asked %v, unchecked %q; want it asked once, the failure named", f.asked, res.ForkUnchecked)
+	}
+	f.asked = nil
+	w.set(t0.Add(6 * time.Hour))
+	if res, err := p.reserve("iss-5", "a.go"); err != nil || res.Act != ActRenewed || res.RenewedLive || len(f.asked) != 0 {
+		t.Fatalf("a plain reserve renewing a lapsed one = %+v, %v, asked %v; want it renewed asking nothing", res, err, f.asked)
+	}
+}

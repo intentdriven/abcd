@@ -63,32 +63,57 @@ func (h *judgeHolds) add(issue string, hold *DrainHold, fresh bool) {
 // releaseOne releases k, and returns the clause for it. When the view shows
 // the tip has moved on there is nothing to release: the clause says so for a
 // reservation this person holds from this copy (renewed or reserved again by
-// hand), and is "" for any other (released, or another's).
-func (h *judgeHolds) releaseOne(k *judgeHold, kind string) string {
+// hand), and is "" for any other (released, or another's). pending is why a
+// hand-back kind asked to publish is not on origin and is still due
+// (released.pending), "" when kind is "".
+func (h *judgeHolds) releaseOne(k *judgeHold, kind string) (clause, pending string) {
 	k.done = true
 	if !k.fresh && h.view != nil {
 		if r, ok := h.view.Lookup(k.issue); !ok || r.Commit != k.hold.Commit {
 			if ok && r.Copy == claim.CopyThis && r.State == claim.StateLive {
-				return "left the reservation on " + k.issue + " as it stands: it was renewed or reserved again since the drain took it"
+				clause = "left the reservation on " + k.issue + " as it stands: it was renewed or reserved again since the drain took it"
 			}
-			return ""
+			if kind != "" {
+				pending = "the reservation the drain took to judge " + k.issue + " is no longer its tip on " + claim.Remote + movedTo(r, ok)
+			}
+			return clause, pending
 		}
 	}
-	c, _ := releaseReservationAt(h.repoRoot, k.issue, k.hold.Commit, kind, h.now)
-	return c
+	out := releaseAt(h.repoRoot, k.issue, k.hold.Commit, kind, "", h.now)
+	return out.clause, out.pending
+}
+
+// movedTo says what the view shows at a tip the drain's hold moved off: a
+// reservation this person renewed or made by hand, another's, a release, or
+// none.
+func movedTo(r claim.Reservation, ok bool) string {
+	switch {
+	case !ok:
+		return ": it holds no reservation of it"
+	case r.State == claim.StateReleased:
+		return ": it was released by a tombstone that marks no hand-back"
+	case r.Copy == claim.CopyThis:
+		return ": this person renewed or reserved it again by hand"
+	}
+	return ": " + r.Holder + " holds it"
 }
 
 // release releases issue's holds now and returns the move's clause for them,
 // "" when it knows none. A kind other than "" publishes the hand-back on the
-// tombstone (releaseReservation).
-func (h *judgeHolds) release(issue, kind string) string {
-	clause := ""
+// tombstone (releaseReservation), and pending is why it is not on origin and
+// still due, "" when it is or none was asked; known is false when the move
+// knows no hold for issue, so nothing was released or published.
+func (h *judgeHolds) release(issue, kind string) (clause, pending string, known bool) {
 	for i := range h.held {
 		k := &h.held[i]
 		if k.done || k.issue != issue {
 			continue
 		}
-		c := h.releaseOne(k, kind)
+		known = true
+		c, p := h.releaseOne(k, kind)
+		if p != "" {
+			pending = p
+		}
 		if c == "" {
 			continue
 		}
@@ -97,7 +122,7 @@ func (h *judgeHolds) release(issue, kind string) string {
 		}
 		clause += c
 	}
-	return clause
+	return clause, pending, known
 }
 
 // forget marks issue's hold at commit as done with nothing to release: the
@@ -142,7 +167,7 @@ func (h *judgeHolds) settle(awaited *DrainJudging) []string {
 		if !k.starting && awaited != nil && awaited.Issue == k.issue && awaited.Hold != nil && awaited.Hold.Commit == k.hold.Commit {
 			continue
 		}
-		c := h.releaseOne(k, "")
+		c, _ := h.releaseOne(k, "")
 		if c == "" {
 			continue
 		}

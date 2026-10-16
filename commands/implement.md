@@ -551,7 +551,11 @@ the run record, once. A run keyed by an issue whose lane is handed back
 releases its reservation as the step hands it back: it pushes the tombstone
 while the reservation is still this copy's and logs `reservation_released`
 with the outcome, since the issue is the person's again; a fetch or push that
-fails is logged `reservation_release_failed` instead. For a lane a drain
+fails, and a release the reservation's tip refuses for a reason of its own (a
+tombstone it may not write, a tip it cannot read), is logged
+`reservation_release_failed` instead, never `reservation_released`. A
+tombstone that would pass the message cap with its hand-back on it is pushed
+plain, and the logged line says the hand-back was not published, and why. For a lane a drain
 opened, the drain routing the hand-back pushes the tombstone again. A run
 `build <iss-N>` started has no drain routing it, so nothing retries a failed
 release: its reservation lapses with its lease. An intent's run keeps

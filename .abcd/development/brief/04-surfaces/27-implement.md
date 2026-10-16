@@ -355,7 +355,10 @@ tombstone that fails is named without undoing the landing; the lane branch
 removal touches only the lane's `build/` branch. A run keyed by an issue whose
 lane is handed back pushes a tombstone over its reservation as the step (or
 the receipt) hands it back, logging `reservation_released` with the outcome
-(`reservation_release_failed` when the push fails: the drain's route tries
+(`reservation_release_failed` when the push fails, or the tip refuses the
+release for a reason of its own, never `reservation_released`; a tombstone
+the cap would refuse with its hand-back is pushed plain, saying why: the
+drain's route tries
 again for a lane a drain opened, and nothing retries one `abcd build <iss-N>`
 started, whose reservation lapses with its lease),
 whether a drain or `abcd build <iss-N>` started it (iss-2610142247197128); an

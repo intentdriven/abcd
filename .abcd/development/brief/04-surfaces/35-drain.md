@@ -270,7 +270,17 @@ on origin's default branch backs off, with a tip or without one
    by git's object name for this checkout's file) promotes nothing here: the
    route is a flag whose home is a checkout that holds the record, and the
    hand-back is published all the same, so the promotion is left to a person
-   whose checkout can make it. The
+   whose checkout can make it. A yes whose hold the move cannot release with
+   the hand-back on it (renewed or reserved again by hand, taken over,
+   released by a person, or never taken because this person held the issue
+   live from this copy), or whose release did not reach origin, says in its
+   route that the hand-back is not yet published, and why; the drain keeps it
+   pending in its state, carries it into the next drain, and publishes it over
+   the issue's next release on origin, a tombstone marking no hand-back, as
+   that tombstone's child, fenced on it and on the blob the yes was judged
+   over; a tip already marking a hand-back, or a record finished or changed on
+   origin's default branch since, ends it with nothing published
+   (dcn-2610161826443524). The
    hold is taken once per request and never renewed by a poll: a request whose
    reservation lapses unanswered is dropped, and its reservation released at
    once, before anything else in that move. The issue is not asked again in
@@ -297,7 +307,16 @@ on origin's default branch backs off, with a tip or without one
    not allow) refuses the move; the fork check is made by the reservation taken
    before the judgement, and one it could not make, or waived for the allowed
    fork, is named in the run record and start result of the lane a no opens on
-   that reservation ([`37-reserve.md`](37-reserve.md)). A peer this checkout
+   that reservation, in whichever move it opens, from the judgement that keeps
+   the hold it was asked on; a lane whose start renews a judgement's hold that
+   lapsed before the no, and a judgement's reservation that renews this copy's
+   own lapsed one, ask again, the push making the hold the drain's afresh
+   ([`37-reserve.md`](37-reserve.md), dcn-2610161827036320). A move refused
+   once it has done anything (the judgement block onward: the outage read, the
+   merged lanes, a lane's routing, the run listing, the origin check, a
+   judgement's reservation or request, a lane's start) writes what it did
+   first, and its refusal says whether the answer given was taken; the hold
+   the written state no longer records is released (dcn-2610161826557910). A peer this checkout
    cannot read refuses the move once, where per-issue contention begins, after
    the move's housekeeping, which is written first, and before any issue is
    judged or reserved, naming each peer with the repair its reason calls for and

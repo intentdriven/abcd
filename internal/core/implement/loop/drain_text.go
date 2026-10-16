@@ -35,5 +35,8 @@ func (st DrainState) textWritten() bool {
 	for _, j := range st.Judgements {
 		texts = append(texts, j.Issue, j.RemedySHA256, j.Answer, j.Kind, j.Reason, j.Note)
 	}
+	for _, p := range st.PendingHandBacks {
+		texts = append(texts, p.Why)
+	}
 	return !slices.ContainsFunc(texts, func(s string) bool { return termsafe.Sanitize(s) != s })
 }

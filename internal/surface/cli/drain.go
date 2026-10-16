@@ -282,6 +282,10 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 			fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(loop.DrainSummaryLine(r)))
 		}
 	}
+	for _, p := range res.PendingHandBacks {
+		fmt.Fprintf(w, "  hand-back pending: %s (%s), routed %s, not yet on origin: %s\n", p.Issue, p.Kind,
+			p.At.UTC().Format(time.RFC3339), termsafe.Sanitize(p.Why))
+	}
 	for _, p := range res.Passed {
 		fmt.Fprintf(w, "  passed: %s (%s): %s\n", p.ID, p.Check, termsafe.Sanitize(p.Reason))
 	}

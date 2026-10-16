@@ -116,6 +116,10 @@ type DrainJudgement struct {
 	Applied      bool      `json:"applied"`
 	Note         string    `json:"note,omitempty"`
 	At           time.Time `json:"at"`
+	// Hold is the reservation the answer was asked on, nil when the drain
+	// took none: the lane a no opens on it, in this move or a later one,
+	// names the fork check it could not make or waived.
+	Hold *DrainHold `json:"hold,omitempty"`
 }
 
 // JudgementAnswer is the host's answer file, read strictly: any other field

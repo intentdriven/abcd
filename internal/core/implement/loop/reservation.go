@@ -296,29 +296,67 @@ func releaseReservation(repoRoot, id, kind string, now time.Time) (clause string
 // tip names ("" for whichever the tip holds): one renewed or reserved again
 // since is left as it stands.
 func releaseReservationAt(repoRoot, id, tip, kind string, now time.Time) (clause string, failed bool) {
-	defer func() { clause = termsafe.Sanitize(fsutil.RedactHome(clause)) }()
-	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind}, claimOptions(now))
+	out := releaseAt(repoRoot, id, tip, kind, "", now)
+	return out.clause, out.failed
+}
+
+// released is what one release came to: the clause the caller writes, whether
+// it failed (a fetch or a push that did not reach origin, or a refusal the
+// tip gave for a reason of its own: the reservation still holds, so the
+// release is due again), and, for a release asked to publish a hand-back,
+// why the hand-back is not on origin and is still due ("" when it was
+// published, or is no longer due: the record changed, or origin holds no one
+// record of it, or the tip already marks one).
+type released struct {
+	clause  string
+	failed  bool
+	pending string
+}
+
+// releaseAt is the one release the loop makes: claim's release of id, fenced
+// on tip when it names one, publishing kind when it is not "", judged over
+// blob when it is not "" (claim.Request.HandBackBlob). The clause quotes a
+// refusal and a holder, both derived from the remote, so it is returned
+// terminal-safe and home-redacted for every caller.
+func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) (out released) {
+	defer func() {
+		out.clause = termsafe.Sanitize(fsutil.RedactHome(out.clause))
+		out.pending = termsafe.Sanitize(fsutil.RedactHome(out.pending))
+	}()
+	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind, HandBackBlob: blob}, claimOptions(now))
 	var nh *claim.NotHeld
 	switch {
+	case err == nil && res.Act == claim.ActAlreadyReleased && kind != "" && res.HandBackUnpublished != "":
+		return released{clause: "the reservation on " + id + " was already released; " + res.HandBackUnpublished}
 	case err == nil && res.Act == claim.ActAlreadyReleased:
-		return "the reservation on " + id + " was already released", false
+		return released{clause: "the reservation on " + id + " was already released"}
 	case err == nil && kind != "" && res.HandBackUnpublished != "":
-		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished, false
+		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
 	case err == nil && kind != "":
-		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
-			", so no drain takes it again until its record changes on " + claim.Remote + "'s default branch", false
+		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
+			", so no drain takes it again until its record changes on " + claim.Remote + "'s default branch"}
+	case err == nil && res.HandBackKept != nil:
+		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackKept.KeptNote(id)}
 	case err == nil:
-		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")", false
+		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
-		return "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s", false
+		out = released{clause: "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
-		return "left the reservation on " + id + " as it stands: your copy on another computer holds it", false
+		out = released{clause: "left the reservation on " + id + " as it stands: your copy on another computer holds it"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved:
-		return "left the reservation on " + id + " as it stands: it was renewed or reserved again since the drain took it", false
+		out = released{clause: "left the reservation on " + id + " as it stands: it was renewed or reserved again since the drain took it"}
 	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):
-		return "left the reservation on " + id + " as it stands: " + err.Error(), false
+		// A refusal of the tip's own (a message it may not write, a tip it
+		// cannot read) leaves the reservation holding: it is never logged as
+		// released, and the drain routing a hand-back tries it again.
+		out = released{clause: "could not release the reservation on " + id + ": " + err.Error(), failed: true}
+	default:
+		out = released{clause: "could not push the tombstone over the reservation on " + id + ": " + err.Error(), failed: true}
 	}
-	return "could not push the tombstone over the reservation on " + id + ": " + err.Error(), true
+	if kind != "" {
+		out.pending = out.clause
+	}
+	return out
 }
 
 // isPushFailure reports whether err is a reservation act that failed reaching
