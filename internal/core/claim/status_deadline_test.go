@@ -81,3 +81,42 @@ func TestPruningStopsWhenItsContextEnds(t *testing.T) {
 		t.Fatalf("a prune whose context had ended removed a doubt: %v", err)
 	}
 }
+
+// TestAPromptWithNoTimeLeftSaysSoInItsOwnWords: when the hook's deadline
+// leaves the read nothing, no read is started, and the block says so in its
+// own fixed line, never that a read took too long.
+func TestAPromptWithNoTimeLeftSaysSoInItsOwnWords(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	maya.announceAs("merging", "#1012")
+	pat.status(nil)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(promptMarkReserve/2))
+	defer cancel()
+	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
+	want := NotesHeading + "\n\nstatus unavailable: no time was left to read it at this prompt; `abcd status` reads it in full\n"
+	if !errors.Is(err, ErrStatusUnavailable) || n.Text != want {
+		t.Fatalf("PromptNotes = %q, %v; want %q", n.Text, err, want)
+	}
+}
+
+// TestTheFoldedDoubtsCountTheAnnouncementsToo: the line that sums up more
+// doubts than the block shows one by one counts a doubtful branch and an
+// announcement that does not read alike, and says it covers both.
+func TestTheFoldedDoubtsCountTheAnnouncementsToo(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	for _, b := range []string{"amy", "bob"} {
+		w.pushStatus(b, "not an announcement from "+b+"\n", "")
+	}
+	tip := w.pushStatus("cal", announcementMsg("merging", "#1", "cal", t0, 30*time.Minute), "")
+	side := w.pushStatus("side", announcementMsg("merging", "#3", "cal", t0, 30*time.Minute), "")
+	runGit(t, w.bare, "update-ref", "-d", StatusRefPrefix+"side")
+	w.pushStatus("cal", announcementMsg("merging", "#2", "cal", t0, 30*time.Minute), "", tip, side)
+	pat.status(nil)
+	got := pat.notes()
+	want := "- 3 doubts about the status branches and their announcements, not shown one by one; `abcd status` lists them\n"
+	if !strings.Contains(got, want) {
+		t.Fatalf("the block:\n%s\nwant %q", got, want)
+	}
+}

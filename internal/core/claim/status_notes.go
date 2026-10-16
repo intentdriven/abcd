@@ -120,9 +120,10 @@ var statusReadHook atomic.Pointer[func(read func())]
 // under what is left of it less promptMarkReserve, at most promptReadBudget,
 // and the block's MarkShown writes nothing past it. A checkout with no remote
 // named origin, or without its local tier, where nothing can be kept as
-// shown, shows nothing. When the read's deadline passes before the read
-// ends, or the read fails, the block is one line saying, in fixed words, the
-// status is unavailable and which of the two it was, and the answer is
+// shown, shows nothing. When nothing is left of the deadline for the read,
+// the read's deadline passes before the read ends, or the read fails, the
+// block is one line saying, in fixed words, the status is unavailable and
+// which of the three it was, and the answer is
 // ErrStatusUnavailable, wrapped with git's reason for a failed read: the
 // hook never waits past its deadline and never shows nothing in place of a
 // read it could not make.
@@ -144,37 +145,39 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 	}
 	var got answer
 	if rctx.Err() != nil {
-		// Nothing is left of the deadline: no read is started.
-		got.err = rctx.Err()
-	} else {
-		done := make(chan answer, 1)
-		promptReads.Add(1)
-		go func() {
-			defer promptReads.Done()
-			read := func() {
-				v, err := ReadStatus(rctx, root, now, o)
-				if _, only := err.(*holdsUnreadError); only {
-					// Only the holds failed: the rest is shown, and the
-					// block says the holds were not read.
-					v.holdsUnread, err = true, nil
-				}
-				var n Notes
-				if err == nil {
-					n, err = notesFor(rctx, root, v, now)
-				}
-				done <- answer{n, err}
+		// Nothing is left of the deadline: no read is started, and the block
+		// says so in its own words.
+		why := "no time was left to read it at this prompt"
+		return Notes{Text: NotesHeading + "\n\nstatus unavailable: " + why + "; `abcd status` reads it in full\n"},
+			fmt.Errorf("%w: %s", ErrStatusUnavailable, why)
+	}
+	done := make(chan answer, 1)
+	promptReads.Add(1)
+	go func() {
+		defer promptReads.Done()
+		read := func() {
+			v, err := ReadStatus(rctx, root, now, o)
+			if _, only := err.(*holdsUnreadError); only {
+				// Only the holds failed: the rest is shown, and the
+				// block says the holds were not read.
+				v.holdsUnread, err = true, nil
 			}
-			if h := statusReadHook.Load(); h != nil {
-				(*h)(read)
-				return
+			var n Notes
+			if err == nil {
+				n, err = notesFor(rctx, root, v, now)
 			}
-			read()
-		}()
-		select {
-		case got = <-done:
-		case <-rctx.Done():
-			got.err = rctx.Err()
+			done <- answer{n, err}
 		}
+		if h := statusReadHook.Load(); h != nil {
+			(*h)(read)
+			return
+		}
+		read()
+	}()
+	select {
+	case got = <-done:
+	case <-rctx.Done():
+		got.err = rctx.Err()
 	}
 	if got.err != nil {
 		// The block says why in fixed words: git's text can quote what a
@@ -287,7 +290,7 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 			n += d.weight
 		}
 		doubts = []noteLine{{folded: doubts,
-			text: fmt.Sprintf("%d doubts about the status branches, not shown one by one; `abcd status` lists them", n)}}
+			text: fmt.Sprintf("%d doubts about the status branches and their announcements, not shown one by one; `abcd status` lists them", n)}}
 	}
 	// The doubts keep their lines, at most maxDoubtLines, after the rest:
 	// neither can push the other out of the block.

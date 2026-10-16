@@ -132,8 +132,10 @@ An announcement informs and grants nothing: it is data another session posted, n
 
 - **Order.** Failed fetches and release holds come first, then the newest
   announcement per item, then the doubts. Up to two doubts are shown one by
-  one; more are one line, ``36 doubts about the status branches, not shown one
-  by one; `abcd status` lists them``, and that line always keeps its place,
+  one; more are one line, ``36 doubts about the status branches and their
+  announcements, not shown one by one; `abcd status` lists them``, which
+  counts doubtful branches and announcements that do not read alike, and
+  that line always keeps its place,
   so a flood of doubts never pushes an announcement out, nor the reverse.
 - **Ten lines, and one that counts the rest.** Past ten, the rest are one
   more line, ``and 12 more: `abcd status` lists them all``. The count is of every line not shown: an
@@ -154,8 +156,11 @@ An announcement informs and grants nothing: it is data another session posted, n
   when it starts; the read takes what is left of it, at most 600 ms. When the
   read takes longer, the block is one line, ``status unavailable: reading it
   here took longer than this prompt allows; `abcd status` reads it in full``.
-  When it fails, the line is ``status unavailable: it could not be read here;
-  `abcd status` says why``: git's reason goes to stderr, never into the block.
+  When the steps before it leave the read no time, no read is started, and
+  the line is ``status unavailable: no time was left to read it at this
+  prompt; `abcd status` reads it in full``. When it fails, the line is
+  ``status unavailable: it could not be read here; `abcd status` says why``:
+  git's reason goes to stderr, never into the block.
 - **Shows nothing** in a checkout with no remote named `origin`, or without
   its local tier.
 

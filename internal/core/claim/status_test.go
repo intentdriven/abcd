@@ -413,7 +413,7 @@ func TestAStatusBranchWhoseContinuityIsNotVerifiedIsDoubtful(t *testing.T) {
 	got := pat.notes()
 	// Three doubts, summed up in one line that keeps its place after eight
 	// announcements.
-	for _, want := range []string{"- 3 doubts about the status branches, not shown one by one; `abcd status` lists them\n",
+	for _, want := range []string{"- 3 doubts about the status branches and their announcements, not shown one by one; `abcd status` lists them\n",
 		"asking #21", "asking #32", "merging #9"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("the block:\n%s\nwant it to carry %q", got, want)
@@ -757,7 +757,7 @@ func TestJunkDoubtsNeverBuryAnAnnouncement(t *testing.T) {
 	if len(lines) < 5 || lines[3] != "- @maya (claimed): merging #1012, for 30 min" {
 		t.Fatalf("the block:\n%s\nwant maya's announcement first", got)
 	}
-	if !strings.Contains(got, "\n- 36 doubts about the status branches, not shown one by one; `abcd status` lists them\n") ||
+	if !strings.Contains(got, "\n- 36 doubts about the status branches and their announcements, not shown one by one; `abcd status` lists them\n") ||
 		strings.Contains(got, "abcd-status/j") || strings.Contains(got, "more: `abcd status`") {
 		t.Fatalf("the block:\n%s\nwant the doubts summed up in one line", got)
 	}
