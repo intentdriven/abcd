@@ -31,6 +31,11 @@ func TestShellCScriptBuiltFromVariablesThatDeletesIsRefused(t *testing.T) {
 		`bash -c "rm -f /x/$N.png"`,
 		`ls /x | xargs sh -c 'rm -f "$@"' _`,
 		`sudo bash -c 'rm -rf "$D"/cache'`,
+		// A variable decides the delete by feeding it: the directory its
+		// relative paths are read in, or the names piped into it.
+		`bash -c 'pushd "$D" >/dev/null; rm -f old.png'`,
+		`bash -c 'ls "$D" | xargs rm -f'`,
+		`bash -c 'rm -f $(cat /x/list)'`,
 	} {
 		d, err := r.Check(cmd)
 		if err != nil {
@@ -67,6 +72,11 @@ func TestShellCRefusalStaysNarrow(t *testing.T) {
 		`sh -c 'rm -f /x/*.png'`,
 		// A literal `$` the -c script's own quotes keep is not a variable.
 		`bash -c "rm -f '\$D'"`,
+		// A variable elsewhere in the script does not decide a delete of
+		// literal paths: the delete is checked as written.
+		`bash -c 'echo $HOME; rm -f /tmp/a.png'`,
+		`bash -c 'D=/x; ls "$D"; rm -f /x/old.png'`,
+		`bash -c 'for f in $X; do echo "$f"; done; rmdir /x/empty'`,
 	} {
 		d, err := r.Check(cmd)
 		if err != nil {

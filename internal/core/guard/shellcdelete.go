@@ -46,27 +46,57 @@ func shellCDeleteSignal() payloadSignal {
 	}
 }
 
-// deletesFromVariables reports whether the segments of one `-c` string hold a
-// parameter expansion (segment.variable: a word whose unknown parts are all a
-// variable's value, which a single-quoted or escaped `$` is not) and run a
-// deleting command at a place a command can sit. A program name nothing on
-// the line fixes is not read as a delete: that is program-name-unknown's.
+// deletesFromVariables reports whether one `-c` string runs a deleting
+// command, at a place a command can sit, whose target a variable decides: the
+// delete's own words hold a parameter expansion (segment.variable: a word
+// whose unknown parts are all a variable's value, which a single-quoted or
+// escaped `$` is not) or a word nothing on the line fixes, an earlier `cd` or
+// `pushd` built from a variable chose the directory its relative paths name,
+// or an earlier command built from a variable pipes it the names it reads.
+// A variable elsewhere in the script decides nothing about a delete of
+// literal paths (`echo $HOME; rm -f /tmp/a.png`), which passes. A program
+// name nothing on the line fixes is not read as a delete: that is
+// program-name-unknown's.
 func deletesFromVariables(psegs []segment) bool {
-	variable, deletes := false, false
+	movedByVariable, variableBefore := false, false
 	for _, s := range psegs {
-		if len(s.variable) > 0 {
-			variable = true
-		}
-		if deletes {
-			continue
-		}
+		own := segmentDecidedByVariable(s)
 		for _, a := range commandSites(s) {
-			if tok := s.tokens[a.idx]; !isUnknown(tok) && nameCouldBeAny(tok, deleteCommands) {
-				deletes = true
+			tok := s.tokens[a.idx]
+			if isUnknown(tok) {
+				continue
+			}
+			if nameCouldBeAny(tok, deleteCommands) &&
+				(own || movedByVariable || (s.stdinStream && variableBefore)) {
+				return true
+			}
+			if own && nameCouldBeAny(tok, directoryChangers) {
+				movedByVariable = true
 			}
 		}
+		if own {
+			variableBefore = true
+		}
 	}
-	return variable && deletes
+	return false
+}
+
+// directoryChangers are the commands that set the working directory a later
+// delete's relative paths are read against.
+var directoryChangers = []string{"cd", "pushd"}
+
+// segmentDecidedByVariable reports whether a variable, or a word nothing on
+// the line fixes, takes part in the segment's words.
+func segmentDecidedByVariable(s segment) bool {
+	if len(s.variable) > 0 {
+		return true
+	}
+	for _, tok := range s.tokens {
+		if isUnknown(tok) {
+			return true
+		}
+	}
+	return false
 }
 
 // leadsOver reports whether the refusal speaks for a line where the named
