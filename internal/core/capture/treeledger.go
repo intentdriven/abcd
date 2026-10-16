@@ -42,11 +42,12 @@ type TreeLedger struct {
 }
 
 // Terminal is the ids the ledger holds in a terminal folder, resolved or
-// wontfix, sorted.
+// wontfix, sorted. A file in any other folder, open/ or one that is no status,
+// finishes nothing.
 func (l *TreeLedger) Terminal() []string {
 	var out []string
 	for _, f := range l.Files {
-		if f.Folder == string(StateOpen) {
+		if f.Folder != string(StateResolved) && f.Folder != string(StateWontfix) {
 			continue
 		}
 		if id := recordIDOfFilename(path.Base(f.Path)); id != "" && !slices.Contains(out, id) {
