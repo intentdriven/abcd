@@ -11,10 +11,10 @@ import (
 // asStored makes an isolated command read history as stored: no
 // refs/replace/* ref stands one object in for another
 // (GIT_NO_REPLACE_OBJECTS), and no .git/info/grafts file gives a commit
-// parents it does not store (NoGraftFile), which git honours even with
+// parents it does not store (noGraftFile), which git honours even with
 // replace refs off.
 func asStored(cmd *exec.Cmd) *exec.Cmd {
-	cmd.Env = append(cmd.Env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_GRAFT_FILE="+NoGraftFile)
+	cmd.Env = append(cmd.Env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_GRAFT_FILE="+noGraftFile)
 	return cmd
 }
 
