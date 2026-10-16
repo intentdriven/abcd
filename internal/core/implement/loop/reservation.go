@@ -187,39 +187,44 @@ func fenceLease(mirrored bool) time.Duration {
 // session is cutting holds every merge (releaseHold, C7). A run that holds no
 // reservation fetches them all the same, for the hold
 // (claim.FetchMergeHold, the judgement `abcd land` makes too). It returns the
-// renewed expiry, zero for a run that holds no reservation.
-func landFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
+// renewed expiry, zero for a run that holds no reservation, and the notice
+// naming each release dated ahead that the hold did not count
+// (claim.MergeHold.Notice), "" when there is none.
+func landFence(c Context, lane Lane, term time.Duration) (time.Time, string, error) {
 	if c.State.ReservedAt == nil {
 		m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
 		var fe *claim.FetchError
 		switch {
 		case errors.As(err, &fe):
-			return time.Time{}, contend(string(StageLand), "", lane.ID,
+			return time.Time{}, "", contend(string(StageLand), "", lane.ID,
 				"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and the merge is not armed",
 				"run abcd implement step again once origin answers")
 		case err != nil:
-			return time.Time{}, refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
+			return time.Time{}, "", refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
 				"settle what it names, then run `abcd implement step` again")
 		}
-		return time.Time{}, heldMerge(lane, m)
+		return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m)
 	}
 	holds, err := renewAtFence(c, lane, term)
 	if err != nil {
-		return time.Time{}, err
+		return time.Time{}, "", err
 	}
-	return holds, releaseHold(c, lane)
+	notice, err := releaseHold(c, lane)
+	return holds, notice, err
 }
 
 // releaseHold refuses the arming, as contention, while the reservations as the
 // fence's renewal just fetched them show a release being cut that is not this
-// copy's own (claim.MergeHolds, the judgement `abcd land` makes too).
-func releaseHold(c Context, lane Lane) error {
+// copy's own (claim.MergeHolds, the judgement `abcd land` makes too, which
+// keeps this copy's first sighting of a release dated ahead). It returns the
+// notice naming each release dated ahead that the hold did not count.
+func releaseHold(c Context, lane Lane) (string, error) {
 	m, err := claim.MergeHolds(c.RepoRoot, c.Now, claimOptions(c.Now))
 	if err != nil {
-		return refuse(string(StageLand), "", lane.ID, "the release holds could not be read at the land fence: "+err.Error(),
+		return "", refuse(string(StageLand), "", lane.ID, "the release holds could not be read at the land fence: "+err.Error(),
 			"settle what it names, then run `abcd implement step` again")
 	}
-	return heldMerge(lane, m)
+	return termsafe.Sanitize(m.Notice()), heldMerge(lane, m)
 }
 
 // heldMerge is the merge hold's refusal at the fence: every other session's

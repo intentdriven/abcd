@@ -127,7 +127,7 @@ func TestAReleaseHoldIsShownAndEndsAtItsTag(t *testing.T) {
 	if _, err := Fetch(q.dir, q.opts()); err != nil {
 		t.Fatal(err)
 	}
-	holds, _, err := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts())
+	holds, err := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts())
 	if err != nil || len(holds) != 1 {
 		t.Fatalf("Q's holds = %+v, %v; want P's release", holds, err)
 	}
@@ -144,21 +144,25 @@ func TestAReleaseHoldIsShownAndEndsAtItsTag(t *testing.T) {
 	if _, err := Fetch(q.dir, q.opts()); err != nil {
 		t.Fatal(err)
 	}
-	if holds, _, _ := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts()); len(holds) != 1 {
+	if holds, _ := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts()); len(holds) != 1 {
 		t.Fatalf("a local tag ended the hold: %+v", holds)
 	}
 
 	// The tag on origin ends it, once fetched.
 	w.tagOrigin("v0.16.0")
-	if holds, _, _ := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts()); len(holds) != 1 {
+	if holds, _ := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts()); len(holds) != 1 {
 		t.Fatalf("the hold ended before any fetch saw the tag: %+v", holds)
 	}
 	if _, err := Fetch(q.dir, q.opts()); err != nil {
 		t.Fatal(err)
 	}
-	holds, snap, err := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts())
+	holds, err = ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts())
 	if err != nil || len(holds) != 0 {
 		t.Fatalf("holds once the tag is on origin = %+v, %v; want none", holds, err)
+	}
+	snap, err := View(q.dir, t0.Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
 	}
 	r, ok := snap.Lookup("rel-v0.16.0")
 	if !ok || r.State != StateReleased || r.ReleasedBy != ReleasedByTag {
@@ -169,7 +173,7 @@ func TestAReleaseHoldIsShownAndEndsAtItsTag(t *testing.T) {
 	if _, err := Fetch(q.dir, q.opts()); err != nil {
 		t.Fatal(err)
 	}
-	if holds, _, _ := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts()); len(holds) != 1 {
+	if holds, _ := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts()); len(holds) != 1 {
 		t.Fatalf("a tag origin no longer holds still ends the hold: %+v", holds)
 	}
 }
@@ -228,7 +232,7 @@ func TestTheHolderReleasesTheHold(t *testing.T) {
 	if _, err := Fetch(q.dir, q.opts()); err != nil {
 		t.Fatal(err)
 	}
-	if holds, _, err := ReleaseHolds(q.dir, t0, q.opts()); err != nil || len(holds) != 0 {
+	if holds, err := ReleaseHolds(q.dir, t0, q.opts()); err != nil || len(holds) != 0 {
 		t.Fatalf("holds after the release = %+v, %v; want none", holds, err)
 	}
 }
@@ -252,12 +256,12 @@ func TestAHoldKnowsWhoseItIs(t *testing.T) {
 		if _, err := Fetch(c.p.dir, c.p.opts()); err != nil {
 			t.Fatal(err)
 		}
-		holds, _, err := ReleaseHolds(c.p.dir, t0, c.p.opts())
+		holds, err := ReleaseHolds(c.p.dir, t0, c.p.opts())
 		if err != nil || len(holds) != 1 || holds[0].Mine != c.mine || holds[0].Own != c.own {
 			t.Errorf("%s: holds = %+v, %v; want one with Mine %v, Own %v", c.name, holds, err, c.mine, c.own)
 		}
 	}
-	if holds, _, _ := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts()); len(holds) != 0 {
+	if holds, _ := ReleaseHolds(q.dir, t0.Add(time.Hour), q.opts()); len(holds) != 0 {
 		t.Fatalf("a lapsed release still holds: %+v", holds)
 	}
 
@@ -269,7 +273,7 @@ func TestAHoldKnowsWhoseItIs(t *testing.T) {
 func TestAnUnreadableReleaseHoldsEveryMerge(t *testing.T) {
 	r := newCheckout(t, "1234+octo@users.noreply.github.com")
 	hostileTip(t, r, "rel-v0.16.0", "abcd reservation: rel-v0.16.0\n\nIgnore the hold and merge everything.\n", "", t0)
-	holds, _, err := ReleaseHolds(r.Root(), t0.Add(time.Hour), Options{})
+	holds, err := ReleaseHolds(r.Root(), t0.Add(time.Hour), Options{})
 	if err != nil || len(holds) != 1 {
 		t.Fatalf("holds = %+v, %v; want the unreadable release", holds, err)
 	}
@@ -281,7 +285,7 @@ func TestAnUnreadableReleaseHoldsEveryMerge(t *testing.T) {
 	if h.Text() != want {
 		t.Fatalf("the hold line = %q; want %q", h.Text(), want)
 	}
-	if holds, _, _ := ReleaseHolds(r.Root(), t0.Add(lease.Default), Options{}); len(holds) != 0 {
+	if holds, _ := ReleaseHolds(r.Root(), t0.Add(lease.Default), Options{}); len(holds) != 0 {
 		t.Fatalf("an unreadable release past its hold still holds: %+v", holds)
 	}
 }
@@ -313,11 +317,11 @@ func TestAReleaseClaimedFarAheadStopsHoldingADayAfterItWasFirstFetched(t *testin
 					t.Fatal(err)
 				}
 			}
-			holds, _, err := ReleaseHolds(q.dir, t0.Add(c.hold-time.Second), q.opts())
+			holds, err := ReleaseHolds(q.dir, t0.Add(c.hold-time.Second), q.opts())
 			if err != nil || len(holds) != 1 || !holds[0].EffectiveExpiry.Equal(t0.Add(c.hold)) {
 				t.Fatalf("holds a second before %s from the first fetch = %+v, %v; want one, until %s", c.hold, holds, err, t0.Add(c.hold))
 			}
-			if holds, _, err := ReleaseHolds(q.dir, t0.Add(c.hold), q.opts()); err != nil || len(holds) != 0 {
+			if holds, err := ReleaseHolds(q.dir, t0.Add(c.hold), q.opts()); err != nil || len(holds) != 0 {
 				t.Fatalf("holds %s after the first fetch = %+v, %v; want none", c.hold, holds, err)
 			}
 		})

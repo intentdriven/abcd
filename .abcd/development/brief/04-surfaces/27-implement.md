@@ -373,9 +373,13 @@ release has the final say on what merges before its tag, and leaves the pull
 request open and unarmed for the cutting session to merge or hold. The copy
 cutting the release is not held, since its landing is its own ruling. A
 release whose tag is on origin, or whose holder released it, holds nothing; an
-unreadable release branch within its hold holds like a live one. An origin the
-fetch cannot read arms nothing, since a hold it cannot see may be there; a
-checkout with no remote named origin has no reservations and is not held.
+unreadable release branch within its hold holds like a live one. A release
+dated more than five minutes ahead holds from this copy's first sighting of
+it, which the judgement keeps whichever fetch brought it; one whose sighting
+cannot be kept is not counted, and the arming's note names it
+([`37-reserve.md`](37-reserve.md)). An origin the fetch cannot read arms
+nothing, since a hold it cannot see may be there; a checkout with no remote
+named origin has no reservations and is not held.
 
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
 drain opens for each eligible issue) has one lane. Its brief is the issue's

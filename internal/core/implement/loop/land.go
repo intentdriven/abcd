@@ -702,13 +702,16 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	// the run's reservation must still be this person's from this copy, and
 	// it is renewed for a day under a mirror, where every landing waits on a
 	// person, and for the default lease with no mirror.
-	holds, err := landFence(c, *lane, fenceLease(rule.Mirrored))
+	holds, notice, err := landFence(c, *lane, fenceLease(rule.Mirrored))
 	if err != nil {
 		return Outcome{}, err
 	}
 	held := ""
 	if !holds.IsZero() {
 		held = "; the reservation on " + c.State.Key + " holds until " + stamp(holds)
+	}
+	if notice != "" {
+		held += "; " + notice
 	}
 	n := strconv.Itoa(lane.PR)
 	if method == "" {

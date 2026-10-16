@@ -96,6 +96,11 @@ type Hold struct {
 	EffectiveExpiry time.Time `json:"effective_expiry"`
 	// Unreadable is the fixed reason the reservation cannot be read.
 	Unreadable string `json:"unreadable,omitempty"`
+	// Unsighted is true when the reservation is dated more than lease.Skew
+	// ahead of now, or its date cannot be read (Undated), and this copy keeps
+	// no first sighting of it (Reservation.Unsighted).
+	Unsighted bool `json:"unsighted,omitempty"`
+	Undated   bool `json:"undated,omitempty"`
 }
 
 // Text is the line every surface shows a hold by (C8): "release v0.16.0 being
@@ -124,34 +129,33 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 			continue
 		}
 		out = append(out, Hold{Release: releaseTag(r.Record), Subject: r.Record, Holder: r.Holder, Copy: r.Copy,
-			EffectiveExpiry: r.EffectiveExpiry, Unreadable: r.Unreadable})
+			EffectiveExpiry: r.EffectiveExpiry, Unreadable: r.Unreadable, Unsighted: r.Unsighted, Undated: r.HeldFromFetch})
 	}
 	return out
 }
 
 // ReleaseHolds is every release being cut as this checkout last fetched the
-// reservations, from disk alone: no fetch and no push (invariant 7). Each
-// hold's Mine says whether it is under the username a reservation verb here
-// would resolve, and Own whether it is also from this copy. The snapshot is the
-// view the holds were read from, for a render to date them (Snapshot.AsOf).
-// MergeHolds judges a merge from it, for the land fence and `abcd land`.
+// reservations, from disk alone: no fetch, no push and nothing written
+// (invariant 7). Each hold's Mine says whether it is under the username a
+// reservation verb here would resolve, and Own whether it is also from this
+// copy. MergeHolds judges a merge from it, for the land fence and `abcd land`.
 // `abcd peers` renders the holds from its own view through Snapshot.Holds
 // instead, with the same lines; `abcd status` and the prompt hook are to
 // render them in step 3 of spc-2610150728396006 and do not yet.
-func ReleaseHolds(root string, now time.Time, o Options) ([]Hold, Snapshot, error) {
+func ReleaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	now = now.UTC().Truncate(time.Second)
 	snap, err := View(root, now)
 	if err != nil {
-		return nil, snap, err
+		return nil, err
 	}
 	holds := snap.Holds(now)
 	if len(holds) == 0 {
-		return nil, snap, nil
+		return nil, nil
 	}
 	reader := readerHolder(root, o)
 	for i, h := range holds {
 		holds[i].Mine = h.Unreadable == "" && reader != "" && sameHolder(h.Holder, reader)
 		holds[i].Own = holds[i].Mine && h.Copy == CopyThis
 	}
-	return holds, snap, nil
+	return holds, nil
 }

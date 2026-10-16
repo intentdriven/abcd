@@ -142,11 +142,23 @@ record, named as unreadable and never by its writer's text.
 
 The release cut's ship sub-verb does not take or release the hold: the cutting session runs
 this verb before the cut and the hold ends at the tag without it (the reasons
-are in [`04-launch.md`](04-launch.md)). The land fence reads the hold through
-`claim.ReleaseHolds`, from disk alone, after its fetch; `abcd peers` renders
-it from its own view through `Snapshot.Holds`, with the same line; `abcd
-status` and the prompt hook are to render it in step 3 of the spec and do not
-yet.
+are in [`04-launch.md`](04-launch.md)). The land fence and `abcd land` judge
+the hold through `claim.MergeHolds`, after their fetch: it fetches and pushes
+nothing, and keeps in the local tier this copy's first sighting of each
+release reservation dated more than five minutes ahead (or undated), whichever
+fetch brought it, so such a release holds a day (an unreadable one two hours)
+from that sighting at every path that judges a merge. Where no sighting can be
+kept, in a checkout with no local tier or one whose tier cannot be written,
+such a release would be counted from every reading and hold for ever, so it
+is not counted as a hold: the judgement returns it as dated ahead, and the
+caller names it in one notice line (the arming's note at the fence, a line on
+stderr at `abcd land`). The tier is never made for it. An honest cut is
+reserved on a clock within five minutes of the reader's, so this lets no
+merge past one, with one limit: a cutting copy whose clock runs more than five
+minutes fast is not counted by a checkout that cannot keep a sighting. `abcd
+peers` renders the hold from its own view through `Snapshot.Holds`, with the
+same line; `abcd status` and the prompt hook are to render it in step 3 of the
+spec and do not yet.
 
 The hold stops a merge from being armed and nothing more. A merge armed, or
 queued, before the release was reserved (a pull request with auto-merge on,

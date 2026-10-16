@@ -2,12 +2,16 @@ package loop
 
 import (
 	"os"
+	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/lease"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The release hold at the land fence (itd-2609151838312703 C7,
@@ -47,7 +51,7 @@ func TestTheFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 			reserveRelease(t, q, "rel-v0.16.0", now.Add(-time.Minute))
 			// This checkout has not fetched Q's reservation: only the fence's
 			// own fetch can see it.
-			if holds, _, err := claim.ReleaseHolds(f.repo.Root(), now, claim.Options{}); err != nil || len(holds) != 0 {
+			if holds, err := claim.ReleaseHolds(f.repo.Root(), now, claim.Options{}); err != nil || len(holds) != 0 {
 				t.Fatalf("the checkout already sees the hold before the fence fetched: %+v %v", holds, err)
 			}
 			r := f.fenced(t)
@@ -148,7 +152,7 @@ func TestACheckoutWithNoOriginIsNotHeld(t *testing.T) {
 	root := f.repo.Root()
 	c := Context{RepoRoot: root, Now: now}
 	lane := Lane{ID: "lane-1"}
-	if _, err := landFence(c, lane, lease.Max); err == nil {
+	if _, _, err := landFence(c, lane, lease.Max); err == nil {
 		t.Fatal("with origin there, the fence holds nothing; want Q's release to hold the lane")
 	}
 	ref := claim.TrackingPrefix + "rel-v0.16.0"
@@ -157,7 +161,103 @@ func TestACheckoutWithNoOriginIsNotHeld(t *testing.T) {
 	// Removing the remote drops its tracking refs; one put back by hand is
 	// the hold a stale copy might still carry.
 	gitIn(t, root, "update-ref", ref, tip)
-	if exp, err := landFence(c, lane, lease.Max); err != nil || !exp.IsZero() {
+	if exp, _, err := landFence(c, lane, lease.Max); err != nil || !exp.IsZero() {
 		t.Fatalf("the fence with no origin = %s, %v; want nothing held and no renewal", exp, err)
+	}
+}
+
+// pushDatedTip pushes a commit carrying msg on the empty tree, dated at, as
+// the reservation branch for subject on origin, from a scratch clone: a
+// reservation written on a clock far ahead of this one.
+func pushDatedTip(t *testing.T, bare, subject, msg string, at time.Time) {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "ahead")
+	gitIn(t, "", "clone", "-q", bare, dir)
+	path := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(path, []byte(msg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tree := gitIn(t, dir, "hash-object", "-w", "-t", "tree", "/dev/null")
+	date := "@" + strconv.FormatInt(at.Unix(), 10) + " +0000"
+	cmd := exec.Command("git", "-C", dir, "-c", "user.name=Quinn", "-c", "user.email=quinn@example.invalid", "-c", "commit.gpgsign=false",
+		"commit-tree", tree, "-F", path)
+	cmd.Env = append(gittest.Env(t), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitIn(t, dir, "push", "-q", "origin", strings.TrimSpace(string(out))+":"+claim.RefPrefix+subject)
+}
+
+// TestTheFenceCountsAReleaseDatedAheadFromItsFirstSighting: a lane holding
+// its own reservation renews it at the fence, and the renewal's fetch brings a
+// release reservation dated five years ahead (readable, or unreadable with
+// that commit date). The fence holds the lane from its first sighting of it
+// for a day (or the default hold) and then arms, however many times it is
+// judged in between; the hold never slides forward with the clock.
+func TestTheFenceCountsAReleaseDatedAheadFromItsFirstSighting(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		msg  func(ahead time.Time) string
+		hold time.Duration
+	}{
+		{"readable", func(ahead time.Time) string {
+			return "abcd reservation: rel-v0.16.0\n\nAbcd-Reservation: rel-v0.16.0\nAbcd-Holder: quinn\n" +
+				"Abcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\nAbcd-Claimed-At: " + stamp(ahead) +
+				"\nAbcd-Expires-At: " + stamp(ahead.Add(lease.Max)) + "\n"
+		}, lease.Max},
+		{"unreadable", func(time.Time) string { return "abcd reservation: rel-v0.16.0\n\nnot a reservation\n" }, lease.Default},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			f := newLandFixture(t, queueRuleset("MERGE"))
+			now := time.Now().UTC().Truncate(time.Second)
+			reserveRun(t, f.repo, f.runID, "itd-10", now, "internal/widget")
+			ahead := now.Add(5 * 365 * 24 * time.Hour)
+			pushDatedTip(t, f.bare, "rel-v0.16.0", c.msg(ahead), ahead)
+			lane := Lane{ID: "lane-1"}
+			st := State{Key: "itd-10", ReservedAt: &now}
+			until := stamp(now.Add(c.hold))
+			for _, at := range []time.Duration{0, c.hold / 2, c.hold - time.Minute} {
+				_, _, err := landFence(Context{RepoRoot: f.repo.Root(), Now: now.Add(at), State: st}, lane, lease.Max)
+				r, ok := AsRefusal(err)
+				if !ok || !r.Contention || !strings.Contains(r.Reason, "release v0.16.0") || !strings.Contains(r.Reason, "until "+until) {
+					t.Fatalf("at +%s: %v; want the lane held by v0.16.0 until %s", at, err, until)
+				}
+			}
+			exp, _, err := landFence(Context{RepoRoot: f.repo.Root(), Now: now.Add(c.hold), State: st}, lane, lease.Max)
+			if err != nil || exp.IsZero() {
+				t.Fatalf("at +%s: %s, %v; want the hold ended %s after it was first seen and the reservation renewed", c.hold, exp, err, c.hold)
+			}
+		})
+	}
+}
+
+// TestTheFenceArmsPastAReleaseDatedAheadItCannotKeepASightingOf: where this
+// copy cannot write a first sighting, a release dated five years ahead would
+// hold the lane from every reading, so the fence does not count it: the lane
+// arms, and the arming's note names the release that was not counted.
+func TestTheFenceArmsPastAReleaseDatedAheadItCannotKeepASightingOf(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.toArm(t)
+	now := time.Now().UTC().Truncate(time.Second)
+	reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
+	undated := filepath.Join(f.repo.Root(), ".abcd", ".work.local", "reservation", "undated")
+	if err := os.RemoveAll(undated); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(undated, []byte("not a directory\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ahead := now.Add(5 * 365 * 24 * time.Hour)
+	pushDatedTip(t, f.bare, "rel-v0.16.0", "abcd reservation: rel-v0.16.0\n\nAbcd-Reservation: rel-v0.16.0\nAbcd-Holder: quinn\n"+
+		"Abcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\nAbcd-Claimed-At: "+stamp(ahead)+"\nAbcd-Expires-At: "+stamp(ahead.Add(lease.Max))+"\n", ahead)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	if l.Landing == nil || !l.Landing.Armed {
+		t.Fatalf("the lane is armed past a release it cannot count: %+v", l.Landing)
+	}
+	want := "release v0.16.0 is reserved by quinn with a date more than 5 minutes ahead of this clock, and this checkout cannot keep when it first saw it"
+	if note := recordNote(t, f.repo, f.runID, string(StageLand)); !strings.Contains(note, want) {
+		t.Fatalf("the arming's note = %q; want it to name %q", note, want)
 	}
 }

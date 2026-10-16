@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/lease"
 )
 
 // The merge hold (itd-2609151838312703 C7, spc-2610150728396006 step 4): the
@@ -16,17 +18,33 @@ import (
 // for the cutting session to merge or hold it.
 //
 // The judgement is: fetch the reservations, which reads origin's release tags
-// with them (FetchMergeHold); hold the merge while any release is being cut
-// that is not this copy's own, an unreadable release within its default hold
-// included (MergeHolds, Snapshot.Holds); and arm nothing when the fetch fails,
-// since a hold it cannot see may be there. A checkout with no remote named
-// origin has no reservations and is never held. Each caller words the
-// refusal's last clause and its next step; the hold's own words are here.
+// with them (FetchMergeHold); keep this copy's first sighting of each release
+// reservation dated more than lease.Skew ahead, whichever fetch brought it, so
+// it holds a day (an unreadable one its default hold) from that sighting and
+// no longer; hold the merge while any release is being cut that is not this
+// copy's own, an unreadable release within its default hold included
+// (MergeHolds, Snapshot.Holds); and arm nothing when the fetch fails, since a
+// hold it cannot see may be there. A checkout with no remote named origin has
+// no reservations and is never held. Each caller words the refusal's last
+// clause and its next step; the hold's own words are here.
+//
+// A release dated more than lease.Skew ahead whose first sighting cannot be
+// kept, in a checkout with no local tier or one whose tier cannot be written,
+// would be counted from every reading and hold for ever, so it is not counted
+// as a hold: it is returned in Ahead, and the caller names it (Notice). The
+// local tier is never made for it. An honest cut is reserved on a clock within
+// lease.Skew of the reader's, so this lets no merge past one, with one limit:
+// a cutting copy whose clock runs more than lease.Skew fast is not counted by
+// a checkout that cannot keep a sighting.
 
 // MergeHold is the releases that hold a merge from this copy: every release
 // being cut, as last fetched, but this copy's own.
 type MergeHold struct {
 	Holds []Hold
+	// Ahead is every release being cut, but this copy's own, that is dated
+	// more than lease.Skew ahead (or not dated) with no first sighting kept
+	// here: dated ahead and not counted as a hold.
+	Ahead []Hold
 }
 
 // Held reports whether any release holds the merge.
@@ -73,18 +91,58 @@ func (m MergeHold) Waits() string {
 	return strings.Join(waits, "; ")
 }
 
+// Notice is the one line that names each release dated ahead and not
+// counted (Ahead), for the caller to show beside a merge it lets through: "release
+// v0.16.0 is reserved by quinn with a date more than 5 minutes ahead of this
+// clock, and this checkout cannot keep when it first saw it (...), so it is
+// not counted as holding this merge". "" when there is none.
+func (m MergeHold) Notice() string {
+	if len(m.Ahead) == 0 {
+		return ""
+	}
+	ahead := fmt.Sprintf("dated more than %d minutes ahead of this clock", lease.Skew/time.Minute)
+	lines := make([]string, 0, len(m.Ahead))
+	for _, h := range m.Ahead {
+		var what string
+		switch {
+		case h.Unreadable != "" && h.Undated:
+			what = fmt.Sprintf("release %s is held by an unreadable reservation (%s) whose date cannot be read", h.Release, h.Unreadable)
+		case h.Unreadable != "":
+			what = fmt.Sprintf("release %s is held by an unreadable reservation (%s) %s", h.Release, h.Unreadable, ahead)
+		case h.Mine:
+			what = fmt.Sprintf("release %s is reserved by your copy on another computer with a date more than %d minutes ahead of this clock",
+				h.Release, lease.Skew/time.Minute)
+		default:
+			what = fmt.Sprintf("release %s is reserved by %s with a date more than %d minutes ahead of this clock",
+				h.Release, h.Holder, lease.Skew/time.Minute)
+		}
+		lines = append(lines, what+", and this checkout cannot keep when it first saw it ("+tierRelDir+
+			"/ is missing or cannot be written), so it is not counted as holding this merge")
+	}
+	return strings.Join(lines, "; ")
+}
+
 // MergeHolds is the merge hold as this checkout last fetched the
-// reservations, from disk alone (ReleaseHolds without this copy's own): for a
-// caller whose own act has just fetched them, as the land fence's renewal
-// does.
+// reservations (ReleaseHolds without this copy's own): for a caller whose own
+// act has just fetched them, as the land fence's renewal does. It fetches
+// nothing and pushes nothing; it keeps, in the local tier, this copy's first
+// sighting of each release reservation that needs one, so every path that
+// judges a merge counts a release dated ahead from the same sighting. A
+// release that needs one and has none kept is returned in Ahead, not Holds.
 func MergeHolds(root string, now time.Time, o Options) (MergeHold, error) {
-	holds, _, err := ReleaseHolds(root, now, o)
+	now = now.UTC().Truncate(time.Second)
+	keepFirstFetched(root, now, IsRelease)
+	holds, err := ReleaseHolds(root, now, o)
 	if err != nil {
 		return MergeHold{}, err
 	}
 	var m MergeHold
 	for _, h := range holds {
-		if !h.Own {
+		switch {
+		case h.Own:
+		case h.Unsighted:
+			m.Ahead = append(m.Ahead, h)
+		default:
 			m.Holds = append(m.Holds, h)
 		}
 	}

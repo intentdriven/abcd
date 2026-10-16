@@ -57,7 +57,13 @@ type Reservation struct {
 	// HeldFromFetch is true when an unreadable tip's hold is counted from
 	// when this copy first fetched it, its commit date being unreadable.
 	HeldFromFetch bool
-	Commit        string
+	// Unsighted is true when the tip needs a first sighting and none is kept
+	// here: its own date (its claimed-at, or its commit date when it is
+	// unreadable) is more than lease.Skew ahead of now, or that date cannot
+	// be read. lease.Judge then counts it from now, so at every reading it
+	// holds as if first seen then.
+	Unsighted bool
+	Commit    string
 }
 
 // Snapshot is the reservations as this checkout last fetched them.
@@ -97,7 +103,7 @@ func (s Snapshot) LiveByHolder() map[string]int {
 func Fetch(root string, o Options) (gap string, err error) {
 	defer func() {
 		if err == nil {
-			keepFirstFetched(root, o.now())
+			keepFirstFetched(root, o.now(), nil)
 		}
 	}()
 	out, err := localGit(root, 64<<10, "remote")
@@ -186,6 +192,11 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 // "" when nothing did.
 func listed(t tip, id, derivedBy, own string, now time.Time) Reservation {
 	r := Reservation{Record: id, Commit: t.Commit, Unreadable: t.Unreadable, HeldFromFetch: t.DatedFromFetch}
+	date := t.ClaimedAt
+	if t.Unreadable != "" {
+		date = t.WrittenAt
+	}
+	r.Unsighted = t.FirstSeen.IsZero() && (t.DatedFromFetch || lease.Ahead(date, now))
 	if t.Unreadable != "" {
 		r.EffectiveExpiry = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt, FirstSeen: t.FirstSeen}, lease.Default, now).EffectiveExpiry
 		r.State = StateUnreadable
