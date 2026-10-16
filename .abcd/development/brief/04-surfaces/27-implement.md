@@ -286,7 +286,8 @@ holder ignores. Across accounts, which share no hold, two waiters whose start
 and pid disagree can still open in one moment, so the command form shows itself
 as running its command from the moment it opens and looks once more two seconds
 later; the one with the higher pid stands back, gives up its hold, re-draws its
-jitter and waits again, at most three times, while the lower pid runs. It runs a command given after `--` and exits with its code,
+jitter and waits again, at most three times, while the lower pid runs.
+It runs a command given after `--` and exits with its code,
 forwarding an interrupt to it, and gives up after its timeout at exit 1, naming
 what it was still waiting on. Inside `make preflight` each test stage then
 takes a `go test -p` derived from the online cores and the load as the stage
