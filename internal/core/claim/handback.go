@@ -73,6 +73,76 @@ func (h HandBack) Note(id string) string {
 		id, h.Holder, h.Kind, stamp(h.At), Remote)
 }
 
+// KeptNote is the sentence a plain release of id that kept h standing is told.
+func (h HandBack) KeptNote(id string) string {
+	return fmt.Sprintf("%s was handed back by %s as %s at %s, and its record on %s's default branch is unchanged since, so the hand-back still stands: "+
+		"this release's tombstone keeps it, and no drain takes %s until a person changes the record", id, h.Holder, h.Kind, stamp(h.At), Remote, id)
+}
+
+// keptWalk bounds how many commits below a released reservation's tip a
+// release reads for the tombstone the reservation was made over: a
+// reservation renewed more often than that since keeps no hand-back.
+const keptWalk = 256
+
+// keptHandBack is the hand-back a plain release of j, this person's
+// reservation from this copy, keeps: the first tombstone on the reservation
+// branch's first-parent line below the tip, when it marks a hand-back whose
+// record origin's default branch holds unchanged (handBackStands' reading).
+// Every reservation commit above it, renewals and take-overs among them, is
+// passed over; an unreadable one, a plain tombstone, the branch's root and the
+// bound each end the walk with nothing kept. why is the reason the walk could
+// not be read, "" when it was (dcn-2610161806433529).
+func keptHandBack(p *prepared, j judged) (kept *tip, why string) {
+	line, err := firstParents(p.root, trackingName(p.id), j.Commit, keptWalk)
+	if err != nil {
+		return nil, "could not read whether the reservation on " + p.id + " was made over a hand-back (" + redacted(err) + "), so the tombstone keeps none"
+	}
+	tree, err := emptyTree(p.root)
+	if err != nil {
+		return nil, "could not read whether the reservation on " + p.id + " was made over a hand-back (" + redacted(err) + "), so the tombstone keeps none"
+	}
+	for _, c := range line[1:] {
+		h, m, err := readCommit(p.root, c, tree, p.now, false, reservationParser(p.id))
+		if err != nil {
+			return nil, "could not read whether the reservation on " + p.id + " was made over a hand-back (" + redacted(err) + "), so the tombstone keeps none"
+		}
+		if h.Unreadable != "" {
+			return nil, ""
+		}
+		if !m.released() {
+			continue
+		}
+		if m.HandedBack == "" || changedSince(m.RecordBlob, j.blob) {
+			return nil, ""
+		}
+		return &tip{head: h, message: m}, ""
+	}
+	return nil, ""
+}
+
+// firstParent is commit's first parent, "" for a root commit.
+func firstParent(root, commit string) (string, error) {
+	line, err := firstParents(root, commit, commit, 1)
+	if err != nil || len(line) < 2 {
+		return "", err
+	}
+	return line[1], nil
+}
+
+// handBackUnfit is why m, a tombstone marking a hand-back, may not be written
+// with it: past the message cap, or refused by the outbound policy. "" when it
+// may.
+func handBackUnfit(root string, m message) string {
+	text := m.text()
+	if n := len(text); n > MaxMessageBytes {
+		return fmt.Sprintf("the tombstone marking the hand-back would be %d bytes, over the %d-byte cap, so a plain tombstone released it", n, MaxMessageBytes)
+	}
+	if err := checkMessage(root, text); err != nil {
+		return "the tombstone marking the hand-back could not be written (" + err.Error() + "), so a plain tombstone released it"
+	}
+	return ""
+}
+
 // validateHandBack reads a message's hand-back trailers into m, which
 // validateReservation has filled: none, or exactly one kind from the
 // vocabulary and one object name, on a tombstone. It returns reasonHandBack

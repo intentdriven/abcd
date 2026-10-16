@@ -261,7 +261,10 @@ on origin's default branch backs off, with a tip or without one
    kind (`Abcd-Handed-Back`) and the blob id of the issue's record on origin's
    default branch (`Abcd-Record`), the closed form
    [`37-reserve.md`](37-reserve.md) states, so no account's drain reserves,
-   judges or opens the issue again until a person changes that record there.
+   judges or opens the issue again until a person changes that record there:
+   a person who reserves the issue over it and releases it again without
+   changing the record, by hand or through a `build` start that fails, leaves
+   the hand-back standing, since that release's tombstone keeps it.
    A user-visible yes over an issue this checkout does not hold as origin's
    default branch does (absent here, or held here as another record, judged
    by git's object name for this checkout's file) promotes nothing here: the

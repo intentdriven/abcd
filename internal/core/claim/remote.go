@@ -74,11 +74,18 @@ type Result struct {
 	// its record unchanged on origin's default branch since, which a surface
 	// tells the person (HandBack.Note); nil for every other act.
 	HandedBack *HandBack
-	// HandBackUnpublished is why a release asked to publish a hand-back
-	// pushed a plain tombstone instead: origin's default branch holds no one
-	// record of it to name. "" when the hand-back was published, or none was
-	// asked.
+	// HandBackUnpublished is why a release whose tombstone would have marked
+	// a hand-back, one asked for or one it kept (HandBackKept), pushed a plain
+	// tombstone or nothing instead: origin's default branch holds no one
+	// record of it to name, the record changed since the hand-back was judged,
+	// or the tombstone with the hand-back would pass the message cap. "" when
+	// the hand-back was published, or none was due.
 	HandBackUnpublished string
+	// HandBackKept is the hand-back a plain release carried forward: the
+	// released reservation was made over that hand-back's tombstone, and its
+	// record is unchanged on origin's default branch since, so the tombstone
+	// keeps it standing (HandBack.KeptNote); nil for every other act.
+	HandBackKept *HandBack
 	// ForkUnchecked is why a fresh reservation could not ask the forge whether
 	// one of origin's push URLs is a fork (no answer, or a host not
 	// github.com by name), so the act went on without the check; "" when it
@@ -163,6 +170,20 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	if !p.req.Release && res.Act != ActRenewed {
 		if forkUnchecked, forkAllowed, err = checkFork(root, p.now, o.home()); err != nil {
 			return Result{}, err
+		}
+	}
+	if p.req.Release && m.HandedBack != "" {
+		// A hand-back that would take the tombstone past the cap (a reservation
+		// another binary accepted, under a shorter label) is dropped, never the
+		// release: a refused release would leave the issue held until its lease
+		// ran out (spc-2610161044461448, review of steps 1-18).
+		if why := handBackUnfit(root, m); why != "" {
+			m.HandedBack, m.RecordBlob, res.HandBackKept, res.HandBackUnpublished = "", "", nil, why
+			if j.message.released() {
+				// Over a tombstone already there, a plain one says nothing new.
+				return Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Footprint: j.Footprint, ClaimedAt: j.ClaimedAt,
+					ExpiresAt: j.ExpiresAt, Commit: j.Commit, HandBackUnpublished: why, DerivedUnchecked: p.derivedGap}, nil
+			}
 		}
 	}
 	sha, err := writeCommit(p, m, tree, parent)
@@ -346,12 +367,7 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 		return Result{}, message{}, "", refuse("the reservation on %s is unreadable (%s), so nobody holds it to release; %s",
 			p.id, j.Unreadable, nothingPushed)
 	case j.message.released():
-		copyOf := CopyAnother
-		if j.mine && j.thisCopy {
-			copyOf = CopyThis
-		}
-		return Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Copy: copyOf, Footprint: j.Footprint,
-			ClaimedAt: j.ClaimedAt, ExpiresAt: j.ExpiresAt, Commit: j.Commit}, message{}, "", nil
+		return releasedAlready(p, j)
 	case !j.mine:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherPerson, ErrRefused,
 			fmt.Sprintf("%s is reserved by %s, not by you; %s", p.id, j.Holder, nothingPushed))
@@ -366,17 +382,73 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 	m := p.tombstone(j.Footprint)
 	res := Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
 		ExpiresAt: m.ExpiresAt}
-	// A hand-back names the record it was made over; with no one record of it
-	// on origin's default branch there is none to name, and the tombstone is
-	// plain, saying why.
 	if p.req.HandBack != "" {
-		if j.blob == "" {
-			res.HandBackUnpublished = fmt.Sprintf("%s's default branch as last fetched holds no one record of %s, so the tombstone marks no hand-back", Remote, p.id)
-		} else {
-			m.HandedBack, m.RecordBlob = p.req.HandBack, j.blob
+		res.HandBackUnpublished = p.markHandBack(&m, j)
+		return res, m, j.Commit, nil
+	}
+	// A plain release of a reservation made over a hand-back that still
+	// stands keeps it: the hand-back is a person's to settle by changing the
+	// record, which reserving and releasing the issue does not do.
+	kept, why := keptHandBack(p, j)
+	if kept != nil {
+		m.HandedBack, m.RecordBlob = kept.HandedBack, kept.RecordBlob
+		res.HandBackKept = &HandBack{Kind: kept.HandedBack, Holder: kept.Holder, At: kept.ReleasedAt}
+	}
+	res.HandBackUnpublished = why
+	return res, m, j.Commit, nil
+}
+
+// markHandBack names the hand-back asked for on m, the tombstone a release
+// pushes over j, with the record's blob on origin's default branch, and
+// returns why it named none instead: no one record of it there to name, or a
+// record other than the one the hand-back was judged over (HandBackBlob).
+func (p *prepared) markHandBack(m *message, j judged) string {
+	switch {
+	case j.blob == "":
+		return fmt.Sprintf("%s's default branch as last fetched holds no one record of %s, so the tombstone marks no hand-back", Remote, p.id)
+	case p.req.HandBackBlob != "" && p.req.HandBackBlob != j.blob:
+		return fmt.Sprintf("%s's record on %s's default branch has changed since the hand-back was judged, so the tombstone marks no hand-back: a person's edit re-admits it",
+			p.id, Remote)
+	}
+	m.HandedBack, m.RecordBlob = p.req.HandBack, j.blob
+	return ""
+}
+
+// releasedAlready is a release's row over a tip already released by a
+// tombstone. A release asked to publish a hand-back over a tombstone that
+// marks none publishes it as that tombstone's child, so a hand-back whose
+// reservation was released another way (by hand, or by a move whose state
+// write failed) is still published; with Tip it is fenced on the commit the
+// release names, which must be the tombstone or the reservation it released.
+// Every other release over a tombstone pushes nothing.
+func releasedAlready(p *prepared, j judged) (Result, message, string, error) {
+	copyOf := CopyAnother
+	if j.mine && j.thisCopy {
+		copyOf = CopyThis
+	}
+	done := Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Copy: copyOf, Footprint: j.Footprint,
+		ClaimedAt: j.ClaimedAt, ExpiresAt: j.ExpiresAt, Commit: j.Commit}
+	if p.req.HandBack == "" || j.HandedBack != "" || j.derived {
+		return done, message{}, "", nil
+	}
+	if p.req.Tip != "" && p.req.Tip != j.Commit {
+		parent, err := firstParent(p.root, j.Commit)
+		if err != nil {
+			return Result{}, message{}, "", refuse("could not read which reservation the tombstone on %s released: %s; %s", p.id, redacted(err), nothingPushed)
+		}
+		if parent != p.req.Tip {
+			return Result{}, message{}, "", j.notHeld(p.id, NotHeldMoved, ErrRefused,
+				fmt.Sprintf("the reservation on %s is no longer commit %s: it was released after it was renewed or reserved again, so the hand-back is not published over it; %s",
+					p.id, p.req.Tip[:12], nothingPushed))
 		}
 	}
-	return res, m, j.Commit, nil
+	m := p.tombstone(j.Footprint)
+	if why := p.markHandBack(&m, j); why != "" {
+		done.HandBackUnpublished = why
+		return done, message{}, "", nil
+	}
+	return Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
+		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
 }
 
 // decideRenew is a renewal's row of the push table: this person's own

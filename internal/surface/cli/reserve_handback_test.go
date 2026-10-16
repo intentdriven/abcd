@@ -36,15 +36,13 @@ func TestReserveOverAHandBackGoesAheadWithANote(t *testing.T) {
 		!strings.Contains(text, "this reservation is a person's own, so it was made\n") {
 		t.Fatalf("Q's reserve over the hand-back: exit %d, stdout %q, stderr %q; want it made, with the note", code, text, stderr)
 	}
-	if code, _, stderr := reserveRun(t, q, "reserve", "iss-5", "--release"); code != 0 {
-		t.Fatalf("Q's release: exit %d, %s", code, stderr)
-	}
-	t.Chdir(p)
-	if _, err := claim.Reserve(p, claim.Request{Record: "iss-5", Footprint: []string{"a.go"}}, claim.Options{}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := claim.Reserve(p, claim.Request{Record: "iss-5", Release: true, HandBack: claim.HandBackStuck}, claim.Options{}); err != nil {
-		t.Fatal(err)
+	// Q's plain release, the record unchanged, keeps the hand-back standing:
+	// the tombstone carries it, and the release says so.
+	code, text, stderr = reserveRun(t, q, "reserve", "iss-5", "--release")
+	if code != 0 || !strings.Contains(text, "released iss-5") ||
+		!strings.Contains(text, "\n  note: iss-5 was handed back by octo as user-visible at ") ||
+		!strings.Contains(text, "so the hand-back still stands") {
+		t.Fatalf("Q's release: exit %d, stdout %q, stderr %q; want it released, the hand-back kept", code, text, stderr)
 	}
 	code, raw, stderr := reserveRun(t, q, "reserve", "iss-5", "--footprint", "b.go", "--json")
 	if code != 0 {
@@ -57,8 +55,17 @@ func TestReserveOverAHandBackGoesAheadWithANote(t *testing.T) {
 			At     string `json:"at"`
 		} `json:"handed_back"`
 	}
-	if err := json.Unmarshal([]byte(raw), &got); err != nil || got.HandedBack == nil || got.HandedBack.Kind != "stuck" ||
-		got.HandedBack.Holder != "octo" || got.HandedBack.At == "" {
-		t.Fatalf("the --json payload's hand-back = %+v (%v); want octo's stuck hand-back\n%s", got.HandedBack, err, raw)
+	if err := json.Unmarshal([]byte(raw), &got); err != nil || got.HandedBack == nil || got.HandedBack.Kind != "user-visible" ||
+		got.HandedBack.Holder != "quinn" || got.HandedBack.At == "" {
+		t.Fatalf("the --json payload's hand-back = %+v (%v); want the user-visible hand-back Q's release kept\n%s", got.HandedBack, err, raw)
+	}
+	code, raw, stderr = reserveRun(t, q, "reserve", "iss-5", "--release", "--json")
+	var kept struct {
+		HandBackKept *struct {
+			Kind string `json:"kind"`
+		} `json:"hand_back_kept"`
+	}
+	if err := json.Unmarshal([]byte(raw), &kept); code != 0 || err != nil || kept.HandBackKept == nil || kept.HandBackKept.Kind != "user-visible" {
+		t.Fatalf("Q's --json release: exit %d, %+v (%v); want the hand-back it kept named\n%s%s", code, kept.HandBackKept, err, raw, stderr)
 	}
 }

@@ -89,6 +89,11 @@ type Request struct {
 	// kind, one of HandBackKinds, and the blob id of the record on origin's
 	// default branch (Result.HandBackUnpublished says why it names none).
 	HandBack string
+	// HandBackBlob, with HandBack, is the blob id of the record the hand-back
+	// was judged over: a release finding origin's default branch holding the
+	// record at another blob publishes no hand-back, and says so
+	// (Result.HandBackUnpublished). Empty names the blob as last fetched.
+	HandBackBlob string
 	// Drain marks a reservation a drain makes: it backs off a hand-back
 	// tombstone whose record is unchanged on origin's default branch, where a
 	// person's own reservation goes ahead and is told (Result.HandedBack).
@@ -147,6 +152,12 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	}
 	if req.HandBack != "" && !slices.Contains(HandBackKinds, req.HandBack) {
 		return nil, refuse("hand-back kind %s is not one of %s; %s", echo(req.HandBack), strings.Join(HandBackKinds, ", "), nothingPushed)
+	}
+	if req.HandBackBlob != "" && req.HandBack == "" {
+		return nil, refuse("only a hand-back names the record blob it was judged over; %s", nothingPushed)
+	}
+	if req.HandBackBlob != "" && !validBlob(req.HandBackBlob) {
+		return nil, refuse("record blob %s is not an object name; %s", echo(req.HandBackBlob), nothingPushed)
 	}
 	if req.Drain && (req.Release || req.Renew) {
 		return nil, refuse("only a reservation is a drain's to back off a hand-back, never a release or a renewal; %s", nothingPushed)

@@ -43,7 +43,13 @@ type reserveOutput struct {
 	// record unchanged on origin's default branch since; note is the
 	// sentence the text form prints for it.
 	HandedBack *reserveHandedBack `json:"handed_back,omitempty"`
-	note       string
+	// HandBackKept is the hand-back a plain release kept standing, the
+	// released reservation having been made over it with its record unchanged
+	// since; HandBackUnpublished why a release's tombstone marks no hand-back
+	// it would otherwise have marked.
+	HandBackKept        *reserveHandedBack `json:"hand_back_kept,omitempty"`
+	HandBackUnpublished string             `json:"hand_back_unpublished,omitempty"`
+	note                string
 }
 
 // reserveHandedBack is the hand-back a person's own reservation was made over.
@@ -236,6 +242,11 @@ func reserveView(res claim.Result) reserveOutput {
 		out.HandedBack = &reserveHandedBack{Kind: termsafe.Sanitize(h.Kind), Holder: termsafe.Sanitize(h.Holder), At: rfc3339(h.At)}
 		out.note = termsafe.Sanitize(h.Note(res.Record))
 	}
+	if h := res.HandBackKept; h != nil {
+		out.HandBackKept = &reserveHandedBack{Kind: termsafe.Sanitize(h.Kind), Holder: termsafe.Sanitize(h.Holder), At: rfc3339(h.At)}
+		out.note = termsafe.Sanitize(h.KeptNote(res.Record))
+	}
+	out.HandBackUnpublished = termsafe.Sanitize(fsutil.RedactHome(res.HandBackUnpublished))
 	return out
 }
 
@@ -285,6 +296,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if out.note != "" {
 		fmt.Fprintf(w, "  note: %s\n", out.note)
+	}
+	if out.HandBackUnpublished != "" {
+		fmt.Fprintf(w, "  no hand-back: %s\n", out.HandBackUnpublished)
 	}
 }
 

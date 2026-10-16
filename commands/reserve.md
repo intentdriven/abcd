@@ -180,6 +180,13 @@ changes the record there. Your own reservation over it is made, and the
 result says whose hand-back it was made over, of which kind and when
 (`  note: ...` in the text form, `handed_back` in `--json`): read the record's
 hand-back before you start, since it names a decision that is a person's.
+Releasing it again without changing the record keeps the hand-back: the
+release's tombstone carries its kind and blob forward, and the release says so
+(`  note: ...`, `hand_back_kept` in `--json`), so no account's drain takes the
+issue until a person changes the record. A release whose tombstone cannot mark
+the hand-back (the record is in no one file on origin's default branch, or the
+message would pass its cap) is still made, plain, and says why on a
+`  no hand-back: ...` line (`hand_back_unpublished` in `--json`).
 
 **Reopening a record.** The back-off reads origin's default branch alone, so a
 record being reopened on a branch (moved from `resolved/` or `wontfix/` back to

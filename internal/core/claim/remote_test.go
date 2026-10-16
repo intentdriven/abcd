@@ -34,11 +34,18 @@ type participant struct {
 
 func newWorld(t *testing.T) *world {
 	t.Helper()
-	seed := gittest.NewRepo(t)
+	return newWorldFormat(t, "")
+}
+
+// newWorldFormat is newWorld in git's object format named ("sha256" for the
+// longer object names; "" is git's default).
+func newWorldFormat(t *testing.T, format string) *world {
+	t.Helper()
+	seed := gittest.NewRepoFormat(t, format)
 	seed.Write("README.md", "seed\n")
 	seed.Commit("seed")
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	gittest.InitBare(t, bare)
+	gittest.InitBareFormat(t, bare, format)
 	seed.Git("remote", "add", "origin", bare)
 	seed.Git("push", "-q", "origin", "main")
 	return &world{t: t, seed: seed, bare: bare, now: t0}

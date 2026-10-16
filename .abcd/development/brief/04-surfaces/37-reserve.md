@@ -123,6 +123,18 @@ its tombstone names: a reservation a drain makes backs off it, naming the kind,
 who handed it back and when, and pushes nothing. A person's own `abcd reserve`
 or `abcd build` is made over it and says so, naming the same three. A change to
 the record on origin's default branch, which is a person's edit, re-admits it.
+Reserving and releasing the issue is not such an edit: a plain release of a
+reservation whose first-parent line, read at most 256 commits below its tip,
+reaches a hand-back tombstone before any plain one, with the record unchanged
+since, pushes a tombstone carrying that hand-back's kind and blob forward and
+says it kept it, so the hand-back still stands; a `build` start that fails
+after its reservation releases it the same way. A release asked to publish a
+hand-back over a tip a plain tombstone already released publishes it as that
+tombstone's child; naming a reservation commit (`Tip`), it does so only when
+the tombstone is that commit or released it, and is otherwise refused with
+nothing pushed. A tombstone that would pass the message cap with the
+hand-back on it is pushed plain, and the result says the hand-back was not
+published and why, so a release is never refused for its hand-back.
 A record that branch holds in no file or several, or a branch this checkout
 names none of, is not read as changed, so the hand-back stands; a blob read
 from a default branch the act's fetch could not refresh can only read as
@@ -218,7 +230,10 @@ on a fork origin, and on every other refusal and failure. The JSON document carr
 `fork_allowed`, the fork's owner/name, when the check was waived for the fork
 the repository allows, and
 `handed_back` (`kind`, `holder`, `at`) for a reservation made over a hand-back
-that stands, which the text form prints as a `note:` line.
+that stands, which the text form prints as a `note:` line, `hand_back_kept`
+(the same three) for a release whose tombstone kept that hand-back, also a
+`note:` line, and `hand_back_unpublished` for a release whose tombstone marks
+no hand-back it would otherwise have marked, a `no hand-back:` line.
 
 ## Where this sits
 

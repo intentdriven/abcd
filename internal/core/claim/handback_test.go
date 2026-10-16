@@ -105,23 +105,29 @@ func TestAHandBackTombstoneCarriesNoFreeText(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := w.remoteTip("iss-5")
-	for _, req := range []Request{
-		{Record: "iss-5", Release: true, HandBack: "the fix changes the page a user reads"},
-		{Record: "iss-5", Release: true, HandBack: "Stuck"},
-		{Record: "iss-5", Footprint: []string{"a.go"}, HandBack: "stuck"},
-		{Record: "iss-5", Release: true, Drain: true},
+	blob := strings.Repeat("ab", 20)
+	for _, c := range []struct {
+		req  Request
+		says string
+	}{
+		{Request{Record: "iss-5", Release: true, HandBack: "the fix changes the page a user reads"}, "is not one of " + strings.Join(HandBackKinds, ", ")},
+		{Request{Record: "iss-5", Release: true, HandBack: "Stuck"}, "is not one of " + strings.Join(HandBackKinds, ", ")},
+		{Request{Record: "iss-5", Footprint: []string{"a.go"}, HandBack: "stuck"}, "only a release publishes a hand-back"},
+		{Request{Record: "iss-5", Release: true, Drain: true}, "only a reservation is a drain's to back off a hand-back"},
+		{Request{Record: "iss-5", Release: true, HandBackBlob: blob}, "only a hand-back names the record blob it was judged over"},
+		{Request{Record: "iss-5", Release: true, HandBack: "stuck", HandBackBlob: "the widget's record"}, "is not an object name"},
 	} {
-		if _, err := p.do(req); !errors.Is(err, ErrRefused) || !strings.HasSuffix(err.Error(), nothingPushed) {
-			t.Fatalf("%+v = %v; want it refused with nothing pushed", req, err)
+		msg := p.mustErr(c.req)
+		if _, err := p.do(c.req); !errors.Is(err, ErrRefused) || !strings.HasSuffix(err.Error(), nothingPushed) {
+			t.Fatalf("%+v = %v; want it refused with nothing pushed", c.req, err)
 		}
-		if strings.ContainsRune(req.HandBack, ' ') && !strings.Contains(p.mustErr(req), "is not one of") {
-			t.Fatalf("%+v: the refusal does not name the vocabulary", req)
+		if !strings.Contains(msg, c.says) {
+			t.Fatalf("%+v: the refusal %q does not say %q", c.req, msg, c.says)
 		}
 	}
 	if w.remoteTip("iss-5") != before {
 		t.Fatal("a refused hand-back pushed")
 	}
-	blob := strings.Repeat("ab", 20)
 	head := "abcd reservation released: iss-6\n\nAbcd-Reservation: iss-6\nAbcd-Holder: octo\nAbcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\n" +
 		"Abcd-Footprint: a.go\nAbcd-Claimed-At: 2026-10-03T14:00:00Z\nAbcd-Expires-At: 2026-10-03T14:00:00Z\n"
 	for name, msg := range map[string]string{
