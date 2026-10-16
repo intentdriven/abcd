@@ -16,7 +16,10 @@ announcements reach a running session at its next prompt, once each.
 of the remote: it lists the status branches on `origin` (`git ls-remote`),
 then fetches, in one command, the reservations with `origin`'s release tags,
 the first 500 status branches whose names are GitHub usernames in lower case,
-in `origin`'s order, and `origin`'s default branch. Before the fetch it
+in `origin`'s order, and `origin`'s default branch. The status branches are
+named on the fetch's standard input (`git fetch --stdin`), which needs git
+2.29 or later: an older git fetches nothing, and the failed fetch names its
+version. Before the fetch it
 deletes each remote-tracking branch under `abcd-status/` that is not among
 the names it fetches, so a status branch deleted on `origin` leaves nothing
 behind, however many it holds. When git will not delete them together, each

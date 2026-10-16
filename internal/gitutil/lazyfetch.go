@@ -84,6 +84,18 @@ func (v *versionCache) atLeast(major, minor int) (bool, string) {
 	return v.ok && versionAtLeast(v.raw, major, minor), v.raw
 }
 
+// GitAtLeast reports whether the git on PATH is at least major.minor, probed
+// once per process, and its version as "<major>.<minor>", digits alone, ""
+// when the probe failed or its line does not parse (below every floor).
+func GitAtLeast(major, minor int) (bool, string) {
+	ok, raw := gitVersion.atLeast(major, minor)
+	m := gitVersionRe.FindStringSubmatch(raw)
+	if m == nil {
+		return false, ""
+	}
+	return ok, m[1] + "." + m[2]
+}
+
 // gitVersionRe reads major and minor from `git version 2.39.5 (Apple Git-154)`
 // or `git version 2.45.1.windows.1`.
 var gitVersionRe = regexp.MustCompile(`^git version (\d+)\.(\d+)`)

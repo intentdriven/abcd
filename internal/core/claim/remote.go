@@ -572,12 +572,18 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 		branch := strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/")
 		withDefault = append(append([]string(nil), args...), "+refs/heads/"+branch+":"+ref)
 	}
-	trace(withDefault...)
-	_, ferr := gitutil.NetInput(root, stdin, withDefault...)
-	if ferr != nil && ref != "" {
-		gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
-		trace(args...)
-		_, ferr = gitutil.NetInput(root, stdin, args...)
+	var ferr error
+	if len(listed) > 0 {
+		ferr = stdinFetchFloor()
+	}
+	if ferr == nil {
+		trace(withDefault...)
+		_, ferr = gitutil.NetInput(root, stdin, withDefault...)
+		if ferr != nil && ref != "" {
+			gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
+			trace(args...)
+			_, ferr = gitutil.NetInput(root, stdin, args...)
+		}
 	}
 	if ferr != nil {
 		// Each namespace keeps that its fetch failed, and why, for every
@@ -607,6 +613,20 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 		clearFetchFailure(root, ns)
 	}
 	return gap, nil
+}
+
+// stdinFetchFloor refuses a fetch that reads its refspecs on standard input
+// (`git fetch --stdin`) on a git older than 2.29, which first read them
+// there, in fixed words naming the version: nil when git is at the floor.
+func stdinFetchFloor() error {
+	ok, version := gitutil.GitAtLeast(2, 29)
+	switch {
+	case ok:
+		return nil
+	case version == "":
+		return errors.New("`git fetch --stdin`, which the status fetch reads its branches on, needs git 2.29 or later, and this git's version could not be read")
+	}
+	return fmt.Errorf("`git fetch --stdin`, which the status fetch reads its branches on, needs git 2.29 or later, and this git is %s", version)
 }
 
 // FetchError is a failed fetch from origin: Reason is git's own,

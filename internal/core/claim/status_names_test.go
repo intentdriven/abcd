@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The status branches whose names are not read (C11): counted, never named,
@@ -184,5 +187,34 @@ func TestACountNotKeptAtTheLastFetchIsUnknown(t *testing.T) {
 	whole.fetchOnly()
 	if v := whole.read(); v.UnreadNamesUnknown || v.UnreadNames != 1 {
 		t.Fatalf("after a fetch of the whole namespace: unread names = %d, unknown %v; want 1 counted", v.UnreadNames, v.UnreadNamesUnknown)
+	}
+}
+
+// TestAGitTooOldToReadRefspecsOnStdinIsRefusedByItsVersion: `abcd status`
+// names each status branch by its own refspec on `git fetch --stdin`, which
+// git reads from 2.29; an older git runs no fetch, and the refusal names the
+// version in fixed words, kept for every reader to say.
+func TestAGitTooOldToReadRefspecsOnStdinIsRefusedByItsVersion(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	w.pushStatus("maya", announcementMsg("merging", "#1", "maya", t0, 30*time.Minute), "")
+	for _, c := range []struct{ line, says string }{
+		{"git version 2.28.1 (Apple Git-1)", "this git is 2.28"},
+		{"not a version", "this git's version could not be read"},
+	} {
+		restore := gitutil.SwapGitVersionForTest(func() (string, error) { return c.line, nil })
+		log := traced(t)
+		_, err := FetchStatus(pat.dir, nil, pat.opts())
+		restore()
+		want := "`git fetch --stdin`, which the status fetch reads its branches on, needs git 2.29 or later, and " + c.says
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Fatalf("FetchStatus under %q = %v; want the refusal %q", c.line, err, want)
+		}
+		if slices.Contains(log.subcommands(), "fetch") {
+			t.Fatalf("under %q a fetch ran: %v", c.line, log.subcommands())
+		}
+		if u := pat.read().Unread; u == nil || !strings.Contains(u.Reason, want) {
+			t.Fatalf("under %q the unread status = %+v; want the refusal kept", c.line, u)
+		}
 	}
 }
