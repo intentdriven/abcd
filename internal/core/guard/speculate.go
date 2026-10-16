@@ -111,7 +111,7 @@ var reservedEntryIDs = []string{
 	unknownProgramEntryID, ifsSplitEntryID, scriptHazardEntryID, scriptWrittenEntryID, scriptUnreadEntryID,
 	forgeTextEntryID, forgeUnreadEntryID,
 	unnamedProgramEntryID, inlineCodeEntryID, checkNoteEntryID, registryEntryID, promptToolEntryID, promptInputEntryID,
-	protectedPathEntryID, criticalRemovalEntryID,
+	protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID,
 }
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at

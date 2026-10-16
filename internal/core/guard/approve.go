@@ -57,6 +57,8 @@ const (
 	// critical path: the root, a top-level directory, the home directory, the
 	// working tree or a directory above it.
 	criticalRemovalEntryID = "critical-path-removal"
+	// sandboxEntryID: the shell call asks to run outside the host's sandbox.
+	sandboxEntryID = "sandbox-off"
 )
 
 // Approval is abcd's answer to one permission prompt.
@@ -80,9 +82,12 @@ func refusal(id, why, successor string) Approval {
 
 // ApprovePrompt answers a permission prompt for tool with input, the tool's
 // parameters as the harness sent them. Only the shell is judged; a prompt for
-// any other tool is refused, since nobody is there to approve it. On an allow
-// the second value is the input to run, re-encoded from what was judged, so a
-// repeated key can never run a command other than the one the guard read.
+// any other tool is refused, since nobody is there to approve it, and so is a
+// shell call that asks to run outside the host's sandbox. On an allow the
+// second value is the input to run: the command judged and its description,
+// re-encoded, and nothing else the call carried, so a repeated key can never
+// run a command other than the one the guard read and no field the guard did
+// not read rides along on its approval.
 func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) (Approval, json.RawMessage) {
 	if !strings.EqualFold(tool, "Bash") {
 		name := termsafe.Sanitize(tool)
@@ -100,11 +105,23 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 			"the shell call carries no command string the guard can read, so nothing was checked.",
 			"the same call with its command as one plain string."), nil
 	}
+	if raw, ok := fields["dangerouslyDisableSandbox"]; ok {
+		if v := strings.TrimSpace(string(raw)); v != "false" && v != "null" {
+			return refusal(sandboxEntryID,
+				"the shell call asks to run outside the host's sandbox, which only a person can agree to.",
+				"the same command without dangerouslyDisableSandbox, or say in the receipt that the task needs the sandbox lifted."), nil
+		}
+	}
 	a := approveShell(ld, files, command)
 	if !a.Allow {
 		return a, nil
 	}
-	updated, err := json.Marshal(fields)
+	out := map[string]string{"command": command}
+	var description string
+	if json.Unmarshal(fields["description"], &description) == nil && description != "" {
+		out["description"] = description
+	}
+	updated, err := json.Marshal(out)
 	if err != nil {
 		return refusal(promptInputEntryID, "the shell call's input could not be written back.", "the same call again."), nil
 	}

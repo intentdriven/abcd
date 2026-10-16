@@ -157,8 +157,8 @@ func TestApprovePromptJudgesOnlyTheShell(t *testing.T) {
 	if err := json.Unmarshal(updated, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["command"] != "go test ./..." || got["description"] != "tests" || got["timeout"] != float64(60000) {
-		t.Errorf("updated input = %s; want the one command judged and the other fields kept", updated)
+	if got["command"] != "go test ./..." || got["description"] != "tests" {
+		t.Errorf("updated input = %s; want the one command judged and its description", updated)
 	}
 	if strings.Count(string(updated), `"command"`) != 1 {
 		t.Errorf("updated input %s carries more than the one command judged", updated)
@@ -183,7 +183,7 @@ func TestApproveLeavesScriptFilesToTheirInterpreter(t *testing.T) {
 // own voice.
 func TestApprovalIDsAreReserved(t *testing.T) {
 	for _, id := range []string{unnamedProgramEntryID, inlineCodeEntryID, checkNoteEntryID, registryEntryID, promptToolEntryID, promptInputEntryID,
-		protectedPathEntryID, criticalRemovalEntryID} {
+		protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID} {
 		if !containsString(reservedEntryIDs, id) {
 			t.Errorf("reservedEntryIDs lacks %q", id)
 		}
@@ -248,4 +248,46 @@ func (r Registry) ids() []string {
 		out = append(out, id)
 	}
 	return out
+}
+
+// TestApprovePromptReturnsOnlyWhatWasJudged: an allow hands the harness back
+// the command and its description and nothing else, so a field the guard did
+// not read (a timeout, a background flag, any key a later harness adds) never
+// rides along on an approval; and a call that asks to run outside the host's
+// sandbox is refused, whatever its command.
+func TestApprovePromptReturnsOnlyWhatWasJudged(t *testing.T) {
+	dir := t.TempDir()
+	a, updated := ApprovePrompt(clean(), NewFiles(dir), "Bash",
+		json.RawMessage(`{"command":"go test ./...","description":"tests","timeout":60000,"run_in_background":true,"extra":{"x":1}}`))
+	if !a.Allow {
+		t.Fatalf("a clean shell prompt was refused: %+v", a)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(updated, &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 2 || got["command"] != "go test ./..." || got["description"] != "tests" {
+		t.Errorf("updated input = %s; want the command and description alone", updated)
+	}
+	_, updated = ApprovePrompt(clean(), NewFiles(dir), "Bash", json.RawMessage(`{"command":"go vet ./..."}`))
+	if string(updated) != `{"command":"go vet ./..."}` {
+		t.Errorf("updated input = %s; want the command alone when no description was sent", updated)
+	}
+	for _, in := range []string{
+		`{"command":"go test ./...","dangerouslyDisableSandbox":true}`,
+		`{"command":"go test ./...","dangerouslyDisableSandbox":"true"}`,
+		`{"command":"go test ./...","dangerouslyDisableSandbox":1}`,
+	} {
+		a, updated := ApprovePrompt(clean(), NewFiles(dir), "Bash", json.RawMessage(in))
+		if a.Allow || updated != nil {
+			t.Errorf("%s was approved", in)
+			continue
+		}
+		if a.EntryID != sandboxEntryID || !strings.Contains(a.Reason, "sandbox") {
+			t.Errorf("%s: refused under %q (%s); want %q", in, a.EntryID, a.Reason, sandboxEntryID)
+		}
+	}
+	if a, _ := ApprovePrompt(clean(), NewFiles(dir), "Bash", json.RawMessage(`{"command":"go test ./...","dangerouslyDisableSandbox":false}`)); !a.Allow {
+		t.Errorf("a call that keeps the sandbox was refused: %+v", a)
+	}
 }
