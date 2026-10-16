@@ -2,12 +2,14 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 )
 
@@ -183,6 +185,39 @@ func TestAnnounceNeverShowsAToolsIdentity(t *testing.T) {
 		}
 		if all := gitCmd(t, dir, "log", "--all", "--format=%an %ae %cn %ce %B"); strings.Contains(strings.ToLower(all), "anthro") {
 			t.Fatalf("a commit in %s carries the rejected identity", filepath.Base(dir))
+		}
+	}
+}
+
+// TestAnnounceSaysWhatBecameOfThePushOnAnUnclassedFailure mirrors reserve: a
+// failure the core does not class as a refusal says what became of the push.
+// Before any push it says nothing was pushed; after pushes origin refused, it
+// says plainly that one may still have reached origin, naming the branch; a
+// refusal, which says so itself, is passed through unchanged.
+func TestAnnounceSaysWhatBecameOfThePushOnAnUnclassedFailure(t *testing.T) {
+	w := newReserveWorld(t)
+	p := w.clone(t, "p", octoMail)
+	for _, tc := range []struct {
+		name    string
+		err     error
+		want    string
+		wantNot string
+	}{
+		{"before any push", &claim.AnnounceError{Err: errors.New("git said nothing"), Pushes: 0},
+			"abcd announce: git said nothing; not sent, and nothing was pushed", "may have"},
+		{"after refused pushes", &claim.AnnounceError{Err: errors.New("git said nothing"), Pushes: 2, Branch: "abcd-status/octo"},
+			"abcd announce: git said nothing; not sent as far as git reported, but origin refused 2 earlier pushes to abcd-status/octo " +
+				"and a refused push may still have reached it: fetch origin and look at abcd-status/octo before announcing again", "nothing was pushed"},
+		{"a refusal", &claim.NotSentError{Reason: "origin refused the push: no"},
+			"abcd announce: not sent: origin refused the push: no\n", "nothing was pushed"},
+	} {
+		announceAct = func(string, claim.AnnounceRequest, claim.Options) (claim.AnnounceResult, error) {
+			return claim.AnnounceResult{}, tc.err
+		}
+		t.Cleanup(func() { announceAct = claim.Announce })
+		code, stdout, stderr := reserveRun(t, p, "announce", "merging", "#1012")
+		if code != 2 || !strings.Contains(stderr, tc.want) || strings.Contains(stderr, tc.wantNot) || stdout != "" {
+			t.Errorf("%s: exit %d, stderr %q, stdout %q; want exit 2 and %q, without %q", tc.name, code, stderr, stdout, tc.want, tc.wantNot)
 		}
 	}
 }

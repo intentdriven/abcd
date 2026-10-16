@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"slices"
@@ -128,6 +129,32 @@ type NotSentError struct {
 
 func (e *NotSentError) Error() string        { return "not sent: " + e.Reason }
 func (e *NotSentError) Is(target error) bool { return target == ErrRefused }
+
+// AnnounceError is an announcement that failed for a reason abcd does not
+// class as a refusal (a defect, or a failure no check names), so its message
+// does not say what became of the push. Pushes is how many pushes were tried
+// before it: 0 means nothing was pushed; more means each was refused, but a
+// push git reports as refused can still have reached origin, so whether one
+// did is not known. Branch is the status branch they went to. Announce returns
+// every error that is not an ErrRefused refusal as one.
+type AnnounceError struct {
+	Err    error
+	Pushes int
+	Branch string
+}
+
+func (e *AnnounceError) Error() string { return e.Err.Error() }
+func (e *AnnounceError) Unwrap() error { return e.Err }
+
+// announceFailure is err as Announce returns it: unchanged when it is nil or
+// an ErrRefused refusal, which says what became of the push itself, and
+// otherwise an *AnnounceError counting the pushes tried before it.
+func announceFailure(err error, pushes int, branch string) error {
+	if err == nil || errors.Is(err, ErrRefused) {
+		return err
+	}
+	return &AnnounceError{Err: err, Pushes: pushes, Branch: branch}
+}
 
 // announcement is one announcement commit's content.
 type announcement struct {
@@ -320,8 +347,11 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 // after that, or on a push refused for any other reason, it is a
 // *NotSentError. Each refused push is followed by one fetch, the last
 // included, so the refusal says which of the two it was. Nothing is ever
-// forced. A refusal pushes nothing.
-func Announce(root string, req AnnounceRequest, o Options) (AnnounceResult, error) {
+// forced. A refusal pushes nothing. Any other error is an *AnnounceError
+// counting the pushes tried before it.
+func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, err error) {
+	pushes, branch := 0, ""
+	defer func() { err = announceFailure(err, pushes, branch) }()
 	p, err := prepareAnnouncement(root, req, o)
 	if err != nil {
 		return AnnounceResult{}, err
@@ -363,6 +393,7 @@ func Announce(root string, req AnnounceRequest, o Options) (AnnounceResult, erro
 		return AnnounceResult{}, err
 	}
 	ref := statusBranches.ref(p.branch)
+	branch = "abcd-status/" + p.branch
 	for attempt := 1; ; attempt++ {
 		sha, err := writeEmptyCommit(root, p.who, p.now, p.msg, tree, parent)
 		if err != nil {
@@ -372,6 +403,7 @@ func Announce(root string, req AnnounceRequest, o Options) (AnnounceResult, erro
 			beforePush(root)
 		}
 		perr := push(root, pushTo(sha, ref))
+		pushes++
 		if perr == nil {
 			return AnnounceResult{Kind: p.msg.Kind, Item: p.msg.Item, Sender: p.msg.Sender, Branch: "abcd-status/" + p.branch,
 				SentAt: p.msg.SentAt, ExpiresAt: p.msg.ExpiresAt, Commit: sha, Attempts: attempt}, nil

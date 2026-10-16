@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,6 +18,10 @@ import (
 
 // announceStore is the noun the checkout resolution names in its refusal.
 const announceStore = "the announcement"
+
+// announceAct is the core act the verb drives; a test stands in for it to
+// reach a failure no real checkout produces.
+var announceAct = claim.Announce
 
 // announceOutput is the --json document of one announcement that went out.
 type announceOutput struct {
@@ -83,10 +88,10 @@ func newAnnounceCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd announce: " + err.Error() + "; nothing was pushed"}
 			}
-			res, err := claim.Announce(root, claim.AnnounceRequest{Kind: args[0], Item: args[1], For: life},
+			res, err := announceAct(root, claim.AnnounceRequest{Kind: args[0], Item: args[1], For: life},
 				claim.Options{Embargo: announceEmbargoCheck})
 			if err != nil {
-				return &exitError{Code: 2, Msg: "abcd announce: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
+				return announceRefusal(err)
 			}
 			out := announceOutput{Kind: res.Kind, Item: res.Item, Sender: res.Sender, Branch: res.Branch,
 				SentAt: rfc3339(res.SentAt), ExpiresAt: rfc3339(res.ExpiresAt), Commit: res.Commit, Attempts: res.Attempts}
@@ -95,6 +100,26 @@ func newAnnounceCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().DurationVar(&life, "expires-in", 0, "how long the announcement stands, from 1m to 24h (default 30m)")
 	return cmd
+}
+
+// announceRefusal maps a failed announcement to exit 2, as reserveRefusal
+// does. A refusal already says what became of the push (nothing pushed, no
+// announcement sent, or not sent and why), so it is passed through; any other
+// failure is told what the core counted: nothing was pushed when no push was
+// tried, and otherwise that the pushes were refused but one may still have
+// reached origin, so the branch is looked at before announcing again.
+func announceRefusal(err error) error {
+	msg := "abcd announce: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+	if errors.Is(err, claim.ErrRefused) {
+		return &exitError{Code: 2, Msg: msg}
+	}
+	var ae *claim.AnnounceError
+	if errors.As(err, &ae) && ae.Pushes > 0 {
+		branch := termsafe.Sanitize(ae.Branch)
+		return &exitError{Code: 2, Msg: fmt.Sprintf("%s; not sent as far as git reported, but origin refused %d earlier pushes to %s "+
+			"and a refused push may still have reached it: fetch origin and look at %s before announcing again", msg, ae.Pushes, branch, branch)}
+	}
+	return &exitError{Code: 2, Msg: msg + "; not sent, and nothing was pushed"}
 }
 
 // announceEmbargoCheck is the embargo check an announcement is held to (C5):

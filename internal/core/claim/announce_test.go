@@ -511,3 +511,26 @@ func TestAnAddressThatNamesNoUsernameIsRefusedNamingTheFix(t *testing.T) {
 		t.Fatalf("origin holds %s", tip)
 	}
 }
+
+// TestAnUnclassedAnnounceFailureCountsThePushesTried: Announce passes a
+// refusal through as it is, since its message says what became of the push,
+// and returns any other error as an *AnnounceError counting the pushes tried
+// before it and naming the branch, so the front door can say whether one may
+// have reached origin.
+func TestAnUnclassedAnnounceFailureCountsThePushesTried(t *testing.T) {
+	if err := announceFailure(nil, 2, "abcd-status/octo"); err != nil {
+		t.Fatalf("no error became %v", err)
+	}
+	for _, r := range []error{refuse("no; %s", nothingPushed), &NotSentError{Reason: "no"}} {
+		if got := announceFailure(r, 2, "abcd-status/octo"); got != r {
+			t.Fatalf("the refusal %v became %v", r, got)
+		}
+	}
+	inner := errors.New("git said nothing")
+	var ae *AnnounceError
+	got := announceFailure(inner, 2, "abcd-status/octo")
+	if !errors.As(got, &ae) || ae.Pushes != 2 || ae.Branch != "abcd-status/octo" || !errors.Is(got, inner) ||
+		errors.Is(got, ErrRefused) || got.Error() != inner.Error() {
+		t.Fatalf("announceFailure = %#v; want an *AnnounceError counting 2 pushes to abcd-status/octo, wrapping %v", got, inner)
+	}
+}
