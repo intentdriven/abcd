@@ -232,7 +232,7 @@ func TestGoTestParallelism(t *testing.T) {
 		{9, true, 2, 1, "a two-core machine: one at least"},
 	} {
 		snap := Snapshot{Load1: c.load, HasLoad: c.has, Cores: c.cores}
-		if got := GoTestParallelism(snap); got != c.want {
+		if got := GoTestParallelism(snap, 1); got != c.want {
 			t.Errorf("%s: GoTestParallelism(load %v on %d) = %d, want %d", c.comment, c.load, c.cores, got, c.want)
 		}
 	}

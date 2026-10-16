@@ -15,6 +15,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The LOAD domain carries the product thinker's ruling on iss-2609210828122412
@@ -375,6 +377,13 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		// and arguments are read, and that account wrote them.
 		"no file another account can write is read; the gate reads only the process table",
 		"still delays yours",
+		// The race stage's own gate, and the person's own slot setting
+		// (iss-2610161639025702).
+		"abcd implement load --wait --race",
+		"one race stage at a time",
+		"`load.preflights` in `" + abcdhome.Display("config.json") + "`",
+		"`ABCD_LOAD_PREFLIGHTS`",
+		"never read from a repository file",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)

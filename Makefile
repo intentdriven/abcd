@@ -291,15 +291,26 @@ asking-sync-check:
 # checks again, so two preflights in one quiet minute do not start together; a
 # preflight whose own gate is waiting takes that waiter's place in the queue.
 # It gives up after two hours, failing the preflight and naming what it still
-# waited on, and on a CI runner it opens at once. Each test stage then takes a
-# go test -p derived from the online cores and the load as the stage starts
-# (cmd/test-parallelism), so one run cannot saturate the machine.
+# waited on, and on a CI runner it opens at once. How many preflights may be in
+# their test stages at once is the person's own machine setting, never the
+# checkout's: load.preflights in ~/.abcd.noindex/config.json, or
+# ABCD_LOAD_PREFLIGHTS in the environment for a trial, one by default
+# (iss-2610161639025702). Above one, the gate admits a preflight while fewer
+# than that many others are in their test stages, a live race run does not
+# shut it by itself, and a waiter queued ahead still does. The race stage
+# waits at its own gate (`--wait --race`), shut while another go test -race run
+# or race waiter ahead is live or the load is at the limit, so one race stage
+# runs at a time whatever the setting. Each test stage then takes a go test -p
+# derived from the online cores and the load as the stage starts, at most the
+# cores divided by the setting (cmd/test-parallelism), so one run cannot
+# saturate the machine.
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go run ./cmd/abcd implement load --wait --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -p "$$p" ./...
+	go run ./cmd/abcd implement load --wait --race --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -race -p "$$p" -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"

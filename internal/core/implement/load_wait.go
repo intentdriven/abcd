@@ -30,6 +30,16 @@ import (
 // with the waiter's own process and ancestors excluded (machineload.RaceRuns,
 // machineload.QueueAhead). It never signals anything.
 //
+// That is the first gate with one slot, the default. How many preflights may
+// be in their test stages at once is the person's own setting (PreflightSlots,
+// load_slots.go); above one, the first gate opens while fewer than that many
+// other units of work are in their test stages (machineload.Ahead.Shut), a
+// waiter queued ahead still shuts it, and a live race run does not shut it
+// by itself. The race gate (WaitRequest.Race, `--wait --race`), which `make
+// preflight` runs before its race stage, is shut only by another race run, a
+// race waiter ahead (machineload.RaceAhead), the load and the hold, so one race
+// stage runs at a time whatever the slot count.
+//
 // The process table is the cross-account half (iss-2610140638074587): it
 // shows every account's processes: no file another account can write is read;
 // the gate reads only the process table (and the caller's own load-limits and
@@ -82,13 +92,15 @@ const (
 const (
 	// WaitOnLoad: the one-minute load average is not below the wait limit.
 	WaitOnLoad = "load"
-	// WaitOnRaceRun: another go test -race run is live.
+	// WaitOnRaceRun: another go test -race run is live (at the first gate,
+	// only while one preflight at a time may be in its test stages).
 	WaitOnRaceRun = "race-run"
 	// WaitOnLock: another waiter's hold is in force.
 	WaitOnLock = "lock"
 	// WaitOnUnreadable: the load or the process table could not be read.
 	WaitOnUnreadable = "unreadable"
-	// WaitOnPreflight: another make preflight, of any account, is running.
+	// WaitOnPreflight: another make preflight, of any account, is running (with
+	// more than one slot: every slot is taken, by at least one preflight).
 	WaitOnPreflight = "preflight"
 	// WaitOnWaiter: another waiter, of any account, is queued ahead of this one
 	// or running the command it gates.
@@ -169,6 +181,11 @@ type WaitRequest struct {
 	Poll time.Duration
 	// Command asks for the command form's hold.
 	Command bool
+	// Race waits at the race gate (`--race`), before a race stage, instead of
+	// the first gate: it is shut only by another go test -race run, a race
+	// waiter ahead of it, the load and the hold, so one race stage runs at a
+	// time whatever the slot count (PreflightSlots).
+	Race bool
 	// OnWait is called once, at the first look that finds the gate shut.
 	OnWait func(WaitResult)
 	// OnSettle is called once, at the first look that finds the machine free,
@@ -222,6 +239,13 @@ type WaitResult struct {
 	// name the pids in the text report; the JSON report carries the condition.
 	Preflights []int `json:"-"`
 	Waiters    []int `json:"-"`
+	// Gate is the gate waited at, GateTests or GateRace.
+	Gate string `json:"gate"`
+	// Slots is how many preflights may be in their test stages at once, and
+	// SlotsSource where that came from (PreflightSlots). The race gate reads
+	// it only to report it.
+	Slots       int    `json:"slots,omitempty"`
+	SlotsSource string `json:"slots_source,omitempty"`
 }
 
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
@@ -257,7 +281,10 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	if jitter == nil {
 		jitter = waitJitter
 	}
-	res := WaitResult{WaitedOn: []string{}, RaceRuns: []int{}}
+	res := WaitResult{WaitedOn: []string{}, RaceRuns: []int{}, Gate: GateTests}
+	if req.Race {
+		res.Gate = GateRace
+	}
 	if reason, ci := cienv.Runner(getenv); ci {
 		res.Status = WaitSkipped
 		res.Reason = "skipped on a CI runner (" + reason + "): a fresh runner runs no other session's work, so there is nothing to wait for"
@@ -276,6 +303,9 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
 	}
 	defer root.Close()
+	if res.Slots, res.SlotsSource, err = PreflightSlots(getenv, home); err != nil {
+		return res, fmt.Errorf("nothing was waited for: %w", err)
+	}
 
 	start := now()
 	deadline := start.Add(req.Timeout)
@@ -367,6 +397,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 	procsOK := snap.HasProcs
 	var runs []int
 	var ahead machineload.Ahead
+	var raceAhead []int
 	if procsOK {
 		args, err := req.ReadArgs(machineload.GateCandidates(snap, req.Self))
 		if err != nil {
@@ -375,6 +406,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		} else {
 			runs = machineload.RaceRuns(snap, req.Self, args)
 			ahead = machineload.QueueAhead(snap, req.Self, args)
+			raceAhead = machineload.RaceAhead(snap, req.Self, args)
 		}
 	}
 	if !procsOK {
@@ -382,17 +414,29 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			shut = append(shut, WaitOnUnreadable)
 		}
 	} else {
-		if len(runs) > 0 {
+		// A live race run shuts the race gate always, and the first gate
+		// only while one preflight at a time may be in its test stages: with
+		// more, the race gate is what keeps race stages one at a time, and the
+		// load limit what keeps the machine from saturating.
+		if len(runs) > 0 && (req.Race || res.Slots <= 1) {
 			shut = append(shut, WaitOnRaceRun)
 			res.RaceRuns = runs
 		}
-		if len(ahead.Preflights) > 0 {
-			shut = append(shut, WaitOnPreflight)
-			res.Preflights = ahead.Preflights
-		}
-		if len(ahead.Waiters) > 0 {
-			shut = append(shut, WaitOnWaiter)
-			res.Waiters = ahead.Waiters
+		if req.Race {
+			if len(raceAhead) > 0 {
+				shut = append(shut, WaitOnWaiter)
+				res.Waiters = raceAhead
+			}
+		} else {
+			preflight, waiter := ahead.Shut(res.Slots)
+			if preflight {
+				shut = append(shut, WaitOnPreflight)
+				res.Preflights = ahead.Preflights
+			}
+			if waiter {
+				shut = append(shut, WaitOnWaiter)
+				res.Waiters = ahead.Waiters
+			}
 		}
 	}
 
@@ -544,11 +588,12 @@ func ReleaseWaitHold(home string, h WaitHolder) error {
 
 // PreflightParallelism is the -p `make preflight` gives its test and race
 // stages (cmd/test-parallelism prints it), derived from the online cores and
-// the one-minute load as they are when the stage starts
-// (machineload.GoTestParallelism). On a CI runner the machine is not read and
+// the one-minute load as they are when the stage starts, the cores divided
+// among the slots preflights may be in their test stages at once
+// (machineload.GoTestParallelism, PreflightSlots). On a CI runner the machine is not read and
 // go's own default, GOMAXPROCS, stands, as it does when the machine cannot be
 // read.
-func PreflightParallelism(getenv func(string) string, read func() (machineload.Snapshot, error)) int {
+func PreflightParallelism(getenv func(string) string, read func() (machineload.Snapshot, error), slots int) int {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
@@ -562,5 +607,5 @@ func PreflightParallelism(getenv func(string) string, read func() (machineload.S
 	if !snap.HasLoad || (err != nil && errors.Is(err, machineload.ErrUnsupported)) {
 		return runtime.GOMAXPROCS(0)
 	}
-	return machineload.GoTestParallelism(snap)
+	return machineload.GoTestParallelism(snap, slots)
 }

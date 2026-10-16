@@ -80,7 +80,10 @@ in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 `.abcd/development/principles/` rather than copying them. `LOAD` carries the
 trust rule for load experiments: one owned process group killed together through
 a re-checked handle and never by pattern, clean proven by what is running, and
-explicit consent with a cap below the core count on a live development machine.
+explicit consent with a cap below the core count on a live development machine;
+and the load gate a preflight waits at: test stages admitted as many at once as
+the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
+by default, never set by a repository), and race stages one at a time.
 `SHELL` is the teaching half of the shell-hazard guard: it is generated from the
 same hazard registry `abcd guard` enforces in the repository, one rule per entry
 (the command, why it is dangerous, and what to run instead; a rule from the
