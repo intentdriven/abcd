@@ -53,8 +53,8 @@ type identity struct {
 // configuration (gitutil.ScrubbedEnv), where the identity lives. A checkout
 // whose git has neither is refused before anything is written: git would
 // otherwise compose one from the machine's name, which a public commit must
-// never carry.
-func gitIdentity(root string) (identity, error) {
+// never carry. what names the commit it would author ("the reservation").
+func gitIdentity(root, what string) (identity, error) {
 	var id identity
 	for _, f := range []struct {
 		key  string
@@ -67,7 +67,7 @@ func gitIdentity(root string) (identity, error) {
 		*f.into = v
 	}
 	if id.Name == "" || id.Email == "" {
-		return identity{}, refuse("git has no user.name or user.email to author the reservation; set them, then retry; %s", nothingPushed)
+		return identity{}, refuse("git has no user.name or user.email to author %s; set them, then retry; %s", what, nothingPushed)
 	}
 	return id, nil
 }

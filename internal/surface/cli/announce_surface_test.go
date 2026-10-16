@@ -172,7 +172,8 @@ func TestAnnounceNeverShowsAToolsIdentity(t *testing.T) {
 	gitCmd(t, p, "config", "user.name", name)
 	for _, args := range [][]string{{"announce", "merging", "#1012"}, {"announce", "merging", "#1012", "--json"}} {
 		code, stdout, stderr := reserveRun(t, p, args...)
-		if code != 2 || !strings.Contains(stdout+stderr, "could not work out whose GitHub account this session uses") {
+		if code != 2 || !strings.Contains(stdout+stderr, "abcd cannot yet work out whose GitHub account this session uses") ||
+			strings.Contains(stdout+stderr, "git config") {
 			t.Fatalf("%v: exit %d, stderr %q; want the refusal naming the cause", args, code, stderr)
 		}
 		if out := strings.ToLower(stdout + stderr); strings.Contains(out, "anthro") || strings.Contains(out, strings.ToLower(name)) {

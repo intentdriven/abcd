@@ -313,7 +313,7 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 		return nil, refuse("expiry %s is outside %s to %s; %s", life, MinAnnouncementLife, MaxAnnouncementLife, nothingPushed)
 	}
 	p := &preparedAnnouncement{root: root, home: o.home(), now: o.now(), record: record}
-	if p.who, err = gitIdentity(root); err != nil {
+	if p.who, err = gitIdentity(root, "the announcement"); err != nil {
 		return nil, err
 	}
 	// A hosted container's default identity is a tool's. An announcement is
@@ -321,9 +321,9 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 	// copy key, an object or a ref is written, and the refusal never repeats
 	// the identity it rejected.
 	if toolid.IsToolIdentity(toolid.RoleAuthor, p.who.Name, p.who.Email) {
-		return nil, refuse("could not work out whose GitHub account this session uses: git's user.name and user.email here name a tool, "+
-			"not a person, and an announcement is authored as the person who sends it; set git config user.email to your GitHub "+
-			"no-reply address (<id>+<username>@users.noreply.github.com) and git config user.name to your own name, then retry; %s", nothingPushed)
+		return nil, refuse("abcd cannot yet work out whose GitHub account this session uses: git's user.name and user.email here "+
+			"name a tool, not a person, and an announcement is authored as the person who sends it; a coming change reads the "+
+			"person from the session's forge account instead; no announcement was sent, and %s", nothingPushed)
 	}
 	sender, err := resolveHolder(root, p.home, p.who.Email)
 	if err != nil {

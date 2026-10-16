@@ -78,7 +78,9 @@ Every refusal pushes nothing.
   message; a store that exists but cannot be checked refuses every
   announcement.
 - A git identity that names a tool rather than a person is refused before
-  anything is written, naming the fix and never the identity it rejected. The
+  anything is written, saying abcd cannot yet tell whose account the session
+  uses (a coming change reads it from the session's forge account), and never
+  naming the identity it rejected. The
   sender is read as a reservation's holder is: user.email when it is a GitHub
   no-reply address, or `reservation.github_username` in the machine
   configuration.

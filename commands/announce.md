@@ -69,8 +69,10 @@ reason; each names the field and the limit, or what to set.
   `reservation.github_username` in `~/.abcd.noindex/config.json`; the
   repository's own configuration is never read for it. A git identity that
   names a tool rather than a person, the default in a hosted container, is
-  refused before anything is written: set `git config user.email` to the
-  user's GitHub no-reply address and `git config user.name` to their name.
+  refused before anything is written, and the refusal never shows that
+  identity: abcd cannot yet tell whose account such a session uses, and a
+  coming change reads it from the session's forge account. Relay the refusal
+  as it is; it asks the user to change nothing.
 - **Not sent.** A push that lost a race to another of the user's sessions is
   rebuilt on the tip that won and pushed again, up to three times. After that,
   or when origin refuses the push for any other reason, the refusal starts

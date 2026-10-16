@@ -596,10 +596,16 @@ func TestAToolsGitIdentityIsRefusedBeforeAnythingIsWritten(t *testing.T) {
 				t.Fatalf("announce = %v; want a refusal", err)
 			}
 			msg := err.Error()
-			for _, part := range []string{"could not work out whose GitHub account this session uses",
-				"git config user.email", "no-reply address", "nothing was pushed"} {
+			for _, part := range []string{"abcd cannot yet work out whose GitHub account this session uses",
+				"forge account", "no announcement was sent", "nothing was pushed"} {
 				if !strings.Contains(msg, part) {
 					t.Errorf("the refusal lacks %q: %s", part, msg)
+				}
+			}
+			// No step is put to the person: abcd will read the identity itself.
+			for _, step := range []string{"git config", "set ", "retry"} {
+				if strings.Contains(msg, step) {
+					t.Errorf("the refusal asks for a manual step (%q): %s", step, msg)
 				}
 			}
 			for _, leak := range []string{name, email, "anthro"} {
@@ -664,5 +670,21 @@ func TestAnUnclassedAnnounceFailureCountsThePushesTried(t *testing.T) {
 	if !errors.As(got, &ae) || ae.Pushes != 2 || ae.Branch != "abcd-status/octo" || !errors.Is(got, inner) ||
 		errors.Is(got, ErrRefused) || got.Error() != inner.Error() {
 		t.Fatalf("announceFailure = %#v; want an *AnnounceError counting 2 pushes to abcd-status/octo, wrapping %v", got, inner)
+	}
+}
+
+// TestAnAnnouncementWithNoGitIdentityNamesTheAnnouncement: a checkout whose
+// git has no user.name is refused before anything is written, the refusal
+// naming the announcement it would author, not a reservation.
+func TestAnAnnouncementWithNoGitIdentityNamesTheAnnouncement(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	p.git("config", "user.name", "")
+	_, err := p.announce("merging", "#1012")
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "to author the announcement") || strings.Contains(err.Error(), "reservation") {
+		t.Fatalf("announce = %v; want the refusal naming the announcement", err)
+	}
+	if _, err := p.reserve("iss-5", "README.md"); err == nil || !strings.Contains(err.Error(), "to author the reservation") {
+		t.Fatalf("reserve = %v; want the reservation's wording unchanged", err)
 	}
 }

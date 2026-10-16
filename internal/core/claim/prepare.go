@@ -131,7 +131,7 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 		return nil, refuse("lease %s is outside %s to %s; %s", term, lease.Min, lease.Max, nothingPushed)
 	}
 	p := &prepared{root: root, id: id, req: req, lease: term, now: o.now(), label: o.assistedBy()}
-	if p.who, err = gitIdentity(root); err != nil {
+	if p.who, err = gitIdentity(root, "the reservation"); err != nil {
 		return nil, err
 	}
 	if p.holder, err = resolveHolder(root, o.home(), p.who.Email); err != nil {
