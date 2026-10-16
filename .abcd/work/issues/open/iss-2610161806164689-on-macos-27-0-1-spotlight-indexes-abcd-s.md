@@ -17,3 +17,10 @@ On macOS 27.0.1 Spotlight still catalogues every file under abcd's home by name,
 A repository's .git folder was catalogued the same way (10,689 entries in this checkout) until the person added the folder holding their projects to the Spotlight Privacy list, after which mdfind returned none.
 
 The in-repo .abcd folder is a separate finding, iss-2610050543365882.
+
+## Evidence 2026-10-16: after the folders were added to Search Privacy
+
+The person added `~/ABCDevelopment` (which holds this checkout) and `~/.abcd.noindex` to Spotlight's Search Privacy list at about 19:10.
+- 19:13: mdfind returned 0 entries under either folder (589,828 and 10,689 before); mds ran at about 53% of one core while it purged them.
+- 19:44: still 0 entries; mds at 8.6% and mds_stores at 5.8%, with the one-minute load at 21 from preflights.
+So the privacy list removes the name catalogue the `.noindex` name leaves in place, and the purge costs a short burst.

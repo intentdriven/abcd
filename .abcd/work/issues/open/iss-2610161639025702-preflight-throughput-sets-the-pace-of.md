@@ -42,3 +42,12 @@ Preflight throughput sets the pace of all work on this machine, and nothing keep
 - **Reviews cost less.** A review pair used about 60,000 to 240,000 tokens per reviewer.
 
 **Next measurement.** A trial tonight runs two preflights at once, with the race stage kept to one at a time (`feat/two-preflights`). It will record each run's wall-clock, its peak one-minute load, and the gate waits, against these one-at-a-time figures. Resource-derived admission is iss-2610161756384596.
+
+## Evidence 2026-10-16 evening: waiters timing out at the gate
+
+At about 20:00 the gate held 23 waiter processes across sessions, admitting one preflight at a time.
+- One session's preflight reached the Makefile's two-hour gate limit twice without any check failing. The second time, 8 waiters were ahead of it.
+- A retry rejoins at the back of the queue: a new pid under the pid order, and a new start under the start-time order.
+- The work-around in use is an outer `abcd implement load --wait --timeout 8h -- make preflight`, which keeps its place while the inner gate takes over.
+- One session folded four reviewed branches into one, to need one preflight instead of four.
+- A review's own race run also timed out after its 30-minute default without running a test.
