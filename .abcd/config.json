@@ -12,7 +12,8 @@
     "backend": "host-delegated"
   },
   "outbound": {
-    "forge": true
+    "forge": true,
+    "hook": true
   },
   "repo": {
     "visibility": "public"

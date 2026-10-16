@@ -70,10 +70,11 @@ func readTip(root, record, ref, tree string, fetchedAt time.Time, keep bool) (t 
 	return tip{head: h, message: m}, true, nil
 }
 
-// resolveRef is the object ref names in this checkout and its type; ok is
-// false when the ref does not exist.
+// resolveRef is the object ref names in this checkout and its type as stored
+// (storedGit: a replace ref standing a commit in for a blob does not make the
+// blob read as a commit); ok is false when the ref does not exist.
 func resolveRef(root, ref string) (name, typ string, ok bool, err error) {
-	out, err := localGit(root, 64<<10, "for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", ref)
+	out, err := storedGit(root, 64<<10, "for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", ref)
 	if err != nil {
 		return "", "", false, fmt.Errorf("reading %s: %w", ref, err)
 	}
@@ -97,23 +98,37 @@ func resolveRef(root, ref string) (name, typ string, ok bool, err error) {
 // readCommit reads the commit object name in this checkout's object store as
 // a commit of the family parse reads, through parseTip. The object is read
 // through a bounded read; one past the bound is unreadable, never truncated
-// into something that parses. An unreadable commit whose date cannot be read
-// is dated from when this copy first fetched it (dated). The error is git's,
-// for its caller to say what it was reading.
+// into something that parses. Its size is asked first, which git reads from
+// the object's header, so one past the bound is never streamed through the
+// read at all. An unreadable commit whose date cannot be read is dated from
+// when this copy first fetched it (dated). The error is git's, for its caller
+// to say what it was reading.
 func readCommit[M any](root, name, tree string, fetchedAt time.Time, keep bool, parse func(string) (M, string)) (head, M, error) {
 	var zero M
-	obj, err := localGit(root, maxObjectBytes, "cat-file", "commit", name)
+	size, err := storedGit(root, 32, "cat-file", "-s", name)
 	if err != nil {
-		if strings.Contains(err.Error(), "exceeded") {
-			h := head{Commit: name, Unreadable: reasonObjectTooBig}
-			// The object is too big to parse, but git reads its date.
-			if out, derr := localGit(root, 256, "show", "-s", "--format=%ct", name); derr == nil {
-				if sec, perr := strconv.ParseInt(strings.TrimSpace(out), 10, 64); perr == nil {
-					h.WrittenAt = time.Unix(sec, 0).UTC()
-				}
+		return head{}, zero, err
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(size), 10, 64)
+	if err != nil {
+		return head{}, zero, fmt.Errorf("git gave the size of %s as %s", name, echo(size))
+	}
+	var obj string
+	if n <= maxObjectBytes {
+		obj, err = storedGit(root, maxObjectBytes, "cat-file", "commit", name)
+	}
+	if n > maxObjectBytes || (err != nil && strings.Contains(err.Error(), "exceeded")) {
+		h := head{Commit: name, Unreadable: reasonObjectTooBig}
+		// The object is too big to parse, but git reads its date, from the
+		// object as stored.
+		if out, derr := storedGit(root, 256, "show", "-s", "--format=%ct", name); derr == nil {
+			if sec, perr := strconv.ParseInt(strings.TrimSpace(out), 10, 64); perr == nil {
+				h.WrittenAt = time.Unix(sec, 0).UTC()
 			}
-			return dated(root, h, fetchedAt, keep), zero, nil
 		}
+		return dated(root, h, fetchedAt, keep), zero, nil
+	}
+	if err != nil {
 		return head{}, zero, err
 	}
 	h, m := parseTip(name, []byte(obj), tree, parse)

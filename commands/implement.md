@@ -533,13 +533,13 @@ nothing unless it is still this person's, from this copy, and live: it names
 the other person and the expiry, says the reservation moved to your copy on
 another computer, or says it was released (reserve it again with `abcd build
 <id>`), and a fetch origin does not answer is named too, each as contention
-(exit 3 when nothing else moves). When it holds, the fence renews it for a day
-wherever a ruleset mirror exists at the lane's base: every landing there waits
-on a person, either the approval the armed merge needs (an approving review,
-or a code owner's) or the merge of a pull request left open for one, and
-either can wait overnight; a day is also past any merge queue's
-`check_response_timeout_minutes`. With no mirror at all the lease is the
-default two hours. The fence then reads the **release hold** from the
+(exit 3 when nothing else moves). When it holds, the fence renews it for a
+day, with a ruleset mirror at the lane's base or without one: every landing
+waits on a person, either the approval the armed merge needs (an approving
+review, or a code owner's) or the merge of a pull request left open for one,
+as a checkout with no mirror always leaves it, and either can wait overnight;
+a day is also past any merge queue's `check_response_timeout_minutes`. The
+fence then reads the **release hold** from the
 reservations it just fetched (a run holding no reservation fetches them for
 it): while a release reservation (`rel-vX.Y.Z`, `/abcd:reserve`) is live and
 not this copy's own, it arms nothing, naming the release, its holder or "your
