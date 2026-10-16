@@ -2443,3 +2443,16 @@ The planning interview added two criteria from the product thinker's pushback on
 - a cap on how many announcements one prompt shows.
 
 A third added criterion, that an announcement names nobody, was struck when the product thinker returned to GitHub usernames.
+
+### 2026-10-16: after a plugin update, offer setup again
+
+The proposal: when abcd's plugin was updated, offer the person to run setup again so new settings and setup questions are picked up.
+
+| part | type | home |
+|---|---|---|
+| the next session offers to run setup again after an update, never without a yes | capability | intent itd-2610161616086564 (draft) |
+| a short what-changed summary for this repository after an update | capability | intent itd-2610161617096084 (draft) |
+| noticing an update reads only what is on disk, never the network | trust rule | already stated by itd-111 (shipped); no new record |
+| setup changes nothing without the person's yes | trust rule | existing consent rules; no new record |
+
+Verdict: SPLIT. The initial routing proposed one intent (FILE-AS-IS) with the what-changed summary inside it; the product thinker chose to split the summary into its own record, so the routing did not survive as proposed. Both drafts carry `builds_on: [itd-111, itd-105]`. The product thinker then asked for the two new drafts and the two shipped intents they build on to be one bundle; a bundle can only join records not yet shipped, so the two drafts are to be planned as one bundle, linked to the shipped pair through `builds_on`.
