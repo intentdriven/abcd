@@ -60,6 +60,10 @@ var plainNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // into an API path.
 func PlainName(s string) bool { return plainNameRe.MatchString(s) }
 
+// ErrNotGitHub is ParseRemote's refusal of a URL that is not on github.com at
+// all, told apart from a github.com URL that names no one repository.
+var ErrNotGitHub = errors.New("the origin remote is not a github.com URL, and this verb speaks only the GitHub API")
+
 // ParseRemote splits a github.com remote URL into owner and repository. It
 // accepts the forms git itself writes (`https://github.com/owner/repo[.git]`,
 // `git@github.com:owner/repo[.git]`, `ssh://git@github.com/owner/repo`) and
@@ -77,7 +81,7 @@ func ParseRemote(url string) (owner, name string, err error) {
 	case strings.HasPrefix(url, "http://github.com/"):
 		rest = strings.TrimPrefix(url, "http://github.com/")
 	default:
-		return "", "", fmt.Errorf("the origin remote is not a github.com URL, and this verb speaks only the GitHub API")
+		return "", "", ErrNotGitHub
 	}
 	rest = strings.TrimSuffix(strings.TrimSuffix(strings.Trim(rest, "/"), ".git"), "/")
 	parts := strings.Split(rest, "/")
