@@ -496,8 +496,15 @@ tier and its reason are recorded so every published version is traceable to
 | `fix` | **Patch** | **Patch** |
 | `internal`, or no record at all | no release (`empty-cut`) | no release (`empty-cut`) |
 
-Every intent carries an impact, set when the intent is shaped and enforced by
-the record lint (adr-31). At release, the cut gathers the records that entered
+An intent's impact (adr-31) is required at the close that moves it to
+`shipped/`: `abcd spec close` refuses to ship an intent that records none when
+no `--impact` is given, and moves nothing (`internal/core/intent/lifecycle.go`),
+and the record lint's `intent_impact_valid` rule flags an intent in `shipped/`
+without one. Before that close the field may be absent, since a draft or a
+planned intent can still be unjudged; wherever it is set, its value is checked
+in every bucket, by the same rule, which flags a value outside the enum and
+`internal` on an intent (`internal/core/lint/lint.go`). An issue declares its
+impact when it is resolved (`abcd capture resolve --impact`). At release, the cut gathers the records that entered
 or left `intents/shipped/` and `issues/resolved/` since the previous release tag
 (`internal/core/changelog/shipped.go`), takes the highest-severity impact among
 them (`internal/core/changelog/impact.go`), and applies the table above
