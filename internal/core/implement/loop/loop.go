@@ -82,6 +82,9 @@ type Options struct {
 	// origin's default branch (drain_origin.go). Nil, the check reads the
 	// checkout's.
 	plan *capture.DrainPlan
+	// drain marks a lane start the drain makes: a reservation it pushes backs
+	// off a hand-back whose record is unchanged on origin (claim.Request.Drain).
+	drain bool
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -883,7 +886,7 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			// The lane's own receipt handed the work back: the verifier has
 			// discarded it, and the lane ends here, before the validators.
 			handBackLane(st, &lane, *lane.HandBack, "", now)
-			releaseOnHandBack(repoRoot, st, now)
+			releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
 			st.Lanes[i] = lane
 			st.UpdatedAt = now
 			res = laneResult(*st, lane, "", nil)

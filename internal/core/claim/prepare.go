@@ -2,6 +2,8 @@ package claim
 
 import (
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -81,6 +83,14 @@ type Request struct {
 	// record anew and never takes one over. It keeps the tip's footprint, so
 	// Footprint must be empty.
 	Renew bool
+	// HandBack, with Release, publishes a hand-back: the tombstone names this
+	// kind, one of HandBackKinds, and the blob id of the record on origin's
+	// default branch (Result.HandBackUnpublished says why it names none).
+	HandBack string
+	// Drain marks a reservation a drain makes: it backs off a hand-back
+	// tombstone whose record is unchanged on origin's default branch, where a
+	// person's own reservation goes ahead and is told (Result.HandedBack).
+	Drain bool
 	// Live, with Renew, refuses one's own reservation that has lapsed too
 	// (NotHeldLapsed): the land fence renews only a reservation that holds.
 	Live bool
@@ -130,6 +140,15 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if req.Live && !req.Renew {
 		return nil, refuse("only a renewal can require a live reservation; %s", nothingPushed)
 	}
+	if req.HandBack != "" && !req.Release {
+		return nil, refuse("only a release publishes a hand-back; %s", nothingPushed)
+	}
+	if req.HandBack != "" && !slices.Contains(HandBackKinds, req.HandBack) {
+		return nil, refuse("hand-back kind %s is not one of %s; %s", echo(req.HandBack), strings.Join(HandBackKinds, ", "), nothingPushed)
+	}
+	if req.Drain && (req.Release || req.Renew) {
+		return nil, refuse("only a reservation is a drain's to back off a hand-back, never a release or a renewal; %s", nothingPushed)
+	}
 	if !req.Release && !req.Renew && len(req.Footprint) == 0 {
 		return nil, refuse("a reservation names the files the work will change: pass --footprint <path> once per path; %s", nothingPushed)
 	}
@@ -169,10 +188,11 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	}
 	if !req.Release && !req.Renew {
 		// The reservation is measured by the longer of its own message and the
-		// tombstone that will one day release it (a longer subject and an
-		// Abcd-Released-At line), so a reservation the writer accepts can
-		// always be released.
-		for _, text := range []string{p.reservation().text(), p.tombstone(req.Footprint).text()} {
+		// tombstone that will one day release it (a longer subject, an
+		// Abcd-Released-At line, and the longest hand-back with the longer of
+		// git's object names), so a reservation the writer accepts can always
+		// be released, handed back or not.
+		for _, text := range []string{p.reservation().text(), p.longestTombstone(req.Footprint).text()} {
 			if err := checkMessage(root, text); err != nil {
 				return nil, err
 			}
@@ -196,6 +216,15 @@ func (p *prepared) tombstone(footprint []string) message {
 		Record: p.id, Holder: p.holder, Copy: p.copy, Footprint: footprint,
 		ClaimedAt: p.now, ExpiresAt: p.now, ReleasedAt: p.now, AssistedBy: p.label,
 	}
+}
+
+// longestTombstone is the longest tombstone that may one day release a
+// reservation with footprint: one naming the longest hand-back kind and the
+// longer of git's object names.
+func (p *prepared) longestTombstone(footprint []string) message {
+	m := p.tombstone(footprint)
+	m.HandedBack, m.RecordBlob = longestHandBack(), longestBlob
+	return m
 }
 
 // checkMessage refuses a reservation message the writer may not write

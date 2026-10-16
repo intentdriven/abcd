@@ -591,7 +591,7 @@ func TestTheReleaseClauseIsTerminalSafe(t *testing.T) {
 	claimReserve = func(string, claim.Request, claim.Options) (claim.Result, error) {
 		return claim.Result{}, errors.New("origin said \u202edlrow\u009b31m")
 	}
-	clause, failed := releaseReservation(t.TempDir(), "iss-2609300000000101", time.Now())
+	clause, failed := releaseReservation(t.TempDir(), "iss-2609300000000101", "", time.Now())
 	if !failed || !strings.Contains(clause, "origin said") {
 		t.Fatalf("the clause names the failure: %q", clause)
 	}

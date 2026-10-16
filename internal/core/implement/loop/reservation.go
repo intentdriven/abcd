@@ -270,7 +270,7 @@ func tidyReservation(c Context, lane Lane) string {
 	if c.State.ReservedAt == nil || !completesRun(c.State, lane.ID) {
 		return ""
 	}
-	clause, failed := releaseReservation(c.RepoRoot, c.State.Key, c.Now)
+	clause, failed := releaseReservation(c.RepoRoot, c.State.Key, "", c.Now)
 	if failed {
 		clause += "; the landing stands, and the reservation counts as released while " + c.State.Key + " is finished on the default branch"
 	}
@@ -283,20 +283,30 @@ func tidyReservation(c Context, lane Lane) string {
 // fetch or push that failed (failed is then true). It never refuses. The
 // clause quotes a refusal and a holder, both derived from the remote, so it
 // is returned terminal-safe and home-redacted for every caller.
-func releaseReservation(repoRoot, id string, now time.Time) (clause string, failed bool) {
-	return releaseReservationAt(repoRoot, id, "", now)
+//
+// A kind other than "" publishes a hand-back (spc-2610161044461448 step 3):
+// the tombstone names the kind and the blob id of the issue's record on
+// origin's default branch, so no drain on any account takes the issue again
+// until a person changes that record.
+func releaseReservation(repoRoot, id, kind string, now time.Time) (clause string, failed bool) {
+	return releaseReservationAt(repoRoot, id, "", kind, now)
 }
 
 // releaseReservationAt is releaseReservation of the one reservation commit
 // tip names ("" for whichever the tip holds): one renewed or reserved again
 // since is left as it stands.
-func releaseReservationAt(repoRoot, id, tip string, now time.Time) (clause string, failed bool) {
+func releaseReservationAt(repoRoot, id, tip, kind string, now time.Time) (clause string, failed bool) {
 	defer func() { clause = termsafe.Sanitize(fsutil.RedactHome(clause)) }()
-	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true, Tip: tip}, claimOptions(now))
+	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind}, claimOptions(now))
 	var nh *claim.NotHeld
 	switch {
 	case err == nil && res.Act == claim.ActAlreadyReleased:
 		return "the reservation on " + id + " was already released", false
+	case err == nil && kind != "" && res.HandBackUnpublished != "":
+		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished, false
+	case err == nil && kind != "":
+		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
+			", so no drain takes it again until its record changes on " + claim.Remote + "'s default branch", false
 	case err == nil:
 		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")", false
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
@@ -342,7 +352,7 @@ func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (at *tim
 // never the drain's to release. Another's hold is contention, as for
 // reserveKey.
 func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool, now time.Time) (*DrainHold, error) {
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Footprint: footprint, TakeOver: takeOver}, claimOptions(now))
+	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Footprint: footprint, TakeOver: takeOver, Drain: true}, claimOptions(now))
 	if _, _, _, err := reservedNote(res, err, now); err != nil {
 		return nil, err
 	}
@@ -366,6 +376,11 @@ func reservedNote(res claim.Result, err error, now time.Time) (at *time.Time, no
 		claim.ActTakenOver: "took over the reservation on"}[res.Act]
 	note = fmt.Sprintf("%s %s on %s for this copy until %s, footprint: %s", verb, res.Record, claim.Remote,
 		stamp(res.ExpiresAt), strings.Join(res.Footprint, ", "))
+	// A person's own reservation over a hand-back goes ahead, and says so
+	// (spc-2610161044461448 step 3); a drain's backed off above.
+	if res.HandedBack != nil {
+		note += "; " + res.HandedBack.Note(res.Record)
+	}
 	t := now
 	return &t, note, res.Act != claim.ActRenewed, nil
 }
@@ -394,7 +409,7 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (at *time.Time, n
 			return nil, "", false, err
 		}
 	}
-	return reserveKey(repoRoot, chk.Key, claim.Request{Footprint: fp, TakeOver: o.TakeOver}, o.now())
+	return reserveKey(repoRoot, chk.Key, claim.Request{Footprint: fp, TakeOver: o.TakeOver, Drain: o.drain}, o.now())
 }
 
 // heldReservation is the reservation a drain took on an issue before it
@@ -606,11 +621,11 @@ func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
 // failed, at reservation_release_failed, which the drain routing the
 // hand-back tries again (releaseHandedBack). An intent's run keeps its
 // reservation: its held lanes may still land.
-func releaseOnHandBack(repoRoot string, st *State, now time.Time) {
+func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) {
 	if st.ReservedAt == nil || st.Issue() == "" {
 		return
 	}
-	clause, failed := releaseReservation(repoRoot, st.Key, now)
+	clause, failed := releaseReservation(repoRoot, st.Key, tombstoneKind(hb), now)
 	stage := StageReservationReleased
 	if failed {
 		clause += ", so it lapses with its lease unless a drain routing the hand-back releases it"
@@ -651,7 +666,7 @@ func noFoundAtHandBack(issue string, now time.Time) DrainRoute {
 // fetch or push failed logged reservation_release_failed instead, and that
 // run, like one handed back by an abcd before that step, is released here.
 // It returns the route's clause, "" for a run that holds no reservation.
-func releaseHandedBack(repoRoot string, run State, now time.Time) string {
+func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) string {
 	if run.ReservedAt == nil || run.Issue() == "" {
 		return ""
 	}
@@ -663,7 +678,7 @@ func releaseHandedBack(repoRoot string, run State, now time.Time) string {
 			return run.Record[k].Note
 		}
 	}
-	clause, failed := releaseReservation(repoRoot, run.Key, now)
+	clause, failed := releaseReservation(repoRoot, run.Key, tombstoneKind(hb), now)
 	if failed {
 		clause += ", so it lapses with its lease"
 	}

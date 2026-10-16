@@ -81,8 +81,20 @@ the record (`Abcd-Reservation`), the holder (`Abcd-Holder`, a GitHub username),
 the working copy (`Abcd-Copy`, a random key kept in the checkout's local tier),
 the footprint (`Abcd-Footprint`, one per path), the lease (`Abcd-Claimed-At`,
 `Abcd-Expires-At`) and abcd's composed `Assisted-by: abcd:<version>` label; a
-release adds `Abcd-Released-At`. The message is at most 4096 bytes, its
-tombstone included, and passes the outbound policy. Nothing touches HEAD, the
+release adds `Abcd-Released-At`. A release that hands the record back to a
+person, which only the implement loop and the drain make, adds
+`Abcd-Handed-Back`, the hand-back's kind, and `Abcd-Record`, the blob id of the
+record on origin's default branch as last fetched (spc-2610161044461448 step 3,
+dcn-2610161040365515). The kind is one of a closed vocabulary: `user-visible`,
+`trust-rule`, `design-finding`, `second-package`, `unachievable` (a lane
+stopped after its fix rounds), `stuck` and `closed`. Neither carries free
+text: the writer refuses any other kind, and a reader reads a tip whose
+hand-back is not one known kind with one full object name, on a release, as
+unreadable. When origin's default branch holds the record in no file, or in
+several, there is no blob to name, and the release pushes a plain tombstone and
+says why. The message is at most 4096 bytes, its tombstone included, measured
+with the longest hand-back kind and a SHA-256 object name, and passes the
+outbound policy. Nothing touches HEAD, the
 index or the working tree, and a failed push leaves no reservation and nothing
 in the checkout. The committed pre-push hook lets a push under the prefix
 through without a preflight receipt only when every commit it moves has the
@@ -101,6 +113,16 @@ its reservation says, and is not reserved again: every act but a release or a
 renewal backs off over it, with a tip or without one, and pushes nothing
 (spc-2610161044461448 step 1); when that branch cannot be read, the act goes on
 and the output says the check was skipped.
+
+A hand-back stands while origin's default branch holds the record at the blob
+its tombstone names: a reservation a drain makes backs off it, naming the kind,
+who handed it back and when, and pushes nothing. A person's own `abcd reserve`
+or `abcd build` is made over it and says so, naming the same three. A change to
+the record on origin's default branch, which is a person's edit, re-admits it.
+A record that branch holds in no file or several, or a branch this checkout
+names none of, is not read as changed, so the hand-back stands; a blob read
+from a default branch the act's fetch could not refresh can only read as
+changed sooner than a fresh one would.
 
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past ten live reservations, counted by username
@@ -141,11 +163,14 @@ Exit 0 when the act reached origin, or a release was already made. Exit 3, the
 back-off, when another person's reservation is live or lapsed under the
 margin, an unreadable one is within its hold, another push won the race, or the
 same person's other copy holds it and no take-over was asked for, or a
-footprint path is in another live reservation's footprint. Exit 2 on the cap
+footprint path is in another live reservation's footprint, or a drain's
+reservation meets a hand-back that stands. Exit 2 on the cap
 and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
-`effective_expiry`, `commit`, `replaced` for a take-over and
-`derived_unchecked` when the default branch could not be read.
+`effective_expiry`, `commit`, `replaced` for a take-over,
+`derived_unchecked` when the default branch could not be read, and
+`handed_back` (`kind`, `holder`, `at`) for a reservation made over a hand-back
+that stands, which the text form prints as a `note:` line.
 
 ## Where this sits
 

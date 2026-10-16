@@ -57,6 +57,14 @@ type Reservation struct {
 	// when this copy first fetched it, its commit date being unreadable.
 	HeldFromFetch bool
 	Commit        string
+	// ReleasedAt is a tombstone's own time.
+	ReleasedAt time.Time
+	// HandedBack is a tombstone's hand-back kind, "" for a plain one, and
+	// RecordChanged is true when origin's default branch as last fetched
+	// holds the record at another blob than the one the tombstone names: a
+	// person has changed it since, so the hand-back no longer stands.
+	HandedBack    string
+	RecordChanged bool
 }
 
 // Snapshot is the reservations as this checkout last fetched them.
@@ -140,9 +148,13 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 	if err != nil {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
-	var finished map[string][]string
+	// The records on origin's default branch as last fetched: a finished one
+	// is released whatever its tip says, and a hand-back's blob is compared
+	// with the one its tombstone names. A view that does not derive reads
+	// neither, so its hand-backs stand.
+	var records map[string][]peers.RecordAt
 	if ref := originDefault(root); derive && ref != "" {
-		if finished, err = peers.FoldersAt(root, ref); err != nil {
+		if records, err = peers.RecordsAt(root, ref); err != nil {
 			return snap, fmt.Errorf("reading %s: %s", gitutil.ShortRef(ref), redacted(err))
 		}
 	}
@@ -160,7 +172,11 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 		if !ok {
 			continue
 		}
-		snap.Reservations = append(snap.Reservations, listed(t, id, terminal(finished, id), own, now))
+		r := listed(t, id, terminal(records[id], id), own, now)
+		if r.HandedBack != "" {
+			r.RecordChanged = changedSince(t.RecordBlob, blobOf(records[id]))
+		}
+		snap.Reservations = append(snap.Reservations, r)
 	}
 	return snap, nil
 }
@@ -180,6 +196,7 @@ func listed(t tip, id string, derived bool, own string, now time.Time) Reservati
 		switch {
 		case t.message.released():
 			r.State, r.ReleasedBy = StateReleased, ReleasedByTombstone
+			r.ReleasedAt, r.HandedBack = t.ReleasedAt, t.HandedBack
 		case v.Live:
 			r.State = StateLive
 		default:
@@ -190,17 +207,6 @@ func listed(t tip, id string, derived bool, own string, now time.Time) Reservati
 		r.State, r.ReleasedBy = StateReleased, ReleasedByDefaultBranch
 	}
 	return r
-}
-
-// terminal reports whether id sits in a terminal folder in finished, the
-// default branch's record folders.
-func terminal(finished map[string][]string, id string) bool {
-	for _, f := range finished[id] {
-		if slices.Contains(terminalFolders[id[:3]], f) {
-			return true
-		}
-	}
-	return false
 }
 
 // lastFetched is the time this checkout's last fetch of ns stamped; zero when

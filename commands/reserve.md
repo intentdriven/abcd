@@ -151,6 +151,16 @@ its reservation says, and is not reserved again: a reservation or take-over of
 it backs off (exit 3) saying it is finished on origin's default branch, with a
 tip or without one, and pushes nothing.
 
+**Over a hand-back.** A drain that hands an issue back to a person releases
+its reservation with a tombstone naming the hand-back's kind (one of
+`user-visible`, `trust-rule`, `design-finding`, `second-package`,
+`unachievable`, `stuck`, `closed`) and the blob id of the issue's record on
+origin's default branch. Every drain backs off that issue until a person
+changes the record there. Your own reservation over it is made, and the
+result says whose hand-back it was made over, of which kind and when
+(`  note: ...` in the text form, `handed_back` in `--json`): read the record's
+hand-back before you start, since it names a decision that is a person's.
+
 **Reopening a record.** The back-off reads origin's default branch alone, so a
 record being reopened on a branch (moved from `resolved/` or `wontfix/` back to
 `open/`, or an intent from `shipped/` or `superseded/`) still backs off, and no
