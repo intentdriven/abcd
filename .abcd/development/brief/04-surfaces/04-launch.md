@@ -489,16 +489,23 @@ The version is derived from the impact the shipped records declare, and the
 tier and its reason are recorded so every published version is traceable to
 *why* it bumped.
 
-| Tier | Trigger |
-|---|---|
-| **Major** | Any shipped intent since the last release carries `impact: breaking`. |
-| **Minor** | No breaking, at least one `impact: additive`. |
-| **Patch** | Only `impact: fix` intents, or a release with no intent-tied change. |
+| Strongest impact in the cut | From `1.0.0` | Before `1.0.0` (`0.y.z`) |
+|---|---|---|
+| `breaking` | **Major** | **Minor** |
+| `additive` | **Minor** | **Patch** |
+| `fix` | **Patch** | **Patch** |
+| `internal`, or no record at all | no release (`empty-cut`) | no release (`empty-cut`) |
 
 Every intent carries an impact, set when the intent is shaped and enforced by
-the record lint (adr-31). At release, the cut gathers the intents shipped since
-the previous release and takes the highest-severity impact. A change not tied to
-any intent falls back to conventional-commit derivation.
+the record lint (adr-31). At release, the cut gathers the records that entered
+or left `intents/shipped/` and `issues/resolved/` since the previous release tag
+(`internal/core/changelog/shipped.go`), takes the highest-severity impact among
+them (`internal/core/changelog/impact.go`), and applies the table above
+(`DeriveNext`, `internal/core/changelog/version.go`). The records' declared
+impact is the only input: nothing derives a version from commit messages. A cut
+whose strongest impact is `internal`, or that holds no record, derives no
+version and is refused as `empty-cut` (`internal/core/release/emit.go`). No set
+of records derives `1.0.0` from a `0.y.z` base.
 
 ### Refusal kinds
 
