@@ -73,7 +73,7 @@ func (f *fixture) wantStoresSkipped(n int) {
 // made under the repository's own root is still skipped unread.
 func TestPeersSkipsEmbargoStoreWhicheverRootGitListsFirst(t *testing.T) {
 	f := newFixture(t)
-	store, ok := storepath.Path(f.home, f.here())
+	store, ok := storepath.PathForTest(f.home, f.here())
 	if !ok {
 		t.Fatal("the fixture repository has no root commit to key the embargo store on")
 	}
@@ -87,7 +87,7 @@ func TestPeersSkipsEmbargoStoreWhicheverRootGitListsFirst(t *testing.T) {
 // the listing skips both unread.
 func TestPeersSkipsEveryEmbargoStoreUnderTwoRoots(t *testing.T) {
 	f := newFixture(t)
-	first, ok := storepath.Path(f.home, f.here())
+	first, ok := storepath.PathForTest(f.home, f.here())
 	if !ok {
 		t.Fatal("the fixture repository has no root commit to key the embargo store on")
 	}

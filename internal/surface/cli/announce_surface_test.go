@@ -142,7 +142,7 @@ func TestAnnounceIsHeldToTheEmbargoStore(t *testing.T) {
 	t.Run("a store that cannot be checked", func(t *testing.T) {
 		w := newReserveWorld(t)
 		p := w.clone(t, "p", octoMail)
-		store, ok := storepath.Path(w.home, p)
+		store, ok := storepath.PathForTest(w.home, p)
 		if !ok {
 			t.Fatal("the fixture has no root commit to key the store on")
 		}

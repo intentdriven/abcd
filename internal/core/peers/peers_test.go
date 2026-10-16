@@ -554,7 +554,7 @@ func TestAGoneWorktreeOnAMergedBranchIsCountedOnce(t *testing.T) {
 // location or the count.
 func TestPeersSkipsEmbargoStore(t *testing.T) {
 	f := newFixture(t)
-	store, ok := storepath.Path(f.home, f.here())
+	store, ok := storepath.PathForTest(f.home, f.here())
 	if !ok {
 		t.Fatal("the fixture repository has no root commit to key the embargo store on")
 	}
