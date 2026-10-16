@@ -180,6 +180,32 @@ func CloneBare(t *testing.T, src, path string) {
 	disableMaintenance(t, env, path)
 }
 
+// PushEmptyTreeCommit writes a commit of the empty tree carrying msg in the
+// clone at dir and pushes it to ref on the clone's origin with no hook in the
+// way: the shape a hand-made branch tip arrives in, a reservation among them.
+// It returns the commit's name.
+func PushEmptyTreeCommit(t *testing.T, dir, ref, msg string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(path, []byte(msg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = Env(t)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	tree := git("hash-object", "-w", "-t", "tree", os.DevNull)
+	sha := git("-c", "user.name=abcd test", "-c", "user.email=test@example.invalid", "commit-tree", tree, "-F", path)
+	git("-c", "core.hooksPath=/dev/null", "push", "-q", "origin", sha+":"+ref)
+	return sha
+}
+
 // MergeParentlessRoots merges n new parentless commits into the current
 // branch with an empty diff, in one n-way merge commit, so the branch's
 // history holds n more root commits than it did. The commits are written
