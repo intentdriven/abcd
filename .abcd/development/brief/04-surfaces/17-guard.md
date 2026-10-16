@@ -416,8 +416,12 @@ grants without a prompt) write without asking the approver, so the protected
 paths bound only the shell's writes; a script the line runs writes unread, and
 a command that writes into a directory is judged by that directory, not by the
 files that land inside it; and the abcd binary that answers the prompts is not
-among the paths it protects. Bounding all of those is the OS sandbox for
-launched agents (spc-2610161751056096), not the approver. <!-- record-lint: forward-looking -->
+among the paths it protects. The registry's agent-launch entries recognise a
+harness by its program name, by the package that ships it and behind the
+launchers the registry steps, so a harness started under another name, a copied
+or linked binary run by that name, is not recognisable at this layer
+(iss-2610162027075062). Bounding all of those is the OS sandbox for launched
+agents (spc-2610161751056096), not the approver. <!-- record-lint: forward-looking -->
 
 What this widens, plainly: on such a launch, a shell command the harness would
 have refused for want of a person, such as a compound line its parser cannot

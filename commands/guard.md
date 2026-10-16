@@ -734,7 +734,11 @@ name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
 its environment, so a line that sets `OPENCODE_PERMISSION` for the opencode it
 starts — as an assignment before it, through `env`, or with an `export` earlier
 in the line — is a **block** too (`agent-launch-opencode-permission-env`), and
-one that starts opencode without setting it is not.
+one that starts opencode without setting it is not. A harness started under
+another name, a copied or linked binary run by that name, is not recognisable
+as a harness at this layer; the OS sandbox for launched agents
+(spc-2610161751056096) is what bounds what such a run can reach
+(iss-2610162027075062). <!-- record-lint: forward-looking -->
 
 A recursive delete of the filesystem root or the home directory (`/`, `/*`,
 `~`, `$HOME`, `${HOME}`, each also with a trailing `/`, `/*` or `/*/`, and the
