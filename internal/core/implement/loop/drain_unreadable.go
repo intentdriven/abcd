@@ -139,16 +139,42 @@ func accountName(uid uint32) string {
 // history included, with each ' written '\”. A path outside HOME is
 // single-quoted whole. fsutil.DisplayPath is for prose: outside HOME it is a
 // folder name, which no command can act on.
+//
+// HOME is "$HOME" only as the path's leading prefix, the whole path or its
+// directory, in its own spelling or its symlink-resolved one: HOME met
+// anywhere else in the path is the path's own bytes, and fsutil.RedactHome,
+// which redacts it wherever it starts a path in a message, would print a
+// different path there.
 func commandPath(p string) string {
-	shown := fsutil.RedactHome(p)
-	if shown == "~" {
-		return `"$HOME"`
-	}
 	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
-	if rest, ok := strings.CutPrefix(shown, "~/"); ok {
-		return `"$HOME"` + quote("/"+rest)
+	for _, h := range homeSpellings() {
+		if p == h {
+			return `"$HOME"`
+		}
+		if rest, ok := strings.CutPrefix(p, h+"/"); ok {
+			return `"$HOME"` + quote("/"+rest)
+		}
 	}
-	return quote(shown)
+	return quote(p)
+}
+
+// homeSpellings is HOME, cleaned, and its symlink-resolved spelling when that
+// differs: the two fsutil.RedactHome redacts. It is none when HOME cannot be
+// read, is relative, or is the root, which prefixes every absolute path.
+func homeSpellings() []string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
+	}
+	home = filepath.Clean(home)
+	if len(home) <= 1 || !filepath.IsAbs(home) {
+		return nil
+	}
+	spellings := []string{home}
+	if real, err := filepath.EvalSymlinks(home); err == nil && real != home && len(real) > 1 {
+		spellings = append(spellings, real)
+	}
+	return spellings
 }
 
 // notReadShown is p's not-read reason with no absolute local path in it: the

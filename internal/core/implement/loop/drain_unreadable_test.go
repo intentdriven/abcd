@@ -254,8 +254,10 @@ func TestAWorktreeOutsideHomeIsNamedByAPathAShellTakes(t *testing.T) {
 // to "$HOME", the one part in double quotes, which a shell expands where it
 // would not expand ~; the rest is in single quotes, inside which no shell
 // expands anything, `!` included, with each ' written '\”; outside HOME the
-// path is single-quoted whole, the path itself and never its folder name. Each
-// form, read back by sh, is the path.
+// path is single-quoted whole, the path itself and never its folder name. HOME
+// is "$HOME" only where it starts the path: met mid-path, a second time, or
+// after a newline, it is single-quoted with the rest. Each form, read back by
+// sh, is the path.
 func TestACommandPathIsOneAShellTakes(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -269,6 +271,13 @@ func TestACommandPathIsOneAShellTakes(t *testing.T) {
 		"/srv/wt!1":                         `'/srv/wt!1'`,
 		"/srv/it's":                         `'/srv/it'\''s'`,
 		"/srv/w\"t/$x`y\\z":                 "'/srv/w\"t/$x`y\\z'",
+		// HOME is "$HOME" only as the path's leading prefix: met anywhere
+		// else, it is the path's own bytes, single-quoted with the rest.
+		"/srv/a " + home + "/wt":   "'/srv/a " + home + "/wt'",
+		home + "/a " + home + "/b": `"$HOME"'/a ` + home + `/b'`,
+		home + "/":                 `"$HOME"'/'`,
+		home + "/a\nb":             "\"$HOME\"'/a\nb'",
+		"/srv/x\n" + home + "/y":   "'/srv/x\n" + home + "/y'",
 	}
 	for in, want := range cases {
 		got := commandPath(in)
