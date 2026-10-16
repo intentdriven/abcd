@@ -4104,7 +4104,9 @@ asked it first, as repository setup asks it.
 
 --relay-origin names the deployed relay's https origin, once Render has given it
 one; the verb then also writes .abcd/relay/relays.json, naming it as the relay
-this repository trusts, which the session page reads from the repository.
+this repository trusts, which the session page reads from the repository, and
+prints the callback URL the team's GitHub App must list for the relay's sign-in:
+the relay's origin followed by /auth/callback.
 
 --release names the release to pin; it defaults to this abcd's own version when
 that is a release. A file left exactly as abcd wrote it is replaced; one that was
@@ -4173,10 +4175,11 @@ comma list of either. Nobody signs in against, or hosts, any other. Listening
 beyond this computer it refuses to start without one; on loopback it serves this
 checkout's origin repository, or any repository outside a GitHub checkout.
 
-It serves the session WebSocket at /session, the sign-in at /auth/token, the
-GitHub App's public client id at /config and a health check at /healthz. It
-admits a browser only from https://abcdesign.app or a loopback page, or, when
---origin is given, from exactly the origins it names, and otherwise, when
+It serves the session WebSocket at /session, the sign-in's callback at
+/auth/callback (the callback URL the team's GitHub App lists) and its exchange
+at /auth/token, the GitHub App's public client id at /config and a health check
+at /healthz. It admits a browser only from https://abcdesign.app or a loopback
+page, or, when --origin is given, from exactly the origins it names, and otherwise, when
 ABCD_SESSION_ORIGINS is set, from exactly the origins that comma list names.
 Sign-in goes through the team's GitHub App only, and nobody pastes a token: the
 relay takes only a GitHub App user access token. Its client id is read from
@@ -4227,7 +4230,9 @@ page, which a manifest cannot do; for the cloud only, leaving it off. For the
 cloud it writes the relay's blueprint (as abcd session blueprint does) and gives
 Render's Deploy button, whose form asks for the client secret, which the person
 generates on the app's settings page and pastes straight in. --relay-origin
-records the deployed relay's address in .abcd/relay/relays.json.
+records the deployed relay's address in .abcd/relay/relays.json and names the
+callback URL the app must list, the relay's origin followed by /auth/callback;
+given before the app is created, the manifest sets it.
 
 It asks api.github.com whether the owner is an organisation, and converts the
 app GitHub created; for the cloud it reads the release's checksums. It waits up

@@ -194,6 +194,9 @@ type BlueprintResult struct {
 	// does only from the root; DeployURL is then the button's link.
 	DeployButton bool   `json:"deploy_button"`
 	DeployURL    string `json:"deploy_url,omitempty"`
+	// Callback is the callback URL the team's GitHub App must list for the
+	// relay's web sign-in, given a relay origin: RelayCallbackURL.
+	Callback string `json:"callback_url,omitempty"`
 }
 
 // BlueprintRefusal is the refusal to overwrite a file someone edited, or one
@@ -528,6 +531,9 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 			}
 		}
 		res.Files = append(res.Files, BlueprintFile{Path: rel, State: state})
+	}
+	if relayOrigin != "" {
+		res.Callback = RelayCallbackURL(relayOrigin)
 	}
 	return res, nil
 }

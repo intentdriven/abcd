@@ -1,13 +1,19 @@
 // Package session is the brief session relay's front door
 // (itd-2610091016262335, spc-2610141709430146 step 1): the HTTP handler
-// `abcd session serve` listens with. It serves four routes and nothing else:
+// `abcd session serve` listens with. It serves these routes and nothing else:
 //
 //   - /session, the WebSocket every participant's page holds, handed frame by
 //     frame to the transport-agnostic relay in internal/core/session;
+//   - /auth/callback, the web sign-in's callback the team's GitHub App
+//     registers: GitHub returns the person here, and the relay sends them on
+//     to the session page, naming itself (callback.go);
 //   - /auth/token, the sign-in exchange: the page posts GitHub's code and its
 //     PKCE verifier, and the relay adds the sign-in app's secret and asks
 //     GitHub for the token (the token-mediating backend of the IETF's
-//     browser-based-apps guidance);
+//     browser-based-apps guidance), for a code given for its own callback
+//     alone;
+//   - /auth/device, /auth/device/token and /auth/device/cancel, the device
+//     sign-in of a local session (device.go);
 //   - /config, the sign-in app's public client id: always a GitHub App's;
 //   - /healthz, for the host's health check.
 //
@@ -289,6 +295,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveSession(w, r)
 	case "/auth/token":
 		s.serveToken(w, r)
+	case CallbackPath:
+		s.serveCallback(w, r)
 	case "/auth/device":
 		s.serveDeviceStart(w, r)
 	case "/auth/device/token":
@@ -827,21 +835,20 @@ func (s *Server) serveToken(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad-request"})
 		return
 	}
-	if req.RedirectURI != "" {
-		u, err := url.Parse(req.RedirectURI)
-		if err != nil || !u.IsAbs() || !s.originAllowed(u.Scheme+"://"+u.Host) || u.User != nil {
-			writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad-redirect"})
-			return
-		}
+	// Only a code GitHub gave for this relay's own callback is exchanged:
+	// GitHub sends a code only to a callback the team's app registers, so a
+	// code reaches the relay the person was returned to, and no other relay
+	// can pass one on here (callback.go).
+	if req.RedirectURI != callbackURL(r) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad-redirect"})
+		return
 	}
 	form := url.Values{
 		"client_id":     {s.cfg.ClientID},
 		"client_secret": {s.cfg.ClientSecret},
 		"code":          {req.Code},
 		"code_verifier": {req.CodeVerifier},
-	}
-	if req.RedirectURI != "" {
-		form.Set("redirect_uri", req.RedirectURI)
+		"redirect_uri":  {req.RedirectURI},
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), githubTimeout)
 	defer cancel()

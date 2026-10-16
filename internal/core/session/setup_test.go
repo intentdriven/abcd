@@ -12,15 +12,20 @@ import (
 // 6): the team's own GitHub App, from a manifest.
 
 func TestAppManifestPrefillsTheTeamsApp(t *testing.T) {
+	// The cloud's web sign-in returns to the relay's own callback, so the
+	// manifest names it only once the relay's address is known; a local
+	// session signs in by the device flow and needs none.
 	for _, c := range []struct {
-		where     string
-		callbacks []string
+		where, relay string
+		callbacks    []string
 	}{
-		{"local", nil},
-		{"cloud", []string{"https://abcdesign.app/acme/brief/brief/"}},
-		{"both", []string{"https://abcdesign.app/acme/brief/brief/"}},
+		{"local", "", nil},
+		{"local", "https://brief-relay.onrender.com", nil},
+		{"cloud", "", nil},
+		{"cloud", "https://brief-relay.onrender.com", []string{"https://brief-relay.onrender.com/auth/callback"}},
+		{"both", "https://brief-relay.onrender.com", []string{"https://brief-relay.onrender.com/auth/callback"}},
 	} {
-		m, err := NewAppManifest("acme/brief", c.where, "http://127.0.0.1:4321/created")
+		m, err := NewAppManifest("acme/brief", c.where, "http://127.0.0.1:4321/created", c.relay)
 		if err != nil {
 			t.Fatalf("%s: %v", c.where, err)
 		}
@@ -51,15 +56,37 @@ func TestAppManifestPrefillsTheTeamsApp(t *testing.T) {
 			t.Errorf("%s: name %q is not a GitHub App name", c.where, name)
 		}
 	}
-	if _, err := NewAppManifest("acme/brief", "anywhere", "http://127.0.0.1:1/created"); err == nil {
+	if _, err := NewAppManifest("acme/brief", "anywhere", "http://127.0.0.1:1/created", ""); err == nil {
 		t.Error("an unknown where was accepted")
 	}
-	if _, err := NewAppManifest("acme", "local", "http://127.0.0.1:1/created"); err == nil {
+	if _, err := NewAppManifest("acme", "local", "http://127.0.0.1:1/created", ""); err == nil {
 		t.Error("a repository without a name was accepted")
 	}
-	m, _ := NewAppManifest("a-very-long-organisation-name/an-even-longer-repository-name", "local", "http://127.0.0.1:1/created")
+	m, _ := NewAppManifest("a-very-long-organisation-name/an-even-longer-repository-name", "local", "http://127.0.0.1:1/created", "")
 	if len(m.Name) > 34 {
 		t.Errorf("name %q is longer than GitHub allows", m.Name)
+	}
+}
+
+// The callback is the relay's own: its origin and /auth/callback, the path
+// the relay answers GitHub's return on. A relay address that is not an https
+// origin names none.
+func TestTheCallbackIsTheRelays(t *testing.T) {
+	for in, want := range map[string]string{
+		"https://brief-relay.onrender.com":      "https://brief-relay.onrender.com/auth/callback",
+		"https://Brief-Relay.onrender.com/":     "https://brief-relay.onrender.com/auth/callback",
+		"https://relay.example.org:8443":        "https://relay.example.org:8443/auth/callback",
+		"http://brief-relay.onrender.com":       "",
+		"https://brief-relay.onrender.com/x":    "",
+		"https://brief-relay.onrender.com/?a=1": "",
+		"":                                      "",
+	} {
+		if got := RelayCallbackURL(in); got != want {
+			t.Errorf("RelayCallbackURL(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if _, err := NewAppManifest("acme/brief", "cloud", "http://127.0.0.1:1/created", "http://insecure.example"); err == nil {
+		t.Error("a relay address that is not an https origin was taken for the callback")
 	}
 }
 

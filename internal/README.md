@@ -356,7 +356,8 @@ plugin surface, and a future MCP server share one engine.
   `textwidth`.
 - **`surface/session/`** — the relay's HTTP front door, behind `abcd session
   serve`: the WebSocket at `/session` speaking `core/session`'s messages, the
-  sign-in exchange at `/auth/token` that adds the team's secret, `/config`,
+  web sign-in's callback at `/auth/callback` and its exchange at
+  `/auth/token` that adds the team's secret, `/config`,
   `/healthz`, and the origin and forwarded-address checks.
 - **`surface/session/web/`** — the static session page `abcd session page
   --out` writes, embedded in the binary: the HTML, the page script, the

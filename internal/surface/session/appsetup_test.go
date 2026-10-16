@@ -50,7 +50,7 @@ func fakeManifestGitHub(t *testing.T) (*httptest.Server, *[]string) {
 
 func newAppSetup(t *testing.T, api string) (*AppSetup, net.Listener) {
 	t.Helper()
-	m, err := coresession.NewAppManifest("acme/brief", "both", "")
+	m, err := coresession.NewAppManifest("acme/brief", "both", "", "https://brief-relay.onrender.com")
 	if err != nil {
 		t.Fatal(err)
 	}

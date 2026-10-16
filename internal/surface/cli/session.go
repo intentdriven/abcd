@@ -333,10 +333,11 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"comma list of either. Nobody signs in against, or hosts, any other. Listening\n" +
 			"beyond this computer it refuses to start without one; on loopback it serves this\n" +
 			"checkout's origin repository, or any repository outside a GitHub checkout.\n\n" +
-			"It serves the session WebSocket at /session, the sign-in at /auth/token, the\n" +
-			"GitHub App's public client id at /config and a health check at /healthz. It\n" +
-			"admits a browser only from https://abcdesign.app or a loopback page, or, when\n" +
-			"--origin is given, from exactly the origins it names, and otherwise, when\n" +
+			"It serves the session WebSocket at /session, the sign-in's callback at\n" +
+			"/auth/callback (the callback URL the team's GitHub App lists) and its exchange\n" +
+			"at /auth/token, the GitHub App's public client id at /config and a health check\n" +
+			"at /healthz. It admits a browser only from https://abcdesign.app or a loopback\n" +
+			"page, or, when --origin is given, from exactly the origins it names, and otherwise, when\n" +
 			sessionOriginsEnv + " is set, from exactly the origins that comma list names.\n" +
 			"Sign-in goes through the team's GitHub App only, and nobody pastes a token: the\n" +
 			"relay takes only a GitHub App user access token. Its client id is read from\n" +
@@ -468,7 +469,9 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 			"asked it first, as repository setup asks it.\n\n" +
 			"--relay-origin names the deployed relay's https origin, once Render has given it\n" +
 			"one; the verb then also writes .abcd/relay/relays.json, naming it as the relay\n" +
-			"this repository trusts, which the session page reads from the repository.\n\n" +
+			"this repository trusts, which the session page reads from the repository, and\n" +
+			"prints the callback URL the team's GitHub App must list for the relay's sign-in:\n" +
+			"the relay's origin followed by " + coresession.RelayCallbackPath + ".\n\n" +
 			"--release names the release to pin; it defaults to this abcd's own version when\n" +
 			"that is a release. A file left exactly as abcd wrote it is replaced; one that was\n" +
 			"edited, or that abcd did not write, is never overwritten, and nothing is written.\n\n" +
@@ -542,6 +545,9 @@ func newSessionBlueprintCommand(asJSON *bool) *cobra.Command {
 				fmt.Fprintf(w, "  serves: %s (%s in render.yaml)\n", termsafe.Sanitize(strings.Join(res.Repos, ", ")), sessionReposEnv)
 				fmt.Fprintf(w, "  admits pages from: %s (%s in render.yaml)\n", termsafe.Sanitize(strings.Join(res.Origins, ", ")), sessionOriginsEnv)
 				fmt.Fprintf(w, "  from: %s\n", termsafe.Sanitize(res.Source))
+				if res.Callback != "" {
+					fmt.Fprintf(w, "  callback: list %s as a Callback URL on the team's GitHub App (its settings page, under Identifying and authorizing users), with wildcard matching off\n", termsafe.Sanitize(res.Callback))
+				}
 				for _, line := range blueprintNext(res) {
 					fmt.Fprintf(w, "  %s\n", line)
 				}
@@ -679,6 +685,7 @@ type sessionSetupResult struct {
 	AppInstall  string                       `json:"app_install,omitempty"`
 	Blueprint   *coresession.BlueprintResult `json:"blueprint,omitempty"`
 	RelayOrigin string                       `json:"relay_origin,omitempty"`
+	Callback    string                       `json:"callback_url,omitempty"`
 	Steps       []string                     `json:"steps"`
 }
 
@@ -704,7 +711,9 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 			"cloud it writes the relay's blueprint (as abcd session blueprint does) and gives\n" +
 			"Render's Deploy button, whose form asks for the client secret, which the person\n" +
 			"generates on the app's settings page and pastes straight in. --relay-origin\n" +
-			"records the deployed relay's address in .abcd/relay/relays.json.\n\n" +
+			"records the deployed relay's address in .abcd/relay/relays.json and names the\n" +
+			"callback URL the app must list, the relay's origin followed by " + coresession.RelayCallbackPath + ";\n" +
+			"given before the app is created, the manifest sets it.\n\n" +
 			"It asks api.github.com whether the owner is an organisation, and converts the\n" +
 			"app GitHub created; for the cloud it reads the release's checksums. It waits up\n" +
 			"to an hour for the app to be created. Where sessions may run is recorded once\n" +
@@ -799,7 +808,7 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 				if oerr != nil {
 					return refuse("could not ask GitHub whether " + owner + " is an organisation, which decides where its app is registered: " + oerr.Error())
 				}
-				manifest, merr := coresession.NewAppManifest(repo, chosen, "")
+				manifest, merr := coresession.NewAppManifest(repo, chosen, "", relayOrigin)
 				if merr != nil {
 					return refuse(merr.Error())
 				}
@@ -853,13 +862,6 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 				res.Steps = append(res.Steps, "Install the app on "+repo+": open "+res.AppInstall+", choose Only select repositories, pick "+repo+", and click Install.")
 			} else {
 				res.Steps = append(res.Steps, "The team's sign-in app is already recorded (client id "+res.ClientID+"); check on GitHub that it is installed on "+repo+".")
-				// An app recorded before, perhaps for local sessions alone,
-				// may lack the callback the manifest sets for the cloud.
-				if coresession.AllowsCloud(chosen) {
-					res.Steps = append(res.Steps, "Make sure the cloud's sign-in can return to the session page: on "+settings+
-						", under Identifying and authorizing users, add "+coresession.PageCallbackURL(repo)+
-						" as a Callback URL if it is not listed, and click Save changes.")
-				}
 			}
 			if coresession.AllowsLocal(chosen) {
 				res.Steps = append(res.Steps, "Switch on the app's device flow, which local sessions sign in with: open "+settings+
@@ -877,7 +879,15 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 				}
 				res.Blueprint, res.RelayOrigin = &bp, relayOrigin
 				if relayOrigin != "" {
-					res.Steps = append(res.Steps, "Recorded the relay's address in .abcd/relay/"+coresession.RelaysFile+": commit and push it, and the session page finds the relay itself.")
+					// The cloud's sign-in returns to the relay's own callback,
+					// which the app must list: GitHub sends a sign-in only to a
+					// callback the app lists. A manifest sets it for an app
+					// created now; one recorded before may lack it, and either
+					// may have wildcard matching on.
+					res.Callback = coresession.RelayCallbackURL(relayOrigin)
+					res.Steps = append(res.Steps, "Recorded the relay's address in .abcd/relay/"+coresession.RelaysFile+": commit and push it, and the session page finds the relay itself.",
+						"Make sure the team's sign-in returns to the relay: on "+settings+", under Identifying and authorizing users, list "+res.Callback+
+							" as a Callback URL, with wildcard matching off, and click Save changes. GitHub sends a sign-in only to a callback the app lists, which ties every sign-in to this relay.")
 				} else {
 					if bp.DeployButton {
 						res.Steps = append(res.Steps, "Commit and push "+bp.BlueprintPath+" and .abcd/relay/, then deploy the relay with Render's Deploy button: "+bp.DeployURL+
@@ -888,7 +898,9 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 					}
 					res.Steps = append(res.Steps, "Render's form asks for "+sessionSecretEnv+": on "+settings+
 						", under Client secrets, click Generate a new client secret and paste it straight into that field. abcd never sees it, and GitHub shows it only once.",
-						"Once Render shows the relay's address, record it: abcd session setup --relay-origin https://<your relay>.onrender.com")
+						"Once Render shows the relay's address, record it: abcd session setup --relay-origin https://<your relay>.onrender.com",
+						"Then list the relay's callback, https://<your relay>.onrender.com"+coresession.RelayCallbackPath+", as a Callback URL on "+settings+
+							", under Identifying and authorizing users, with wildcard matching off; setup with --relay-origin names it exactly. Until it is listed, GitHub sign-in on the relay does not work.")
 				}
 			}
 			if coresession.AllowsLocal(chosen) {

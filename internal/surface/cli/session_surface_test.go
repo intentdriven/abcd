@@ -587,6 +587,10 @@ func TestSessionBlueprintWritesTheRelayOrigin(t *testing.T) {
 	if !strings.Contains(out, ".abcd/relay/relays.json") {
 		t.Errorf("output does not name relays.json:\n%s", out)
 	}
+	// The exact callback the team's app must list for the relay's sign-in.
+	if !strings.Contains(out, "https://relay.example.org/auth/callback") || !strings.Contains(out, "Callback URL") {
+		t.Errorf("output does not name the relay's callback to add:\n%s", out)
+	}
 	data, err := os.ReadFile(filepath.Join(repo, ".abcd", "relay", "relays.json"))
 	if err != nil || !strings.Contains(string(data), `"https://relay.example.org"`) {
 		t.Fatalf("relays.json: %v\n%s", err, data)

@@ -277,6 +277,9 @@ func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
 	if len(res.Files) != 2 {
 		t.Fatalf("without a relay origin: %+v", res.Files)
 	}
+	if res.Callback != "" {
+		t.Errorf("without a relay origin the blueprint names callback %q", res.Callback)
+	}
 	if _, err := os.Stat(filepath.Join(root, ".abcd", "relay", "relays.json")); err == nil {
 		t.Fatal("relays.json was written without a relay origin")
 	}
@@ -287,6 +290,10 @@ func TestBlueprintNamesThePageOriginsAndTheRelayOrigin(t *testing.T) {
 	}
 	if len(res.Files) != 3 || res.Files[2].Path != ".abcd/relay/relays.json" || res.Files[2].State != "written" {
 		t.Fatalf("with a relay origin: %+v", res.Files)
+	}
+	// The callback the team's app must list is the relay's own.
+	if res.Callback != "https://relay.example.org/auth/callback" {
+		t.Errorf("callback = %q, want the relay's own", res.Callback)
 	}
 	data, err := os.ReadFile(filepath.Join(root, ".abcd", "relay", "relays.json"))
 	if err != nil {

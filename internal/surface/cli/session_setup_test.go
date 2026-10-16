@@ -174,6 +174,10 @@ func TestSessionSetupCloudOffersTheDeployButton(t *testing.T) {
 	if err != nil || !strings.Contains(string(relays), "https://abcd-relay.onrender.com") {
 		t.Fatalf("relays.json (%v):\n%s", err, relays)
 	}
+	// The relay's address known, setup names its callback exactly.
+	if !strings.Contains(string(out), "https://abcd-relay.onrender.com/auth/callback") {
+		t.Errorf("--relay-origin: output does not name the relay's callback:\n%s", out)
+	}
 }
 
 func TestSessionSetupRefusals(t *testing.T) {
@@ -224,10 +228,12 @@ func TestSessionSetupChecksTheReleaseBeforeCreatingTheApp(t *testing.T) {
 	}
 }
 
-// TestSessionSetupWithARecordedAppNamesTheCallbackForTheCloud: an app
-// recorded earlier, perhaps for local sessions alone, has no callback for the
-// session page. When the cloud is allowed, setup says to add the one the
-// manifest would have set, on the app's settings page.
+// TestSessionSetupWithARecordedAppNamesTheCallbackForTheCloud: the cloud's
+// web sign-in returns to the relay's own callback, which the team's app must
+// list. With the relay's address, setup names the exact callback to add on
+// the app's settings page; before it, it says the callback is the relay's
+// address with /auth/callback, to add once Render shows it. The session
+// page's own address is never the callback.
 func TestSessionSetupWithARecordedAppNamesTheCallbackForTheCloud(t *testing.T) {
 	repo := managedSessionRepo(t)
 	sessionConfig(t, repo, `{"meta": {"schema_version": 1}}`)
@@ -240,22 +246,37 @@ func TestSessionSetupWithARecordedAppNamesTheCallbackForTheCloud(t *testing.T) {
 	swapSessionRelease(t)
 	asked, done := fakeManifestAPI(t)
 	defer done()
-	const callback = "https://abcdesign.app/acme/brief/brief/"
+	const callback = "https://brief-relay.onrender.com/auth/callback"
+	const page = "https://abcdesign.app/acme/brief/brief/"
 	for _, where := range []string{"cloud", "both"} {
-		out, err := runCLIStdinErr(t, "", "session", "setup", "--where", where, "--release", "v0.17.1")
+		out, err := runCLIStdinErr(t, "", "session", "setup", "--where", where, "--release", "v0.17.1", "--relay-origin", "https://brief-relay.onrender.com")
 		if err != nil {
 			t.Fatalf("%s: %v\n%s", where, err, out)
 		}
 		text := string(out)
-		if !strings.Contains(text, "already recorded") || !strings.Contains(text, callback) || !strings.Contains(text, "Callback URL") {
+		if !strings.Contains(text, "already recorded") || !strings.Contains(text, callback) || !strings.Contains(text, "Callback URL") || strings.Contains(text, page) {
 			t.Errorf("%s: output does not name the callback URL %s to add:\n%s", where, callback, text)
 		}
+		if !strings.Contains(text, "wildcard") {
+			t.Errorf("%s: output does not say to leave wildcard matching off:\n%s", where, text)
+		}
 	}
-	out, err := runCLIStdinErr(t, "", "session", "setup", "--where", "local")
+	// Before the relay is deployed, the callback is named by its shape.
+	if err := os.Remove(filepath.Join(repo, ".abcd", "relay", "relays.json")); err != nil {
+		t.Fatal(err)
+	}
+	out, err := runCLIStdinErr(t, "", "session", "setup", "--where", "cloud", "--release", "v0.17.1")
+	if err != nil {
+		t.Fatalf("cloud, no relay yet: %v\n%s", err, out)
+	}
+	if text := string(out); !strings.Contains(text, "https://<your relay>.onrender.com/auth/callback") || strings.Contains(text, page) {
+		t.Errorf("cloud, no relay yet: output does not say the callback is the relay's:\n%s", text)
+	}
+	out, err = runCLIStdinErr(t, "", "session", "setup", "--where", "local")
 	if err != nil {
 		t.Fatalf("local: %v\n%s", err, out)
 	}
-	if strings.Contains(string(out), callback) {
+	if strings.Contains(string(out), "/auth/callback") || strings.Contains(string(out), "Callback URL") {
 		t.Errorf("a local-only setup names a callback URL:\n%s", out)
 	}
 	if len(*asked) != 0 {

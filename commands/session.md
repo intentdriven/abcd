@@ -67,15 +67,13 @@ the answer is recorded once the app is.
    owns no shared app. `setup` prints an address on this computer whose page
    opens GitHub's new-app page with the app filled in from a manifest:
    Contents and Pull requests read and write, Metadata read, no webhook, not
-   public, and, for the cloud, the session page as its callback. The person
+   public, and, for the cloud with `--relay-origin` already given, the
+   relay's own callback (`https://<relay>/auth/callback`). The person
    checks the name and clicks Create GitHub App. GitHub sends the browser
    back, and `setup` keeps only the app's public client id, in
    `.abcd/relay/github-app.json`. The client secret, the webhook secret and
    the private key GitHub hands back are never written or shown. An app
-   already recorded is kept, and nothing is created twice; where the cloud is
-   allowed, `setup` then names the session page's callback URL to add on the
-   app's settings page, the one the manifest would have set, since an app
-   recorded for local sessions alone has none.
+   already recorded is kept, and nothing is created twice.
 2. **Installing it** on the repository, on the page `setup` names.
 3. **Enable Device Flow.** A manifest cannot tick it. For Local or Both,
    `setup` names the app's settings page and says to tick Enable Device Flow
@@ -89,13 +87,21 @@ the answer is recorded once the app is.
    so no secret passes through abcd. Once Render shows the relay's address,
    `setup --relay-origin https://<relay>` records it in
    `.abcd/relay/relays.json`, where the session page finds it.
+5. **The relay's callback.** The cloud's sign-in returns to the relay's own
+   address followed by `/auth/callback`, never to the session page. With
+   `--relay-origin`, `setup` names that exact callback URL and says to list
+   it on the app's settings page, under Identifying and authorizing users,
+   with wildcard matching off; before the relay is deployed it names its
+   shape, `https://<your relay>.onrender.com/auth/callback`. GitHub sends a
+   sign-in only to a callback the app lists, which ties every sign-in to the
+   team's relay; until it is listed, sign-in on the relay does not work.
 
 Relay its steps as printed. It asks `api.github.com` whether the owner is an
 organisation (whose apps are registered on the organisation's own page) and
 converts the app GitHub created; for the cloud it reads the release's
 checksums. `--json` returns `repo`, `where`, `recorded`, `client_id`,
-`app_created`, `app_settings`, `app_install`, `blueprint`, `relay_origin` and
-`steps`. It refuses (exit 2, nothing written) outside a checkout abcd manages
+`app_created`, `app_settings`, `app_install`, `blueprint`, `relay_origin`,
+`callback_url` (with `--relay-origin`) and `steps`. It refuses (exit 2, nothing written) outside a checkout abcd manages
 or one whose origin is not on github.com, with nothing saying where sessions
 may run off a terminal, on a `--where` other than local, cloud or both, and on
 a `--relay-origin` for local sessions alone. A blueprint that cannot be
@@ -175,7 +181,11 @@ GitHub App user access token (`ghu_`), asks GitHub for its login and whether it
 may push to the repository, and drops it straight after. The relay reads the
 app's public client id from `--client-id` or `ABCD_SESSION_GITHUB_CLIENT_ID`,
 and its secret from `ABCD_SESSION_GITHUB_CLIENT_SECRET` by name. With both,
-members sign in through GitHub's web flow (`/auth/token`); without both,
+members sign in through GitHub's web flow: GitHub returns the person to the
+relay's `/auth/callback`, which the team's app lists as its callback URL, the
+relay sends them on to the session page naming itself, and the page posts the
+code to that relay's `/auth/token`, which exchanges only a code given for its
+own callback; without both,
 sign-in is not offered and only guests can join. GitHub's device flow, which
 needs no secret, belongs to `abcd session start` alone, whose relay serves its
 own session page; `serve` never offers it. `ABCD_SESSION_GITHUB_APP_TYPE`,
@@ -228,7 +238,10 @@ to the session page origins the relay admits: `https://abcdesign.app`, or each
 https origin `--origin` (repeatable) names. With `--relay-origin`, the
 deployed relay's https origin once Render has given it one, it also writes
 `.abcd/relay/relays.json`, naming that relay as the one the repository
-trusts; the session page reads it. Once repository setup has recorded the
+trusts; the session page reads it. It then prints the callback URL the
+team's GitHub App must list for the relay's sign-in, the relay's origin
+followed by `/auth/callback`, to add with wildcard matching off. Once
+repository setup has recorded the
 team's GitHub App, `render.yaml` carries its public client id, so Render's
 form asks only for the secret.
 
@@ -256,7 +269,8 @@ picks the repository and sets the Blueprint Path; Render's form asks for
 `ABCD_SESSION_GITHUB_CLIENT_SECRET`, and for the client id too where none is
 recorded. `--json` returns `release`, `asset`, `sha256`, `checksums_url`,
 `repos`, `origins`, `files`, each file with its `path` and `state`,
-`blueprint_path`, `deploy_button` and `deploy_url`.
+`blueprint_path`, `deploy_button`, `deploy_url` and, with `--relay-origin`,
+`callback_url`.
 
 ## Page
 
@@ -291,8 +305,11 @@ the page says the link does not lead to this project's own session. Only
 GitHub's 404 means there is no list to read (a private repository before
 sign-in, or no file): then a relay from the link reaches nothing until the
 person answers one plain question naming the repository ("Only continue if
-someone on the owner/repo team sent you this link"); the browser remembers the
-answer for that repository. Any other failure to read the list (a 403, a 429,
+someone on the owner/repo team sent you this link"). The answer lets the
+person join as a guest, is kept for that browser tab and at most twelve
+hours, and never lets the relay receive a sign-in: GitHub sign-in goes only
+through a relay the file names, or a page `start` serves, and the page says so
+in place of the sign-in button. Any other failure to read the list (a 403, a 429,
 a 5xx, no network) refuses the relay with "try again in a moment", and asks
 nothing. With no relay at all, the page says live sessions are not set up for
 this project yet and to ask the technical facilitator. So the team commits

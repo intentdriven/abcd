@@ -164,6 +164,14 @@ already in `render.yaml`, and prints the rest.
    reads from the repository to find the relay that belongs to it. Nobody
    types the address anywhere.
 
+6. The command also prints the relay's sign-in callback,
+   `https://<your service>.onrender.com/auth/callback`. On your
+   [GitHub App](#set-up-the-teams-github-app)'s settings page, under
+   **Identifying and authorizing users**, list it as a **Callback URL**, with
+   wildcard matching off, and save. GitHub sends a sign-in only to a callback
+   URL the app lists, so this ties every sign-in to your relay. Until it is
+   listed, signing in on the relay does not work.
+
 The blueprint turns automatic deploys off: a session lives in the relay's
 memory, so a redeploy ends every open session. Deploy by hand between calls.
 A free Render service also sleeps after a quiet spell and wakes on the next
@@ -189,13 +197,14 @@ client id; the steps below are what it fills in, for registering it by hand.
    others: **Contents** read and write, **Pull requests** read and write, and
    **Metadata** read. It needs no webhook. Install it on the repositories your
    sessions are for, and only those.
-2. For sessions on the team's relay: set its callback URL to the address the
-   session page is served from,
-   `https://abcdesign.app/<owner>/<repo>/brief/`. That address goes live when
-   abcd publishes the page there; until then, serve the page yourself with
-   `abcd session page`, use its address as the callback URL, and admit its
-   origin with `--origin`. Generate a client secret and give both to the
-   relay through its environment:
+2. For sessions on the team's relay: set its callback URL to the relay's own
+   address followed by `/auth/callback`, such as
+   `https://<your service>.onrender.com/auth/callback`, with wildcard matching
+   off. GitHub returns the person there after they sign in; the relay sends
+   them back to the session page, and the page hands GitHub's code to that
+   relay and no other. The session page's own address is not a callback.
+   Generate a client secret and give both to the relay through its
+   environment:
    - `ABCD_SESSION_GITHUB_CLIENT_ID`: the client id, which is public.
    - `ABCD_SESSION_GITHUB_CLIENT_SECRET`: the secret. The relay reads it by
      this name, adds it only to its own exchange with GitHub, and never logs
@@ -242,12 +251,14 @@ no entry: it is its own relay.
   not name gets no sign-in, no guest's name and no connection: the page says
   the link does not lead to this project's own session.
 - For a private repository, or one without the file, GitHub answers that
-  there is no file to read, and the page cannot check the link's relay before
-  sign-in. It names the project and asks one plain question first: "Only
-  continue if someone on the project's team sent you this link." The browser
-  remembers the answer for that project. Once the person has signed in, the
-  page reads the file with their sign-in; if the file names other relays, it
-  refuses this one and forgets the answer.
+  there is no file to read, and the page cannot check the link's relay. It
+  names the project and asks one plain question before a guest joins: "Only
+  continue if someone on the project's team sent you this link." The answer
+  lets that person join as a guest, in that browser tab, for at most twelve
+  hours. It never lets the relay receive a sign-in: signing in with GitHub
+  works only through a relay the repository's file names, or a session on
+  the host's own computer, and the page says so in place of the sign-in
+  button.
 - With no relay in the link and none in the file, the page says that live
   sessions are not set up for this project yet, and to ask the technical
   facilitator.
@@ -282,7 +293,7 @@ on a static host of your choice.
 
 3. Open `https://<your site>/<owner>/<repo>/brief/`. The page finds the relay
    in the repository's `relays.json`. If you set up a sign-in app, its
-   callback URL is your site's address.
+   callback URL is still the relay's own `/auth/callback`, not your site.
 
 4. Start the relay with `--origin https://<your site>`, or, on the team's
    relay, write the blueprint with `--origin https://<your site>`, which sets

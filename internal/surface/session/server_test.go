@@ -389,7 +389,8 @@ func TestAuthTokenExchangesWithoutEverEchoingTheSecret(t *testing.T) {
 	f := newFixture(t, nil)
 	url := f.http.URL + "/auth/token"
 
-	resp, body := post(t, url, origin, `{"code":"good-code","code_verifier":"`+verifier+`","redirect_uri":"https://abcdesign.app/acme/brief/brief/"}`)
+	own := `,"redirect_uri":"` + f.http.URL + `/auth/callback"`
+	resp, body := post(t, url, origin, `{"code":"good-code","code_verifier":"`+verifier+`"`+own+`}`)
 	if resp.StatusCode != http.StatusOK || !strings.Contains(body, `"access_token":"ghu_session_token"`) {
 		t.Fatalf("exchange: %d %s", resp.StatusCode, body)
 	}
@@ -404,7 +405,7 @@ func TestAuthTokenExchangesWithoutEverEchoingTheSecret(t *testing.T) {
 	}
 
 	// GitHub's error description echoing the secret never reaches the browser.
-	resp, body = post(t, url, origin, `{"code":"bad-code","code_verifier":"`+verifier+`"}`)
+	resp, body = post(t, url, origin, `{"code":"bad-code","code_verifier":"`+verifier+`"`+own+`}`)
 	if resp.StatusCode != http.StatusBadRequest || strings.Contains(body, testSecret) || strings.Contains(body, "client_secret") {
 		t.Fatalf("failed exchange: %d %s", resp.StatusCode, body)
 	}
@@ -833,7 +834,7 @@ func TestConfigNamesAGitHubAppOnly(t *testing.T) {
 func TestAuthTokenIsLimitedPerAddress(t *testing.T) {
 	f := newFixture(t, nil)
 	url := f.http.URL + "/auth/token"
-	body := `{"code":"good-code","code_verifier":"` + verifier + `"}`
+	body := `{"code":"good-code","code_verifier":"` + verifier + `","redirect_uri":"` + f.http.URL + `/auth/callback"}`
 	for i := 0; i < 10; i++ {
 		if resp, got := post(t, url, origin, body); resp.StatusCode != http.StatusOK {
 			t.Fatalf("exchange %d: %d %s", i+1, resp.StatusCode, got)

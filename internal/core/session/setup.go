@@ -58,16 +58,24 @@ type AppManifest struct {
 // NewAppManifest is the manifest for the repository owner/name's app, where
 // sessions may run where, returning to redirectURL once GitHub has created
 // it. A cloud relay signs in through GitHub's web flow, which returns to the
-// session page, so the page's address is the callback for cloud and both; a
-// local session signs in through the device flow, which needs none. The
-// permissions are the ones the page's work needs, and no more: Contents and
-// Pull requests read and write, Metadata read.
-func NewAppManifest(repo, where, redirectURL string) (AppManifest, error) {
+// relay's own callback (RelayCallbackURL), so the manifest names it when the
+// relay's address, relayOrigin, is already known; otherwise setup names it to
+// add once the relay is deployed. A local session signs in through the device
+// flow, which needs none. The permissions are the ones the page's work
+// needs, and no more: Contents and Pull requests read and write, Metadata
+// read.
+func NewAppManifest(repo, where, redirectURL, relayOrigin string) (AppManifest, error) {
 	if !ValidRepo(repo) {
 		return AppManifest{}, fmt.Errorf("%q is not an owner/name repository", repo)
 	}
 	if !ValidWhere(where) {
 		return AppManifest{}, fmt.Errorf("%q is not where sessions may run: local, cloud or both", where)
+	}
+	callback := ""
+	if relayOrigin != "" {
+		if callback = RelayCallbackURL(relayOrigin); callback == "" {
+			return AppManifest{}, fmt.Errorf("%q is not the relay's https origin", relayOrigin)
+		}
 	}
 	owner, name, _ := strings.Cut(repo, "/")
 	m := AppManifest{
@@ -83,18 +91,27 @@ func NewAppManifest(repo, where, redirectURL string) (AppManifest, error) {
 		},
 		DefaultEvents: []string{},
 	}
-	if AllowsCloud(where) {
-		m.CallbackURLs = []string{PageCallbackURL(repo)}
+	if AllowsCloud(where) && callback != "" {
+		m.CallbackURLs = []string{callback}
 	}
 	return m, nil
 }
 
-// PageCallbackURL is the callback URL the cloud's web sign-in returns to:
-// the repository's session page on abcdesign.app. The manifest sets it for an
-// app registered where the cloud is allowed; an app recorded before has it
-// added on its settings page.
-func PageCallbackURL(repo string) string {
-	return DefaultPageOrigin + "/" + repo + "/brief/"
+// RelayCallbackPath is the path on the team's relay that GitHub's web
+// sign-in returns to.
+const RelayCallbackPath = "/auth/callback"
+
+// RelayCallbackURL is the callback URL the cloud's web sign-in returns to:
+// the team relay's own origin and RelayCallbackPath. GitHub sends a sign-in
+// code only to a callback URL the app registers, so registering the relay's
+// own address binds every code to that relay. relayOrigin is read as
+// NormalizeRelayOrigin reads it; one it refuses names no callback ("").
+func RelayCallbackURL(relayOrigin string) string {
+	o, err := NormalizeRelayOrigin(relayOrigin)
+	if err != nil {
+		return ""
+	}
+	return o + RelayCallbackPath
 }
 
 // appName is the app's name, within GitHub's length: the owner and the

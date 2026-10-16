@@ -354,21 +354,23 @@ func TestPageScriptKeepsTheTokenAndTheDOMSafe(t *testing.T) {
 			t.Errorf("session.js names %q", u)
 		}
 	}
-	// localStorage is written in one place, which remembers the display name
-	// and the relays the person confirmed, and nothing else.
+	// localStorage is written in one place, which remembers the display name,
+	// and nothing else.
 	if n := strings.Count(js, "localStorage.setItem("); n != 1 || !strings.Contains(js, "function remember(key, value) {\n  try { localStorage.setItem(key, value); }") {
 		t.Errorf("localStorage.setItem appears %d times, or outside remember()", n)
 	}
 	remembers := regexp.MustCompile(`remember\(([^)]*)\)`).FindAllStringSubmatch(js, -1)
 	for _, m := range remembers {
-		if m[1] != "key, value" && m[1] != "KEY_NAME, session.name" && m[1] != "KEY_TRUSTED, JSON.stringify(all" {
-			t.Errorf("remember(%s): only the display name and the confirmed relays are remembered", m[1])
+		if m[1] != "key, value" && m[1] != "KEY_NAME, session.name" {
+			t.Errorf("remember(%s): only the display name is remembered", m[1])
 		}
 	}
 	// Session storage holds the sign-in's state and verifier across GitHub's
-	// redirect, and the rejoin token across a reload, and nothing else.
-	if n := strings.Count(js, "sessionStorage.setItem("); n != 2 || !strings.Contains(js, "const pending = { state, verifier, relay: session.relay, code: session.code, name: session.name };") {
-		t.Errorf("sessionStorage holds something besides the sign-in's state and verifier and the rejoin token (%d writes)", n)
+	// redirect, the rejoin token across a reload, and this tab's confirmed
+	// relays, and nothing else.
+	if n := strings.Count(js, "sessionStorage.setItem("); n != 3 || !strings.Contains(js, "const pending = { state, verifier, relay: session.relay, code: session.code, name: session.name };") ||
+		!strings.Contains(functionBody(t, js, "keepTrusted"), "sessionStorage.setItem(KEY_TRUSTED, JSON.stringify(all));") {
+		t.Errorf("sessionStorage holds something besides the sign-in's state and verifier, the rejoin token and the confirmed relays (%d writes)", n)
 	}
 	if !strings.Contains(functionBody(t, js, "keepRejoin"), "sessionStorage.setItem(KEY_REJOIN, JSON.stringify({ relay: session.relay, repo: route.slug, token }))") {
 		t.Error("keepRejoin stores something besides the relay, the repository and the rejoin token")
@@ -905,9 +907,10 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 	if gate < 0 || cfg < 0 || gate > cfg {
 		t.Errorf("startSignIn asks the relay before clearing it:\n%s", start)
 	}
-	// GitHub's code goes to the relay's exchange only when it is cleared.
+	// GitHub's code goes to the relay's exchange only when it is cleared for
+	// a sign-in: listed, or serving the page.
 	fin := functionBody(t, js, "finishSignIn")
-	gate, post := strings.Index(fin, "if (!relayCleared())"), strings.Index(fin, `"/auth/token"`)
+	gate, post := strings.Index(fin, "if (!relaySignInCleared())"), strings.Index(fin, `"/auth/token"`)
 	if gate < 0 || post < 0 || gate > post {
 		t.Errorf("finishSignIn posts the code before clearing the relay:\n%s", fin)
 	}
@@ -932,9 +935,9 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 		}
 	}
 	for fn, want := range map[string]string{
-		"afterOpen":       "if (githubToken && relayCleared())",
-		"connectSignedIn": "if (!githubToken || !relayCleared())",
-		"onJoined":        "githubToken && relayCleared()",
+		"afterOpen":       "if (githubToken && relaySignInCleared())",
+		"connectSignedIn": "if (!githubToken || !relaySignInCleared())",
+		"onJoined":        "githubToken && relaySignInCleared()",
 		"hostClicked":     `if (!relayClearedFor("host")) return;`,
 		"openSocket":      "!relayCleared()",
 	} {
@@ -947,8 +950,13 @@ func TestNoTokenReachesARelayTheRepositoryDoesNotName(t *testing.T) {
 	if !strings.Contains(js, `trustOnly: "Only continue if someone on the project's team sent you this link."`) {
 		t.Error("the confirmation does not say to continue only for a link from the project's team")
 	}
-	if !strings.Contains(functionBody(t, js, "confirmRelay"), "remember(KEY_TRUSTED, JSON.stringify(all));") {
-		t.Error("a confirmed relay is not remembered per repository")
+	if !strings.Contains(functionBody(t, js, "confirmRelay"), "keepTrusted(all);") {
+		t.Error("a confirmed relay is not kept per repository")
+	}
+	// A token reaches only a relay cleared for a sign-in, never a confirmed
+	// one.
+	if b := functionBody(t, js, "relaySignInCleared"); strings.Contains(b, "confirmed") {
+		t.Errorf("relaySignInCleared admits a confirmed relay:\n%s", b)
 	}
 }
 

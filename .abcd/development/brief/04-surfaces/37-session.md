@@ -54,8 +54,9 @@ only the computer's tailnet name and its loopback address, as hosts (any other
 gets 421) and as page origins.
 
 It serves these routes and nothing else: the session's WebSocket at
-`/session`, the web-flow sign-in exchange at `/auth/token`, the device-flow
-sign-in at `/auth/device` and `/auth/device/token` (a local session only), the sign-in app's public
+`/session`, the web-flow sign-in's callback at `/auth/callback` and its
+exchange at `/auth/token`, the device-flow sign-in at `/auth/device`,
+`/auth/device/token` and `/auth/device/cancel` (a local session only), the sign-in app's public
 client id and flow at `/config`, a health check at `/healthz`, and, for a
 local session only, the page's embedded files from a fixed route table. A browser is admitted only from
 `https://abcdesign.app`, a loopback page or another origin the host names, each
@@ -150,13 +151,19 @@ text is put on the page as text, never as markup.
   link's fragment names, if the repository's `.abcd/relay/relays.json` names
   it, or else the first relay the file names; where the file cannot be read
   before sign-in, it asks in plain words whether the project's team sent the
-  link. With none, it says live sessions are not set up yet and to ask the
+  link; that answer admits a guest's join in that tab, for at most twelve
+  hours, and never a sign-in. With none, it says live sessions are not set up yet and to ask the
   technical facilitator. The invite link carries the relay only when the
   guest's page could not find it alone.
-- **Signing in.** "Sign in with GitHub" goes, on a cloud relay, to GitHub's
-  authorize page with PKCE and a random state, both held in session storage
-  across the redirect, and the page posts the returned code and verifier to
-  the relay's `/auth/token`; in a local session, the page shows the device flow's code
+- **Signing in.** "Sign in with GitHub" is offered only through a relay the
+  repository's file names, or a local session's own page. On a cloud relay it
+  goes to GitHub's authorize page with PKCE and a random state, both held in
+  session storage across the redirect, and with the relay's own
+  `/auth/callback` as the redirect, the callback URL the team's app lists.
+  GitHub returns the person to that relay, which sends them back to the page
+  naming itself, and the page posts the code and verifier to that relay's
+  `/auth/token` alone, refusing a return that names no relay or another one;
+  the relay exchanges only a code given for its own callback. In a local session, the page shows the device flow's code
   to confirm on github.com and asks the relay after it. There is no token
   field. The token is held in the page's memory only, and is presented to the
   relay as `verify`.

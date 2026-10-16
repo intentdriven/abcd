@@ -379,12 +379,16 @@ Ideas and methodologies that shaped the design — not code abcd depends on.
   characters of context either side, the fallback a team member's page
   locates the passage by when the suggestion's relative positions no longer
   resolve. <https://www.w3.org/TR/annotation-model/#text-quote-selector>
-- **PKCE (RFC 7636) and the IETF's OAuth 2.0 for Browser-Based Applications**
-  — the session page's GitHub sign-in: an S256 challenge and a random state
-  held in session storage across the redirect, with the code exchanged by the
-  team's relay as the token-mediating backend.
+- **PKCE (RFC 7636), the IETF's OAuth 2.0 for Browser-Based Applications and
+  the OAuth 2.0 Security Best Current Practice (RFC 9700)** — the session
+  page's GitHub sign-in: an S256 challenge and a random state held in session
+  storage across the redirect, with the code exchanged by the team's relay as
+  the token-mediating backend, and the redirect bound to the relay's own
+  registered callback, so the code reaches only a destination GitHub binds
+  (adr-2610161400542916's amendment).
   <https://www.rfc-editor.org/rfc/rfc7636>
   <https://datatracker.ietf.org/doc/draft-ietf-oauth-browser-based-apps/>
+  <https://www.rfc-editor.org/rfc/rfc9700>
 - **TruffleHog (Truffle Security)** — the optional deeper secret scanner the
   `scan.deep` recommendation keys on when the binary is present
   (`internal/core/ahoy`); integrated as an opt-in engine, never bundled.
