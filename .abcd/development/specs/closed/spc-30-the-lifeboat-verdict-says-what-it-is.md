@@ -12,7 +12,7 @@ Delivers the third rename: `disembark oracle` → `disembark review`,
 `audit/oracle-<manifest12>.*` → `review/review-<manifest12>.*`, and the
 `lifeboat-oracle` agent → `lifeboat-reviewer`. Reverses adr-40 §5 per the
 maintainer's 2026-08-16 ruling (recorded as a dated in-place amendment in
-adr-40 and a `DECISIONS.md` line, landed with the planning records). Clean
+adr-40 and the decision [dcn-2608160000000005](../../../work/decisions/dcn-2608160000000005-adr-40-5-reversed-at-the.md), landed with the planning records). Clean
 break, no aliases. Ships only after spc-27's extended `surface_coverage` is
 armed.
 
@@ -85,7 +85,7 @@ seam surface); voyage/history ledger entries already written.
   delegated gates, attestation stamping, exit codes).
 - *Artefact move + clean replacement* — step 2's three artefact tests.
 - *Sweep + token re-check + boundary* — steps 4–5; the naming-registry row.
-- *Reversal recorded* — the adr-40 amendment and DECISIONS line land with
+- *Reversal recorded* — the adr-40 amendment and [dcn-2608160000000005](../../../work/decisions/dcn-2608160000000005-adr-40-5-reversed-at-the.md) land with
   the planning records (this PR), before any build.
 - *Armed-gate ordering* — step 1.
 - *Breaking CHANGELOG* — Scope.

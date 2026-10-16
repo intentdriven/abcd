@@ -33,11 +33,14 @@ type peersOutput struct {
 
 	// The reservations on the shared remote (itd-2609091034175565): every one
 	// as fetched just now, or as last fetched when the fetch failed.
-	Reservations     []reservationRow `json:"reservations"`
-	LiveByHolder     map[string]int   `json:"live_by_holder"`
-	View             reservationView  `json:"view"`
-	FetchError       string           `json:"fetch_error,omitempty"`
-	DerivedUnchecked string           `json:"derived_unchecked,omitempty"`
+	Reservations []reservationRow `json:"reservations"`
+	LiveByHolder map[string]int   `json:"live_by_holder"`
+	// ReleaseHolds is every release being cut, which holds every other
+	// session's merge (itd-2609151838312703 C7, C8).
+	ReleaseHolds     []holdRow       `json:"release_holds"`
+	View             reservationView `json:"view"`
+	FetchError       string          `json:"fetch_error,omitempty"`
+	DerivedUnchecked string          `json:"derived_unchecked,omitempty"`
 }
 
 // reservationRow is one reservation as the listing shows it. Every value a
@@ -54,6 +57,24 @@ type reservationRow struct {
 	Unreadable      string   `json:"unreadable,omitempty"`
 	HeldFromFetch   bool     `json:"held_from_fetch,omitempty"`
 	Commit          string   `json:"commit"`
+}
+
+// holdRow is one release being cut, as the listing shows it: its release and
+// subject, its holder (absent when the reservation is unreadable, with the
+// reason), whose copy it is when it is this one's, until when it holds,
+// whether it is this copy's own cut (own) or dated ahead with no first
+// sighting kept here (unsighted), neither of which the merge hold counts
+// (claim.MergeHolds), and the line it is shown by.
+type holdRow struct {
+	Release         string `json:"release"`
+	Subject         string `json:"subject"`
+	Holder          string `json:"holder,omitempty"`
+	Copy            string `json:"copy,omitempty"`
+	EffectiveExpiry string `json:"effective_expiry"`
+	Unreadable      string `json:"unreadable,omitempty"`
+	Own             bool   `json:"own"`
+	Unsighted       bool   `json:"unsighted"`
+	Text            string `json:"text"`
 }
 
 // reservationView dates the listing: when abcd last fetched the reservations
@@ -88,12 +109,19 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"abcd-reserved/ branch, with pruning, and of the default branch, then every\n" +
 			"reservation with its record, holder, footprint, effective expiry and state\n" +
 			"(live, expired, released, or unreadable with its reason and the end of its\n" +
-			"hold), and each person's count of live reservations. The fetch is the only\n" +
-			"network act; it updates the remote-tracking reservation branches and stamps\n" +
-			"when it ran in the local tier, and nothing else is written. A checkout with no\n" +
-			"remote named origin lists no reservations. When the fetch fails, the\n" +
-			"reservations are listed as last fetched, with that view's age, and the failure\n" +
-			"is named on stderr and in fetch_error.\n\n" +
+			"hold), each person's count of live reservations, and a line for each release\n" +
+			"being cut (a live rel-vX.Y.Z reservation, which holds every other session's\n" +
+			"merge until its tag is on origin). The fetch is the only network act, and it\n" +
+			"reads origin's release tags with the reservations; it updates the\n" +
+			"remote-tracking reservation branches and the release tags abcd keeps under\n" +
+			"refs/abcd/release-tags/, stamps when it ran in the local tier, with when it\n" +
+			"first fetched each reservation dated ahead of this computer's clock or\n" +
+			"undated, and nothing else is written. The release-tag refs are ordinary\n" +
+			"refs of this checkout, so git log --all lists the commits they name and\n" +
+			"git push --mirror would push them. A checkout with no remote named origin\n" +
+			"lists no reservations.\n" +
+			"When the fetch fails, the reservations are listed as last fetched, with that\n" +
+			"view's age, and the failure is named on stderr and in fetch_error.\n\n" +
 			"A worktree is named home-relative (~/...), or by its directory name when it\n" +
 			"sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when\n" +
 			"the reservations could not be fetched; exit 2 outside a git checkout.",
@@ -313,7 +341,7 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 // (the view is then the last one fetched) or the view could not be read, and
 // "" otherwise. A checkout with no remote named origin lists none.
 func addReservations(root string, out *peersOutput, now time.Time) (failed string) {
-	out.Reservations, out.LiveByHolder = []reservationRow{}, map[string]int{}
+	out.Reservations, out.LiveByHolder, out.ReleaseHolds = []reservationRow{}, map[string]int{}, []holdRow{}
 	gap, err := claim.Fetch(root, claim.Options{Now: func() time.Time { return now }})
 	if errors.Is(err, claim.ErrNoOrigin) {
 		return ""
@@ -350,6 +378,21 @@ func addReservations(root string, out *peersOutput, now time.Time) (failed strin
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
+	// The holds are judged by the merge hold's own rule, so the listing counts
+	// a release exactly as the land fence and `abcd land` do.
+	holds, herr := claim.JudgedHolds(root, now, claim.Options{Now: func() time.Time { return now }})
+	if herr != nil {
+		msg := termsafe.Sanitize(fsutil.RedactHome(herr.Error()))
+		if failed != "" {
+			return failed + "; " + msg
+		}
+		return msg
+	}
+	for _, h := range holds {
+		out.ReleaseHolds = append(out.ReleaseHolds, holdRow{Release: h.Release, Subject: h.Subject, Holder: h.Holder,
+			Copy: h.Copy, EffectiveExpiry: rfc3339(h.EffectiveExpiry), Unreadable: h.Unreadable, Own: h.Own,
+			Unsighted: h.Unsighted, Text: termsafe.Sanitize(h.Line())})
+	}
 	return failed
 }
 
@@ -395,6 +438,9 @@ func renderReservations(w io.Writer, out peersOutput) {
 			line += "  footprint " + strings.Join(quoted, ", ")
 		}
 		fmt.Fprintln(w, line)
+	}
+	for _, h := range out.ReleaseHolds {
+		fmt.Fprintln(w, "  "+h.Text)
 	}
 	if len(out.LiveByHolder) > 0 {
 		names := make([]string, 0, len(out.LiveByHolder))

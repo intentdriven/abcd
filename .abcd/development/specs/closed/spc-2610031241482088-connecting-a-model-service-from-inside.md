@@ -261,7 +261,7 @@ As built: `resume` carries at most 32 KiB of the listed ids as JSON
 (`oracle.MaxCarriedBytes`), the first in the service's order, with `more`, the
 count not carried, and a part of a name matching none carried while `more` is
 above zero asks for the model's full name, which is checked as any typed name
-is, so G2's one request holds (decided 2026-10-04, `.abcd/work/DECISIONS.md`).
+is, so G2's one request holds (decided 2026-10-04, [dcn-2610040000000003](../../../work/decisions/dcn-2610040000000003-decided-without-a-question-the-person-s.md)).
 
 The questions, each one turn, in order. Each is a `question.Ask`, chip
 "Setup Q<n>", that the asking rules hold where spc-2610030944505997 has landed: the thing first, the

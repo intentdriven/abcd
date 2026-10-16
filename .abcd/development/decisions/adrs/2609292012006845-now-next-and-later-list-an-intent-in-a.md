@@ -21,7 +21,7 @@ planned and the drafts". The block shipped as itd-2609212103568351, and an
 intent the build had in a lane then appeared twice: under Now with its lane
 state, and again under Next (or Later) where the gate placed it.
 
-On 2026-09-29 the product thinker ruled (DECISIONS.md entry landing with lane
+On 2026-09-29 the product thinker ruled (decision [dcn-2609290000000007](../../../work/decisions/dcn-2609290000000007-the-product-thinker-answered-twenty-six.md) landing with lane
 recRulings) that an intent in progress appears only under Now, never also
 under Next or Later (BV2), and that the text board shows Later as a count
 while the site and `--json` keep the full list (BV1). BV2 makes decision 2's

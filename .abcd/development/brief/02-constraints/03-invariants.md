@@ -29,17 +29,26 @@ The following are non-negotiable invariants — any architectural choice that vi
    and pushed only by verbs whose documented meaning says so: `reserve`, whose
    meaning is one fetch of the reservations and one push to the record's
    `abcd-reserved/` branch, and `peers`, whose meaning includes one fetch of
-   the reservations; `build`, whose meaning includes the run's reservation as
-   it starts or resumes (a fetch and one push, the spec's footprint or the
-   issue's `found_at` naming the files) and, with `--release`, a fetch and
+   the reservations, where every fetch of the reservations, theirs and each
+   one below, also copies `origin`'s `v*` tags into `refs/abcd/release-tags/`
+   (`+refs/tags/v*:refs/abcd/release-tags/v*`), outside `refs/tags/`, so it
+   never makes, moves or deletes a tag of the checkout's own; `build`, whose
+   meaning includes the run's reservation as it starts or resumes (a fetch and
+   one push, the spec's footprint or the issue's `found_at` naming the files)
+   and, with `--release`, a fetch and
    one tombstone push; `drain`, whose meaning includes reserving each issue as
    its lane starts and renewing, at half its lease, the reservation of each
    lane parked at land; and `implement step` and `implement receipt`, whose
    meaning includes renewing the run's reservation at half its lease, the land
    fence's fetch and renewal before a merge is armed, and the tombstone once
-   the run's last lane lands or an issue lane is handed back. `build next`'s
-   exclusions, `build <itd-N>`'s peers check and every render of a
-   reservation read the view as last fetched, from disk.
+   the run's last lane lands or an issue lane is handed back; the land
+   fence's fetch is made before it judges a release hold whether or not the
+   run holds a reservation (itd-2609151838312703 C7); and `land`, whose
+   meaning includes one fetch of the reservations before it pushes, arms or
+   queues anything, for the same release-hold judgement. The release tags
+   each such fetch copies end a release hold.
+   `build next`'s exclusions, `build <itd-N>`'s peers check and every render
+   of a reservation or a hold read the view as last fetched, from disk.
    The status branches (itd-2609151838312703, `abcd-status/<username>` on
    `origin`, one per person) are fetched and pushed only by verbs whose
    documented meaning says so: `announce`, whose meaning is one fetch of every

@@ -94,7 +94,9 @@ intents:
   itd-140 discipline: repo-agnostic input contract, genericity demonstrated
   on a sparse second instance before it is claimed, working-tier ledger
   publication opt-in only. This repository opts in through
-  `.abcd/site.json`'s `record.issue_ledger`.
+  `.abcd/site.json`'s `record.issue_ledger` and `record.decisions`; the
+  second publishes the decision records as the decision log page, kept off
+  the relationship chart and the development page.
 - **The README migration** — README's product narrative lives in
   `docs/explanation/{rationale,roles,artefacts,process}.md` and
   `docs/how-to/install.md`, and README is a contributor page keeping the

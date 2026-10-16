@@ -69,7 +69,7 @@ bounded autonomy with loud STOP conditions; structured cross-session handoff.
   restore-after-revert-verify can leave the file in the reverted state; re-apply with
   the editor, and re-run gates to confirm restoration.
 - **Partial resolution is honest**: a multi-instance issue (iss-30) can land its
-  clear subset and STAY OPEN with the remainder recorded in DECISIONS.md — do not
+  clear subset and STAY OPEN with the remainder recorded in [dcn-2607120000000003](../../../work/decisions/dcn-2607120000000003-iss-30-memory-ingest-boundary-partially.md) — do not
   fold a false full-resolve.
 - **Scope the security fix to the actual invariant**: an over-broad validator that
   *diverges from an existing gate* (spec-store anchored id-regex vs record-lint's

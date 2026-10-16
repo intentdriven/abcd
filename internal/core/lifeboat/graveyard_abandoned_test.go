@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/decisions"
 )
 
 // abandonedWriter builds an empty temp repo and returns its root plus a closure
@@ -320,11 +322,11 @@ func TestAbandonedEmptyWontfixDirIsNone(t *testing.T) {
 	}
 }
 
-// --- 5. rejected options in DECISIONS.md ------------------------------------
+// --- 5. rejected options in the decision records and a frozen log ----------
 
 func TestAbandonedRejectedOptions(t *testing.T) {
 	dir, write := abandonedWriter(t)
-	write(".abcd/work/DECISIONS.md",
+	write(decisions.FrozenLog,
 		"# DECISIONS\n\n"+ // line 1, 2
 			"- 2026-07-06 — Adopt Cobra as the CLI framework.\n"+ // line 3 (neutral)
 			"- 2026-07-08 — RAG rejected at this scale; grep corpus instead.\n"+ // line 4 (rejected)
@@ -351,11 +353,51 @@ func TestAbandonedRejectedOptionsConservativeMatcher(t *testing.T) {
 	dir, write := abandonedWriter(t)
 	// "rejection" is a different word from the verb "rejected": the substring
 	// matcher must NOT fire on it (documented conservative-verbs-only edge).
-	write(".abcd/work/DECISIONS.md",
+	write(decisions.FrozenLog,
 		"- 2026-07-06 — Handling of the rejection path is documented in the spec.\n")
 	fs := gvRejectedOptions(abandonedCtx(t, dir))
 	if len(fs) != 0 {
 		t.Fatalf("a bullet containing \"rejection\" (not the verb) must not fire, got %v", fs)
+	}
+}
+
+// decisionRecordFile is a decision record as the folder's writer lays one out.
+func decisionRecordFile(id, slug, date, text string) string {
+	return "---\nid: " + id + "\nslug: " + slug + "\ndate: " + date + "\n---\n" + date + " — " + text + "\n"
+}
+
+// TestGraveyardKeysARecordByItsID is spc-2610110931381316 step 4 (decision
+// 14): a rejected option found in a decision record is keyed by the record's
+// own dcn id, in id order, and one found in a frozen log keeps its dec-L<line>
+// key; a neutral record, and a record the folder's reader refuses, yield none.
+func TestGraveyardKeysARecordByItsID(t *testing.T) {
+	dir, write := abandonedWriter(t)
+	write(decisions.RelDir+"/README.md", "# Decisions\n\nNothing here is rejected, dropped or deferred.\n")
+	write(decisions.RelDir+"/dcn-2610020000000001-kafka-dropped.md",
+		decisionRecordFile("dcn-2610020000000001", "kafka-dropped", "2026-10-02", "Kafka dropped for the outbox table."))
+	write(decisions.RelDir+"/dcn-2610010000000001-adopt-cobra.md",
+		decisionRecordFile("dcn-2610010000000001", "adopt-cobra", "2026-10-01", "Adopt Cobra as the CLI framework."))
+	write(decisions.RelDir+"/dcn-2610010000000002-rag-rejected.md",
+		decisionRecordFile("dcn-2610010000000002", "rag-rejected", "2026-10-01", "RAG\nrejected at this scale."))
+	write(decisions.RelDir+"/dcn-2610030000000001-misdated.md",
+		decisionRecordFile("dcn-2610030000000001", "misdated", "2026-09-01", "Misdated, and rejected."))
+	write(decisions.FrozenLog, "# DECISIONS\n\n- 2026-07-08 — RAG rejected at this scale.\n")
+
+	fs := gvRejectedOptions(abandonedCtx(t, dir))
+	var ids []string
+	for _, f := range fs {
+		ids = append(ids, f.ID)
+		if f.Signal != SignalRejectedOption {
+			t.Errorf("%s: signal = %s, want %s", f.ID, f.Signal, SignalRejectedOption)
+		}
+	}
+	want := []string{"dec-L3", "dcn-2610010000000002", "dcn-2610020000000001"}
+	if strings.Join(ids, " ") != strings.Join(want, " ") {
+		t.Fatalf("rejected-option ids = %v, want %v", ids, want)
+	}
+	if f, _ := gvFindingByID(fs, "dcn-2610010000000002"); !gvEvidenceContains(f, "RAG rejected at this scale.") ||
+		!gvEvidenceContains(f, decisions.RelDir+"/dcn-2610010000000002-rag-rejected.md") {
+		t.Errorf("a record's finding quotes its text and names its file: %v", f.Evidence)
 	}
 }
 
@@ -434,7 +476,7 @@ func TestAbandonedSanitisesControlChars(t *testing.T) {
 	// A DECISIONS line and a wontfix reason each carrying an ANSI escape (0x1b)
 	// and a NUL (0x00) plus an HTML-comment marker. sanitize() maps C0/DEL to '?'
 	// and tab to space; markers are inert in JSON so they pass through unchanged.
-	write(".abcd/work/DECISIONS.md",
+	write(decisions.FrozenLog,
 		"- 2026-07-06 — option \x1bdropped\x00 here <!-- hide -->\n")
 	write(".abcd/work/issues/wontfix/iss-9-x.md",
 		"---\nid: \"iss-9\"\nwontfix_reason: \"bad\x1breason\x00 <!-- x -->\"\n---\n")
@@ -479,7 +521,7 @@ func abandonedFullFixture(t *testing.T) string {
 			"## Alternatives Considered\n\n- Voyage inside the source repo — rejected.\n- A second clone — rejected.\n")
 	write(".abcd/work/issues/wontfix/iss-30-atomic.md",
 		"---\nid: \"iss-30\"\nslug: \"atomic\"\nwontfix_reason: \"superseded by consolidation\"\n---\n\nbody.\n")
-	write(".abcd/work/DECISIONS.md",
+	write(decisions.FrozenLog,
 		"# DECISIONS\n\n- 2026-07-08 — RAG rejected at this scale.\n")
 	return dir
 }

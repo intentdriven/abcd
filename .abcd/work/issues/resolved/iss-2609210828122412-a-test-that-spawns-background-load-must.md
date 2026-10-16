@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "the test-under-load pattern; no abcd file owns it yet"
 deferred_after: "v0.9.0"
-deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M32: all three rules hold now (owned process groups, proof by what is running, consent and a core cap on a live machine), recorded in DECISIONS.md; the automatic load check before abcd's own test lanes start is an intent to plan)."
+deferral_reason: "Ruled by the product thinker at the 2026-09-23 run A interview (M32: all three rules hold now (owned process groups, proof by what is running, consent and a core cap on a live machine), recorded in dcn-2609230000000013; the automatic load check before abcd's own test lanes start is an intent to plan)."
 resolution: "The three rules the product thinker ruled hold now (one owned process group killed together; clean proven by what is actually running; explicit consent and a cap below the core count on a live development machine) ship as the bundled LOAD rule domain, injected in every managed repository on the experiment's vocabulary, with the idiom proven by a real child-and-grandchild experiment. The fourth condition, the automatic load check before abcd's own test lanes, is draft intent itd-2609231434459890, to plan."
 impact: additive
 resolved_by:

@@ -9,10 +9,11 @@ import (
 )
 
 // TestCommittedRecordSlugsWithinTheCap walks every store whose filenames carry a
-// minted slug — issues, intents, specs and ADRs, every bucket — and holds each
-// record's slug at MaxSlugLen or fewer: the slug segment of its filename, and
-// the `slug:` frontmatter field where the record has one. It logs each family's
-// longest repository-relative path, the figure the cap exists to bound
+// minted slug — issues, intents, specs, ADRs and decision records, every
+// bucket — and holds each record's slug at MaxSlugLen or fewer: the slug
+// segment of its filename, and the `slug:` frontmatter field where the record
+// has one. It logs each family's longest repository-relative path, the figure
+// the cap exists to bound
 // (iss-2610100626320367).
 func TestCommittedRecordSlugsWithinTheCap(t *testing.T) {
 	root := repoRootForTest(t)

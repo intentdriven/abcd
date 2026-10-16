@@ -224,12 +224,12 @@ func NewRootCommand() *cobra.Command {
 		Use: "abcd [<record-id>]",
 		Long: "Agent-based configuration for development.\n\n" +
 			"Bare `abcd` renders the read-only status board — what can I do. A single\n" +
-			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,\n" +
-			"`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and\n" +
-			"the next move for its lifecycle state — what is this. N is either a short\n" +
-			"ordinal from before ids were minted or the sixteen-digit stamp minted since;\n" +
-			"both resolve. The bare and the id form are strictly read-only; any other\n" +
-			"positional is refused as an unknown command.\n\n" +
+			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `dcn-N`,\n" +
+			"`adm-N`, `srp-N` or `rfm-N`) instead reports what that record is, where it\n" +
+			"lives, and the next move for its lifecycle state — what is this. N is either\n" +
+			"a short ordinal from before ids were minted or the sixteen-digit stamp minted\n" +
+			"since; both resolve. The bare and the id form are strictly read-only; any\n" +
+			"other positional is refused as an unknown command.\n\n" +
 			"`--version` reports the running binary's version, install mode and vintage.\n" +
 			"When that binary sits in a plugin root other than the one this session\n" +
 			"resolves, the report — like bare `abcd ahoy` — adds a `superseded_root` note\n" +

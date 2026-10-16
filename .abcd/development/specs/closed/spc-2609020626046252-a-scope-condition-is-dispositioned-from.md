@@ -192,7 +192,7 @@ reading says so by naming it.
 > stub is parked at ship time, before any condition block exists, so a verdict
 > ingested after a condition block sits above it and never overrode it. The
 > fold above is the orchestrator's ruling on the lane review (recorded in
-> `.abcd/work/DECISIONS.md` on 2026-09-25).
+> [dcn-2609250000000002](../../../work/decisions/dcn-2609250000000002-a-scope-condition-s-standing-is-folded.md)).
 
 The verdict ingest reports what it leaves standing. After `IngestVerdict`
 writes its block, `IngestVerdictResult` gains `ReadingOccasionedStanding`, the

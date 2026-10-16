@@ -27,7 +27,7 @@ type FlagRoute struct {
 // setting, or repeats an agent. dispatched is the set of agents this
 // invocation dispatches, which for every delegating verb is one agent, so a
 // second --route naming another agent is refused rather than merged (the
-// 2026-09-25 ruling on AC 7 in .abcd/work/DECISIONS.md).
+// 2026-09-25 ruling on AC 7, dcn-2609250000000009).
 func ParseRoutes(texts, dispatched []string, conns Connections) ([]FlagRoute, error) {
 	can := map[string]bool{}
 	for _, a := range dispatched {

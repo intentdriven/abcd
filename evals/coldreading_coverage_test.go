@@ -411,8 +411,8 @@ var coverage = []coverageRow{
 		Classes:   []string{"DECISION", "EXHAUST", "GROUNDS", "LEDGER-REFRAME"},
 	},
 	{
-		Rule:      "the shared decision log never travels",
-		Falsifier: "add an include row for work/DECISIONS.md and delete its Exclusions row",
+		Rule:      "the shared decision records never travel",
+		Falsifier: "add an include row for work/decisions and delete its Exclusions row",
 		Caught:    caughtLeak,
 		Classes:   []string{"DECISION"},
 	},

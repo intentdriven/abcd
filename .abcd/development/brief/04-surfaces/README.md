@@ -32,7 +32,7 @@ are wiring rather than user-facing surface are listed separately under
 | 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
 | 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
 | 23 | `/abcd:reading` | shipped | Assemble what a cold reading may see, prove it, and validate what comes back | [`23-reading.md`](23-reading.md) |
-| 24 | `/abcd:decide` | shipped | Mint a decision record with its id, date and skeleton, ready to write the decision into | [`24-decide.md`](24-decide.md) |
+| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision newest first, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |
 | 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout (design target — [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
 | 26 | `/abcd:mode` | shipped | Say whose answer the agent loop is waiting on, so the status line and the board show it | [`08-abcd.md`](08-abcd.md) |
 | 27 | `/abcd:implement` | shipped | Share one autonomous run between two sessions: claim a record before its lane, keep the second session inside its bounds, and compare the ways of dividing the work from the run log | [`27-implement.md`](27-implement.md) |
@@ -46,7 +46,7 @@ are wiring rather than user-facing surface are listed separately under
 | 36 | `/abcd:dashboard` | shipped | Open the project from a phone or another computer on your own Tailscale network, through a server that answers only the devices Tailscale names | [`36-dashboard.md`](36-dashboard.md) |
 | 37 | `/abcd:embargo` | shipped | Keep a privately reported security advisory off the public ledger until its fix ships, then close or publish it on your approval of exactly what it shows | [`37-embargo.md`](37-embargo.md) |
 | 37 | `/abcd:memory` | shipped | Keep short lessons an agent would otherwise relearn, stamped with who wrote them, when and in which session, and refused when they would hold a secret, a private name or a network address | [`37-memory.md`](37-memory.md) |
-| 37 | `/abcd:reserve` | shipped | Reserve an issue or intent on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
+| 37 | `/abcd:reserve` | shipped | Reserve an issue, intent or release on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
 | 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
 | 38 | `/abcd:land` | shipped | Push a branch once its preflight passed and queue its pull request where the merge gate allows, resumable by running it again | [`38-land.md`](38-land.md) |
 
@@ -226,8 +226,7 @@ one to name.
 It is a convention rather than a universal, and the exceptions are where the
 tree does not yet meet its own discipline. Eight parents print usage with no state
 at all: `disembark`, `docs`, `embargo`, `embark`, `guard`, `history`, `ideate`, and `scribe`. Bare
-`abcd launch` refuses with a hint to pass `--dry-run`. Bare `abcd decide` refuses
-because its one operand is the quoted title it mints a record from, and bare
+`abcd launch` refuses with a hint to pass `--dry-run`. Bare
 `abcd build` refuses as a usage error because its one operand is the intent it
 starts a run for; the run's state renders through `abcd implement status`. Bare
 `abcd reflect` prints its usage, because its one operand is the cut release

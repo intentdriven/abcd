@@ -12,7 +12,7 @@ galloping (exponential-doubling) `trueMatchEnd` probe, so a match end is never a
 truncation artefact of the window edge. The window grows only while a match keeps
 running into its edge and stops the moment the match ends short of the edge or
 reaches the real end of line. This is the structural fix designed in the
-2026-08-08 DECISIONS entry, and it dissolves the two superseded issues — iss-189
+2026-08-08 decision [dcn-2608080000000001](../../../work/decisions/dcn-2608080000000001-iss-189-iss-190-shared-root-cause.md), and it dissolves the two superseded issues — iss-189
 (a trailing boundary satisfied by the artificial window edge → spurious
 over-redaction) and iss-190 (a window-capped recovery truncating a token and
 breaking the recovery chain) — without a boundary classifier or a
@@ -75,8 +75,8 @@ match (ending well before 64 bytes) is found on the first attempt with the same
 cost and result as today. A long match doubles a logarithmic number of times, and
 each doubled scan is over a prefix the top-level `cp.Re.FindAllStringIndex(line,
 -1)` (scanner.go:499) already pays for — so the amortised cost stays in the class
-the unbounded top-level match already pays, the round-6 regression the DECISIONS
-entry warns against.
+the unbounded top-level match already pays, the round-6 regression the decision
+[dcn-2608080000000001](../../../work/decisions/dcn-2608080000000001-iss-189-iss-190-shared-root-cause.md) warns against.
 
 **`stolenJunctions`.** Its forward bound `hi := m.end + maxAdjacencyProbeWindow`
 (scanner.go:547) is replaced with the same galloping extent, so the recovery
@@ -117,7 +117,7 @@ step (scanner.go:576, the iss-188 fix) are unchanged.
 
 The three prior bug-hunt rounds each BLOCKed on a *local* patch (a boundary
 classifier for iss-189, a clipped-so-skip for iss-190) that reached further than
-the ambiguity and either over-redacted or regressed cost. The DECISIONS entry
+the ambiguity and either over-redacted or regressed cost. The decision [dcn-2608080000000001](../../../work/decisions/dcn-2608080000000001-iss-189-iss-190-shared-root-cause.md)
 resolved on the structural fix: remove the artificial edge entirely, so neither
 local patch is needed. This spec encodes that resolution — the galloping probe is
 the single mechanism, and the two superseded repro shapes are its acceptance

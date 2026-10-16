@@ -80,8 +80,11 @@ func runGitRaw(t *testing.T, dir string, args ...string) string {
 func TestAReservationActIsByteForByteWhatItWas(t *testing.T) {
 	g := goldenScenario(t)
 	const sha = "194d2abe630c556738c07b00670a1e6f55396fda"
+	// The one deliberate change since baf57cf5e: every reservations fetch also
+	// takes origin's release tags (releaseTagsRefspec, release.go).
 	wantFetch := []string{"fetch", "--prune", "--no-tags", "origin",
 		"+refs/heads/abcd-reserved/*:refs/remotes/origin/abcd-reserved/*",
+		"+refs/tags/v*:refs/abcd/release-tags/v*",
 		"+refs/heads/main:refs/remotes/origin/main"}
 	if !slices.Equal(g.fetch, wantFetch) {
 		t.Errorf("fetch = %q; want %q", g.fetch, wantFetch)

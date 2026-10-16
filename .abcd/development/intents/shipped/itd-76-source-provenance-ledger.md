@@ -80,14 +80,14 @@ Per-criterion verdicts:
   evidence: internal/core/source/ledger.go:118 — "cited_publicly is always false here: exercising the right to cite is Flip's, and only Flip's"
   evidence: internal/core/source/ledger.go:237 — "fsutil.AppendLineIn(root, rel, b, 0o600)"
   evidence: internal/core/source/source_test.go:229 — "a correction rewrote an earlier line"
-- ac-3 — MET_WITH_CONCERNS: Projection bans titles and aliases always and authors only under ban_authors; SyncBanlist writes the owned block; this repository's guard rebuilds ./cmd/abcd and refreshes on every commit (TestTheRepositoryGuardRefreshesWithItsOwnBuild) and a banned string refuses the commit (TestSyncBanlistFeedsTheGuard). Concern: the hook `ahoy install` scaffolds into a MANAGED repository refreshes only after a repo-local opt-in (`git config --local abcd.sourcesBinary`), otherwise one line and no refresh — a signed-off narrowing (DECISIONS.md 2026-09-25) pending the ruling in open iss-2609250834251447
+- ac-3 — MET_WITH_CONCERNS: Projection bans titles and aliases always and authors only under ban_authors; SyncBanlist writes the owned block; this repository's guard rebuilds ./cmd/abcd and refreshes on every commit (TestTheRepositoryGuardRefreshesWithItsOwnBuild) and a banned string refuses the commit (TestSyncBanlistFeedsTheGuard). Concern: the hook `ahoy install` scaffolds into a MANAGED repository refreshes only after a repo-local opt-in (`git config --local abcd.sourcesBinary`), otherwise one line and no refresh — a signed-off narrowing ([dcn-2609250000000027](../../../work/decisions/dcn-2609250000000027-the-pre-commit-guard-s-sources-refresh.md)) pending the ruling in open iss-2609250834251447
   evidence: internal/core/source/guard.go:17 — "func (c *Corpus) Projection() ([]banlist.KeyedPattern, error)"
   evidence: internal/core/source/add.go:441 — "if e.Custom.BanAuthors {"
   evidence: .githooks/pre-commit:599 — "if declares_format "$sources_first"; then sources_refresh"
   evidence: internal/core/source/source_test.go:572 — "func TestTheRepositoryGuardRefreshesWithItsOwnBuild"
   evidence: internal/core/source/source_test.go:401 — "the guard let a confidential title through"
   evidence: internal/core/ahoy/defaults/pre-commit:481 — "elif [ -z "$sources_bin" ]; then"
-  evidence: .abcd/work/DECISIONS.md:2562 — "The copy `abcd ahoy` scaffolds refreshes only when the clone opts in with \`git config --local abcd.sourcesBinary"
+  evidence: [dcn-2609250000000027](../../../work/decisions/dcn-2609250000000027-the-pre-commit-guard-s-sources-refresh.md) — "The copy `abcd ahoy` scaffolds refreshes only when the clone opts in with \`git config --local abcd.sourcesBinary"
 - ac-4 — MET: CiteCheck scans through the private layer's matcher and a Finding carries source key, field, line and offset only; TestCiteCheckReportsByKeyOnly asserts the JSON report holds no title, alias or author
   evidence: internal/core/source/guard.go:91 — "type Finding struct"
   evidence: internal/core/source/guard.go:135 — "Finding{Source: key, Field: field, Line: h.Line, Offset: h.Offset}"

@@ -77,7 +77,8 @@ type judged struct {
 	tip
 	present bool
 	// derived is true when the record is terminal on the default branch as
-	// fetched, so its reservation counts as released whatever its expiry.
+	// fetched, or a release subject's tag is on origin as fetched, so its
+	// reservation counts as released whatever its expiry.
 	derived bool
 	verdict lease.Verdict
 	// mine and thisCopy compare a readable tip's holder and copy with the
@@ -114,6 +115,16 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		return Result{}, err
 	}
 	p.derivedGap = gap
+	if IsRelease(p.id) && !p.req.Release && !p.req.Renew {
+		// A release already tagged has no cut left to hold.
+		tagged, err := taggedOnOrigin(root, p.id)
+		if err != nil {
+			return Result{}, refuse("could not read whether %s is tagged on %s: %s; %s", releaseTag(p.id), Remote, redacted(err), noReservation)
+		}
+		if tagged {
+			return Result{}, refuse("%s is already tagged on %s, so there is no cut to hold; %s", releaseTag(p.id), Remote, nothingPushed)
+		}
+	}
 	j, err := judge(p, tree)
 	if err != nil {
 		return Result{}, err
@@ -320,7 +331,7 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 			fmt.Sprintf("%s holds no reservation on %s to renew; %s", p.id, Remote, nothingPushed))
 	case j.derived:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldReleased, ErrBackOff,
-			fmt.Sprintf("the reservation on %s is released: %s is finished on %s's default branch; %s", p.id, p.id, Remote, nothingPushed))
+			fmt.Sprintf("the reservation on %s is released: %s; %s", p.id, derivedWhy(p.id), nothingPushed))
 	case j.Unreadable != "":
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldUnreadable, ErrBackOff,
 			fmt.Sprintf("the reservation on %s is unreadable (%s); %s", p.id, j.Unreadable, nothingPushed))
@@ -370,14 +381,21 @@ func judge(p *prepared, tree string) (judged, error) {
 	if !ok {
 		return j, nil
 	}
-	// A default branch the fetch could not read derives nothing: the copy
-	// this clone holds may be stale, so it is not read.
-	if p.derivedGap == "" {
-		j.derived, err = terminalOnDefault(p.root, p.id)
-	}
-	if err != nil {
-		return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
-			p.id, redacted(err), noReservation)
+	switch {
+	case IsRelease(p.id):
+		// A release's tag is read by the same fetch as its reservation, so
+		// it is never stale beside it.
+		if j.derived, err = taggedOnOrigin(p.root, p.id); err != nil {
+			return judged{}, refuse("could not read whether %s is tagged on %s: %s; %s",
+				releaseTag(p.id), Remote, redacted(err), noReservation)
+		}
+	case p.derivedGap == "":
+		// A default branch the fetch could not read derives nothing: the
+		// copy this clone holds may be stale, so it is not read.
+		if j.derived, err = terminalOnDefault(p.root, p.id); err != nil {
+			return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
+				p.id, redacted(err), noReservation)
+		}
 	}
 	if t.Unreadable != "" {
 		j.verdict = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)
@@ -387,6 +405,15 @@ func judge(p *prepared, tree string) (judged, error) {
 	j.mine = sameHolder(t.Holder, p.holder)
 	j.thisCopy = t.Copy == p.copy
 	return j, nil
+}
+
+// derivedWhy says what released a subject outside its own tip: a release's
+// tag on origin, or a record finished on origin's default branch.
+func derivedWhy(id string) string {
+	if IsRelease(id) {
+		return releaseTag(id) + " is tagged on " + Remote
+	}
+	return id + " is finished on " + Remote + "'s default branch"
 }
 
 // terminalFolders are the folders whose membership finishes a record: an
@@ -522,6 +549,7 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 	args := []string{"fetch", "--prune", "--no-tags", Remote}
 	for _, ns := range spaces {
 		args = append(args, ns.refspec())
+		args = append(args, ns.also...)
 	}
 	withDefault := args
 	if ref != "" {

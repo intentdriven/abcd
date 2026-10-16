@@ -25,6 +25,9 @@ package landing
 //     the branch's checkout (it waits on the machine load waiter itself), and
 //     HEAD must be unchanged and a receipt present after it, and origin's
 //     URLs as they were before it (the branch's preflight could rewrite them).
+//     Then the release hold (releasehold.go), judged from the checkout land
+//     runs in: nothing is pushed, armed or queued while another session cuts
+//     a release, or when it cannot be read.
 //  5. push (land.push): a plain `git push --porcelain origin
 //     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
 //     the one the gate checked whatever the branch names by then, the
@@ -125,6 +128,9 @@ type Options struct {
 	Gate func(dir string) error
 	// GateOutput receives the preflight's output; nil discards it.
 	GateOutput io.Writer
+	// Sleep pauses between the forge readings that wait for land's own push
+	// to show; nil is time.Sleep.
+	Sleep func(time.Duration)
 }
 
 // Step is what one step of the landing did.
@@ -152,6 +158,9 @@ type Result struct {
 	// forge lists PR as merged at it.
 	Landed bool   `json:"landed,omitempty"`
 	Steps  []Step `json:"steps"`
+	// Notices are lines the landing shows beside its steps, whatever its
+	// outcome: each release dated ahead that the release hold did not count.
+	Notices []string `json:"notices,omitempty"`
 }
 
 func (r *Result) add(name, status, note, command string) {
@@ -162,10 +171,13 @@ func (r *Result) add(name, status, note, command string) {
 // supplied (a remote URL carrying a token), before land reports it.
 func clean(s string) string { return gitutil.ScrubURLCredentials(s) }
 
-// Refusal is a landing refused: Reason says why, Fix what settles it.
+// Refusal is a landing refused: Reason says why, Fix what settles it. Held
+// marks a landing a release being cut holds (ReleaseHold): contention, which
+// the surface exits 3 on, as every verb that backs off does.
 type Refusal struct {
 	Reason string
 	Fix    string
+	Held   bool
 }
 
 func (r *Refusal) Error() string {
@@ -186,6 +198,9 @@ func (o Options) withDefaults() Options {
 	}
 	if o.GateOutput == nil {
 		o.GateOutput = io.Discard
+	}
+	if o.Sleep == nil {
+		o.Sleep = time.Sleep
 	}
 	if o.Gate == nil {
 		o.Gate = makePreflight(o.GateOutput)
@@ -282,10 +297,22 @@ func Land(cwd string, o Options) (Result, error) {
 	if err := origin.unchanged(dir); err != nil {
 		return res, err
 	}
-	if err := push(&res, o, dir); err != nil {
+	// The hold is judged from the checkout land runs in, not the branch's:
+	// that is the copy the reservation verbs run here speak for, so a session
+	// that reserved the release here lands through its own hold whichever
+	// worktree has the branch checked out.
+	notice, err := ReleaseHold(root, o.Roots.Home)
+	if notice != "" {
+		res.Notices = append(res.Notices, notice)
+	}
+	if err != nil {
 		return res, err
 	}
-	return res, enqueue(&res, o, dir, tracking, origin.repo.NameWithOwner)
+	moved, err := push(&res, o, dir)
+	if err != nil {
+		return res, err
+	}
+	return res, enqueue(&res, o, dir, tracking, origin.repo.NameWithOwner, moved)
 }
 
 // branchRepoRoot is the repository layer's root for the landed branch's own
@@ -747,11 +774,11 @@ func addPushOff(res *Result) {
 // refusal carries.
 const maxPushReport = 2048
 
-// push is step 5.
-func push(res *Result, o Options, dir string) error {
+// push is step 5. moved reports that the push changed the branch on origin.
+func push(res *Result, o Options, dir string) (moved bool, err error) {
 	if !res.Push.On {
 		addPushOff(res)
-		return nil
+		return false, nil
 	}
 	out, err := o.Git(dir, pushArgs(res.Head, res.Branch)...)
 	if err != nil {
@@ -759,15 +786,15 @@ func push(res *Result, o Options, dir string) error {
 		if report := pushReport(out); report != "" {
 			reason += "; git reports: " + report
 		}
-		return refuse(reason, "settle what git or the pre-push hook reports, then run abcd land again; land never forces a push or skips a hook")
+		return false, refuse(reason, "settle what git or the pre-push hook reports, then run abcd land again; land never forces a push or skips a hook")
 	}
 	res.Pushed = res.Head
-	note := "pushed " + res.Branch + " at " + short(res.Head) + " to " + Remote
+	note, moved := "pushed "+res.Branch+" at "+short(res.Head)+" to "+Remote, true
 	if strings.Contains(out, "\n=\t") || strings.HasPrefix(out, "=\t") {
-		note = Remote + " already held " + res.Branch + " at " + short(res.Head) + "; the push changed nothing"
+		note, moved = Remote+" already held "+res.Branch+" at "+short(res.Head)+"; the push changed nothing", false
 	}
 	res.add("push", StatusDone, note, "")
-	return nil
+	return moved, nil
 }
 
 // pushReport is a failed porcelain push's per-ref lines (git's own reasons
@@ -1048,22 +1075,34 @@ func (a prStateAnswer) errorText() string {
 	return t
 }
 
-// enqueue is step 6. tracking is origin's default branch as just fetched;
-// nameWithOwner is the repository as the forge client resolved it when origin
-// was checked, the one the pull request's state is asked of.
-func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error {
-	if !res.Enqueue.On {
-		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
-		return nil
-	}
-	out, err := forge(o, dir, "pr", "list", "--head="+res.Branch, "--state=open",
-		"--json=number,url,isCrossRepository,headRefOid,baseRefName", fmt.Sprintf("--limit=%d", maxListedPRs))
+// openPRArgs is the listing of branch's open pull requests: the one forge
+// read the wait for land's own push repeats.
+func openPRArgs(branch string) []string {
+	return []string{"pr", "list", "--head=" + branch, "--state=open",
+		"--json=number,url,isCrossRepository,headRefOid,baseRefName", fmt.Sprintf("--limit=%d", maxListedPRs)}
+}
+
+// The wait for the forge to show land's own push. Two real runs
+// (iss-2610151855227496, 2026-10-15 and 2026-10-16) read pull request #1020
+// at the old head right after a push that moved it, and a re-run 12 and 14
+// seconds later saw the new one: a reading every 2 s finds the head within a
+// beat of the forge, and 30 s, over twice the slower of the two, bounds the wait
+// at sixteen listings at most.
+const (
+	headWaitInterval = 2 * time.Second
+	headWaitCap      = 30 * time.Second
+)
+
+// listOwnPR lists branch's one open pull request from this repository. ok is
+// false with a nil error when there is none, and the stop is reported.
+func listOwnPR(res *Result, o Options, dir string) (openPR, bool, error) {
+	out, err := forge(o, dir, openPRArgs(res.Branch)...)
 	if err != nil {
-		return err
+		return openPR{}, false, err
 	}
 	var listed []openPR
 	if json.Unmarshal([]byte(out), &listed) != nil {
-		return refuse("the forge's listing of "+res.Branch+"'s pull requests does not parse", "check the forge client (gh --version), then run abcd land again")
+		return openPR{}, false, refuse("the forge's listing of "+res.Branch+"'s pull requests does not parse", "check the forge client (gh --version), then run abcd land again")
 	}
 	// A fork's pull request from a branch of the same name is not this
 	// branch's: it is set aside, and refused only when it is all there is.
@@ -1075,24 +1114,54 @@ func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string) error 
 	}
 	switch {
 	case len(prs) == 0 && len(listed) > 0:
-		return refuse("pull request #"+fmt.Sprint(listed[0].Number)+" for "+res.Branch+" comes from another repository (a fork), and land arms only a pull request from this repository's own branch",
+		return openPR{}, false, refuse("pull request #"+fmt.Sprint(listed[0].Number)+" for "+res.Branch+" comes from another repository (a fork), and land arms only a pull request from this repository's own branch",
 			"merge it by hand on the forge, or open one from this repository's branch, then run abcd land again")
 	case len(prs) == 0:
 		res.add("enqueue", StatusStopped, "no open pull request for "+res.Branch+"; land opens none: open it with the command, then run abcd land again to queue it",
 			"gh pr create --base "+shellQuote(res.Default)+" --head "+shellQuote(res.Branch))
-		return nil
+		return openPR{}, false, nil
 	case len(prs) > 1:
-		return refuse("the forge lists more than one open pull request for "+res.Branch+" from this repository", "close all but one, then run abcd land again")
+		return openPR{}, false, refuse("the forge lists more than one open pull request for "+res.Branch+" from this repository", "close all but one, then run abcd land again")
 	}
-	pr := prs[0]
+	return prs[0], true, nil
+}
+
+// enqueue is step 6. tracking is origin's default branch as just fetched;
+// nameWithOwner is the repository as the forge client resolved it when origin
+// was checked, the one the pull request's state is asked of.
+func enqueue(res *Result, o Options, dir, tracking, nameWithOwner string, moved bool) error {
+	if !res.Enqueue.On {
+		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
+		return nil
+	}
+	pr, ok, err := listOwnPR(res, o, dir)
+	if err != nil || !ok {
+		return err
+	}
+	// Right after land's own push moves the remote head, the forge can still
+	// report the old one: the listing alone is read again, a bounded number of
+	// times, until it shows the pushed commit. A push that changed nothing
+	// gives the forge nothing new to show, so it is not waited for.
+	var waited time.Duration
+	for moved && pr.HeadRefOid != res.Head && waited < headWaitCap {
+		o.Sleep(headWaitInterval)
+		waited += headWaitInterval
+		if pr, ok, err = listOwnPR(res, o, dir); err != nil || !ok {
+			return err
+		}
+	}
 	if pr.Number <= 0 {
 		return refuse("the forge lists a pull request for "+res.Branch+" with no number", "check the forge client, then run abcd land again")
 	}
 	res.PR, res.PRURL = pr.Number, pr.URL
 	n := fmt.Sprint(pr.Number)
 	if pr.HeadRefOid != res.Head {
-		res.add("enqueue", StatusStopped, fmt.Sprintf("pull request #%s's head on the forge is %s, not %s's head %s, so nothing was armed: if the forge's head is newer, pull it into the branch and run abcd land again, which gates it; if it is older, wait for the forge to see the push, then run abcd land again",
-			n, short(pr.HeadRefOid), res.Branch, short(res.Head)), "")
+		note := fmt.Sprintf("pull request #%s's head on the forge is %s, not %s's head %s, so nothing was armed: if the forge's head is newer, pull it into the branch and run abcd land again, which gates it; if it is older, wait for the forge to see the push, then run abcd land again",
+			n, short(pr.HeadRefOid), res.Branch, short(res.Head))
+		if waited > 0 {
+			note += fmt.Sprintf(" (land waited %d s after its push for the forge to show it)", int(waited/time.Second))
+		}
+		res.add("enqueue", StatusStopped, note, "")
 		return nil
 	}
 	if pr.BaseRefName != res.Default {

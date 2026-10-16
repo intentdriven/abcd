@@ -19,12 +19,12 @@ Render the status board, or say what one record id is and its next move: Writes 
 Agent-based configuration for development.
 
 Bare `abcd` renders the read-only status board — what can I do. A single
-positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,
-`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and
-the next move for its lifecycle state — what is this. N is either a short
-ordinal from before ids were minted or the sixteen-digit stamp minted since;
-both resolve. The bare and the id form are strictly read-only; any other
-positional is refused as an unknown command.
+positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `dcn-N`,
+`adm-N`, `srp-N` or `rfm-N`) instead reports what that record is, where it
+lives, and the next move for its lifecycle state — what is this. N is either
+a short ordinal from before ids were minted or the sixteen-digit stamp minted
+since; both resolve. The bare and the id form are strictly read-only; any
+other positional is refused as an unknown command.
 
 `--version` reports the running binary's version, install mode and vintage.
 When that binary sits in a plugin root other than the one this session
@@ -910,26 +910,39 @@ nothing signalled. It never stops anything by name.
 
 ### `abcd decide`
 
-Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.
+Record a decision, list them bare, or mint an ADR with --adr: Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.
 
-**Usage:** `abcd decide "<title>"`
+**Usage:** `abcd decide ["<text>" | --adr "<title>"] [flags]`
 
-Mint an architecture decision record: allocate its id through the shared record-id
-seam and write the store's skeleton under .abcd/development/decisions/adrs/.
+Record a decision, list the decisions recorded, or mint an architecture decision record.
 
-The id is `adr-<yymmddHHMMSS><rrrr>` and the filename is ordered by that stamp, so two
-branches deciding on the same day cannot allocate the same number — the collision a
-hand-numbered ordinal has by construction. The hand-numbered records 0001-0058 keep
-their ids and their filenames; nothing is renumbered, and every reader admits both.
+abcd decide "<text>" records a decision: one new file, .abcd/work/decisions/dcn-<id>-<slug>.md,
+whose id is minted through the shared record-id seam and whose body is `<date> — <text>`.
+Nothing is appended anywhere, so two branches that each record a decision merge with nothing
+to reconcile. It needs the shared tier .abcd/work/, which `abcd ahoy install` lays.
 
-The verb writes an EMPTY record: it owns the id, the date, the filename and the four
-sections, and states nothing. The decision is the author's to write, and the status it
-lands with is `proposed` until the author sets `accepted`.
+abcd decide with no operand lists every decision recorded, newest first, read from the folder
+each time: the id, then the decision. Where a frozen .abcd/work/DECISIONS.md also exists, the
+listing ends by naming it as earlier history it does not list. It writes nothing.
+
+abcd decide --adr "<title>" mints an architecture decision record: its id is
+`adr-<yymmddHHMMSS><rrrr>` and the store's skeleton lands under
+.abcd/development/decisions/adrs/, with the filename ordered by the stamp, so two branches
+deciding on the same day cannot allocate the same number. The hand-numbered records
+0001-0058 keep their ids and their filenames. The ADR is EMPTY: the verb owns the id, the
+date, the filename and the four sections, and states nothing; it lands `proposed` until the
+author sets `accepted`.
+
+**Flags:**
+
+```
+      --adr   mint an architecture decision record from the operand as its title, instead of recording a decision
+```
 
 **Example:**
 
 ```
-abcd decide "Record ids are minted from a timestamp"
+abcd decide "Decisions are one flat file each"
 ```
 
 ### `abcd disembark`
@@ -1809,8 +1822,8 @@ Validate a host-composed gauntlet verdict: Writes the dated record to the privat
 **Flags:**
 
 ```
-      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision-log line (exclusive with --public)
-      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ with its decision-log line (exclusive with --private)
+      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
+      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
 ```
 
@@ -3166,9 +3179,21 @@ ready, and readiness is the gate.
 
 Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an
 origin that is not the repository the forge client resolves (an SSH host alias
-included), and a pull request only another repository opened. Exit 0 when every
-step did its act or said why it stopped; exit 2 on a refusal, which names what
-was done before it.
+included), and a pull request only another repository opened.
+
+Before the push, the reservations and origin's release tags are fetched, and the
+release hold is judged for the checkout land runs in: while another session cuts
+a release (a live rel-vX.Y.Z reservation, or an unreadable one within its hold),
+nothing is pushed, armed or queued. The copy cutting the release lands through
+its own hold. A release reserved with a date more than five minutes ahead of
+this clock holds from when this checkout first saw it; one this checkout cannot
+keep that sighting for (no .abcd/.work.local/) is not counted, and a notice
+line on stderr names it.
+
+Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
+which names what was done before it; reservations that cannot be fetched are
+one, made before anything is pushed. Exit 3 when a release being cut holds the
+landing: it names the release, its holder and until when.
 
 **Flags:**
 
@@ -3502,7 +3527,7 @@ names it.
 ```
       --claim string          what was decided or claimed
       --corrects int          the line this record corrects
-      --decision string       the decision influenced: a DECISIONS.md date, an ADR or intent id, or free text
+      --decision string       the decision influenced: a decision id, an ADR or intent id, or free text
       --flip int              cite line N publicly (the person's act; checks the source's permission first)
       --influence string      the influence: supports | contradicts | method | background
       --list                  print the ledger, numbered (read-only)
@@ -3754,12 +3779,19 @@ Then the reservations on the shared remote: one fetch from origin of every
 abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
-hold), and each person's count of live reservations. The fetch is the only
-network act; it updates the remote-tracking reservation branches and stamps
-when it ran in the local tier, and nothing else is written. A checkout with no
-remote named origin lists no reservations. When the fetch fails, the
-reservations are listed as last fetched, with that view's age, and the failure
-is named on stderr and in fetch_error.
+hold), each person's count of live reservations, and a line for each release
+being cut (a live rel-vX.Y.Z reservation, which holds every other session's
+merge until its tag is on origin). The fetch is the only network act, and it
+reads origin's release tags with the reservations; it updates the
+remote-tracking reservation branches and the release tags abcd keeps under
+refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
+first fetched each reservation dated ahead of this computer's clock or
+undated, and nothing else is written. The release-tag refs are ordinary
+refs of this checkout, so git log --all lists the commits they name and
+git push --mirror would push them. A checkout with no remote named origin
+lists no reservations.
+When the fetch fails, the reservations are listed as last fetched, with that
+view's age, and the failure is named on stderr and in fetch_error.
 
 A worktree is named home-relative (~/...), or by its directory name when it
 sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
@@ -3982,7 +4014,7 @@ nothing filed. After the editor ran, both name where what was written is kept.
 
 ### `abcd reserve`
 
-Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.
+Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.
 
 **Usage:** `abcd reserve <record-id> [flags]`
 
@@ -3994,7 +4026,13 @@ every other participant sees it is taken. The reservation is the branch
 abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits
 naming the record, the holder (your GitHub username), this working copy, the files
 the work will change (--footprint, once per repository-relative path) and the
-lease (--lease, default 2h, from 1m to 24h).
+lease (--lease, from 1m to 24h; default 2h, or 24h for a release).
+
+A session cutting a release reserves the release instead, rel-vX.Y.Z, with no
+footprint: while it is live every other session's land step holds its merge.
+It holds for 24h unless --lease names less, sits outside the cap of ten, and
+ends when the tag vX.Y.Z is on origin or its holder releases it; running the
+same command again from the same copy renews it.
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks
@@ -4003,7 +4041,8 @@ a reservation lapsed past its expiry by five minutes, or a release (--release),
 which pushes a tombstone. --take-over moves your own live reservation from
 another copy to this one; it never moves another person's. A record already
 resolved, won't-fixed, shipped or superseded on origin's default branch counts
-as released whatever its reservation says.
+as released whatever its reservation says, and so does a release whose tag is
+on origin.
 
 The holder is read from user.email when it is a GitHub no-reply address, or from
 reservation.github_username in the machine configuration; the repository's
@@ -4020,7 +4059,7 @@ push leaves no reservation and nothing in the checkout.
 
 ```
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
-      --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
+      --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
       --release                 release your reservation from this copy by pushing a tombstone
       --take-over               move your own live reservation from another copy to this one
 ```

@@ -31,8 +31,8 @@ func TestAStringsQuotingAppliesToTheVariablesValue(t *testing.T) {
 		{`sh -c "git push \"--$X\" origin main"`, VerdictBlock, "git-push-force"},
 		{`sh -c "git push '--$(echo force)' origin main"`, VerdictBlock, "git-push-force"},
 
-		// A word that is wholly a variable is one operand (DECISIONS
-		// 2026-09-28, allow (1) of the first 2026-09-25 entry), and a quote or
+		// A word that is wholly a variable is one operand (dcn-2609280000000006,
+		// allow (1) of dcn-2609250000000014), and a quote or
 		// a backslash round it in a string leaves it one: `\$X` there is its
 		// bare twin `sh -c "git push $X origin main"`, as `git push $X origin
 		// main` is at the top level.

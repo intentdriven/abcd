@@ -146,7 +146,8 @@ func fixtureRepo(t *testing.T) string {
 		"---\nid: iss-1\n---\n\n"+sentinelIssue+"\n")
 	writeFile(t, root, ".abcd/work/issues/open/iss-2-a-lapse.md",
 		"---\nid: iss-2\ncategory: lapse-log\n---\n\n"+sentinelLapse+"\n")
-	writeFile(t, root, ".abcd/work/DECISIONS.md", "# Decisions\n\n"+sentinelDecision+"\n")
+	writeFile(t, root, ".abcd/work/decisions/dcn-2608300000000001-a-recorded-decision.md",
+		"---\nid: dcn-2608300000000001\nslug: a-recorded-decision\ndate: 2026-08-30\n---\n2026-08-30 — "+sentinelDecision+"\n")
 	writeFile(t, root, ".abcd/development/readings/rdg-2608301200000001/manifest.json",
 		"{\"note\": \""+sentinelPriorRun+"\"}\n")
 	writeFile(t, root, "agents/cold-reading-widening.md", "# Widening\n\n"+sentinelDefinition+"\n")

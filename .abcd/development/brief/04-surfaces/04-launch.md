@@ -698,6 +698,49 @@ reason a refusal stands — and stops there: no shipped path deletes a tag, a
 release or an asset, so the plan is a statement of intent a person still carries
 out.
 
+### The release hold
+
+A cut is held against other sessions' merges by a reservation of the release,
+`rel-vX.Y.Z`, which every other session's land step reads (itd-2609151838312703
+C7 and C8, spc-2610150728396006 step 4, resolving iss-2609091037191879; the
+subject is in [`37-reserve.md`](37-reserve.md), the fence in
+[`27-implement.md`](27-implement.md)). It guards the one hazard of release day:
+a change merging between the release pull request's merge and its tag, which
+makes the release workflow read the wrong commit.
+
+The cutting session takes the hold itself, with `abcd reserve rel-vX.Y.Z`,
+before the cut's first step, and the ship sub-verb neither takes nor releases it.
+Three facts decided that, with the least change:
+
+- The tag is not pushed by abcd: the release workflow pushes it after the
+  release pull request merges, when no abcd verb is running, so there is no
+  moment in the ship sub-verb to release the hold "at the tag". The hold ends by
+  itself instead, once the tag is on origin as last fetched, so no step has to
+  remember to release it.
+- The ship sub-verb's emit step writes nothing and its ingest step writes the
+  checkout alone; neither touches the network except through an explicit flag,
+  and invariant 7 names the verbs whose meaning is a fetch or a push of the
+  reservations. A push from it would change what the verb means,
+  where the reservation verb already means exactly that push.
+- The ship sub-verb runs in repositories with no remote named origin and many
+  times in one cut (an emit step is a preview, and a refused ingest is
+  recomposed and run again), so a hold taken there would be taken, retaken and
+  renewed by steps that are not the start of a cut.
+
+The hold lasts a day unless a shorter lease is named, and the cutting session
+renews it by running the same command again from the same copy at each stage
+of a slow cut; without a renewal nothing holds past a day from its claim, or
+from a copy's first fetch of one claimed ahead of that copy's clock. A cut
+abandoned before its tag is released by its holder, or lapses within the day.
+
+The hold stops a merge from being armed; it does not stop a merge armed, or
+queued, before the release was reserved: a pull request with auto-merge
+already on, or already in the merge queue, lands when its checks pass. So the
+cut's runbook (`commands/launch.md`, "Before step 1") has the cutting session
+check for pull requests with auto-merge on and for merge-queue entries once it
+has reserved, and again just before it merges the release pull request, and
+still tell people working in the repository by hand to hold.
+
 ## 4. Reports
 
 Every preview, and every cut that renders a payload, writes a pre-flight report:

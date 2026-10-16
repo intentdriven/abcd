@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/ghcontract"
@@ -48,6 +49,12 @@ type fakeForge struct {
 	// head on the forge.
 	head string
 	prs  string
+	// prsSeq, when set, answers the open listing one a call, the last
+	// repeated, in place of prs; prsErrAt fails the open listing with this
+	// ordinal (1 is the first), 0 none.
+	prsSeq   []string
+	prsErrAt int
+	opens    int
 	// merged answers the listing of the branch's merged pull requests; ""
 	// is none. mergedErr fails that listing alone.
 	merged    string
@@ -101,6 +108,16 @@ func (f *fakeForge) run(_ string, args ...string) (string, error) {
 				return "[]", nil
 			}
 			return f.merged, nil
+		}
+		if f.opens++; f.opens == f.prsErrAt {
+			return "", errors.New("fake forge: the listing failed")
+		}
+		if len(f.prsSeq) > 0 {
+			a := f.prsSeq[0]
+			if len(f.prsSeq) > 1 {
+				f.prsSeq = f.prsSeq[1:]
+			}
+			return a, nil
 		}
 		if f.prs == "" {
 			return "[]", nil
@@ -182,6 +199,8 @@ type fixture struct {
 	home string
 	// beforeGit runs before each networked git call the landing makes.
 	beforeGit func(args []string)
+	// slept are the pauses the landing asked for, none of them taken.
+	slept []time.Duration
 }
 
 func newFixture(t *testing.T, ruleset string) *fixture {
@@ -237,6 +256,7 @@ func (f *fixture) options() Options {
 			f.gates = append(f.gates, dir)
 			return f.gate(dir)
 		},
+		Sleep: func(d time.Duration) { f.slept = append(f.slept, d) },
 	}
 }
 

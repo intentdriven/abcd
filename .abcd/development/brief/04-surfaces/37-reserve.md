@@ -27,8 +27,9 @@ record's page (`abcd <record-id>`), as [`08-abcd.md`](08-abcd.md) states.
 ## The two forms
 
 The verb takes one record, an issue or an intent in canonical id form, the two
-families a build or a drain takes, and does one of two things: it reserves the
-record, or it releases this copy's reservation of it. A reservation names every
+families a build or a drain takes, or a release, `rel-vX.Y.Z` (the release
+hold, below), and does one of two things: it reserves it, or it releases this
+copy's reservation of it. A reservation names every
 repository-relative path the work will change, one path to a flag, never split
 on commas, and the footprint is required. Its lease is from one minute to 24
 hours, two hours by default. A release takes no footprint, take-over or lease.
@@ -96,6 +97,81 @@ so it holds at most a day from then. No bound read on the reader's side holds
 for a slow clock: the commit date is written by the same clock, and the time
 this copy first saw a tip cannot tell a holder's slow clock from a late fetch.
 
+## The release hold
+
+A session cutting a release reserves the release itself, `rel-vX.Y.Z`, on the
+branch `abcd-reserved/rel-vX.Y.Z` (itd-2609151838312703 C7 and C8,
+spc-2610150728396006 step 4, resolving iss-2609091037191879). While it is live,
+every other session's land step refuses to arm its merge, naming the holder and
+the release, and leaves the pull request open; `abcd peers` shows the line
+"release v0.16.0 being cut by @maya: merges are held", judged by the merge
+hold's own rule (`claim.JudgedHolds`, iss-2610160415393242): the cutting
+copy's own release is shown as "you are cutting release v0.16.0 from this
+copy: every other session's merges are held", and a release dated ahead whose
+first sighting the checkout cannot keep is shown as not counted, in land's
+notice's words, with `own` and `unsighted` on each `release_holds` row of
+its machine-readable form. The subject is `rel-v` and three plain numbers,
+with no leading zero and no suffix, so one release never makes two branches. It differs from a record's reservation in four ways:
+
+- It takes no footprint, and refuses one: it holds every merge, not some
+  files.
+- It sits outside the cap of ten: it is neither counted toward a person's ten
+  nor refused by them, and the live counts a listing shows leave it out.
+- It holds for 24 hours unless a shorter lease is named, where a record holds
+  for two. A cut waits on its checks, on a reviewer and on an approval, and
+  the release tag is pushed by the release workflow after the merge, so a
+  two-hour hold could lapse in the middle of a cut. A slower cut renews it by
+  reserving it again from the same copy, which pushes a fresh day; without a
+  renewal nothing holds past 24 hours from its claim, or from this copy's
+  first fetch of one claimed ahead, the one bound every reservation has.
+- It ends by itself when the tag `vX.Y.Z` is on origin as last fetched, as a
+  record's ends when the record is finished on the default branch, or earlier
+  when its holder releases it. A reservation of a release already tagged on
+  origin is refused. The tags are read by the same fetch as the reservations,
+  into `refs/abcd/release-tags/`, so the fetch never makes, moves or deletes
+  a tag of the person's own and never lists a tag as a remote branch. Those
+  are ordinary refs of the checkout all the same: a git log of every ref lists
+  the commits they name, and a mirror push would push them.
+
+The hold binds sessions, not people. The copy that holds it is not held, since
+under the concurrent-sessions rule a session cutting a release has the final
+say on what merges before its tag, and its own landing is that ruling; the
+release pull request itself is merged by a person and meets no land fence.
+Every other copy is held, the same person's other copy included, since the
+hazard the hold guards (a merge between the release merge and its tag, which
+makes the release workflow read the wrong commit) is the same whoever's
+session merges, and its pull request is handed to the cutting session to merge
+or hold. An unreadable release branch holds every merge for the default
+two-hour hold from its commit date, as an unreadable reservation holds its
+record, named as unreadable and never by its writer's text.
+
+The release cut's ship sub-verb does not take or release the hold: the cutting session runs
+this verb before the cut and the hold ends at the tag without it (the reasons
+are in [`04-launch.md`](04-launch.md)). The land fence and `abcd land` judge
+the hold through `claim.MergeHolds`, after their fetch: it fetches and pushes
+nothing, and keeps in the local tier this copy's first sighting of each
+release reservation dated more than five minutes ahead (or undated), whichever
+fetch brought it, so such a release holds a day (an unreadable one two hours)
+from that sighting at every path that judges a merge. Where no sighting can be
+kept, in a checkout with no local tier or one whose tier cannot be written,
+such a release would be counted from every reading and hold for ever, so it
+is not counted as a hold: the judgement returns it as dated ahead, and the
+caller names it in one notice line (the arming's note at the fence, a line on
+stderr at `abcd land`). The tier is never made for it. An honest cut is
+reserved on a clock within five minutes of the reader's, so this lets no
+merge past one, with one limit: a cutting copy whose clock runs more than five
+minutes fast is not counted by a checkout that cannot keep a sighting. `abcd
+peers` renders the hold from its own view through `Snapshot.Holds`, with the
+same line; `abcd status` and the prompt hook are to render it in step 3 of the
+spec and do not yet.
+
+The hold stops a merge from being armed and nothing more. A merge armed, or
+queued, before the release was reserved (a pull request with auto-merge on,
+or an entry already in the merge queue) is not stopped by it and lands when
+its checks pass. The cutting session checks for armed pull requests and
+merge-queue entries after reserving and again before merging the release pull
+request, and tells people working in the repository by hand to hold.
+
 ## Exits
 
 Exit 0 when the act reached origin, or a release was already made. Exit 3, the
@@ -114,6 +190,9 @@ and on every other refusal and failure. The JSON document carries `act`, `record
   spc-2610031753359849, whose spec-2 steps add the build, drain and render
   integration.
 - The listing: `abcd peers` ([`08-abcd.md`](08-abcd.md)).
+- The release hold: itd-2609151838312703 (C7, C8), spc-2610150728396006
+  step 4; the land fence that reads it is in
+  [`27-implement.md`](27-implement.md).
 - The plugin surface: `commands/reserve.md`.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

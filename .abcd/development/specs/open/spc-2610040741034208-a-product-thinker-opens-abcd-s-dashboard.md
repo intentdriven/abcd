@@ -483,7 +483,7 @@ another package is given.
   refused, at the connection with a failing lookup and as a relay with a
   passing one, and reaches no route). Two cases decision 4 did not settle
   are refused until the product thinker decides (the facilitator's safe
-  default, `.abcd/work/DECISIONS.md` 2026-10-05). A device shared into the
+  default, [dcn-2610050000000002](../../../work/decisions/dcn-2610050000000002-decided-without-asking-facilitator.md)). A device shared into the
   tailnet from another account (the lookup's `Node.Sharer` set) belongs to
   someone else and is refused at the connection with no byte, like a tagged
   one: `TestASharedInNodeIsRefused`, and `TestWhoIsReportsASharer`

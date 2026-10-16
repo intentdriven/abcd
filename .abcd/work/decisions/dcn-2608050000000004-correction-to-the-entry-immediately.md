@@ -1,0 +1,6 @@
+---
+id: dcn-2608050000000004
+slug: correction-to-the-entry-immediately
+date: 2026-08-05
+---
+2026-08-05 — CORRECTION to the entry immediately above, from a merge-gate record-accuracy review on PR #195. That entry, and iss-80's own `resolution:` field, said the branch-local id-collision class "was closed" by iss-115/iss-120. It was not: `internal/core/recordid/recordid.go`'s own package doc documents an ACCEPTED, undocumented-in-that-entry residual window — two branches that BOTH mint before either commits still collide — left to the already-armed record-lint uniqueness detectors (`issue_id_unique`, `intent_lifecycle`, `spec_id_unique`) as backstop, the same trade-off iss-120's own resolution names verbatim ("the armed record-lint detectors as the residual-window backstop"). iss-80's body asked for a fully collision-free minting scheme (forge-minted / random-suffix / timestamp / reserve-registry); that was never built, that trade-off was made when iss-115/iss-120 landed rather than here, and no open item currently tracks the residual window separately. Both iss-80's `resolution:` field and this log now say "already addressed, not closed to zero" and name the trade-off explicitly, rather than implying the class was eliminated. The test-coverage work in the entry above (the two new refunion tests) is unaffected and stands as described.
