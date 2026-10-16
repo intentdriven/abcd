@@ -96,7 +96,9 @@ which `git worktree remove` deletes with the worktree; a file for that
 worktree's own work alone may stay in its own tier. A verifier's copy goes in a
 directory of its own under `~/.abcd.noindex/` keyed on the root-commit SHA, and
 the host's own scratchpad keeps only the turn's throwaway files, since a reboot
-or a new session loses it.
+or a new session loses it. Its second rule sends an agent to abcd's commands
+before it writes a helper script, and has it capture the gap when none does the
+job.
 
 ### Reset triggers
 

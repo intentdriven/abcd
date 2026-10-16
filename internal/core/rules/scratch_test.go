@@ -119,3 +119,43 @@ func TestScratchRuleSaysWhereEachFileGoes(t *testing.T) {
 		t.Errorf("the %s rule names /tmp; the bundled rules are host-agnostic:\n%s", scratchDomain, body)
 	}
 }
+
+// TestScratchRuleSendsAHelperToAbcdsCommandsFirst pins iss-2610161614039496:
+// an agent wrote its own preflight queue script although abcd's waiter already
+// did that, kept it in the host scratchpad, and a reboot wiped it with the
+// queued runs. The SCRATCH domain carries a second rule: look for an abcd
+// command first, write a helper only when none does it, keep that helper where
+// the first rule says, and capture the gap. It names the preflight case and
+// points at the LOAD waiter rule rather than restating it, and a prompt about
+// scripting a preflight queue injects it.
+func TestScratchRuleSendsAHelperToAbcdsCommandsFirst(t *testing.T) {
+	rules := Defaults().Domains[scratchDomain].Rules
+	if len(rules) != 2 {
+		t.Fatalf("%s carries %d rules, want 2 (where files go; abcd's commands before a helper)", scratchDomain, len(rules))
+	}
+	helper := rules[1]
+	for _, want := range []string{
+		"Before writing a helper script, check whether an abcd command already does the job",
+		"`abcd --help`", "command page",
+		"`abcd implement load --wait -- make preflight`, never a hand-written waiter",
+		"LOAD's waiter rule",
+		"only when no command does",
+		"the main checkout's .abcd/.work.local/scratch/",
+		"capture the gap", "so abcd can add the command",
+	} {
+		if !strings.Contains(helper, want) {
+			t.Errorf("the %s helper rule does not say %q:\n%s", scratchDomain, want, helper)
+		}
+	}
+	if strings.Contains(helper, "pgrep") {
+		t.Errorf("the %s helper rule restates the LOAD waiter rule instead of pointing at it:\n%s", scratchDomain, helper)
+	}
+
+	res := Inject(Defaults(), "write a script to queue the preflight", SessionState{}, 0)
+	if !slices.Contains(res.Injected, scratchDomain) {
+		t.Fatalf("a script to queue the preflight injected %v, want %s in it", res.Injected, scratchDomain)
+	}
+	if !strings.Contains(res.Text, "abcd implement load --wait -- make preflight") {
+		t.Fatalf("the injected block does not carry the helper rule:\n%s", res.Text)
+	}
+}

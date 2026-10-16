@@ -102,7 +102,9 @@ which `git worktree remove` deletes with the worktree; a file for that
 worktree's own work alone may stay in its own tier. A verifier's copy goes in a
 directory of its own under `~/.abcd.noindex/` keyed on the root-commit SHA, and
 the host's own scratchpad keeps only the turn's throwaway files, since a reboot
-or a new session loses it.
+or a new session loses it. Its second rule sends an agent to abcd's commands
+before it writes a helper script, and has it capture the gap when none does the
+job.
 
 ### Reset triggers
 
@@ -233,8 +235,10 @@ Development material lives under `.abcd/`; `docs/` is user-facing only.
 
 **Default to the local tier when in doubt.** Any artefact whose home is unclear —
 tool exports, oracle/review output, traces, intermediate analysis — goes to
-`.abcd/.work.local/scratch/` (or `logs/` for run output) **first**. Never to the
-repo root, and never into a tracked directory on a guess. Promotion is cheap and
+`.abcd/.work.local/scratch/` (or `logs/` for run output) **first**, and to the
+main checkout's tier for anything a later turn, session or agent reuses: a
+linked worktree's tier goes when `git worktree remove` deletes the worktree.
+Never to the repo root, and never into a tracked directory on a guess. Promotion is cheap and
 always available: an artefact that proves durable is moved up to `.abcd/work/` or
 `.abcd/development/` later, in a change that says why. Demotion is not — an
 artefact committed to the wrong tier is already in the history, and a stray
