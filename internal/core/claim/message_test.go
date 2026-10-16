@@ -126,7 +126,7 @@ func TestARepositoryConfiguredUsernameIsNeverUsed(t *testing.T) {
 	log := traced(t)
 	noToken := (&forgeFake{err: errors.New("gh: not logged in")}).user
 	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir(), ForgeUser: noToken})
-	want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was pushed"
+	want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was sent or pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("prepare = %v; want %q", err, want)
 	}
@@ -393,7 +393,7 @@ func TestACheckoutWithoutAGitIdentityIsRefused(t *testing.T) {
 	r.Git("config", "user.email", "1234+octo@users.noreply.github.com")
 	noToken := (&forgeFake{err: errors.New("gh: not logged in")}).user
 	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir(), ForgeUser: noToken})
-	want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was pushed"
+	want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was sent or pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("prepare without user.name = %v; want %q", err, want)
 	}

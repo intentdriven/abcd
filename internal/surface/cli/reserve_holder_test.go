@@ -156,7 +156,7 @@ func TestReserveHolderRealForgeClasses(t *testing.T) {
 		t.Setenv("PATH", path)
 		calls := stubGHScript(t, c.body)
 		code, stdout, stderr := reserveRun(t, pat, "reserve", "--holder")
-		if code != 2 || stdout != "" || !strings.Contains(stderr, prefix+c.class+"; nothing was pushed") {
+		if code != 2 || stdout != "" || !strings.Contains(stderr, prefix+c.class+"; nothing was sent or pushed") {
 			t.Fatalf("%s: exit %d, stdout %q, stderr %q; want the class %q", c.name, code, stdout, stderr, c.class)
 		}
 		for _, s := range []string{leak, "Bad credentials", "octo-secret", "pat@example.com", "Pat Example"} {
@@ -180,7 +180,7 @@ func TestReserveHolderRealForgeClasses(t *testing.T) {
 	}
 	t.Setenv("PATH", only)
 	code, stdout, stderr := reserveRun(t, pat, "reserve", "--holder")
-	if want := prefix + "the GitHub CLI (gh) is not on PATH; nothing was pushed"; code != 2 || stdout != "" || !strings.Contains(stderr, want) {
+	if want := prefix + "the GitHub CLI (gh) is not on PATH; nothing was sent or pushed"; code != 2 || stdout != "" || !strings.Contains(stderr, want) {
 		t.Fatalf("gh missing: exit %d, stdout %q, stderr %q; want %q", code, stdout, stderr, want)
 	}
 }

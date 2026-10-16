@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -163,7 +164,7 @@ func TestHolderTokenFailureRefusesWithoutEchoingIdentity(t *testing.T) {
 			_, herr := ResolveHolder(r.Root(), o)
 			_, perr := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, o)
 			for _, err := range []error{herr, perr} {
-				if !errors.Is(err, ErrRefused) || !strings.HasPrefix(err.Error(), prefix) || !strings.HasSuffix(err.Error(), "; nothing was pushed") {
+				if !errors.Is(err, ErrRefused) || !strings.HasPrefix(err.Error(), prefix) || !strings.HasSuffix(err.Error(), "; nothing was sent or pushed") {
 					t.Fatalf("%q with %+v: %v; want the token refusal", who.email, fake, err)
 				}
 				for _, s := range []string{who.name, who.email, "renovate", "Pat", "example.com", "HTTP 401"} {
@@ -195,7 +196,7 @@ func TestRenderHolderNeverCallsForge(t *testing.T) {
 // (a release bot, an automation account) names no person, so it is refused in
 // a fixed class that never echoes the login.
 func TestHolderRefusesMachineAccountToken(t *testing.T) {
-	const want = "could not work out whose GitHub account this session uses: the token belongs to a machine account, not a person's; nothing was pushed"
+	const want = "could not work out whose GitHub account this session uses: the token belongs to a machine account, not a person's; nothing was sent or pushed"
 	for _, login := range []string{"release-bot", "acme-automation"} {
 		for _, r := range []*gittest.Repo{newCheckout(t, "pat@example.com"), unsetCheckout(t)} {
 			fake := &forgeFake{login: login, id: 77}
@@ -306,7 +307,44 @@ func TestForgeFailureClasses(t *testing.T) {
 	}
 	r := newCheckout(t, "pat@example.com")
 	_, err := ResolveHolder(r.Root(), Options{Home: t.TempDir(), ForgeUser: func(string) (string, int64, error) { return "", 0, errForgeTimeout }})
-	if want := "could not work out whose GitHub account this session uses: " + errForgeTimeout.Error() + "; nothing was pushed"; err == nil || err.Error() != want {
+	if want := "could not work out whose GitHub account this session uses: " + errForgeTimeout.Error() + "; nothing was sent or pushed"; err == nil || err.Error() != want {
 		t.Fatalf("a timeout: %v; want %q", err, want)
+	}
+}
+
+// TestHolderRefusalsAskForNoManualStep: the product thinker ruled out an
+// identity a person must set by hand, so no refusal the resolver makes asks
+// for one. Each says what abcd tried and that nothing was sent or pushed.
+func TestHolderRefusalsAskForNoManualStep(t *testing.T) {
+	manual := regexp.MustCompile(`(?i)\b(set|retry)\b`)
+	var errs []error
+	person := newCheckout(t, "pat@example.com")
+	vendor := newCheckout(t, botMail)
+	vendor.Git("config", "user.name", botName)
+	for _, r := range []*gittest.Repo{person, vendor, unsetCheckout(t)} {
+		who, err := gitIdentity(r.Root())
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = resolveHolder(r.Root(), who, Options{Home: t.TempDir()}, false)
+		errs = append(errs, err)
+		for _, fe := range []error{errForgeMissing, errForgeNoToken, errForgeTimeout, errForgeAnswer} {
+			fake := &forgeFake{err: fe}
+			_, err = resolveHolder(r.Root(), who, Options{Home: t.TempDir(), ForgeUser: fake.user}, true)
+			errs = append(errs, err)
+		}
+		_, err = resolveHolder(r.Root(), who, Options{Home: t.TempDir(), ForgeUser: (&forgeFake{login: "release-bot", id: 9}).user}, true)
+		errs = append(errs, err)
+	}
+	for _, err := range errs {
+		if err == nil {
+			t.Fatal("a resolution with no source answered; want a refusal")
+		}
+		if m := manual.FindString(err.Error()); m != "" {
+			t.Errorf("the refusal asks for a manual step (%q): %v", m, err)
+		}
+		if !strings.Contains(err.Error(), "nothing was sent or pushed") {
+			t.Errorf("the refusal does not say nothing was sent or pushed: %v", err)
+		}
 	}
 }

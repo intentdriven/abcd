@@ -75,12 +75,17 @@ func gitIdentity(root string) (identity, error) {
 	}{{"user.name", &id.Name}, {"user.email", &id.Email}} {
 		v, err := personalConfig(root, f.key)
 		if err != nil {
-			return identity{}, refuse("could not read git's %s: %v; %s", f.key, err, nothingPushed)
+			return identity{}, refuse("could not read git's %s: %v; %s", f.key, err, nothingSent)
 		}
 		*f.into = v
 	}
 	return id, nil
 }
+
+// nothingSent ends every refusal the holder resolver makes: it may have asked
+// GitHub's user endpoint, so it says that nothing was sent (no reservation, no
+// commit) as well as that nothing was pushed.
+const nothingSent = "nothing was sent or pushed"
 
 // Holder is the GitHub account a reservation act would be made as: its
 // login, its numeric id and no-reply address when they are known, and which
@@ -143,12 +148,12 @@ func resolveHolder(root string, who identity, o Options, net bool) (Holder, erro
 			return Holder{Login: u, Source: HolderFromConfig}, nil
 		}
 		if !net {
-			return Holder{}, refuse("cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and %s sets no %s; "+
-				"set one of them (the repository's own configuration is never read for this); %s",
-				layered.Config.MachineOrigin(), holderKey, nothingPushed)
+			return Holder{}, refuse("cannot tell which GitHub user you are without asking GitHub: user.email is not a GitHub no-reply address, "+
+				"%s names no %s, and only a reservation act asks GitHub; %s",
+				layered.Config.MachineOrigin(), holderKey, nothingSent)
 		}
 	} else if !net {
-		return Holder{}, refuse("cannot tell which GitHub user you are: git's identity is not a person's, and only a reservation act asks GitHub; %s", nothingPushed)
+		return Holder{}, refuse("cannot tell which GitHub user you are without asking GitHub: git's identity is not a person's, and only a reservation act asks GitHub; %s", nothingSent)
 	}
 	return tokenHolder(root, o)
 }
@@ -164,14 +169,14 @@ func machineHolder(home string) (string, error) {
 	}
 	stack, err := layered.Load(layered.Config, layered.Roots{Home: home})
 	if err != nil {
-		return "", refuse("could not read the configuration that names your GitHub username: %v; %s", err, nothingPushed)
+		return "", refuse("could not read the configuration that names your GitHub username: %v; %s", err, nothingSent)
 	}
 	if err := stack.Claim(holderNamespace, "github_username"); err != nil {
-		return "", refuse("%v; %s", err, nothingPushed)
+		return "", refuse("%v; %s", err, nothingSent)
 	}
 	found, err := stack.Lookup(holderKey)
 	if err != nil {
-		return "", refuse("%v; %s", err, nothingPushed)
+		return "", refuse("%v; %s", err, nothingSent)
 	}
 	for _, f := range found {
 		if f.Layer != layered.Machine {
@@ -182,7 +187,7 @@ func machineHolder(home string) (string, error) {
 			err = errors.New("it is not a GitHub username")
 		}
 		if err != nil {
-			return "", refuse("%s (%s layer): %s: %v; %s", f.Origin, f.Layer, holderKey, err, nothingPushed)
+			return "", refuse("%s (%s layer): %s: %v; %s", f.Origin, f.Layer, holderKey, err, nothingSent)
 		}
 		return u, nil
 	}
@@ -240,7 +245,7 @@ func tokenHolder(root string, o Options) (Holder, error) {
 				cause = c
 			}
 		}
-		return Holder{}, refuse("could not work out whose GitHub account this session uses: %v; %s", cause, nothingPushed)
+		return Holder{}, refuse("could not work out whose GitHub account this session uses: %v; %s", cause, nothingSent)
 	}
 	return Holder{Login: login, ID: id, NoReply: noreply, Source: HolderFromToken}, nil
 }
