@@ -40,14 +40,17 @@ var statusPushers claim.PusherLookup = func(root, branch string) ([]claim.Push, 
 // statusOutput is the --json document of `abcd status`: the status view, the
 // announcements, the doubtful branches, the count of status branches whose
 // names are not read (never the names: a pusher chose each, and an agent
-// reads this output; null when the count could not be read), what could not
-// be read, and the reservations block
+// reads this output; null when the count could not be read), the counts of
+// status branches and kept announcements past what one read takes, what could
+// not be read, and the reservations block
 // `abcd peers` lists, in the same fields.
 type statusOutput struct {
 	StatusView       statusView        `json:"status_view"`
 	Announcements    []announcementRow `json:"announcements"`
 	Doubtful         []doubtRow        `json:"doubtful"`
 	UnreadNames      *int              `json:"unread_names"`
+	BranchesNotRead  int               `json:"branches_not_read"`
+	NotRead          int               `json:"announcements_not_read"`
 	Unread           []string          `json:"unread"`
 	SendersUnchecked string            `json:"senders_unchecked,omitempty"`
 	LocalTierMissing bool              `json:"local_tier_missing,omitempty"`
@@ -210,6 +213,7 @@ func (out *statusOutput) addStatus(v claim.StatusView, now time.Time) {
 	for _, d := range v.Doubts {
 		out.Doubtful = append(out.Doubtful, doubtRow{Branch: "abcd-status/" + d.Branch, Reason: d.Reason, Tip: d.Tip, Text: claim.DoubtLine(d)})
 	}
+	out.BranchesNotRead, out.NotRead = v.BranchesNotRead, v.AnnouncementsNotRead
 	n := v.UnreadNames
 	out.UnreadNames = &n
 	if v.UnreadNamesUnknown {
@@ -273,6 +277,12 @@ func renderStatus(w io.Writer, out statusOutput) {
 		fmt.Fprintln(w, "  "+claim.UnreadNamesUnknownLine+": "+listNames)
 	case out.UnreadNames != nil && *out.UnreadNames > 0:
 		fmt.Fprintln(w, "  "+claim.UnreadNamesLine(*out.UnreadNames)+", so not shown: "+listNames)
+	}
+	if out.BranchesNotRead > 0 {
+		fmt.Fprintln(w, "  "+claim.BranchesNotReadLine(out.BranchesNotRead))
+	}
+	if out.NotRead > 0 {
+		fmt.Fprintln(w, "  "+claim.AnnouncementsNotReadLine(out.NotRead))
 	}
 	if out.SendersUnchecked != "" {
 		fmt.Fprintln(w, "  not checked against the forge, so shown as claimed: "+out.SendersUnchecked)

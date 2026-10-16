@@ -142,7 +142,7 @@ func TestTheStatusFetchIsTheCommandItWas(t *testing.T) {
 	if len(fetches) != 1 || !slices.Equal(fetches[0], want) {
 		t.Fatalf("fetches = %q; want the one command %q", fetches, want)
 	}
-	names, _, err := listStatusBranches(pat.dir)
+	names, _, _, err := listStatusBranches(pat.dir)
 	if err != nil {
 		t.Fatal(err)
 	}

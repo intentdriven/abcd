@@ -64,6 +64,19 @@ const (
 // a first read brought in, not news, and is not shown as standing.
 const announcementSlack = time.Hour
 
+// maxStatusBranches is the most status branches whose names are read that
+// one listing fetches and one intake reads, the first in git's ref order:
+// the rest are counted (BranchesNotRead), never read. A test lowers it.
+var maxStatusBranches = 500
+
+// maxKeptAnnouncements is the most kept announcements one read takes in, the
+// newest kept: the rest are counted (AnnouncementsNotRead). A test lowers it.
+var maxKeptAnnouncements = 2000
+
+// maxListingLine bounds one line of origin's listing a reader keeps: a ref
+// longer than it is still counted, by what it kept of it.
+const maxListingLine = 4096
+
 // statusWalkLimit is the most commits one read of one status branch takes
 // in: a branch that gained more since this checkout last read it reads as
 // doubtful (DoubtMore). A test lowers it.
@@ -194,6 +207,10 @@ type StatusView struct {
 	// here, and says nothing of origin.
 	UnreadNamesUnknown bool
 	unreadKey          string
+	// BranchesNotRead counts the status branches past maxStatusBranches, and
+	// AnnouncementsNotRead the announcements kept here past
+	// maxKeptAnnouncements: neither is read by this view.
+	BranchesNotRead, AnnouncementsNotRead int
 	// Holds is every release being cut, judged as the merge hold judges them
 	// (JudgedHolds).
 	Holds []Hold
@@ -232,7 +249,7 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	if !ok {
 		return StatusFetch{}, ErrNoOrigin
 	}
-	names, skipped, err := listStatusBranches(root)
+	names, skipped, past, err := listStatusBranches(root)
 	if err != nil {
 		noteFetchFailure(root, statusBranches, now, redacted(err))
 		return StatusFetch{}, &FetchError{Reason: redacted(err), what: statusBranches.noun, outcome: "nothing was fetched"}
@@ -250,7 +267,7 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	if err != nil {
 		return StatusFetch{}, err
 	}
-	keepSkipped(root, skipped, now)
+	keepSkipped(root, skipped, past, now)
 	keepFirstFetched(root, now, nil)
 	var res StatusFetch
 	res.Gap = gap
@@ -266,34 +283,37 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 }
 
 // listStatusBranches asks origin which status branches it holds (`git
-// ls-remote origin refs/heads/abcd-status/*`): the names that are lower-case
-// GitHub usernames, sorted, and the tally of every other name, which is not
-// fetched and is never kept.
-func listStatusBranches(root string) (names []string, skipped nameTally, err error) {
+// ls-remote origin refs/heads/abcd-status/*`), read line by line, never
+// whole, so however many origin lists the listing is read: the first
+// maxStatusBranches names that are lower-case GitHub usernames, in origin's
+// order, then sorted; how many more such names it listed (past), which are
+// not fetched; and the tally of every other name, which is not fetched and
+// is never kept.
+func listStatusBranches(root string) (names []string, skipped nameTally, past int, err error) {
 	args := []string{"ls-remote", "--refs", Remote, StatusRefPrefix + "*"}
 	trace(args...)
-	out, err := gitutil.Net(root, args...)
-	if err != nil {
-		return nil, skipped, errors.New(redacted(err))
-	}
 	names = []string{}
-	for _, line := range strings.Split(out, "\n") {
+	err = gitutil.NetEach(root, maxListingLine, func(line string) {
 		sha, ref, ok := strings.Cut(strings.TrimSpace(line), "\t")
 		if !ok || !gitutil.IsFullSHA(sha) {
-			continue
+			return
 		}
 		name, ok := strings.CutPrefix(ref, StatusRefPrefix)
-		if !ok || name == "" {
-			continue
-		}
-		if statusName(name) {
-			names = append(names, name)
-		} else {
+		switch {
+		case !ok || name == "":
+		case !statusName(name):
 			skipped.add(name)
+		case len(names) < maxStatusBranches:
+			names = append(names, name)
+		default:
+			past++
 		}
+	}, args...)
+	if err != nil {
+		return nil, nameTally{}, 0, errors.New(redacted(err))
 	}
 	sort.Strings(names)
-	return names, skipped, nil
+	return names, skipped, past, nil
 }
 
 // nameTally counts names a reader does not read, without keeping them: how
@@ -354,7 +374,7 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	if err != nil {
 		return v, err
 	}
-	v.Announcements = keptAnnouncements(root, now, in.held)
+	v.Announcements, v.AnnouncementsNotRead = keptAnnouncementsCounted(root, now, in.held)
 	for _, d := range keptDoubts(root, now) {
 		// A doubt of a branch this checkout no longer holds is not shown.
 		if in.held == nil || in.held[d.Branch] {
@@ -364,6 +384,7 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	listed, err := keptSkipped(root)
 	v.UnreadNamesUnknown = err != nil
 	v.UnreadNames = max(listed.Count, in.unread.n)
+	v.BranchesNotRead = max(listed.PastCap, in.pastCap)
 	v.unreadKey = listed.Digest + "\x00" + in.unread.digest()
 	return v, ctx.Err()
 }
@@ -377,6 +398,9 @@ type intake struct {
 	// unread tallies the status branches this checkout holds whose names are
 	// not read.
 	unread nameTally
+	// pastCap counts the status branches this checkout holds, by names that
+	// are read, past maxStatusBranches: none of them is read.
+	pastCap int
 }
 
 // takeIn reads every status branch this checkout holds from where it last
@@ -405,10 +429,15 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 		in.held[strings.TrimPrefix(r.ref, StatusTrackingPrefix)] = true
 	}
 	tree := ""
+	taken := 0
 	for _, r := range refs {
 		name := strings.TrimPrefix(r.ref, StatusTrackingPrefix)
 		if !statusName(name) {
 			in.unread.add(name)
+			continue
+		}
+		if taken++; taken > maxStatusBranches {
+			in.pastCap++
 			continue
 		}
 		if statusBranches.lastRead(root, r.ref) == r.sha {
@@ -515,10 +544,13 @@ func mayStandBeneath(root string, read map[string]readAnnouncement, oldest strin
 // it.
 type statusRef struct{ ref, sha string }
 
-// statusRefs is every status branch this checkout holds, read in one command
-// as stored.
+// statusRefs is every status branch this checkout holds, in git's ref order,
+// read in one command as stored, under ctx. A fetch of the whole namespace
+// (`abcd announce`'s) may bring in as many as origin holds, so the read is
+// bounded only as dropUnlisted's is; an intake reads at most
+// maxStatusBranches of them.
 func statusRefs(ctx context.Context, root string) ([]statusRef, error) {
-	out, err := storedGitCtx(ctx, root, 1<<20, "for-each-ref", "--format=%(refname) %(objectname)", StatusTrackingPrefix)
+	out, err := storedGitCtx(ctx, root, 16<<20, "for-each-ref", "--format=%(refname) %(objectname)", StatusTrackingPrefix)
 	if err != nil {
 		return nil, fmt.Errorf("reading the status branches: %s", redacted(err))
 	}
@@ -720,12 +752,40 @@ func statusEntries(root, sub string) []fs.DirEntry {
 // file is read back through the same grammar its fields were held to, so a
 // file that does not read is passed over.
 func keptAnnouncements(root string, now time.Time, held map[string]bool) []Announcement {
+	out, _ := keptAnnouncementsCounted(root, now, held)
+	return out
+}
+
+// keptAnnouncementsCounted is keptAnnouncements from at most
+// maxKeptAnnouncements kept files, the newest kept (by when each was
+// written), and how many more were kept past that cap, which it does not read.
+func keptAnnouncementsCounted(root string, now time.Time, held map[string]bool) ([]Announcement, int) {
 	var out []Announcement
+	var entries []fs.DirEntry
 	for _, e := range statusEntries(root, seenDir) {
-		c := e.Name()
-		if !gitutil.IsFullSHA(c) || !e.Type().IsRegular() {
-			continue
+		if gitutil.IsFullSHA(e.Name()) && e.Type().IsRegular() {
+			entries = append(entries, e)
 		}
+	}
+	past := 0
+	if len(entries) > maxKeptAnnouncements {
+		at := make(map[string]time.Time, len(entries))
+		for _, e := range entries {
+			if info, err := e.Info(); err == nil {
+				at[e.Name()] = info.ModTime()
+			}
+		}
+		sort.SliceStable(entries, func(i, j int) bool {
+			if a, b := at[entries[i].Name()], at[entries[j].Name()]; !a.Equal(b) {
+				return a.After(b)
+			}
+			return entries[i].Name() < entries[j].Name()
+		})
+		past = len(entries) - maxKeptAnnouncements
+		entries = entries[:maxKeptAnnouncements]
+	}
+	for _, e := range entries {
+		c := e.Name()
 		a, ok := keptAnnouncement(root, c)
 		if !ok || held != nil && !held[a.Branch] {
 			continue
@@ -757,7 +817,7 @@ func keptAnnouncements(root string, now time.Time, held map[string]bool) []Annou
 		}
 		return out[i].Commit < out[j].Commit
 	})
-	return out
+	return out, past
 }
 
 // keptAnnouncement is commit's kept entry as a reader shows it, its sender
@@ -906,12 +966,15 @@ type skippedState struct {
 	ListedAt string `json:"listed_at"`
 	Count    int    `json:"count"`
 	Digest   string `json:"digest,omitempty"`
+	// PastCap is how many names that are read the listing held past
+	// maxStatusBranches, none of them fetched.
+	PastCap int `json:"past_cap,omitempty"`
 }
 
 // keepSkipped keeps the tally of the names origin's listing held that are
-// not read, replacing the last listing's.
-func keepSkipped(root string, t nameTally, now time.Time) {
-	data, err := json.Marshal(skippedState{ListedAt: stamp(now), Count: t.n, Digest: t.digest()})
+// not read, and how many it held past the cap, replacing the last listing's.
+func keepSkipped(root string, t nameTally, past int, now time.Time) {
+	data, err := json.Marshal(skippedState{ListedAt: stamp(now), Count: t.n, Digest: t.digest(), PastCap: past})
 	if err != nil {
 		return
 	}
@@ -936,7 +999,7 @@ func keptSkipped(root string) (skippedState, error) {
 		return skippedState{}, err
 	}
 	var s skippedState
-	if err := json.Unmarshal(data, &s); err != nil || s.Count < 0 {
+	if err := json.Unmarshal(data, &s); err != nil || s.Count < 0 || s.PastCap < 0 {
 		return skippedState{}, errors.New("the count of status branch names not read does not parse")
 	}
 	return s, nil

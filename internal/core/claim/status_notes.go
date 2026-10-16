@@ -260,6 +260,15 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 		doubts = append(doubts, noteLine{key: hashedKey("unread-names\x00" + v.unreadKey),
 			text: UnreadNamesLine(v.UnreadNames) + "; `abcd status` says how to list them", weight: v.UnreadNames})
 	}
+	for _, c := range []struct {
+		what string
+		n    int
+		line func(int) string
+	}{{"branches", v.BranchesNotRead, BranchesNotReadLine}, {"announcements", v.AnnouncementsNotRead, AnnouncementsNotReadLine}} {
+		if c.n > 0 {
+			doubts = append(doubts, noteLine{key: hashedKey(fmt.Sprintf("not-read\x00%s\x00%d", c.what, c.n)), text: c.line(c.n), weight: c.n})
+		}
+	}
 	// The newest announcement per item; the rest are counted.
 	seenItem := map[string]bool{}
 	var superseded []noteLine
@@ -416,6 +425,25 @@ func DoubtLine(d BranchDoubt) string {
 		name = "abcd-status/" + d.Branch
 	}
 	return termsafe.Sanitize(name + " (doubtful): " + d.Reason)
+}
+
+// BranchesNotReadLine counts the status branches past the most one read
+// takes (maxStatusBranches): "3 status branches past the 500 one read takes,
+// not read".
+func BranchesNotReadLine(n int) string {
+	if n == 1 {
+		return fmt.Sprintf("1 status branch past the %d one read takes, not read", maxStatusBranches)
+	}
+	return fmt.Sprintf("%d status branches past the %d one read takes, not read", n, maxStatusBranches)
+}
+
+// AnnouncementsNotReadLine counts the announcements kept here past the most
+// one read takes (maxKeptAnnouncements).
+func AnnouncementsNotReadLine(n int) string {
+	if n == 1 {
+		return fmt.Sprintf("1 announcement kept here past the %d one read takes, not shown", maxKeptAnnouncements)
+	}
+	return fmt.Sprintf("%d announcements kept here past the %d one read takes, not shown", n, maxKeptAnnouncements)
 }
 
 // UnreadNamesUnknownLine says the count of names not read could not be read.
