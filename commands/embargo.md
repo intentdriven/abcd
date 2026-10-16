@@ -137,6 +137,13 @@ line wrap inserted a hyphen that was not in it (a title word split as
 adds and the names of the files it adds, and nothing else: branch names and
 annotated tag messages are not checked.
 
+The check reads every embargo store under this account's home, whichever
+repository each belongs to, so a second clone, a shallow clone or a repository
+with merged-in history is checked against the records held for it. A store
+this repository registered under another home is refused (run abcd with that
+home), and a folder in a store's place that is not a readable store refuses the
+check. `no_store: true` means no store exists under this home at all.
+
 A consumer of the output must treat `no_store: true` as "not checked", never
 as clean: nothing was compared against anything. Keep the output off public
 logs, its `under_embargo` count included: how many advisories are held is
