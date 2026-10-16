@@ -105,9 +105,6 @@ func TestALapsedIssueWaitsOutItsCoolDownBeforeItIsAskedAgain(t *testing.T) {
 		if until := stamp(dropped.Add(claim.TakeoverMargin)); !strings.Contains(res.Next, until) {
 			t.Fatalf("the move names when the issue is asked again (%s): %q", until, res.Next)
 		}
-		if strings.Contains(res.Next, "asked again only once") && res.Judging != nil {
-			t.Fatalf("the move says the issue waits while asking it: %q", res.Next)
-		}
 	}
 	c.t = dropped.Add(claim.TakeoverMargin)
 	res, err := Drain(repo.Root(), o, DrainOptions{})

@@ -210,9 +210,10 @@ what it did in `next`:
   Each release is a fetch and one tombstone push over the commit the drain's
   reservation made, made only while that commit is still the tip, so a
   reservation you made or renewed with `abcd reserve` since is left as it
-  stands. A poll checks the same tip before it asks again: when the
-  reservation recorded is no longer there (you released it, say), the drain
-  reserves the issue again first. A reservation of yours that is still live
+  stands. A poll that can read origin's reservations checks the same tip
+  before it asks again: when the reservation recorded is no longer there (you
+  released it, say), the drain reserves the issue again first. A poll that
+  cannot read them says so, and the release still checks the tip. A reservation of yours that is still live
   when the drain reaches the issue is yours, and the drain never releases it;
   one of yours that has lapsed, the drain's push renews, and it is the
   drain's from then on. A `yes` releases with a plain

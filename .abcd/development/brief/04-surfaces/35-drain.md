@@ -234,9 +234,12 @@ on origin's default branch backs off, with a tip or without one
    its hold lapses after one lease. Every push the drain makes for a judgement
    is its hold, a renewal of this person's reservation that had lapsed
    included; one this person still held live when the drain reached the issue
-   is theirs and never released. A recorded hold is asked on only while the
-   move's view still shows its commit at the tip; otherwise the drain reserves
-   again, and records that, before it asks.
+   is theirs and never released. When the move can read origin's
+   reservations, a recorded hold is asked on only while the view still shows
+   its commit at the tip; otherwise the drain reserves again, and records that,
+   before it asks. When it cannot read them, the move says so and asks on the
+   recorded hold, and every later release or lane start is still checked
+   against the tip.
    A yes's tombstone is plain: nothing marks the issue judged on origin, so
    another account's drain may reserve it and ask the judgement again. The
    hold is taken once per request and never renewed by a poll: a request whose
