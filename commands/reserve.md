@@ -151,6 +151,13 @@ its reservation says, and is not reserved again: a reservation or take-over of
 it backs off (exit 3) saying it is finished on origin's default branch, with a
 tip or without one, and pushes nothing.
 
+**Reopening a record.** The back-off reads origin's default branch alone, so a
+record being reopened on a branch (moved from `resolved/` or `wontfix/` back to
+`open/`, or an intent from `shipped/` or `superseded/`) still backs off, and no
+flag, `--take-over` included, gets past it. Merge the reopen first: once
+origin's default branch holds the record open again, reserve it
+(dcn-2610161135122294). Tell the user that, rather than retrying.
+
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
 plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails
