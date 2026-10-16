@@ -10,6 +10,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // unreadablePeers refuses a drain move, once and where per-issue contention
@@ -147,7 +148,6 @@ func accountName(uid uint32) string {
 // different path there. Where the filesystem folds case, HOME in another case
 // is HOME, as fsutil.RedactHome reads it.
 func commandPath(p string) string {
-	quote := func(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 	same := func(a, b string) bool { return a == b }
 	if fsutil.CaseFoldingFS() {
 		same = strings.EqualFold
@@ -159,10 +159,10 @@ func commandPath(p string) string {
 		if rest := p[len(h):]; rest == "" {
 			return `"$HOME"`
 		} else if rest[0] == '/' {
-			return `"$HOME"` + quote(rest)
+			return `"$HOME"` + shellquote.Single(rest)
 		}
 	}
-	return quote(p)
+	return shellquote.Single(p)
 }
 
 // homeSpellings is HOME, cleaned, and its symlink-resolved spelling when that
