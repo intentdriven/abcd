@@ -147,6 +147,7 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610110940216682` — Every change is checked in full once, on exactly what lands
 - `itd-2610111655362931` — On the dashboard, the product thinker and facilitator review memory notes and promote the ones worth keeping
 - `itd-2610150602547271` — The facilitator's mode gates the merge
+- `itd-2610161647248332` — abcd should find out what the forge can do instead of asking the person or assuming. On 2026-10-16, setting up a throwaway lab to test abcd land, the agent asked the product thinker whether the team organisation allowed private copies; the product thinker did not know and should not have to. A read-only query answered it (members_can_fork_private_repositories is false for the organisation's own repositories), and a real attempt showed a private fork of a repository the person owns works anyway. The general want: abcd tests the forge's functionality itself (can repositories be private, can they be forked privately, is a merge queue available) and goes with the route that delivers the wanted outcome; only when no route exists does it ask, offering the options. Likely an intent; it needs a state-of-the-art pass on forge capability detection.
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
