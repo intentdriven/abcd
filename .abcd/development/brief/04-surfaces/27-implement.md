@@ -58,7 +58,8 @@ stores use, resolved from the checkout the caller stands in. Two sessions in two
 worktrees of one repository share one directory and write no repository file.
 Every level is created one directory at a time and proved real, never through a
 symlink; outside a checkout, or in a repository with no commit, every sub-verb
-refuses and nothing is created. Bare `abcd implement` and the report create
+but the load check refuses and nothing is created. The load check, its wait
+included, is a machine check with no checkout precondition and runs anywhere. Bare `abcd implement` and the report create
 nothing at all. Only joining brings a run into existence: every other writer acts
 for a session that has joined, and one invoked for a session no run holds is
 refused before anything is created — no directory, no lock, no log line.
