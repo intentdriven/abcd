@@ -41,6 +41,31 @@ func countPushes(t *testing.T, repo *gittest.Repo) func() int {
 	}
 }
 
+// refUpdates makes origin log every update a push makes to its refs, through
+// its own update hook, and returns the reader: each commit pushed to ref, in
+// the order pushed.
+func refUpdates(t *testing.T, bare string) func(ref string) []string {
+	t.Helper()
+	log := filepath.Join(t.TempDir(), "updates")
+	hook := filepath.Join(bare, "hooks", "update")
+	if err := os.MkdirAll(filepath.Dir(hook), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hook, []byte("#!/bin/sh\necho \"$1 $3\" >> '"+log+"'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return func(ref string) []string {
+		data, _ := os.ReadFile(log)
+		var out []string
+		for _, line := range strings.Split(string(data), "\n") {
+			if r, sha, ok := strings.Cut(line, " "); ok && r == ref {
+				out = append(out, sha)
+			}
+		}
+		return out
+	}
+}
+
 // releasedOver fails unless origin's reservation of id is a tombstone pushed
 // over taken, the commit the drain's own reservation made: the release
 // reached origin, and released that reservation and no other.
@@ -238,15 +263,19 @@ func TestAFailedJudgementRequestReleasesTheReservationItTook(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(repo.Root(), filepath.FromSlash(DrainJudgementRequestRel), "blocked"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	updates := refUpdates(t, bare)
 	if _, err := Drain(repo.Root(), Options{}, DrainOptions{}); err == nil {
 		t.Fatal("a request that cannot be written refuses the move")
 	}
-	r := originReservation(t, bare, claim.RefPrefix+secondIssue)
-	if !r.released || r.parent == "" {
-		t.Fatalf("the reservation taken for the request is released: %+v", r)
+	// The move's two pushes: the drain's reservation, then the tombstone
+	// over exactly that commit.
+	pushed := updates(claim.RefPrefix + secondIssue)
+	if len(pushed) != 2 {
+		t.Fatalf("origin took %d update(s) to %s; want the drain's reservation and its tombstone", len(pushed), secondIssue)
 	}
-	if p := originReservation(t, bare, claim.RefPrefix+secondIssue); p.holder != "octo" {
-		t.Fatalf("the tombstone is this person's: %+v", p)
+	releasedOver(t, bare, secondIssue, pushed[0])
+	if p := originReservation(t, bare, claim.RefPrefix+secondIssue); p.holder != "octo" || p.commit != pushed[1] {
+		t.Fatalf("the tombstone is this person's, the move's last push: %+v", p)
 	}
 }
 
