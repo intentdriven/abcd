@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -516,8 +517,16 @@ func TestAPeerUnreadableAtTheStartStopsTheMove(t *testing.T) {
 	if len(res.Passed) != 0 || runCount(t, repo) != 0 {
 		t.Fatalf("no issue is passed over and no run starts: %+v", res)
 	}
-	if sha := gitIn(t, bare, "for-each-ref", "--format=%(objectname)", claim.RefPrefix+first.Judging.Issue); sha != "" {
-		t.Fatalf("nothing is reserved: %s", sha)
+	// The drain reserved the issue before it asked the judgement
+	// (spc-2610161044461448 step 2); no lane opened on that hold, so the
+	// refused move releases it, and nothing is left reserved.
+	if sha := gitIn(t, bare, "for-each-ref", "--format=%(objectname)", claim.RefPrefix+first.Judging.Issue); sha == "" {
+		t.Fatalf("the drain reserved %s before it asked the judgement", first.Judging.Issue)
+	}
+	if snap, err := claim.View(repo.Root(), time.Now()); err != nil {
+		t.Fatal(err)
+	} else if r, ok := snap.Lookup(first.Judging.Issue); !ok || r.State != claim.StateReleased {
+		t.Fatalf("the judgement's hold is released, and nothing is left reserved: %+v %v", r, ok)
 	}
 	st, live, err := readDrain(repo.Root())
 	if err != nil || !live || st.Stopped != "" {
@@ -530,27 +539,31 @@ func TestAPeerUnreadableAtTheStartStopsTheMove(t *testing.T) {
 
 // crowdOriginDefault pushes to origin's default branch a commit holding more
 // record files than a reader takes, and fetches it, so the reservations, read
-// against it, cannot be read here although every fetch succeeds.
+// against it, cannot be read here although every fetch succeeds. The crowd
+// sits in the intent store beside the issue ledger the commit keeps as it
+// was: a drain plans from origin's default branch (spc-2610161044461448 step
+// 1), so its issues must still read there.
 func crowdOriginDefault(t *testing.T, repo *gittest.Repo) {
 	t.Helper()
 	empty := gitIn(t, repo.Root(), "hash-object", "-w", "/dev/null")
 	var b strings.Builder
 	for i := 0; i <= 20000; i++ {
-		fmt.Fprintf(&b, "100644 blob %s\tf%05d.md\n", empty, i)
+		fmt.Fprintf(&b, "100644 %s\t%s/drafts/f%05d.md\n", empty, intent.IntentsRelDir, i)
 	}
-	mktree := func(in string) string {
-		cmd := exec.Command("git", "-C", repo.Root(), "mktree")
-		cmd.Env, cmd.Stdin = gittest.Env(t), strings.NewReader(in)
+	index := filepath.Join(t.TempDir(), "crowd.index")
+	git := func(stdin string, args ...string) string {
+		cmd := exec.Command("git", append([]string{"-C", repo.Root()}, args...)...)
+		cmd.Env = append(gittest.Env(t), "GIT_INDEX_FILE="+index)
+		cmd.Stdin = strings.NewReader(stdin)
 		out, err := cmd.Output()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("git %v: %v", args, err)
 		}
 		return strings.TrimSpace(string(out))
 	}
-	tree := mktree(b.String())
-	for _, name := range []string{"open", "issues", "work", ".abcd"} {
-		tree = mktree("040000 tree " + tree + "\t" + name + "\n")
-	}
+	git("", "read-tree", "main")
+	git(b.String(), "update-index", "--index-info")
+	tree := git("", "write-tree")
 	c := gitIn(t, repo.Root(), "commit-tree", tree, "-p", "main", "-m", "many records")
 	gitIn(t, repo.Root(), "push", "-q", "origin", c+":refs/heads/main")
 	gitIn(t, repo.Root(), "fetch", "-q", "origin")
@@ -559,7 +572,10 @@ func crowdOriginDefault(t *testing.T, repo *gittest.Repo) {
 // TestUnreadableReservationsStopTheMove: reservations this checkout cannot
 // read after a fetch that succeeded stop the move with a refusal that says so
 // and why, and pass no issue over as contended: the drain never ends empty
-// on them, and a second move refuses the same way without asking again.
+// on them, and a second move refuses the same way without asking. The drain
+// reserves an issue before it asks its judgement (spc-2610161044461448 step
+// 2), so the first move already refuses, on that reservation's own read of
+// origin, and no judgement is asked.
 func TestUnreadableReservationsStopTheMove(t *testing.T) {
 	repo, _ := reservingDrainRepo(t, "commands/drain.md")
 	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: "iss-2609010000009999", Footprint: []string{"docs/other.md"}}, claimOptions(time.Now())); err != nil {
@@ -569,22 +585,18 @@ func TestUnreadableReservationsStopTheMove(t *testing.T) {
 	if _, err := claim.View(repo.Root(), time.Now()); err == nil {
 		t.Fatal("the fixture's reservations read")
 	}
-	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
-	if err != nil || first.Judging == nil {
-		t.Fatalf("the drain asks its first judgement: %+v %v", first, err)
-	}
-	path := writeAnswer(t, repo, first.Judging, judgementAnswer(first.Judging, JudgementNo, "", "the remedy changes neither what a user sees nor a trust boundary"))
-	for move, d := range []DrainOptions{{Judgement: path}, {}} {
-		res, err := Drain(repo.Root(), Options{}, d)
+	for move := range 2 {
+		res, err := Drain(repo.Root(), Options{}, DrainOptions{})
 		r := mustRefusal(t, err)
-		if r.Contention || !strings.Contains(r.Reason, "could not read the reservations") || !strings.Contains(r.Reason, "more than 20000 record files") {
-			t.Fatalf("move %d (%v): the refusal says the reservations could not be read, and why: %+v", move, err, r)
+		if r.Contention || r.Stage != StageReservation || !strings.Contains(r.Reason, "could not read") ||
+			!strings.Contains(r.Reason, "more than 20000 record files") || !strings.Contains(r.Reason, "no reservation was made") {
+			t.Fatalf("move %d (%v): the refusal says what could not be read, and why: %+v", move, err, r)
 		}
 		if len(res.Passed) != 0 || res.Judging != nil || runCount(t, repo) != 0 {
 			t.Fatalf("move %d: nothing is passed over, asked or started: %+v", move, res)
 		}
-		if st, _, err := readDrain(repo.Root()); err != nil || st.Stopped != "" {
-			t.Fatalf("move %d: the drain is not ended: %+v %v", move, st, err)
+		if st, _, err := readDrain(repo.Root()); err != nil || st.Stopped != "" || st.Judging != nil {
+			t.Fatalf("move %d: the drain is not ended, and asks nothing: %+v %v", move, st, err)
 		}
 	}
 }
