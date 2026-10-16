@@ -3,6 +3,7 @@ package loop
 import (
 	"fmt"
 	"os/exec"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -93,5 +94,35 @@ func TestTheLedgerBatchRefusesDistinctRecordsPastItsCeiling(t *testing.T) {
 	_, err := treeLedger(repo.Root(), ledgerCommit(t, repo.Root(), blobs))
 	if err == nil || !strings.Contains(err.Error(), "past the 64 MiB") {
 		t.Fatalf("distinct records past the ceiling: %v; want a refusal naming it", err)
+	}
+}
+
+// TestTheLedgerBatchHoldsOneCopyOfWhatItReads: reading distinct open records
+// allocates about what they hold, once: the batch's answer is not grown by
+// copying, and each record's text is the answer's own bytes, not a second
+// copy, so a ledger near the ceiling peaks near it rather than at twice it.
+func TestTheLedgerBatchHoldsOneCopyOfWhatItReads(t *testing.T) {
+	repo := briefRepo(t, agentsMarked)
+	blobs := make([]string, 24)
+	total := 0
+	for i := range blobs {
+		var text string
+		blobs[i], text = recordBlob(t, repo.Root(), i)
+		total += len(text)
+	}
+	v := ledgerCommit(t, repo.Root(), blobs)
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	l, err := treeLedger(repo.Root(), v)
+	runtime.ReadMemStats(&after)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(l.Files) != len(blobs) || l.Files[0].Text == "" {
+		t.Fatalf("the ledger read %d file(s); want %d, each with its text", len(l.Files), len(blobs))
+	}
+	if got := after.TotalAlloc - before.TotalAlloc; got > uint64(total)*3/2 {
+		t.Fatalf("reading %d bytes of records allocated %d bytes; want under one and a half times what they hold", total, got)
 	}
 }

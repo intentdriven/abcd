@@ -296,12 +296,14 @@ func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 	if err != nil {
 		return nil, fmt.Errorf("reading the ledger of %s: %w", source, err)
 	}
-	// One text per object, which every file naming it shares.
+	// One text per object, which every file naming it shares: a slice of the
+	// batch's one answer, trimmed at the end as a single read's answer is
+	// (gitutil.RunCapped), and never a copy of it, so the move holds about
+	// what the batch read, within the ceiling.
 	texts := make([]string, len(got))
 	for k, o := range got {
 		if !o.Missing && o.Type == "blob" {
-			// Trimmed at the end as a single read's answer is (gitutil.RunCapped).
-			texts[k] = strings.TrimRight(string(o.Content), " \t\r\n")
+			texts[k] = strings.TrimRight(o.Content, " \t\r\n")
 		}
 	}
 	for i, k := range want {

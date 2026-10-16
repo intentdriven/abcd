@@ -1,7 +1,6 @@
 package gitutil
 
 import (
-	"bytes"
 	"fmt"
 	"strconv"
 	"strings"
@@ -9,10 +8,11 @@ import (
 
 // BatchObject is one object `git cat-file --batch` answered for: its type and
 // content, or Missing when the repository holds no object of that name.
+// Content is a slice of the batch's one answer, never a copy of it.
 type BatchObject struct {
 	Name    string
 	Type    string
-	Content []byte
+	Content string
 	Missing bool
 }
 
@@ -23,6 +23,10 @@ type BatchObject struct {
 // included: an answer past it is an error, never a truncated one, so a caller
 // bounds it by what it already knows of each object's size. An answer whose
 // shape git does not document is an error too.
+//
+// The answer is read into one buffer sized to maxBytes up front, so it is
+// never grown by copying, and each object's content is a slice of it: what
+// the batch holds in memory is about maxBytes, however many objects it reads.
 func CatFileBatch(root string, objects []string, maxBytes int) ([]BatchObject, error) {
 	if len(objects) == 0 {
 		return nil, nil
@@ -37,20 +41,24 @@ func CatFileBatch(root string, objects []string, maxBytes int) ([]BatchObject, e
 	}
 	cmd := isolatedGit(root, "cat-file", "--batch")
 	cmd.Stdin = strings.NewReader(in.String())
-	out, overflowed, err := runBoundedCmd(cmd, maxBytes)
-	if err != nil {
-		return nil, err
+	w := &capBuilder{remaining: maxBytes}
+	w.b.Grow(maxBytes)
+	e := &capWriter{remaining: 4096}
+	cmd.Stdout, cmd.Stderr = w, e
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 	}
-	if overflowed {
+	if w.overflowed {
 		return nil, fmt.Errorf("git cat-file --batch: output exceeded the %d-byte cap; the answer would be truncated", maxBytes)
 	}
+	out := w.b.String()
 	res := make([]BatchObject, 0, len(objects))
 	for _, name := range objects {
-		nl := bytes.IndexByte(out, '\n')
+		nl := strings.IndexByte(out, '\n')
 		if nl < 0 {
 			return nil, fmt.Errorf("git cat-file --batch: no answer for %s", name)
 		}
-		header := strings.Fields(string(out[:nl]))
+		header := strings.Fields(out[:nl])
 		out = out[nl+1:]
 		if len(header) == 2 && header[0] == name && header[1] == "missing" {
 			res = append(res, BatchObject{Name: name, Missing: true})
@@ -63,13 +71,33 @@ func CatFileBatch(root string, objects []string, maxBytes int) ([]BatchObject, e
 		if err != nil || size < 0 || size+1 > len(out) || out[size] != '\n' {
 			return nil, fmt.Errorf("git cat-file --batch: the answer for %s does not hold the %s bytes its header names", name, header[2])
 		}
-		res = append(res, BatchObject{Name: name, Type: header[1], Content: out[:size:size]})
+		res = append(res, BatchObject{Name: name, Type: header[1], Content: out[:size]})
 		out = out[size+1:]
 	}
 	if len(out) != 0 {
 		return nil, fmt.Errorf("git cat-file --batch: %d byte(s) past the last answer", len(out))
 	}
 	return res, nil
+}
+
+// capBuilder is capWriter over a strings.Builder, whose String is the bytes
+// written with no copy: what it drops past its cap marks it overflowed.
+type capBuilder struct {
+	b          strings.Builder
+	remaining  int
+	overflowed bool
+}
+
+func (w *capBuilder) Write(p []byte) (int, error) {
+	n := len(p)
+	if n > w.remaining {
+		n, w.overflowed = w.remaining, true
+	}
+	if n > 0 {
+		w.b.Write(p[:n])
+		w.remaining -= n
+	}
+	return len(p), nil
 }
 
 // TreePathTypes asks ONE isolated `git cat-file --batch-check` for the type
