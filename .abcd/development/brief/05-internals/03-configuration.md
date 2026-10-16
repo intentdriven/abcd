@@ -1082,7 +1082,11 @@ and a root-level `memory/` is the legacy snapshot abcd respects and never writes
 to. Which scope a curated page lands in is a routing decision — see
 [`07-memory.md`](07-memory.md). Retrieval across the two is not a flat union, which
 would overflow context, but keyword recall with a budget bracket (itd-39). When
-the brief says "memory" unqualified, it means the repo-scope store.
+the brief says "memory" unqualified, it means the repo-scope store. The memory
+notes are a separate thing from these curated pages, and they ship at both
+scopes today: a `memory.json` in the repository's `.abcd/` and another in
+`~/.abcd.noindex/`, which [the prompt router](#the-prompt-routers-output)
+recalls together.
 
 **AI transparency level (staged).** A second axis, independent of visibility. It
 has no backing intent or ADR, no shipped code reads it, and ahoy neither prompts
