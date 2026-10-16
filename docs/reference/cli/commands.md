@@ -1461,8 +1461,9 @@ registry, it refuses:
     directories (each --run-dir) and the temporary directory; a write
     outside the working tree is judged by the protected paths alone;
   - git config with --global, --system or --file on a write, setting a key
-    that starts a program (core.hooksPath, core.pager, an alias and the like),
-    or opening the editor, and any git command setting such a key for itself;
+    that starts a program (core.hooksPath, core.pager, an alias and the like)
+    or core.worktree, or opening the editor, and any git command setting such
+    a key for itself;
   - removing, moving or recursively changing the root, a top-level directory,
     the home directory or a directory directly in it, the working tree or a
     directory above it, or another checkout of the repository; a find that

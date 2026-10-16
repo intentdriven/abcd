@@ -83,8 +83,9 @@ func newGuardApproveCommand() *cobra.Command {
 			"    directories (each --run-dir) and the temporary directory; a write\n" +
 			"    outside the working tree is judged by the protected paths alone;\n" +
 			"  - git config with --global, --system or --file on a write, setting a key\n" +
-			"    that starts a program (core.hooksPath, core.pager, an alias and the like),\n" +
-			"    or opening the editor, and any git command setting such a key for itself;\n" +
+			"    that starts a program (core.hooksPath, core.pager, an alias and the like)\n" +
+			"    or core.worktree, or opening the editor, and any git command setting such\n" +
+			"    a key for itself;\n" +
 			"  - removing, moving or recursively changing the root, a top-level directory,\n" +
 			"    the home directory or a directory directly in it, the working tree or a\n" +
 			"    directory above it, or another checkout of the repository; a find that\n" +

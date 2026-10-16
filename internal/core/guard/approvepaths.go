@@ -454,6 +454,22 @@ var (
 	}
 )
 
+// treeKeys are the configuration keys, folded, that move the working tree
+// git reads and writes to another directory, outside the one the run's
+// commands are judged in.
+var treeKeys = []string{"core.worktree"}
+
+// movesTree reports whether key, as a line spells it, is one of treeKeys.
+func movesTree(key string) bool {
+	return containsString(treeKeys, strings.ToLower(strings.TrimSpace(key)))
+}
+
+// treeKeyWhy is the refusal's reason for setting a key that moves the
+// working tree.
+func treeKeyWhy(k string) string {
+	return "this sets " + keyName(k) + ", which moves the working tree git reads and writes to another directory, outside the one this run's commands are judged in."
+}
+
 // execPinKeys is the keys gitutil.ExecPins sets, folded.
 func execPinKeys() []string {
 	var out []string
@@ -502,6 +518,9 @@ func gitConfigRefusal(s segment, valueFlags []string) (Approval, bool) {
 	for _, site := range sitesNamed(s, "git") {
 		args := s.tokens[site.idx+1:]
 		for _, k := range readGitConfig(s.tokens[:site.idx], args, valueFlags).keys {
+			if movesTree(k) {
+				return refusal(gitConfigWriteEntryID, treeKeyWhy(k), "the same git command without the setting."), true
+			}
 			if startsProgram(k) {
 				return refusal(gitConfigWriteEntryID,
 					"this git command sets "+keyName(k)+" for itself, a setting that starts a program the guard does not read.",
@@ -596,6 +615,8 @@ func gitConfigWrite(args []string) (string, bool) {
 		return "this writes git configuration with " + scope + ", outside the repository's own configuration, which every repository on the machine (or the file it names) reads.", true
 	case write && unknownFlag:
 		return "this writes git configuration with a word the line does not spell out, which may name a scope outside the repository or any key.", true
+	case setting && len(ops) > 0 && movesTree(ops[0]):
+		return treeKeyWhy(ops[0]), true
 	case setting && (len(ops) == 0 || startsProgram(ops[0])):
 		key := "a key"
 		if len(ops) > 0 {

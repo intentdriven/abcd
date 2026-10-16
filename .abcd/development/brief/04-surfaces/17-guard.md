@@ -371,8 +371,9 @@ its text:
   (spc-2610161751056096), not the approver's (dcn-2610161930191632);
 - `git config` writing outside the repository's own file (its global or
   system scope, or a file it names), setting a key that starts a program (the keys `gitutil.ExecPins` pins and the others git
-  documents), or opening the editor, and any git command setting such a key for
-  itself;
+  documents) or `core.worktree`, which moves the working tree git writes to
+  another directory, or opening the editor, and any git command setting such a
+  key for itself;
 - removing, moving or recursively changing a path that is, or may be, the root,
   a top-level directory, the home directory or one of its direct children, the
   working tree or a directory above it, or another checkout of the repository;

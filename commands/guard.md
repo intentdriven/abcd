@@ -235,8 +235,9 @@ A shell command is approved only when the guard reads it whole and clears it:
 - no `git config` with `--global`, `--system` or `--file` writes, sets a key
   that starts a program (`core.hooksPath`, `core.fsmonitor`, `core.pager`,
   `core.sshCommand`, an alias, a filter or diff driver, a credential helper,
-  the signing keys and the like), or opens the editor, and no git command sets
-  such a key for itself with `-c`, `--config-env` or `GIT_CONFIG_*`
+  the signing keys and the like) or `core.worktree`, which moves the working
+  tree git writes to another directory, or opens the editor, and no git
+  command sets such a key for itself with `-c`, `--config-env` or `GIT_CONFIG_*`
   (`git-config-write`). Reading configuration, and setting an ordinary key in
   the repository's own file, is approved;
 - nothing removes, moves or recursively changes (`chmod -R`, `chown -R`) a
