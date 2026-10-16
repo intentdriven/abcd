@@ -67,7 +67,8 @@ Every refusal pushes nothing.
   its bounds are refused before git runs, naming the field and the limit.
   Every announcement is composed, then read back through the same validator a
   reader holds it to: its lead is exactly its subject, and every line of its
-  final paragraph is one of its trailers, written exactly.
+  final paragraph is one of its trailers, written exactly, its `Assisted-by`
+  abcd's own `abcd:<version>` label and no other value.
 - A record not on origin's default branch as just fetched is refused as not
   public yet, read by the same tree reader the reservation's derived release
   reads by, and so is any record when no default branch was fetched or the

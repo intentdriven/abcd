@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/assistedby"
 	toolid "github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -74,11 +75,12 @@ const noAnnouncement = "no announcement was sent"
 // reasonCopy and reasonTime, which it shares. Each is fixed text: nothing a
 // writer chose is echoed into one.
 const (
-	reasonAnnouncementKind   = "its kind is not one of merging, merged, asking, answered, handed-over"
-	reasonAnnouncementItem   = "it does not name one issue or intent id or pull-request number as its item"
-	reasonAnnouncementSender = "it does not name one GitHub username as its sender"
-	reasonAnnouncementExpiry = "its expiry is not after the time it was sent and within 24 hours of it"
-	reasonOutsideTrailers    = "it carries text outside its trailers, or a trailer not written exactly"
+	reasonAnnouncementKind        = "its kind is not one of merging, merged, asking, answered, handed-over"
+	reasonAnnouncementItem        = "it does not name one issue or intent id or pull-request number as its item"
+	reasonAnnouncementSender      = "it does not name one GitHub username as its sender"
+	reasonAnnouncementExpiry      = "its expiry is not after the time it was sent and within 24 hours of it"
+	reasonOutsideTrailers         = "it carries text outside its trailers, or a trailer not written exactly"
+	reasonAnnouncementAttribution = "its Assisted-by is not the abcd:<version> label abcd writes"
 )
 
 // prNumberRe is a pull request's number as an item names it, with or without
@@ -207,7 +209,8 @@ func parseAnnouncement(text string) (announcement, string) {
 // and item give; the kind is in the list, the item an issue or intent id or a
 // pull-request number, the sender a GitHub username and the copy a key, each
 // once; the times are RFC 3339 in UTC to the second, the expiry after the time
-// sent and within 24 hours of it; and the attribution appears at most once.
+// sent and within 24 hours of it; and the attribution appears at most once,
+// as the abcd:<version> label abcd writes.
 func validateAnnouncement(t trailers) (announcement, string) {
 	// The lead is the subject alone: one line, no paragraph after it.
 	if len(t.other) > 0 || len(t.inexact) > 0 || len(t.vals[keyAssistedBy]) > 1 || t.lead == "" || strings.Contains(t.lead, "\n") {
@@ -252,7 +255,12 @@ func validateAnnouncement(t trailers) (announcement, string) {
 	if life := a.ExpiresAt.Sub(a.SentAt); life <= 0 || life > MaxAnnouncementLife {
 		return announcement{}, reasonAnnouncementExpiry
 	}
+	// abcd composes every announcement, so its attribution is abcd's own
+	// label or absent; any other value is text the fixed form does not carry.
 	if v, ok := t.one(keyAssistedBy); ok {
+		if !assistedby.IsComposed(v) {
+			return announcement{}, reasonAnnouncementAttribution
+		}
 		a.AssistedBy = v
 	}
 	return a, ""

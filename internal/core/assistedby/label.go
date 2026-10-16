@@ -53,12 +53,12 @@ func labelVersion(v string) string {
 // binary whose version is v.
 func ComposedValue(v string) string { return Vendor + ":" + labelVersion(v) }
 
-// isComposed reports whether a trailer value is the label exactly as the gate
-// accepts it.
-func isComposed(value string) bool { return composedValueRe.MatchString(value) }
+// IsComposed reports whether a trailer value is the label exactly as the gate
+// accepts it: what ComposedValue writes for some version, and nothing else.
+func IsComposed(value string) bool { return composedValueRe.MatchString(value) }
 
 // NamesAbcd reports whether a trailer value names abcd as its vendor, in any
 // case and whatever follows. The gate refuses every such value that is not
-// isComposed, but each one claims abcd's provenance, so none is ever read as a
+// IsComposed, but each one claims abcd's provenance, so none is ever read as a
 // model's vendor.
 func NamesAbcd(value string) bool { return namesAbcdRe.MatchString(value) }
