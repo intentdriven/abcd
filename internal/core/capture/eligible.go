@@ -478,7 +478,7 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 	if err != nil {
 		return DrainPlan{}, err
 	}
-	if err := readBackLinks(repoRoot, lr.Issues); err != nil {
+	if err := readBackLinks(repoRoot, req.Ledger, lr.Issues); err != nil {
 		return DrainPlan{}, err
 	}
 	var opts []eligibilityOption
@@ -541,15 +541,27 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 // readBackLinks fills backLinked on every record the consistency pass filed
 // that names an intent, from one read of the intent store for the whole plan,
 // and reads nothing when no such record is open: the promoted rule's question
-// for those records (promotedIntents). A store that cannot be read refuses
-// the plan, since not knowing whether an intent owns a finding never lets it
-// through.
-func readBackLinks(repoRoot string, issues []Issue) error {
+// for those records (promotedIntents). The store is read where the ledger
+// was: the checkout's, or, for a plan read from a commit, that commit's
+// (TreeLedger.Intents), so a draft half-written in the checkout never refuses
+// a plan read from origin, and an intent origin holds that the checkout lacks
+// still owns its finding. A store that cannot be read refuses the plan, since
+// not knowing whether an intent owns a finding never lets it through.
+func readBackLinks(repoRoot string, ledger *TreeLedger, issues []Issue) error {
 	asks := func(iss Issue) bool { return consistencyFinding(iss) && len(iss.RelatedIntents) > 0 }
 	if !slices.ContainsFunc(issues, asks) {
 		return nil
 	}
-	corpus, err := intent.Load(repoRoot)
+	var corpus intent.Corpus
+	var err error
+	switch {
+	case ledger == nil:
+		corpus, err = intent.Load(repoRoot)
+	case ledger.Intents == nil:
+		err = fmt.Errorf("drain: the ledger of %s was read with no intent store from the same commit, which the promoted rule reads", termsafe.Sanitize(ledger.Source))
+	default:
+		corpus, err = ledger.Intents()
+	}
 	if err != nil {
 		return err
 	}

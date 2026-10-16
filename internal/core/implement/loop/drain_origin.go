@@ -36,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -319,7 +320,67 @@ func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 			l.Files[i].Text = texts[k]
 		}
 	}
+	l.Intents = func() (intent.Corpus, error) { return treeIntents(at, source) }
 	return l, nil
+}
+
+// maxIntentBatch caps what one read of a commit's intent store may answer.
+const maxIntentBatch = 64 << 20
+
+// treeIntents reads the intent store out of the commit at holds, as
+// intent.LoadTree parses it: every file one level under a bucket, each judged
+// as a regular file within the store's cap before its content is asked for,
+// through one `git cat-file --batch`. A bucket the commit holds as anything
+// but a directory is refused, as intent.Load refuses a linked bucket.
+func treeIntents(at baseTree, source string) (intent.Corpus, error) {
+	entries, err := at.list(intent.IntentsRelDir+"/", true)
+	if err != nil {
+		return intent.Corpus{}, fmt.Errorf("reading the intent store of %s: %w", source, err)
+	}
+	var files []intent.TreeFile
+	want := map[int]int{}
+	var objects []string
+	budget := 0
+	for _, e := range entries {
+		rest, _ := strings.CutPrefix(e.path, intent.IntentsRelDir+"/")
+		bucket, name, ok := strings.Cut(rest, "/")
+		if !ok {
+			if slices.Contains(intent.Buckets, bucket) {
+				return intent.Corpus{}, fmt.Errorf("intent: %s/%s in %s is not a directory (refusing to follow)", intent.IntentsRelDir, bucket, source)
+			}
+			continue
+		}
+		if strings.Contains(name, "/") || !slices.Contains(intent.Buckets, bucket) {
+			continue
+		}
+		f := intent.TreeFile{Bucket: bucket, Path: e.path}
+		if err := at.readable(e, intent.MaxFileBytes); err != nil {
+			f.Unread = err.Error()
+		} else {
+			want[len(files)] = len(objects)
+			objects = append(objects, e.object)
+			budget += len(e.object) + 32 + int(e.size)
+		}
+		files = append(files, f)
+	}
+	if budget > maxIntentBatch {
+		return intent.Corpus{}, fmt.Errorf("reading the intent store of %s: its files come to %d bytes, past the %d MiB one move reads", source, budget, maxIntentBatch>>20)
+	}
+	got, err := gitutil.CatFileBatch(at.root, objects, budget)
+	if err != nil {
+		return intent.Corpus{}, fmt.Errorf("reading the intent store of %s: %w", source, err)
+	}
+	for i, k := range want {
+		switch o := got[k]; {
+		case o.Missing:
+			files[i].Unread = "the commit holds no object " + o.Name
+		case o.Type != "blob":
+			files[i].Unread = fmt.Sprintf("the commit holds it as a %s, not a regular file", o.Type)
+		default:
+			files[i].Text = o.Content
+		}
+	}
+	return intent.LoadTree(files)
 }
 
 // openHere is the ids this checkout's ledger holds in open/, by file name.

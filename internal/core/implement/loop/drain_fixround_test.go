@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/core/recordid"
@@ -430,5 +431,48 @@ func TestARefusedReleaseIsNeverLoggedAsReleased(t *testing.T) {
 	releaseHandedBack(t.TempDir(), st, HandBack{Kind: HandBackDesignFinding}, now)
 	if calls != 2 {
 		t.Fatalf("the drain routing the hand-back released %d time(s) in all; want it to try again", calls)
+	}
+}
+
+// TestThePlanReadsTheIntentStoreFromOrigin: the promoted rule's question for
+// a record the consistency pass filed reads the intent store, and a plan read
+// from origin's default branch reads it from the same commit: a finding an
+// intent on origin names back is handed back as promoted though this behind
+// checkout lacks that intent, and a malformed draft intent in this checkout's
+// own store refuses nothing.
+func TestThePlanReadsTheIntentStoreFromOrigin(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	const finding, owner = "iss-2609300000000201", "itd-2609300000000501"
+	pushFromOtherCopy(t, bare, "file a consistency finding and the intent it was promoted into", func(dir string) {
+		if _, err := capture.Capture(capture.CaptureRequest{RepoRoot: dir, Text: "itd-10 and itd-11 disagree on how many specs an intent owns",
+			Severity: capture.SeverityMinor, Category: capture.Category("inconsistency"), Source: "agent-finding", Slug: "specs",
+			FoundDuring: "abcd intent consistency, finding f1", FoundAt: "commands/drain.md", ForceID: finding,
+			Remedy: "Reword itd-10 to allow several specs.", RelatedIntents: []string{owner}}); err != nil {
+			t.Fatalf("capture on origin: %v", err)
+		}
+		rel := filepath.Join(dir, ".abcd", "development", "intents", "planned", owner+"-specs.md")
+		if err := os.MkdirAll(filepath.Dir(rel), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(rel, []byte("---\nid: "+owner+"\nslug: specs\nrelated_issues: ["+finding+"]\n---\n# Specs\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	})
+	repo.Git("fetch", "-q", "origin")
+	drafts := filepath.Join(repo.Root(), ".abcd", "development", "intents", "drafts")
+	if err := os.MkdirAll(drafts, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(drafts, "itd-2609300000000999-half-written.md"), []byte("---\nid: not-an-id\n---\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pv, err := DrainDryRun(repo.Root(), time.Now())
+	if err != nil {
+		t.Fatalf("the plan from origin is refused over this checkout's own draft: %v", err)
+	}
+	i := slices.IndexFunc(pv.Dispositions, func(v capture.DrainVerdict) bool { return v.ID == finding })
+	if i < 0 || pv.Dispositions[i].Outcome != capture.DrainHandBack || pv.Dispositions[i].Rule != capture.RulePromoted ||
+		!strings.Contains(pv.Dispositions[i].Reason, owner) {
+		t.Fatalf("the finding's disposition = %+v; want it handed back as promoted into %s, as origin's intent store says", pv.Dispositions, owner)
 	}
 }

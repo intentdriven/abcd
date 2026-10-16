@@ -97,7 +97,13 @@ promotion one drain made is never judged or worked again by another that reads
 the promoted record. A record the consistency pass files is the one exception:
 the two intents it names are the ones its contradiction is between, not intents
 that took it on, so it is judged by its other fields, and is ineligible, as any
-automatic filer's record is, until a person writes its remedy (ruling H12). The
+automatic filer's record is, until a person writes its remedy (ruling H12).
+An intent it was promoted into, one that names it back in `related_issues`,
+still owns it, and that intent is read from the same commit as the ledger: a
+plan read from origin's default branch reads origin's intent store, never the
+checkout's, so an intent origin holds owns its finding in a checkout that lacks
+it, and a draft half-written in the checkout refuses no plan (a store that
+cannot be read there refuses it, dcn-2610161835529757). The
 other two each mark a decision a person still owes. A
 remedy that opens "Waits on" as words, followed by a blank, a colon or nothing (the shape a remedy takes when its fix waits on an
 unanswered ruling, compared case-folded), is

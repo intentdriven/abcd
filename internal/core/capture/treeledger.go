@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/drainrule"
+	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -39,6 +40,10 @@ type TreeLedger struct {
 	// Source names the commit as a reader names it: "origin/main at 0123abcd4567".
 	Source string
 	Files  []LedgerFile
+	// Intents reads the intent store as the same commit holds it, asked only
+	// when the plan needs it (readBackLinks); nil refuses such a plan, since
+	// a plan read from a commit never reads the checkout's store instead.
+	Intents func() (intent.Corpus, error)
 }
 
 // Terminal is the ids the ledger holds in a terminal folder, resolved or

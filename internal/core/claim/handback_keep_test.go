@@ -2,6 +2,8 @@ package claim
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -164,5 +166,59 @@ func TestAHandBackJudgedOverAnotherBlobIsNotPublished(t *testing.T) {
 	}
 	if kind, _ := w.handBackOf(w.remoteTip("iss-5")); kind != nil {
 		t.Fatalf("the tombstone carries hand-back %v over a record changed since", kind)
+	}
+}
+
+// TestAHandBackStandsOverARecordOriginHoldsInNoOneFile: a hand-back is lifted
+// only by a blob read on origin's default branch that differs from the one it
+// names. A record that branch holds in two folders, or only as a file that is
+// no record (a symbolic link), names no blob, so the hand-back stands: a
+// drain's reservation backs off it, and the view still names it.
+func TestAHandBackStandsOverARecordOriginHoldsInNoOneFile(t *testing.T) {
+	for name, change := range map[string]func(w *world, rel string){
+		"two folders": func(w *world, rel string) {
+			data, err := os.ReadFile(filepath.Join(w.seed.Root(), rel))
+			if err != nil {
+				w.t.Fatal(err)
+			}
+			w.seed.Write(strings.Replace(rel, "/open/", "/resolved/", 1), string(data)+"\nresolved on a branch, kept open here\n")
+		},
+		"a symbolic link": func(w *world, rel string) {
+			abs := filepath.Join(w.seed.Root(), rel)
+			if err := os.Remove(abs); err != nil {
+				w.t.Fatal(err)
+			}
+			if err := os.Symlink("../../../../README.md", abs); err != nil {
+				w.t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t)
+			p := w.clone("1234+octo@users.noreply.github.com", "")
+			q := w.clone("99+quinn@users.noreply.github.com", "")
+			w.fileOnMain("iss-5", "The widget breaks.")
+			if _, err := p.do(Request{Record: "iss-5", Footprint: []string{"a.go"}, Drain: true}); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := p.do(Request{Record: "iss-5", Release: true, HandBack: HandBackTrustRule}); err != nil {
+				t.Fatal(err)
+			}
+			tomb := w.remoteTip("iss-5")
+			change(w, ".abcd/work/issues/open/iss-5-the-widget.md")
+			w.seed.Commit("change iss-5's record")
+			w.seed.Git("push", "-q", "origin", "main")
+			_, err := q.do(Request{Record: "iss-5", Footprint: []string{"b.go"}, Drain: true})
+			if !errors.Is(err, ErrBackOff) || w.remoteTip("iss-5") != tomb {
+				t.Fatalf("Q's drain over the hand-back = %v; want it to back off, nothing pushed", err)
+			}
+			snap, err := View(q.dir, w.clock())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if why := snap.HandBack("iss-5", w.clock()); !strings.Contains(why, "was handed back by octo as trust-rule") {
+				t.Fatalf("the view's hand-back = %q; want it standing", why)
+			}
+		})
 	}
 }
