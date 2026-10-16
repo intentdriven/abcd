@@ -11,7 +11,7 @@ production_mode: hand-written
 found_at: "internal/core/implement/loop/check.go"
 remedy: "Refuse the move once, naming the unreadable worktree, instead of counting it as contention on every issue"
 related_intents: [itd-2610161016394967]
-resolution: "the drain refuses its move once, before any reservation or judgement, naming each sibling worktree or branch it cannot read and its repair, so an unreadable worktree no longer reads as contention on every issue"
+resolution: "the drain refuses its move once, where per-issue contention begins and before any issue is judged or reserved, naming each sibling worktree or branch it cannot read and the repair its reason calls for, never a forced removal, so an unreadable worktree no longer reads as contention on every issue"
 impact: fix
 resolved_by:
   intent: "itd-2610161016394967"

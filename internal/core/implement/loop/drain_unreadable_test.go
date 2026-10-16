@@ -2,35 +2,55 @@ package loop
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/peers"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // One unreadable sibling worktree (spc-2610161044461448 step 9;
 // iss-2610161015397586, dcn-2610161040378713): the drain refuses the move
-// once, before any reservation or judgement, naming the worktree and its
-// repair, rather than reading the worktree as a holder of every issue and
-// passing each over as contended. A worktree another tool has locked, and
-// that still reads, is no such worktree.
+// once, where per-issue contention would begin, naming the worktree and the
+// repair its reason calls for, rather than reading the worktree as a holder of
+// every issue and passing each over as contended. A worktree another tool has
+// locked, and that still reads, is no such worktree.
+
+// absPathRe matches an absolute path where one starts in a message: at the
+// start, or after a space, a quote, a bracket, a colon or an equals sign.
+var absPathRe = regexp.MustCompile(`(^|[\s'"(\[:=])/[^\s'"]`)
+
+// breakGitFile points a worktree's git file at a directory that does not
+// exist, as a moved repository leaves it, and returns where it points.
+func breakGitFile(t *testing.T, wt string) string {
+	t.Helper()
+	nowhere := filepath.Join(t.TempDir(), "nowhere")
+	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: "+nowhere+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return nowhere
+}
 
 // TestAnUnreadableWorktreeRefusesTheDrainMoveOnce: a sibling worktree whose
-// git file points nowhere refuses the move naming it, with its repair; the
-// refusal is not contention, asks no judgement, reserves nothing, starts no
-// run and writes no drain state; once the worktree is repaired the same
-// drain judges its first issue.
+// git file points nowhere refuses the move naming it, with its repair, which
+// is a plain `git worktree repair` and never a forced removal; the reason
+// carries no absolute path, not even the one git names the git file pointing
+// at; the refusal is not contention, asks no judgement, reserves nothing,
+// starts no run and writes no drain state; once the repair the remedy names is
+// run the same drain judges its first issue.
 func TestAnUnreadableWorktreeRefusesTheDrainMoveOnce(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	broken := filepath.Join(t.TempDir(), "wt-broken")
 	repo.Git("worktree", "add", "-q", "-b", "lane-broken", broken)
-	if err := os.WriteFile(filepath.Join(broken, ".git"), []byte("gitdir: "+filepath.Join(t.TempDir(), "nowhere")+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	nowhere := breakGitFile(t, broken)
 
 	for move := 1; move <= 2; move++ {
 		res, err := Drain(repo.Root(), Options{}, DrainOptions{})
@@ -44,9 +64,18 @@ func TestAnUnreadableWorktreeRefusesTheDrainMoveOnce(t *testing.T) {
 		if strings.Count(r.Reason, "wt-broken (branch") != 1 || strings.Contains(r.Reason, secondIssue) || strings.Contains(r.Reason, eligibleIssue) {
 			t.Errorf("move %d: the worktree is named once, and no issue is: %q", move, r.Reason)
 		}
-		for _, want := range []string{"git worktree repair wt-broken", "git worktree remove --force wt-broken"} {
-			if !strings.Contains(r.Remedy, want) {
-				t.Errorf("move %d: the remedy lacks %q: %q", move, want, r.Remedy)
+		if absPathRe.MatchString(r.Reason) || strings.Contains(r.Reason, filepath.Dir(nowhere)) {
+			t.Errorf("move %d: the reason carries no absolute path: %q", move, r.Reason)
+		}
+		if !strings.Contains(r.Reason, "nowhere") {
+			t.Errorf("move %d: the reason still says where the git file points, by its name: %q", move, r.Reason)
+		}
+		if !strings.Contains(r.Remedy, "`git worktree repair`") {
+			t.Errorf("move %d: the remedy is a plain git worktree repair, with no argument: %q", move, r.Remedy)
+		}
+		for _, never := range []string{"--force", "git worktree remove", "git worktree repair wt-broken"} {
+			if strings.Contains(r.Remedy, never) {
+				t.Errorf("move %d: the remedy never advises %q for a broken git file: %q", move, never, r.Remedy)
 			}
 		}
 		if res.Judging != nil || len(res.Passed) != 0 {
@@ -65,10 +94,13 @@ func TestAnUnreadableWorktreeRefusesTheDrainMoveOnce(t *testing.T) {
 		t.Fatalf("a refused move starts no run: %d", n)
 	}
 
-	// The repair the remedy names is the whole fix. git rewrites the broken
-	// git file and still exits 1 for having found it broken, so the repair is
-	// proved by the worktree answering again, not by its exit status.
-	_ = exec.Command("git", "-C", repo.Root(), "worktree", "repair", broken).Run()
+	// The repair the remedy names, run as written in the repository, is the
+	// whole fix. git rewrites the broken git file and still exits 1 for having
+	// found it broken, so the repair is proved by the worktree answering again,
+	// not by its exit status.
+	cmd := exec.Command("git", "worktree", "repair")
+	cmd.Dir, cmd.Env = repo.Root(), gittest.Env(t)
+	_ = cmd.Run()
 	gitIn(t, broken, "rev-parse", "--git-common-dir")
 	res, err := Drain(repo.Root(), Options{}, DrainOptions{})
 	if err != nil {
@@ -77,6 +109,383 @@ func TestAnUnreadableWorktreeRefusesTheDrainMoveOnce(t *testing.T) {
 	if res.Judging == nil || res.Judging.Issue != secondIssue {
 		t.Fatalf("the repaired drain judges its first issue: %+v", res)
 	}
+}
+
+// splitRecord copies the open record of id into resolved/ under dir, so its
+// ledger holds the id in two folders.
+func splitRecord(t *testing.T, dir, id string) {
+	t.Helper()
+	matches, err := filepath.Glob(filepath.Join(dir, ".abcd", "work", "issues", "open", id+"-*.md"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("the open record of %s: %v %v", id, matches, err)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	resolved := filepath.Join(dir, ".abcd", "work", "issues", "resolved")
+	if err := os.MkdirAll(resolved, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(resolved, filepath.Base(matches[0])), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestASplitLedgerPeerIsToldToSettleItsLedger: a worktree or a branch whose
+// ledger holds one id in two folders is told the reason's own advice, to move
+// or remove one of each, and never to repair or remove the peer.
+func TestASplitLedgerPeerIsToldToSettleItsLedger(t *testing.T) {
+	for _, src := range []string{"worktree", "branch"} {
+		t.Run(src, func(t *testing.T) {
+			repo, _ := reservingDrainRepo(t, "commands/drain.md")
+			name := "the worktree at wt-split (branch lane-split)"
+			if src == "worktree" {
+				wt := filepath.Join(t.TempDir(), "wt-split")
+				repo.Git("worktree", "add", "-q", "-b", "lane-split", wt)
+				splitRecord(t, wt, eligibleIssue)
+			} else {
+				name = "branch lane-split"
+				repo.Git("checkout", "-q", "-b", "lane-split")
+				splitRecord(t, repo.Root(), eligibleIssue)
+				repo.Commit("split the record")
+				repo.Git("checkout", "-q", "main")
+			}
+			_, err := Drain(repo.Root(), Options{}, DrainOptions{})
+			r := mustRefusal(t, err)
+			if r.Check != CheckPeers || r.Contention || !strings.Contains(r.Reason, name+" could not be read") {
+				t.Fatalf("the split peer refuses the move, named: %+v", r)
+			}
+			if !strings.Contains(r.Remedy, name+": move or remove one of each") {
+				t.Errorf("the remedy is the reason's own advice, for that peer: %q", r.Remedy)
+			}
+			for _, never := range []string{"--force", "git worktree remove", "git worktree repair", "delete the branch"} {
+				if strings.Contains(r.Remedy, never) {
+					t.Errorf("a split ledger is settled, not %q: %q", never, r.Remedy)
+				}
+			}
+		})
+	}
+}
+
+// TestAWorktreeOutsideHomeIsNamedByAPathAShellTakes: a worktree whose record
+// folders cannot be read, outside HOME, is told to settle its reason or, once
+// its work is spent, a plain `git worktree remove` naming it by a path a shell
+// takes, quoted; that command, run as printed, refuses while the worktree holds
+// uncommitted work and leaves it, and removes the worktree once it holds none.
+func TestAWorktreeOutsideHomeIsNamedByAPathAShellTakes(t *testing.T) {
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	parent := filepath.Join(t.TempDir(), "a dir")
+	wt := filepath.Join(parent, "wt-sealed")
+	repo.Git("worktree", "add", "-q", "-b", "lane-sealed", wt)
+	if home, err := os.UserHomeDir(); err == nil && strings.HasPrefix(wt, home+string(filepath.Separator)) {
+		t.Skipf("the temporary directory %s is under HOME", wt)
+	}
+	// A commit of its own keeps the worktree from reading as merged, and its
+	// open folder sealed is what cannot be read.
+	gitIn(t, wt, "commit", "-q", "--allow-empty", "-m", "the lane's own work")
+	sealed := filepath.Join(wt, ".abcd", "work", "issues", "open")
+	if err := os.Chmod(sealed, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(sealed, 0o755) })
+
+	_, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	r := mustRefusal(t, err)
+	if r.Check != CheckPeers || !strings.Contains(r.Reason, "the worktree at wt-sealed (branch lane-sealed) could not be read") {
+		t.Fatalf("the sealed worktree refuses the move, named by its folder in prose: %+v", r)
+	}
+	if strings.Contains(r.Remedy, "--force") {
+		t.Fatalf("the remedy never advises --force: %q", r.Remedy)
+	}
+	m := regexp.MustCompile("`(git worktree remove \"[^`]+\")`").FindStringSubmatch(r.Remedy)
+	if m == nil {
+		t.Fatalf("the remedy gives a plain git worktree remove, quoted: %q", r.Remedy)
+	}
+	if strings.Contains(m[1], "remove \"wt-sealed\"") {
+		t.Fatalf("the command names the worktree by a path, not its folder name: %q", m[1])
+	}
+	if err := os.Chmod(sealed, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Run as printed, through a shell, from the repository.
+	run := func() error {
+		cmd := exec.Command("sh", "-c", m[1])
+		cmd.Dir, cmd.Env = repo.Root(), gittest.Env(t)
+		return cmd.Run()
+	}
+	work := filepath.Join(wt, "uncommitted.txt")
+	if err := os.WriteFile(work, []byte("a peer's work\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); err == nil {
+		t.Fatalf("%s removed a worktree holding uncommitted work", m[1])
+	}
+	if _, err := os.Stat(work); err != nil {
+		t.Fatalf("the uncommitted work survives the command: %v", err)
+	}
+	if err := os.Remove(work); err != nil {
+		t.Fatal(err)
+	}
+	if err := run(); err != nil {
+		t.Fatalf("%s, run as printed, removes the spent worktree: %v", m[1], err)
+	}
+	if _, err := os.Stat(wt); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the worktree is gone: %v", err)
+	}
+}
+
+// TestACommandPathIsOneAShellTakes: a path a command names is home-redacted
+// to $HOME, which a shell expands inside double quotes where it would not
+// expand ~, and is quoted whole, with what a double quote would read escaped;
+// outside HOME it is the path itself, never its folder name.
+func TestACommandPathIsOneAShellTakes(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cases := map[string]string{
+		filepath.Join(home, "wt", "lane a"): `"$HOME/wt/lane a"`,
+		home:                                `"$HOME"`,
+		"/srv/wt/lane":                      `"/srv/wt/lane"`,
+		"/srv/w\"t/$x`y\\z":                 `"/srv/w\"t/\$x\` + "`" + `y\\z"`,
+	}
+	for in, want := range cases {
+		if got := commandPath(in); got != want {
+			t.Errorf("commandPath(%q) = %s, want %s", in, got, want)
+		}
+	}
+}
+
+// TestEachUnreadableReasonGetsItsOwnRemedy: the remedy follows the peer's
+// reason. A broken git file is a plain `git worktree repair`; a ledger holding
+// one id in two folders is the reason's own advice; a worktree another account
+// owns says that account owns it, and offers no git command; a branch git
+// cannot list is settled or deleted; and a worktree that cannot be read for
+// another reason is settled or, once spent, removed by a plain
+// `git worktree remove`. None advises --force.
+func TestEachUnreadableReasonGetsItsOwnRemedy(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	wt := filepath.Join(home, "wt")
+	own := uint32(os.Getuid())
+	restore := swapPeerOwnerUID(func(p string) (uint32, error) {
+		if strings.HasSuffix(p, "theirs") {
+			return own + 1, nil
+		}
+		return own, nil
+	})
+	defer restore()
+	split := "its ledger holds one id in two places (iss-1 in open/ and resolved/), which is no status at all; move or remove one of each so the ledger says which status the record is in"
+	cases := []struct {
+		name  string
+		peer  peers.Peer
+		want  []string
+		never []string
+	}{
+		{"a broken git file", peers.Peer{Source: peers.SourceWorktree, Branch: "b", Path: wt,
+			NotRead: "git refused to answer for it: fatal: not a git repository: /elsewhere/nowhere"},
+			[]string{"`git worktree repair`"}, []string{"git worktree remove", "repair \""}},
+		{"a split worktree ledger", peers.Peer{Source: peers.SourceWorktree, Branch: "b", Path: wt, NotRead: split},
+			[]string{"move or remove one of each so the ledger says which status the record is in"}, []string{"git worktree"}},
+		{"a split branch ledger", peers.Peer{Source: peers.SourceBranch, Branch: "b", NotRead: split},
+			[]string{"move or remove one of each"}, []string{"git worktree", "delete the branch"}},
+		{"another account's worktree", peers.Peer{Source: peers.SourceWorktree, Branch: "b", Path: filepath.Join(home, "theirs"),
+			NotRead: "git refused to answer for it: fatal: detected dubious ownership in repository at '" + filepath.Join(home, "theirs") + "'"},
+			[]string{"is owned by " + accountName(own+1) + ", not this account"}, []string{"git worktree", "safe.directory"}},
+		{"git's word for another account", peers.Peer{Source: peers.SourceWorktree, Branch: "b", Path: wt,
+			NotRead: "git refused to answer for it: fatal: detected dubious ownership in repository at '" + wt + "'"},
+			[]string{"is owned by another account, not this account"}, []string{"git worktree", "safe.directory"}},
+		{"a branch git cannot list", peers.Peer{Source: peers.SourceBranch, Branch: "b", NotRead: "git could not list its records: fatal: bad object"},
+			[]string{"settle what its reason names, or delete the branch once its work is spent"}, []string{"git worktree"}},
+		{"a worktree whose folders cannot be read", peers.Peer{Source: peers.SourceWorktree, Branch: "b", Path: wt,
+			NotRead: "its record folders cannot be read: permission denied"},
+			[]string{"`git worktree remove \"$HOME/wt\"`", "refuses while it holds uncommitted work"}, []string{"repair"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := peerRemedy(c.peer)
+			for _, w := range c.want {
+				if !strings.Contains(got, w) {
+					t.Errorf("the remedy lacks %q: %q", w, got)
+				}
+			}
+			for _, n := range append(c.never, "--force") {
+				if strings.Contains(got, n) {
+					t.Errorf("the remedy has %q: %q", n, got)
+				}
+			}
+		})
+	}
+}
+
+// TestAReasonCarriesNoAbsolutePath: a peer's reason names its own worktree
+// by its display form, the checkout relative to itself, HOME as ~, and any
+// other absolute path by its last element alone.
+func TestAReasonCarriesNoAbsolutePath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	root := filepath.Join(t.TempDir(), "checkout")
+	p := peers.Peer{Source: peers.SourceWorktree, Path: "/srv/peers/wt",
+		NotRead: "git refused to answer for it: fatal: not a git repository: /srv/elsewhere/nowhere at '" + root + "/.git/worktrees/wt' from " +
+			home + "/x and /srv/peers/wt/.git"}
+	got := notReadShown(root, p)
+	want := "git refused to answer for it: fatal: not a git repository: nowhere at './.git/worktrees/wt' from ~/x and wt/.git"
+	if got != want {
+		t.Fatalf("got  %q\nwant %q", got, want)
+	}
+}
+
+// TestALiveDrainFinishesAMergedLaneBeforeItRefuses: the refusal is taken
+// where per-issue contention begins, after the move's housekeeping: a live
+// drain whose lane has merged finishes that lane in the refused move (its
+// worktree removed, the run done and the drain's lane done with its pull
+// request, written), and only then refuses on the unreadable worktree.
+func TestALiveDrainFinishesAMergedLaneBeforeItRefuses(t *testing.T) {
+	f := drainLandFixture(t)
+	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
+	if first.Start == nil {
+		t.Fatalf("the drain opens a lane: %+v", first)
+	}
+	f.runID, f.issue = first.Start.RunID, first.Lane.Issue
+	l := f.armIssueLane(t)
+	f.merged(t, l.Landing.Pushed)
+	broken := filepath.Join(t.TempDir(), "wt-broken")
+	f.repo.Git("worktree", "add", "-q", "-b", "lane-broken", broken)
+	breakGitFile(t, broken)
+
+	_, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	r := mustRefusal(t, err)
+	if r.Stage != StageDrain || r.Check != CheckPeers || r.Contention {
+		t.Fatalf("the move refuses on the unreadable worktree: %+v", r)
+	}
+	if !strings.Contains(r.Reason, "finished 1 merged lane(s)") || !strings.Contains(r.Reason, f.runID) {
+		t.Errorf("the refusal says what the move did first: %q", r.Reason)
+	}
+	if _, err := os.Stat(l.Worktree); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the merged lane's worktree is removed in the refused move: %v", err)
+	}
+	if st, err := ReadState(f.repo.Root(), f.runID); err != nil || !st.Complete() {
+		t.Fatalf("the merged lane's run is done: %+v %v", st, err)
+	}
+	st, live, err := readDrain(f.repo.Root())
+	if err != nil || !live {
+		t.Fatalf("the drain is live: %v", err)
+	}
+	if len(st.Lanes) != 1 || st.Lanes[0].Outcome != DrainLaneDone || st.Lanes[0].PR != 7 {
+		t.Fatalf("the drain's lane is written done with its pull request: %+v", st.Lanes)
+	}
+	if st.Stopped != "" {
+		t.Fatalf("a refused move does not end the drain: %q", st.Stopped)
+	}
+}
+
+// TestAPeerUnreadableAtTheStartStopsTheMove: a peer that turns unreadable
+// between the move's check and the issue's start, so the start's own peers
+// check finds it, stops the move with the move's refusal, rather than passing
+// the issue over as contended and ending the drain empty.
+func TestAPeerUnreadableAtTheStartStopsTheMove(t *testing.T) {
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	wt := filepath.Join(t.TempDir(), "wt-late")
+	repo.Git("worktree", "add", "-q", "-b", "lane-late", wt)
+	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	if err != nil || first.Judging == nil {
+		t.Fatalf("the drain asks its first judgement: %+v %v", first, err)
+	}
+	prev := drainBeforeStart
+	drainBeforeStart = func(string) { breakGitFile(t, wt) }
+	defer func() { drainBeforeStart = prev }()
+
+	path := writeAnswer(t, repo, first.Judging, judgementAnswer(first.Judging, JudgementNo, "", "the remedy changes neither what a user sees nor a trust boundary"))
+	res, err := Drain(repo.Root(), Options{}, DrainOptions{Judgement: path})
+	r := mustRefusal(t, err)
+	if r.Stage != StageDrain || r.Check != CheckPeers || r.Contention {
+		t.Fatalf("the move stops with its own refusal, not contention: %+v", r)
+	}
+	if !strings.Contains(r.Reason, "the worktree at wt-late (branch lane-late) could not be read") || !strings.Contains(r.Remedy, "`git worktree repair`") {
+		t.Fatalf("the refusal names the worktree and its repair: %+v", r)
+	}
+	if len(res.Passed) != 0 || runCount(t, repo) != 0 {
+		t.Fatalf("no issue is passed over and no run starts: %+v", res)
+	}
+	if sha := gitIn(t, bare, "for-each-ref", "--format=%(objectname)", claim.RefPrefix+first.Judging.Issue); sha != "" {
+		t.Fatalf("nothing is reserved: %s", sha)
+	}
+	st, live, err := readDrain(repo.Root())
+	if err != nil || !live || st.Stopped != "" {
+		t.Fatalf("the drain is not ended empty: %+v %v", st, err)
+	}
+	if len(st.Judgements) != 1 || st.Judging != nil {
+		t.Fatalf("the judgement the move took is written, so it is not asked again: %+v", st)
+	}
+}
+
+// crowdOriginDefault pushes to origin's default branch a commit holding more
+// record files than a reader takes, and fetches it, so the reservations, read
+// against it, cannot be read here although every fetch succeeds.
+func crowdOriginDefault(t *testing.T, repo *gittest.Repo) {
+	t.Helper()
+	empty := gitIn(t, repo.Root(), "hash-object", "-w", "/dev/null")
+	var b strings.Builder
+	for i := 0; i <= 20000; i++ {
+		fmt.Fprintf(&b, "100644 blob %s\tf%05d.md\n", empty, i)
+	}
+	mktree := func(in string) string {
+		cmd := exec.Command("git", "-C", repo.Root(), "mktree")
+		cmd.Env, cmd.Stdin = gittest.Env(t), strings.NewReader(in)
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	tree := mktree(b.String())
+	for _, name := range []string{"open", "issues", "work", ".abcd"} {
+		tree = mktree("040000 tree " + tree + "\t" + name + "\n")
+	}
+	c := gitIn(t, repo.Root(), "commit-tree", tree, "-p", "main", "-m", "many records")
+	gitIn(t, repo.Root(), "push", "-q", "origin", c+":refs/heads/main")
+	gitIn(t, repo.Root(), "fetch", "-q", "origin")
+}
+
+// TestUnreadableReservationsStopTheMove: reservations this checkout cannot
+// read after a fetch that succeeded stop the move with a refusal that says so
+// and why, and pass no issue over as contended: the drain never ends empty
+// on them, and a second move refuses the same way without asking again.
+func TestUnreadableReservationsStopTheMove(t *testing.T) {
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: "iss-2609010000009999", Footprint: []string{"docs/other.md"}}, claimOptions(time.Now())); err != nil {
+		t.Fatal(err)
+	}
+	crowdOriginDefault(t, repo)
+	if _, err := claim.View(repo.Root(), time.Now()); err == nil {
+		t.Fatal("the fixture's reservations read")
+	}
+	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	if err != nil || first.Judging == nil {
+		t.Fatalf("the drain asks its first judgement: %+v %v", first, err)
+	}
+	path := writeAnswer(t, repo, first.Judging, judgementAnswer(first.Judging, JudgementNo, "", "the remedy changes neither what a user sees nor a trust boundary"))
+	for move, d := range []DrainOptions{{Judgement: path}, {}} {
+		res, err := Drain(repo.Root(), Options{}, d)
+		r := mustRefusal(t, err)
+		if r.Contention || !strings.Contains(r.Reason, "could not read the reservations") || !strings.Contains(r.Reason, "more than 20000 record files") {
+			t.Fatalf("move %d (%v): the refusal says the reservations could not be read, and why: %+v", move, err, r)
+		}
+		if len(res.Passed) != 0 || res.Judging != nil || runCount(t, repo) != 0 {
+			t.Fatalf("move %d: nothing is passed over, asked or started: %+v", move, res)
+		}
+		if st, _, err := readDrain(repo.Root()); err != nil || st.Stopped != "" {
+			t.Fatalf("move %d: the drain is not ended: %+v %v", move, st, err)
+		}
+	}
+}
+
+// swapPeerOwnerUID substitutes the owner lookup the remedy reads and returns
+// the restore: a second account is not something a test process can create.
+func swapPeerOwnerUID(fn func(string) (uint32, error)) (restore func()) {
+	prev := peerOwnerUID
+	peerOwnerUID = fn
+	return func() { peerOwnerUID = prev }
 }
 
 // TestALockedReadableWorktreeDoesNotRefuseTheDrain: git's lock on a worktree,

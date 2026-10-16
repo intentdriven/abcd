@@ -49,6 +49,9 @@ type CheckRow struct {
 	Remedy string `json:"remedy,omitempty"`
 	// contention marks a failure that is a peer's hold, not the record's fault.
 	contention bool
+	// unjudged is each peer the peers check could not read, which it counted
+	// as a holder; the drain stops its move on them (unreadableRefusal).
+	unjudged []peers.Peer
 }
 
 // CheckResult is every pre-start check for one key.
@@ -81,6 +84,7 @@ func (r CheckResult) refusal() *Refusal {
 		}
 		ref := refuse("check", c.Name, "", c.Detail, c.Remedy)
 		ref.Contention = c.contention
+		ref.unjudged = c.unjudged
 		ref.Checks = r.Checks
 		return ref
 	}
@@ -428,7 +432,8 @@ func peersCheck(id, bucket, session string, snap *peerSnapshot, reservations boo
 	}
 	// A peer the listing names and cannot read may hold the record; the check
 	// fails closed on it, as it does on an unreadable claim below.
-	for _, p := range snap.rep.Unjudged() {
+	row.unjudged = snap.rep.Unjudged()
+	for _, p := range row.unjudged {
 		holders = append(holders, peerName(p.Source, p.Branch, p.Path)+" could not be read, so what it holds is unknown ("+fsutil.DisplayPathsIn(p.NotRead, p.Path)+")")
 	}
 	for _, c := range snap.claims {

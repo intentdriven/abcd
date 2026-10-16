@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/peers"
 )
 
 // Refusal is the one shape every refusal of the loop takes (criterion 13): the
@@ -38,6 +40,10 @@ type Refusal struct {
 	// probe a lane waits on, or, at the stage "outage", the give-up with what
 	// the run had done and what is left (iss-2610080620372731).
 	Outage *OutageInfo `json:"outage,omitempty"`
+	// unjudged is each peer a start's peers check could not read, copied from
+	// its row: the drain stops its move on them rather than passing the issue
+	// over as contended.
+	unjudged []peers.Peer
 	// checkWait is when a landing began waiting for its full check (ruling
 	// DR6d-2): the call that finds the wait writes it on the lane once.
 	checkWait time.Time

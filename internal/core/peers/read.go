@@ -45,6 +45,14 @@ const (
 	maxListing = 16 << 20
 )
 
+// The starts of the not-read reasons a caller tells apart to choose a peer's
+// repair: git would not answer for a worktree (most often a git file that
+// points nowhere), and a ledger holds one id in two folders.
+const (
+	NotReadGitRefused = "git refused to answer for it: "
+	NotReadSplit      = "its ledger holds one id in two places"
+)
+
 // holding is one record file a tree holds.
 type holding struct {
 	folder string // open, resolved, wontfix, or an intent bucket
@@ -191,7 +199,7 @@ func readWorktree(root, common string, wt worktree, merged map[string]bool, defa
 	// repository's records as this one's.
 	theirs, err := commonDir(wt.path)
 	if err != nil {
-		p.NotRead = "git refused to answer for it: " + firstLine(err.Error())
+		p.NotRead = NotReadGitRefused + firstLine(err.Error())
 		p.unjudged = true
 		return p, nil, true
 	}
@@ -268,7 +276,7 @@ func judgeHoldings(h holdings, present bool) string {
 	if len(split) == 0 {
 		return ""
 	}
-	return "its ledger holds one id in two places (" + strings.Join(split, "; ") +
+	return NotReadSplit + " (" + strings.Join(split, "; ") +
 		"), which is no status at all; move or remove one of each so the ledger says which status the record is in"
 }
 
