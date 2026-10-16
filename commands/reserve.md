@@ -180,7 +180,8 @@ its reservation with a tombstone naming the hand-back's kind (one of
 built, a stuck lane and a closed pull request, and nothing writes them yet) and
 the blob id of the issue's record on
 origin's default branch. Every drain backs off that issue until a person
-changes the record there. Your own reservation over it is made, and the
+changes the record there, and no drain takes over or renews a reservation you
+make over it, lapsed or not. Your own reservation over it is made, and the
 result says whose hand-back it was made over, of which kind and when
 (`  note: ...` in the text form, `handed_back` in `--json`): read the record's
 hand-back before you start, since it names a decision that is a person's.

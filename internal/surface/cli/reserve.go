@@ -102,6 +102,16 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"another copy to this one; it never moves another person's. A record already\n" +
 			"resolved, won't-fixed, shipped or superseded on origin's default branch counts\n" +
 			"as released whatever its reservation says.\n\n" +
+			"A new reservation or a take-over asks GitHub whether origin is a fork, and a\n" +
+			"fork is refused unless reservation.fork_origin names it; when GitHub cannot say,\n" +
+			"the act goes on and warns (not checked: whether origin is a fork, fork_unchecked\n" +
+			"in --json). An issue a drain handed back carries the hand-back on its tombstone:\n" +
+			"your own reservation over it is made, with a note (handed_back in --json), and a\n" +
+			"plain --release of it keeps the hand-back standing until a person changes the\n" +
+			"record on origin's default branch (hand_back_kept in --json), so no drain takes\n" +
+			"the issue, nor takes over or renews your reservation over it. A release whose\n" +
+			"tombstone cannot mark the hand-back is still made, plain, and says why\n" +
+			"(hand_back_unpublished in --json).\n\n" +
 			"The holder is your GitHub username, from the first of these that names it:\n" +
 			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
 			"in the machine configuration (the repository's own configuration is never read\n" +

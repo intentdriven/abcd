@@ -91,8 +91,17 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"left, the drain stops, or a no comes once the window has elapsed), when the lane's\n" +
 			"start is refused or fails, and when a request lapses unanswered. A yes's tombstone\n" +
 			"publishes the hand-back on origin, its kind and the blob id of the issue's record\n" +
-			"there, as a lane's hand-back does: every account's drain passes the issue over,\n" +
-			"pushing and asking nothing, until a person changes that record, and a promotion\n" +
+			"there, as a lane's hand-back does, when the drain's reservation is still the\n" +
+			"issue's tip: every account's drain passes the issue over, pushing and asking\n" +
+			"nothing, until a person changes that record, and no drain takes over or renews a\n" +
+			"reservation a person made over it, lapsed or not. A yes whose reservation has\n" +
+			"moved on (renewed, reserved again or taken over since, or released by a person),\n" +
+			"or that took none because you held the issue live, publishes nothing yet: the\n" +
+			"drain keeps the hand-back pending (pending_hand_backs in --json) and publishes it\n" +
+			"over the issue's next release on origin. A record changed or finished on origin's\n" +
+			"default branch since, one origin holds in no one file, or a tombstone the hand-back\n" +
+			"would take past its cap drops it, and the move says it was dropped and why; a\n" +
+			"default branch that could not be read keeps it pending. A promotion\n" +
 			"this checkout cannot make, not holding the record as origin does, is left to a\n" +
 			"checkout that can. The reservation is taken once per request: one unanswered when it lapses is\n" +
 			"dropped and the issue asked again only after the drain's other eligible work. The\n" +

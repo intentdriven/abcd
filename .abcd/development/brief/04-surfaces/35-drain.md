@@ -284,9 +284,12 @@ on origin's default branch backs off, with a tip or without one
    pending in its state, carries it into the next drain, and publishes it over
    the issue's next release on origin, a tombstone marking no hand-back, as
    that tombstone's child, fenced on it and on the blob the yes was judged
-   over; a tip already marking a hand-back, or a record finished or changed on
-   origin's default branch since, ends it with nothing published
-   (dcn-2610161826443524). The
+   over; a tip already marking a hand-back, a record finished or changed on
+   origin's default branch since, one origin holds in no one file, or a
+   tombstone the hand-back would take past its cap ends it with nothing
+   published, and the move says it was dropped and why; a default branch that
+   could not be read keeps it pending (dcn-2610161826443524, refined by
+   dcn-2610161931130911). The
    hold is taken once per request and never renewed by a poll: a request whose
    reservation lapses unanswered is dropped, and its reservation released at
    once, before anything else in that move. The issue is not asked again in
@@ -308,7 +311,10 @@ on origin's default branch backs off, with a tip or without one
    that stands, from any copy on any account, is passed over the same way,
    naming its kind, who handed it back and when, and every reservation the
    drain pushes backs off a hand-back that stands, so one the view missed is
-   passed over by the push. A reservation refused for this checkout's own reason (no
+   passed over by the push. A drain's push that would take over or renew a
+   reservation a person made over a hand-back that stands backs off it too,
+   lapsed or not: the push reads that reservation's line down to the
+   tombstone it was made over (dcn-2610161931122606). A reservation refused for this checkout's own reason (no
    GitHub username, `origin` not answering, `origin` a fork the repository does
    not allow) refuses the move; the fork check is made by the reservation taken
    before the judgement, and one it could not make, or waived for the allowed

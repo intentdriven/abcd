@@ -240,7 +240,13 @@ what it did in `next`:
   tombstone that marks no hand-back publishes it over that release, fenced on
   it and on the blob the `yes` was judged over, so your own reserve and
   release never erase it. A record changed or finished on origin's default
-  branch since ends it with nothing published. The reservation is taken once
+  branch since, one origin holds in no one file, or a tombstone the hand-back
+  would take past its cap ends it with nothing published, and the move says
+  in `next` and in the route's `wrote` that it was dropped, and why, never
+  that it was published; a move that could not read origin's default branch
+  keeps it pending. No drain takes over or renews a reservation you made over
+  a standing hand-back, lapsed or not: it backs off, as it does the hand-back's
+  own tombstone. The reservation is taken once
   per request and never renewed while you poll: a request still unanswered
   when it lapses (two hours by default) is dropped and its reservation
   released at once, in the first move after the lapse. That move does not ask

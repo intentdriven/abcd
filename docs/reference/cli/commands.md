@@ -1178,8 +1178,17 @@ when the judgement is superseded (the order asks another issue, nothing eligible
 left, the drain stops, or a no comes once the window has elapsed), when the lane's
 start is refused or fails, and when a request lapses unanswered. A yes's tombstone
 publishes the hand-back on origin, its kind and the blob id of the issue's record
-there, as a lane's hand-back does: every account's drain passes the issue over,
-pushing and asking nothing, until a person changes that record, and a promotion
+there, as a lane's hand-back does, when the drain's reservation is still the
+issue's tip: every account's drain passes the issue over, pushing and asking
+nothing, until a person changes that record, and no drain takes over or renews a
+reservation a person made over it, lapsed or not. A yes whose reservation has
+moved on (renewed, reserved again or taken over since, or released by a person),
+or that took none because you held the issue live, publishes nothing yet: the
+drain keeps the hand-back pending (pending_hand_backs in --json) and publishes it
+over the issue's next release on origin. A record changed or finished on origin's
+default branch since, one origin holds in no one file, or a tombstone the hand-back
+would take past its cap drops it, and the move says it was dropped and why; a
+default branch that could not be read keeps it pending. A promotion
 this checkout cannot make, not holding the record as origin does, is left to a
 checkout that can. The reservation is taken once per request: one unanswered when it lapses is
 dropped and the issue asked again only after the drain's other eligible work. The
@@ -4009,6 +4018,17 @@ which pushes a tombstone. --take-over moves your own live reservation from
 another copy to this one; it never moves another person's. A record already
 resolved, won't-fixed, shipped or superseded on origin's default branch counts
 as released whatever its reservation says.
+
+A new reservation or a take-over asks GitHub whether origin is a fork, and a
+fork is refused unless reservation.fork_origin names it; when GitHub cannot say,
+the act goes on and warns (not checked: whether origin is a fork, fork_unchecked
+in --json). An issue a drain handed back carries the hand-back on its tombstone:
+your own reservation over it is made, with a note (handed_back in --json), and a
+plain --release of it keeps the hand-back standing until a person changes the
+record on origin's default branch (hand_back_kept in --json), so no drain takes
+the issue, nor takes over or renews your reservation over it. A release whose
+tombstone cannot mark the hand-back is still made, plain, and says why
+(hand_back_unpublished in --json).
 
 The holder is your GitHub username, from the first of these that names it:
 user.email, when it is a GitHub no-reply address; reservation.github_username
