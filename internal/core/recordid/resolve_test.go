@@ -123,10 +123,10 @@ func TestResolverIgnoresSymlinkedEntries(t *testing.T) {
 	}
 }
 
-// TestCitedIDReGrammar pins the cited-id grammar: the four id-bearing families,
+// TestCitedIDReGrammar pins the cited-id grammar: the five id-bearing families,
 // bare decimal N, nothing else.
 func TestCitedIDReGrammar(t *testing.T) {
-	for _, ok := range []string{"itd-1", "iss-146", "spc-18", "adr-37"} {
+	for _, ok := range []string{"itd-1", "iss-146", "spc-18", "adr-37", "dcn-2610141200001234"} {
 		if !CitedIDRe.MatchString(ok) {
 			t.Errorf("CitedIDRe rejected %q", ok)
 		}
