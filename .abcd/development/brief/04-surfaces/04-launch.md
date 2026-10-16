@@ -514,7 +514,7 @@ would be wrong. There are ten, and an operator sees them as
 | `release-in-flight` | the newest changelog heading is ahead of the newest tag, so a release sits between its merge and its tag |
 | `unlabelled-record` | a record the cut adds carries no valid impact |
 | `uncommitted-records` | a record file in a terminal folder (`intents/shipped/`, `issues/resolved/`) differs from HEAD, where the cut reads it, so a spec close or resolve left uncommitted would be missing from the cut; every path is named, and no override waives it |
-| `stale-intent` | an intent in `planned/` has a spec that has closed |
+| `stale-intent` | an intent in `planned/` whose every realising spec has closed: it has at least one, and none is still open, so the record never moved to `shipped/`. A planned intent with one spec closed and another open is a partial delivery and is not refused |
 | `surface-guard` | the surface guardrail failed, or could not compare |
 | `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it; or an open issue record that differs from HEAD, where the gate reads the ledger, at any severity, every path named and no override waiving it |
 | `deleted-finding` | a consequential record the anchor held in `open/` is in no status directory at HEAD: the cut removed the finding instead of answering it |
