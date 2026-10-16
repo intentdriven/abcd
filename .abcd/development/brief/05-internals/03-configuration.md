@@ -557,18 +557,21 @@ acts on the scope that applies.
 
 **User scope, `~/.abcd.noindex/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
-lab store, the staged worktree store and its staged notes archive
-(`notes/<root-sha>/`, which nothing writes yet), the run state an autonomous run's sessions share
+lab store, the worktree store (the build loop writes each lane's worktree
+there today; the store's own verbs and its reclaim are unbuilt) and its staged
+notes archive (`notes/<root-sha>/`, which nothing writes yet), the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
 ([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the machine layer of the layered configuration in `config.json`
 (its readers are every key read through the layered reader,
 `internal/core/layered`: the provider adapter's `oracle` keys, the reviewer
-route's `oracle.review` and `oracle.rp`, the filing-time match's `match`, the
+route's `oracle.review`, the filing-time match's `match`, the
 `land` switches, `consistency.max_request_bytes`, the implement loop's `pace`
-and the runner routes under `roles` and `runner`, each read with the repo-scope
+and the role routes under `roles`, each read with the repo-scope
 `.abcd/config.json` above it, except `land`, whose layers are ANDed; the
-provider blocks, `oracle.rp`, `runner.<name>`, `interview.list` and
-`reservation.github_username` are honoured from the machine layer alone. Its one
+provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
+`runner` namespace (`runner.fallback_host` and every `runner.<name>`),
+`interview.list` and `reservation.github_username` are honoured from the
+machine layer alone. Its one
 write is the provider block `ahoy connect` adds, and every other config read
 resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
 model-tier routing table in `oracle-routing.json` (read beneath the

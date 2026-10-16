@@ -412,7 +412,9 @@ earlier version wrote wider is narrowed when abcd next writes it
 ~/.abcd.noindex/                       USER SCOPE — one per machine (machine-local state only)
   .gitignore                     one * line, so a git repository in the home folder
                                  never stages this folder; laid once, owner-only, and
-                                 never laid again once deleted (itd-2610140858048004)
+                                 never laid again once deleted (itd-2610140858048004);
+                                 an ignore file already there is left as it is and
+                                 only the marker is written
   gitignore-laid                 the marker recording that lay
   history/                       the REGISTRY only: identity and lineage keyed on the
                                  root-commit SHA. ahoy owns it; it holds no transcripts
