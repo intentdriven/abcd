@@ -1090,12 +1090,12 @@ func fixedReason(reason string) string {
 // keepDoubt keeps d, replacing what was kept for its branch, unflushed and
 // best effort: a doubt not kept is found again when its branch next moves. A
 // doubt kept already, for the same reason at the same tip, is left as it is,
-// so a doubt read again at every prompt is not written again at every prompt.
+// so a doubt read again at every prompt is not written again at every prompt;
+// only the branch's own file is read to tell.
 func keepDoubt(root string, d BranchDoubt) {
-	for _, k := range keptDoubts(root, d.FoundAt) {
-		if k.Branch == d.Branch && k.Reason == d.Reason && k.Tip == d.Tip && !k.FoundAt.IsZero() && k.Tip != "" {
-			return
-		}
+	if k, ok := keptDoubt(root, hashName(d.Branch), d.FoundAt); ok &&
+		k.Branch == d.Branch && k.Reason == d.Reason && k.Tip == d.Tip && !k.FoundAt.IsZero() && k.Tip != "" {
+		return
 	}
 	data, err := json.Marshal(struct {
 		Branch  string `json:"branch"`
@@ -1121,33 +1121,38 @@ func hashName(v string) string {
 // as doubtful; a file naming any other (one an earlier build kept) is passed
 // over.
 func keptDoubts(root string, now time.Time) []BranchDoubt {
-	byName := map[string]BranchDoubt{}
+	var out []BranchDoubt
 	for _, e := range statusEntries(root, doubtDir) {
-		data := readStatusFile(root, doubtDir+"/"+e.Name(), 4096)
-		var d struct {
-			Branch  string `json:"branch"`
-			Reason  string `json:"reason"`
-			Tip     string `json:"tip"`
-			FoundAt string `json:"found_at"`
+		if d, ok := keptDoubt(root, e.Name(), now); ok {
+			out = append(out, d)
 		}
-		if data == nil || json.Unmarshal(data, &d) != nil || e.Name() != hashName(d.Branch) || !statusName(d.Branch) {
-			continue
-		}
-		found, err := time.Parse(time.RFC3339, d.FoundAt)
-		if err != nil || now.Sub(found) >= MaxAnnouncementLife {
-			continue
-		}
-		if d.Tip != "" && !gitutil.IsFullSHA(d.Tip) {
-			continue
-		}
-		byName[d.Branch] = BranchDoubt{Branch: d.Branch, Reason: doubtReason(d.Reason), Tip: d.Tip, FoundAt: found.UTC()}
-	}
-	out := make([]BranchDoubt, 0, len(byName))
-	for _, d := range byName {
-		out = append(out, d)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Branch < out[j].Branch })
 	return out
+}
+
+// keptDoubt is the doubt kept in the file name under the doubt directory,
+// when it reads back, names a branch whose name is read and is named for
+// it, and was found in the day before now.
+func keptDoubt(root, name string, now time.Time) (BranchDoubt, bool) {
+	data := readStatusFile(root, doubtDir+"/"+name, 4096)
+	var d struct {
+		Branch  string `json:"branch"`
+		Reason  string `json:"reason"`
+		Tip     string `json:"tip"`
+		FoundAt string `json:"found_at"`
+	}
+	if data == nil || json.Unmarshal(data, &d) != nil || name != hashName(d.Branch) || !statusName(d.Branch) {
+		return BranchDoubt{}, false
+	}
+	found, err := time.Parse(time.RFC3339, d.FoundAt)
+	if err != nil || now.Sub(found) >= MaxAnnouncementLife {
+		return BranchDoubt{}, false
+	}
+	if d.Tip != "" && !gitutil.IsFullSHA(d.Tip) {
+		return BranchDoubt{}, false
+	}
+	return BranchDoubt{Branch: d.Branch, Reason: doubtReason(d.Reason), Tip: d.Tip, FoundAt: found.UTC()}, true
 }
 
 // doubtReason is reason when it is one a doubt is kept with, and a fixed

@@ -248,3 +248,33 @@ func TestACapSpentElsewhereLeavesNoLastingDoubt(t *testing.T) {
 		t.Fatalf("bob is read at %q; want its tip %s", got, tip)
 	}
 }
+
+// TestKeepingManyDoubtsFitsThePrompt: an intake that finds each of
+// maxStatusBranches branches doubtful again, each kept already for the same
+// reason at the same tip, tells so from that branch's own file alone, so
+// keeping them all stays well inside the prompt hook's read.
+func TestKeepingManyDoubtsFitsThePrompt(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	now := w.clock()
+	tip := strings.Repeat("a", 40)
+	var ds []BranchDoubt
+	for i := 0; i < maxStatusBranches; i++ {
+		d := BranchDoubt{Branch: "user" + strconv.Itoa(i), Reason: DoubtMore, Tip: tip, FoundAt: now}
+		keepDoubt(pat.dir, d)
+		ds = append(ds, d)
+	}
+	start := time.Now()
+	for _, d := range ds {
+		keepDoubt(pat.dir, d)
+	}
+	took := time.Since(start)
+	t.Logf("keeping %d doubts kept already took %s", len(ds), took)
+	if took > 300*time.Millisecond {
+		t.Fatalf("keeping %d doubts kept already took %s; want it well inside the prompt's read, under 300 ms", len(ds), took)
+	}
+	if got := len(keptDoubts(pat.dir, now)); got != len(ds) {
+		t.Fatalf("%d doubts kept; want %d", got, len(ds))
+	}
+}
+
