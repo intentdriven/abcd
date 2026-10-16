@@ -708,7 +708,8 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 			"webhook), and the person clicks Create GitHub App. It keeps only the app's public\n" +
 			"client id, in .abcd/relay/" + coresession.AppFile + "; the client secret, the webhook\n" +
 			"secret and the private key GitHub hands back are never written or shown. An app\n" +
-			"already recorded is kept.\n\n" +
+			"already recorded is kept, and setup says to remove the session page's own\n" +
+			"address from its callback URLs if it is listed, as an earlier setup had it.\n\n" +
 			"It then says what is left, with GitHub's own pages: installing the app on the\n" +
 			"repository; for local sessions, ticking Enable Device Flow on the app's settings\n" +
 			"page, which a manifest cannot do; for the cloud only, leaving it off. For the\n" +
@@ -865,7 +866,13 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 			if res.AppCreated {
 				res.Steps = append(res.Steps, "Install the app on "+repo+": open "+res.AppInstall+", choose Only select repositories, pick "+repo+", and click Install.")
 			} else {
-				res.Steps = append(res.Steps, "The team's sign-in app is already recorded (client id "+res.ClientID+"); check on GitHub that it is installed on "+repo+".")
+				res.Steps = append(res.Steps, "The team's sign-in app is already recorded (client id "+res.ClientID+"); check on GitHub that it is installed on "+repo+".",
+					// An earlier setup had the app list the session page's own
+					// address as its callback; the sign-in now returns to the
+					// relay's own callback alone, so a listed page address is
+					// left over and comes off.
+					"If the app lists the session page's address, "+coresession.FormerPageCallbackURL(repo)+", as a Callback URL, remove it: on "+settings+
+						", under Identifying and authorizing users, delete that Callback URL and click Save changes. An earlier version of setup listed it; the sign-in no longer returns there.")
 			}
 			if coresession.AllowsLocal(chosen) {
 				res.Steps = append(res.Steps, "Switch on the app's device flow, which local sessions sign in with: open "+settings+

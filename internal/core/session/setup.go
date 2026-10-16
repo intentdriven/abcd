@@ -114,6 +114,15 @@ func RelayCallbackURL(relayOrigin string) string {
 	return o + RelayCallbackPath
 }
 
+// FormerPageCallbackURL is the callback URL an earlier repository setup had
+// the team's app list for repo: the session page's own address on
+// DefaultPageOrigin. The sign-in now returns to the relay's own callback
+// (RelayCallbackURL), so setup tells an app recorded before to remove it if
+// it is still listed; nothing returns there any more.
+func FormerPageCallbackURL(repo string) string {
+	return DefaultPageOrigin + "/" + repo + "/brief/"
+}
+
 // appName is the app's name, within GitHub's length: the owner and the
 // repository, then "brief". GitHub's own page lets the person change it
 // before creating the app, should the name be taken.

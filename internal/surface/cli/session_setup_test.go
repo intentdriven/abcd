@@ -254,7 +254,7 @@ func TestSessionSetupWithARecordedAppNamesTheCallbackForTheCloud(t *testing.T) {
 			t.Fatalf("%s: %v\n%s", where, err, out)
 		}
 		text := string(out)
-		if !strings.Contains(text, "already recorded") || !strings.Contains(text, callback) || !strings.Contains(text, "Callback URL") || strings.Contains(text, page) {
+		if !strings.Contains(text, "already recorded") || !strings.Contains(text, callback) || !strings.Contains(text, "Callback URL") {
 			t.Errorf("%s: output does not name the callback URL %s to add:\n%s", where, callback, text)
 		}
 		if !strings.Contains(text, "wildcard") {
@@ -269,15 +269,81 @@ func TestSessionSetupWithARecordedAppNamesTheCallbackForTheCloud(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cloud, no relay yet: %v\n%s", err, out)
 	}
-	if text := string(out); !strings.Contains(text, "https://<your relay>.onrender.com/auth/callback") || strings.Contains(text, page) {
+	if text := string(out); !strings.Contains(text, "https://<your relay>.onrender.com/auth/callback") {
 		t.Errorf("cloud, no relay yet: output does not say the callback is the relay's:\n%s", text)
 	}
 	out, err = runCLIStdinErr(t, "", "session", "setup", "--where", "local")
 	if err != nil {
 		t.Fatalf("local: %v\n%s", err, out)
 	}
-	if strings.Contains(string(out), "/auth/callback") || strings.Contains(string(out), "Callback URL") {
+	if strings.Contains(string(out), "/auth/callback") {
 		t.Errorf("a local-only setup names a callback URL:\n%s", out)
+	}
+	if len(*asked) != 0 {
+		t.Errorf("GitHub was asked %v with the app already recorded", *asked)
+	}
+}
+
+// TestSessionSetupWithARecordedAppSaysToRemoveThePageCallback: an earlier
+// setup told people to list the session page's own address as the app's
+// callback URL. The sign-in now returns to the relay's own callback, so an
+// app recorded before is told to remove the page's address if it is listed,
+// wherever sessions may run; the page's address is named only in that step,
+// never as one to add. An app created now never listed it, and is told
+// nothing about it.
+func TestSessionSetupWithARecordedAppSaysToRemoveThePageCallback(t *testing.T) {
+	repo := managedSessionRepo(t)
+	sessionConfig(t, repo, `{"meta": {"schema_version": 1}}`)
+	swapSessionRelease(t)
+	asked, done := fakeManifestAPI(t)
+	defer done()
+	const page = "https://abcdesign.app/acme/brief/brief/"
+	steps := func(args ...string) []string {
+		t.Helper()
+		out, err := runCLIStdinErr(t, "", append([]string{"--json", "session", "setup"}, args...)...)
+		if err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+		var res struct {
+			Steps []string `json:"steps"`
+		}
+		// The setup page's address is printed before the result, while the
+		// app is being created.
+		body := string(out)
+		if i := strings.Index(body, "\n{"); i >= 0 && !strings.HasPrefix(body, "{") {
+			body = body[i+1:]
+		}
+		if err := json.Unmarshal([]byte(body), &res); err != nil {
+			t.Fatalf("%v: not JSON: %v\n%s", args, err, out)
+		}
+		return res.Steps
+	}
+	naming := func(steps []string) []string {
+		var out []string
+		for _, s := range steps {
+			if strings.Contains(s, page) {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	// Created now: the manifest never listed the page, so nothing is said.
+	if got := naming(steps("--where", "local")); len(got) != 0 {
+		t.Errorf("an app created now is told about the page's address: %q", got)
+	}
+	if len(*asked) == 0 {
+		t.Fatal("the app was not created")
+	}
+	*asked = nil
+	for _, args := range [][]string{
+		{"--where", "local"},
+		{"--where", "cloud", "--release", "v0.17.1"},
+		{"--where", "both", "--release", "v0.17.1", "--relay-origin", "https://brief-relay.onrender.com"},
+	} {
+		got := naming(steps(args...))
+		if len(got) != 1 || !strings.Contains(got[0], "remove") || !strings.Contains(got[0], "Callback URL") || strings.Contains(got[0], "add ") {
+			t.Errorf("%v: steps naming the page's address = %q, want one saying to remove it", args, got)
+		}
 	}
 	if len(*asked) != 0 {
 		t.Errorf("GitHub was asked %v with the app already recorded", *asked)

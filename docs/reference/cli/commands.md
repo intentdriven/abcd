@@ -4226,7 +4226,8 @@ filled in (Contents and Pull requests read and write, Metadata read, no
 webhook), and the person clicks Create GitHub App. It keeps only the app's public
 client id, in .abcd/relay/github-app.json; the client secret, the webhook
 secret and the private key GitHub hands back are never written or shown. An app
-already recorded is kept.
+already recorded is kept, and setup says to remove the session page's own
+address from its callback URLs if it is listed, as an earlier setup had it.
 
 It then says what is left, with GitHub's own pages: installing the app on the
 repository; for local sessions, ticking Enable Device Flow on the app's settings

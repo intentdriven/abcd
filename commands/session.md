@@ -73,7 +73,11 @@ the answer is recorded once the app is.
    back, and `setup` keeps only the app's public client id, in
    `.abcd/relay/github-app.json`. The client secret, the webhook secret and
    the private key GitHub hands back are never written or shown. An app
-   already recorded is kept, and nothing is created twice.
+   already recorded is kept, and nothing is created twice; for it, `setup`
+   also says to remove the session page's own address,
+   `https://abcdesign.app/<owner>/<repo>/brief/`, from the app's callback
+   URLs if it is listed, since an earlier version of setup listed it and the
+   sign-in no longer returns there.
 2. **Installing it** on the repository, on the page `setup` names.
 3. **Enable Device Flow.** A manifest cannot tick it. For Local or Both,
    `setup` names the app's settings page and says to tick Enable Device Flow

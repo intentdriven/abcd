@@ -204,7 +204,9 @@ client id; the steps below are what it fills in, for registering it by hand.
    `https://<your service>.onrender.com/auth/callback`, with wildcard matching
    off. GitHub returns the person there after they sign in; the relay sends
    them back to the session page, and the page hands GitHub's code to that
-   relay and no other. The session page's own address is not a callback.
+   relay and no other. The session page's own address is not a callback:
+   if an earlier setup listed `https://abcdesign.app/<owner>/<repo>/brief/`,
+   remove it, and `abcd session setup` says so for an app it recorded before.
    Generate a client secret and give both to the relay through its
    environment:
    - `ABCD_SESSION_GITHUB_CLIENT_ID`: the client id, which is public.
