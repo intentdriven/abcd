@@ -80,8 +80,12 @@
 set -euo pipefail
 # Every read below sees objects as stored, as the push sends them: a local
 # refs/replace/* ref can stand one commit in for another, so a commit carrying
-# files could otherwise read as one with the empty tree.
+# files could otherwise read as one with the empty tree. A .git/info/grafts
+# file is honoured even then, and can give a commit no parents, hiding the
+# commits beneath it from the walk, so no graft file is read: GIT_GRAFT_FILE
+# names a path that cannot exist, which git reads as no grafts at all.
 export GIT_NO_REPLACE_OBJECTS=1
+export GIT_GRAFT_FILE=/dev/null/none
 cd "$(git rev-parse --show-toplevel)"
 
 protected="main"

@@ -31,8 +31,8 @@ const maxWalk = 1000
 // than limit commits beneath it, reads as More with Rewritten false, and
 // Added then holds commits already read.
 //
-// Every commit is read as stored, never through a replace ref
-// (storedObjects).
+// Every commit is read as stored, never through a replace ref or a graft
+// file (storedGit).
 type history struct {
 	// Tip is the branch's commit as last fetched; "" when this checkout holds
 	// no such ref.
@@ -227,7 +227,7 @@ func hasCommit(root, commit string) (bool, error) {
 	}
 	args := []string{"cat-file", "-e", commit}
 	trace(args...)
-	if _, missing, eerr := gitutil.RunCappedExitOne(root, 64, append([]string{storedObjects}, args...)...); eerr == nil && missing {
+	if _, missing, eerr := gitutil.RunCappedExitOneAsStored(root, 64, args...); eerr == nil && missing {
 		return false, nil
 	}
 	return false, err

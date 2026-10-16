@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -116,6 +118,32 @@ func TestPrePushReadsPushedCommitsAsStored(t *testing.T) {
 	out, err := c.push("origin", files+":"+statusRef)
 	if err == nil || !strings.Contains(out, "no passing preflight") {
 		t.Fatalf("a commit carrying files passed under the status prefix behind a replace ref (err %v)\n%s", err, out)
+	}
+	if got := c.remoteRef(statusRef); got != "" {
+		t.Errorf("the remote moved to %s although the push was refused", got)
+	}
+}
+
+// TestPrePushIgnoresAGraftFile: a .git/info/grafts line that gives an
+// announcement no parents hides the commit carrying files beneath it from a
+// history walk that honours grafts. The hook reads no graft file, so the walk
+// meets that commit, the push is gated and refused without a receipt, and
+// origin is unmoved.
+func TestPrePushIgnoresAGraftFile(t *testing.T) {
+	c := newPrePushCase(t)
+	files := c.commit("feature.md", "a feature\n")
+	empty := c.git("hash-object", "-w", "-t", "tree", "/dev/null")
+	announcement := c.commitTree(empty, files, "abcd announcement: merging #1012")
+	gitDir := c.git("rev-parse", "--absolute-git-dir")
+	if err := os.WriteFile(filepath.Join(gitDir, "info", "grafts"), []byte(announcement+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if n := c.git("-c", "advice.graftFileDeprecated=false", "rev-list", "--count", announcement); n != "1" {
+		t.Fatalf("the graft does not cut the history: %s commits reachable from the announcement", n)
+	}
+	out, err := c.push("origin", announcement+":"+statusRef)
+	if err == nil || !strings.Contains(out, "no passing preflight") {
+		t.Fatalf("a commit carrying files passed under the status prefix behind a graft (err %v)\n%s", err, out)
 	}
 	if got := c.remoteRef(statusRef); got != "" {
 		t.Errorf("the remote moved to %s although the push was refused", got)

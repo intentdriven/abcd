@@ -76,18 +76,16 @@ func localGit(root string, maxBytes int, args ...string) (string, error) {
 	return gitutil.RunCapped(root, maxBytes, args...)
 }
 
-// storedObjects is the git global option the history walk and the commit
-// reads run under: objects are read as stored, never through a refs/replace/*
-// ref, which a fetch can bring in (remote.<name>.fetch naming refs/replace/*)
-// and which would stand one commit in for another, its parents included.
-const storedObjects = "--no-replace-objects"
-
-// storedGit is localGit reading objects as stored (storedObjects). The trace
-// is the subcommand's own argv, as it is for every command here: the global
-// options git runs under (the exec pins, -C, this one) are not traced.
+// storedGit is localGit reading history as stored
+// (gitutil.RunCappedAsStored), as the history walk and the commit reads need:
+// a refs/replace/* ref, which a fetch can bring in (remote.<name>.fetch
+// naming refs/replace/*), would stand one commit in for another, its parents
+// included, and a .git/info/grafts file would give a commit other parents.
+// The trace is the subcommand's own argv, as it is for every command here:
+// the global options and environment git runs under are not traced.
 func storedGit(root string, maxBytes int, args ...string) (string, error) {
 	trace(args...)
-	return gitutil.RunCapped(root, maxBytes, append([]string{storedObjects}, args...)...)
+	return gitutil.RunCappedAsStored(root, maxBytes, args...)
 }
 
 // emptyTree is gitutil.EmptyTree, traced.

@@ -492,11 +492,11 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 }
 
 // statusHolds reports whether commit is on the status branch that ends in
-// tip: an ancestor of it, read as stored (storedObjects). git answers in the
+// tip: an ancestor of it, read as stored (storedGit). git answers in the
 // exit status, 1 meaning no.
 func statusHolds(root, commit, tip string) (bool, error) {
 	trace("merge-base", "--is-ancestor", commit, tip)
-	_, no, err := gitutil.RunCappedExitOne(root, 4096, storedObjects, "merge-base", "--is-ancestor", commit, tip)
+	_, no, err := gitutil.RunCappedExitOneAsStored(root, 4096, "merge-base", "--is-ancestor", commit, tip)
 	if err != nil {
 		return false, err
 	}
