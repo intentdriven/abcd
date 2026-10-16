@@ -1159,8 +1159,9 @@ abcd/
 │   ├── adapter/                        # the seam packages (adr-22): interface + native default
 │   │   ├── scanner/                    #   + optional plug-in. The scanner is the one capability
 │   │   ├── gitleaks/                   #   seam with a package today; gitleaks is its plug-in, and
-│   │   ├── hosting/                    #   hosting, openaiapi and tailscale are adapters outside
-│   │   ├── openaiapi/                  #   the capability seams; 02-adapters.md is the catalogue
+│   │   ├── hosting/                    #   hosting, openaiapi, repoprompt and tailscale are adapters
+│   │   ├── openaiapi/                  #   outside the capability seams; 02-adapters.md is the
+│   │   ├── repoprompt/                 #   catalogue
 │   │   └── tailscale/
 │   └── surface/                        # front doors: cli/, and dashboard/, the one network
 │                                       #   listener (an mcp/ door is adr-23's third)

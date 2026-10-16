@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/03-configuration.md"
 remedy: "Rewrite .abcd/development/brief/05-internals/03-configuration.md:1118 to match the shipped surface: internal/adapter/ also holds repoprompt/ (the RepoPrompt reviewer route, itd-6, listed in internal/README.md:290), which the tree omits."
+resolution: "The plugin-layout tree listed internal/adapter/ as scanner, gitleaks, hosting, openaiapi and tailscale; 03-configuration.md now also lists repoprompt/, the RepoPrompt reviewer route, among the adapters outside the capability seams."
+impact: internal
 ---
 
 The brief at .abcd/development/brief/05-internals/03-configuration.md:1118 says: Plugin layout: internal/adapter/ holds scanner/, gitleaks/, hosting/, openaiapi/, tailscale/ ('hosting, openaiapi and tailscale are adapters outside the capability seams'). The shipped surface differs: internal/adapter/ also holds repoprompt/ (the RepoPrompt reviewer route, itd-6, listed in internal/README.md:290), which the tree omits. (v0.14.2 release crosscheck, fictional-layout, raised by opus in a34.)
