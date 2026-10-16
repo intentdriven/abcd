@@ -132,3 +132,33 @@ func TestTheAnnouncementsAreReadWhenTheHoldsAreNot(t *testing.T) {
 		}
 	}
 }
+
+// TestADropThatFailsForOneCopyDeletesTheRest: git deletes a batch of refs
+// all or none, so when one copy cannot go (another git holds its lock), the
+// drop deletes the rest one at a time, and counts only the one left.
+func TestADropThatFailsForOneCopyDeletesTheRest(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	for _, b := range []string{"amy", "bob", "cal", "maya"} {
+		w.pushStatus(b, announcementMsg("merging", "#1", b, t0, 30*time.Minute), "")
+	}
+	pat.status(nil)
+	for _, b := range []string{"amy", "bob", "cal"} {
+		runGit(t, w.bare, "update-ref", "-d", StatusRefPrefix+b)
+	}
+	lock := filepath.Join(pat.dir, ".git", filepath.FromSlash(StatusTrackingPrefix+"bob.lock"))
+	if err := os.WriteFile(lock, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Remove(lock) })
+	res := pat.status(nil)
+	if !strings.HasPrefix(res.NotDropped, "1 copy of a status branch") {
+		t.Fatalf("not dropped = %q; want the one copy left counted", res.NotDropped)
+	}
+	refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix)
+	for b, kept := range map[string]bool{"amy": false, "bob": true, "cal": false, "maya": true} {
+		if got := strings.Contains(refs, StatusTrackingPrefix+b); got != kept {
+			t.Fatalf("refs after the drop:\n%s\nwant %s kept %v", refs, b, kept)
+		}
+	}
+}

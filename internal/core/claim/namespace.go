@@ -69,10 +69,12 @@ func (ns namespace) refspecs() []string {
 // names (no-deref). A fetch that names each branch by its own refspec (only)
 // never prunes a branch origin no longer holds, so the listing that sets only
 // drops the rest first: what is left under the namespace is what the fetch
-// then refreshes. A deletion git refuses (a concurrent git holds a lock, or
-// moved a ref since it was listed) is listed and tried once more; one that
-// fails again is not a failed fetch: dropUnlisted answers how many copies it
-// left and git's reason, for the caller to say, and the fetch goes on.
+// then refreshes. When git refuses the batch (a concurrent git holds a lock,
+// or moved a ref since it was listed), each copy is deleted on its own, so
+// one that cannot go keeps no other; what is left is listed and tried once
+// more. A copy that fails again is not a failed fetch: dropUnlisted answers
+// how many copies it left, never their names, and git's reason, for the
+// caller to say, and the fetch goes on.
 func (ns namespace) dropUnlisted(root string, keep []string) (left string) {
 	var n int
 	var why string
@@ -99,7 +101,7 @@ func (ns namespace) dropOnce(root string, keep []string) (int, string) {
 		return -1, redacted(err)
 	}
 	var del strings.Builder
-	n := 0
+	var stale [][2]string
 	for _, l := range strings.Split(out, "\n") {
 		f := strings.Fields(l)
 		if len(f) != 2 || !gitutil.IsFullSHA(f[1]) {
@@ -110,15 +112,30 @@ func (ns namespace) dropOnce(root string, keep []string) (int, string) {
 			continue
 		}
 		fmt.Fprintf(&del, "option no-deref\ndelete %s %s\n", f[0], f[1])
-		n++
+		stale = append(stale, [2]string{f[0], f[1]})
 	}
-	if n == 0 {
+	if len(stale) == 0 {
 		return 0, ""
 	}
-	if _, err := storedGitInput(context.Background(), root, del.String(), 64<<10, "update-ref", "--stdin"); err != nil {
-		return n, redacted(err)
+	if _, err := storedGitInput(context.Background(), root, del.String(), 64<<10, "update-ref", "--stdin"); err == nil {
+		return 0, ""
 	}
-	return 0, ""
+	// git applies the batch all or none, so one copy it cannot delete keeps
+	// every other: each is then deleted on its own, and only those left are
+	// counted, with the first one's reason. A lock another git holds fails
+	// each at once rather than after git's wait for it, so a held lock costs
+	// one command per copy, never a second each.
+	n, why := 0, ""
+	for _, r := range stale {
+		if _, err := storedGitCtx(context.Background(), root, 64<<10, "-c", "core.filesRefLockTimeout=0", "-c", "core.packedRefsTimeout=0",
+			"update-ref", "--no-deref", "-d", r[0], r[1]); err != nil {
+			if n == 0 {
+				why = redacted(err)
+			}
+			n++
+		}
+	}
+	return n, why
 }
 
 // ref is the full ref of the branch name in the namespace on origin, and

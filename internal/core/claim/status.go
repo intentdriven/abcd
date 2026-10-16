@@ -261,8 +261,8 @@ type StatusFetch struct {
 // and answers its *FetchError. Before the fetch, every tracking ref under the
 // status namespace that is not among the names it fetches is deleted
 // (dropUnlisted): a branch deleted on origin, one whose name is not read, or
-// one past the cap leaves nothing to read; a deletion that fails twice is
-// said in NotDropped, and the fetch goes on.
+// one past the cap leaves nothing to read; the copies a deletion leaves twice
+// are counted in NotDropped, and the fetch goes on.
 func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, error) {
 	now := o.now()
 	ok, err := HasOrigin(root)

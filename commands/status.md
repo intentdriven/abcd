@@ -19,8 +19,9 @@ the first 500 status branches whose names are GitHub usernames in lower case,
 in `origin`'s order, and `origin`'s default branch. Before the fetch it
 deletes each remote-tracking branch under `abcd-status/` that is not among
 the names it fetches, so a status branch deleted on `origin` leaves nothing
-behind; a copy git will not delete (another git holds a lock) is named, and
-the fetch goes on. It then asks GitHub, through `gh api`, who pushed each
+behind. When git will not delete them together, each is deleted on its own,
+so a copy git will not delete (another git holds its lock) keeps no other;
+the copies left are counted, never named, and the fetch goes on. It then asks GitHub, through `gh api`, who pushed each
 standing announcement it has not asked about before, on at most ten branches,
 the newest first, within ten seconds. It pushes nothing, touches no HEAD, index or working tree, and
 writes only the remote-tracking branches and what it read, in the local tier
@@ -53,8 +54,8 @@ The payload carries:
 - `branches_not_read`: how many status branches lie past the 500 one read
   takes, and `announcements_not_read` how many kept announcements lie past
   the 2,000 one read takes; neither is read;
-- `not_dropped`: why some copies of status branches could not be deleted
-  before the fetch, when some could not;
+- `not_dropped`: how many copies of status branches could not be deleted
+  before the fetch, and why, when some could not;
 - `unread`: a line for each fetch that failed, "status unread since 09:12 UTC:
   <reason>";
 - `senders_unchecked`: why GitHub could not be asked who pushed, when it could
@@ -100,8 +101,8 @@ Without `--json`, the verb prints, in order:
 - `3 status branches past the 500 one read takes, not read` and `2
   announcements kept here past the 2000 one read takes, not shown`, when
   there are any;
-- `not deleted: <reason>` when some copies of status branches could not be
-  deleted before the fetch;
+- `not deleted: <count and reason>` when some copies of status branches
+  could not be deleted before the fetch;
 - `not checked against the forge, so shown as claimed: <reason>` when GitHub
   could not be asked, or when branches were left for the next fetch to ask
   about;
