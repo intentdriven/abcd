@@ -142,8 +142,9 @@ this one code path (ruling R3).
 - A pull request from another repository is never armed (it is set aside
   when this repository's own is listed beside it), and one whose head on the
   forge is not the landed head is not armed. After a push that moved the
-  branch, the pull-request listing alone is read again every 2 s for at most
-  30 s (two real runs saw the forge lag the push by 12 and 14 s), and a head
+  branch, the pull-request listing alone is read again every 2 s, with at
+  most 30 s of pauses in all (two real runs saw the forge lag the push by 12
+  and 14 s; each read keeps the forge client's own timeout), and a head
   that never shows stops the step, naming the wait; nothing else repeats.
 - The merge rule is read from the ruleset mirror at `origin`'s default branch
   as just fetched, never at the branch's tip: equally out of the branch's

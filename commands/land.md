@@ -78,9 +78,10 @@ that name with none at this head, since the proof may lie past the bound.
    repository (a fork's pull request from a branch of the same name is set
    aside, and refused only when it is the only one), whose head on the forge
    is the pushed head. Right after a push that moved the branch the forge can
-   still list the old head, so land reads the listing again every 2 seconds
-   for at most 30 and, if the head never shows, stops saying how long it
-   waited. The merge rule is read from the ruleset mirror
+   still list the old head, so land reads the listing again every 2 seconds,
+   pausing 30 seconds in all at most (each read is bounded by the forge
+   client's own timeout), and, if the head never shows, stops saying how long
+   it waited. The merge rule is read from the ruleset mirror
    (`.abcd/work/rulesets/`) at `origin`'s default branch as just fetched,
    never at the branch's tip. Today every repository runs in human mode, so
    auto-merge is armed only where a merge queue gates the default branch and a
