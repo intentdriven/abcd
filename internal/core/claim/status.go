@@ -452,7 +452,12 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 			continue
 		}
 		if h.Unreadable != "" {
+			// Doubtful, and read at that tip: the branch is not walked again
+			// until it moves.
 			keepDoubt(root, BranchDoubt{Branch: name, Reason: "its tip " + h.Unreadable, Tip: h.Tip, FoundAt: now})
+			if err := statusBranches.markRead(root, r.ref, h.Tip); err != nil {
+				return in, err
+			}
 			continue
 		}
 		switch {

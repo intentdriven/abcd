@@ -77,3 +77,26 @@ func TestADropThatCannotBeMadeIsAGapNotAFailedFetch(t *testing.T) {
 		t.Fatalf("zed's copy survived a later fetch: %s", refs)
 	}
 }
+
+// TestATipThatIsNotACommitIsReadOnce: a status branch whose tip is not a
+// commit is doubtful, and marked read at that tip, so the prompts after it
+// do not walk it again.
+func TestATipThatIsNotACommitIsReadOnce(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	blob := strings.TrimSpace(runGitStdin(t, pat.dir, "not a commit\n", "hash-object", "-w", "--stdin"))
+	ref := StatusTrackingPrefix + "maya"
+	pat.git("update-ref", ref, blob)
+	v := pat.read()
+	if len(v.Doubts) != 1 || v.Doubts[0].Branch != "maya" || !strings.HasPrefix(v.Doubts[0].Reason, "its tip ") {
+		t.Fatalf("doubts = %+v; want maya doubtful for its tip", v.Doubts)
+	}
+	if got := statusBranches.lastRead(pat.dir, ref); got != blob {
+		t.Fatalf("maya's read mark = %q; want it marked at its tip %s", got, blob)
+	}
+	log := traced(t)
+	pat.read()
+	if log.anyArgContains(ref) {
+		t.Fatalf("the next read walked maya again: %v", log.cmds)
+	}
+}
