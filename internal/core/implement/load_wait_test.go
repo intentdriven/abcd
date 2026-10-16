@@ -570,8 +570,8 @@ func TestWaitJitterIsFifteenToSixtySeconds(t *testing.T) {
 	}
 }
 
-// TestWaitQueuesBehindAnEarlierWaiter: another account's waiter with the
-// lower pid is ahead in the queue the process table orders, so this waiter
+// TestWaitQueuesBehindAnEarlierWaiter: another account's waiter that started
+// earlier is ahead in the queue the process table orders, so this waiter
 // stays shut while it is there.
 func TestWaitQueuesBehindAnEarlierWaiter(t *testing.T) {
 	early := []machineload.Proc{

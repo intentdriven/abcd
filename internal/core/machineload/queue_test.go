@@ -392,6 +392,21 @@ func TestQueueSortsAnUnknownStartLast(t *testing.T) {
 	}
 }
 
+// TestQueueTakesAZeroAgeAsUnknown: macOS reads ages in whole seconds, so a
+// waiter under a second old reads zero, which is an unknown start, and queues
+// behind a waiter one second old even with the lower pid. A second later both
+// are known and tie, and the lower pid is ahead: the order the two settle on.
+func TestQueueTakesAZeroAgeAsUnknown(t *testing.T) {
+	snap, args := queueSnap(qw{10, 0}, qw{20, time.Second})
+	if got := QueueAhead(snap, Self{PID: 10, UID: otherUID}, args); !slices.Equal(got.Waiters, []int{20}) {
+		t.Fatalf("the zero-age waiter sees %v ahead, want [20]: a zero age is an unknown start", got.Waiters)
+	}
+	snap, args = queueSnap(qw{10, time.Second}, qw{20, 2 * time.Second})
+	if got := QueueAhead(snap, Self{PID: 20, UID: otherUID}, args); !slices.Equal(got.Waiters, []int{10}) {
+		t.Fatalf("a second later 20 sees %v ahead, want [10]: the two tie and the lower pid leads", got.Waiters)
+	}
+}
+
 // TestQueueChainedTiesHoldOneOrder: a tie is not transitive, so three waiters
 // each within StartTolerance of the next, the first and last apart by more,
 // would make a cycle if each pair were judged alone (A before B and B before

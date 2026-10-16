@@ -245,13 +245,17 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 // waiters within a group by pid: one order, the same from every waiter that
 // reads the same table. Two waiters a hair either side of the tolerance on
 // macOS, which reads ages in whole seconds, can see the gap differently at
-// one look and disagree for that look; the next look reads it afresh.
+// one look and disagree for that look, and because a group is a chain, a gap
+// read differently can move waiters elsewhere in it; the next look reads it
+// afresh. Outside a pid wrap start order and pid order agree, so a regrouping
+// changes nothing.
 //
 // A waiter whose start time cannot be read (no measurable age, which is also
 // what Share takes as unknown, or absent from the table) cannot be placed by
 // it, so every such waiter queues behind all whose start times are known, in
 // pid order among themselves, as the whole queue was ordered before start
-// times were read.
+// times were read. On macOS a waiter under a second old also reads an age of
+// zero, so for its first second it queues last as well.
 func queueOrder(ws []Proc) []int {
 	var known, unknown []Proc
 	for _, w := range ws {
