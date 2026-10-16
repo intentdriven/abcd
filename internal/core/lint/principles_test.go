@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // The principles family as a declared record store, and the four rules over its
@@ -294,6 +296,61 @@ func TestPrincipleClaimsJudgesTheGrammar(t *testing.T) {
 				t.Errorf("%s: no principle_claims finding quoting %s: %v", name, tc.want, rulesOf(fs, filepath.Join(prnDir, "p.md")))
 			}
 		})
+	}
+}
+
+// TestPrincipleReferenceRefusalNamesEveryCitedFamily: a reference is a bare
+// record handle CitedIDRe accepts, so the refusal of one that is neither says
+// so in recordid's words, dcn-N included (the iss-2610160608457651 class).
+func TestPrincipleReferenceRefusalNamesEveryCitedFamily(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, prnDir+"/p.md", typedPrinciple("p", "context", "abcd lint", `"One against another."`, "[adr-1]", "A rule."))
+	writeFile(t, root, "rec/decisions/adrs/0001-a.md", "---\nid: adr-1\n---\n# ADR-1\n")
+	fs := lintPrinciples(t, root)
+	rel := filepath.Join(prnDir, "p.md")
+	for _, fam := range recordid.CitedFamilies() {
+		if !findingWith(fs, rel, rulePrincipleClaims, fam+"-N") {
+			t.Errorf("the reference refusal does not name %s-N: %v", fam, rulesOf(fs, rel))
+		}
+	}
+}
+
+// TestPrincipleEvidenceAdmitsEveryCitedFamily: a principle distils decisions,
+// and a decision record is one (dcn), so its handle is evidence like an ADR's
+// and resolves against the dcn store. The families are recordid's one list
+// plus a reading's items (rdi); the refusal of a member that is neither names
+// them all (the iss-2610160608457651 class).
+func TestPrincipleEvidenceAdmitsEveryCitedFamily(t *testing.T) {
+	cfg := principleConfig()
+	rc := cfg.Rules[ruleRecordSchema]
+	rc.RecordStores["dcn"] = "work/decisions"
+	cfg.Rules[ruleRecordSchema] = rc
+
+	root := t.TempDir()
+	writeFile(t, root, prnDir+"/p.md", typedPrinciple("p", "context", "dcn-2610141200001111", `"One against another."`,
+		"[dcn-2610141200001111]", "A rule."))
+	writeFile(t, root, "work/decisions/dcn-2610141200001111-a-ruling.md",
+		decisionRecord("dcn-2610141200001111", "a-ruling", "2026-10-14", "2026-10-14 — a ruling"))
+	fs, err := Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rel := filepath.Join(prnDir, "p.md")
+	if got := rulesOf(fs, rel); len(got) != 0 {
+		t.Errorf("a principle resting on a present decision record drew findings: %v", got)
+	}
+
+	root = t.TempDir()
+	writeFile(t, root, prnDir+"/p.md", typedPrinciple("p", "context", `"abcd lint"`, `"One against another."`,
+		"[the ADR]", "A rule."))
+	fs, err = Lint(cfg, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, form := range append(strings.Split(strings.NewReplacer(", or ", ", ").Replace(recordid.CitedIDForms()), ", "), "rdi-N") {
+		if !findingWith(fs, rel, rulePrincipleClaims, form) {
+			t.Errorf("the evidence refusal does not name %s: %v", form, rulesOf(fs, rel))
+		}
 	}
 }
 
