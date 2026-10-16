@@ -118,7 +118,7 @@ func redacted(err error) string { return fsutil.RedactHome(err.Error()) }
 // or a release subject in its one spelling, so no ref name is ever formed from
 // anything else and two spellings of one subject never make two branches.
 func reservableID(arg string) (string, error) {
-	if IsRelease(arg) {
+	if isRelease(arg) {
 		return arg, nil
 	}
 	if !recordid.CitedIDRe.MatchString(arg) {

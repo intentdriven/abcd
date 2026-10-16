@@ -81,7 +81,7 @@ func (s Snapshot) LiveByHolder() map[string]int {
 	out := map[string]int{}
 	names := map[string]string{}
 	for _, r := range s.Reservations {
-		if r.State != StateLive || IsRelease(r.Record) {
+		if r.State != StateLive || isRelease(r.Record) {
 			continue
 		}
 		key := strings.ToLower(r.Holder)
@@ -156,7 +156,7 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
 	var finished map[string][]string
-	records := slices.ContainsFunc(refs, func(ref string) bool { return !IsRelease(strings.TrimPrefix(ref, TrackingPrefix)) })
+	records := slices.ContainsFunc(refs, func(ref string) bool { return !isRelease(strings.TrimPrefix(ref, TrackingPrefix)) })
 	if ref := originDefault(root); derive && records && ref != "" {
 		if finished, err = peers.FoldersAt(root, ref); err != nil {
 			return snap, fmt.Errorf("reading %s: %s", gitutil.ShortRef(ref), redacted(err))
@@ -164,7 +164,7 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	}
 	// The release tags are read only when a release subject is there to end.
 	var tagged map[string]bool
-	if slices.ContainsFunc(refs, func(ref string) bool { return IsRelease(strings.TrimPrefix(ref, TrackingPrefix)) }) {
+	if slices.ContainsFunc(refs, func(ref string) bool { return isRelease(strings.TrimPrefix(ref, TrackingPrefix)) }) {
 		if tagged, err = releaseTags(root); err != nil {
 			return snap, fmt.Errorf("reading the release tags: %s", redacted(err))
 		}
@@ -185,9 +185,9 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 		}
 		by := ""
 		switch {
-		case IsRelease(id) && tagged[releaseTag(id)]:
+		case isRelease(id) && tagged[releaseTag(id)]:
 			by = ReleasedByTag
-		case !IsRelease(id) && terminal(finished, id):
+		case !isRelease(id) && terminal(finished, id):
 			by = ReleasedByDefaultBranch
 		}
 		snap.Reservations = append(snap.Reservations, listed(t, id, by, own, now))

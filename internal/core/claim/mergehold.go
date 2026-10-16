@@ -164,7 +164,7 @@ func MergeHolds(root string, now time.Time, o Options) (MergeHold, error) {
 // pushes nothing.
 func JudgedHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	now = now.UTC().Truncate(time.Second)
-	keepFirstFetched(root, now, IsRelease)
+	keepFirstFetched(root, now, isRelease)
 	return ReleaseHolds(root, now, o)
 }
 

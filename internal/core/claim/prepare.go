@@ -126,7 +126,7 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if req.Live && !req.Renew {
 		return nil, refuse("only a renewal can require a live reservation; %s", nothingPushed)
 	}
-	release := IsRelease(id)
+	release := isRelease(id)
 	if release && len(req.Footprint) > 0 {
 		return nil, refuse("a release reservation holds every merge and takes no footprint; %s", nothingPushed)
 	}

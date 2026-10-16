@@ -34,11 +34,11 @@ const releasePrefix = "rel-"
 // two spellings of one release never make two branches.
 var releaseSubjectRe = regexp.MustCompile(`^rel-v(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$`)
 
-// IsRelease reports whether subject is a release subject, rel-vX.Y.Z.
-func IsRelease(subject string) bool { return releaseSubjectRe.MatchString(subject) }
+// isRelease reports whether subject is a release subject, rel-vX.Y.Z.
+func isRelease(subject string) bool { return releaseSubjectRe.MatchString(subject) }
 
 // releaseTag is the tag a release subject names: rel-v0.16.0 names v0.16.0.
-// It takes only a subject IsRelease admits.
+// It takes only a subject isRelease admits.
 func releaseTag(subject string) string { return strings.TrimPrefix(subject, releasePrefix) }
 
 // ReleasedByTag is what released a release reservation whose tag is on
@@ -135,7 +135,7 @@ func (h Hold) Line() string {
 func (s Snapshot) Holds(now time.Time) []Hold {
 	var out []Hold
 	for _, r := range s.Reservations {
-		if !IsRelease(r.Record) {
+		if !isRelease(r.Record) {
 			continue
 		}
 		switch {
@@ -160,7 +160,7 @@ func (s Snapshot) Holds(now time.Time) []Hold {
 // reads the release reservations' tips alone.
 func ReleaseHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	now = now.UTC().Truncate(time.Second)
-	snap, err := viewOf(root, now, true, IsRelease)
+	snap, err := viewOf(root, now, true, isRelease)
 	if err != nil {
 		return nil, err
 	}

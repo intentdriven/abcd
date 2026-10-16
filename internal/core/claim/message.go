@@ -341,7 +341,7 @@ func validateReservation(record string, t trailers) (message, string) {
 // subject: a release subject exactly, a record in any spelling that
 // canonicalises to it.
 func namesSubject(id, subject string) bool {
-	if IsRelease(subject) {
+	if isRelease(subject) {
 		return id == subject
 	}
 	return recordid.CitedIDRe.MatchString(id) && recordid.CanonCitedID(id) == subject

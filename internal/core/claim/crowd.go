@@ -36,10 +36,10 @@ func crowding(p *prepared, j judged, res Result) error {
 	}
 	// A release subject sits outside the cap: it neither counts toward a
 	// person's ten nor is refused by them (release.go).
-	if !IsRelease(p.id) && addsOne(j) {
+	if !isRelease(p.id) && addsOne(j) {
 		var mine []string
 		for _, r := range others {
-			if sameHolder(r.Holder, p.holder) && !IsRelease(r.Record) {
+			if sameHolder(r.Holder, p.holder) && !isRelease(r.Record) {
 				mine = append(mine, r.Record)
 			}
 		}

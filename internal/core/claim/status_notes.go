@@ -249,7 +249,7 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 		u    *Unread
 	}{{"status", v.Unread}, {"reservations", v.ReservationsUnread}} {
 		if u.u != nil {
-			first = append(first, noteLine{key: hashedKey("unread\x00" + u.what + "\x00" + stamp(u.u.FailedAt)), text: UnreadLine(u.what, *u.u)})
+			first = append(first, noteLine{key: hashedKey("unread\x00" + u.what + "\x00" + stamp(u.u.FailedAt)), text: unreadBlockLine(u.what, *u.u)})
 		}
 	}
 	if v.holdsUnread {
@@ -402,12 +402,12 @@ func (a Announcement) Line(now time.Time) string {
 	case a.Doubtful != "":
 		who = fmt.Sprintf("@%s (doubtful: %s)", a.Sender, a.Doubtful)
 	}
-	return termsafe.Sanitize(fmt.Sprintf("%s: %s %s, %s", who, a.Kind, a.Item, Left(a.Until, now)))
+	return termsafe.Sanitize(fmt.Sprintf("%s: %s %s, %s", who, a.Kind, a.Item, timeLeft(a.Until, now)))
 }
 
-// Left is how long an announcement still stands, as a line says it: "for 30
+// timeLeft is how long an announcement still stands, as a line says it: "for 30
 // min", "for 2 h 5 min", "for under a minute", or "ended".
-func Left(until, now time.Time) string {
+func timeLeft(until, now time.Time) string {
 	d := until.Sub(now)
 	switch {
 	case d <= 0:
@@ -464,12 +464,12 @@ func UnreadNamesLine(n int) string {
 	return fmt.Sprintf("%d status branches whose names are not read", n)
 }
 
-// UnreadLine is how the block says a namespace's last fetch failed (C10), in
+// unreadBlockLine is how the block says a namespace's last fetch failed (C10), in
 // fixed words, never git's: its text, a remote's own words among it, never
 // reaches a session's context. "status unread since 09:12 UTC: the last fetch
 // failed; `abcd status` says why", from when it was last read, or "status
 // never read here: the fetch at 09:12 UTC failed; ..." when it never was.
-func UnreadLine(what string, u Unread) string {
+func unreadBlockLine(what string, u Unread) string {
 	if u.Since.IsZero() {
 		return fmt.Sprintf("%s never read here: the fetch at %s UTC failed; `abcd status` says why", what, u.FailedAt.Format("15:04"))
 	}
