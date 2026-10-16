@@ -114,8 +114,8 @@ layer and its offs, so both acts read as off. The verb names the layer and file
 that turned an act off.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
-block. This repository's own config carries four of these blocks — `docs`, `meta`,
-`oracle` and `repo` — which is what an unremarkable managed repo looks like.
+block. This repository's own config carries five of these blocks — `docs`, `meta`,
+`oracle`, `outbound` and `repo` — which is what an unremarkable managed repo looks like.
 
 ### The provider adapter's keys
 
