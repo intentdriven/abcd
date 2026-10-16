@@ -249,9 +249,15 @@ func TestHandBackTakesTheTrailerFromALongHistory(t *testing.T) {
 	for i := 0; i < 8000; i++ {
 		msg.WriteString(sessionTrailer + "\n")
 	}
+	// Through a file: Linux caps one argument at 128 KiB, and the message is
+	// longer than that by design.
+	msgFile := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(msgFile, []byte(msg.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	c.write("long.md", "long\n", 0o644)
 	c.git("add", "long.md")
-	c.git("commit", "-q", "-m", msg.String())
+	c.git("commit", "-q", "-F", msgFile)
 	_, errOut, _ := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
 	if strings.Contains(errOut, "REFUSING --assisted-by") {
 		t.Fatalf("hand-back could not read the session's own disclosure from a long history:\n%s", errOut)
