@@ -310,35 +310,56 @@ func isPushFailure(err error) bool {
 	return errors.As(err, &fe) || errors.As(err, &pe)
 }
 
+// reserved is what a run's reservation act came to: when it was made, the
+// run record's line for it, whether it was fresh (a reserve or a take-over)
+// rather than a renewal of one this copy already held, so only a fresh one is
+// released when the run is not created, and why it could not ask the forge
+// whether origin is a fork ("" when it asked, or asked nothing).
+type reserved struct {
+	at            *time.Time
+	note          string
+	fresh         bool
+	forkUnchecked string
+}
+
 // reserveKey reserves a run's key on origin for this copy with req's
 // footprint (and its take-over and lease), and returns the run record's line
 // for it. The caller has found a remote named origin. Another's hold is the
 // back-off, contention at the reservation check; any other refusal stops the
-// start. fresh is true when the act made the reservation (a reserve or a
-// take-over) rather than renewing one this copy already held, so only a
-// fresh one is released when the run is not created.
-func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (at *time.Time, note string, fresh bool, err error) {
+// start.
+func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (reserved, error) {
 	req.Record = key
 	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
 	return reservedNote(res, err, now)
 }
 
 // reservedNote is reserveKey's reading of a reservation act's outcome: the
-// run record's line for it, or the refusal.
-func reservedNote(res claim.Result, err error, now time.Time) (at *time.Time, note string, fresh bool, _ error) {
+// run record's line for it, or the refusal. A fork check the act could not
+// make is named in the line, as reserve names it, so the run record says so.
+func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) {
 	if err != nil {
 		if errors.Is(err, claim.ErrBackOff) {
-			return nil, "", false, contend(StageReservation, CheckReservation, "", err.Error(),
+			return reserved{}, contend(StageReservation, CheckReservation, "", err.Error(),
 				"take other work; `abcd peers` lists the reservations on "+claim.Remote)
 		}
-		return nil, "", false, refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
+		return reserved{}, refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
 	}
 	verb := map[claim.Act]string{claim.ActReserved: "reserved", claim.ActRenewed: "renewed the reservation on",
 		claim.ActTakenOver: "took over the reservation on"}[res.Act]
-	note = fmt.Sprintf("%s %s on %s for this copy until %s, footprint: %s", verb, res.Record, claim.Remote,
+	note := fmt.Sprintf("%s %s on %s for this copy until %s, footprint: %s", verb, res.Record, claim.Remote,
 		stamp(res.ExpiresAt), strings.Join(res.Footprint, ", "))
+	if res.ForkUnchecked != "" {
+		note += "; " + ForkUncheckedLine(res.ForkUnchecked)
+	}
 	t := now
-	return &t, note, res.Act != claim.ActRenewed, nil
+	return reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed, forkUnchecked: res.ForkUnchecked}, nil
+}
+
+// ForkUncheckedLine is how a fork check a reservation could not make is
+// named, the same words wherever it is shown: reserve's output, a run's
+// record and a start's.
+func ForkUncheckedLine(why string) string {
+	return "not checked: whether " + claim.Remote + " is a fork (" + why + ")"
 }
 
 // reserveStart is a new run's reservation, once its checks pass and before
@@ -347,18 +368,18 @@ func reservedNote(res claim.Result, err error, now time.Time) (at *time.Time, no
 // found_at) or, when it named none, the one the run's record names
 // (runFootprint), and --take-over passes through. A checkout with no remote
 // named origin has nowhere to reserve, and reserves nothing (nil, "").
-func reserveStart(repoRoot string, chk CheckResult, o Options) (at *time.Time, note string, fresh bool, err error) {
+func reserveStart(repoRoot string, chk CheckResult, o Options) (reserved, error) {
 	if o.noReserve {
-		return nil, "", false, nil
+		return reserved{}, nil
 	}
 	ok, err := claim.HasOrigin(repoRoot)
 	if err != nil || !ok {
-		return nil, "", false, err
+		return reserved{}, err
 	}
 	fp := o.reserve
 	if fp == nil {
 		if fp, err = runFootprint(repoRoot, chk.Key, chk.Spec, "nothing was started"); err != nil {
-			return nil, "", false, err
+			return reserved{}, err
 		}
 	}
 	return reserveKey(repoRoot, chk.Key, claim.Request{Footprint: fp, TakeOver: o.TakeOver}, o.now())
@@ -395,24 +416,24 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 		return err
 	}
 	now := o.now()
-	at, note, fresh, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, now)
+	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, now)
 	if err != nil {
 		return err
 	}
 	if err := mutate(repoRoot, res.RunID, func(_ *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil {
-			st.ReservedAt = at
+			st.ReservedAt = r.at
 		}
-		st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: note})
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: r.note})
 		st.UpdatedAt = now
 		return true, nil
 	}); err != nil {
-		if fresh {
+		if r.fresh {
 			releaseKey(repoRoot, st.Key, now)
 		}
 		return err
 	}
-	res.Reservation = note
+	res.Reservation, res.ForkUnchecked = r.note, r.forkUnchecked
 	return nil
 }
 
@@ -430,7 +451,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
 // record's footprint, --take-over passed through.
-func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Time) (*time.Time, string, bool, error) {
+func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Time) (reserved, error) {
 	plain := claim.Request{Footprint: fp, TakeOver: takeOver}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {

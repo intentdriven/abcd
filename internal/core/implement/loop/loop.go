@@ -223,7 +223,11 @@ type StartResult struct {
 	// footprint); empty when it reserved nothing (no remote named origin, or
 	// a resumed run handed back).
 	Reservation string `json:"reservation,omitempty"`
-	Next        string `json:"next"`
+	// ForkUnchecked is why the start's reservation could not ask the forge
+	// whether origin is a fork, so it went on without the check (claim's
+	// Result.ForkUnchecked); "" when it asked, or asked nothing.
+	ForkUnchecked string `json:"fork_unchecked,omitempty"`
+	Next          string `json:"next"`
 }
 
 // StepResult is what advance and Receipt return.
@@ -372,7 +376,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	// The run's reservation on the shared remote (reservation.go), once the
 	// record may start and before the run exists: another's hold refuses the
 	// start, and a run that is then not created releases it.
-	reservedAt, reservedNote, fresh, err := reserveStart(repoRoot, chk, o)
+	rsv, err := reserveStart(repoRoot, chk, o)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -380,7 +384,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	// created here, or a racing start's run resumed below.
 	keep := false
 	defer func() {
-		if fresh && !keep {
+		if rsv.fresh && !keep {
 			releaseKey(repoRoot, chk.Key, o.now())
 		}
 	}()
@@ -438,7 +442,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			// The run's first window opens at its start.
 			WindowStartedAt: &now,
 			Pace:            &pace,
-			ReservedAt:      reservedAt,
+			ReservedAt:      rsv.at,
 		}
 		openNextLane(&st)
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
@@ -446,8 +450,8 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
-		if reservedNote != "" {
-			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: reservedNote})
+		if rsv.note != "" {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: rsv.note})
 		}
 		if pick != nil {
 			rp := *pick
@@ -468,7 +472,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		res = startResult(st, chk.Checks, false)
 		res.Claim = claim
-		res.Reservation = reservedNote
+		res.Reservation, res.ForkUnchecked = rsv.note, rsv.forkUnchecked
 		keep = true
 		return nil
 	})

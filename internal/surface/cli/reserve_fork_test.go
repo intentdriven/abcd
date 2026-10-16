@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 )
 
 // TestReserveSaysWhenTheForkCheckWasNotMade: a reservation made while the
@@ -30,6 +31,32 @@ func TestReserveSaysWhenTheForkCheckWasNotMade(t *testing.T) {
 
 	buf.Reset()
 	renderReserve(&buf, reserveView(claim.Result{Act: claim.ActReserved, Record: "iss-5", Holder: "octo"}))
+	if strings.Contains(buf.String(), "fork") {
+		t.Fatalf("a checked origin says nothing of forks:\n%s", buf.String())
+	}
+}
+
+// TestDrainSaysWhenALanesForkCheckWasNotMade: a drain move whose lane's
+// reservation could not ask the forge says so in its text as reserve does,
+// and carries the reason in its JSON (spc-2610161044461448, step 10).
+func TestDrainSaysWhenALanesForkCheckWasNotMade(t *testing.T) {
+	start := &loop.StartResult{RunID: "run-1", ForkUnchecked: "octo/abcd: gh did not answer in time"}
+	res := loop.DrainResult{State: loop.DrainStateRel, Start: start}
+	var buf bytes.Buffer
+	renderDrainRun(&buf, res)
+	if !strings.Contains(buf.String(), "  not checked: whether origin is a fork (octo/abcd: gh did not answer in time)\n") {
+		t.Fatalf("the drain's text names the skipped check:\n%s", buf.String())
+	}
+	doc, err := json.Marshal(res)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(doc), `"fork_unchecked":"octo/abcd: gh did not answer in time"`) {
+		t.Fatalf("the drain's JSON names the skipped check: %s", doc)
+	}
+
+	buf.Reset()
+	renderDrainRun(&buf, loop.DrainResult{State: loop.DrainStateRel, Start: &loop.StartResult{RunID: "run-1"}})
 	if strings.Contains(buf.String(), "fork") {
 		t.Fatalf("a checked origin says nothing of forks:\n%s", buf.String())
 	}

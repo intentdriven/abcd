@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/core/tools"
@@ -196,7 +197,9 @@ func TestAForgeThatDoesNotAnswerWarnsAndLetsTheActThrough(t *testing.T) {
 }
 
 // TestTheForgeIsAskedOncePerProcess: three fresh reservations in one process
-// ask the forge once, whether it answered or not.
+// at one moment ask the forge once, whether it answered or not: an answer is
+// kept for the process, a failure for a minute
+// (TestAFailedAnswerIsAskedAgainAfterAMinute).
 func TestTheForgeIsAskedOncePerProcess(t *testing.T) {
 	for _, answerErr := range []error{nil, errors.New("unreachable")} {
 		w := newWorld(t)
@@ -319,5 +322,39 @@ func TestEveryPushURLIsAsked(t *testing.T) {
 	}
 	if w.remoteTip("iss-5") != "" {
 		t.Fatal("a refused reservation was pushed")
+	}
+}
+
+// TestAFailedAnswerIsAskedAgainAfterAMinute: only a definite answer is kept
+// for the process. A failure is asked again on a later act, at most once a
+// minute for a repository, and each act it holds for still warns.
+func TestAFailedAnswerIsAskedAgainAfterAMinute(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	f := stubForge(t, github.Repo{}, errors.New("unreachable"))
+	originOnGitHub(t, "https://github.com/octo/abcd.git")
+	for i, c := range []struct {
+		after time.Duration
+		ok    bool
+		asked int
+	}{
+		{0, false, 1},
+		{30 * time.Second, false, 1},
+		{61 * time.Second, false, 2},
+		{3 * time.Minute, true, 3},
+		{10 * time.Minute, true, 3},
+	} {
+		if c.ok {
+			f.err = nil
+		}
+		w.set(t0.Add(c.after))
+		id := fmt.Sprintf("iss-%d", 20+i)
+		res, err := p.reserve(id, id+".go")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if (res.ForkUnchecked == "") != c.ok || len(f.asked) != c.asked {
+			t.Fatalf("%s after %s: warning %q, asked %d times; want warned %v, asked %d", id, c.after, res.ForkUnchecked, len(f.asked), !c.ok, c.asked)
+		}
 	}
 }

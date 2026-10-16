@@ -170,6 +170,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	res.Next = fsutil.RedactHome(res.Next)
 	if res.Start != nil {
 		res.Start.Next = fsutil.RedactHome(res.Start.Next)
+		res.Start.ForkUnchecked = fsutil.RedactHome(res.Start.ForkUnchecked)
 	}
 	return render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderDrainRun(w, res) })
 }
@@ -197,6 +198,11 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 	renderPace(w, res.Pace)
 	if res.Start != nil {
 		renderBudget(w, res.Start.Checks)
+		// A lane's reservation that could not ask the forge whether origin is
+		// a fork says so, as reserve does (spc-2610161044461448, step 10).
+		if res.Start.ForkUnchecked != "" {
+			fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(loop.ForkUncheckedLine(res.Start.ForkUnchecked)))
+		}
 	}
 	fmt.Fprintf(w, "  lanes: %d opened, one at a time\n", len(res.Lanes))
 	for _, l := range res.Lanes {

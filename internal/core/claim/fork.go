@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/core/tools"
@@ -14,8 +15,8 @@ import (
 // reservation pushed to a fork is invisible to every account working on the
 // repository it was made from, so a hold there protects no one. A fresh
 // reservation (a reserve or a take-over, never a renewal or a release) asks
-// the forge whether a github.com origin is a fork, once per process, and a
-// fork refuses. An origin off github.com is not asked, and a forge that does
+// the forge whether a github.com origin is a fork, keeping a definite answer
+// for the process and a failure for a minute, and a fork refuses. An origin off github.com is not asked, and a forge that does
 // not answer gives a warning and lets the act through, so a forge outage never
 // stops a lease being kept.
 
@@ -59,15 +60,24 @@ var originPushURLs = func(root string) (pushTargets, error) {
 	return t, nil
 }
 
-// forkAnswer is the forge's answer about one repository, or why it gave none.
+// forkAnswer is the forge's answer about one repository, or why it gave none
+// and when it was asked.
 type forkAnswer struct {
 	repo github.Repo
 	err  error
+	at   time.Time
 }
 
+// forkRetry is how long a failed question is held before the forge is asked
+// about that repository again: at most one question a minute for each, so a
+// drain moving through lanes during an outage does not ask on every act.
+const forkRetry = time.Minute
+
 // forkAnswers holds the forge's answers for the process, keyed by
-// owner/name without regard to case, failures included: the forge is asked
-// at most once per process about a repository.
+// owner/name without regard to case. A definite answer (a fork or not) is
+// kept for the process; a failure only for forkRetry, so a drain that began
+// during a forge outage asks again on a later act and does not reserve on a
+// fork, unwarned, for the rest of the process.
 var forkAnswers struct {
 	sync.Mutex
 	m map[string]forkAnswer
@@ -80,17 +90,18 @@ func forgetForkAnswers() {
 	forkAnswers.m = nil
 }
 
-// askFork is the forge's answer about owner/name, asked at most once per
-// process.
-func askFork(root, owner, name string) forkAnswer {
+// askFork is the forge's answer about owner/name at now: a definite answer
+// already given, a failure given under forkRetry ago, or the forge's answer
+// asked now.
+func askFork(root, owner, name string, now time.Time) forkAnswer {
 	key := strings.ToLower(owner + "/" + name)
 	forkAnswers.Lock()
 	defer forkAnswers.Unlock()
-	if a, ok := forkAnswers.m[key]; ok {
+	if a, ok := forkAnswers.m[key]; ok && (a.err == nil || !now.Before(a.at) && now.Before(a.at.Add(forkRetry))) {
 		return a
 	}
 	repo, err := forgeRepo(root, owner, name)
-	a := forkAnswer{repo: repo, err: err}
+	a := forkAnswer{repo: repo, err: err, at: now}
 	if forkAnswers.m == nil {
 		forkAnswers.m = map[string]forkAnswer{}
 	}
@@ -103,14 +114,14 @@ func askFork(root, owner, name string) forkAnswer {
 // that points that URL there. unchecked is why the check could not be made
 // for some URL, "" when every URL was checked or is a local path; the act
 // then goes on.
-func checkFork(root string) (unchecked string, err error) {
+func checkFork(root string, now time.Time) (unchecked string, err error) {
 	targets, uerr := originPushURLs(root)
 	if uerr != nil {
 		return "could not read " + Remote + "'s push URL: " + redacted(uerr), nil
 	}
 	var gaps []string
 	for _, url := range targets.urls {
-		gap, err := checkForkURL(root, url, targets)
+		gap, err := checkForkURL(root, url, targets, now)
 		if err != nil {
 			return "", err
 		}
@@ -122,7 +133,7 @@ func checkFork(root string) (unchecked string, err error) {
 }
 
 // checkForkURL is checkFork for one push URL.
-func checkForkURL(root, url string, targets pushTargets) (unchecked string, err error) {
+func checkForkURL(root, url string, targets pushTargets, now time.Time) (unchecked string, err error) {
 	owner, name, perr := github.ParseRemote(url)
 	switch {
 	case errors.Is(perr, github.ErrNotGitHub) && github.NamesHostedRepository(url):
@@ -132,7 +143,7 @@ func checkForkURL(root, url string, targets pushTargets) (unchecked string, err 
 	case perr != nil:
 		return perr.Error(), nil
 	}
-	a := askFork(root, owner, name)
+	a := askFork(root, owner, name, now)
 	if a.err != nil {
 		return owner + "/" + name + ": " + forkClass(a.err), nil
 	}
@@ -202,4 +213,22 @@ func parentURL(origin, parent string) string {
 		return r.Form + "://" + user + r.Host + port + "/" + parent + ".git"
 	}
 	return "https://" + github.Host + "/" + parent + ".git"
+}
+
+// SwapForkCheckForTest substitutes the push URLs the fork check reads and the
+// forge it asks, empties the process's answers, and returns the restore. It
+// is exported because the drain's tests live in another package. Tests only;
+// never called in production code, and never safe from a parallel test.
+func SwapForkCheckForTest(pushURLs func(root string) ([]string, error), repo func(cwd, owner, name string) (github.Repo, error)) (restore func()) {
+	origURLs, origRepo := originPushURLs, forgeRepo
+	originPushURLs = func(root string) (pushTargets, error) {
+		urls, err := pushURLs(root)
+		return pushTargets{urls: urls}, err
+	}
+	forgeRepo = repo
+	forgetForkAnswers()
+	return func() {
+		originPushURLs, forgeRepo = origURLs, origRepo
+		forgetForkAnswers()
+	}
 }

@@ -138,7 +138,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	// the push, so a fork is refused before anything is pushed.
 	forkUnchecked := ""
 	if !p.req.Release && res.Act != ActRenewed {
-		if forkUnchecked, err = checkFork(root); err != nil {
+		if forkUnchecked, err = checkFork(root, p.now); err != nil {
 			return Result{}, err
 		}
 	}
