@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // scratchDomain is the bundled domain that says where a session's working
@@ -62,7 +64,7 @@ func TestScratchDomainRecallKeywords(t *testing.T) {
 
 // TestScratchRuleSaysWhereEachFileGoes holds the rule's substance: what a
 // later turn rereads goes in the checkout's local tier, a verifier's copy goes
-// under ~/.abcd.noindex/, and the host scratchpad keeps only the turn's
+// under abcd's home folder, and the host scratchpad keeps only the turn's
 // throwaway files because it is wiped. Where it meets the OPINIONS and LIFEBOAT
 // rules it names them instead of restating them.
 func TestScratchRuleSaysWhereEachFileGoes(t *testing.T) {
@@ -71,7 +73,7 @@ func TestScratchRuleSaysWhereEachFileGoes(t *testing.T) {
 		"later turn, session or agent",
 		"helper script", "queue ticket", "log", "pull-request text", "handover",
 		".abcd/.work.local/scratch/", "logs/",
-		"verifier's copy", "~/.abcd.noindex/",
+		"verifier's copy", abcdhome.Display() + "/",
 		"host's scratchpad", "throwaway", "turn at hand",
 		"does not survive a reboot or a new session",
 		"OPINIONS", "LIFEBOAT",
