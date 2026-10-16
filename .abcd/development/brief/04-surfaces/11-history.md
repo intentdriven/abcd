@@ -218,10 +218,14 @@ before they act on it, so the same hook carries a short notice channel: a
 transcript backlog or a drain that failed, a plugin binary out of step with the
 surface it was installed from, a binary built behind the checkout it was built
 from, and a repo last set up under a different version. The delivery is
-deliberate. The hook always exits successfully, because a notice is not a
-failure and a failing session-start hook shows the user an empty error banner
-with the text thrown away. The notices themselves go to the error stream, where
-a person reads them. What the hook prints on its output stream is one fixed
+deliberate. The session-start entrypoint always exits successfully, because a
+notice is not a failure and a failing session-start hook shows the user an
+empty error banner with the text thrown away. The shell wrapper the host
+registers, `hooks/session-start.sh`, does not: it exits 2 when a legacy
+`~/.abcd` stands with no plugin binary in the plugin root, or when no plugin
+binary is installed and `hooks/bootstrap.sh` did not fail, and it passes on a
+non-zero exit from `hooks/bootstrap.sh` or from the entrypoints it runs. The
+notices themselves go to the error stream, where a person reads them. What the hook prints on its output stream is one fixed
 sentence and a count, pointing at the verbs that hold the detail: whatever a
 session-start hook prints there is folded into the session's own context, and
 these notices quote values read off tracked files, which a pull request or a
