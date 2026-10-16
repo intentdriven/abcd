@@ -9,15 +9,21 @@ import (
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
+// Push is one push the forge's activity record holds: the tip it moved the
+// branch from (Before, forty zeros when the push made the branch) and to
+// (After), and the pushing account's login.
+type Push struct {
+	Before, After, Login string
+}
+
 // Pushers is the forge's record of who pushed to ref (a full ref under
 // refs/heads/) on the repository origin names: its activity record's pushes
-// (`GET /repos/{owner}/{repo}/activity`, the newest hundred), each commit a
-// push made the tip mapped to the pushing account's login
-// (itd-2609151838312703 C17). An entry with no actor or no commit name says
-// nothing and is passed over; every login is the forge's text, which a caller
-// holds to its own grammar before showing it. An origin that is not a
-// github.com URL cannot be asked, and gh is not run for it.
-func Pushers(cwd, ref string) (map[string]string, error) {
+// (`GET /repos/{owner}/{repo}/activity`, the newest hundred), newest first
+// (itd-2609151838312703 C17). An entry with no actor, or a commit name that
+// is not one, says nothing and is passed over; every login is the forge's
+// text, which a caller holds to its own grammar before showing it. An origin
+// that is not a github.com URL cannot be asked, and gh is not run for it.
+func Pushers(cwd, ref string) ([]Push, error) {
 	origin, err := gitutil.Run(cwd, "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(origin) == "" {
 		return nil, fmt.Errorf("this checkout has no origin remote to ask about")
@@ -32,7 +38,8 @@ func Pushers(cwd, ref string) (map[string]string, error) {
 		return nil, err
 	}
 	var acts []struct {
-		After string `json:"after"`
+		Before string `json:"before"`
+		After  string `json:"after"`
 		Actor *struct {
 			Login string `json:"login"`
 		} `json:"actor"`
@@ -40,12 +47,12 @@ func Pushers(cwd, ref string) (map[string]string, error) {
 	if err := json.Unmarshal(out, &acts); err != nil {
 		return nil, fmt.Errorf("the forge's activity record did not parse: %v", err)
 	}
-	pushed := map[string]string{}
+	pushed := []Push{}
 	for _, a := range acts {
-		if a.Actor == nil || a.Actor.Login == "" || !gitutil.IsFullSHA(a.After) {
+		if a.Actor == nil || a.Actor.Login == "" || !gitutil.IsFullSHA(a.After) || !gitutil.IsFullSHA(a.Before) {
 			continue
 		}
-		pushed[a.After] = a.Actor.Login
+		pushed = append(pushed, Push{Before: a.Before, After: a.After, Login: a.Actor.Login})
 	}
 	return pushed, nil
 }

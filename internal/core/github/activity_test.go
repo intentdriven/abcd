@@ -42,29 +42,33 @@ func originAt(t *testing.T, url string) string {
 }
 
 // TestPushersReadsTheForgesRecordOfWhoPushed (itd-2609151838312703 C17): the
-// activity record of pushes to one status branch maps each commit a push made
-// the tip to the pusher's login, read from github.com for the repository
-// origin names; an entry with no actor or no commit name is passed over.
+// activity record of pushes to one status branch lists each push, newest
+// first, with the tip it moved from and to and the pusher's login, read from
+// github.com for the repository origin names; an entry with no actor or a
+// commit name that is not one is passed over.
 func TestPushersReadsTheForgesRecordOfWhoPushed(t *testing.T) {
 	a := strings.Repeat("a", 40)
 	b := strings.Repeat("b", 40)
-	logPath := fakeActivity(t, `[{"after":"`+a+`","activity_type":"push","actor":{"login":"Maya"}},`+
-		`{"after":"`+b+`","activity_type":"push","actor":null},{"after":"nope","actor":{"login":"x"}}]`)
+	zero := strings.Repeat("0", 40)
+	logPath := fakeActivity(t, `[{"before":"`+b+`","after":"`+a+`","activity_type":"push","actor":{"login":"Maya"}},`+
+		`{"before":"`+zero+`","after":"`+b+`","activity_type":"push","actor":{"login":"mallory"}},`+
+		`{"before":"`+zero+`","after":"`+b+`","activity_type":"push","actor":null},{"before":"`+zero+`","after":"nope","actor":{"login":"x"}}]`)
 	dir := originAt(t, "git@github.com:intentdriven/abcd.git")
 	got, err := Pushers(dir, "refs/heads/abcd-status/maya")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 1 || got[a] != "Maya" {
-		t.Fatalf("pushers = %v; want only %s by Maya", got, a)
+	want := []Push{{Before: b, After: a, Login: "Maya"}, {Before: zero, After: b, Login: "mallory"}}
+	if len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
+		t.Fatalf("pushers = %+v; want %+v", got, want)
 	}
 	data, err := os.ReadFile(logPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := "api\n--hostname\ngithub.com\nrepos/intentdriven/abcd/activity?activity_type=push&per_page=100&ref=refs%2Fheads%2Fabcd-status%2Fmaya\n"
-	if string(data) != want {
-		t.Fatalf("argv = %q, want %q", data, want)
+	argv := "api\n--hostname\ngithub.com\nrepos/intentdriven/abcd/activity?activity_type=push&per_page=100&ref=refs%2Fheads%2Fabcd-status%2Fmaya\n"
+	if string(data) != argv {
+		t.Fatalf("argv = %q, want %q", data, argv)
 	}
 }
 

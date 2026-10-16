@@ -89,13 +89,19 @@ const shownKeep = 7 * 24 * time.Hour
 // be read inside its budget, or at all: it says so, never shows nothing.
 var ErrStatusUnavailable = errors.New("the status could not be read")
 
-// PusherLookup asks the forge which account pushed each update to the status
-// branch abcd-status/<branch> on origin (C17): the answer maps each commit
-// that a push made the branch's tip to the pusher's login. A commit the answer
-// does not name is one the forge cannot say about, and its sender stays
-// claimed; an error leaves every sender claimed, with the reason. The front
-// door wires it to the forge adapter; nil asks nothing.
-type PusherLookup func(root, branch string) (map[string]string, error)
+// Push is one push to a status branch as the forge's record of pushes holds
+// it: the tip it moved the branch from (Before, the zero name when the push
+// made the branch) and to (After), and the account that pushed.
+type Push struct {
+	Before, After, Pusher string
+}
+
+// PusherLookup asks the forge who pushed each update to the status branch
+// abcd-status/<branch> on origin (C17): its record of pushes, newest first. A
+// commit no push in the answer covers is one the forge cannot say about, and
+// its sender stays claimed; an error leaves every sender claimed, with the
+// reason. The front door wires it to the forge adapter; nil asks nothing.
+type PusherLookup func(root, branch string) ([]Push, error)
 
 // Announcement is one announcement as a reader shows it. Every value in it is
 // either fixed text or a field held to its grammar by the announcement's
@@ -866,11 +872,20 @@ func pusherKept(root, commit string) pusherVerdict {
 	return pusherVerdict{known: true, login: login}
 }
 
+// pusherBudget bounds the walks that place each push's commits: past it, a
+// push not yet placed leaves its commits claimed, and the check says so.
+var pusherBudget = 10 * time.Second
+
 // checkSenders asks lookup, once per branch, who pushed each standing
 // announcement whose pusher is not kept here, and keeps each login the
 // answer names that is a valid username (any other answer is kept as a
-// login that is not the owner's). It returns why the forge could not be
-// asked, "" when it could.
+// login that is not the owner's). A push names only the tip it left, so each
+// is placed by walking the first-parent line from that tip down to the tip
+// it moved from, at most the walk's limit of commits, under pusherBudget:
+// every commit of the push is judged by its pusher. A commit two pushes
+// cover (a rewritten branch) takes a pusher other than the owner over the
+// owner. It returns why the forge could not be asked or its record could not
+// be placed in full, "" when it could.
 func checkSenders(root string, now time.Time, lookup PusherLookup) string {
 	ask := map[string][]string{}
 	for _, a := range keptAnnouncements(root, now) {
@@ -883,6 +898,8 @@ func checkSenders(root string, now time.Time, lookup PusherLookup) string {
 		branches = append(branches, b)
 	}
 	sort.Strings(branches)
+	ctx, cancel := context.WithTimeout(context.Background(), pusherBudget)
+	defer cancel()
 	var failed []string
 	for _, b := range branches {
 		pushed, err := lookup(root, b)
@@ -890,8 +907,12 @@ func checkSenders(root string, now time.Time, lookup PusherLookup) string {
 			failed = append(failed, "abcd-status/"+b+": "+termsafe.Sanitize(redacted(err)))
 			continue
 		}
+		byCommit, err := placePushes(ctx, root, b, pushed)
+		if err != nil {
+			failed = append(failed, "abcd-status/"+b+": the forge's record of pushes was not placed in full: "+termsafe.Sanitize(redacted(err)))
+		}
 		for _, c := range ask[b] {
-			login, ok := pushed[c]
+			login, ok := byCommit[c]
 			if !ok {
 				continue
 			}
@@ -902,6 +923,43 @@ func checkSenders(root string, now time.Time, lookup PusherLookup) string {
 		}
 	}
 	return strings.Join(failed, "; ")
+}
+
+// placePushes maps each commit the pushes to abcd-status/<branch> carried to
+// its pusher: the first-parent commits after each push's Before up to and
+// including its After, at most the walk's limit per push, read from this
+// checkout's copy under ctx. A push whose After this checkout does not hold
+// is passed over; one that ends ctx stops the placing, and what was placed is
+// answered with ctx's error.
+func placePushes(ctx context.Context, root, branch string, pushes []Push) (map[string]string, error) {
+	ref := statusBranches.track(branch)
+	out := map[string]string{}
+	for _, p := range pushes {
+		if !gitutil.IsFullSHA(p.After) {
+			continue
+		}
+		held, err := hasCommitCtx(ctx, root, p.After)
+		if err != nil {
+			return out, err
+		}
+		if !held {
+			continue
+		}
+		line, err := firstParentsCtx(ctx, root, ref, p.After, statusWalkLimit)
+		if err != nil {
+			return out, err
+		}
+		line, _ = upTo(line, statusWalkLimit)
+		for _, c := range line {
+			if c == p.Before {
+				break
+			}
+			if prev, ok := out[c]; !ok || (sameHolder(prev, branch) && !sameHolder(p.Pusher, branch)) {
+				out[c] = p.Pusher
+			}
+		}
+	}
+	return out, nil
 }
 
 // pruneStatus removes, best effort, every kept announcement whose life ended

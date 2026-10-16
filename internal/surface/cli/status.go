@@ -21,8 +21,16 @@ const statusStore = "the status"
 
 // statusPushers is the forge adapter `abcd status` asks who pushed each
 // announcement (C17): the activity record of pushes to the branch.
-var statusPushers claim.PusherLookup = func(root, branch string) (map[string]string, error) {
-	return github.Pushers(root, claim.StatusRefPrefix+branch)
+var statusPushers claim.PusherLookup = func(root, branch string) ([]claim.Push, error) {
+	pushes, err := github.Pushers(root, claim.StatusRefPrefix+branch)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]claim.Push, 0, len(pushes))
+	for _, p := range pushes {
+		out = append(out, claim.Push{Before: p.Before, After: p.After, Pusher: p.Login})
+	}
+	return out, nil
 }
 
 // statusOutput is the --json document of `abcd status`: the status view, the

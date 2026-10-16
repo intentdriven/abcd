@@ -485,17 +485,17 @@ func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 	zed.announceAs("merged", "#8")
 	ann.announceAs("answered", "#9")
 	asked := map[string]int{}
-	lookup := func(_, branch string) (map[string]string, error) {
+	lookup := func(_, branch string) ([]Push, error) {
 		asked[branch]++
 		switch branch {
 		case "maya":
-			return map[string]string{m.Commit: "Maya"}, nil
+			return []Push{{Before: zeroCommit, After: m.Commit, Pusher: "Maya"}}, nil
 		case "quinn":
-			return map[string]string{q.Commit: "mallory"}, nil
+			return []Push{{Before: zeroCommit, After: q.Commit, Pusher: "mallory"}}, nil
 		case "zed":
 			return nil, errors.New("gh is not on PATH")
 		}
-		return map[string]string{}, nil
+		return []Push{}, nil
 	}
 	res := pat.status(lookup)
 	if res.SendersUnchecked != "abcd-status/zed: gh is not on PATH" {
@@ -572,5 +572,47 @@ func TestABranchNameThatIsNotReadNeverReachesTheBlock(t *testing.T) {
 	}
 	if again := pat.notes(); again != "" {
 		t.Fatalf("the next prompt shows %q; want the count once", again)
+	}
+}
+
+// zeroCommit is the forge's name for the tip a push that made the branch
+// moved it from.
+var zeroCommit = strings.Repeat("0", 40)
+
+// TestEveryCommitOfAPushIsJudgedByItsPusher is C17 for a push that carried
+// more than one commit: the forge's record names the push's last commit, and
+// every first-parent commit after the tip it moved from is judged by the same
+// pusher, so an earlier commit of another account's push is not left claimed.
+func TestEveryCommitOfAPushIsJudgedByItsPusher(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	quinn := w.clone("7+quinn@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	m1 := maya.announceAs("merging", "#1")
+	m2 := maya.announceAs("merging", "#2")
+	q1 := quinn.announceAs("asking", "#3")
+	q2 := quinn.announceAs("asking", "#4")
+	q3 := quinn.announceAs("asking", "#5")
+	lookup := func(_, branch string) ([]Push, error) {
+		switch branch {
+		case "maya": // both of maya's commits in one push by another account
+			return []Push{{Before: zeroCommit, After: m2.Commit, Pusher: "mallory"}}, nil
+		case "quinn": // quinn's first commit, then two in one push by another
+			return []Push{{Before: q1.Commit, After: q3.Commit, Pusher: "mallory"}, {Before: zeroCommit, After: q1.Commit, Pusher: "quinn"}}, nil
+		}
+		return nil, nil
+	}
+	pat.status(lookup)
+	checks := map[string]string{}
+	for _, a := range pat.read().Announcements {
+		checks[a.Commit] = a.Check + " " + a.Pusher
+	}
+	for c, want := range map[string]string{
+		m1.Commit: "doubtful mallory", m2.Commit: "doubtful mallory",
+		q1.Commit: "verified ", q2.Commit: "doubtful mallory", q3.Commit: "doubtful mallory",
+	} {
+		if checks[c] != want {
+			t.Fatalf("checks = %v; want %s %q", checks, c, want)
+		}
 	}
 }
