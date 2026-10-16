@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -153,31 +154,62 @@ func dated(root string, h head, fetchedAt time.Time, keep bool) head {
 }
 
 // firstFetched is when this copy first fetched commit, recorded as at when
-// nothing records it yet and keep allows it.
+// nothing records it yet and keep allows it (keptFetch).
 func firstFetched(root, commit string, at time.Time, keep bool) time.Time {
 	at = at.UTC().Truncate(time.Second)
+	if first, ok := keptFetch(root, commit, at, keep); ok {
+		return first
+	}
+	if keep {
+		keepFetch(root, commit, at)
+	}
+	return at
+}
+
+// keptFetch is the time kept for when this copy first fetched commit; ok is
+// false when none is kept. With keep, a kept time more than lease.Skew after
+// at, kept while this copy's clock ran fast, is kept again as at and answered
+// as at, so it holds no longer than one kept now would.
+func keptFetch(root, commit string, at time.Time, keep bool) (time.Time, bool) {
+	at = at.UTC().Truncate(time.Second)
 	if !gitutil.IsFullSHA(commit) {
-		return at
+		return time.Time{}, false
 	}
 	r, err := os.OpenRoot(root)
 	if err != nil {
-		return at
+		return time.Time{}, false
 	}
 	defer r.Close()
-	rel := undatedRelDir + "/" + commit
-	if data, err := fsutil.ReadGuardedInRoot(r, rel, 64); err == nil {
-		if seen, perr := time.Parse(time.RFC3339, strings.TrimSpace(string(data))); perr == nil {
-			return seen.UTC()
-		}
+	data, err := fsutil.ReadGuardedInRoot(r, undatedRelDir+"/"+commit, 64)
+	if err != nil {
+		return time.Time{}, false
 	}
-	if !keep {
-		return at
+	first, err := time.Parse(time.RFC3339, strings.TrimSpace(string(data)))
+	if err != nil {
+		return time.Time{}, false
 	}
+	if keep && lease.Ahead(first, at) {
+		keepFetch(root, commit, at)
+		return at, true
+	}
+	return first.UTC(), true
+}
+
+// keepFetch records at as when this copy first fetched commit, best effort:
+// a time it cannot keep leaves the reading at hand to count from at.
+func keepFetch(root, commit string, at time.Time) {
+	if !gitutil.IsFullSHA(commit) {
+		return
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return
+	}
+	defer r.Close()
 	for _, d := range []string{stateRelDir, undatedRelDir} {
 		if err := r.Mkdir(d, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
-			return at
+			return
 		}
 	}
-	_ = fsutil.WriteFileAtomicInRoot(r, rel, []byte(stamp(at)+"\n"), stateMode)
-	return at
+	_ = fsutil.WriteFileAtomicInRoot(r, undatedRelDir+"/"+commit, []byte(stamp(at)+"\n"), stateMode)
 }

@@ -13,7 +13,7 @@ import (
 // outboundOpts is installOpts with the outbound commit-msg hook opted into.
 func outboundOpts() InstallOptions {
 	o := installOpts()
-	o.OutboundHook = true
+	o.Outbound = true
 	return o
 }
 
@@ -88,7 +88,7 @@ func TestOutboundHookIsOptInAndIdempotent(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := os.Stat(hookAt(repo)); err != nil {
-			t.Fatalf("--outbound-hook wrote nothing on an already-installed repo (status=%q writes=%v): %v",
+			t.Fatalf("--outbound wrote nothing on an already-installed repo (status=%q writes=%v): %v",
 				res.Status, res.Writes, err)
 		}
 	})

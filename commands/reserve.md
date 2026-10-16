@@ -105,9 +105,10 @@ absorbs. A holder whose clock runs behind loses that much of each lease: one
 behind by more than half the lease plus the margin (65 minutes for the
 default two hours) can be taken over between its own renewals, and a
 reservation made once and never renewed by a clock behind by more than its
-lease is open to a take-over as soon as another copy fetches it. A clock
-running ahead is clamped to a day from the reader's own now. Keep the machines
-that reserve on network time.
+lease is open to a take-over as soon as another copy fetches it. A
+reservation dated more than five minutes ahead of the reader counts from when
+that copy first fetched it, so it holds at most a day from then. Keep the
+machines that reserve on network time.
 
 **The holder** is the user's GitHub username, from the first of these that
 names it: `git config user.email` when it is a GitHub no-reply address;

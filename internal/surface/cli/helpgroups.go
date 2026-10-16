@@ -92,7 +92,7 @@ type helpPlacement struct {
 // it: a command a person needs to do their job is a person's, and only a
 // command no person types leaves the person's list (itd-2610090831227812; the
 // entries P1 to P6 in spc-2610100613109045's verb audit). P1 puts abcd (the
-// board), ahoy, build, capture, decide, disembark, embark, intent, launch,
+// board), ahoy, build, capture, decide, disembark, embark, intent, land, launch,
 // update, ideate, dashboard, lab and reading with people, and lint, reflect,
 // inbox, implement, history, site, docs, scribe, identity, guard, hook and
 // statusline with agents. P2 keeps drain with agents until itd-82 ships. P3
@@ -117,6 +117,7 @@ var helpPlacements = map[string]helpPlacement{
 	"decide":    {group: groupRecords},
 	"ideate":    {group: groupRecords},
 	"intent":    {group: groupRecords},
+	"land":      {group: groupRecords},
 	"library":   {group: groupRecords},
 	"lab":       {group: groupChecks},
 	"reading":   {group: groupChecks},

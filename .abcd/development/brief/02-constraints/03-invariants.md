@@ -28,18 +28,25 @@ The following are non-negotiable invariants — any architectural choice that vi
    The reservations on the shared remote (itd-2609091034175565) are fetched
    and pushed only by verbs whose documented meaning says so: `reserve`, whose
    meaning is one fetch of the reservations and one push to the record's
-   `abcd-reserved/` branch, plus one call to the forge's user endpoint when
-   git's identity does not name the holder (invariant 10), and `peers`, whose
-   meaning includes one fetch of the reservations. The implement loop's
-   reservation acts (reserve, renew, the land fence and release, in
-   `internal/core/implement/loop/reservation.go`) go through the same act and
-   may make that same call. `reserve --holder`'s meaning is that user-endpoint
+   `abcd-reserved/` branch, and `peers`, whose meaning includes one fetch of
+   the reservations; `build`, whose meaning includes the run's reservation as
+   it starts or resumes (a fetch and one push, the spec's footprint or the
+   issue's `found_at` naming the files) and, with `--release`, a fetch and
+   one tombstone push; `drain`, whose meaning includes reserving each issue as
+   its lane starts and renewing, at half its lease, the reservation of each
+   lane parked at land; and `implement step` and `implement receipt`, whose
+   meaning includes renewing the run's reservation at half its lease, the land
+   fence's fetch and renewal before a merge is armed, and the tombstone once
+   the run's last lane lands or an issue lane is handed back. `build next`'s
+   exclusions, `build <itd-N>`'s peers check and every render of a
+   reservation read the view as last fetched, from disk, and never ask the
+   forge's user endpoint. Each act above that writes a reservation may also
+   make one call to that endpoint when git's identity does not name the
+   holder (invariant 10). `reserve --holder`'s meaning is that user-endpoint
    call alone, and nothing else, made in either of two cases: (a) git's
    identity is a person's but carries neither a GitHub no-reply address nor a
    machine key; (b) git's identity is not a person's (unset, or a machine's),
-   in which case the machine key is skipped. Every render of a reservation
-   reads the view as last fetched, from disk, and never asks the user
-   endpoint.
+   in which case the machine key is skipped.
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it
    listens on this computer's own Tailscale addresses alone, never every

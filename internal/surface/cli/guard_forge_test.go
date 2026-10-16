@@ -7,7 +7,7 @@ import (
 )
 
 // The forge-text check at the hook (iss-2610142210511831): in a repository
-// that opted in with `ahoy install --outbound-forge`, a posting gh command
+// that opted in with `ahoy install --outbound`, a posting gh command
 // whose text carries a live agent-session URL or a tool attribution footer is
 // the host's deny, whose reason names what was found and never the text.
 
