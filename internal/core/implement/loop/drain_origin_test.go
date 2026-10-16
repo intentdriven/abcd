@@ -303,3 +303,93 @@ func fileIssueAtRoot(t *testing.T, dir, id string) {
 		t.Fatalf("capture: %v", err)
 	}
 }
+
+// TestOriginAnsweringDuringAPacePauseClearsTheSavedWait: origin answers again
+// while the drain sits in a pace pause. The move clears the wait and saves the
+// change, so the next move neither says origin answered again nor counts on
+// from the old probes.
+func TestOriginAnsweringDuringAPacePauseClearsTheSavedWait(t *testing.T) {
+	at := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	repo.Git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
+	if _, err := Drain(repo.Root(), Options{Now: func() time.Time { return at }}, DrainOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	// The drain pauses for its pace until an hour on.
+	st, _, err := readDrain(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	pause := at.Add(time.Hour)
+	st.NextEligibleAt = &pause
+	if err := writeDrain(repo.Root(), st); err != nil {
+		t.Fatal(err)
+	}
+	repo.Git("remote", "set-url", "origin", bare)
+	later := at.Add(2 * time.Minute)
+	res, err := Drain(repo.Root(), Options{Now: func() time.Time { return later }}, DrainOptions{})
+	if err != nil || !strings.Contains(res.Next, "answered again") || !strings.Contains(res.Next, "nothing before") {
+		t.Fatalf("the move in the pause = %q, %v; want it to say origin answered again and the pause holds", res.Next, err)
+	}
+	if st, _, _ := readDrain(repo.Root()); st.OriginWait != nil {
+		t.Fatalf("the cleared wait was not saved: %+v", st.OriginWait)
+	}
+	again, err := Drain(repo.Root(), Options{Now: func() time.Time { return later.Add(time.Minute) }}, DrainOptions{})
+	if err != nil || strings.Contains(again.Next, "answered again") {
+		t.Fatalf("the next move = %q, %v; want no second recovery", again.Next, err)
+	}
+}
+
+// TestADrainWaitingOnOriginFollowsTheOutageScheduleAndGivesUp: each failed
+// probe waits as the outage gate waits (one minute, five, ten, then hourly),
+// and a probe that fails eight hours into the hourly stage ends the drain with
+// stopped "origin", saying what failed, since when, and how to resume.
+func TestADrainWaitingOnOriginFollowsTheOutageScheduleAndGivesUp(t *testing.T) {
+	t0 := time.Date(2026, 10, 16, 9, 0, 0, 0, time.UTC)
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	repo.Git("remote", "set-url", "origin", filepath.Join(t.TempDir(), "gone.git"))
+	move := func(now time.Time) (DrainResult, DrainOriginWait) {
+		t.Helper()
+		res, err := Drain(repo.Root(), Options{Now: func() time.Time { return now }}, DrainOptions{})
+		if err != nil {
+			t.Fatalf("the move at %s: %v", now, err)
+		}
+		st, _, err := readDrain(repo.Root())
+		if err != nil || st.OriginWait == nil {
+			t.Fatalf("the state at %s records no wait: %+v %v", now, st.OriginWait, err)
+		}
+		return res, *st.OriginWait
+	}
+	now := t0
+	for probe, wait := range []time.Duration{time.Minute, 5 * time.Minute, 10 * time.Minute, time.Hour} {
+		res, w := move(now)
+		if res.Complete || w.Probes != probe+1 || !w.NextProbeAt.Equal(now.Add(wait)) {
+			t.Fatalf("probe %d at %s: wait %+v, complete %v; want probe %d, next %s later", probe+1, now, w, res.Complete, probe+1, wait)
+		}
+		if probe == 3 && (w.HourlySince == nil || !w.HourlySince.Equal(now)) {
+			t.Fatalf("probe 4 begins the hourly stage: %+v", w.HourlySince)
+		}
+		now = w.NextProbeAt
+	}
+	hourly := now.Add(-time.Hour)
+	// Seven hours into the hourly stage the drain still waits.
+	res, w := move(hourly.Add(7 * time.Hour))
+	if res.Complete || res.Stopped != "" || w.Probes != 5 {
+		t.Fatalf("seven hours into the hourly stage: %+v, stopped %q; want it still waiting", w, res.Stopped)
+	}
+	// Eight hours in, it gives up.
+	end := hourly.Add(8 * time.Hour)
+	res, w = move(end)
+	if !res.Complete || res.Stopped != DrainStoppedOrigin || w.Probes != 6 {
+		t.Fatalf("eight hours into the hourly stage: stopped %q, complete %v, wait %+v; want stopped %q", res.Stopped, res.Complete, w, DrainStoppedOrigin)
+	}
+	for _, want := range []string{"could not fetch", t0.Format(time.RFC3339), "gives up", "`abcd drain` begins a new drain"} {
+		if !strings.Contains(res.Next, want) {
+			t.Fatalf("next = %q; want it to say %q", res.Next, want)
+		}
+	}
+	if st, live, _ := readDrain(repo.Root()); live || st.EndedAt == nil || !st.EndedAt.Equal(end) {
+		t.Fatalf("the drain did not end: live %v, ended %v", live, st.EndedAt)
+	}
+	noReservations(t, bare)
+}

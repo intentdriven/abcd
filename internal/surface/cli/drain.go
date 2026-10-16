@@ -53,7 +53,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"or reservation, and plans from what it fetched. A move that cannot read origin (the\n" +
 			"fetch fails, the default branch cannot be read, or no origin/HEAD names one) plans\n" +
 			"nothing: it records the failure in the drain's state and waits as for an outage,\n" +
-			"looking again after one minute, five, ten, then hourly, and exits 0 saying when.\n\n" +
+			"looking again after one minute, five, ten, then hourly, and exits 0 saying when.\n" +
+			"A probe that fails eight hours into the hourly stage gives up, as the outage gate\n" +
+			"does: the drain ends (stopped \"origin\"), and once origin can be fetched again a\n" +
+			"new drain begins.\n\n" +
 			"--dry-run shows every open issue's disposition, the eligible ones first in the\n" +
 			"order a drain takes them (by category, then severity, then oldest first), and\n" +
 			"writes nothing. It fetches nothing either: it plans from origin's default branch as\n" +
@@ -273,6 +276,8 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		fmt.Fprintln(w, "  ended: nothing eligible is left")
 	case loop.DrainStoppedOutage:
 		fmt.Fprintln(w, "  ended: the run gave up on a lost connection")
+	case loop.DrainStoppedOrigin:
+		fmt.Fprintln(w, "  ended: the drain gave up waiting on origin")
 	}
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(res.Next))
 }

@@ -1140,6 +1140,9 @@ or reservation, and plans from what it fetched. A move that cannot read origin (
 fetch fails, the default branch cannot be read, or no origin/HEAD names one) plans
 nothing: it records the failure in the drain's state and waits as for an outage,
 looking again after one minute, five, ten, then hourly, and exits 0 saying when.
+A probe that fails eight hours into the hourly stage gives up, as the outage gate
+does: the drain ends (stopped "origin"), and once origin can be fetched again a
+new drain begins.
 
 --dry-run shows every open issue's disposition, the eligible ones first in the
 order a drain takes them (by category, then severity, then oldest first), and

@@ -149,8 +149,14 @@ what it did in `next`:
   default branch cannot be read, or no `origin/HEAD` names one) plans nothing:
   it asks no judgement, reserves nothing, records the failure in the drain's
   state (`origin_wait`: `since`, `kind` — `fetch`, `default-branch` or
-  `origin-head` — `probes`, `next_probe_at`) and says in `next` when it looks
-  again, one minute, five, ten, then hourly; a move before then reads nothing.
+  `origin-head` — `probes`, `next_probe_at`, and `hourly_since` once the
+  probes are hourly) and says in `next` when it looks again, one minute, five,
+  ten, then hourly; a move before then reads nothing. It gives up as the outage
+  gate does: a probe that fails eight hours into the hourly stage ends the
+  drain with `stopped: "origin"` and `complete: true`, and `next` says what
+  failed, since when, the probes made and the lanes the drain opened; once
+  `git fetch origin` succeeds, the next `abcd drain` begins a new drain. The
+  text form reads "ended: the drain gave up waiting on origin".
   For `origin-head`, run `git remote set-head origin --auto` and
   `git fetch origin`. Tell the user, and run `abcd drain` again at or after
   `next_probe_at`.
@@ -280,8 +286,8 @@ hand-backs; `passed` names an eligible issue this move did not take, with why;
 `dispositions` is the plan; `finished` lists the merged lanes this move took
 the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
-`next_eligible_at`, `stopped` (`cap`, `empty` or
-`outage`) and `complete` say whether it paused or ended; `counts` totals the
+`next_eligible_at`, `stopped` (`cap`, `empty`,
+`outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the
 drain as it stands: `lanes_opened`, `in_progress`, `pull_requests` (the lanes
 whose landing opened one; a merge is a person's gate and is not counted),
 `lanes_handed_back`, the hand-backs by route (`promotions`, `decision_records`,

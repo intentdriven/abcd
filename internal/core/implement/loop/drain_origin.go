@@ -15,7 +15,9 @@ package loop
 // can name. It records the failure as an origin outage probe in the drain's
 // state and waits as the outage gate waits, on implement.DefaultSchedule: a
 // move before the next probe is due looks at nothing, and one at or after it
-// fetches again. It never plans from what the checkout last saw.
+// fetches again. A probe failing HourlyFor into the schedule's hourly stage
+// gives up, as the outage gate does, and the drain ends with stopped "origin".
+// It never plans from what the checkout last saw.
 //
 // The dry run fetches nothing: it plans from origin's default branch as last
 // fetched and says how old that view is, how many commits the checkout is
@@ -53,6 +55,10 @@ const (
 	DrainOriginHead = "origin-head"
 )
 
+// DrainStoppedOrigin is why a drain ended that waited on origin through the
+// outage schedule's hourly stage and gave up.
+const DrainStoppedOrigin = "origin"
+
 // drainOriginKinds are the kinds a drain's state may record.
 var drainOriginKinds = []string{DrainOriginFetch, DrainOriginDefaultBranch, DrainOriginHead}
 
@@ -80,6 +86,8 @@ type DrainOriginWait struct {
 	Kind        string    `json:"kind"`
 	Probes      int       `json:"probes"`
 	NextProbeAt time.Time `json:"next_probe_at"`
+	// HourlySince is the probe that began the hourly stage, nil before it.
+	HourlySince *time.Time `json:"hourly_since,omitempty"`
 }
 
 // written reports whether w is one the drain writes: a known kind and at least
@@ -257,10 +265,25 @@ func movePlan(repoRoot string, st *DrainState, rule drainrule.Rule, now time.Tim
 	if kind != "" {
 		w := &DrainOriginWait{Since: now, Kind: kind, Probes: 1}
 		if prev := st.OriginWait; prev != nil {
-			w.Since, w.Probes = prev.Since, prev.Probes+1
+			w.Since, w.Probes, w.HourlySince = prev.Since, prev.Probes+1, prev.HourlySince
 		}
-		w.NextProbeAt = implement.DefaultSchedule.Next(now, w.Probes-1)
+		// The schedule as the outage gate keeps it: the first failed move
+		// opens the wait, the next three wait one minute, five and ten, the
+		// probe after them begins the hourly stage, and a probe failing
+		// HourlyFor into that stage gives up.
+		s := implement.DefaultSchedule
+		failures := w.Probes - 1
+		if w.HourlySince == nil && failures >= len(s.Waits) {
+			hourly := now
+			w.HourlySince = &hourly
+		}
 		st.OriginWait = w
+		if w.HourlySince != nil && s.GivesUp(*w.HourlySince, now) {
+			st.Stopped, st.EndedAt = DrainStoppedOrigin, &now
+			return capture.RuleOnlyPlan(rule), nil, fmt.Sprintf("%s, so the move plans nothing, and the drain gives up on %s as the outage gate gives up: %s has not been read since %s, %d probe(s) failed, hourly for %d hours since %s; the drain stops here with %d lane(s) opened; once `git fetch %s` succeeds, `abcd drain` begins a new drain",
+				why, claim.Remote, claim.Remote, w.Since.UTC().Format(time.RFC3339), w.Probes, int(s.HourlyFor/time.Hour), w.HourlySince.UTC().Format(time.RFC3339), len(st.Lanes), claim.Remote), "", true, nil
+		}
+		w.NextProbeAt = s.Next(now, failures)
 		at := w.NextProbeAt.UTC().Format(time.RFC3339)
 		return capture.RuleOnlyPlan(rule), nil, fmt.Sprintf("%s, so the move plans nothing: it never plans from what this checkout last saw; it waits on %s as for an outage (probe %d since %s) and looks again at or after %s; run `abcd drain` again then",
 			why, claim.Remote, w.Probes, w.Since.UTC().Format(time.RFC3339), at), "", true, nil

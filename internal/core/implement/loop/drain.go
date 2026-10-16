@@ -65,6 +65,8 @@ const (
 	// taken.
 	DrainStoppedEmpty = "empty"
 	// DrainStoppedOutage (outage.go): the run gave up on a lost connection.
+	// DrainStoppedOrigin (drain_origin.go): the drain gave up waiting on
+	// origin, which no move could read through the outage schedule.
 )
 
 // The outcomes of a lane the drain opened, as the drain reads its run.
@@ -421,8 +423,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			at := st.NextEligibleAt.UTC().Format(time.RFC3339)
 			res.Next = "nothing before " + at + ": the drain's window has elapsed; run `abcd drain` again at or after " + at
 			// A judgement taken this move was applied above (a yes already
-			// routed), so it is recorded even though nothing else moves.
-			return finish(res.Judged != nil || finished)
+			// routed), so it is recorded even though nothing else moves, and
+			// so is a wait on origin this move cleared.
+			return finish(res.Judged != nil || finished || probed)
 		}
 		st.NextEligibleAt, st.WindowStartedAt = nil, &now
 	}
