@@ -154,6 +154,41 @@ func TestATaggedCutHoldsNoLanding(t *testing.T) {
 	}
 }
 
+// TestAnEndedCutHoldsNoLanding: a cut ends without a tag too. Q's release
+// reservation, never renewed, holds nothing once its day is out, and one Q
+// released (its tombstone) holds nothing at once; either way land pushes and
+// arms though the branch abcd-reserved/rel-v0.16.0 is still on origin.
+func TestAnEndedCutHoldsNoLanding(t *testing.T) {
+	for _, end := range []string{"its day ran out", "its tombstone"} {
+		t.Run(end, func(t *testing.T) {
+			f := newFixture(t, queueRuleset)
+			f.asPat()
+			f.forge.prs = f.prFor(f.head())
+			f.forge.views = []string{viewBlocked, viewQueued}
+			q := f.copyOf(quinnEmail)
+			now := time.Now().UTC().Truncate(time.Second)
+			if end == "its day ran out" {
+				f.cut(q, "rel-v0.16.0", now.Add(-24*time.Hour-time.Minute))
+			} else {
+				f.cut(q, "rel-v0.16.0", now.Add(-time.Hour))
+				o := claim.Options{Now: func() time.Time { return now.Add(-time.Minute) }, Home: f.home}
+				if res, err := claim.Reserve(q, claim.Request{Record: "rel-v0.16.0", Release: true}, o); err != nil || res.Act != claim.ActReleased {
+					t.Fatalf("releasing the cut: %+v %v", res, err)
+				}
+			}
+			if f.onOrigin(strings.TrimPrefix(claim.RefPrefix, "refs/heads/")+"rel-v0.16.0") == "" {
+				t.Fatal("the release's reservation branch is gone from origin; want it still there")
+			}
+			if _, err := f.land(f.options()); err != nil {
+				t.Fatalf("land once %s: %v", end, err)
+			}
+			if f.onOrigin("feat/x") != f.head() || f.forge.called("pr", "merge", "7", "--auto") != 1 {
+				t.Fatalf("origin feat/x %q, forge calls %v: want pushed and armed", f.onOrigin("feat/x"), f.forge.calls)
+			}
+		})
+	}
+}
+
 // TestLandArmsNothingWhenTheHoldCannotBeRead: origin stops answering after
 // the default branch was fetched (here, during the gate); a hold land cannot
 // see may be there, so nothing is pushed, armed or queued. Nobody is known to
@@ -191,14 +226,14 @@ func TestACheckoutWithNoOriginIsNotHeldByLand(t *testing.T) {
 	f := newFixture(t, "")
 	f.cut(f.copyOf(quinnEmail), "rel-v0.16.0", time.Now().UTC().Add(-time.Minute))
 	root := f.repo.Root()
-	if _, err := releaseHold(root, f.home); err == nil {
+	if _, err := ReleaseHold(root, f.home); err == nil {
 		t.Fatal("with origin there, nothing holds; want Q's release to hold the landing")
 	}
 	ref := claim.TrackingPrefix + "rel-v0.16.0"
 	tip := f.repo.Git("rev-parse", ref)
 	f.repo.Git("remote", "remove", claim.Remote)
 	f.repo.Git("update-ref", ref, tip)
-	if _, err := releaseHold(root, f.home); err != nil {
+	if _, err := ReleaseHold(root, f.home); err != nil {
 		t.Fatalf("with no origin: %v; want nothing held", err)
 	}
 }

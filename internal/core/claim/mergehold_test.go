@@ -122,3 +122,31 @@ func TestACheckoutWithNoOriginHoldsNoMerge(t *testing.T) {
 		t.Fatalf("with no origin: held %v (%q), %v; want nothing held", m.Held(), m.Reason(), err)
 	}
 }
+
+// TestAReleaseHoldEndsWhenItsDayRunsOut: a release reserved with its default
+// lease and never renewed holds every other session's merge for 24 hours
+// from its claim and not a second longer, with no tag and no release to end
+// it: one second before the day is out it holds, at the day's end and after
+// it nothing does.
+func TestAReleaseHoldEndsWhenItsDayRunsOut(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	q := w.clone("99+quinn@users.noreply.github.com", "")
+	if _, err := q.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		at   time.Duration
+		held bool
+	}{{time.Hour, true}, {lease.Max - time.Second, true}, {lease.Max, false}, {lease.Max + lease.Skew + time.Hour, false}} {
+		at := t0.Add(c.at)
+		w.set(at)
+		m, err := FetchMergeHold(p.dir, at, p.opts())
+		if err != nil || m.Held() != c.held || len(m.Ahead) != 0 {
+			t.Fatalf("at +%s: %+v, %v; want held %v and nothing dated ahead", c.at, m, err, c.held)
+		}
+		if c.held && m.Holds[0].EffectiveExpiry != t0.Add(lease.Max) {
+			t.Fatalf("at +%s: the hold ends %s; want %s", c.at, m.Holds[0].EffectiveExpiry, t0.Add(lease.Max))
+		}
+	}
+}
