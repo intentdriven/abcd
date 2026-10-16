@@ -607,14 +607,6 @@ func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namesp
 		return "", e
 	}
 	for _, ns := range spaces {
-		if ns.stateDir == statusBranches.stateDir && ns.only == nil {
-			// A fetch of the whole status namespace keeps the count of the
-			// names it brought that are not read before it stamps its time,
-			// as `abcd status`'s does from its listing (keptSkipped).
-			keepSkippedHeld(root, now)
-		}
-	}
-	for _, ns := range spaces {
 		if err := stampFetch(root, ns, now); err != nil {
 			noteFetchFailure(root, ns, now, "fetched, but could not record when: "+redacted(err))
 			return "", refuse("fetched %s, but could not record when: %s; %s", ns.noun, redacted(err), outcome)

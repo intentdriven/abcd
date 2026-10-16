@@ -17,11 +17,14 @@ import (
 // written, and what it writes is not flushed, so a flood of new announcements
 // never holds the prompt hook past its deadline.
 
-// fetchOnly fetches the status branches into p as `abcd announce`'s fetch does,
-// with no intake after it, so the next read is the first to take them in.
+// fetchOnly fetches the status branches into p as `abcd announce`'s fetch does
+// (fetchStatus): it lists origin's status branches, keeps the count of the
+// names it does not read, drops every copy it does not name, and fetches each
+// branch it names by its own refspec, up to the cap, with no default branch
+// and no intake after it, so the next read is the first to take them in.
 func (p *participant) fetchOnly() {
 	p.w.t.Helper()
-	if _, err := fetch(p.dir, p.w.clock(), "nothing was fetched", statusBranches); err != nil {
+	if _, _, err := fetchStatus(p.dir, p.w.clock(), "", ""); err != nil {
 		p.w.t.Fatalf("fetch: %v", err)
 	}
 }

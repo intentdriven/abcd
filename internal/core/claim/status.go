@@ -1337,9 +1337,8 @@ func keepSkipped(root string, t nameTally, past int, now time.Time) {
 // when what was kept cannot be read back, or was not kept at their last
 // fetch (it is missing, or older than that fetch: its write failed), so a
 // reader says the count is unknown rather than count none or an older count.
-// Every fetch of the status branches keeps it before it stamps its time:
-// `abcd status`'s from its listing, and a fetch of the whole namespace from
-// what it brought (keepSkippedHeld).
+// Every fetch of the status branches keeps it from its listing before it
+// stamps its time: `abcd status`'s and `abcd announce`'s.
 func keptSkipped(root string) (skippedState, error) {
 	r, err := os.OpenRoot(root)
 	if err != nil {
@@ -1370,31 +1369,6 @@ func keptSkipped(root string) (skippedState, error) {
 		return skippedState{}, notKept
 	}
 	return s, nil
-}
-
-// keepSkippedHeld keeps the tally of names not read from the status branches
-// this checkout now holds, after a fetch of the whole namespace, which brings
-// every branch origin holds: the names that are not read, and how many that
-// are read lie past maxStatusBranches. Best effort, as keepSkipped is.
-func keepSkippedHeld(root string, now time.Time) {
-	if tierPresent(root) != nil {
-		return
-	}
-	refs, err := statusRefs(context.Background(), root)
-	if err != nil {
-		return
-	}
-	var t nameTally
-	read := 0
-	for _, r := range refs {
-		name := strings.TrimPrefix(r.ref, StatusTrackingPrefix)
-		if !statusName(name) {
-			t.add(name)
-		} else {
-			read++
-		}
-	}
-	keepSkipped(root, t, max(read-maxStatusBranches, 0), now)
 }
 
 // pusherVerdict is what the forge said of who pushed one announcement: asked

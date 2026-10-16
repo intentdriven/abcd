@@ -71,8 +71,8 @@ func TestLongNamesThatShareABeginningAreCountedApart(t *testing.T) {
 	if v := pat.read(); v.UnreadNames != 3 {
 		t.Fatalf("unread names = %d; want 3", v.UnreadNames)
 	}
-	// A plain fetch of the whole namespace, as `abcd announce` makes, brings
-	// a copy of each: the count stays three.
+	// A plain git fetch of the whole namespace brings a copy of each: the
+	// count stays three.
 	pat.git("fetch", "-q", "origin", "+"+StatusRefPrefix+"*:"+StatusTrackingPrefix+"*")
 	if v := pat.read(); v.UnreadNames != 3 {
 		t.Fatalf("with a copy of each held, unread names = %d; want 3", v.UnreadNames)
@@ -101,10 +101,10 @@ func TestACountThatCannotBeReadIsUnknownNotZero(t *testing.T) {
 }
 
 // TestADeletedBranchWhoseNameIsNotReadStopsCounting: a status branch whose
-// name is not read, of which this checkout holds a copy (a fetch of the whole
-// namespace, as `abcd announce` made before it listed the branches, brought
-// it), is counted until origin deletes it; then the next fetch of either kind
-// drops the copy, and the count with it, in the view and in the block.
+// name is not read, of which this checkout holds a copy (a plain git fetch of
+// the whole namespace brought it), is counted until origin deletes it; then
+// the next fetch of either kind drops the copy, and the count with it, in the
+// view and in the block.
 func TestADeletedBranchWhoseNameIsNotReadStopsCounting(t *testing.T) {
 	for _, next := range []string{"announce", "status"} {
 		t.Run(next, func(t *testing.T) {
@@ -112,7 +112,7 @@ func TestADeletedBranchWhoseNameIsNotReadStopsCounting(t *testing.T) {
 			pat := w.clone("9+pat@users.noreply.github.com", "")
 			w.pushNames([]string{"Octo"})
 			pat.announceAs("merging", "#1")
-			pat.fetchOnly()
+			pat.git("fetch", "-q", "origin", "+"+StatusRefPrefix+"*:"+StatusTrackingPrefix+"*")
 			if refs := pat.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix); !strings.Contains(refs, "Octo") {
 				t.Fatalf("the whole namespace's fetch brought no copy of Octo: %s", refs)
 			}
@@ -153,8 +153,8 @@ func (p *participant) fetchNamed(names ...string) {
 // TestACountNotKeptAtTheLastFetchIsUnknown: when the count of names not read
 // was not kept at the status branches' last fetch, missing or older than it,
 // the reader says it is unknown, never zero and never the older count; a
-// checkout that never fetched them, and one whose last fetch was of the whole
-// namespace, keep a count, or need none, and say no such thing.
+// checkout that never fetched them, and one whose last fetch was
+// `abcd announce`'s, keep a count, or need none, and say no such thing.
 func TestACountNotKeptAtTheLastFetchIsUnknown(t *testing.T) {
 	w := newWorld(t)
 	w.pushStatus("maya", announcementMsg("merging", "#1", "maya", t0, 30*time.Minute), "")
@@ -184,10 +184,10 @@ func TestACountNotKeptAtTheLastFetchIsUnknown(t *testing.T) {
 		t.Fatalf("after the next status fetch: unread names = %d, unknown %v; want 1 counted", v.UnreadNames, v.UnreadNamesUnknown)
 	}
 
-	whole := w.clone("8+zed@users.noreply.github.com", "")
-	whole.fetchOnly()
-	if v := whole.read(); v.UnreadNamesUnknown || v.UnreadNames != 1 {
-		t.Fatalf("after a fetch of the whole namespace: unread names = %d, unknown %v; want 1 counted", v.UnreadNames, v.UnreadNamesUnknown)
+	announced := w.clone("8+zed@users.noreply.github.com", "")
+	announced.fetchOnly()
+	if v := announced.read(); v.UnreadNamesUnknown || v.UnreadNames != 1 {
+		t.Fatalf("after announce's fetch: unread names = %d, unknown %v; want 1 counted", v.UnreadNames, v.UnreadNamesUnknown)
 	}
 }
 
