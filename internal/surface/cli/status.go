@@ -26,12 +26,15 @@ var statusPushers claim.PusherLookup = func(root, branch string) (map[string]str
 }
 
 // statusOutput is the --json document of `abcd status`: the status view, the
-// announcements, the doubtful branches, what could not be read, and the
-// reservations block `abcd peers` lists, in the same fields.
+// announcements, the doubtful branches, the count of status branches whose
+// names are not read (never the names: a pusher chose each, and an agent
+// reads this output), what could not be read, and the reservations block
+// `abcd peers` lists, in the same fields.
 type statusOutput struct {
 	StatusView       statusView        `json:"status_view"`
 	Announcements    []announcementRow `json:"announcements"`
 	Doubtful         []doubtRow        `json:"doubtful"`
+	UnreadNames      int               `json:"unread_names"`
 	Unread           []string          `json:"unread"`
 	SendersUnchecked string            `json:"senders_unchecked,omitempty"`
 	ReadError        string            `json:"read_error,omitempty"`
@@ -177,8 +180,9 @@ func (out *statusOutput) addStatus(v claim.StatusView, now time.Time) {
 		out.Announcements = append(out.Announcements, row)
 	}
 	for _, d := range v.Doubts {
-		out.Doubtful = append(out.Doubtful, doubtRow{Branch: termsafe.Sanitize(d.Branch), Reason: d.Reason, Tip: d.Tip, Text: claim.DoubtLine(d)})
+		out.Doubtful = append(out.Doubtful, doubtRow{Branch: "abcd-status/" + d.Branch, Reason: d.Reason, Tip: d.Tip, Text: claim.DoubtLine(d)})
 	}
+	out.UnreadNames = v.UnreadNames
 	for _, u := range []struct {
 		what string
 		u    *claim.Unread
@@ -225,6 +229,11 @@ func renderStatus(w io.Writer, out statusOutput) {
 	}
 	for _, d := range out.Doubtful {
 		fmt.Fprintln(w, "  "+d.Text)
+	}
+	if out.UnreadNames > 0 {
+		// Counted, never named: git itself lists the names, outside this
+		// output, for a person who wants them.
+		fmt.Fprintln(w, "  "+claim.UnreadNamesLine(out.UnreadNames)+", so not shown: `git ls-remote origin 'refs/heads/abcd-status/*'` lists every name")
 	}
 	if out.SendersUnchecked != "" {
 		fmt.Fprintln(w, "  not checked against the forge, so shown as claimed: "+out.SendersUnchecked)

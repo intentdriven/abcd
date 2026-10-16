@@ -168,8 +168,14 @@ type StatusView struct {
 	// Announcements is every one still standing, newest first, and every
 	// unreadable one read in the last day.
 	Announcements []Announcement
-	// Doubts is every status branch read as doubtful, by name.
+	// Doubts is every status branch read as doubtful whose name is a
+	// lower-case username, by name.
 	Doubts []BranchDoubt
+	// UnreadNames counts the status branches whose names are not read: no
+	// such name is carried, since a pusher chose it (unreadNames keys the
+	// line that counts them, and never leaves this package).
+	UnreadNames int
+	unreadNames []string
 	// Reservations is the reservations as last fetched (View), and Holds every
 	// release being cut, judged as the merge hold judges them (JudgedHolds).
 	Reservations Snapshot
@@ -293,7 +299,14 @@ func readStatus(ctx context.Context, root string, now time.Time, o Options, full
 		return StatusView{}, err
 	}
 	v.Announcements = keptAnnouncements(root, now)
-	v.Doubts = keptDoubts(root, now)
+	for _, d := range keptDoubts(root, now) {
+		if statusName(d.Branch) {
+			v.Doubts = append(v.Doubts, d)
+		} else {
+			v.unreadNames = append(v.unreadNames, d.Branch)
+		}
+	}
+	v.UnreadNames = len(v.unreadNames)
 	if full {
 		if v.Reservations, err = View(root, now); err != nil {
 			return StatusView{}, err

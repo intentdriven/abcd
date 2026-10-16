@@ -119,6 +119,12 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 	for _, d := range v.Doubts {
 		first = append(first, noteLine{key: hashName("doubt\x00" + d.Branch + "\x00" + d.Reason + "\x00" + d.Tip), text: DoubtLine(d)})
 	}
+	if v.UnreadNames > 0 {
+		// Counted, never named: a pusher chose each name. The line is kept
+		// shown by the set it counts, so a new name shows it again.
+		first = append(first, noteLine{key: hashName("unread-names\x00" + strings.Join(v.unreadNames, "\x00")),
+			text: UnreadNamesLine(v.UnreadNames) + "; `abcd status` says how to list them"})
+	}
 	// The newest announcement per item; the rest are counted.
 	seenItem := map[string]bool{}
 	var superseded []noteLine
@@ -195,10 +201,16 @@ func asOf(fetchedAt, now time.Time) string {
 // field, and the line passes termsafe.
 func (a Announcement) Line(now time.Time) string {
 	if a.Unreadable != "" {
-		return termsafe.Sanitize(fmt.Sprintf("abcd-status/%s (doubtful: %s): an announcement that is not shown", a.Branch, a.Unreadable))
+		branch := "a status branch"
+		if statusName(a.Branch) {
+			branch = "abcd-status/" + a.Branch
+		}
+		return termsafe.Sanitize(fmt.Sprintf("%s (doubtful: %s): an announcement that is not shown", branch, a.Unreadable))
 	}
 	who := "@" + a.Sender + " (" + a.Check + ")"
 	switch {
+	case a.Doubtful == DoubtSender && !statusName(a.Branch):
+		who = fmt.Sprintf("@%s (doubtful: %s)", a.Sender, a.Doubtful)
 	case a.Doubtful == DoubtSender:
 		who = fmt.Sprintf("@%s on abcd-status/%s (doubtful: %s)", a.Sender, a.Branch, a.Doubtful)
 	case a.Doubtful == DoubtPusher && a.Pusher != "":
@@ -229,15 +241,25 @@ func Left(until, now time.Time) string {
 }
 
 // DoubtLine is how the block and `abcd status` show a doubtful branch (C11):
-// `abcd-status/"Octo" (doubtful): its name is not a lower-case GitHub
-// username, so it is not read`. The name is quoted, since it may be any name
-// git admits.
+// "abcd-status/maya (doubtful): continuity not verified: ...". Only a branch
+// whose name is a lower-case username is shown by name; any other is
+// counted (UnreadNamesLine), and a doubt naming one shows no name.
 func DoubtLine(d BranchDoubt) string {
-	name := "abcd-status/" + d.Branch
-	if !statusName(d.Branch) {
-		name = "abcd-status/" + fmt.Sprintf("%q", boundedName(d.Branch))
+	name := "a status branch"
+	if statusName(d.Branch) {
+		name = "abcd-status/" + d.Branch
 	}
 	return termsafe.Sanitize(name + " (doubtful): " + d.Reason)
+}
+
+// UnreadNamesLine counts the status branches whose names are not read (C11),
+// "2 status branches whose names are not read": the names themselves are
+// never shown, since a pusher chose each.
+func UnreadNamesLine(n int) string {
+	if n == 1 {
+		return "1 status branch whose name is not read"
+	}
+	return fmt.Sprintf("%d status branches whose names are not read", n)
 }
 
 // UnreadLine is how the block and `abcd status` say a namespace's last
