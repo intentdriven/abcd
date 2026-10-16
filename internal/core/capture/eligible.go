@@ -116,7 +116,13 @@ type DrainVerdict struct {
 // because it says which decision is owed; a record carrying both waits on
 // both. `capture defer` writes a deferral only onto a major or
 // critical record, but a hand-written one on a lighter record is read alike.
-func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdict {
+//
+// setAsidePromoted asks every rule but promoted, in the same order: the
+// verdict the issue would have without its link to an intent. A person's own
+// build reads it to take a promoted issue only when no other hand-back would
+// hold it (refining dcn-2610161428244461); the drain never passes it.
+func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor, opts ...eligibilityOption) DrainVerdict {
+	skipPromoted := slices.Contains(opts, setAsidePromoted)
 	// The title is the record's own first line, so it is masked: it reaches
 	// `drain --json` (iss-2610121542258778).
 	v := DrainVerdict{ID: iss.ID, Path: iss.Path, Title: termsafe.Sanitize(issueTitleLine(iss.Body, iss.Slug)), Severity: iss.Severity, Category: iss.Category}
@@ -131,7 +137,7 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 	case len(iss.BlockedByOpen) > 0:
 		v.Blockers = append([]string(nil), iss.BlockedByOpen...)
 		return decide(DrainSkipped, RuleBlocked, "blocked by "+strings.Join(iss.BlockedByOpen, ", ")+", still open")
-	case len(promotedIntents(iss)) > 0:
+	case !skipPromoted && len(promotedIntents(iss)) > 0:
 		return decide(DrainHandBack, RulePromoted, promotedReason(promotedIntents(iss)))
 	case iss.Category == drainrule.SecurityCategory && r.Security != drainrule.SecurityTake:
 		return decide(DrainHandBack, RuleSecurity, "category security is always a person's under this repository's rule")
@@ -180,6 +186,12 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 	return decide(DrainEligible, RuleFields,
 		"every field rule passes on its remedy; the host judgement over the remedy may still hand it back")
 }
+
+// eligibilityOption changes which rules eligibility asks.
+type eligibilityOption int
+
+// setAsidePromoted: eligibility asks every rule but promoted.
+const setAsidePromoted eligibilityOption = iota + 1
 
 // promotedIntents is every intent the issue's related_intents names, each
 // once, in the record's order, and none for a record the consistency pass
@@ -267,6 +279,12 @@ func orderEligible(vs []DrainVerdict, r drainrule.Rule) {
 type DrainPlanRequest struct {
 	RepoRoot   string
 	IssuesRoot string
+	// SetAsidePromoted judges every issue by every rule but promoted: the
+	// disposition each would have without its link to an intent. A person's
+	// own `abcd build <iss-N>` asks it of an issue the drain hands back as
+	// promoted, and takes the issue only when nothing else would hold it; a
+	// drain never sets it, so it hands every promoted issue back.
+	SetAsidePromoted bool
 }
 
 // DrainPlan is what a drain would do over the open ledger, and writes nothing:
@@ -320,9 +338,13 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 	if err != nil {
 		return DrainPlan{}, err
 	}
+	var opts []eligibilityOption
+	if req.SetAsidePromoted {
+		opts = append(opts, setAsidePromoted)
+	}
 	var eligible, rest []DrainVerdict
 	for _, iss := range lr.Issues {
-		v := eligibility(iss, rule, anchor)
+		v := eligibility(iss, rule, anchor, opts...)
 		if v.Outcome == DrainEligible {
 			eligible = append(eligible, v)
 		} else {

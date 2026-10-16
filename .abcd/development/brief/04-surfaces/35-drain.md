@@ -84,8 +84,11 @@ intent in `related_intents`, so it is handed back as `promoted` whatever its
 severity: a failed audit's `major` `bug` and an undecided one's `minor`
 `inconsistency` alike are the intent's, paid through a re-run of its audit. A
 person's own build of the issue is let through the hand-back, the eligibility
-row naming the intent, and is the lane route an undecided audit's reopened work
-takes (ruling DQ1a, which DQ1c subsumes).
+row naming the intent, when no other rule would hand it back: the rule is asked
+again with `promoted` set aside, so a failed audit's `major` issue is still
+refused on its severity, and the undecided audit's `minor` one is the lane
+route its reopened work takes (ruling DQ1a, which DQ1c subsumes;
+dcn-2610161519047899).
 
 Three hand-backs hold whatever the repository's record says. An issue whose
 `related_intents` names an intent is handed back under `promoted`, naming each

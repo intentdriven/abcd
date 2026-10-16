@@ -126,7 +126,7 @@ order, then the others grouped by outcome with their reasons. For an
 ones an automatic filer wrote apart, since their reason says so. For a
 `waits-on-ruling` or `deferred` hand-back, say which ruling or release it waits
 on, and for a `promoted` one, which intent it goes through; a person's own
-`abcd build <iss-N>` still takes a `promoted` issue, naming the intent. Do not act on the list: a hand-back is a person's decision.
+`abcd build <iss-N>` still takes a `promoted` issue no other rule would hand back, naming the intent. Do not act on the list: a hand-back is a person's decision.
 
 ## The run
 

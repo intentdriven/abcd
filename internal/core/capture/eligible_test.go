@@ -871,3 +871,36 @@ func TestADeferralAtTheLocalAnchorIsNotLapsedByAnotherRecordsTag(t *testing.T) {
 		t.Errorf("iss-2 deferred past v9.9.9: %s (%s)", v.Outcome, v.Reason)
 	}
 }
+
+// TestSetAsidePromotedAsksEveryOtherRule: with the promoted rule set aside,
+// eligibility asks every other rule in its order, so an issue that names an
+// intent is judged as it would be without the link (refining
+// dcn-2610161428244461). Without the option the drain hands every promoted
+// issue back as before. A person's own build reads this to tell an issue held
+// only by its link from one a security, severity or other rule still holds.
+func TestSetAsidePromotedAsksEveryOtherRule(t *testing.T) {
+	linked := []string{"itd-2609300000000201"}
+	for _, c := range []struct {
+		name    string
+		iss     Issue
+		outcome DrainOutcome
+		rule    DrainRule
+	}{
+		{"security", Issue{ID: "iss-1", Category: drainrule.SecurityCategory, Severity: SeverityMinor, Remedy: "r"}, DrainHandBack, RuleSecurity},
+		{"severity", Issue{ID: "iss-2", Category: "bug", Severity: SeverityMajor, Remedy: "r"}, DrainHandBack, RuleSeverity},
+		{"waits on", Issue{ID: "iss-3", Category: "bug", Severity: SeverityMinor, Remedy: "Waits on ruling H4: then fix it."}, DrainHandBack, RuleWaitsOnRuling},
+		{"no remedy", Issue{ID: "iss-4", Category: "bug", Severity: SeverityMinor}, DrainIneligible, RuleRemedy},
+		{"nothing else", Issue{ID: "iss-5", Category: "bug", Severity: SeverityMinor, Remedy: "r"}, DrainEligible, RuleFields},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			iss := c.iss
+			iss.Status, iss.RelatedIntents = StateOpen, linked
+			if v := eligibility(iss, drainrule.Baseline(), deferralAnchor{}); v.Outcome != DrainHandBack || v.Rule != RulePromoted {
+				t.Fatalf("the drain hands a linked issue back as promoted: %+v", v)
+			}
+			if v := eligibility(iss, drainrule.Baseline(), deferralAnchor{}, setAsidePromoted); v.Outcome != c.outcome || v.Rule != c.rule {
+				t.Fatalf("with promoted set aside the issue is %s (%s), want %s (%s): %s", v.Outcome, v.Rule, c.outcome, c.rule, v.Reason)
+			}
+		})
+	}
+}
