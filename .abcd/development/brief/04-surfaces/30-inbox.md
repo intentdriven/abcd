@@ -106,9 +106,11 @@ A record id the report names is its sender's, from the sender's own ledger, not
 abcd's. Copied as written, a long one would fail record-lint's
 `prose_citation_resolves` and a short one would silently cite abcd's own record
 of that number. So in every value the report supplies, a record family abcd
-resolves (`adr`, `itd`, `iss`, `spc`) followed by a number, across whatever
-separators stand between them, is written as one word: the sender's issue 12 is
-written `iss12`. That form is outside the cited grammar, in the body and in the
+resolves (`adr`, `itd`, `iss`, `spc` and `dcn`) followed by a number, across
+whatever separators stand between them, is written as one word: the sender's
+issue 12 is written `iss12`. The families are the ones the cited grammar
+admits, read from that one list, so a family the grammar gains is rewritten
+here too. That form is outside the cited grammar, in the body and in the
 slug capture derives from it, and the number survives for a reader to ask the
 sender about. When anything was rewritten, the capture ends with a sentence
 saying so.

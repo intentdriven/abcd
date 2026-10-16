@@ -58,7 +58,10 @@ stores use, resolved from the checkout the caller stands in. Two sessions in two
 worktrees of one repository share one directory and write no repository file.
 Every level is created one directory at a time and proved real, never through a
 symlink; outside a checkout, or in a repository with no commit, every sub-verb
-refuses and nothing is created. Bare `abcd implement` and the report create
+refuses and nothing is created, with two exceptions that need no run: the load
+check, its wait included, is a machine check with no checkout precondition and
+runs anywhere, and the report given a log file to read reads that file and
+nothing else. Bare `abcd implement` and the report create
 nothing at all. Only joining brings a run into existence: every other writer acts
 for a session that has joined, and one invoked for a session no run holds is
 refused before anything is created — no directory, no lock, no log line.
@@ -402,13 +405,17 @@ saved aside.
 
 ## Exit codes
 
-`0` done, and every status of the load check; `2` refused (an unrecognised input, a session that has not joined, a
+`0` done, and every status of the load check but a wait that gives up; `2` refused (an unrecognised input, a session that has not joined, a
 bound the role does not permit, no checkout to key a run on), with nothing
 written for the refused act; `3` contention (the record is claimed by another
 session, or the run state is locked) — back off and take other work. The
 outage probe gives `3` a meaning of its own, wait: the probe is not due, another
 session holds it, or a service is still down; and it exits `2` once the run gave
-up. The JSON form holds on every path: a refusal is the `{"abcd":"error",…}` envelope on stdout.
+up. The load check's wait exits `1` when it gives up at its timeout or cannot
+wait at all, because the hold it keeps under the abcd home cannot be placed,
+judged or written; with a command to run, it exits with that command's code,
+`128+N` when signal N killed it, or `127` when the command could not be
+started. The JSON form holds on every path: a refusal is the `{"abcd":"error",…}` envelope on stdout.
 
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

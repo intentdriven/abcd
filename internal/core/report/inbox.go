@@ -708,10 +708,13 @@ func captureRequest(ledgerRoot, id string, r Report) capture.CaptureRequest {
 	}
 }
 
-// senderIDRe is a record family abcd resolves (recordid.CitedIDRe: adr, itd,
-// iss, spc) that starts a word and is followed by a number, whatever run of
-// separators stands between them.
-var senderIDRe = regexp.MustCompile(`(?i)(^|[^a-z0-9])(adr|itd|iss|spc)[^a-z0-9]+([0-9])`)
+// senderIDRe is a record family abcd resolves that starts a word and is
+// followed by a number, whatever run of separators stands between them. The
+// families are recordid.CitedFamilies, the list recordid.CitedIDRe is built
+// from, never a copy kept here: a copy missed the decision records (dcn) and
+// let a sender's dcn-N cite abcd's own (iss-2610160608389169).
+var senderIDRe = regexp.MustCompile(`(?i)(^|[^a-z0-9])(` +
+	strings.Join(recordid.CitedFamilies(), "|") + `)[^a-z0-9]+([0-9])`)
 
 // senderIDs writes every record id in s as one word, family and number
 // together (the sender's iss-12 becomes iss12), and returns how many it

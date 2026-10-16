@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/decisions"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -252,6 +253,28 @@ func TestRecordRefusesMalformedCitation(t *testing.T) {
 		}
 		if _, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at); err == nil {
 			t.Errorf("a hit citing %q was accepted", bad)
+		}
+	}
+	assertNothingWritten(t, root)
+}
+
+// TestMalformedCitationRefusalNamesEveryCitedFamily (iss-2610160608457651):
+// the refusal of a malformed grill citation says what a citation may be, and
+// says exactly what CitedIDRe accepts: every family recordid resolves, read
+// from its one list, so a decision record's dcn-N is named as citable.
+func TestMalformedCitationRefusalNamesEveryCitedFamily(t *testing.T) {
+	root := seedRepo(t)
+	p := validPayload()
+	p["legs"].([]any)[1].(map[string]any)["hits"] = []any{
+		map[string]any{"record": "prn-1", "relation": "covered"},
+	}
+	_, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at)
+	if err == nil {
+		t.Fatal("a hit citing prn-1 was accepted")
+	}
+	for _, fam := range recordid.CitedFamilies() {
+		if !strings.Contains(err.Error(), fam+"-N") {
+			t.Errorf("the refusal does not name %s-N as citable: %v", fam, err)
 		}
 	}
 	assertNothingWritten(t, root)

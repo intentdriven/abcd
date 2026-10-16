@@ -1,9 +1,11 @@
 package gittest
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -198,4 +200,36 @@ func CloneBare(t *testing.T, src, path string) {
 		t.Fatalf("git clone --bare: %v (%s)", err, out)
 	}
 	disableMaintenance(t, env, path)
+}
+
+// MergeParentlessRoots merges n new parentless commits into the current
+// branch with an empty diff, in one n-way merge commit, so the branch's
+// history holds n more root commits than it did. The commits are written
+// through one fast-import, so the count costs one git process and not n. Each
+// holds the empty tree and is dated in 2090, after any commit a test makes.
+func (r *Repo) MergeParentlessRoots(n int) {
+	r.t.Helper()
+	const who = "Fixture <fixture@example.invalid>"
+	const at = 3786912000 // 2090-01-01T00:00:00Z
+	head := r.Git("rev-parse", "HEAD")
+	branch := r.Git("symbolic-ref", "HEAD")
+	var b strings.Builder
+	for i := 1; i <= n; i++ {
+		msg := "a parentless root " + strconv.Itoa(i) + "\n"
+		fmt.Fprintf(&b, "reset refs/fixture/roots\ncommit refs/fixture/roots\nmark :%d\ncommitter %s %d +0000\ndata %d\n%s\n", i, who, at+i, len(msg), msg)
+	}
+	msg := "merge " + strconv.Itoa(n) + " parentless roots\n"
+	fmt.Fprintf(&b, "commit %s\ncommitter %s %d +0000\ndata %d\n%sfrom %s\n", branch, who, at+n+1, len(msg), msg, head)
+	for i := 1; i <= n; i++ {
+		fmt.Fprintf(&b, "merge :%d\n", i)
+	}
+	b.WriteString("\n")
+	cmd := exec.Command("git", "-C", r.root, "fast-import", "--quiet", "--force")
+	cmd.Env = r.env
+	cmd.Stdin = strings.NewReader(b.String())
+	if out, err := cmd.CombinedOutput(); err != nil {
+		r.t.Fatalf("git fast-import: %v\n%s", err, out)
+	}
+	r.Git("update-ref", "-d", "refs/fixture/roots")
+	r.Git("reset", "-q", "--hard", "HEAD")
 }

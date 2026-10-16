@@ -40,6 +40,16 @@ func storeGit(t *testing.T, f fixture, store string, args ...string) (string, er
 	return strings.TrimSpace(string(out)), err
 }
 
+// storePlace is where the fixture repository's store is, or is to be made.
+func storePlace(t *testing.T, f fixture) string {
+	t.Helper()
+	loc, err := locate(f.home, f.repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return loc.Path
+}
+
 func mustRefuse(t *testing.T, err error, want string) {
 	t.Helper()
 	var r *RefusalError
@@ -151,14 +161,11 @@ func TestVerifyStoreRefusesStoreInsideCheckout(t *testing.T) {
 // for it from whatever repository encloses it.
 func TestVerifyStoreRefusesAPlainDirectory(t *testing.T) {
 	f := newFixture(t)
-	p, err := storePath(f.home, f.repo.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	p := storePlace(t, f)
 	if err := os.MkdirAll(p, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	_, _, err = openStore(f.home, f.repo.Root())
+	_, _, err := openStore(f.home, f.repo.Root())
 	mustRefuse(t, err, "worktree")
 }
 
