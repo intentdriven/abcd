@@ -29,8 +29,9 @@ func TestThePromptHookShowsEachAnnouncementOnce(t *testing.T) {
 
 	start := time.Now()
 	out, _ := runHook(t, hookInputJSON(t, "s-status", pat, "hello there"), "hook", "prompt-router")
-	if took := time.Since(start); took > time.Second {
-		t.Fatalf("the hook took %s; want under a second", took)
+	// The origin would hang for 30 s; the margin is for a loaded machine.
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("the hook took %s; want it never to wait on the network", took)
 	}
 	for _, want := range []string{claim.NotesHeading + "\n", "- @octo (claimed): merging #1012, for 30 min\n", claim.GrantsNothing + "\n"} {
 		if !strings.Contains(out, want) {

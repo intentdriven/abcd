@@ -129,8 +129,9 @@ func TestStatusSaysAFailedFetchAndExitsOne(t *testing.T) {
 	}
 	gitCmd(t, pat, "remote", "set-url", "origin", filepath.Join(w.home, "gone.git"))
 	code, stdout, stderr := reserveRun(t, pat, "status")
-	if code != 1 || !strings.Contains(stdout, "\n  status unread since ") || !strings.Contains(stderr, "abcd status: could not read") {
-		t.Fatalf("a failed fetch: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	if code != 1 || !strings.Contains(stdout, "\n  status unread since ") || !strings.Contains(stderr, "abcd status: could not read") ||
+		strings.Contains(stdout, "none standing") || !strings.Contains(stdout, "\n  none read\n") {
+		t.Fatalf("a failed fetch: exit %d\nstdout %s\nstderr %s\nwant it unread, and \"none read\", never \"none standing\"", code, stdout, stderr)
 	}
 	if strings.Contains(stdout, w.home) || strings.Contains(stderr, w.home) {
 		t.Fatalf("the failure carries the home directory:\n%s\n%s", stdout, stderr)

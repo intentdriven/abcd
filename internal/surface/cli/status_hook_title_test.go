@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
 // TestThePromptThatNamesTheSessionCarriesTheStatus: the one prompt that sets
@@ -43,7 +45,9 @@ func TestThePromptThatNamesTheSessionCarriesTheStatus(t *testing.T) {
 			if c.asJSON {
 				args = append(args, "--json")
 			}
-			stdout, stderr := runHook(t, promptJSON(t, "s1", pat, "hello there", ""), args...)
+			// The prompt forces one rules domain, so the order of the rules
+			// and the status block is seen.
+			stdout, stderr := runHook(t, promptJSON(t, "s1", pat, "*COMMITTING hello there", ""), args...)
 			if c.wreck != strings.Contains(stderr, "injecting nothing") {
 				t.Fatalf("rules.json wrecked %v, but stderr:\n%s", c.wreck, stderr)
 			}
@@ -52,6 +56,7 @@ func TestThePromptThatNamesTheSessionCarriesTheStatus(t *testing.T) {
 				if got.HookSpecificOutput.SessionTitle != "Alice" || !strings.Contains(got.HookSpecificOutput.AdditionalContext, line) {
 					t.Fatalf("hook output = %+v; want the title Alice and the status line %q in its context", got, line)
 				}
+				statusLast(t, got.HookSpecificOutput.AdditionalContext, c.wreck)
 				return
 			}
 			var env struct {
@@ -65,6 +70,25 @@ func TestThePromptThatNamesTheSessionCarriesTheStatus(t *testing.T) {
 			if env.SessionTitle != "Alice" || !strings.Contains(env.Text, line) || c.wreck != (env.Error != "") {
 				t.Fatalf("envelope = %+v; want session_title Alice, the status line %q in text, and an error only when rules.json is wrecked", env, line)
 			}
+			statusLast(t, env.Text, c.wreck)
 		})
+	}
+}
+
+// statusLast holds the context a titled prompt carries to its order: the
+// rules' text first, when the rules loaded, then the status block, which
+// ends it; with the rules unreadable the status block is the whole context.
+func statusLast(t *testing.T, context string, wrecked bool) {
+	t.Helper()
+	at := strings.Index(context, claim.NotesHeading+"\n")
+	if at < 0 || !strings.HasSuffix(context, claim.GrantsNothing+"\n") {
+		t.Fatalf("context:\n%s\nwant it to end with the status block", context)
+	}
+	rules := strings.Index(context, "## COMMITTING")
+	switch {
+	case wrecked && at != 0:
+		t.Fatalf("context:\n%s\nwant the status block alone, rules.json being unreadable", context)
+	case !wrecked && (rules < 0 || rules > at):
+		t.Fatalf("context:\n%s\nwant the rules first, then the status block", context)
 	}
 }
