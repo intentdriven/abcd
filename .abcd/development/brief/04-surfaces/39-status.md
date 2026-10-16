@@ -30,11 +30,19 @@ whose name is a GitHub username in lower case, by its own refspec, and
 `origin`'s default branch, and stamps when in the local tier. A branch under
 `abcd-status/` by any other name is never fetched: two names that differ only
 in case make every fetch fail on a case-insensitive filesystem, and the
-no-deletion ruleset would keep the bad branch for ever (decision 10), so the
-name is kept and shown as doubtful. Then it asks the forge, through `gh api`
+no-deletion ruleset would keep the bad branch for ever (decision 10), so such
+names are counted as doubtful, never shown: a pusher chose each, and agents
+read both outputs. The per-branch refspecs travel on `git fetch --stdin`, so
+no number of branches passes the argument limit, and before the fetch every
+tracking ref under the namespace that is not among the names it fetches is
+deleted, since named refspecs prune nothing: a branch deleted on `origin`
+leaves nothing to read. Then it asks the forge, through `gh api`
 (the repository's activity record, `GET /repos/{owner}/{repo}/activity`, one
 call per status branch), who pushed each standing announcement it has not
-asked about before (C17). It pushes nothing.
+asked about before (C17). A push's record names the tip it left, so every
+first-parent commit after the tip it moved from takes the same pusher, at
+most the walk's limit per push, and a push made by an app is passed over,
+leaving its sender claimed. It pushes nothing.
 
 ## The intake
 
@@ -59,7 +67,7 @@ as one that changes a file, shown only by its branch and the reason; a branch
 that moved back or was rewritten, passed a merge, or gained more than one read
 covers since it was last read here, or holds more than one read covers at its
 first read here ("continuity not verified"); and a branch
-whose name is not a lower-case username.
+whose name is not a lower-case username, counted and never named.
 
 ## What it shows
 
@@ -81,9 +89,10 @@ block's own fields.
 The prompt hook appends a `## STATUS` block to the text it injects
 when this checkout holds something it has not shown: a failed fetch per
 namespace, a release being cut ("release v0.16.0 being cut by @maya: merges
-are held", C8), a doubtful branch, and the newest announcement per item, at
-most ten lines, then a count of the rest and the command that lists them all
-(C18). Each line is shown once, kept by commit or by what it says, and the
+are held", C8), then the newest announcement per item, then the doubts,
+at most two one by one and otherwise one line that sums them up and always
+keeps its place, at most ten lines in all, then a count of the rest and the
+command that lists them all (C18). Each line is shown once, kept by commit or by what it says, and the
 block is dated by the last stamped fetch ("as of the last fetch 4 minutes
 ago", C12) and ends with the line that an announcement grants nothing (C6). It
 reads only the local tier and touches no network, and the read runs under a

@@ -4322,23 +4322,28 @@ It reads the remote once: it lists the status branches on origin (git
 ls-remote), then fetches, in one command, the reservations with origin's
 release tags, each status branch whose name is a GitHub username in lower
 case, and origin's default branch, and stamps when in the local tier. A
-branch under abcd-status/ by any other name is named as doubtful and not
-fetched. Then it asks the forge (gh api, the repository's activity record)
-who pushed each standing announcement it has not asked about yet: a sender
-is verified when the forge names the branch's owner, doubtful when it names
-someone else, and claimed when the forge cannot say.
+branch under abcd-status/ by any other name is counted, never named, and
+not fetched, and this checkout's copy of each status branch origin does not
+list is deleted first. Then it asks the forge (gh api, the repository's
+activity record) who pushed each standing announcement it has not asked
+about yet: a sender is verified when the forge names the branch's owner,
+doubtful when it names someone else, and claimed when the forge cannot say
+or an app pushed it.
 
 An announcement stands for its life from when this checkout first fetched it,
 not by the sender's clock. One whose sender is not its branch's owner, one
 that does not read as an announcement (never shown but by its branch and the
 reason), and a branch that was rewritten, passed a merge or gained more than
 one read covers are marked doubtful, and every other branch is still read.
+A running session sees each new line once, at its next prompt, in a
+block headed STATUS of at most ten lines, read from disk alone.
 An announcement informs and grants nothing.
 
 When the fetch fails, the status is listed as last fetched, with that view's
 age and a line saying it is unread since then and why. Exit 0 when the fetch
-succeeded and with no remote named origin; exit 1 when it failed; exit 2
-outside a git checkout.
+succeeded and with no remote named origin; exit 1 when it failed or what
+it fetched could not be read; exit 2 outside a git checkout or with an
+operand.
 
 ### `abcd statusline`
 

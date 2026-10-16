@@ -101,21 +101,26 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"ls-remote), then fetches, in one command, the reservations with origin's\n" +
 			"release tags, each status branch whose name is a GitHub username in lower\n" +
 			"case, and origin's default branch, and stamps when in the local tier. A\n" +
-			"branch under abcd-status/ by any other name is named as doubtful and not\n" +
-			"fetched. Then it asks the forge (gh api, the repository's activity record)\n" +
-			"who pushed each standing announcement it has not asked about yet: a sender\n" +
-			"is verified when the forge names the branch's owner, doubtful when it names\n" +
-			"someone else, and claimed when the forge cannot say.\n\n" +
+			"branch under abcd-status/ by any other name is counted, never named, and\n" +
+			"not fetched, and this checkout's copy of each status branch origin does not\n" +
+			"list is deleted first. Then it asks the forge (gh api, the repository's\n" +
+			"activity record) who pushed each standing announcement it has not asked\n" +
+			"about yet: a sender is verified when the forge names the branch's owner,\n" +
+			"doubtful when it names someone else, and claimed when the forge cannot say\n" +
+			"or an app pushed it.\n\n" +
 			"An announcement stands for its life from when this checkout first fetched it,\n" +
 			"not by the sender's clock. One whose sender is not its branch's owner, one\n" +
 			"that does not read as an announcement (never shown but by its branch and the\n" +
 			"reason), and a branch that was rewritten, passed a merge or gained more than\n" +
 			"one read covers are marked doubtful, and every other branch is still read.\n" +
+			"A running session sees each new line once, at its next prompt, in a\n" +
+			"block headed STATUS of at most ten lines, read from disk alone.\n" +
 			"An announcement informs and grants nothing.\n\n" +
 			"When the fetch fails, the status is listed as last fetched, with that view's\n" +
 			"age and a line saying it is unread since then and why. Exit 0 when the fetch\n" +
-			"succeeded and with no remote named origin; exit 1 when it failed; exit 2\n" +
-			"outside a git checkout.",
+			"succeeded and with no remote named origin; exit 1 when it failed or what\n" +
+			"it fetched could not be read; exit 2 outside a git checkout or with an\n" +
+			"operand.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return &exitError{Code: 2, Msg: "abcd status: takes no operand; it lists everyone's status (nothing read)"}
