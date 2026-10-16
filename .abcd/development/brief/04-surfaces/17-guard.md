@@ -28,6 +28,7 @@ runs".
 |---|---|---|
 | `check` | gate | shipped |
 | `hook` | — | shipped |
+| `approve` | — | shipped |
 
 The check takes the candidate as the value of its command flag or on stdin, and
 stdin is the one to prefer for a command line you did not type: the shell
@@ -316,6 +317,54 @@ reads the registry of the directory it runs in and nothing else. The hook also
 reads the registry of the repository the workdir names, so a command the check
 allows in one repository can be warned about or blocked by the hook when its
 workdir is another.
+
+## Answering a headless agent's prompts
+
+An agent abcd starts through its claude runner has no terminal, so nobody can
+answer the harness's permission prompts (iss-2610161612203555). A launch whose
+role's contract grants the shell therefore carries the guard
+(dcn-2610161624025493): the runner names the harness's permission prompt tool,
+`mcp__abcd__approve`, and starts `abcd guard approve --dir=<working tree>` as
+the launch's one MCP server, on stdio, both on that launch's command line, under
+the default permission mode, with the shell no longer granted without a prompt.
+Every shell command the harness would ask a person about is put to the guard,
+read against the registry of the working tree the agent runs in, afresh for
+each prompt.
+
+The bar is higher than the hook's, because nobody answers after it. Only a
+clean allow approves: no entry and no signal, a warn included; no note about the
+check; the repository's registry in force and switched on; every program named
+by the line, not a variable, a substitution or a glob; no inline code handed to
+a non-shell interpreter; no path the harness protects from writes named
+anywhere on the line (its own list: repository state such as `.git/`, shell and
+tool start-up files, its configuration and `.mcp.json`); and no `rm` or `rmdir`
+whose target is, or may be, the root, a top-level directory, the home
+directory, the working tree or a directory above it. The last two keep the
+refusals the harness's own safety checks gave in the refuse-every-prompt mode:
+the prompt tool is told the tool and its input, not why the harness asked, so
+the approver refuses those shapes itself. An approved call runs with the input
+re-encoded from what was judged. Everything else, and a prompt for any tool but
+the shell, is refused with the guard's reason and successor, which the harness
+hands the agent so it can rewrite the command.
+
+What this widens, plainly: on such a launch, a shell command the harness would
+have refused for want of a person, such as a compound line its parser cannot
+trace, now runs when the guard clears it. What it narrows: a shell grant used to
+run every command unasked, with no guard at all, since bare mode loads no
+plugin hook; now each command the harness does not itself treat as read-only
+reaches the guard first. The guard stays a mistake filter
+([adr-42](../../decisions/adrs/0042-guard-parse-layer-is-a-mistake-filter.md));
+the approver widens nothing past what it reads, and this adds no sandbox, which
+for autonomous runs is a separate later step (dcn-2610161619296615).
+
+The expected shape, a pre-tool-use hook in a per-launch `--settings` file, does
+not work: bare mode skips every hook, those a `--settings` file declares
+included (probed on the harness's 2.1.301 release), while an MCP server
+`--mcp-config` names is the one thing bare mode starts. The person's host
+settings are never written, and a session the person drives never starts the
+approver. A launch whose contract grants no shell refuses every prompt unasked,
+as before; the opencode runner has no per-launch prompt answerer, so its
+launches keep the permissions opencode's own configuration sets.
 
 ## What an allow means
 
@@ -606,9 +655,17 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd guard`
 
-Sub-verbs: `abcd guard check`, `abcd guard hook`.
+Sub-verbs: `abcd guard approve`, `abcd guard check`, `abcd guard hook`.
 
 Flags: none.
+
+### `abcd guard approve`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--dir` | string |
 
 ### `abcd guard check`
 

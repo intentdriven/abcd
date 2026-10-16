@@ -1412,9 +1412,43 @@ abcd embark probe ../lifeboat
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.
 
 **Usage:** `abcd guard`
+
+#### `abcd guard approve`
+
+Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.
+
+**Usage:** `abcd guard approve --dir=<working tree> [flags]`
+
+Answers the permission prompts of an agent abcd started without a terminal,
+over MCP on stdio: the claude runner starts it, as the one server of a launch
+whose role's contract grants the shell, and names its tool, approve, as the
+harness's permission prompt tool. Each prompt is judged against the hazard
+registry of the working tree --dir names, read afresh for every prompt.
+
+A shell command is approved only when the guard reads it whole and clears
+it: no registry entry and no reading signal, a warn included; no note about
+the check, such as a script that does not exist; the registry the repository
+declares, loaded and switched on; every program named by the line rather
+than by a variable, a substitution or a glob; and no inline code handed to a
+non-shell interpreter (python -c, node -e, perl -e and the like). It runs
+with exactly the input judged. Everything else is refused with the guard's
+reason and what to run instead, which the harness hands the agent, so the
+agent can rewrite the command. A prompt for any tool but the shell is
+refused, since nobody is there to approve it.
+
+The guard is a mistake filter, not a security boundary (see `abcd guard
+check --help` for what an allow does not see), and this adds no sandbox.
+It never touches the person's host settings, and interactive sessions never
+start it. It exits 0 when its input ends.
+
+**Flags:**
+
+```
+      --dir string   the working tree the agent runs in, as an absolute path
+```
 
 #### `abcd guard check`
 

@@ -1,7 +1,7 @@
 ---
 name: guard
-description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb."
-argument-hint: "[check [--command <command>] | hook]"
+description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb."
+argument-hint: "[check [--command <command>] | hook | approve --dir=<dir>]"
 block: agents
 user-invocable: false
 ---
@@ -155,6 +155,47 @@ call when the directory is missing, so no failed-cd hazard exists. A workdir tha
 no directory could be named by is refused with the host's deny and the
 reason: a value that is not a string, holds a NUL byte, a control character or
 invalid UTF-8, or is over 4096 bytes.
+
+## `approve` — answering a headless agent's permission prompts
+
+```bash
+abcd guard approve --dir=<the agent's working tree>
+```
+
+You never run this yourself. When abcd starts an agent through its claude
+runner without a terminal (a build lane's implementer or reviewer routed to a
+runner), and the role's contract grants the shell, the launch carries the guard:
+the runner names `approve` as the harness's permission prompt tool and starts
+this verb as the launch's one MCP server, on stdio, all on that launch's command
+line. Nothing is written to the person's host settings, interactive sessions
+are unchanged, and this adds no sandbox. On that launch the shell is no longer
+granted without a prompt, so every shell command the harness would ask a person
+about is put to the guard instead, judged against the registry of the working
+tree `--dir` names, read afresh each time.
+
+A shell command is approved only when the guard reads it whole and clears it:
+
+- no registry entry and no reading signal fired, a **warn included**, since
+  nobody is there to see the warning;
+- the check left no note, such as a script the command runs that does not exist;
+- the repository's registry is loaded and switched on;
+- every program the line runs is named by the line, not by a variable, a
+  substitution or a glob (`program-name-unread`);
+- no inline code is handed to a non-shell interpreter, such as `python -c`,
+  `node -e`, `perl -e` or `pwsh -Command` (`inline-code-unread`);
+- the line names no path the harness protects from writes, such as `.git/`,
+  `.claude/`, `.mcp.json` or a shell start-up file (`protected-path`);
+- no `rm` or `rmdir` targets, or may target, the root, a top-level directory,
+  the home directory, the working tree or a directory above it
+  (`critical-path-removal`).
+
+It then runs with exactly the input that was judged. Anything else is refused
+with the guard's reason and what to run instead, which the harness hands the
+agent so it can rewrite the command. A prompt for any tool but the shell is
+refused (`prompt-not-shell`), since nobody is there to approve it. A role whose
+contract grants no shell keeps its launch as it was, with every prompt refused
+unasked. The opencode runner has no per-launch prompt answerer, so its launches
+keep the permissions opencode's own configuration sets.
 
 ## Registry and overrides
 
