@@ -303,7 +303,8 @@ asking-sync-check:
 # their test stages, a live race run does not shut it by itself, and a waiter
 # queued ahead still does; and the race gate is shut while another go test
 # -race run or race waiter ahead is live or the load is at the limit, so one
-# race stage runs at a time. Each test stage then takes a go test -p derived
+# race stage runs at a time among checkouts that have this gate (an older
+# checkout's race stage is ungated, so set 2 only once none runs a preflight). Each test stage then takes a go test -p derived
 # from the online cores and the load as the stage starts, at most the cores
 # divided by the setting (cmd/test-parallelism), so one run cannot saturate
 # the machine.

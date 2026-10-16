@@ -39,7 +39,7 @@ import (
 // preflight` runs before its race stage, opens at once with one slot, so a
 // preflight's race stage follows its tests exactly as before; above one it is
 // shut only by another race run, a race waiter ahead (machineload.RaceAhead),
-// the load and the hold, so one race stage runs at a time.
+// the load and the hold, so one race stage runs at a time among the preflights whose checkouts have the race gate (a checkout older than the gate runs its race stage ungated).
 //
 // The process table is the cross-account half (iss-2610140638074587): it
 // shows every account's processes: no file another account can write is read;
@@ -186,7 +186,7 @@ type WaitRequest struct {
 	// instead of the first gate. With one slot (PreflightSlots) it opens at
 	// once, without a look, a hold or a jitter; above one it is shut only by
 	// another go test -race run, a race waiter ahead of it, the load and the
-	// hold, so one race stage runs at a time.
+	// hold, so one race stage runs at a time among the preflights whose checkouts have the race gate.
 	Race bool
 	// OnWait is called once, at the first look that finds the gate shut.
 	OnWait func(WaitResult)

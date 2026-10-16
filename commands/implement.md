@@ -745,7 +745,9 @@ preflight while fewer than that many other preflights or waiters running their
 command are in their test stages (`--wait -- make preflight` counts once), a
 waiter queued ahead still shuts it, and a live race run does not shut it by
 itself; the load limit still does, and the race gate waits as described
-above. Each stage's `go test -p` is then at most the cores divided by the
+above. Race stages are one at a time only among preflights whose checkouts
+have the race gate: a preflight run from a checkout older than the gate runs
+its race stage ungated, so set 2 only once no such checkout runs a preflight. Each stage's `go test -p` is then at most the cores divided by the
 setting, so two concurrent stages do not each take the whole machine. A value
 that is not a whole number from 1 to 2 refuses the wait, naming where it was
 set; a `load.preflights` in a repository's `.abcd/config.json` is never read.

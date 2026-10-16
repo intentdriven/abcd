@@ -299,7 +299,7 @@ time the race gate opens at once, with no look at the machine, no hold, no
 jitter and no settle, so the preflight runs exactly as before. Above one it is
 shut only by another live `go test -race` run, a race waiter queued ahead of
 it in the same start-time order or running its command, the load limit and
-the hold, so one race stage runs at a time. A first gate's waiter never queues
+the hold, so one race stage runs at a time among the preflights whose checkouts have the race gate; a preflight run from a checkout older than the gate runs its race stage ungated, so two at once is safe only once no such checkout runs one. A first gate's waiter never queues
 there, a race waiter never queues at the first gate, and a preflight whose
 waiter is at its race gate counts as in its test stages. How many preflights
 the first gate admits to their test stages at once is the person's own machine

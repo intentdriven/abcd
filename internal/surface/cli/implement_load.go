@@ -112,7 +112,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"race stage follows its tests exactly as before. Above one it is shut only while\n" +
 			"another `go test -race` run is live, a race waiter is ahead of it (in the same\n" +
 			"order) or running its command, the load is at the wait limit, or a hold is in\n" +
-			"force, so one race stage runs at a time. A first gate's waiter never queues\n" +
+			"force, so one race stage runs at a time among the preflights whose checkouts\n" +
+			"have the race gate; a checkout older than the gate runs its race stage\n" +
+			"ungated, so set 2 only once no such checkout runs a preflight. A first gate's\n" +
+			"waiter never queues\n" +
 			"behind a race waiter, and a preflight whose waiter is at its race gate is in its\n" +
 			"test stages.\n\n" +
 			"How many preflights may be in their test stages at once is your own machine's\n" +

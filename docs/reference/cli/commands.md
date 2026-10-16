@@ -2043,7 +2043,10 @@ without reading the machine, taking a hold or waiting a jitter, so a preflight's
 race stage follows its tests exactly as before. Above one it is shut only while
 another `go test -race` run is live, a race waiter is ahead of it (in the same
 order) or running its command, the load is at the wait limit, or a hold is in
-force, so one race stage runs at a time. A first gate's waiter never queues
+force, so one race stage runs at a time among the preflights whose checkouts
+have the race gate; a checkout older than the gate runs its race stage
+ungated, so set 2 only once no such checkout runs a preflight. A first gate's
+waiter never queues
 behind a race waiter, and a preflight whose waiter is at its race gate is in its
 test stages.
 
