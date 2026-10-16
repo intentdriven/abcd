@@ -145,8 +145,9 @@ var statusReadHook atomic.Pointer[func(read func())]
 // and the block's MarkShown writes nothing past it. A checkout with no remote
 // named origin, or without its local tier, where nothing can be kept as
 // shown, shows nothing. When the read's deadline passes before the read
-// ends, or the read fails, the block is one line saying the status is
-// unavailable and why, and the answer is ErrStatusUnavailable, wrapped: the
+// ends, or the read fails, the block is one line saying, in fixed words, the
+// status is unavailable and which of the two it was, and the answer is
+// ErrStatusUnavailable, wrapped with git's reason for a failed read: the
 // hook never waits past its deadline and never shows nothing in place of a
 // read it could not make.
 func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (Notes, error) {
@@ -200,12 +201,16 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 		}
 	}
 	if got.err != nil {
-		why := "it could not be read: " + termsafe.Sanitize(redacted(got.err))
+		// The block says why in fixed words: git's text can quote what a
+		// file or a remote holds, so only the answer, for the hook's stderr,
+		// carries it.
 		if errors.Is(got.err, context.DeadlineExceeded) || errors.Is(got.err, context.Canceled) {
-			why = "reading it here took longer than this prompt allows"
+			why := "reading it here took longer than this prompt allows"
+			return Notes{Text: NotesHeading + "\n\nstatus unavailable: " + why + "; `abcd status` reads it in full\n"},
+				fmt.Errorf("%w: %s", ErrStatusUnavailable, why)
 		}
-		return Notes{Text: NotesHeading + "\n\nstatus unavailable: " + why + "; `abcd status` reads it in full\n"},
-			fmt.Errorf("%w: %s", ErrStatusUnavailable, why)
+		return Notes{Text: NotesHeading + "\n\nstatus unavailable: it could not be read here; `abcd status` says why\n"},
+			fmt.Errorf("%w: it could not be read: %s", ErrStatusUnavailable, termsafe.Sanitize(redacted(got.err)))
 	}
 	n := got.n
 	if bounded {

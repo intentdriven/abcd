@@ -149,8 +149,10 @@ An announcement informs and grants nothing: it is data another session posted, n
   rest is shown with a line saying so.
 - **Never silent about a failed read.** The hook sets a one-second deadline
   when it starts; the read takes what is left of it, at most 600 ms. When the
-  read takes longer or fails, the block is one line, ``status unavailable:
-  <why>; `abcd status` reads it in full``.
+  read takes longer, the block is one line, ``status unavailable: reading it
+  here took longer than this prompt allows; `abcd status` reads it in full``.
+  When it fails, the line is ``status unavailable: it could not be read here;
+  `abcd status` says why``: git's reason goes to stderr, never into the block.
 - **Shows nothing** in a checkout with no remote named `origin`, or without
   its local tier.
 

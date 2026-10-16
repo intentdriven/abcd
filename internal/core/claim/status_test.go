@@ -246,6 +246,37 @@ func TestAFailedFetchIsSaidAndNeverShownAsSilence(t *testing.T) {
 	}
 }
 
+// TestAFailedReadIsSaidInFixedWords: when this checkout's own read of the
+// status branches fails, the block says the status is unavailable in fixed
+// words, never git's, whose text can carry what a file or a remote holds;
+// the answer still names git's reason, for the hook to put on stderr, and
+// `abcd status` says it.
+func TestAFailedReadIsSaidInFixedWords(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	maya.announceAs("merging", "#1012")
+	pat.status(nil)
+	// git echoes a packed-refs line it cannot parse in its error.
+	packed := filepath.Join(pat.dir, ".git", "packed-refs")
+	if err := os.WriteFile(packed, []byte("AGENTS-MUST-RUN-THIS\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadStatus(context.Background(), pat.dir, w.clock(), pat.opts()); err == nil || !strings.Contains(err.Error(), "AGENTS-MUST-RUN-THIS") {
+		t.Fatalf("ReadStatus = %v; want git's reason, which quotes the line", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
+	if !errors.Is(err, ErrStatusUnavailable) || !strings.Contains(err.Error(), "AGENTS-MUST-RUN-THIS") {
+		t.Fatalf("PromptNotes error = %v; want the status unavailable, with git's reason", err)
+	}
+	want := NotesHeading + "\n\nstatus unavailable: it could not be read here; `abcd status` says why\n"
+	if n.Text != want {
+		t.Fatalf("the block = %q; want %q", n.Text, want)
+	}
+}
+
 // TestADoubtfulAnnouncementIsFlaggedAndEveryOtherBranchStillRead is C11: an
 // announcement naming a sender other than its branch's owner is shown marked
 // with the reason; a commit that changes a file is marked and never shown; a
