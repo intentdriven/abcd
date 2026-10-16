@@ -395,6 +395,8 @@ func TestAnAnnouncementOutsideTheFixedFormIsRefusedBeforeAnyGit(t *testing.T) {
 		{AnnounceRequest{Kind: "merging", Item: "#1", For: 25 * time.Hour}, "expiry 25h0m0s is outside 1m0s to 24h0m0s"},
 		{AnnounceRequest{Kind: "merging", Item: "#1", For: 30 * time.Second}, "expiry 30s is outside 1m0s to 24h0m0s"},
 		{AnnounceRequest{Kind: "merging", Item: "#1", For: -time.Hour}, "expiry -1h0m0s is outside"},
+		{AnnounceRequest{Kind: "merging", Item: "#1", For: 24*time.Hour + time.Nanosecond}, "expiry 24h0m0.000000001s is outside 1m0s to 24h0m0s"},
+		{AnnounceRequest{Kind: "merging", Item: "#1", For: time.Minute - time.Nanosecond}, "expiry 59.999999999s is outside 1m0s to 24h0m0s"},
 	} {
 		log := traced(t)
 		_, err := p.announceWith(tc.req, &embargoProbe{})
@@ -407,6 +409,27 @@ func TestAnAnnouncementOutsideTheFixedFormIsRefusedBeforeAnyGit(t *testing.T) {
 	}
 	if tip := w.statusTip("octo"); tip != "" {
 		t.Fatalf("a refused announcement reached origin: %s", tip)
+	}
+}
+
+// TestAnExpiryInsideTheBoundsIsSentToTheSecond: an expiry of exactly 24 hours
+// is inside the bounds and sent; one with a fraction of a second, such as
+// 90.5s, is sent to the whole second below it, as every time an announcement
+// carries is written to the second.
+func TestAnExpiryInsideTheBoundsIsSentToTheSecond(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	for _, tc := range []struct {
+		life, want time.Duration
+	}{{MaxAnnouncementLife, MaxAnnouncementLife}, {90*time.Second + 500*time.Millisecond, 90 * time.Second}, {MinAnnouncementLife, MinAnnouncementLife}} {
+		res, err := p.announceWith(AnnounceRequest{Kind: "merging", Item: "#1012", For: tc.life}, &embargoProbe{})
+		if err != nil {
+			t.Fatalf("--expires-in %s: %v; want it sent", tc.life, err)
+		}
+		if got := res.ExpiresAt.Sub(res.SentAt); got != tc.want {
+			t.Fatalf("--expires-in %s stands %s; want %s", tc.life, got, tc.want)
+		}
+		w.set(w.clock().Add(time.Minute))
 	}
 }
 

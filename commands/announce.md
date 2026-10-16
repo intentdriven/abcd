@@ -38,7 +38,8 @@ The kind is one of `merging`, `merged`, `asking`, `answered` and
 `handed-over`. The item is the record it concerns, an issue (`iss-N`) or an
 intent (`itd-N`), or a pull request (`#1012`, quoted, or the bare `1012`,
 since a shell reads an unquoted `#1012` as a comment). `--expires-in <duration>` sets
-how long it stands, from `1m` to `24h`; the default is 30 minutes. There is no
+how long it stands, from `1m` to `24h`, to the whole second (a fraction of a
+second is dropped); the default is 30 minutes. There is no
 free text: a question points at the item, and the conversation happens there.
 
 The payload carries `kind`, `item` (a pull request always as `#N`), `sender`,

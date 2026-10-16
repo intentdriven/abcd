@@ -312,6 +312,10 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 	if life < MinAnnouncementLife || life > MaxAnnouncementLife {
 		return nil, refuse("expiry %s is outside %s to %s; %s", life, MinAnnouncementLife, MaxAnnouncementLife, nothingPushed)
 	}
+	// Every time an announcement carries is written to the second, so an
+	// expiry inside the bounds is held to the whole second below it (the
+	// minimum is a whole second, so it stays inside them).
+	life = life.Truncate(time.Second)
 	p := &preparedAnnouncement{root: root, home: o.home(), now: o.now(), record: record}
 	if p.who, err = gitIdentity(root, "the announcement"); err != nil {
 		return nil, err

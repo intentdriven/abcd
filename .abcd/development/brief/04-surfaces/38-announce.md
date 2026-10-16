@@ -28,7 +28,8 @@ The verb takes a kind and an item and nothing else. The kind is one of
 `merging`, `merged`, `asking`, `answered` and `handed-over`. The item is an
 issue or an intent in canonical id form, or a pull request, `#N` or the bare
 number, which is stored as `#N`. An announcement stands for 30 minutes by
-default, from one minute to 24 hours. It carries no free text: a further word
+default, from one minute to 24 hours, held to the whole second below the
+expiry asked for. It carries no free text: a further word
 after the item is refused, and a question points at the item, where the
 conversation happens. Bare `abcd announce` refuses as a usage error naming the
 kinds. The flag is in the appendix below.
