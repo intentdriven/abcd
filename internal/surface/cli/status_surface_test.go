@@ -45,6 +45,7 @@ type statusJSON struct {
 	Unread           []string `json:"unread"`
 	SendersUnchecked string   `json:"senders_unchecked"`
 	ReadError        string   `json:"read_error"`
+	LocalTierMissing bool     `json:"local_tier_missing"`
 	Reservations     []struct {
 		Record string `json:"record"`
 		Holder string `json:"holder"`
@@ -219,5 +220,33 @@ func TestStatusSaysAReadThatFailedAfterAFetchThatSucceeded(t *testing.T) {
 	}
 	if code != 1 || !got.View.Origin || got.View.FetchedAt == "" || got.View.AgeSeconds == nil || got.ReadError == "" {
 		t.Fatalf("--json after a read that failed: exit %d, view %+v, read_error %q", code, got.View, got.ReadError)
+	}
+}
+
+// TestStatusSaysWhenTheLocalTierIsMissing: a checkout without its local tier
+// keeps nothing a fetch brings and reads nothing, so `abcd status` says the
+// tier is missing and how to lay it, in text and in --json, and exits 1,
+// rather than list an empty status as though nothing were there.
+func TestStatusSaysWhenTheLocalTierIsMissing(t *testing.T) {
+	w := newReserveWorld(t)
+	octo := w.clone(t, "octo", octoMail)
+	if code, _, stderr := reserveRun(t, octo, "announce", "merging", "1012"); code != 0 {
+		t.Fatalf("announce: exit %d, %s", code, stderr)
+	}
+	bare := filepath.Join(w.home, "bare")
+	gitCmd(t, w.home, "clone", "-q", w.origin, bare)
+	code, stdout, stderr := reserveRun(t, bare, "status")
+	want := "\n  this checkout has no local tier (.abcd/.work.local/), so nothing a fetch brings is kept or read here; `abcd ahoy install` lays it\n"
+	if code != 1 || !strings.Contains(stdout, want) || strings.Contains(stdout, "none read") || strings.Contains(stdout, "none standing") ||
+		!strings.Contains(stderr, "no local tier") {
+		t.Fatalf("a tierless checkout: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	code, js, _ := reserveRun(t, bare, "status", "--json")
+	var got statusJSON
+	if err := json.Unmarshal([]byte(js), &got); err != nil {
+		t.Fatalf("--json: %v\n%s", err, js)
+	}
+	if code != 1 || !got.LocalTierMissing || !got.View.Origin {
+		t.Fatalf("--json in a tierless checkout: exit %d, %s", code, js)
 	}
 }

@@ -4341,9 +4341,9 @@ An announcement informs and grants nothing.
 
 When the fetch fails, the status is listed as last fetched, with that view's
 age and a line saying it is unread since then and why. Exit 0 when the fetch
-succeeded and with no remote named origin; exit 1 when it failed or what
-it fetched could not be read; exit 2 outside a git checkout or with an
-operand.
+succeeded and with no remote named origin; exit 1 when it failed, when
+what it fetched could not be read, or in a checkout without its local
+tier; exit 2 outside a git checkout or with an operand.
 
 ### `abcd statusline`
 

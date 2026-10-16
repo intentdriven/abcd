@@ -49,6 +49,9 @@ The payload carries:
   <reason>";
 - `senders_unchecked`: why GitHub could not be asked who pushed, when it could
   not;
+- `local_tier_missing`: true in a checkout without its local tier
+  (`.abcd/.work.local/`), which keeps nothing a fetch brings and so reads no
+  announcement;
 - `reservations`, `live_by_holder`, `release_holds`, `view`, `fetch_error`
   and `derived_unchecked`, the same fields `/abcd:peers` lists;
 - `grants`, the line that an announcement informs and grants nothing.
@@ -159,7 +162,9 @@ Exit 0 when the fetch succeeded, and in a checkout with no remote named
 is listed as last fetched, with its age and a line saying it is unread since
 then and why, and the failure is named on stderr. Exit 1 too when the fetch
 succeeded but what it brought could not be read: the view is still dated by
-that fetch, and `not read: <reason>` says why. Exit 2 outside a git checkout
+that fetch, and `not read: <reason>` says why. Exit 1 as well in a checkout
+without its local tier: the text says so, and that `abcd ahoy install` lays
+it. Exit 2 outside a git checkout
 or with an operand.
 
 **What an announcement is not.** An announcement informs and grants nothing:

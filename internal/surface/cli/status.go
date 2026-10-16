@@ -19,6 +19,10 @@ import (
 // statusStore is the noun the checkout resolution names in its refusal.
 const statusStore = "the status"
 
+// localTierDir is the local tier, as `abcd status` names it when it is
+// missing.
+const localTierDir = ".abcd/.work.local/"
+
 // statusPushers is the forge adapter `abcd status` asks who pushed each
 // announcement (C17): the activity record of pushes to the branch.
 var statusPushers claim.PusherLookup = func(root, branch string) ([]claim.Push, error) {
@@ -45,6 +49,7 @@ type statusOutput struct {
 	UnreadNames      int               `json:"unread_names"`
 	Unread           []string          `json:"unread"`
 	SendersUnchecked string            `json:"senders_unchecked,omitempty"`
+	LocalTierMissing bool              `json:"local_tier_missing,omitempty"`
 	ReadError        string            `json:"read_error,omitempty"`
 	Grants           string            `json:"grants"`
 	reservationsBlock
@@ -118,9 +123,9 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			"An announcement informs and grants nothing.\n\n" +
 			"When the fetch fails, the status is listed as last fetched, with that view's\n" +
 			"age and a line saying it is unread since then and why. Exit 0 when the fetch\n" +
-			"succeeded and with no remote named origin; exit 1 when it failed or what\n" +
-			"it fetched could not be read; exit 2 outside a git checkout or with an\n" +
-			"operand.",
+			"succeeded and with no remote named origin; exit 1 when it failed, when\n" +
+			"what it fetched could not be read, or in a checkout without its local\n" +
+			"tier; exit 2 outside a git checkout or with an operand.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return &exitError{Code: 2, Msg: "abcd status: takes no operand; it lists everyone's status (nothing read)"}
@@ -156,6 +161,9 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 					out.reservationsBlock.fillHolds("", v.Holds, nil)
 				}
 				out.addStatus(v, now)
+				if v.NoTier && failed == "" {
+					failed = "this checkout has no local tier (" + localTierDir + "), so nothing a fetch brings is kept or read here"
+				}
 			}
 			out.Announcements = nonNil(out.Announcements)
 			out.Doubtful = nonNil(out.Doubtful)
@@ -183,6 +191,7 @@ func nonNil[T any](s []T) []T {
 // addStatus adds v's announcements, doubts and unread lines to out.
 func (out *statusOutput) addStatus(v claim.StatusView, now time.Time) {
 	out.StatusView.Origin = v.Origin
+	out.LocalTierMissing = v.NoTier
 	if !v.FetchedAt.IsZero() {
 		out.StatusView.FetchedAt = rfc3339(v.FetchedAt)
 		age := int64(now.Sub(v.FetchedAt).Seconds())
@@ -230,7 +239,10 @@ func renderStatus(w io.Writer, out statusOutput) {
 	if out.ReadError != "" {
 		fmt.Fprintln(w, "  not read: "+out.ReadError)
 	}
-	if len(out.Announcements) == 0 && out.ReadError == "" {
+	if out.LocalTierMissing {
+		fmt.Fprintln(w, "  this checkout has no local tier ("+localTierDir+"), so nothing a fetch brings is kept or read here; `abcd ahoy install` lays it")
+	}
+	if len(out.Announcements) == 0 && out.ReadError == "" && !out.LocalTierMissing {
 		// An empty list is said only after a fetch that succeeded (C10).
 		if out.StatusView.AgeSeconds != nil && len(out.Unread) == 0 {
 			fmt.Fprintln(w, "  none standing")

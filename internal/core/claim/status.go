@@ -166,6 +166,9 @@ type StatusView struct {
 	// Origin is false in a checkout with no remote named origin, which has no
 	// status to read: everything else is then empty.
 	Origin bool
+	// NoTier is true in a checkout without its local tier, which keeps
+	// nothing a fetch brings and so reads no announcement.
+	NoTier bool
 	// FetchedAt is when abcd last fetched the status branches here; zero when
 	// nothing here stamped a fetch.
 	FetchedAt time.Time
@@ -306,7 +309,7 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	if !ok {
 		return StatusView{}, nil
 	}
-	v := StatusView{Origin: true, FetchedAt: lastFetched(root, statusBranches)}
+	v := StatusView{Origin: true, FetchedAt: lastFetched(root, statusBranches), NoTier: tierPresent(root) != nil}
 	v.Unread = unreadOf(root, statusBranches)
 	v.ReservationsUnread = unreadOf(root, reservations)
 	if v.Holds, err = JudgedHolds(root, now, o); err != nil {
