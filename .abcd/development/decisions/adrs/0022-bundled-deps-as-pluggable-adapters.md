@@ -83,3 +83,15 @@ itd-47, the intent that rested on the same bundled cascade:
   rather than breaking abcd.
 - The doctor's job narrows from policing foreign bypass artifacts to checking
   abcd's own health and which adapters are wired.
+- **Proposed, awaiting the product thinker's sign-off (2026-10-16): the first
+  declared exception.** The fence around the agents abcd's runner launches
+  ([adr-2610161621415708](2610161621415708-abcd-s-command-guard-steers-agents-an-os.md),
+  spc-2610161751056096) is Anthropic's sandbox-runtime (`srt`), an external
+  program abcd does not ship. On the runner route alone it is a requirement,
+  not an adapter that degrades: a fence has no native default to degrade to,
+  since abcd writes no fence of its own and an unfenced launch is what the
+  fence exists to remove. A machine without it refuses a runner launch, and
+  the person's per-machine off switch (`runner.sandbox.off` in
+  `~/.abcd.noindex/config.json`) takes the place of degradation. Every other
+  route still needs no external tool. Until the sign-off this consequence is
+  a proposal, not part of the decision.
