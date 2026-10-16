@@ -397,10 +397,17 @@ func TestAStatusBranchWhoseContinuityIsNotVerifiedIsDoubtful(t *testing.T) {
 		if want[d.Branch] != d.Reason {
 			t.Fatalf("doubt %+v; want %v", d, want)
 		}
-		// The line `abcd status` shows each by, and the block when there are
-		// two doubts or fewer.
-		if line := DoubtLine(d); line != "abcd-status/"+d.Branch+" (doubtful): "+want[d.Branch] {
-			t.Fatalf("doubt line = %q", line)
+	}
+	// The line `abcd status` shows each by, and the block when there are two
+	// doubts or fewer, word for word.
+	lines := map[string]string{
+		"maya":  "abcd-status/maya (doubtful): continuity not verified: more was added than one read covers, so an announcement may be missing or shown twice",
+		"quinn": "abcd-status/quinn (doubtful): continuity not verified: the branch was rewritten rather than added to, so an announcement may be missing or shown twice",
+		"zed":   "abcd-status/zed (doubtful): continuity not verified: a merge was passed, and what it brought in is not read",
+	}
+	for _, d := range v.Doubts {
+		if line := DoubtLine(d); line != lines[d.Branch] {
+			t.Fatalf("doubt line = %q; want %q", line, lines[d.Branch])
 		}
 	}
 	got := pat.notes()

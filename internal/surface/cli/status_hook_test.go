@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"bytes"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -72,11 +74,49 @@ func TestThePromptHookShowsEachAnnouncementOnce(t *testing.T) {
 	}
 }
 
+// slowPayload is a hook payload that arrives after a delay, as from a host
+// that writes it late: the hook's first step, reading it, takes that long.
+type slowPayload struct {
+	r     io.Reader
+	delay time.Duration
+	once  bool
+}
+
+func (p *slowPayload) Read(b []byte) (int, error) {
+	if !p.once {
+		p.once = true
+		time.Sleep(p.delay)
+	}
+	return p.r.Read(b)
+}
+
+// runSlowHook runs the prompt hook in this process with a payload that takes
+// delay to arrive, under budget.
+func runSlowHook(t *testing.T, payload string, delay, budget time.Duration) string {
+	t.Helper()
+	old := hookBudget
+	hookBudget = budget
+	defer func() { hookBudget = old }()
+	cmd := NewRootCommand()
+	var so, se bytes.Buffer
+	cmd.SetOut(&so)
+	cmd.SetErr(&se)
+	cmd.SetIn(&slowPayload{r: strings.NewReader(payload), delay: delay})
+	cmd.SetArgs([]string{"hook", "prompt-router"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("hook exited non-zero: %v\n%s", err, se.String())
+	}
+	return so.String()
+}
+
 // TestTheHooksDeadlineStartsWithTheHook is C12's one deadline: it is set when
-// the hook starts, not when the status read does, so what the drain, the
-// rules and the memory notes take comes out of the status read's share. With
-// the hook's budget spent before the read begins, the block says the status
-// is unavailable, and nothing is kept shown.
+// the hook starts, before its first step, not when the status read does, so
+// what the steps before the read take comes out of the read's share. With a
+// payload that takes 500 ms to arrive against a 600 ms budget, nothing is
+// left for the read: the block says the status is unavailable, and nothing
+// is kept shown. Set any later, the read would have 450 ms, ample for one
+// announcement. The same payload under the one-second budget leaves the read
+// its time, and the announcement is shown.
 func TestTheHooksDeadlineStartsWithTheHook(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	w := newReserveWorld(t)
@@ -88,14 +128,12 @@ func TestTheHooksDeadlineStartsWithTheHook(t *testing.T) {
 	if code, _, stderr := reserveRun(t, pat, "status"); code != 0 {
 		t.Fatalf("status: exit %d, %s", code, stderr)
 	}
-	old := hookBudget
-	hookBudget = time.Nanosecond
-	out, _ := runHook(t, hookInputJSON(t, "s-spent", pat, "hello there"), "hook", "prompt-router")
-	hookBudget = old
-	if !strings.Contains(out, "status unavailable: reading it here took longer than this prompt allows") {
-		t.Fatalf("with the hook's budget spent, the hook's text:\n%s\nwant the status unavailable", out)
+	out := runSlowHook(t, hookInputJSON(t, "s-spent", pat, "hello there"), 500*time.Millisecond, 600*time.Millisecond)
+	if !strings.Contains(out, "status unavailable: ") || strings.Contains(out, "merging #1012") {
+		t.Fatalf("with the hook's first step taking most of its budget, the hook's text:\n%s\nwant the status unavailable", out)
 	}
-	if again, _ := runHook(t, hookInputJSON(t, "s-spent", pat, "hello again"), "hook", "prompt-router"); !strings.Contains(again, "merging #1012") {
-		t.Fatalf("the next prompt:\n%s\nwant the announcement, never shown", again)
+	again := runSlowHook(t, hookInputJSON(t, "s-spent", pat, "hello again"), 500*time.Millisecond, time.Second)
+	if !strings.Contains(again, "- @octo (claimed): merging #1012, for 30 min\n") {
+		t.Fatalf("the next prompt, under the one-second budget:\n%s\nwant the announcement, never shown", again)
 	}
 }
