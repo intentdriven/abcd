@@ -91,6 +91,7 @@
         "scribe",
         "site",
         "spec",
+        "status",
         "statusline",
         "update",
         "version"

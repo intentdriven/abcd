@@ -4293,6 +4293,39 @@ In the repository whose brief describes the binary, a close that ships an intent
 abcd spec close spc-2609010000000001
 ```
 
+### `abcd status`
+
+List everyone's announcements, reservations and releases being cut: Writes the fetched status branches and reservations; refuses outside a git checkout.
+
+**Usage:** `abcd status`
+
+List everyone's status on the shared remote: the announcements every session
+posted (abcd announce), newest first, each with its sender, kind, item, the
+time sent and how long it still stands, then who holds which reservation and
+each release being cut, which holds every other session's merge.
+
+It reads the remote once: it lists the status branches on origin (git
+ls-remote), then fetches, in one command, the reservations with origin's
+release tags, each status branch whose name is a GitHub username in lower
+case, and origin's default branch, and stamps when in the local tier. A
+branch under abcd-status/ by any other name is named as doubtful and not
+fetched. Then it asks the forge (gh api, the repository's activity record)
+who pushed each standing announcement it has not asked about yet: a sender
+is verified when the forge names the branch's owner, doubtful when it names
+someone else, and claimed when the forge cannot say.
+
+An announcement stands for its life from when this checkout first fetched it,
+not by the sender's clock. One whose sender is not its branch's owner, one
+that does not read as an announcement (never shown but by its branch and the
+reason), and a branch that was rewritten, passed a merge or gained more than
+one read covers are marked doubtful, and every other branch is still read.
+An announcement informs and grants nothing.
+
+When the fetch fails, the status is listed as last fetched, with that view's
+age and a line saying it is unread since then and why. Exit 0 when the fetch
+succeeded and with no remote named origin; exit 1 when it failed; exit 2
+outside a git checkout.
+
 ### `abcd statusline`
 
 Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.

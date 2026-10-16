@@ -162,8 +162,8 @@ reserved on a clock within five minutes of the reader's, so this lets no
 merge past one, with one limit: a cutting copy whose clock runs more than five
 minutes fast is not counted by a checkout that cannot keep a sighting. `abcd
 peers` renders the hold from its own view through `Snapshot.Holds`, with the
-same line; `abcd status` and the prompt hook are to render it in step 3 of the
-spec and do not yet.
+same line, as `abcd status` and the prompt hook do (`39-status.md`); the
+holds read the release reservations' tips alone.
 
 The hold stops a merge from being armed and nothing more. A merge armed, or
 queued, before the release was reserved (a pull request with auto-merge on,

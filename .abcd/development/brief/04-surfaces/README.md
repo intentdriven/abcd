@@ -49,6 +49,7 @@ are wiring rather than user-facing surface are listed separately under
 | 37 | `/abcd:reserve` | shipped | Reserve an issue, intent or release on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
 | 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
 | 38 | `/abcd:land` | shipped | Push a branch once its preflight passed and queue its pull request where the merge gate allows, resumable by running it again | [`38-land.md`](38-land.md) |
+| 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -144,7 +145,7 @@ the command's sentence (the section below).
 | Block | Group | Verbs |
 |---|---|---|
 | people | set-up | `ahoy`, `dashboard`, `update`, and the framework's `help` and `completion` |
-| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library` |
+| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library`, `status` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
@@ -350,7 +351,7 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`, `guard`, `history`,
 `ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`, `land`, `launch`,
 `library`, `lint`, `memory`, `mode`, `peers`, `reading`, `reflect`, `report`,
-`reserve`, `scribe`, `site`, `update`.
+`reserve`, `scribe`, `site`, `status`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.

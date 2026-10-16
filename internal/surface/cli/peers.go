@@ -31,6 +31,13 @@ type peersOutput struct {
 	Peers      []peers.Peer    `json:"peers"`
 	Skipped    []peers.Skipped `json:"skipped"`
 
+	reservationsBlock
+}
+
+// reservationsBlock is the reservations as a listing shows them, `abcd
+// peers`'s and `abcd status`'s alike: its fields sit in the listing's own
+// JSON object.
+type reservationsBlock struct {
 	// The reservations on the shared remote (itd-2609091034175565): every one
 	// as fetched just now, or as last fetched when the fetch failed.
 	Reservations []reservationRow `json:"reservations"`
@@ -177,7 +184,7 @@ func peersView(rep peers.Report) peersOutput {
 // line or two, not one per worktree.
 func renderPeers(w io.Writer, out peersOutput) {
 	renderWorktreePeers(w, out)
-	renderReservations(w, out)
+	renderReservations(w, out.reservationsBlock)
 }
 
 func renderWorktreePeers(w io.Writer, out peersOutput) {
@@ -341,8 +348,16 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 // (the view is then the last one fetched) or the view could not be read, and
 // "" otherwise. A checkout with no remote named origin lists none.
 func addReservations(root string, out *peersOutput, now time.Time) (failed string) {
-	out.Reservations, out.LiveByHolder, out.ReleaseHolds = []reservationRow{}, map[string]int{}, []holdRow{}
 	gap, err := claim.Fetch(root, claim.Options{Now: func() time.Time { return now }})
+	return out.fill(root, now, gap, err)
+}
+
+// fill adds to b the reservations as last fetched, judged now, after a fetch
+// that answered gap and err. It returns the failure to name, as
+// addReservations does.
+func (b *reservationsBlock) fill(root string, now time.Time, gap string, err error) (failed string) {
+	out := b
+	out.Reservations, out.LiveByHolder, out.ReleaseHolds = []reservationRow{}, map[string]int{}, []holdRow{}
 	if errors.Is(err, claim.ErrNoOrigin) {
 		return ""
 	}
@@ -398,7 +413,7 @@ func addReservations(root string, out *peersOutput, now time.Time) (failed strin
 
 // renderReservations is the reservations block of the text form: a heading
 // that dates the view, one line per reservation, and the live counts.
-func renderReservations(w io.Writer, out peersOutput) {
+func renderReservations(w io.Writer, out reservationsBlock) {
 	if !out.View.Origin {
 		fmt.Fprintln(w, "reservations — this checkout has no remote named origin")
 		return

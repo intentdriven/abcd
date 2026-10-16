@@ -3751,6 +3751,14 @@
       ]
     },
     {
+      "path": "abcd status",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "List everyone's announcements, reservations and releases being cut: Writes the fetched status branches and reservations; refuses outside a git checkout.",
+      "flags": []
+    },
+    {
       "path": "abcd statusline",
       "hidden": false,
       "group": "agents",

@@ -101,8 +101,8 @@ it was not sent. The JSON document carries `kind`, `item`, `sender`, `branch`,
 ## Where this sits
 
 - The intent and its decisions: itd-2609151838312703; the design record:
-  spc-2610150728396006, whose later steps add `abcd status`, the prompt hook's
-  render and the release hold.
+  spc-2610150728396006; the reader, `abcd status` and the prompt hook's
+  block: [`39-status.md`](39-status.md).
 - The trust rule: adr-2610150729333337; the ruleset mirror:
   `.abcd/work/rulesets/status-protection.json`.
 - The plugin surface: `commands/announce.md`.
