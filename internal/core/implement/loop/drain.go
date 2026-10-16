@@ -117,6 +117,10 @@ type DrainState struct {
 	// issue's lane (scope 3), and Judgements every answer it has taken.
 	Judging    *DrainJudging    `json:"judging,omitempty"`
 	Judgements []DrainJudgement `json:"judgements,omitempty"`
+	// Lapsed are the judgement requests dropped unanswered once the hold the
+	// drain took for them lapsed, the latest last; their issues are asked
+	// again only after the drain's other eligible work (drain_hold.go).
+	Lapsed []DrainLapse `json:"lapsed,omitempty"`
 	// Stopped says why the drain ended, and EndedAt when; empty while it runs.
 	Stopped string     `json:"stopped,omitempty"`
 	EndedAt *time.Time `json:"ended_at,omitempty"`
@@ -346,8 +350,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	res := DrainResult{State: DrainStateRel, Started: started, Rule: plan.Record, Loosened: plan.Loosened,
 		Order: plan.Order, Dispositions: plan.Dispositions, Routed: []DrainRoute{}, Passed: []Excluded{},
 		Flags: fieldFlags(plan), Finished: []DrainFinished{}, Origin: origin}
-	// viewUnread is why the reservations this move fetched could not be read.
-	viewUnread := ""
+	// viewUnread is why the reservations this move fetched could not be read,
+	// and lapse what became of a judgement request whose hold lapsed.
+	viewUnread, lapse := "", ""
 	finish := func(write bool) (DrainResult, error) {
 		// A drain that ends awaits nothing, and every judgement hold the move
 		// leaves unused is released before the state is written.
@@ -356,6 +361,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		if clauses := holds.settle(st.Judging); len(clauses) > 0 {
 			res.Next += "; " + strings.Join(clauses, "; ")
+			write = true
+		}
+		if lapse != "" {
+			res.Next += "; " + lapse
 			write = true
 		}
 		if viewUnread != "" {
@@ -448,6 +457,19 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		st.Judgements = append(st.Judgements, j)
 		st.Judging = nil
 		res.Judged = &j
+	}
+
+	// The drain takes its judgement hold once per request (drain_hold.go): a
+	// request whose hold has lapsed unanswered is dropped, the hold released
+	// with the move, and its issue asked again only after the drain's other
+	// eligible work, so a host that polls without answering never holds the
+	// issue past one lease (dcn-2610161315385888).
+	if j := st.Judging; j != nil && j.Hold != nil && !now.Before(j.Hold.ExpiresAt) {
+		st.Lapsed = append(slices.DeleteFunc(st.Lapsed, func(l DrainLapse) bool { return l.Issue == j.Issue }),
+			DrainLapse{Issue: j.Issue, RequestedAt: j.RequestedAt, LapsedAt: j.Hold.ExpiresAt})
+		lapse = fmt.Sprintf("the judgement over %s was not answered before the reservation the drain took for it lapsed at %s, so the request is dropped; %s is asked again only once the drain has taken its other eligible work",
+			j.Issue, stamp(j.Hold.ExpiresAt), j.Issue)
+		st.Judging = nil
 	}
 
 	// A run that gave up on a lost connection has stopped (iss-2610080620372731),
@@ -558,7 +580,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if err != nil {
 		return DrainResult{}, err
 	}
-	for _, v := range plan.Dispositions {
+	for _, v := range lapsedLast(plan.Dispositions, st.Lapsed) {
 		if v.Outcome != capture.DrainEligible {
 			continue
 		}
@@ -601,7 +623,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if p := st.Judging; p != nil && p.Issue == v.ID {
 				hold = p.Hold
 			}
-			if reserving && !held {
+			// The hold is taken once per request: a request awaited over this
+			// issue keeps the one it took, and is never renewed by a poll.
+			if reserving && !held && hold == nil {
 				h, err := reserveForJudgement(repoRoot, v.ID, footprint, o.TakeOver, hold, now)
 				if err != nil {
 					if r, ok := AsRefusal(err); ok && r.Contention {
@@ -871,6 +895,10 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 	}
 	if !st.textWritten() {
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" carries text the drain never writes: a control, bidi or zero-width character in its rule, a lane, a hand-back or a judgement",
+			"the drain is the file's only writer; restore it or remove it")
+	}
+	if slices.ContainsFunc(st.Lapsed, func(l DrainLapse) bool { return !validIssueKey(l.Issue) }) {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a lapsed judgement request that is not an issue",
 			"the drain is the file's only writer; restore it or remove it")
 	}
 	if j := st.Judging; j != nil && j.Hold != nil && !gitutil.IsFullSHA(j.Hold.Commit) {

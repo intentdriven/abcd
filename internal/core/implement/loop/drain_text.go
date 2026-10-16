@@ -29,6 +29,9 @@ func (st DrainState) textWritten() bool {
 	if j := st.Judging; j != nil {
 		texts = append(texts, j.Issue, j.RemedySHA256, j.Request, j.Answer)
 	}
+	for _, l := range st.Lapsed {
+		texts = append(texts, l.Issue)
+	}
 	for _, j := range st.Judgements {
 		texts = append(texts, j.Issue, j.RemedySHA256, j.Answer, j.Kind, j.Reason, j.Note)
 	}

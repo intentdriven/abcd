@@ -10,8 +10,10 @@ package loop
 // the drain's, so a judgement never releases it.
 
 import (
+	"slices"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
@@ -130,6 +132,34 @@ func (h *judgeHolds) settle(awaited *DrainJudging) []string {
 			continue
 		}
 		out = append(out, "nothing waits any longer on the reservation the drain took to judge "+k.issue+": "+c)
+	}
+	return out
+}
+
+// DrainLapse is a judgement request the drain dropped unanswered: its issue,
+// when it was asked, and when the hold taken for it lapsed.
+type DrainLapse struct {
+	Issue       string    `json:"issue"`
+	RequestedAt time.Time `json:"requested_at"`
+	LapsedAt    time.Time `json:"lapsed_at"`
+}
+
+// lapsedLast is the plan's verdicts in order, with the issues of lapsed
+// requests moved after every other, the latest lapse last.
+func lapsedLast(vs []capture.DrainVerdict, lapsed []DrainLapse) []capture.DrainVerdict {
+	if len(lapsed) == 0 {
+		return vs
+	}
+	out := make([]capture.DrainVerdict, 0, len(vs))
+	for _, v := range vs {
+		if !slices.ContainsFunc(lapsed, func(l DrainLapse) bool { return l.Issue == v.ID }) {
+			out = append(out, v)
+		}
+	}
+	for _, l := range lapsed {
+		if i := slices.IndexFunc(vs, func(v capture.DrainVerdict) bool { return v.ID == l.Issue }); i >= 0 {
+			out = append(out, vs[i])
+		}
 	}
 	return out
 }
