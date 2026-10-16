@@ -805,15 +805,29 @@ type seenEntry struct {
 // statusFile is rel, a file under the status state directory.
 func statusFile(rel string) string { return statusBranches.stateDir + "/" + rel }
 
-// seenKept reports whether commit was already read here.
+// seenKept reports whether commit was already read here: its kept file
+// reads back as an entry with the time it was first fetched. A file that
+// does not (one a write cut short left empty or partial, since it is written
+// without a flush) is removed, best effort, and the commit is read again.
 func seenKept(root, commit string) bool {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return false
 	}
 	defer r.Close()
-	_, err = r.Lstat(statusFile(seenDir + "/" + commit))
-	return err == nil
+	rel := statusFile(seenDir + "/" + commit)
+	data, err := fsutil.ReadGuardedInRoot(r, rel, 4096)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	var e seenEntry
+	if err == nil && json.Unmarshal(data, &e) == nil {
+		if _, err := time.Parse(time.RFC3339, e.FirstFetched); err == nil {
+			return true
+		}
+	}
+	_ = r.Remove(rel)
+	return false
 }
 
 // keepSeen keeps each of commits, read on branch, as first fetched at now,

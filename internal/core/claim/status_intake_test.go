@@ -278,3 +278,38 @@ func TestKeepingManyDoubtsFitsThePrompt(t *testing.T) {
 	}
 }
 
+// TestASeenFileThatDoesNotReadIsReadAgain: a commit's kept file is written
+// without a flush, so a cut-off write can leave it empty or partial. Such a
+// file does not count as read: the next walk over the commit removes it and
+// reads the commit again, and its announcement is shown.
+func TestASeenFileThatDoesNotReadIsReadAgain(t *testing.T) {
+	for name, body := range map[string]string{"empty": "", "partial": `{"branch":"maya","first_fe`} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t)
+			pat := w.clone("9+pat@users.noreply.github.com", "")
+			w.pushStatus("maya", announcementMsg("merging", "#1", "maya", t0, 30*time.Minute), "")
+			pat.status(nil)
+			v := pat.read()
+			if len(v.Announcements) != 1 {
+				t.Fatalf("announcements = %+v; want maya's one", v.Announcements)
+			}
+			c := v.Announcements[0].Commit
+			seen := filepath.Join(pat.dir, filepath.FromSlash(statusFile(seenDir+"/"+c)))
+			if err := os.WriteFile(seen, []byte(body), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			// The read mark the same cut-off write lost.
+			mark := filepath.Join(pat.dir, filepath.FromSlash(statusBranches.markRel(StatusTrackingPrefix+"maya")))
+			if err := os.Remove(mark); err != nil {
+				t.Fatal(err)
+			}
+			v = pat.read()
+			if len(v.Announcements) != 1 || v.Announcements[0].Commit != c {
+				t.Fatalf("announcements = %+v; want maya's one read again", v.Announcements)
+			}
+			if data, err := os.ReadFile(seen); err != nil || !strings.Contains(string(data), `"first_fetched"`) {
+				t.Fatalf("the kept file reads %q, %v; want it written again", data, err)
+			}
+		})
+	}
+}
