@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -318,6 +319,40 @@ func TestSessionServeTextNamesTheTailnetRoute(t *testing.T) {
 	}
 	if strings.Contains(strings.ToLower(text), "funnel") {
 		t.Errorf("output mentions Funnel:\n%s", text)
+	}
+}
+
+// TestSessionServeWithoutASecretOffersNoSignIn: the device flow belongs to
+// a local session alone (abcd session start). serve with a client id and no
+// secret says sign-in is off, and its /config offers none.
+func TestSessionServeWithoutASecretOffersNoSignIn(t *testing.T) {
+	t.Setenv("ABCD_SESSION_GITHUB_CLIENT_SECRET", "")
+	out, stop := startServe(t, "--listen", "127.0.0.1:0", "--client-id", "Iv1.publicid", "--json")
+	var started struct {
+		URL    string `json:"url"`
+		SignIn bool   `json:"sign_in"`
+	}
+	if err := json.NewDecoder(strings.NewReader(out.String())).Decode(&started); err != nil {
+		t.Fatalf("the start line is not JSON: %v\n%s", err, out.String())
+	}
+	if started.SignIn {
+		t.Errorf("serve with no secret says sign-in is on: %s", out.String())
+	}
+	resp, err := http.Get(started.URL + "/config")
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(body), `"sign_in":false`) || strings.Contains(string(body), `"device"`) {
+		t.Errorf("/config = %s, want sign-in off and no device flow", body)
+	}
+	_ = stop()
+
+	out, stop = startServe(t, "--listen", "127.0.0.1:0", "--client-id", "Iv1.publicid")
+	_ = stop()
+	if text := out.String(); !strings.Contains(text, "sign-in is not set up") || strings.Contains(text, "device flow") {
+		t.Errorf("serve with no secret:\n%s\nwant sign-in not set up, and no device flow", text)
 	}
 }
 

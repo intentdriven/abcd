@@ -8,10 +8,13 @@
 // session goes back to GitHub as one pre-filled issue per changed passage, or
 // as one pull request made with the submitter's own token.
 //
-// What this page talks to, and nothing else: the relay the person names (its
-// WebSocket, /config and /auth/token), https://api.github.com (without a
-// token for the repository's list of its relays, and with the person's own
-// token), and github.com for sign-in and pre-filled issues. The GitHub token
+// What this page talks to, and nothing else: its relay (its WebSocket,
+// /config, and /auth/token, or /auth/device on a local session's own page),
+// which is the page's own origin when the relay serves it, and otherwise the
+// one the invite link or the repository's committed relay list names;
+// https://api.github.com (without a token for the repository's list of its
+// relays, and with the person's own token); and github.com for sign-in and
+// pre-filled issues. The GitHub token
 // is held in this module's memory only; it is never stored, put in a URL or
 // logged, and it reaches a relay only once the repository's committed relay
 // list names that relay or, where the list cannot be read, the person has
@@ -1069,8 +1072,10 @@ function setAwarenessUser() {
 }
 
 // ---------------------------------------------------------------------------
-// Sign-in: GitHub's authorize page with PKCE, then the relay's exchange; or a
-// pasted personal access token. Either way the token stays in memory.
+// Sign-in through the team's GitHub App: GitHub's authorize page with PKCE,
+// then the relay's exchange; or, on a local session's own page, GitHub's
+// device flow through the relay. Nobody pastes a token, and the token stays
+// in memory.
 // ---------------------------------------------------------------------------
 function b64url(bytes) {
   let s = "";
@@ -1101,8 +1106,11 @@ async function relayConfig() {
   // The relay offers GitHub's web flow when it holds the app's secret (a
   // cloud relay), or its device flow when it holds the client id alone (a
   // session on the host's own computer, where no secret may sit;
-  // adr-2610161400542916).
-  const flow = cfg.flow === "device" ? "device" : "web";
+  // adr-2610161400542916). The device flow is taken only on a page the relay
+  // serves itself: every local session serves its own page, so this page on
+  // any other origin, abcdesign.app above all, signs in through the web flow
+  // alone, and a relay naming the device flow there gets no sign-in.
+  const flow = cfg.flow === "device" ? (anchor.state === "self" ? "device" : "") : "web";
   return {
     // Sign-in goes through a GitHub App alone: its user token can do only
     // what both the app (its installations and fine-grained permissions) and
@@ -1116,7 +1124,7 @@ async function relayConfig() {
     // documents no client-id format that tells a GitHub App's from an OAuth
     // app's, and no public API answers for a client id, so the shape is not
     // checked. The authorize request asks for no scope either way.
-    signIn: cfg.app_type === "github-app" && cfg.sign_in === true && /^[A-Za-z0-9._-]{1,100}$/.test(clientID) && (flow === "device" || authorize !== ""),
+    signIn: cfg.app_type === "github-app" && cfg.sign_in === true && /^[A-Za-z0-9._-]{1,100}$/.test(clientID) && (flow === "device" || (flow === "web" && authorize !== "")),
     flow,
     clientID,
     authorize,
@@ -1141,7 +1149,7 @@ async function startSignIn() {
     renderAll();
     return;
   }
-  if (cfg.flow === "device") { startDeviceSignIn(); return; }
+  if (cfg.flow === "device" && anchor.state === "self") { startDeviceSignIn(); return; }
   const state = randomText(16);
   const verifier = randomText(32);
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(verifier));
@@ -1225,6 +1233,8 @@ async function relayPost(path, body) {
 
 async function startDeviceSignIn() {
   stopDeviceSignIn();
+  // A local session's own page alone signs in this way (see relayConfig).
+  if (anchor.state !== "self") { toast(WORDS.signInNotSetUp); return; }
   let got;
   try { got = await relayPost("/auth/device", {}); } catch { toast(WORDS.cannotConnect); return; }
   const out = got.out;

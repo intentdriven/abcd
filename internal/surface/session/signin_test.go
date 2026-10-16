@@ -34,13 +34,15 @@ func (c *clock) add(d time.Duration) {
 	c.mu.Unlock()
 }
 
-// deviceFixture is a relay set up for a local session: the GitHub App's
-// client id and no secret, so it offers the device flow.
+// deviceFixture is a relay set up for a local session: it serves its own
+// page and holds the GitHub App's client id and no secret, so it offers the
+// device flow.
 func deviceFixture(t *testing.T, mod func(*Config)) (*fixture, *clock) {
 	t.Helper()
 	clk := &clock{now: time.Date(2026, 10, 16, 12, 0, 0, 0, time.UTC)}
 	f := newFixture(t, func(c *Config) {
 		c.ClientSecret = ""
+		c.ServePage = true
 		c.Now = clk.Now
 		if mod != nil {
 			mod(c)
@@ -92,7 +94,9 @@ func TestVerifyTakesOnlyAGitHubAppUserToken(t *testing.T) {
 }
 
 // TestConfigNamesTheFlow: a relay with the app's secret offers the web flow,
-// one with the client id alone the device flow, and one with neither nothing.
+// a local session (its own page, the client id alone) the device flow, and
+// one with neither nothing. A relay that serves no page offers no device
+// flow: without the secret it offers no sign-in at all.
 func TestConfigNamesTheFlow(t *testing.T) {
 	get := func(f *fixture) map[string]any {
 		resp, err := http.Get(f.http.URL + "/config")
@@ -112,6 +116,13 @@ func TestConfigNamesTheFlow(t *testing.T) {
 	}
 	if m := get(newFixture(t, func(c *Config) { c.ClientID, c.ClientSecret = "", "" })); m["sign_in"] != false {
 		t.Errorf("with neither: %v, want no sign-in", m)
+	}
+	cloud := newFixture(t, func(c *Config) { c.ClientSecret = "" })
+	if m := get(cloud); m["sign_in"] != false || m["flow"] == "device" {
+		t.Errorf("a relay serving no page, with no secret: %v, want sign-in off and no device flow", m)
+	}
+	if resp, body := post(t, cloud.http.URL+"/auth/device", origin, `{}`); resp.StatusCode != http.StatusServiceUnavailable || len(cloud.github.deviceStarts) != 0 {
+		t.Errorf("a relay serving no page started a device sign-in: %d %s", resp.StatusCode, body)
 	}
 }
 
@@ -243,9 +254,18 @@ func TestDeviceSignInRefusals(t *testing.T) {
 
 	// Starting a device sign-in counts against the exchange limit, ten in
 	// ten minutes per address: the starts above are past the window now.
+	// Each is ended (denied) before the next, so the cap on sign-ins one
+	// address holds at once is not what refuses.
+	f.github.deviceAnswers = []map[string]any{{"error": "access_denied"}}
 	for i := 0; i < 10; i++ {
-		if resp, body := post(t, f.http.URL+"/auth/device", origin, `{}`); resp.StatusCode != http.StatusOK {
+		resp, body := post(t, f.http.URL+"/auth/device", origin, `{}`)
+		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("start %d: %d %s", i+1, resp.StatusCode, body)
+		}
+		handle, _ := decode(t, body)["handle"].(string)
+		clk.add(5 * time.Second)
+		if _, body := post(t, f.http.URL+"/auth/device/token", origin, `{"handle":"`+handle+`"}`); !strings.Contains(body, "access_denied") {
+			t.Fatalf("ending start %d: %s", i+1, body)
 		}
 	}
 	if resp, body := post(t, f.http.URL+"/auth/device", origin, `{}`); resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") == "" {
@@ -275,6 +295,69 @@ func TestDeviceSignInsAreBounded(t *testing.T) {
 	}
 	if resp := start("203.0.113.9"); resp.StatusCode != http.StatusServiceUnavailable {
 		t.Fatalf("one past the bound: %d, want 503", resp.StatusCode)
+	}
+}
+
+// TestDeviceSignInsAreBoundedPerAddress: one address holds at most
+// maxDeviceLoginsPerAddr sign-ins at once, fewer than the exchange limit lets
+// it start, so a few addresses cannot take every place maxDeviceLogins
+// allows. Another address is not held up, and a place is freed when a
+// sign-in ends.
+func TestDeviceSignInsAreBoundedPerAddress(t *testing.T) {
+	if maxDeviceLoginsPerAddr >= 10 || maxDeviceLoginsPerAddr*4 > maxDeviceLogins {
+		t.Fatalf("maxDeviceLoginsPerAddr = %d: want it under the exchange limit and well under maxDeviceLogins", maxDeviceLoginsPerAddr)
+	}
+	f, clk := deviceFixture(t, func(c *Config) { c.BehindProxy = true })
+	start := func(addr string) (*http.Response, string) {
+		req, _ := http.NewRequest(http.MethodPost, f.http.URL+"/auth/device", strings.NewReader(`{}`))
+		req.Header.Set("Origin", origin)
+		req.Header.Set("X-Forwarded-For", addr)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		data, _ := io.ReadAll(resp.Body)
+		return resp, string(data)
+	}
+	var first string
+	for i := 0; i < maxDeviceLoginsPerAddr; i++ {
+		resp, body := start("198.51.100.7")
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("start %d: %d %s", i+1, resp.StatusCode, body)
+		}
+		if i == 0 {
+			first, _ = decode(t, body)["handle"].(string)
+		}
+	}
+	f.github.mu.Lock()
+	asked := len(f.github.deviceStarts)
+	f.github.mu.Unlock()
+	if resp, body := start("198.51.100.7"); resp.StatusCode != http.StatusTooManyRequests || resp.Header.Get("Retry-After") == "" {
+		t.Fatalf("one past the address's bound: %d %s, want 429", resp.StatusCode, body)
+	}
+	f.github.mu.Lock()
+	after := len(f.github.deviceStarts)
+	f.github.mu.Unlock()
+	if after != asked {
+		t.Error("GitHub was asked for a device code past the address's bound")
+	}
+	if resp, body := start("203.0.113.9"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("another address: %d %s", resp.StatusCode, body)
+	}
+	// Ending one frees its place.
+	f.github.deviceAnswers = []map[string]any{{"error": "access_denied"}}
+	clk.add(5 * time.Second)
+	req, _ := http.NewRequest(http.MethodPost, f.http.URL+"/auth/device/token", strings.NewReader(`{"handle":"`+first+`"}`))
+	req.Header.Set("Origin", origin)
+	req.Header.Set("X-Forwarded-For", "198.51.100.7")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp, body := start("198.51.100.7"); resp.StatusCode != http.StatusOK {
+		t.Fatalf("after one ended: %d %s", resp.StatusCode, body)
 	}
 }
 

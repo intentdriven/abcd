@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"sort"
@@ -995,6 +996,76 @@ func TestSignInIsAGitHubAppsAlone(t *testing.T) {
 	}
 	if !strings.Contains(functionBody(t, js, "askTrust"), "route.slug") {
 		t.Error("the trust confirmation does not name the repository")
+	}
+}
+
+// The device flow is a local session's alone: the page takes a relay's
+// `flow: "device"` only when the relay serves the page itself (the anchor is
+// "self"). On any other origin, abcdesign.app above all, a relay naming the
+// device flow gets no sign-in, and startDeviceSignIn refuses to begin one.
+func TestTheStaticPageOffersOnlyTheWebSignIn(t *testing.T) {
+	js := pageScript(t)
+	dev := functionBody(t, js, "startDeviceSignIn")
+	gate, post := strings.Index(dev, `if (anchor.state !== "self")`), strings.Index(dev, `relayPost("/auth/device"`)
+	if gate < 0 || post < 0 || gate > post {
+		t.Errorf("startDeviceSignIn begins a device sign-in on a page the relay does not serve:\n%s", dev)
+	}
+	start := functionBody(t, js, "startSignIn")
+	if !strings.Contains(start, `if (cfg.flow === "device" && anchor.state === "self")`) {
+		t.Errorf("startSignIn takes the device flow whatever serves the page:\n%s", start)
+	}
+
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not installed: relayConfig is checked by its text alone")
+	}
+	script := "const GITHUB_AUTHORIZE = \"https://github.com/login/oauth/authorize\";\n" +
+		"const WORDS = { cannotConnect: \"x\" };\n" +
+		"let anchor = { state: \"listed\", relays: [] };\n" +
+		"const session = { relay: \"https://relay.example.org\" };\n" +
+		"let answer = {};\n" +
+		"globalThis.fetch = async () => ({ ok: true, json: async () => answer });\n" +
+		functionBody(t, js, "isLoopbackOrigin") + "\n" +
+		functionBody(t, js, "relayConfig") + "\n" +
+		`(async () => {
+  const out = {};
+  const base = { client_id: "Iv1.abc", sign_in: true, app_type: "github-app", authorize_url: GITHUB_AUTHORIZE };
+  for (const [name, state, flow] of [["listed-device", "listed", "device"], ["unknown-device", "unknown", "device"],
+      ["self-device", "self", "device"], ["listed-web", "listed", "web"]]) {
+    anchor = { state, relays: [] };
+    answer = Object.assign({}, base, { flow });
+    const c = await relayConfig();
+    out[name] = { signIn: c.signIn, flow: c.flow };
+  }
+  console.log(JSON.stringify(out));
+})();
+`
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.mjs")
+	if err := os.WriteFile(path, []byte(script), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := exec.Command(node, path).CombinedOutput()
+	if err != nil {
+		t.Fatalf("node: %v\n%s", err, got)
+	}
+	var out map[string]struct {
+		SignIn bool   `json:"signIn"`
+		Flow   string `json:"flow"`
+	}
+	if err := json.Unmarshal(got, &out); err != nil {
+		t.Fatalf("node said %s", got)
+	}
+	for _, name := range []string{"listed-device", "unknown-device"} {
+		if c := out[name]; c.SignIn || c.Flow == "device" {
+			t.Errorf("%s: %+v, want no sign-in on a page the relay does not serve", name, c)
+		}
+	}
+	if c := out["self-device"]; !c.SignIn || c.Flow != "device" {
+		t.Errorf("a local session's own page: %+v, want the device flow", c)
+	}
+	if c := out["listed-web"]; !c.SignIn || c.Flow != "web" {
+		t.Errorf("the web flow: %+v", c)
 	}
 }
 

@@ -333,9 +333,8 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"comma list of either. Nobody signs in against, or hosts, any other. Listening\n" +
 			"beyond this computer it refuses to start without one; on loopback it serves this\n" +
 			"checkout's origin repository, or any repository outside a GitHub checkout.\n\n" +
-			"It serves the session WebSocket at /session, the sign-in at /auth/token or\n" +
-			"/auth/device, the GitHub App's public client id at /config and a health check at\n" +
-			"/healthz. It\n" +
+			"It serves the session WebSocket at /session, the sign-in at /auth/token, the\n" +
+			"GitHub App's public client id at /config and a health check at /healthz. It\n" +
 			"admits a browser only from https://abcdesign.app or a loopback page, or, when\n" +
 			"--origin is given, from exactly the origins it names, and otherwise, when\n" +
 			sessionOriginsEnv + " is set, from exactly the origins that comma list names.\n" +
@@ -343,8 +342,9 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 			"relay takes only a GitHub App user access token. Its client id is read from\n" +
 			"--client-id or " + sessionClientIDEnv + ", and its secret from\n" +
 			sessionSecretEnv + "; with both, members sign in with GitHub's web\n" +
-			"flow, and with the client id alone, with GitHub's device flow (/auth/device).\n" +
-			"Without a client id, sign-in is not offered and only guests can join.\n" +
+			"flow. Without both, sign-in is not offered and only guests can join: GitHub's\n" +
+			"device flow, which needs no secret, belongs to abcd session start alone, whose\n" +
+			"relay serves its own session page.\n" +
 			sessionLegacyAppTypeEnv + " set to anything but github-app is refused: the\n" +
 			"relay takes no OAuth app.\n\n" +
 			"Exit 2 on a refusal, with nothing started.",
@@ -393,7 +393,7 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 				URL:      "http://" + bound,
 				Loopback: loopback,
 				Proxy:    behindProxy,
-				SignIn:   clientID != "",
+				SignIn:   clientID != "" && os.Getenv(sessionSecretEnv) != "",
 				Repos:    append([]string{}, allowRepos...),
 				Owners:   append([]string{}, allowOwners...),
 				AnyRepo:  len(allowRepos) == 0 && len(allowOwners) == 0,
@@ -421,13 +421,10 @@ func newSessionServeCommand(asJSON *bool) *cobra.Command {
 					}
 					fmt.Fprintf(w, "  serves sessions for %s\n", termsafe.Sanitize(strings.Join(names, ", ")))
 				}
-				switch {
-				case start.SignIn && os.Getenv(sessionSecretEnv) != "":
+				if start.SignIn {
 					fmt.Fprintln(w, "  sign-in: the team's GitHub App, through GitHub's web flow")
-				case start.SignIn:
-					fmt.Fprintln(w, "  sign-in: the team's GitHub App, through GitHub's device flow (no secret set)")
-				default:
-					fmt.Fprintf(w, "  sign-in is not set up (set --client-id, and %s for the web flow); only guests can join\n", sessionSecretEnv)
+				} else {
+					fmt.Fprintf(w, "  sign-in is not set up (set --client-id and %s); only guests can join\n", sessionSecretEnv)
 				}
 				fmt.Fprintln(w, "  stop it with Ctrl-C; every session it holds ends with it")
 			})

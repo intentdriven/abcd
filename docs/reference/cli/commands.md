@@ -4173,9 +4173,8 @@ comma list of either. Nobody signs in against, or hosts, any other. Listening
 beyond this computer it refuses to start without one; on loopback it serves this
 checkout's origin repository, or any repository outside a GitHub checkout.
 
-It serves the session WebSocket at /session, the sign-in at /auth/token or
-/auth/device, the GitHub App's public client id at /config and a health check at
-/healthz. It
+It serves the session WebSocket at /session, the sign-in at /auth/token, the
+GitHub App's public client id at /config and a health check at /healthz. It
 admits a browser only from https://abcdesign.app or a loopback page, or, when
 --origin is given, from exactly the origins it names, and otherwise, when
 ABCD_SESSION_ORIGINS is set, from exactly the origins that comma list names.
@@ -4183,8 +4182,9 @@ Sign-in goes through the team's GitHub App only, and nobody pastes a token: the
 relay takes only a GitHub App user access token. Its client id is read from
 --client-id or ABCD_SESSION_GITHUB_CLIENT_ID, and its secret from
 ABCD_SESSION_GITHUB_CLIENT_SECRET; with both, members sign in with GitHub's web
-flow, and with the client id alone, with GitHub's device flow (/auth/device).
-Without a client id, sign-in is not offered and only guests can join.
+flow. Without both, sign-in is not offered and only guests can join: GitHub's
+device flow, which needs no secret, belongs to abcd session start alone, whose
+relay serves its own session page.
 ABCD_SESSION_GITHUB_APP_TYPE set to anything but github-app is refused: the
 relay takes no OAuth app.
 

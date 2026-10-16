@@ -65,6 +65,14 @@ We will build the session as follows.
 
   Membership stays GitHub's answer on a GitHub App token. A guest's name stays the one they type.
 
+### Amendment of 2026-10-16: the device flow is offered only where the relay serves its own page
+
+Amended in the open, on review of the change that lands decision 3. Every term above holds, with these narrowings:
+
+- Decision 3's device flow is offered only by a relay that serves its own session page, which is `abcd session start` (decision 5). `abcd session serve`, the team's relay, offers the web flow when it holds the secret and no sign-in without it: its `/config` reports sign-in off, and `/auth/device` answers that the device flow is not offered.
+- The session page takes a relay's device flow only on a page that relay serves itself. Every local session serves its own page, so the page on abcdesign.app, or on any other origin, signs in through the web flow alone, and a relay that names the device flow there gets no sign-in.
+- Beside the bound on pending device sign-ins, one client address holds at most four at once, counted as the exchange limit counts it and never more than that limit allows, so a few addresses cannot take every place.
+
 ## Alternatives Considered
 
 - **Keep the relay field and the token paste, with better words.** This is the least work, but it leaves a product thinker facing a server address and a secret. The product thinker rejected it.

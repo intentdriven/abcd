@@ -170,9 +170,10 @@ GitHub App user access token (`ghu_`), asks GitHub for its login and whether it
 may push to the repository, and drops it straight after. The relay reads the
 app's public client id from `--client-id` or `ABCD_SESSION_GITHUB_CLIENT_ID`,
 and its secret from `ABCD_SESSION_GITHUB_CLIENT_SECRET` by name. With both,
-members sign in through GitHub's web flow (`/auth/token`); with the client id
-alone, through GitHub's device flow (`/auth/device`); without a client id,
-sign-in is not offered and only guests can join. `ABCD_SESSION_GITHUB_APP_TYPE`,
+members sign in through GitHub's web flow (`/auth/token`); without both,
+sign-in is not offered and only guests can join. GitHub's device flow, which
+needs no secret, belongs to `abcd session start` alone, whose relay serves its
+own session page; `serve` never offers it. `ABCD_SESSION_GITHUB_APP_TYPE`,
 which once chose an OAuth app, may be unset or `github-app`; set to anything
 else the relay refuses to start. Never ask the user for the secret, and never
 print it or pass it on a command line.

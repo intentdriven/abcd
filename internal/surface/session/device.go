@@ -12,11 +12,16 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	core "github.com/intentdriven/abcd/internal/core/session"
 )
 
-// GitHub's device flow, for a relay holding the GitHub App's client id and
-// no secret: a local session on the host's own computer, where no secret may
-// sit (adr-2610161400542916). "The client_secret is not needed for the device
+// GitHub's device flow, for a local session alone (`abcd session start`): a
+// relay that serves its own session page and holds the GitHub App's client id
+// and no secret, on the host's own computer, where no secret may sit
+// (adr-2610161400542916). A relay that serves no page offers the web flow,
+// with the secret, or no sign-in at all: the static page signs in through the
+// web flow only. "The client_secret is not needed for the device
 // flow" (https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps).
 // GitHub documents no CORS for its device endpoints, so the relay asks them
 // for the page.
@@ -26,7 +31,9 @@ import (
 // random handle, and the page sees only the handle, the user code it shows the
 // person, and the timings. The relay polls GitHub for a handle no faster than
 // GitHub's interval, however often the page asks, so the number of sign-ins
-// held (maxDeviceLogins) bounds what the relay can ask of GitHub.
+// held (maxDeviceLogins) bounds what the relay can ask of GitHub, and the
+// number one address holds (maxDeviceLoginsPerAddr) keeps a few addresses
+// from taking every place.
 
 // deviceGrant is the device flow's grant type (RFC 8628 section 3.4).
 const deviceGrant = "urn:ietf:params:oauth:grant-type:device_code"
@@ -48,6 +55,7 @@ const (
 // deviceLogin is one device sign-in under way.
 type deviceLogin struct {
 	code     string
+	addr     string // the client's address, as core.AddressKey counts it
 	interval time.Duration
 	next     time.Time // GitHub is not asked before this
 	expires  time.Time
@@ -61,10 +69,54 @@ var deviceHandleRe = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
 // hyphen in the middle"), which the page shows.
 var userCodeRe = regexp.MustCompile(`^[A-Z0-9]{4}-[A-Z0-9]{4}$`)
 
-// deviceOffered says the relay offers the device flow: a client id and no
-// secret. A relay with the secret offers the web flow instead.
+// deviceOffered says the relay offers the device flow: a local session,
+// which serves its own page, with a client id and no secret. A relay with the
+// secret offers the web flow instead, and one that serves no page and holds
+// no secret offers no sign-in.
 func (s *Server) deviceOffered() bool {
-	return s.cfg.ClientID != "" && s.cfg.ClientSecret == ""
+	return s.cfg.ServePage && s.cfg.ClientID != "" && s.cfg.ClientSecret == ""
+}
+
+// devicesFrom counts the sign-ins under way for the address key addr. The
+// caller holds s.mu.
+func (s *Server) devicesFrom(addr string) int {
+	n := 0
+	for _, d := range s.devices {
+		if d.addr == addr {
+			n++
+		}
+	}
+	return n
+}
+
+// deviceRoom reports whether another sign-in may be held: "" when it may,
+// else "busy" (every place taken) or "rate-limited" (the address holds its
+// share). The caller holds s.mu.
+func (s *Server) deviceRoom(addr string) string {
+	switch {
+	case len(s.devices) >= maxDeviceLogins:
+		return "busy"
+	case s.devicesFrom(addr) >= s.perAddrDevices():
+		return "rate-limited"
+	}
+	return ""
+}
+
+// perAddrDevices is how many sign-ins one address may hold: never more than
+// it may start in one exchange window.
+func (s *Server) perAddrDevices() int {
+	return min(maxDeviceLoginsPerAddr, s.relay.Limits().MaxExchangesPerAddr)
+}
+
+// refuseDeviceRoom answers a start deviceRoom refused.
+func (s *Server) refuseDeviceRoom(w http.ResponseWriter, why string) {
+	if why == "busy" {
+		w.Header().Set("Retry-After", "60")
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "busy"})
+		return
+	}
+	w.Header().Set("Retry-After", strconv.Itoa(int(s.relay.Limits().ExchangeWindow/time.Second)))
+	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate-limited"})
 }
 
 func (s *Server) now() time.Time {
@@ -130,18 +182,19 @@ func (s *Server) serveDeviceStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	now := s.now()
+	client := clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly)
+	addr := core.AddressKey(client)
 	s.mu.Lock()
 	s.pruneDevices(now)
-	full := len(s.devices) >= maxDeviceLogins
+	why := s.deviceRoom(addr)
 	s.mu.Unlock()
-	if full {
-		w.Header().Set("Retry-After", "60")
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "busy"})
+	if why != "" {
+		s.refuseDeviceRoom(w, why)
 		return
 	}
 	// Counted with the web flow's exchanges, per address, before GitHub is
 	// asked: a device code is a request against the app's own limits.
-	if !s.relay.AllowExchange(clientAddress(r, s.cfg.BehindProxy, s.cfg.LoopbackOnly)) {
+	if !s.relay.AllowExchange(client) {
 		w.Header().Set("Retry-After", strconv.Itoa(int(s.relay.Limits().ExchangeWindow/time.Second)))
 		writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate-limited"})
 		return
@@ -176,13 +229,12 @@ func (s *Server) serveDeviceStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	if len(s.devices) >= maxDeviceLogins {
+	if why := s.deviceRoom(addr); why != "" {
 		s.mu.Unlock()
-		w.Header().Set("Retry-After", "60")
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "busy"})
+		s.refuseDeviceRoom(w, why)
 		return
 	}
-	s.devices[handle] = &deviceLogin{code: got.DeviceCode, interval: interval, next: now.Add(interval), expires: now.Add(life)}
+	s.devices[handle] = &deviceLogin{code: got.DeviceCode, addr: addr, interval: interval, next: now.Add(interval), expires: now.Add(life)}
 	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
 		"handle":           handle,

@@ -210,7 +210,9 @@ client id; the steps below are what it fills in, for registering it by hand.
    as `.abcd/relay/github-app.json`. `abcd session start` refuses a file that
    holds a `client_secret`. Leave the device flow off if you only use the
    team's relay: anyone who knows the public client id can start a device
-   sign-in and ask someone to confirm its code.
+   sign-in and ask someone to confirm its code. Only `abcd session start`
+   offers the device flow; the team's relay (`abcd session serve`) signs in
+   through the web flow alone, and without the secret it offers no sign-in.
 
 An OAuth app is not taken: its sign-in asks for access to every repository
 the person can reach. A relay set up earlier with
@@ -330,7 +332,7 @@ one connection makes at most a hundred, a session holding at most 1 MiB of
 them. A connection that keeps sending messages the relay refuses is cut off
 after a thousand. One address may sign in through the relay at most ten times
 in ten minutes, and the relay holds at most 64 sign-ins waiting for a code to
-be confirmed on GitHub.
+be confirmed on GitHub, four of them from one address.
 
 It bounds connections too: 256 in all and 16 from one address. Past either, a
 new connection is turned away, and a connection that has not hosted or joined

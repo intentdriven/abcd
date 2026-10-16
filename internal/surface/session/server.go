@@ -141,8 +141,14 @@ type Config struct {
 	Hosts []string
 }
 
-// maxDeviceLogins bounds the device sign-ins one relay holds at once.
-const maxDeviceLogins = 64
+// maxDeviceLogins bounds the device sign-ins one relay holds at once, and
+// maxDeviceLoginsPerAddr those one client address holds (counted as the
+// exchange limit counts it): fewer than the exchange limit lets an address
+// start, so a few addresses cannot take every place.
+const (
+	maxDeviceLogins        = 64
+	maxDeviceLoginsPerAddr = 4
+)
 
 // Server is the relay's HTTP handler.
 type Server struct {
@@ -760,15 +766,20 @@ func (s *Server) serveConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	// With the app's secret, GitHub's web flow through /auth/token; in a
+	// local session, which serves its own page, with the client id alone,
+	// the device flow through /auth/device. A relay that serves no page and
+	// holds no secret offers no sign-in.
+	signIn := s.cfg.ClientID != "" && (s.cfg.ClientSecret != "" || s.deviceOffered())
 	cfg := map[string]any{
 		"client_id":     s.cfg.ClientID,
-		"sign_in":       s.cfg.ClientID != "",
+		"sign_in":       signIn,
 		"authorize_url": s.cfg.GitHubWeb + "/login/oauth/authorize",
 	}
 	if s.cfg.ClientID != "" {
 		cfg["app_type"] = AppTypeGitHubApp
-		// With the app's secret, GitHub's web flow through /auth/token;
-		// with its client id alone, the device flow through /auth/device.
+	}
+	if signIn {
 		cfg["flow"] = "web"
 		if s.deviceOffered() {
 			cfg["flow"] = "device"

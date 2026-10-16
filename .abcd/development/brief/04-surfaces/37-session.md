@@ -55,7 +55,7 @@ gets 421) and as page origins.
 
 It serves these routes and nothing else: the session's WebSocket at
 `/session`, the web-flow sign-in exchange at `/auth/token`, the device-flow
-sign-in at `/auth/device` and `/auth/device/token`, the sign-in app's public
+sign-in at `/auth/device` and `/auth/device/token` (a local session only), the sign-in app's public
 client id and flow at `/config`, a health check at `/healthz`, and, for a
 local session only, the page's embedded files from a fixed route table. A browser is admitted only from
 `https://abcdesign.app`, a loopback page or another origin the host names, each
@@ -97,10 +97,14 @@ written to disk and nothing is logged, no token, secret or brief text. The
 sign-in app's secret, on a cloud relay, is read from
 `ABCD_SESSION_GITHUB_CLIENT_SECRET` by name, added only to the relay's own
 exchange with GitHub, and never sent to a browser; GitHub's answer is passed
-on field by field, so nothing it echoes reaches the page. A relay with the
-client id and no secret (a local session, which never reads one) offers GitHub's
-device flow instead and keeps each device code in memory under a random
-handle, at most 64 at once, never sending it to a browser.
+on field by field, so nothing it echoes reaches the page. A local session's
+relay, which serves its own page and holds the client id and no secret (it
+never reads one), offers GitHub's device flow instead and keeps each device
+code in memory under a random handle, at most 64 at once and four from one
+client address, never sending it to a browser. A relay that serves no page
+offers the device flow never: without the secret it offers no sign-in, and
+the page on any origin but its own relay's signs in through the web flow
+alone.
 
 Limits: 256 KiB a message, 8 MiB of log a session, 32 participants a session,
 16 sessions a relay, five sign-in attempts a connection, and a connection that

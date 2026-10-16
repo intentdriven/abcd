@@ -92,6 +92,10 @@ func IsTailnetAddr(a netip.Addr) bool {
 // every device of a tailnet shares one /48 of Tailscale's range, and a device
 // cannot pick another address in it. An address that does not parse is its
 // own key.
+// AddressKey is the key the relay counts a client address by, for a front
+// door that bounds something per address as the relay's own limits do.
+func AddressKey(addr string) string { return addressKey(addr) }
+
 func addressKey(addr string) string {
 	a, err := netip.ParseAddr(strings.TrimSpace(addr))
 	if err != nil {
