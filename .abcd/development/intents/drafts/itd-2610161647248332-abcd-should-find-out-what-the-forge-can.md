@@ -12,7 +12,7 @@ origin: extracted-from-record
 production_mode: hand-written
 ---
 
-# abcd should find out what the forge can do instead of asking the person or assuming. On 2026-10-16, setting up a throwaway lab to test abcd land, the agent asked the product thinker whether the team organisation allowed private copies; the product thinker did not know and should not have to. A read-only query answered it (members_can_fork_private_repositories is false for the organisation's own repositories), and a real attempt showed a private fork of a repository the person owns works anyway. The general want: abcd tests the forge's functionality itself (can repositories be private, can they be forked privately, is a merge queue available) and goes with the route that delivers the wanted outcome; only when no route exists does it ask, offering the options. Likely an intent; it needs a state-of-the-art pass on forge capability detection.
+# abcd finds out what the forge can do before choosing a route
 
 ## Press Release
 
@@ -20,7 +20,7 @@ production_mode: hand-written
 
 ## Why This Matters
 
-Graduated from `iss-2610161632245527`: abcd should find out what the forge can do instead of asking the person or assuming. On 2026-10-16, setting up a throwaway lab to test abcd land, the agent asked the product thinker whether the team organisation allowed private copies; the product thinker did not know and should not have to. A read-only query answered it (members_can_fork_private_repositories is false for the organisation's own repositories), and a real attempt showed a private fork of a repository the person owns works anyway. The general want: abcd tests the forge's functionality itself (can repositories be private, can they be forked privately, is a merge queue available) and goes with the route that delivers the wanted outcome; only when no route exists does it ask, offering the options. Likely an intent; it needs a state-of-the-art pass on forge capability detection.. Read that issue record for the source observation.
+Graduated from `iss-2610161632245527`: abcd should find out what the forge can do instead of asking the person or assuming. On 2026-10-16, setting up a throwaway lab to test abcd land, the agent asked the product thinker whether the team organisation allowed private copies; the product thinker did not know and should not have to. A read-only query answered it (members_can_fork_private_repositories is false for the organisation's own repositories), and a real attempt showed a private fork of a repository the person owns works anyway. The general want: abcd tests the forge's functionality itself (can repositories be private, can they be forked privately, is a merge queue available) and goes with the route that delivers the wanted outcome; only when no route exists does it ask, offering the options. It needs a state-of-the-art pass on forge capability detection before planning. Read that issue record for the source observation.
 
 ## Mechanism
 
