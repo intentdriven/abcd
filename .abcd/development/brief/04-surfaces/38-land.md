@@ -142,8 +142,8 @@ this one code path (ruling R3).
   disagree are refused, naming both, and a forge or an `origin` that cannot be
   asked gets no gate and no push. The local `origin/HEAD` is no authority: a
   stale or missing one is reported in an `origin` step and passed over, the
-  agreed default fetched when it is not tracked, and `origin/HEAD` is never
-  written (iss-2610161831078335).
+  agreed default is the one the landed check fetches, and `origin/HEAD` is
+  never written (iss-2610161831078335).
 - A pull request from another repository is never armed (it is set aside
   when this repository's own is listed beside it), and one whose head on the
   forge is not the landed head is not armed. After a push that moved the

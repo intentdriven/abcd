@@ -55,8 +55,7 @@ HEAD`, which fetches and writes nothing) and not the branch. A forge and an
 `origin` that disagree are refused, naming both, and so is an `origin` that
 cannot be asked. When the local `origin/HEAD` is stale or missing, land does
 not refuse: it says so in an `origin` step, goes on with the default the two
-agree on, fetches that branch when it is not tracked here, and leaves
-`origin/HEAD` as it is. Then
+agree on, and leaves `origin/HEAD` as it is. Then
 `origin`'s default branch is fetched, and the head has landed when it is on
 it, or when the forge lists a merged pull request from this repository's
 branch whose head was this head and whose base was the default branch (a

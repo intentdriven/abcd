@@ -142,6 +142,11 @@ func TestGitflowMainLandsWhenDevelopIsTheDefault(t *testing.T) {
 	if f.originHEAD() != "" {
 		t.Fatalf("origin/HEAD is %q: land must leave it unset", f.originHEAD())
 	}
+	// origin/HEAD is unset here: the local main is a conventional guess, not a
+	// stale origin/HEAD, so the note says missing.
+	if s := step(t, res, "origin"); !strings.Contains(s.Note, "is missing here") || strings.Contains(s.Note, "stale") {
+		t.Fatalf("origin step %+v: want origin/HEAD reported missing, not stale", s)
+	}
 }
 
 func TestAForgeAndOriginThatDisagreeAreRefused(t *testing.T) {
@@ -162,6 +167,7 @@ func TestAnOriginThatCannotBeAskedIsRefused(t *testing.T) {
 	}
 	_, err := f.land(f.options())
 	wantRefusal(t, err, "git ls-remote --symref origin HEAD")
+	wantRefusal(t, err, "got no answer it can trust")
 	if len(f.pushes()) != 0 || len(f.gates) != 0 || len(f.fetches()) != 0 {
 		t.Fatalf("pushed %v, gated %v, fetched %v: want none", f.pushes(), f.gates, f.fetches())
 	}

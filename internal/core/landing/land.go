@@ -237,6 +237,8 @@ func Land(cwd string, o Options) (Result, error) {
 	}
 
 	if !res.Push.On && !res.Enqueue.On {
+		// Neither the forge nor origin is asked, so no default is claimed.
+		res.Default = ""
 		res.add("gate", StatusSkipped, "land.push and land.enqueue are both off, so nothing would land: the preflight did not run", "")
 		addPushOff(&res)
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
@@ -248,9 +250,7 @@ func Land(cwd string, o Options) (Result, error) {
 	}
 	res.Default = def
 	if local != def {
-		if err := settleStaleDefault(&res, o, dir, local, def); err != nil {
-			return res, err
-		}
+		settleStaleDefault(&res, dir, local, def)
 	}
 	tracking, on, err := Landed(o.Git, dir, def, head)
 	var fe *FetchError
@@ -483,25 +483,30 @@ func trackedDefault(dir string) string {
 }
 
 // settleStaleDefault is the landing going on past a stale or missing local
-// default (local, "" when missing) with def, the default the forge and origin
-// agree on: it makes sure origin's def is tracked here, fetching it by a
-// plain, non-forced refspec when it is not, and says loudly that origin was
-// asked. It never writes origin/HEAD: that ref is the person's, and every
-// worktree of the repository shares it.
-func settleStaleDefault(res *Result, o Options, dir, local, def string) error {
-	tracking := "refs/remotes/" + Remote + "/" + def
-	if _, err := gitutil.Run(dir, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--"); err != nil {
-		if _, err := o.Git(dir, "fetch", "--quiet", "--no-tags", Remote, "refs/heads/"+def+":"+tracking); err != nil {
-			fe := &FetchError{Def: def, Err: err}
-			return refuse(fsutil.RedactHome(fe.Error()), "settle what git reports, then run abcd land again; nothing was pushed")
-		}
-	}
+// default (local, "" when nothing names one) with def, the default the forge
+// and origin agree on, and saying loudly that origin was asked. It fetches
+// nothing: the landed check that follows fetches origin's def into
+// refs/remotes/origin/<def> whatever was tracked before. It never writes
+// origin/HEAD: that ref is the person's, and every worktree of the repository
+// shares it.
+func settleStaleDefault(res *Result, dir, local, def string) {
 	was := "is missing here"
 	if local != "" {
-		was = "here is stale (it resolves to " + local + ")"
+		if originHEADSet(dir) {
+			was = "here is stale (it resolves to " + local + ")"
+		} else {
+			was = "is missing here (the guess from a conventional name was " + local + ")"
+		}
 	}
 	res.add("origin", StatusDone, Remote+"/HEAD "+was+", so "+Remote+" was asked: its default branch is "+def+", as the forge's is; "+Remote+"/HEAD was left as it is", "")
-	return nil
+}
+
+// originHEADSet reports whether the checkout names origin's default with a
+// symbolic origin/HEAD, as opposed to the conventional-name guess
+// trackedDefault falls back to when it is unset.
+func originHEADSet(dir string) bool {
+	_, err := gitutil.Run(dir, "symbolic-ref", "--quiet", "refs/remotes/"+Remote+"/HEAD")
+	return err == nil
 }
 
 // checkOrigin refuses unless every fetch and push URL of origin is the
