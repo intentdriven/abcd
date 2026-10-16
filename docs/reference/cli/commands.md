@@ -3953,6 +3953,7 @@ Reserve an issue or intent on the shared remote, or release it: Writes one commi
 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
 abcd reserve <record-id> --release
+abcd reserve --holder
 
 Reserve an issue or an intent on the shared remote before starting work on it, so
 every other participant sees it is taken. The reservation is the branch
@@ -3970,11 +3971,23 @@ another copy to this one; it never moves another person's. A record already
 resolved, won't-fixed, shipped or superseded on origin's default branch counts
 as released whatever its reservation says.
 
-The holder is read from user.email when it is a GitHub no-reply address, or from
-reservation.github_username in the machine configuration; the repository's
-own configuration is never read for it. The checkout must have its local tier
-(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every
-reservation.
+The holder is your GitHub username, from the first of these that names it:
+user.email, when it is a GitHub no-reply address; reservation.github_username
+in the machine configuration (the repository's own configuration is never read
+for it); and the account this session's own GitHub token belongs to, which
+takes one call to GitHub's user endpoint, through gh. When git's identity is
+not a person's (unset, or a machine's), the token alone names the holder, that
+account authors the reservation commit, and the identity git had is shown
+nowhere. The checkout must have its local tier (.abcd/.work.local/), where this
+copy's key is kept. `abcd peers` lists every reservation.
+
+--holder prints the account an act from this checkout would reserve as and the
+source that named it (git, config or token), or its --json document. It may
+make that one call to the user endpoint in two cases: git's identity is a
+person's but carries neither a GitHub no-reply address nor a machine key; or
+git's identity is not a person's (unset, or a machine's), when the machine key
+is skipped. It takes no record id and no other flag, and reserves, writes and
+pushes nothing. It exits 0 when the account is known and 2 when not.
 
 Exit 0 when the act reached origin (or a release was already made); exit 3 when
 the record is held by someone else or by your other copy, so back off; exit 2
@@ -3985,6 +3998,7 @@ push leaves no reservation and nothing in the checkout.
 
 ```
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
+      --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
       --release                 release your reservation from this copy by pushing a tombstone
       --take-over               move your own live reservation from another copy to this one
