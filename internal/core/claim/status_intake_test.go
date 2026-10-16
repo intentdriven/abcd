@@ -2,6 +2,8 @@ package claim
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"testing"
@@ -93,5 +95,49 @@ func TestTheIntakesCapSpansEveryBranch(t *testing.T) {
 	}
 	if len(v.Doubts) != 1 || v.Doubts[0].Branch != "bob" || v.Doubts[0].Reason != DoubtMore {
 		t.Fatalf("doubts = %+v; want bob doubtful, past what one intake takes in", v.Doubts)
+	}
+}
+
+// TestATemporaryFileACutOffWriteLeftIsPruned: a hook cut off mid-write leaves
+// its temporary file behind in the status state; the next intake that takes
+// something in removes every one older than a minute, and leaves a newer
+// one, which a write running beside it may still rename into place.
+func TestATemporaryFileACutOffWriteLeftIsPruned(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	w.pushStatus("maya", announcementMsg("merging", "#1", "maya", t0, 30*time.Minute), "")
+	pat.status(nil)
+	put := func(rel string, age time.Duration) string {
+		t.Helper()
+		p := filepath.Join(pat.dir, filepath.FromSlash(statusFile(rel)))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte("{"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		at := time.Now().Add(-age)
+		if err := os.Chtimes(p, at, at); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	stale := []string{
+		put(seenDir+"/.tmp-0123456789abcdef", time.Hour),
+		put(doubtDir+"/.tmp-0123456789abcdef", time.Hour),
+		put(shownDir+"/.tmp-0123456789abcdef", time.Hour),
+		put("read/.tmp-0123456789abcdef", time.Hour),
+		put(seenDir+"/.abcd-tmp-0123456789abcdef", time.Hour),
+	}
+	fresh := put(seenDir+"/.tmp-fedcba9876543210", 0)
+	w.pushStatus("quinn", announcementMsg("merging", "#2", "quinn", t0, 30*time.Minute), "")
+	pat.status(nil)
+	for _, p := range stale {
+		if _, err := os.Lstat(p); !os.IsNotExist(err) {
+			t.Fatalf("%s survived the intake: %v", p, err)
+		}
+	}
+	if _, err := os.Lstat(fresh); err != nil {
+		t.Fatalf("a temporary file under a minute old was removed: %v", err)
 	}
 }

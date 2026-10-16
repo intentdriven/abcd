@@ -1266,7 +1266,12 @@ var placeHook func(i int)
 // branch moved it from.
 var zeroCommit = strings.Repeat("0", 40)
 
-// pruneStatus removes, best effort: every kept announcement whose life
+// tmpKeep is how old a temporary file in the status state must be before the
+// prune takes it for one a write cut off left behind.
+const tmpKeep = time.Minute
+
+// pruneStatus removes, best effort: every temporary file a write cut off left
+// behind (older than tmpKeep, by the wall clock); every kept announcement whose life
 // ended more than seenKeep ago, with its shown marker and its pusher; every
 // other shown marker older than shownKeep (a block's file of the lines one
 // prompt showed, a line's own marker an earlier build kept, or an
@@ -1280,6 +1285,22 @@ func pruneStatus(ctx context.Context, root string, now time.Time, refs []statusR
 		return
 	}
 	defer r.Close()
+	for _, sub := range []string{seenDir, shownDir, doubtDir, pusherDir, path.Base(statusBranches.readDir())} {
+		for _, e := range statusEntries(root, sub) {
+			if ctx.Err() != nil {
+				return
+			}
+			name := e.Name()
+			if !strings.HasPrefix(name, tmpPrefix) && !strings.HasPrefix(name, ".abcd-tmp-") {
+				continue
+			}
+			// By the wall clock: a write running beside this one renames its
+			// file within moments, so only one older than tmpKeep was cut off.
+			if info, err := e.Info(); err == nil && time.Since(info.ModTime()) > tmpKeep {
+				_ = r.Remove(statusFile(sub + "/" + name))
+			}
+		}
+	}
 	for _, e := range statusEntries(root, seenDir) {
 		if ctx.Err() != nil {
 			return
