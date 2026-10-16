@@ -106,14 +106,21 @@ func load(repoRoot string) (Registry, error) {
 // not load — is the bundled defaults alone, the registry that needs no review.
 func committedRegistry(repoRoot string) Registry { return registryAt(repoRoot, "HEAD") }
 
+// storedObjects is the git global option the registry is read under:
+// objects as git stores them, never through a refs/replace/* ref, which
+// would stand another blob in for the committed file, or another commit in
+// for the one named, and so change the registry a run is judged against.
+const storedObjects = "--no-replace-objects"
+
 // registryAt is committedRegistry read at commit instead of HEAD, a revision
-// git can read as one (HEAD, or a commit's full object name).
+// git can read as one (HEAD, or a commit's full object name), with its
+// objects read as stored (storedObjects).
 func registryAt(repoRoot, commit string) Registry {
-	listed, err := gitutil.Run(repoRoot, "ls-tree", "-z", "--name-only", commit, "--", RepoRelPath)
+	listed, err := gitutil.Run(repoRoot, storedObjects, "ls-tree", "-z", "--name-only", commit, "--", RepoRelPath)
 	if err != nil || strings.Trim(listed, "\x00") == "" {
 		return Defaults()
 	}
-	blob, err := gitutil.RunLimited(repoRoot, maxGuardFileBytes, "cat-file", "blob", commit+":./"+RepoRelPath)
+	blob, err := gitutil.RunLimited(repoRoot, maxGuardFileBytes, storedObjects, "cat-file", "blob", commit+":./"+RepoRelPath)
 	if err != nil {
 		return Defaults()
 	}
