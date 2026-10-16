@@ -37,6 +37,18 @@ type reserveOutput struct {
 	Commit           string           `json:"commit"`
 	Replaced         *reserveReplaced `json:"replaced,omitempty"`
 	DerivedUnchecked string           `json:"derived_unchecked,omitempty"`
+	// HandedBack is the hand-back tombstone a reservation was made over, its
+	// record unchanged on origin's default branch since; note is the
+	// sentence the text form prints for it.
+	HandedBack *reserveHandedBack `json:"handed_back,omitempty"`
+	note       string
+}
+
+// reserveHandedBack is the hand-back a person's own reservation was made over.
+type reserveHandedBack struct {
+	Kind   string `json:"kind"`
+	Holder string `json:"holder"`
+	At     string `json:"at"`
 }
 
 // reserveReplaced is the reservation a take-over replaced.
@@ -216,14 +228,18 @@ func reserveView(res claim.Result) reserveOutput {
 		out.Replaced = &reserveReplaced{Holder: r.Holder, Copy: r.Copy, Commit: r.Commit,
 			EffectiveExpiry: rfc3339(r.EffectiveExpiry), Unreadable: r.Unreadable}
 	}
+	if h := res.HandedBack; h != nil {
+		out.HandedBack = &reserveHandedBack{Kind: termsafe.Sanitize(h.Kind), Holder: termsafe.Sanitize(h.Holder), At: rfc3339(h.At)}
+		out.note = termsafe.Sanitize(h.Note(res.Record))
+	}
 	return out
 }
 
 func rfc3339(t time.Time) string { return t.UTC().Truncate(time.Second).Format(time.RFC3339) }
 
 // renderReserve is the text form: one line saying what was done, then the
-// footprint, then what a take-over replaced and a skipped check, each when
-// there is one.
+// footprint, then what a take-over replaced, a skipped check and the hand-back
+// the reservation was made over, each when there is one.
 func renderReserve(w io.Writer, out reserveOutput) {
 	switch out.Act {
 	case claim.ActReserved:
@@ -256,6 +272,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if out.DerivedUnchecked != "" {
 		fmt.Fprintf(w, "  not checked: whether %s is already finished on origin's default branch (%s)\n", out.Record, out.DerivedUnchecked)
+	}
+	if out.note != "" {
+		fmt.Fprintf(w, "  note: %s\n", out.note)
 	}
 }
 

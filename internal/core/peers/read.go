@@ -484,6 +484,30 @@ func FoldersAt(root, ref string) (map[string][]string, error) {
 	return out, nil
 }
 
+// RecordAt is one file a ref's tree holds a record in: its folder and the
+// object name of its blob.
+type RecordAt struct {
+	Folder string
+	Blob   string
+}
+
+// RecordsAt is FoldersAt with each file's blob: the record ids ref's tree
+// holds, each with every file that claims it, read from the object store by
+// filename.
+func RecordsAt(root, ref string) (map[string][]RecordAt, error) {
+	h, _, err := scanTree(root, ref)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]RecordAt, len(h))
+	for id, hs := range h {
+		for _, x := range hs {
+			out[id] = append(out[id], RecordAt{Folder: x.folder, Blob: x.blob})
+		}
+	}
+	return out, nil
+}
+
 // scanTree reads a ref's holdings from the object store by filename.
 func scanTree(root, ref string) (holdings, bool, error) {
 	args := []string{"ls-tree", "-r", "-z", "--full-tree", ref, "--"}

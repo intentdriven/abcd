@@ -10,7 +10,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lease"
-	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -66,6 +65,15 @@ type Result struct {
 	// whether the record is already finished there was not checked; "" when
 	// it was read (or origin has none).
 	DerivedUnchecked string
+	// HandedBack is the hand-back a person's own reservation was made over,
+	// its record unchanged on origin's default branch since, which a surface
+	// tells the person (HandBack.Note); nil for every other act.
+	HandedBack *HandBack
+	// HandBackUnpublished is why a release asked to publish a hand-back
+	// pushed a plain tombstone instead: origin's default branch holds no one
+	// record of it to name. "" when the hand-back was published, or none was
+	// asked.
+	HandBackUnpublished string
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -79,6 +87,10 @@ type judged struct {
 	// derived is true when the record is terminal on the default branch as
 	// fetched, so its reservation counts as released whatever its expiry.
 	derived bool
+	// blob is the record's blob on the default branch as last fetched, "" when
+	// it holds the record in no file or several, or none can be read: what a
+	// hand-back's release names, and what a standing hand-back is judged by.
+	blob    string
 	verdict lease.Verdict
 	// mine and thisCopy compare a readable tip's holder and copy with the
 	// person and copy acting.
@@ -194,7 +206,7 @@ func lostRace(p *prepared, tree string, before judged, perr error) error {
 	if errors.As(derr, &nh) {
 		return derr
 	}
-	if errors.Is(derr, ErrBackOff) && j.Unreadable == "" && !j.mine {
+	if errors.Is(derr, ErrBackOff) && j.Unreadable == "" && !j.mine && !j.message.released() {
 		return backOff("%s was reserved by %s while this push was on its way, until %s; back off and take other work",
 			p.id, j.Holder, stamp(j.verdict.EffectiveExpiry))
 	}
@@ -243,6 +255,15 @@ func decide(p *prepared, j judged) (Result, message, string, error) {
 		res.Act = ActReserved
 		return res, m, "", nil
 	case j.released():
+		// A hand-back whose record is unchanged is a person's to settle: a
+		// drain backs off it, and a person's own reservation is told of it
+		// (spc-2610161044461448 step 3).
+		if j.handBackStands() {
+			if p.req.Drain {
+				return Result{}, message{}, "", j.handBackBackOff(p.id)
+			}
+			res.HandedBack = &HandBack{Kind: j.HandedBack, Holder: j.Holder, At: j.ReleasedAt}
+		}
 		res.Act = ActReserved
 		return res, m, j.Commit, nil
 	case j.Unreadable != "":
@@ -315,8 +336,19 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 				p.id, p.req.Tip[:12], nothingPushed))
 	}
 	m := p.tombstone(j.Footprint)
-	return Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
-		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
+	res := Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
+		ExpiresAt: m.ExpiresAt}
+	// A hand-back names the record it was made over; with no one record of it
+	// on origin's default branch there is none to name, and the tombstone is
+	// plain, saying why.
+	if p.req.HandBack != "" {
+		if j.blob == "" {
+			res.HandBackUnpublished = fmt.Sprintf("%s's default branch as last fetched holds no one record of %s, so the tombstone marks no hand-back", Remote, p.id)
+		} else {
+			m.HandedBack, m.RecordBlob = p.req.HandBack, j.blob
+		}
+	}
+	return res, m, j.Commit, nil
 }
 
 // decideRenew is a renewal's row of the push table: this person's own
@@ -379,16 +411,19 @@ func judge(p *prepared, tree string) (judged, error) {
 		return judged{}, refuse("could not read the reservation on %s: %s; %s", p.id, redacted(err), noReservation)
 	}
 	j := judged{tip: t, present: ok}
-	// A default branch the fetch could not read derives nothing: the copy
-	// this clone holds may be stale, so it is not read. It is read whether or
-	// not a tip exists, since a finished record is not reserved either way.
-	if p.derivedGap == "" {
-		j.derived, err = terminalOnDefault(p.root, p.id)
-	}
-	if err != nil {
+	// The default branch is read whether or not a tip exists, since a
+	// finished record is not reserved either way. One the fetch could not
+	// read derives nothing: the copy this clone holds may be stale. Its blob
+	// of the record is still read as last fetched, when it reads: a hand-back
+	// judged by a stale blob reads as changed sooner, never later, than a
+	// fresh one, and one with no blob read stands.
+	recs, err := defaultRecords(p.root)
+	if err != nil && p.derivedGap == "" {
 		return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
 			p.id, redacted(err), noReservation)
 	}
+	j.derived = p.derivedGap == "" && terminal(recs[p.id], p.id)
+	j.blob = blobOf(recs[p.id])
 	if !ok {
 		return j, nil
 	}
@@ -407,21 +442,6 @@ func judge(p *prepared, tree string) (judged, error) {
 var terminalFolders = map[string][]string{
 	"iss": {"resolved", "wontfix"},
 	"itd": {intent.BucketShipped, intent.BucketSuperseded},
-}
-
-// terminalOnDefault reports whether id is in a terminal folder on origin's
-// default branch as last fetched. With no default branch on origin, nothing
-// is derived.
-func terminalOnDefault(root, id string) (bool, error) {
-	ref := originDefault(root)
-	if ref == "" {
-		return false, nil
-	}
-	folders, err := peers.FoldersAt(root, ref)
-	if err != nil {
-		return false, err
-	}
-	return terminal(folders, id), nil
 }
 
 // originDefault is origin's default branch as this checkout last fetched it,
