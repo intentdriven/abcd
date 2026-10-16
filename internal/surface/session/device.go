@@ -91,15 +91,22 @@ func (s *Server) devicesFrom(addr string) int {
 
 // deviceRoom reports whether another sign-in may be held: "" when it may,
 // else "busy" (every place taken) or "rate-limited" (the address holds its
-// share). The caller holds s.mu.
-func (s *Server) deviceRoom(addr string) string {
+// share), with how long until the address's first sign-in ends and frees a
+// place. The caller holds s.mu.
+func (s *Server) deviceRoom(addr string, now time.Time) (string, time.Duration) {
 	switch {
 	case len(s.devices) >= maxDeviceLogins:
-		return "busy"
+		return "busy", 0
 	case s.devicesFrom(addr) >= s.perAddrDevices():
-		return "rate-limited"
+		wait := maxDeviceLife
+		for _, d := range s.devices {
+			if d.addr == addr && d.expires.Sub(now) < wait {
+				wait = d.expires.Sub(now)
+			}
+		}
+		return "rate-limited", wait
 	}
-	return ""
+	return "", 0
 }
 
 // perAddrDevices is how many sign-ins one address may hold: never more than
@@ -108,14 +115,16 @@ func (s *Server) perAddrDevices() int {
 	return min(maxDeviceLoginsPerAddr, s.relay.Limits().MaxExchangesPerAddr)
 }
 
-// refuseDeviceRoom answers a start deviceRoom refused.
-func (s *Server) refuseDeviceRoom(w http.ResponseWriter, why string) {
+// refuseDeviceRoom answers a start deviceRoom refused. An address holding
+// its share is told to come back when its first sign-in ends, in whole
+// seconds, rounded up.
+func (s *Server) refuseDeviceRoom(w http.ResponseWriter, why string, wait time.Duration) {
 	if why == "busy" {
 		w.Header().Set("Retry-After", "60")
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "busy"})
 		return
 	}
-	w.Header().Set("Retry-After", strconv.Itoa(int(s.relay.Limits().ExchangeWindow/time.Second)))
+	w.Header().Set("Retry-After", strconv.Itoa(max(1, int((wait+time.Second-1)/time.Second))))
 	writeJSON(w, http.StatusTooManyRequests, map[string]string{"error": "rate-limited"})
 }
 
@@ -186,10 +195,10 @@ func (s *Server) serveDeviceStart(w http.ResponseWriter, r *http.Request) {
 	addr := core.AddressKey(client)
 	s.mu.Lock()
 	s.pruneDevices(now)
-	why := s.deviceRoom(addr)
+	why, wait := s.deviceRoom(addr, now)
 	s.mu.Unlock()
 	if why != "" {
-		s.refuseDeviceRoom(w, why)
+		s.refuseDeviceRoom(w, why, wait)
 		return
 	}
 	// Counted with the web flow's exchanges, per address, before GitHub is
@@ -229,9 +238,9 @@ func (s *Server) serveDeviceStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.mu.Lock()
-	if why := s.deviceRoom(addr); why != "" {
+	if why, wait := s.deviceRoom(addr, now); why != "" {
 		s.mu.Unlock()
-		s.refuseDeviceRoom(w, why)
+		s.refuseDeviceRoom(w, why, wait)
 		return
 	}
 	s.devices[handle] = &deviceLogin{code: got.DeviceCode, addr: addr, interval: interval, next: now.Add(interval), expires: now.Add(life)}
@@ -343,6 +352,27 @@ func (s *Server) serveDevicePoll(w http.ResponseWriter, r *http.Request) {
 		}
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": out})
 	}
+}
+
+// serveDeviceCancel ends a device sign-in the page stopped, so its place is
+// free at once rather than held until GitHub's code expires. Whoever holds
+// the handle may end it; an unknown handle is already ended.
+func (s *Server) serveDeviceCancel(w http.ResponseWriter, r *http.Request) {
+	if !s.postFrom(w, r) {
+		return
+	}
+	var req struct {
+		Handle string `json:"handle"`
+	}
+	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxAuthBody))
+	if err := dec.Decode(&req); err != nil || !deviceHandleRe.MatchString(req.Handle) {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad-request"})
+		return
+	}
+	s.mu.Lock()
+	delete(s.devices, req.Handle)
+	s.mu.Unlock()
+	writeJSON(w, http.StatusOK, map[string]bool{"ended": true})
 }
 
 // askGitHub posts form to GitHub's sign-in host at path and decodes its JSON

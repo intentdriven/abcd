@@ -332,7 +332,10 @@ one connection makes at most a hundred, a session holding at most 1 MiB of
 them. A connection that keeps sending messages the relay refuses is cut off
 after a thousand. One address may sign in through the relay at most ten times
 in ten minutes, and the relay holds at most 64 sign-ins waiting for a code to
-be confirmed on GitHub, four of them from one address.
+be confirmed on GitHub, four of them from one address. A sign-in the person
+stops on the page, or leaves the page during, is ended at once and frees its
+place; past the four, the page says too many sign-ins are in progress and to
+wait a few minutes.
 
 It bounds connections too: 256 in all and 16 from one address. Past either, a
 new connection is turned away, and a connection that has not hosted or joined

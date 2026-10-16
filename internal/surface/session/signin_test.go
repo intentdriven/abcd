@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -364,4 +365,85 @@ func TestDeviceSignInsAreBoundedPerAddress(t *testing.T) {
 func itoa(i int) string {
 	b, _ := json.Marshal(i)
 	return string(b)
+}
+
+// TestADeviceSignInThePageStopsIsEnded: the page ends a device sign-in the
+// person stops, and the relay frees its place at once rather than holding it
+// until GitHub's code expires.
+func TestADeviceSignInThePageStopsIsEnded(t *testing.T) {
+	f, _ := deviceFixture(t, func(c *Config) { c.BehindProxy = true })
+	start := func() (*http.Response, string) {
+		req, _ := http.NewRequest(http.MethodPost, f.http.URL+"/auth/device", strings.NewReader(`{}`))
+		req.Header.Set("Origin", origin)
+		req.Header.Set("X-Forwarded-For", "198.51.100.7")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		data, _ := io.ReadAll(resp.Body)
+		return resp, string(data)
+	}
+	var handles []string
+	for i := 0; i < maxDeviceLoginsPerAddr; i++ {
+		resp, body := start()
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("start %d: %d %s", i+1, resp.StatusCode, body)
+		}
+		h, _ := decode(t, body)["handle"].(string)
+		handles = append(handles, h)
+	}
+	if resp, _ := start(); resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("one past the address's bound: %d, want 429", resp.StatusCode)
+	}
+	// From another origin, the stop is refused and the place stays held.
+	if resp, _ := post(t, f.http.URL+"/auth/device/cancel", "https://evil.example", `{"handle":"`+handles[0]+`"}`); resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("a stop from another origin: %d, want 403", resp.StatusCode)
+	}
+	if resp, body := post(t, f.http.URL+"/auth/device/cancel", origin, `{"handle":"`+handles[0]+`"}`); resp.StatusCode != http.StatusOK {
+		t.Fatalf("stop: %d %s", resp.StatusCode, body)
+	}
+	resp, body := post(t, f.http.URL+"/auth/device/token", origin, `{"handle":"`+handles[0]+`"}`)
+	if resp.StatusCode != http.StatusBadRequest || !strings.Contains(body, "expired_token") {
+		t.Errorf("a stopped sign-in still answers: %d %s", resp.StatusCode, body)
+	}
+	if resp, body := start(); resp.StatusCode != http.StatusOK {
+		t.Fatalf("after a stop: %d %s, want the place freed", resp.StatusCode, body)
+	}
+	if resp, _ := post(t, f.http.URL+"/auth/device/cancel", origin, `{"handle":"bad"}`); resp.StatusCode != http.StatusBadRequest {
+		t.Errorf("a malformed handle: %d, want 400", resp.StatusCode)
+	}
+}
+
+// TestTheDeviceHoldSaysHowLongItLasts: an address refused for holding its
+// share of device sign-ins is told to come back when its first one ends, not
+// after the exchange window.
+func TestTheDeviceHoldSaysHowLongItLasts(t *testing.T) {
+	f, clk := deviceFixture(t, func(c *Config) { c.BehindProxy = true })
+	start := func() *http.Response {
+		req, _ := http.NewRequest(http.MethodPost, f.http.URL+"/auth/device", strings.NewReader(`{}`))
+		req.Header.Set("Origin", origin)
+		req.Header.Set("X-Forwarded-For", "198.51.100.7")
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		return resp
+	}
+	for i := 0; i < maxDeviceLoginsPerAddr; i++ {
+		if resp := start(); resp.StatusCode != http.StatusOK {
+			t.Fatalf("start %d: %d", i+1, resp.StatusCode)
+		}
+		clk.add(time.Minute)
+	}
+	resp := start()
+	if resp.StatusCode != http.StatusTooManyRequests {
+		t.Fatalf("one past the bound: %d", resp.StatusCode)
+	}
+	// The first started maxDeviceLoginsPerAddr minutes ago and lives 900 s.
+	want := strconv.Itoa(900 - 60*maxDeviceLoginsPerAddr)
+	if got := resp.Header.Get("Retry-After"); got != want {
+		t.Errorf("Retry-After = %q, want %s, when the first sign-in ends", got, want)
+	}
 }

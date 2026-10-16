@@ -293,6 +293,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		s.serveDeviceStart(w, r)
 	case "/auth/device/token":
 		s.serveDevicePoll(w, r)
+	case "/auth/device/cancel":
+		s.serveDeviceCancel(w, r)
 	case "/config":
 		s.serveConfig(w, r)
 	case "/healthz":

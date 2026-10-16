@@ -46,6 +46,7 @@ const WORDS = Object.freeze({
   trustOnly: "Only continue if someone on the project's team sent you this link.",
   trustYes: "Someone on the team sent it",
   signInNotSetUp: "Signing in with GitHub is not set up for this project yet. Ask your technical facilitator. You can still join as a guest.",
+  signInBusy: "Too many sign-ins are in progress. Wait a few minutes, then try again.",
   framedRefused: "This page does not run inside another page. Open it in its own tab:",
   joinHeading: "Join the live session",
   joinMembers: "On the project's team? Sign in with GitHub to edit the brief directly.",
@@ -1232,7 +1233,7 @@ async function relayPost(path, body) {
 }
 
 async function startDeviceSignIn() {
-  stopDeviceSignIn();
+  stopDeviceSignIn(true);
   // A local session's own page alone signs in this way (see relayConfig).
   if (anchor.state !== "self") { toast(WORDS.signInNotSetUp); return; }
   let got;
@@ -1240,7 +1241,10 @@ async function startDeviceSignIn() {
   const out = got.out;
   if (got.status !== 200 || typeof out.handle !== "string" || !/^[A-Za-z0-9_-]{22}$/.test(out.handle) ||
       typeof out.user_code !== "string" || !/^[A-Z0-9]{4}-[A-Z0-9]{4}$/.test(out.user_code)) {
-    toast(out.error === "device_flow_disabled" || got.status === 503 ? WORDS.signInNotSetUp : WORDS.signInFailed);
+    // Too many under way, from this address or on the relay: say so, rather
+    // than that the sign-in failed or is not set up.
+    if (got.status === 429 || out.error === "busy") toast(WORDS.signInBusy);
+    else toast(out.error === "device_flow_disabled" || got.status === 503 ? WORDS.signInNotSetUp : WORDS.signInFailed);
     return;
   }
   const life = Math.min(Number(out.expires_in) || 900, 900) * 1000;
@@ -1251,10 +1255,22 @@ async function startDeviceSignIn() {
   pollDevice();
 }
 
-function stopDeviceSignIn() {
-  if (device) clearTimeout(device.timer);
+// stopDeviceSignIn stops asking after a device sign-in; with tell, the
+// person stopped it (or left the page), so the relay is told to end it and
+// free its place, rather than hold it until GitHub's code expires.
+function stopDeviceSignIn(tell) {
+  const d = device;
+  if (d) clearTimeout(d.timer);
   device = null;
   if (ui.device) ui.device.hidden = true;
+  if (tell && d) {
+    fetch(d.relay + "/auth/device/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ handle: d.handle }),
+      credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer", keepalive: true,
+    }).catch(() => { /* the relay drops it when GitHub's code expires */ });
+  }
 }
 
 function pollDevice() {
@@ -2688,7 +2704,7 @@ function build() {
     el("p", { text: WORDS.deviceStep2 }), ui.deviceCode,
     el("div", { class: "row" },
       el("button", { type: "button", text: WORDS.deviceCopy, onclick: () => copyText(ui.deviceCode.textContent, WORDS.deviceCopied) }),
-      el("button", { type: "button", text: WORDS.cancel, onclick: () => stopDeviceSignIn() })),
+      el("button", { type: "button", text: WORDS.cancel, onclick: () => stopDeviceSignIn(true) })),
     el("p", { class: "state", text: WORDS.deviceWaiting }));
   ui.start = el("div", { class: "start" }, ui.noticeCard, ui.signedIn, ui.signInNote, ui.startCard, ui.joinCard);
 
@@ -2974,6 +2990,8 @@ async function main() {
   if (addSlash()) return;
   if (framed()) { refuseFramed(); return; }
   if (!build()) return;
+  // Leaving the page ends a device sign-in under way on the relay too.
+  addEventListener("pagehide", () => stopDeviceSignIn(true));
   const frag = new URLSearchParams(location.hash.slice(1));
   linkRelay = relayOrigin(frag.get("relay"));
   linkCode = normalizeCode(frag.get("code"));
