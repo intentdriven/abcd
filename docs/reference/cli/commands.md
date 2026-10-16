@@ -3123,6 +3123,12 @@ included), and a pull request only another repository opened. Exit 0 when every
 step did its act or said why it stopped; exit 2 on a refusal, which names what
 was done before it.
 
+Before the push, the reservations and origin's release tags are fetched: while
+another session cuts a release (a live rel-vX.Y.Z reservation, or an unreadable
+one within its hold), or when they cannot be read, nothing is pushed, armed or
+queued, and land exits 3 naming the release, its holder and until when. The
+copy cutting the release lands through its own hold.
+
 **Flags:**
 
 ```

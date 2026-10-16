@@ -183,6 +183,21 @@ landed, and `steps`, each
 with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
 `landed`), `note` and an optional `command`.
 
+A landing a release cut holds exits 3, contention, as every verb that backs
+off does (itd-2609151838312703 C7, spc-2610150728396006 step 4). After the
+gate and before the push, the verb fetches the reservations, which reads
+`origin`'s release tags with them, and makes the implement loop's land-fence
+judgement through the one primitive both call (`claim.FetchMergeHold`): while
+a release is being cut by any session but this copy's own, an unreadable
+release reservation within its hold included, nothing is pushed, armed or
+queued, and the refusal names the release, its holder and until when. The
+push is held as well as the arming, because a push onto a pull request
+already armed can merge it. A fetch that fails holds the landing too, since a
+hold it cannot see may be there; a checkout with no `origin` is not held. The
+copy cutting the release lands through its own hold: under the
+concurrent-sessions rule the cutting session has the final say on what merges
+before its tag.
+
 ## Where this sits
 
 - The records: iss-2610150524235929, iss-2610150524246898,
@@ -190,6 +205,8 @@ with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
 - The shared primitives: `internal/core/landing`, which the implement loop's
   land stage also reads its receipt lookup, forge client and ruleset mirror
   through.
+- The release hold: `internal/core/claim` (`FetchMergeHold`), shared with the
+  implement loop's land fence.
 - The plugin surface: `commands/land.md`.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

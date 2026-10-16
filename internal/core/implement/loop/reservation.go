@@ -185,16 +185,14 @@ func fenceLease(mirrored bool) time.Duration {
 // reservation is this person's from this copy and live (renewing it with
 // term, the fenceLease of the merge rule), and while a release another
 // session is cutting holds every merge (releaseHold, C7). A run that holds no
-// reservation fetches them all the same, for the hold. It returns the renewed
-// expiry, zero for a run that holds no reservation.
+// reservation fetches them all the same, for the hold
+// (claim.FetchMergeHold, the judgement `abcd land` makes too). It returns the
+// renewed expiry, zero for a run that holds no reservation.
 func landFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
 	if c.State.ReservedAt == nil {
-		_, err := claim.Fetch(c.RepoRoot, claimOptions(c.Now))
+		m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
 		var fe *claim.FetchError
 		switch {
-		case errors.Is(err, claim.ErrNoOrigin):
-			// No origin, no reservations: nothing can hold the merge.
-			return time.Time{}, nil
 		case errors.As(err, &fe):
 			return time.Time{}, contend(string(StageLand), "", lane.ID,
 				"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and the merge is not armed",
@@ -203,7 +201,7 @@ func landFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
 			return time.Time{}, refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
 				"settle what it names, then run `abcd implement step` again")
 		}
-		return time.Time{}, releaseHold(c, lane)
+		return time.Time{}, heldMerge(lane, m)
 	}
 	holds, err := renewAtFence(c, lane, term)
 	if err != nil {
@@ -213,44 +211,28 @@ func landFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
 }
 
 // releaseHold refuses the arming, as contention, while the reservations as the
-// fence just fetched them show a release being cut that is not this copy's own
-// (claim.ReleaseHolds): under the concurrent-sessions rule a session cutting a
-// release has the final say on what merges before its tag, so the cutting
-// copy's own landing is its ruling, and every other session's lane, the same
-// person's other copy included, leaves its pull request open for the cutting
-// session to merge or hold. The refusal names each release and its holder.
+// fence's renewal just fetched them show a release being cut that is not this
+// copy's own (claim.MergeHolds, the judgement `abcd land` makes too).
 func releaseHold(c Context, lane Lane) error {
-	holds, _, err := claim.ReleaseHolds(c.RepoRoot, c.Now, claimOptions(c.Now))
+	m, err := claim.MergeHolds(c.RepoRoot, c.Now, claimOptions(c.Now))
 	if err != nil {
 		return refuse(string(StageLand), "", lane.ID, "the release holds could not be read at the land fence: "+err.Error(),
 			"settle what it names, then run `abcd implement step` again")
 	}
-	var reasons, who []string
-	for _, h := range holds {
-		if h.Own {
-			continue
-		}
-		until := stamp(h.EffectiveExpiry)
-		switch {
-		case h.Unreadable != "":
-			reasons = append(reasons, fmt.Sprintf("release %s is held by an unreadable reservation (%s), until %s",
-				h.Release, h.Unreadable, until))
-			who = append(who, "wait until "+h.Release+" is tagged or the hold ends at "+until)
-		case h.Mine:
-			reasons = append(reasons, fmt.Sprintf("release %s is being cut by your copy on another computer, until %s", h.Release, until))
-			who = append(who, "merge it from the copy cutting "+h.Release+", or wait until "+h.Release+" is tagged or that copy releases "+h.Subject)
-		default:
-			reasons = append(reasons, fmt.Sprintf("release %s is being cut by %s, until %s", h.Release, h.Holder, until))
-			who = append(who, "ask "+h.Holder+" to merge it or to release "+h.Subject+", or wait until "+h.Release+" is tagged")
-		}
-	}
-	if len(reasons) == 0 {
+	return heldMerge(lane, m)
+}
+
+// heldMerge is the merge hold's refusal at the fence: every other session's
+// lane, the same person's other copy included, leaves its pull request open
+// for the cutting session to merge or hold. It names each release, its holder
+// and until when.
+func heldMerge(lane Lane, m claim.MergeHold) error {
+	if !m.Held() {
 		return nil
 	}
 	return contend(string(StageLand), "", lane.ID,
-		termsafe.Sanitize(strings.Join(reasons, "; ")+
-			", and a session cutting a release has the final say on what merges before its tag, so this lane does not arm its merge"),
-		termsafe.Sanitize("the pull request stays open and unarmed; "+strings.Join(who, "; ")+", then run `abcd implement step` again"))
+		termsafe.Sanitize(m.Reason()+", so this lane does not arm its merge"),
+		termsafe.Sanitize("the pull request stays open and unarmed; "+m.Waits()+", then run `abcd implement step` again"))
 }
 
 // renewAtFence renews the run's own reservation at the fence: it fetches the

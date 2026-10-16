@@ -25,6 +25,8 @@ package landing
 //     the branch's checkout (it waits on the machine load waiter itself), and
 //     HEAD must be unchanged and a receipt present after it, and origin's
 //     URLs as they were before it (the branch's preflight could rewrite them).
+//     Then the release hold (releasehold.go): nothing is pushed, armed or
+//     queued while another session cuts a release, or when it cannot be read.
 //  5. push (land.push): a plain `git push --porcelain origin
 //     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
 //     the one the gate checked whatever the branch names by then, the
@@ -162,10 +164,13 @@ func (r *Result) add(name, status, note, command string) {
 // supplied (a remote URL carrying a token), before land reports it.
 func clean(s string) string { return gitutil.ScrubURLCredentials(s) }
 
-// Refusal is a landing refused: Reason says why, Fix what settles it.
+// Refusal is a landing refused: Reason says why, Fix what settles it. Held
+// marks a landing a release being cut holds (releaseHold): contention, which
+// the surface exits 3 on, as every verb that backs off does.
 type Refusal struct {
 	Reason string
 	Fix    string
+	Held   bool
 }
 
 func (r *Refusal) Error() string {
@@ -280,6 +285,9 @@ func Land(cwd string, o Options) (Result, error) {
 	// environment: it could rewrite origin's URLs (a pushurl, a pushInsteadOf)
 	// after they were checked, so they are read again before the push.
 	if err := origin.unchanged(dir); err != nil {
+		return res, err
+	}
+	if err := releaseHold(dir, o.Roots.Home); err != nil {
 		return res, err
 	}
 	if err := push(&res, o, dir); err != nil {

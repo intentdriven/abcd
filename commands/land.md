@@ -155,6 +155,19 @@ that moved on the forge after arming, an unreadable ruleset mirror, and the
 forge client missing while an act needs it. Relay the refusal; never retry it with `--no-verify`, a force, or a
 hand-run `gh pr merge` the merge gate did not allow.
 
+**While a release is being cut, exit 3.** Before the push, land fetches the
+reservations and `origin`'s release tags, as the implement loop's land fence
+does, and makes the same judgement. While another session holds a live
+release reservation (`rel-vX.Y.Z`, ended by the tag `vX.Y.Z` reaching
+`origin` or by its holder releasing it), or an unreadable one within its hold,
+nothing is pushed, armed or queued, and the refusal names the release, its
+holder (or "your copy on another computer") and until when. A session cutting
+a release has the final say on what merges before its tag, so the copy that
+reserved the release lands through its own hold. When the reservations cannot
+be fetched, land also exits 3 and pushes nothing, since a hold it cannot see
+may be there; a checkout with no `origin` is not held. Exit 3 means back off:
+relay who holds the release, and run `abcd land` again once it is tagged.
+
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a
 plugin user. If that path does not exist, try `abcd` on `PATH`; if that fails

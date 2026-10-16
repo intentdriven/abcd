@@ -39,7 +39,9 @@ The following are non-negotiable invariants — any architectural choice that vi
    fence's fetch and renewal before a merge is armed, and the tombstone once
    the run's last lane lands or an issue lane is handed back; the land
    fence's fetch is made before it judges a release hold whether or not the
-   run holds a reservation (itd-2609151838312703 C7). Each such fetch reads
+   run holds a reservation (itd-2609151838312703 C7); and `land`, whose
+   meaning includes one fetch of the reservations before it pushes, arms or
+   queues anything, for the same release-hold judgement. Each such fetch reads
    origin's release tags with the reservations, which end a release hold.
    `build next`'s exclusions, `build <itd-N>`'s peers check and every render
    of a reservation or a hold read the view as last fetched, from disk.
