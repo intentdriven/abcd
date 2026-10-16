@@ -619,14 +619,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		hold, held := ownHold(view, v.ID, footprint)
 		if j := judgementFor(st, v.ID, remedyDigest(iss.Remedy)); j == nil || j.Answer != JudgementNo {
-			var hold *DrainHold
+			// The drain's hold is taken once per request: a request awaited
+			// over this issue keeps the one it took, and a poll never renews
+			// it (dcn-2610161315385888).
+			var judgeHold *DrainHold
 			if p := st.Judging; p != nil && p.Issue == v.ID {
-				hold = p.Hold
+				judgeHold = p.Hold
 			}
-			// The hold is taken once per request: a request awaited over this
-			// issue keeps the one it took, and is never renewed by a poll.
-			if reserving && !held && hold == nil {
-				h, err := reserveForJudgement(repoRoot, v.ID, footprint, o.TakeOver, hold, now)
+			if reserving && !held && judgeHold == nil {
+				h, err := reserveForJudgement(repoRoot, v.ID, footprint, o.TakeOver, now)
 				if err != nil {
 					if r, ok := AsRefusal(err); ok && r.Contention {
 						res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: termsafe.Sanitize(r.Reason)})
@@ -634,19 +635,14 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 					}
 					return DrainResult{}, err
 				}
-				if h != nil {
-					// The push moved the tip past any hold the drain had
-					// recorded on the issue, so only the new one is its own.
-					holds.keep(v.ID)
-					holds.add(v.ID, h, true)
-				}
-				hold = h
+				holds.add(v.ID, h, true)
+				judgeHold = h
 			}
 			judging, err := requestJudgement(repoRoot, iss, v, st.Judging, now)
 			if err != nil {
 				return DrainResult{}, err
 			}
-			judging.Hold = hold
+			judging.Hold = judgeHold
 			st.Judging = &judging
 			res.Next = judgementMove(judging)
 			return finish(true)
