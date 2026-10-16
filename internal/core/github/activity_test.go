@@ -8,6 +8,63 @@ import (
 	"testing"
 )
 
+// activityFixture is the forge's activity record as GitHub answers it
+// (testdata/activity.json: a real answer's shape, trimmed, with every login
+// a placeholder), each {{name}} in it replaced by subs[name].
+func activityFixture(t *testing.T, subs map[string]string) string {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "activity.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := string(data)
+	for k, v := range subs {
+		s = strings.ReplaceAll(s, "{{"+k+"}}", v)
+	}
+	if strings.Contains(s, "{{") {
+		t.Fatalf("the fixture keeps a placeholder: %s", s)
+	}
+	return s
+}
+
+// TestPushersReadsEveryPushLikeActivity: GitHub records a branch's first push
+// as branch_creation and a forced one as force_push, beside push, so all
+// three are read, and every other activity (a deletion, a merge queue's
+// merge) says nothing of who pushed a commit and is passed over, as is an
+// app's push. The query names no activity type, so none is lost to it.
+func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
+	sha := func(c string) string { return strings.Repeat(c, 40) }
+	logPath := fakeActivity(t, activityFixture(t, map[string]string{
+		"before-force": sha("1"), "after-force": sha("2"), "before-bot": sha("3"), "after-bot": sha("4"),
+		"before-push": sha("5"), "after-push": sha("6"), "after-creation": sha("7"), "before-deletion": sha("8"),
+		"before-queue": sha("9"), "after-queue": sha("a"),
+	}))
+	got, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/octo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Push{
+		{Before: sha("1"), After: sha("2"), Login: "octo"},
+		{Before: sha("5"), After: sha("6"), Login: "octo"},
+		{Before: sha("0"), After: sha("7"), Login: "mallory"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("pushers = %+v; want %+v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("pushers = %+v; want %+v", got, want)
+		}
+	}
+	data, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "activity_type") {
+		t.Fatalf("the query names an activity type, so the others are never answered: %q", data)
+	}
+}
+
 // fakeActivity puts a stand-in `gh` on PATH that logs its argv and answers
 // body.
 func fakeActivity(t *testing.T, body string) (logPath string) {
@@ -52,7 +109,7 @@ func TestPushersReadsTheForgesRecordOfWhoPushed(t *testing.T) {
 	zero := strings.Repeat("0", 40)
 	logPath := fakeActivity(t, `[{"before":"`+b+`","after":"`+a+`","activity_type":"push","actor":{"login":"Maya"}},`+
 		`{"before":"`+zero+`","after":"`+b+`","activity_type":"push","actor":{"login":"mallory"}},`+
-		`{"before":"`+zero+`","after":"`+b+`","activity_type":"push","actor":null},{"before":"`+zero+`","after":"nope","actor":{"login":"x"}}]`)
+		`{"before":"`+zero+`","after":"`+b+`","activity_type":"push","actor":null},{"before":"`+zero+`","after":"nope","activity_type":"push","actor":{"login":"x"}}]`)
 	dir := originAt(t, "git@github.com:intentdriven/abcd.git")
 	got, err := Pushers(dir, "refs/heads/abcd-status/maya")
 	if err != nil {
@@ -66,7 +123,7 @@ func TestPushersReadsTheForgesRecordOfWhoPushed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	argv := "api\n--hostname\ngithub.com\nrepos/intentdriven/abcd/activity?activity_type=push&per_page=100&ref=refs%2Fheads%2Fabcd-status%2Fmaya\n"
+	argv := "api\n--hostname\ngithub.com\nrepos/intentdriven/abcd/activity?per_page=100&ref=refs%2Fheads%2Fabcd-status%2Fmaya\n"
 	if string(data) != argv {
 		t.Fatalf("argv = %q, want %q", data, argv)
 	}
@@ -93,9 +150,9 @@ func TestPushersPassesOverAnAppsPush(t *testing.T) {
 	b := strings.Repeat("b", 40)
 	c := strings.Repeat("c", 40)
 	zero := strings.Repeat("0", 40)
-	fakeActivity(t, `[{"before":"`+b+`","after":"`+a+`","actor":{"login":"claude","type":"Bot"}},`+
-		`{"before":"`+c+`","after":"`+b+`","actor":{"login":"some-app[bot]","type":"User"}},`+
-		`{"before":"`+zero+`","after":"`+c+`","actor":{"login":"maya","type":"User"}}]`)
+	fakeActivity(t, `[{"before":"`+b+`","after":"`+a+`","activity_type":"push","actor":{"login":"claude","type":"Bot"}},`+
+		`{"before":"`+c+`","after":"`+b+`","activity_type":"push","actor":{"login":"some-app[bot]","type":"User"}},`+
+		`{"before":"`+zero+`","after":"`+c+`","activity_type":"branch_creation","actor":{"login":"maya","type":"User"}}]`)
 	got, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
 	if err != nil {
 		t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -16,11 +17,20 @@ type Push struct {
 	Before, After, Login string
 }
 
+// pushActivities are the activity types that move a branch to a commit: a
+// push, a forced push, and the push that made the branch (GitHub records a
+// branch's first push as branch_creation, its before forty zeros). Every
+// other type (a deletion, a merge made by a pull request or a merge queue)
+// says nothing of who pushed an announcement.
+var pushActivities = []string{"push", "force_push", "branch_creation"}
+
 // Pushers is the forge's record of who pushed to ref (a full ref under
 // refs/heads/) on the repository origin names: its activity record's pushes
-// (`GET /repos/{owner}/{repo}/activity`, the newest hundred), newest first
-// (itd-2609151838312703 C17). An entry with no actor, or a commit name that
-// is not one, says nothing and is passed over; every login is the forge's
+// (`GET /repos/{owner}/{repo}/activity`, the newest hundred of any type, read
+// for the types in pushActivities), newest first (itd-2609151838312703 C17).
+// The query names no type, since it takes only one and a first push or a
+// forced one would then never be answered. An entry with no actor, or a
+// commit name that is not one, says nothing and is passed over; every login is the forge's
 // text, which a caller holds to its own grammar before showing it. An origin
 // that is not a github.com URL cannot be asked, and gh is not run for it. A
 // push made by an app (appActor) is passed over: the forge cannot say which
@@ -34,7 +44,7 @@ func Pushers(cwd, ref string) ([]Push, error) {
 	if err != nil {
 		return nil, err
 	}
-	q := url.Values{"ref": {ref}, "activity_type": {"push"}, "per_page": {"100"}}
+	q := url.Values{"ref": {ref}, "per_page": {"100"}}
 	out, err := API(cwd, nil, "repos/"+owner+"/"+name+"/activity?"+q.Encode())
 	if err != nil {
 		return nil, err
@@ -42,6 +52,7 @@ func Pushers(cwd, ref string) ([]Push, error) {
 	var acts []struct {
 		Before string `json:"before"`
 		After  string `json:"after"`
+		Type   string `json:"activity_type"`
 		Actor  *struct {
 			Login string `json:"login"`
 			Type  string `json:"type"`
@@ -52,7 +63,8 @@ func Pushers(cwd, ref string) ([]Push, error) {
 	}
 	pushed := []Push{}
 	for _, a := range acts {
-		if a.Actor == nil || a.Actor.Login == "" || !gitutil.IsFullSHA(a.After) || !gitutil.IsFullSHA(a.Before) {
+		if !slices.Contains(pushActivities, a.Type) || a.Actor == nil || a.Actor.Login == "" ||
+			!gitutil.IsFullSHA(a.After) || a.After == zeroSHA || !gitutil.IsFullSHA(a.Before) {
 			continue
 		}
 		if appActor(a.Actor.Type, a.Actor.Login) {
@@ -64,6 +76,9 @@ func Pushers(cwd, ref string) ([]Push, error) {
 	}
 	return pushed, nil
 }
+
+// zeroSHA is the forge's name for no commit: the tip a deletion leaves.
+var zeroSHA = strings.Repeat("0", 40)
 
 // appActor reports whether an activity record's actor is an app rather than
 // a person: its type is Bot, or its login ends in "[bot]".
