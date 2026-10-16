@@ -45,7 +45,7 @@ func TestArgValuesReadAVariableAsWritten(t *testing.T) {
 		}
 		for n, cmd := range spellings {
 			t.Run(cmd, func(t *testing.T) {
-				d := verdictOf(t, cmd)
+				d := readingOf(t, cmd)
 				switch {
 				case tc.want == VerdictBlock:
 					if d.Verdict != VerdictBlock || d.EntryID != tc.entry {
