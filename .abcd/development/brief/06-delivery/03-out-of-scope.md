@@ -147,7 +147,8 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610110940216682` — Every change is checked in full once, on exactly what lands
 - `itd-2610111655362931` — On the dashboard, the product thinker and facilitator review memory notes and promote the ones worth keeping
 - `itd-2610150602547271` — The facilitator's mode gates the merge
-- `itd-2610161621364075` — The agents abcd launches on its own work inside a sandbox the operating system enforces
+- `itd-2610161710315026` — Unattended runs reach only a declared list of hosts
+- `itd-2610161710316538` — Drains and builds a person's session drives report how isolated they were
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
