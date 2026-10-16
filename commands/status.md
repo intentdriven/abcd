@@ -50,7 +50,8 @@ The payload carries:
   `branch` is the full branch name, `abcd-status/maya` (it was `maya` before
   step 3's fix rounds);
 - `unread_names`: how many status branches have a name that is not a GitHub
-  username in lower case, or `null` when that count could not be read here.
+  username in lower case, or `null` when that count could not be read here,
+  or was not kept at the status branches' last fetch.
   The names themselves are never listed: whoever pushed the branch chose the
   name;
 - `branches_not_read`: how many status branches lie past the 500 one read

@@ -281,6 +281,9 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	// Only the names origin lists, and of them only those the fetch reads,
 	// are kept: the named refspecs prune nothing, and a branch left from an
 	// earlier fetch would read as fetched now.
+	// The count is kept before the fetch stamps its time, so a reader never
+	// finds a fetch newer than the count it kept (keptSkipped).
+	keepSkipped(root, skipped, past, now)
 	notDropped := statusBranches.dropUnlisted(root, names)
 	status := statusBranches
 	status.only = names
@@ -288,7 +291,6 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	if err != nil {
 		return StatusFetch{}, err
 	}
-	keepSkipped(root, skipped, past, now)
 	keepFirstFetched(root, now, nil)
 	res := StatusFetch{Gap: gap, NotDropped: notDropped}
 	in, err := takeIn(context.Background(), root, now)
@@ -1059,18 +1061,27 @@ func keepSkipped(root string, t nameTally, past int, now time.Time) {
 }
 
 // keptSkipped is origin's last listing's tally of names that are not read:
-// the zero state when nothing here listed origin, and an error when what was
-// kept cannot be read back, so a reader says the count is unknown rather than
-// count none.
+// the zero state when nothing here fetched the status branches, and an error
+// when what was kept cannot be read back, or was not kept at their last
+// fetch (it is missing, or older than that fetch: its write failed), so a
+// reader says the count is unknown rather than count none or an older count.
+// Every fetch of the status branches keeps it before it stamps its time:
+// `abcd status`'s from its listing, and a fetch of the whole namespace from
+// what it brought (keepSkippedHeld).
 func keptSkipped(root string) (skippedState, error) {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return skippedState{}, err
 	}
 	defer r.Close()
+	fetched := lastFetched(root, statusBranches)
+	notKept := errors.New("the count of status branch names not read was not kept at their last fetch")
 	data, err := fsutil.ReadGuardedInRoot(r, statusFile(skippedRel), 4096)
 	if errors.Is(err, fs.ErrNotExist) {
-		return skippedState{}, nil
+		if fetched.IsZero() {
+			return skippedState{}, nil
+		}
+		return skippedState{}, notKept
 	}
 	if err != nil {
 		return skippedState{}, err
@@ -1079,7 +1090,39 @@ func keptSkipped(root string) (skippedState, error) {
 	if err := json.Unmarshal(data, &s); err != nil || s.Count < 0 || s.PastCap < 0 {
 		return skippedState{}, errors.New("the count of status branch names not read does not parse")
 	}
+	listed, err := time.Parse(time.RFC3339, s.ListedAt)
+	if err != nil {
+		return skippedState{}, errors.New("the count of status branch names not read does not parse")
+	}
+	if listed.Before(fetched) {
+		return skippedState{}, notKept
+	}
 	return s, nil
+}
+
+// keepSkippedHeld keeps the tally of names not read from the status branches
+// this checkout now holds, after a fetch of the whole namespace, which brings
+// every branch origin holds: the names that are not read, and how many that
+// are read lie past maxStatusBranches. Best effort, as keepSkipped is.
+func keepSkippedHeld(root string, now time.Time) {
+	if tierPresent(root) != nil {
+		return
+	}
+	refs, err := statusRefs(context.Background(), root)
+	if err != nil {
+		return
+	}
+	var t nameTally
+	read := 0
+	for _, r := range refs {
+		name := strings.TrimPrefix(r.ref, StatusTrackingPrefix)
+		if !statusName(name) {
+			t.add(name)
+		} else {
+			read++
+		}
+	}
+	keepSkipped(root, t, max(read-maxStatusBranches, 0), now)
 }
 
 // pusherVerdict is what the forge said of who pushed one announcement: asked

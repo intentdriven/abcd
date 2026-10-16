@@ -133,3 +133,56 @@ func TestADeletedBranchWhoseNameIsNotReadStopsCounting(t *testing.T) {
 		})
 	}
 }
+
+// fetchNamed fetches the named status branches into p, as `abcd status`'s
+// fetch does, but keeps no count of the names it did not read: the fetch of
+// a FetchStatus whose write of that count failed.
+func (p *participant) fetchNamed(names ...string) {
+	p.w.t.Helper()
+	status := statusBranches
+	status.only = names
+	if _, err := fetch(p.dir, p.w.clock(), "nothing was fetched", reservations, status); err != nil {
+		p.w.t.Fatalf("fetch: %v", err)
+	}
+}
+
+// TestACountNotKeptAtTheLastFetchIsUnknown: when the count of names not read
+// was not kept at the status branches' last fetch, missing or older than it,
+// the reader says it is unknown, never zero and never the older count; a
+// checkout that never fetched them, and one whose last fetch was of the whole
+// namespace, keep a count, or need none, and say no such thing.
+func TestACountNotKeptAtTheLastFetchIsUnknown(t *testing.T) {
+	w := newWorld(t)
+	w.pushStatus("maya", announcementMsg("merging", "#1", "maya", t0, 30*time.Minute), "")
+	w.pushNames([]string{"Octo"})
+
+	fresh := w.clone("9+pat@users.noreply.github.com", "")
+	if v := fresh.read(); v.UnreadNamesUnknown {
+		t.Fatal("a checkout that never fetched the status says the count is unknown")
+	}
+	fresh.fetchNamed("maya")
+	if v := fresh.read(); !v.UnreadNamesUnknown {
+		t.Fatalf("with no count kept at the last fetch, unread names = %d, unknown %v; want unknown", v.UnreadNames, v.UnreadNamesUnknown)
+	}
+
+	stale := w.clone("7+quinn@users.noreply.github.com", "")
+	stale.status(nil)
+	if v := stale.read(); v.UnreadNamesUnknown || v.UnreadNames != 1 {
+		t.Fatalf("after a full status fetch: unread names = %d, unknown %v; want 1 counted", v.UnreadNames, v.UnreadNamesUnknown)
+	}
+	w.set(t0.Add(time.Minute))
+	stale.fetchNamed("maya")
+	if v := stale.read(); !v.UnreadNamesUnknown {
+		t.Fatalf("with an older count kept: unread names = %d, unknown %v; want unknown", v.UnreadNames, v.UnreadNamesUnknown)
+	}
+	stale.status(nil)
+	if v := stale.read(); v.UnreadNamesUnknown || v.UnreadNames != 1 {
+		t.Fatalf("after the next status fetch: unread names = %d, unknown %v; want 1 counted", v.UnreadNames, v.UnreadNamesUnknown)
+	}
+
+	whole := w.clone("8+zed@users.noreply.github.com", "")
+	whole.fetchOnly()
+	if v := whole.read(); v.UnreadNamesUnknown || v.UnreadNames != 1 {
+		t.Fatalf("after a fetch of the whole namespace: unread names = %d, unknown %v; want 1 counted", v.UnreadNames, v.UnreadNamesUnknown)
+	}
+}
