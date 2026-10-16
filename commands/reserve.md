@@ -47,8 +47,9 @@ copy's key), `footprint`, `claimed_at`, `effective_expiry`, `commit`, and
 origin's default branch could not be read, `derived_unchecked` says why: the
 act went on, but whether the record is already finished there was not checked.
 When GitHub could not say whether origin is a fork (gh missing, out of time or
-refused), or origin's host is not github.com by name, `fork_unchecked` says
-why: the act went on, and the text reads `not checked: whether origin is a fork
+refused), origin's host is not github.com by name, a push URL could not be
+read, or a github.com URL does not name exactly one owner and one repository,
+`fork_unchecked` says why: the act went on, and the text reads `not checked: whether origin is a fork
 (…)`. When origin is the one fork the repository allows, `fork_allowed` names
 it as `<owner>/<name>` and the text reads `origin is a fork the repository
 allows (<owner>/<name>)`. Pass either on to the user.
