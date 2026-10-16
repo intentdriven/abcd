@@ -136,8 +136,8 @@ refusal is a named shape with a remedy in `refusal`:
   detail, which names what failed, and the remedy: retry once both are
   reachable, or install by hand — download the asset, check it with
   `gh attestation verify --cert-identity <release.yml on main> --source-ref
-  refs/heads/main --source-digest <the tag's commit>`, then copy it over the
-  PATH copy.
+  refs/heads/main --deny-self-hosted-runners --source-digest <the tag's
+  commit>`, then copy it over the PATH copy.
 - `older-than-mark` — a bare `abcd update` resolved a latest release older
   than `~/.abcd.noindex/release-mark`, the newest release this machine has
   installed or verified: the publisher may have withdrawn the newer one.

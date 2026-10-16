@@ -11,7 +11,12 @@ The verb is the explicit ask. abcd never checks for or applies updates on its ow
 with its check, is the only **command** that reaches the release origin, and only
 when invoked
 ([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in.md),
-spc-32).
+spc-32). The release origin is not its only destination: to verify a fetched
+binary's build provenance, the verb also reaches GitHub's API, for the binary's
+attestations and for the commit the release tag names, and Sigstore's TUF
+repository, for the trusted root the signature is checked against. Each is
+reached only after a release has been chosen, so none of them discovers an
+update.
 
 They are not the only code paths to that origin. `hooks/bootstrap.sh` pins the
 same repository, resolves its latest release over the network, and downloads the
@@ -90,7 +95,9 @@ first named in the receipt itself.
 
 The transport is pinned: no proxy or CA overrides from the environment (set ones
 are ignored and named in the receipt), redirects only onto the release origin's
-own hosts, every hop re-checked. The release is verified in full before anything
+own hosts, every hop re-checked. The redirect rule holds for every destination:
+the API and the TUF repository are reached directly over the same transport, and
+a redirect from either is followed only onto those same release hosts. The release is verified in full before anything
 is written, then staged beside the target and swapped in atomically, so a failed
 download, verification, staging write or swap leaves no partial file. Download
 progress goes to stderr, and only when stderr is a terminal: stdout carries the
