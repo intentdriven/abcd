@@ -383,7 +383,11 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 			return in, err
 		}
 	}
-	pruneStatus(root, now)
+	// Pruning reads every kept file, so it runs only when something new was
+	// read in, never at every prompt.
+	if in.taken > 0 {
+		pruneStatus(root, now)
+	}
 	return in, nil
 }
 
@@ -460,8 +464,11 @@ func readAnnouncements(ctx context.Context, root, tree string, commits []string)
 		if err != nil {
 			return nil, fmt.Errorf("reading the status branches: %s", redacted(err))
 		}
-		for len(objs) > 0 {
-			header, rest, ok := strings.Cut(string(objs), "\n")
+		// One string, walked by slicing: each object is cut from what is
+		// left without copying the rest again.
+		rest := string(objs)
+		for rest != "" {
+			header, body, ok := strings.Cut(rest, "\n")
 			if !ok {
 				break
 			}
@@ -470,12 +477,12 @@ func readAnnouncements(ctx context.Context, root, tree string, commits []string)
 				return nil, errors.New("reading the status branches: git's batch read did not parse")
 			}
 			n, err := strconv.Atoi(f[2])
-			if err != nil || n < 0 || n > len(rest) {
+			if err != nil || n < 0 || n > len(body) {
 				return nil, errors.New("reading the status branches: git's batch read did not parse")
 			}
-			h, a := parseTip(f[0], []byte(rest[:n]), tree, parseAnnouncement)
+			h, a := parseTip(f[0], []byte(body[:n]), tree, parseAnnouncement)
 			out[f[0]] = readAnnouncement{h: h, a: a}
-			objs = []byte(strings.TrimPrefix(rest[n:], "\n"))
+			rest = strings.TrimPrefix(body[n:], "\n")
 		}
 	}
 	for _, c := range commits {
@@ -689,8 +696,15 @@ func fixedReason(reason string) string {
 	return "it does not read as an announcement"
 }
 
-// keepDoubt keeps d, replacing what was kept for its branch.
+// keepDoubt keeps d, replacing what was kept for its branch. A doubt kept
+// already, for the same reason at the same tip, is left as it is, so a doubt
+// read again at every prompt is not written again at every prompt.
 func keepDoubt(root string, d BranchDoubt) {
+	for _, k := range keptDoubts(root, d.FoundAt) {
+		if k.Branch == boundedName(d.Branch) && k.Reason == d.Reason && k.Tip == d.Tip && !k.FoundAt.IsZero() && k.Tip != "" {
+			return
+		}
+	}
 	data, err := json.Marshal(struct {
 		Branch  string `json:"branch"`
 		Reason  string `json:"reason"`
