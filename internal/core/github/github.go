@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -64,27 +65,84 @@ func PlainName(s string) bool { return plainNameRe.MatchString(s) }
 // all, told apart from a github.com URL that names no one repository.
 var ErrNotGitHub = errors.New("the origin remote is not a github.com URL, and this verb speaks only the GitHub API")
 
+// Remote is a remote URL split into what names the repository it reaches:
+// Form is "scp" for git's scp-like `[user@]host:path`, else the URL's
+// scheme; User and Port are as written (a password is never kept); Host is
+// lower-cased; Path is the repository's path with its slashes and a `.git`
+// suffix trimmed.
+type Remote struct {
+	Form, User, Host, Port, Path string
+}
+
+// SplitRemote splits a remote URL that names a network host, the forms git
+// takes (spc-2610161044461448, step 10): the scp-like `[user@]host:path`
+// and a scheme URL with a host, its userinfo and port included. A local
+// path, a `file://` URL, and anything with no host are not one (ok false).
+func SplitRemote(raw string) (r Remote, ok bool) {
+	if !strings.Contains(raw, "://") {
+		colon := strings.Index(raw, ":")
+		if colon <= 0 || strings.Contains(raw[:colon], "/") {
+			return Remote{}, false
+		}
+		host := raw[:colon]
+		if at := strings.LastIndex(host, "@"); at >= 0 {
+			r.User, host = host[:at], host[at+1:]
+		}
+		if host == "" {
+			return Remote{}, false
+		}
+		r.Form, r.Host, r.Path = "scp", strings.ToLower(host), trimRepoPath(raw[colon+1:])
+		return r, true
+	}
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Scheme == "file" || u.Hostname() == "" {
+		return Remote{}, false
+	}
+	r = Remote{Form: strings.ToLower(u.Scheme), Host: strings.ToLower(u.Hostname()), Port: u.Port(), Path: trimRepoPath(u.Path)}
+	if u.User != nil {
+		r.User = u.User.Username()
+	}
+	return r, true
+}
+
+func trimRepoPath(p string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(strings.Trim(p, "/"), ".git"), "/")
+}
+
+// OnGitHub reports whether r reaches github.com by name: the host github.com
+// in any form, or ssh.github.com (GitHub's ssh over port 443) over ssh.
+func (r Remote) OnGitHub() bool {
+	switch r.Host {
+	case Host:
+		return true
+	case "ssh." + Host:
+		return r.Form == "scp" || r.Form == "ssh" || r.Form == "git+ssh" || r.Form == "ssh+git"
+	}
+	return false
+}
+
+// NamesHostedRepository reports whether url names a network host and exactly
+// two path parts, an owner and a name, on any host: the shape a github.com
+// URL takes, so a caller can tell a repository on a host it does not
+// recognise (an ssh host alias, another forge) from a local path.
+func NamesHostedRepository(url string) bool {
+	r, ok := SplitRemote(url)
+	return ok && len(strings.Split(r.Path, "/")) == 2
+}
+
 // ParseRemote splits a github.com remote URL into owner and repository. It
-// accepts the forms git itself writes (`https://github.com/owner/repo[.git]`,
-// `git@github.com:owner/repo[.git]`, `ssh://git@github.com/owner/repo`) and
-// refuses everything else, without echoing the URL's segments: the URL is
+// accepts the forms git takes for github.com (SplitRemote): the three it
+// writes (`https://github.com/owner/repo[.git]`, `git@github.com:owner/repo[.git]`,
+// `ssh://git@github.com/owner/repo`), and with them userinfo, a port,
+// `ssh.github.com` over ssh, ssh or scp with no user, and a host in any case.
+// It refuses everything else, without echoing the URL's segments: the URL is
 // repo-controlled input, and a refusal is output like any other.
 func ParseRemote(url string) (owner, name string, err error) {
-	rest := ""
-	switch {
-	case strings.HasPrefix(url, "git@github.com:"):
-		rest = strings.TrimPrefix(url, "git@github.com:")
-	case strings.HasPrefix(url, "ssh://git@github.com/"):
-		rest = strings.TrimPrefix(url, "ssh://git@github.com/")
-	case strings.HasPrefix(url, "https://github.com/"):
-		rest = strings.TrimPrefix(url, "https://github.com/")
-	case strings.HasPrefix(url, "http://github.com/"):
-		rest = strings.TrimPrefix(url, "http://github.com/")
-	default:
+	r, ok := SplitRemote(url)
+	if !ok || !r.OnGitHub() {
 		return "", "", ErrNotGitHub
 	}
-	rest = strings.TrimSuffix(strings.TrimSuffix(strings.Trim(rest, "/"), ".git"), "/")
-	parts := strings.Split(rest, "/")
+	parts := strings.Split(r.Path, "/")
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("the origin remote does not name exactly one owner and one repository")
 	}

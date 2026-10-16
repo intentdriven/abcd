@@ -102,3 +102,24 @@ func TestParseRemoteNamesANonGitHubOrigin(t *testing.T) {
 		t.Fatalf("a github.com URL naming no repository gave %v; want a refusal that is not ErrNotGitHub", err)
 	}
 }
+
+// TestNamesHostedRepositoryTellsAHostFromALocalPath: a URL naming a network
+// host and one owner and one name is a hosted repository whatever the host;
+// a local path, a file URL and a URL naming more or fewer parts are not.
+func TestNamesHostedRepositoryTellsAHostFromALocalPath(t *testing.T) {
+	for url, want := range map[string]bool{
+		"git@github-work:octo/abcd.git":           true,
+		"https://gitlab.com/octo/abcd.git":        true,
+		"ssh://git@git.example.com:2222/octo/abc": true,
+		"git@github.com:octo/abcd.git":            true,
+		"/srv/git/abcd.git":                       false,
+		"../origin.git":                           false,
+		"file:///srv/git/octo/abcd.git":           false,
+		"https://gitlab.com/group/sub/abcd.git":   false,
+		"git@github-work:abcd.git":                false,
+	} {
+		if got := NamesHostedRepository(url); got != want {
+			t.Errorf("NamesHostedRepository(%q) = %v, want %v", url, got, want)
+		}
+	}
+}
