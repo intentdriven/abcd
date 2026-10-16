@@ -148,8 +148,8 @@ So a path that forgets to ask is still stopped.
   merge is facilitator work, not an action reserved for the product thinker.
   Auto-merge never means unreviewed: the reviews are automated, not skipped.
 - 2026-10-15, the product thinker: abcd and the repositories it manages take
-  one code path, with no special case for abcd ("if it works for abcd, it
-  should work for abcd-managed repos").
+  one code path, with no special case for abcd, because building abcd also
+  tests the process its managed repositories follow.
 - 2026-10-15, agreed with the release-cutting session: the push of a
   non-default branch after a passing preflight is not gated by the mode.
   The facilitator's approval point is the merge.
