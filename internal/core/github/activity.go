@@ -42,7 +42,7 @@ func Pushers(cwd, ref string) ([]Push, error) {
 	var acts []struct {
 		Before string `json:"before"`
 		After  string `json:"after"`
-		Actor *struct {
+		Actor  *struct {
 			Login string `json:"login"`
 			Type  string `json:"type"`
 		} `json:"actor"`
