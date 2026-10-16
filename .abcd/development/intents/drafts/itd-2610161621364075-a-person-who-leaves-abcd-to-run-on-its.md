@@ -12,6 +12,7 @@ severity: major
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
+refines: [itd-148]
 ---
 
 # The agents abcd launches on its own work inside a sandbox the operating system enforces
@@ -85,6 +86,10 @@ Ruled by the product thinker on 2026-10-16, in the planning interview:
 
 1. **Split into three parts.** (A) The agents abcd's runner launches run inside a sandbox the operating system enforces; this record carries part A. (B) Drains and builds the person's own session drives report how isolated they are, since abcd never changes the person's host settings and cannot fence that session. (C) Limiting which hosts a run may reach is a later, separate feature. Parts B and C are filed as their own drafts before planning goes on.
 2. **Kept apart from the worktree store, building on it.** The store (itd-2609091014076309) says where a launched agent's copy lives; this record says what the agent may reach from it. This one waits for the store to ship.
+3. **The fence refines the read-only primary checkout (itd-148) for launched agents.** itd-148 states the rule, that the main copy of the files is not edited outside a declared coordinator, and its check guides every session; this record is that rule's enforcing half for the agents abcd launches, so a change to the rule changes both.
+
+4. **Who is covered and the network limit are settled by the split (facilitator, recorded without a question).** Part A covers only the agents abcd's runner launches; the person's own session is part B's; the network promise belongs to part C. No question was put because ruling 1 leaves one defensible answer for each.
+5. **Planned now, built after its two dependencies (facilitator, recorded without a question).** It builds on the worktree store, and the guard reaches each launched agent only once iss-2610161612203555 lands; planning does not wait on either, building does. One defensible answer, so no question was put.
 
 ## Audit Notes
 
