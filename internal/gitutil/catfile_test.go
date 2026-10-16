@@ -34,3 +34,27 @@ func TestCatFileBatchAnswersEachObjectInOrderUnderItsCap(t *testing.T) {
 		t.Fatal("a name that is not a full object name reached git")
 	}
 }
+
+// TestTreePathTypesAnswersEachPathOnItsOwn: one batch answers each path's
+// type in order, a directory asked beside a file beneath it still a tree and
+// an absent path ""; a path that cannot be asked on one line, and a commit
+// that is not a full object name, never reach git.
+func TestTreePathTypesAnswersEachPathOnItsOwn(t *testing.T) {
+	repo := gittest.NewRepo(t)
+	repo.Write("internal/x/a.go", "package x\n")
+	repo.Commit("a tree")
+	head := strings.TrimSpace(repo.Git("rev-parse", "HEAD"))
+	got, err := gitutil.TreePathTypes(repo.Root(), head, []string{"internal/x", "internal/x/a.go", "internal/x/", "gone", "internal/x/a.go/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"tree", "blob", "tree", "", ""}; strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("the types = %q; want %q", got, want)
+	}
+	if _, err := gitutil.TreePathTypes(repo.Root(), head, []string{"a\nHEAD"}); err == nil {
+		t.Fatal("a path holding a newline reached git")
+	}
+	if _, err := gitutil.TreePathTypes(repo.Root(), "HEAD", []string{"internal"}); err == nil {
+		t.Fatal("a commit that is not a full object name reached git")
+	}
+}

@@ -237,10 +237,12 @@ func spreadWeight(spread, id string) uint64 {
 }
 
 // fileScopedIssues reports, by id, the eligible issues whose found_at names a
-// file rather than a directory: the path is asked of dirs, or, when it is
-// nil, looked up in the checkout's working tree. An issue whose found_at names
-// no path is not file-scoped, nor is one naming a directory.
-func fileScopedIssues(repoRoot string, vs []DrainVerdict, issues []Issue, dirs func([]string) (map[string]bool, error)) (map[string]bool, error) {
+// file: the path is asked of files, or, when it is nil, looked up in the
+// checkout's working tree, following a symbolic link. An issue whose found_at
+// names no path is not file-scoped, nor is one naming a directory, nor one
+// naming a path that is not there (deleted since, or never present): each
+// sorts with the issues naming a directory or no path.
+func fileScopedIssues(repoRoot string, vs []DrainVerdict, issues []Issue, files func([]string) (map[string]bool, error)) (map[string]bool, error) {
 	byID := make(map[string]Issue, len(issues))
 	for _, iss := range issues {
 		byID[iss.ID] = iss
@@ -261,24 +263,26 @@ func fileScopedIssues(repoRoot string, vs []DrainVerdict, issues []Issue, dirs f
 			asked = append(asked, p)
 		}
 	}
-	if dirs == nil {
-		dirs = func(ps []string) (map[string]bool, error) {
+	if files == nil {
+		files = func(ps []string) (map[string]bool, error) {
 			out := map[string]bool{}
 			for _, p := range ps {
-				if fi, err := os.Lstat(filepath.Join(repoRoot, filepath.FromSlash(p))); err == nil && fi.IsDir() {
+				// Stat follows a link, so a link to a directory is a
+				// directory; a path that is not there is not a file.
+				if fi, err := os.Stat(filepath.Join(repoRoot, filepath.FromSlash(p))); err == nil && fi.Mode().IsRegular() {
 					out[p] = true
 				}
 			}
 			return out, nil
 		}
 	}
-	isDir, err := dirs(asked)
+	isFile, err := files(asked)
 	if err != nil {
 		return nil, fmt.Errorf("telling the eligible issues naming a file from those naming a directory: %w", err)
 	}
 	out := make(map[string]bool, len(paths))
 	for id, p := range paths {
-		out[id] = !isDir[p]
+		out[id] = isFile[p]
 	}
 	return out, nil
 }
@@ -295,10 +299,10 @@ type DrainPlanRequest struct {
 	// from (the drain's holder and copy key, spreadOrder); "" takes each
 	// group's parts oldest first.
 	Spread string
-	// Dirs reports which of the paths named are directories where the ledger
-	// was read (a drain's, origin's default branch); nil looks in the
-	// checkout's working tree.
-	Dirs func(paths []string) (map[string]bool, error)
+	// Files reports which of the paths named are files where the ledger was
+	// read (a drain's, origin's default branch): a directory, and a path not
+	// there, is not. Nil looks in the checkout's working tree.
+	Files func(paths []string) (map[string]bool, error)
 }
 
 // DrainPlan is what a drain would do over the open ledger, and writes nothing:
@@ -386,7 +390,7 @@ func PlanDrain(req DrainPlanRequest) (DrainPlan, error) {
 		rest = append(rest, DrainVerdict{ID: id, Path: sk.Path, Outcome: DrainUnreadable, Rule: RuleUnreadable,
 			Reason: fmt.Sprintf("the reader refuses the record at its %s stage: %s", sk.Layer, termsafe.Sanitize(sk.Error))})
 	}
-	fileScoped, err := fileScopedIssues(repoRoot, eligible, lr.Issues, req.Dirs)
+	fileScoped, err := fileScopedIssues(repoRoot, eligible, lr.Issues, req.Files)
 	if err != nil {
 		return DrainPlan{}, err
 	}

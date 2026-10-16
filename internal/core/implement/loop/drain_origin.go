@@ -170,21 +170,23 @@ func drainSpread(repoRoot, copyKey string) string {
 	return holder + "\x00" + copyKey
 }
 
-// treeDirs reports which of the paths named v's commit holds as a directory,
-// through one listing of the commit's tree.
-func treeDirs(repoRoot string, v originView) func([]string) (map[string]bool, error) {
+// treeFiles reports which of the paths named v's commit holds as a file (a
+// blob: a regular file or a symbolic link), through one `git cat-file
+// --batch-check` asking each path on its own line. A directory is not a file,
+// nor is a path the commit does not hold, so an issue naming either sorts
+// with those naming a directory or no path; and since each path is resolved
+// on its own, a directory asked beside a path beneath it is still a
+// directory, and the answer is one line per path, whatever lies beneath.
+func treeFiles(repoRoot string, v originView) func([]string) (map[string]bool, error) {
 	return func(paths []string) (map[string]bool, error) {
 		out := map[string]bool{}
-		if len(paths) == 0 {
-			return out, nil
-		}
-		entries, err := baseTree{root: repoRoot, sha: v.commit}.listPaths(paths, false)
+		types, err := gitutil.TreePathTypes(repoRoot, v.commit, paths)
 		if err != nil {
 			return nil, err
 		}
-		for _, e := range entries {
-			if e.kind == "tree" && slices.Contains(paths, e.path) {
-				out[e.path] = true
+		for i, kind := range types {
+			if kind == "blob" {
+				out[paths[i]] = true
 			}
 		}
 		return out, nil
@@ -198,7 +200,7 @@ func planFromOrigin(repoRoot string, v originView, now time.Time, spread string)
 	if err != nil {
 		return capture.DrainPlan{}, nil, err
 	}
-	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot, Ledger: ledger, Spread: spread, Dirs: treeDirs(repoRoot, v)})
+	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot, Ledger: ledger, Spread: spread, Files: treeFiles(repoRoot, v)})
 	if err != nil {
 		return capture.DrainPlan{}, nil, err
 	}

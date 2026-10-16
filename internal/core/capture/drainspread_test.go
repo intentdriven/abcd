@@ -122,3 +122,52 @@ func TestTwoHoldersOrderAGroupDifferently(t *testing.T) {
 		t.Fatalf("the order rule states the account's own order: %q", p.Order)
 	}
 }
+
+// TestAPathAbsentWhereTheLedgerWasReadIsNotFileScoped: an issue whose found_at
+// names a path the ledger's commit does not hold (deleted since, or never
+// there) is not file-scoped: it sorts with the issues naming a directory or
+// no path, after one naming a file the commit holds, whatever their age.
+func TestAPathAbsentWhereTheLedgerWasReadIsNotFileScoped(t *testing.T) {
+	f := newDrainFixture(t)
+	f.fileAt("iss-60", SeverityMinor, "bug", "internal/gone.go")
+	f.fileAt("iss-61", SeverityMinor, "bug", "internal/kept.go")
+	files := func(paths []string) (map[string]bool, error) {
+		return map[string]bool{"internal/kept.go": true}, nil
+	}
+	p, err := PlanDrain(DrainPlanRequest{RepoRoot: f.repo, IssuesRoot: f.ir, Files: files})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, v := range p.Dispositions {
+		if v.Outcome == DrainEligible {
+			got = append(got, v.ID)
+		}
+	}
+	if want := []string{"iss-61", "iss-60"}; !slices.Equal(got, want) {
+		t.Fatalf("eligible order = %v; want %v: a path the ledger's commit lacks is not file-scoped", got, want)
+	}
+}
+
+// TestTheWorkingTreeReadsASymlinkToADirectoryAsADirectory: with no commit to
+// ask, the working tree is looked in; a found_at naming a symbolic link to a
+// directory is a directory there, and one naming a path the tree no longer
+// holds is not file-scoped either, so both sort after an issue naming a file.
+func TestTheWorkingTreeReadsASymlinkToADirectoryAsADirectory(t *testing.T) {
+	f := newDrainFixture(t)
+	if err := os.MkdirAll(filepath.Join(f.repo, "internal", "pkg"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("pkg", filepath.Join(f.repo, "internal", "link")); err != nil {
+		t.Fatal(err)
+	}
+	f.fileAt("iss-70", SeverityMinor, "bug", "internal/link/")
+	f.fileAt("iss-71", SeverityMinor, "bug", "internal/gone.go")
+	f.fileAt("iss-72", SeverityMinor, "bug", "internal/kept.go")
+	if err := os.Remove(filepath.Join(f.repo, "internal", "gone.go")); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := f.eligibleOrder(""), []string{"iss-72", "iss-70", "iss-71"}; !slices.Equal(got, want) {
+		t.Fatalf("eligible order = %v; want %v", got, want)
+	}
+}
