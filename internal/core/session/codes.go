@@ -84,6 +84,10 @@ func IsTailnetAddr(a netip.Addr) bool {
 	return tailnet4.Contains(a) || tailnet6.Contains(a)
 }
 
+// AddressKey is the key the relay counts a client address by, for a front
+// door that bounds something per address as the relay's own limits do.
+func AddressKey(addr string) string { return addressKey(addr) }
+
 // addressKey is the key the failed-join limit and the connection caps count
 // by: an IPv4 address, or an IPv6 /48 network. One home or phone usually holds
 // a whole /64, and a site is commonly given a /48 of 65,536 of them, so
@@ -92,10 +96,6 @@ func IsTailnetAddr(a netip.Addr) bool {
 // every device of a tailnet shares one /48 of Tailscale's range, and a device
 // cannot pick another address in it. An address that does not parse is its
 // own key.
-// AddressKey is the key the relay counts a client address by, for a front
-// door that bounds something per address as the relay's own limits do.
-func AddressKey(addr string) string { return addressKey(addr) }
-
 func addressKey(addr string) string {
 	a, err := netip.ParseAddr(strings.TrimSpace(addr))
 	if err != nil {
