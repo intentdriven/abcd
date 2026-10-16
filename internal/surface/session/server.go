@@ -333,7 +333,10 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // normalizeOrigin reads s as an exact origin: http or https, a host, an
-// optional port, and nothing else.
+// optional port, and nothing else. The scheme's default port (443 for https,
+// 80 for http) is dropped, as a browser's origin drops it
+// (https://url.spec.whatwg.org/#origin), so an entry naming it admits the
+// Origin a browser sends.
 func normalizeOrigin(s string) (string, bool) {
 	u, err := url.Parse(s)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" ||
@@ -341,7 +344,11 @@ func normalizeOrigin(s string) (string, bool) {
 		u.Hostname() == "" || strings.ContainsAny(u.Hostname(), "*?[]") {
 		return "", false
 	}
-	return u.Scheme + "://" + strings.ToLower(u.Host), true
+	host := strings.ToLower(u.Host)
+	if def := map[string]string{"https": ":443", "http": ":80"}[u.Scheme]; strings.HasSuffix(host, def) {
+		host = strings.TrimSuffix(host, def)
+	}
+	return u.Scheme + "://" + host, true
 }
 
 // normalizePageEntry reads one origin entry: an exact origin, as

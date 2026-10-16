@@ -615,6 +615,27 @@ func TestOriginsAreParsedStrictly(t *testing.T) {
 	}
 }
 
+// TestAdmittedOriginsDropTheDefaultPort: a browser's Origin never carries
+// the scheme's default port, so an entry naming it admits the origin a
+// browser sends, and the sign-in's callback forwards to its page.
+func TestAdmittedOriginsDropTheDefaultPort(t *testing.T) {
+	f := newFixture(t, func(c *Config) {
+		c.Origins = []string{"https://Pages.Example:443/abcdesign/", "http://local.example:80", "https://odd.example:8443"}
+	})
+	for o, want := range map[string]bool{
+		"https://pages.example": true, "http://local.example": true, "https://odd.example:8443": true,
+		"https://pages.example:443": true, "https://odd.example": false,
+	} {
+		if got := f.srv.originAllowed(o); got != want {
+			t.Errorf("Origin %s admitted=%v, want %v", o, got, want)
+		}
+	}
+	resp, body := callback(t, f, url.Values{"code": {"good-code"}, "state": {signInState("https://pages.example/abcdesign/acme/brief/brief/")}})
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Errorf("a page on an entry naming port 443: %d %s, want it sent on", resp.StatusCode, body)
+	}
+}
+
 // hostSession verifies a fresh connection as ada and opens a session,
 // returning the connection and its join code.
 func (f *fixture) hostSession(t *testing.T) (*client, string) {
