@@ -83,7 +83,14 @@ owns is refused and left untouched (iss-2609291610432030).
   reported rather than stored here. It needs the session named; nothing infers
   the running one.
 - **The staged listing** names transcripts that ended but are not yet redacted into the
-  store. A non-empty list means unredacted transcript text is on disk.
+  store. A non-empty list means unredacted transcript text is on disk. It
+  answers for this repository, for every repository in the store, or for the
+  one repository named by its root-commit SHA, which reaches a pile whose
+  checkout is gone.
+- **Discarding** deletes one staged or quarantined raw transcript for good,
+  named by its bare filename, with its sidecar and quarantine note. It refuses
+  without an explicit confirmation, and it too takes a repository named by its
+  root-commit SHA, so a pile whose checkout is gone still has a way out.
 - **Draining** redacts and stores every staged transcript, then deletes the raw
   copy. It exits non-zero when anything failed, and this verb runs the backlog to
   completion where the session-start hook drains a bounded number.
