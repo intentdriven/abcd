@@ -187,3 +187,37 @@ func TestStatusCountsTheNamesItDoesNotRead(t *testing.T) {
 		}
 	}
 }
+
+// TestStatusSaysAReadThatFailedAfterAFetchThatSucceeded: when the fetch
+// succeeded and the read of what it brought then fails, the view is still
+// dated by that fetch, in text and in --json, the failure is named and the
+// verb exits 1; it never says nothing has fetched the status here.
+func TestStatusSaysAReadThatFailedAfterAFetchThatSucceeded(t *testing.T) {
+	w := newReserveWorld(t)
+	octo := w.clone(t, "octo", octoMail)
+	pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+	if code, _, stderr := reserveRun(t, octo, "announce", "merging", "1012"); code != 0 {
+		t.Fatalf("announce: exit %d, %s", code, stderr)
+	}
+	// The read marks' directory is a file, so marking a branch read fails.
+	state := filepath.Join(pat, ".abcd", ".work.local", "status")
+	if err := os.MkdirAll(state, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(state, "read"), []byte("not a directory\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	code, stdout, stderr := reserveRun(t, pat, "status")
+	if code != 1 || !strings.Contains(stdout, "abcd status — announcements as of the fetch 0m ago (") ||
+		!strings.Contains(stdout, "\n  not read: ") || strings.Contains(stdout, "nothing has fetched them here") {
+		t.Fatalf("a read that failed after a fetch: exit %d\nstdout %s\nstderr %s", code, stdout, stderr)
+	}
+	code, js, _ := reserveRun(t, pat, "status", "--json")
+	var got statusJSON
+	if err := json.Unmarshal([]byte(js), &got); err != nil {
+		t.Fatalf("--json: %v\n%s", err, js)
+	}
+	if code != 1 || !got.View.Origin || got.View.FetchedAt == "" || got.View.AgeSeconds == nil || got.ReadError == "" {
+		t.Fatalf("--json after a read that failed: exit %d, view %+v, read_error %q", code, got.View, got.ReadError)
+	}
+}
