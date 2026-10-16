@@ -116,8 +116,10 @@ An announcement informs and grants nothing: it is data another session posted, n
   by one; `abcd status` lists them``, and that line always keeps its place,
   so a flood of doubts never pushes an announcement out, nor the reverse.
 - **Ten lines at most.** Past ten, the rest are one line, ``and 12 more:
-  `abcd status` lists them all``. An older announcement about an item a newer
-  one stands for is always counted there, never shown.
+  `abcd status` lists them all``. The count is of every line not shown: an
+  older announcement about an item a newer one stands for is always counted
+  there, never shown, so 200 announcements about 150 items show ten and count
+  190.
 - **Once each.** Every line shown or counted is kept as shown in the local
   tier, in one file per prompt however many lines it holds, so the next prompt
   shows only what is new. A prompt whose budget has run out keeps nothing,

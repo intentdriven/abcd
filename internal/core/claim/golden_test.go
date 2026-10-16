@@ -114,3 +114,45 @@ func TestAReservationActIsByteForByteWhatItWas(t *testing.T) {
 		t.Errorf("stamp %s = %q; want .abcd/.work.local/reservation/fetched-at holding 2026-10-03T14:00:00Z", g.stampRel, g.stampContent)
 	}
 }
+
+// TestTheStatusFetchIsTheCommandItWas holds `abcd status`'s fetch to its
+// bytes: one fetch reading its per-branch refspecs on stdin, with the
+// reservations' globbed refspec, their release tags and the default branch
+// on the command line, and the refspecs it sends, one forced refspec per
+// branch origin lists by a name the reader reads, sorted.
+func TestTheStatusFetchIsTheCommandItWas(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	octo := w.clone("6+octo@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	octo.announceAs("merging", "#1")
+	maya.announceAs("merging", "#2")
+	log := traced(t)
+	pat.status(nil)
+	var fetches [][]string
+	for _, c := range log.cmds {
+		if c[0] == "fetch" {
+			fetches = append(fetches, c)
+		}
+	}
+	want := []string{"fetch", "--prune", "--no-tags", "--stdin", "origin",
+		"+refs/heads/abcd-reserved/*:refs/remotes/origin/abcd-reserved/*",
+		"+refs/tags/v*:refs/abcd/release-tags/v*",
+		"+refs/heads/main:refs/remotes/origin/main"}
+	if len(fetches) != 1 || !slices.Equal(fetches[0], want) {
+		t.Fatalf("fetches = %q; want the one command %q", fetches, want)
+	}
+	names, _, err := listStatusBranches(pat.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := statusBranches
+	status.only = names
+	stdin := []string{
+		"+refs/heads/abcd-status/maya:refs/remotes/origin/abcd-status/maya",
+		"+refs/heads/abcd-status/octo:refs/remotes/origin/abcd-status/octo",
+	}
+	if got := status.refspecs(); !slices.Equal(got, stdin) {
+		t.Fatalf("the refspecs on stdin = %q; want %q", got, stdin)
+	}
+}

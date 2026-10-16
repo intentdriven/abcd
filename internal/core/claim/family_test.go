@@ -131,6 +131,15 @@ func TestAFailedFetchOfAnotherNamespaceNamesItsOwnWords(t *testing.T) {
 		if u := unreadOf(p.dir, ns); u == nil || !u.FailedAt.Equal(t0) || !strings.Contains(u.Reason, "gone.git") || !u.Since.IsZero() {
 			t.Fatalf("%s's failure kept as %+v; want it at %s with git's reason", ns.noun, u, t0)
 		}
+		// The failure is all a failed fetch keeps: no stamp, no mark, no read.
+		entries, err := os.ReadDir(filepath.Join(p.dir, filepath.FromSlash(ns.stateDir)))
+		if err != nil || len(entries) != 1 || entries[0].Name() != failedRel {
+			names := []string{}
+			for _, e := range entries {
+				names = append(names, e.Name())
+			}
+			t.Fatalf("%s's state holds %v, %v; want the unread file alone", ns.noun, names, err)
+		}
 	}
 	if _, err := fetch(p.dir, t0, "nothing was read"); !errors.Is(err, ErrRefused) {
 		t.Fatalf("a fetch of no namespace = %v; want a refusal", err)

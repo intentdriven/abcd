@@ -137,8 +137,11 @@ func TestEachAnnouncementIsShownOnceFromItsFieldsAlone(t *testing.T) {
 				t.Fatalf("the block carries the commit's raw text %q:\n%s", raw, got)
 			}
 		}
+		// A fetch between the two prompts brings the same commit again: it is
+		// still not shown again.
+		p.status(nil)
 		if again := p.notes(); again != "" {
-			t.Fatalf("the second prompt shows %q; want each announcement once", again)
+			t.Fatalf("the second prompt, after a re-fetch, shows %q; want each announcement once", again)
 		}
 	}
 }
@@ -356,6 +359,11 @@ func TestAStatusBranchWhoseContinuityIsNotVerifiedIsDoubtful(t *testing.T) {
 		if want[d.Branch] != d.Reason {
 			t.Fatalf("doubt %+v; want %v", d, want)
 		}
+		// The line `abcd status` shows each by, and the block when there are
+		// two doubts or fewer.
+		if line := DoubtLine(d); line != "abcd-status/"+d.Branch+" (doubtful): "+want[d.Branch] {
+			t.Fatalf("doubt line = %q", line)
+		}
 	}
 	got := pat.notes()
 	// Three doubts, summed up in one line that keeps its place after eight
@@ -384,8 +392,9 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	log := traced(t)
 	start := time.Now()
 	got := pat.notes()
-	if took := time.Since(start); took > time.Second {
-		t.Fatalf("the block took %s; want under a second", took)
+	// The origin would hang for 30 s; the margin is for a loaded machine.
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("the block took %s; want it never to wait on the network", took)
 	}
 	if !strings.Contains(got, "merging #1012") {
 		t.Fatalf("the block:\n%s\nwant the announcement from the last fetch", got)
@@ -414,7 +423,8 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	defer cancel()
 	start = time.Now()
 	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
-	if took := time.Since(start); took > time.Second {
+	// The read is held until the test ends; the budget is 300 ms.
+	if took := time.Since(start); took > 2*time.Second {
 		t.Fatalf("a slow read held the prompt for %s", took)
 	}
 	if !errors.Is(err, ErrStatusUnavailable) || !strings.Contains(n.Text, "status unavailable: reading it here took longer than this prompt allows") {
@@ -422,9 +432,13 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	}
 }
 
-// TestAFloodIsSummedUp is C18: of 200 announcements that arrived since the
+// TestAFloodIsSummedUp is C18: of 201 announcements that arrived since the
 // last fetch, the block shows the newest per item, ten lines at most, and
 // counts the rest with the command that lists them all; none is shown again.
+// The last one repeats an item among the newest ten, so the block tells
+// "the newest per item" from "the newest ten": that item is shown once, by
+// its latest kind, and the next item takes the freed line. The
+// count is of every announcement not shown, an item's older ones among them.
 func TestAFloodIsSummedUp(t *testing.T) {
 	w := newWorld(t)
 	pat := w.clone("9+pat@users.noreply.github.com", "")
@@ -433,21 +447,27 @@ func TestAFloodIsSummedUp(t *testing.T) {
 		item := "#" + strconv.Itoa(1+i%150)
 		msgs = append(msgs, announcementMsg("merging", item, "maya", t0.Add(time.Duration(i)*time.Second), 30*time.Minute))
 	}
+	msgs = append(msgs, announcementMsg("merged", "#45", "maya", t0.Add(200*time.Second), 30*time.Minute))
 	w.pushMany("maya", msgs)
 	pat.status(nil)
-	if v := pat.read(); len(v.Announcements) != 200 {
-		t.Fatalf("standing = %d; want all 200", len(v.Announcements))
+	if v := pat.read(); len(v.Announcements) != 201 {
+		t.Fatalf("standing = %d; want all 201", len(v.Announcements))
 	}
 	got := pat.notes()
-	if n := strings.Count(got, "\n- @maya (claimed): merging #"); n != 10 {
+	if n := strings.Count(got, "\n- @maya (claimed): "); n != 10 {
 		t.Fatalf("the block shows %d announcements:\n%s\nwant 10", n, got)
 	}
-	if !strings.Contains(got, "- and 190 more: `abcd status` lists them all\n") {
+	if !strings.Contains(got, "- and 191 more: `abcd status` lists them all\n") {
 		t.Fatalf("the block:\n%s\nwant the rest counted", got)
 	}
-	// The newest are the last pushed: items #50 down to #41, each its newest.
-	if !strings.Contains(got, "\n- @maya (claimed): merging #50, ") || strings.Contains(got, "merging #150,") {
-		t.Fatalf("the block:\n%s\nwant the newest announcement per item first", got)
+	// The newest are the last pushed: #45 by its latest kind, then items #50
+	// down to #41 but #45, each its newest. The newest ten announcements would
+	// show #45 twice and not #41.
+	lines := strings.Split(got, "\n")
+	if lines[3] != "- @maya (claimed): merged #45, for 30 min" || strings.Count(got, " #45, ") != 1 ||
+		!strings.Contains(got, "\n- @maya (claimed): merging #50, ") || !strings.Contains(got, "\n- @maya (claimed): merging #41, ") ||
+		strings.Contains(got, "merging #150,") {
+		t.Fatalf("the block:\n%s\nwant the newest announcement per item first, #45 once by its latest kind", got)
 	}
 	if again := pat.notes(); again != "" {
 		t.Fatalf("the next prompt shows %q; want nothing", again)
