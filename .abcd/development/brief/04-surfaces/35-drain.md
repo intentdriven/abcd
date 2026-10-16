@@ -222,13 +222,21 @@ on origin's default branch backs off, with a tip or without one
    other account's drain reserves, judges or opens the issue, and the lane a no
    opens starts on it with no second push. The judgement awaited records the
    commit that reservation made (`judging.hold`), and the drain releases that
-   commit alone, by a tombstone, on every path that leaves it unused: a yes; an
+   commit alone, by a tombstone, on every path the process lives through that
+   leaves it unused, a panic included: a yes; an
    answer over an issue that has left the eligible set; a judgement superseded (the order
    now asking another issue, nothing eligible left, the drain stopping at its
    cap, an outage or an origin give-up, or a no answered once the window has
    elapsed); a lane's start refused or failing; and a request that lapsed.
    Each is a fetch and one push, made only while that commit is still the tip,
-   so a reservation this person made or renewed by hand is left as it stands.
+   so a reservation this person made or renewed by hand since is left as it
+   stands. A process killed outright (SIGINT or SIGKILL) runs no release, so
+   its hold lapses after one lease. Every push the drain makes for a judgement
+   is its hold, a renewal of this person's reservation that had lapsed
+   included; one this person still held live when the drain reached the issue
+   is theirs and never released. A recorded hold is asked on only while the
+   move's view still shows its commit at the tip; otherwise the drain reserves
+   again, and records that, before it asks.
    A yes's tombstone is plain: nothing marks the issue judged on origin, so
    another account's drain may reserve it and ask the judgement again. The
    hold is taken once per request and never renewed by a poll: a request whose

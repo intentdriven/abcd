@@ -203,10 +203,19 @@ what it did in `next`:
   the eligible set; when the judgement is superseded (the order now asks another issue,
   nothing eligible is left, the drain stops at its cap, on an outage or giving
   up on origin, or a `no` comes once the window has elapsed); when the lane's
-  start is refused or fails; and when a request lapses. Each release is a fetch
-  and one tombstone push over the commit the drain's reservation made, made
-  only while that commit is still the tip, so a reservation you made or renewed
-  with `abcd reserve` is left as it stands. A `yes` releases with a plain
+  start is refused or fails; and when a request lapses. It does so on every
+  path the drain's process lives through, an error or a crash in the move
+  included; a drain killed outright (Ctrl-C, or a kill signal) releases
+  nothing, and its reservation lapses after one lease (two hours by default).
+  Each release is a fetch and one tombstone push over the commit the drain's
+  reservation made, made only while that commit is still the tip, so a
+  reservation you made or renewed with `abcd reserve` since is left as it
+  stands. A poll checks the same tip before it asks again: when the
+  reservation recorded is no longer there (you released it, say), the drain
+  reserves the issue again first. A reservation of yours that is still live
+  when the drain reaches the issue is yours, and the drain never releases it;
+  one of yours that has lapsed, the drain's push renews, and it is the
+  drain's from then on. A `yes` releases with a plain
   tombstone that records no judgement, so another account's drain may reserve
   the issue later and ask the judgement again. The reservation is taken once
   per request and never renewed while you poll: a request still unanswered
