@@ -140,9 +140,15 @@ annotated tag messages are not checked.
 The check reads every embargo store under this account's home, whichever
 repository each belongs to, so a second clone, a shallow clone or a repository
 with merged-in history is checked against the records held for it. A store
-this repository registered under another home is refused (run abcd with that
-home), and a folder in a store's place that is not a readable store refuses the
-check. `no_store: true` means no store exists under this home at all.
+whose checkout was deleted is still read and its records still refused; the
+`note` counts such stores, naming none. A store this repository registered
+under another home is refused (run abcd with that home, or, if that home no
+longer exists, run `git worktree prune`), and a store's place that cannot be
+examined, or whose state file cannot be read, refuses the check. `no_store:
+true` means no store exists under this home at all. Because every store is
+read, `under_embargo` counts the ids held across all of them, so it can be
+non-zero in an unrelated repository that holds nothing itself, and it stays
+off public logs there too.
 
 A consumer of the output must treat `no_store: true` as "not checked", never
 as clean: nothing was compared against anything. Keep the output off public
