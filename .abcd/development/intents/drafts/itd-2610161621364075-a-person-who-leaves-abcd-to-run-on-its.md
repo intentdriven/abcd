@@ -37,15 +37,30 @@ What this intent can honestly promise is bounded by where abcd starts processes.
 
 ## Mechanism
 
-> _Prompted (the claim-recording gradient): why the authors expect this to work, as a falsifiable "we expect X because Y" — not the outcome restated. Replace this line with the claim, or with the exact token `None stated.` alone on its line to record the claim as considered and declined._
+We expect the fence to stop an agent abcd launches from changing anything outside its own work, because the operating system enforces it below anything the agent, or a command the agent runs, can change; abcd's guard still steers the agent inside it. It would be shown wrong if a launched agent, with the fence on, changed a file outside the paths its run was given. (Facilitator-proposed, 2026-10-16.)
 
 ## Scope Conditions
 
-> _Required (the claim-recording gradient): the population, platform, scale, or assumptions this claim holds under, one per top-level bullet — `abcd intent plan` stamps each with a persistent identity. Replace this line with those bullets, or with the exact token `None stated.` alone on its line._
+- macOS and Linux; Windows is out.
+- Agents abcd's runner launches, not a session the person drives.
+- Local runs on the person's own computer, not cloud sessions.
+- One project per run.
+- The operating system's fence can start: on Linux, unprivileged user namespaces are not blocked.
+- The machine-load gate and every check that reads the whole machine run in abcd, outside the fence.
 
 ## Acceptance Criteria
 
-> _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
+Seeded by the facilitator on 2026-10-16; proposals until the product thinker confirms them.
+
+- **Given** a run whose agent abcd launches through its runner, **when** the agent tries to write a file outside its worktree and its run's receipt folder, **then** the operating system refuses the write and the run records the refusal.
+- **Given** the same agent, **when** it edits files in its own worktree and commits there, **then** the edit and the commit succeed, and so does pushing its branch to origin.
+- **Given** a launched agent, **when** it tries to change the person's abcd settings, rules, trusted roots or another project's worktree under `~/.abcd.noindex/`, **then** the write is refused.
+- **Given** a computer on which the fence cannot start, **when** a run is about to launch its first agent, **then** abcd refuses to start the run, names the reason and how the person may turn the fence off for their own computer, and launches nothing.
+- **Given** a person who has turned the fence off for their computer in their user layer, **when** a run starts, **then** abcd says once that its launches are unfenced, and a project's own files can never turn the fence off.
+- **Given** a fenced run, **when** its lane builds and tests the project, **then** it uses a fresh Go build cache of its own and leaves the person's caches unchanged.
+- **Given** a fenced run on a loaded machine, **when** abcd's load gate decides whether a preflight may start, **then** the gate reads the whole machine from outside the fence and is not misled by the fence's own view.
+- **Given** abcd's guard is active in a launched agent, **when** the agent runs a command the guard refuses, **then** the refusal and its advice reach the agent inside the fence as they do outside.
+- **Given** a fenced run, **when** it finishes, **then** the person's host settings are byte-identical to before the run.
 
 ## Open Questions
 
