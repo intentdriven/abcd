@@ -140,6 +140,9 @@ type pathUse struct {
 	ok      bool
 	remove  bool
 	written string
+	// rel marks a relative name after a change of directory the line leaves
+	// unknown: the name is spelled out, the directory it is in is not.
+	rel bool
 }
 
 // unplaced is the shell state of a segment the reading did not place (a
@@ -193,7 +196,7 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 		if !w.ok {
 			written = w.base
 		}
-		out = append(out, pathUse{path: w.path, ok: w.ok, written: written})
+		out = append(out, pathUse{path: w.path, ok: w.ok, written: written, rel: !w.ok && w.rel})
 	}
 	at := func(i int, remove bool) pathUse {
 		tok, ok := fixedToken(s, i)
@@ -201,7 +204,7 @@ func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
 			return pathUse{remove: remove, written: tokenBase(s.tokens[i])}
 		}
 		p, ok := st.resolve(rc, tok, strings.HasPrefix(tok, "~"))
-		return pathUse{path: p, ok: ok, remove: remove, written: tok}
+		return pathUse{path: p, ok: ok, remove: remove, written: tok, rel: !ok && st.relativeUnknown(tok)}
 	}
 	for _, a := range commandSites(s) {
 		tok := s.tokens[a.idx]
@@ -292,6 +295,11 @@ func unfixedRefusal(u pathUse) Approval {
 	verb := "writes"
 	if u.remove {
 		verb = "removes"
+	}
+	if u.rel && u.written != "" {
+		return refusal(unfixedPathEntryID,
+			"this "+verb+" "+termsafe.Sanitize(u.written)+", a relative name after a change of directory whose result the line leaves unknown (a directory held in a variable or a substitution's output, or a cd not joined to the command by &&), so the guard cannot say which directory the name is in.",
+			"join the change of directory to the command with &&, to a directory spelled out in full, or name the file by its full path.")
 	}
 	return refusal(unfixedPathEntryID,
 		"this "+verb+" "+what+" that the line does not spell out (a variable, a substitution's output, a glob, or a name after a change of directory the line leaves unknown), so the guard cannot say which file it is.",

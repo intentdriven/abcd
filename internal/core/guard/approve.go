@@ -32,6 +32,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -129,11 +130,14 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 				"the same command without dangerouslyDisableSandbox, or say in the receipt that the task needs the sandbox lifted."), nil
 		}
 	}
+	if files == nil {
+		files = NewFiles("")
+	}
 	a := approveShell(ld, files, command)
 	if !a.Allow {
 		return a, nil
 	}
-	out := map[string]string{"command": command}
+	out := map[string]string{"command": runFrom(files.dir, command)}
 	var description string
 	if json.Unmarshal(fields["description"], &description) == nil && description != "" {
 		out["description"] = description
@@ -143,6 +147,18 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 		return refusal(promptInputEntryID, "the shell call's input could not be written back.", "the same call again."), nil
 	}
 	return a, updated
+}
+
+// runFrom is command as the host runs it once approved: from dir, the
+// working tree it was judged for. The host keeps the shell's directory from
+// one call to the next, so without the change an approved command would run
+// wherever the previous one left the shell. A change of directory inside the
+// command still holds for the rest of its line.
+func runFrom(dir, command string) string {
+	if !filepath.IsAbs(dir) {
+		return command
+	}
+	return "cd -- " + shellquote.Single(dir) + " && " + command
 }
 
 // approveShell answers a prompt for one shell command line, read against ld's
@@ -193,15 +209,22 @@ func approveShell(ld Loaded, files *Files, command string) Approval {
 			"a command whose every script exists and is a file the guard can read.")
 	}
 	facts := factsFor(r.files)
-	for i, s := range v.segs {
-		if target, ok := criticalRemoval(s, v.segs[:i], facts); ok {
-			return refusal(criticalRemovalEntryID,
-				"this removes, moves or recursively changes "+termsafe.Sanitize(target)+", which is or may be the filesystem root, a top-level directory, the home directory or a directory directly in it, the working tree or a directory above it, or another checkout of the repository.",
-				"change the files by their full paths below the working tree, spelled out.")
+	placed := placedLine(rc.line, v.segs)
+	for _, p := range placed {
+		for _, st := range p.states {
+			target, unplacedName, ok := criticalRemoval(p.seg, st, facts)
+			switch {
+			case ok && unplacedName:
+				return unfixedRefusal(pathUse{remove: true, rel: true, written: target})
+			case ok:
+				return refusal(criticalRemovalEntryID,
+					"this removes, moves or recursively changes "+termsafe.Sanitize(target)+", which is or may be the filesystem root, a top-level directory, the home directory or a directory directly in it, the working tree or a directory above it, or another checkout of the repository.",
+					"change the files by their full paths below the working tree, spelled out.")
+			}
 		}
 	}
 	vf := r.gitValueFlags()
-	for _, p := range placedLine(rc.line, v.segs) {
+	for _, p := range placed {
 		if a, ok := gitConfigRefusal(p.seg, vf); ok {
 			return a
 		}
@@ -252,10 +275,11 @@ func fromDecision(d Decision) Approval {
 // changes a path that is, or may be, a critical one, and the path as written:
 // an rm or rmdir of one; a find rooted at home or above that deletes (-delete,
 // or -exec rm); a move of one; an rsync that deletes into one; and a recursive
-// chmod, chown or chgrp of one. before is the segments ahead of s, read for a
-// directory change that leaves a relative target's directory unknown.
-func criticalRemoval(s segment, before []segment, f approveFacts) (string, bool) {
-	moved := precededByCD(before, s.chain)
+// chmod, chown or chgrp of one. st is the shell state the reading placed s
+// in: a relative target is read in the directory st fixes, and where st
+// leaves the directory unknown the target is reported with unplaced set, a
+// name the line does not place rather than a critical path.
+func criticalRemoval(s segment, st *shellState, f approveFacts) (target string, unplaced, ok bool) {
 	for _, a := range commandSites(s) {
 		var ops []int
 		critical := f.criticalDir
@@ -288,12 +312,13 @@ func criticalRemoval(s segment, before []segment, f approveFacts) (string, bool)
 		}
 		for _, j := range ops {
 			op := s.tokens[j]
-			if criticalTarget(op, s.globAt(j), moved, f, critical) {
-				return strings.NewReplacer(string(unknownMark), "$…", string(varMark), "$…").Replace(op), true
+			crit, unplacedName := criticalTarget(op, s.globAt(j), st, f, critical)
+			if crit || unplacedName {
+				return strings.NewReplacer(string(unknownMark), "$…", string(varMark), "$…").Replace(op), !crit, true
 			}
 		}
 	}
-	return "", false
+	return "", false, false
 }
 
 // operandsFrom is the indexes of s's operands from index from, stepping
@@ -397,27 +422,28 @@ func findDeletes(s segment, from int) []int {
 
 // criticalTarget reports whether one operand is, or may be, a path critical
 // judges critical. An operand a variable or a substitution fills may be any
-// path, and so may a relative one after the line changed directory; a glob is
-// judged by the directory it expands in.
-func criticalTarget(op string, globbed, moved bool, f approveFacts, critical func(string) bool) bool {
+// path; a relative one is read in the directory st fixes, and where st leaves
+// that directory unknown it is reported unplaced instead; a glob is judged by
+// the directory it expands in.
+func criticalTarget(op string, globbed bool, st *shellState, f approveFacts, critical func(string) bool) (crit, unplaced bool) {
 	if strings.ContainsRune(op, unknownMark) || strings.ContainsRune(op, varMark) {
-		return true
+		return true, false
 	}
 	dir, home := f.dir, f.home
 	p := op
 	switch {
 	case p == "~" || strings.HasPrefix(p, "~/"):
 		if home == "" {
-			return true
+			return true, false
 		}
 		p = home + strings.TrimPrefix(p, "~")
 	case strings.HasPrefix(p, "~"):
-		return true
+		return true, false
 	case !filepath.IsAbs(p):
-		if moved || dir == "" {
-			return true
+		if st == nil || !st.dirOK || st.dir == "" {
+			return false, true
 		}
-		p = filepath.Join(dir, p)
+		p = filepath.Join(st.dir, p)
 	}
 	p = filepath.Clean(p)
 	if globbed {
@@ -427,13 +453,13 @@ func criticalTarget(op string, globbed, moved bool, f approveFacts, critical fun
 		for i, c := range parts {
 			if strings.ContainsAny(c, "*?[") {
 				p = filepath.Clean(string(filepath.Separator) + filepath.Join(parts[:i]...))
-				return critical(p) || critical(fsutil.RealExistingPath(p)) || p == filepath.Clean(dir)
+				return critical(p) || critical(fsutil.RealExistingPath(p)) || p == filepath.Clean(dir), false
 			}
 		}
 	}
 	// As written and with its existing directories resolved: the checkouts
 	// git lists are in their resolved spelling.
-	return critical(p) || critical(fsutil.RealExistingPath(p))
+	return critical(p) || critical(fsutil.RealExistingPath(p)), false
 }
 
 // criticalDir reports whether p, a clean absolute path, is the root, a

@@ -1464,7 +1464,9 @@ registry, it refuses:
   - a call asking to run outside the host's sandbox.
 
 An approved call runs with the command judged and its description, and
-nothing else it carried. Everything else is refused with the guard's reason
+nothing else it carried, from the working tree it was judged for: the
+command comes back as cd -- '<dir>' && <command>, since the host keeps
+the shell's directory from one call to the next. Everything else is refused with the guard's reason
 and what to run instead, which the harness hands the agent, so the agent can
 rewrite the command. A prompt for any tool but the shell is refused, since
 nobody is there to approve it.

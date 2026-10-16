@@ -236,7 +236,12 @@ A shell command is approved only when the guard reads it whole and clears it:
   (`dangerouslyDisableSandbox`, refused as `sandbox-off`).
 
 An approved call runs with the command judged and its description, and nothing
-else it carried. Anything else is refused with the guard's reason and what to
+else it carried, from the working tree it was judged for: the approval hands the
+command back as `cd -- '<dir>' && <command>`, because the host keeps the shell's
+directory from one call to the next, and the approver judges every command as
+run from `--dir`. A change of directory inside the command still holds for the
+rest of its line, and a relative name after a `cd` the line spells out and
+joins with `&&` is read in that directory. Anything else is refused with the guard's reason and what to
 run instead, which the harness hands the agent so it can rewrite the command. A
 prompt for any tool but the shell is refused (`prompt-not-shell`), since nobody
 is there to approve it. A role whose contract grants no shell keeps its launch

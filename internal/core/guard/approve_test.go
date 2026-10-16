@@ -157,7 +157,7 @@ func TestApprovePromptJudgesOnlyTheShell(t *testing.T) {
 	if err := json.Unmarshal(updated, &got); err != nil {
 		t.Fatal(err)
 	}
-	if got["command"] != "go test ./..." || got["description"] != "tests" {
+	if got["command"] != runFrom(dir, "go test ./...") || got["description"] != "tests" {
 		t.Errorf("updated input = %s; want the one command judged and its description", updated)
 	}
 	if strings.Count(string(updated), `"command"`) != 1 {
@@ -266,11 +266,11 @@ func TestApprovePromptReturnsOnlyWhatWasJudged(t *testing.T) {
 	if err := json.Unmarshal(updated, &got); err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 || got["command"] != "go test ./..." || got["description"] != "tests" {
+	if len(got) != 2 || got["command"] != runFrom(dir, "go test ./...") || got["description"] != "tests" {
 		t.Errorf("updated input = %s; want the command and description alone", updated)
 	}
 	_, updated = ApprovePrompt(clean(), NewFiles(dir), "Bash", json.RawMessage(`{"command":"go vet ./..."}`))
-	if string(updated) != `{"command":"go vet ./..."}` {
+	if want, _ := json.Marshal(map[string]string{"command": runFrom(dir, "go vet ./...")}); string(updated) != string(want) {
 		t.Errorf("updated input = %s; want the command alone when no description was sent", updated)
 	}
 	for _, in := range []string{

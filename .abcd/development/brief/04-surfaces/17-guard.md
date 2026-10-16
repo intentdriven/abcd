@@ -377,7 +377,12 @@ The protected paths and critical removals keep the refusals the harness's own
 safety checks gave in the refuse-every-prompt mode: the prompt tool is told the
 tool and its input, not why the harness asked, so the approver refuses those
 shapes itself. An approved call runs with the command judged and its
-description, re-encoded, and nothing else the call carried. Everything else, and
+description, re-encoded, and nothing else the call carried, from the working
+tree it was judged for: the harness keeps the shell's directory from one call to
+the next, so the approval hands the command back as `cd -- '<dir>' && <command>`,
+the directory quoted as one literal word. A change of directory inside the line
+still holds for the rest of it, and a relative name after a `cd` the line spells
+out and joins with `&&` is read in that directory. Everything else, and
 a prompt for any tool but the shell, is refused with the guard's reason and
 successor, which the harness hands the agent so it can rewrite the command. The
 checks read the line itself: a script the line runs is read for the registry's
