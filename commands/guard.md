@@ -669,7 +669,7 @@ one stash stack for the whole repository, so a bare pop can take another
 worktree's work. A stash with a message and a pop by entry (`stash@{N}`) are not
 warned about, and neither is anything in a single-worktree clone.
 
-In a repository that opted in with `ahoy install --outbound-forge`
+In a repository that opted in with `ahoy install --outbound`
 (`outbound.forge: true` in `.abcd/config.json`), the text a posting forge
 command hands the forge is judged against the outbound policy before the
 command runs, with the same check `abcd lint outbound` applies. A
@@ -706,10 +706,12 @@ script the line runs, and every other posting path: `gh api`, `gh pr review`,
 `gh issue close --comment`, and any forge client but gh. The re-read
 after posting stays the control for those.
 
-Nothing changes in a repository that did not opt in. To turn the check off,
-remove `outbound.forge` from `.abcd/config.json` (or set it to `false`); the
-opt-in is read from the working tree on each check, and a later
-`ahoy install` without the flag leaves it as it is.
+Nothing changes in a repository that did not opt in. The opt-in is read from
+the working tree on each check. `--outbound` is one switch for this check and
+the commit-message hook together, so to turn it off remove both
+`outbound.forge` and `outbound.hook` from `.abcd/config.json` (or set both to
+`false`): a later `ahoy install` leaves both off as they are, but completes a
+repository that keeps only one of them on.
 
 A candidate too long to read is refused (exit 2), not answered on the part that
 fitted.
