@@ -115,7 +115,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		return Result{}, err
 	}
 	p.derivedGap = gap
-	if IsRelease(p.id) && !p.req.Release && !p.req.Renew {
+	if isRelease(p.id) && !p.req.Release && !p.req.Renew {
 		// A release already tagged has no cut left to hold.
 		tagged, err := taggedOnOrigin(root, p.id)
 		if err != nil {
@@ -382,7 +382,7 @@ func judge(p *prepared, tree string) (judged, error) {
 		return j, nil
 	}
 	switch {
-	case IsRelease(p.id):
+	case isRelease(p.id):
 		// A release's tag is read by the same fetch as its reservation, so
 		// it is never stale beside it.
 		if j.derived, err = taggedOnOrigin(p.root, p.id); err != nil {
@@ -410,7 +410,7 @@ func judge(p *prepared, tree string) (judged, error) {
 // derivedWhy says what released a subject outside its own tip: a release's
 // tag on origin, or a record finished on origin's default branch.
 func derivedWhy(id string) string {
-	if IsRelease(id) {
+	if isRelease(id) {
 		return releaseTag(id) + " is tagged on " + Remote
 	}
 	return id + " is finished on " + Remote + "'s default branch"

@@ -226,14 +226,14 @@ func TestACheckoutWithNoOriginIsNotHeldByLand(t *testing.T) {
 	f := newFixture(t, "")
 	f.cut(f.copyOf(quinnEmail), "rel-v0.16.0", time.Now().UTC().Add(-time.Minute))
 	root := f.repo.Root()
-	if _, err := ReleaseHold(root, f.home); err == nil {
+	if _, err := releaseHold(root, f.home); err == nil {
 		t.Fatal("with origin there, nothing holds; want Q's release to hold the landing")
 	}
 	ref := claim.TrackingPrefix + "rel-v0.16.0"
 	tip := f.repo.Git("rev-parse", ref)
 	f.repo.Git("remote", "remove", claim.Remote)
 	f.repo.Git("update-ref", ref, tip)
-	if _, err := ReleaseHold(root, f.home); err != nil {
+	if _, err := releaseHold(root, f.home); err != nil {
 		t.Fatalf("with no origin: %v; want nothing held", err)
 	}
 }

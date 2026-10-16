@@ -155,7 +155,7 @@ func MergeHolds(root string, now time.Time, o Options) (MergeHold, error) {
 }
 
 // JudgedHolds is every release being cut as this checkout last fetched the
-// reservations (ReleaseHolds), judged by the merge hold's rule: it first
+// reservations (releaseHolds), judged by the merge hold's rule: it first
 // keeps, in the local tier, this copy's first sighting of each release
 // reservation that needs one, so every path that judges a merge counts a
 // release dated ahead from the same sighting, and each hold's Own and
@@ -164,8 +164,8 @@ func MergeHolds(root string, now time.Time, o Options) (MergeHold, error) {
 // pushes nothing.
 func JudgedHolds(root string, now time.Time, o Options) ([]Hold, error) {
 	now = now.UTC().Truncate(time.Second)
-	keepFirstFetched(root, now, IsRelease)
-	return ReleaseHolds(root, now, o)
+	keepFirstFetched(root, now, isRelease)
+	return releaseHolds(root, now, o)
 }
 
 // FetchMergeHold fetches the reservations and origin's release tags, then

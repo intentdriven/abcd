@@ -172,7 +172,7 @@ func (r *Result) add(name, status, note, command string) {
 func clean(s string) string { return gitutil.ScrubURLCredentials(s) }
 
 // Refusal is a landing refused: Reason says why, Fix what settles it. Held
-// marks a landing a release being cut holds (ReleaseHold): contention, which
+// marks a landing a release being cut holds (releaseHold): contention, which
 // the surface exits 3 on, as every verb that backs off does.
 type Refusal struct {
 	Reason string
@@ -301,7 +301,7 @@ func Land(cwd string, o Options) (Result, error) {
 	// that is the copy the reservation verbs run here speak for, so a session
 	// that reserved the release here lands through its own hold whichever
 	// worktree has the branch checked out.
-	notice, err := ReleaseHold(root, o.Roots.Home)
+	notice, err := releaseHold(root, o.Roots.Home)
 	if notice != "" {
 		res.Notices = append(res.Notices, notice)
 	}
