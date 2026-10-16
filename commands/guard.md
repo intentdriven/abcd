@@ -662,11 +662,11 @@ the same way: `fuser -k` (`fuser-kill`), a `kill` handed what `lsof` or
 `fuser` prints (`kill $(lsof -t -i :8080)`, `lsof -ti:8080 | xargs kill`;
 `kill-by-holder`) and `kill-port` (`npx kill-port 3000`; `kill-port`) are a
 **block**, because they signal every process that holds it, another session's
-server included; looking (`lsof -i :8080`, `fuser 8080/tcp`) is not. The Node
-package runners — `npx`, `npm exec` (and `npm x`), `pnpm dlx` and `yarn dlx` —
-are read as wrappers whose first operand is the program they run, a version
-after it (`kill-port@latest`) included, so a blocker behind one is read as
-the blocker; their `-c` string is not read. The search is followed through a group (`{ pgrep
+server included; looking (`lsof -i :8080`, `fuser 8080/tcp`) is not. The
+package runners — `npx`, `npm exec` (and `npm x`), `pnpm dlx`, `pnpm exec`,
+`yarn dlx`, `bunx` and `bun x` — are read as wrappers whose first operand is
+the program they run, a version after it (`kill-port@latest`) included, so a
+blocker behind one is read as the blocker; their `-c` string is not read. The search is followed through a group (`{ pgrep
 …; } | xargs kill`) and into one, to every command in it (`pgrep … | { sleep 1;
 xargs kill; }`), through a shell string that runs it (`kill $(sh -c 'pgrep
 …')`), and into a shell string that `xargs` runs or that reads the pipe or a
@@ -726,9 +726,12 @@ or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
 `-c sandbox_mode=danger-full-access` (`agent-launch-codex-config-unchecked`),
 and `opencode run --auto` (`agent-launch-opencode-auto`). The same harness
 started with its checks on is allowed. The entries name each program by
-basename, so a launch through a package runner (`npx`) or under another name is
-not matched, and opencode's permission settings given in its environment
-(`OPENCODE_PERMISSION`) are not read.
+basename, and match it however the line starts it: by name or path, behind `env`
+or `command`, or through a package runner (`npx`, `bunx`, `bun x`, `pnpm dlx`,
+`pnpm exec`, `yarn dlx`, `npm exec`, with or without `--`), by the program's
+name or by the package that ships it (`npx @anthropic-ai/claude-code`, `npx
+@openai/codex`, `npx opencode-ai`). opencode's permission settings given in
+its environment (`OPENCODE_PERMISSION`) are not read.
 
 A recursive delete of the filesystem root or the home directory (`/`, `/*`,
 `~`, `$HOME`, `${HOME}`, each also with a trailing `/`, `/*` or `/*/`, and the

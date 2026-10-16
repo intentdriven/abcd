@@ -49,3 +49,48 @@ func TestGuardRefusesAnAgentLaunchWithItsChecksOff(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardRefusesAnAgentLaunchThroughARunner: the harness is the program
+// whether the line names it or a launcher starts it: a package runner
+// (npx, bunx, bun x, pnpm dlx, pnpm exec, yarn dlx, npm exec, with or
+// without `--`), by its program name or by the package that ships it, and
+// env or command in front of it.
+func TestGuardRefusesAnAgentLaunchThroughARunner(t *testing.T) {
+	r := Defaults()
+	const claudeID, codexID, opencodeID = "agent-launch-claude-unchecked", "agent-launch-codex-unchecked", "agent-launch-opencode-auto"
+	cases := map[string]string{}
+	for _, runner := range []string{"npx", "npx --yes", "npx --", "bunx", "bunx --bun", "bun x", "pnpm dlx", "pnpm exec", "pnpm exec --", "yarn dlx", "npm exec", "npm exec --", "npm x --", "env", "env FOO=1", "command", "env -- command"} {
+		cases[runner+` claude -p x --dangerously-skip-permissions`] = claudeID
+		cases[runner+` codex exec --yolo "fix"`] = codexID
+		cases[runner+` opencode run --auto x`] = opencodeID
+	}
+	for _, runner := range []string{"npx", "npx -y", "npx --", "bunx", "bun x", "pnpm dlx", "yarn dlx", "npm exec --"} {
+		cases[runner+` @anthropic-ai/claude-code --dangerously-skip-permissions`] = claudeID
+		cases[runner+` @anthropic-ai/claude-code@latest -p x --dangerously-skip-permissions`] = claudeID
+		cases[runner+` @openai/codex exec --yolo "fix"`] = codexID
+		cases[runner+` opencode-ai@1 run --auto x`] = opencodeID
+	}
+	for line, id := range cases {
+		d, err := r.Check(line)
+		if err != nil {
+			t.Fatalf("%q: %v", line, err)
+		}
+		if d.Verdict != VerdictBlock || d.EntryID != id {
+			t.Errorf("%q: verdict %q under %q, want a block under %q", line, d.Verdict, d.EntryID, id)
+		}
+		if a := approveShell(clean(), NewFiles(t.TempDir()), line); a.Allow || a.EntryID != id {
+			t.Errorf("%q: the approver answered %+v, want a refusal under %q", line, a, id)
+		}
+	}
+	for _, line := range []string{
+		`npx @anthropic-ai/claude-code -p "fix the tests"`,
+		`bunx @openai/codex exec "fix the tests"`,
+		`pnpm exec opencode run "fix the tests"`,
+		`npx claude-code-helper --dangerously-skip-permissions`,
+		`npx prettier --write .`,
+	} {
+		if d, err := r.Check(line); err != nil || d.Verdict == VerdictBlock {
+			t.Errorf("%q: blocked under %q (%v)", line, d.EntryID, err)
+		}
+	}
+}

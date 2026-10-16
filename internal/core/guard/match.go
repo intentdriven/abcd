@@ -2,6 +2,7 @@ package guard
 
 import (
 	"path"
+	"sort"
 	"strings"
 )
 
@@ -74,44 +75,81 @@ var wrappers = map[string]bool{
 	// operand names, fetching the package when it is not installed
 	// (iss-2610112232319827). Not a util-linux shim like those above; its
 	// value flags come from npm's documented grammar (wrappersWithoutProbes).
-	// Its siblings are two words, `npm exec`, `pnpm dlx` and `yarn dlx`, and
-	// are read by runnerSubcommands.
+	// Its siblings are two words, `npm exec`, `pnpm dlx`, `pnpm exec`,
+	// `yarn dlx` and `bun x`, and are read by runnerSubcommands.
 	"npx": true,
+	// bun's package runner, `bunx <pkg> [args]`, the one-word spelling of
+	// `bun x`: it runs the program its first operand names as npx does.
+	"bunx": true,
 }
 
 // packageRunners names the one-word package runners among the wrappers. The
 // walk steps them as wrappers, and arrives at the word itself as a command as
 // well, so an entry naming the runner still matches it (walkToCommand).
-var packageRunners = map[string]bool{"npx": true}
+var packageRunners = map[string]bool{"npx": true, "bunx": true}
 
 // runnerSubcommands names the package managers whose subcommand makes them a
 // runner as npx is, and the wrapper each subcommand is read as: `npm exec`
-// (and its alias `npm x`), `pnpm dlx`, `yarn dlx`. A subcommand the line does
-// not fix can be the runner's.
+// (and its alias `npm x`), `pnpm dlx`, `pnpm exec`, `yarn dlx` and `bun x`.
+// A subcommand the line does not fix can be any of the runner's.
 var runnerSubcommands = map[string]map[string]string{
 	"npm":  {"exec": "npm exec", "x": "npm exec"},
-	"pnpm": {"dlx": "pnpm dlx"},
+	"pnpm": {"dlx": "pnpm dlx", "exec": "pnpm exec"},
 	"yarn": {"dlx": "yarn dlx"},
+	"bun":  {"x": "bunx"},
 }
 
-// runnerAt reports the runner wrapper the word at pos of tokens starts, when
-// name, its lower-cased basename, is a package manager whose next word is a
-// runner subcommand, or a word the line does not fix.
-func runnerAt(name string, tokens []string, pos int) (string, bool) {
+// runnersAt reports the runner wrappers the word at pos of tokens can start,
+// in name order, when name, its lower-cased basename, is a package manager
+// whose next word is a runner subcommand (one wrapper), or a word the line
+// does not fix (every runner subcommand that manager has).
+func runnersAt(name string, tokens []string, pos int) []string {
 	subs, ok := runnerSubcommands[name]
 	if !ok || pos+1 >= len(tokens) {
-		return "", false
+		return nil
 	}
 	next := tokens[pos+1]
 	if w, ok := subs[next]; ok {
-		return w, true
+		return []string{w}
 	}
-	if isUnknown(next) {
-		for _, w := range subs {
-			return w, true
+	if !isUnknown(next) {
+		return nil
+	}
+	seen := map[string]bool{}
+	var out []string
+	for _, w := range subs {
+		if !seen[w] {
+			seen[w] = true
+			out = append(out, w)
 		}
 	}
-	return "", false
+	sort.Strings(out)
+	return out
+}
+
+// packagePrograms names, by the package that ships it, the program a package
+// runner starts for a package whose name is not the program's: `npx
+// @anthropic-ai/claude-code` starts claude, and `npx opencode-ai` starts
+// opencode. A package named for its program (`@openai/codex`, `kill-port`)
+// needs no line here; packageName reads it.
+var packagePrograms = map[string]string{
+	"@anthropic-ai/claude-code": "claude",
+	"opencode-ai":               "opencode",
+}
+
+// packageProgram is the program packagePrograms names for a package runner's
+// operand, its version left aside (`@anthropic-ai/claude-code@latest`), and
+// whether it names one. A word the line does not fix names none.
+func packageProgram(tok string) (string, bool) {
+	if isUnknown(tok) {
+		return "", false
+	}
+	spec := strings.ToLower(tok)
+	if at := strings.LastIndexByte(spec, '@'); at > 0 && at > strings.LastIndexByte(spec, '/') {
+		spec = spec[:at]
+	}
+	prog, ok := packagePrograms[spec]
+	return prog, ok
 }
 
 // packageName is a package runner's operand without its version: npx runs the
@@ -187,6 +225,13 @@ var wrapperValueFlags = map[string][]string{
 	"npm exec": {"-p", "--package", "-w", "--workspace"},
 	"pnpm dlx": {"--package"},
 	"yarn dlx": {"-p", "--package"},
+	// bun's documented `bunx` grammar, for `bunx` and `bun x` alike: the
+	// package to install. `--bun` takes nothing.
+	"bunx": {"-p", "--package"},
+	// pnpm's documented exec grammar: the packages to run in and the one to
+	// resume from. NOT -c/--shell-mode, which takes nothing and hands the
+	// command to a shell.
+	"pnpm exec": {"--filter", "-F", "--resume-from"},
 	// `setsid`, `eatmydata`, `proxychains` and `taskset` take no value flags.
 }
 
