@@ -34,7 +34,7 @@ func hookChain() Table {
 // as the read time minus its age.
 func TestFindHostSkipsShellsAndAbcd(t *testing.T) {
 	for _, from := range []int{300, 210, 200} {
-		h, err := FindHost(hookChain(), from)
+		h, err := findHost(hookChain(), from)
 		if err != nil {
 			t.Fatalf("FindHost from %d: %v", from, err)
 		}
@@ -55,7 +55,7 @@ func TestFindHostRefusesAWalkThatFindsNoHost(t *testing.T) {
 		"a loop": {ReadAt: readAt, Procs: []machineload.Proc{
 			proc(300, 301, "sh", time.Second), proc(301, 300, "bash", time.Second)}},
 	} {
-		if h, err := FindHost(tab, 300); err == nil {
+		if h, err := findHost(tab, 300); err == nil {
 			t.Errorf("%s: FindHost = %+v, want an error", name, h)
 		}
 	}

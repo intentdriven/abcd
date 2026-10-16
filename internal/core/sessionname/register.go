@@ -390,7 +390,7 @@ func keep(m Machine, req Request) Outcome {
 // name reserves for the session the first name of its persona sequence that
 // is not already handed out.
 func name(m Machine, req Request) Outcome {
-	personas, note := Personas(req.Root)
+	personas, note := personasOf(req.Root)
 	var out Outcome
 	if note != "" {
 		out.Notes = append(out.Notes, note)
@@ -427,7 +427,7 @@ func name(m Machine, req Request) Outcome {
 // A session with no entry reserves the next free name, as a new session does.
 // The returned name is the one its first prompt sets, "" when nothing is owed.
 func rejoin(m Machine, req Request) Outcome {
-	personas, note := Personas(req.Root)
+	personas, note := personasOf(req.Root)
 	var out Outcome
 	if note != "" {
 		out.Notes = append(out.Notes, note)
@@ -516,7 +516,7 @@ func (reg *register) onHost(host Host) int {
 // already handed out, and records it live for this session's host, owed to the
 // first prompt. replaces is the title it stands in for (decision 10), or "".
 func (reg *register) reserve(personas []string, sessionID string, host Host, replaces string) (string, error) {
-	for _, n := range Sequence(personas) {
+	for _, n := range sequenceOf(personas) {
 		if slices.Contains(reg.Handed, n) {
 			continue
 		}
@@ -563,7 +563,7 @@ func (reg *register) reserve(personas []string, sessionID string, host Host, rep
 // name instead, which its first prompt sets in place of the title it carries
 // (decision 10): two running sessions never share a name.
 func hold(m Machine, req Request) Outcome {
-	personas, note := Personas(req.Root)
+	personas, note := personasOf(req.Root)
 	var out Outcome
 	if note != "" {
 		out.Notes = append(out.Notes, note)
@@ -821,7 +821,7 @@ func (m Machine) update(fn func(reg *register, tab Table, host Host) (bool, erro
 	if err != nil {
 		return fmt.Errorf("the process table could not be read (%v), so a running session cannot be told from an ended one", err)
 	}
-	host, err := FindHost(tab, m.From)
+	host, err := findHost(tab, m.From)
 	if err != nil {
 		return err
 	}

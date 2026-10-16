@@ -81,7 +81,7 @@ const maxWalk = 64
 // start time. A walk that leaves the table, loops, or reaches the machine's
 // first process (pid 1, launchd or init) names no host: keyed on pid 1, an
 // entry would never end.
-func FindHost(t Table, from int) (Host, error) {
+func findHost(t Table, from int) (Host, error) {
 	byPID := make(map[int]machineload.Proc, len(t.Procs))
 	for _, p := range t.Procs {
 		byPID[p.PID] = p

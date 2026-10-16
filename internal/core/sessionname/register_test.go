@@ -101,7 +101,7 @@ func mustName(t *testing.T, got Outcome, want string) {
 func TestStartNamesSessionsInPersonaOrder(t *testing.T) {
 	m := newMachine(t)
 	root := t.TempDir()
-	want := append(Bundled(), "Alice Two", "Bob Two")
+	want := append(bundledList(), "Alice Two", "Bob Two")
 	for i, name := range want {
 		mustName(t, m.start(100*(i+1), root, "s"+name), name)
 	}
@@ -506,7 +506,7 @@ func TestResendWithoutARegisterIsNothing(t *testing.T) {
 func TestStartLeavesTheSessionUnnamedPastTheLastRound(t *testing.T) {
 	m := newMachine(t)
 	root := writePersonas(t, `{"personas":[{"name":"Zed"}]}`)
-	for i, name := range Sequence([]string{"Zed"}) {
+	for i, name := range sequenceOf([]string{"Zed"}) {
 		mustName(t, m.start(100*(i+1), root, name), name)
 	}
 	out := m.start(5000, root, "tenth")

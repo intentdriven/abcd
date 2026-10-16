@@ -12,7 +12,7 @@ import (
 // TestSequenceFollowsThePersonaOrderThenRounds is C2's order: the names as
 // listed, then the same names with " Two" up to " Nine", and nothing after.
 func TestSequenceFollowsThePersonaOrderThenRounds(t *testing.T) {
-	seq := Sequence(Bundled())
+	seq := sequenceOf(bundledList())
 	if got, want := len(seq), 14*9; got != want {
 		t.Fatalf("the bundled sequence holds %d names, want %d", got, want)
 	}
@@ -21,7 +21,7 @@ func TestSequenceFollowsThePersonaOrderThenRounds(t *testing.T) {
 			t.Errorf("sequence[%d] = %q, want %q", i, seq[i], want)
 		}
 	}
-	if got := Sequence([]string{"Maya", "Zed"}); !slices.Equal(got[:4], []string{"Maya", "Zed", "Maya Two", "Zed Two"}) {
+	if got := sequenceOf([]string{"Maya", "Zed"}); !slices.Equal(got[:4], []string{"Maya", "Zed", "Maya Two", "Zed Two"}) {
 		t.Errorf("a repository list's sequence begins %v, want Maya, Zed, Maya Two, Zed Two", got[:4])
 	}
 }
@@ -46,7 +46,7 @@ func TestBundledIsAbcdsOwnPersonaRegistry(t *testing.T) {
 	for _, p := range doc.Personas {
 		want = append(want, p.Name)
 	}
-	if got := Bundled(); !slices.Equal(got, want) {
+	if got := bundledList(); !slices.Equal(got, want) {
 		t.Fatalf("Bundled() = %v, want abcd's registry %v", got, want)
 	}
 }
@@ -69,7 +69,7 @@ func writePersonas(t *testing.T, body string) string {
 // list puts Maya first names its first session Maya.
 func TestPersonasReadsTheRepositoryList(t *testing.T) {
 	root := writePersonas(t, `{"personas":[{"name":"Maya","role_hints":["x"]},{"name":"Omar"}]}`)
-	names, note := Personas(root)
+	names, note := personasOf(root)
 	if note != "" {
 		t.Fatalf("a valid list carries a note: %q", note)
 	}
@@ -82,8 +82,8 @@ func TestPersonasReadsTheRepositoryList(t *testing.T) {
 // persona list is the ordinary case, never a diagnostic.
 func TestPersonasWithoutAFileIsTheBundledListSilently(t *testing.T) {
 	for name, root := range map[string]string{"no file": t.TempDir(), "no root": ""} {
-		names, note := Personas(root)
-		if note != "" || !slices.Equal(names, Bundled()) {
+		names, note := personasOf(root)
+		if note != "" || !slices.Equal(names, bundledList()) {
 			t.Errorf("%s: Personas = %v, %q; want the bundled list and no note", name, names, note)
 		}
 	}
@@ -114,8 +114,8 @@ func TestPersonasRefusesAnUnsafeListWithoutEchoingIt(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			root := writePersonas(t, c.body)
-			names, note := Personas(root)
-			if !slices.Equal(names, Bundled()) {
+			names, note := personasOf(root)
+			if !slices.Equal(names, bundledList()) {
 				t.Fatalf("Personas = %v, want the bundled list", names)
 			}
 			if !strings.Contains(note, PersonasRel) {
@@ -146,8 +146,8 @@ func TestPersonasRefusesASymlinkedList(t *testing.T) {
 	if err := os.Symlink(outside, p); err != nil {
 		t.Fatal(err)
 	}
-	names, note := Personas(root)
-	if !slices.Equal(names, Bundled()) || note == "" {
+	names, note := personasOf(root)
+	if !slices.Equal(names, bundledList()) || note == "" {
 		t.Fatalf("Personas = %v, %q; want the bundled list and a note", names, note)
 	}
 }

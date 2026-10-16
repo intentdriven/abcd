@@ -50,7 +50,7 @@ var bundled = []string{
 }
 
 // Bundled returns a copy of the bundled persona list.
-func Bundled() []string { return append([]string(nil), bundled...) }
+func bundledList() []string { return append([]string(nil), bundled...) }
 
 // rounds are the suffixes each pass through the list takes. The sequence ends
 // after the ninth: a machine running more named sessions than nine passes of
@@ -59,7 +59,7 @@ var rounds = []string{"", " Two", " Three", " Four", " Five", " Six", " Seven", 
 
 // Sequence is the order names are handed out in: names as listed, then each
 // again with " Two", and so on to " Nine".
-func Sequence(names []string) []string {
+func sequenceOf(names []string) []string {
 	seq := make([]string, 0, len(names)*len(rounds))
 	for _, r := range rounds {
 		for _, n := range names {
@@ -85,16 +85,16 @@ var personaName = regexp.MustCompile(`^[A-Z][a-z]{1,15}$`)
 // reason. A list with one bad entry is not filtered down to its good ones:
 // whoever wrote the bad one also chose the order of the rest. The note never
 // quotes an entry, because the entry is what the check refused.
-func Personas(root string) ([]string, string) {
+func personasOf(root string) ([]string, string) {
 	if root == "" {
-		return Bundled(), ""
+		return bundledList(), ""
 	}
 	names, err := readPersonas(root)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return Bundled(), ""
+			return bundledList(), ""
 		}
-		return Bundled(), fmt.Sprintf("abcd session name: %s is not used for session names (%s); the bundled names, Alice to Nia, are used instead", PersonasRel, err.Error())
+		return bundledList(), fmt.Sprintf("abcd session name: %s is not used for session names (%s); the bundled names, Alice to Nia, are used instead", PersonasRel, err.Error())
 	}
 	return names, ""
 }
