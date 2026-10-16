@@ -58,3 +58,29 @@ func TestADrainLaneStartedWhileTheForgeFailsSaysSoAndALaterActAsksAgain(t *testi
 		t.Fatalf("an answered check warns: %q", second.Start.ForkUnchecked)
 	}
 }
+
+// TestADrainLaneOnTheAllowedForkSaysSo (dcn-2610161223212218): a drain lane
+// reserving on the fork the repository's reservation.fork_origin names goes
+// through, and its run record and the drain's result say the check was
+// waived for that fork, in reserve's words, so the waiver is never silent.
+func TestADrainLaneOnTheAllowedForkSaysSo(t *testing.T) {
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	repoConfig(t, repo, `{"reservation":{"fork_origin":"octo/abcd"}}`)
+	restore := claim.SwapForkCheckForTest(
+		func(string) ([]string, error) { return []string{"https://github.com/octo/abcd.git"}, nil },
+		func(_, _, _ string) (github.Repo, error) {
+			return github.Repo{Fork: true, Parent: "intentdriven/abcd"}, nil
+		})
+	t.Cleanup(restore)
+
+	got := drainToLane(t, repo, Options{}, DrainOptions{})
+	if got.Start == nil || got.Lane == nil {
+		t.Fatalf("the drain opens a lane on the allowed fork: %+v", got)
+	}
+	if got.Start.ForkAllowed != "octo/abcd" || got.Start.ForkUnchecked != "" {
+		t.Fatalf("the drain's result names the allowed fork: allowed %q, unchecked %q", got.Start.ForkAllowed, got.Start.ForkUnchecked)
+	}
+	if note := recordNote(t, repo, got.Start.RunID, StageReservation); !strings.Contains(note, claim.ForkAllowedLine("octo/abcd")) {
+		t.Fatalf("the run record names the allowed fork: %q", note)
+	}
+}

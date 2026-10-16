@@ -95,8 +95,9 @@ writes them.
     "enqueue": true                     // arm and confirm its pull request where the merge gate allows
   },
   "reservation": {
-    "fork_origin": "refuse"             // "refuse" | "allow": whether a reservation is made on an origin
-                                        //   push URL GitHub names a fork (04-surfaces/37-reserve.md)
+    "fork_origin": "refuse"             // "refuse" | "<owner>/<name>": the one fork, if any, on which a
+                                        //   reservation is made when GitHub names an origin push URL a
+                                        //   fork (04-surfaces/37-reserve.md)
   },
   "readme": {
     "parts": ["licence", "links"],      // the README parts abcd keeps in README.md; [] is answered no and is
@@ -133,12 +134,16 @@ that turned an act off.
 
 The `reservation.fork_origin` key is read through the same reader, in the
 ordinary precedence: `.abcd/config.json` wins, then `~/.abcd.noindex/config.json`,
-then the bundled `"refuse"` (dcn-2610161141338923). It is `"allow"` only for a
-repository whose own home is a fork on GitHub, where every account working on
-it reserves; the fork refusal names it. It is read only once the forge has
-named one of origin's push URLs a fork, so a malformed value, or a misspelt key
-under `reservation`, refuses a reservation on a fork naming the file and never
-stops one anywhere else. The machine layer's `reservation.github_username`
+then the bundled `"refuse"` (dcn-2610161141338923). It names a fork,
+`"<owner>/<name>"`, only for a repository whose own home is that fork on
+GitHub, where every account working on it reserves; the fork refusal names it.
+The value names the one fork it allows, so a fork of that fork, which inherits
+the committed file, is still refused, naming both; the two are compared without
+regard to case, and a reservation let through on the allowed fork says so
+(dcn-2610161223212218). It is read only once the forge has named one of
+origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
+plain owner and one plain name), or a misspelt key under `reservation`, refuses
+a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
 layer alone and is not one of the sixteen.
 

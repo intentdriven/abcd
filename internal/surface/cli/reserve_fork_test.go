@@ -61,3 +61,31 @@ func TestDrainSaysWhenALanesForkCheckWasNotMade(t *testing.T) {
 		t.Fatalf("a checked origin says nothing of forks:\n%s", buf.String())
 	}
 }
+
+// TestReserveAndDrainSayWhenTheForkCheckWasWaived (dcn-2610161223212218): a
+// reservation let through on the fork the repository allows says so, in
+// reserve's text and JSON and in a drain move's, in the one wording claim
+// gives it.
+func TestReserveAndDrainSayWhenTheForkCheckWasWaived(t *testing.T) {
+	line := "  " + claim.ForkAllowedLine("octo/abcd") + "\n"
+	out := reserveView(claim.Result{Act: claim.ActReserved, Record: "iss-5", Holder: "octo", Copy: claim.CopyThis,
+		Footprint: []string{"a.go"}, ForkAllowed: "octo/abcd"})
+	var buf bytes.Buffer
+	renderReserve(&buf, out)
+	if !strings.Contains(buf.String(), line) {
+		t.Fatalf("reserve's text names the allowed fork:\n%s", buf.String())
+	}
+	if doc, err := json.Marshal(out); err != nil || !strings.Contains(string(doc), `"fork_allowed":"octo/abcd"`) {
+		t.Fatalf("reserve's JSON names the allowed fork: %s %v", doc, err)
+	}
+
+	res := loop.DrainResult{State: loop.DrainStateRel, Start: &loop.StartResult{RunID: "run-1", ForkAllowed: "octo/abcd"}}
+	buf.Reset()
+	renderDrainRun(&buf, res)
+	if !strings.Contains(buf.String(), line) {
+		t.Fatalf("the drain's text names the allowed fork:\n%s", buf.String())
+	}
+	if doc, err := json.Marshal(res); err != nil || !strings.Contains(string(doc), `"fork_allowed":"octo/abcd"`) {
+		t.Fatalf("the drain's JSON names the allowed fork: %s %v", doc, err)
+	}
+}

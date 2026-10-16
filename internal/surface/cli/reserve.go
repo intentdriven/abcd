@@ -38,6 +38,7 @@ type reserveOutput struct {
 	Replaced         *reserveReplaced `json:"replaced,omitempty"`
 	DerivedUnchecked string           `json:"derived_unchecked,omitempty"`
 	ForkUnchecked    string           `json:"fork_unchecked,omitempty"`
+	ForkAllowed      string           `json:"fork_allowed,omitempty"`
 }
 
 // reserveReplaced is the reservation a take-over replaced.
@@ -210,7 +211,8 @@ func reserveView(res claim.Result) reserveOutput {
 		Footprint: make([]string, 0, len(res.Footprint)), ClaimedAt: rfc3339(res.ClaimedAt),
 		EffectiveExpiry: rfc3339(res.ExpiresAt), Commit: res.Commit,
 		DerivedUnchecked: termsafe.Sanitize(fsutil.RedactHome(res.DerivedUnchecked)),
-		ForkUnchecked:    termsafe.Sanitize(fsutil.RedactHome(res.ForkUnchecked))}
+		ForkUnchecked:    termsafe.Sanitize(fsutil.RedactHome(res.ForkUnchecked)),
+		ForkAllowed:      termsafe.Sanitize(res.ForkAllowed)}
 	for _, f := range res.Footprint {
 		out.Footprint = append(out.Footprint, termsafe.Sanitize(f))
 	}
@@ -261,6 +263,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if out.ForkUnchecked != "" {
 		fmt.Fprintf(w, "  %s\n", claim.ForkUncheckedLine(out.ForkUnchecked))
+	}
+	if out.ForkAllowed != "" {
+		fmt.Fprintf(w, "  %s\n", claim.ForkAllowedLine(out.ForkAllowed))
 	}
 }
 

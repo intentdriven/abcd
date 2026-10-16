@@ -73,7 +73,7 @@ func TestAForkOriginRefusesAFreshReservationNamingItsParent(t *testing.T) {
 		msg := err.Error()
 		for _, want := range []string{"octo/abcd", "a fork of intentdriven/abcd",
 			"git remote set-url origin git@github.com:intentdriven/abcd.git", nothingPushed,
-			`set reservation.fork_origin to "allow" in .abcd/config.json`} {
+			`set reservation.fork_origin to "octo/abcd" in .abcd/config.json`} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("the refusal names %q: %s", want, msg)
 			}
@@ -370,25 +370,41 @@ func (p *participant) repoConfig(body string) {
 	}
 }
 
-// TestARepositoryWhoseHomeIsAForkMayAllowIt (dcn-2610161141338923): a
-// repository's own reservation.fork_origin "allow" lets a reservation on a
-// fork through, as does the machine's; the repository's file wins a key both
-// set; a value outside the two refuses naming the file and the key; and a
-// repository that is not a fork never reads the key, so a malformed one
-// stops nothing there.
+// TestARepositoryWhoseHomeIsAForkMayAllowIt (dcn-2610161141338923, refined
+// by dcn-2610161223212218): a repository's own reservation.fork_origin naming
+// the fork origin is lets a reservation there through with a warning naming
+// it, as does the machine's; the repository's file wins a key both set; a
+// fork of the allowed fork (one that inherited the committed setting) is
+// refused naming both; a value that is neither "refuse" nor one owner/name,
+// the bare "allow" among them, refuses naming the file and the key once a
+// fork is named; and a repository that is not a fork never reads the key, so
+// a malformed one stops nothing there.
 func TestARepositoryWhoseHomeIsAForkMayAllowIt(t *testing.T) {
 	fork := github.Repo{Fork: true, Parent: "intentdriven/abcd"}
+	forkOfFork := github.Repo{Fork: true, Parent: "octo/abcd"}
 	cases := []struct {
-		name, repo, machine string
-		forge               github.Repo
-		want                string // "" for the act through, else a refusal naming it
+		name, repo, machine, origin string
+		forge                       github.Repo
+		want                        string // "" for the act through, else a refusal naming it
+		allowed                     string // the fork the act was let through on, warned of
 	}{
-		{"repo allows", `{"reservation":{"fork_origin":"allow"}}`, "", fork, ""},
-		{"machine allows", "", `{"reservation":{"fork_origin":"allow"}}`, fork, ""},
-		{"repo refuses over the machine", `{"reservation":{"fork_origin":"refuse"}}`, `{"reservation":{"fork_origin":"allow"}}`, fork, "a fork of intentdriven/abcd"},
-		{"a value outside the two", `{"reservation":{"fork_origin":"yes"}}`, "", fork, ".abcd/config.json (repo layer): reservation.fork_origin"},
-		{"a misspelt key", `{"reservation":{"fork_origins":"allow"}}`, "", fork, "unknown key reservation.fork_origins"},
-		{"not a fork, a malformed key", `{"reservation":{"fork_origin":"yes"}}`, "", github.Repo{}, ""},
+		{"repo allows", `{"reservation":{"fork_origin":"octo/abcd"}}`, "", "octo/abcd", fork, "", "octo/abcd"},
+		{"repo allows, the case differs", `{"reservation":{"fork_origin":"Octo/ABCD"}}`, "", "octo/abcd", fork, "", "Octo/ABCD"},
+		{"machine allows", "", `{"reservation":{"fork_origin":"octo/abcd"}}`, "octo/abcd", fork, "", "octo/abcd"},
+		{"repo refuses over the machine", `{"reservation":{"fork_origin":"refuse"}}`, `{"reservation":{"fork_origin":"octo/abcd"}}`, "octo/abcd", fork, "a fork of intentdriven/abcd", ""},
+		{"a fork of the allowed fork", `{"reservation":{"fork_origin":"octo/abcd"}}`, "", "mallory/abcd", forkOfFork,
+			"origin is mallory/abcd, a fork of octo/abcd, and this repository allows reservations only on the fork octo/abcd (reservation.fork_origin in .abcd/config.json): " +
+				"a reservation on mallory/abcd is invisible to everyone working on octo/abcd; point origin at the fork the repository allows " +
+				"(git remote set-url origin git@github.com:octo/abcd.git)", ""},
+		{"another fork than the allowed one", "", `{"reservation":{"fork_origin":"octo/abcd"}}`, "mallory/abcd", fork,
+			"allows reservations only on the fork octo/abcd (reservation.fork_origin in ~/.abcd.noindex/config.json)", ""},
+		{"the bare allow", `{"reservation":{"fork_origin":"allow"}}`, "", "octo/abcd", fork, ".abcd/config.json (repo layer): reservation.fork_origin", ""},
+		{"a value outside the two", `{"reservation":{"fork_origin":"yes"}}`, "", "octo/abcd", fork, ".abcd/config.json (repo layer): reservation.fork_origin", ""},
+		{"an owner and no name", `{"reservation":{"fork_origin":"octo/"}}`, "", "octo/abcd", fork, ".abcd/config.json (repo layer): reservation.fork_origin", ""},
+		{"a name that is not plain", `{"reservation":{"fork_origin":"octo/ab cd"}}`, "", "octo/abcd", fork, ".abcd/config.json (repo layer): reservation.fork_origin", ""},
+		{"three parts", `{"reservation":{"fork_origin":"octo/abcd/x"}}`, "", "octo/abcd", fork, ".abcd/config.json (repo layer): reservation.fork_origin", ""},
+		{"a misspelt key", `{"reservation":{"fork_origins":"octo/abcd"}}`, "", "octo/abcd", fork, "unknown key reservation.fork_origins", ""},
+		{"not a fork, a malformed key", `{"reservation":{"fork_origin":"yes"}}`, "", "octo/abcd", github.Repo{}, "", ""},
 	}
 	for _, c := range cases {
 		w := newWorld(t)
@@ -401,24 +417,32 @@ func TestARepositoryWhoseHomeIsAForkMayAllowIt(t *testing.T) {
 			p.repoConfig(c.repo)
 		}
 		stubForge(t, c.forge, nil)
-		originOnGitHub(t, "git@github.com:octo/abcd.git")
+		originOnGitHub(t, "git@github.com:"+c.origin+".git")
 		res, err := p.reserve("iss-5", "a.go")
 		switch {
 		case c.want == "" && (err != nil || res.Act != ActReserved || w.remoteTip("iss-5") == ""):
 			t.Errorf("%s: %+v %v; want the reservation made", c.name, res, err)
+		case c.want == "" && res.ForkAllowed != c.allowed:
+			t.Errorf("%s: the waived check is warned of as %q, want %q", c.name, res.ForkAllowed, c.allowed)
 		case c.want != "" && (!errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), c.want)):
 			t.Errorf("%s: %v; want a refusal naming %q", c.name, err, c.want)
 		case c.want != "" && w.remoteTip("iss-5") != "":
 			t.Errorf("%s: a refused reservation was pushed", c.name)
 		}
+		if c.want == "" && res.ForkUnchecked != "" {
+			t.Errorf("%s: a checked origin is said to be unchecked: %q", c.name, res.ForkUnchecked)
+		}
 	}
 }
 
-// TestTheForkLinesAreOneWording: the warning for a check not made reads the
-// same wherever it is shown.
+// TestTheForkLinesAreOneWording: the warnings for a check not made and a
+// check waived read the same wherever they are shown.
 func TestTheForkLinesAreOneWording(t *testing.T) {
 	if got, want := ForkUncheckedLine("octo/abcd: gh did not answer in time"), "not checked: whether origin is a fork (octo/abcd: gh did not answer in time)"; got != want {
 		t.Errorf("ForkUncheckedLine = %q, want %q", got, want)
+	}
+	if got, want := ForkAllowedLine("octo/abcd"), "origin is a fork the repository allows (octo/abcd)"; got != want {
+		t.Errorf("ForkAllowedLine = %q, want %q", got, want)
 	}
 }
 
@@ -427,11 +451,11 @@ func TestTheForkLinesAreOneWording(t *testing.T) {
 // holder is still read from it.
 func TestTheMachineHolderKeySitsBesideTheForkKey(t *testing.T) {
 	w := newWorld(t)
-	p := w.clone("pat@example.com", machineConfig(t, `{"reservation":{"github_username":"octo","fork_origin":"allow"}}`))
+	p := w.clone("pat@example.com", machineConfig(t, `{"reservation":{"github_username":"octo","fork_origin":"octo/abcd"}}`))
 	stubForge(t, github.Repo{Fork: true, Parent: "intentdriven/abcd"}, nil)
 	originOnGitHub(t, "git@github.com:octo/abcd.git")
 	res, err := p.reserve("iss-5", "a.go")
-	if err != nil || res.Act != ActReserved || res.Holder != "octo" {
-		t.Fatalf("%+v %v; want the reservation made as octo", res, err)
+	if err != nil || res.Act != ActReserved || res.Holder != "octo" || res.ForkAllowed != "octo/abcd" {
+		t.Fatalf("%+v %v; want the reservation made as octo, warned of the allowed fork", res, err)
 	}
 }

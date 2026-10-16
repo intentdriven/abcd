@@ -18,7 +18,9 @@ import (
 // repository it was made from, so a hold there protects no one. A fresh
 // reservation (a reserve or a take-over, never a renewal or a release) asks
 // the forge whether a github.com origin is a fork, keeping a definite answer
-// for the process and a failure for a minute, and a fork refuses. An origin off github.com is not asked, and a forge that does
+// for the process and a failure for a minute, and a fork refuses unless it is
+// the one reservation.fork_origin allows, which is then said to be waived.
+// An origin off github.com is not asked, and a forge that does
 // not answer gives a warning and lets the act through, so a forge outage never
 // stops a lease being kept.
 
@@ -112,95 +114,121 @@ func askFork(root, owner, name string, now time.Time) forkAnswer {
 }
 
 // checkFork refuses a fresh reservation when any of origin's push URLs is a
-// fork on github.com, naming the repository it was made from and the command
-// that points that URL there. unchecked is why the check could not be made
-// for some URL, "" when every URL was checked or is a local path; the act
-// then goes on.
-func checkFork(root string, now time.Time, home string) (unchecked string, err error) {
+// fork on github.com that the repository does not allow, naming the
+// repository it was made from and the command that points that URL there.
+// unchecked is why the check could not be made for some URL, "" when every
+// URL was checked or is a local path; the act then goes on. allowed is the
+// fork, as reservation.fork_origin names it, the check was waived for, ""
+// when none was.
+func checkFork(root string, now time.Time, home string) (unchecked, allowed string, err error) {
 	targets, uerr := originPushURLs(root)
 	if uerr != nil {
-		return "could not read " + Remote + "'s push URL: " + redacted(uerr), nil
+		return "could not read " + Remote + "'s push URL: " + redacted(uerr), "", nil
 	}
 	var gaps []string
 	for _, url := range targets.urls {
-		gap, err := checkForkURL(root, url, targets, now, home)
+		gap, ok, err := checkForkURL(root, url, targets, now, home)
 		if err != nil {
-			return "", err
+			return "", "", err
 		}
 		if gap != "" && !slices.Contains(gaps, gap) {
 			gaps = append(gaps, gap)
 		}
+		if ok != "" {
+			allowed = ok
+		}
 	}
-	return strings.Join(gaps, "; "), nil
+	return strings.Join(gaps, "; "), allowed, nil
 }
 
 // checkForkURL is checkFork for one push URL.
-func checkForkURL(root, url string, targets pushTargets, now time.Time, home string) (unchecked string, err error) {
+func checkForkURL(root, url string, targets pushTargets, now time.Time, home string) (unchecked, allowed string, err error) {
 	owner, name, perr := github.ParseRemote(url)
 	switch {
 	case errors.Is(perr, github.ErrNotGitHub) && github.NamesHostedRepository(url):
-		return notGitHubByName, nil
+		return notGitHubByName, "", nil
 	case errors.Is(perr, github.ErrNotGitHub):
-		return "", nil
+		return "", "", nil
 	case perr != nil:
-		return perr.Error(), nil
+		return perr.Error(), "", nil
 	}
 	a := askFork(root, owner, name, now)
 	if a.err != nil {
-		return owner + "/" + name + ": " + forkClass(a.err), nil
+		return owner + "/" + name + ": " + forkClass(a.err), "", nil
 	}
 	if !a.repo.Fork {
-		return "", nil
+		return "", "", nil
 	}
 	// The opt-out is read only once a fork is named, so a malformed key can
 	// stop no act on a repository that is not a fork (dcn-2610161141338923).
-	allow, err := forkOriginAllowed(root, home)
+	fork := owner + "/" + name
+	allow, origin, err := forkOriginAllowed(root, home)
 	if err != nil {
-		return "", refuse("%s is %s/%s, a fork of %s, and whether this repository allows that could not be read: %v; %s",
-			Remote, owner, name, a.repo.Parent, err, nothingPushed)
+		return "", "", refuse("%s is %s, a fork of %s, and whether this repository allows that could not be read: %v; %s",
+			Remote, fork, a.repo.Parent, err, nothingPushed)
 	}
-	if allow {
-		return "", nil
+	// The opt-out names the one fork it allows (dcn-2610161223212218), so a
+	// fork of that fork, which inherits the committed key, is still refused.
+	if strings.EqualFold(allow, fork) {
+		return "", allow, nil
 	}
-	return "", refuse("%s is %s/%s, a fork of %s: a reservation there is invisible to everyone working on %s, so it holds nothing for them; "+
+	if allow != "" {
+		return "", "", refuse("%s is %s, a fork of %s, and this repository allows reservations only on the fork %s (%s in %s): "+
+			"a reservation on %s is invisible to everyone working on %s; point %s at the fork the repository allows (%s), then reserve again; %s",
+			Remote, fork, a.repo.Parent, allow, forkOriginKey, origin, fork, allow, Remote,
+			setURLCommand(targets, fork, parentURL(url, allow)), nothingPushed)
+	}
+	return "", "", refuse("%s is %s, a fork of %s: a reservation there is invisible to everyone working on %s, so it holds nothing for them; "+
 		"point %s at the repository it was made from (%s), then reserve again, or, when this fork is itself where everyone working on it reserves, "+
 		"set %s to %q in %s; %s",
-		Remote, owner, name, a.repo.Parent, a.repo.Parent, Remote, setURLCommand(targets, owner+"/"+name, parentURL(url, a.repo.Parent)),
-		forkOriginKey, forkOriginAllow, layered.Config.RepoOrigin(), nothingPushed)
+		Remote, fork, a.repo.Parent, a.repo.Parent, Remote, setURLCommand(targets, fork, parentURL(url, a.repo.Parent)),
+		forkOriginKey, fork, layered.Config.RepoOrigin(), nothingPushed)
 }
 
-// The fork check's opt-out (dcn-2610161141338923): reservation.fork_origin,
-// "refuse" by default, "allow" for a repository whose own home is a fork on
-// GitHub, where every account reserves.
+// The fork check's opt-out (dcn-2610161141338923, refined by
+// dcn-2610161223212218): reservation.fork_origin, "refuse" by default, or
+// "<owner>/<name>" for a repository whose own home is that fork on GitHub,
+// where every account reserves.
 const (
 	forkOriginKey    = holderNamespace + ".fork_origin"
-	forkOriginAllow  = "allow"
 	forkOriginRefuse = "refuse"
 )
 
 // forkOriginAllowed reads reservation.fork_origin through the layered
 // configuration: the checkout's .abcd/config.json, then the machine's, then
-// the bundled "refuse". A value outside the two, a misspelt key under the
-// namespace and an unreadable file refuse, naming the file.
-func forkOriginAllowed(root, home string) (bool, error) {
+// the bundled "refuse". It is the fork allowed, as owner/name, or "" for
+// "refuse", and the file that said so. A value that is neither "refuse" nor one plain owner and one
+// plain name, a misspelt key under the namespace and an unreadable file
+// refuse, naming the file.
+func forkOriginAllowed(root, home string) (fork, origin string, err error) {
 	r := layered.Roots{Repo: root, Home: home, HomeRefused: home == ""}
 	stack, err := layered.Load(layered.Config, r)
 	if err != nil {
-		return false, err
+		return "", "", err
 	}
 	if err := stack.Claim(holderNamespace, reservationKeys...); err != nil {
-		return false, err
+		return "", "", err
 	}
 	v, err := layered.Get(stack, forkOriginKey, forkOriginRefuse, func(v string) error {
-		if v != forkOriginAllow && v != forkOriginRefuse {
-			return fmt.Errorf("it takes %q or %q", forkOriginAllow, forkOriginRefuse)
+		if v != forkOriginRefuse && !ownerName(v) {
+			return fmt.Errorf("it takes %q or \"<owner>/<name>\", the one fork whose reservations are allowed", forkOriginRefuse)
 		}
 		return nil
 	})
 	if err != nil {
-		return false, err
+		return "", "", err
 	}
-	return v.V == forkOriginAllow, nil
+	if v.V == forkOriginRefuse {
+		return "", v.Origin, nil
+	}
+	return v.V, v.Origin, nil
+}
+
+// ownerName reports whether s is one plain GitHub owner and one plain name,
+// joined by a slash.
+func ownerName(s string) bool {
+	owner, name, ok := strings.Cut(s, "/")
+	return ok && github.PlainName(owner) && github.PlainName(name)
 }
 
 // ForkUncheckedLine is how a fork check a fresh reservation could not make
@@ -208,6 +236,13 @@ func forkOriginAllowed(root, home string) (bool, error) {
 // record and a start's, and a drain move's.
 func ForkUncheckedLine(why string) string {
 	return "not checked: whether " + Remote + " is a fork (" + why + ")"
+}
+
+// ForkAllowedLine is how a fork check waived for the fork the repository
+// allows is named, so a waived check is never silent, the same words wherever
+// it is shown.
+func ForkAllowedLine(fork string) string {
+	return Remote + " is a fork the repository allows (" + fork + ")"
 }
 
 // setURLCommand is the command that points the push URL naming fork at

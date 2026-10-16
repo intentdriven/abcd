@@ -227,7 +227,11 @@ type StartResult struct {
 	// whether origin is a fork, so it went on without the check (claim's
 	// Result.ForkUnchecked); "" when it asked, or asked nothing.
 	ForkUnchecked string `json:"fork_unchecked,omitempty"`
-	Next          string `json:"next"`
+	// ForkAllowed is the fork, as owner/name, the start's reservation was let
+	// through on because reservation.fork_origin names it (claim's
+	// Result.ForkAllowed); "" when none was.
+	ForkAllowed string `json:"fork_allowed,omitempty"`
+	Next        string `json:"next"`
 }
 
 // StepResult is what advance and Receipt return.
@@ -472,7 +476,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		res = startResult(st, chk.Checks, false)
 		res.Claim = claim
-		res.Reservation, res.ForkUnchecked = rsv.note, rsv.forkUnchecked
+		res.Reservation, res.ForkUnchecked, res.ForkAllowed = rsv.note, rsv.forkUnchecked, rsv.forkAllowed
 		keep = true
 		return nil
 	})

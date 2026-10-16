@@ -70,8 +70,13 @@ type Result struct {
 	// one of origin's push URLs is a fork (no answer, or a host not
 	// github.com by name), so the act went on without the check; "" when it
 	// was checked, not asked (a renewal, a release, a local path), found no
-	// fork, or the repository allows one.
+	// fork, or found the one the repository allows (ForkAllowed).
 	ForkUnchecked string
+	// ForkAllowed is the fork, as owner/name, a fresh reservation was let
+	// through on because reservation.fork_origin names it, so the check was
+	// waived and is said to be (ForkAllowedLine); "" when no fork was named,
+	// or none was allowed.
+	ForkAllowed string
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -137,9 +142,9 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	// afresh (a reservation or a take-over, never a renewal or a release,
 	// however it was asked for) asks the forge, and precedes the commit and
 	// the push, so a fork is refused before anything is pushed.
-	forkUnchecked := ""
+	forkUnchecked, forkAllowed := "", ""
 	if !p.req.Release && res.Act != ActRenewed {
-		if forkUnchecked, err = checkFork(root, p.now, o.home()); err != nil {
+		if forkUnchecked, forkAllowed, err = checkFork(root, p.now, o.home()); err != nil {
 			return Result{}, err
 		}
 	}
@@ -157,6 +162,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	res.Copy = CopyThis
 	res.DerivedUnchecked = p.derivedGap
 	res.ForkUnchecked = forkUnchecked
+	res.ForkAllowed = forkAllowed
 	return res, nil
 }
 

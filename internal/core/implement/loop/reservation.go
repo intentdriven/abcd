@@ -320,6 +320,7 @@ type reserved struct {
 	note          string
 	fresh         bool
 	forkUnchecked string
+	forkAllowed   string
 }
 
 // reserveKey reserves a run's key on origin for this copy with req's
@@ -351,8 +352,12 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 	if res.ForkUnchecked != "" {
 		note += "; " + claim.ForkUncheckedLine(res.ForkUnchecked)
 	}
+	if res.ForkAllowed != "" {
+		note += "; " + claim.ForkAllowedLine(res.ForkAllowed)
+	}
 	t := now
-	return reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed, forkUnchecked: res.ForkUnchecked}, nil
+	return reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed,
+		forkUnchecked: res.ForkUnchecked, forkAllowed: res.ForkAllowed}, nil
 }
 
 // reserveStart is a new run's reservation, once its checks pass and before
@@ -426,7 +431,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 		}
 		return err
 	}
-	res.Reservation, res.ForkUnchecked = r.note, r.forkUnchecked
+	res.Reservation, res.ForkUnchecked, res.ForkAllowed = r.note, r.forkUnchecked, r.forkAllowed
 	return nil
 }
 

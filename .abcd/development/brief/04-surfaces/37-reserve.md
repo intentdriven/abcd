@@ -135,9 +135,14 @@ was made from and the command that points that URL there in its own form
 when a push URL is configured, naming one of several by its owner and name);
 an https URL's userinfo is never carried into it. A repository whose own home
 is a fork on GitHub, where every account reserves, sets
-`reservation.fork_origin` to `"allow"` in `.abcd/config.json`
+`reservation.fork_origin` to that fork's `"<owner>/<name>"` in
+`.abcd/config.json`
 ([`../05-internals/03-configuration.md`](../05-internals/03-configuration.md);
-dcn-2610161141338923), and the refusal names the key. The forge is asked through
+dcn-2610161141338923, dcn-2610161223212218), and the refusal names the key.
+The value names one fork, so a fork of that fork, which inherits the committed
+file, is refused naming both, and a reservation let through on the allowed fork
+is never silent: the output says `origin is a fork the repository allows
+(<owner>/<name>)`. The forge is asked through
 the one door to GitHub (`gh api repos/<owner>/<name>`). An answer, fork or not,
 is kept for the process; a question that failed is held a minute and asked
 again by the next fresh act after that, at most one question a minute for a
@@ -150,8 +155,9 @@ check was skipped and why, in abcd's own words rather than gh's; so does a URL
 that names a host and one owner and one name on a host that is not github.com
 by name (an ssh host alias such as `git@github-work:owner/name`, or another
 forge), which is not asked about. A local path is not asked about and says
-nothing. A `build` start and a `drain` lane name a skipped check in the run's
-reservation line, and the drain's output shows it as this verb's does.
+nothing. A `build` start and a `drain` lane name a skipped or waived check in
+the run's reservation line, and the drain's output shows it as this verb's
+does.
 
 Reservations coordinate people who share push access in good faith; they are
 not an access control. Any writer who can push can append to another holder's
@@ -178,8 +184,10 @@ footprint path is in another live reservation's footprint. Exit 2 on the cap,
 on a fork origin, and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
 `effective_expiry`, `commit`, `replaced` for a take-over,
-`derived_unchecked` when the default branch could not be read, and
-`fork_unchecked` when the forge could not say whether origin is a fork.
+`derived_unchecked` when the default branch could not be read,
+`fork_unchecked` when the forge could not say whether origin is a fork, and
+`fork_allowed`, the fork's owner/name, when the check was waived for the fork
+the repository allows.
 
 ## Where this sits
 
