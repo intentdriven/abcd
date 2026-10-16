@@ -1,10 +1,13 @@
 package claim
 
 import (
+	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // What the status fetch deletes before it fetches (dropUnlisted): this
@@ -98,5 +101,34 @@ func TestATipThatIsNotACommitIsReadOnce(t *testing.T) {
 	pat.read()
 	if log.anyArgContains(ref) {
 		t.Fatalf("the next read walked maya again: %v", log.cmds)
+	}
+}
+
+// TestTheAnnouncementsAreReadWhenTheHoldsAreNot: a read of the release holds
+// that fails does not hide the announcements: they are still read, and the
+// error names the read that failed.
+func TestTheAnnouncementsAreReadWhenTheHoldsAreNot(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	maya.announceAs("merging", "#1012")
+	pat.status(nil)
+	old := readHolds
+	readHolds = func(string, time.Time, Options) ([]Hold, error) {
+		return nil, errors.New("the reservations did not read")
+	}
+	t.Cleanup(func() { readHolds = old })
+	v, err := ReadStatus(context.Background(), pat.dir, w.clock(), pat.opts())
+	if err == nil || !strings.Contains(err.Error(), "reading the release holds: the reservations did not read") {
+		t.Fatalf("ReadStatus error = %v; want the holds' read named", err)
+	}
+	if len(v.Announcements) != 1 || v.Announcements[0].Item != "#1012" {
+		t.Fatalf("announcements = %+v; want maya's read all the same", v.Announcements)
+	}
+	got := pat.notes()
+	for _, want := range []string{"- release holds unread: their read failed; `abcd status` says why\n", "- @maya (claimed): merging #1012, for 30 min\n"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the block:\n%s\nwant it to carry %q", got, want)
+		}
 	}
 }

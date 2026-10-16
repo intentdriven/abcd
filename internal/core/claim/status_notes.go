@@ -176,6 +176,11 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 			defer promptReads.Done()
 			read := func() {
 				v, err := ReadStatus(rctx, root, now, o)
+				if _, only := err.(*holdsUnreadError); only {
+					// Only the holds failed: the rest is shown, and the
+					// block says the holds were not read.
+					v.holdsUnread, err = true, nil
+				}
 				var n Notes
 				if err == nil {
 					n, err = notesFor(rctx, root, v, now)
@@ -241,6 +246,10 @@ func notesFor(ctx context.Context, root string, v StatusView, now time.Time) (No
 		if u.u != nil {
 			first = append(first, noteLine{key: hashedKey("unread\x00" + u.what + "\x00" + stamp(u.u.FailedAt)), text: UnreadLine(u.what, *u.u)})
 		}
+	}
+	if v.holdsUnread {
+		first = append(first, noteLine{key: hashedKey("holds-unread\x00" + stamp(v.FetchedAt)),
+			text: "release holds unread: their read failed; `abcd status` says why"})
 	}
 	for _, h := range v.Holds {
 		first = append(first, noteLine{key: hashedKey("hold\x00" + h.Subject + "\x00" + h.Holder + "\x00" + stamp(h.EffectiveExpiry)),

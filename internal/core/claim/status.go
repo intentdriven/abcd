@@ -214,6 +214,9 @@ type StatusView struct {
 	// Holds is every release being cut, judged as the merge hold judges them
 	// (JudgedHolds).
 	Holds []Hold
+	// holdsUnread is true when the holds could not be read, and the rest of
+	// the view was: the prompt block says so in its own line.
+	holdsUnread bool
 }
 
 // StatusFetch is what `abcd status`'s fetch could not read: Gap is why
@@ -353,9 +356,11 @@ func statusName(name string) bool { return validUsername(name) && name == string
 // as the merge hold judges them, then takes in whatever a fetch brought since
 // the last read, under ctx, then reads what is kept. It is the one read of the
 // holds `abcd status` and the prompt hook make: neither reads them again. A
-// read that fails, or a ctx that ends first, answers its error with what was
-// read before it: the view's origin, its fetch's date and its failed fetches
-// always, and the holds when they were read.
+// read of the holds that fails does not stop the rest: the announcements are
+// still read, and the error, naming the holds' read, is answered with them.
+// An intake that fails, or a ctx that ends first, answers its error with what
+// was read before it: the view's origin, its fetch's date and its failed
+// fetches always, and the holds when they were read.
 func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (StatusView, error) {
 	now = now.UTC().Truncate(time.Second)
 	ok, err := HasOrigin(root)
@@ -368,12 +373,13 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	v := StatusView{Origin: true, FetchedAt: lastFetched(root, statusBranches), NoTier: tierPresent(root) != nil}
 	v.Unread = unreadOf(root, statusBranches)
 	v.ReservationsUnread = unreadOf(root, reservations)
-	if v.Holds, err = JudgedHolds(root, now, o); err != nil {
-		return v, err
+	var holdsErr error
+	if v.Holds, err = readHolds(root, now, o); err != nil {
+		holdsErr = &holdsUnreadError{err}
 	}
 	in, err := takeIn(ctx, root, now)
 	if err != nil {
-		return v, err
+		return v, errors.Join(holdsErr, err)
 	}
 	v.Announcements, v.AnnouncementsNotRead = keptAnnouncementsCounted(root, now, in.held)
 	for _, d := range keptDoubts(root, now) {
@@ -387,8 +393,26 @@ func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (Sta
 	v.UnreadNames = max(listed.Count, in.unread.n)
 	v.BranchesNotRead = max(listed.PastCap, in.pastCap)
 	v.unreadKey = listed.Digest + "\x00" + in.unread.digest()
-	return v, ctx.Err()
+	if err := ctx.Err(); err != nil {
+		return v, errors.Join(holdsErr, err)
+	}
+	if holdsErr != nil {
+		// Only the holds failed: answered on its own, so a reader can tell.
+		return v, holdsErr
+	}
+	return v, nil
 }
+
+// holdsUnreadError is ReadStatus's answer when only its read of the release
+// holds failed: everything else in the view was read.
+type holdsUnreadError struct{ err error }
+
+func (e *holdsUnreadError) Error() string { return "reading the release holds: " + e.err.Error() }
+func (e *holdsUnreadError) Unwrap() error { return e.err }
+
+// readHolds is ReadStatus's read of the release holds: JudgedHolds, which a
+// test replaces with one that fails.
+var readHolds = JudgedHolds
 
 // intake is what one intake found.
 type intake struct {
