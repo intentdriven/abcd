@@ -19,18 +19,23 @@
 #      attribution gate (scripts/check-attribution.sh commits) refuses them.
 #      The commits must already name the person as author: collect never
 #      rewrites authorship. Refuse, too, an added path whose case-folded form
-#      is another path's, in the default branch's tree or the copy's (on a
+#      is another path's in the tree the work lands in, the default branch's
+#      paths less those the collected commits delete, with the copy's (on a
 #      file system that folds case, SCRIPTS/gate.sh overwrites
-#      scripts/gate.sh), whatever the flags say. And refuse when the work
+#      scripts/gate.sh), whatever the flags say; a case-only rename deletes
+#      the path it folds onto, so it passes. And refuse when the work
 #      changes the tooling, the build and gate machinery: the build file,
 #      scripts/, go.mod, go.sum, go.work, go.work.sum, vendor/, the gates'
 #      settings and baselines at the top of .abcd/ (every .abcd/*.json, and
-#      .abcd/config/), and every top-level hidden directory but .abcd/ (the
-#      hooks, the workflows, a host's settings), printing the diffstat of
+#      .abcd/config/), the files under .abcd/work/ a gate reads (the reviews
+#      charter in reviews/, the ruleset mirror in rulesets/, and every
+#      .abcd/work/*.json), and every top-level hidden directory but .abcd/
+#      (the hooks, the workflows, a host's settings), printing the diffstat of
 #      those paths, unless --allow-tooling-changes is passed. Paths are read
 #      NUL-separated, so git never quotes one, and matched case-folded, so
-#      neither a quoted name nor a capital steps round a pattern. The records
-#      under .abcd/development/ and .abcd/work/ are no tooling;
+#      neither a quoted name nor a capital steps round a pattern. The other
+#      records under .abcd/development/ and .abcd/work/ (the issue records,
+#      CONTEXT.md, DECISIONS.md, intake.md) are no tooling;
 #   3. make a worktree in the machine store,
 #      ~/.abcd.noindex/worktrees/<root-sha>/collect-<item-id>/
 #      (adr-2610031751065746; <root-sha> is the full name of the repository's
@@ -209,15 +214,22 @@ done
 # file, the scripts, the module and workspace files, a vendored dependency,
 # the gates' settings and baselines at the top of .abcd/ (record-lint.json,
 # docs-lint.json, site.json, the citation and site baselines, rules.json,
-# config.json and the rest of .abcd/*.json, and .abcd/config/), and a
-# top-level hidden directory (the hooks in .githooks/, the workflows in
-# .github/, a host's settings directory; every one but .abcd/, whose records
-# under development/ and work/ are no tooling). The hidden directories are
-# matched by shape, so no host is named here (C12). The path is folded first.
+# config.json and the rest of .abcd/*.json, and .abcd/config/), the files
+# under .abcd/work/ a gate reads (the reviews charter and its receipts in
+# reviews/, read by lint-reviews and the release gate; the ruleset mirror in
+# rulesets/, read by the required-check tests and the build loop; and every
+# .abcd/work/*.json, such as brief-review-flags.json, read by record-lint),
+# and a top-level hidden directory (the hooks in .githooks/, the workflows in
+# .github/, a host's settings directory; every one but .abcd/, whose other
+# records under development/ and work/ are no tooling). The hidden
+# directories are matched by shape, so no host is named here (C12). The path
+# is folded first.
 is_tooling() {
 	case "$1" in
 	makefile | gnumakefile | go.mod | go.sum | go.work | go.work.sum | scripts/* | vendor/*) return 0 ;;
-	.abcd/config/*) return 0 ;;
+	.abcd/config/* | .abcd/work/reviews/* | .abcd/work/rulesets/*) return 0 ;;
+	.abcd/work/*/*) return 1 ;;
+	.abcd/work/*.json) return 0 ;;
 	.abcd/*/*) return 1 ;;
 	.abcd/*.json) return 0 ;;
 	.abcd/*) return 1 ;;
@@ -230,6 +242,7 @@ report_f="$(fold "$report_dir")"
 tier_f="$(fold "$LOCAL_TIER")"
 tooling=""
 : >"$tmpd/added"
+: >"$tmpd/deleted"
 while IFS= read -r sha; do
 	paths "$sha"
 	while IFS= read -r p; do
@@ -250,6 +263,8 @@ while IFS= read -r sha; do
 	done <<<"$P"
 	git diff-tree -z --no-commit-id --name-only -r --no-renames --diff-filter=A "$sha" | tr '\0' '\n' >>"$tmpd/added" ||
 		refuse "git could not list what commit ${sha:0:12} adds."
+	git diff-tree -z --no-commit-id --name-only -r --no-renames --diff-filter=D "$sha" | tr '\0' '\n' >>"$tmpd/deleted" ||
+		refuse "git could not list what commit ${sha:0:12} deletes."
 done <<<"$work"
 
 if [ -n "$tooling" ] && [ -z "$allow_tooling" ]; then
@@ -259,23 +274,28 @@ if [ -n "$tooling" ] && [ -z "$allow_tooling" ]; then
 	while IFS= read -r p; do specs+=("$p"); done <<<"$tooling"
 	git --literal-pathspecs diff --stat=200 --no-renames "$fork" "$tip^" -- "${specs[@]}" >&2 || true
 	printf '%s\n' "$tooling" | LC_ALL=C tr -d '\001-\011\013-\037\177' | sed 's/^/  changed: /' >&2
-	refuse "the work changes the tooling (the build file, scripts/, the module or workspace files, vendor/, the gates' settings at the top of .abcd/, or a top-level hidden directory such as .githooks/ or .github/), which decides how the collected copy is built and gated as you. Read the changes above; collect them only by passing --allow-tooling-changes."
+	refuse "the work changes the tooling (the build file, scripts/, the module or workspace files, vendor/, the gates' settings at the top of .abcd/, the files under .abcd/work/ a gate reads, or a top-level hidden directory such as .githooks/ or .github/), which decides how the collected copy is built and gated as you. Read the changes above; collect them only by passing --allow-tooling-changes."
 fi
 
-# Case collisions: an added path whose case-folded form is another path's, in
-# the default branch's tree or in the copy's (or another added one), would
-# overwrite that path on a file system that folds case. Refused whatever the
-# flags say: no flag makes an overwrite the person can read in a diffstat.
-{
-	git ls-tree -r -z --name-only "$base"
-	git ls-tree -r -z --name-only "$tip^"
-} | tr '\0' '\n' >"$tmpd/tree" || refuse "git could not list the trees the work lands in."
+# Case collisions: an added path whose case-folded form is another path's in
+# the tree the work lands in would overwrite that path on a file system that
+# folds case. That tree is the default branch's paths less those the collected
+# commits delete, with the copy's tree (another added path among them): a
+# case-only rename (seed.md to Seed.md, an add under --no-renames) deletes the
+# path it folds onto, so it collides with nothing. Refused whatever the flags
+# say: no flag makes an overwrite the person can read in a diffstat.
+git ls-tree -r -z --name-only "$base" | tr '\0' '\n' >"$tmpd/base" ||
+	refuse "git could not list the default branch's tree."
+git ls-tree -r -z --name-only "$tip^" | tr '\0' '\n' >"$tmpd/copy" ||
+	refuse "git could not list the copy's tree."
 collide="$(LC_ALL=C awk '
 	length($0) == 0 { next }
-	FILENAME == ARGV[1] { added[$0] = 1 }
+	FILENAME == ARGV[1] { added[$0] = 1; next }
+	FILENAME == ARGV[2] { deleted[$0] = 1; next }
+	FILENAME == ARGV[3] && ($0 in deleted) { next }
 	!($0 in seen) { seen[$0] = 1; n[tolower($0)]++ }
 	END { for (a in added) if (n[tolower(a)] > 1) print a }
-' "$tmpd/added" "$tmpd/tree" | LC_ALL=C sort)"
+' "$tmpd/added" "$tmpd/deleted" "$tmpd/base" "$tmpd/copy" | LC_ALL=C sort)"
 if [ -n "$collide" ]; then
 	printf '%s\n' "$collide" | LC_ALL=C tr -d '\001-\011\013-\037\177' | sed 's/^/  collides: /' >&2
 	refuse "the work adds a path whose name differs only in case from another path's (above), and on a file system that folds case it would overwrite that path. Rename it in the session's branch."

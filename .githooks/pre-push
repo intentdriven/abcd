@@ -147,7 +147,8 @@ wip_id_re='^((iss|itd|spc)-[0-9]{16}|(iss|itd)-[0-9]{1,4})$'
 # name, fails the check, so the push is gated. It says why on a failure, since
 # the refusal that follows names only the missing receipt. The attribution
 # gate's own findings name the identity it refuses, so they are kept from the
-# output: the hook prints a fixed sentence and the command that shows them,
+# output: the hook prints a fixed sentence naming every cause the gate refuses
+# (the identity half and the message half) and the command that shows which,
 # and never an identity itself.
 wip_shape() {
   local remote_sha="$1" local_sha="$2" id default base
@@ -169,7 +170,7 @@ wip_shape() {
     base="$remote_sha"
   fi
   if ! bash scripts/check-attribution.sh commits "$base" "$local_sha" </dev/null >/dev/null 2>&1; then
-    echo "pre-push: the pushed commits fail the attribution gate: an author or committer is not a person's, or a trailer is missing; run scripts/check-attribution.sh commits $base $local_sha to see which ($row_ruling);" >&2
+    echo "pre-push: the pushed commits fail the attribution gate (a machine author or committer, a missing or malformed Assisted-by trailer, an AI Co-Authored-By trailer, or a tool footer or session URL in a message); run scripts/check-attribution.sh commits $base $local_sha to see which ($row_ruling);" >&2
     echo "          '$branch' is gated as any branch is." >&2
     return 1
   fi
@@ -262,7 +263,7 @@ if git cat-file -e HEAD:scripts/cloud/connector.sh 2>/dev/null; then
   fi
   if [ -n "$wip_bad" ]; then
     printf '%s\n' "$wip_bad" >&2
-    echo "pre-push: a host connector declaration under scripts/cloud/connectors/ fails its validation (scripts/cloud/connector.sh validate names it)." >&2
+    echo "pre-push: a host connector declaration under scripts/cloud/connectors/ fails its validation (scripts/cloud/connector.sh validate names it, as committed at HEAD (commit or discard local edits to compare))." >&2
     echo "          No work-in-progress prefix is exempt from the receipt, and a push to a branch holding the" >&2
     echo "          segment abcd-wip is refused until it is fixed (adr-2610120937435856). Every other push is judged as usual." >&2
   fi
@@ -333,7 +334,7 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     case "/$(lower "$branch")/" in
     */abcd-wip/*)
       printf '%s\n' "$wip_bad" >&2
-      echo "pre-push: refusing the push to '$branch': it holds the segment abcd-wip, and a host connector declaration fails its validation (scripts/cloud/connector.sh validate names it)." >&2
+      echo "pre-push: refusing the push to '$branch': it holds the segment abcd-wip, and a host connector declaration fails its validation (scripts/cloud/connector.sh validate names it, as committed at HEAD (commit or discard local edits to compare))." >&2
       echo "          Fix the declaration first (adr-2610120937435856)." >&2
       exit 1
       ;;

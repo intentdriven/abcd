@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The brief (scripts/cloud/brief.sh and brief.md.tmpl, C4 and C13),
@@ -716,4 +718,40 @@ func TestBriefRefusesUnpushedSpecEdits(t *testing.T) {
 			t.Errorf("an open issue was refused for a spec edit its readiness never reads (exit %d)\n%s", code, errOut)
 		}
 	})
+}
+
+// TestBriefTemplateAndCloudFilesCheckOutLF: the brief template is read line by
+// line into the brief, the cloud scripts run under bash and their settings are
+// read with sed, so a CRLF checkout would put a \r into every line of each.
+// Every file tracked under scripts/cloud/, brief.md.tmpl among them, is pinned
+// to LF in .gitattributes, whatever its extension.
+func TestBriefTemplateAndCloudFilesCheckOutLF(t *testing.T) {
+	top := exec.Command("git", "rev-parse", "--show-toplevel")
+	top.Env = gittest.Env(t)
+	out, err := top.Output()
+	if err != nil {
+		t.Skip("not in a git checkout")
+	}
+	root := strings.TrimSpace(string(out))
+	ls := exec.Command("git", "-C", root, "ls-files", "--", "scripts/cloud")
+	ls.Env = gittest.Env(t)
+	files, err := ls.Output()
+	if err != nil {
+		t.Fatalf("git ls-files scripts/cloud: %v", err)
+	}
+	if !strings.Contains(string(files), briefTemplate+"\n") {
+		t.Fatalf("%s is not tracked under scripts/cloud/:\n%s", briefTemplate, files)
+	}
+	attr := exec.Command("git", "-C", root, "check-attr", "--stdin", "eol")
+	attr.Env = gittest.Env(t)
+	attr.Stdin = bytes.NewReader(files)
+	got, err := attr.Output()
+	if err != nil {
+		t.Fatalf("git check-attr eol: %v", err)
+	}
+	for _, line := range strings.Split(strings.TrimSpace(string(got)), "\n") {
+		if !strings.HasSuffix(line, ": eol: lf") {
+			t.Errorf("not pinned to LF in .gitattributes: %s", line)
+		}
+	}
 }

@@ -28,9 +28,11 @@ const (
 
 // cloudCommit is one commit a cloud session made: the files it writes and its
 // message. author, when set, is "Name <mail>"; otherwise the person's. exec
-// commits its files executable.
+// commits its files executable. remove, read by pushCloudTree alone, names the
+// paths the commit deletes.
 type cloudCommit struct {
 	files  map[string]string
+	remove []string
 	msg    string
 	author string
 	exec   bool
@@ -403,18 +405,26 @@ var toolingPaths = []string{
 	".abcd/record-lint.json", ".abcd/docs-lint.json", ".abcd/site.json", ".abcd/site-baseline.json",
 	".abcd/citations-baseline.json", ".abcd/prose-citations-baseline.json", ".abcd/rules.json",
 	".abcd/config/pii.json",
+	// The files under .abcd/work/ a gate reads: the reviews charter and its
+	// receipts (lint-reviews, the release gate), the ruleset mirror (the
+	// required-check tests, the build loop) and the settings at the top of
+	// .abcd/work/ (record-lint's brief_flag_landed reads brief-review-flags.json).
+	".abcd/work/reviews/README.md", ".abcd/work/rulesets/main-protection.json", ".abcd/work/brief-review-flags.json",
 }
 
 // TestCollectRefusesToolingChangesByDefault: before anything is made, collect
 // refuses a branch whose commits change the tooling, printing the diffstat of
 // those paths, unless --allow-tooling-changes is passed. The refusal keeps the
-// build and gate machinery as the default branch has it; the records under
-// .abcd/development/ and .abcd/work/ are no tooling and stay collectable.
+// build and gate machinery as the default branch has it; the other records
+// under .abcd/development/ and .abcd/work/ (the issue records, CONTEXT.md,
+// DECISIONS.md, intake.md) are no tooling and stay collectable.
 func TestCollectRefusesToolingChangesByDefault(t *testing.T) {
 	t.Run("records stay allowed", func(t *testing.T) {
 		c := newCollectCase(t)
 		c.pushCloud(collectItem, workCommit(".abcd/development/specs/open/spc-1-a.md", "docs: a spec"),
-			workCommit(".abcd/work/issues/open/iss-1-a.md", "chore: an issue"), reportCommit(collectItem, "Did it."))
+			workCommit(".abcd/work/issues/open/iss-1-a.md", "chore: an issue"),
+			workCommit(".abcd/work/CONTEXT.md", "docs: the context"), workCommit(".abcd/work/DECISIONS.md", "docs: a decision"),
+			workCommit(".abcd/work/intake.md", "docs: the intake"), reportCommit(collectItem, "Did it."))
 		out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
 		if code != 0 {
 			t.Fatalf("collect refused records under .abcd/development/ and .abcd/work/ (exit %d)\n%s%s", code, out, errOut)
@@ -574,6 +584,9 @@ func (c *cloudCase) pushCloudTree(item string, commits ...cloudCommit) string {
 			blob := plumb("hash-object", "-w", "--", src)
 			plumb("update-index", "--add", "--cacheinfo", "100644,"+blob+","+rel)
 		}
+		for _, rel := range cc.remove {
+			plumb("update-index", "--force-remove", "--", rel)
+		}
 		tree := plumb("write-tree")
 		msgFile := filepath.Join(tmp, "msg"+strconv.Itoa(n))
 		if err := os.WriteFile(msgFile, []byte(cc.msg), 0o644); err != nil {
@@ -618,7 +631,7 @@ func TestCollectRefusesCaseVariantToolingPath(t *testing.T) {
 }
 
 // TestCollectRefusesCaseCollidingAddedPath: an added path whose case-folded
-// form is another path's, in the default branch's tree or in the copy's, would
+// form is another path's, in the tree the work lands in, would
 // overwrite that path on a file system that folds case. It is refused whatever
 // the flags say.
 func TestCollectRefusesCaseCollidingAddedPath(t *testing.T) {
@@ -653,6 +666,24 @@ func TestCollectRefusesCaseCollidingAddedPath(t *testing.T) {
 			t.Fatalf("collect refused a path no other path folds to (exit %d)\n%s%s", code, out, errOut)
 		}
 	})
+}
+
+// TestCollectAllowsCaseOnlyRename: renaming seed.md to Seed.md deletes the one
+// and adds the other, so the work lands with no path folding onto another.
+// The collision check reads the tree the work lands in, the default branch's
+// paths less those the collected commits delete, and passes it.
+func TestCollectAllowsCaseOnlyRename(t *testing.T) {
+	c := newCollectCase(t)
+	rename := cloudCommit{files: map[string]string{"Seed.md": "seed\n"}, remove: []string{"seed.md"},
+		msg: "docs: capitalise the seed\n\n" + sessionTrailer}
+	c.pushCloudTree(collectItem, rename, reportCommit(collectItem, "Did it."))
+	out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
+	if code != 0 {
+		t.Fatalf("collect refused a case-only rename (exit %d)\n%s%s", code, out, errOut)
+	}
+	if got := c.git("ls-tree", "-r", "--name-only", "collect/"+collectItem, "--", "Seed.md", "seed.md"); got != "Seed.md" {
+		t.Errorf("the landing branch holds %q, want Seed.md alone", got)
+	}
 }
 
 // TestCollectMatchesNonASCIIPaths: git quotes a path holding a non-ASCII byte

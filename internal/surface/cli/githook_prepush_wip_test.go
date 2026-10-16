@@ -260,7 +260,9 @@ func TestPrePushWIPAttributionRefusalNamesNoIdentity(t *testing.T) {
 	if got := c.remoteRef(wipRef); got != "" {
 		t.Errorf("the remote moved to %s although the push was refused", got)
 	}
-	if !strings.Contains(out, "the pushed commits fail the attribution gate: an author or committer is not a person's, or a trailer is missing") {
+	// The sentence covers every refusal of the attribution gate, the identity
+	// half and the message half, and names no identity.
+	if !strings.Contains(out, attributionSentence) {
 		t.Errorf("the refusal does not give the fixed sentence\n%s", out)
 	}
 	for _, s := range []string{vendorName, vendorMail, vendorMail[strings.Index(vendorMail, "@")+1:]} {
@@ -269,6 +271,17 @@ func TestPrePushWIPAttributionRefusalNamesNoIdentity(t *testing.T) {
 		}
 	}
 }
+
+// attributionSentence is the fixed sentence wip_shape prints when the pushed
+// commits fail the attribution gate: each cause the gate refuses, no identity.
+const attributionSentence = "the pushed commits fail the attribution gate (a machine author or committer, " +
+	"a missing or malformed Assisted-by trailer, an AI Co-Authored-By trailer, or a tool footer or session URL " +
+	"in a message); run scripts/check-attribution.sh commits "
+
+// committedPointer is the bad-declaration lines' pointer: the hook validates
+// the declarations HEAD commits, and connector.sh validate reads the working
+// tree, so the pointer says which tree it judged and how to compare.
+const committedPointer = "scripts/cloud/connector.sh validate names it, as committed at HEAD (commit or discard local edits to compare)"
 
 // badDeclarations are connector declarations connector.sh refuses.
 var badDeclarations = map[string]string{
@@ -321,6 +334,9 @@ func TestPrePushRefusesOnBadDeclaration(t *testing.T) {
 		}
 		if !strings.Contains(out, wipConf) {
 			t.Errorf("the hook did not report the declaration that fails validation\n%s", out)
+		}
+		if !strings.Contains(out, committedPointer) {
+			t.Errorf("the report does not say the check is of the declarations committed at HEAD\n%s", out)
 		}
 	})
 	t.Run("an ordinary branch without a receipt", func(t *testing.T) {
@@ -387,6 +403,9 @@ func TestPrePushBadDeclarationStillRefusesWIPName(t *testing.T) {
 			}
 			if !strings.Contains(out, wipConf) || !strings.Contains(out, "abcd-wip") {
 				t.Errorf("the refusal does not name the bad declaration and the segment\n%s", out)
+			}
+			if !strings.Contains(out, committedPointer) {
+				t.Errorf("the refusal does not say the check is of the declarations committed at HEAD\n%s", out)
 			}
 			if got := c.remoteRef(ref); got != "" {
 				t.Errorf("the remote moved to %s although the push was refused", got)

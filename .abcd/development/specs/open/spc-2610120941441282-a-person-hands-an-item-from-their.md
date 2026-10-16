@@ -337,16 +337,21 @@ tooling, the build and gate machinery: the build file, `scripts/`, `go.mod`,
 `go.sum`, `go.work`, `go.work.sum`, `vendor/`, the gates' settings and
 baselines at the top of `.abcd/` (every `.abcd/*.json`, such as
 `record-lint.json`, `docs-lint.json`, `site.json` and the citation and site
-baselines, and `.abcd/config/`), and any top-level hidden directory but
-`.abcd/` (`.githooks/`, `.github/`, `.claude/`; matched by shape, so the
-script names no host), printing their diffstat, unless
-`--allow-tooling-changes` is passed. The records under `.abcd/development/`
-and `.abcd/work/` are no tooling. Paths are read NUL-separated, so git quotes
-none, and matched case-folded, so neither a quoted non-ASCII name nor a
-capital steps round a pattern. Whatever the flags, collect refuses an added
-path whose case-folded form is another path's, in the default branch's tree
-or the copy's, since on a file system that folds case it overwrites that
-path. It cherry-picks with the person's own checkout's hooks, never the
+baselines, and `.abcd/config/`), the files under `.abcd/work/` a gate reads
+(the reviews charter and its receipts in `.abcd/work/reviews/`, the ruleset
+mirror in `.abcd/work/rulesets/`, and every `.abcd/work/*.json`, such as
+`brief-review-flags.json`), and any top-level hidden directory but `.abcd/`
+(`.githooks/`, `.github/`, `.claude/`; matched by shape, so the script names
+no host), printing their diffstat, unless `--allow-tooling-changes` is
+passed. The other records under `.abcd/development/` and `.abcd/work/` (the
+issue records, `CONTEXT.md`, `DECISIONS.md`, `intake.md`) are no tooling.
+Paths are read NUL-separated, so git quotes none, and matched case-folded, so
+neither a quoted non-ASCII name nor a capital steps round a pattern. Whatever
+the flags, collect refuses an added path whose case-folded form is another
+path's in the tree the work lands in (the default branch's paths less those
+the collected commits delete, with the copy's), since on a file system that
+folds case it overwrites that path; a case-only rename deletes the path it
+folds onto, so it passes. It cherry-picks with the person's own checkout's hooks, never the
 worktree's.
 
 Collect runs the collected copy's code on the person's computer, as the
