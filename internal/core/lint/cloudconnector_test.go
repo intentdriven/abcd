@@ -12,7 +12,7 @@ import (
 
 // The cloud-session scripts (spc-2610120941441282, itd-2610120738075547) hold
 // two static properties here, beside the preflight gate pins; the scripts
-// themselves are run in throwaway clones under internal/surface/cli.
+// themselves are run in throwaway clones in internal/cloudscripts.
 
 // TestGateToolsNamesOnlyRealPreflightGates holds scripts/gate-tools.tsv, the
 // list the cloud environment check reads (C2, decision 5), to the Makefile: a

@@ -18,8 +18,8 @@
 #
 # go is also checked against the toolchain go.mod declares, which the setup
 # resolves through scripts/pinned-toolchain.sh.
-go	preflight,fmt-check,lint-issues,lint-decisions,record-lint,issue-drift,docs-lint,check-attribution,site-render,smoke,evals-cold-reading	the setup's toolchain step (the toolchain go.mod declares)
-git	preflight,lint-reviews,lint-issues,lint-decisions,record-lint,check-attribution,smoke	the image
+go	preflight,fmt-check,lint-issues,record-lint,issue-drift,docs-lint,check-attribution,site-render,smoke,evals-cold-reading	the setup's toolchain step (the toolchain go.mod declares)
+git	preflight,lint-reviews,lint-issues,record-lint,check-attribution,smoke	the image
 bash	lint-reviews,lint-issues,check-attribution	the image
 make	preflight	the image
 python3	lint-issues	the image

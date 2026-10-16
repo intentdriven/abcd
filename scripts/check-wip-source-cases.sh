@@ -27,41 +27,45 @@ trap 'rm -rf "$tmp"' EXIT
 pass=0
 fail=0
 
-# The scratch repository: one base commit, and a branch per diff case.
+# The scratch repository: one base commit, and a branch per diff case. The
+# identity is set in the environment and every call names git itself, so the
+# shell guard reads each one for what it runs rather than a wrapper that could
+# pass git any subcommand.
 repo="$tmp/repo"
-g() { git -C "$repo" -c user.name="Case Person" -c user.email=case@example.com "$@"; }
+export GIT_AUTHOR_NAME="Case Person" GIT_AUTHOR_EMAIL=case@example.com
+export GIT_COMMITTER_NAME="Case Person" GIT_COMMITTER_EMAIL=case@example.com
 git init -q -b main "$repo"
 printf 'seed\n' >"$repo/seed.md"
 printf 'notes\n' >"$repo/notes.md"
 mkdir -p "$repo/.abcd/work/cloud-reports"
 printf 'an older report\n' >"$repo/.abcd/work/cloud-reports/old.md"
-g add -A
-g commit -q -m seed
-base="$(g rev-parse HEAD)"
+git -C "$repo" add -A
+git -C "$repo" commit -q -m seed
+base="$(git -C "$repo" rev-parse HEAD)"
 
 # branch_with <name> <path> <content> commits one file on a new branch from
 # the base and prints its tip.
 branch_with() {
-	g checkout -q -b "$1" "$base"
+	git -C "$repo" checkout -q -b "$1" "$base"
 	mkdir -p "$(dirname "$repo/$2")"
 	printf '%s\n' "$3" >"$repo/$2"
-	g add -A
-	g commit -q -m "$1"
-	g rev-parse HEAD
+	git -C "$repo" add -A
+	git -C "$repo" commit -q -m "$1"
+	git -C "$repo" rev-parse HEAD
 }
 
 clean="$(branch_with clean src/x.go 'package x')"
 report="$(branch_with report .abcd/work/cloud-reports/x.md 'a report')"
 nested="$(branch_with nested .abcd/work/cloud-reports/sub/x.md 'a report')"
 edited="$(branch_with edited .abcd/work/cloud-reports/old.md 'an edit')"
-g checkout -q -b renamed "$base"
-g mv notes.md .abcd/work/cloud-reports/notes.md
-g commit -q -m "move into the report dir"
-renamed="$(g rev-parse HEAD)"
-g checkout -q -b removed "$base"
-g rm -q .abcd/work/cloud-reports/old.md
-g commit -q -m "remove a report"
-removed="$(g rev-parse HEAD)"
+git -C "$repo" checkout -q -b renamed "$base"
+git -C "$repo" mv notes.md .abcd/work/cloud-reports/notes.md
+git -C "$repo" commit -q -m "move into the report dir"
+renamed="$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" checkout -q -b removed "$base"
+git -C "$repo" rm -q .abcd/work/cloud-reports/old.md
+git -C "$repo" commit -q -m "remove a report"
+removed="$(git -C "$repo" rev-parse HEAD)"
 
 # case_is <want:accept|reject|fault> <label> <source-ref> <base> <head>
 case_is() {

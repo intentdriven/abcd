@@ -2,7 +2,6 @@ package cli
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,35 +28,17 @@ const (
 	wipRef    = "refs/heads/" + wipPrefix + wipItem
 	wipConf   = "scripts/cloud/connectors/" + wipHost + "/connector.conf"
 	assisted  = "Assisted-by: Claude:claude-opus-5"
+	// An AI vendor's identity, which the attribution gate refuses.
+	wipVendorName = "Claude"
+	wipVendorMail = "noreply@anthropic.com"
 )
-
-// outboundChecker builds abcd from this checkout for the attribution gate's
-// outbound half, which the fixture clone cannot `go run`. It is built before
-// the fixture isolates HOME, so the build reads the machine's warm cache.
-func outboundChecker(t *testing.T) string {
-	t.Helper()
-	if _, err := exec.LookPath("go"); err != nil {
-		t.Skip("go unavailable")
-	}
-	top, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
-	if err != nil {
-		t.Skip("not in a git checkout")
-	}
-	bin := filepath.Join(t.TempDir(), "abcd")
-	build := exec.Command("go", "build", "-o", bin, "./cmd/abcd")
-	build.Dir = strings.TrimSpace(string(top))
-	if out, err := build.CombinedOutput(); err != nil {
-		t.Fatalf("build the outbound checker: %v\n%s", err, out)
-	}
-	return bin
-}
 
 // newWIPCase is a pre-push case carrying the cloud scripts the hook reads and
 // one declared connector, all on origin's default branch, so a push from the
 // feature branch moves only the commits a test makes.
 func newWIPCase(t *testing.T) *prePushCase {
 	t.Helper()
-	bin := outboundChecker(t)
+	bin := builtAbcd.Path(t)
 	c := newPrePushCase(t)
 	c.env = append(c.env, "ABCD_OUTBOUND_BIN="+bin)
 	top, err := c.run(".", "git", "rev-parse", "--show-toplevel")
@@ -247,12 +228,12 @@ func TestPrePushRefusesWIPFailingAttribution(t *testing.T) {
 // findings name the identity it refuses. On a direct `git push` the hook keeps
 // them to itself and prints a fixed sentence instead, so a vendor-authored
 // work-in-progress push is refused without the hook ever printing the
-// vendor's name or address (cloud_setup_test.go's vendorName and vendorMail).
+// vendor's name or address (wipVendorName and wipVendorMail).
 func TestPrePushWIPAttributionRefusalNamesNoIdentity(t *testing.T) {
 	c := newWIPCase(t)
 	c.write("bad.md", "bad\n", 0o644)
 	c.git("add", "bad.md")
-	c.git("-c", "user.name="+vendorName, "-c", "user.email="+vendorMail, "commit", "-q", "-m", "fix: the walk\n\n"+assisted)
+	c.git("-c", "user.name="+wipVendorName, "-c", "user.email="+wipVendorMail, "commit", "-q", "-m", "fix: the walk\n\n"+assisted)
 	out, err := c.push("origin", "HEAD:"+wipRef)
 	if err == nil || !strings.Contains(out, "no passing preflight") {
 		t.Fatalf("a vendor-authored work-in-progress push passed without a receipt (err %v)\n%s", err, out)
@@ -265,7 +246,7 @@ func TestPrePushWIPAttributionRefusalNamesNoIdentity(t *testing.T) {
 	if !strings.Contains(out, attributionSentence) {
 		t.Errorf("the refusal does not give the fixed sentence\n%s", out)
 	}
-	for _, s := range []string{vendorName, vendorMail, vendorMail[strings.Index(vendorMail, "@")+1:]} {
+	for _, s := range []string{wipVendorName, wipVendorMail, wipVendorMail[strings.Index(wipVendorMail, "@")+1:]} {
 		if strings.Contains(out, s) {
 			t.Errorf("the hook printed the refused identity's %q:\n%s", s, out)
 		}

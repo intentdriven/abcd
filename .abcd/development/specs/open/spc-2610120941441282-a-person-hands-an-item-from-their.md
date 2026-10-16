@@ -60,7 +60,7 @@ What a person does once it is built:
 
 ## Footprint
 
-- packages: scripts/cloud (new), scripts/cloud/connectors/claude (new, the host connector), .claude/settings.json (new, the connector's file at the host's fixed path), scripts/gate-tools.tsv (new), scripts/check-wip-source.sh and scripts/check-wip-source-cases.sh (new), .githooks/pre-push, .github/workflows/ci.yml, .abcd/work/rulesets/main-protection.json, internal/core/lint (static tests), internal/surface/cli (executed-script fixture tests)
+- packages: scripts/cloud (new), scripts/cloud/connectors/claude (new, the host connector), .claude/settings.json (new, the connector's file at the host's fixed path), scripts/gate-tools.tsv (new), scripts/check-wip-source.sh and scripts/check-wip-source-cases.sh (new), .githooks/pre-push, .github/workflows/ci.yml, .abcd/work/rulesets/main-protection.json, internal/core/lint (static tests), internal/cloudscripts (executed-script fixture tests), internal/surface/cli (the pre-push hook's fixture tests), internal/gittest (the once-per-package abcd build the fixtures share)
 - tests: per step below. Every script is exercised in a throwaway clone with a bare repository as its remote, as `internal/surface/cli/githook_prepush_test.go` does for the hook, and every host or forge call against a fake `claude` or `gh` on PATH that records its argv and serves fixture output. No test needs the network, a hosted session, root or gitleaks.
 
 ## Design
@@ -344,7 +344,8 @@ mirror in `.abcd/work/rulesets/`, and every `.abcd/work/*.json`, such as
 (`.githooks/`, `.github/`, `.claude/`; matched by shape, so the script names
 no host), printing their diffstat, unless `--allow-tooling-changes` is
 passed. The other records under `.abcd/development/` and `.abcd/work/` (the
-issue records, `CONTEXT.md`, `DECISIONS.md`, `intake.md`) are no tooling.
+issue records, `CONTEXT.md`, the decision records in `decisions/`,
+`intake.md`) are no tooling.
 Paths are read NUL-separated, so git quotes none, and matched case-folded, so
 neither a quoted non-ASCII name nor a capital steps round a pattern. Whatever
 the flags, collect refuses an added path whose case-folded form is another
@@ -376,22 +377,22 @@ person sees what code will run; there is no confirmation prompt.
    - tests: none in code; the note's receipts are the evidence, kept free of session links and home paths
 2. The host connector's declaration and the gate-tool list (**build-alone**)
    - criteria: C12, C2 (the list)
-   - packages: scripts/cloud/connector.sh, scripts/cloud/cloud.conf, scripts/cloud/connectors/claude/connector.conf, scripts/cloud/connectors/claude/is-remote.sh, scripts/gate-tools.tsv, internal/core/lint, internal/surface/cli
+   - packages: scripts/cloud/connector.sh, scripts/cloud/cloud.conf, scripts/cloud/connectors/claude/connector.conf, scripts/cloud/connectors/claude/is-remote.sh, scripts/gate-tools.tsv, internal/core/lint, internal/cloudscripts
    - tests: TestConnectorDeclarationLoads; TestConnectorRefusesBadPrefix (table: `main`, `claude/`, `abcd-wip`, `a/b/abcd-wip/`, empty, a trailing segment after `abcd-wip/`); TestConnectorRefusesUnknownKeyAndEscapingPath; TestConnectorRefusesDuplicatePrefix; TestIsRemoteOnlyWhenMarkerSet; TestGateToolsNamesOnlyRealPreflightGates; TestNoHostMarkerOutsideConnector (searches every file this spec adds or changes outside the connector directory and `.claude/settings.json` for the host's name, its command-line tool, `CLAUDE_CODE_REMOTE` and `claude/abcd-wip`, and finds none)
 3. The place check and the environment check (**build-alone**)
    - criteria: C2, C3
-   - packages: scripts/cloud/begin.sh, scripts/cloud/env-check.sh, internal/surface/cli
+   - packages: scripts/cloud/begin.sh, scripts/cloud/env-check.sh, internal/cloudscripts
    - tests: TestBeginRefusesOutsideCloud (exit 1, the message, nothing else run); TestBeginRefusesRoot (a fake `id -u` of 0); TestBeginStopsOnVendorOrUnsetIdentity (and the output never contains the identity it refused); TestEnvCheckNamesMissingToolSetupAndGates; TestEnvCheckStopsForAGateTool; TestEnvCheckWarnsForANonGateTool; TestEnvCheckWritesNothing
 4. The setup step and the settings file (**build-alone**; proved live in step 12)
    - criteria: C1, C11
    - needs: 2
    - waits on: step 1's outcome on non-root running
-   - packages: scripts/cloud/connectors/claude/setup.sh, .claude/settings.json, internal/surface/cli, internal/core/lint
+   - packages: scripts/cloud/connectors/claude/setup.sh, .claude/settings.json, internal/cloudscripts, internal/core/lint
    - waits on: the token-identity verb from spc-2610150728396006's step 2 reaching the default branch, for the identity half only
    - tests: TestSetupDoesNothingOffCloud; TestSetupSetsIdentityFromToken (a fake verb returning login and id; `user.name` and `user.email` set locally); TestSetupLookupFailureSetsNothingAndSaysSoOnce (the container's identity appears in no output, commit, ref or trailer); TestSetupReadsGitleaksPinFromCI (the version it would install equals ci.yml's); TestSetupRefusesWhenUserCannotBeCreated (a fake `useradd` failing); TestSetupIsIdempotent (fakes for `useradd`, `chown`, the download and `su`, run twice); TestSettingsFileShape (plugin enabled from this repository's marketplace, the three attribution keys off, one SessionStart hook naming setup.sh, nothing else); TestSetupTrustsTheCheckoutForRoot (one safe.directory entry, the checkout, however often it runs); TestSetupBuildsAbcdForLaterShells (built as `abcd` into the local tier, both exports written once, a failed build exported nowhere)
 5. The brief (**build-alone**)
    - criteria: C4, C13
-   - packages: scripts/cloud/brief.sh, scripts/cloud/brief.md.tmpl, internal/surface/cli
+   - packages: scripts/cloud/brief.sh, scripts/cloud/brief.md.tmpl, internal/cloudscripts
    - tests: TestBriefNamesEveryPart (item, author, first step, the no-skip and go-run rules, branch from the connector's prefix, hand-back and fallback); TestBriefCarriesNoSessionLinkHomePathOrSecret; TestBriefRefusesUnreadyIntent; TestBriefAcceptsOpenIssueAndReadyIntent; TestBriefRefusesItemNotOnRemoteDefault (a draft never pushed; a record only on a local branch); TestBriefRefusesEmbargoedItem (a fixture embargo store and a fake `abcd embargo check` exiting 2); TestBriefFailsClosedWhenEmbargoCheckCannotRun (store present, verb unknown); TestBriefWithoutStoreSkipsEmbargoCheck; TestBriefReadsNoAuthorFromThisComputer; TestBriefReadsAbcdsRealExitCodes (`go run` collapses an exit 2 to 1; the brief builds abcd once, or uses `ABCD_BIN`, and reads 2 as 2); TestBriefChecksTheRecordAgainstTheEmbargo (the real abcd, a real store from `abcd embargo intake` over a fake `gh`, a record naming an embargoed title refused); TestBriefRefusesRecordWithUnpushedEdits; TestBriefRefusesUnpushedSpecEdits (an intent with any path under `.abcd/development/` differing from origin's); TestAbcdBinIgnoresAForeignABCDBIN
 6. The push hook's work-in-progress entry (**build-alone**, after `feat/reserve-on-remote` has landed its declared list on the default branch; until then this step waits)
    - criteria: C7 (the hook half), C12
@@ -407,24 +408,24 @@ person sees what code will run; there is no confirmation prompt.
 8. The hand-back and the report (**build-alone**)
    - criteria: C6
    - needs: 2
-   - packages: scripts/cloud/hand-back.sh, scripts/cloud/cloud.conf (the tracking issue number from step 1), internal/surface/cli
+   - packages: scripts/cloud/hand-back.sh, scripts/cloud/cloud.conf (the tracking issue number from step 1), internal/cloudscripts
    - until the person has created the tracking issue, `cloud.conf` carries `tracking_issue=` empty and the fallback refuses by name ("no tracking issue configured") and prints the report; it never posts anywhere else
    - tests: TestHandBackCommitsReportAloneAsLastCommit; TestHandBackPushesToWIPBranchThroughTheHook (no `--no-verify` in any argv); TestHandBackFallsBackToIssueCommentWhenPushFails (fake `gh` records the REST call and body); TestHandBackRefusesReportFailingOutbound; TestHandBackReportNamesItsChannel; TestHandBackPrintsReportWhenBothFail; TestHandBackReadsTheOutboundChecksOwnExitCode; TestHandBackBuildsAbcdOnceWithoutABCDBIN; TestHandBackScrubLeavesNoDomain (addresses before names, longest first); TestHandBackPrintsReportWhenConnectorCannotBeResolved; TestHandBackFallbackRefersToNothingDropped
 9. Starting a session through the connector (**build-alone**; proved live in step 12)
    - criteria: C10, C5
    - needs: 2, 5
-   - packages: scripts/cloud/send.sh, scripts/cloud/connectors/claude/launch.sh, internal/surface/cli
+   - packages: scripts/cloud/send.sh, scripts/cloud/connectors/claude/launch.sh, internal/cloudscripts
    - the environment id is read from the local tier (`.abcd/.work.local/cloud/environment`), never committed; the session's link is printed to the person and never written to a tracked file
    - tests (fake `claude` on PATH): TestSendStartsOneSessionWithTheBrief; TestSendPrintsIdAndLink; TestSendRefusesWhenHostToolMissing; TestSendRefusesWithoutLogin; TestSendExpiredLoginSaysRenewByHand; TestSendRefusesUnknownEnvironment; TestSendHostRefusalStartsNothingLocal (no worktree, no process, no file beyond the brief preview); TestSendRefusesPrivateOrUnreadyItem (through step 5)
 10. The list (**build-alone**)
     - criteria: C8
     - needs: 2, 8
-    - packages: scripts/cloud/list.sh, internal/surface/cli
+    - packages: scripts/cloud/list.sh, internal/cloudscripts
     - tests (bare origin fixture, fake `gh`): TestListShowsHandedBackStoppedAndWorking (the working one from a reservation branch); TestListShowsFallbackCommentReport; TestListReadsNoTranscript (no path under any transcript store is opened); TestListWritesOnlyRemoteTrackingRefs; TestListReadsPeersOwnExitCode (peers' exit 2 is a source not read, never the last fetched reservations)
 11. The collect (**build-alone**)
     - criteria: C9
     - needs: 8
-    - packages: scripts/cloud/collect.sh, internal/surface/cli
+    - packages: scripts/cloud/collect.sh, internal/cloudscripts
     - tests (fake `make`): TestCollectLeavesReportCommitOut; TestCollectRefusesBranchWithoutReportTip; TestCollectRefusesAttributionFailure; TestCollectRunsPreflightInMachineStoreWorktree; TestCollectPassPrintsBranchAndPushesNothing; TestCollectFailurePushesNothingAndKeepsWorktree; TestCollectIgnoresAnyCloudReceipt; TestCollectRefusesToolingChangesByDefault; TestCollectRefusesCaseVariantToolingPath; TestCollectRefusesCaseCollidingAddedPath; TestCollectMatchesNonASCIIPaths; TestCollectShowsWhatWillRunBeforePreflight
 12. The live run end to end, and the close (**needs the person**)
     - criteria: C1, C10, C11 proved in a real hosted session; C6, C8, C9 seen working

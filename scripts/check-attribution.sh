@@ -658,11 +658,14 @@ body)
 	;;
 identity)
 	[ $# -eq 4 ] || usage
+	# Each role is spelled out rather than passed on as "$2": the shell guard
+	# reads a variable argument after a function's name as a word that could
+	# run anything, and this arm takes only the two roles anyway.
 	case "$2" in
-	author | committer) ;;
+	author) check_ident "the author identity" author "$3" "$4" || true ;;
+	committer) check_ident "the committer identity" committer "$3" "$4" || true ;;
 	*) usage ;;
 	esac
-	check_ident "the $2 identity" "$2" "$3" "$4" || true
 	;;
 *)
 	usage

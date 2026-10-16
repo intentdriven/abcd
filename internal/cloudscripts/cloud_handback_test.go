@@ -1,4 +1,4 @@
-package cli
+package cloudscripts
 
 import (
 	"encoding/json"
@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/testsecret"
 )
 
 // The hand-back (scripts/cloud/hand-back.sh, C6), spc-2610120941441282 step 8.
@@ -42,7 +43,7 @@ func reportPath(item string) string { return ".abcd/work/cloud-reports/" + item 
 // The clone ends on a branch `session`, cut from main, as a session's does.
 func newForgeCase(t *testing.T, tracking string) *cloudCase {
 	t.Helper()
-	bin := outboundChecker(t)
+	bin := builtAbcd.Path(t)
 	c := newCloudCase(t)
 	logged := filepath.Join(filepath.Dir(c.bin), "abcd-logged")
 	if err := os.WriteFile(logged, []byte("#!/bin/sh\necho \"abcd $*\" >>\"$CALLS\"\nexec '"+bin+"' \"$@\"\n"), 0o755); err != nil {
@@ -353,11 +354,15 @@ func TestHandBackFallsBackToIssueCommentWhenPushFails(t *testing.T) {
 	}
 }
 
+// handBackSessionID is a synthetic opaque session id, built at run time
+// (secret-shaped-fixtures-at-runtime), for a report the outbound check refuses.
+var handBackSessionID = testsecret.Synthetic(62, 22)
+
 func TestHandBackRefusesReportFailingOutbound(t *testing.T) {
 	c := newForgeCase(t, trackingIssue)
 	c.work("one.md")
 	head := c.git("rev-parse", "HEAD")
-	link := "https://agent-host.dev/code/session_" + testOutboundSessionID
+	link := "https://agent-host.dev/code/session_" + handBackSessionID
 	out, errOut, code := c.scriptSplit(nil, handBackScript, "--item", handBackItem, "--state", "handed-back",
 		"--did", "Fixed it; see "+link, "--failed", "Nothing.", "--needs", "Nothing.")
 	if code != 1 {
@@ -366,7 +371,7 @@ func TestHandBackRefusesReportFailingOutbound(t *testing.T) {
 	if !strings.Contains(out+errOut, "breaks the outbound policy") {
 		t.Errorf("the refusal does not print the outbound finding:\n%s%s", out, errOut)
 	}
-	if strings.Contains(out+errOut, testOutboundSessionID) {
+	if strings.Contains(out+errOut, handBackSessionID) {
 		t.Errorf("the refusal repeats the session link it refused:\n%s%s", out, errOut)
 	}
 	if got := c.git("rev-parse", "HEAD"); got != head {

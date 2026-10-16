@@ -1,4 +1,4 @@
-package cli
+package cloudscripts
 
 import (
 	"os"
@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The collect (scripts/cloud/collect.sh, C9), spc-2610120941441282 step 11.
@@ -125,7 +127,7 @@ func (c *cloudCase) pushCloud(item string, commits ...cloudCommit) string {
 func (c *cloudCase) store(item string) string {
 	c.t.Helper()
 	root := c.git("rev-list", "-n", "1", "--max-parents=0", "HEAD")
-	return filepath.Join(c.home(), ".abcd.noindex", "worktrees", root, "collect-"+item)
+	return abcdhome.Path(c.home(), "worktrees", root, "collect-"+item)
 }
 
 // pushedNothing fails the test when collect pushed: no `git push` in the call
@@ -417,13 +419,14 @@ var toolingPaths = []string{
 // those paths, unless --allow-tooling-changes is passed. The refusal keeps the
 // build and gate machinery as the default branch has it; the other records
 // under .abcd/development/ and .abcd/work/ (the issue records, CONTEXT.md,
-// DECISIONS.md, intake.md) are no tooling and stay collectable.
+// the decision records in decisions/, intake.md) are no tooling and stay
+// collectable.
 func TestCollectRefusesToolingChangesByDefault(t *testing.T) {
 	t.Run("records stay allowed", func(t *testing.T) {
 		c := newCollectCase(t)
 		c.pushCloud(collectItem, workCommit(".abcd/development/specs/open/spc-1-a.md", "docs: a spec"),
 			workCommit(".abcd/work/issues/open/iss-1-a.md", "chore: an issue"),
-			workCommit(".abcd/work/CONTEXT.md", "docs: the context"), workCommit(".abcd/work/DECISIONS.md", "docs: a decision"),
+			workCommit(".abcd/work/CONTEXT.md", "docs: the context"), workCommit(".abcd/work/decisions/dcn-2610160000000001-a-decision.md", "docs: a decision"),
 			workCommit(".abcd/work/intake.md", "docs: the intake"), reportCommit(collectItem, "Did it."))
 		out, errOut, code := c.scriptSplit(nil, collectScript, collectItem)
 		if code != 0 {
@@ -500,7 +503,7 @@ func TestCollectRefusesAnotherItemsReportCommit(t *testing.T) {
 // written through a symlink, at any level: ~/.abcd.noindex, its worktrees/,
 // and worktrees/<root-sha>/.
 func TestCollectRefusesSymlinkedMachineStore(t *testing.T) {
-	for _, level := range []string{".abcd.noindex", ".abcd.noindex/worktrees", ".abcd.noindex/worktrees/<root>"} {
+	for _, level := range []string{abcdhome.Rel(), abcdhome.Rel("worktrees"), abcdhome.Rel("worktrees", "<root>")} {
 		t.Run(level, func(t *testing.T) {
 			c := newCollectCase(t)
 			c.pushCloud(collectItem, workCommit("one.md", "fix: one"), reportCommit(collectItem, "Did it."))

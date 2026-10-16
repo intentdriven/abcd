@@ -35,7 +35,8 @@
 #      NUL-separated, so git never quotes one, and matched case-folded, so
 #      neither a quoted name nor a capital steps round a pattern. The other
 #      records under .abcd/development/ and .abcd/work/ (the issue records,
-#      CONTEXT.md, DECISIONS.md, intake.md) are no tooling;
+#      CONTEXT.md, the decision records in decisions/, intake.md) are no
+#      tooling;
 #   3. make a worktree in the machine store,
 #      ~/.abcd.noindex/worktrees/<root-sha>/collect-<item-id>/
 #      (adr-2610031751065746; <root-sha> is the full name of the repository's

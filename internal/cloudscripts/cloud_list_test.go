@@ -1,4 +1,4 @@
-package cli
+package cloudscripts
 
 import (
 	"encoding/base64"
@@ -8,6 +8,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The list (scripts/cloud/list.sh, C8), spc-2610120941441282 step 10. The
@@ -45,17 +48,19 @@ func (c *cloudCase) pushWIP(item, report string) {
 }
 
 // reserveOnOrigin pushes a reservation for item, as `abcd reserve` writes
-// one, that expires at expires.
+// one, that expires at expires. Its git runs outside the fakes, so the call
+// log holds only what the script under test ran.
 func (c *cloudCase) reserveOnOrigin(item string, expires time.Time) {
 	c.t.Helper()
 	claimed := expires.Add(-2 * time.Hour)
 	if now := time.Now(); claimed.After(now) {
 		claimed = now.Add(-time.Minute)
 	}
-	pushTip(c.t, c.dir, item, "abcd reservation: "+item+"\n\n"+
-		"Abcd-Reservation: "+item+"\nAbcd-Holder: octo\nAbcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\n"+
-		"Abcd-Footprint: one.md\nAbcd-Claimed-At: "+claimed.UTC().Format(time.RFC3339)+
-		"\nAbcd-Expires-At: "+expires.UTC().Format(time.RFC3339)+"\nAssisted-by: abcd:0.0.0\n")
+	msg := "abcd reservation: " + item + "\n\n" +
+		"Abcd-Reservation: " + item + "\nAbcd-Holder: octo\nAbcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\n" +
+		"Abcd-Footprint: one.md\nAbcd-Claimed-At: " + claimed.UTC().Format(time.RFC3339) +
+		"\nAbcd-Expires-At: " + expires.UTC().Format(time.RFC3339) + "\nAssisted-by: abcd:0.0.0\n"
+	gittest.PushEmptyTreeCommit(c.t, c.dir, "refs/heads/abcd-reserved/"+item, msg)
 }
 
 // listRows runs the list and returns its rows by item: branch, state, report.
@@ -182,7 +187,7 @@ func TestListReadsNoTranscript(t *testing.T) {
 	const secret = "TRANSCRIPT-CONTENT-NEVER-READ"
 	// The user-level store and the checkout's opt-in one (AGENTS.md).
 	stores := []string{
-		filepath.Join(c.home(), ".abcd.noindex", "transcripts"),
+		abcdhome.Path(c.home(), "transcripts"),
 		filepath.Join(c.dir, ".abcd", ".work.local", "transcripts"),
 	}
 	for _, dir := range []string{filepath.Join(stores[0], root, "records"), stores[1]} {

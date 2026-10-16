@@ -1,4 +1,4 @@
-package cli
+package cloudscripts
 
 import (
 	"io/fs"

@@ -1,4 +1,4 @@
-package cli
+package cloudscripts
 
 import (
 	"os"
@@ -563,10 +563,14 @@ func TestSetupBuildsAbcdForLaterShells(t *testing.T) {
 // identity with a gh that answers the token's account, and feeds it to the
 // setup, so the two cannot drift apart in shape.
 func TestSetupParsesTheRealHolderAnswer(t *testing.T) {
-	bin := outboundChecker(t)
-	stubGH(t, `{"login":"`+tokenLogin+`","id":4242}`)
+	bin := builtAbcd.Path(t)
+	// A gh that answers the token's account, first on PATH.
+	ghDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(ghDir, "gh"), []byte("#!/bin/sh\nprintf '%s' '{\"login\":\""+tokenLogin+"\",\"id\":4242}'\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	clone := t.TempDir()
-	env := append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1", "HOME="+t.TempDir())
+	env := append(gittest.Env(t), "PATH="+ghDir+string(os.PathListSeparator)+os.Getenv("PATH"), "HOME="+t.TempDir())
 	for _, args := range [][]string{{"init", "-q"}, {"config", "user.name", vendorName}, {"config", "user.email", vendorMail}} {
 		cmd := exec.Command("git", args...)
 		cmd.Dir, cmd.Env = clone, env

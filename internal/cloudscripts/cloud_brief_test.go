@@ -1,4 +1,4 @@
-package cli
+package cloudscripts
 
 import (
 	"bytes"
@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
 
@@ -143,7 +144,7 @@ func (c *cloudCase) home() string {
 func (c *cloudCase) embargoStore() string {
 	c.t.Helper()
 	root := c.git("rev-list", "-n", "1", "--max-parents=0", "HEAD")
-	p := filepath.Join(c.home(), ".abcd.noindex", "worktrees", root, "embargo")
+	p := abcdhome.Path(c.home(), "worktrees", root, "embargo")
 	if err := os.MkdirAll(p, 0o700); err != nil {
 		c.t.Fatal(err)
 	}
@@ -583,7 +584,7 @@ const embargoTitle = "Sample Overflow In The Example Parser"
 // the item's id and path, never its text, so the check is also given the
 // item's record: a record naming an embargoed advisory's title is refused.
 func TestBriefChecksTheRecordAgainstTheEmbargo(t *testing.T) {
-	bin := outboundChecker(t)
+	bin := builtAbcd.Path(t)
 	c := newCloudCase(t)
 	c.env = append(c.env, "ABCD_BIN="+c.localAbcd(bin))
 	advisory := `{"ghsa_id":"GHSA-xxxx-xxxx-xxxx","cve_id":null,"summary":"` + embargoTitle + `",` +
