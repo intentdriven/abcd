@@ -110,9 +110,8 @@ copy's own release is shown as "you are cutting release v0.16.0 from this
 copy: every other session's merges are held", and a release dated ahead whose
 first sighting the checkout cannot keep is shown as not counted, in land's
 notice's words, with `own` and `unsighted` on each `release_holds` row of
-`peers --json`. The subject is `rel-v`
-and three plain numbers, with no leading zero and no suffix, so one release
-never makes two branches. It differs from a record's reservation in four ways:
+its machine-readable form. The subject is `rel-v` and three plain numbers,
+with no leading zero and no suffix, so one release never makes two branches. It differs from a record's reservation in four ways:
 
 - It takes no footprint, and refuses one: it holds every merge, not some
   files.
