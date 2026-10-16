@@ -2443,3 +2443,14 @@ The planning interview added two criteria from the product thinker's pushback on
 - a cap on how many announcements one prompt shows.
 
 A third added criterion, that an announcement names nobody, was struck when the product thinker returned to GitHub usernames.
+
+## 2026-10-16: autonomous runs execute inside an OS-enforced sandbox (product thinker, routing to be read)
+
+| part | type | home |
+|---|---|---|
+| an unattended run (drain, build lane, headless agent abcd starts) executes inside an OS-enforced sandbox, with writes limited to its worktree and abcd's home and network limited to origin and the forge | capability | intent itd-2610161621364075 (draft) |
+| the command guard is steering, and an OS sandbox is the boundary for an unattended run | trust rule | adr-2610161621415708 (proposed); a brief invariant once accepted |
+| parse-layer checks shape behaviour, and only the OS enforces | stance | the research note of 2026-08-18 on the guard's parse-layer limits, cited; no new principle |
+| how each platform's sandbox is detected and what it allows | plumbing | left to the intent's planning |
+
+Verdict: SPLIT. The product thinker asked to file it and will read the routing before it is confirmed. The proposal came from the product thinker during the crash recovery of 2026-10-16. Their question was whether a record already forced agents into a sandbox; none did, and the research note held the state of the art without a record citing it.
