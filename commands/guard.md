@@ -667,6 +667,21 @@ than the library verb still answers it. The entries name the program `abcd`,
 so they match the binary on `PATH` and the plugin root's by basename, not a
 `go run` of the source or a copy under another name.
 
+Starting another agent harness with its own permission checks turned off is a
+**block**, because that agent then runs every command with nobody asked and
+none of its commands reach this guard: `claude --dangerously-skip-permissions`
+(`agent-launch-claude-unchecked`), `claude --permission-mode bypassPermissions`
+(`agent-launch-claude-bypass-mode`), `codex --dangerously-bypass-approvals-and-sandbox`
+or `--yolo` (`agent-launch-codex-unchecked`), `codex -a never`
+(`agent-launch-codex-never-asks`), `codex -s danger-full-access`
+(`agent-launch-codex-sandbox-off`), `codex -c approval_policy=never` or
+`-c sandbox_mode=danger-full-access` (`agent-launch-codex-config-unchecked`),
+and `opencode run --auto` (`agent-launch-opencode-auto`). The same harness
+started with its checks on is allowed. The entries name each program by
+basename, so a launch through a package runner (`npx`) or under another name is
+not matched, and opencode's permission settings given in its environment
+(`OPENCODE_PERMISSION`) are not read.
+
 A recursive delete of the filesystem root or the home directory (`/`, `/*`,
 `~`, `$HOME`, `${HOME}`, each also with a trailing `/`, `/*` or `/*/`, and the
 home's dotfiles `~/.*`, `$HOME/.*`, `${HOME}/.*`, each also with a trailing `/`)

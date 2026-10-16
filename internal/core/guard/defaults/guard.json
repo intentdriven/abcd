@@ -681,6 +681,163 @@
           "abcd capture \"an agent ran abcd source ledger --flip 3\""
         ]
       }
+    },
+    "agent-launch-claude-unchecked": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flags": ["--dangerously-skip-permissions"]
+      },
+      "why": "`--dangerously-skip-permissions` starts another claude agent that runs every command and writes every file without asking anyone, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` without the flag).",
+      "fixtures": {
+        "known_bad": [
+          "claude --dangerously-skip-permissions",
+          "claude -p \"fix the tests\" --dangerously-skip-permissions",
+          "cd sub && claude -p x --dangerously-skip-permissions",
+          "sh -c 'claude -p x --dangerously-skip-permissions'"
+        ],
+        "known_good": [
+          "claude -p \"fix the tests\"",
+          "claude --version",
+          "claude -p x --permission-mode acceptEdits",
+          "abcd capture \"an agent ran claude --dangerously-skip-permissions\""
+        ]
+      }
+    },
+    "agent-launch-claude-bypass-mode": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "claude",
+        "flag_values": [{"flag": "--permission-mode", "values": ["bypassPermissions"]}]
+      },
+      "why": "`--permission-mode bypassPermissions` starts another claude agent with its permission checks turned off, so it runs every command and writes every file without asking anyone, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`claude -p \"<task>\"` with the default permission mode).",
+      "fixtures": {
+        "known_bad": [
+          "claude -p x --permission-mode bypassPermissions",
+          "claude -p x --permission-mode=bypassPermissions",
+          "claude --permission-mode BYPASSPERMISSIONS -p x"
+        ],
+        "known_good": [
+          "claude -p x --permission-mode default",
+          "claude -p x --permission-mode plan",
+          "abcd capture \"an agent ran claude --permission-mode bypassPermissions\""
+        ]
+      }
+    },
+    "agent-launch-codex-unchecked": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "codex",
+        "flags": ["--dangerously-bypass-approvals-and-sandbox|--yolo"]
+      },
+      "why": "`--dangerously-bypass-approvals-and-sandbox` (also spelled `--yolo`) starts a codex agent that runs every command without asking anyone and outside codex's own sandbox, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`codex exec \"<task>\"` without the flag).",
+      "fixtures": {
+        "known_bad": [
+          "codex exec --dangerously-bypass-approvals-and-sandbox \"fix\"",
+          "codex exec --yolo \"fix\"",
+          "codex --yolo"
+        ],
+        "known_good": [
+          "codex exec \"fix the tests\"",
+          "codex --version",
+          "abcd capture \"an agent ran codex exec --yolo\""
+        ]
+      }
+    },
+    "agent-launch-codex-never-asks": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "codex",
+        "flag_values": [{"flag": "-a|--ask-for-approval", "values": ["never"]}]
+      },
+      "why": "`--ask-for-approval never` (`-a never`) starts a codex agent that never asks anyone before it runs a command, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`codex exec \"<task>\"` without `-a never`).",
+      "fixtures": {
+        "known_bad": [
+          "codex -a never exec \"fix\"",
+          "codex exec --ask-for-approval never \"fix\"",
+          "codex exec --ask-for-approval=never \"fix\""
+        ],
+        "known_good": [
+          "codex -a on-request exec \"fix\"",
+          "codex exec \"fix the tests\"",
+          "abcd capture \"an agent ran codex -a never exec\""
+        ]
+      }
+    },
+    "agent-launch-codex-sandbox-off": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "codex",
+        "flag_values": [{"flag": "-s|--sandbox", "values": ["danger-full-access"]}]
+      },
+      "why": "`--sandbox danger-full-access` (`-s danger-full-access`) starts a codex agent with codex's own sandbox switched off, so the commands it runs reach every file the account can, and none of them passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`codex exec -s workspace-write \"<task>\"`).",
+      "fixtures": {
+        "known_bad": [
+          "codex exec -s danger-full-access \"fix\"",
+          "codex exec --sandbox danger-full-access \"fix\"",
+          "codex exec --sandbox=danger-full-access \"fix\""
+        ],
+        "known_good": [
+          "codex exec -s workspace-write \"fix\"",
+          "codex exec -s read-only \"fix\"",
+          "abcd capture \"an agent ran codex exec -s danger-full-access\""
+        ]
+      }
+    },
+    "agent-launch-codex-config-unchecked": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "codex",
+        "flag_values": [{"flag": "-c|--config", "values": [
+            "approval_policy=never",
+            "approval_policy=\"never\"",
+            "approval_policy='never'",
+            "sandbox_mode=danger-full-access",
+            "sandbox_mode=\"danger-full-access\"",
+            "sandbox_mode='danger-full-access'"
+          ]}]
+      },
+      "why": "Setting `approval_policy` to `never` or `sandbox_mode` to `danger-full-access` with `-c` starts a codex agent that runs commands without asking anyone, or outside codex's own sandbox, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`codex exec \"<task>\"` without the setting).",
+      "fixtures": {
+        "known_bad": [
+          "codex exec -c approval_policy=never \"fix\"",
+          "codex exec -c 'approval_policy=\"never\"' \"fix\"",
+          "codex exec -c sandbox_mode=danger-full-access \"fix\"",
+          "codex exec --config 'sandbox_mode=\"danger-full-access\"' \"fix\""
+        ],
+        "known_good": [
+          "codex exec -c model=o3 \"fix\"",
+          "codex exec -c approval_policy=on-request \"fix\"",
+          "abcd capture \"an agent ran codex exec -c approval_policy=never\""
+        ]
+      }
+    },
+    "agent-launch-opencode-auto": {
+      "tier": "blocker",
+      "pattern": {
+        "command": "opencode",
+        "flags": ["--auto"]
+      },
+      "why": "`--auto` starts an opencode agent that approves every permission request not explicitly denied without asking anyone, and none of what it runs passes through this guard.",
+      "successor": "Leave the launch to the person: say in the receipt which agent you meant to start and for what, or start it with its permission checks on (`opencode run \"<task>\"` without `--auto`).",
+      "fixtures": {
+        "known_bad": [
+          "opencode run --auto \"fix the tests\"",
+          "opencode run \"fix\" --auto",
+          "cd sub && opencode run --auto x"
+        ],
+        "known_good": [
+          "opencode run \"fix the tests\"",
+          "opencode --version",
+          "abcd capture \"an agent ran opencode run --auto\""
+        ]
+      }
     }
   }
 }
