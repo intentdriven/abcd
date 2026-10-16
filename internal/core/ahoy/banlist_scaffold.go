@@ -7,6 +7,7 @@ import (
 	"path"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/banlist"
@@ -600,6 +601,10 @@ func hooksPathState(cwd string) HooksPathState {
 		return HooksPathStateUnarmed
 	}
 	paths, err := gitutil.HooksPaths(cwd)
+	// An empty value names no directory, and this state has none for "git runs
+	// no hook": it is judged as it was before HooksPaths kept the value, by the
+	// values that name one.
+	paths = slices.DeleteFunc(paths, func(v string) bool { return v == "" })
 	if err != nil || len(paths) == 0 {
 		// A git that cannot answer keeps the answer the local read gave: unarmed.
 		return HooksPathStateUnarmed

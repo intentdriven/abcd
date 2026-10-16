@@ -163,7 +163,6 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		!attributionWouldChange(abs, opts) &&
 		!readmeWouldChange(abs, opts) &&
 		!outboundWouldChange(abs, opts) &&
-		!outboundForgeWouldChange(abs, opts) &&
 		!modeForced {
 		// One state reaches here that is NOT a no-op: a config.json that could not
 		// be parsed. It raises exactly one gap, deliberately non-resolvable — the
@@ -190,7 +189,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 				return InstallResult{
 					Status:          "partial",
 					Remaining:       []string{UnverifiedCopyGapID},
-					Notes:           append(readmeStandingNotes(abs, opts), note),
+					Notes:           append(append(readmeStandingNotes(abs, opts), outboundStandingNotes(abs, opts)...), note),
 					OptionalSkipped: optionalSkipped(opts, abs, det.Gaps, p),
 					unverifiedCheck: check,
 					unverifiedWhy:   why,
@@ -201,7 +200,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		// omitted or left, since no apply step runs to say it.
 		return InstallResult{
 			Status:          "already_up_to_date",
-			Notes:           readmeStandingNotes(abs, opts),
+			Notes:           append(readmeStandingNotes(abs, opts), outboundStandingNotes(abs, opts)...),
 			OptionalSkipped: optionalSkipped(opts, abs, det.Gaps, p),
 		}, nil
 	}
@@ -212,22 +211,21 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	approved, declined := resolveApproval(det.Gaps, opts, overrideChanges(abs, opts.ValueOverrides), p)
 
 	ac := &applyCtx{
-		cwd:           abs,
-		det:           det,
-		approved:      approved,
-		overrides:     opts.ValueOverrides,
-		prompter:      p,
-		gapPresent:    gapIDSet(det.Gaps),
-		autoYes:       opts.Yes,
-		devMode:       opts.Dev,
-		modeForced:    modeForced,
-		binTarget:     binTargetPath,
-		attribution:   opts.Attribution,
-		outbound:      opts.OutboundHook,
-		outboundForge: opts.OutboundForge,
-		confirmTool:   opts.ConfirmTool,
-		provenance:    opts.VerifyProvenance,
-		readmeFlag:    opts.ReadmeParts,
+		cwd:         abs,
+		det:         det,
+		approved:    approved,
+		overrides:   opts.ValueOverrides,
+		prompter:    p,
+		gapPresent:  gapIDSet(det.Gaps),
+		autoYes:     opts.Yes,
+		devMode:     opts.Dev,
+		modeForced:  modeForced,
+		binTarget:   binTargetPath,
+		attribution: opts.Attribution,
+		outbound:    opts.Outbound,
+		confirmTool: opts.ConfirmTool,
+		provenance:  opts.VerifyProvenance,
+		readmeFlag:  opts.ReadmeParts,
 	}
 
 	// Ordered apply steps.
@@ -257,6 +255,11 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 	// After stepSymlink, never before: the record names the entry that step
 	// leaves on PATH, and the hooks read it before they will run that entry.
 	ac.stepPathEntry()
+	// After the PATH-entry steps: abcd.binary names the verified copy they left.
+	ac.stepOutboundBinary()
+	// After stepOutboundBinary: the shim finds abcd through the abcd.binary it
+	// wrote, and the two notes read in that order.
+	ac.stepOutboundShim()
 	// After stepPathEntry: the harness command names the entry the two steps
 	// above actually left on PATH.
 	ac.stepStatusLine()
@@ -438,8 +441,8 @@ type applyCtx struct {
 	devMode         bool     // --dev: install the track-latest shim instead of the symlink
 	modeForced      bool     // the requested install mode differs from the on-disk state
 	attribution     bool     // --attribution: opt this repo into the committed prompt hook
-	outbound        bool     // --outbound-hook: opt this repo into the committed commit-msg gate
-	outboundForge   bool     // --outbound-forge: opt this repo into the guard's forge-text check
+	outbound        bool     // --outbound: opt this repo into both outbound checks, and name the verified copy in abcd.binary
+	verifiedCopy    string   // the owned PATH copy whose build provenance this run verified; "" when none
 	binTarget       string   // the resolved PATH entry this run installs (never re-derived)
 	confirmTool     tools.Confirm
 	readmeFlag      string          // --readme-parts as given; "" when not given
@@ -1639,6 +1642,7 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 		return
 	}
 	if equal {
+		a.verifiedCopy = target
 		return // the entry already is the verified artefact
 	}
 	if kind == binTargetOwnedSymlink || kind == binTargetDevShim {
@@ -1654,6 +1658,7 @@ func (a *applyCtx) installOwnedEntry(target string, kind binTargetKind) {
 		a.refuse("could not write the PATH entry " + displayPath(target) + ": " + errText(err))
 		return
 	}
+	a.verifiedCopy = target
 	a.recordEntry(target, want)
 	a.note(writeCommandEntry, target)
 }
@@ -1667,6 +1672,12 @@ func (a *applyCtx) adoptOwnedCopy(target string) {
 		a.refuse(note)
 		a.unverifiedCheck = check
 		a.unverifiedWhy = why
+		return
+	}
+	// entryCopyCheck answers "" for anything that is not an owned copy too, so
+	// only a copy it actually checked is recorded as verified.
+	if classifyBinTarget(target, a.det.pluginRoot) == binTargetOwnedCopy {
+		a.verifiedCopy = target
 	}
 }
 

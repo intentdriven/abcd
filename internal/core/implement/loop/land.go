@@ -700,9 +700,8 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	method, approval := rule.Method, rule.Approval
 	// The land fence (spc-2610031753359849 spec 2): before the rule decides,
 	// the run's reservation must still be this person's from this copy, and
-	// it is renewed for a day under a mirror, where every landing waits on a
-	// person, and for the default lease with no mirror.
-	holds, err := landFence(c, *lane, fenceLease(rule.Mirrored))
+	// it is renewed for fenceLease, a day.
+	holds, err := landFence(c, *lane, fenceLease)
 	if err != nil {
 		return Outcome{}, err
 	}

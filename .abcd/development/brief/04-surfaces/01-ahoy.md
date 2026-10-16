@@ -309,16 +309,37 @@ on `PATH`, lands in that one run. It runs a second time, with the attribution
 flag, where the user opts in: that run installs the committed
 `prepare-commit-msg` prompt asking every commit to declare whether a tool
 assisted it, and the choice is recorded, so a later install without the flag
-keeps the hook. The outbound flag is the same kind of opt-in: it installs the
-committed `commit-msg` gate that refuses a live agent-session URL or a tool
-attribution footer in a commit message, running only the abcd binary the clone
-names in `git config --local abcd.binary` and letting the commit through with
-one warning when there is none (iss-2609250834251447). The outbound-forge flag
-is a third opt-in of the same kind and independent of the second: it records
-`outbound.forge: true`, and the shell guard then refuses a posting `gh pr` or
-`gh issue` command whose title, body or body file carries either shape
-(`forge-text-outbound`). It writes no hook and names no binary, since the guard
-is the abcd already running (iss-2610142210511831). The identity verb's render is the follow-on surface and writes
+keeps the hook. The outbound flag is the same kind of opt-in, and one switch
+for two checks (iss-2610152024327989): it installs the committed `commit-msg`
+gate that refuses a live agent-session URL or a tool attribution footer in a
+commit message, and it records `outbound.forge: true` beside `outbound.hook:
+true`, so the shell guard also refuses a posting `gh pr` or `gh issue` command
+whose title, body or body file carries either shape (`forge-text-outbound`,
+iss-2610142210511831). The gate runs only the abcd binary the clone names in
+`git config --local abcd.binary` and lets the commit through with one warning
+when there is none (iss-2609250834251447); the explicit flag writes that key,
+clone-local, to the `PATH` copy whose build provenance the same run verified,
+and writes nothing, saying why, when there is no such copy, when the entry is
+the dev shim or when it lies inside the working tree (iss-2610152024267547).
+It never sets `core.hooksPath`, which chooses every hook git runs in the
+clone. So that the check runs with no manual step, the explicit flag alone also
+writes the same embedded template, marked as abcd's, as the clone's own
+`commit-msg` in the common git directory's `hooks/` (shared by every worktree),
+where no hooks path is set at any scope and nothing occupies that path; it
+never runs or calls the committed copy. Where a hooks path is set (the empty
+value included), or a `commit-msg` hook abcd did not write is there, it leaves
+that hook alone, saves the same template as `hooks/abcd-commit-msg`, a name git
+never runs, and one note says the check is not wired, why, and the line that
+calls that copy from the person's own hook, so the chained check fails open as
+the template does; a rerun leaves a current copy as it is, refreshes one only
+when it is byte for byte a template an earlier abcd wrote, and leaves an edited
+one, saying so. The binary is not
+re-verified at commit time: a swap of the `PATH` copy by the same account is out
+of scope. The two flags that each turned on one half are retired and refused
+naming the switch, and a repository that recorded one half under them, leaving
+the other key absent, raises `outbound.half_on`, which the next install
+completes; a key the repository set to `false` is its choice and raises only
+the advisory `outbound.half_chosen`. The identity verb's render is the follow-on surface and writes
 nothing: it proposes a correction as a diff, and adopting it is always the
 product thinker's move.
 
@@ -1303,8 +1324,7 @@ Sub-verbs: none.
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
 | `--oracle-backend` | string |
-| `--outbound-forge` | bool |
-| `--outbound-hook` | bool |
+| `--outbound` | bool |
 | `--readme-parts` | string |
 | `--refuse-adopt` | bool |
 | `--scan-deep` | string |
