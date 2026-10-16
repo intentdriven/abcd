@@ -120,20 +120,20 @@ func notesFor(root string, v StatusView, now time.Time) Notes {
 		u    *Unread
 	}{{"status", v.Unread}, {"reservations", v.ReservationsUnread}} {
 		if u.u != nil {
-			first = append(first, noteLine{key: hashName("unread\x00" + u.what + "\x00" + stamp(u.u.FailedAt)), text: UnreadLine(u.what, *u.u)})
+			first = append(first, noteLine{key: hashedKey("unread\x00" + u.what + "\x00" + stamp(u.u.FailedAt)), text: UnreadLine(u.what, *u.u)})
 		}
 	}
 	for _, h := range v.Holds {
-		first = append(first, noteLine{key: hashName("hold\x00" + h.Subject + "\x00" + h.Holder + "\x00" + stamp(h.EffectiveExpiry)),
+		first = append(first, noteLine{key: hashedKey("hold\x00" + h.Subject + "\x00" + h.Holder + "\x00" + stamp(h.EffectiveExpiry)),
 			text: termsafe.Sanitize(h.Line())})
 	}
 	for _, d := range v.Doubts {
-		doubts = append(doubts, noteLine{key: hashName("doubt\x00" + d.Branch + "\x00" + d.Reason + "\x00" + d.Tip), text: DoubtLine(d), weight: 1})
+		doubts = append(doubts, noteLine{key: hashedKey("doubt\x00" + d.Branch + "\x00" + d.Reason + "\x00" + d.Tip), text: DoubtLine(d), weight: 1})
 	}
 	if v.UnreadNames > 0 {
 		// Counted, never named: a pusher chose each name. The line is kept
 		// shown by the set it counts, so a new name shows it again.
-		doubts = append(doubts, noteLine{key: hashName("unread-names\x00" + strings.Join(v.unreadNames, "\x00")),
+		doubts = append(doubts, noteLine{key: hashedKey("unread-names\x00" + strings.Join(v.unreadNames, "\x00")),
 			text: UnreadNamesLine(v.UnreadNames) + "; `abcd status` says how to list them", weight: v.UnreadNames})
 	}
 	// The newest announcement per item; the rest are counted.
@@ -218,6 +218,14 @@ func (l noteLine) keys() []string {
 	}
 	return ks
 }
+
+// hashedKey is the shown marker of a line other than an announcement: the
+// hash of what it says, under a prefix no commit name carries, so the prune
+// tells it from an announcement's marker, which goes with its announcement.
+func hashedKey(what string) string { return hashedPrefix + hashName(what) }
+
+// hashedPrefix starts every shown marker that is not a commit's name.
+const hashedPrefix = "line-"
 
 // shownKept reports whether key was kept as shown.
 func shownKept(root, key string) bool {

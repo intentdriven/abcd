@@ -676,3 +676,56 @@ func TestJunkDoubtsNeverBuryAnAnnouncement(t *testing.T) {
 		t.Fatalf("the next prompt shows %q; want nothing", again)
 	}
 }
+
+// TestTheStatusStateIsPruned: an intake that reads something new prunes the
+// local tier's status state: a shown marker of a line other than an
+// announcement once it is older than shownKeep (and one kept by an earlier
+// build, named by a bare hash, with no announcement read under its name), a
+// doubt older than the day doubts are shown for, and the read mark of a
+// branch this checkout no longer holds. What is still in use is kept.
+func TestTheStatusStateIsPruned(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	maya.announceAs("merging", "#1")
+	pat.status(nil)
+	pat.notes()
+
+	state := filepath.Join(pat.dir, filepath.FromSlash(statusBranches.stateDir))
+	put := func(rel string, data []byte, age time.Duration) string {
+		t.Helper()
+		p := filepath.Join(state, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, data, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chtimes(p, t0.Add(-age), t0.Add(-age)); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	agedLine := put(shownDir+"/"+hashedKey("hold\x00old"), nil, shownKeep+time.Hour)
+	legacy := put(shownDir+"/"+hashName("doubt\x00old"), nil, shownKeep+time.Hour)
+	freshLine := put(shownDir+"/"+hashedKey("hold\x00new"), nil, time.Hour)
+	keepDoubt(pat.dir, BranchDoubt{Branch: "gone", Reason: DoubtMerged, Tip: strings.Repeat("a", 40), FoundAt: t0.Add(-2 * MaxAnnouncementLife)})
+	keepDoubt(pat.dir, BranchDoubt{Branch: "here", Reason: DoubtMerged, Tip: strings.Repeat("b", 40), FoundAt: t0.Add(-time.Hour)})
+	staleMark := put(strings.TrimPrefix(statusBranches.markRel(StatusTrackingPrefix+"gone"), statusBranches.stateDir+"/"), []byte(strings.Repeat("c", 40)+"\n"), time.Hour)
+	liveMark := filepath.Join(pat.dir, filepath.FromSlash(statusBranches.markRel(StatusTrackingPrefix+"maya")))
+
+	w.set(t0.Add(time.Minute))
+	maya.announceAs("merged", "#1")
+	pat.status(nil)
+
+	for _, p := range []string{agedLine, legacy, staleMark, filepath.Join(state, doubtDir, hashName("gone"))} {
+		if _, err := os.Lstat(p); !os.IsNotExist(err) {
+			t.Fatalf("%s survived the prune: %v", p, err)
+		}
+	}
+	for _, p := range []string{freshLine, liveMark, filepath.Join(state, doubtDir, hashName("here"))} {
+		if _, err := os.Lstat(p); err != nil {
+			t.Fatalf("%s was pruned: %v", p, err)
+		}
+	}
+}

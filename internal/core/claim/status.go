@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path"
 	"slices"
 	"sort"
 	"strconv"
@@ -415,7 +416,7 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 	// Pruning reads every kept file, so it runs only when something new was
 	// read in, never at every prompt.
 	if in.taken > 0 {
-		pruneStatus(root, now)
+		pruneStatus(root, now, refs)
 	}
 	return in, nil
 }
@@ -965,10 +966,14 @@ func placePushes(ctx context.Context, root, branch string, pushes []Push) (map[s
 	return out, nil
 }
 
-// pruneStatus removes, best effort, every kept announcement whose life ended
-// more than seenKeep ago, with its shown marker and its pusher, and every
-// other shown marker older than shownKeep.
-func pruneStatus(root string, now time.Time) {
+// pruneStatus removes, best effort: every kept announcement whose life
+// ended more than seenKeep ago, with its shown marker and its pusher; every
+// other shown marker older than shownKeep (a line's, or an announcement's
+// whose announcement is no longer kept, as an earlier build named a line's
+// too); every doubt the reader no longer shows (found more than a day ago, or
+// not reading); and the read mark of every status branch not among refs, the
+// branches this checkout holds.
+func pruneStatus(root string, now time.Time, refs []statusRef) {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return
@@ -993,11 +998,32 @@ func pruneStatus(root string, now time.Time) {
 		}
 	}
 	for _, e := range statusEntries(root, shownDir) {
-		if gitutil.IsFullSHA(e.Name()) {
+		if gitutil.IsFullSHA(e.Name()) && seenKept(root, e.Name()) {
 			continue
 		}
 		if info, err := e.Info(); err == nil && now.Sub(info.ModTime()) > shownKeep {
 			_ = r.Remove(statusFile(shownDir + "/" + e.Name()))
+		}
+	}
+	for _, e := range statusEntries(root, doubtDir) {
+		data := readStatusFile(root, doubtDir+"/"+e.Name(), 4096)
+		var d struct {
+			FoundAt string `json:"found_at"`
+		}
+		if data != nil && json.Unmarshal(data, &d) == nil {
+			if found, err := time.Parse(time.RFC3339, d.FoundAt); err == nil && now.Sub(found) < MaxAnnouncementLife {
+				continue
+			}
+		}
+		_ = r.Remove(statusFile(doubtDir + "/" + e.Name()))
+	}
+	held := map[string]bool{}
+	for _, ref := range refs {
+		held[path.Base(statusBranches.markRel(ref.ref))] = true
+	}
+	for _, e := range statusEntries(root, path.Base(statusBranches.readDir())) {
+		if !held[e.Name()] {
+			_ = r.Remove(statusBranches.readDir() + "/" + e.Name())
 		}
 	}
 }
