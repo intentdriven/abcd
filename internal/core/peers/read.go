@@ -516,25 +516,6 @@ func isRealDirChain(root, rel string) bool {
 	return true
 }
 
-// FoldersAt is the folder each record sits in on ref, read from the object
-// store by filename (no checkout, no network): record id to every folder a
-// file claiming it sits in (open, resolved, wontfix, or an intent bucket). It
-// is the peers reader's own tree read, exported so the reservation's derived
-// release decides which folder a record is in by the same reader.
-func FoldersAt(root, ref string) (map[string][]string, error) {
-	h, _, err := scanTree(root, ref)
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string][]string, len(h))
-	for id, hs := range h {
-		for _, x := range hs {
-			out[id] = append(out[id], x.folder)
-		}
-	}
-	return out, nil
-}
-
 // RecordAt is one file a ref's tree holds a record in: its folder and the
 // object name of its blob.
 type RecordAt struct {
@@ -542,9 +523,12 @@ type RecordAt struct {
 	Blob   string
 }
 
-// RecordsAt is FoldersAt with each file's blob: the record ids ref's tree
-// holds, each with every file that claims it, read from the object store by
-// filename.
+// RecordsAt is the record ids ref's tree holds, each with every file that
+// claims it (its folder: open, resolved, wontfix, or an intent bucket; and
+// its blob), read from the object store by filename, with no checkout and no
+// network. It is the peers reader's own tree read, exported so a reservation
+// decides which folder a record is in, and which blob it is, by the same
+// reader.
 func RecordsAt(root, ref string) (map[string][]RecordAt, error) {
 	h, _, err := scanTree(root, ref)
 	if err != nil {
