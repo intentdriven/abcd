@@ -556,3 +556,46 @@ func TestSetupBuildsAbcdForLaterShells(t *testing.T) {
 		}
 	})
 }
+
+// TestSetupParsesTheRealHolderAnswer: the other setup tests fake the holder
+// verb's answer by hand. This one takes the answer from the real verb, built
+// from this checkout and run in a clone carrying the container's vendor
+// identity with a gh that answers the token's account, and feeds it to the
+// setup, so the two cannot drift apart in shape.
+func TestSetupParsesTheRealHolderAnswer(t *testing.T) {
+	bin := outboundChecker(t)
+	stubGH(t, `{"login":"`+tokenLogin+`","id":4242}`)
+	clone := t.TempDir()
+	env := append(os.Environ(), "GIT_CONFIG_GLOBAL="+os.DevNull, "GIT_CONFIG_NOSYSTEM=1", "HOME="+t.TempDir())
+	for _, args := range [][]string{{"init", "-q"}, {"config", "user.name", vendorName}, {"config", "user.email", vendorMail}} {
+		cmd := exec.Command("git", args...)
+		cmd.Dir, cmd.Env = clone, env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	cmd := exec.Command(bin, "reserve", "--holder", "--json")
+	cmd.Dir, cmd.Env = clone, env
+	answer, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("reserve --holder --json: %v\n%s", err, answer)
+	}
+	if !strings.Contains(string(answer), `"source": "token"`) {
+		t.Fatalf("the real verb did not answer from the token:\n%s", answer)
+	}
+
+	c := newSetupCase(t)
+	out, code := c.script(append(setupRemote, "FAKE_HOLDER="+string(answer)), setupScript)
+	if code != 0 {
+		t.Fatalf("setup exited %d on the real verb's answer\n%s", code, out)
+	}
+	if got := c.git("config", "--local", "--get", "user.name"); got != tokenLogin {
+		t.Errorf("user.name = %q from the real answer, want %q", got, tokenLogin)
+	}
+	if got := c.git("config", "--local", "--get", "user.email"); got != tokenNoReply {
+		t.Errorf("user.email = %q from the real answer, want %q", got, tokenNoReply)
+	}
+	if strings.Contains(out, vendorMail) {
+		t.Errorf("setup repeated the container's identity\n%s", out)
+	}
+}
