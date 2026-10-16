@@ -61,9 +61,9 @@ The payload carries:
   takes, and `announcements_not_read` how many kept announcements lie past
   the 2,000 one read takes; neither is read;
 - `branches_left_to_read`: how many status branches hold more new commits
-  than one read takes in (at most 100 in all, the newest of each branch
-  first): none of them is marked read, so the next prompt or `abcd status`
-  takes in the rest, starting after where this read stopped;
+  than one read takes in (at most 100 in all): none of them is marked read
+  past what was taken in, so the next prompt or `abcd status` takes in the
+  rest, walking first every branch left unread, the one left first first;
 - `not_dropped`: how many copies of status branches could not be deleted
   before the fetch, and why, when some could not;
 - `unread`: a line for each fetch that failed, "status unread since 09:12 UTC:
@@ -127,9 +127,11 @@ The prompt hook appends a `## STATUS` block to the text it injects at a
 prompt when this checkout holds something it has not shown yet. It reads only
 what the last fetch left on disk and never touches the network, under a
 deadline inside the hook's one-second budget, and takes in at most 100 new
-commits at one prompt, the newest of each branch first; what it leaves is
-taken in at the next prompt or the next `abcd status`, which start after
-where it stopped, and the block says how many branches it left:
+commits at one prompt; what it leaves is taken in at the next prompt or the
+next `abcd status`, which walk first every branch left unread, the one left
+first first, and take half of a branch's share from its oldest unread
+commits once one read has cut it short, and the block says how many
+branches it left:
 
 ```
 ## STATUS

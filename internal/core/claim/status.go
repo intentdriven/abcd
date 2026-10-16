@@ -84,10 +84,10 @@ const maxListingLine = 4096
 var statusWalkLimit = maxWalk
 
 // maxIntakeCommits is the most new commits one intake takes in, across every
-// status branch, the newest of each branch first: a branch with more past it
-// is left unmarked, so the next intake takes in what this one left, and no
-// branch is marked read past a commit it did not take in. It bounds what the
-// prompt hook's read writes before its deadline.
+// status branch (takeIn says in what order): a branch with more past it is
+// not marked read at its tip, so a later intake takes in what this one left,
+// and no branch is marked read past a commit it did not take in. It bounds
+// what the prompt hook's read writes before its deadline.
 var maxIntakeCommits = 100
 
 // The status state's files, under statusBranches.stateDir.
@@ -457,7 +457,7 @@ type intake struct {
 	// left is each status branch holding new commits this intake did not
 	// take in once maxIntakeCommits was spent, by its name and the newest
 	// commit not taken in (its tip, for a branch not walked): none of them is
-	// marked read, so a later intake takes in the rest.
+	// marked read at its tip, so a later intake takes in the rest.
 	left []string
 }
 
@@ -470,28 +470,40 @@ func (in intake) leftKey() string {
 	return hashName(strings.Join(in.left, "\n"))
 }
 
-// resumeRel names the branch the next intake starts at: the one after where
-// the last intake spent maxIntakeCommits.
-const resumeRel = "intake-resume"
+// leftRel names the status branches the last intake left unread, each with
+// the turn it was left at (keptLeft).
+const leftRel = "intake-left"
+
+// maxLeftBytes bounds what keptLeft reads: a line per branch left, at most
+// one per branch an intake reads.
+const maxLeftBytes = 128 << 10
 
 // takeIn reads every status branch this checkout holds from where it last
 // read it (namespace.since, under ctx), reads each commit the walk added and
 // this checkout has not read before, in one bounded batch per branch, keeps
 // each as seen at now, then marks the branch read at its tip. It takes in at
-// most maxIntakeCommits new commits in all, the newest of each branch first,
-// and starts at the branch after the one where the last intake spent them,
-// so a branch that keeps gaining commits never holds every other one back.
+// most maxIntakeCommits new commits in all. Every branch the last intake left
+// unread is walked first, the one left at the earliest turn first, then every
+// other branch in git's ref order; a branch walked and left again is left at
+// a turn after every branch already waiting, and one left without a walk
+// keeps the turn it was first left at, so no branch waits behind more than
+// the branches left before it, however many appear or move after it. A
+// branch the cap cut short before takes in half its share from its newest
+// unread commits and the rest from its oldest (freshRuns), and is marked read
+// at the newest commit beneath which every commit is read, so each unread
+// commit is read within a bounded number of intakes.
 // A branch whose name is not a lower-case username is tallied, never read and
 // never kept. One whose tip is not a commit, or whose walk could not verify
 // continuity (it moved back or was rewritten, ran past the walk's limit,
 // on a first read as on any other, or passed a merge), is kept as doubtful,
-// and every other branch is still read. One that gained more new commits than
-// the intake had left to take in is not marked read, and once nothing is
-// left the branches after it are not walked at all: each is counted in left,
-// and the next intake takes in the rest. It writes only the local tier,
-// unflushed; a checkout without one keeps nothing and reads nothing. When ctx
-// ends, what was read is kept, the branch at hand is not marked, and ctx's
-// error is answered.
+// and every other branch is still read. One whose tip is the commit it was
+// last read at is passed over without a walk. One that gained more new
+// commits than the intake had left to take in is not marked read at its tip,
+// and once nothing is left the branches after it are not walked at all: each
+// is counted in left, and a later intake takes in the rest. It writes only
+// the local tier, unflushed; a checkout without one keeps nothing and reads
+// nothing. When ctx ends, what was read is kept, the branch at hand is not
+// marked, and ctx's error is answered.
 func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 	var in intake
 	if tierPresent(root) != nil {
@@ -506,32 +518,48 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 	}
 	in.held = map[string]bool{}
 	// The branches read: the first maxStatusBranches whose names are read,
-	// in git's ref order; the rest are counted.
-	var order []statusRef
+	// in git's ref order; the rest are counted. Those the last intake left
+	// are walked first, by the turn each was left at.
+	left := keptLeft(root)
+	var waiting, rest []statusRef
 	for _, r := range refs {
 		name := strings.TrimPrefix(r.ref, StatusTrackingPrefix)
 		in.held[name] = true
 		switch {
 		case !statusName(name):
 			in.unread.add(name)
-		case len(order) >= maxStatusBranches:
+		case len(waiting)+len(rest) >= maxStatusBranches:
 			in.pastCap++
 		default:
-			order = append(order, r)
+			if _, ok := left.at[name]; ok {
+				waiting = append(waiting, r)
+			} else {
+				rest = append(rest, r)
+			}
 		}
 	}
-	start := resumeAt(root, order)
+	sort.SliceStable(waiting, func(i, j int) bool {
+		return left.at[strings.TrimPrefix(waiting[i].ref, StatusTrackingPrefix)] <
+			left.at[strings.TrimPrefix(waiting[j].ref, StatusTrackingPrefix)]
+	})
+	// This intake's turns: a branch first left without a walk takes turn,
+	// and one walked and left again turn+1, after every branch waiting.
+	turn := left.turn
+	stillLeft := map[string]int64{}
 	tree := ""
-	spentAt := -1
-	for i := range order {
-		r := order[(start+i)%len(order)]
+	for _, r := range append(waiting, rest...) {
 		name := strings.TrimPrefix(r.ref, StatusTrackingPrefix)
 		if statusBranches.lastRead(root, r.ref) == r.sha {
 			continue
 		}
+		at, wasLeft := left.at[name]
 		if in.taken >= maxIntakeCommits {
 			// Nothing is left to take in: not walked, not marked, counted.
 			in.left = append(in.left, name+" "+r.sha)
+			if !wasLeft {
+				at = turn
+			}
+			stillLeft[name] = at
 			continue
 		}
 		h, err := statusBranches.sinceCtx(ctx, root, r.ref, statusWalkLimit)
@@ -566,11 +594,10 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 		if reason != "" {
 			keepDoubt(root, BranchDoubt{Branch: name, Reason: reason, Tip: h.Tip, FoundAt: now})
 		}
-		// At most maxIntakeCommits new commits in all, the newest of each
-		// branch first. The rest are not read now, and the branch is not
-		// marked read, so the next intake takes them in: a mark at the tip
-		// would pass over them for good.
-		runs, next := freshRuns(root, h.Added, maxIntakeCommits-in.taken)
+		// At most maxIntakeCommits new commits in all. The rest are not read
+		// now, and the branch is not marked read at its tip, so a later intake
+		// takes them in: a mark at the tip would pass over them for good.
+		runs, next, readTo := freshRuns(root, h.Added, maxIntakeCommits-in.taken, wasLeft)
 		var fresh []string
 		for _, run := range runs {
 			fresh = append(fresh, run.commits...)
@@ -585,39 +612,43 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 			if err != nil {
 				return in, err
 			}
+			// The order's base is the wall clock's, so a later intake orders
+			// after, and each commit takes its place on the branch from it. A
+			// run beneath a commit an earlier intake kept is what that intake
+			// left of the branch, older than what it took in, so it takes that
+			// intake's time and orders beneath that commit, by how far beneath.
+			base := time.Now().UnixNano()
 			for _, run := range runs {
-				// The order's base is the wall clock's, so a later intake
-				// orders after; a run beneath a commit an earlier intake kept
-				// is what that intake left of the branch, older than what it
-				// took in, so it takes that intake's time and orders beneath.
-				at, base := now, time.Now().UnixNano()
-				if run.beneath != "" {
-					if k, ok := keptAnnouncement(root, run.beneath); ok {
-						at, base = k.FirstFetched, k.order-int64(len(run.commits))
+				at, from := now, base+int64(len(h.Added)-run.at-len(run.commits))
+				if run.beneath >= 0 {
+					if k, ok := keptAnnouncement(root, h.Added[run.beneath]); ok {
+						at, from = k.FirstFetched, k.order-int64(run.at+len(run.commits)-1-run.beneath)
 					}
 				}
-				keepSeen(root, name, run.commits, read, at, base)
+				keepSeen(root, name, run.commits, read, at, from)
 			}
 			in.taken += len(fresh)
 		}
 		if err := ctx.Err(); err != nil {
 			return in, err
 		}
-		if in.taken >= maxIntakeCommits && spentAt < 0 {
-			spentAt = i
-		}
 		if next != "" {
 			in.left = append(in.left, name+" "+next)
+			stillLeft[name] = turn + 1
+			if readTo < len(h.Added) {
+				// Every commit beneath is read: the next walk starts above it.
+				if err := statusBranches.markRead(root, r.ref, h.Added[readTo]); err != nil {
+					return in, err
+				}
+			}
 			continue
 		}
 		if err := statusBranches.markRead(root, r.ref, h.Tip); err != nil {
 			return in, err
 		}
 	}
-	if len(in.left) > 0 && spentAt >= 0 {
-		after := order[(start+spentAt+1)%len(order)]
-		_ = writeUnflushedIn(root, statusBranches.stateDir, resumeRel,
-			[]byte(strings.TrimPrefix(after.ref, StatusTrackingPrefix)+"\n"))
+	if len(stillLeft) > 0 || len(left.at) > 0 {
+		keepLeft(root, turn+2, stillLeft)
 	}
 	// Pruning reads every kept file, so it runs only when something new was
 	// read in, never at every prompt.
@@ -627,50 +658,117 @@ func takeIn(ctx context.Context, root string, now time.Time) (intake, error) {
 	return in, nil
 }
 
-// resumeAt is where in order an intake starts: at the branch the last intake
-// named to start at, or the first after it by name when it is gone; at the
-// first when none is named.
-func resumeAt(root string, order []statusRef) int {
-	name := strings.TrimSpace(string(readStatusFile(root, resumeRel, 256)))
-	if !statusName(name) {
-		return 0
-	}
-	for i, r := range order {
-		if strings.TrimPrefix(r.ref, StatusTrackingPrefix) >= name {
-			return i
-		}
-	}
-	return 0
+// leftSet is the status branches an intake left unread, each by name with
+// the turn it was left at, and the turn the next intake starts its count
+// from, past every turn kept.
+type leftSet struct {
+	turn int64
+	at   map[string]int64
 }
 
-// freshRun is a run of a branch's commits, newest first, this checkout has
-// not read, beneath the nearest commit above them that it has read ("" for
-// the run that leads the branch).
-type freshRun struct {
-	beneath string
-	commits []string
-}
-
-// freshRuns is the commits of added (newest first) this checkout has not
-// read, in runs, at most budget of them, the newest first, and the newest
-// commit past budget that it did not take ("" when none was left out).
-func freshRuns(root string, added []string, budget int) (runs []freshRun, next string) {
-	above := ""
-	for _, c := range added {
-		if seenKept(root, c) {
-			above = c
+// keptLeft is the set of branches the last intake left unread, as kept under
+// leftRel; empty when none is kept or it does not read. A line that does not
+// read, or names a branch whose name is not read, is passed over.
+func keptLeft(root string) leftSet {
+	s := leftSet{at: map[string]int64{}}
+	data := readStatusFile(root, leftRel, maxLeftBytes)
+	if data == nil {
+		return s
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if n, err := strconv.ParseInt(lines[0], 10, 64); err == nil && n >= 0 {
+		s.turn = n
+	}
+	for _, l := range lines[1:] {
+		turn, name, ok := strings.Cut(l, " ")
+		n, err := strconv.ParseInt(turn, 10, 64)
+		if !ok || err != nil || n < 0 || !statusName(name) {
 			continue
 		}
-		if budget <= 0 {
-			return runs, c
-		}
-		if len(runs) == 0 || runs[len(runs)-1].beneath != above {
-			runs = append(runs, freshRun{beneath: above})
-		}
-		runs[len(runs)-1].commits = append(runs[len(runs)-1].commits, c)
-		budget--
+		s.at[name] = n
+		s.turn = max(s.turn, n+1)
 	}
-	return runs, ""
+	return s
+}
+
+// keepLeft keeps the branches left, each with its turn, and the turn the
+// next intake counts from, replacing what was kept, unflushed and best
+// effort: a set not kept costs only the order of the next intake's walk.
+func keepLeft(root string, turn int64, at map[string]int64) {
+	var b strings.Builder
+	b.WriteString(strconv.FormatInt(turn, 10) + "\n")
+	names := make([]string, 0, len(at))
+	for name := range at {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		b.WriteString(strconv.FormatInt(at[name], 10) + " " + name + "\n")
+	}
+	_ = writeUnflushedIn(root, statusBranches.stateDir, leftRel, []byte(b.String()))
+}
+
+// freshRun is a stretch of a branch's commits, newest first, this checkout
+// has not read and one intake takes in: at is where in the walk's commits it
+// begins, and beneath where the nearest commit above it that was read before
+// lies (-1 when none is).
+type freshRun struct {
+	at, beneath int
+	commits     []string
+}
+
+// freshRuns picks from added (newest first) the commits this checkout has not
+// read, at most budget of them: the newest, or, when split, the newest half of
+// budget (rounded up) and the oldest for the rest of it. It answers them in
+// runs, each a stretch of added none of whose commits was left out or read
+// before; the newest commit it left out ("" when it left none out); and
+// readTo, the place in added from which every commit beneath is read, before
+// or now (len(added) when the oldest is not).
+func freshRuns(root string, added []string, budget int, split bool) (runs []freshRun, next string, readTo int) {
+	read := make([]bool, len(added))
+	var unread []int
+	if r, err := os.OpenRoot(root); err == nil {
+		for i, c := range added {
+			if read[i] = seenKeptIn(r, c); !read[i] {
+				unread = append(unread, i)
+			}
+		}
+		r.Close()
+	} else {
+		for i := range added {
+			unread = append(unread, i)
+		}
+	}
+	take := unread
+	if len(unread) > budget {
+		newest := budget
+		if split {
+			newest = (budget + 1) / 2
+		}
+		take = append(slices.Clone(unread[:newest]), unread[len(unread)-(budget-newest):]...)
+		next = added[unread[newest]]
+	}
+	taken := make([]bool, len(added))
+	for _, i := range take {
+		taken[i] = true
+	}
+	above := -1
+	for i, c := range added {
+		switch {
+		case read[i]:
+			above = i
+		case !taken[i]:
+		case len(runs) > 0 && runs[len(runs)-1].at+len(runs[len(runs)-1].commits) == i:
+			runs[len(runs)-1].commits = append(runs[len(runs)-1].commits, c)
+		default:
+			runs = append(runs, freshRun{at: i, beneath: above, commits: []string{c}})
+		}
+	}
+	readTo = len(added)
+	for readTo > 0 && (read[readTo-1] || taken[readTo-1]) {
+		readTo--
+	}
+	return runs, next, readTo
 }
 
 // intakeFailure, when a test sets it (IntakeFailsForTest), is what every
@@ -815,6 +913,11 @@ func seenKept(root, commit string) bool {
 		return false
 	}
 	defer r.Close()
+	return seenKeptIn(r, commit)
+}
+
+// seenKeptIn is seenKept through r, the checkout's root.
+func seenKeptIn(r *os.Root, commit string) bool {
 	rel := statusFile(seenDir + "/" + commit)
 	data, err := fsutil.ReadGuardedInRoot(r, rel, 4096)
 	if errors.Is(err, fs.ErrNotExist) {

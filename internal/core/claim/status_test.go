@@ -943,8 +943,10 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	}
 	// Each prompt after it takes in the next maxIntakeCommits and shows
 	// those, never a line shown before, until the whole flood is taken in;
-	// the prompt after that shows nothing.
-	for i, newest := range []string{"#200", "#100"} {
+	// the prompt after that shows nothing. The second intake takes half from
+	// the newest left (#151 to #200) and half from the oldest (#1 to #50), and
+	// the third the rest, #51 to #150.
+	for i, newest := range []string{"#200", "#150"} {
 		next := pat.notes()
 		if !strings.Contains(next, "merging "+newest+",") || strings.Contains(next, "merging #300,") {
 			t.Fatalf("prompt %d after the first shows:\n%s\nwant the next intake's newest, %s, and nothing shown before", i+1, next, newest)

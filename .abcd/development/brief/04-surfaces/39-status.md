@@ -49,13 +49,22 @@ leaving its sender claimed. It pushes nothing.
 One intake serves the verb and the prompt hook. It walks each status branch
 from where this checkout last read it (the bounded history walk of step 1),
 reads every commit the walk added that this checkout has not read before, at
-most 100 in one intake, the newest of each branch first, in one batch of two
-`git cat-file` commands per branch, each through the announcement's own
-validator, and keeps in `.abcd/.work.local/status/` the announcement's
+most 100 in one intake, in one batch of two `git cat-file` commands per
+branch, each through the announcement's own validator, and keeps in `.abcd/.work.local/status/` the announcement's
 validated fields and when this checkout first fetched it. What it keeps there
 is written without a flush to stable storage: losing it costs only a read
 made again, and a flood of new announcements then fits the prompt hook's
 deadline.
+A branch holding more new commits than the intake has left to take in is not
+marked read at its tip, and is kept with the turn it was left at. The next
+intake walks every branch left unread before any other, the one left first
+first; a branch walked and left again goes behind every branch already
+waiting, and one left without a walk keeps its turn, so no branch waits
+behind more than the branches left before it. Once the cap has cut a branch
+short, it takes half its share from its newest unread commits and the rest
+from its oldest, and is marked read at the newest commit beneath which every
+commit is read, so every unread commit is read within a bounded number of
+intakes however fast the branch grows.
 The commit's raw text is never kept and never shown. An announcement stands
 for the life it was sent with from that first fetch, not by the sender's
 clock (C9); one whose own expiry passed more than an hour before the first
