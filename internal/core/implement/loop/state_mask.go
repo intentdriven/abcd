@@ -18,7 +18,7 @@ import (
 // right-to-left language, a coloured hook failure), so a control, bidi or
 // zero-width rune in it is masked rather than refused: a run abcd wrote stays
 // readable. The ruling is "both: mask when stored and when shown"
-// (.abcd/work/DECISIONS.md, 2026-10-12): writeState stores what masked
+// (dcn-2610120000000001): writeState stores what masked
 // returns, and readStateIn returns it, so every surface that shows a run's
 // state shows it masked, a run written before the mask included.
 //

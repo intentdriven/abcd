@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -51,11 +52,13 @@ const (
 	// TakeoverMargin is how long past a reservation's effective expiry (or an
 	// unreadable tip's hold) another person waits before taking it over, by
 	// the taker's clock: the slack that absorbs small skew between clocks,
-	// and the only slack. A holder whose clock runs behind by more than half
-	// its lease plus this margin can be taken over between its renewals;
+	// and the only slack. It is lease.Skew, the allowance within which a
+	// reservation dated ahead of the reader is still judged by its own dates.
+	// A holder whose clock runs behind by more than half its lease plus this
+	// margin can be taken over between its renewals;
 	// nothing on the reader's side bounds it, since the commit date comes
 	// from the same clock (spc-2610031753359849, the review of 2026-10-14).
-	TakeoverMargin = 5 * time.Minute
+	TakeoverMargin = lease.Skew
 )
 
 // ErrBackOff marks a refusal whose remedy is to take other work: the record is
@@ -124,10 +127,10 @@ func reservableID(arg string) (string, error) {
 	return id, nil
 }
 
-// refName is a reservable id's branch on the remote; trackingName is this
-// checkout's copy of it. Both take only reservableID's answer.
-func refName(id string) string      { return RefPrefix + id }
-func trackingName(id string) string { return TrackingPrefix + id }
+// refName is a reservable id's branch on the remote, a full ref; trackingName
+// is this checkout's copy of it. Both take only reservableID's answer.
+func refName(id string) string      { return reservations.ref(id) }
+func trackingName(id string) string { return reservations.track(id) }
 
 // Why a renewal found no reservation of this person's from this copy to renew.
 const (

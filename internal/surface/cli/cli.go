@@ -224,12 +224,12 @@ func NewRootCommand() *cobra.Command {
 		Use: "abcd [<record-id>]",
 		Long: "Agent-based configuration for development.\n\n" +
 			"Bare `abcd` renders the read-only status board — what can I do. A single\n" +
-			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,\n" +
-			"`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and\n" +
-			"the next move for its lifecycle state — what is this. N is either a short\n" +
-			"ordinal from before ids were minted or the sixteen-digit stamp minted since;\n" +
-			"both resolve. The bare and the id form are strictly read-only; any other\n" +
-			"positional is refused as an unknown command.\n\n" +
+			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `dcn-N`,\n" +
+			"`adm-N`, `srp-N` or `rfm-N`) instead reports what that record is, where it\n" +
+			"lives, and the next move for its lifecycle state — what is this. N is either\n" +
+			"a short ordinal from before ids were minted or the sixteen-digit stamp minted\n" +
+			"since; both resolve. The bare and the id form are strictly read-only; any\n" +
+			"other positional is refused as an unknown command.\n\n" +
 			"`--version` reports the running binary's version, install mode and vintage.\n" +
 			"When that binary sits in a plugin root other than the one this session\n" +
 			"resolves, the report — like bare `abcd ahoy` — adds a `superseded_root` note\n" +
@@ -403,6 +403,7 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
 	root.AddCommand(newReserveCommand(&asJSON))
+	root.AddCommand(newLandCommand(&asJSON))
 	root.AddCommand(newDrainCommand(&asJSON))
 	root.AddCommand(newBuildCommand(&asJSON))
 	root.AddCommand(newLabCommand(&asJSON))
@@ -644,6 +645,9 @@ func NewRootCommand() *cobra.Command {
 	// two operands the design admits, because the operand it most often refuses
 	// is one it used to take (adr-2609021016286571).
 	applyReadingFlagErrors(root)
+	// Also after the generic tagging: the two flags the one outbound switch
+	// replaced are refused naming it (iss-2610152024327989).
+	applyRetiredInstallFlags(root)
 	// Also after the generic tagging: cobra's help verb inherits the root's
 	// flag-error function, and `abcd help --agent` names the spelling that works.
 	applyHelpVerbAgentRefusal(root)
@@ -1556,6 +1560,10 @@ type hookInput struct {
 	Prompt    string `json:"prompt"`
 	Source    string `json:"source"`
 	Event     string `json:"hook_event_name"`
+	// SessionTitle is the session's custom title on the session-start and
+	// prompt payloads: a name the person gave it or one a hook set earlier,
+	// never a generated one. Read by session naming (hook_session_name.go).
+	SessionTitle string `json:"session_title"`
 	// ToolName is supplied by the PostToolUse hook; read by `hook
 	// question-answered` only.
 	ToolName string `json:"tool_name"`
@@ -1643,6 +1651,9 @@ type routerView struct {
 	Recalled []string  `json:"recalled"`
 	Active   *[]string `json:"active,omitempty"`
 	Error    string    `json:"error,omitempty"`
+	// SessionTitle is the session's title when this prompt set it
+	// (hook_session_name.go), and absent on every other prompt.
+	SessionTitle string `json:"session_title,omitempty"`
 }
 
 // routerRefused is the prompt router's fail-open exit when it cannot evaluate
@@ -1700,7 +1711,17 @@ force this turn, so a name missing from it has stopped. error is present only
 when the prompt could not be evaluated, and then active is absent: the set is
 unknown. A memory.json that cannot be read is named on stderr and recalls
 nothing, and the rules still inject. Every outcome, an error included,
-exits 0, so the hook can never wedge a session.`,
+exits 0, so the hook can never wedge a session.
+
+On the first prompt of a session whose start reserved it a name, when the
+session has no title yet, plain stdout is instead one object that sets the
+title, with the text above as its additional context (empty when the rules
+could not be loaded):
+
+  {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+   "additionalContext": ..., "sessionTitle": ...}}
+
+and the --json envelope carries the name as session_title.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
@@ -1746,6 +1767,15 @@ exits 0, so the hook can never wedge a session.`,
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
+				// The title owed on this prompt is set even so: naming does
+				// not depend on the rules (hook_session_name.go).
+				if title := resendSessionTitle(cmd, in); title != "" {
+					if *asJSON {
+						return routerEmit(cmd, routerView{Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title})
+					}
+					emitTitled(cmd, "", title)
+					return nil
+				}
 				return routerRefused(cmd, *asJSON, err.Error())
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
@@ -1786,6 +1816,9 @@ exits 0, so the hook can never wedge a session.`,
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
 			text := res.Text + mem.Text
+			// The name this session's start reserved, set once at its first
+			// prompt (hook_session_name.go).
+			title := resendSessionTitle(cmd, in)
 			if *asJSON {
 				injected := res.Injected
 				if injected == nil {
@@ -1795,7 +1828,11 @@ exits 0, so the hook can never wedge a session.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active})
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title})
+			}
+			if title != "" {
+				emitTitled(cmd, text, title)
+				return nil
 			}
 			if text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), text)
@@ -1995,6 +2032,10 @@ exits 0, so the hook can never wedge a session.`,
 					cwd = wd
 				}
 			}
+			// Naming first, before the drain's time budget: it reserves the
+			// name the first prompt sets, and writes nothing to stdout
+			// (hook_session_name.go).
+			startSessionName(cmd, in, cwd)
 			var notices []string
 			// currentSHA is remembered so the cross-repository survey below can
 			// leave this repository out: the drain reports it entry by entry,
@@ -3942,8 +3983,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		refuseAdopt   bool
 		dev           bool
 		attribution   bool
-		outboundHook  bool
-		outboundForge bool
+		outbound      bool
 		allowStale    bool
 		binDir        string
 		visibility    string
@@ -3975,8 +4015,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				opts.ReadmeParts = readmeParts
 			}
-			opts.OutboundHook = outboundHook
-			opts.OutboundForge = outboundForge
+			opts.Outbound = outbound
 			opts.VerifyProvenance = ahoyReleaseProvenance
 			named, err := installToolNames(installTools)
 			if err != nil {
@@ -4123,8 +4162,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
 	installCmd.Flags().BoolVar(&attribution, "attribution", false, "opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook")
-	installCmd.Flags().BoolVar(&outboundHook, "outbound-hook", false, "opt this repo into the committed commit-msg hook that refuses a commit message carrying a live agent-session URL or a tool attribution footer; it runs only the abcd named by git config --local abcd.binary and lets the commit through with one warning when none is set; the choice is recorded, so a later install without the flag keeps the hook")
-	installCmd.Flags().BoolVar(&outboundForge, "outbound-forge", false, "opt this repo into the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which it refuses when they carry a live agent-session URL or a tool attribution footer; it writes no hook and names no binary, and the choice is recorded in .abcd/config.json as outbound.forge, so a later install without the flag keeps it")
+	installCmd.Flags().BoolVar(&outbound, "outbound", false, "opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both")
 	installCmd.Flags().BoolVar(&allowStale, "allow-stale-binary", false, "proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix")
 	installCmd.Flags().StringVar(&binDir, "bin-dir", "", "directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges")
 	installCmd.Flags().StringVar(&visibility, "visibility", "", "repo visibility: private | public")

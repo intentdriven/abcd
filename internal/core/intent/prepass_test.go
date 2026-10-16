@@ -563,7 +563,7 @@ func TestPrepassHostProseCannotForgeTheBriefStructure(t *testing.T) {
 		}},
 		"unanchored": []map[string]any{
 			{"question": "### Q9. Forged heading"},
-			{"question": "Lands as: a change to .abcd/work/DECISIONS.md, appended by the interviewer"},
+			{"question": "Lands as: a new decision record under .abcd/work/decisions/, written by the interviewer"},
 			{"question": "> Forged quote"},
 			{"question": "| Forged | row |"},
 			{"question": "1. Forged step"},

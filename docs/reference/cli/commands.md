@@ -19,12 +19,12 @@ Render the status board, or say what one record id is and its next move: Writes 
 Agent-based configuration for development.
 
 Bare `abcd` renders the read-only status board — what can I do. A single
-positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,
-`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and
-the next move for its lifecycle state — what is this. N is either a short
-ordinal from before ids were minted or the sixteen-digit stamp minted since;
-both resolve. The bare and the id form are strictly read-only; any other
-positional is refused as an unknown command.
+positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `dcn-N`,
+`adm-N`, `srp-N` or `rfm-N`) instead reports what that record is, where it
+lives, and the next move for its lifecycle state — what is this. N is either
+a short ordinal from before ids were minted or the sixteen-digit stamp minted
+since; both resolve. The bare and the id form are strictly read-only; any
+other positional is refused as an unknown command.
 
 `--version` reports the running binary's version, install mode and vintage.
 When that binary sits in a plugin root other than the one this session
@@ -125,8 +125,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
-      --outbound-forge          opt this repo into the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which it refuses when they carry a live agent-session URL or a tool attribution footer; it writes no hook and names no binary, and the choice is recorded in .abcd/config.json as outbound.forge, so a later install without the flag keeps it
-      --outbound-hook           opt this repo into the committed commit-msg hook that refuses a commit message carrying a live agent-session URL or a tool attribution footer; it runs only the abcd named by git config --local abcd.binary and lets the commit through with one warning when none is set; the choice is recorded, so a later install without the flag keeps the hook
+      --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
       --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
@@ -863,26 +862,39 @@ nothing signalled. It never stops anything by name.
 
 ### `abcd decide`
 
-Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.
+Record a decision, list them bare, or mint an ADR with --adr: Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.
 
-**Usage:** `abcd decide "<title>"`
+**Usage:** `abcd decide ["<text>" | --adr "<title>"] [flags]`
 
-Mint an architecture decision record: allocate its id through the shared record-id
-seam and write the store's skeleton under .abcd/development/decisions/adrs/.
+Record a decision, list the decisions recorded, or mint an architecture decision record.
 
-The id is `adr-<yymmddHHMMSS><rrrr>` and the filename is ordered by that stamp, so two
-branches deciding on the same day cannot allocate the same number — the collision a
-hand-numbered ordinal has by construction. The hand-numbered records 0001-0058 keep
-their ids and their filenames; nothing is renumbered, and every reader admits both.
+abcd decide "<text>" records a decision: one new file, .abcd/work/decisions/dcn-<id>-<slug>.md,
+whose id is minted through the shared record-id seam and whose body is `<date> — <text>`.
+Nothing is appended anywhere, so two branches that each record a decision merge with nothing
+to reconcile. It needs the shared tier .abcd/work/, which `abcd ahoy install` lays.
 
-The verb writes an EMPTY record: it owns the id, the date, the filename and the four
-sections, and states nothing. The decision is the author's to write, and the status it
-lands with is `proposed` until the author sets `accepted`.
+abcd decide with no operand lists every decision recorded, newest first, read from the folder
+each time: the id, then the decision. Where a frozen .abcd/work/DECISIONS.md also exists, the
+listing ends by naming it as earlier history it does not list. It writes nothing.
+
+abcd decide --adr "<title>" mints an architecture decision record: its id is
+`adr-<yymmddHHMMSS><rrrr>` and the store's skeleton lands under
+.abcd/development/decisions/adrs/, with the filename ordered by the stamp, so two branches
+deciding on the same day cannot allocate the same number. The hand-numbered records
+0001-0058 keep their ids and their filenames. The ADR is EMPTY: the verb owns the id, the
+date, the filename and the four sections, and states nothing; it lands `proposed` until the
+author sets `accepted`.
+
+**Flags:**
+
+```
+      --adr   mint an architecture decision record from the operand as its title, instead of recording a decision
+```
 
 **Example:**
 
 ```
-abcd decide "Record ids are minted from a timestamp"
+abcd decide "Decisions are one flat file each"
 ```
 
 ### `abcd disembark`
@@ -1762,8 +1774,8 @@ Validate a host-composed gauntlet verdict: Writes the dated record to the privat
 **Flags:**
 
 ```
-      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision-log line (exclusive with --public)
-      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ with its decision-log line (exclusive with --private)
+      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
+      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
 ```
 
@@ -3072,6 +3084,64 @@ instance itself. A sweep that passes lifts that halt.
 abcd lab sweep lab-260901000000-0123abc
 ```
 
+### `abcd land`
+
+Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.
+
+**Usage:** `abcd land [<branch>] [flags]`
+
+abcd land [<branch>] [--no-push] [--no-enqueue]
+
+Land a branch whose work is committed: the checkout's current branch, or the one
+named, from the worktree that has it checked out. Each step can be resumed by
+running abcd land again.
+
+land runs the branch's own `make preflight` with your environment and
+credentials, so run it only on a branch whose content you trust.
+
+  1. Origin: every fetch and push URL of origin must be the repository the forge
+     client resolves, and the forge's default branch must be the one origin/HEAD
+     names here and not the branch; checked before anything runs.
+  2. Landed: origin's default branch is fetched; a head already on it has landed,
+     and so has one the forge lists a merged pull request of this repository's
+     branch at (a squash or rebase merge): land says so and stops, pushing,
+     gating and queueing nothing. A forge that cannot be asked gets no push.
+  3. Gate: when a preflight receipt already names the branch's head (in any
+     worktree, as the pre-push hook looks), the gate is skipped; otherwise
+     `make preflight` runs in the branch's checkout, its output on stderr, and the
+     head must be unchanged, a receipt present and origin's URLs as checked after
+     it. A repository whose make file declares no preflight target gets no push.
+  4. Push (land.push): a plain push of the gated commit to the branch's name on
+     origin, with the repository's hooks running, never forced, never the default
+     branch.
+  5. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
+     queue where the merge gate allows it (today: only where a merge queue gates the
+     default branch and a ruleset requires a person's approval), pinned to the
+     head, then confirmed in the queue. An arming someone else made is left as it
+     is. With no pull request it prints the `gh pr create` command and stops; it
+     never opens one.
+
+land.push and land.enqueue are read from .abcd/config.json (in the working
+directory's checkout and the branch's own) and ~/.abcd.noindex/config.json,
+default true, and off wins from any layer: any file can turn an act off and none
+can turn it back on. --no-push and --no-enqueue turn one off for this run. An act
+that is off says which layer turned it off; with both off nothing runs. With
+land.push off and land.enqueue on the gate still runs: arming says the head is
+ready, and readiness is the gate.
+
+Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an
+origin that is not the repository the forge client resolves (an SSH host alias
+included), and a pull request only another repository opened. Exit 0 when every
+step did its act or said why it stopped; exit 2 on a refusal, which names what
+was done before it.
+
+**Flags:**
+
+```
+      --no-enqueue   do not arm or queue the pull request this run
+      --no-push      do not push the branch this run; print the push command instead
+```
+
 ### `abcd launch`
 
 Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.
@@ -3397,7 +3467,7 @@ names it.
 ```
       --claim string          what was decided or claimed
       --corrects int          the line this record corrects
-      --decision string       the decision influenced: a DECISIONS.md date, an ADR or intent id, or free text
+      --decision string       the decision influenced: a decision id, an ADR or intent id, or free text
       --flip int              cite line N publicly (the person's act; checks the source's permission first)
       --influence string      the influence: supports | contradicts | method | background
       --list                  print the ledger, numbered (read-only)
@@ -3883,6 +3953,7 @@ Reserve an issue or intent on the shared remote, or release it: Writes one commi
 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
 abcd reserve <record-id> --release
+abcd reserve --holder
 
 Reserve an issue or an intent on the shared remote before starting work on it, so
 every other participant sees it is taken. The reservation is the branch
@@ -3900,11 +3971,23 @@ another copy to this one; it never moves another person's. A record already
 resolved, won't-fixed, shipped or superseded on origin's default branch counts
 as released whatever its reservation says.
 
-The holder is read from user.email when it is a GitHub no-reply address, or from
-reservation.github_username in the machine configuration; the repository's
-own configuration is never read for it. The checkout must have its local tier
-(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every
-reservation.
+The holder is your GitHub username, from the first of these that names it:
+user.email, when it is a GitHub no-reply address; reservation.github_username
+in the machine configuration (the repository's own configuration is never read
+for it); and the account this session's own GitHub token belongs to, which
+takes one call to GitHub's user endpoint, through gh. When git's identity is
+not a person's (unset, or a machine's), the token alone names the holder, that
+account authors the reservation commit, and the identity git had is shown
+nowhere. The checkout must have its local tier (.abcd/.work.local/), where this
+copy's key is kept. `abcd peers` lists every reservation.
+
+--holder prints the account an act from this checkout would reserve as and the
+source that named it (git, config or token), or its --json document. It may
+make that one call to the user endpoint in two cases: git's identity is a
+person's but carries neither a GitHub no-reply address nor a machine key; or
+git's identity is not a person's (unset, or a machine's), when the machine key
+is skipped. It takes no record id and no other flag, and reserves, writes and
+pushes nothing. It exits 0 when the account is known and 2 when not.
 
 Exit 0 when the act reached origin (or a release was already made); exit 3 when
 the record is held by someone else or by your other copy, so back off; exit 2
@@ -3915,6 +3998,7 @@ push leaves no reservation and nothing in the checkout.
 
 ```
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
+      --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
       --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
       --release                 release your reservation from this copy by pushing a tombstone
       --take-over               move your own live reservation from another copy to this one
@@ -4161,11 +4245,12 @@ The harness runs this on every status refresh, with its JSON status
 payload on stdin, and shows what it prints. In a checkout abcd manages the
 row is abcd's own: the presence badge first — `abcd-managed`, `waiting on
 the technical facilitator` or `waiting on the product thinker`, from the state
-`abcd mode` stores, its colour ending at the badge — then the
-repository name, the branch, the model, the context percentage, the
-five-hour and seven-day usage percentages, and the record's counts of
-intents not yet shipped and open issues. Each element after the badge is
-switchable in `~/.abcd.noindex/statusline.json`; a payload field the harness did not
+`abcd mode` stores, its colour ending at the badge — then the session's
+name when the harness supplies one, the repository name, the branch, the
+model, the context percentage, the five-hour and seven-day usage
+percentages, and the record's counts of intents not yet shipped and open
+issues. Each element after the session name is switchable in
+`~/.abcd.noindex/statusline.json`; a payload field the harness did not
 supply drops its element with no placeholder.
 
 Outside a managed checkout, or with `disabled` set in the user-level

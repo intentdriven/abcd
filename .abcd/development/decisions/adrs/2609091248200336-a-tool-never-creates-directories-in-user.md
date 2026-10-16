@@ -247,7 +247,7 @@ On the number of records:
 **Accepted by the maintainer's ruling of 2026-09-09** on iss-2609091129426411
 (supersede with a record that states the split) and iss-2609091155525689 (a
 separate record for each original), recorded in
-[`.abcd/work/DECISIONS.md`](../../../work/DECISIONS.md). It is a new record
+[dcn-2609090000000003](../../../work/decisions/dcn-2609090000000003-adr-2609091014087993-is-superseded-by.md) and [dcn-2609090000000004](../../../work/decisions/dcn-2609090000000004-adr-2609090717039680-is-superseded-by.md). It is a new record
 rather than an edit to adr-2609091014087993 by the standing instruction that
 an ADR is never amended and always superseded, so the original's decision text
 stands as written and this record carries both corrections.

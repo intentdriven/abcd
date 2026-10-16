@@ -52,7 +52,7 @@ func TestIsIgnored(t *testing.T) {
 	}{
 		{"ignored directory", ".abcd/.work.local/", true},
 		{"ignored by glob", "debug.log", true},
-		{"tracked path", ".abcd/work/DECISIONS.md", false},
+		{"tracked path", ".abcd/work/decisions/README.md", false},
 		{"tracked source", "internal/core/repolint.go", false},
 	}
 	for _, tt := range tests {
@@ -84,20 +84,20 @@ func TestIsIgnoredNegationIsNotIgnored(t *testing.T) {
 func TestCheckIgnoredTrackedFileNotIgnored(t *testing.T) {
 	repo := newRepo(t, ".abcd/\n")
 
-	dir := filepath.Join(repo, ".abcd", "work")
+	dir := filepath.Join(repo, ".abcd", "work", "decisions")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "DECISIONS.md"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "README.md"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// Force-add the path even though .abcd/ is ignored, then commit it.
-	if out, err := runGit(t, repo, "add", "-f", ".abcd/work/DECISIONS.md"); err != nil {
+	if out, err := runGit(t, repo, "add", "-f", ".abcd/work/decisions/README.md"); err != nil {
 		t.Fatalf("git add -f: %v: %s", err, out)
 	}
 	commitAll(t, repo)
 
-	if gitutil.IsIgnored(repo, ".abcd/work/DECISIONS.md") {
+	if gitutil.IsIgnored(repo, ".abcd/work/decisions/README.md") {
 		t.Error("IsIgnored(tracked force-added file) = true; git never ignores a tracked file")
 	}
 	// A genuinely untracked path under the same pattern is still ignored.

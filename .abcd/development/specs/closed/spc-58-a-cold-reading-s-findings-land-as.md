@@ -21,7 +21,7 @@ outstanding report, teaches `record_schema` the new stores, and the RS gates
 learn to scope to the three issue status directories rather than to the whole
 ledger tree.
 
-The policy layer is settled in `.abcd/work/DECISIONS.md` and is not this spec's
+The policy layer is settled in [dcn-2608280000000004](../../../work/decisions/dcn-2608280000000004-cold-reading-workstream-rulings-adopted.md) and is not this spec's
 to reopen: rulings (2), (8), (9), (17) and (18), and ruling (19)'s slate,
 `disposition_grounds` and position validation. This spec settles what they left
 to the build.

@@ -93,7 +93,7 @@ proves the regeneration happened.
 
 The lapse log is content, not mechanism, and the distinction matters here: a
 defect in the mechanism is fixed, a defect in the content is disclosed
-(`.abcd/work/DECISIONS.md`, 2026-08-28). Three entries are written at the outset
+([dcn-2608280000000005](../../../work/decisions/dcn-2608280000000005-ledger-mechanism-and-ledger-content-are.md)). Three entries are written at the outset
 rather than discovered later:
 
 1. **The pre-tooling window.** Which entries were hand-authored before the

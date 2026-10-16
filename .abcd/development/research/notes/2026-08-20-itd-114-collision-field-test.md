@@ -4,7 +4,7 @@ The morning of 2026-08-20 is a natural experiment for
 [itd-114](../../intents/shipped/itd-114-abcd-mints-collision-proof-record-ids.md)
 (collision-proof record ids), run deliberately after two live collisions in the
 preceding day (the standing record is iss-330; the second occurrence is logged
-in the round-2 entry of `.abcd/work/DECISIONS.md`). The maintainer's decision,
+in the round-2 entry [dcn-2608200000000001](../../../work/decisions/dcn-2608200000000001-bughunt-round-2-branch-bughunt-a-round-2.md)). The maintainer's decision,
 same date: **itd-114 is pulled forward** — this note is pre-registration for
 its planning interview, predictions written before the outcomes.
 

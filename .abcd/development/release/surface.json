@@ -281,14 +281,7 @@
           "hidden": false
         },
         {
-          "name": "outbound-forge",
-          "shorthand": "",
-          "type": "bool",
-          "required": false,
-          "hidden": false
-        },
-        {
-          "name": "outbound-hook",
+          "name": "outbound",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -1021,8 +1014,16 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.",
-      "flags": []
+      "sentence": "Record a decision, list them bare, or mint an ADR with --adr: Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.",
+      "flags": [
+        {
+          "name": "adr",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd disembark",
@@ -2677,6 +2678,29 @@
       "flags": []
     },
     {
+      "path": "abcd land",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
+      "flags": [
+        {
+          "name": "no-enqueue",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "no-push",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd launch",
       "hidden": false,
       "group": "release",
@@ -3468,6 +3492,13 @@
           "name": "footprint",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "holder",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },

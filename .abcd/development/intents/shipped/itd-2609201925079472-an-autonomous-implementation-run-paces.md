@@ -120,7 +120,7 @@ Per-criterion verdicts:
   evidence: internal/core/implement/loop/budget_test.go:79 — "a refused budget writes no state"
   evidence: internal/core/implement/loop/budget_test.go:112 — "func TestARunnerThatReportsNoQuotaIsNamedAndTheCheckSkipped"
   evidence: internal/core/runner/runner.go:135 — "QuotaReporter is a Runner that reports its remaining quota. Neither shipped"
-- ac-8 — MET_WITH_CONCERNS: The claude runner reads a rejected rate_limit_event or an assistant rate_limit error as ReasonRateLimited; Dispatch returns it without fallback; Drive routes it to rateLimitWindow, which writes next_eligible_at once (a running pause kept), records the response with the lane and runner, and checkpoints the hit lane; the end-to-end test through Drive and the fake claude asserts all of it and passes. Concerns: (1) 'checkpointed to its branch' is delivered as save-aside plus reset to the branch's last commit, so the agent's uncommitted work lives in the run's aside directory, not on the branch; (2) only the claude CLI's response shapes are recognised; an opencode limit still falls back as an ordinary refusal (DECISIONS.md:2680); (3) a limit met by a host-run agent never reaches the loop (drive.go:152-158 sees only Dispatch failures).
+- ac-8 — MET_WITH_CONCERNS: The claude runner reads a rejected rate_limit_event or an assistant rate_limit error as ReasonRateLimited; Dispatch returns it without fallback; Drive routes it to rateLimitWindow, which writes next_eligible_at once (a running pause kept), records the response with the lane and runner, and checkpoints the hit lane; the end-to-end test through Drive and the fake claude asserts all of it and passes. Concerns: (1) 'checkpointed to its branch' is delivered as save-aside plus reset to the branch's last commit, so the agent's uncommitted work lives in the run's aside directory, not on the branch; (2) only the claude CLI's response shapes are recognised; an opencode limit still falls back as an ordinary refusal ([dcn-2610100000000002](../../../work/decisions/dcn-2610100000000002-four-points-spc-2609301921521360-left.md)); (3) a limit met by a host-run agent never reaches the loop (drive.go:152-158 sees only Dispatch failures).
   evidence: internal/core/runner/claude.go:101 — "func claudeRateLimit(out []byte) string {"
   evidence: internal/core/runner/dispatch.go:115 — "if fl.Reason == ReasonRateLimited {"
   evidence: internal/core/implement/loop/drive.go:158 — "return rateLimitWindow(repoRoot, runID, res.Lane, aw, fl, o)"
@@ -159,7 +159,7 @@ Gap audit:
   - The rate-limited lane is 'checkpointed to its branch': delivered as the agent's uncommitted work and partial receipt saved aside under the run directory and the worktree reset to the branch's last commit, so nothing new reaches the branch
     evidence: internal/core/implement/loop/ratelimit.go:157 — "aside, err := saveAside(repoRoot, root, st.RunID, *lane, lane.Awaits[k], why, aw.Role == RoleImplementer, now)"
     evidence: internal/core/implement/loop/ratelimit_test.go:108 — "lane-2's worktree is reset to its last commit"
-    evidence: .abcd/work/DECISIONS.md:2680 — ""Checkpointed to its branch" reads as the restart of 2026-10-09 reads a gone agent"
+    evidence: [dcn-2610100000000002](../../../work/decisions/dcn-2610100000000002-four-points-spc-2609301921521360-left.md) — ""Checkpointed to its branch" reads as the restart of 2026-10-09 reads a gone agent"
   - The budget comparison exists only behind an optional QuotaReporter that no shipped runner implements, so every real run today skips the check out loud; the comparison path is exercised through the Options.Quota test seam
     evidence: internal/core/runner/runner.go:139 — "type QuotaReporter interface {"
     evidence: internal/core/implement/loop/budget.go:139 — "detail = "skipped, as no runner of the run reports a quota: " + detail"
@@ -168,7 +168,7 @@ Gap audit:
     evidence: internal/core/implement/loop/budget.go:13 — "Fix rounds and syncs"
 - missing:
   - Rate-limit detection for the opencode runner: an opencode limit is still an ordinary refusal and falls back as before
-    evidence: .abcd/work/DECISIONS.md:2680 — "an opencode limit stays a refusal and falls back as before"
+    evidence: [dcn-2610100000000002](../../../work/decisions/dcn-2610100000000002-four-points-spc-2609301921521360-left.md) — "an opencode limit stays a refusal and falls back as before"
     evidence: internal/core/runner/claude.go:80 — "if what := claudeRateLimit(res.stdout); what != "" {"
   - A rate limit met by a host-run sub-agent: the loop reads only a Dispatch failure, and no verb lets the host report one
     evidence: internal/core/implement/loop/drive.go:152 — "out, err := d.Dispatch(ctx, req)"

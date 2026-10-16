@@ -79,7 +79,7 @@ wrap `internal/textwidth` holds (iss-2610031207397996). The levels are indented
 two, four and six columns.
 
 **`abcd <record-id>`** takes a single positional matching `iss-N`, `itd-N`,
-`spc-N`, `adr-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
+`spc-N`, `adr-N`, `dcn-N`, `adm-N`, `srp-N` or `rfm-N` and reports, read-only, what that
 record is, where it lives, and the concrete next move for its lifecycle state.
 An admission and a surprise are the issue ledger's two folderless families
 (spc-2609020626040342): their status reads `admitted` and `recorded`, their links
@@ -87,7 +87,10 @@ are the records they join to, and neither has a next move. A reframe record
 (`rfm-N`, spc-2609020626048705) reads `open` until its after half is written and
 `complete` after; its links are its occasion, the before fingerprints and, once
 complete, the after fingerprints and the surfaces that changed, and an open one's
-next move is its completion. The reading families have no record dispatch. Bare answers *what can I
+next move is its completion. A decision record (`dcn-N`,
+itd-2609151138388536) reads `recorded`; its title is the decision's own words,
+its link is its date, and its next move says a correction is a new decision.
+The reading families have no record dispatch. Bare answers *what can I
 do*; the id form answers *what is this, and what is my next move* (spc-26,
 itd-121). For a shipped intent the move is its fidelity-review state, read by
 the intent store's one reader of the review marker (itd-2609150819445595): an
@@ -177,6 +180,29 @@ message they type next. At a stop that is not a question the agent sets the
 state itself with `abcd mode`, naming whom it addresses. A repository abcd
 does not manage, or one without the local tier, has no badge, and its
 questions are not gated.
+
+**Session names** (itd-2610111707085098, spc-2610152057143798). Each session
+the hooks run in takes a persona name, unique across the machine: the
+repository's personas in order (`.abcd/development/personas.json`, else the
+bundled Alice to Nia), then the same names again as Alice Two up to Nine. The
+session-start hook reserves the next free name in the machine register,
+`~/.abcd.noindex/sessions/names.json`, beside the host process that runs the
+session, and sets no title; the prompt hook sets the title once, at the
+session's first prompt, because the host ignores a title equal to the one a
+session already has, and a title set at start never reached its session list.
+The status line shows the name directly after the badge. The register
+records, by session id, which names abcd gave (the newest 512), and only a
+session start with source `fork` reads a title as inherited. A name the person
+gave is never replaced, except in a fork of it once abcd has given another
+session that name: the fork reads the name as abcd's, and at its start or any
+later resume takes the next free name while a session holding the same name
+runs. A resumed or cleared session keeps its name unless a running
+session was given it since; a fork takes the next free name at its first
+prompt while the session it came from runs. A name is not handed out again
+while any named session runs, except that of a session resumed after its
+record aged out of the newest 512, and naming restarts at the first persona once
+every named session's host process has ended. The board's presence
+line carries no name: it has no host payload to read one from.
 
 **The peers line and `/abcd:peers`** (itd-2609091416295622,
 spc-2609202056480020). A peer is a linked worktree sharing this checkout's git

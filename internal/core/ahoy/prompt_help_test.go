@@ -157,7 +157,7 @@ func TestHelpInShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
 	}
 
 	tracked := gittest.NewRepo(t)
-	tracked.Write(".abcd/work/DECISIONS.md", "- a decision\n")
+	tracked.Write(".abcd/work/decisions/README.md", "# Decisions\n")
 	tracked.Commit("record tier")
 	h, ok = HelpIn(tracked.Root(), "visibility")
 	if !ok {

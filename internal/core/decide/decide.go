@@ -1,11 +1,13 @@
-// Package decide is the WRITE side of the decision record: `abcd decide
-// "<title>"` mints an ADR id and lays the skeleton the store's existing files
-// carry, under `.abcd/development/decisions/adrs/`.
+// Package decide is the WRITE side of the architecture decision record: `abcd
+// decide --adr "<title>"` mints an ADR id and lays the skeleton the store's
+// existing files carry, under `.abcd/development/decisions/adrs/`. A decision
+// that is not an ADR is recorded by bare `abcd decide "<text>"` through
+// internal/core/decisions instead.
 //
 // It exists because ADRs were the last record family allocating by hand. Two
 // branches minted `0055` and `0056` on the same day for different decisions —
 // the add/add collision the timestamp mint removed for captures, intents and
-// specs — and the 2026-09-01 ruling (`.abcd/work/DECISIONS.md`, that date) took
+// specs — and the 2026-09-01 ruling (dcn-2609010000000007) took
 // the family onto the same seam: an ADR filed from then on is
 // `adr-<yymmddHHMMSS><rrrr>`, in a file the stamp orders. The hand-numbered
 // ordinals `0001`–`0058` keep their ids and their filenames; nothing is
@@ -144,7 +146,7 @@ func create(repoRoot, title string, render func(Decision) string) (Decision, err
 			// The date comes off the minted stamp rather than a second clock
 			// reading: one id, one instant, and a record whose frontmatter date can
 			// never disagree with the file it is written in.
-			Date: dateFromStamp(stamp),
+			Date: recordid.DateFromStamp(stamp),
 			Path: rel,
 		}
 		body := render(created)
@@ -172,13 +174,6 @@ func deriveSlug(title string) (string, error) {
 		return "", fmt.Errorf("decide: derived slug %q is not kebab-case", collapsed)
 	}
 	return collapsed, nil
-}
-
-// dateFromStamp renders the mint stamp's yymmdd head as the ISO date the record
-// frontmatter carries. The stamp is UTC and fixed-width by construction, so the
-// slice is total for every id the mint produces.
-func dateFromStamp(stamp string) string {
-	return "20" + stamp[0:2] + "-" + stamp[2:4] + "-" + stamp[4:6]
 }
 
 // mintADRID draws a native adr id that names no decision in this checkout. A

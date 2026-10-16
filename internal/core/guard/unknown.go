@@ -63,7 +63,7 @@ import (
 // known text only, and an operand an entry names by its exact word
 // (arg_values): `rm -rf $(find . -name '*.pyc')` is how an everyday delete
 // names its targets, and reading its operand as every target would refuse it
-// as a delete of `/`. The residuals are recorded in .abcd/work/DECISIONS.md,
+// as a delete of `/`. The residuals are recorded in dcn-2609250000000014 and dcn-2609280000000003,
 // and a word that is wholly a variable reads the same way (`git push origin
 // "$branch"`). A variable's value is read as a flag and a program name, and
 // not as data an earlier command carried (variableCarried).
@@ -1214,7 +1214,7 @@ func unknownFromOpenExpansion(tok string) string {
 // refuses them (iss-2609251824244354's false-positive sweep). As a shell's or
 // `source`'s script it is not a stream (`bash "$script"`, `. "$ENV_FILE"`): a
 // stream path in a variable is data an earlier command carried, the half
-// DECISIONS 2026-09-25 (c) defers for a pid list. As a program name nothing
+// dcn-2609250000000016 (c) defers for a pid list. As a program name nothing
 // fixes, it fires no entry that names only its program and a count of
 // operands (namesOnlyItsProgram): every command with an operand fits one, so
 // `"$GO" build` would read as a pkill.

@@ -107,7 +107,7 @@ Per-criterion verdicts:
 - ac-3 — MET_WITH_CONCERNS: No live surface, brief page, code path or doc still spells the verb abcd audit or /abcd:audit in the conformance sense, the decision log and older changelog sections keep it as history; concern: the privacy waiver token abcd-audit:allow is kept as an honoured legacy spelling by design, a signed-off carve-out from the identifier sweep the changelog names.
   evidence: internal/surface/cli/lint.go:17 — "// `/abcd:audit` returns to itd-16's reserved hash-chain fidelity surface): it evaluates the"
   evidence: internal/core/repolint/rule_privacy.go:61 — "const auditWaiver = "abcd-audit:allow""
-  evidence: .abcd/work/DECISIONS.md:1129 — "`abcd audit` is deterministic rule-checking so it is a lint"
+  evidence: [dcn-2608160000000003](../../../work/decisions/dcn-2608160000000003-the-assessment-vocabulary-settled-at-a.md) — "`abcd audit` is deterministic rule-checking so it is a lint"
   evidence: CHANGELOG.md:1112 — "The privacy waiver's current spelling is `abcd-lint:allow`, and every committed `abcd-audit:allow` line stays honoured forever."
 - ac-4 — MET: The prepare-this-repo page tells the managed repo to run abcd lint, the launch scaffold code carries neither spelling (it writes no conformance step), and the breaking changelog entry names the re-download and re-scaffold step for managed repos.
   evidence: commands/prepare-this-repo.md:104 — "Write the report — the `abcd lint` findings plus these supplements — to the"

@@ -1,6 +1,7 @@
 package statusline
 
-// The harness's status payload, reduced to the four values the row reads.
+// The harness's status payload, reduced to the values the row reads: the four
+// figures, and the session's name.
 //
 // The harness hands its status command a JSON object on stdin. This package
 // never touches stdin — the front door reads the bytes and hands them here —
@@ -21,6 +22,7 @@ package statusline
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -45,7 +47,18 @@ type Payload struct {
 	// filesystem resolution only — never rendered, never echoed, so it is not
 	// sanitised and its tag keeps it out of every JSON envelope.
 	Cwd string `json:"-"`
+	// SessionName is the session's title: one the person gave it, or the
+	// persona name abcd's prompt hook set (itd-2610111707085098). The
+	// harness supplies it only when the session has one. Sanitized, trimmed
+	// and cut to maxSessionNameRunes.
+	SessionName string `json:"session_name,omitempty"`
 }
+
+// maxSessionNameRunes bounds the session name on the row. A persona name and
+// its round ("Henry Seven") are a dozen characters; a title the person typed
+// can be a sentence, and the row is never truncated by this package, so one
+// long title would push every later element off a narrow line.
+const maxSessionNameRunes = 32
 
 // harnessPayload is the wire shape, held privately so the exported Payload is
 // abcd's own vocabulary rather than a harness's. Every level is a pointer:
@@ -67,8 +80,9 @@ type harnessPayload struct {
 			UsedPercentage *float64 `json:"used_percentage"`
 		} `json:"seven_day"`
 	} `json:"rate_limits"`
-	Cwd       *string `json:"cwd"`
-	Workspace *struct {
+	Cwd         *string `json:"cwd"`
+	SessionName *string `json:"session_name"`
+	Workspace   *struct {
 		CurrentDir *string `json:"current_dir"`
 	} `json:"workspace"`
 }
@@ -114,6 +128,15 @@ func ParsePayload(data []byte) (Payload, error) {
 		if hp.RateLimits.SevenDay != nil {
 			p.SevenDayPct = copyPct(hp.RateLimits.SevenDay.UsedPercentage)
 		}
+	}
+	if hp.SessionName != nil {
+		// Sanitized first, so a tab becomes a space the trim then takes, and
+		// cut by runes, so a name is never split inside a character.
+		name := []rune(strings.TrimSpace(termsafe.Sanitize(*hp.SessionName)))
+		if len(name) > maxSessionNameRunes {
+			name = name[:maxSessionNameRunes]
+		}
+		p.SessionName = string(name)
 	}
 	switch {
 	case hp.Cwd != nil && *hp.Cwd != "":

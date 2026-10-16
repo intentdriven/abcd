@@ -1,0 +1,6 @@
+---
+id: dcn-2609020000000012
+slug: what-a-reading-is-handed-has-two
+date: 2026-09-02
+---
+2026-09-02 — What a reading is handed has two committed dimensions, both the documents' own (maintainer): the OBJECT SET (the framework's term, section 13: which records and delivered paths the run is about; for Iteration 2, Iteration 1's shipped state, which here is the ledger: itd-177 to itd-189, itd-198, itd-199, spc-55 to spc-69, and the packages and pages they delivered) and the KINDS within it (the companion's four, section 4.5). A committed preset entry per position carries both plus the window it measures at; nothing at the invocation chooses either. A reading of the object set includes all kinds when the object set fits the reader's window, with the size report stating any figure over the two-hundred-thousand target; measured on 2026-09-02, the ledger at the detection position with all kinds is about 611,000 estimated tokens, which fits a million-token reader and is stated over target. A kind that proves useless leaves the default entry by a commit, which is how the record learns; a larger object set in future narrows kinds the same way. The word "object" alone stays the companion's, for what a position reads; "object set" is the run's, and "object of interest" is its plain-language gloss.

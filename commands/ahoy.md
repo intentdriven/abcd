@@ -180,7 +180,8 @@ Read from `$ABCD`, delegating heavy reading to subagents where available:
   three-rung promotion ladder in its README.
 - `.abcd/development/decisions/adrs/` — MADR, one `<stamp>-<slug>.md` per
   decision under a timestamp id (`adr-<yymmddHHMMSS><rrrr>`). Session
-  decisions live in `work/DECISIONS.md`; architecture-shaping ones graduate.
+  decisions live in `work/decisions/`, one record each (`abcd decide`);
+  architecture-shaping ones graduate.
 - `.abcd/development/intents/` — lifecycle by directory (`drafts/` →
   `planned/` → `shipped/` → `superseded/`).
 - `docs/README.md` — strict Diátaxis, four directories, present tense only,
@@ -245,12 +246,14 @@ target's `.abcd/.work.local/scratch/` (create the directory via
 
 1. **Three tiers.** Create `.abcd/development/` (subdirectories only where
    there is content), `.abcd/work/` with a repo-specific `CONTEXT.md` (what the
-   repo is, current phase, sharp edges — never copied from abcd) and an empty
-   `DECISIONS.md`, and `.abcd/.work.local/` (`NEXT.md`, `scratch/`, `logs/`)
+   repo is, current phase, sharp edges — never copied from abcd) and a
+   `decisions/` folder, one file per decision, with a `README.md` so git keeps
+   it, and `.abcd/.work.local/` (`NEXT.md`, `scratch/`, `logs/`)
    excluded via `.git/info/exclude`.
 2. **Legacy migration — propose, then wait.** If Phase 2 found a legacy
    `.work/` layout, present the mapping (`.work/DECISIONS.md` →
-   `.abcd/work/DECISIONS.md`, and so on) and get explicit sign-off before
+   `.abcd/work/DECISIONS.md`, kept there frozen as earlier history, and so
+   on) and get explicit sign-off before
    moving anything. Moves are content-preserving (`git mv`, then fold), never
    delete-and-recreate. Hard rule: never leave both `.work/` and `.abcd/work/`
    behind — complete the migration or do not start it.
@@ -366,12 +369,13 @@ substance:
 
 - Three-tier working state: `.abcd/development/` (durable record: ADRs in
   `decisions/adrs/` using MADR under timestamp ids, dated plans and research notes),
-  `.abcd/work/` (committed: `CONTEXT.md` orientation, `DECISIONS.md`
-  append-only one-line decision log), `.abcd/.work.local/` (gitignored:
+  `.abcd/work/` (committed: `CONTEXT.md` orientation, `decisions/` one file
+  per decision), `.abcd/.work.local/` (gitignored:
   `NEXT.md` handover, `scratch/`, `logs/` — runtime artefacts go here, never
   in tracked directories).
-- Decisions: one dated line in `.abcd/work/DECISIONS.md`; promote
-  architecture-shaping decisions to ADRs.
+- Decisions: one file per decision in `.abcd/work/decisions/`, opening with
+  its date and never edited after; correct one by recording another, and
+  promote architecture-shaping decisions to ADRs.
 - Docs: `docs/` is user-facing only, one Diátaxis type per page, present tense
   only; British English prose, US English in code and commits. No stray root
   markdown beyond the standard set.
@@ -904,39 +908,88 @@ is recorded in `.abcd/config.json`, so a later `install` without the flag keeps
 the hook and restores a hand-deleted one; a `prepare-commit-msg` hook abcd did
 not write is reported, never replaced.
 
-`--outbound-hook` opts the repo into the committed `commit-msg` hook, which
-refuses a commit whose message carries a live agent-session URL or a tool's own
-attribution footer, by running `abcd lint outbound` over it. Like
-`--attribution` it is its own approval, it is opt-in and never a default
-(installing a hook changes how the repository's commits work, which is the
-repository's choice), the choice is recorded in `.abcd/config.json`, and a
-`commit-msg` hook abcd did not write is reported, never replaced. The hook finds
-abcd one way only, an absolute path each clone sets once:
+`--outbound` is the one outbound switch: it opts the repo into both outbound
+checks at once, which refuse a live agent-session URL or a tool's own
+attribution footer. Like `--attribution` it is its own approval, and it is
+opt-in and never a default (a hook that refuses a commit and a guard that
+refuses a post each change how work in the repository goes, which is the
+repository's choice). The choice is recorded in `.abcd/config.json` as
+`outbound.hook: true` and `outbound.forge: true`, so a later `install` without
+the flag keeps both and restores a hand-deleted hook.
 
-```bash
-git config --local abcd.binary /absolute/path/to/abcd
-```
+- **The commit-message check.** A committed `commit-msg` hook runs `abcd lint
+  outbound` over every commit message. A `commit-msg` hook abcd did not write
+  is never replaced; it is reported unless it runs `abcd lint outbound`
+  itself, outside a comment, in which case the check already runs through it. The hook finds abcd one way only, an absolute
+  path in the clone's own git config, `abcd.binary`. `--outbound` sets it, in
+  this clone's `.git/config` only, to the `PATH` copy whose build provenance
+  the same run verified. It writes nothing, and says why in the result's
+  notes, when there is no such copy: a cold cache, a provenance check that
+  failed, the `--dev` shim, or a copy inside the working tree. A value the
+  person already set is left as it is. Run `abcd ahoy install --outbound` once
+  in each clone, or set it by hand:
 
-It never searches `PATH`, never reads an environment variable, and never runs a
-file inside the working tree, a symlink that resolves into it included. When no
-usable abcd is configured, or the one configured cannot judge the message (an
-exit 1 without `lint outbound`'s own verdict line counts as that), it prints one
-warning line and the commit proceeds: refusing every commit where
-abcd is absent would change how the repository works. Only a message abcd
-judges and refuses is blocked. Like the guard hooks, it runs once the clone's
-`core.hooksPath` points at `.githooks`.
+  ```bash
+  git config --local abcd.binary /absolute/path/to/abcd
+  ```
 
-`--outbound-forge` opts the repo into the shell guard's forge-text check: the
-title, body and body file a posting `gh pr` or `gh issue` command (create, new,
-edit, comment) hands the forge are judged against the same outbound policy
-before the command runs, and a live agent-session URL or a tool attribution
-footer in them is refused (`forge-text-outbound`, in `commands/guard.md`). It is
-opt-in and never a default, on `--outbound-hook`'s terms, and independent of
-it. It writes no hook and needs no `abcd.binary`: the guard is the abcd already
-running in the session, so there is no binary to find and none to be missing.
-The choice is recorded in `.abcd/config.json` as `outbound.forge: true`, which
-is all the guard reads, so a later `install` without the flag keeps it; remove
-the key, or set it to `false`, to turn the check off.
+  The hook never searches `PATH`, never reads an environment variable, and
+  never runs a file inside the working tree, a symlink that resolves into it
+  included. When no usable abcd is configured, or the one configured cannot
+  judge the message (an exit 1 without `lint outbound`'s own verdict line
+  counts as that), it prints one warning line and the commit proceeds:
+  refusing every commit where abcd is absent would change how the repository
+  works. Only a message abcd judges and refuses is blocked. The binary is
+  not re-verified at commit time: a swap of the `PATH` copy by the same
+  account is out of scope.
+
+  `--outbound` never sets `core.hooksPath`, because that key chooses every
+  hook git runs in the clone. So that the check needs no manual step, it
+  also writes the same embedded template, marked as abcd's, as the clone's
+  own `commit-msg` hook in the common git directory (`.git/hooks/commit-msg`
+  in a plain clone, shared by every worktree), where no `core.hooksPath` is
+  set at any scope and nothing is at that path. That copy finds abcd through
+  `abcd.binary` like the committed one and never runs or calls the committed
+  copy. Where `core.hooksPath` is set (the empty value included: git then
+  runs no hook from `.git/hooks`), or a `commit-msg` hook abcd did not write
+  is already there, it leaves that hook alone and saves the same template as
+  `hooks/abcd-commit-msg` in the common git directory instead, a name git
+  never runs; one note says the check is not wired, why, and the line to add
+  to the hook git runs, which calls that copy:
+
+  ```bash
+  h="$(git rev-parse --git-common-dir 2>/dev/null || true)/hooks/abcd-commit-msg"; if [ -x "$h" ]; then "$h" "$1" || exit 1; fi
+  ```
+
+  So the chained check is the template itself and fails open as it does: a
+  missing copy, a missing binary or an abcd that cannot judge the message
+  lets the commit through, and only abcd's own refusal blocks it. A hooks
+  path whose `commit-msg` already runs the check draws no note. A rerun
+  leaves a current copy as it is and refreshes one only when it is byte for
+  byte a template an earlier abcd wrote; a marked copy the person edited is
+  left as it is, and a note says so. A plain `install` never writes either
+  copy.
+- **The forge-text check.** The title, body and body file a posting `gh pr` or
+  `gh issue` command (create, new, edit, comment) hands the forge are judged
+  against the same outbound policy before the command runs, and a live
+  agent-session URL or a tool attribution footer in them is refused
+  (`forge-text-outbound`, in `commands/guard.md`). This half writes no hook and
+  needs no `abcd.binary`: the guard is the abcd already running in the session,
+  so there is no binary to find and none to be missing. The guard reads
+  `outbound.forge` alone; remove both keys, or set them to `false`, to turn
+  the switch off.
+
+`--outbound-hook` and `--outbound-forge`, which each turned on one half, are
+retired: either is refused at exit 2 with a message naming `--outbound`, and
+nothing is written. A repository that recorded only one half under them is
+reported as `outbound.half_on`, and the next `install` completes it under the
+settings approval: it records the other key and, where only the forge-text half
+was on, writes the hook, unless a `commit-msg` hook abcd did not write is
+already at `.githooks/commit-msg`, which the gap and the result's notes then
+name. Completing it never writes `abcd.binary` or the clone's own hook; only an
+explicit `--outbound` does. Only a key that is absent is completed: a key the
+repository set to `false` is its choice, left as it is, and reported as the
+advisory `outbound.half_chosen`, which no install resolves.
 
 For dogfooding abcd itself, `abcd ahoy install --dev` installs a track-latest
 shim instead of the pinned owned copy: the `PATH` entry rebuilds abcd from

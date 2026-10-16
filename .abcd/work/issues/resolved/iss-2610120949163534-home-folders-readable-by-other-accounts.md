@@ -16,7 +16,7 @@ resolved_by:
   commit: "c592d5d44"
 ---
 
-Folders in abcd's home that an earlier abcd, a hand-run `mkdir`, or `git worktree add` created at the process umask are readable by every other account on the computer whenever the home itself is too: a home made 0755 keeps that mode, because every abcd writer leaves an existing folder's mode as it stands (DECISIONS.md 2026-10-04). On a Mac where `~` is 0750 group staff and every local account is in staff, the other accounts can list and read `~/.abcd.noindex/{worktrees,runs,history,lifeboats,review-copies,scratch,sources,lab}` (each 0755), which hold private checkouts and session material. A lane worktree git adds into the store is 0755 whatever the store's mode.
+Folders in abcd's home that an earlier abcd, a hand-run `mkdir`, or `git worktree add` created at the process umask are readable by every other account on the computer whenever the home itself is too: a home made 0755 keeps that mode, because every abcd writer leaves an existing folder's mode as it stands ([dcn-2610040000000007](../../decisions/dcn-2610040000000007-decided-without-a-question-by-abcd-50.md)). On a Mac where `~` is 0750 group staff and every local account is in staff, the other accounts can list and read `~/.abcd.noindex/{worktrees,runs,history,lifeboats,review-copies,scratch,sources,lab}` (each 0755), which hold private checkouts and session material. A lane worktree git adds into the store is 0755 whatever the store's mode.
 
 ## Grounds
 

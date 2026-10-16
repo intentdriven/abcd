@@ -1,0 +1,6 @@
+---
+id: dcn-2609250000000009
+slug: one-route-per-delegating-invocation-for
+date: 2026-09-25
+---
+2026-09-25 — One `--route` per delegating invocation, for the one agent it dispatches; a `--route` naming any other agent is refused before anything runs, never merged and never ignored (lane implementer, autonomous run A, fix round 1 on spc-2609180535002478, after the tier2 review's finding 1). AC 7 of itd-2609170822093401 says a second `--route` for a different agent "applies alongside" the first, and the closed spec's plan said it merges. Every delegating invocation dispatches exactly one agent (a dual-mode verb in its payload mode, or `reading ingest` for the position its output names), so a second agent has no step to apply to: merging would record an override nothing used, and ignoring it would let a mistyped agent name read as honoured. The refusal speaks of the invocation, not the verb ("this invocation dispatches <agent>, not <other>"), because `reading ingest` registers all four positions and dispatches one per output. The flag's help and the four command pages say one per invocation instead of "repeatable". A verb that one day dispatches two agents in one invocation passes both to `ParseRoutes` and gets AC 7's "alongside" as written.

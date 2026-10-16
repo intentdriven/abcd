@@ -20,6 +20,11 @@ type Options struct {
 	// Version is the binary's version the Assisted-by label names; "" means
 	// the running binary's (core.Version).
 	Version string
+	// ForgeUser answers whose GitHub account the forge token gh resolves from
+	// the session's environment belongs to (login and numeric id): the user endpoint, asked only by an
+	// explicit act when git's identity names no holder. nil means the real
+	// call, `gh api user`; tests set it so none touches the network.
+	ForgeUser func(root string) (login string, id int64, err error)
 }
 
 func (o Options) now() time.Time {
@@ -93,12 +98,15 @@ type prepared struct {
 
 // prepare checks a request in the order the refusals promise: the id before
 // any ref name is formed, then the footprint and the lease before any git
-// runs, then the person's identity, holder and working copy from the
-// checkout. A reservation's message, and the tombstone that would release it,
+// runs, then the working copy and the caller's local checks (local, such as
+// Reserve's origin check), then the person's identity and holder. Every check
+// that can refuse on the checkout's own facts runs before the holder, so a
+// checkout refused locally never asks GitHub whose account the token is. A
+// reservation's message, and the tombstone that would release it,
 // are composed and measured against the cap and the outbound policy here too,
 // so a message that may not be written is refused before anything reaches the
 // remote, and a reservation accepted is one that can be released.
-func prepare(root string, req Request, o Options) (*prepared, error) {
+func prepare(root string, req Request, o Options, local ...func(root string) error) (*prepared, error) {
 	id, err := reservableID(req.Record)
 	if err != nil {
 		return nil, err
@@ -128,14 +136,26 @@ func prepare(root string, req Request, o Options) (*prepared, error) {
 		return nil, refuse("lease %s is outside %s to %s; %s", term, lease.Min, lease.Max, nothingPushed)
 	}
 	p := &prepared{root: root, id: id, req: req, lease: term, now: o.now(), label: o.assistedBy()}
+	if p.copy, err = copyKey(root); err != nil {
+		return nil, err
+	}
+	for _, check := range local {
+		if err := check(root); err != nil {
+			return nil, err
+		}
+	}
 	if p.who, err = gitIdentity(root); err != nil {
 		return nil, err
 	}
-	if p.holder, err = resolveHolder(root, o.home(), p.who.Email); err != nil {
+	h, err := resolveHolder(root, p.who, o, true)
+	if err != nil {
 		return nil, err
 	}
-	if p.copy, err = copyKey(root); err != nil {
-		return nil, err
+	p.holder = h.Login
+	if !p.who.person() {
+		// Git's identity is unset or a machine's: the token's account authors
+		// the reservation, so that identity never reaches a commit.
+		p.who = identity{Name: h.Login, Email: h.NoReply}
 	}
 	if !req.Release && !req.Renew {
 		// The reservation is measured by the longer of its own message and the
@@ -168,21 +188,26 @@ func (p *prepared) tombstone(footprint []string) message {
 	}
 }
 
-// checkMessage refuses a message the writer may not write: one over the size
-// cap, or one the outbound policy finds a session URL or a tool footer in,
-// since a reservation is public the moment it is pushed.
-func checkMessage(root, text string) error {
+// checkMessage refuses a reservation message the writer may not write
+// (checkText, for the reservation family).
+func checkMessage(root, text string) error { return checkText(root, reservationFamily, text) }
+
+// checkText refuses a message of family f the writer may not write: one over
+// the size cap, or one the outbound policy finds a session URL or a tool footer
+// in, since every message this package writes is public the moment it is
+// pushed. Each refusal names the family's message and, at the cap, its remedy.
+func checkText(root string, f *family, text string) error {
 	if n := len(text); n > MaxMessageBytes {
-		return refuse("the reservation message would be %d bytes, over the %d-byte cap: name fewer or shorter footprint paths; %s",
-			n, MaxMessageBytes, nothingPushed)
+		return refuse("the %s message would be %d bytes, over the %d-byte cap: %s; %s",
+			f.name, n, MaxMessageBytes, f.shorten, nothingPushed)
 	}
-	findings, err := scanner.CheckOutbound(root, text, "reservation message")
+	findings, err := scanner.CheckOutbound(root, text, f.name+" message")
 	if len(findings) > 0 {
-		return refuse("the reservation message carries %s, which public text may not carry; %s", findings[0].Kind, nothingPushed)
+		return refuse("the %s message carries %s, which public text may not carry; %s", f.name, findings[0].Kind, nothingPushed)
 	}
 	if err != nil {
-		return refuse("the reservation message could not be judged against the outbound policy: %s; %s",
-			redacted(err), nothingPushed)
+		return refuse("the %s message could not be judged against the outbound policy: %s; %s",
+			f.name, redacted(err), nothingPushed)
 	}
 	return nil
 }

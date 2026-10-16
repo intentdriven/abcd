@@ -76,7 +76,7 @@ Per hand-run, append:
   front door (capability, the floor | new intent); per-host adoptions incl.
   concept mapping (capability | one intent per host, DEFERRED to explicit
   adoption decisions, nameless until then). Typed links: the 2026-08-15
-  DECISIONS entry `reverses` the out-of-scope annotation on itd-22 (human
+  decision [dcn-2608150000000005](../../../work/decisions/dcn-2608150000000005-multi-harness-support-is-in-scope.md) `reverses` the out-of-scope annotation on itd-22 (human
   had already confirmed that reversal); adr-39 `refines` that decision;
   itd-22 rework `supersedes` its own prior single-host framing (id kept).
 - **Confirmed routing:** adopted structurally unchanged; two content edits at
@@ -275,7 +275,7 @@ Per hand-run, append:
 - **Initial routing:** three parts — the rename sweep incl. artefacts and
   agent (capability, breaking | this intent); the adr-40 §5 amendment
   (decision | home ruled by the maintainer: dated in-place amendment in
-  adr-40 + a DECISIONS.md line); the oracle seam itself (adr-25 — cite,
+  adr-40 + the decision [dcn-2608160000000005](../../../work/decisions/dcn-2608160000000005-adr-40-5-reversed-at-the.md)); the oracle seam itself (adr-25 — cite,
   untouched). **One reversal flag, the session's first genuine one:**
   reverses adr-40 §5, investigated and confirmed by the maintainer before
   routing.
@@ -416,8 +416,8 @@ Per hand-run, append:
   tier 3 and itd-108's one-cut coherence carry both, no new ADR; stance
   (notify-only-plus-explicit-verb over silent auto-update) | already carried
   by adr-38, no new principle; decision (Homebrew parked until the verb
-  exists; install-channel refusal ships with the verb) | dated DECISIONS.md
-  entry 2026-08-20; plumbing (bootstrap.sh demoted to cold-start trampoline)
+  exists; install-channel refusal ships with the verb) | dated decision
+  [dcn-2608200000000006](../../../work/decisions/dcn-2608200000000006-homebrew-distribution-recorded-and.md); plumbing (bootstrap.sh demoted to cold-start trampoline)
   | itd-130 open question (sequencing + delegation hardening), brief
   internals when it lands; defect discovered en route (stranded PATH symlink
   classifies foreign) | iss-345, fixed test-first the same day, independent

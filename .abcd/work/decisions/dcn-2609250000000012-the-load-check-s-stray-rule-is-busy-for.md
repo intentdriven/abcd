@@ -1,0 +1,6 @@
+---
+id: dcn-2609250000000012
+slug: the-load-check-s-stray-rule-is-busy-for
+date: 2026-09-25
+---
+2026-09-25 — The load check's stray rule is "busy for its share" (ruling H1, the product thinker via the interview session, 07:57Z, on iss-2609231947544298). A long-running process outside abcd's lanes is a stray when it uses nearly all the CPU it could get on the machine as loaded: its lifetime CPU share is measured against its fair share, the online cores divided by the runnable demand, not against a fixed 0.9 of one core, so forty busy loops each at a fortieth of the machine all count. The share test applies to the caller's own processes and to other accounts' alike, and other accounts' strays stay counted only. It is not a second sample and not a summed-cores trigger. The build reads the runnable demand as the snapshot's one-minute load average and caps the fair share at one core, so on a machine loaded no higher than its cores the rule is the near-full core it was (`machineload.FairShare`, spc-2609232027132755). This closes the band between 1.125 and 4 times the cores in which the check said nothing (pinned by `TestStrayRuleSilentBand`, succeeded by `TestStrayRuleCoversTheOversubscribedBand`), and lets the load check's remainder spec close and itd-2609231434459890 ship. The check still warns and never refuses (the 2026-09-23 entry above on that intent).

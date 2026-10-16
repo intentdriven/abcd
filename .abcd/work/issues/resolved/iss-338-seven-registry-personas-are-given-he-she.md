@@ -16,7 +16,7 @@ Seven registry personas are given he/she/his/her pronouns across intents/drafts 
 ## Evidence
 
 - Registry personas given gendered pronouns: `intents/drafts/itd-92:20`, `itd-97:32`, `itd-98:28`, `itd-108:48`, `itd-126:17,29,31`, `itd-128:23`; `intents/shipped/itd-100:17,25`.
-- Rule: `itd-79-persona-registry.md:18`, `personas.json:4`, `intents/README.md:241`, DECISIONS.md -- every persona is they/them.
+- Rule: `itd-79-persona-registry.md:18`, `personas.json:4`, `intents/README.md:241`, [dcn-2607080000000005](../../decisions/dcn-2607080000000005-persona-ssots-reconciled-personas-json.md) -- every persona is they/them.
 
 ## Refuter verdict -- CONFIRMED, severity NITPICK (recorded, not fixed)
 

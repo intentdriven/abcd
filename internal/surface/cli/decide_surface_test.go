@@ -43,7 +43,7 @@ func TestDecideWiredFromTheCLI(t *testing.T) {
 	repo := decideRepo(t)
 	t.Chdir(repo)
 
-	out := runCLI(t, "decide", "Decision records mint through the timestamp seam", "--json")
+	out := runCLI(t, "decide", "--adr", "Decision records mint through the timestamp seam", "--json")
 	var res decide.Decision
 	if err := json.Unmarshal(out, &res); err != nil {
 		t.Fatalf("decode result: %v\n%s", err, out)
@@ -66,7 +66,7 @@ func TestDecideWiredFromTheCLI(t *testing.T) {
 	}
 
 	// The text render is what a human sees; it must name the id and the path.
-	text := string(runCLI(t, "decide", "A second decision on the same day"))
+	text := string(runCLI(t, "decide", "--adr", "A second decision on the same day"))
 	if !strings.Contains(text, "adr-") || !strings.Contains(text, ".abcd/development/decisions/adrs/") {
 		t.Errorf("text render is missing the id or the path:\n%s", text)
 	}
@@ -84,7 +84,7 @@ func TestDecideRefusalsExitTwo(t *testing.T) {
 		{"no-slugable-characters", "///"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if out, err := runCLIErr(t, "decide", tc.arg); err == nil {
+			if out, err := runCLIErr(t, "decide", "--adr", tc.arg); err == nil {
 				t.Fatalf("decide %q must refuse, got: %s", tc.arg, out)
 			}
 		})

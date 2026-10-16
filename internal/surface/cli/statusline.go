@@ -8,12 +8,12 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"syscall"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/statusline"
+	"github.com/intentdriven/abcd/internal/procgroup"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -111,11 +111,12 @@ func newStatuslineCommand(asJSON *bool) *cobra.Command {
 			"payload on stdin, and shows what it prints. In a checkout abcd manages the\n" +
 			"row is abcd's own: the presence badge first — `abcd-managed`, `waiting on\n" +
 			"the technical facilitator` or `waiting on the product thinker`, from the state\n" +
-			"`abcd mode` stores, its colour ending at the badge — then the\n" +
-			"repository name, the branch, the model, the context percentage, the\n" +
-			"five-hour and seven-day usage percentages, and the record's counts of\n" +
-			"intents not yet shipped and open issues. Each element after the badge is\n" +
-			"switchable in `" + abcdhome.Display("statusline.json") + "`; a payload field the harness did not\n" +
+			"`abcd mode` stores, its colour ending at the badge — then the session's\n" +
+			"name when the harness supplies one, the repository name, the branch, the\n" +
+			"model, the context percentage, the five-hour and seven-day usage\n" +
+			"percentages, and the record's counts of intents not yet shipped and open\n" +
+			"issues. Each element after the session name is switchable in\n" +
+			"`" + abcdhome.Display("statusline.json") + "`; a payload field the harness did not\n" +
 			"supply drops its element with no placeholder.\n\n" +
 			"Outside a managed checkout, or with `disabled` set in the user-level\n" +
 			"setting, it runs the status command recorded there at install time with the\n" +
@@ -331,11 +332,8 @@ func runPreviousStatusCommand(cmd *cobra.Command, previous string, stdin []byte,
 	// The command leads its own process group, and the bound kills the group
 	// through the pid this handle holds — never a pattern, never another
 	// process — so a pipeline or a background child it started ends with it
-	// rather than outliving the refresh (internal/core/tools' runArgv, the
-	// same shape).
-	sh.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	sh.Cancel = func() error { return syscall.Kill(-sh.Process.Pid, syscall.SIGKILL) }
-	sh.WaitDelay = previousCommandWaitDelay
+	// rather than outliving the refresh.
+	procgroup.Bound(sh, previousCommandWaitDelay)
 	err := sh.Run()
 	var exit *exec.ExitError
 	switch {

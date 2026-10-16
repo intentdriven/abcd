@@ -9,7 +9,7 @@ found_during: "pr-queue-observation-2026-09-01"
 origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/work/rulesets/main-protection.json"
-resolution: "Strict stays; iss-172's first rung ships as scripts/pr-keep-current.sh, which merges the base into every armed pull request that is BEHIND and not queued, once or on a watch loop, and CONTRIBUTING points at it. The queue-only alternative was declined by the maintainer on 2026-09-01 (DECISIONS.md)."
+resolution: "Strict stays; iss-172's first rung ships as scripts/pr-keep-current.sh, which merges the base into every armed pull request that is BEHIND and not queued, once or on a watch loop, and CONTRIBUTING points at it. The queue-only alternative was declined by the maintainer on 2026-09-01 (dcn-2609010000000006)."
 impact: additive
 resolved_by:
   commit: "06574914"

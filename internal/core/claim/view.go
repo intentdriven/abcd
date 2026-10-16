@@ -44,7 +44,8 @@ type Reservation struct {
 	Footprint []string
 	ClaimedAt time.Time
 	// EffectiveExpiry is when it stops holding: the lease clamped to a day,
-	// or an unreadable tip's hold.
+	// or an unreadable tip's hold. A tip dated more than lease.Skew ahead of
+	// the reader counts from when this copy first fetched it (lease.Judge).
 	EffectiveExpiry time.Time
 	// State is StateLive, StateExpired, StateReleased or StateUnreadable.
 	State string
@@ -88,8 +89,15 @@ func (s Snapshot) LiveByHolder() map[string]int {
 // default branch, and stamps when it did, as every act does before it judges;
 // it is the listing's one network act. gap is why the default branch could
 // not be read, when it could not. A checkout with no remote named origin
-// answers ErrNoOrigin.
+// answers ErrNoOrigin. After a fetch it keeps, for each tip dated more than
+// lease.Skew ahead (and each whose date cannot be read), when this copy first
+// fetched it, so the view, which writes nothing, counts it from then.
 func Fetch(root string, o Options) (gap string, err error) {
+	defer func() {
+		if err == nil {
+			keepFirstFetched(root, o.now())
+		}
+	}()
 	out, err := localGit(root, 64<<10, "remote")
 	if err != nil {
 		return "", refuse("could not list this checkout's remotes: %s; nothing was fetched", redacted(err))
@@ -97,7 +105,7 @@ func Fetch(root string, o Options) (gap string, err error) {
 	if !slices.Contains(strings.Fields(out), Remote) {
 		return "", ErrNoOrigin
 	}
-	return fetch(root, o.now())
+	return fetch(root, o.now(), noReservation, reservations)
 }
 
 // View reads the reservations from this checkout's disk only, as last
@@ -113,7 +121,7 @@ func View(root string, now time.Time) (Snapshot, error) {
 // this clone holds of it.
 func view(root string, now time.Time, derive bool) (Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)
-	snap := Snapshot{FetchedAt: lastFetched(root), Reservations: []Reservation{}}
+	snap := Snapshot{FetchedAt: lastFetched(root, reservations), Reservations: []Reservation{}}
 	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
 	if err != nil {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
@@ -145,7 +153,7 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 	}
 	for _, ref := range refs {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
-		t, ok, err := readTip(root, id, ref, tree, dated, false)
+		t, ok, err := readSeen(root, id, ref, tree, dated, false)
 		if err != nil {
 			return snap, fmt.Errorf("reading the reservation on %s: %s", id, redacted(err))
 		}
@@ -161,10 +169,10 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 func listed(t tip, id string, derived bool, own string, now time.Time) Reservation {
 	r := Reservation{Record: id, Commit: t.Commit, Unreadable: t.Unreadable, HeldFromFetch: t.DatedFromFetch}
 	if t.Unreadable != "" {
-		r.EffectiveExpiry = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt}, lease.Default, now).EffectiveExpiry
+		r.EffectiveExpiry = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt, FirstSeen: t.FirstSeen}, lease.Default, now).EffectiveExpiry
 		r.State = StateUnreadable
 	} else {
-		v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt}, lease.Default, now)
+		v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, now)
 		r.Holder, r.Footprint, r.ClaimedAt, r.EffectiveExpiry = t.Holder, t.Footprint, t.ClaimedAt, v.EffectiveExpiry
 		if own != "" && t.Copy == own {
 			r.Copy = CopyThis
@@ -195,15 +203,15 @@ func terminal(finished map[string][]string, id string) bool {
 	return false
 }
 
-// lastFetched is the time this checkout's last fetch stamped; zero when no
-// stamp reads.
-func lastFetched(root string) time.Time {
+// lastFetched is the time this checkout's last fetch of ns stamped; zero when
+// no stamp reads.
+func lastFetched(root string, ns namespace) time.Time {
 	r, err := os.OpenRoot(root)
 	if err != nil {
 		return time.Time{}
 	}
 	defer r.Close()
-	data, err := fsutil.ReadGuardedInRoot(r, fetchedAtRel, 64)
+	data, err := fsutil.ReadGuardedInRoot(r, ns.stampRel(), 64)
 	if err != nil {
 		return time.Time{}
 	}

@@ -58,7 +58,7 @@ func TestDocsCurrencyRefusalKeepsTheOtherFindings(t *testing.T) {
 	res := newFixtureRepo(t).
 		file(".gitignore", ".abcd/.work.local/\n").
 		file(".abcd/development/README.md", "# durable record\n").
-		file(".abcd/work/README.md", "# shared\n"). // no DECISIONS.md: a decision-durability warn
+		file(".abcd/work/README.md", "# shared\n"). // no decisions folder: a decision-durability warn
 		file(".abcd/.work.local/NEXT.md", "# local handoff\n").
 		file("AGENTS.md", "# conventions\n").
 		file("docs/a.md", "# a\n").

@@ -13,3 +13,5 @@ remedy: "Give preflight's go test of internal/surface/cli an explicit -timeout s
 ---
 
 make preflight's unit pass runs `go test` with the default ten-minute package timeout, and internal/surface/cli exceeded it on 2026-10-11 (panic: test timed out after 10m0s, in TestStatuslineHungGitDoesNotFreezeTheLine) while the machine's five-minute load average was 133 with several sessions running preflights and sub-agents at once. Every other package passed and the branch changed no Go code, so the failure was load, not the change; a second run was started at load 48. Concurrent sessions are the normal way this repository is worked on, so a load-sensitive package timeout fails preflight for nothing and costs a full re-run.
+
+2026-10-15, a further occurrence: a plain `go test ./...` on the feat/abcd-land branch timed out at ten minutes in four packages, internal/core/implement/loop, internal/core/reading, internal/core/site and internal/surface/cli, under concurrent load. All four passed with `-timeout 40m` (468s, 209s, 218s, 448s). So the default timeout is short for more packages than internal/surface/cli alone.

@@ -225,7 +225,7 @@ Gap audit:
 - diverged:
   - decision 2 names the agents block as nine entries; the delivered block lists eighteen (banlist, docs, guard, ideate, identity, inbox, peers, report, site added) under a technical ruling the orchestrator recorded on 2026-09-25 as subject to the product thinker's review on return, and build and drain are absent from records because they are not built
     evidence: internal/surface/cli/helpgroups.go:104 — ""banlist": {group: groupAgents, page: "commands/banlist.md"},"
-    evidence: .abcd/work/DECISIONS.md:2554 — "Help placement of the verbs itd-146's decision 2 does not name: the orchestrator's technical ruling"
+    evidence: [dcn-2609250000000021](../../../work/decisions/dcn-2609250000000021-help-placement-of-the-verbs-itd-146-s.md) — "Help placement of the verbs itd-146's decision 2 does not name: the orchestrator's technical ruling"
 - missing: (none)
 
 Scope-condition dispositions:

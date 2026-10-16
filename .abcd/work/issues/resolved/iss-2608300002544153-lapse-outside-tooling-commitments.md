@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "cold-reading workstream preparation, 2026-08-27/28"
 found_at: ".abcd/work/DECISIONS.md (adopted rulings entry)"
 lapsed_at: "2026-08-28T00:00:00Z"
-resolution: "the DECISIONS 2026-08-28 entry on the adopted cold-reading workstream rulings carries the rulings, disclosed as this pre-tooling lapse"
+resolution: "the 2026-08-28 entry dcn-2608280000000004 on the adopted cold-reading workstream rulings carries the rulings, disclosed as this pre-tooling lapse"
 impact: internal
 ---
 
