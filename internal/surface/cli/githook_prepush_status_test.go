@@ -101,3 +101,67 @@ func TestPrePushGatesEveryOtherPushUnderTheStatusPrefix(t *testing.T) {
 		})
 	}
 }
+
+// TestPrePushReadsPushedCommitsAsStored: a local replace ref that stands an
+// empty-tree commit in for a commit carrying files does not make that commit
+// pass the status row. The hook reads every commit as stored, as the push
+// sends it, so it is gated, refused without a receipt, and origin is unmoved.
+func TestPrePushReadsPushedCommitsAsStored(t *testing.T) {
+	c := newPrePushCase(t)
+	files := c.commit("feature.md", "a feature\n")
+	c.git("replace", files, c.emptyTreeCommit("", "abcd announcement: merging #1012"))
+	if tree := c.git("rev-parse", files+"^{tree}"); tree != c.git("hash-object", "-t", "tree", "/dev/null") {
+		t.Fatalf("the replace ref does not stand in: %s reads as tree %s", files, tree)
+	}
+	out, err := c.push("origin", files+":"+statusRef)
+	if err == nil || !strings.Contains(out, "no passing preflight") {
+		t.Fatalf("a commit carrying files passed under the status prefix behind a replace ref (err %v)\n%s", err, out)
+	}
+	if got := c.remoteRef(statusRef); got != "" {
+		t.Errorf("the remote moved to %s although the push was refused", got)
+	}
+}
+
+// TestPrePushGatesAMergeThatBringsInFiles: a merge with the empty tree over an
+// announcement, whose second parent carries files, moves those files' commits
+// onto the branch, so it is gated as any push is.
+func TestPrePushGatesAMergeThatBringsInFiles(t *testing.T) {
+	c := newPrePushCase(t)
+	first := c.emptyTreeCommit("", "abcd announcement: merging #1012")
+	if out, err := c.push("origin", first+":"+statusRef); err != nil {
+		t.Fatalf("the announcement itself was refused\n%s", out)
+	}
+	files := c.commit("feature.md", "a feature\n")
+	empty := c.git("hash-object", "-w", "-t", "tree", "/dev/null")
+	merge := c.git("commit-tree", empty, "-p", first, "-p", files, "-m", "abcd announcement: merged #1012")
+	out, err := c.push("origin", merge+":"+statusRef)
+	if err == nil || !strings.Contains(out, "no passing preflight") {
+		t.Fatalf("a merge bringing in files passed under the status prefix without a receipt (err %v)\n%s", err, out)
+	}
+	if got := c.remoteRef(statusRef); got != first {
+		t.Errorf("the remote holds %q, want the announcement %s untouched", got, first)
+	}
+}
+
+// TestPrePushAnyRefMerelyLikeTheStatusPrefixNeedsAReceipt: only refs/heads/
+// abcd-status/ is receipt-less. An empty-tree commit under a prefix that only
+// begins like it, differs in case, or is a tag needs a receipt as any push does.
+func TestPrePushAnyRefMerelyLikeTheStatusPrefixNeedsAReceipt(t *testing.T) {
+	for _, ref := range []string{
+		"refs/heads/abcd-statusX/octo",
+		"refs/heads/ABCD-STATUS/octo",
+		"refs/tags/abcd-status/octo",
+	} {
+		t.Run(ref, func(t *testing.T) {
+			c := newPrePushCase(t)
+			first := c.emptyTreeCommit("", "abcd announcement: merging #1012")
+			out, err := c.push("origin", first+":"+ref)
+			if err == nil || !strings.Contains(out, "no passing preflight") {
+				t.Fatalf("an empty-tree commit at %s passed without a receipt (err %v)\n%s", ref, err, out)
+			}
+			if got := c.remoteRef(ref); got != "" {
+				t.Errorf("the remote holds %s at %s", got, ref)
+			}
+		})
+	}
+}

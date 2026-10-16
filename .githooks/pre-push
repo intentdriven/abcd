@@ -78,6 +78,10 @@
 # `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
 # every gate on the pushed commit and is the authority either way.
 set -euo pipefail
+# Every read below sees objects as stored, as the push sends them: a local
+# refs/replace/* ref can stand one commit in for another, so a commit carrying
+# files could otherwise read as one with the empty tree.
+export GIT_NO_REPLACE_OBJECTS=1
 cd "$(git rev-parse --show-toplevel)"
 
 protected="main"
