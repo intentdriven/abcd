@@ -741,6 +741,8 @@ check for pull requests with auto-merge on and for merge-queue entries once it
 has reserved, and again just before it merges the release pull request, and
 still tell people working in the repository by hand to hold.
 
+## 4. Reports
+
 Every preview, and every cut that renders a payload, writes a pre-flight report:
 `preflight.json` and `preflight.md` in a directory of its own under
 `.abcd/.work.local/logs/launch/`, named for the run's instant, in the gitignored
