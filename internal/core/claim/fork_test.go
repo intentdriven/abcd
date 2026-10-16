@@ -18,6 +18,8 @@ type forge struct {
 	answer github.Repo
 	err    error
 	asked  []string
+	// byName, when it holds owner/name, is the answer for that repository.
+	byName map[string]github.Repo
 }
 
 func stubForge(t *testing.T, answer github.Repo, err error) *forge {
@@ -26,6 +28,9 @@ func stubForge(t *testing.T, answer github.Repo, err error) *forge {
 	origRepo := forgeRepo
 	forgeRepo = func(_, owner, name string) (github.Repo, error) {
 		f.asked = append(f.asked, owner+"/"+name)
+		if a, ok := f.byName[owner+"/"+name]; ok {
+			return a, nil
+		}
 		return f.answer, f.err
 	}
 	forgetForkAnswers()
@@ -38,9 +43,9 @@ func stubForge(t *testing.T, answer github.Repo, err error) *forge {
 // check reads, and only it.
 func originOnGitHub(t *testing.T, url string) {
 	t.Helper()
-	orig := originPushURL
-	originPushURL = func(string) (string, error) { return url, nil }
-	t.Cleanup(func() { originPushURL = orig })
+	orig := originPushURLs
+	originPushURLs = func(string) (pushTargets, error) { return pushTargets{urls: []string{url}}, nil }
+	t.Cleanup(func() { originPushURLs = orig })
 }
 
 // TestAForkOriginRefusesAFreshReservationNamingItsParent: a github.com origin
@@ -187,5 +192,109 @@ func TestTheForgeIsAskedOncePerProcess(t *testing.T) {
 		if len(f.asked) != 1 {
 			t.Fatalf("three reservations asked the forge %d times (%v), want once", len(f.asked), f.asked)
 		}
+	}
+}
+
+// TestEveryGitHubFormIsAsked: the forms git takes for github.com beyond the
+// three it writes are asked about, each by its owner and name, and a fork
+// refused in that form names the command in it, with no userinfo carried
+// over from an https URL.
+func TestEveryGitHubFormIsAsked(t *testing.T) {
+	for url, want := range map[string]string{
+		"https://octo@github.com/octo/abcd.git":      "git remote set-url origin https://github.com/intentdriven/abcd.git",
+		"https://octo:secret@github.com/octo/abcd":   "git remote set-url origin https://github.com/intentdriven/abcd.git",
+		"ssh://git@github.com:22/octo/abcd.git":      "git remote set-url origin ssh://git@github.com:22/intentdriven/abcd.git",
+		"ssh://git@ssh.github.com:443/octo/abcd.git": "git remote set-url origin ssh://git@ssh.github.com:443/intentdriven/abcd.git",
+		"ssh://github.com/octo/abcd":                 "git remote set-url origin ssh://github.com/intentdriven/abcd.git",
+		"git@GitHub.com:octo/abcd.git":               "git remote set-url origin git@github.com:intentdriven/abcd.git",
+		"https://GITHUB.com/octo/abcd":               "git remote set-url origin https://github.com/intentdriven/abcd.git",
+	} {
+		w := newWorld(t)
+		p := w.clone("1234+octo@users.noreply.github.com", "")
+		f := stubForge(t, github.Repo{Fork: true, Parent: "intentdriven/abcd"}, nil)
+		originOnGitHub(t, url)
+		_, err := p.reserve("iss-5", "a.go")
+		if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: %v; want a fork refusal naming %q", url, err, want)
+		}
+		if err != nil && strings.Contains(err.Error(), "secret") {
+			t.Errorf("%s: the refusal carries the URL's userinfo: %v", url, err)
+		}
+		if !slices.Equal(f.asked, []string{"octo/abcd"}) {
+			t.Errorf("%s: the forge was asked %v, want [octo/abcd]", url, f.asked)
+		}
+	}
+}
+
+// TestAHostNotGitHubByNameWarns: a push URL that names a host and one owner
+// and one name, on a host that is not github.com by name (an ssh host alias,
+// another forge), is not asked about and says so; a local path stays silent.
+func TestAHostNotGitHubByNameWarns(t *testing.T) {
+	for _, url := range []string{"git@github-work:octo/abcd.git", "https://gitlab.com/octo/abcd.git"} {
+		w := newWorld(t)
+		p := w.clone("1234+octo@users.noreply.github.com", "")
+		f := stubForge(t, github.Repo{Fork: true, Parent: "intentdriven/abcd"}, nil)
+		originOnGitHub(t, url)
+		res, err := p.reserve("iss-5", "a.go")
+		if err != nil || res.Act != ActReserved {
+			t.Fatalf("%s: %+v %v; want the act through", url, res, err)
+		}
+		if want := "origin's host is not github.com by name, so whether it is a fork was not checked"; res.ForkUnchecked != want {
+			t.Errorf("%s: the warning is %q, want %q", url, res.ForkUnchecked, want)
+		}
+		if len(f.asked) != 0 {
+			t.Errorf("%s: a host not github.com by name was asked about: %v", url, f.asked)
+		}
+	}
+}
+
+// TestThePushURLNotTheFetchURLIsAsked: with git's own reading of origin, a
+// push URL on github.com is what the forge is asked about while the fetch URL
+// stays the world's bare repository, and a fork there is refused before
+// anything is pushed.
+func TestThePushURLNotTheFetchURLIsAsked(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	f := stubForge(t, github.Repo{Fork: true, Parent: "intentdriven/abcd"}, nil)
+	p.git("config", "remote.origin.pushurl", "git@github.com:octo/fork.git")
+	_, err := p.reserve("iss-5", "a.go")
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "octo/fork, a fork of intentdriven/abcd") {
+		t.Fatalf("a fork push URL: %v; want the fork refused", err)
+	}
+	if !slices.Equal(f.asked, []string{"octo/fork"}) {
+		t.Fatalf("the forge was asked %v, want the push URL's [octo/fork]", f.asked)
+	}
+	// A push URL is moved by set-url --push: a plain set-url moves the fetch
+	// URL and leaves every push on the fork.
+	if want := "git remote set-url --push origin git@github.com:intentdriven/abcd.git)"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("the refusal names %q: %v", want, err)
+	}
+	if w.remoteTip("iss-5") != "" {
+		t.Fatal("a refused reservation was pushed")
+	}
+}
+
+// TestEveryPushURLIsAsked: origin with several push URLs pushes to each, so
+// each is asked about, and one fork among them refuses the act.
+func TestEveryPushURLIsAsked(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	f := stubForge(t, github.Repo{}, nil)
+	f.byName = map[string]github.Repo{"octo/fork": {Fork: true, Parent: "intentdriven/abcd"}}
+	p.git("config", "--add", "remote.origin.pushurl", "https://github.com/intentdriven/abcd.git")
+	p.git("config", "--add", "remote.origin.pushurl", "git@github.com:octo/fork.git")
+	_, err := p.reserve("iss-5", "a.go")
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "octo/fork, a fork of intentdriven/abcd") {
+		t.Fatalf("a second push URL on a fork: %v; want the fork refused", err)
+	}
+	if !slices.Equal(f.asked, []string{"intentdriven/abcd", "octo/fork"}) {
+		t.Fatalf("the forge was asked %v, want both push URLs", f.asked)
+	}
+	// One of several push URLs is replaced by naming it, as owner/name.
+	if want := "git remote set-url --push origin git@github.com:intentdriven/abcd.git octo/fork)"; !strings.Contains(err.Error(), want) {
+		t.Fatalf("the refusal names %q: %v", want, err)
+	}
+	if w.remoteTip("iss-5") != "" {
+		t.Fatal("a refused reservation was pushed")
 	}
 }

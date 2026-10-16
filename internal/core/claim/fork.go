@@ -2,6 +2,7 @@ package claim
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 
@@ -22,12 +23,40 @@ import (
 // so none touches the network.
 var forgeRepo = github.Repository
 
-// originPushURL is where this checkout's pushes to origin go, as git resolves
-// it under the person's own configuration (a push URL and its rewrites
-// applied): the repository a reservation lands on. Tests replace it.
-var originPushURL = func(root string) (string, error) {
-	out, _, err := personalGit(root, "", nil, "remote", "get-url", "--push", Remote)
-	return strings.TrimSpace(out), err
+// pushTargets is where this checkout's pushes to origin go, as git resolves
+// it under the person's own configuration (push URLs and their rewrites
+// applied): every repository a reservation lands on, since git pushes to each
+// push URL in turn. pushurls is how many remote.origin.pushurl values are
+// configured, 0 when pushes go to the fetch URL; it decides which set-url
+// command moves the one that is a fork.
+type pushTargets struct {
+	urls     []string
+	pushurls int
+}
+
+// originPushURLs reads origin's push targets; tests replace it.
+var originPushURLs = func(root string) (pushTargets, error) {
+	out, _, err := personalGit(root, "", nil, "remote", "get-url", "--push", "--all", Remote)
+	if err != nil {
+		return pushTargets{}, err
+	}
+	var t pushTargets
+	for _, l := range strings.Split(out, "\n") {
+		if l = strings.TrimSpace(l); l != "" {
+			t.urls = append(t.urls, l)
+		}
+	}
+	// git config exits 1 when the key is unset: no push URL is configured.
+	conf, code, err := personalGit(root, "", nil, "config", "--get-all", "remote."+Remote+".pushurl")
+	if err != nil && code != 1 {
+		return pushTargets{}, err
+	}
+	for _, l := range strings.Split(conf, "\n") {
+		if strings.TrimSpace(l) != "" {
+			t.pushurls++
+		}
+	}
+	return t, nil
 }
 
 // forkAnswer is the forge's answer about one repository, or why it gave none.
@@ -69,17 +98,35 @@ func askFork(root, owner, name string) forkAnswer {
 	return a
 }
 
-// checkFork refuses a fresh reservation whose origin is a fork on github.com,
-// naming the repository it was made from and the command that points origin
-// there. unchecked is why the check could not be made, "" when it was made or
-// origin is not on github.com; the act then goes on.
+// checkFork refuses a fresh reservation when any of origin's push URLs is a
+// fork on github.com, naming the repository it was made from and the command
+// that points that URL there. unchecked is why the check could not be made
+// for some URL, "" when every URL was checked or is a local path; the act
+// then goes on.
 func checkFork(root string) (unchecked string, err error) {
-	url, uerr := originPushURL(root)
+	targets, uerr := originPushURLs(root)
 	if uerr != nil {
 		return "could not read " + Remote + "'s push URL: " + redacted(uerr), nil
 	}
+	var gaps []string
+	for _, url := range targets.urls {
+		gap, err := checkForkURL(root, url, targets)
+		if err != nil {
+			return "", err
+		}
+		if gap != "" && !slices.Contains(gaps, gap) {
+			gaps = append(gaps, gap)
+		}
+	}
+	return strings.Join(gaps, "; "), nil
+}
+
+// checkForkURL is checkFork for one push URL.
+func checkForkURL(root, url string, targets pushTargets) (unchecked string, err error) {
 	owner, name, perr := github.ParseRemote(url)
 	switch {
+	case errors.Is(perr, github.ErrNotGitHub) && github.NamesHostedRepository(url):
+		return notGitHubByName, nil
 	case errors.Is(perr, github.ErrNotGitHub):
 		return "", nil
 	case perr != nil:
@@ -91,11 +138,32 @@ func checkFork(root string) (unchecked string, err error) {
 	}
 	if a.repo.Fork {
 		return "", refuse("%s is %s/%s, a fork of %s: a reservation there is invisible to everyone working on %s, so it holds nothing for them; "+
-			"point %s at the repository it was made from (git remote set-url %s %s), then reserve again; %s",
-			Remote, owner, name, a.repo.Parent, a.repo.Parent, Remote, Remote, parentURL(url, a.repo.Parent), nothingPushed)
+			"point %s at the repository it was made from (%s), then reserve again; %s",
+			Remote, owner, name, a.repo.Parent, a.repo.Parent, Remote, setURLCommand(targets, owner+"/"+name, parentURL(url, a.repo.Parent)), nothingPushed)
 	}
 	return "", nil
 }
+
+// setURLCommand is the command that points the push URL naming fork at
+// parent: a plain set-url when pushes go to the fetch URL, set-url --push
+// when one push URL is configured, and with several the one to replace named
+// by its owner/name (set-url's old-URL pattern), never by the URL itself,
+// which can carry a token.
+func setURLCommand(targets pushTargets, fork, parent string) string {
+	switch {
+	case targets.pushurls == 0:
+		return "git remote set-url " + Remote + " " + parent
+	case targets.pushurls == 1:
+		return "git remote set-url --push " + Remote + " " + parent
+	}
+	return "git remote set-url --push " + Remote + " " + parent + " " + fork
+}
+
+// notGitHubByName is the warning for a push URL that names a host and one
+// owner and one name on a host that is not github.com by name: an ssh host
+// alias (`git@github-work:owner/name`) may well reach github.com, so the check
+// is said to be skipped rather than passed over in silence.
+const notGitHubByName = Remote + "'s host is not github.com by name, so whether it is a fork was not checked"
 
 // forkClass is why the forge gave no answer, in abcd's words: gh's own can
 // carry an identity or a token's scope, and are dropped.
@@ -113,14 +181,25 @@ func forkClass(err error) string {
 }
 
 // parentURL is the parent repository's URL in the form origin's URL takes, so
-// a person on ssh is not moved to https. parent is owner/name, both plain
-// names (github.Repository vouches for them).
+// a person on ssh is not moved to https, and its port and ssh user are kept;
+// an https URL's userinfo is dropped, since it can carry a token. parent is
+// owner/name, both plain names (github.Repository vouches for them), and
+// origin is a github.com URL ParseRemote accepted.
 func parentURL(origin, parent string) string {
-	switch {
-	case strings.HasPrefix(origin, "git@github.com:"):
-		return "git@github.com:" + parent + ".git"
-	case strings.HasPrefix(origin, "ssh://git@github.com/"):
-		return "ssh://git@github.com/" + parent + ".git"
+	r, _ := github.SplitRemote(origin)
+	user := ""
+	if r.User != "" && github.PlainName(r.User) {
+		user = r.User + "@"
 	}
-	return "https://github.com/" + parent + ".git"
+	port := ""
+	if r.Port != "" {
+		port = ":" + r.Port
+	}
+	switch r.Form {
+	case "scp":
+		return user + r.Host + ":" + parent + ".git"
+	case "ssh", "git+ssh", "ssh+git":
+		return r.Form + "://" + user + r.Host + port + "/" + parent + ".git"
+	}
+	return "https://" + github.Host + "/" + parent + ".git"
 }
