@@ -318,7 +318,9 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 // one plain push. A push that lost a race to another of the person's sessions
 // is rebuilt on the tip that won and pushed again, up to three times (C2);
 // after that, or on a push refused for any other reason, it is a
-// *NotSentError. Nothing is ever forced. A refusal pushes nothing.
+// *NotSentError. Each refused push is followed by one fetch, the last
+// included, so the refusal says which of the two it was. Nothing is ever
+// forced. A refusal pushes nothing.
 func Announce(root string, req AnnounceRequest, o Options) (AnnounceResult, error) {
 	p, err := prepareAnnouncement(root, req, o)
 	if err != nil {
@@ -375,18 +377,27 @@ func Announce(root string, req AnnounceRequest, o Options) (AnnounceResult, erro
 				SentAt: p.msg.SentAt, ExpiresAt: p.msg.ExpiresAt, Commit: sha, Attempts: attempt}, nil
 		}
 		refused := Remote + " refused the push: " + redacted(perr)
-		if attempt > maxAnnounceRetries {
-			return AnnounceResult{}, &NotSentError{Reason: fmt.Sprintf("abcd-status/%s moved under this push and each of %d retries; %s",
-				p.branch, maxAnnounceRetries, refused)}
-		}
-		// A lost race shows as a tip that moved; a push refused while the tip
-		// stands is refused for another reason, and is not retried.
+		// The tip check runs first, on every attempt, the last included: a lost
+		// race shows as a tip that moved, and a push refused while the tip
+		// stands was refused for another reason, so it is not retried and is
+		// not blamed on the race, however many races came before it.
 		if _, ferr := fetch(root, p.now, noAnnouncement, statusBranches); ferr != nil {
 			return AnnounceResult{}, &NotSentError{Reason: refused}
 		}
 		next, terr := statusTip(root, p.branch)
-		if terr != nil || next == parent {
+		if terr != nil {
 			return AnnounceResult{}, &NotSentError{Reason: refused}
+		}
+		if next == parent {
+			if attempt == 1 {
+				return AnnounceResult{}, &NotSentError{Reason: refused}
+			}
+			return AnnounceResult{}, &NotSentError{Reason: fmt.Sprintf("%s; abcd-status/%s had not moved, so this push lost no race (the %d before it each did)",
+				refused, p.branch, attempt-1)}
+		}
+		if attempt > maxAnnounceRetries {
+			return AnnounceResult{}, &NotSentError{Reason: fmt.Sprintf("abcd-status/%s moved under this push and each of %d retries; %s",
+				p.branch, maxAnnounceRetries, refused)}
 		}
 		parent = next
 	}

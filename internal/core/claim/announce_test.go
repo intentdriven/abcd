@@ -173,14 +173,57 @@ func TestARaceLostEveryTimeIsNotSent(t *testing.T) {
 
 	_, err := p.announce("merging", "#1012")
 	var ns *NotSentError
-	if !errors.As(err, &ns) || !errors.Is(err, ErrRefused) || !strings.HasPrefix(err.Error(), "not sent: ") {
-		t.Fatalf("announce = %v; want a not-sent refusal", err)
+	if !errors.As(err, &ns) || !errors.Is(err, ErrRefused) || !strings.HasPrefix(err.Error(), "not sent: ") ||
+		!strings.Contains(err.Error(), "abcd-status/octo moved under this push and each of 3 retries") {
+		t.Fatalf("announce = %v; want a not-sent refusal blaming the race", err)
 	}
 	if rivals != 4 {
 		t.Fatalf("%d pushes were tried; want the first and three retries", rivals)
 	}
 	if msg := w.remoteMessage(w.statusTip("octo")); !strings.Contains(msg, "Abcd-Item: #7") {
 		t.Fatalf("origin's tip is not the rival's:\n%s", msg)
+	}
+}
+
+// TestAFinalPushRefusedWithTheTipStandingIsNotBlamedOnTheRace: the branch
+// moves under the first push and under the next two, and origin then refuses
+// the last retry for another reason (a hook) with the tip unchanged. The
+// refusal says the tip had not moved and quotes origin's reason; it does not
+// say the branch moved under every retry.
+func TestAFinalPushRefusedWithTheTipStandingIsNotBlamedOnTheRace(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	q := w.clone("1234+octo@users.noreply.github.com", "")
+	pushes := 0
+	beforePush = func(root string) {
+		if root != p.dir {
+			return
+		}
+		pushes++
+		if pushes <= maxAnnounceRetries {
+			if _, err := q.announce("asking", "#7"); err != nil {
+				t.Errorf("rival %d: %v", pushes, err)
+			}
+			return
+		}
+		hook := "#!/bin/sh\necho 'refused by policy' >&2\nexit 1\n"
+		if err := os.WriteFile(filepath.Join(w.bare, "hooks", "pre-receive"), []byte(hook), 0o755); err != nil {
+			t.Error(err)
+		}
+	}
+	t.Cleanup(func() { beforePush = nil })
+
+	_, err := p.announce("merging", "#1012")
+	var ns *NotSentError
+	if !errors.As(err, &ns) || !strings.HasPrefix(err.Error(), "not sent: ") {
+		t.Fatalf("announce = %v; want a not-sent refusal", err)
+	}
+	if pushes != maxAnnounceRetries+1 {
+		t.Fatalf("%d pushes were tried; want the first and three retries", pushes)
+	}
+	if msg := err.Error(); strings.Contains(msg, "moved under this push and each of") ||
+		!strings.Contains(msg, "refused by policy") || !strings.Contains(msg, "abcd-status/octo had not moved") {
+		t.Fatalf("announce = %q; want origin's reason, saying the tip had not moved, and no lost race blamed for it", msg)
 	}
 }
 
