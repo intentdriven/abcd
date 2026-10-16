@@ -140,6 +140,10 @@ var wordReaders = map[string]string{
 	"sedTargets":         "exempt: reads sed's literal options; each target goes through resolveToken, which refuses an unknown word",
 	"gitTargets":         "exempt: reads git's literal options; each target goes through resolveToken or fixedToken, which refuse an unknown word",
 	"tarExtracts":        "exempt: reads tar's literal mode letters; an unknown mode word reads as no extraction, a write the reading misses",
+	"findRuns":           "isUnknown: an unknown word may be -exec, so what follows it is read as the command find runs",
+	"goBuildTarget":      "exempt: reads go build's literal -o spellings; an unknown word reads as no -o, a write the reading misses",
+	"secondOf":           "exempt: compares a filter's output operand with `-`, standard output; an unknown operand goes through at, which reads it as not fixed",
+	"splitTarget":        "exempt: steps split's literal value options; an unknown word is an operand, which at reads as not fixed",
 
 	// Grammar and registry readers, not command words.
 	"seqWidth":         "exempt: a brace sequence's number sign, before any word exists",

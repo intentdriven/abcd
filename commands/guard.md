@@ -203,7 +203,10 @@ A shell command is approved only when the guard reads it whole and clears it:
   targets are read from the guard's own parse of the line: redirections, the
   writers its write model lists (`tee`, `cp`, `mv`, `install`, `ln`, `dd`,
   `curl -o`, `wget -O`, `sed -i` and a sed script's `w`, `patch`,
-  `git checkout`/`restore`/`clone`, `tar -x`, `unzip`), and the operands of
+  `git checkout`/`restore`/`clone`, `tar -x`, `unzip`, `rsync`'s destination,
+  `go build -o`, `sort -o`, `ditto`'s destination, `split`'s prefix, `uniq`'s
+  output file, and what a command `find -exec` or `-execdir` runs writes, with
+  each `{}` a name the line does not fix), and the operands of
   `touch`, `mkdir`, `chmod`, `chown`, `truncate`, `rm`, `rmdir`, `unlink`,
   `mv`'s sources and `ln`'s link targets. A target held in a variable, a
   substitution's output or a glob, or a relative name after a change of
@@ -531,7 +534,10 @@ a child it starts. The verdicts:
   not warn;
 - a script written earlier on the same line — by a redirection, or as the
   target of `tee`, `cp`, `mv`, `install`, `ln`, `dd of=`, `curl -o`/`-O`, `wget -O`,
-  `sed -i`, `patch`, `git checkout`/`restore`/`clone`, `tar -x` or `unzip` — is a
+  `sed -i`, `patch`, `git checkout`/`restore`/`clone`, `tar -x`, `unzip`,
+  `rsync`'s destination, `go build -o`, `sort -o`, `ditto`'s destination,
+  `split`'s prefix, `uniq`'s output file, or a command a `find -exec` or
+  `-execdir` runs — is a
   **block** (`script-written-then-run`): the file the guard reads now is not the
   file that runs. A file the line writes and then runs by path is a **block**
   the same way, whatever the file is (`curl -o x … && ./x`). Write it in one
