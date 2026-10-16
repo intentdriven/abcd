@@ -595,11 +595,11 @@ func TestTheStoreOfAnOrdinaryCloneStaysWhereItWas(t *testing.T) {
 	r.Git("update-ref", "refs/remotes/origin/main", "HEAD")
 	r.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
 	root := r.Git("rev-list", "--max-parents=0", "HEAD")
-	p, err := storePath(f.home, r.Root())
+	loc, err := locate(f.home, r.Root())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := filepath.Join(abcdhome.Path(f.home, "worktrees", root, StoreName)); p != want {
-		t.Fatalf("store path %s; want %s", p, want)
+	if want := filepath.Join(abcdhome.Path(f.home, "worktrees", root, StoreName)); loc.Path != want {
+		t.Fatalf("store path %s; want %s", loc.Path, want)
 	}
 }

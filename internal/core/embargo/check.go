@@ -252,9 +252,10 @@ func Check(req CheckRequest) (CheckResult, error) {
 		}
 	}
 	// A record is named by its place among those asked, never by its id: the
-	// caller holds the id, and a finding repeats nothing it matched.
+	// caller holds the id, and a finding repeats nothing it matched. It is
+	// under embargo when any store read links it to an unpublished advisory.
 	for i, id := range req.Records {
-		if embargoedRecord(st, id) {
+		if slices.ContainsFunc(stores, func(h heldStore) bool { return embargoedRecord(h.st, id) }) {
 			res.Findings = append(res.Findings, CheckFinding{Kind: KindEmbargoedRecord, Source: "record " + strconv.Itoa(i+1)})
 		}
 	}
@@ -268,7 +269,7 @@ func Check(req CheckRequest) (CheckResult, error) {
 	return res, nil
 }
 
-// embargoedRecord reports whether the store links id to an advisory not yet
+// embargoedRecord reports whether a store's state links id to an advisory not yet
 // published: the records whose advisory ids the deny set refuses, a closed or
 // public-track advisory's included.
 func embargoedRecord(st State, id string) bool {
