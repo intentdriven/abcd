@@ -62,10 +62,12 @@ func newAnnounceCommand(asJSON *bool) *cobra.Command {
 			"Nothing is ever forced.\n\n" +
 			"A record must already be on origin's default branch, since an announcement is\n" +
 			"public; a record the embargo store on this machine holds is refused, and so is\n" +
-			"every announcement when that store cannot be checked. The sender is read from\n" +
-			"user.email when it is a GitHub no-reply address, or from\n" +
-			"reservation.github_username in the machine configuration; a tool's git\n" +
-			"identity is refused, since an announcement is authored as the person.\n\n" +
+			"every announcement when that store cannot be checked. The sender is worked out\n" +
+			"as reserve's holder is: from user.email when it is a GitHub no-reply address,\n" +
+			"then reservation.github_username in the machine configuration, then the\n" +
+			"session's forge token, asked whose account it is. When git's identity is not a\n" +
+			"person's, the token's account sends and authors the announcement, and the\n" +
+			"identity git had is shown nowhere.\n\n" +
 			"Exit 0 when the announcement reached origin; exit 2 on every refusal, when it\n" +
 			"was not sent, and when a push was made but whether it landed cannot be told.\n" +
 			"Nothing is pushed on a refusal except \"not sent\", which follows pushes origin\n" +
@@ -91,7 +93,7 @@ func newAnnounceCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd announce: " + err.Error() + "; nothing was pushed"}
 			}
 			res, err := announceAct(root, claim.AnnounceRequest{Kind: args[0], Item: args[1], For: life},
-				claim.Options{Embargo: announceEmbargoCheck})
+				claim.Options{Embargo: announceEmbargoCheck, ForgeUser: reserveForgeUser})
 			if err != nil {
 				return announceRefusal(err)
 			}

@@ -45,8 +45,9 @@ fast-forward push, the repository's hooks running. Its subject is
 GitHub username as resolved), the working copy (`Abcd-Copy`, the key a
 reservation uses), the time sent (`Abcd-Sent-At`), the expiry
 (`Abcd-Expires-At`) and abcd's composed `Assisted-by: abcd:<version>` label,
-and nothing else. The commit is authored as the person. Nothing touches HEAD,
-the index or the working tree.
+and nothing else. The commit is authored as the person: their own git identity
+when it is a person's, and otherwise the account the session's forge token
+belongs to. Nothing touches HEAD, the index or the working tree.
 
 The verb fetches every status branch and origin's default branch in one fetch,
 and the status branches alone in a second when the default branch cannot be
@@ -84,13 +85,18 @@ not a refusal: exit 2 says a refused push may still have reached origin.
   published is refused through the embargo check, which also reads the whole
   message; a store that exists but cannot be checked refuses every
   announcement.
-- A git identity that names a tool rather than a person is refused before
-  anything is written, saying abcd cannot yet tell whose account the session
-  uses (a coming change reads it from the session's forge account), and never
-  naming the identity it rejected. The
-  sender is read as a reservation's holder is: user.email when it is a GitHub
-  no-reply address, or `reservation.github_username` in the machine
-  configuration.
+- No GitHub account to send as is refused before any fetch or push, naming
+  the failure's class and never the identity it rejected. The sender is
+  resolved by the one resolver a reservation's holder is
+  (`internal/core/claim`), in the same order: user.email when it is a GitHub
+  no-reply address, then `reservation.github_username` in the machine
+  configuration, then the session's forge token, asked through one call to
+  GitHub's user endpoint whose account it is. When git's identity is not a
+  person's (unset, or a machine's as the attribution gate judges an author),
+  the token alone is used, its account authors and commits the announcement,
+  and the identity git had appears in no output, commit, trailer or ref. The
+  working copy and the remote named `origin` are checked first, so a checkout
+  refused on its own facts never asks GitHub.
 
 ## Exits
 

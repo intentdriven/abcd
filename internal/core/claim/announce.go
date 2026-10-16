@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/assistedby"
-	toolid "github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -293,9 +292,14 @@ type preparedAnnouncement struct {
 }
 
 // prepareAnnouncement checks a request in the order the refusals promise: the
-// kind, the item and the expiry before any git runs (C3), then the person's
-// git identity, refused when it is a tool's before anything is written, then
-// the holder and the working copy, then the composed message, read back
+// kind, the item and the expiry before any git runs (C3), then the working
+// copy and the origin check, which refuse on the checkout's own facts, then
+// the person's git identity and the sender, through the one holder resolver
+// a reservation's prepare uses (resolveHolder, the forge token's user
+// endpoint included), so a checkout refused locally never asks GitHub whose
+// account the token is. When git's identity is not a person's (unset, or a
+// machine's), the token's account authors the announcement, and the identity
+// git had is shown nowhere. Last comes the composed message, read back
 // through the validator and measured against the cap and the outbound policy.
 func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*preparedAnnouncement, error) {
 	if !slices.Contains(AnnouncementKinds, req.Kind) {
@@ -317,29 +321,25 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 	// minimum is a whole second, so it stays inside them).
 	life = life.Truncate(time.Second)
 	p := &preparedAnnouncement{root: root, home: o.home(), now: o.now(), record: record}
+	key, err := copyKey(root)
+	if err != nil {
+		return nil, err
+	}
+	if err := originPresent(root, "announcements"); err != nil {
+		return nil, err
+	}
 	if p.who, err = gitIdentity(root); err != nil {
 		return nil, err
 	}
-	if p.who.Name == "" || p.who.Email == "" {
-		return nil, refuse("git has no user.name or user.email to author the announcement; set them, then retry; %s", nothingPushed)
-	}
-	// A hosted container's default identity is a tool's. An announcement is
-	// authored as the person who sends it, so it is refused here, before a
-	// copy key, an object or a ref is written, and the refusal never repeats
-	// the identity it rejected.
-	if toolid.IsToolIdentity(toolid.RoleAuthor, p.who.Name, p.who.Email) {
-		return nil, refuse("abcd cannot yet work out whose GitHub account this session uses: git's user.name and user.email here "+
-			"name a tool, not a person, and an announcement is authored as the person who sends it; a coming change reads the "+
-			"person from the session's forge account instead; no announcement was sent, and %s", nothingPushed)
-	}
-	h, err := resolveHolder(root, p.who, o, false)
+	h, err := resolveHolder(root, p.who, o, true)
 	if err != nil {
 		return nil, err
 	}
 	sender := h.Login
-	key, err := copyKey(root)
-	if err != nil {
-		return nil, err
+	if !p.who.person() {
+		// Git's identity is unset or a machine's: the token's account authors
+		// the announcement, so that identity never reaches a commit.
+		p.who = identity{Name: h.Login, Email: h.NoReply}
 	}
 	p.msg = announcement{Kind: req.Kind, Item: item, Sender: sender, Copy: key, SentAt: p.now, ExpiresAt: p.now.Add(life),
 		AssistedBy: o.assistedBy()}
@@ -392,9 +392,6 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 	if held {
 		return AnnounceResult{}, refuse("an announcement about %s is refused: the embargo store on this machine holds it, or text the announcement carries, under embargo; %s",
 			p.msg.Item, nothingPushed)
-	}
-	if err := originPresent(root, "announcements"); err != nil {
-		return AnnounceResult{}, err
 	}
 	tree, err := emptyTree(root)
 	if err != nil {

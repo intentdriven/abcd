@@ -189,10 +189,12 @@ Nothing is ever forced.
 
 A record must already be on origin's default branch, since an announcement is
 public; a record the embargo store on this machine holds is refused, and so is
-every announcement when that store cannot be checked. The sender is read from
-user.email when it is a GitHub no-reply address, or from
-reservation.github_username in the machine configuration; a tool's git
-identity is refused, since an announcement is authored as the person.
+every announcement when that store cannot be checked. The sender is worked out
+as reserve's holder is: from user.email when it is a GitHub no-reply address,
+then reservation.github_username in the machine configuration, then the
+session's forge token, asked whose account it is. When git's identity is not a
+person's, the token's account sends and authors the announcement, and the
+identity git had is shown nowhere.
 
 Exit 0 when the announcement reached origin; exit 2 on every refusal, when it
 was not sent, and when a push was made but whether it landed cannot be told.
