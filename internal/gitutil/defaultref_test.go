@@ -98,6 +98,13 @@ func TestRemoteDefaultBranchNamesOnlyTheRemotesRef(t *testing.T) {
 			}
 		})
 	}
+	// The remote named is the one read.
+	r := gittest.NewRepo(t)
+	r.Commit("c0")
+	r.Git("update-ref", "refs/remotes/upstream/main", "HEAD")
+	if got := gitutil.RemoteDefaultBranch(r.Root(), "upstream"); got != "refs/remotes/upstream/main" {
+		t.Fatalf("RemoteDefaultBranch(upstream) = %q, want refs/remotes/upstream/main", got)
+	}
 	if got := gitutil.RemoteDefaultBranch(t.TempDir(), "origin"); got != "" {
 		t.Fatalf("RemoteDefaultBranch outside a repository = %q, want \"\"", got)
 	}
