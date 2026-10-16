@@ -45,7 +45,8 @@ under the person's own configuration, is a person's (`user.name` and
 judges an author), the holder comes from the first of: `user.email` when it is
 a GitHub no-reply address; `reservation.github_username` in the machine layer
 of the configuration (`~/.abcd.noindex/config.json`), never the repository's
-own; and the account the session's own forge token belongs to, which takes one
+own; and the account of the forge token `gh` resolves from this session's
+environment, which takes one
 call to GitHub's user endpoint (`gh api user`, through the one door to
 GitHub). When git's identity is not a person's (unset, or a machine's, as in a
 hosted container whose clone comes with a vendor identity while its token is
@@ -65,8 +66,10 @@ could name the reader they treat the reader as unknown.
 The holder query prints `would reserve as <login> (from <source>)`, the
 source being `git`, `config` or `token`, or as JSON the document
 `{"login", "id", "noreply", "source"}` (`id` and `noreply` when known). It may
-make that one user-endpoint call when git's identity is not a person's GitHub
-no-reply address, and it takes no record id and no other flag, and reserves,
+make that one user-endpoint call in the same two cases as a reservation: when
+git's identity is a person's but neither its address nor the machine layer
+names the holder, and when git's identity is not a person's, whatever the
+machine layer says. It takes no record id and no other flag, and reserves,
 writes and pushes nothing. It exits 0 when the account is known and 2 when not.
 
 ## What it writes

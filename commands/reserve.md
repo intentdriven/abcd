@@ -23,7 +23,8 @@ footprint and the lease. The push is a plain fast-forward with the
 repository's hooks running, never forced and never with `--no-verify`, and it
 touches no HEAD, index or working tree here. When git's identity does not name
 the holder (below), it also makes one read-only call to GitHub's user endpoint,
-through `gh`, to learn whose account the session's own token belongs to.
+through `gh`, to learn whose account the forge token `gh` resolves from this session's
+environment belongs to.
 
 ## Reserve before starting
 

@@ -37,7 +37,7 @@ const Host = "github.com"
 
 // Timeout bounds each `gh` call. A subprocess reading from the network with no
 // bound is a verb that hangs a session indefinitely on a stalled connection.
-const Timeout = 30 * time.Second
+var Timeout = 30 * time.Second
 
 // ErrTimeout is what Run's error wraps when gh did not answer within Timeout.
 var ErrTimeout = errors.New("gh did not answer")

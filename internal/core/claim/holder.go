@@ -96,7 +96,7 @@ type Holder struct {
 const (
 	HolderFromGit    = "git"    // user.email is a GitHub no-reply address
 	HolderFromConfig = "config" // the machine layer's reservation.github_username
-	HolderFromToken  = "token"  // the session's own forge token, through the user endpoint
+	HolderFromToken  = "token"  // the forge token gh resolves from the session's environment
 )
 
 // ResolveHolder is the account a reservation act in the checkout at root
@@ -117,8 +117,9 @@ func ResolveHolder(root string, o Options) (Holder, error) {
 //     GitHub username (one that is not falls through to the next source);
 //  2. reservation.github_username in the machine layer of the layered
 //     configuration (~/.abcd.noindex/config.json), the only layer read for it;
-//  3. when net allows it, the session's own forge token, asked whose account
-//     it is through the user endpoint (o.ForgeUser).
+//  3. when net allows it, the forge token gh resolves from the session's
+//     environment, asked whose account it is through the user endpoint
+//     (o.ForgeUser).
 //
 // When it is not a person's (unset, or a machine's), the token alone: the
 // author then comes from the token's account, and the machine key is skipped

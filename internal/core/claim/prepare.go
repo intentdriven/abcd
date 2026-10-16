@@ -20,8 +20,8 @@ type Options struct {
 	// Version is the binary's version the Assisted-by label names; "" means
 	// the running binary's (core.Version).
 	Version string
-	// ForgeUser answers whose GitHub account the session's own forge token
-	// belongs to (login and numeric id): the user endpoint, asked only by an
+	// ForgeUser answers whose GitHub account the forge token gh resolves from
+	// the session's environment belongs to (login and numeric id): the user endpoint, asked only by an
 	// explicit act when git's identity names no holder. nil means the real
 	// call, `gh api user`; tests set it so none touches the network.
 	ForgeUser func(root string) (login string, id int64, err error)
