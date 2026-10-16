@@ -18,7 +18,7 @@ decision 17):
   writer: [`/abcd:embark`](03-embark.md) unpacks a lifeboat's decision records
   into the same store, which is a restore rather than a mint.
 
-Decisions outnumber ADRs about eight to one, so the common act takes the short
+Decisions outnumber ADRs about six to one, so the common act takes the short
 form. A binary from 0.14.x or earlier still mints an ADR from bare
 `abcd decide "<title>"`, which is why the command page has an agent check the
 version before it records.

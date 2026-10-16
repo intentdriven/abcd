@@ -7,7 +7,7 @@ allows (iss-2610150524235929, iss-2610150524246898, and the queue confirmation
 of iss-2610090642376032 for this verb). Before it, a branch landed outside the
 implement loop was pushed only if someone remembered to, and ready pull
 requests reached the merge queue one at a time. It is listed in the
-agents-and-hosts block, and its page is hidden from a person's `/abcd:` menu.
+person's records group beside `build`, and its page is on a person's `/abcd:` menu.
 
 ## Sub-verbs
 
