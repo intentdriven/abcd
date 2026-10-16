@@ -106,7 +106,7 @@ dcn-2610161040378209): a reservation pushed to a fork is invisible to every
 account working on the repository it was made from, so it holds nothing for
 them. The origin read is where git pushes it (`git remote get-url --push
 origin`); when that is a github.com repository the forge names a fork, the act
-is refused before anything is fetched or pushed, naming the repository it was
+is refused before anything is pushed, naming the repository it was
 made from and the command that points origin there (`git remote set-url origin
 <url>`, in origin's own URL form). The forge is asked through the one door to
 GitHub (`gh api repos/<owner>/<name>`), at most once per process for a

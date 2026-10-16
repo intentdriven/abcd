@@ -107,12 +107,6 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	forkUnchecked := ""
-	if !p.req.Release && !p.req.Renew {
-		if forkUnchecked, err = checkFork(root); err != nil {
-			return Result{}, err
-		}
-	}
 	tree, err := emptyTree(root)
 	if err != nil {
 		return Result{}, refuse("%s; %s", redacted(err), nothingPushed)
@@ -135,6 +129,16 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	}
 	if !p.req.Release {
 		if err := crowding(p, j, res); err != nil {
+			return Result{}, err
+		}
+	}
+	// The fork check follows the judgement, so only an act that reserves
+	// afresh (a reservation or a take-over, never a renewal or a release,
+	// however it was asked for) asks the forge, and precedes the commit and
+	// the push, so a fork is refused before anything is pushed.
+	forkUnchecked := ""
+	if !p.req.Release && res.Act != ActRenewed {
+		if forkUnchecked, err = checkFork(root); err != nil {
 			return Result{}, err
 		}
 	}

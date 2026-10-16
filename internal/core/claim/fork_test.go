@@ -50,7 +50,7 @@ func originOnGitHub(t *testing.T, url string) {
 
 // TestAForkOriginRefusesAFreshReservationNamingItsParent: a github.com origin
 // the forge names a fork refuses a reservation and a take-over before
-// anything is fetched or pushed, naming the repository it was made from and
+// anything is pushed, naming the repository it was made from and
 // the command that points origin there, in origin's own URL form.
 func TestAForkOriginRefusesAFreshReservationNamingItsParent(t *testing.T) {
 	w := newWorld(t)
@@ -78,8 +78,8 @@ func TestAForkOriginRefusesAFreshReservationNamingItsParent(t *testing.T) {
 			t.Fatalf("a refused reservation on a fork pushed %s", req.Record)
 		}
 	}
-	if slices.Contains(log.subcommands(), "fetch") || slices.Contains(log.subcommands(), "push") {
-		t.Fatalf("a fork was refused after reading or writing origin: %v", log.subcommands())
+	if slices.Contains(log.subcommands(), "push") {
+		t.Fatalf("a fork was refused after writing origin: %v", log.subcommands())
 	}
 }
 
@@ -122,6 +122,29 @@ func TestARenewalAndAReleaseNeverAskTheForge(t *testing.T) {
 	}
 	if len(f.asked) != 0 {
 		t.Fatalf("a renewal or a release asked the forge: %v", f.asked)
+	}
+}
+
+// TestAPlainReserveThatRenewsAsksNothing: a plain reserve over this copy's
+// own live reservation is a renewal, and asks the forge nothing even when
+// it would now name origin a fork: the check follows the judgement, so only
+// an act that reserves afresh asks.
+func TestAPlainReserveThatRenewsAsksNothing(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	f := stubForge(t, github.Repo{}, nil)
+	originOnGitHub(t, "https://github.com/octo/abcd.git")
+	if res, err := p.reserve("iss-5", "a.go"); err != nil || res.Act != ActReserved || len(f.asked) != 1 {
+		t.Fatalf("the first reserve: %+v %v, asked %v", res, err, f.asked)
+	}
+	forgetForkAnswers()
+	f.answer, f.asked = github.Repo{Fork: true, Parent: "intentdriven/abcd"}, nil
+	res, err := p.reserve("iss-5", "a.go")
+	if err != nil || res.Act != ActRenewed {
+		t.Fatalf("the second reserve: %+v %v; want it renewed", res, err)
+	}
+	if len(f.asked) != 0 {
+		t.Fatalf("a reserve that renewed asked the forge: %v", f.asked)
 	}
 }
 
