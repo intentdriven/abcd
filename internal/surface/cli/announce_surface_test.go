@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 )
 
@@ -147,9 +148,14 @@ func TestAnnounceIsHeldToTheEmbargoStore(t *testing.T) {
 			t.Fatalf("the fixture's store place: %+v, %v", loc, err)
 		}
 		store := loc.Path
-		// A plain directory where the store's worktree belongs is a store the
-		// check refuses to read.
-		if err := os.MkdirAll(store, 0o700); err != nil {
+		// A plain directory where the store's worktree belongs, holding a
+		// state file that does not parse, is a store the check refuses to
+		// read (a plain directory alone holds nothing).
+		state := filepath.Join(store, filepath.FromSlash(embargo.StateRel))
+		if err := os.MkdirAll(filepath.Dir(state), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(state, []byte("{not json"), 0o600); err != nil {
 			t.Fatal(err)
 		}
 		code, stdout, stderr := reserveRun(t, p, "announce", "merging", "#1012")
