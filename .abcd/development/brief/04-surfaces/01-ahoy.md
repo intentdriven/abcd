@@ -426,8 +426,11 @@ earlier version wrote wider is narrowed when abcd next writes it
   lab/<root-sha>/<lab-id>/       one lab's evidence: snapshot, probe records, findings,
                                  harvest; index.jsonl beside the homes registers them,
                                  never committed (itd-2609212137128014)
-  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
-                                 (NOT BUILT — itd-2609091014076309)
+  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout;
+                                 the build loop creates each lane's worktree here today
+                                 and ahoy reports one its repository no longer links;
+                                 the store's own verbs and its reclaim are NOT BUILT
+                                 (itd-2609091014076309)
   notes/<root-sha>/              the store's notes archive: a reclaimed worktree's
                                  .abcd/.work.local/, redacted, beside a manifest
                                  (NOT BUILT — itd-2609091014076309)
