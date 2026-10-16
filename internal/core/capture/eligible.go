@@ -177,11 +177,16 @@ func eligibility(iss Issue, r drainrule.Rule, anchor deferralAnchor) DrainVerdic
 }
 
 // promotedIntents is every intent the issue's related_intents names, each
-// once, in the record's order. The reader has already refused a record whose
+// once, in the record's order, and none for a record the consistency pass
+// filed, whose related_intents names the intents its contradiction is between
+// (consistencyFinding). The reader has already refused a record whose
 // list holds an entry that is not an intent id (`itd-` and digits) or names
 // one twice, so no entry is blank; the de-duplication serves a caller that
 // builds an Issue by hand.
 func promotedIntents(iss Issue) []string {
+	if consistencyFinding(iss) {
+		return nil
+	}
 	var ids []string
 	for _, id := range iss.RelatedIntents {
 		if !slices.Contains(ids, id) {

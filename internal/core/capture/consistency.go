@@ -65,17 +65,20 @@ func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc
 	}
 	filed := func(f intent.ConsistencyFinding, reportRel string) CaptureRequest {
 		return CaptureRequest{
-			RepoRoot:       repoRoot,
-			Text:           consistencyIssueText(f, reportRel),
-			Severity:       Severity(f.Severity),
-			Category:       "inconsistency",
-			Source:         "agent-finding",
-			FoundDuring:    fmt.Sprintf("abcd intent consistency, finding %d of %s", f.Number, reportRel),
-			FoundAt:        endLocator(f.Ends[0]),
+			RepoRoot:    repoRoot,
+			Text:        consistencyIssueText(f, reportRel),
+			Severity:    Severity(f.Severity),
+			Category:    consistencyCategory,
+			Source:      consistencySource,
+			FoundDuring: fmt.Sprintf(consistencyFoundDuringPrefix+"%d of %s", f.Number, reportRel),
+			FoundAt:     endLocator(f.Ends[0]),
+			// The intents the contradiction is between: the finding's
+			// subjects, not intents that took the work on, so the drain's
+			// promoted rule passes the record by (consistencyFinding).
 			RelatedIntents: f.IntentIDs(),
 			// The pass is an automatic filer with no fix to propose (ruling
 			// H12): the record is filed, and a drain skips it until a person
-			// writes a real remedy.
+			// writes a real remedy, after which a drain may take it.
 			Remedy: issueschema.MachineRemedy,
 			// The filing-time match (itd-2609212137116617) compares the
 			// finding's own words: the ends' paths, the class line and the
@@ -131,6 +134,29 @@ func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc
 	return intent.IngestConsistency(intent.ConsistencyIngestRequest{
 		RepoRoot: repoRoot, Payloads: payloads, Date: date, File: filer, Check: check,
 	})
+}
+
+// What the pass writes on every record it files, spelt once so the filer and
+// consistencyFinding cannot drift apart.
+const (
+	consistencyCategory          Category = "inconsistency"
+	consistencySource            Source   = "agent-finding"
+	consistencyFoundDuringPrefix          = "abcd intent consistency, finding "
+)
+
+// consistencyFinding reports whether iss is a record the consistency pass
+// filed: its category, its source and the opening of its found_during are the
+// three the filer writes, and the opening names the pass, which no other filer
+// in the binary writes (the after-merge audit's record is an agent-finding
+// inconsistency too, found during `abcd intent audit ingest`). Its
+// related_intents names the intents its contradiction is between, so the
+// drain's promoted rule does not read it as linked to an intent that took it
+// on (ruling H12, dcn-2609290000000016: the record is skipped until a person
+// writes a real remedy, and then a drain may take it). finding_ref is not the
+// test, since a record the pass filed before keys existed carries none.
+func consistencyFinding(iss Issue) bool {
+	return iss.Category == consistencyCategory && iss.Source == consistencySource &&
+		strings.HasPrefix(iss.FoundDuring, consistencyFoundDuringPrefix)
 }
 
 // consistencyIssueText is the filed record's body: the summary as its first

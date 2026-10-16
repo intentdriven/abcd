@@ -62,7 +62,8 @@ store with two accepted records carrying the fields. None of these falls back
 to the baseline or to a looser rule.
 
 The rule reads each issue's fields and nothing else: nothing open in
-`blocked_by`, no intent in `related_intents`, a category the rule takes, a
+`blocked_by`, no intent in `related_intents` (a consistency finding's aside,
+below), a category the rule takes, a
 severity it takes, and a `remedy:` other than `none (filed automatically)`, the value an automatic filer writes
 when it has no fix. Every open issue receives exactly one disposition, from the
 first rule that excludes it: skipped when blocked; handed back as `promoted`
@@ -87,7 +88,11 @@ Three hand-backs hold whatever the repository's record says. An issue whose
 `related_intents` names an intent is handed back under `promoted`, naming each
 intent: an intent already owns it, so a machine never takes it alone, and a
 promotion one drain made is never judged or worked again by another that reads
-the promoted record. The other two each mark a decision a person still owes. A
+the promoted record. A record the consistency pass files is the one exception:
+the two intents it names are the ones its contradiction is between, not intents
+that took it on, so it is judged by its other fields, and is ineligible, as any
+automatic filer's record is, until a person writes its remedy (ruling H12). The
+other two each mark a decision a person still owes. A
 remedy that opens "Waits on" as words, followed by a blank, a colon or nothing (the shape a remedy takes when its fix waits on an
 unanswered ruling, compared case-folded), is
 handed back under `waits-on-ruling`: taking it would make the ruling. A record

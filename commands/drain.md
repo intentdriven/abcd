@@ -49,8 +49,10 @@ An open issue is **eligible** when all of these hold, read from its fields
 alone:
 
 - no record in its `blocked_by` is still open;
-- its `related_intents` names no intent (an issue promoted to an intent is that
-  intent's, whatever the repository's record says);
+- its `related_intents` names no intent (an issue linked to an intent goes
+  through that intent, whatever the repository's record says), unless the
+  consistency pass filed it: the two intents such a record names are the ones
+  its contradiction is between, so it waits only for a person's remedy;
 - its category is one the rule takes;
 - its severity is one the rule takes;
 - it carries a `remedy:` (`abcd capture --remedy "<fix>"`, which every new
@@ -69,7 +71,7 @@ decides its one disposition:
 | `outcome` | `rule` | Meaning |
 | --- | --- | --- |
 | `skipped` | `blocked` | an open record blocks it; `blockers` names them |
-| `handback` | `promoted` | its `related_intents` names an intent, which owns it; the reason names every intent |
+| `handback` | `promoted` | its `related_intents` names an intent, and the consistency pass did not file it; the reason names each intent once, at most three and then how many more, and the way through the intent: `abcd build <itd-N>`, or `abcd intent audit <itd-N>` for an audit's owed check |
 | `handback` | `security` | category `security`, a person's unless the rule sets `drain_security: take` |
 | `handback` | `category` | a category the rule does not take |
 | `handback` | `severity` | a severity the rule does not take (`major` and `critical` under the baseline) |
