@@ -7,6 +7,7 @@ package evals
 // through it, against a bare origin, end to end.
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -94,5 +95,29 @@ func TestAnnounceThenStatusEndToEnd(t *testing.T) {
 	runJSON(t, pat, w.home, &got, "status")
 	if len(got.Announcements) != 1 || got.Announcements[0].Sender != "octo" || got.Announcements[0].Item != "#1012" {
 		t.Fatalf("`abcd status --json` announcements = %+v", got.Announcements)
+	}
+
+	// The prompt hook shows it once, from disk alone.
+	payload, err := json.Marshal(map[string]string{"session_id": "smoke-status", "cwd": pat, "prompt": "hello",
+		"hook_event_name": "UserPromptSubmit"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hook := func() string {
+		cmd := exec.Command(abcdBin, "hook", "prompt-router")
+		cmd.Dir = pat
+		cmd.Env = append(os.Environ(), append(env, "ABCD_RULES_STATE_DIR="+t.TempDir())...)
+		cmd.Stdin = strings.NewReader(string(payload))
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("`abcd hook prompt-router`: %v", err)
+		}
+		return string(out)
+	}
+	if out := hook(); !strings.Contains(out, "## STATUS\n") || !strings.Contains(out, "- @octo (claimed): merging #1012, for 30 min\n") {
+		t.Fatalf("the prompt hook's text:\n%s", out)
+	}
+	if out := hook(); strings.Contains(out, "## STATUS") {
+		t.Fatalf("the second prompt shows the status again:\n%s", out)
 	}
 }

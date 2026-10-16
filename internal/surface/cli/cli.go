@@ -1706,7 +1706,15 @@ force this turn, so a name missing from it has stopped. error is present only
 when the prompt could not be evaluated, and then active is absent: the set is
 unknown. A memory.json that cannot be read is named on stderr and recalls
 nothing, and the rules still inject. Every outcome, an error included,
-exits 0, so the hook can never wedge a session.`,
+exits 0, so the hook can never wedge a session.
+
+After them comes a "## STATUS" block when the last fetch of the status
+branches brought something this checkout has not shown: each new
+announcement, release hold, doubtful branch and failed fetch, once, newest
+first, at most ten lines and a count of the rest. It is read from disk alone,
+under a deadline inside the hook's budget, and says the status is
+unavailable when the deadline passes first. A rules.json that will not load
+does not switch it off: text then carries the block alone, beside the error.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			in, err := readHookInput(cmd)
@@ -1752,6 +1760,18 @@ exits 0, so the hook can never wedge a session.`,
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
+				// The status block is the status reader's, not the rules':
+				// a rules.json that will not load does not switch it off
+				// (spc-2610150728396006 step 3).
+				status := routerStatus(cmd, root)
+				defer status.MarkShown()
+				if status.Text != "" && !*asJSON {
+					fmt.Fprint(cmd.OutOrStdout(), status.Text)
+					return nil
+				}
+				if status.Text != "" {
+					return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error()})
+				}
 				return routerRefused(cmd, *asJSON, err.Error())
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
@@ -1792,6 +1812,13 @@ exits 0, so the hook can never wedge a session.`,
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
 			text := res.Text + mem.Text
+			// The status block (itd-2609151838312703 C6, C8, C10 to C12,
+			// C18): what the last fetch of the status branches brought that
+			// this checkout has not shown, from disk alone, inside its own
+			// budget, after the rules and the memory notes.
+			status := routerStatus(cmd, root)
+			defer status.MarkShown()
+			text = joinBlocks(text, status.Text)
 			if *asJSON {
 				injected := res.Injected
 				if injected == nil {

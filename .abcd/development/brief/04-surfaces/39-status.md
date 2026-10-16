@@ -5,7 +5,8 @@ project (itd-2609151838312703, spc-2610150728396006 step 3, decision 21 of the
 intent): the announcements every session posted with `/abcd:announce`, on this
 computer, under a colleague's account on another computer or in a hosted cloud
 session, then who holds which reservation and each release being cut. It is a
-person's verb, listed in the records group.
+person's verb, listed in the records group. The same announcements reach a
+running session through the prompt hook, once each, from disk alone (below).
 
 ## Sub-verbs
 
@@ -73,6 +74,24 @@ and an empty list is said ("none standing") only after a fetch that
 succeeded (C10). The JSON document carries `status_view`, `announcements`,
 `doubtful`, `unread`, `senders_unchecked`, `grants`, and the reservations
 block's own fields.
+
+## The prompt hook's block
+
+`abcd hook prompt-router` appends a `## STATUS` block to the text it injects
+when this checkout holds something it has not shown: a failed fetch per
+namespace, a release being cut ("release v0.16.0 being cut by @maya: merges
+are held", C8), a doubtful branch, and the newest announcement per item, at
+most ten lines, then a count of the rest and the command that lists them all
+(C18). Each line is shown once, kept by commit or by what it says, and the
+block is dated by the last stamped fetch ("as of the last fetch 4 minutes
+ago", C12) and ends with the line that an announcement grants nothing (C6). It
+reads only the local tier and touches no network, and the read runs under a
+deadline inside the hook's one-second budget: when the deadline passes first,
+the block says the status is unavailable rather than show nothing, and the
+prompt is never held. A checkout with no remote named `origin`, or without its
+local tier, shows nothing. The block is emitted on the rules loader's error
+path too: the two share the hook, and a `rules.json` that will not load does
+not switch the status off.
 
 ## Exits
 

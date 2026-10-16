@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -230,4 +231,39 @@ func renderStatus(w io.Writer, out statusOutput) {
 	}
 	renderReservations(w, out.reservationsBlock)
 	fmt.Fprintln(w, out.Grants)
+}
+
+// statusBudget bounds the prompt hook's status read (C12): it runs inside
+// the hook's one-second budget, after the drain and the rules, so a slow read
+// says the status is unavailable rather than hold the prompt.
+var statusBudget = 600 * time.Millisecond
+
+// routerStatus is the prompt hook's status block for the checkout at root,
+// read under statusBudget (claim.PromptNotes). A read that could not be made
+// is named on stderr, and its block says the status is unavailable. The
+// caller marks the block shown once it has written it.
+func routerStatus(cmd *cobra.Command, root string) claim.Notes {
+	if root == "" {
+		return claim.Notes{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), statusBudget)
+	defer cancel()
+	now := time.Now().UTC().Truncate(time.Second)
+	n, err := claim.PromptNotes(ctx, root, now, claim.Options{Now: func() time.Time { return now }})
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd status: %s\n", termsafe.Sanitize(fsutil.RedactHome(err.Error())))
+	}
+	return n
+}
+
+// joinBlocks is the injected text with the status block after it, one blank
+// line between them.
+func joinBlocks(text, block string) string {
+	switch {
+	case block == "":
+		return text
+	case text == "":
+		return block
+	}
+	return strings.TrimRight(text, "\n") + "\n\n" + block
 }
