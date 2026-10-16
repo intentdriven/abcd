@@ -47,6 +47,12 @@ const (
 	holderKey       = holderNamespace + ".github_username"
 )
 
+// reservationKeys are every key the reservation namespace takes, in every
+// layer: the holder's (read from the machine layer alone) and the fork
+// check's opt-out (fork.go, read from both). Each reader claims them all, so
+// one reader's key is never another's unknown key.
+var reservationKeys = []string{"github_username", "fork_origin"}
+
 // identity is a git identity: the one read under the person's own
 // configuration, and the author and committer of every reservation commit.
 type identity struct {
@@ -171,7 +177,7 @@ func machineHolder(home string) (string, error) {
 	if err != nil {
 		return "", refuse("could not read the configuration that names your GitHub username: %v; %s", err, nothingSent)
 	}
-	if err := stack.Claim(holderNamespace, "github_username"); err != nil {
+	if err := stack.Claim(holderNamespace, reservationKeys...); err != nil {
 		return "", refuse("%v; %s", err, nothingSent)
 	}
 	found, err := stack.Lookup(holderKey)

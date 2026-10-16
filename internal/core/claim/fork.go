@@ -2,12 +2,14 @@ package claim
 
 import (
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/github"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
@@ -114,14 +116,14 @@ func askFork(root, owner, name string, now time.Time) forkAnswer {
 // that points that URL there. unchecked is why the check could not be made
 // for some URL, "" when every URL was checked or is a local path; the act
 // then goes on.
-func checkFork(root string, now time.Time) (unchecked string, err error) {
+func checkFork(root string, now time.Time, home string) (unchecked string, err error) {
 	targets, uerr := originPushURLs(root)
 	if uerr != nil {
 		return "could not read " + Remote + "'s push URL: " + redacted(uerr), nil
 	}
 	var gaps []string
 	for _, url := range targets.urls {
-		gap, err := checkForkURL(root, url, targets, now)
+		gap, err := checkForkURL(root, url, targets, now, home)
 		if err != nil {
 			return "", err
 		}
@@ -133,7 +135,7 @@ func checkFork(root string, now time.Time) (unchecked string, err error) {
 }
 
 // checkForkURL is checkFork for one push URL.
-func checkForkURL(root, url string, targets pushTargets, now time.Time) (unchecked string, err error) {
+func checkForkURL(root, url string, targets pushTargets, now time.Time, home string) (unchecked string, err error) {
 	owner, name, perr := github.ParseRemote(url)
 	switch {
 	case errors.Is(perr, github.ErrNotGitHub) && github.NamesHostedRepository(url):
@@ -147,12 +149,58 @@ func checkForkURL(root, url string, targets pushTargets, now time.Time) (uncheck
 	if a.err != nil {
 		return owner + "/" + name + ": " + forkClass(a.err), nil
 	}
-	if a.repo.Fork {
-		return "", refuse("%s is %s/%s, a fork of %s: a reservation there is invisible to everyone working on %s, so it holds nothing for them; "+
-			"point %s at the repository it was made from (%s), then reserve again; %s",
-			Remote, owner, name, a.repo.Parent, a.repo.Parent, Remote, setURLCommand(targets, owner+"/"+name, parentURL(url, a.repo.Parent)), nothingPushed)
+	if !a.repo.Fork {
+		return "", nil
 	}
-	return "", nil
+	// The opt-out is read only once a fork is named, so a malformed key can
+	// stop no act on a repository that is not a fork (dcn-2610161141338923).
+	allow, err := forkOriginAllowed(root, home)
+	if err != nil {
+		return "", refuse("%s is %s/%s, a fork of %s, and whether this repository allows that could not be read: %v; %s",
+			Remote, owner, name, a.repo.Parent, err, nothingPushed)
+	}
+	if allow {
+		return "", nil
+	}
+	return "", refuse("%s is %s/%s, a fork of %s: a reservation there is invisible to everyone working on %s, so it holds nothing for them; "+
+		"point %s at the repository it was made from (%s), then reserve again, or, when this fork is itself where everyone working on it reserves, "+
+		"set %s to %q in %s; %s",
+		Remote, owner, name, a.repo.Parent, a.repo.Parent, Remote, setURLCommand(targets, owner+"/"+name, parentURL(url, a.repo.Parent)),
+		forkOriginKey, forkOriginAllow, layered.Config.RepoOrigin(), nothingPushed)
+}
+
+// The fork check's opt-out (dcn-2610161141338923): reservation.fork_origin,
+// "refuse" by default, "allow" for a repository whose own home is a fork on
+// GitHub, where every account reserves.
+const (
+	forkOriginKey    = holderNamespace + ".fork_origin"
+	forkOriginAllow  = "allow"
+	forkOriginRefuse = "refuse"
+)
+
+// forkOriginAllowed reads reservation.fork_origin through the layered
+// configuration: the checkout's .abcd/config.json, then the machine's, then
+// the bundled "refuse". A value outside the two, a misspelt key under the
+// namespace and an unreadable file refuse, naming the file.
+func forkOriginAllowed(root, home string) (bool, error) {
+	r := layered.Roots{Repo: root, Home: home, HomeRefused: home == ""}
+	stack, err := layered.Load(layered.Config, r)
+	if err != nil {
+		return false, err
+	}
+	if err := stack.Claim(holderNamespace, reservationKeys...); err != nil {
+		return false, err
+	}
+	v, err := layered.Get(stack, forkOriginKey, forkOriginRefuse, func(v string) error {
+		if v != forkOriginAllow && v != forkOriginRefuse {
+			return fmt.Errorf("it takes %q or %q", forkOriginAllow, forkOriginRefuse)
+		}
+		return nil
+	})
+	if err != nil {
+		return false, err
+	}
+	return v.V == forkOriginAllow, nil
 }
 
 // setURLCommand is the command that points the push URL naming fork at

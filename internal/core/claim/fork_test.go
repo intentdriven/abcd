@@ -3,6 +3,8 @@ package claim
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -70,7 +72,8 @@ func TestAForkOriginRefusesAFreshReservationNamingItsParent(t *testing.T) {
 		}
 		msg := err.Error()
 		for _, want := range []string{"octo/abcd", "a fork of intentdriven/abcd",
-			"git remote set-url origin git@github.com:intentdriven/abcd.git", nothingPushed} {
+			"git remote set-url origin git@github.com:intentdriven/abcd.git", nothingPushed,
+			`set reservation.fork_origin to "allow" in .abcd/config.json`} {
 			if !strings.Contains(msg, want) {
 				t.Errorf("the refusal names %q: %s", want, msg)
 			}
@@ -356,5 +359,71 @@ func TestAFailedAnswerIsAskedAgainAfterAMinute(t *testing.T) {
 		if (res.ForkUnchecked == "") != c.ok || len(f.asked) != c.asked {
 			t.Fatalf("%s after %s: warning %q, asked %d times; want warned %v, asked %d", id, c.after, res.ForkUnchecked, len(f.asked), !c.ok, c.asked)
 		}
+	}
+}
+
+// repoConfig writes the checkout's own .abcd/config.json.
+func (p *participant) repoConfig(body string) {
+	p.w.t.Helper()
+	if err := os.WriteFile(filepath.Join(p.dir, ".abcd", "config.json"), []byte(body), 0o644); err != nil {
+		p.w.t.Fatal(err)
+	}
+}
+
+// TestARepositoryWhoseHomeIsAForkMayAllowIt (dcn-2610161141338923): a
+// repository's own reservation.fork_origin "allow" lets a reservation on a
+// fork through, as does the machine's; the repository's file wins a key both
+// set; a value outside the two refuses naming the file and the key; and a
+// repository that is not a fork never reads the key, so a malformed one
+// stops nothing there.
+func TestARepositoryWhoseHomeIsAForkMayAllowIt(t *testing.T) {
+	fork := github.Repo{Fork: true, Parent: "intentdriven/abcd"}
+	cases := []struct {
+		name, repo, machine string
+		forge               github.Repo
+		want                string // "" for the act through, else a refusal naming it
+	}{
+		{"repo allows", `{"reservation":{"fork_origin":"allow"}}`, "", fork, ""},
+		{"machine allows", "", `{"reservation":{"fork_origin":"allow"}}`, fork, ""},
+		{"repo refuses over the machine", `{"reservation":{"fork_origin":"refuse"}}`, `{"reservation":{"fork_origin":"allow"}}`, fork, "a fork of intentdriven/abcd"},
+		{"a value outside the two", `{"reservation":{"fork_origin":"yes"}}`, "", fork, ".abcd/config.json (repo layer): reservation.fork_origin"},
+		{"a misspelt key", `{"reservation":{"fork_origins":"allow"}}`, "", fork, "unknown key reservation.fork_origins"},
+		{"not a fork, a malformed key", `{"reservation":{"fork_origin":"yes"}}`, "", github.Repo{}, ""},
+	}
+	for _, c := range cases {
+		w := newWorld(t)
+		home := ""
+		if c.machine != "" {
+			home = machineConfig(t, c.machine)
+		}
+		p := w.clone("1234+octo@users.noreply.github.com", home)
+		if c.repo != "" {
+			p.repoConfig(c.repo)
+		}
+		stubForge(t, c.forge, nil)
+		originOnGitHub(t, "git@github.com:octo/abcd.git")
+		res, err := p.reserve("iss-5", "a.go")
+		switch {
+		case c.want == "" && (err != nil || res.Act != ActReserved || w.remoteTip("iss-5") == ""):
+			t.Errorf("%s: %+v %v; want the reservation made", c.name, res, err)
+		case c.want != "" && (!errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), c.want)):
+			t.Errorf("%s: %v; want a refusal naming %q", c.name, err, c.want)
+		case c.want != "" && w.remoteTip("iss-5") != "":
+			t.Errorf("%s: a refused reservation was pushed", c.name)
+		}
+	}
+}
+
+// TestTheMachineHolderKeySitsBesideTheForkKey: the machine layer may hold
+// reservation.fork_origin beside reservation.github_username, and the
+// holder is still read from it.
+func TestTheMachineHolderKeySitsBesideTheForkKey(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("pat@example.com", machineConfig(t, `{"reservation":{"github_username":"octo","fork_origin":"allow"}}`))
+	stubForge(t, github.Repo{Fork: true, Parent: "intentdriven/abcd"}, nil)
+	originOnGitHub(t, "git@github.com:octo/abcd.git")
+	res, err := p.reserve("iss-5", "a.go")
+	if err != nil || res.Act != ActReserved || res.Holder != "octo" {
+		t.Fatalf("%+v %v; want the reservation made as octo", res, err)
 	}
 }

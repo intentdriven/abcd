@@ -3,7 +3,7 @@
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
 questions, records the answers, and gets on with it; `ahoy install
 --attribution` writes one more key and `ahoy install --outbound` two more, and
-four further keys can be hand-set and are read but never written. Beyond those eleven, the binary reads only keys a
+seven further keys can be hand-set and are read but never written. Beyond those fourteen, the binary reads only keys a
 person opts into: the provider adapter's `oracle` keys and the interview's list
 style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
@@ -19,7 +19,7 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Thirteen keys plus a `meta` block. Install asks about visibility, the docs target,
+Fourteen keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, and the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and writes exactly those four values back.
 `attribution.hook` is written by `ahoy install --attribution`, and
@@ -27,11 +27,12 @@ and the deep scanner is on `PATH`), and writes exactly those four values back.
 one outbound switch; the shell guard reads `outbound.forge`, and an install
 completes a repository that records only one of the two and leaves the other
 absent, while a key set to `false` is the repository's choice and is left as it
-is. The remaining six —
+is. The remaining seven —
 whether abcd should enable the forge's own secret scanning, the rules loader's
-refresh backstop, the filing-time match's threshold and compared fields, and
-whether `abcd land` pushes and queues — are hand-set: the binary reads them and
-never writes them.
+refresh backstop, the filing-time match's threshold and compared fields,
+whether `abcd land` pushes and queues, and whether a reservation may be made on
+an origin GitHub names a fork — are hand-set: the binary reads them and never
+writes them.
 
 ```json
 {
@@ -87,6 +88,10 @@ never writes them.
   "land": {                             // `abcd land` (04-surfaces/38-land.md)
     "push": true,                       // push the branch once a preflight receipt names its head
     "enqueue": true                     // arm and confirm its pull request where the merge gate allows
+  },
+  "reservation": {
+    "fork_origin": "refuse"             // "refuse" | "allow": whether a reservation is made on an origin
+                                        //   push URL GitHub names a fork (04-surfaces/37-reserve.md)
   }
 }
 ```
@@ -112,6 +117,17 @@ repository layer is read in the working directory's checkout and in the landed
 branch's own, and both are ANDed; a home the reader refuses hides the machine
 layer and its offs, so both acts read as off. The verb names the layer and file
 that turned an act off.
+
+The `reservation.fork_origin` key is read through the same reader, in the
+ordinary precedence: `.abcd/config.json` wins, then `~/.abcd.noindex/config.json`,
+then the bundled `"refuse"` (dcn-2610161141338923). It is `"allow"` only for a
+repository whose own home is a fork on GitHub, where every account working on
+it reserves; the fork refusal names it. It is read only once the forge has
+named one of origin's push URLs a fork, so a malformed value, or a misspelt key
+under `reservation`, refuses a reservation on a fork naming the file and never
+stops one anywhere else. The machine layer's `reservation.github_username`
+(04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
+layer alone and is not one of the fourteen.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
 block. This repository's own config carries four of these blocks — `docs`, `meta`,
