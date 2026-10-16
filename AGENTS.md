@@ -74,7 +74,7 @@ A prompt that matches no domain injects nothing (zero added tokens).
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`, `SHELL`, `GRILL`. Each carries recall keywords and its rules, bundled
+`OPINIONS`, `LOAD`, `SCRATCH`, `SHELL`, `GRILL`. Each carries recall keywords and its rules, bundled
 in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 `OPINIONS` points at the canonical conventions under
 `.abcd/development/principles/` rather than copying them. `LOAD` carries the
@@ -94,6 +94,11 @@ widen rather than recommend); it is generated from the same limits the question
 check in `abcd guard hook` enforces, and recalls on words of asking and
 choosing, so it lands in most sessions. A repository that does not want it
 silences it with `{"GRILL": {"state": "dormant"}}` in `.abcd/rules.json`.
+`SCRATCH` says where a session's working files go: what a later turn,
+session or agent reruns or reads goes in `.abcd/.work.local/scratch/` (or
+`logs/`), a verifier's copy under `~/.abcd.noindex/`, and the host's own
+scratchpad keeps only the turn's throwaway files, since a reboot or a new
+session loses it.
 
 ### Reset triggers
 
@@ -230,7 +235,10 @@ always available: an artefact that proves durable is moved up to `.abcd/work/` o
 `.abcd/development/` later, in a change that says why. Demotion is not — an
 artefact committed to the wrong tier is already in the history, and a stray
 top-level directory is a `stray_root_docs` finding. **Guessing upward is
-irreversible; guessing downward costs nothing.**
+irreversible; guessing downward costs nothing.** The floor is this tier, not the
+scratchpad the host hands a session: that folder does not survive a reboot or a
+new session, so it holds only throwaway files for the turn at hand (the
+`SCRATCH` rules domain).
 
 ## Boundaries
 
