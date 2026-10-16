@@ -49,6 +49,8 @@ An open issue is **eligible** when all of these hold, read from its fields
 alone:
 
 - no record in its `blocked_by` is still open;
+- its `related_intents` names no intent (an issue promoted to an intent is that
+  intent's, whatever the repository's record says);
 - its category is one the rule takes;
 - its severity is one the rule takes;
 - it carries a `remedy:` (`abcd capture --remedy "<fix>"`, which every new
@@ -67,6 +69,7 @@ decides its one disposition:
 | `outcome` | `rule` | Meaning |
 | --- | --- | --- |
 | `skipped` | `blocked` | an open record blocks it; `blockers` names them |
+| `handback` | `promoted` | its `related_intents` names an intent, which owns it; the reason names every intent |
 | `handback` | `security` | category `security`, a person's unless the rule sets `drain_security: take` |
 | `handback` | `category` | a category the rule does not take |
 | `handback` | `severity` | a severity the rule does not take (`major` and `critical` under the baseline) |
@@ -120,7 +123,7 @@ order, then the others grouped by outcome with their reasons. For an
 `abcd capture remedy <iss-N> "<fix>"` is what makes it a candidate, and name the
 ones an automatic filer wrote apart, since their reason says so. For a
 `waits-on-ruling` or `deferred` hand-back, say which ruling or release it waits
-on. Do not act on the list: a hand-back is a person's decision.
+on, and for a `promoted` one, which intent owns it. Do not act on the list: a hand-back is a person's decision.
 
 ## The run
 
