@@ -356,10 +356,23 @@ func addReservations(root string, out *peersOutput, now time.Time) (failed strin
 // that answered gap and err. It returns the failure to name, as
 // addReservations does.
 func (b *reservationsBlock) fill(root string, now time.Time, gap string, err error) (failed string) {
+	failed, ok := b.fillView(root, now, gap, err)
+	if !ok {
+		return failed
+	}
+	// The holds are judged by the merge hold's own rule, so the listing counts
+	// a release exactly as the land fence and `abcd land` do.
+	holds, herr := claim.JudgedHolds(root, now, claim.Options{Now: func() time.Time { return now }})
+	return b.fillHolds(failed, holds, herr)
+}
+
+// fillView is fill's reservations alone: ok is false when there are none to
+// list (no origin) or they could not be read, and failed then says why.
+func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err error) (failed string, ok bool) {
 	out := b
 	out.Reservations, out.LiveByHolder, out.ReleaseHolds = []reservationRow{}, map[string]int{}, []holdRow{}
 	if errors.Is(err, claim.ErrNoOrigin) {
-		return ""
+		return "", false
 	}
 	out.View.Origin = true
 	if err != nil {
@@ -369,11 +382,7 @@ func (b *reservationsBlock) fill(root string, now time.Time, gap string, err err
 	out.DerivedUnchecked = termsafe.Sanitize(fsutil.RedactHome(gap))
 	snap, verr := claim.View(root, now)
 	if verr != nil {
-		msg := termsafe.Sanitize(fsutil.RedactHome(verr.Error()))
-		if failed != "" {
-			return failed + "; " + msg
-		}
-		return msg
+		return joinFailed(failed, termsafe.Sanitize(fsutil.RedactHome(verr.Error()))), false
 	}
 	if !snap.FetchedAt.IsZero() {
 		out.View.FetchedAt = rfc3339(snap.FetchedAt)
@@ -393,22 +402,30 @@ func (b *reservationsBlock) fill(root string, now time.Time, gap string, err err
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
-	// The holds are judged by the merge hold's own rule, so the listing counts
-	// a release exactly as the land fence and `abcd land` do.
-	holds, herr := claim.JudgedHolds(root, now, claim.Options{Now: func() time.Time { return now }})
+	return failed, true
+}
+
+// fillHolds adds the release holds, read once by whoever calls it (the
+// listing's own read, or `abcd status`'s ReadStatus), to the block; herr is
+// why they could not be read, joined to failed.
+func (b *reservationsBlock) fillHolds(failed string, holds []claim.Hold, herr error) string {
 	if herr != nil {
-		msg := termsafe.Sanitize(fsutil.RedactHome(herr.Error()))
-		if failed != "" {
-			return failed + "; " + msg
-		}
-		return msg
+		return joinFailed(failed, termsafe.Sanitize(fsutil.RedactHome(herr.Error())))
 	}
 	for _, h := range holds {
-		out.ReleaseHolds = append(out.ReleaseHolds, holdRow{Release: h.Release, Subject: h.Subject, Holder: h.Holder,
+		b.ReleaseHolds = append(b.ReleaseHolds, holdRow{Release: h.Release, Subject: h.Subject, Holder: h.Holder,
 			Copy: h.Copy, EffectiveExpiry: rfc3339(h.EffectiveExpiry), Unreadable: h.Unreadable, Own: h.Own,
 			Unsighted: h.Unsighted, Text: termsafe.Sanitize(h.Line())})
 	}
 	return failed
+}
+
+// joinFailed is failed with msg after it, "; " between them.
+func joinFailed(failed, msg string) string {
+	if failed != "" {
+		return failed + "; " + msg
+	}
+	return msg
 }
 
 // renderReservations is the reservations block of the text form: a heading

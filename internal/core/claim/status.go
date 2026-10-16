@@ -183,10 +183,9 @@ type StatusView struct {
 	// line that counts them, and never leaves this package).
 	UnreadNames int
 	unreadNames []string
-	// Reservations is the reservations as last fetched (View), and Holds every
-	// release being cut, judged as the merge hold judges them (JudgedHolds).
-	Reservations Snapshot
-	Holds        []Hold
+	// Holds is every release being cut, judged as the merge hold judges them
+	// (JudgedHolds).
+	Holds []Hold
 }
 
 // StatusFetch is what `abcd status`'s fetch could not read: Gap is why
@@ -291,17 +290,14 @@ func listStatusBranches(root string) (names, skipped []string, err error) {
 func statusName(name string) bool { return validUsername(name) && name == strings.ToLower(name) }
 
 // ReadStatus is everyone's status as this checkout last fetched it, from
-// disk alone: no fetch and no push (invariant 7). It first takes in whatever a
-// fetch brought since the last read, under ctx, then reads what is kept. A ctx
-// that ends first answers its error.
+// disk alone: no fetch and no push (invariant 7). It reads the release holds
+// as the merge hold judges them, then takes in whatever a fetch brought since
+// the last read, under ctx, then reads what is kept. It is the one read of the
+// holds `abcd status` and the prompt hook make: neither reads them again. A
+// read that fails, or a ctx that ends first, answers its error with what was
+// read before it: the view's origin, its fetch's date and its failed fetches
+// always, and the holds when they were read.
 func ReadStatus(ctx context.Context, root string, now time.Time, o Options) (StatusView, error) {
-	return readStatus(ctx, root, now, o, true)
-}
-
-// readStatus is ReadStatus, reading the reservations themselves only when
-// full is true: the prompt hook shows the release holds alone, and reads no
-// other reservation's tip.
-func readStatus(ctx context.Context, root string, now time.Time, o Options, full bool) (StatusView, error) {
 	now = now.UTC().Truncate(time.Second)
 	ok, err := HasOrigin(root)
 	if err != nil {
@@ -313,9 +309,12 @@ func readStatus(ctx context.Context, root string, now time.Time, o Options, full
 	v := StatusView{Origin: true, FetchedAt: lastFetched(root, statusBranches)}
 	v.Unread = unreadOf(root, statusBranches)
 	v.ReservationsUnread = unreadOf(root, reservations)
+	if v.Holds, err = JudgedHolds(root, now, o); err != nil {
+		return v, err
+	}
 	in, err := takeIn(ctx, root, now)
 	if err != nil {
-		return StatusView{}, err
+		return v, err
 	}
 	v.Announcements = keptAnnouncements(root, now, in.held)
 	for _, d := range keptDoubts(root, now) {
@@ -328,14 +327,6 @@ func readStatus(ctx context.Context, root string, now time.Time, o Options, full
 		}
 	}
 	v.UnreadNames = len(v.unreadNames)
-	if full {
-		if v.Reservations, err = View(root, now); err != nil {
-			return StatusView{}, err
-		}
-	}
-	if v.Holds, err = JudgedHolds(root, now, o); err != nil {
-		return StatusView{}, err
-	}
 	return v, ctx.Err()
 }
 

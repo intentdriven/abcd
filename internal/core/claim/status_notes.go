@@ -71,7 +71,7 @@ func PromptNotes(ctx context.Context, root string, now time.Time, o Options) (No
 	done := make(chan answer, 1)
 	go func() {
 		read := func() {
-			v, err := readStatus(ctx, root, now, o, false)
+			v, err := ReadStatus(ctx, root, now, o)
 			done <- answer{v, err}
 		}
 		if h := statusReadHook.Load(); h != nil {

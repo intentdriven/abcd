@@ -135,7 +135,9 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 			o := claim.Options{Now: func() time.Time { return now }}
 			fetched, ferr := claim.FetchStatus(root, statusPushers, o)
 			out := statusOutput{Grants: claim.GrantsNothing}
-			failed := out.reservationsBlock.fill(root, now, fetched.Gap, ferr)
+			// One read of the reservations (View, in the block) and one of
+			// the holds (ReadStatus's), shared by the listing and the view.
+			failed, listed := out.reservationsBlock.fillView(root, now, fetched.Gap, ferr)
 			out.SendersUnchecked = termsafe.Sanitize(fsutil.RedactHome(fetched.SendersUnchecked))
 			if out.View.Origin {
 				v, rerr := claim.ReadStatus(context.Background(), root, now, o)
@@ -144,6 +146,9 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 					if failed == "" {
 						failed = out.ReadError
 					}
+				}
+				if listed {
+					out.reservationsBlock.fillHolds("", v.Holds, nil)
 				}
 				out.addStatus(v, now)
 			}

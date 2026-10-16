@@ -474,8 +474,15 @@ func TestStatusListsEveryoneWithTheReservationsAndTheHold(t *testing.T) {
 		v.Announcements[0].Kind != "asking" || v.Announcements[0].Item != "#7" || !v.Announcements[0].SentAt.Equal(t0.Add(time.Minute)) {
 		t.Fatalf("announcements = %+v; want quinn's then maya's", v.Announcements)
 	}
-	if !v.FetchedAt.Equal(t0.Add(2*time.Minute)) || len(v.Reservations.Reservations) != 1 || v.Reservations.Reservations[0].Record != "rel-v0.16.0" {
-		t.Fatalf("view = %+v; want the fetch dated and the release reservation listed", v)
+	// The reservations as `abcd status` lists them: the view of the same
+	// fetch (View), which the status view does not read again.
+	snap, err := View(pat.dir, w.clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !v.FetchedAt.Equal(t0.Add(2*time.Minute)) || len(snap.Reservations) != 1 || snap.Reservations[0].Record != "rel-v0.16.0" ||
+		!snap.FetchedAt.Equal(v.FetchedAt) {
+		t.Fatalf("view = %+v, reservations = %+v; want the fetch dated and the release reservation listed", v, snap)
 	}
 	if len(v.Holds) != 1 || v.Holds[0].Text() != "release v0.16.0 being cut by @maya: merges are held" {
 		t.Fatalf("holds = %+v; want the release held", v.Holds)
