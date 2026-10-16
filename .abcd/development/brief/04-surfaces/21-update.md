@@ -20,17 +20,21 @@ offline included, the verb refuses and nothing is swapped.
 
 The verb is the explicit ask. abcd never checks for or applies updates on its own
 ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)); this verb,
-with its check, is the only **command** that reaches the release origin, and only
-when invoked
+with its check, reaches the release origin only when invoked
 ([itd-130](../../intents/shipped/itd-130-abcd-update-completes-a-chosen-update-in.md),
-spc-32). The release origin is not its only destination: to verify a fetched
+spc-32). It is not the only **command** that reaches it. The launch preview and
+the release cut reach it too, and only when asked to read the parity baseline
+from a release's published plugin archive rather than render it fresh: they
+fetch that archive and the release's checksums, hold the one to the other, and
+announce each fetch on stderr as they make it. The release origin is not this
+verb's only destination either: to verify a fetched
 binary's build provenance, the verb also reaches GitHub's API, for the binary's
 attestations and for the commit the release tag names, and Sigstore's TUF
 repository, for the trusted root the signature is checked against. Each is
 reached only after a release has been chosen, so none of them discovers an
 update.
 
-They are not the only code paths to that origin. `hooks/bootstrap.sh` pins the
+Nor are commands the only code paths to that origin. `hooks/bootstrap.sh` pins the
 same repository, resolves its latest release over the network, and downloads the
 checksum-verified asset — and the hook configuration fires it whenever the plugin
 root holds no binary, so it reaches the origin without the user naming a network
@@ -139,6 +143,16 @@ with the digest the release checksums proved, so the file it updated does not re
 as somebody else's binary the next time an install shape is judged. The re-stamp
 runs on an already-current outcome too, and it does nothing at all where no record
 names that path.
+
+The verb also records the release it installed or verified, on a swap and on an
+already-current answer alike, as this machine's newest release: the mark the
+newest-release refusal above is judged against, kept in the user-level abcd home
+beside the install record. A bare update only ever raises the mark, so a release
+at or below it changes nothing. A release the person named is recorded whatever
+the mark said, so naming an older release lowers the mark to it, and that is the
+one way the mark goes down. The plugin bootstrap raises the same mark whenever it
+provisions a release it verified against the published checksums. A mark that
+cannot be written leaves the update in place and says so in a note on stderr.
 
 ## An update says so once
 
