@@ -957,3 +957,34 @@ func TestAnAnnouncementWithNothingToFetchFetchesNothingElse(t *testing.T) {
 		t.Fatalf("the fetch brought in %s, which it did not name", refs)
 	}
 }
+
+// TestTheSendersOwnBranchIsFetchedPastTheCap: origin holds more status
+// branches than one listing fetches (maxStatusBranches), all sorting before
+// the sender's own. The sender's branch is fetched beside the first ones
+// within the cap, so the next announcement is built on its tip and sent at
+// the first push; the cap still holds for every other branch.
+func TestTheSendersOwnBranchIsFetchedPastTheCap(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("9+pat@users.noreply.github.com", "")
+	first, err := p.announce("merging", "#1012")
+	if err != nil {
+		t.Fatalf("the first announcement: %v", err)
+	}
+	var names []string
+	for i := 0; i <= maxStatusBranches; i++ {
+		names = append(names, fmt.Sprintf("a%04d", i))
+	}
+	w.pushNames(names)
+	w.set(t0.Add(time.Minute))
+	next, err := p.announce("merged", "#1012")
+	if err != nil {
+		t.Fatalf("announce with %d status branches sorting before the sender's = %v; want it sent", len(names), err)
+	}
+	if next.Attempts != 1 || w.parentOf(next.Commit) != first.Commit || w.statusTip("pat") != next.Commit {
+		t.Fatalf("the announcement %+v is not the child of %s at the tip, sent at the first push", next, first.Commit)
+	}
+	refs := strings.Fields(p.git("for-each-ref", "--format=%(refname)", StatusTrackingPrefix))
+	if len(refs) != maxStatusBranches+1 || !slices.Contains(refs, StatusTrackingPrefix+"pat") || slices.Contains(refs, StatusTrackingPrefix+names[maxStatusBranches]) {
+		t.Fatalf("fetched %d status branches; want the first %d and the sender's", len(refs), maxStatusBranches)
+	}
+}

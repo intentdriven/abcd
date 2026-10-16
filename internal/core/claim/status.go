@@ -285,7 +285,7 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 	if !ok {
 		return StatusFetch{}, ErrNoOrigin
 	}
-	names, skipped, past, err := listStatusBranches(root)
+	names, skipped, past, err := listStatusBranches(root, "")
 	if err != nil {
 		noteFetchFailure(root, statusBranches, now, redacted(err))
 		return StatusFetch{}, &FetchError{Reason: redacted(err), what: statusBranches.noun, outcome: "nothing was fetched"}
@@ -321,9 +321,12 @@ func FetchStatus(root string, lookup PusherLookup, o Options) (StatusFetch, erro
 // whole, so however many origin lists the listing is read: the first
 // maxStatusBranches names that are lower-case GitHub usernames, in origin's
 // order, then sorted; how many more such names it listed (past), which are
-// not fetched; and the tally of every other name, which is not fetched and
-// is never kept.
-func listStatusBranches(root string) (names []string, skipped nameTally, past int, err error) {
+// not read and not fetched; and the tally of every other name, which is not
+// fetched and is never kept. own, when not "", is the sender's own branch
+// name: it is always among names when origin lists it, past the cap too,
+// so an announcement is built on its tip; past still counts it, since the
+// reader does not read it there.
+func listStatusBranches(root, own string) (names []string, skipped nameTally, past int, err error) {
 	args := []string{"ls-remote", "--refs", Remote, StatusRefPrefix + "*"}
 	trace(args...)
 	names = []string{}
@@ -341,6 +344,9 @@ func listStatusBranches(root string) (names []string, skipped nameTally, past in
 			names = append(names, name)
 		default:
 			past++
+			if name == own {
+				names = append(names, name)
+			}
 		}
 	}, args...)
 	if err != nil {
@@ -1311,7 +1317,8 @@ type skippedState struct {
 	Count    int    `json:"count"`
 	Digest   string `json:"digest,omitempty"`
 	// PastCap is how many names that are read the listing held past
-	// maxStatusBranches, none of them fetched.
+	// maxStatusBranches, none of them read: only an announcement's fetches
+	// one of them, the sender's own.
 	PastCap int `json:"past_cap,omitempty"`
 }
 

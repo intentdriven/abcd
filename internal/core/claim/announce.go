@@ -74,7 +74,8 @@ var statusBranches = namespace{remote: StatusRefPrefix, tracking: StatusTracking
 // fetchStatus is announce's read of the remote: it lists the status branches
 // on origin (listStatusBranches, the listing `abcd status` makes), then
 // fetches, in one command, each one whose name is a lower-case username, by
-// its own refspec, with origin's default branch when ref names it
+// its own refspec, up to the listing's cap, and the sender's own (branch)
+// wherever it sorts, with origin's default branch when ref names it
 // (fetchWith). Before the fetch it does what FetchStatus does with the
 // listing: it keeps the tally of the names not read and deletes every copy of
 // a status branch the fetch does not name (dropUnlisted), so the reader never
@@ -83,7 +84,7 @@ var statusBranches = namespace{remote: StatusRefPrefix, tracking: StatusTracking
 // sender's own branch, so a copy of it this checkout kept from before is
 // never taken for its tip.
 func fetchStatus(root string, now time.Time, ref, branch string) (gap string, listed bool, err error) {
-	names, skipped, past, err := listStatusBranches(root)
+	names, skipped, past, err := listStatusBranches(root, branch)
 	if err != nil {
 		noteFetchFailure(root, statusBranches, now, redacted(err))
 		return "", false, &FetchError{Reason: redacted(err), what: statusBranches.noun, outcome: noAnnouncement}
