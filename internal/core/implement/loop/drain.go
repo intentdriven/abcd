@@ -335,6 +335,12 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, plan
 		return res, nil
 	}
 
+	// A peer this checkout cannot read refuses the move once, before any
+	// reservation or judgement, rather than holding every issue (step 9).
+	if err := unreadablePeers(repoRoot); err != nil {
+		return DrainResult{}, err
+	}
+
 	// The host's answer to the judgement the drain awaits (scope 3): taken
 	// before anything else moves, so a refusal writes nothing. A yes routes the
 	// issue as a lane's hand-back of its kind is routed; a no lets the lane
