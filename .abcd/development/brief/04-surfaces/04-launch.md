@@ -505,8 +505,11 @@ planned intent can still be unjudged; wherever it is set, its value is checked
 in every bucket, by the same rule, which flags a value outside the enum and
 `internal` on an intent (`internal/core/lint/lint.go`). An issue declares its
 impact when it is resolved (`abcd capture resolve --impact`). At release, the cut gathers the records that entered
-or left `intents/shipped/` and `issues/resolved/` since the previous release tag
-(`internal/core/changelog/shipped.go`), takes the highest-severity impact among
+or left `intents/shipped/` and `issues/resolved/` since the previous release tag,
+leaving out an entering record whose `shipped_in:` names a release tag the
+previous tag already reaches, since that release carried its work; a value that
+names no such tag keeps the record in (`internal/core/changelog/shipped.go`),
+takes the highest-severity impact among
 them (`internal/core/changelog/impact.go`), and applies the table above
 (`DeriveNext`, `internal/core/changelog/version.go`). The records' declared
 impact is the only input: nothing derives a version from commit messages. A cut

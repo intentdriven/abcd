@@ -173,6 +173,13 @@ type InstallSurface struct {
 	PluginName  string             `json:"plugin_name"`
 	Marketplace []MarketplaceEntry `json:"marketplace"`
 	Entries     []SurfaceEntry     `json:"entries"`
+
+	// hookExecuted is the union, over EVERY hook command the payload declares,
+	// of the plugin-root paths some hook text executes (hookExecutedRefs). It
+	// is collected before dedupeEntries collapses two commands reaching one
+	// file into a single entry, so a file one command hands to sh and another
+	// runs directly still reads as executed (iss-2610160608456302).
+	hookExecuted map[string]struct{}
 }
 
 // conventionRules are the auto-discovery roots a harness loads without any
@@ -247,12 +254,13 @@ func ResolveInstallSurface(tree PayloadTree) (InstallSurface, error) {
 
 	entries := conventionEntries(tree)
 	entries = append(entries, manifestEntries(tree, plugin)...)
-	hookEntries, err := hookCommandEntries(tree, plugin, surface.PluginName, entries)
+	hookEntries, executed, err := hookCommandEntries(tree, plugin, surface.PluginName, entries)
 	if err != nil {
 		return surface, err
 	}
 	entries = append(entries, hookEntries...)
 	surface.Entries = dedupeEntries(entries)
+	surface.hookExecuted = executed
 	return surface, nil
 }
 
@@ -444,7 +452,11 @@ func normaliseDeclared(decl string) string {
 // error, exactly as an unparseable plugin manifest is: the host registers no
 // hook from it on any install, so skipping it would let the loudest hook
 // failure read as a payload that declares no hooks (iss-2609251827104081).
-func hookCommandEntries(tree PayloadTree, plugin map[string]any, pluginName string, found []SurfaceEntry) ([]SurfaceEntry, error) {
+//
+// It also returns the union of hookExecutedRefs over every command string it
+// reads, so the executed set covers each command, not just the one whose
+// entry survives deduplication.
+func hookCommandEntries(tree PayloadTree, plugin map[string]any, pluginName string, found []SurfaceEntry) ([]SurfaceEntry, map[string]struct{}, error) {
 	var docs []any
 	if len(plugin) > 0 {
 		docs = append(docs, plugin["hooks"])
@@ -455,14 +467,18 @@ func hookCommandEntries(tree PayloadTree, plugin map[string]any, pluginName stri
 		}
 		doc, err := readHookConfig(tree, e.Path)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		docs = append(docs, doc)
 	}
 
 	var out []SurfaceEntry
+	executed := map[string]struct{}{}
 	for _, doc := range docs {
 		for _, command := range collectCommandStrings(doc) {
+			for ref := range hookExecutedRefs(tree, command) {
+				executed[ref] = struct{}{}
+			}
 			for _, ref := range hookCommandRefs(tree, command) {
 				entry := SurfaceEntry{
 					Kind: SurfaceHook, Path: ref, Origin: OriginHookCommand,
@@ -476,7 +492,7 @@ func hookCommandEntries(tree PayloadTree, plugin map[string]any, pluginName stri
 			}
 		}
 	}
-	return out, nil
+	return out, executed, nil
 }
 
 // hookCommandRefs returns the plugin-root paths a hook command reads: the ones

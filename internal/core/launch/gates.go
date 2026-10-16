@@ -1031,7 +1031,9 @@ var hookHandlerTypes = map[string]struct{}{"prompt": {}, "agent": {}, "http": {}
 // read the script, which runs at any mode, so a 0644 script there is no concern
 // (iss-2610160608456302). A file the command, or a script it runs, executes
 // directly — session-start.sh runs hooks/bootstrap.sh that way — still needs
-// its executable bit, and a missing one is still a finding.
+// its executable bit, and a missing one is still a finding. The executed set
+// is the union over every hook command, so a file one command hands to sh and
+// another runs directly is judged.
 func hookComplianceGate(bundle Bundle) GateSummary {
 	row := GateSummary{Name: gateHookCompliant, Status: "ran"}
 	tree := NewBundleTree(bundle)
@@ -1046,7 +1048,6 @@ func hookComplianceGate(bundle Bundle) GateSummary {
 		modes[f.LogicalPath] = f.GitMode
 	}
 	seen := map[string]struct{}{}
-	executed := map[string]map[string]struct{}{} // by hook command
 	for _, e := range surface.Entries {
 		if e.Origin != OriginHookCommand || e.Requirement != RequirePayload {
 			continue
@@ -1055,12 +1056,7 @@ func hookComplianceGate(bundle Bundle) GateSummary {
 		if _, dup := seen[e.Path]; dup || !carried || mode == "100755" {
 			continue
 		}
-		run, ok := executed[e.DeclaredAs]
-		if !ok {
-			run = hookExecutedRefs(tree, e.DeclaredAs)
-			executed[e.DeclaredAs] = run
-		}
-		if _, direct := run[e.Path]; !direct {
+		if _, direct := surface.hookExecuted[e.Path]; !direct {
 			continue
 		}
 		seen[e.Path] = struct{}{}

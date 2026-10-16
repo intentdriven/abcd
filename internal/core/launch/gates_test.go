@@ -641,11 +641,13 @@ func TestProseLinesReadsARuledDocumentWhole(t *testing.T) {
 // file, so the script's mode is irrelevant and a 0644 script is no concern. A
 // file some hook text runs directly — the command itself, or a script the
 // command runs — still needs its executable bit, and a missing one is still a
-// finding.
+// finding. A file one hook text executes is judged whatever another hook text
+// does with it, in either order.
 func TestHookRowJudgesModeOnlyWhereAFileIsExecuted(t *testing.T) {
 	cases := []struct {
 		name     string
 		command  string
+		more     []string          // further hook commands, each under its own later event
 		script   string            // hooks/go.sh contents
 		extra    map[string]string // further 0644 payload files
 		findings []string          // files the row must name as not executable
@@ -685,14 +687,55 @@ func TestHookRowJudgesModeOnlyWhereAFileIsExecuted(t *testing.T) {
 			script:  "#!/bin/sh\nexec sh \"$CLAUDE_PLUGIN_ROOT/hooks/helper.sh\"\n",
 			extra:   map[string]string{"hooks/helper.sh": "#!/bin/sh\nexit 0\n"},
 		},
+		{
+			name:    "sh named by an absolute path runs the script",
+			command: `/bin/sh \"$CLAUDE_PLUGIN_ROOT/hooks/go.sh\"`,
+			script:  "#!/bin/sh\nexit 0\n",
+		},
+		{
+			name:    "sh after a variable assignment runs the script",
+			command: `VAR=1 sh \"$CLAUDE_PLUGIN_ROOT/hooks/go.sh\"`,
+			script:  "#!/bin/sh\nexit 0\n",
+		},
+		{
+			name:     "one hook hands the script to sh and a later hook executes it",
+			command:  `sh \"${CLAUDE_PLUGIN_ROOT}/hooks/go.sh\"`,
+			more:     []string{`\"${CLAUDE_PLUGIN_ROOT}/hooks/go.sh\"`},
+			script:   "#!/bin/sh\nexit 0\n",
+			findings: []string{"hooks/go.sh"},
+		},
+		{
+			name:     "one hook executes the script and a later hook hands it to sh",
+			command:  `\"${CLAUDE_PLUGIN_ROOT}/hooks/go.sh\"`,
+			more:     []string{`sh \"${CLAUDE_PLUGIN_ROOT}/hooks/go.sh\"`},
+			script:   "#!/bin/sh\nexit 0\n",
+			findings: []string{"hooks/go.sh"},
+		},
+		{
+			name:    "one script hands a helper to sh and another executes it",
+			command: `sh \"${CLAUDE_PLUGIN_ROOT}/hooks/a.sh\"`,
+			more:    []string{`sh \"${CLAUDE_PLUGIN_ROOT}/hooks/b.sh\"`},
+			script:  "#!/bin/sh\nexit 0\n",
+			extra: map[string]string{
+				"hooks/a.sh":      "#!/bin/sh\nsh \"$CLAUDE_PLUGIN_ROOT/hooks/helper.sh\"\n",
+				"hooks/b.sh":      "#!/bin/sh\n\"$CLAUDE_PLUGIN_ROOT/hooks/helper.sh\"\n",
+				"hooks/helper.sh": "#!/bin/sh\nexit 0\n",
+			},
+			findings: []string{"hooks/helper.sh"},
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			root := docsFixture(t)
 			writeFile(t, root, ".abcd/config/launch-payload.json",
 				`{"includes": [".claude-plugin", "docs", "hooks", "README.md"]}`)
-			writeFile(t, root, "hooks/hooks.json",
-				`{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "`+tc.command+`"}]}]}}`)
+			// The events sort in this order, so the commands are read in it.
+			events := []string{"PostToolUse", "SessionStart", "Stop"}
+			var decl []string
+			for i, command := range append([]string{tc.command}, tc.more...) {
+				decl = append(decl, `"`+events[i]+`": [{"hooks": [{"type": "command", "command": "`+command+`"}]}]`)
+			}
+			writeFile(t, root, "hooks/hooks.json", `{"hooks": {`+strings.Join(decl, ", ")+`}}`)
 			writeFile(t, root, "hooks/go.sh", tc.script) // 0644
 			for rel, body := range tc.extra {
 				writeFile(t, root, rel, body) // 0644
