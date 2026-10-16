@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // ShimGit puts a git first on PATH, for the length of t, that answers one
@@ -38,15 +40,12 @@ func ShimGit(t *testing.T, when []string, out string, code int) {
 	var b strings.Builder
 	b.WriteString("#!/bin/sh\nhas() { w=$1; shift; for a; do [ \"$a\" = \"$w\" ] && return 0; done; return 1; }\nif true")
 	for _, w := range when {
-		b.WriteString(" && has " + shQuote(w) + " \"$@\"")
+		b.WriteString(" && has " + shellquote.Single(w) + " \"$@\"")
 	}
-	b.WriteString("; then cat " + shQuote(answer) + "; exit " + strconv.Itoa(code) + "; fi\n")
-	b.WriteString("exec " + shQuote(next) + " \"$@\"\n")
+	b.WriteString("; then cat " + shellquote.Single(answer) + "; exit " + strconv.Itoa(code) + "; fi\n")
+	b.WriteString("exec " + shellquote.Single(next) + " \"$@\"\n")
 	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(b.String()), 0o700); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
-
-// shQuote is s as one single-quoted shell word.
-func shQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }

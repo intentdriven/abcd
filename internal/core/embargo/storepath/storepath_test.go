@@ -80,12 +80,12 @@ func TestHasStoreShape(t *testing.T) {
 		p    string
 		want bool
 	}{
-		{"/anywhere/.abcd.noindex/worktrees/" + key40 + "/embargo", true},
-		{"/anywhere/.abcd.noindex/worktrees/" + key64 + "/embargo", true},
+		{abcdhome.Path("/anywhere", "worktrees", key40, "embargo"), true},
+		{abcdhome.Path("/anywhere", "worktrees", key64, "embargo"), true},
 		{"/anywhere/.abcd/worktrees/" + key40 + "/embargo", false},
-		{"/anywhere/.abcd.noindex/other/" + key40 + "/embargo", false},
-		{"/anywhere/.abcd.noindex/worktrees/" + key40 + "/lane", false},
-		{"/anywhere/.abcd.noindex/worktrees/main/embargo", false},
+		{abcdhome.Path("/anywhere", "other", key40, "embargo"), false},
+		{abcdhome.Path("/anywhere", "worktrees", key40, "lane"), false},
+		{abcdhome.Path("/anywhere", "worktrees", "main", "embargo"), false},
 	} {
 		if got := storepath.HasStoreShape(tc.p); got != tc.want {
 			t.Errorf("HasStoreShape(%q) = %v, want %v", tc.p, got, tc.want)
