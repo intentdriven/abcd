@@ -97,9 +97,11 @@ func (w *DrainOriginWait) written() bool {
 }
 
 // DrainPreview is `abcd drain --dry-run`: the plan, and the view of origin it
-// was read from. Origin is nil in a checkout with no remote named origin, and
-// when this checkout names no default branch of origin; OriginUnread then says
-// why, and the plan is the checkout's own ledger.
+// was read from. Origin is nil in two cases, and the plan is then the
+// checkout's own ledger: in a checkout with no remote named origin, where
+// OriginUnread is empty, since there is no origin to read; and when origin's
+// default branch as last fetched cannot be read (this checkout names none, or
+// its commit does not resolve), where OriginUnread says why.
 type DrainPreview struct {
 	capture.DrainPlan
 	Origin       *DrainOrigin `json:"origin"`
@@ -194,7 +196,7 @@ func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 	source := gitutil.ShortRef(v.ref) + " at " + shortSHA(v.commit)
 	entries, err := at.list(recordid.IssuesRelDir+"/", true)
 	if err != nil {
-		return nil, fmt.Errorf("reading the ledger at %s: %w", source, err)
+		return nil, fmt.Errorf("reading the ledger of %s: %w", source, err)
 	}
 	l := &capture.TreeLedger{Source: source}
 	var want []int
@@ -221,7 +223,7 @@ func treeLedger(repoRoot string, v originView) (*capture.TreeLedger, error) {
 	}
 	got, err := gitutil.CatFileBatch(repoRoot, objects, budget)
 	if err != nil {
-		return nil, fmt.Errorf("reading the ledger at %s: %w", source, err)
+		return nil, fmt.Errorf("reading the ledger of %s: %w", source, err)
 	}
 	for k, i := range want {
 		switch o := got[k]; {

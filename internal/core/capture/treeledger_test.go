@@ -1,7 +1,9 @@
 package capture
 
 import (
+	"errors"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -21,5 +23,23 @@ func TestTreeLedgerTerminalCountsOnlyResolvedAndWontfix(t *testing.T) {
 	want := []string{"iss-2609300000000002", "iss-2609300000000003"}
 	if got := l.Terminal(); !slices.Equal(got, want) {
 		t.Fatalf("Terminal() = %v; want %v", got, want)
+	}
+}
+
+// TestTreeLedgerDuplicateRefusalNamesTheLedgerItRead: a record in two status
+// folders of a commit's ledger is refused naming that ledger once, as "the
+// ledger of origin/main at <commit>", not "at origin/main at <commit>".
+func TestTreeLedgerDuplicateRefusalNamesTheLedgerItRead(t *testing.T) {
+	dir := ".abcd/work/issues/"
+	l := &TreeLedger{Source: "origin/main at 0123abcd4567", Files: []LedgerFile{
+		{Folder: "open", Path: dir + "open/iss-2609300000000001-a.md"},
+		{Folder: "resolved", Path: dir + "resolved/iss-2609300000000001-a.md"},
+	}}
+	_, _, err := listTree(l)
+	if !errors.Is(err, ErrDuplicateIssueID) {
+		t.Fatalf("listTree = %v; want the duplicate refusal", err)
+	}
+	if want := "duplicate issue id in the ledger of origin/main at 0123abcd4567: iss-2609300000000001 is claimed by "; !strings.HasPrefix(err.Error(), want) {
+		t.Fatalf("the refusal = %q; want it to begin %q", err, want)
 	}
 }

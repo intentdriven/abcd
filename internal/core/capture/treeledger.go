@@ -85,7 +85,7 @@ func listTree(l *TreeLedger) ([]Issue, []SkipRecord, error) {
 		}
 	}
 	if len(conflicts) > 0 {
-		return nil, nil, fmt.Errorf("%w at %s: %s; move or remove one of each pair there so the ledger says which status the record is in",
+		return nil, nil, fmt.Errorf("%w in the ledger of %s: %s; move or remove one of each pair there so the ledger says which status the record is in",
 			ErrDuplicateIssueID, termsafe.Sanitize(l.Source), termsafe.Sanitize(strings.Join(conflicts, "; and ")))
 	}
 	var issues []Issue
