@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // activityFixture is the forge's activity record as GitHub answers it
@@ -91,7 +93,9 @@ func originAt(t *testing.T, url string) string {
 	t.Helper()
 	dir := t.TempDir()
 	for _, args := range [][]string{{"init", "-q"}, {"remote", "add", "origin", url}} {
-		if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = gittest.Env(t)
+		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
 		}
 	}
