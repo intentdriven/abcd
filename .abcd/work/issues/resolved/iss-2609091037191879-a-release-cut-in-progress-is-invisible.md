@@ -10,12 +10,12 @@ origin: researcher-authored
 production_mode: hand-written
 remedy: "Waits on ruling H (the cut lease inside the session register itd-2609150819440345, or its own intent): have `launch ship` take a cut lease in the machine-scoped run store (the claim-lease primitive: holder session, anchor tag, expiry) and release it at the tag, and have `capture resolve`, `spec close` and the pre-merge-commit hook print which cut a change would join and who holds it, without refusing, so the cutting session rules; prove it with a test that a resolve during a live lease names the holder and one after release prints nothing."
 related_intents: [itd-2609151838312703]
-resolution: "a release cut is now held by a reservation of the release, rel-vX.Y.Z, which every other session's land step reads and refuses on, and abcd peers shows"
+resolution: "a release cut is now held by a reservation of the release, rel-vX.Y.Z, which every other session's land step (the implement loop's land fence and abcd land) reads and refuses on; abcd peers shows the hold, and abcd status and the prompt hook are to show it in step 3 of spc-2610150728396006"
 impact: additive
 resolved_by:
   intent: "itd-2609151838312703"
   spec: "spc-2610150728396006"
-  commit: "2653a0e23"
+  commit: "371a737f9"
 ---
 
 A release cut in progress is invisible to every other session, so a change landing on main during a cut is discovered in the changelog rather than chosen. abcd should let launch declare a cut lease that peer sessions, merges and record closes can see: a session about to merge or close a record during a lease is told which cut it would join and who is cutting, and the cutting session rules on the ordering. The convention is in AGENTS.md (concurrent sessions); this seeds the mechanical form, alongside session presence (iss-2608220750029993) and itd-33.
