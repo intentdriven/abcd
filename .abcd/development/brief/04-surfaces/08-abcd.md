@@ -190,12 +190,14 @@ session already has, and a title set at start never reached its session list.
 The status line shows the name directly after the badge. The register
 records, by session id, which names abcd gave (the newest 512), and only a
 session start with source `fork` reads a title as inherited. A name the person
-gave is never replaced, except in a fork made while a session abcd gave the
-same name runs. A resumed or cleared session keeps its name unless a running
+gave is never replaced, except in a fork of it once abcd has given another
+session that name: the fork reads the name as abcd's, and at its start or any
+later resume takes the next free name while a session holding the same name
+runs. A resumed or cleared session keeps its name unless a running
 session was given it since; a fork takes the next free name at its first
 prompt while the session it came from runs. A name is not handed out again
-while any named session runs, except to a session resumed after its record
-aged out of the newest 512, and naming restarts at the first persona once
+while any named session runs, except that of a session resumed after its
+record aged out of the newest 512, and naming restarts at the first persona once
 every named session's host process has ended. The board's presence
 line carries no name: it has no host payload to read one from.
 

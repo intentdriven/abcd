@@ -343,11 +343,12 @@ badge, and in the harness's session list.
 
 - **Your own name wins.** A session you name yourself, when you start it or
   at any point after, keeps your name, and abcd sets none. The one exception
-  is a fork of it made while a session abcd gave that same name is running:
-  that fork takes the next free name at its first prompt.
+  is a fork of it once abcd has given another session that same name: the
+  fork takes the name as abcd's, and at its start or any later resume takes
+  the next free name while a session holding that name is running.
 - **A name lasts the session.** A compacted or resumed session keeps its name.
-  The one exception: if another session was given that name while this one
-  was not running, the resumed session takes the next free name at its first
+  The one exception: if a session that is running now was given that name
+  while this one was not running, the resumed session takes the next free name at its first
   prompt, so two running sessions never share one. A forked session starts
   with the name of the session it came from; when abcd gave that name and that
   session is still running, the fork takes the next free name at its own first

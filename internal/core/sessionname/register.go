@@ -222,7 +222,8 @@ func (g givenNames) gave(sessionID, title string) bool {
 
 // inherits reports whether title is a name abcd gave another session while
 // sessionID has no record of its own: a fork, which the host starts as a new
-// session id carrying its parent's title. A session with a record of its own
+// session id carrying its parent's title. hold asks it for source fork alone;
+// a resume or a clear never inherits. A session with a record of its own
 // is never read as inheriting, so a title the person gave a session abcd knows
 // stays theirs.
 func (g givenNames) inherits(sessionID, title string) bool {
@@ -323,7 +324,7 @@ func (g *givenNames) UnmarshalJSON(raw []byte) error {
 // title is the name abcd gave it (Given) keeps it, and the register holds the
 // name for the process now running it, so no other session is given it (C5).
 // A fork, which the host starts as a new session id carrying its parent's
-// title with source fork or resume, inherits the name abcd gave the parent,
+// title with source fork (seen live), inherits the name abcd gave the parent,
 // and is held the same way. Either way, when a running session on another
 // host holds that name, the session reserves the next free name instead, which
 // its first prompt sets in place of the title (decision 10). Any other title
@@ -701,7 +702,8 @@ func (m Machine) peek() (*os.Root, register, error) {
 // the name is already set, and any other title is the person's own, which
 // always wins (C4). Either way the entry is marked sent, and no later prompt
 // sets anything. The one title replaced is a name abcd gave that a running
-// session now holds, carried by a resumed session or a fork (decision 10). A
+// session now holds, carried by a resumed session abcd named or by a fork
+// (decision 10). A
 // name set is recorded in Given, so a later resume or clear knows the title is
 // abcd's; the person's own name is recorded as "", so a later resume never
 // reads it as inherited.
