@@ -100,22 +100,6 @@ shipped or superseded on origin's default branch counts as released whatever
 its reservation says; when that branch cannot be read, the act goes on and the
 output says the check was skipped.
 
-A reservation over no tip or a released one, and a take-over, first ask the
-forge whether origin is a fork (spc-2610161044461448, step 10;
-dcn-2610161040378209): a reservation pushed to a fork is invisible to every
-account working on the repository it was made from, so it holds nothing for
-them. The origin read is where git pushes it (`git remote get-url --push
-origin`); when that is a github.com repository the forge names a fork, the act
-is refused before anything is pushed, naming the repository it was
-made from and the command that points origin there (`git remote set-url origin
-<url>`, in origin's own URL form). The forge is asked through the one door to
-GitHub (`gh api repos/<owner>/<name>`), at most once per process for a
-repository, its failure included. A renewal and a release never ask, an origin
-that is not on github.com is not asked, and a forge that does not answer (gh
-missing, out of time, refused, or answering what cannot be read) lets the act
-through, and the output says the check was skipped and why, in abcd's own words
-rather than gh's.
-
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past ten live reservations, counted by username
 across every record, is refused naming the ten; a renewal, and a take-over of
@@ -133,6 +117,41 @@ fetched and are not compared-and-swapped, since each reservation is its own
 branch: two people reserving at once can both pass them, so both are
 best-effort under a race. A collision on one record is atomic, the plain push
 being the compare-and-swap.
+
+An act the judgement finds reserves afresh, a reservation over no tip or a
+released one, or a take-over, then asks the forge whether origin is a fork,
+after the fetch and before anything is pushed (spc-2610161044461448, step 10;
+dcn-2610161040378209): a reservation pushed to a fork is invisible to every
+account working on the repository it was made from, so it holds nothing for
+them. A plain `reserve` the judgement finds a renewal of this copy's own
+reservation asks nothing, and neither does an asked-for renewal nor a
+release. Every URL git pushes origin to is asked about, each push URL git
+resolves for origin rather than only the first, in each form git takes for github.com: the three it writes, and with
+them userinfo, a port, `ssh.github.com` over ssh, ssh or scp with no user, and
+a host in any case. When any one of them is a repository the forge names a
+fork, the act is refused before anything is pushed, naming the repository it
+was made from and the command that points that URL there in its own form
+(`git remote set-url origin <url>`, or `git remote set-url --push origin <url>`
+when a push URL is configured, naming one of several by its owner and name);
+an https URL's userinfo is never carried into it. A repository whose own home
+is a fork on GitHub, where every account reserves, sets
+`reservation.fork_origin` to `"allow"` in `.abcd/config.json`
+([`../05-internals/03-configuration.md`](../05-internals/03-configuration.md);
+dcn-2610161141338923), and the refusal names the key. The forge is asked through
+the one door to GitHub (`gh api repos/<owner>/<name>`). An answer, fork or not,
+is kept for the process; a question that failed is held a minute and asked
+again by the next fresh act after that, at most one question a minute for a
+repository, so a long drain that began while the forge was down asks again
+rather than reserving unchecked for the rest of its process. Each `drain` lane
+asks at its own reservation, through that cache, not once at the drain's
+start. A forge that does not answer (gh missing, out of time, refused, or
+answering what cannot be read) lets the act through, and the output says the
+check was skipped and why, in abcd's own words rather than gh's; so does a URL
+that names a host and one owner and one name on a host that is not github.com
+by name (an ssh host alias such as `git@github-work:owner/name`, or another
+forge), which is not asked about. A local path is not asked about and says
+nothing. A `build` start and a `drain` lane name a skipped check in the run's
+reservation line, and the drain's output shows it as this verb's does.
 
 Reservations coordinate people who share push access in good faith; they are
 not an access control. Any writer who can push can append to another holder's

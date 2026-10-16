@@ -30,7 +30,7 @@ New state on the remote rides on the reservation family the claim package alread
 - step 3: the hand-back tombstone, a release push carrying its kind;
 - step 7: the renewal of the lane in progress on every move, and the reservation check before the land stage's push;
 - step 8: one pull-request listing per move for the parked lanes;
-- step 10: one forge question per process, on a fresh reservation or a drain start, whether origin is a fork;
+- step 10: on each act that reserves afresh (a `reserve`, a `build` start, each `drain` lane's own reservation), after its fetch and before its push, one forge question for each of origin's push URLs on github.com, whether it is a fork; an answer is kept for the process and a failed question is asked again after a minute;
 - step 13: the sync step's fetch of origin's default branch, at each sync;
 - step 14: the routed judge, which runs on the person's runner and is not abcd's network act.
 
@@ -59,7 +59,7 @@ Steps 4, 11, 12 and 15 to 18 read only what the step 1 fetch brought, and change
   - a conflicting one is no longer renewed, and is named in `next`; a conflict confined to generated files goes to step 13's sync instead;
   - one still open and mergeable is renewed and named as waiting (dcn-2610161040380948).
 - **Unreadable worktrees (iss-2610161015397586).** `peers.Scan`'s unjudged peers are checked once at the top of the move. Any present refuses the move before a reservation or judgement, naming each with its repair, `git worktree repair` or `git worktree remove` (dcn-2610161040378713).
-- **Fork origins (iss-2610161015400509).** A fresh reservation, and a drain's start, ask the forge once per process whether a github.com origin is a fork. A fork refuses, naming the repository it was made from and the command that points origin there. Renewals and releases never ask, and an origin that is not on github.com is not asked. A forge that does not answer gives a warning and lets the act through (dcn-2610161040378209). Tests stub the forge's answer; the bare-origin tests stay offline.
+- **Fork origins (iss-2610161015400509).** An act the judgement finds a fresh reservation (a reserve, a `build` start, each `drain` lane's own reservation, not the drain's start) asks the forge whether each of origin's github.com push URLs is a fork, after its fetch and before its push. An answer is kept for the process; a failed question is asked again by a later act after a minute, at most once a minute for a repository. A fork refuses, naming the repository it was made from and the command that points that push URL there, unless `reservation.fork_origin` is `"allow"` (dcn-2610161141338923). Renewals, a plain reserve that renews included, and releases never ask; an origin that is not on github.com is not asked, and one that names a host and an owner and a name on a host not github.com by name warns that it was not checked. A forge that does not answer gives a warning and lets the act through, in the drain's run record and output as in reserve's (dcn-2610161040378209). Tests stub the forge's answer; the bare-origin tests stay offline.
 - **Directory footprints and generated files (iss-2610152125101468).** Generated files are declared with `linguist-generated` in `.gitattributes`, read from origin's default branch. abcd's own declaration names the generated CLI reference, the surface manifest and the brief's surfaces page. `crowding` never counts a declared generated file as an overlap.
 
   A person's own `abcd reserve` that overlaps another of their copies warns instead of refusing. A reservation a drain makes keeps that back-off. After the implement stage, the lane's next renewal narrows its footprint to the files its branch changed (dcn-2610161040385152). The file-before-directory order is part of step 2.
@@ -120,8 +120,8 @@ Steps 4, 11, 12 and 15 to 18 read only what the step 1 fetch brought, and change
    - packages: internal/core/implement/loop
    - tests: loop: a sibling worktree whose git file points nowhere refuses the move before any reservation or judgement, naming it, and no issue is passed as contended
 10. Refuse a fork origin (itd-2610161016394967; resolves iss-2610161015400509)
-   - packages: internal/core/claim, internal/core/github, .abcd/development/brief
-   - tests: claim: a forge answer naming a fork refuses a fresh reservation, naming the parent and the command; a renewal and a release ask nothing; an origin off github.com is not asked; no answer warns and lets the act through; the forge is asked once per process
+   - packages: internal/core/claim, internal/core/github, internal/core/implement/loop, internal/surface/cli, .abcd/development/brief
+   - tests: claim: a forge answer naming a fork refuses a fresh reservation, naming the parent and the command; a renewal, a plain reserve that renews, and a release ask nothing; an origin off github.com is not asked, a host not github.com by name warns; every push URL is asked, the push URL rather than the fetch URL; no answer warns and lets the act through; an answer is kept for the process and a failure for a minute; `reservation.fork_origin` "allow" lets a fork through; loop: a drain lane started while the forge fails names the skipped check, and a later act asks again
 11. Share declared generated files, and warn on one person's own overlapping reserve (itd-2610161016394967; part of iss-2610152125101468)
    - packages: internal/core/claim, .gitattributes
    - tests: claim: a linguist-generated path in two footprints is no overlap; a person's own reserve overlapping their other copy warns and succeeds; a drain's reservation overlapping that copy still backs off

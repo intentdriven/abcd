@@ -67,9 +67,10 @@ type Result struct {
 	// it was read (or origin has none).
 	DerivedUnchecked string
 	// ForkUnchecked is why a fresh reservation could not ask the forge whether
-	// a github.com origin is a fork, so the act went on without the check; ""
-	// when it was checked, not asked (a renewal, a release, an origin off
-	// github.com) or found no fork.
+	// one of origin's push URLs is a fork (no answer, or a host not
+	// github.com by name), so the act went on without the check; "" when it
+	// was checked, not asked (a renewal, a release, a local path), found no
+	// fork, or the repository allows one.
 	ForkUnchecked string
 }
 
