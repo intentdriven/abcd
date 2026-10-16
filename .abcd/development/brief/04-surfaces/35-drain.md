@@ -82,7 +82,10 @@ criterion, "re-run the audit" for an undecided one. The rule judges such a
 record by its fields as it judges any other, and the record names the audited
 intent in `related_intents`, so it is handed back as `promoted` whatever its
 severity: a failed audit's `major` `bug` and an undecided one's `minor`
-`inconsistency` alike are the intent's, paid through `abcd intent audit`.
+`inconsistency` alike are the intent's, paid through `abcd intent audit`. A
+person's own build of the issue is let through the hand-back, the eligibility
+row naming the intent, and is the lane route an undecided audit's reopened work
+takes (ruling DQ1a, which DQ1c subsumes).
 
 Three hand-backs hold whatever the repository's record says. An issue whose
 `related_intents` names an intent is handed back under `promoted`, naming each

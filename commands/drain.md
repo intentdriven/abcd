@@ -125,7 +125,8 @@ order, then the others grouped by outcome with their reasons. For an
 `abcd capture remedy <iss-N> "<fix>"` is what makes it a candidate, and name the
 ones an automatic filer wrote apart, since their reason says so. For a
 `waits-on-ruling` or `deferred` hand-back, say which ruling or release it waits
-on, and for a `promoted` one, which intent owns it. Do not act on the list: a hand-back is a person's decision.
+on, and for a `promoted` one, which intent it goes through; a person's own
+`abcd build <iss-N>` still takes a `promoted` issue, naming the intent. Do not act on the list: a hand-back is a person's decision.
 
 ## The run
 
