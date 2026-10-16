@@ -113,8 +113,12 @@ type judged struct {
 	// blob is the record's blob on the default branch as last fetched, "" when
 	// it holds the record in no file or several, or none can be read: what a
 	// hand-back's release names, and what a standing hand-back is judged by.
-	blob    string
-	verdict lease.Verdict
+	blob string
+	// blobUnread is why origin's default branch could not be read for the
+	// blob at all (this checkout names none of it, or its tree would not
+	// read), "" when it was read, whatever it held.
+	blobUnread string
+	verdict    lease.Verdict
 	// mine and thisCopy compare a readable tip's holder and copy with the
 	// person and copy acting.
 	mine, thisCopy bool
@@ -407,6 +411,8 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 // record other than the one the hand-back was judged over (HandBackBlob).
 func (p *prepared) markHandBack(m *message, j judged) string {
 	switch {
+	case j.blob == "" && j.blobUnread != "":
+		return fmt.Sprintf("%s's default branch could not be read (%s), so the tombstone marks no hand-back", Remote, j.blobUnread)
 	case j.blob == "":
 		return fmt.Sprintf("%s's default branch as last fetched holds no one record of %s, so the tombstone marks no hand-back", Remote, p.id)
 	case p.req.HandBackBlob != "" && p.req.HandBackBlob != j.blob:
@@ -517,13 +523,22 @@ func judge(p *prepared, tree string) (judged, error) {
 	// The default branch is read whether or not a tip exists, since a
 	// finished record is not reserved either way. One the fetch could not
 	// read derives nothing: the copy this clone holds may be stale. Its blob
-	// of the record is still read as last fetched, when it reads: a hand-back
-	// judged by a stale blob reads as changed sooner, never later, than a
-	// fresh one, and one with no blob read stands.
+	// of the record is still read as last fetched, when it reads, and a
+	// stale branch reads the record as it was when last fetched: a hand-back
+	// made over a newer blob than that reads as changed though no one edited
+	// it since, and a person's edit this copy has not fetched reads as
+	// unchanged until it is (dcn-2610161412283450, refined by
+	// dcn-2610161837009957). One with no blob read stands.
 	recs, err := defaultRecords(p.root)
 	if err != nil && p.derivedGap == "" {
 		return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
 			p.id, redacted(err), noReservation)
+	}
+	switch {
+	case originDefault(p.root) == "":
+		j.blobUnread = "this checkout names no default branch of " + Remote
+	case err != nil:
+		j.blobUnread = p.derivedGap + "; " + redacted(err)
 	}
 	j.derived = p.derivedGap == "" && terminal(recs[p.id], p.id)
 	j.blob = blobOf(recs[p.id])

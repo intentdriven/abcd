@@ -222,3 +222,25 @@ func TestAHandBackStandsOverARecordOriginHoldsInNoOneFile(t *testing.T) {
 		})
 	}
 }
+
+// TestAHandBackOverAnUnreadDefaultBranchSaysItCouldNotBeRead: a release asked
+// to hand back in a checkout that names no default branch of origin pushes a
+// plain tombstone, and says the branch could not be read, not that it holds
+// no record of the issue.
+func TestAHandBackOverAnUnreadDefaultBranchSaysItCouldNotBeRead(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	w.fileOnMain("iss-5", "The widget breaks.")
+	if _, err := p.reserve("iss-5", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	p.git("symbolic-ref", "-d", "refs/remotes/origin/HEAD")
+	p.git("update-ref", "-d", "refs/remotes/origin/main")
+	res, err := p.do(Request{Record: "iss-5", Release: true, HandBack: HandBackStuck})
+	if err != nil || res.Act != ActReleased {
+		t.Fatalf("the release = %+v, %v", res, err)
+	}
+	if !strings.Contains(res.HandBackUnpublished, "could not be read") || strings.Contains(res.HandBackUnpublished, "holds no one record") {
+		t.Fatalf("the release says %q; want it to say the default branch could not be read", res.HandBackUnpublished)
+	}
+}

@@ -176,7 +176,9 @@ tip or without one, and pushes nothing.
 **Over a hand-back.** A drain that hands an issue back to a person releases
 its reservation with a tombstone naming the hand-back's kind (one of
 `user-visible`, `trust-rule`, `design-finding`, `second-package`,
-`unachievable`, `stuck`, `closed`) and the blob id of the issue's record on
+`unachievable`, `stuck`, `closed`; the last two are reserved for steps not yet
+built, a stuck lane and a closed pull request, and nothing writes them yet) and
+the blob id of the issue's record on
 origin's default branch. Every drain backs off that issue until a person
 changes the record there. Your own reservation over it is made, and the
 result says whose hand-back it was made over, of which kind and when
@@ -186,8 +188,8 @@ Releasing it again without changing the record keeps the hand-back: the
 release's tombstone carries its kind and blob forward, and the release says so
 (`  note: ...`, `hand_back_kept` in `--json`), so no account's drain takes the
 issue until a person changes the record. A release whose tombstone cannot mark
-the hand-back (the record is in no one file on origin's default branch, or the
-message would pass its cap) is still made, plain, and says why on a
+the hand-back (the record is in no one file on origin's default branch, that
+branch could not be read, or the message would pass its cap) is still made, plain, and says why on a
 `  no hand-back: ...` line (`hand_back_unpublished` in `--json`).
 
 **Reopening a record.** The back-off reads origin's default branch alone, so a

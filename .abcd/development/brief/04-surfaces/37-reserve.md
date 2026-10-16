@@ -91,12 +91,16 @@ person, which only the implement loop and the drain make, adds
 record on origin's default branch as last fetched (spc-2610161044461448 step 3,
 dcn-2610161040365515). The kind is one of a closed vocabulary: `user-visible`,
 `trust-rule`, `design-finding`, `second-package`, `unachievable` (a lane
-stopped after its fix rounds), `stuck` and `closed`. Neither carries free
+stopped after its fix rounds), `stuck` and `closed`; the last two are
+reserved for a lane stuck refusing at one stage and one whose pull request was
+closed unmerged, which nothing writes until spc-2610161044461448 steps 5 and 8
+land, though every reader reads them now. Neither carries free
 text: the writer refuses any other kind, and a reader reads a tip whose
 hand-back is not one known kind with one full object name, on a release, as
 unreadable. When origin's default branch holds the record in no file, or in
 several, there is no blob to name, and the release pushes a plain tombstone and
-says why. The message is at most 4096 bytes, its tombstone included, measured
+says why; when this checkout could not read that branch at all (it names none
+of origin's, or its tree would not read), the release says that instead. The message is at most 4096 bytes, its tombstone included, measured
 with the longest hand-back kind and a SHA-256 object name, and passes the
 outbound policy. Nothing touches HEAD, the
 index or the working tree, and a failed push leaves no reservation and nothing
@@ -136,9 +140,12 @@ nothing pushed. A tombstone that would pass the message cap with the
 hand-back on it is pushed plain, and the result says the hand-back was not
 published and why, so a release is never refused for its hand-back.
 A record that branch holds in no file or several, or a branch this checkout
-names none of, is not read as changed, so the hand-back stands; a blob read
-from a default branch the act's fetch could not refresh can only read as
-changed sooner than a fresh one would.
+names none of, is not read as changed, so the hand-back stands. A blob read
+from a default branch the act's fetch could not refresh is the blob as last
+fetched, and can be wrong either way: a hand-back made over a newer blob than
+that reads as changed though no one edited the record, and a person's edit
+this copy has not fetched reads as unchanged, each until this copy's next
+fetch of that branch succeeds (dcn-2610161837009957).
 
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past ten live reservations, counted by username
