@@ -117,8 +117,9 @@ The payload carries `branch`, `head`, `checkout` (home-relative),
 `default_branch`, `push` and `enqueue` (each `key`, `on`, and the `layer` and
 `origin` that decided it), `pull_request` and `pull_request_url` when one was
 found (or proved the head merged), `pushed` (the commit the push sent) when it
-pushed, `landed` when the head had already landed, and `steps`, each with `name`, `status`, `note` and, when it prints
-one, `command`.
+pushed, `landed` when the head had already landed, `steps`, each with `name`, `status`, `note` and, when it prints
+one, `command`, and `notices`, the lines land printed on stderr (a release it
+did not count as a hold, for one), when there are any.
 
 Tell the user what was pushed and where the pull request stands.
 
@@ -141,7 +142,7 @@ it off, and the push step prints the push command to run by hand.
 
 ## When it refuses
 
-Exit 2, naming what was done before the refusal: the default branch, a
+Exit 0 when every step acted or said why it stopped. Exit 2, naming what was done before the refusal: the default branch, a
 detached HEAD, uncommitted changes (staged, unstaged or untracked), a branch
 checked out in no worktree, a preflight that failed or minted no receipt, a
 head that moved while the preflight ran, `origin`'s URLs changed while the
