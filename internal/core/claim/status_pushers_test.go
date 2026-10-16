@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ func octoBranch(t *testing.T, n int) (*world, *participant, []string) {
 // checksAfter is how pat judges each announcement once the forge answered
 // pushes for abcd-status/octo: "verified", "claimed", or "doubtful <login>".
 func checksAfter(pat *participant, pushes []Push) map[string]string {
-	pat.status(func(_, branch string) ([]Push, error) {
+	pat.status(func(_ context.Context, _, branch string) ([]Push, error) {
 		if branch == "octo" {
 			return pushes, nil
 		}
@@ -132,7 +133,7 @@ func TestAPlacingCutShortKeepsNothing(t *testing.T) {
 	}
 	t.Cleanup(func() { pusherBudget, placeHook = old, nil })
 	asked := 0
-	lookup := func(_, branch string) ([]Push, error) {
+	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		if branch != "octo" {
 			return nil, nil
 		}
@@ -172,7 +173,7 @@ func TestTheForgeIsAskedOfABoundedNumberOfBranchesNewestFirst(t *testing.T) {
 		order = append([]string{b}, order...)
 	}
 	var asked []string
-	lookup := func(_, branch string) ([]Push, error) {
+	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		asked = append(asked, branch)
 		return []Push{}, nil
 	}
@@ -208,7 +209,7 @@ func TestTheForgeIsNotAskedPastItsBudget(t *testing.T) {
 	pusherBudget = 100 * time.Millisecond
 	t.Cleanup(func() { pusherBudget = old })
 	var asked []string
-	res := pat.status(func(_, branch string) ([]Push, error) {
+	res := pat.status(func(_ context.Context, _, branch string) ([]Push, error) {
 		asked = append(asked, branch)
 		time.Sleep(2 * pusherBudget)
 		return []Push{}, nil
@@ -229,7 +230,7 @@ func TestTheForgeIsNotAskedPastItsBudget(t *testing.T) {
 func TestAPartialRecordKeepsOnlyAnotherAccountNamed(t *testing.T) {
 	_, pat, cs := octoBranch(t, 3)
 	asked := 0
-	lookup := func(_, branch string) ([]Push, error) {
+	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		if branch != "octo" {
 			return nil, nil
 		}
@@ -251,5 +252,42 @@ func TestAPartialRecordKeepsOnlyAnotherAccountNamed(t *testing.T) {
 	pat.status(lookup)
 	if asked != 2 {
 		t.Fatalf("the forge was asked %d times; want the next fetch to ask again", asked)
+	}
+}
+
+// TestEachForgeLookupEndsAtTheBudget: every lookup is asked under what is
+// left of pusherBudget as its deadline, so a forge that does not answer holds
+// the fetch no longer than the budget, and the branch it left is counted.
+func TestEachForgeLookupEndsAtTheBudget(t *testing.T) {
+	w := newWorld(t)
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	w.pushStatus("aa", announcementMsg("merging", "#1", "aa", t0, 30*time.Minute), "")
+	w.pushStatus("bb", announcementMsg("merging", "#2", "bb", t0.Add(time.Second), 30*time.Minute), "")
+	pat.status(nil)
+	old := pusherBudget
+	pusherBudget = 300 * time.Millisecond
+	t.Cleanup(func() { pusherBudget = old })
+	var asked []string
+	start := time.Now()
+	res := pat.status(func(ctx context.Context, _, branch string) ([]Push, error) {
+		asked = append(asked, branch)
+		if d, ok := ctx.Deadline(); !ok || d.After(start.Add(2*pusherBudget)) {
+			t.Errorf("the lookup for %s was asked with deadline %v (set %v); want the budget's", branch, d, ok)
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(20 * time.Second):
+			return []Push{}, nil
+		}
+	})
+	if took := time.Since(start); took > 5*time.Second {
+		t.Fatalf("a forge that never answered held the fetch %s against a %s budget", took, pusherBudget)
+	}
+	if len(asked) != 1 || asked[0] != "bb" {
+		t.Fatalf("asked %v; want only the newest before the budget ran out", asked)
+	}
+	if !strings.Contains(res.SendersUnchecked, "1 status branch not asked about") {
+		t.Fatalf("unchecked = %q; want the one left counted", res.SendersUnchecked)
 	}
 }

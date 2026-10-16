@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -99,7 +100,7 @@ func TestTheForgesRecordJudgesEachPushLikeActivity(t *testing.T) {
 	gitInitAt(t, gh)
 	gitCmd(t, gh, "remote", "add", "origin", "https://github.com/intentdriven/abcd.git")
 	real := statusPushers
-	statusPushers = func(_, branch string) ([]claim.Push, error) { return real(gh, branch) }
+	statusPushers = func(ctx context.Context, _, branch string) ([]claim.Push, error) { return real(ctx, gh, branch) }
 	t.Cleanup(func() { statusPushers = real })
 
 	code, stdout, stderr := reserveRun(t, pat, "status", "--json")

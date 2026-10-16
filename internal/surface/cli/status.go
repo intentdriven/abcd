@@ -26,8 +26,8 @@ const localTierDir = ".abcd/.work.local/"
 // statusPushers is the forge adapter `abcd status` asks who pushed each
 // announcement (C17): the activity record of pushes to the branch, answered
 // with claim.ErrPartialRecord beside the pushes when its page came back full.
-var statusPushers claim.PusherLookup = func(root, branch string) ([]claim.Push, error) {
-	pushes, partial, err := github.Pushers(root, claim.StatusRefPrefix+branch)
+var statusPushers claim.PusherLookup = func(ctx context.Context, root, branch string) ([]claim.Push, error) {
+	pushes, partial, err := github.Pushers(ctx, root, claim.StatusRefPrefix+branch)
 	if err != nil {
 		return nil, err
 	}

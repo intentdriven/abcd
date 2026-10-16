@@ -1,11 +1,14 @@
 package github
 
 import (
+	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -43,7 +46,7 @@ func TestPushersReadsEveryPushLikeActivity(t *testing.T) {
 		"before-push": sha("5"), "after-push": sha("6"), "after-creation": sha("7"), "before-deletion": sha("8"),
 		"before-queue": sha("9"), "after-queue": sha("a"), "before-pr": sha("b"), "after-pr": sha("c"),
 	}))
-	got, partial, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/octo")
+	got, partial, err := Pushers(context.Background(), originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/octo")
 	if err != nil || partial {
 		t.Fatalf("Pushers: partial %v, %v; want a record read in full", partial, err)
 	}
@@ -119,7 +122,7 @@ func TestPushersReadsTheForgesRecordOfWhoPushed(t *testing.T) {
 		`{"before":"`+zero+`","after":"`+b+`","activity_type":"push","actor":{"login":"mallory"}},`+
 		`{"before":"`+zero+`","after":"`+b+`","activity_type":"push","actor":null},{"before":"`+zero+`","after":"nope","activity_type":"push","actor":{"login":"x"}}]`)
 	dir := originAt(t, "git@github.com:intentdriven/abcd.git")
-	got, _, err := Pushers(dir, "refs/heads/abcd-status/maya")
+	got, _, err := Pushers(context.Background(), dir, "refs/heads/abcd-status/maya")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -141,7 +144,7 @@ func TestPushersReadsTheForgesRecordOfWhoPushed(t *testing.T) {
 // pushed, and gh is never run for it.
 func TestPushersRefusesAnOriginNotOnGitHub(t *testing.T) {
 	logPath := fakeActivity(t, `[]`)
-	if _, _, err := Pushers(originAt(t, "https://gitlab.example.com/a/b.git"), "refs/heads/abcd-status/maya"); err == nil {
+	if _, _, err := Pushers(context.Background(), originAt(t, "https://gitlab.example.com/a/b.git"), "refs/heads/abcd-status/maya"); err == nil {
 		t.Fatal("an origin off github.com was asked")
 	}
 	if _, err := os.Stat(logPath); !os.IsNotExist(err) {
@@ -161,7 +164,7 @@ func TestPushersPassesOverAnAppsPush(t *testing.T) {
 	fakeActivity(t, `[{"before":"`+b+`","after":"`+a+`","activity_type":"push","actor":{"login":"claude","type":"Bot"}},`+
 		`{"before":"`+c+`","after":"`+b+`","activity_type":"push","actor":{"login":"some-app[bot]","type":"User"}},`+
 		`{"before":"`+zero+`","after":"`+c+`","activity_type":"branch_creation","actor":{"login":"maya","type":"User"}}]`)
-	got, _, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
+	got, _, err := Pushers(context.Background(), originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -191,12 +194,38 @@ func TestPushersSaysWhenItsPageCameBackFull(t *testing.T) {
 			es = append(es, deletion)
 		}
 		fakeActivity(t, "["+strings.Join(es, ",")+"]")
-		got, partial, err := Pushers(originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
+		got, partial, err := Pushers(context.Background(), originAt(t, "https://github.com/intentdriven/abcd.git"), "refs/heads/abcd-status/maya")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if partial != c.partial || len(got) != c.pushes {
 			t.Fatalf("%d pushes and %d deletions: %d pushes, partial %v; want %d, partial %v", c.pushes, c.deletions, len(got), partial, c.pushes, c.partial)
 		}
+	}
+}
+
+// TestPushersEndsAtItsCallersDeadline: a forge that does not answer holds
+// the call no longer than its caller's deadline, well inside Timeout, and
+// the error says gh did not answer.
+func TestPushersEndsAtItsCallersDeadline(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skip("bash unavailable")
+	}
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte("#!/usr/bin/env bash\nsleep 20\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	repo := originAt(t, "https://github.com/intentdriven/abcd.git")
+	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	_, _, err := Pushers(ctx, repo, "refs/heads/abcd-status/maya")
+	took := time.Since(start)
+	if !errors.Is(err, ErrTimeout) {
+		t.Fatalf("Pushers = %v; want gh's silence named", err)
+	}
+	if took > 3*time.Second {
+		t.Fatalf("a silent forge held the call %s past a 300 ms deadline", took)
 	}
 }

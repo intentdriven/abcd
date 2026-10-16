@@ -23,7 +23,8 @@ behind. When git will not delete them together, each is deleted on its own,
 so a copy git will not delete (another git holds its lock) keeps no other;
 the copies left are counted, never named, and the fetch goes on. It then asks GitHub, through `gh api`, who pushed each
 standing announcement it has not asked about before, on at most ten branches,
-the newest first, within ten seconds. It pushes nothing, touches no HEAD, index or working tree, and
+the newest first, within ten seconds: a `gh` call still running when they
+are up is ended then. It pushes nothing, touches no HEAD, index or working tree, and
 writes only the remote-tracking branches and what it read, in the local tier
 (`.abcd/.work.local/status/`).
 

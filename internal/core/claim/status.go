@@ -122,9 +122,10 @@ type Push struct {
 // commit no push in the answer covers is one the forge cannot say about, and
 // its sender stays claimed; an error leaves every sender claimed, with the
 // reason, but ErrPartialRecord, answered beside the pushes that were read
-// when the record was not read in full. The front door wires it to the forge
-// adapter; nil asks nothing.
-type PusherLookup func(root, branch string) ([]Push, error)
+// when the record was not read in full. ctx carries what is left of the
+// fetch's pusherBudget as its deadline, and a lookup ends when it does. The
+// front door wires it to the forge adapter; nil asks nothing.
+type PusherLookup func(ctx context.Context, root, branch string) ([]Push, error)
 
 // ErrPartialRecord is a PusherLookup's answer, beside the pushes it read,
 // when the forge's record was not read in full: older pushes may lie past
@@ -1112,8 +1113,10 @@ func pusherKept(root, commit string) pusherVerdict {
 }
 
 // pusherBudget bounds one fetch's questions to the forge and the walks that
-// place each answer: past it, no further branch is asked about, a push not
-// yet placed keeps nothing, and the check says so.
+// place each answer: each lookup is asked under it as its deadline, so a
+// forge call still running when it passes is ended; past it, no further
+// branch is asked about, a push not yet placed keeps nothing, and the check
+// says so.
 var pusherBudget = 10 * time.Second
 
 // maxAskedBranches is the most status branches one fetch asks the forge
@@ -1156,7 +1159,7 @@ func checkSenders(root string, now time.Time, lookup PusherLookup, held map[stri
 			unasked = len(branches) - i
 			break
 		}
-		pushed, err := lookup(root, b)
+		pushed, err := lookup(ctx, root, b)
 		partial := errors.Is(err, ErrPartialRecord)
 		if err != nil && !partial {
 			failed = append(failed, "abcd-status/"+b+": "+termsafe.Sanitize(redacted(err)))

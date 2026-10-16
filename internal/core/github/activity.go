@@ -1,6 +1,7 @@
 package github
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -42,8 +43,9 @@ const activityPage = 100
 // text, which a caller holds to its own grammar before showing it. An origin
 // that is not a github.com URL cannot be asked, and gh is not run for it. A
 // push made by an app (appActor) is passed over: the forge cannot say which
-// person it acted for, so the announcement's sender stays claimed.
-func Pushers(cwd, ref string) (pushes []Push, partial bool, err error) {
+// person it acted for, so the announcement's sender stays claimed. gh is
+// killed when ctx ends (RunContext).
+func Pushers(ctx context.Context, cwd, ref string) (pushes []Push, partial bool, err error) {
 	origin, err := gitutil.Run(cwd, "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(origin) == "" {
 		return nil, false, fmt.Errorf("this checkout has no origin remote to ask about")
@@ -53,7 +55,7 @@ func Pushers(cwd, ref string) (pushes []Push, partial bool, err error) {
 		return nil, false, err
 	}
 	q := url.Values{"ref": {ref}, "per_page": {strconv.Itoa(activityPage)}}
-	out, err := API(cwd, nil, "repos/"+owner+"/"+name+"/activity?"+q.Encode())
+	out, err := APIContext(ctx, cwd, nil, "repos/"+owner+"/"+name+"/activity?"+q.Encode())
 	if err != nil {
 		return nil, false, err
 	}

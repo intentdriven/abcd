@@ -574,7 +574,7 @@ func TestASenderIsCheckedAgainstTheForgesRecord(t *testing.T) {
 	zed.announceAs("merged", "#8")
 	ann.announceAs("answered", "#9")
 	asked := map[string]int{}
-	lookup := func(_, branch string) ([]Push, error) {
+	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		asked[branch]++
 		switch branch {
 		case "maya":
@@ -678,7 +678,7 @@ func TestEveryCommitOfAPushIsJudgedByItsPusher(t *testing.T) {
 	q1 := quinn.announceAs("asking", "#3")
 	q2 := quinn.announceAs("asking", "#4")
 	q3 := quinn.announceAs("asking", "#5")
-	lookup := func(_, branch string) ([]Push, error) {
+	lookup := func(_ context.Context, _, branch string) ([]Push, error) {
 		switch branch {
 		case "maya": // both of maya's commits in one push by another account
 			return []Push{{Before: zeroCommit, After: m2.Commit, Pusher: "mallory"}}, nil
