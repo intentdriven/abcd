@@ -27,10 +27,14 @@ import (
 //
 // Every waiter reads the same table and orders the queue the same way, by when
 // each waiter started, earliest first, with a tie going to the lower pid
-// (queueOrder), so two waiters at one gate agree on which goes first without
-// writing anything. Pid order alone starved a waiter once the machine's process
-// ids wrapped: every later waiter with a lower pid queued ahead of it
-// (iss-2610161634043273). Each is judged from its arguments, never from a pattern
+// (queueOrder), and counts a queued waiter as ahead only when that one is
+// ahead by start and has the lower pid as well, so two waiters at one gate
+// agree on which goes first without writing anything. Pid order alone starved
+// a waiter once the machine's process ids wrapped: every later waiter with a
+// lower pid queued ahead of it (iss-2610161634043273). Start order alone
+// deadlocked against waiters built before it, which still wait on every lower
+// pid: a young waiter with a low pid waited on older ones with higher pids,
+// and they on it. Each is judged from its arguments, never from a pattern
 // over a command line, as a race run is (race.go).
 
 // makePrograms are the base names make runs under.
@@ -134,9 +138,9 @@ func GateCandidates(snap Snapshot, self Self) []int {
 type Ahead struct {
 	// Preflights are the make preflights running, not queued at their gate.
 	Preflights []int
-	// Waiters are the waiters queued ahead of this one (started earlier, or
-	// within StartTolerance of it with a lower pid; queueOrder) or running the
-	// command they gate, in pid order.
+	// Waiters are the waiters queued ahead of this one (ahead by start, earlier
+	// or within StartTolerance of it, and with a lower pid; queueOrder) or
+	// running the command they gate, in pid order.
 	Waiters []int
 }
 
@@ -191,6 +195,20 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 	if !turnWon {
 		// This waiter's place among the queued ones. Absent from the table, it
 		// has no start time, and queueOrder puts it behind every one that has.
+		//
+		// A waiter ahead by start is ahead only when its pid is lower too. A
+		// waiter built before the start order (iss-2610161634043273) waits on
+		// every lower pid, and this code cannot tell it from one built after:
+		// were this waiter to wait on a higher pid that started earlier, and
+		// that one run the older code, each would wait on the other until its
+		// timeout. So every wait, whichever code makes it, points at a lower
+		// pid, and no chain of waits can close into a cycle, whatever each
+		// waiter's own read of the table says. Two waiters whose start and pid
+		// disagree, as across a pid wrap, wait on neither: the earlier start,
+		// with the higher pid, is no longer held behind every later start with
+		// a lower one, and the waiter's settle wait and re-check, and within
+		// one account its hold, keep the two from opening in one moment
+		// (implement.WaitLoad).
 		queue := []Proc{{PID: self.PID}}
 		if p, ok := byPID[self.PID]; ok {
 			queue[0] = p
@@ -202,7 +220,9 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 			if pid == self.PID {
 				break
 			}
-			out.Waiters = append(out.Waiters, pid)
+			if pid < self.PID {
+				out.Waiters = append(out.Waiters, pid)
+			}
 		}
 		sort.Ints(out.Waiters)
 	}
@@ -248,7 +268,10 @@ func QueueAhead(snap Snapshot, self Self, args map[int][]string) Ahead {
 // one look and disagree for that look, and because a group is a chain, a gap
 // read differently can move waiters elsewhere in it; the next look reads it
 // afresh. Outside a pid wrap start order and pid order agree, so a regrouping
-// changes nothing.
+// changes nothing. No cycle rests on the grouping any longer: QueueAhead
+// counts a waiter ahead only when it has the lower pid too, and that alone
+// keeps every wait pointing down the pids. The grouping keeps one order for
+// the waiters a chain of ties links.
 //
 // A waiter whose start time cannot be read (no measurable age, which is also
 // what Share takes as unknown, or absent from the table) cannot be placed by

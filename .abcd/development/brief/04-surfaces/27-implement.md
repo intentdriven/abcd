@@ -267,8 +267,9 @@ concurrent sessions gate a preflight or a race run with, and `make preflight`
 runs its own test stages through it: it blocks until the one-minute load is
 below the wait limit, no other `go test -race` run is live, no other
 `make preflight` is running and no other waiter is ahead of it in the queue (one
-that started earlier, the lower pid first when two started within two seconds of
-each other) or running its command, under any account; a waiter beneath a waiter
+that started earlier, or within two seconds of it, and has the lower pid: two
+whose start and pid disagree, as after the process ids wrap, wait on neither) or
+running its command, under any account; a waiter beneath a waiter
 running its command takes that ancestor's place, ahead of every queued waiter. All of that is read from
 the process table, which shows every account's processes, judged from each
 candidate's arguments with the waiter's own ancestry excluded

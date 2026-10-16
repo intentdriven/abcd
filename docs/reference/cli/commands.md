@@ -2006,8 +2006,9 @@ loop; `make preflight` runs its test stages through it. It blocks until the
 one-minute load average is below the wait limit (`wait-load <load>` in the same
 file; by default twice the online core count), no other `go test -race` run is
 live, no other `make preflight` is running and no other waiter is ahead of it in
-the queue (one that started earlier, the lower pid first when two started within
-two seconds of each other) or running its command, under any account: all of it is
+the queue (one that started earlier, or within two seconds of it, and has the
+lower pid: two whose start and pid disagree, as after the process ids wrap, wait
+on neither) or running its command, under any account: all of it is
 read from the process table, which shows every account's processes: no file
 another account can write is read; the gate reads only the process table (and,
 for the wait limit, your own load-limits). A waiter ahead of yours still delays

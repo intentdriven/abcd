@@ -661,3 +661,158 @@ func TestPreflightParallelism(t *testing.T) {
 		t.Fatalf("on an unread machine: -p %d, want go's default %d", got, runtime.GOMAXPROCS(0))
 	}
 }
+
+// pairWaiter is a waiter in the command form at pid under uid, its go run
+// beneath launchd, started age before the clock's start; its command is not a
+// race run, so only the queue and the hold can shut another waiter on it.
+func pairWaiter(pid int, uid uint32, age time.Duration) ([]machineload.Proc, map[int][]string) {
+	words := []string{"implement", "load", "--wait", "--", "sh", "-c", "work"}
+	return []machineload.Proc{
+			{PID: pid - 1, PPID: 1, PGID: pid - 1, UID: uid, Age: age + time.Second, Name: "go"},
+			{PID: pid, PPID: pid - 1, PGID: pid - 1, UID: uid, Age: age, Name: "abcd"},
+		}, map[int][]string{
+			pid - 1: append([]string{"run", "./cmd/abcd"}, words...),
+			pid:     words,
+		}
+}
+
+// TestWaitTwoWaitersThatDisagreeOpenApart: a waiter that started earlier with
+// the higher pid, as after the ids wrap, and one that started later with the
+// lower pid. Neither is ahead of the other in the queue, so both find the
+// machine free at once; what keeps them from opening in one moment is the
+// settle wait and re-check, and within one account the hold. The waiter whose
+// re-check comes first opens and runs its command; the other's re-check, at
+// that same instant or later, finds the hold (one account) or the first
+// running its command (any account), and it opens only once that command has
+// exited. The fake table shows the first's command from the instant it opens:
+// on a real machine it shows a moment after, and across accounts, which share
+// no hold, a re-check falling inside that moment would still open (the random
+// 15 to 60 second jitter is what makes that unlikely).
+func TestWaitTwoWaitersThatDisagreeOpenApart(t *testing.T) {
+	const (
+		early, late = 96274, 50460
+		runFor      = 5 * time.Minute
+	)
+	ages := map[int]time.Duration{early: 86 * time.Minute, late: 83 * time.Minute}
+	for _, c := range []struct {
+		name         string
+		first, then  int
+		sameAccount  bool
+		secondJitter time.Duration
+	}{
+		{"one account, the early waiter first, one instant", early, late, true, testJitter},
+		{"one account, the late waiter first, later", late, early, true, testJitter + 15*time.Second},
+		{"two accounts, the early waiter first, one instant", early, late, false, testJitter},
+		{"two accounts, the late waiter first, later", late, early, false, testJitter + 15*time.Second},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			homes := map[int]string{c.first: t.TempDir(), c.then: t.TempDir()}
+			uids := map[int]uint32{c.first: 501, c.then: 502}
+			if c.sameAccount {
+				homes[c.then], uids[c.then] = homes[c.first], 501
+			}
+			// opened is when the first waiter opened; its command runs from
+			// then for runFor. Zero until it has. The first runs to its open
+			// before the second starts, so its hold, which the two share
+			// within one account, is taken back off disk and planted again
+			// once the second's clock reaches the instant it was taken.
+			var opened time.Time
+			var hold *WaitHolder
+			read := func(self int, clock *fakeClock) func() (machineload.Snapshot, error) {
+				return func() (machineload.Snapshot, error) {
+					now := clock.Now()
+					if self == c.then && hold != nil && !now.Before(opened) {
+						writeHold(t, homes[self], *hold)
+						hold = nil
+					}
+					aged := now.Sub(waitT0)
+					procs := []machineload.Proc{{PID: 1, PPID: 0, PGID: 1, UID: 0, Age: 50 * time.Hour, Name: "launchd"}}
+					for _, pid := range []int{c.first, c.then} {
+						if pid != self && pid == c.first && !opened.IsZero() && !now.Before(opened.Add(runFor)) {
+							continue // the first waiter's command has exited, and the waiter with it
+						}
+						w, _ := pairWaiter(pid, uids[pid], ages[pid])
+						procs = append(procs, w...)
+						if pid != self && pid == c.first && !opened.IsZero() && !now.Before(opened) {
+							procs = append(procs, machineload.Proc{PID: pid + 1, PPID: pid, PGID: pid - 1, UID: uids[pid], Name: "sh"})
+						}
+					}
+					for j := range procs {
+						procs[j].Age += aged
+					}
+					return machineload.Snapshot{Load1: 3, HasLoad: true, Cores: 16, Procs: procs, HasProcs: true}, nil
+				}
+			}
+			args := map[int][]string{}
+			for _, pid := range []int{c.first, c.then} {
+				_, a := pairWaiter(pid, uids[pid], ages[pid])
+				for k, v := range a {
+					args[k] = v
+				}
+			}
+			waiter := func(self int, jitter time.Duration) (WaitResult, time.Time, time.Time) {
+				clock := &fakeClock{now: waitT0}
+				req := waitReq(homes[self], self, clock)
+				req.Read = read(self, clock)
+				req.ReadArgs = func(pids []int) (map[int][]string, error) {
+					out := map[int][]string{}
+					for _, p := range pids {
+						if a, ok := args[p]; ok {
+							out[p] = a
+						}
+					}
+					return out, nil
+				}
+				req.Self = machineload.Self{PID: self, UID: uids[self]}
+				req.Command = true
+				req.Timeout = 30 * time.Minute
+				req.Jitter = func() time.Duration { return jitter }
+				var settled time.Time
+				req.OnSettle = func(time.Duration) {
+					if settled.IsZero() {
+						settled = clock.Now()
+					}
+				}
+				res, err := WaitLoad(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				return res, settled, clock.Now()
+			}
+
+			// The first waiter's re-check comes first, so nothing the second
+			// does can touch it before it opens.
+			res, settled, at := waiter(c.first, testJitter)
+			if res.Status != WaitOpen || !settled.Equal(waitT0) || !at.Equal(waitT0.Add(testJitter)) {
+				t.Fatalf("first waiter %d: %+v, settled at %s, done at %s; want it free at its first look and open after the jitter", c.first, res, settled, at)
+			}
+			opened = at
+			if c.sameAccount {
+				if hold = readHold(t, homes[c.first]); hold == nil || hold.Form != HoldCommand {
+					t.Fatalf("first waiter %d took the hold %+v, want its command hold", c.first, hold)
+				}
+				if err := os.Remove(abcdhome.Path(homes[c.first], WaitHoldFileName)); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			res, settled, at = waiter(c.then, c.secondJitter)
+			if !settled.Equal(waitT0) {
+				t.Fatalf("second waiter %d first settled at %s, want at its first look: the first waiter is not ahead of it", c.then, settled)
+			}
+			if res.Status != WaitOpen {
+				t.Fatalf("second waiter %d: %+v, want open once the first's command exits", c.then, res)
+			}
+			if at.Before(opened.Add(runFor)) {
+				t.Fatalf("second waiter %d opened at %s, while the first's command ran from %s to %s", c.then, at, opened, opened.Add(runFor))
+			}
+			want := WaitOnWaiter
+			if c.sameAccount {
+				want = WaitOnLock
+			}
+			if !slices.Contains(res.WaitedOn, want) {
+				t.Fatalf("second waiter %d waited on %v, want %s among them", c.then, res.WaitedOn, want)
+			}
+		})
+	}
+}
