@@ -882,8 +882,8 @@ session. It writes to two streams:
 
 | Stream | What it carries | Who reads it |
 |---|---|---|
-| **stdout** | the rendered block of the domains new this turn, and nothing else. A prompt that matches no domain, or matches only domains already injected unchanged this session, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title | the host, which adds it to the model's context |
-| **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — plus the load's notes and refusals | the operator, out of band |
+| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), and nothing else. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title | the host, which adds it to the model's context |
+| **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — and, on a turn that recalls or has to leave out a note, one line naming the notes recalled and any that did not fit the budget, plus the load's notes and refusals, a `memory.json` that cannot be read among them (it recalls nothing, and the rules still inject) | the operator, out of band |
 
 **The machine reader's envelope.** With `--json`, the flag every verb takes for
 a machine reader, stdout carries one JSON document in place of the bare block.
@@ -896,6 +896,7 @@ iss-2608261550580260):
 {
   "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- ~~~\n  Widgets are counted twice.\n  ~~~\n",
   "injected": ["WIDGETS"],
+  "recalled": [],
   "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
              "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
 }
@@ -903,13 +904,14 @@ iss-2608261550580260):
 
 That is the bundled set with one repo domain, `WIDGETS`, declared in
 `.abcd/rules.json` and matched by the prompt: the text carries one domain and
-the set names all twelve.
+the set names all twelve. No memory note matched, so `recalled` is empty.
 
 | Field | Meaning |
 |---|---|
-| `text` | the rendered block, byte for byte what the plain form writes to stdout on every prompt but the one that sets the session's name, where the plain form wraps it in the titling object: empty on a turn with nothing new |
+| `text` | the rendered rule block followed by the `## MEMORY` block, byte for byte what the plain form writes to stdout on every prompt but the one that sets the session's name, where the plain form wraps it in the titling object: empty on a turn with nothing new |
 | `session_title` | present only on the prompt that sets the session's name: the name the plain form sets as the title |
 | `injected` | the domains whose text `text` carries; an empty list when it carries none |
+| `recalled` | the ids of the memory notes whose text `text` carries after the rules, beside `injected` for the domains; an empty list when it carries none |
 | `active` | the FULL set of domain names in force this turn, sorted, on every evaluated prompt: every domain that is not dormant, plus a dormant one this prompt activated with `*NAME`. An empty list when nothing is in force, as under the kill switch |
 | `error` | present only when the router could not evaluate the prompt — an unreadable payload, or a `rules.json` that will not load |
 
