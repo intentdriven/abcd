@@ -163,6 +163,57 @@ Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of
       --bin-dir string   directory holding the PATH entry to remove; needed only when it was installed with --bin-dir into a directory that is not on PATH
 ```
 
+### `abcd announce`
+
+Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.
+
+**Usage:** `abcd announce <kind> <item> [flags]`
+
+abcd announce <kind> <item> [--expires-in <duration>]
+
+Post a short fixed-form announcement on the shared remote, so every other
+session sees what this one is doing. The kind is one of merging, merged, asking, answered, handed-over;
+the item is the record it concerns (iss-N or itd-N) or a pull request (#N, or
+the bare number, since a shell reads #N as a comment). --expires-in sets how
+long it stands (default 30m, from 1m to 24h). An announcement carries no free text: a
+question points at the item, and the conversation happens there.
+
+The announcement is one commit that changes no file on your own status branch,
+abcd-status/<your GitHub username in lower case> on the remote named origin,
+carrying the kind, the item, you as sender, this working copy, the time sent
+and the expiry. The verb lists the status branches on origin (git ls-remote),
+fetches each one named by a lower-case GitHub username, with origin's default
+branch, then makes one plain fast-forward push with the repository's hooks
+running. A push that lost a race to another of your sessions is rebuilt on the
+new tip and pushed again, up to three times; then it says "not sent" and why.
+Nothing is ever forced.
+
+A record must already be on origin's default branch, since an announcement is
+public; a record the embargo store on this machine holds is refused, and so is
+every announcement when that store cannot be checked. The sender is worked out
+as reserve's holder is: from user.email when it is a GitHub no-reply address,
+then reservation.github_username in the machine configuration, then the
+session's forge token, asked whose account it is. When git's identity is not a
+person's, the token's account sends and authors the announcement, and the
+identity git had is shown nowhere.
+
+Exit 0 when the announcement reached origin; exit 2 on every refusal, when it
+was not sent, and when a push was made but whether it landed cannot be told.
+Nothing is pushed on a refusal except "not sent", which follows pushes origin
+refused; the unknown outcome says a refused push may still have reached origin.
+
+**Flags:**
+
+```
+      --expires-in duration   how long the announcement stands, from 1m to 24h (default 30m)
+```
+
+**Example:**
+
+```
+abcd announce merging iss-2609010000000001
+```
+
 ### `abcd banlist`
 
 Render both banned-names layers: Writes nothing; refuses an unknown word without echoing it.
@@ -3187,9 +3238,21 @@ ready, and readiness is the gate.
 
 Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an
 origin that is not the repository the forge client resolves (an SSH host alias
-included), and a pull request only another repository opened. Exit 0 when every
-step did its act or said why it stopped; exit 2 on a refusal, which names what
-was done before it.
+included), and a pull request only another repository opened.
+
+Before the push, the reservations and origin's release tags are fetched, and the
+release hold is judged for the checkout land runs in: while another session cuts
+a release (a live rel-vX.Y.Z reservation, or an unreadable one within its hold),
+nothing is pushed, armed or queued. The copy cutting the release lands through
+its own hold. A release reserved with a date more than five minutes ahead of
+this clock holds from when this checkout first saw it; one this checkout cannot
+keep that sighting for (no .abcd/.work.local/) is not counted, and a notice
+line on stderr names it.
+
+Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
+which names what was done before it; reservations that cannot be fetched are
+one, made before anything is pushed. Exit 3 when a release being cut holds the
+landing: it names the release, its holder and until when.
 
 **Flags:**
 
@@ -3775,12 +3838,19 @@ Then the reservations on the shared remote: one fetch from origin of every
 abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
-hold), and each person's count of live reservations. The fetch is the only
-network act; it updates the remote-tracking reservation branches and stamps
-when it ran in the local tier, and nothing else is written. A checkout with no
-remote named origin lists no reservations. When the fetch fails, the
-reservations are listed as last fetched, with that view's age, and the failure
-is named on stderr and in fetch_error.
+hold), each person's count of live reservations, and a line for each release
+being cut (a live rel-vX.Y.Z reservation, which holds every other session's
+merge until its tag is on origin). The fetch is the only network act, and it
+reads origin's release tags with the reservations; it updates the
+remote-tracking reservation branches and the release tags abcd keeps under
+refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
+first fetched each reservation dated ahead of this computer's clock or
+undated, and nothing else is written. The release-tag refs are ordinary
+refs of this checkout, so git log --all lists the commits they name and
+git push --mirror would push them. A checkout with no remote named origin
+lists no reservations.
+When the fetch fails, the reservations are listed as last fetched, with that
+view's age, and the failure is named on stderr and in fetch_error.
 
 A worktree is named home-relative (~/...), or by its directory name when it
 sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
@@ -4003,7 +4073,7 @@ nothing filed. After the editor ran, both name where what was written is kept.
 
 ### `abcd reserve`
 
-Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.
+Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.
 
 **Usage:** `abcd reserve <record-id> [flags]`
 
@@ -4016,7 +4086,13 @@ every other participant sees it is taken. The reservation is the branch
 abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits
 naming the record, the holder (your GitHub username), this working copy, the files
 the work will change (--footprint, once per repository-relative path) and the
-lease (--lease, default 2h, from 1m to 24h).
+lease (--lease, from 1m to 24h; default 2h, or 24h for a release).
+
+A session cutting a release reserves the release instead, rel-vX.Y.Z, with no
+footprint: while it is live every other session's land step holds its merge.
+It holds for 24h unless --lease names less, sits outside the cap of ten, and
+ends when the tag vX.Y.Z is on origin or its holder releases it; running the
+same command again from the same copy renews it.
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks
@@ -4025,7 +4101,8 @@ a reservation lapsed past its expiry by five minutes, or a release (--release),
 which pushes a tombstone. --take-over moves your own live reservation from
 another copy to this one; it never moves another person's. A record already
 resolved, won't-fixed, shipped or superseded on origin's default branch counts
-as released whatever its reservation says.
+as released whatever its reservation says, and so does a release whose tag is
+on origin.
 
 The holder is your GitHub username, from the first of these that names it:
 user.email, when it is a GitHub no-reply address; reservation.github_username
@@ -4055,7 +4132,7 @@ push leaves no reservation and nothing in the checkout.
 ```
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
       --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
-      --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
+      --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
       --release                 release your reservation from this copy by pushing a tombstone
       --take-over               move your own live reservation from another copy to this one
 ```
@@ -4288,6 +4365,49 @@ In the repository whose brief describes the binary, a close that ships an intent
 ```
 abcd spec close spc-2609010000000001
 ```
+
+### `abcd status`
+
+List everyone's announcements, reservations and releases being cut: Writes the fetched status branches and reservations; refuses outside a git checkout.
+
+**Usage:** `abcd status`
+
+List everyone's status on the shared remote: the announcements every session
+posted (abcd announce), newest first, each with its sender, kind, item, the
+time sent and how long it still stands, then who holds which reservation and
+each release being cut, which holds every other session's merge.
+
+It reads the remote once: it lists the status branches on origin (git
+ls-remote), then fetches, in one command, the reservations with origin's
+release tags, the first 500 status branches whose names are GitHub
+usernames in lower case, and origin's default branch, and stamps when in
+the local tier. A branch under abcd-status/ by any other name is counted,
+never named, and not fetched; branches past the 500 are counted and not
+fetched. Before the fetch, this checkout's copy of each status branch that
+is not among the names it fetches is deleted, so a branch deleted on
+origin, one whose name is not read and one past the 500 leave nothing to
+read; a copy that cannot be deleted is named, and the fetch goes on. Then
+it asks the forge (gh api, the repository's activity record) who pushed
+each standing announcement it has not asked about yet, on at most ten
+branches, the one waiting longest first: a sender is verified when the
+forge names the branch's owner, doubtful when it names someone else, and
+claimed when the forge cannot say or an app pushed it.
+
+An announcement stands for its life from when this checkout first fetched it,
+not by the sender's clock. One whose sender is not its branch's owner, one
+that does not read as an announcement (never shown but by its branch and the
+reason), and a branch that was rewritten, passed a merge or gained more than
+one read covers are marked doubtful, and every other branch is still read.
+A running session sees each new line once, at its next prompt, in a
+block headed STATUS of at most ten lines and one more that counts the
+rest, read from disk alone.
+An announcement informs and grants nothing.
+
+When the fetch fails, the status is listed as last fetched, with that view's
+age and a line saying it is unread since then and why. Exit 0 when the fetch
+succeeded and with no remote named origin; exit 1 when it failed, when
+what it fetched could not be read, or in a checkout without its local
+tier; exit 2 outside a git checkout or with an operand.
 
 ### `abcd statusline`
 

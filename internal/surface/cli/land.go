@@ -68,9 +68,19 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"ready, and readiness is the gate.\n\n" +
 			"Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an\n" +
 			"origin that is not the repository the forge client resolves (an SSH host alias\n" +
-			"included), and a pull request only another repository opened. Exit 0 when every\n" +
-			"step did its act or said why it stopped; exit 2 on a refusal, which names what\n" +
-			"was done before it.",
+			"included), and a pull request only another repository opened.\n\n" +
+			"Before the push, the reservations and origin's release tags are fetched, and the\n" +
+			"release hold is judged for the checkout land runs in: while another session cuts\n" +
+			"a release (a live rel-vX.Y.Z reservation, or an unreadable one within its hold),\n" +
+			"nothing is pushed, armed or queued. The copy cutting the release lands through\n" +
+			"its own hold. A release reserved with a date more than five minutes ahead of\n" +
+			"this clock holds from when this checkout first saw it; one this checkout cannot\n" +
+			"keep that sighting for (no .abcd/.work.local/) is not counted, and a notice\n" +
+			"line on stderr names it.\n\n" +
+			"Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,\n" +
+			"which names what was done before it; reservations that cannot be fetched are\n" +
+			"one, made before anything is pushed. Exit 3 when a release being cut holds the\n" +
+			"landing: it names the release, its holder and until when.",
 		Args: func(_ *cobra.Command, args []string) error {
 			if len(args) > 1 {
 				return &exitError{Code: 2, Msg: "abcd land: takes at most one branch, not " + fmt.Sprint(len(args)) + "; nothing was pushed"}
@@ -93,6 +103,9 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 				o.Branch = args[0]
 			}
 			res, err := landing.Land(cwd, o)
+			for _, n := range res.Notices {
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd land: %s\n", termsafe.Sanitize(fsutil.RedactHome(n)))
+			}
 			if err != nil {
 				return landRefusal(res, err)
 			}
@@ -104,12 +117,17 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
-// landRefusal is a refused landing as exit 2, naming the steps done before it.
+// landRefusal is a refused landing as exit 2, naming the steps done before it;
+// one a release being cut holds is contention, exit 3. Reservations that
+// cannot be fetched are a refusal, exit 2: nobody is known to hold anything.
 func landRefusal(res landing.Result, err error) error {
 	msg := "abcd land: " + termsafe.Sanitize(gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())))
+	code := 2
 	var r *landing.Refusal
 	if !errors.As(err, &r) {
 		msg += "; nothing more was done"
+	} else if r.Held {
+		code = 3
 	}
 	var done []string
 	for _, s := range res.Steps {
@@ -118,7 +136,7 @@ func landRefusal(res landing.Result, err error) error {
 	if len(done) > 0 {
 		msg += " (before it, " + strings.Join(done, "; ") + ")"
 	}
-	return &exitError{Code: 2, Msg: msg}
+	return &exitError{Code: code, Msg: msg}
 }
 
 // landView is a result as a surface shows it, every value a repository or the

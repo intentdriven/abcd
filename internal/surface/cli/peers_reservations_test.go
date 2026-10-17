@@ -274,3 +274,70 @@ func TestPeersWithoutAnOriginListsNoReservations(t *testing.T) {
 		t.Fatalf("peers --json with no origin: exit %d, %+v", code, got)
 	}
 }
+
+// TestPeersShowsTheReleaseHold is C8 at the listing
+// (spc-2610150728396006 step 4): a release reserved for a cut is listed with
+// the reservations, outside the live counts, and the listing shows its hold
+// line; once its tag is on origin it is listed released by the tag, and no
+// hold is shown.
+func TestPeersShowsTheReleaseHold(t *testing.T) {
+	w := newReserveWorld(t)
+	p := w.clone(t, "p", octoMail)
+	if code, out, errOut := reserveRun(t, p, "reserve", "rel-v0.16.0"); code != 0 || !strings.Contains(out, "reserved rel-v0.16.0 for octo") {
+		t.Fatalf("reserving the release: exit %d\n%s%s", code, out, errOut)
+	}
+	if code, out, errOut := reserveRun(t, p, "reserve", "iss-5", "--footprint", "a.go"); code != 0 {
+		t.Fatalf("reserve: exit %d\n%s%s", code, out, errOut)
+	}
+	r := w.clone(t, "r", quinnMail)
+	code, raw, stderr := reserveRun(t, r, "peers", "--json")
+	if code != 0 {
+		t.Fatalf("peers: exit %d\n%s%s", code, raw, stderr)
+	}
+	var got struct {
+		peersJSON
+		ReleaseHolds []struct {
+			Release, Subject, Holder, Text string
+			EffectiveExpiry                string `json:"effective_expiry"`
+		} `json:"release_holds"`
+	}
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	if len(got.ReleaseHolds) != 1 {
+		t.Fatalf("release_holds = %+v; want the one cut", got.ReleaseHolds)
+	}
+	h := got.ReleaseHolds[0]
+	if h.Release != "v0.16.0" || h.Subject != "rel-v0.16.0" || h.Holder != "octo" || h.EffectiveExpiry == "" ||
+		h.Text != "release v0.16.0 being cut by @octo: merges are held" {
+		t.Fatalf("hold = %+v", h)
+	}
+	if got.LiveByHolder["octo"] != 1 {
+		t.Fatalf("live_by_holder = %v; want octo 1, the release outside the count", got.LiveByHolder)
+	}
+	_, text, _ := reserveRun(t, r, "peers")
+	if !strings.Contains(text, "\n  release v0.16.0 being cut by @octo: merges are held\n") || !strings.Contains(text, "rel-v0.16.0  live  octo") {
+		t.Fatalf("the text listing lacks the hold line:\n%s", text)
+	}
+
+	gitCmd(t, w.origin, "tag", "v0.16.0", "main")
+	code, raw, stderr = reserveRun(t, r, "peers", "--json")
+	if code != 0 {
+		t.Fatalf("peers: exit %d\n%s%s", code, raw, stderr)
+	}
+	got.ReleaseHolds = nil
+	if err := json.Unmarshal([]byte(raw), &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.ReleaseHolds == nil || len(got.ReleaseHolds) != 0 {
+		t.Fatalf("release_holds once tagged = %+v; want an empty list", got.ReleaseHolds)
+	}
+	for _, res := range got.Reservations {
+		if res.Record == "rel-v0.16.0" && (res.State != "released" || res.ReleasedBy != "tag") {
+			t.Fatalf("the tagged release = %+v; want released by its tag", res)
+		}
+	}
+	if _, text, _ = reserveRun(t, r, "peers"); strings.Contains(text, "merges are held") {
+		t.Fatalf("a tagged release still shows its hold:\n%s", text)
+	}
+}

@@ -48,6 +48,25 @@ Invariants 7 and 10 gain clauses naming these verbs and the branch, written in t
 
 - **Easier:** a cloud session, or any session without a receipt, can announce. The trust boundary is unchanged, because a push the row admits changes no file a gate would read.
 - **Harder:** status branches can never be deleted. Their history is permanent and public, which the product thinker accepted (itd-2609151838312703 decision 19). They grow by one branch per person, never per session.
+- **The hook is a local-only check.** The receipt-less row guards only a push
+  made through the committed hooks. A hosted cloud session runs no hook: its
+  clone has no `core.hooksPath` and no `.git/hooks/pre-push` (the cloud probe
+  of 2026-10-15). There the guards are the server's ruleset on
+  `refs/heads/abcd-status/**`, which refuses deletion and non-fast-forward
+  pushes, and abcd's own reader, which shows a status commit whose tree is not
+  the empty tree as doubtful, with that reason, and never renders it
+  (itd-2609151838312703 C11).
+- **Nothing on the forge refuses a status push that changes a file.** GitHub's
+  push rulesets, which restrict file paths, are offered for private and
+  internal repositories only, and they target no branch: a push rule applies to
+  every push to the repository and its fork network, so none can be scoped to
+  `abcd-status/`. Branch rulesets govern creating, updating and deleting a
+  branch, never which files a push changes (checked on 2026-10-15 against
+  GitHub's ruleset documentation). So a cloud push that changes a file on a
+  status branch lands, and the reader is the guard against it.
+- **The ruleset is required, not optional.** Without the hook in the cloud it
+  is the only refusal of a deletion or a rewrite there. Its mirror is
+  `.abcd/work/rulesets/status-protection.json`.
 - **New obligations:**
-  - keep the ruleset mirror and the live ruleset in step;
+  - apply the ruleset, and keep the mirror and the live ruleset in step;
   - add the invariant clauses in the building change.

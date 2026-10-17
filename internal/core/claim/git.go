@@ -76,22 +76,61 @@ func localGit(root string, maxBytes int, args ...string) (string, error) {
 	return gitutil.RunCapped(root, maxBytes, args...)
 }
 
-// storedObjects is the git global option the history walk and the commit
-// reads run under: objects are read as stored, never through a refs/replace/*
-// ref, which a fetch can bring in (remote.<name>.fetch naming refs/replace/*)
-// and which would stand one commit in for another, its parents included.
-const storedObjects = "--no-replace-objects"
-
-// storedGit is localGit reading objects as stored (storedObjects). The trace
-// is the subcommand's own argv, as it is for every command here: the global
-// options git runs under (the exec pins, -C, this one) are not traced.
+// storedGit is localGit reading history as stored
+// (gitutil.RunCappedAsStored), as the history walk and the commit reads need:
+// a refs/replace/* ref, which a fetch can bring in (remote.<name>.fetch
+// naming refs/replace/*), would stand one commit in for another, its parents
+// included, and a .git/info/grafts file would give a commit other parents.
+// The trace is the subcommand's own argv, as it is for every command here:
+// the global options and environment git runs under are not traced.
 func storedGit(root string, maxBytes int, args ...string) (string, error) {
 	trace(args...)
-	return gitutil.RunCapped(root, maxBytes, append([]string{storedObjects}, args...)...)
+	return gitutil.RunCappedAsStored(root, maxBytes, args...)
 }
 
 // emptyTree is gitutil.EmptyTree, traced.
 func emptyTree(root string) (string, error) {
 	trace("hash-object", "-w", "-t", "tree", "--stdin")
 	return gitutil.EmptyTree(root)
+}
+
+// storedGitCtx is storedGit bound to ctx (gitutil.RunCappedBytesAsStoredContext):
+// git is killed when ctx ends, so a reader on a deadline, the prompt hook's
+// status read among them, is never held past it by a slow history (a commit
+// whose message is huge costs git a parse each). A ctx that cannot end runs
+// storedGit itself, unchanged.
+func storedGitCtx(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
+	if ctx.Done() == nil {
+		return storedGit(root, maxBytes, args...)
+	}
+	out, err := storedGitInput(ctx, root, "", maxBytes, args...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimRight(string(out), " \t\r\n"), nil
+}
+
+// storedRefs reads every ref under prefix as stored, under ctx, line by line
+// (gitutil.EachAsStoredContext), so however many this checkout holds the
+// listing is read: each ref and its object, in git's ref order, to each. A
+// line past maxListingLine, whose ref name is cut, is handed to each with
+// cut set, its object still named.
+func storedRefs(ctx context.Context, root, prefix string, each func(ref, sha string, cut bool)) error {
+	args := []string{"for-each-ref", "--format=%(objectname) %(refname)", prefix}
+	trace(args...)
+	return gitutil.EachAsStoredContext(ctx, root, maxListingLine, func(line string) {
+		sha, ref, ok := strings.Cut(line, " ")
+		if !ok || !gitutil.IsFullSHA(sha) || !strings.HasPrefix(ref, prefix) {
+			return
+		}
+		each(ref, sha, len(line) >= maxListingLine)
+	}, args...)
+}
+
+// storedGitInput is storedGitCtx with stdin as git's standard input and
+// stdout returned verbatim: a batch of objects named one per line
+// (`cat-file --batch`), read in one command rather than one per object.
+func storedGitInput(ctx context.Context, root, stdin string, maxBytes int, args ...string) ([]byte, error) {
+	trace(args...)
+	return gitutil.RunCappedBytesAsStoredContext(ctx, root, stdin, maxBytes, args...)
 }
