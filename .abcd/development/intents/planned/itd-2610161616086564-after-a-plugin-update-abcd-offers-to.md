@@ -1,14 +1,16 @@
 ---
 id: itd-2610161616086564
 slug: after-a-plugin-update-abcd-offers-to
-spec_id: null
-kind: null
+spec_id: spc-2610170635097509
+kind: bundle-member
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-111, itd-105]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
+bundle: after-update
+impact: additive
 ---
 
 # After a plugin update, abcd offers to bring the repository's setup up to date
@@ -55,16 +57,16 @@ reason, so a repository's setup lags until something breaks.
 
 _Proposed by the agent on 2026-10-16, unconfirmed._
 
-- The repository has been set up by `ahoy install` at least once, so
+- The repository has been set up by `ahoy install` at least once, so <!-- cond: cond-2610170635090059 -->
   `.abcd/config.json` records a release `setup_version`; a repository abcd does
   not manage gets no offer, because adopting it is ahoy's own path.
-- Both the recorded setup version and the running binary are release versions;
+- Both the recorded setup version and the running binary are release versions; <!-- cond: cond-2610170635091194 -->
   a dev build on either side takes no part, the rule `version.upgrade` already
   keeps (iss-2608241115259170).
-- The host runs abcd's session-start hook and its agent can put a question to
+- The host runs abcd's session-start hook and its agent can put a question to <!-- cond: cond-2610170635092426 -->
   the person; a host without hooks learns of the waiting setup only from
   `abcd ahoy`.
-- The update has reached the running binary: the binary's own version is the
+- The update has reached the running binary: the binary's own version is the <!-- cond: cond-2610170635092640 -->
   "updated to" side, not a plugin root whose binary has not been swapped yet.
 
 ## Acceptance Criteria
@@ -144,3 +146,7 @@ rest on 2026-10-17 during an autonomous run, on the grounds given.
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: we expect a repository to pick up a release's new questions and changed defaults within one session of the update, because the offer arrives in the first reply and costs one yes; repositories still on an old setup version a week after an update would show it wrong

@@ -1,14 +1,16 @@
 ---
 id: itd-2610161617096084
 slug: after-a-plugin-update-abcd-says-what
-spec_id: null
-kind: null
+spec_id: spc-2610170635097509
+kind: bundle-member
 suggested_kind: null
 reclassification_history: []
 builds_on: [itd-111, itd-105]
 severity: minor
 origin: researcher-authored
 production_mode: hand-written
+bundle: after-update
+impact: additive
 ---
 
 # After a plugin update, abcd says what changed for this repository
@@ -52,17 +54,17 @@ person has to think to open.
 
 _Proposed by the agent on 2026-10-16, unconfirmed._
 
-- The summary's source travels inside the abcd binary: a digest the release cut
+- The summary's source travels inside the abcd binary: a digest the release cut <!-- cond: cond-2610170635095619 -->
   writes, one line per shipped record, embedded at build time. The plugin root
   cannot be relied on, because the curated payload itd-108 drafts
   (`.abcd/config/launch-payload.json`) carries none of `CHANGELOG.md`,
   `RELEASE.md` or `.abcd/`.
-- Releases cut by `abcd launch ship`, whose changelog sections are derived from
+- Releases cut by `abcd launch ship`, whose changelog sections are derived from <!-- cond: cond-2610170635090370 -->
   records and cite record ids; sections rolled by hand (0.6.0 and earlier) are
   summarised as written, or named as not summarised.
-- The version the repository or machine moved from is known on disk: the
+- The version the repository or machine moved from is known on disk: the <!-- cond: cond-2610170635095099 -->
   repository's `setup_version` or the binary record's `previous_tag`.
-- Each digest line is the record's own changelog line as the release cut
+- Each digest line is the record's own changelog line as the release cut <!-- cond: cond-2610170635096007 -->
   composed it (the line `launch ship` checks against the record id it cites),
   so the "one plain sentence" has one source and is never rewritten for the
   summary.
@@ -130,3 +132,7 @@ rest on 2026-10-17 during an autonomous run, on the grounds given.
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._
+
+## Grounds
+
+- pursued: we expect people to act on a change that needs them within a session of updating, because one line per release in the first reply names it; a breaking change first noticed through a refused command after the summary was shown would show it wrong
