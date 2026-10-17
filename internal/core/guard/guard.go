@@ -769,6 +769,17 @@ func (r Registry) decide(v verdicts) Decision {
 	// finding 4). It ranks after an entry the line names and before the
 	// entry-less signals, as the registry match it is.
 	if blockPool {
+		// A variable-built `-c` script that deletes speaks for an entry about
+		// the variable path inside it: its rewrite includes that entry's, and
+		// moving the script into a file is what lets each command be checked
+		// (shellcdelete.go). Any other blocker keeps its own message.
+		if len(unnamedBlockers) == 0 && r.leadsOver(blockers) {
+			for i := range signals {
+				if signals[i].id == shellCDeleteEntryID {
+					return syntheticDecision(VerdictBlock, signals[i], matches)
+				}
+			}
+		}
 		switch {
 		case len(blockers) > 0:
 			return decisionFromEntry(VerdictBlock, r.Entries[blockers[0]], matches)

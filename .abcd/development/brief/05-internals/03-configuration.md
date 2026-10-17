@@ -922,13 +922,14 @@ iss-2608261550580260):
   "injected": ["WIDGETS"],
   "recalled": [],
   "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
-             "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
+             "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SCRATCH",
+             "SHELL", "WIDGETS"]
 }
 ```
 
 That is the bundled set with one repo domain, `WIDGETS`, declared in
 `.abcd/rules.json` and matched by the prompt: the text carries one domain and
-the set names all twelve. No memory note matched, so `recalled` is empty.
+the set names all thirteen. No memory note matched, so `recalled` is empty.
 
 | Field | Meaning |
 |---|---|

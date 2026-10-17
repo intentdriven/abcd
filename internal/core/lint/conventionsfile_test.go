@@ -194,10 +194,16 @@ func TestAgentsMDDetailMovedUnderTheLoaderIsRecalled(t *testing.T) {
 // inside the live worktree; it is not a checkout, so every verb run from it that
 // reads git or the record store resolves upward to the worktree around it and
 // verifies that tree, not the copy. Both forms must say the copy goes outside
-// every working tree and name the two homes that are: the session's scratchpad
-// and a directory under the machine-scoped abcd home (abcdhome.Display). The
-// itd-193 discipline and the users-directory principle, which both forms lean
-// on, are held to the same three phrases.
+// every working tree, in a directory of its own under the machine-scoped abcd
+// home (abcdhome.Display) keyed on the root-commit SHA, and that the session's
+// scratchpad serves only a copy the same turn makes and discards: a copy handed
+// to a verifier agent is read by a later agent, and the scratchpad does not
+// survive a reboot or a new session (iss-2610161501104088). The old wording,
+// which offered the scratchpad as an equal home, must be gone. The itd-193
+// discipline and the users-directory principle, which both forms lean on, and
+// the bundled SCRATCH rule, which every managed repository receives, are held
+// to the same words, and so is the bundled OPINIONS rule that points at the
+// principle: it once let a verifier's copy go in the checkout's own local tier.
 func TestVerifierCopyGoesOutsideEveryWorkingTree(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	body := readRepoFile(t, root, "AGENTS.md")
@@ -243,15 +249,42 @@ func TestVerifierCopyGoesOutsideEveryWorkingTree(t *testing.T) {
 		"Before reporting, the verifier proves the original is untouched")
 	principle := paragraph(".abcd/development/principles/the-users-directory-is-theirs.md", "a verifier's copy goes")
 
+	scratch := strings.Join(rules.Defaults().Domains["SCRATCH"].Rules, "\n")
+	if scratch == "" {
+		t.Fatal("the binary bundles no SCRATCH domain rule")
+	}
+
+	opinions := ""
+	for _, r := range rules.Defaults().Domains["OPINIONS"].Rules {
+		if strings.Contains(r, "principles/the-users-directory-is-theirs.md") {
+			opinions = r
+		}
+	}
+	if opinions == "" {
+		t.Fatal("the binary bundles no OPINIONS rule pointing at principles/the-users-directory-is-theirs.md")
+	}
+
 	for name, text := range map[string]string{
 		"AGENTS.md": short, "the CONCURRENCY domain": long, "itd-193": itd193, "the users-directory principle": principle,
+		"the bundled SCRATCH rule": scratch, "the bundled OPINIONS users-directory rule": opinions,
 	} {
-		flat := strings.Join(strings.Fields(text), " ")
-		for _, want := range []string{"outside every working tree", "scratchpad", abcdhome.Display() + "/"} {
+		// Code spans are markup, not words: `~/.abcd.noindex/` and the bare
+		// path read the same.
+		flat := strings.ReplaceAll(strings.Join(strings.Fields(text), " "), "`", "")
+		for _, want := range []string{
+			"outside every working tree",
+			"a directory of its own under " + abcdhome.Display() + "/ keyed on the root-commit SHA",
+			"(the session's scratchpad only for a copy the same turn makes and discards)",
+		} {
 			if !strings.Contains(flat, want) {
 				t.Errorf("%s's verifier-copy rule does not say %q; a copy made inside a worktree is "+
-					"read as that worktree by every verb run from it", name, want)
+					"read as that worktree by every verb run from it, and one in the scratchpad is lost "+
+					"to the later agent that reads it", name, want)
 			}
+		}
+		if strings.Contains(flat, "the session's scratchpad or a directory") ||
+			strings.Contains(flat, "the session's scratchpad, or a directory") {
+			t.Errorf("%s still offers the session's scratchpad as an equal home for a verifier's copy", name)
 		}
 	}
 }
