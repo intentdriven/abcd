@@ -2,9 +2,11 @@ package ahoy
 
 import (
 	"os"
+	"path/filepath"
 	"slices"
 
 	"github.com/intentdriven/abcd/internal/core/interview"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/releasedigest"
 )
 
@@ -53,16 +55,7 @@ var (
 	waitingHome           = os.UserHomeDir
 )
 
-// waiting is waitingIn over a fresh detection of cwd.
-func waiting(cwd, from, to string) (WaitingSet, error) {
-	det, err := Detect(cwd)
-	if err != nil {
-		return WaitingSet{}, err
-	}
-	return waitingIn(cwd, det, from, to)
-}
-
-// waitingIn returns what waits on the repository at cwd, whose detection is
+// Waiting returns what waits on the repository at cwd, whose detection is
 // det, for an update from the release from to the release to: the questions
 // det's gaps arm that this repository has no recorded answer to (a question
 // answered with a value, or deferred with "decide later", is recorded), and
@@ -73,7 +66,7 @@ func waiting(cwd, from, to string) (WaitingSet, error) {
 // A category approval and the adoption are not waiting questions: they are
 // consent to the changes the questions and gaps make, asked whenever there is
 // a change to make, not a setting the repository answers once.
-func waitingIn(cwd string, det DetectionResult, from, to string) (WaitingSet, error) {
+func Waiting(cwd string, det DetectionResult, from, to string) (WaitingSet, error) {
 	set := WaitingSet{Questions: []WaitingItem{}, Defaults: []WaitingItem{}}
 	repoAnswers, err := interview.Latest(interview.Place{Repo: cwd}, SetupInterview)
 	if err != nil {
@@ -190,4 +183,44 @@ func armedQuestions(cwd string, det DetectionResult) []WaitingItem {
 		}
 	}
 	return out
+}
+
+// SetupVersion is the setup version the repository at cwd recorded
+// (.abcd/config.json meta.setup_version), handed out only when it is exactly
+// a release tag (launch.ParseReleaseTag), so no other word of the tracked
+// file leaves ahoy through it. A dev stamp, a missing value or a config that
+// does not parse is none.
+func SetupVersion(cwd string) (string, bool) {
+	cfg, err := readConfig(cwd)
+	if err != nil {
+		return "", false
+	}
+	v, _ := stringVal(subMap(cfg, "meta"), "setup_version")
+	sv, err := launch.ParseReleaseTag(v)
+	if err != nil {
+		return "", false
+	}
+	return sv.Tag(), true
+}
+
+// PreviousReleaseTag is the release the binary record says the last swap
+// came from (previous_tag), read where TakeUnseenUpdate reads it and through
+// the same data-directory check, whether or not that swap was seen, and
+// without its claim: it writes nothing. A value that is not exactly a release
+// tag is none.
+func PreviousReleaseTag(pluginRoot, cwd string) (string, bool) {
+	dir, meta := "", ""
+	if data := pluginDataDir(pluginRoot).dir; data != "" {
+		dir, meta = data, filepath.Join(data, "cache", "binary-meta")
+	} else if pluginRoot != "" {
+		dir, meta = pluginRoot, filepath.Join(pluginRoot, ".binary-meta")
+	}
+	if dir == "" || dataDirHazard(dir, cwd) != "" {
+		return "", false
+	}
+	sv, err := launch.ParseReleaseTag(metaField(meta, "previous_tag"))
+	if err != nil {
+		return "", false
+	}
+	return sv.Tag(), true
 }

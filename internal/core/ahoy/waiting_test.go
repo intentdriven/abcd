@@ -99,7 +99,7 @@ func TestWaitingListsQuestionsNeverAnswered(t *testing.T) {
 	det := detWith("config.visibility_missing", "config.docs_target_missing", "config.oracle_backend_missing",
 		StatusLineOfferGapID, OracleRoutingRepoGapID, "deps.gitleaks_missing", "rules.missing")
 
-	got, err := waitingIn(repo, det, "v0.15.0", "v0.16.0")
+	got, err := Waiting(repo, det, "v0.15.0", "v0.16.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +116,7 @@ func TestWaitingListsQuestionsNeverAnswered(t *testing.T) {
 
 	recordSetup(t, interview.Place{Repo: repo}, map[string]string{"visibility": "private", "docs_target": SetupLaterValue, StatusLineOfferGapID: "no"})
 	recordSetup(t, interview.Place{Home: home}, map[string]string{OracleRoutingRepoGapID: "yes"})
-	got, err = waitingIn(repo, det, "v0.15.0", "v0.16.0")
+	got, err = Waiting(repo, det, "v0.15.0", "v0.16.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestWaitingListsQuestionsNeverAnswered(t *testing.T) {
 	}
 	recordSetup(t, interview.Place{Home: home}, map[string]string{StatusLineOfferGapID: SetupLaterValue})
 	recordSetup(t, interview.Place{Repo: repo}, map[string]string{OracleRoutingRepoGapID: "no"})
-	if got, err = waitingIn(repo, det, "v0.15.0", "v0.16.0"); err != nil || len(got.Questions) != 0 {
+	if got, err = Waiting(repo, det, "v0.15.0", "v0.16.0"); err != nil || len(got.Questions) != 0 {
 		t.Fatalf("every question answered: %v, %v", keysOf(got.Questions), err)
 	}
 }
@@ -152,7 +152,7 @@ func TestWaitingListsChangedDefaultsTheRepositoryTakes(t *testing.T) {
 	writeConfigJSON(t, repo, map[string]any{"repo": map[string]any{"visibility": "private"}})
 	det := detWith("config.docs_target_missing", "config.oracle_backend_missing")
 
-	got, err := waitingIn(repo, det, "v0.15.0", "v0.16.0")
+	got, err := Waiting(repo, det, "v0.15.0", "v0.16.0")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestWaitingListsChangedDefaultsTheRepositoryTakes(t *testing.T) {
 	// Deferred with "decide later", docs_target no longer waits as a
 	// question, so its changed default waits in its place.
 	recordSetup(t, interview.Place{Repo: repo}, map[string]string{"docs_target": SetupLaterValue})
-	if got, err = waitingIn(repo, det, "v0.15.0", "v0.16.0"); err != nil {
+	if got, err = Waiting(repo, det, "v0.15.0", "v0.16.0"); err != nil {
 		t.Fatal(err)
 	}
 	if len(got.Questions) != 0 || !slices.Equal(keysOf(got.Defaults), []string{"oracle_backend", "docs_target"}) {
@@ -186,7 +186,7 @@ func TestWaitingListsChangedDefaultsTheRepositoryTakes(t *testing.T) {
 		"repo": map[string]any{"visibility": "private"}, "docs": map[string]any{"target": "skip"},
 		"oracle": map[string]any{"backend": "host-delegated"},
 	})
-	if got, err = waitingIn(repo, det, "v0.15.0", "v0.16.0"); err != nil || len(got.Defaults) != 0 {
+	if got, err = Waiting(repo, det, "v0.15.0", "v0.16.0"); err != nil || len(got.Defaults) != 0 {
 		t.Fatalf("every key set: defaults %v, %v", keysOf(got.Defaults), err)
 	}
 }
@@ -198,7 +198,7 @@ func TestWaitingWithNothingToWait(t *testing.T) {
 	standInWaiting(t, []DefaultChange{{Key: "docs_target", Record: "itd-9"}}, []releasedigest.Release{cites("v0.16.0", "itd-1")})
 	repo := t.TempDir()
 	writeConfigJSON(t, repo, map[string]any{})
-	got, err := waitingIn(repo, detWith("rules.missing"), "v0.15.0", "v0.16.0")
+	got, err := Waiting(repo, detWith("rules.missing"), "v0.15.0", "v0.16.0")
 	if err != nil || got.Questions == nil || got.Defaults == nil || len(got.Questions)+len(got.Defaults) != 0 {
 		t.Fatalf("got %+v, %v", got, err)
 	}
@@ -218,7 +218,7 @@ func TestWaitingRefusesARecordItCannotRead(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "setup-20261001T090000Z.json"), []byte("{"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := waitingIn(repo, detWith("config.docs_target_missing"), "v0.15.0", "v0.16.0"); err == nil {
+	if _, err := Waiting(repo, detWith("config.docs_target_missing"), "v0.15.0", "v0.16.0"); err == nil {
 		t.Fatal("an unreadable record was read as nothing answered")
 	}
 }
@@ -276,7 +276,7 @@ func TestEveryQuestionTheInstallAsksCanWait(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	w, err := waitingIn(repo, det, "v0.15.0", "v0.16.0")
+	w, err := Waiting(repo, det, "v0.15.0", "v0.16.0")
 	if err != nil {
 		t.Fatal(err)
 	}
