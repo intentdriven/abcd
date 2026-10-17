@@ -219,3 +219,18 @@ func TestANullInTheGenerationRecordIsNotReported(t *testing.T) {
 		t.Errorf("a null cost read as %v", *u.Cost)
 	}
 }
+
+// TestANullAttemptStatusIsNotAStatusOfZero: an attempt whose status is null
+// carries no status, never the status "0".
+func TestANullAttemptStatusIsNotAStatusOfZero(t *testing.T) {
+	g := newGenFake(t, 0, `{"data":{"id":"gen-1","provider_name":"DeepInfra",`+
+		`"provider_responses":[{"provider_name":"Together","status":null},{"provider_name":"DeepInfra","status":200}]}}`)
+	gen, err := quick(t, g.base(), time.Second).Generation(context.Background(), "gen-1")
+	if err != nil {
+		t.Fatalf("Generation: %v", err)
+	}
+	want := []Attempt{{Provider: "Together", Status: ""}, {Provider: "DeepInfra", Status: "200"}}
+	if len(gen.Attempts) != 2 || gen.Attempts[0] != want[0] || gen.Attempts[1] != want[1] {
+		t.Fatalf("attempts = %+v, want %+v", gen.Attempts, want)
+	}
+}

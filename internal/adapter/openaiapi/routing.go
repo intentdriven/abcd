@@ -204,8 +204,11 @@ func (c *Client) decodeGeneration(raw []byte) (Generation, error) {
 }
 
 // status is an attempt's status, a number or a string, cleaned; "" when it
-// is neither.
+// is neither, a null included (encoding/json reads a null into an int as 0).
 func (c *Client) status(raw json.RawMessage) string {
+	if isNull(raw) {
+		return ""
+	}
 	var n int
 	if json.Unmarshal(raw, &n) == nil {
 		return strconv.Itoa(n)
