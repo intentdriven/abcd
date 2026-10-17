@@ -32,6 +32,8 @@ func briefPreview(id string) string { return ".abcd/.work.local/cloud/briefs/" +
 //	expired  the login has expired
 //	badenv   the environment is unknown
 //	refuse   any other refusal
+//	errlines it exits 0 with pretty-printed JSON that says is_error true over two
+//	         lines, and still names a session and its link
 //
 // Each call appends one `host-call` line to the call log and writes its argv,
 // NUL-separated, to $CALLS.host.<n>.
@@ -45,6 +47,7 @@ for a in "$@"; do printf '%s\0' "$a" >>"$CALLS.host.$n"; done
 case "${FAKE_HOST:-ok}" in
 ok) printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"session_id":"`+fixtureSession+`","result":"Started `+fixtureLink+`"}' ;;
 noid) printf '%s\n' '{"type":"result","subtype":"success","is_error":false,"result":"done"}' ;;
+errlines) printf '{\n  "type": "result",\n  "is_error":\n    true,\n  "session_id": "`+fixtureSession+`",\n  "result": "Started `+fixtureLink+`"\n}\n' ;;
 nologin) echo 'Invalid API key · Please run /login' >&2; exit 1 ;;
 expired) echo 'OAuth token has expired. Please obtain a new token or refresh your existing token.' >&2; exit 1 ;;
 badenv) echo 'Error: environment `+fixtureEnv+` not found' >&2; exit 1 ;;
@@ -259,7 +262,7 @@ func TestSendRefusesUnknownEnvironment(t *testing.T) {
 }
 
 func TestSendHostRefusalStartsNothingLocal(t *testing.T) {
-	for _, mode := range []string{"nologin", "expired", "badenv", "refuse", "missing"} {
+	for _, mode := range []string{"nologin", "expired", "badenv", "refuse", "errlines", "missing"} {
 		t.Run(mode, func(t *testing.T) {
 			c := newSendCase(t)
 			env := []string{"FAKE_HOST=" + mode}
