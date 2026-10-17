@@ -11,7 +11,7 @@ severity: minor
 related_issues: [iss-2609020716570699]
 origin: extracted-from-record
 production_mode: hand-written
-related_intents: [itd-2609091416295622, itd-2609091416304128, itd-2609091014076309, itd-2609150819440345, itd-2610031259176838, itd-118]
+related_intents: [itd-2609091416295622, itd-2609091416304128, itd-2609091014076309, itd-2609150819440345, itd-2610031259176838, itd-118, itd-2610170634394993]
 related_adrs: [adr-2609091248200336, adr-2610031352212697]
 supersedes: [itd-33]
 impact: additive

@@ -2472,3 +2472,14 @@ Initial routing, from the two adversarial reviews before the interview: parts A,
 | regenerating generated files after a lane's merge | cited | the implementer's own fix round under the host's permissions (dcn-2610161040384068); abcd runs no repository-declared command, so no new trust rule |
 
 Verdict: FILE-AS-IS for each draft, as three members of one bundle. The product thinker delegated the planning, so no question put the table; the routing is the facilitator's and is graded as unconfirmed. The drafts were filed from 18 captures of a multi-account drain investigation the same day, already split by outcome (sharing the work, unsticking lanes, running unattended), so the decomposition moved nothing between them. Two parts route to clauses in existing invariants rather than to new records. The routing moved once after two adversarial reviews: the first design had abcd run a regenerate command the repository declares, which the design review showed to be a new trust boundary, so regeneration became the implementer's fix round and the trust-rule row fell away.
+
+## 2026-10-17: headless agents in parallel coordinate through the shared remote (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| a pass any session can run reads the records on the shared remote and acts on them: which change waits on which, held until it lands and rebuilt on top of it; a machine and model budget per agent; work returned when its holder stops renewing | capability | intent itd-2610170634394993 |
+| every wait has a deadline; a claim carries a generation number that a push, queue or tag re-checks, and a lapsed claim is retaken only after a delay; a reader refuses a coordination record newer than it knows | trust rule | an ADR at planning, then a brief invariant once accepted; not yet minted |
+| coordination lives on the shared remote and never only in conversation | stance | a principle at planning; the ruling of 2026-10-03 that coordination is visible on the remote or the forge is its source |
+| the record formats and their versions, the dependency line's spelling, and how the pass decides | plumbing | the brief, at planning |
+
+Verdict: SPLIT, confirmed. The capability is filed as the draft; the trust rule and the stance get their own records at planning. The draft was filed after a state-of-the-art pass (`2026-10-17-parallel-headless-agent-coordination.md`) that moved the design away from a coordinator process that must stay alive and toward a pass over shared records with fencing and deadlines. The product thinker asked for the draft and confirmed the split as proposed, with no change.
