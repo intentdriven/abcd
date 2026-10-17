@@ -281,6 +281,11 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 				}
 				if moved {
 					p.State, p.Note = ParkedSyncing, note
+				} else if note != "" {
+					// The step that would enter the sync refused, or did
+					// not move the lane: what it said is named, not
+					// dropped behind the forge's reading.
+					p.Note += "; its sync was not entered: " + note
 				}
 			}
 			if p.State == ParkedClosed {

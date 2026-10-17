@@ -343,8 +343,10 @@ what it did in `next`:
   nothing pushed, so the next drain hands the lane back as `stuck` at once. A
   pull request that starts to conflict at its arming, or while it waits
   parked, on declared generated files alone enters the sync again (the
-  drain's next move takes that step for a parked lane, reads it as `syncing`
-  and drives the lane again); one that conflicts on any other file is never
+  drain's next move takes that step for a parked lane, withdrawing an armed
+  merge in a step of its own, reads it as `syncing` and drives the lane
+  again; a step that cannot enter the sync is named beside the lane's
+  reading); one that conflicts on any other file is never
   armed, and `abcd implement step --run <run-id>` refuses at exit 2 naming the
   conflicting files and the hand merge that settles it. That is a person's:
   report it, and do not push to the lane or merge it yourself.

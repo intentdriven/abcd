@@ -465,8 +465,9 @@ pushed: a drain hands the lane back as `stuck` at once. When the lane's open
 pull request starts to conflict at its arming or while it waits to merge, and
 a merge of the default branch and the pushed head, as the forge merges, conflicts only in
 declared generated files or in none, the lane enters its sync again: an armed
-merge is withdrawn (`gh pr merge <n> --disable-auto`), the default branch is
-merged in, and the push and the arming are made again once a fresh round has
+merge is withdrawn (`gh pr merge <n> --disable-auto`) in a step of its own,
+recorded before any merge is tried, the next step merges the default branch
+in, and the push and the arming are made again once a fresh round has
 judged the merge; the records commit and the pull request are kept. Any other
 conflict there is refused for a person as before.
 

@@ -238,8 +238,10 @@ func undeclaredConflict(lane Lane, def, merged string, paths []string, unread st
 // conflicting (spc-2610161044461448 step 13): where a merge of tracking, just
 // fetched, and the pushed head conflicts, as the forge merges, in files origin
 // declares generated alone, or in none (the forge's verdict stale), an armed
-// merge is withdrawn first and the default branch is merged into the lane as
-// its sync merges it, the push and the arming to be made again over the merge
+// merge is withdrawn first, as a step of its own whose state is written before
+// any merge is tried, and the step after it, finding the conflict again at the
+// arming, merges the default branch into the lane as its sync merges it, the
+// push and the arming to be made again over the merge
 // once a fresh round, or the implementer it goes to, has judged it; the
 // records and the pull request are kept. Any other conflict is refused for a
 // person, as before (conflictRefusal).
@@ -266,12 +268,20 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 			"pull request #"+n+" is reported conflicting, but "+lane.Branch+" already holds "+Remote+"/"+def+" ("+m.note()+")",
 			"run `abcd implement step` again once the forge has computed its mergeability again")
 	}
-	withdrawn := ""
 	if ld.Armed {
+		// The withdrawal is a step of its own, its state written before the
+		// merge is tried: a merge refused after it (a worktree with a
+		// person's changes, a moved tip, a hook or signing that stalls) would
+		// otherwise discard the state, leaving the lane recorded armed while
+		// the forge holds nothing armed, its merge wait for ever. The next
+		// step reaches the arming, finds the conflict again and enters the
+		// sync with nothing armed.
 		if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
 			return Outcome{}, err
 		}
-		withdrawn = "; its armed merge is withdrawn, and armed again once the merge is pushed"
+		ld.Merge, ld.Armed = "", false
+		return Outcome{Stay: true, Note: "pull request #" + n + " started to conflict with " + def + " (" + m.note() +
+			"), so its armed merge is withdrawn, and armed again once the lane's sync is pushed; the next step enters the sync"}, nil
 	}
 	again := *ld
 	again.Pushed, again.PreflightReceipt, again.CheckWaitSince, again.Merge, again.Armed = "", "", nil, "", false
@@ -280,7 +290,7 @@ func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Ou
 	if err != nil {
 		return Outcome{}, err
 	}
-	out.Note = "pull request #" + n + " started to conflict with " + def + " (" + m.note() + "), so the lane entered its sync again: " + out.Note + withdrawn
+	out.Note = "pull request #" + n + " started to conflict with " + def + " (" + m.note() + "), so the lane entered its sync again: " + out.Note
 	return out, nil
 }
 

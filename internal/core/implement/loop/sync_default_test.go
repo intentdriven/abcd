@@ -28,7 +28,13 @@ const genAttributes = "gen.txt linguist-generated\n"
 // documentation lane opened.
 func syncFixture(t *testing.T) *landFixture {
 	t.Helper()
-	f := drainLandFixture(t)
+	return syncFixtureWith(t, queueRuleset("MERGE"))
+}
+
+// syncFixtureWith is syncFixture with the ruleset mirror given.
+func syncFixtureWith(t *testing.T, ruleset string) *landFixture {
+	t.Helper()
+	f := drainLandFixtureWith(t, ruleset)
 	f.repo.Write(".gitattributes", genAttributes)
 	f.repo.Write("gen.txt", "generated at the base\n")
 	f.repo.Write("plain.txt", "written at the base\n")
@@ -253,6 +259,11 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(f.gh, "mergeable.json"), []byte(`{"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY"}`), 0o644); err != nil {
 			t.Fatal(err)
 		}
+		// The withdrawal of the armed merge, then the sync.
+		f.step(t)
+		if l := currentLane(t, f.repo, f.runID); l.Landing.Armed || l.Landing.Merge != "" || l.Landing.Pushed != first || len(l.Syncs) != 0 {
+			t.Fatalf("the armed merge is withdrawn in a step of its own: %+v", l.Landing)
+		}
 		f.step(t)
 		l = currentLane(t, f.repo, f.runID)
 		if l.Stage != StageValidate || len(l.Syncs) != 1 || l.Syncs[0].Merged != tip || l.Syncs[0].Conflicted || !l.syncRoundDue() {
@@ -298,9 +309,11 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		reentered(t, f, l.Landing.Pushed)
 		if !strings.Contains(f.ghLog(t), "--disable-auto") {
 			t.Fatalf("the armed merge is withdrawn before the branch moves:\n%s", f.ghLog(t))
+		}
+		if ld := currentLane(t, f.repo, f.runID).Landing; ld.Armed || ld.Merge != "" || ld.Pushed != l.Landing.Pushed {
+			t.Fatalf("the withdrawal is recorded before any merge is tried: %+v", ld)
 		}
 		if p := parkedOf(t, res, f.runID); p.State != ParkedSyncing {
 			t.Fatalf("the drain reads the lane as syncing again: %+v", p)
@@ -312,5 +325,126 @@ func TestAPullRequestThatStartsToConflictReentersTheSync(t *testing.T) {
 		if st, err := ReadState(f.repo.Root(), f.runID); err != nil || st.Lanes[0].HandBack != nil {
 			t.Fatalf("the lane is not handed back: %+v %v", st.Lanes[0], err)
 		}
+		// The lane's next step finds the conflict at the arming and enters
+		// the sync, nothing armed.
+		f.step(t)
+		reentered(t, f, l.Landing.Pushed)
 	})
+}
+
+// TestADisarmedLaneWhoseSyncRefusesIsNotLeftArmed: the drain's move withdraws
+// an armed merge over a conflicting pull request, and the lane's state then
+// says so, whatever the merge that follows does. A person's uncommitted edit
+// in the lane's worktree refuses that merge; the lane is left disarmed with
+// its arming to be made again, never recorded armed while the forge holds
+// nothing armed, and the refusal is named, not dropped. Once the edit is gone
+// the lane's next step merges the default branch.
+func TestADisarmedLaneWhoseSyncRefusesIsNotLeftArmed(t *testing.T) {
+	f := syncFixture(t)
+	f.passToLand(t, "fix.txt", "gen.txt")
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	f.step(t)
+	f.step(t)
+	f.step(t)
+	l = currentLane(t, f.repo, f.runID)
+	if !l.Landing.Armed || l.PR != 7 {
+		t.Fatalf("armed: %+v", l.Landing)
+	}
+	pushed := l.Landing.Pushed
+	f.moveMain(t, "generated again on main\n", "gen.txt")
+	if err := os.WriteFile(filepath.Join(f.gh, "mergeable.json"), []byte(`{"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "CONFLICTING", MergeStateStatus: "DIRTY"})
+	// A person starts resolving the conflict in the lane's worktree.
+	edit := filepath.Join(l.Worktree, "fix.txt")
+	if err := os.WriteFile(edit, []byte("a person's edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(f.ghLog(t), "--disable-auto") {
+		t.Fatalf("the armed merge is withdrawn:\n%s", f.ghLog(t))
+	}
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ld := st.Lanes[0].Landing
+	if ld == nil || ld.Armed || ld.Merge != "" || ld.Pushed != pushed || st.Lanes[0].HandBack != nil {
+		t.Fatalf("the withdrawn arming is recorded, the push kept for the next step: %+v", ld)
+	}
+	if p := parkedOf(t, res, f.runID); p.State != ParkedSyncing {
+		t.Fatalf("the drain reads the lane as syncing: %+v", p)
+	}
+	// The lane's next step reaches the arming, finds the conflict, and its
+	// merge is refused over the person's edit, naming it; nothing is armed.
+	_, err = advance(f.repo.Root(), f.runID, f.stages, Options{})
+	if r := mustRefusal(t, err); !strings.Contains(r.Reason, "uncommitted changes") {
+		t.Fatalf("the merge's refusal names the worktree's changes: %+v", r)
+	}
+	if ld := currentLane(t, f.repo, f.runID).Landing; ld.Armed || ld.Merge != "" || ld.Pushed != pushed {
+		t.Fatalf("the refused merge leaves the lane disarmed: %+v", ld)
+	}
+	if strings.Count(f.ghLog(t), "--auto ") != 1 {
+		t.Fatalf("nothing arms the conflicting pull request again:\n%s", f.ghLog(t))
+	}
+
+	if err := os.Remove(edit); err != nil {
+		t.Fatal(err)
+	}
+	f.repo.Git("-C", l.Worktree, "checkout", "--", "fix.txt")
+	f.step(t)
+	l = currentLane(t, f.repo, f.runID)
+	if len(l.Syncs) != 1 || !l.Syncs[0].Conflicted || l.Stage != StageValidate || l.Landing == nil || l.Landing.Pushed != "" || l.Landing.Armed {
+		t.Fatalf("with the edit gone, the next step merges the default branch, nothing armed: %+v", l)
+	}
+}
+
+// TestAParkedLaneWhoseSyncIsRefusedNamesTheRefusal: a lane left open for a
+// person's merge, its pull request now conflicting on a generated file, goes
+// back through its sync from the drain's move; when that merge is refused
+// (here over a person's uncommitted edit in the lane's worktree), the move
+// names the refusal beside the forge's reading rather than dropping it.
+func TestAParkedLaneWhoseSyncIsRefusedNamesTheRefusal(t *testing.T) {
+	f := syncFixtureWith(t, unreviewedQueueRuleset("MERGE"))
+	f.passToLand(t, "fix.txt", "gen.txt")
+	for range 6 {
+		f.step(t)
+		l := currentLane(t, f.repo, f.runID)
+		if l.Landing != nil && l.Landing.Pushed == "" && l.Landing.RecordsDone {
+			preflighted(t, l, l.HeadSHA)
+		}
+		if l.Landing != nil && l.Landing.Merge != "" {
+			break
+		}
+	}
+	l := currentLane(t, f.repo, f.runID)
+	if l.PR != 7 || l.Landing.Merge == "" || l.Landing.Armed {
+		t.Fatalf("the pull request is left open for a person: %+v", l.Landing)
+	}
+	f.moveMain(t, "generated again on main\n", "gen.txt")
+	if err := os.WriteFile(filepath.Join(f.gh, "mergeable.json"), []byte(`{"mergeable":"CONFLICTING","mergeStateStatus":"DIRTY"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.listPRs(t, stubPR{Number: 7, HeadRefName: l.Branch, State: "OPEN", Mergeable: "CONFLICTING", MergeStateStatus: "DIRTY"})
+	if err := os.WriteFile(filepath.Join(l.Worktree, "fix.txt"), []byte("a person's edit\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Drain(f.repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := parkedOf(t, res, f.runID)
+	if p.State != ParkedConflicting || !strings.Contains(p.Note, "uncommitted changes") {
+		t.Fatalf("the move names why the sync was not entered: %+v", p)
+	}
+	if ld := currentLane(t, f.repo, f.runID).Landing; ld.Merge != l.Landing.Merge || ld.Pushed != l.Landing.Pushed {
+		t.Fatalf("the refused step changes nothing: %+v", ld)
+	}
 }
