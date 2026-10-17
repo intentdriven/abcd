@@ -17,6 +17,13 @@ import (
 // Makefile). It defaults to "dev" for un-stamped local builds.
 var Version = "dev"
 
+// ReleaseOrigin is the one place abcd's releases come from and their notes are
+// published: the origin `update --check` and hooks/bootstrap.sh resolve
+// against (internal/core/update), and the address a release digest names for
+// a release it cannot describe (internal/core/releasedigest). It lives here,
+// in the leaf package, so both read one constant.
+const ReleaseOrigin = "https://github.com/intentdriven/abcd"
+
 // VersionInfo is the result of NewVersion.
 type VersionInfo struct {
 	Name    string `json:"name"`
