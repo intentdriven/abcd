@@ -524,7 +524,7 @@ func (e *explorer) dashboard() (string, error) {
 	// The decision records are counted apart from the stores above: they are
 	// not on the chart those tiles count for, and their one page is the log.
 	if e.hasDecisionLog() {
-		b.WriteString(tileLinked("/"+routeDecisionLog, strconv.Itoa(len(e.export.Decisions)),
+		b.WriteString(tileLinked(e.c.at("/"+routeDecisionLog), strconv.Itoa(len(e.export.Decisions)),
 			ui.RecordNav.DecisionLog, nil, ""))
 	}
 

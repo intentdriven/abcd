@@ -74,6 +74,9 @@ func buildFixtureAt(t *testing.T, f *fixture, base string) (string, map[string][
 
 func TestABasePathPrefixesEveryRootAbsoluteURL(t *testing.T) {
 	f := newFixture(t)
+	// Published decisions add the decision log and its dashboard tile, whose
+	// links the base path must reach too.
+	f.addDecisions(true)
 	_, files := buildFixtureAt(t, f, "/widgets/")
 	seen := 0
 	for rel, data := range files {
