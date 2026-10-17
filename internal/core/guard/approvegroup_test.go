@@ -149,3 +149,35 @@ func TestApproveRefusesAQuotedGroupOpener(t *testing.T) {
 		}
 	}
 }
+
+// TestApproveKeepsPipedInputPastAQuotedClose: a } with a quote in it, even
+// an empty pair of quotes, is a command's name to the shell and does not
+// close the group a pipe feeds, so the commands after it still read the piped
+// input. A shell among them reads that input as its script, and the line is
+// refused, as the same line with an ordinary command in place of the } is.
+func TestApproveKeepsPipedInputPastAQuotedClose(t *testing.T) {
+	r := plainRig(t)
+	for _, c := range []struct{ line, shell string }{
+		{`echo 'touch ran' | { true; bash; }`, "bash"},
+		{`echo 'touch ran' | { }""; bash; }`, "bash"},
+		{`echo 'touch ran' | { }''; sh; }`, "sh"},
+	} {
+		if sh, err := exec.LookPath(c.shell); err == nil {
+			work := t.TempDir()
+			cmd := exec.Command(sh, "-c", c.line)
+			cmd.Dir = work
+			_ = cmd.Run()
+			if _, err := os.Stat(filepath.Join(work, "ran")); err != nil {
+				t.Fatalf("%q under %s: the piped text did not run (%v), so this case tests nothing", c.line, sh, err)
+			}
+		}
+		a := approveShell(clean(), r.files(), c.line)
+		if a.Allow {
+			t.Errorf("%q was approved; want a refusal under %q", c.line, "interpreter-reads-stream")
+			continue
+		}
+		if a.EntryID != "interpreter-reads-stream" {
+			t.Errorf("%q: refused under %q, want %q (%s)", c.line, a.EntryID, "interpreter-reads-stream", a.Reason)
+		}
+	}
+}

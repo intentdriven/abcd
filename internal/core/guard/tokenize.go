@@ -993,14 +993,17 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		recordVar(true)
 		recordSpelling(tok, tok == string(cur))
 		curFeeds, curVar, curSub, curVarAt = nil, false, false, nil
-		if !curQuoted && tok == string(cur) && groupWord(tok) && allStruct(curMask) {
+		bare := !curQuoted && tok == string(cur) && groupWord(tok) && allStruct(curMask)
+		if bare {
 			if closes == nil {
 				closes = map[int]bool{}
 			}
 			closes[len(toks)] = true
 		}
-		// An unquoted `{` or `}` in command position opens or closes a group.
-		if len(curMask) == 1 && curMask[0]&wordStruct != 0 && allReserved(toks) {
+		// A `{` or `}` the line leaves wholly unquoted, in command position,
+		// opens or closes a group; a quoted one (`}""`, `}''`) is a command's
+		// name, and the group's input still reaches the commands after it.
+		if bare && allReserved(toks) {
 			switch tok {
 			case "{":
 				braceFrom = append(braceFrom, groupOpen{pipeFrom: pipeFrom, in: openGroup()})
