@@ -2473,6 +2473,28 @@ Initial routing, from the two adversarial reviews before the interview: parts A,
 
 Verdict: FILE-AS-IS for each draft, as three members of one bundle. The product thinker delegated the planning, so no question put the table; the routing is the facilitator's and is graded as unconfirmed. The drafts were filed from 18 captures of a multi-account drain investigation the same day, already split by outcome (sharing the work, unsticking lanes, running unattended), so the decomposition moved nothing between them. Two parts route to clauses in existing invariants rather than to new records. The routing moved once after two adversarial reviews: the first design had abcd run a regenerate command the repository declares, which the design review showed to be a new trust boundary, so regeneration became the implementer's fix round and the trust-rule row fell away.
 
+## 2026-10-16: one feature built across a model matrix (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| the run: one intent built several times from one frozen start, across builder and reviewer models from the host, OpenRouter and this machine, no copy merged, one comparison report | capability | intent itd-2610161733316518 (draft) |
+| every call records the model asked for and the model that served, with version, provider, settings and a local weight fingerprint | capability | itd-166 (existing draft), which the run is blocked by |
+| OpenRouter held to one named provider with no silent fallback; local models pinned and usable for tool-using roles; the opencode runner reporting the model that answered | plumbing | captures iss-2610161734413178, iss-2610161734428291, iss-2610161709506207, and after review iss-2610161801358637 |
+| reviewers never learn which model wrote the copy they judge, and are scored, never voted | trust rule | adr-2610161733400551 (proposed) |
+| a model run is re-runnable from its manifest with drift recorded, never claimed identical | stance | principle a-model-run-is-re-runnable-not-reproducible |
+
+Verdict: SPLIT, confirmed: the product thinker chose the five-record routing as proposed. One premise moved before the question: the facilitator first read the proposal as departing from the adapter intent's decision that frontier models stay on the host; the product thinker corrected it (frontier models never go through OpenRouter, which serves cheaper models to trial before moving them local or to save cost), so no reversal was filed and the rule became a decision on the intent.
+
+Typed links: blocked by itd-166; builds on itd-2609201916151817, itd-2609212137128014, itd-2609201916056194; measures iss-2610140652230444; siblings itd-98 and itd-64 kept apart (intent decision 11). Advisory reversal flags: none. The provider pin refines the out-of-scope line of itd-2609081951381895, flagged on its capture.
+
+After filing, two adversarial reviews (design and record discipline, each an Opus and Sonnet pair) and a SOTA fit-challenge moved the routing in three places:
+
+- **The plumbing captures targeted the wrong seam.** Tool-using roles reach OpenRouter and local models through the opencode runner, not the OpenAI-compatible adapter; both captures were rewritten for both seams, recategorised from observation to future-work-seed, and the opencode stamp to bug.
+- **A fourth capture was missing**: a runner takes one model per machine, so a matrix cannot be configured (iss-2610161801358637).
+- **The trust-rule row got no brief invariant, on purpose**: the ADR binds matrix runs only, so it is not a system-wide boundary; the ADR's consequences say so.
+
+The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and itd-166 was widened to the asked and served sides it was routed. The routing survived as a five-record split; its plumbing row was the part the initial routing got wrong.
+
 ## 2026-10-16: after a plugin update, offer setup again
 
 The proposal: when abcd's plugin was updated, offer the person to run setup again so new settings and setup questions are picked up.

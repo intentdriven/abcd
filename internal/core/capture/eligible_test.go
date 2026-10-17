@@ -4,6 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -248,6 +251,153 @@ func TestDrainOrdersTheEligibleByCategoryThenSeverityThenAge(t *testing.T) {
 	for _, word := range []string{"tech-debt, documentation, inconsistency, drift, bug, ux", "nitpick before minor", "oldest first"} {
 		if !strings.Contains(p.Order, word) {
 			t.Errorf("the order rule %q does not state %q", p.Order, word)
+		}
+	}
+}
+
+// TestAnIssueNamingAnIntentIsHandedBackAsPromoted is step 4 of
+// spc-2610161044461448 (iss-2610161015370582): an issue whose related_intents
+// names an intent is one an intent already owns, so the rule hands it back as
+// promoted, naming every intent, whatever its other fields would let through.
+// A drain on another account reads the same field from origin's record, so it
+// never judges or works again an issue a promotion already took.
+func TestAnIssueNamingAnIntentIsHandedBackAsPromoted(t *testing.T) {
+	f := newDrainFixture(t)
+	f.file("iss-1", SeverityMinor, "bug", "guard the nil map")
+	for id, related := range map[string][]string{
+		"iss-2": {"itd-2610010000000003"},
+		"iss-3": {"itd-2610010000000004", "itd-2610010000000005"},
+	} {
+		if _, err := Capture(CaptureRequest{
+			RepoRoot: f.repo, IssuesRoot: f.ir, Text: "text of " + id, Severity: SeverityMinor,
+			Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t", ForceID: id,
+			Remedy: "guard the nil map", RelatedIntents: related,
+		}); err != nil {
+			t.Fatalf("capture %s: %v", id, err)
+		}
+	}
+
+	p := f.plan()
+	if v := verdictOf(t, p, "iss-1"); v.Outcome != DrainEligible {
+		t.Errorf("an issue naming no intent: %s/%s (%s), want eligible", v.Outcome, v.Rule, v.Reason)
+	}
+	for id, intents := range map[string][]string{
+		"iss-2": {"itd-2610010000000003"},
+		"iss-3": {"itd-2610010000000004", "itd-2610010000000005"},
+	} {
+		v := verdictOf(t, p, id)
+		if v.Outcome != DrainHandBack || v.Rule != RulePromoted {
+			t.Errorf("%s: %s/%s (%s), want handback/promoted", id, v.Outcome, v.Rule, v.Reason)
+		}
+		for _, itd := range intents {
+			if !strings.Contains(v.Reason, itd) {
+				t.Errorf("%s: the dry run's reason %q does not name %s", id, v.Reason, itd)
+			}
+		}
+	}
+	if p.Counts[DrainEligible] != 1 || p.Counts[DrainHandBack] != 2 {
+		t.Errorf("counts = %v, want 1 eligible and 2 handed back", p.Counts)
+	}
+
+	// The intent decides before the issue's other fields: a heavier issue an
+	// intent owns is named for the intent, which is where it is worked. A
+	// blocked one is still skipped first, since it is not considered at all.
+	heavy := eligibility(Issue{ID: "iss-4", Category: "process", Severity: SeverityMajor, Remedy: "r",
+		Status: StateOpen, RelatedIntents: []string{"itd-7"}}, drainrule.Baseline(), deferralAnchor{})
+	if heavy.Outcome != DrainHandBack || heavy.Rule != RulePromoted {
+		t.Errorf("a major process issue naming an intent: %s/%s, want handback/promoted", heavy.Outcome, heavy.Rule)
+	}
+	blocked := eligibility(Issue{ID: "iss-5", Category: "bug", Severity: SeverityMinor, Remedy: "r",
+		Status: StateOpen, RelatedIntents: []string{"itd-7"}, BlockedByOpen: []string{"iss-1"}}, drainrule.Baseline(), deferralAnchor{})
+	if blocked.Outcome != DrainSkipped || blocked.Rule != RuleBlocked {
+		t.Errorf("a blocked issue naming an intent: %s/%s, want skipped/blocked", blocked.Outcome, blocked.Rule)
+	}
+}
+
+// intentTokens is every intent id a reason names, as whole tokens, so itd-10
+// is never found inside itd-100.
+func intentTokens(reason string) []string { return intentTokenRe.FindAllString(reason, -1) }
+
+var intentTokenRe = regexp.MustCompile(`\bitd-[0-9]+\b`)
+
+// TestAPromotedReasonSaysWhatIsTrueAndNamesTheWayOut: the reason a promoted
+// hand-back gives says only what the field says, that related_intents names
+// the intent, and names the verbs that work an issue through it. It names
+// each intent once and at most three, so a record naming many stays one
+// readable line.
+func TestAPromotedReasonSaysWhatIsTrueAndNamesTheWayOut(t *testing.T) {
+	judge := func(related ...string) DrainVerdict {
+		return eligibility(Issue{ID: "iss-1", Category: "bug", Severity: SeverityMinor, Remedy: "r",
+			Status: StateOpen, RelatedIntents: related}, drainrule.Baseline(), deferralAnchor{})
+	}
+	one := judge("itd-7")
+	if one.Rule != RulePromoted {
+		t.Fatalf("an issue naming an intent: %s/%s, want promoted", one.Outcome, one.Rule)
+	}
+	for _, want := range []string{"related_intents names itd-7", "goes through that intent",
+		"`abcd build itd-7`", "`abcd intent audit itd-7`", "owed check"} {
+		if !strings.Contains(one.Reason, want) {
+			t.Errorf("the reason %q does not say %q", one.Reason, want)
+		}
+	}
+	// The field says only that the issue is linked: the reason claims no owner
+	// and no work done there.
+	for _, not := range []string{"owns this issue", "it is worked there"} {
+		if strings.Contains(one.Reason, not) {
+			t.Errorf("the reason %q claims %q, which a plain related link does not say", one.Reason, not)
+		}
+	}
+
+	many := judge("itd-1", "itd-2", "itd-3", "itd-4", "itd-5")
+	if got := strings.Join(slices.Compact(slices.Sorted(slices.Values(intentTokens(many.Reason)))), ","); got != "itd-1,itd-2,itd-3" {
+		t.Errorf("five intents name the first three alone, got %s in %q", got, many.Reason)
+	}
+	if !strings.Contains(many.Reason, "itd-1, itd-2, itd-3 and 2 more") {
+		t.Errorf("five intents end the list with how many more: %q", many.Reason)
+	}
+
+	// The reader refuses a record listing one intent twice, so a duplicate
+	// reaches the rule only from a caller; it is named once all the same.
+	dup := judge("itd-7", "itd-7", "itd-8", "itd-7")
+	if !strings.Contains(dup.Reason, "related_intents names itd-7, itd-8;") || strings.Contains(dup.Reason, "more") {
+		t.Errorf("duplicate intents are named once each: %q", dup.Reason)
+	}
+	if strings.Contains(dup.Reason, "`abcd build itd-7`") {
+		t.Errorf("two intents leave the build command's intent to the reader: %q", dup.Reason)
+	}
+	four := judge("itd-1", "itd-2", "itd-2", "itd-3", "itd-4")
+	if !strings.Contains(four.Reason, "itd-1, itd-2, itd-3 and 1 more") {
+		t.Errorf("the count of more is of distinct intents: %q", four.Reason)
+	}
+}
+
+// TestAnEmptyRelatedIntentsIsNotPromoted: a record carrying the field with no
+// intent in it names no intent, so the rule passes it on to the field rules.
+func TestAnEmptyRelatedIntentsIsNotPromoted(t *testing.T) {
+	f := newDrainFixture(t)
+	if _, err := Capture(CaptureRequest{
+		RepoRoot: f.repo, IssuesRoot: f.ir, Text: "text of iss-1", Severity: SeverityMinor,
+		Category: "bug", Source: "manual-test", Slug: "s", FoundDuring: "t", ForceID: "iss-1",
+		Remedy: "guard the nil map", RelatedIntents: []string{},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if v := verdictOf(t, f.plan(), "iss-1"); v.Outcome != DrainEligible {
+		t.Errorf("an issue with an empty related_intents: %s/%s (%s), want eligible", v.Outcome, v.Rule, v.Reason)
+	}
+}
+
+// TestPromotedIsAskedBeforeSecurity pins the rule's place: an issue an intent
+// is linked to goes through that intent even when it is a security issue,
+// since the intent is where the person deciding it is already working. Moving
+// promoted below security, or below any field rule, fails here.
+func TestPromotedIsAskedBeforeSecurity(t *testing.T) {
+	for _, r := range []drainrule.Rule{drainrule.Baseline(), {Categories: drainrule.Baseline().Categories,
+		Severities: drainrule.Baseline().Severities, Security: drainrule.SecurityTake}} {
+		v := eligibility(Issue{ID: "iss-1", Category: drainrule.SecurityCategory, Severity: SeverityMinor, Remedy: "r",
+			Status: StateOpen, RelatedIntents: []string{"itd-7"}}, r, deferralAnchor{})
+		if v.Rule != RulePromoted {
+			t.Errorf("a security issue naming an intent, security %s: %s/%s, want promoted", r.Security, v.Outcome, v.Rule)
 		}
 	}
 }
@@ -510,7 +660,46 @@ func TestAbcdsOwnDrainRuleIsTheStrictBaseline(t *testing.T) {
 	if !strings.Contains(string(inv), "["+abcdsOwnRuleRecord+"]") {
 		t.Errorf("the brief's invariants do not cite %s", abcdsOwnRuleRecord)
 	}
+	// Invariant 19 states the promoted clause the rule enforces
+	// (spc-2610161044461448 step 4): an issue an intent owns is never a
+	// machine's to take alone. The clause is looked for in invariant 19's own
+	// text, so a copy elsewhere on the page does not stand in for it.
+	inv19, ok := invariantText(string(inv), 19)
+	if !ok {
+		t.Fatal("the brief's invariants page carries no invariant 19")
+	}
+	for _, clause := range []string{promotedClause, consistencyClause} {
+		if !strings.Contains(inv19, clause) {
+			t.Errorf("invariant 19 does not state the clause %q", clause)
+		}
+	}
 }
+
+// invariantText is the paragraph of the invariants page that opens as
+// invariant n ("n. **"), up to the blank line that ends it.
+func invariantText(page string, n int) (string, bool) {
+	start := strings.Index("\n"+page, "\n"+strconv.Itoa(n)+". **")
+	if start < 0 {
+		return "", false
+	}
+	para := page[start:]
+	if end := strings.Index(para, "\n\n"); end >= 0 {
+		para = para[:end]
+	}
+	return para, true
+}
+
+// promotedClause is invariant 19's clause for an issue an intent owns, word for
+// word, so dropping or rewording it in the brief fails here.
+const promotedClause = "an issue whose `related_intents` names an intent is handed back by the rule `promoted`, so a machine never takes alone an issue an intent already owns"
+
+// consistencyClause is invariant 19's exception to the promoted clause for
+// the consistency pass's own records (ruling H12, dcn-2610161425496537): the
+// intents the pass named do not hold the record, its other fields do, and an
+// intent it was promoted into still does.
+const consistencyClause = "a record the consistency pass files is not one, since the intents it names are the two its contradiction is between: " +
+	"it is judged by its other fields as if it named no intent, so it waits for a person's remedy as any automatic filer's record does, " +
+	"while an intent it was promoted into, which names it back in `related_issues`, owns it as any intent does"
 
 // TestADeferralIsHandedBackWhenTheCheckoutHoldsNoReleaseTag: a shallow clone
 // (fetch-depth 1, the unattended drain's likely checkout) fetches no tags, so
@@ -684,5 +873,38 @@ func TestADeferralAtTheLocalAnchorIsNotLapsedByAnotherRecordsTag(t *testing.T) {
 	}
 	if v := verdictOf(t, p, "iss-2"); v.Outcome != DrainHandBack || !strings.Contains(v.Reason, "anchor stale") {
 		t.Errorf("iss-2 deferred past v9.9.9: %s (%s)", v.Outcome, v.Reason)
+	}
+}
+
+// TestSetAsidePromotedAsksEveryOtherRule: with the promoted rule set aside,
+// eligibility asks every other rule in its order, so an issue that names an
+// intent is judged as it would be without the link (refining
+// dcn-2610161428244461). Without the option the drain hands every promoted
+// issue back as before. A person's own build reads this to tell an issue held
+// only by its link from one a security, severity or other rule still holds.
+func TestSetAsidePromotedAsksEveryOtherRule(t *testing.T) {
+	linked := []string{"itd-2609300000000201"}
+	for _, c := range []struct {
+		name    string
+		iss     Issue
+		outcome DrainOutcome
+		rule    DrainRule
+	}{
+		{"security", Issue{ID: "iss-1", Category: drainrule.SecurityCategory, Severity: SeverityMinor, Remedy: "r"}, DrainHandBack, RuleSecurity},
+		{"severity", Issue{ID: "iss-2", Category: "bug", Severity: SeverityMajor, Remedy: "r"}, DrainHandBack, RuleSeverity},
+		{"waits on", Issue{ID: "iss-3", Category: "bug", Severity: SeverityMinor, Remedy: "Waits on ruling H4: then fix it."}, DrainHandBack, RuleWaitsOnRuling},
+		{"no remedy", Issue{ID: "iss-4", Category: "bug", Severity: SeverityMinor}, DrainIneligible, RuleRemedy},
+		{"nothing else", Issue{ID: "iss-5", Category: "bug", Severity: SeverityMinor, Remedy: "r"}, DrainEligible, RuleFields},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			iss := c.iss
+			iss.Status, iss.RelatedIntents = StateOpen, linked
+			if v := eligibility(iss, drainrule.Baseline(), deferralAnchor{}); v.Outcome != DrainHandBack || v.Rule != RulePromoted {
+				t.Fatalf("the drain hands a linked issue back as promoted: %+v", v)
+			}
+			if v := eligibility(iss, drainrule.Baseline(), deferralAnchor{}, setAsidePromoted); v.Outcome != c.outcome || v.Rule != c.rule {
+				t.Fatalf("with promoted set aside the issue is %s (%s), want %s (%s): %s", v.Outcome, v.Rule, c.outcome, c.rule, v.Reason)
+			}
+		})
 	}
 }

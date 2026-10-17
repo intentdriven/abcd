@@ -349,6 +349,122 @@ func TestHandBackPushesToWIPBranchThroughTheHook(t *testing.T) {
 	}
 }
 
+// A hand-back run again within the same second, saying the same things,
+// writes the report already committed as the branch's last commit: there is
+// nothing to commit, and that commit is pushed as it stands, with no word of
+// a refusal (iss-2610161458426987).
+func TestHandBackPushesAnUnchangedReportAsItStands(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.fake("date", "echo 2026-10-16T00:00:00Z")
+	c.work("one.md")
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("the first hand-back exited %d\n%s%s", code, out, errOut)
+	}
+	head := c.git("rev-parse", "HEAD")
+	out, errOut, code = c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("the hand-back of an unchanged report exited %d\n%s%s", code, out, errOut)
+	}
+	if got := c.git("rev-parse", "HEAD"); got != head {
+		t.Errorf("the unchanged report moved HEAD from %s to %s", head, got)
+	}
+	ref := "refs/heads/" + hostWIPPrefix + handBackItem
+	if got := c.originRef(ref); got != head {
+		t.Errorf("origin holds %q on %s, want the report commit %s", got, ref, head)
+	}
+	if strings.Contains(out+errOut, "could not be committed") || strings.Contains(out+errOut, "refused") {
+		t.Errorf("the hand-back calls an unchanged report a refused commit:\n%s%s", out, errOut)
+	}
+	if !strings.Contains(out+errOut, "unchanged") {
+		t.Errorf("the hand-back does not say the report is unchanged:\n%s%s", out, errOut)
+	}
+	if calls := c.forgeCalls(); len(calls) != 0 {
+		t.Errorf("an unchanged report that pushed also went to the tracking issue: %v", calls)
+	}
+}
+
+// The same report committed further back, with work after it, cannot be the
+// branch's last commit without a commit to make: the hand-back falls back,
+// and says that is why rather than blaming git or a hook.
+func TestHandBackNamesAnEarlierIdenticalReport(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.fake("date", "echo 2026-10-16T00:00:00Z")
+	c.work("one.md")
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("the first hand-back exited %d\n%s%s", code, out, errOut)
+	}
+	c.work("two.md")
+	head := c.git("rev-parse", "HEAD")
+	out, errOut, code = c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("the hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+	}
+	if got := c.git("rev-parse", "HEAD"); got != head {
+		t.Errorf("the hand-back moved HEAD from %s to %s", head, got)
+	}
+	if strings.Contains(out+errOut, "could not be committed") {
+		t.Errorf("the hand-back calls an unchanged report a refused commit:\n%s%s", out, errOut)
+	}
+	if !strings.Contains(errOut, "a commit already holds the same report, but not alone as the branch's last commit") {
+		t.Errorf("the hand-back does not say a commit already holds the same report:\n%s", errOut)
+	}
+}
+
+// An unchanged report whose commit discloses another model than this run
+// names is not pushed as it stands: that would drop this run's disclosure
+// without a word.
+func TestHandBackKeepsAnUnchangedReportsDisclosureHonest(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.fake("date", "echo 2026-10-16T00:00:00Z")
+	c.work("one.md")
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("the first hand-back exited %d\n%s%s", code, out, errOut)
+	}
+	head := c.git("rev-parse", "HEAD")
+	ref := "refs/heads/" + hostWIPPrefix + handBackItem
+	pushed := c.originRef(ref)
+	out, errOut, code = c.handBack(nil, "--item", handBackItem, "--state", "handed-back", "--assisted-by", "Claude:claude-opus-6")
+	if code != 0 {
+		t.Fatalf("the hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+	}
+	if got := c.git("rev-parse", "HEAD"); got != head {
+		t.Errorf("the hand-back moved HEAD from %s to %s", head, got)
+	}
+	if strings.Contains(errOut, "pushed as it stands") {
+		t.Errorf("an unchanged report was pushed under another run's disclosure:\n%s", errOut)
+	}
+	if got := c.originRef(ref); got != pushed {
+		t.Errorf("origin moved %s from %s to %s", ref, pushed, got)
+	}
+	if !strings.Contains(errOut, "Assisted-by") {
+		t.Errorf("the hand-back does not say the disclosure differs:\n%s", errOut)
+	}
+}
+
+// A report_dir with a doubled slash names the same folder as its single-slash
+// form on disk, but not in git's tree, so a report there could never be found
+// unchanged: it is refused with the other unsafe forms.
+func TestHandBackRefusesADoubledSlashInReportDir(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	conf, err := os.ReadFile(filepath.Join(c.dir, "scripts", "cloud", "cloud.conf"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := strings.Replace(string(conf), "\nreport_dir=.abcd/work/cloud-reports\n", "\nreport_dir=.abcd//work/cloud-reports\n", 1)
+	if set == string(conf) {
+		t.Fatal("scripts/cloud/cloud.conf carries no report_dir=.abcd/work/cloud-reports line to set")
+	}
+	c.write("scripts/cloud/cloud.conf", set, 0o644)
+	c.work("one.md")
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 1 || !strings.Contains(errOut, "report_dir must be a relative path") {
+		t.Errorf("a doubled slash in report_dir exited %d, want a refusal naming report_dir\n%s%s", code, out, errOut)
+	}
+}
+
 func TestHandBackFallsBackToIssueCommentWhenPushFails(t *testing.T) {
 	c := newForgeCase(t, trackingIssue)
 	c.work("one.md")
@@ -760,6 +876,63 @@ func TestHandBackScrubLeavesNoDomain(t *testing.T) {
 			}
 		}
 	}
+}
+
+// TestHandBackHookReadsTheConnectorsFromAFile: the pre-push hook reads the
+// connector declarations HEAD commits from an archive file, never through a
+// pipe, so a tar that stops reading its input early, as one may at the
+// end-of-archive marker, cannot leave git archive writing into a closed pipe
+// and refuse the push; and a read that does fail says why. Before the change a
+// loaded macOS runner refused work-in-progress pushes now and then, naming no
+// cause.
+func TestHandBackHookReadsTheConnectorsFromAFile(t *testing.T) {
+	realTar, err := exec.LookPath("tar")
+	if err != nil {
+		t.Skip("tar unavailable")
+	}
+	ref := "refs/heads/" + hostWIPPrefix + handBackItem
+
+	t.Run("a tar that stops reading early", func(t *testing.T) {
+		c := newForgeCase(t, trackingIssue)
+		c.fake("tar", `case " $* " in
+*" -f "*) exec '`+realTar+`' "$@" ;;
+esac
+head -c 512 >/dev/null
+exit 0`)
+		c.work("one.md")
+		out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+		if code != 0 {
+			t.Fatalf("hand-back exited %d\n%s%s", code, out, errOut)
+		}
+		if got, head := c.originRef(ref), c.git("rev-parse", "HEAD"); got != head {
+			t.Fatalf("origin holds %q on %s, want the report commit %s\n%s%s", got, ref, head, out, errOut)
+		}
+	})
+
+	t.Run("a read that fails says why", func(t *testing.T) {
+		c := newForgeCase(t, trackingIssue)
+		c.fake("tar", `echo "tar: the simulated read failure" >&2
+exit 1`)
+		c.work("one.md")
+		out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+		if code != 0 {
+			t.Fatalf("hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+		}
+		if got := c.originRef(ref); got != "" {
+			t.Fatalf("origin holds %q on %s although the hook could not read the connectors", got, ref)
+		}
+		calls := c.forgeCalls()
+		if len(calls) != 1 {
+			t.Fatalf("the fallback called the forge %d times, want once\n%s", len(calls), errOut)
+		}
+		var payload map[string]string
+		if err := json.Unmarshal([]byte(calls[0].stdin), &payload); err != nil {
+			t.Fatalf("the comment's request body is not JSON: %v\n%s", err, calls[0].stdin)
+		}
+		if !strings.Contains(payload["body"], "could not be read (tar: the simulated read failure)") {
+			t.Errorf("the comment does not say why the connectors could not be read:\n%s", payload["body"])
+		}
+	})
 }
 
 // TestHandBackPrintsReportWhenConnectorCannotBeResolved: with no connector to
