@@ -51,7 +51,7 @@ We will decide limiting the network as a separate, later record.
 
 ## Consequences
 
-- The machine-load gate and every `pgrep`-style waiter run in abcd, outside the boundary: inside a sandbox `ps` sees only the sandbox's own processes, so a check run there would read a busy machine as clear.
+- The machine-load gate and every `pgrep`-style waiter run in abcd, outside the boundary: inside a sandbox the process table is not the machine's: on macOS `ps` cannot start at all and `pgrep` sees no process (the spec's step 1 evidence, 2026-10-17), and elsewhere it may see only the sandbox's own, so a check run there cannot read the machine.
 - A run without a boundary is the person's choice, recorded in their user layer under `~/.abcd.noindex/`; no repository file can make it for them.
 - Network limiting is deferred to its own record. When it comes, its honest claim is a declared list of hosts, which narrows mistakes and does not stop code being sent elsewhere: allowing the forge allows a push to any repository the credential reaches.
 - Drains and builds a person's own session drives stay unconfined by abcd; reporting their isolation is proposed as a separate part of the intent.
