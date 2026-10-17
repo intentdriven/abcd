@@ -21,9 +21,10 @@ import (
 //
 // Every misreading leans towards "not generated", so an overlap is still
 // refused: an absent file, or no default branch, declares nothing; a file that
-// cannot be read, is not a regular file or is past attributesCap declares
-// nothing and says why; and a line the reader does not understand is skipped,
-// or, when it could unset linguist-generated, voids every line before it.
+// cannot be read, is not a regular file, is past attributesCap or holds a NUL
+// byte declares nothing and says why; and a line the reader does not
+// understand is skipped, or, when it could unset linguist-generated, voids
+// every line before it.
 
 const (
 	// attributesCap is the largest .gitattributes abcd reads.
@@ -130,6 +131,10 @@ func rootAttributes(root, ref string) (string, string) {
 	text, err := storedGit(root, attributesCap, "cat-file", "blob", f[2])
 	if err != nil {
 		return "", fmt.Sprintf(".gitattributes on %s could not be read: %s", short, redacted(err))
+	}
+	if strings.IndexByte(text, 0) >= 0 {
+		// git stops reading at a NUL, having applied the lines before it.
+		return "", fmt.Sprintf(".gitattributes on %s holds a NUL byte", short)
 	}
 	return text, ""
 }

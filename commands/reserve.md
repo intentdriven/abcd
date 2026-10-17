@@ -121,7 +121,8 @@ never a fetch. A file at or below a directory that holds its own
 `.gitattributes` is never shared, since that file could unset the attribute
 there. A directory is never generated, even when every file under it
 is, so two directory footprints that share still overlap. When the file is
-there but cannot be read (it is not a regular file, or is over 256 KiB),
+there but cannot be read (it is not a regular file, is over 256 KiB, or holds
+a NUL byte),
 nothing is shared, the refusal adds "generated files were not recognised: …",
 and a reservation that is made says the same (`generated_unread`).
 Running the command again to renew is checked the same way, since it names

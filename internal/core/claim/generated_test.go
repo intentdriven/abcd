@@ -257,3 +257,13 @@ func TestAFileUnderANestedDeclarationIsNeverGenerated(t *testing.T) {
 	wantGenerated(t, p.dir, map[string]bool{"docs/a.md": true, "docs/guidesx.md": true, "README.md": true,
 		"docs/guides/intro.md": false, "docs/guides/deep/x.md": false}, "")
 }
+
+// TestADeclarationHoldingANULDeclaresNothing: git stops reading an attributes
+// file at a NUL byte, so a declaration holding one declares nothing, and says
+// why.
+func TestADeclarationHoldingANULDeclaresNothing(t *testing.T) {
+	w := newWorld(t)
+	w.declare("*.md linguist-generated\nREADME.md -linguist-generated\x00\n", "a.md")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	wantGenerated(t, p.dir, map[string]bool{"a.md": false, "README.md": false}, ".gitattributes on origin/main holds a NUL byte")
+}

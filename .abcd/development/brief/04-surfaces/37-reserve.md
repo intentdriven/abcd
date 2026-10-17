@@ -174,7 +174,7 @@ pattern with a slash anchored to the root, `*`, `?`, classes and `**`, a later
 line over an earlier one), and a file counts only when origin's default branch
 holds it, so a directory is never generated, even when every file under it is.
 Every misreading leans towards "not generated": a declaration that cannot be
-read or is over the cap shares nothing and the act says why
+read, is over the cap or holds a NUL byte shares nothing and the act says why
 (`generated_unread`, and the back-off's own words), and a line abcd does not
 understand (a macro, a C-quoted pattern, a POSIX class) is skipped, voiding
 every line before it when it could unset the attribute. A shared path with a
