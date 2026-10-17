@@ -110,17 +110,19 @@ Reserve the release before anything else, from the copy that will cut it:
 ```
 
 While that reservation is live, every other session's land step (an
-`implement step` arming a merge, under any account, on any computer) refuses
-to arm, names you and the release, and leaves its pull request open for you to
-merge or hold; `/abcd:peers` shows "release vX.Y.Z being cut by @you: merges
-are held". It takes no footprint and holds for a day. If the cut runs longer,
+`implement step` arming a merge, or `abcd land`, under any account, on any
+computer) refuses to arm, names you and the release, and leaves its pull
+request open for you to merge or hold; `/abcd:peers` shows other sessions
+"release vX.Y.Z being cut by @you: merges are held", and shows this copy "you
+are cutting release vX.Y.Z from this copy: every other session's merges are
+held". It takes no footprint and holds for a day. If the cut runs longer,
 run the same command again from the same copy to renew it for another day. It
 ends by itself once the release workflow pushes the tag `vX.Y.Z`; if you
 abandon the cut before then, release it with
 `"${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-vX.Y.Z --release --json`. `launch
 ship` does not take or release it for you: the tag is pushed by the release
 workflow, not by abcd, and the ship steps run many times in one cut. The hold
-binds abcd's own land step; a person merging by hand on the forge is not
+binds abcd's own land steps, the implement loop's and `abcd land`; a person merging by hand on the forge is not
 stopped by it, which is why step 3 still says to tell people.
 
 The hold stops a merge from being armed. It does not stop a merge armed, or

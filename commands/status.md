@@ -18,8 +18,8 @@ then fetches, in one command, the reservations with `origin`'s release tags,
 the first 500 status branches whose names are GitHub usernames in lower case,
 in `origin`'s order, and `origin`'s default branch. The status branches are
 named on the fetch's standard input (`git fetch --stdin`), which needs git
-2.29 or later: an older git fetches nothing, and the failed fetch names its
-version. Before the fetch it
+2.29 or later once `origin` holds a status branch: an older git then fetches
+nothing, and the failed fetch names its version. Before the fetch it
 deletes each remote-tracking branch under `abcd-status/` that is not among
 the names it fetches, so a status branch deleted on `origin` leaves nothing
 behind, however many it holds. When git will not delete them together, each
@@ -50,8 +50,7 @@ The payload carries:
   sender's clock), `check` (`verified`, `claimed` or `doubtful`), `doubtful`
   with the reason, and `text`, the line it is shown by;
 - `doubtful`: each status branch read as doubtful, with the reason;
-  `branch` is the full branch name, `abcd-status/maya` (it was `maya` before
-  step 3's fix rounds);
+  `branch` is the full branch name, `abcd-status/maya`;
 - `unread_names`: how many status branches have a name that is not a GitHub
   username in lower case, or `null` when that count could not be read here,
   or was not kept at the status branches' last fetch.

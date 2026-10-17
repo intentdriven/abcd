@@ -171,10 +171,11 @@ release and may lack the verb entirely; a tree that does not build is one
 warning line. The copy `abcd ahoy` scaffolds refreshes only on opt-in, per
 clone: the repo-local git setting `abcd.sourcesBinary` names an absolute path
 to the binary, and nothing else is consulted, neither `PATH` nor an
-environment variable. How a scaffolded hook finds abcd, and whether it does so
-by default, is a ruling owed to the product thinker
-(iss-2609250834251447); opt-in decides none of it, and the ruling can widen
-it. Without the setting, AC3 holds in this repository and in a managed
+environment variable. The product thinker's ruling on how a scaffolded hook
+finds abcd (iss-2609250834251447) keeps this shape for the commit-message
+check: Opt-in and never armed by default, it runs only the absolute path the
+clone's `abcd.binary` names, which the install's outbound opt-in writes to the
+PATH copy that run verified, and it fails open with one warning. Without the setting, AC3 holds in this repository and in a managed
 repository that opted in, and the scaffolded guard names the setting on one
 line.
 
