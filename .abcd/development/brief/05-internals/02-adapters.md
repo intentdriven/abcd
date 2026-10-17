@@ -177,7 +177,10 @@ review is skipped.
   starts a model CLI, `claude` or `opencode`, as a subprocess for a role that
   `roles.<role>.runner` routes to it. The opt-in is that key in
   `~/.abcd.noindex/config.json`; the route, the sealing and the fallback are in
-  [`34-build.md`](../04-surfaces/34-build.md).
+  [`34-build.md`](../04-surfaces/34-build.md). A claude launch whose role's
+  contract grants the shell carries the guard as the harness's permission
+  prompt tool, `abcd guard approve` over MCP on stdio, set on that launch's
+  command line ([`17-guard.md`](../04-surfaces/17-guard.md#answering-a-headless-agents-prompts)).
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the

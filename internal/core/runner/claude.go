@@ -8,6 +8,23 @@ package runner
 // and the role's contract's tools granted without a prompt, everything else
 // denied rather than asked (dontAsk), because no one is there to answer.
 //
+// A role whose contract grants the whole shell is the exception
+// (iss-2610161612203555, dcn-2610161624025493): nobody is there to answer the
+// host's prompts, so abcd's guard answers them, for that launch only and on
+// the command line. The launch names the harness's permission prompt tool,
+// served by `abcd guard approve` as the one MCP server it starts
+// (--mcp-config inline, --strict-mcp-config), under the default permission
+// mode, where a prompt reaches that tool rather than being refused. The shell
+// is then no longer granted without a prompt, so every shell command the
+// harness would ask about is put to the guard, which approves a command it
+// reads whole and clears, handing it back to run from the working tree under
+// /bin/bash with its profile, rc and environment start-up files ignored (-p),
+// and refuses everything else with its reason. Bare
+// mode skips every hook, those a --settings file declares included, so a
+// hook could not carry this; an MCP server --mcp-config names is the one
+// thing bare mode starts. Nothing is written to the person's host settings,
+// and this adds no sandbox.
+//
 // Under --bare the harness reads its Anthropic credential from its own
 // environment or its own settings only; abcd passes the environment through
 // and never names a key.
@@ -16,7 +33,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -26,26 +45,73 @@ type ClaudeCLI struct {
 	// own default.
 	model  string
 	launch launcher
+	// approver is the absolute path of the abcd binary a shell launch starts
+	// as its permission prompt answerer.
+	approver string
 }
+
+// ApproverTool is the permission prompt tool a shell launch names.
+const ApproverTool = "mcp__abcd__approve"
 
 // newClaude returns the claude CLI runner asking for model, a
 // <provider>/<model> route the configuration admitted, or "" for the harness's
 // default.
-func newClaude(model string) *ClaudeCLI { return &ClaudeCLI{model: model, launch: defaultLauncher()} }
+func newClaude(model string) *ClaudeCLI {
+	return &ClaudeCLI{model: model, launch: defaultLauncher(), approver: selfBinary()}
+}
+
+// selfBinary is the absolute path of the running abcd, "" when the system
+// cannot name it. The approver is the binary already running, so starting it
+// trusts nothing new.
+func selfBinary() string {
+	p, err := os.Executable()
+	if err != nil || !filepath.IsAbs(p) {
+		return ""
+	}
+	return filepath.Clean(p)
+}
+
+// grantsShell reports whether a contract grants the whole shell, the one
+// grant the guard answers prompts for. A scoped grant (Bash(git log:*)) is
+// the harness's own rule and stays one.
+func grantsShell(tools []string) bool { return slices.Contains(tools, "Bash") }
+
+// approverConfig is the --mcp-config value that starts the approver: one
+// stdio server, abcd's own binary, judging commands against the registry of
+// the working tree the role runs in, as it stood at base, the commit the run
+// started on, with runDirs, the run's own directories, named so a removal
+// may reach them.
+func (c *ClaudeCLI) approverConfig(dir, base string, runDirs []string) string {
+	type server struct {
+		Type    string   `json:"type"`
+		Command string   `json:"command"`
+		Args    []string `json:"args"`
+	}
+	args := []string{"guard", "approve", "--dir=" + dir, "--base=" + base}
+	for _, d := range runDirs {
+		args = append(args, "--run-dir="+d)
+	}
+	raw, _ := json.Marshal(map[string]map[string]server{"mcpServers": {"abcd": {
+		Type: "stdio", Command: c.approver, Args: args,
+	}}})
+	return string(raw)
+}
 
 // Name is the route's name.
 func (*ClaudeCLI) Name() string { return Claude }
 
 // args is the launch's argv after the binary.
 func (c *ClaudeCLI) args(req Request) []string {
+	shell := grantsShell(req.Tools)
+	mode := "dontAsk"
+	if shell {
+		mode = "default"
+	}
 	a := []string{
 		"--print", "--bare",
 		"--output-format", "stream-json", "--verbose",
 		"--no-session-persistence",
-		"--permission-mode", "dontAsk",
-	}
-	if len(req.Tools) > 0 {
-		a = append(a, "--allowedTools="+strings.Join(req.Tools, ","))
+		"--permission-mode", mode,
 	}
 	// The brief and the receipt sit in the run's own directory: a lane's,
 	// outside the working tree the role runs in, or an interview's turns,
@@ -53,6 +119,17 @@ func (c *ClaudeCLI) args(req Request) []string {
 	dirs := []string{filepath.Dir(req.Brief)}
 	if d := filepath.Dir(req.Receipt); d != dirs[0] {
 		dirs = append(dirs, d)
+	}
+	tools := req.Tools
+	if shell {
+		// The guard answers for the shell, so the harness asks it rather
+		// than running every command unasked.
+		tools = slices.DeleteFunc(slices.Clone(tools), func(t string) bool { return t == "Bash" })
+		a = append(a, "--mcp-config="+c.approverConfig(req.Dir, req.Base, dirs), "--strict-mcp-config",
+			"--permission-prompt-tool="+ApproverTool)
+	}
+	if len(tools) > 0 {
+		a = append(a, "--allowedTools="+strings.Join(tools, ","))
 	}
 	for _, d := range dirs {
 		a = append(a, "--add-dir="+d)
@@ -67,6 +144,18 @@ func (c *ClaudeCLI) args(req Request) []string {
 func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error) {
 	if err := req.check(); err != nil {
 		return Answer{}, nil, err
+	}
+	if grantsShell(req.Tools) && c.approver == "" {
+		// Started without the approver, the shell would either run unchecked
+		// or have every command refused; neither is the launch asked for.
+		return Answer{}, nil, fail(Claude, ReasonFailed,
+			"abcd cannot name its own binary to answer the run's permission prompts, so the shell launch was not started")
+	}
+	if grantsShell(req.Tools) && req.Base == "" {
+		// The approver judges against the registry at the run's base; with
+		// none named it would have nothing to judge against.
+		return Answer{}, nil, fail(Claude, ReasonFailed,
+			"the run names no base commit for its permission prompts to be judged against, so the shell launch was not started")
 	}
 	bin, err := c.launch.admit(Claude, "claude", req.Dir, req.Checkout)
 	if err != nil {

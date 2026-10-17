@@ -14,7 +14,8 @@ package loop
 // result message with the final text and the session; --bare skips hooks,
 // plugins, MCP servers and CLAUDE.md, and never reads OAuth credentials or the
 // keychain; dontAsk denies every call that would otherwise prompt while the
-// --allowedTools entries run. opencode (opencode.ai/docs/cli): `run --format
+// --allowedTools entries run, and a shell launch names the guard as its
+// --permission-prompt-tool instead (dcn-2610161624025493). opencode (opencode.ai/docs/cli): `run --format
 // json` prints "raw JSON events", --pure (a global flag) runs "without
 // external plugins", --dir, --file and --model provider/model; the page does
 // NOT document the events' shape, so the step_start/text/step_finish lines
@@ -30,6 +31,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -195,7 +197,7 @@ func (m *memTranscripts) Store(name string, req runner.Request, _ runner.Answer,
 func driveSteps(worktree string) Stages {
 	return Stages{
 		{Name: StageWorktree, Piece: 6, Run: func(c Context, l *Lane) (Outcome, error) {
-			l.Branch, l.Worktree = "build/"+l.ID, worktree
+			l.Branch, l.Worktree, l.BaseSHA = "build/"+l.ID, worktree, driveBase
 			return Outcome{Note: "worktree done"}, nil
 		}},
 		{Name: StageBrief, Piece: 5, Run: func(c Context, l *Lane) (Outcome, error) {
@@ -219,6 +221,9 @@ func driveSteps(worktree string) Stages {
 		{Name: StageLand, Piece: 9, Run: func(Context, *Lane) (Outcome, error) { return Outcome{Note: "land done"}, nil }},
 	}
 }
+
+// driveBase is the commit driveSteps' worktree stage cuts a lane from.
+const driveBase = "0123456789abcdef0123456789abcdef01234567"
 
 // startToImplement starts a run and takes its lane to the implement stage.
 func startToImplement(t *testing.T) (root, id string, steps Stages, o Options) {
@@ -297,7 +302,13 @@ func TestARoutedRoleRunsThroughItsRunner(t *testing.T) {
 		t.Fatalf("the result names the route that ran: %+v", res.Route)
 	}
 	argv := strings.Join(env.argv(t, "claude"), "\n")
-	for _, want := range []string{"--bare", "--allowedTools=" + strings.Join(toolsFor(RoleImplementer), ","),
+	// The implementer's contract grants the shell, so the launch carries the
+	// guard as its permission prompt answerer and grants the rest unasked.
+	granted := slices.DeleteFunc(toolsFor(RoleImplementer), func(t string) bool { return t == "Bash" })
+	for _, want := range []string{"--bare", "--allowedTools=" + strings.Join(granted, ","),
+		"--permission-prompt-tool=" + runner.ApproverTool,
+		// The approver judges against the registry at the lane's base.
+		`"--base=` + driveBase + `"`,
 		"Brief: " + filepath.Join(root, filepath.FromSlash(RunRelDir), "brief.md")} {
 		if !strings.Contains(argv, want) {
 			t.Fatalf("the launch carries %q:\n%s", want, argv)

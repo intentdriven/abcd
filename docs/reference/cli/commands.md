@@ -1463,9 +1463,124 @@ abcd embark probe ../lifeboat
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check or hook, and an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.
 
 **Usage:** `abcd guard`
+
+#### `abcd guard approve`
+
+Answer a headless agent's permission prompts over MCP: Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.
+
+**Usage:** `abcd guard approve --dir <working-tree> --base <commit> [--run-dir <dir>]... [flags]`
+
+Answers the permission prompts of an agent abcd started without a terminal,
+over MCP on stdio: the claude runner starts it, as the one server of a launch
+whose role's contract grants the shell, and names its tool, approve, as the
+harness's permission prompt tool. Each prompt is judged against the hazard
+registry of the working tree --dir names, read afresh for every prompt, and
+in force only where it is at least as strong as the registry at --base, the
+commit the run started on: any weakening since then, of a warn or a blocker,
+committed or not, refuses every command.
+
+A shell command is approved only when the guard reads it whole and clears
+it: no registry entry and no reading signal, a warn included; no note about
+the check, such as a script that does not exist; and every program named by
+the line rather than by a variable, a substitution or a glob ([, [[ and test
+are the test commands they name, not globs). Beyond the registry, it
+refuses:
+
+  - arithmetic on anything but written numbers: a name, a quote or an
+    expansion in (( )), $(( )) or a for (( )) header, the number tests of
+    [[ ]], let, declare -i, a non-numeric array index or substring offset,
+    ${!name}, and a name not written in the line handed to read, unset,
+    printf -v or a declaration; [ and test compare without evaluating;
+  - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,
+    osascript, lua or Rscript -e, deno eval and PowerShell -Command; a flag
+    after the script's name, or after python's -m module, is the script's;
+  - code on the standard input (a pipe, a here-document, a here-string or a
+    redirected file) of one of those interpreters, or of ex, when no script
+    file is named;
+  - an awk program that calls system(, pipes to or from a command, or is a
+    variable; a sed script with the e command or the e flag of s; tar's
+    options that run a program (--checkpoint-action, --to-command,
+    --use-compress-program, -I and the like); a vim or ex command (-c, --cmd,
+    +) holding a !;
+  - a write the guard's write model reads (redirections and a list of known
+    writers, so a program outside the list writes unread), or a removal,
+    whose target the line does not spell out (a variable,
+    a substitution, a glob, or a name after an unknown change of directory),
+    except a glob removal in a directory inside the working tree, followed
+    through symlinks, that no protected name could match, when no earlier
+    part of the line writes or removes a file and no wildcard stands in a
+    directory part of the glob, nor does it end in a /; a command where an
+    unquoted ( stands in a word (x(:A), x(.)) is refused whole, since zsh
+    reads it as glob qualifiers that can change the path, but for the (( of
+    an arithmetic for-loop and the ( before a case pattern, which bash needs;
+  - such a write, or a removal, reaching a protected path, with its directories
+    resolved through symlinks and case folded where the filesystem folds it:
+    the git common directory and its hooks, each checkout's .git, the home
+    shell start-up files and git configuration, the host's settings, .mcp.json,
+    .abcd/guard.json, abcd's own folder in the home directory (its
+    trusted-roots, rules.json, config.json and the rest, but for the run's
+    own worktree kept there), and the names the host protects in any
+    working tree;
+  - a removal whose target lies outside the working tree, the run's own
+    directories (each --run-dir) and the temporary directory; a write
+    outside the working tree is judged by the protected paths alone;
+  - git config with --global, --system or --file on a write, setting a key
+    that starts a program (core.hooksPath, core.pager, an alias and the like)
+    or core.worktree, or opening the editor, and any git command setting such
+    a key for itself, but for -c core.pager or core.sshCommand set to a
+    command the line spells out, which is judged as that command;
+  - removing, moving or recursively changing the root, a top-level directory,
+    the home directory or a directory directly in it, the working tree or a
+    directory above it, or another checkout of the repository; a find that
+    deletes from home or above; an rsync --delete into such a directory;
+  - a call asking to run outside the host's sandbox.
+
+An approved call runs with the command judged and its description, and
+nothing else it carried, from the working tree it was judged for and under
+bash: the command comes back as
+cd -- '<dir>' && /bin/bash --noprofile --norc -p -c '<command>', since the
+host keeps the shell's directory from one call to the next and runs the text
+in the person's login shell, which may be zsh, while the guard reads bash's
+grammar. The login shell only changes directory and starts /bin/bash with its
+profile, rc and environment start-up files ignored (-p), so BASH_ENV,
+exported functions and SHELLOPTS do nothing, and bash runs the command and
+gives no zsh-only construct its zsh meaning (a glob qualifier is a syntax
+error to it); when the directory cannot be entered, no part of the command
+runs. The bash call is not an exec, so text the host joins after it still
+runs. That text is read again with the guard's own parse and approved only
+when it is exactly that change of directory and that one bash call, with the
+whole command as its last word. A command holding a NUL byte is refused
+before it is read. Everything else is refused with the guard's reason and
+what to run instead, which the harness hands the agent, so the agent can
+rewrite the command. A prompt for any tool but the shell is refused, since
+nobody is there to approve it.
+
+The file tools the role is granted (--allowedTools on the launch) write
+without asking the approver, and the abcd binary that answers is not among
+the paths it protects; the OS sandbox for launched agents
+(spc-2610161751056096) is what bounds those writes.
+
+The guard is a mistake filter, not a security boundary (see `abcd guard
+check --help` for what an allow does not see), and this adds no sandbox.
+It never touches the person's host settings, and interactive sessions never
+start it. It exits 0 when its input ends.
+
+**Flags:**
+
+```
+      --base string           the commit the run started on, by its full object name
+      --dir string            the working tree the agent runs in, as an absolute path
+      --run-dir stringArray   a directory the run keeps its own files in (its brief, its receipt), as an absolute path; repeatable
+```
+
+**Example:**
+
+```
+abcd guard approve --dir /work/example-repo --base 0123456789abcdef0123456789abcdef01234567
+```
 
 #### `abcd guard check`
 
