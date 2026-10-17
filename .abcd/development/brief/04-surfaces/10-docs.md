@@ -118,10 +118,11 @@ in a gate, which is what keeps the lint itself deterministic and offline.
 
 Bare `abcd docs` prints command usage rather than a status board; the
 [surfaces index](README.md) carries the one enumeration of the exceptions to
-the bare-status convention, and `docs` is on it. The working verbs accept
-the `docs-lint.json` to load and the repo to work over; the bare citation parent
-only routes and takes neither. That is what makes the refresh fetch exactly the
-set the gate demands receipts for.
+the bare-status convention, and `docs` is on it. The two citation leaves alone
+accept the `docs-lint.json` to load and the repo to work over; the bare citation
+parent only routes and takes neither, and neither fidelity verb takes them. That
+the leaves load the lint's own configuration is what makes the refresh fetch
+exactly the set the gate demands receipts for.
 
 **The lint's release-gate mode promotes an overdue citation from a warning to a
 blocker, and the release workflow arms it.** The flag, not the
