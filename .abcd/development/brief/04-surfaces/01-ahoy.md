@@ -979,7 +979,11 @@ oracle backend, the deep-scan toggle and the repo visibility, select track-lates
 dogfood mode, proceed despite a stale running binary (the default refuses before
 the adoption question and before any write, the writability probe of a named
 `PATH` directory included, and names the rebuild fix), name the directory for the `PATH` entry,
-and opt the repo into the attribution prompt hook. A value flag (marker
+opt the repo into the attribution prompt hook and into both outbound checks,
+answer the README question with the parts abcd keeps current (or none), answer
+yes to installing a named missing tool, and answer the setup questions from an
+answers file, naming where an entry that names no place of its own was
+answered. A value flag (marker
 target, oracle backend, deep-scan toggle, visibility) is held to the
 `config-change` approval like any other settings change: one that would change
 a saved setting puts that approval even with no `config-change` gap, and a
