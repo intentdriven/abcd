@@ -33,7 +33,7 @@ import (
 // there: the queue gives up first, with no job failure to read. So no leg of
 // the check job may carry a timeout-minutes above the cap the ruleset mirror
 // records. Ruling Z (2026-09-28, the technical facilitator) raised the macOS
-// leg alone, while the ubuntu leg keeps 30; the job declares that as one matrix
+// leg, and the ubuntu leg's ceiling is 45 since 2026-10-17; the job declares that as one matrix
 // expression, which checkLegTimeouts reads leg by leg. The queue's cap is 90
 // minutes since 2026-10-11 and the macOS leg's is 60 since 2026-10-15, below
 // it, so on that leg the job's own ceiling is the binding one. The step's -timeout still earns its place under that cap: it lifts the
@@ -127,11 +127,11 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 				t.Errorf("%s: the macos-latest leg's timeout-minutes is %s; want %dm, the ceiling "+
 					"the technical facilitator set on 2026-10-15", where, leg.minutes, checkMacOSCeilingMinutes)
 			}
-			// Ruling Z raised the macOS leg alone; every other leg keeps 30.
-			if leg.os != "macos-latest" && leg.minutes != 30*time.Minute {
-				t.Errorf("%s: the %s leg's timeout-minutes is %s; ruling Z (2026-09-28) raised only "+
-					"the macOS leg, and every other leg of the check job stays at 30m",
-					where, leg.os, leg.minutes)
+			// Ruling Z raised the macOS leg; the ubuntu leg's ceiling was
+			// raised to 45 on 2026-10-17, when the drain bundle grew its race run.
+			if leg.os != "macos-latest" && leg.minutes != checkUbuntuCeilingMinutes*time.Minute {
+				t.Errorf("%s: the %s leg's timeout-minutes is %s; want %dm, the ceiling set on "+
+					"2026-10-17 for every leg but macOS", where, leg.os, leg.minutes, checkUbuntuCeilingMinutes)
 			}
 		}
 	}
@@ -157,6 +157,11 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 // macOS runs had grown from 31-35 to 34-40 minutes. It stays below the merge
 // queue's check response timeout, which the budget test reads from the mirror.
 const checkMacOSCeilingMinutes = 60
+
+// checkUbuntuCeilingMinutes is the check job's ceiling on every leg but
+// macOS: 30 under ruling Z, 45 since 2026-10-17, when the drain bundle
+// (spc-2610161044461448) grew the loop package's race run past 30.
+const checkUbuntuCeilingMinutes = 45
 
 // checkWarnLeadMinutes is how far ahead of the macOS leg's ceiling the warning
 // step fires: ruling Z's cancel policy (2026-09-28) set the line ten minutes
