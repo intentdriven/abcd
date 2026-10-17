@@ -1,10 +1,11 @@
 # Configuration Model
 
-Almost nothing here is a decision anyone has to make. Installing abcd asks four
-questions, records the answers, and gets on with it; `ahoy install
+Almost nothing here is a decision anyone has to make. Installing abcd asks
+four questions and, at a terminal, a fifth about the README, records the
+answers and whether it created the README, and gets on with it; `ahoy install
 --attribution` writes one more key and `ahoy install --outbound` two more, and
 seven further keys can be hand-set and are read but never written. Beyond those
-fourteen, the binary reads only keys a person opts into: the provider adapter's
+sixteen, the binary reads only keys a person opts into: the provider adapter's
 `oracle` keys (the reviewer route's `oracle.review` among them) and the
 interview's list style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
