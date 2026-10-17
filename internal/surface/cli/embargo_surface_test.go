@@ -91,10 +91,11 @@ func jsonKeys(t *testing.T, doc string) []string {
 // on at exit 2, saying what to do, and writes nothing.
 func TestEmbargoSurfaceRefusals(t *testing.T) {
 	r := embargoSurfaceRepo(t)
-	store, ok := storepath.Path(os.Getenv("HOME"), r.Root())
-	if !ok {
-		t.Fatal("the fixture repository has no root commit to key the embargo store on")
+	loc, err := storepath.Locate(os.Getenv("HOME"), r.Root())
+	if err != nil || loc.Registered {
+		t.Fatalf("the fixture repository's store place: %+v, %v", loc, err)
 	}
+	store := loc.Path
 	for _, tc := range []struct {
 		args []string
 		want string
@@ -221,5 +222,16 @@ func TestEmbargoCountsReadAsEnglish(t *testing.T) {
 		if got := advisoryCount(n); got != want {
 			t.Errorf("advisoryCount(%d) = %q, want %q", n, got, want)
 		}
+	}
+}
+
+// TestEmbargoCheckRendersItsNote: a check that read a store with no live
+// worktree registration says so in its text form too, not only in --json.
+func TestEmbargoCheckRendersItsNote(t *testing.T) {
+	const note = "1 embargo store under this home was read with no live worktree registration; its records stay under embargo"
+	var b bytes.Buffer
+	renderEmbargoCheck(&b, embargo.CheckResult{Note: note, Findings: []embargo.CheckFinding{}})
+	if !strings.Contains(b.String(), "note: "+note+"\n") {
+		t.Fatalf("the text form is %q; want the note on a line of its own", b.String())
 	}
 }

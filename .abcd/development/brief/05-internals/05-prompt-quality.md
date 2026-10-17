@@ -103,12 +103,15 @@ gated on the research files besides, which do not exist for any shipped agent.
 ## The itd-5 additions
 
 - **`prompt_version` frontmatter (ships).** Every prompt carries a semver, and
-  The prompt-version log (`.abcd/development/agents/CHANGELOG.md`) records each bump with a one-line rationale. A new prompt
-  normally starts at `0.1.0`; the four review and research prompts enter the
-  changelog at `0.2.0` instead, the bump that first gave them the untrusted-input
-  contract. Bump rules, semver-adapted: MAJOR for a behaviour-breaking output
-  schema change, MINOR for a behaviour change preserving the schema, PATCH for a
-  typo or non-behavioural edit.
+  the prompt-version log (`.abcd/development/agents/CHANGELOG.md`) records each
+  bump with a one-line rationale. A new prompt normally starts at `0.1.0`;
+  `ruthless-reviewer`, `security-reviewer`, `docs-currency-reviewer` and
+  `sota-researcher` enter the changelog at `0.2.0` instead, the bump that first
+  gave them the untrusted-input contract. `intent-auditor` took the same bump,
+  but its first entry is earlier, `0.1.1`, under its rename. Bump rules,
+  semver-adapted: MAJOR for a behaviour-breaking output schema change, MINOR for
+  a behaviour change preserving the schema, PATCH for a typo or
+  non-behavioural edit.
 - **The `0.x` calibration band (ships).** itd-81 amends itd-5 and governs over this
   brief's earlier expectation of a measured delta per bump. `0.x` means shipped and
   wired, honestly unmeasured; `1.0.0` means measured against a corpus and locked,
@@ -125,8 +128,10 @@ gated on the research files besides, which do not exist for any shipped agent.
   variant only if it scores at least as well and is more than 10% shorter. No agent
   has reached `1.0.0`, and the goldens the comparison needs are layer B, so the
   gate has not fired for any shipped prompt. Most say exactly that in the
-  changelog, in their own entry or in its dated section's preamble; the four
-  review and research prompts say it nowhere.
+  changelog, in their own entry or in its dated section's preamble; seven say
+  it nowhere: `ruthless-reviewer`, `security-reviewer`, `docs-currency-reviewer`,
+  `sota-researcher`, `question-drafter`, `planning-interviewer` and
+  `reflection-composer`.
 - **Injection-canary fixtures (ships, as a presence check).** Every agent reading
   untrusted input carries at least one fixture with a prompt-injection payload, and
   `agent_contract` refuses a prompt that declares `true` without a regular,

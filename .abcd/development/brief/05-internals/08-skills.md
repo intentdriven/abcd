@@ -82,7 +82,7 @@ the framework's own `help`. One command page carries no Go verb of its own name:
 `abcd.md`, the bare board, which is the root itself. A page that backs a verb
 can still carry a workflow the host drives: the library page's consulting and
 registering steps run around the corpus verbs, and the ahoy page's install
-section prepares a repository by running the binary's audit, install and
+section prepares a repository by running the binary's lint, install and
 identity verbs as steps. See [`04-surfaces/`](../04-surfaces) for per-command
 detail.
 

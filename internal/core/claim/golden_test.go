@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/shellquote"
 )
 
 // goldenAct is what one reservation act sent and left behind, byte for byte:
@@ -80,8 +81,11 @@ func runGitRaw(t *testing.T, dir string, args ...string) string {
 func TestAReservationActIsByteForByteWhatItWas(t *testing.T) {
 	g := goldenScenario(t)
 	const sha = "194d2abe630c556738c07b00670a1e6f55396fda"
+	// The one deliberate change since baf57cf5e: every reservations fetch also
+	// takes origin's release tags (releaseTagsRefspec, release.go).
 	wantFetch := []string{"fetch", "--prune", "--no-tags", "origin",
 		"+refs/heads/abcd-reserved/*:refs/remotes/origin/abcd-reserved/*",
+		"+refs/tags/v*:refs/abcd/release-tags/v*",
 		"+refs/heads/main:refs/remotes/origin/main"}
 	if !slices.Equal(g.fetch, wantFetch) {
 		t.Errorf("fetch = %q; want %q", g.fetch, wantFetch)
@@ -109,5 +113,65 @@ func TestAReservationActIsByteForByteWhatItWas(t *testing.T) {
 	}
 	if g.stampRel != ".abcd/.work.local/reservation/fetched-at" || g.stampContent != "2026-10-03T14:00:00Z\n" {
 		t.Errorf("stamp %s = %q; want .abcd/.work.local/reservation/fetched-at holding 2026-10-03T14:00:00Z", g.stampRel, g.stampContent)
+	}
+}
+
+// stdinOfFetches puts a stand-in git on PATH that passes every command to the
+// real git, and appends to the file it returns every byte a `git fetch
+// --stdin` reads on its standard input, as git reads it.
+func stdinOfFetches(t *testing.T) string {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git unavailable")
+	}
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "stdin.log")
+	script := "#!/bin/sh\nfetch=0 stdin=0\nfor a in \"$@\"; do\n\tcase \"$a\" in fetch) fetch=1 ;; --stdin) stdin=1 ;; esac\ndone\n" +
+		"if [ $fetch = 1 ] && [ $stdin = 1 ]; then\n\ttee -a " + shellquote.Single(logPath) + " | " + shellquote.Single(real) + " \"$@\"\n\texit $?\nfi\n" +
+		"exec " + shellquote.Single(real) + " \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(dir, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return logPath
+}
+
+// TestTheStatusFetchIsTheCommandItWas holds `abcd status`'s fetch to its
+// bytes: one fetch reading its per-branch refspecs on stdin, with the
+// reservations' globbed refspec, their release tags and the default branch
+// on the command line, and on its standard input, as git read it, one forced
+// refspec per branch origin lists by a name the reader reads, sorted.
+func TestTheStatusFetchIsTheCommandItWas(t *testing.T) {
+	w := newWorld(t)
+	maya := w.clone("5+maya@users.noreply.github.com", "")
+	octo := w.clone("6+octo@users.noreply.github.com", "")
+	pat := w.clone("9+pat@users.noreply.github.com", "")
+	octo.announceAs("merging", "#1")
+	maya.announceAs("merging", "#2")
+	stdinLog := stdinOfFetches(t)
+	log := traced(t)
+	pat.status(nil)
+	var fetches [][]string
+	for _, c := range log.cmds {
+		if c[0] == "fetch" {
+			fetches = append(fetches, c)
+		}
+	}
+	want := []string{"fetch", "--prune", "--no-tags", "--stdin", "origin",
+		"+refs/heads/abcd-reserved/*:refs/remotes/origin/abcd-reserved/*",
+		"+refs/tags/v*:refs/abcd/release-tags/v*",
+		"+refs/heads/main:refs/remotes/origin/main"}
+	if len(fetches) != 1 || !slices.Equal(fetches[0], want) {
+		t.Fatalf("fetches = %q; want the one command %q", fetches, want)
+	}
+	got, err := os.ReadFile(stdinLog)
+	if err != nil {
+		t.Fatalf("no fetch read its stdin: %v", err)
+	}
+	stdin := "+refs/heads/abcd-status/maya:refs/remotes/origin/abcd-status/maya\n" +
+		"+refs/heads/abcd-status/octo:refs/remotes/origin/abcd-status/octo\n"
+	if string(got) != stdin {
+		t.Fatalf("the fetch read on stdin %q; want %q", got, stdin)
 	}
 }

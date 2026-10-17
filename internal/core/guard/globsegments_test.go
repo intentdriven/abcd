@@ -107,7 +107,7 @@ func TestWorkingDirectoryParentThroughPWD(t *testing.T) {
 	}
 	for _, c := range warns {
 		for n, cmd := range globSegmentSpellings(c) {
-			d := verdictOf(t, cmd)
+			d := readingOf(t, cmd)
 			if d.Verdict != VerdictWarn || (n == 0 && d.EntryID != cwd) {
 				t.Errorf("Check(%q) = %q via %q, want warn via %q", cmd, d.Verdict, d.EntryID, cwd)
 			}
@@ -129,7 +129,7 @@ func TestWorkingDirectoryParentThroughPWD(t *testing.T) {
 	// neither the working directory nor its parent; it is a path from the
 	// root when X is empty, which its own entry refuses (iss-2610091942156774).
 	for _, cmd := range globSegmentSpellings(`rm -rf $X/../../*`) {
-		if d := verdictOf(t, cmd); d.Verdict != VerdictBlock || d.EntryID != "rm-unguarded-variable-path" {
+		if d := readingOf(t, cmd); d.Verdict != VerdictBlock || d.EntryID != "rm-unguarded-variable-path" {
 			t.Errorf("Check(%q) = %q via %q, want block via rm-unguarded-variable-path", cmd, d.Verdict, d.EntryID)
 		}
 	}

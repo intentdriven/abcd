@@ -16,7 +16,8 @@ import (
 // The domain is GENERATED from the bundled registry the guard reads, never
 // written in defaults/rules.json: one rule per registry entry (the entry's
 // Lesson, in id order), then the guard's rule for the scripts it reads
-// (guard.Registry.ScriptLesson), and one recall term per command head the
+// (guard.Registry.ScriptLesson) and its rule for a variable-built `-c` script
+// that deletes (guard.Registry.ShellCLesson), and one recall term per command head the
 // registry matches. An entry added to or removed from the registry changes the domain
 // with no second edit, and TestShellDomainIsGeneratedFromTheGuardRegistry fails
 // if the two ever part. It is an ordinary bundled domain to every loader
@@ -53,8 +54,10 @@ func shellDomain(reg, bundled guard.Registry) (Domain, bool) {
 		return Domain{}, false
 	}
 	// The script reading has no registry entry of its own, so its rule is
-	// the guard's, generated beside the reading (guard.ScriptLesson).
-	lessons = append(lessons, reg.ScriptLesson())
+	// the guard's, generated beside the reading (guard.ScriptLesson), and so
+	// is the refusal of a variable-built `-c` script that deletes
+	// (guard.ShellCLesson).
+	lessons = append(lessons, reg.ScriptLesson(), reg.ShellCLesson())
 	return Domain{
 		State:   StateActive,
 		Recall:  reg.RecallTerms(),

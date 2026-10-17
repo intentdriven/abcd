@@ -64,16 +64,131 @@ type Store struct {
 	Checkout string `json:"checkout"`
 }
 
-// storePath is where the store of the repository at repoRoot lives under
-// home: worktrees/<root-sha>/embargo in abcd's home, keyed on the root commit
-// so every worktree of the repository finds the same store
-// (adr-2610031751065746).
-func storePath(home, repoRoot string) (string, error) {
-	p, ok := storepath.Path(home, repoRoot)
-	if !ok {
-		return "", refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
+// locate is where the store of the repository at top is, or is to be made,
+// under home: storepath.Locate's answer, the one rule every reader and
+// writer of the store shares, with each of its refusals worded for the
+// person. Its refusals name neither a store nor a key. A caller that only
+// reads takes isNoFreePlace for "no store".
+func locate(home, top string) (storepath.Location, error) {
+	loc, err := storepath.Locate(home, top)
+	return loc, worded(err)
+}
+
+// reachable is every store the outbound check of the repository at top
+// reads under home (storepath.Reachable: its own and every other store
+// there, live or not), its refusals worded as locate words them.
+func reachable(home, top string) (storepath.Reach, error) {
+	r, err := storepath.Reachable(home, top)
+	return r, worded(err)
+}
+
+// worded is a storepath refusal worded for the person, naming neither a
+// store nor a key; nil stays nil.
+func worded(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, storepath.ErrWorktreesUnread):
+		return refuse("git could not list this repository's worktrees, so whether it has an embargo store cannot be told",
+			"settle what `git worktree list --porcelain` reports, then run it again")
+	case errors.Is(err, storepath.ErrStoreUnderAnotherHome):
+		return refuse("the embargo store this repository registered lives under another home than the one abcd runs with, so this home would read as holding nothing under embargo",
+			"run abcd with that home, the HOME it had when the store was made; if that home no longer exists, `git worktree prune` removes the stale registration")
+	case errors.Is(err, storepath.ErrSeveralStores):
+		return refuse("more than one embargo store is a worktree of this repository, so which one holds the records cannot be told",
+			"inspect each with `git worktree list`, keep the one holding the records, remove the other with `git worktree remove <path>`, then run it again")
+	case errors.Is(err, storepath.ErrRootsUnread):
+		return refuse("git could not list the root commits of this repository's default branch, so where its embargo stores are, or one would be made, cannot be told", "settle what git reports, then run it again")
+	case errors.Is(err, storepath.ErrNoRootCommit):
+		return refuse("this repository has no root commit to key the embargo store on", "commit once, then run it again")
+	case errors.Is(err, storepath.ErrPlaceTaken):
+		return refuse("the place this repository's embargo store would be made could not be examined, or holds a folder that is no worktree of this repository nor of another repository on this machine, perhaps a store git has lost track of",
+			"look under abcd's worktree store, keep any private records the folder holds, move it aside, then run `abcd embargo intake`")
+	case errors.Is(err, storepath.ErrPlaceUnread):
+		return refuse("abcd's worktree store could not be listed, or a place in it where an embargo store is kept could not be examined, so what is under embargo cannot be told",
+			"check the permissions under abcd's worktree store, then run it again")
+	case errors.Is(err, storepath.ErrPlaceHeldByAClone):
+		return errPlaceHeldByAClone
+	case errors.Is(err, storepath.ErrNoFreePlace):
+		return errNoFreePlace
+	default:
+		return refuse("the embargo store could not be located", "run it again")
 	}
-	return p, nil
+}
+
+// errNoFreePlace is locate's refusal for storepath.ErrNoFreePlace: this
+// repository has no store, and one cannot be made without touching
+// another's. It names no path: the person finds the store in the checkout
+// that owns it. A store moved anywhere but a worktrees/<root>/embargo place
+// is no longer found, so the move it advises keeps that shape.
+var errNoFreePlace = refuse("every place this repository's embargo store could be made already holds another repository's store, which is left alone",
+	"run the embargo sub-verbs from the checkout that owns the store sitting there, or, in that checkout, run `git worktree move <store> <a place under that checkout's own root>` to free the place, then run it again here; the store must stay at a `worktrees/<root>/embargo` place under abcd's home, where it is still found")
+
+// errPlaceHeldByAClone is locate's refusal for
+// storepath.ErrPlaceHeldByAClone: the store sitting there is another
+// clone's of this project, under the root they share, so no move frees the
+// place, and that clone's checkout is where the sub-verbs run.
+var errPlaceHeldByAClone = refuse("every place this repository's embargo store could be made already holds the store of another clone of this project, under the root they share, which is left alone",
+	"run the embargo sub-verbs from that clone's checkout, which owns the store")
+
+// isNoFreePlace reports whether err is either of locate's refusals for no
+// free place, which a caller that only reads takes for "no store".
+func isNoFreePlace(err error) bool { return err == errNoFreePlace || err == errPlaceHeldByAClone }
+
+// registered returns the store at a registered location, refusing a
+// registration whose folder is gone or cannot be examined.
+func registered(loc storepath.Location, top string) (Store, error) {
+	switch _, err := os.Lstat(loc.Path); {
+	case errors.Is(err, fs.ErrNotExist):
+		return Store{}, refuse("the embargo store is registered as a worktree of this repository, but its folder is gone",
+			"if it was removed on purpose, run `git worktree prune`, then run it again")
+	case err != nil:
+		return Store{}, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
+	}
+	return Store{Root: loc.Path, Checkout: top}, nil
+}
+
+// readOtherStore reads the state of a store the check reads that is not
+// this checkout's own: another clone's of the same project, or another
+// project's under the same home. It is read and never written, and it is
+// not held to Verify's "a worktree of this repository": its records are
+// private to the same person, so they are under embargo here too. The state
+// is read inside the store's folder (os.Root), so no link in it can lead the
+// read out of the store, and held to loadState's checks: a regular file,
+// this account's alone, within its cap, in shape.
+func readOtherStore(root string) (State, error) {
+	bad := func(why string) error {
+		return refuse("the state file of another embargo store under this home is refused: "+why,
+			"settle it from the checkout that store belongs to, then run it again")
+	}
+	if !fsutil.IsRealDir(root) {
+		return State{}, bad("its store is not a real directory")
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return State{}, bad("its store could not be opened")
+	}
+	defer r.Close()
+	fi, err := r.Lstat(StateRel)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return emptyState(), nil
+	case err != nil:
+		return State{}, bad("it could not be examined")
+	case !fi.Mode().IsRegular():
+		return State{}, bad("it is not a regular file")
+	case fsutil.CallersAlone(filepath.Join(root, filepath.FromSlash(StateRel)), fi) != nil:
+		return State{}, bad("it is not this account's alone (another owner, or a group or other write bit)")
+	}
+	data, err := fsutil.ReadGuardedInRoot(r, StateRel, maxStateBytes)
+	if err != nil {
+		return State{}, bad("it could not be read within its size limit")
+	}
+	st, why := decodeState(data)
+	if why != "" {
+		return State{}, bad(why)
+	}
+	return st, nil
 }
 
 // openStore returns the store of the repository at repoRoot, making it on first
@@ -85,23 +200,24 @@ func openStore(home, repoRoot string) (s Store, created bool, err error) {
 	if err != nil {
 		return Store{}, false, refuse("this is not inside a git checkout", "run it from the repository's checkout")
 	}
-	p, err := storePath(home, top)
+	loc, err := locate(home, top)
 	if err != nil {
 		return Store{}, false, err
 	}
-	s = Store{Root: p, Checkout: top}
-	if inside(p, top) {
-		return Store{}, false, refuse("the embargo store would sit inside this checkout, where its records are one `git add` from the public history",
-			"run abcd with a home directory outside the repository")
-	}
-	switch _, err := os.Lstat(p); {
-	case errors.Is(err, fs.ErrNotExist):
+	if loc.Registered {
+		if s, err = registered(loc, top); err != nil {
+			return Store{}, false, err
+		}
+	} else {
+		s = Store{Root: loc.Path, Checkout: top}
+		if inside(s.Root, top) {
+			return Store{}, false, refuse("the embargo store would sit inside this checkout, where its records are one `git add` from the public history",
+				"run abcd with a home directory outside the repository")
+		}
 		if err := s.create(home); err != nil {
 			return Store{}, false, err
 		}
 		created = true
-	case err != nil:
-		return Store{}, false, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
 	}
 	if _, err := s.Verify(); err != nil {
 		return Store{}, created, err
@@ -117,16 +233,16 @@ func openExisting(home, repoRoot string) (Store, State, error) {
 	if err != nil {
 		return Store{}, State{}, refuse("this is not inside a git checkout", "run it from the repository's checkout")
 	}
-	p, err := storePath(home, top)
+	loc, err := locate(home, top)
+	if isNoFreePlace(err) || (err == nil && !loc.Registered) {
+		return Store{}, State{}, refuse("there is no embargo store for this repository on this machine", "run `abcd embargo intake` first")
+	}
 	if err != nil {
 		return Store{}, State{}, err
 	}
-	s := Store{Root: p, Checkout: top}
-	switch _, err := os.Lstat(p); {
-	case errors.Is(err, fs.ErrNotExist):
-		return Store{}, State{}, refuse("there is no embargo store for this repository on this machine", "run `abcd embargo intake` first")
-	case err != nil:
-		return Store{}, State{}, refuse("the embargo store's folder could not be examined", "check the permissions under abcd's home")
+	s, err := registered(loc, top)
+	if err != nil {
+		return Store{}, State{}, err
 	}
 	st, err := s.Verify()
 	if err != nil {
@@ -281,29 +397,10 @@ func (s Store) refuseTracked(st State) error {
 }
 
 // inside reports whether p is dir or lies beneath it, after resolving the
-// symlinks of the longest part of each that exists.
+// symlinks of the longest part of each that exists (storepath.Resolve).
 func inside(p, dir string) bool {
-	rel, err := filepath.Rel(resolve(dir), resolve(p))
+	rel, err := filepath.Rel(storepath.Resolve(dir), storepath.Resolve(p))
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
 }
 
-func samePath(a, b string) bool { return resolve(a) == resolve(b) }
-
-// resolve is filepath.EvalSymlinks over the longest existing prefix of p, with
-// the rest joined on: a path not made yet still resolves through the links
-// above it (macOS's /var is one).
-func resolve(p string) string {
-	p = filepath.Clean(p)
-	var rest []string
-	for {
-		if r, err := filepath.EvalSymlinks(p); err == nil {
-			return filepath.Join(append([]string{r}, rest...)...)
-		}
-		parent := filepath.Dir(p)
-		if parent == p {
-			return filepath.Join(append([]string{p}, rest...)...)
-		}
-		rest = append([]string{filepath.Base(p)}, rest...)
-		p = parent
-	}
-}
+func samePath(a, b string) bool { return storepath.Resolve(a) == storepath.Resolve(b) }

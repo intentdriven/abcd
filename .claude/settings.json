@@ -1,0 +1,31 @@
+{
+  "extraKnownMarketplaces": {
+    "abcd-marketplace": {
+      "source": {
+        "source": "github",
+        "repo": "intentdriven/abcd"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "abcd@abcd-marketplace": true
+  },
+  "attribution": {
+    "commit": "",
+    "pr": "",
+    "sessionUrl": false
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR\"/scripts/cloud/connectors/claude/setup.sh"
+          }
+        ]
+      }
+    ]
+  }
+}
