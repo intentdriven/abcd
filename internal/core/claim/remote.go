@@ -371,6 +371,12 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 		return res, m, j.Commit, nil
 	case j.mine && j.thisCopy:
 		res.Act, res.RenewedLive = ActRenewed, j.verdict.Live
+		if p.req.Drain && j.verdict.Live {
+			// A drain's re-reserve that renews its own live hold is a lane's
+			// renewal, so it carries the lane's stage; one over a lapsed hold
+			// is afresh and carries none (spc-2610161044461448 step 18).
+			m.Stage = p.req.Stage
+		}
 		return res, m, j.Commit, nil
 	}
 	exp := j.verdict.EffectiveExpiry

@@ -81,10 +81,13 @@ payload adds:
   released one; and for an `unreadable` one its fixed `unreadable` reason, no
   holder, and `held_from_fetch` when its hold is counted from when this copy
   first fetched it. The states are `live`, `expired`, `released` and
-  `unreadable`. A reservation a drain lane renewed carries its `stage`, one
-  of `worktree`, `brief`, `implement`, `validate` and `land`, the stage the
-  lane was in at its last renewal; a person's own renewal names none, so the
-  field is then absent. The text form shows the stage beside a live one.
+  `unreadable`. A live reservation a drain lane renewed carries its `stage`,
+  one of `worktree`, `brief`, `implement`, `validate` and `land`, the stage
+  the lane was in at its last renewal (a lane's own renewal, or a drain's
+  re-reserve that renewed its own live hold; a fresh reservation carries
+  none). A person's own renewal names none, and a reservation that is not
+  live shows none, so the field is then absent; the text form shows the
+  stage beside a live one alone.
 - `live_by_holder`: each person's count of live reservations.
 - `hand_backs_by_holder`: for each holder, the hand-backs of the last 24
   hours: each released tip carrying a hand-back, as `record`, `kind` (one of

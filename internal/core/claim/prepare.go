@@ -111,8 +111,14 @@ type Request struct {
 	// Stage, with Renew, is the stage of the drain lane renewing, one of
 	// LaneStages, which the renewal carries as its Abcd-Stage trailer; "" for
 	// every other act, and for a renewal that names no stage (a person's),
-	// which then carries none. A stage on any other act, or one outside
-	// LaneStages, is refused before anything is pushed.
+	// which then carries none. With Drain, and no TakeOver, a drain's
+	// reservation may name one too: it is written when the act renews this
+	// copy's own live reservation, and the act is never refused for it when
+	// it reserves afresh (no tip, a released or lapsed one, a take-over),
+	// which writes none, since only a renewal carries a stage. A stage on any
+	// other act (a release, a take-over asked for, a person's reservation or
+	// a build's start), or one outside LaneStages, is refused before anything
+	// is pushed.
 	Stage string
 }
 
@@ -171,8 +177,8 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if req.HandBack != "" && !slices.Contains(HandBackKinds, req.HandBack) {
 		return nil, refuse("hand-back kind %s is not one of %s; %s", echo(req.HandBack), strings.Join(HandBackKinds, ", "), nothingPushed)
 	}
-	if req.Stage != "" && !req.Renew {
-		return nil, refuse("only a renewal names a lane stage; %s", nothingPushed)
+	if req.Stage != "" && !req.Renew && (!req.Drain || req.TakeOver) {
+		return nil, refuse("only a renewal, or a drain's reservation, names a lane stage; %s", nothingPushed)
 	}
 	if req.Stage != "" && !ValidLaneStage(req.Stage) {
 		return nil, refuse("lane stage %s is not one of %s; %s", echo(req.Stage), strings.Join(LaneStages, ", "), nothingPushed)

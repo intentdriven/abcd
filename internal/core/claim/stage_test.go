@@ -63,10 +63,11 @@ func TestAStageIsRefusedOutsideTheVocabularyOrARenewal(t *testing.T) {
 		{Request{Record: "iss-5", Renew: true, Stage: "reviewing the fix"}, "is not one of " + allowed},
 		{Request{Record: "iss-5", Renew: true, Stage: "Implement"}, "is not one of " + allowed},
 		{Request{Record: "iss-5", Renew: true, Stage: "implement\nAbcd-Holder: quinn"}, "is not one of " + allowed},
-		{Request{Record: "iss-5", Footprint: []string{"a.go"}, Stage: LaneStageImplement}, "only a renewal names a lane stage"},
-		{Request{Record: "iss-5", Release: true, Stage: LaneStageLand}, "only a renewal names a lane stage"},
-		{Request{Record: "iss-5", Footprint: []string{"a.go"}, TakeOver: true, Stage: LaneStageBrief}, "only a renewal names a lane stage"},
-		{Request{Record: "iss-6", Footprint: []string{"b.go"}, Drain: true, Stage: LaneStageWorktree}, "only a renewal names a lane stage"},
+		{Request{Record: "iss-5", Footprint: []string{"a.go"}, Stage: LaneStageImplement}, onlyRenewalStage},
+		{Request{Record: "iss-6", Footprint: []string{"b.go"}, Stage: LaneStageWorktree}, onlyRenewalStage},
+		{Request{Record: "iss-5", Release: true, Stage: LaneStageLand}, onlyRenewalStage},
+		{Request{Record: "iss-5", Footprint: []string{"a.go"}, TakeOver: true, Stage: LaneStageBrief}, onlyRenewalStage},
+		{Request{Record: "iss-5", Footprint: []string{"a.go"}, TakeOver: true, Drain: true, Stage: LaneStageBrief}, onlyRenewalStage},
 	} {
 		msg := p.mustErr(c.req)
 		if _, err := p.do(c.req); !errors.Is(err, ErrRefused) || !strings.HasSuffix(err.Error(), nothingPushed) {
@@ -81,6 +82,61 @@ func TestAStageIsRefusedOutsideTheVocabularyOrARenewal(t *testing.T) {
 	}
 	if w.remoteTip("iss-5") != before || w.remoteTip("iss-6") != "" {
 		t.Fatal("a refused stage pushed")
+	}
+}
+
+// onlyRenewalStage is what a stage on an act that may not carry one is told.
+const onlyRenewalStage = "only a renewal, or a drain's reservation, names a lane stage"
+
+// TestADrainsReReserveCarriesItsStageOnlyWhenItRenews: a drain's reservation
+// naming a stage writes it when the act renews this copy's own live
+// reservation, and writes none, and is not refused, when the act reserves
+// afresh: over no tip, or over this copy's own lapsed one.
+func TestADrainsReReserveCarriesItsStageOnlyWhenItRenews(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	drain := func(id string) Result {
+		t.Helper()
+		res, err := p.do(Request{Record: id, Footprint: []string{"a.go"}, Drain: true, Stage: LaneStageBrief})
+		if err != nil {
+			t.Fatalf("the drain's reservation of %s with a stage: %v", id, err)
+		}
+		return res
+	}
+	if _, err := p.reserve("iss-5", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	w.set(t0.Add(time.Minute))
+	if res := drain("iss-5"); res.Act != ActRenewed || !res.RenewedLive {
+		t.Fatalf("the drain's re-reserve over its own live tip = %+v; want it renewed", res)
+	}
+	if got := w.trailerValues(w.remoteTip("iss-5"), keyStage); !slices.Equal(got, []string{LaneStageBrief}) {
+		t.Fatalf("the drain's renewal carries the stages %v; want brief", got)
+	}
+	snap, err := View(p.dir, w.clock())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, ok := snap.Lookup("iss-5"); !ok || r.Stage != LaneStageBrief {
+		t.Fatalf("the view = %+v; want iss-5 at the brief stage", r)
+	}
+
+	if res := drain("iss-7"); res.Act != ActReserved {
+		t.Fatalf("the drain's fresh reservation = %+v; want it reserved", res)
+	}
+	if got := w.trailerValues(w.remoteTip("iss-7"), keyStage); len(got) != 0 {
+		t.Fatalf("a fresh reservation carries a stage: %v", got)
+	}
+
+	if _, err := p.reserve("iss-8", "a.go"); err != nil {
+		t.Fatal(err)
+	}
+	w.set(t0.Add(6 * time.Hour))
+	if res := drain("iss-8"); res.Act != ActRenewed || res.RenewedLive {
+		t.Fatalf("the drain's re-reserve over its own lapsed tip = %+v; want it renewed afresh", res)
+	}
+	if got := w.trailerValues(w.remoteTip("iss-8"), keyStage); len(got) != 0 {
+		t.Fatalf("a re-reserve over a lapsed tip carries a stage: %v", got)
 	}
 }
 
