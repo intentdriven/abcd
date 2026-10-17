@@ -71,6 +71,14 @@ func TestArithmeticWithAnUnfixedOperandIsRefused(t *testing.T) {
 		`unset 'a[n]'`,
 		`declare 'a[n]=1'`,
 		`awk '{ c[$1]+=1 }'`,
+		`"test" -v 'a[$(touch x)]'`,
+		`\test -v 'a[$(touch x)]'`,
+		`"[" -v 'a[$(touch x)]' ]`,
+		`\[ -v 'a[$(touch x)]' ]`,
+		"echo \\\\\n\"let\" \"w=$n\"",
+		`grep -q 'a$' f; eval $'\x28\x28 n \x29\x29'`,
+		`$'let' x=$n`,
+		`$'alias' c=rm`,
 	} {
 		if why := arithmeticUnfixed(cmd); why == "" {
 			t.Errorf("arithmeticUnfixed(%q) = \"\"; want it refused", cmd)
@@ -121,6 +129,11 @@ func TestLiteralArithmeticAndPlainCommandsPass(t *testing.T) {
 		`git commit -m 'fix: alias resolution for users'`,
 		`grep -rn alias internal/`,
 		`rg 'alias ' .`,
+		`git commit -m "chore: unset the [deprecated] flag"`,
+		"git commit -F - <<'EOF'\nread [x] first\nEOF",
+		`read -r -p "Continue [y/n]? " ans`,
+		"cat > a.ts <<'EOF'\nexport const xs = [1, 2];\nEOF",
+		"cat > a.py <<'EOF'\np.add_argument(\"command\")\np.add(\"set\")\nEOF",
 	} {
 		if why := arithmeticUnfixed(cmd); why != "" {
 			t.Errorf("arithmeticUnfixed(%q) = %q; want it left alone", cmd, why)

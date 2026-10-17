@@ -46,6 +46,8 @@ var (
 	printfTarget = regexp.MustCompile(`(^|[\s;&|(){}` + "`" + `])(printf\s+(-[^v\s]\S*\s+)*-v|wait\s+(-[^p\s]\S*\s+)*-p)\s*(\S+)`)
 	// testNamed is `[ -v name ]` or `test -v name`, which reads a name.
 	testNamed = regexp.MustCompile(`(^|[\s;&|(){}` + "`" + `])(\[|test)\s[^;&|\n]*-v\s+(\S+)`)
+	// indexedName is a word bash reads as an indexed name.
+	indexedName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*\[`)
 	// identifier is a name a builtin may be handed: a plain name, or one
 	// with a written index.
 	identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\[[0-9@*]*\])?$`)
@@ -62,7 +64,8 @@ var (
 	// backslash can spell so the name is not written as itself.
 	respelledBuiltins = map[string]bool{"let": true, "declare": true, "typeset": true, "local": true, "readonly": true,
 		"export": true, "read": true, "unset": true, "mapfile": true, "readarray": true, "getopts": true, "printf": true,
-		"wait": true, "alias": true, "eval": true, "shopt": true, "set": true, "builtin": true, "command": true}
+		"wait": true, "alias": true, "eval": true, "shopt": true, "set": true, "builtin": true, "command": true,
+		"test": true, "[": true}
 	// aliasing is a line that defines an alias or turns alias expansion on,
 	// which makes a later word run a program the line does not name.
 	// It is read where a command starts (or a quoted string a shell may run
@@ -80,7 +83,7 @@ func arithmeticUnfixed(command string) string {
 	// Bash removes a backslash-newline before it reads a word, so a
 	// trigger split across one is joined again first. Joining one inside
 	// single quotes, where bash keeps it, only scans more text.
-	command = strings.ReplaceAll(command, "\\\n", "")
+	command = joinContinuations(command)
 	if why := respelledShell(command); why != "" {
 		return why
 	}
@@ -140,7 +143,10 @@ func unfixedNames(command string) string {
 			if strings.HasPrefix(name, "-") || name == "" {
 				continue
 			}
-			if !identifier.MatchString(unquoteWord(name)) && strings.ContainsAny(name, "$`[") {
+			if strings.ContainsAny(name, "$`") {
+				return why
+			}
+			if plain := unquoteWord(name); indexedName.MatchString(plain) && !identifier.MatchString(plain) {
 				return why
 			}
 		}
@@ -361,7 +367,7 @@ func respelledShell(command string) string {
 		return "it turns alias expansion on, so a later word can run a program the line does not name"
 	}
 	for _, w := range commandNames(command) {
-		if strings.NewReplacer("'", "", "\"", "", "\\", "").Replace(w) == "alias" {
+		if strings.NewReplacer("$'", "", "$\"", "", "'", "", "\"", "", "\\", "").Replace(w) == "alias" {
 			return "it defines an alias, so a later word can run a program the line does not name"
 		}
 	}
@@ -384,13 +390,15 @@ func respelledShell(command string) string {
 		if ansiEscape.MatchString(command[start:end]) {
 			return "it holds a `$'…'` string that writes a byte by its code, which spells text the line does not show"
 		}
-		at = end
+		// Every `$'` is read, a quoted string's closing `$'` among them,
+		// so a string read out of step cannot pass over a real one.
+		at = start
 		if at >= len(command) {
 			break
 		}
 	}
 	for _, w := range commandNames(command) {
-		plain := strings.NewReplacer("'", "", "\"", "", "\\", "").Replace(w)
+		plain := strings.NewReplacer("$'", "", "$\"", "", "'", "", "\"", "", "\\", "").Replace(w)
 		if plain != w && respelledBuiltins[plain] {
 			return "it spells the builtin `" + plain + "` with a quote or a backslash in its name, which the approver reads only as written"
 		}
@@ -414,6 +422,9 @@ func commandNames(s string) []string {
 			}
 		case c == '\'' || c == '"':
 			quote = c
+		case c == '(' && i > 0 && (isNameByte(s[i-1]) || s[i-1] == '.' || s[i-1] == ']'):
+			// A call's parenthesis (`f(x)`, `p.add("set")`) in text a
+			// command only prints starts no command.
 		case strings.IndexByte(";&|(){}`\n", c) >= 0:
 			segs = append(segs, b.String())
 			b.Reset()
@@ -431,7 +442,7 @@ func commandNames(s string) []string {
 		}
 		for k < len(words) {
 			names = append(names, words[k])
-			plain := strings.NewReplacer("'", "", "\"", "", "\\", "").Replace(words[k])
+			plain := strings.NewReplacer("$'", "", "$\"", "", "'", "", "\"", "", "\\", "").Replace(words[k])
 			if !commandWrappers[plain] {
 				break
 			}
@@ -452,3 +463,26 @@ var (
 	commandWrappers = map[string]bool{"command": true, "builtin": true, "exec": true, "env": true, "nohup": true, "time": true, "then": true, "do": true, "else": true, "!": true,
 		"if": true, "elif": true, "while": true, "until": true}
 )
+
+// joinContinuations removes each backslash-newline bash removes: a newline
+// after an odd run of backslashes, whose last backslash escapes it. After an
+// even run the backslashes escape each other and the newline ends the line.
+func joinContinuations(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\n' {
+			run := 0
+			for j := b.Len() - 1; j >= 0 && b.String()[j] == '\\'; j-- {
+				run++
+			}
+			if run%2 == 1 {
+				out := b.String()[:b.Len()-1]
+				b.Reset()
+				b.WriteString(out)
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+	}
+	return b.String()
+}
