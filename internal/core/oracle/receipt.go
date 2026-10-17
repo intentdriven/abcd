@@ -77,6 +77,11 @@ type ReceiptRoute struct {
 	// payload: the provider, the model asked for and the model the provider
 	// reported (itd-2609081951381895 criterion 5). null on the harness leg.
 	ProviderCall *CallRecord `json:"provider_call"`
+	// Unpinned is the harness leg's list of the fixed fields it could not pin
+	// (itd-166): the model is the payload's own declaration, so it is
+	// self-reported, and nothing else of either side reaches abcd from the
+	// host. null on a provider leg, whose call record carries its own list.
+	Unpinned []Unpinned `json:"unpinned"`
 }
 
 // WithCall returns the receipt carrying the provider call that produced its
@@ -93,12 +98,40 @@ func (r Route) Receipt(model string) ReceiptRoute {
 	if sent == nil {
 		sent = Settings{}
 	}
-	return ReceiptRoute{
+	rr := ReceiptRoute{
 		Agent: r.Agent, TierAsked: r.Row.Tier,
 		ConnectionTried: r.ConnectionTried, ConnectionUsed: r.ConnectionUsed,
 		FallbackReason: r.Fallback, Override: r.Override,
 		SettingsSent: sent, ModelReported: model,
 	}
+	if !r.OnProvider() {
+		rr.Unpinned = handOffUnpinned(model)
+	}
+	return rr
+}
+
+// handOffUnpinned is the harness leg's list: the host chooses the model and
+// its settings and renders the prompt, and reports none of it, so every asked
+// field is not configured by abcd or not reported to it, and every served
+// field but the payload's own model is not reported.
+func handOffUnpinned(model string) []Unpinned {
+	var un Unpin
+	for _, f := range AskedFields {
+		switch f {
+		case AskedPromptSHA256, AskedHarnessVersion:
+			un.Add(f, NotReported)
+		default:
+			un.Add(f, NotConfigured)
+		}
+	}
+	for _, f := range ServedFields {
+		if f == ServedModel && model != "" {
+			un.Add(f, SelfReported)
+			continue
+		}
+		un.Add(f, NotReported)
+	}
+	return un.List()
 }
 
 // RenderRequestSection renders the routing section a request document carries,

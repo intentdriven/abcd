@@ -52,7 +52,7 @@ func TestConnectVerifiesThenWritesTheBlockAndTheKey(t *testing.T) {
 		t.Fatal("the verification call did not carry the key")
 	}
 	want := CallRecord{Provider: "openrouter", ModelAsked: "typesafe/jev-1.13", ModelReported: "typesafe/jev-1.13-20260915", Credential: "openrouter"}
-	if res.Verified != want || res.KeyName != "openrouter" || res.KeyHome != KeyHomeABCD {
+	if !reflect.DeepEqual(who(res.Verified), want) || res.KeyName != "openrouter" || res.KeyHome != KeyHomeABCD {
 		t.Fatalf("result = %+v", res)
 	}
 	if !reflect.DeepEqual(res.Wrote, []string{credential.StorePath, abcdhome.Display("config.json")}) {

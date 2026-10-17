@@ -43,6 +43,8 @@ package openaiapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -139,7 +141,27 @@ type Request struct {
 	Model    string
 	Brief    Brief
 	Settings map[string]json.RawMessage
+	// NoStreamUsage leaves stream_options.include_usage out of the request.
+	// The adapter asks for usage in the stream by default (itd-166 decision
+	// 4); a provider connection whose server refuses the field turns it off.
+	NoStreamUsage bool
 }
+
+// StreamUsageField is the request field the adapter adds to ask for usage in
+// the stream. It is the adapter's own, never a setting, and a record names it
+// as added by the adapter rather than as a setting sent.
+const StreamUsageField = "stream_options.include_usage"
+
+// ErrStreamUsage is what a refusal wraps when the server refused, with HTTP
+// 400 or 422, a request that asked for usage in the stream: the field may be
+// what it refused, and the caller names the setting that stops asking.
+var ErrStreamUsage = errors.New("openaiapi: the server refused a request that asked for usage in the stream")
+
+// streamUsageError is a scrubbed refusal that is ErrStreamUsage.
+type streamUsageError struct{ msg string }
+
+func (e *streamUsageError) Error() string { return e.msg }
+func (e *streamUsageError) Unwrap() error { return ErrStreamUsage }
 
 // Result is one validated answer: the document the output contract admitted,
 // the model asked for, and the model the provider reported (bounded, with any
@@ -151,15 +173,50 @@ type Result struct {
 	// FinishReason is why the provider stopped ("stop", "length"), bounded
 	// and cleaned like the model; empty when it gave none.
 	FinishReason string
+	// GenerationID is the answer's own id (OpenRouter's gen-..., OpenAI's
+	// chatcmpl-...), and Provider the upstream provider an aggregator names
+	// as the one that served it. Each is the provider's own text, bounded and
+	// cleaned like the model; empty when the answer names none.
+	GenerationID string
+	Provider     string
 	// Usage is the token count the provider reported, nil when it sent none.
 	Usage *Usage
 }
 
-// Usage is the token count a provider reports with its answer.
+// Usage is the token count a provider reports with its answer. The counts
+// past the three every server sends are pointers: nil is a count the
+// provider did not report, never a zero it did.
 type Usage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 	TotalTokens      int `json:"total_tokens"`
+	// CachedTokens is prompt_tokens_details.cached_tokens, the prompt tokens
+	// read from the provider's cache, and CacheWriteTokens
+	// prompt_tokens_details.cache_write_tokens, the ones written to it.
+	CachedTokens     *int `json:"cached_tokens,omitempty"`
+	CacheWriteTokens *int `json:"cache_write_tokens,omitempty"`
+	// ReasoningTokens is completion_tokens_details.reasoning_tokens.
+	ReasoningTokens *int `json:"reasoning_tokens,omitempty"`
+	// Cost is the usage member's cost, in the provider's own unit
+	// (OpenRouter's credits); nil when it reports none.
+	Cost *float64 `json:"cost,omitempty"`
+}
+
+// PromptSHA256 is the SHA-256, in hex, of the brief's messages as the call
+// renders them (itd-166 decision 5): what was sent is recorded by its hash,
+// never its text.
+func PromptSHA256(b Brief) string {
+	raw, _ := json.Marshal(messages(b))
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// IsLocal reports whether baseURL reaches a server on this machine (localhost
+// or a loopback address): a local route, whose weights and runtime the
+// configuration does not pin yet.
+func IsLocal(baseURL string) bool {
+	u, err := url.Parse(baseURL)
+	return err == nil && u.Host != "" && loopback(u.Hostname())
 }
 
 // Client is one provider connection. It holds the key; it never prints it.
@@ -403,7 +460,15 @@ func (c *Client) Complete(ctx context.Context, req Request, contract func([]byte
 	live := &liveBody{r: resp.Body, l: l}
 
 	if resp.StatusCode != http.StatusOK {
-		return Result{}, c.failedStatus(l, resp)
+		err := c.failedStatus(l, resp)
+		if !req.NoStreamUsage && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity) {
+			// The status refuses the request, and the field the adapter added
+			// may be what it refused: the caller names the setting that stops
+			// asking. No second request is made without it.
+			return Result{}, &streamUsageError{msg: err.Error() + " (the request asked for usage in the stream, " + StreamUsageField +
+				", which a server that does not take the field refuses)"}
+		}
+		return Result{}, err
 	}
 	if eventStream(resp.Header.Get("Content-Type")) {
 		return c.readStream(l, live, req.Model, contract)
@@ -450,6 +515,9 @@ func (c *Client) render(req Request) ([]byte, error) {
 		"messages": messages(req.Brief),
 		"stream":   true,
 	}
+	if !req.NoStreamUsage {
+		fields["stream_options"] = map[string]bool{"include_usage": true}
+	}
 	keys := make([]string, 0, len(req.Settings))
 	for k := range req.Settings {
 		keys = append(keys, k)
@@ -487,7 +555,10 @@ func accepted(k string) bool {
 	return false
 }
 
-// completion is the part of a chat completion the adapter reads.
+// completion is the part of a chat completion the adapter reads. The id, the
+// provider and the usage are read leniently (servedBy): a member of another
+// type than the protocol's is a detail not reported, never a refusal of the
+// answer.
 type completion struct {
 	Model   string `json:"model"`
 	Choices []struct {
@@ -496,8 +567,82 @@ type completion struct {
 		} `json:"message"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
-	Usage *Usage          `json:"usage"`
+	servedBy
 	Error json.RawMessage `json:"error"`
+}
+
+// servedBy is the members of a chat completion or a chunk that name what
+// served the answer: its id, the upstream provider and the usage.
+type servedBy struct {
+	ID       json.RawMessage `json:"id"`
+	Provider json.RawMessage `json:"provider"`
+	Usage    json.RawMessage `json:"usage"`
+}
+
+// readInto copies what s names onto a, a value already read kept: an id and
+// a provider from the first chunk that names them, the usage from the last.
+func (s servedBy) readInto(a *assembled) {
+	if a.id == "" {
+		a.id = lenientString(s.ID)
+	}
+	if a.provider == "" {
+		a.provider = lenientString(s.Provider)
+	}
+	if u := readUsage(s.Usage); u != nil {
+		a.usage = u
+	}
+}
+
+// lenientString is raw as a JSON string, "" when it is absent or not one.
+func lenientString(raw json.RawMessage) string {
+	var s string
+	if len(raw) == 0 || json.Unmarshal(raw, &s) != nil {
+		return ""
+	}
+	return s
+}
+
+// readUsage reads a usage member field by field: a field of another type
+// than the protocol's, or a negative count, is left unread, so a provider's
+// variation never refuses an answer. nil when the member is absent or not an
+// object.
+func readUsage(raw json.RawMessage) *Usage {
+	var m map[string]json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &m) != nil || m == nil {
+		return nil
+	}
+	count := func(raw json.RawMessage) *int {
+		var n int
+		if len(raw) == 0 || json.Unmarshal(raw, &n) != nil || n < 0 {
+			return nil
+		}
+		return &n
+	}
+	value := func(p *int) int {
+		if p == nil {
+			return 0
+		}
+		return *p
+	}
+	detail := func(member, field string) *int {
+		var d map[string]json.RawMessage
+		if json.Unmarshal(m[member], &d) != nil {
+			return nil
+		}
+		return count(d[field])
+	}
+	u := &Usage{
+		PromptTokens: value(count(m["prompt_tokens"])), CompletionTokens: value(count(m["completion_tokens"])),
+		TotalTokens:      value(count(m["total_tokens"])),
+		CachedTokens:     detail("prompt_tokens_details", "cached_tokens"),
+		CacheWriteTokens: detail("prompt_tokens_details", "cache_write_tokens"),
+		ReasoningTokens:  detail("completion_tokens_details", "reasoning_tokens"),
+	}
+	var cost float64
+	if raw := m["cost"]; len(raw) > 0 && json.Unmarshal(raw, &cost) == nil && cost >= 0 {
+		u.Cost = &cost
+	}
+	return u
 }
 
 // decode reads one chat-completion body: a server's answer to a call that
@@ -514,7 +659,8 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 	if len(cc.Choices) == 0 {
 		return Result{}, c.noChoice()
 	}
-	a := assembled{model: cc.Model, usage: cc.Usage}
+	a := assembled{model: cc.Model}
+	cc.servedBy.readInto(&a)
 	if p := cc.Choices[0].Message.Content; p != nil {
 		a.content.WriteString(*p)
 	}
@@ -526,10 +672,12 @@ func (c *Client) decode(raw []byte, asked string, contract func([]byte) error) (
 
 // assembled is an answer as read, from one body or from a stream's chunks.
 type assembled struct {
-	model   string
-	content strings.Builder
-	finish  string
-	usage   *Usage
+	model    string
+	content  strings.Builder
+	finish   string
+	id       string
+	provider string
+	usage    *Usage
 }
 
 // admit holds an answer as read to the adapter's rules and the caller's
@@ -541,11 +689,13 @@ func (c *Client) admit(a *assembled, asked string, contract func([]byte) error) 
 	if strings.TrimSpace(a.model) == "" {
 		return Result{}, c.fail(c.host + " reported no model with its answer, so what answered cannot be shown; the answer is refused rather than used")
 	}
-	// The reported model and the finish reason are the provider's own text,
-	// recorded and quoted in a denylist refusal, so they are scrubbed like any
-	// other, bounded and cleaned of hidden runes.
+	// The reported model, the finish reason, the generation id and the
+	// upstream provider are the provider's own text, recorded and the model
+	// quoted in a denylist refusal, so they are scrubbed like any other,
+	// bounded and cleaned of hidden runes.
 	res := Result{ModelAsked: asked, ModelReported: cleanModel(c.scrub(a.model)),
-		FinishReason: cleanModel(c.scrub(a.finish)), Usage: a.usage}
+		FinishReason: cleanModel(c.scrub(a.finish)), GenerationID: cleanModel(c.scrub(a.id)),
+		Provider: cleanModel(c.scrub(a.provider)), Usage: a.usage}
 	// The answer is the payload a verb records, so it is scrubbed like every
 	// other text the provider sends, before the contract judges it.
 	res.Content = []byte(c.scrubAnswer(unfence(a.content.String())))
@@ -964,8 +1114,10 @@ func asciiEscape(s string) string {
 	return b.String()
 }
 
-// cleanModel bounds a provider-reported model and percent-encodes any hidden
-// or control rune, so it is recorded but cannot reorder or escape the record.
+// cleanModel bounds a provider-reported model, or any other short string the
+// provider names (a finish reason, a generation id, an upstream provider), and
+// percent-encodes any hidden or control rune, so it is recorded but cannot
+// reorder or escape the record.
 func cleanModel(m string) string {
 	m = termsafe.EncodeHiddenRunes(m)
 	if len(m) > MaxModelBytes {

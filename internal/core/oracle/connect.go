@@ -472,7 +472,7 @@ func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, opts ...
 			// The verification's own bounds come first, so a caller's option
 			// replaces them.
 			bounded := append([]openaiapi.Option{openaiapi.WithTimeout(verifyTimeout), openaiapi.WithFirstByteTimeout(verifyTimeout)}, opts...)
-			_, r, err := complete(ctx, p.Name, p.BaseURL, key, p.Models[0], verifyBrief,
+			_, r, err := complete(ctx, p, key, p.Models[0], verifyBrief,
 				Settings{"max_tokens": json.RawMessage(`16`)}, nil, denylist, bounded...)
 			r.Credential = p.Key
 			if rec != nil {
