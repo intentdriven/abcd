@@ -156,6 +156,9 @@ func TestAClosedPullRequestReleasesAndHandsBackItsLane(t *testing.T) {
 	if r := routeOf(t, res.Routed, secondIssue); r.Kind != claim.HandBackClosed || r.Route != RouteHome || r.From != "lane" {
 		t.Fatalf("the drain routes the closed lane's hand-back home: %+v", r)
 	}
+	if r := routeOf(t, res.Routed, secondIssue); r.Blob == "" {
+		t.Fatalf("the closed lane's route keeps the record it judged, so a changed record is taken up again: %+v", r)
+	}
 	if !strings.Contains(res.Next, "#7") || !strings.Contains(res.Next, "closed") {
 		t.Fatalf("next names the closed pull request: %s", res.Next)
 	}

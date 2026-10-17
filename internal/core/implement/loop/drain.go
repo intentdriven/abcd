@@ -720,6 +720,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if rel := releaseHandedBack(repoRoot, run, *hb, now); rel != "" {
 				r.Wrote += "; " + rel
 			}
+			// The record it judged, so a change to it on origin is a new
+			// question this drain takes up again, as every route keeps.
+			r.Blob = blobs.of(p.Issue)
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
 			st.Lanes[i].Outcome, finished = DrainLaneHandedBack, true
