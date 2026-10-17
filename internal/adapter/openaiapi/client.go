@@ -50,6 +50,7 @@ import (
 	"fmt"
 	"html"
 	"io"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -203,13 +204,13 @@ type Result struct {
 	Usage *Usage
 }
 
-// Usage is the token count a provider reports with its answer. The counts
-// past the three every server sends are pointers: nil is a count the
-// provider did not report, never a zero it did.
+// Usage is the token count a provider reports with its answer. Every count
+// is a pointer: nil is a count the provider did not report, or reported in a
+// shape the adapter could not read, never a zero it did.
 type Usage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	TotalTokens      int `json:"total_tokens"`
+	PromptTokens     *int `json:"prompt_tokens,omitempty"`
+	CompletionTokens *int `json:"completion_tokens,omitempty"`
+	TotalTokens      *int `json:"total_tokens,omitempty"`
 	// CachedTokens is prompt_tokens_details.cached_tokens, the prompt tokens
 	// read from the provider's cache, and CacheWriteTokens
 	// prompt_tokens_details.cache_write_tokens, the ones written to it.
@@ -608,7 +609,9 @@ type servedBy struct {
 }
 
 // readInto copies what s names onto a, a value already read kept: an id and
-// a provider from the first chunk that names them, the usage from the last.
+// a provider from the first chunk that names them, the usage from the last
+// that reads at least as many fields as the one already read, so a later,
+// thinner usage member never replaces a fuller one.
 func (s servedBy) readInto(a *assembled) {
 	if a.id == "" {
 		a.id = lenientString(s.ID)
@@ -616,9 +619,23 @@ func (s servedBy) readInto(a *assembled) {
 	if a.provider == "" {
 		a.provider = lenientString(s.Provider)
 	}
-	if u := readUsage(s.Usage); u != nil {
+	if u := readUsage(s.Usage); u != nil && (a.usage == nil || u.readable() >= a.usage.readable()) {
 		a.usage = u
 	}
+}
+
+// readable is how many of u's fields were read.
+func (u *Usage) readable() int {
+	n := 0
+	for _, p := range []*int{u.PromptTokens, u.CompletionTokens, u.TotalTokens, u.CachedTokens, u.CacheWriteTokens, u.ReasoningTokens} {
+		if p != nil {
+			n++
+		}
+	}
+	if u.Cost != nil {
+		n++
+	}
+	return n
 }
 
 // lenientString is raw as a JSON string, "" when it is absent or not one.
@@ -631,9 +648,10 @@ func lenientString(raw json.RawMessage) string {
 }
 
 // readUsage reads a usage member field by field: a field of another type
-// than the protocol's, or a negative count, is left unread, so a provider's
-// variation never refuses an answer. nil when the member is absent or not an
-// object.
+// than the protocol's, a negative count, or a cost that is negative or not
+// finite (ReadableCost) is left unread, so a provider's variation never
+// refuses an answer. nil when the member is absent, not an object, or has no
+// field that reads.
 func readUsage(raw json.RawMessage) *Usage {
 	var m map[string]json.RawMessage
 	if len(raw) == 0 || json.Unmarshal(raw, &m) != nil || m == nil {
@@ -646,12 +664,6 @@ func readUsage(raw json.RawMessage) *Usage {
 		}
 		return &n
 	}
-	value := func(p *int) int {
-		if p == nil {
-			return 0
-		}
-		return *p
-	}
 	detail := func(member, field string) *int {
 		var d map[string]json.RawMessage
 		if json.Unmarshal(m[member], &d) != nil {
@@ -660,18 +672,27 @@ func readUsage(raw json.RawMessage) *Usage {
 		return count(d[field])
 	}
 	u := &Usage{
-		PromptTokens: value(count(m["prompt_tokens"])), CompletionTokens: value(count(m["completion_tokens"])),
-		TotalTokens:      value(count(m["total_tokens"])),
+		PromptTokens: count(m["prompt_tokens"]), CompletionTokens: count(m["completion_tokens"]),
+		TotalTokens:      count(m["total_tokens"]),
 		CachedTokens:     detail("prompt_tokens_details", "cached_tokens"),
 		CacheWriteTokens: detail("prompt_tokens_details", "cache_write_tokens"),
 		ReasoningTokens:  detail("completion_tokens_details", "reasoning_tokens"),
 	}
 	var cost float64
-	if raw := m["cost"]; len(raw) > 0 && json.Unmarshal(raw, &cost) == nil && cost >= 0 {
+	if raw := m["cost"]; len(raw) > 0 && json.Unmarshal(raw, &cost) == nil && ReadableCost(cost) {
 		u.Cost = &cost
+	}
+	if u.readable() == 0 {
+		return nil
 	}
 	return u
 }
+
+// ReadableCost reports whether a cost a route reported is one a record
+// keeps: zero or more, and finite. It is the one policy every route's cost
+// is held to (the adapter's usage member, and the runners' harness costs
+// through oracle.ReadableCost); a cost that fails it is not reported.
+func ReadableCost(c float64) bool { return c >= 0 && !math.IsInf(c, 0) && !math.IsNaN(c) }
 
 // decode reads one chat-completion body: a server's answer to a call that
 // asked for a stream and got one body instead.

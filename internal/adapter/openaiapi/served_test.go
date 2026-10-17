@@ -52,7 +52,7 @@ func assertServed(t *testing.T, res Result) {
 		t.Fatalf("served: id %q, provider %q, finish %q", res.GenerationID, res.Provider, res.FinishReason)
 	}
 	u := res.Usage
-	if u == nil || u.PromptTokens != 120 || u.CompletionTokens != 30 || u.TotalTokens != 150 {
+	if u == nil || !readCounts(u, 120, 30, 150) {
 		t.Fatalf("usage = %+v", u)
 	}
 	if u.CachedTokens == nil || *u.CachedTokens != 100 || u.CacheWriteTokens == nil || *u.CacheWriteTokens != 20 {
@@ -64,6 +64,13 @@ func assertServed(t *testing.T, res Result) {
 	if u.Cost == nil || *u.Cost != 0.00042 {
 		t.Fatalf("cost = %v", u.Cost)
 	}
+}
+
+// readCounts reports whether u read the prompt, completion and total counts
+// given, each present.
+func readCounts(u *Usage, prompt, completion, total int) bool {
+	is := func(p *int, n int) bool { return p != nil && *p == n }
+	return is(u.PromptTokens, prompt) && is(u.CompletionTokens, completion) && is(u.TotalTokens, total)
 }
 
 // TestAnOpenRouterStreamFillsTheServedSide: a streamed answer whose usage
@@ -132,8 +139,15 @@ func TestAMalformedUsageMemberIsNotAFailure(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Complete refused an answer over a malformed usage member: %v", err)
 	}
-	if res.Usage == nil || res.Usage.PromptTokens != 4 || res.Usage.Cost != nil || res.Usage.CachedTokens != nil {
-		t.Fatalf("usage = %+v", res.Usage)
+	u := res.Usage
+	if u == nil || u.PromptTokens == nil || *u.PromptTokens != 4 || u.Cost != nil || u.CachedTokens != nil {
+		t.Fatalf("usage = %+v", u)
+	}
+	// The completion count, sent as text, is unread rather than zero: the
+	// record lists it as not reported (oracle's
+	// TestAMalformedUsageMemberListsEachUnreadCount holds the list).
+	if u.CompletionTokens != nil || u.TotalTokens != nil {
+		t.Fatalf("completion %v, total %v: want both unread", u.CompletionTokens, u.TotalTokens)
 	}
 	if res.Provider != "" || res.GenerationID != "gen-1" {
 		t.Fatalf("provider %q, id %q", res.Provider, res.GenerationID)
@@ -305,4 +319,52 @@ func TestARefusalNotNamingTheUsageFieldCarriesNoHint(t *testing.T) {
 	if !errors.Is(err, ErrStreamUsage) || !errors.Is(err, ErrUsageRefused) || !strings.Contains(err.Error(), StreamUsageField) {
 		t.Fatalf("err = %v, want ErrStreamUsage naming the field", err)
 	}
+}
+
+// TestAMissingCountIsNotReportedAsZero: a usage member that carries no
+// readable prompt or completion count leaves that count unset, never a zero
+// the provider did not report.
+func TestAMissingCountIsNotReportedAsZero(t *testing.T) {
+	for usage, want := range map[string][2]bool{
+		`{"cost":0.1}`:                               {false, false},
+		`{"prompt_tokens":4}`:                        {true, false},
+		`{"completion_tokens":"2"}`:                  {false, false},
+		`{"prompt_tokens":-1,"completion_tokens":3}`: {false, true},
+	} {
+		f := newFake(t, streams(
+			chunkLine("m", `{"verdict":"yes"}`, "stop"), "",
+			`data: {"id":"gen-1","model":"m","choices":[],"usage":`+usage+`}`, "",
+			"data: [DONE]", "",
+		))
+		res, err := mustClient(t, f.base(), testKey).Complete(context.Background(), request(), jsonObject)
+		if err != nil {
+			t.Fatalf("%s: %v", usage, err)
+		}
+		if res.Usage == nil {
+			if want[0] || want[1] {
+				t.Fatalf("%s: usage = nil", usage)
+			}
+			continue
+		}
+		if (res.Usage.PromptTokens != nil) != want[0] || (res.Usage.CompletionTokens != nil) != want[1] {
+			t.Fatalf("%s: prompt %v, completion %v; want present %v", usage, res.Usage.PromptTokens, res.Usage.CompletionTokens, want)
+		}
+	}
+}
+
+// TestALaterThinnerUsageKeepsTheFullerOne: a stream whose later usage chunk
+// reads fewer fields than an earlier one keeps the earlier, fuller usage.
+func TestALaterThinnerUsageKeepsTheFullerOne(t *testing.T) {
+	f := newFake(t, streams(
+		openRouterChunk(`{"verdict":"yes"}`, "", ""), "",
+		openRouterChunk("", "stop", ""), "",
+		openRouterChunk("", "", openRouterUsage), "",
+		openRouterChunk("", "", `{"prompt_tokens":1}`), "",
+		"data: [DONE]", "",
+	))
+	res, err := mustClient(t, f.base(), testKey).Complete(context.Background(), request(), jsonObject)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	assertServed(t, res)
 }

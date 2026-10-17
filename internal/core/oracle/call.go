@@ -199,24 +199,30 @@ func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openai
 	un.Unless(res.GenerationID != "", ServedGenerationID, NotReported)
 	un.Unless(res.FinishReason != "", ServedFinishReason, NotReported)
 	u := res.Usage
-	un.Unless(u != nil, ServedPromptTokens, NotReported)
-	un.Unless(u != nil, ServedCompletionTokens, NotReported)
+	un.Unless(u != nil && u.PromptTokens != nil, ServedPromptTokens, NotReported)
+	un.Unless(u != nil && u.CompletionTokens != nil, ServedCompletionTokens, NotReported)
 	un.Unless(u != nil && u.ReasoningTokens != nil, ServedReasoningTokens, NotReported)
 	un.Unless(u != nil && u.CachedTokens != nil, ServedCacheReadTokens, NotReported)
 	un.Unless(u != nil && u.CacheWriteTokens != nil, ServedCacheWriteTokens, NotReported)
 	un.Unless(u != nil && u.Cost != nil, ServedCost, NotReported)
-	if u != nil {
-		deref := func(p *int) int {
-			if p == nil {
-				return 0
-			}
-			return *p
+	if u == nil {
+		rec.Unpinned = un.List()
+		return rec
+	}
+	deref := func(p *int) int {
+		if p == nil {
+			return 0
 		}
-		rec.Usage = &Usage{PromptTokens: u.PromptTokens, CompletionTokens: u.CompletionTokens,
+		return *p
+	}
+	// The counts are recorded when any of them read; a usage member that
+	// carried only a cost leaves Usage nil, as one that carried nothing does.
+	if u.PromptTokens != nil || u.CompletionTokens != nil || u.ReasoningTokens != nil || u.CachedTokens != nil || u.CacheWriteTokens != nil {
+		rec.Usage = &Usage{PromptTokens: deref(u.PromptTokens), CompletionTokens: deref(u.CompletionTokens),
 			ReasoningTokens: deref(u.ReasoningTokens), CacheReadTokens: deref(u.CachedTokens), CacheWriteTokens: deref(u.CacheWriteTokens)}
-		if u.Cost != nil {
-			rec.Cost = &Cost{Amount: *u.Cost, Unit: CostCredits}
-		}
+	}
+	if u.Cost != nil {
+		rec.Cost = &Cost{Amount: *u.Cost, Unit: CostCredits}
 	}
 	rec.Unpinned = un.List()
 	return rec

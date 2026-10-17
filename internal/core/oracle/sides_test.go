@@ -64,7 +64,7 @@ func TestAProviderCallRecordsBothSides(t *testing.T) {
 		FinishReason: "stop", GenerationID: "gen-1", Provider: "Fireworks"}
 	n := func(v int) *int { return &v }
 	cost := 0.00042
-	res.Usage = &openaiapi.Usage{PromptTokens: 120, CompletionTokens: 30, TotalTokens: 150,
+	res.Usage = &openaiapi.Usage{PromptTokens: n(120), CompletionTokens: n(30), TotalTokens: n(150),
 		CachedTokens: n(100), CacheWriteTokens: n(20), ReasoningTokens: n(12), Cost: &cost}
 	rec := callRecord(p, sidesBrief, Settings{"temperature": raw("0")}, res)
 	if rec.PromptSHA256 != openaiapi.PromptSHA256(sidesBrief) || rec.ServedProvider != "Fireworks" ||
@@ -242,5 +242,44 @@ func TestTheHostHandOffMarksTheServedModelSelfReported(t *testing.T) {
 		if u.Field == ServedModel && u.Reason != NotReported {
 			t.Fatalf("a payload naming no model lists it as %q", u.Reason)
 		}
+	}
+}
+
+// TestAMalformedUsageMemberListsEachUnreadCount: a usage member whose prompt
+// or completion count is missing or of another type than the protocol's
+// lists that count as not reported, each on its own, never a zero standing in
+// for it; a usage member with no readable count lists both.
+func TestAMalformedUsageMemberListsEachUnreadCount(t *testing.T) {
+	for _, tc := range []struct {
+		usage            string
+		prompt, complete bool // whether each count is pinned
+		cost             bool
+	}{
+		{`{"prompt_tokens":4,"completion_tokens":"2","cost":"0.1","prompt_tokens_details":[1]}`, true, false, false},
+		{`{"cost":0.1}`, false, false, true},
+		{`{"completion_tokens":2}`, false, true, false},
+	} {
+		body := `{"model":"typesafe/jev-1.13-20260915","choices":[{"index":0,"finish_reason":"stop",` +
+			`"message":{"role":"assistant","content":"{\"verdict\":\"keep\"}"}}],"usage":` + tc.usage + `}`
+		prov := newProvFake(t, 200, body)
+		f, c := configured(t, prov.base(), callKey)
+		tgt, _ := c.Role("scribe")
+		_, rec, err := c.Call(context.Background(), credential.Machine(f.roots.Home), CallRequest{Target: tgt, Brief: sidesBrief})
+		if err != nil {
+			t.Fatalf("%s: %v", tc.usage, err)
+		}
+		got := map[Field]UnpinnedReason{}
+		for _, u := range rec.Unpinned {
+			got[u.Field] = u.Reason
+		}
+		for f, pinned := range map[Field]bool{ServedPromptTokens: tc.prompt, ServedCompletionTokens: tc.complete, ServedCost: tc.cost} {
+			if r, listed := got[f]; listed == pinned || (listed && r != NotReported) {
+				t.Errorf("%s: %s listed %v (%q), want pinned %v", tc.usage, f, listed, r, pinned)
+			}
+		}
+		if tc.prompt && (rec.Usage == nil || rec.Usage.PromptTokens != 4) {
+			t.Errorf("%s: usage = %+v", tc.usage, rec.Usage)
+		}
+		assertListed(t, rec.Unpinned)
 	}
 }
