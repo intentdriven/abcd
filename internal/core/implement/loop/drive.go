@@ -138,8 +138,8 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 		HostSession: true,
 		Transcripts: rs.Transcripts,
 		Validate: func(ran string, _ runner.Request, ans runner.Answer) error {
-			r, err := receipt(repoRoot, runID, aw.Receipt, steps, o,
-				&runner.RouteRecord{Asked: route.Runner, Ran: ran, Model: ans.Model})
+			rec := runner.RecordOf(route.Runner, ran, ans)
+			r, err := receipt(repoRoot, runID, aw.Receipt, steps, o, &rec)
 			if err != nil {
 				return err
 			}

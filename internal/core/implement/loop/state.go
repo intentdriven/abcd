@@ -48,6 +48,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
@@ -171,7 +172,21 @@ const lockFileName = ".lock"
 // as a version they do not know. From version 12 on, decodeState refuses a
 // version above its own before any strict decode, so whatever a later version
 // adds is read as a newer abcd's file, never as one that does not parse.
-const SchemaVersion = 12
+//
+// Version 13 added both sides of a run (itd-166): a runner's route record on
+// a verified receipt or a validator's return carries the model the runner
+// asked for, the prompt's hash, the served models, provider, finish reason
+// and harness version the harness reported, the token counts and cost, and
+// the fields it could not pin (runner.Sides). Version 12 is its strict
+// subset, read as a run whose routes recorded neither side and written back at
+// version 13; a file of version 12 or lower carrying either side is not one
+// its version wrote, and is refused. Builds that write version 12 refuse a
+// version-13 file as a newer abcd's before any strict decode.
+const SchemaVersion = 13
+
+// schemaVersionUnmetered is the version before a route's both sides: read,
+// never written.
+const schemaVersionUnmetered = 12
 
 // schemaVersionUnanswered is the version before an await's `answered`: read,
 // never written.
@@ -711,6 +726,29 @@ func (s State) answered() string {
 	return ""
 }
 
+// metered reports the first route, in a state, that carries either side of
+// its run, which only version 13 writes, or "".
+func (s State) metered() string {
+	sided := func(r *runner.RouteRecord) bool {
+		return r != nil && !reflect.DeepEqual(r.Sides, runner.Sides{})
+	}
+	for _, l := range s.Lanes {
+		for i, r := range l.Receipts {
+			if sided(r.Route) {
+				return fmt.Sprintf("%s's receipt %d's route", l.ID, i+1)
+			}
+		}
+		for _, v := range l.Validation {
+			for i, vr := range v.Validators {
+				if sided(vr.Route) {
+					return fmt.Sprintf("%s's round %d validator %d's route", l.ID, v.Round, i+1)
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // parallel reports what, in a state, only version 9 writes: the name of the
 // first key or stage found, or "".
 func (s State) parallel() string {
@@ -853,7 +891,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnanswered && st.answered() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.answered(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnanswered:
+	case st.SchemaVersion <= schemaVersionUnmetered && st.metered() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries both sides of %s, which version %d never wrote", rel, st.SchemaVersion, st.metered(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnmetered:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.
