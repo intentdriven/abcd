@@ -138,6 +138,13 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 		return Outcome{}, false, err
 	}
 	s := Sync{At: c.Now, Siblings: siblings, Merged: merged}
+	// The sync sends the lane back to a fresh round, so an issue lane
+	// reserves its whole found_at again first (reserveOnLeavingLand;
+	// dcn-2610171009498218), before
+	// anything changes locally: a refused widening leaves the branch and the
+	// worktree at the judged head, and the retry finds no merge of its own to
+	// read as a foreign move of the branch.
+	var reserved string
 	if tip != lane.HeadSHA {
 		// A call killed after its merge commit and before its state write:
 		// found, when the tip is exactly that merge.
@@ -146,6 +153,9 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 			return Outcome{}, false, refuse(string(StageLand), "", lane.ID,
 				fmt.Sprintf("%s moved to %s, which is not a sync of the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 				"restore the branch to the judged head, then run `abcd implement step` again")
+		}
+		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, c.Now); err != nil {
+			return Outcome{}, false, err
 		}
 	} else {
 		// The merge starts from a clean worktree, so the only change a merge
@@ -157,6 +167,9 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 		} else if dirty != "" {
 			return Outcome{}, false, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, so the sync with "+def+" is not merged over them",
 				"commit or remove them in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
+		}
+		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, c.Now); err != nil {
+			return Outcome{}, false, err
 		}
 		msg := syncMessage(*lane, c.State.RunID, def, merged, siblings)
 		if err := syncMerge(lane.Worktree, msg, merged); errors.Is(err, errCommitStalled) {
@@ -191,7 +204,7 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 				return Outcome{}, false, err
 			}
 			lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
-			return Outcome{Goto: StageValidate, Note: conflictNote(lane.ID, def, merged, paths, siblings, s.Brief)}, true, nil
+			return Outcome{Goto: StageValidate, LandLeft: true, Reservation: reserved, Note: conflictNote(lane.ID, def, merged, paths, siblings, s.Brief)}, true, nil
 		}
 		if tip, err = branchTip(c, *lane); err != nil {
 			return Outcome{}, false, err
@@ -200,7 +213,7 @@ func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string
 	s.Head = tip
 	lane.HeadSHA = tip
 	lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
-	return Outcome{Goto: StageValidate, Note: fmt.Sprintf("synced %s with %s at %s, because %s: merge commit %s; a fresh round judges it, and counts no fix round",
+	return Outcome{Goto: StageValidate, LandLeft: true, Reservation: reserved, Note: fmt.Sprintf("synced %s with %s at %s, because %s: merge commit %s; a fresh round judges it, and counts no fix round",
 		lane.ID, termsafe.Sanitize(def), shortSHA(merged), syncCause(termsafe.Sanitize(def), termsafe.SanitizeAll(siblings)), shortSHA(tip))}, true, nil
 }
 

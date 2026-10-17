@@ -449,6 +449,79 @@ func TestALaneSentBackFromItsLandingIsRefusedWhenItsFootprintIsTaken(t *testing.
 	}
 }
 
+// TestARefusedWideningLeavesTheLaneAsItWasThroughAMovedDefault: the narrowing
+// freed docs/guide.md and another account reserved it, and origin's default
+// branch moved, so the landing's sync would send the lane back to a fresh
+// round. The widening is judged before anything changes locally: refused, it
+// leaves the branch and the worktree at the judged head and the lane at its
+// landing with no sync. Origin's default branch moves again and the other
+// account's reservation ends; the retry widens the reservation and syncs
+// cleanly over the default branch's new tip, never reading a merge of its own
+// as a foreign move of the branch.
+func TestARefusedWideningLeavesTheLaneAsItWasThroughAMovedDefault(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implement(t, Options{}, "docs/page.md")
+	f.toLand(t)
+	due := f.tip(t).claimed.Add(61 * time.Minute)
+	f.reserveAs(t, "iss-99", "quinn", "docs/guide.md", due.Add(-time.Minute))
+	f.moveDefault(t, "other.txt")
+
+	judged := currentLane(t, f.repo, f.runID)
+	branchTip := func() string {
+		return strings.TrimSpace(f.repo.Git("rev-parse", "refs/heads/"+judged.Branch))
+	}
+	treeHead := func() string {
+		return strings.TrimSpace(f.repo.Git("-C", judged.Worktree, "rev-parse", "HEAD"))
+	}
+	if branchTip() != judged.HeadSHA {
+		t.Fatalf("the fixture's branch is at the judged head: %s, %s", branchTip(), judged.HeadSHA)
+	}
+
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{Now: func() time.Time { return due }})
+	r, ok := AsRefusal(err)
+	if !ok || r.Contention || !strings.Contains(r.Reason, "iss-99") {
+		t.Fatalf("the widening over the other account's reservation refuses the step for a person: %v", err)
+	}
+	if tip := branchTip(); tip != judged.HeadSHA {
+		t.Fatalf("a refused widening leaves the branch at the judged head %s: %s", shortSHA(judged.HeadSHA), shortSHA(tip))
+	}
+	if head := treeHead(); head != judged.HeadSHA {
+		t.Fatalf("a refused widening leaves the worktree's HEAD at the judged head %s: %s", shortSHA(judged.HeadSHA), shortSHA(head))
+	}
+	if dirty := f.repo.Git("-C", judged.Worktree, "status", "--porcelain", "--untracked-files=all"); dirty != "" {
+		t.Fatalf("a refused widening leaves the worktree clean: %q", dirty)
+	}
+	if _, err := os.Stat(filepath.Join(judged.Worktree, "other.txt")); !os.IsNotExist(err) {
+		t.Fatalf("nothing of the default branch is merged into the worktree: %v", err)
+	}
+	l := currentLane(t, f.repo, f.runID)
+	if l.Stage != StageLand || l.HeadSHA != judged.HeadSHA || len(l.Syncs) != 0 || l.Landing != nil {
+		t.Fatalf("the lane stays at its landing as it was: stage %s, head %s, syncs %d, landing %+v", l.Stage, shortSHA(l.HeadSHA), len(l.Syncs), l.Landing)
+	}
+
+	f.moveDefault(t, "other2.txt")
+	gitIn(t, f.bare, "update-ref", "-d", claim.RefPrefix+"iss-99")
+	_, err = advance(f.repo.Root(), f.runID, f.stages, Options{Now: func() time.Time { return due.Add(time.Minute) }})
+	if err != nil {
+		t.Fatalf("the retry, the other account's reservation ended, syncs cleanly: %v", err)
+	}
+	l = currentLane(t, f.repo, f.runID)
+	if l.Stage != StageValidate || len(l.Syncs) != 1 {
+		t.Fatalf("the retry's sync sends the lane to a fresh round: stage %s, syncs %d", l.Stage, len(l.Syncs))
+	}
+	main := strings.TrimSpace(gitIn(t, f.bare, "rev-parse", "refs/heads/main"))
+	parents := strings.Fields(f.repo.Git("rev-list", "--parents", "-n", "1", l.HeadSHA))
+	if len(parents) != 3 || parents[1] != judged.HeadSHA || parents[2] != main || l.Syncs[0].Merged != main {
+		t.Fatalf("the sync merges the default branch's new tip %s over the judged head %s: %q", shortSHA(main), shortSHA(judged.HeadSHA), parents)
+	}
+	if tip := branchTip(); tip != l.HeadSHA {
+		t.Fatalf("the branch is at the sync: %s, %s", shortSHA(tip), shortSHA(l.HeadSHA))
+	}
+	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
+		t.Fatalf("the retry reserves the whole found_at again: %q", fp)
+	}
+}
+
 // TestAResumeDuringImplementPublishesAWidenedFoundAt: the issue's found_at
 // named docs/page.md when its lane reserved it, and was widened to docs while
 // the implementer worked. A resumed `abcd build` reserves docs, judged for

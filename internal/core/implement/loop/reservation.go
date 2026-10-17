@@ -754,16 +754,18 @@ func widenReservation(repoRoot, key string, fp []string, takeOver bool, own clai
 // reserveOnLeavingLand reserves an issue lane's whole found_at again when the
 // lane leaves its landing for an earlier stage (a landing's sync sends it to
 // a fresh round), before the lane goes on (dcn-2610170947246937, refining
-// dcn-2610170919040486):
-// the landing's renewal may have narrowed the reservation to the lane's
-// changes, and the fix round that may follow can change any file of the
-// found_at. A tip of this copy's that already covers the found_at, an
+// dcn-2610170919040486): the landing's renewal may have narrowed the
+// reservation to the lane's changes, and the fix round that may follow can
+// change any file of the found_at. The sync calls it once it knows it will
+// merge and before it merges (mergeDefault; dcn-2610171009498218), so a
+// refusal leaves the branch and the worktree at the judged head; the move
+// calls it for any other way back from the landing (performMove). A tip of this copy's that already covers the found_at, an
 // intent's run, and a run holding no reservation take no act; a tip the view
 // shows lost is the land fence's to stop. The widening is the one a resume
 // makes (widenReservation), judged for overlap and against the cap; a
 // refusal of it refuses the step for a person, naming what it met, with
-// nothing pushed, and the lane stays at its landing. note is the run
-// record's line for a widening made.
+// nothing merged by the step and nothing pushed, and the lane stays at its
+// landing. note is the run record's line for a widening made.
 func reserveOnLeavingLand(repoRoot string, st State, lane Lane, now time.Time) (note string, err error) {
 	if st.ReservedAt == nil || st.Issue() == "" {
 		return "", nil
@@ -789,8 +791,8 @@ func reserveOnLeavingLand(repoRoot string, st State, lane Lane, now time.Time) (
 			reason = rf.Reason
 		}
 		return "", refuse(string(StageLand), "", lane.ID,
-			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's found_at, but its reservation, narrowed to %s, cannot be widened back to %s: %s; the lane stays at its landing, its sync unpushed",
-				st.Key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason),
+			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's found_at, but its reservation, narrowed to %s, cannot be widened back to %s: %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
+				st.Key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason, shortSHA(lane.HeadSHA)),
 			"wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again; or hand the lane back so the issue is built again")
 	}
 	return r.note + ", widened again as the lane leaves its landing for a fresh round", nil

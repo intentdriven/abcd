@@ -558,10 +558,11 @@ since a fix round may still change another file. A narrowing never widens the
 reservation, and one that would name a file no reservation can carry is not
 made, the renewal made all the same, its record line saying `reservation kept
 at its full footprint` and why. When the landing's sync sends the lane back to
-a fresh round, the step reserves the issue's whole `found_at` again before the
-lane goes on, judged for overlap, since a fix round may follow; a refusal of
-that (another's reservation, or the cap) refuses the step for a person, naming
-it, and the lane stays at its landing with its sync unpushed. A renewal that fails is
+a fresh round, the step reserves the issue's whole `found_at` again before it
+merges, judged for overlap, since a fix round may follow; a refusal of that
+(another's reservation, or the cap) refuses the step for a person, naming it,
+and the lane stays at its landing, its branch at the judged head, with nothing
+merged and nothing pushed. A renewal that fails is
 logged as `reservation_renew_failed` and named in the step's answer, and the
 stage still runs: the land fence is where a lost reservation stops the run. A
 renewal only renews this person's own reservation from this copy: it never

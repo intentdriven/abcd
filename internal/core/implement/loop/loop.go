@@ -136,6 +136,13 @@ type Outcome struct {
 	// Goto sends the lane back to an earlier stage (the landing's sync sends
 	// it to a fresh round); set only with no Await, HandBack or Stay.
 	Goto Stage
+	// LandLeft is set by a landing body that sends the lane back (the sync)
+	// once it has reserved an issue's whole found_at again, before it changed
+	// anything locally (reserveOnLeavingLand), so the move does not judge
+	// the reservation a second time; Reservation is the run record's line for
+	// a widening it made, "" when the reservation already covered the found_at.
+	LandLeft    bool
+	Reservation string
 	// Note is the run record's line for the stage.
 	Note string
 }

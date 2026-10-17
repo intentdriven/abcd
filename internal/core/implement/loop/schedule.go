@@ -607,15 +607,19 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	stage := string(lane.Stage)
 	// An issue lane sent back from its landing reserves its whole found_at
 	// again before it goes on, a narrowing the landing's renewal made
-	// undone; a refusal leaves the state as it was (reservation.go).
-	if out.Goto != "" && lane.Stage == StageLand {
+	// undone; a refusal leaves the state as it was (reservation.go). The
+	// landing's sync reserves it before it merges (mergeDefault), so a
+	// refusal leaves the branch as it was too; this is for any other way
+	// back from the landing.
+	if out.Goto != "" && lane.Stage == StageLand && !out.LandLeft {
 		note, err := reserveOnLeavingLand(repoRoot, *st, lane, now)
 		if err != nil {
 			return StepResult{}, err
 		}
-		if note != "" {
-			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: note})
-		}
+		out.Reservation = note
+	}
+	if out.Reservation != "" {
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: out.Reservation})
 	}
 	// A step that succeeds ends the lane's run of refusals (stuck.go).
 	lane.Refused = nil
