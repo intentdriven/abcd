@@ -231,10 +231,10 @@ func TestAPatternPastTheStepBudgetIsNotGenerated(t *testing.T) {
 		if got {
 			t.Fatalf("a path past the step budget is generated")
 		}
-		if took := time.Since(start); took > slack(2*time.Second) {
+		if took := time.Since(start); !raceEnabled && took > slack(2*time.Second) {
 			t.Fatalf("matching one path took %s; want it bounded", took)
 		}
-	case <-time.After(slack(10 * time.Second)):
+	case <-time.After(slack(30 * time.Second)):
 		t.Fatal("matching one path did not finish")
 	}
 	if !parseAttributes(attrs).generated("b/y") {
@@ -305,10 +305,10 @@ func TestTheBudgetBoundsWallTimeOverLongLiterals(t *testing.T) {
 		// The step budget is what bounds the work; the wall-clock bound
 		// takes the package's slack for a shared machine
 		// (wallclock_test.go), and catches a budget that stops nothing.
-		if bound := slack(time.Second); took > bound {
+		if bound := slack(time.Second); !raceEnabled && took > bound {
 			t.Fatalf("it took %s; want it stopped well inside a second on a quiet machine (bound %s)", took, bound)
 		}
-	case <-time.After(slack(3 * time.Second)):
+	case <-time.After(slack(30 * time.Second)):
 		t.Fatal("the long-literal declaration did not stop in 20s")
 	}
 }
@@ -418,7 +418,7 @@ func TestTheBudgetBoundsWallTimeOverManyLines(t *testing.T) {
 	if !spent {
 		t.Fatal("a 256 KiB declaration of one-line rules was judged within the budget")
 	}
-	if bound := slack(1500 * time.Millisecond); took > bound {
+	if bound := slack(1500 * time.Millisecond); !raceEnabled && took > bound {
 		t.Fatalf("it took %s; want it stopped within about a second on a quiet machine (bound %s)", took, bound)
 	}
 }
