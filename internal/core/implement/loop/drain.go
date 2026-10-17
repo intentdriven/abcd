@@ -177,6 +177,10 @@ type DrainRoute struct {
 	// flag.
 	Wrote string     `json:"wrote"`
 	At    *time.Time `json:"at,omitempty"`
+	// Blob is the blob id of the issue's record on origin's default branch
+	// when the hand-back was routed, "" without origin: once that record
+	// changes, the drain takes the issue up again (drain_readmit.go).
+	Blob string `json:"blob,omitempty"`
 }
 
 // DrainOptions are the drain's own flags.
@@ -359,6 +363,8 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 	}()
 	started := false
+	// repaced is what this move's new pace came to, "" when it took none.
+	repaced := ""
 	if !live {
 		pace, err := resolvePace(o.roots(repoRoot), flags)
 		if err != nil {
@@ -377,8 +383,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				st.StartedAt.Format(time.RFC3339), capPhrase(st.Max), d.Max),
 				"drain again without --max; the drain keeps the cap it started with")
 		}
+		// A running drain takes a new pace rather than refusing it
+		// (drain_pace.go).
 		if flags.set {
-			if err := resumeWithFlags(StartResult{RunID: "the drain started " + st.StartedAt.Format(time.RFC3339), Pace: st.Pace}, flags); err != nil {
+			if repaced, err = repaceDrain(repoRoot, &st, o, flags, now); err != nil {
 				return DrainResult{}, err
 			}
 		}
@@ -390,6 +398,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if err != nil {
 		return DrainResult{}, err
 	}
+	// blobs are the issues' record blobs on origin's default branch as this
+	// move planned from it, read once when a hand-back is routed or a
+	// handed-back issue is considered again (drain_readmit.go).
+	blobs := &originBlobs{repoRoot: repoRoot, origin: origin}
 	res := DrainResult{State: DrainStateRel, Started: started, Rule: plan.Record, Loosened: plan.Loosened,
 		Order: plan.Order, Dispositions: plan.Dispositions, Routed: []DrainRoute{}, Passed: []Excluded{},
 		Flags: fieldFlags(plan, st.HandBacks), Finished: []DrainFinished{}, Origin: origin}
@@ -409,6 +421,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		if st.Stopped != "" && st.WaitingUntil != nil {
 			st.WaitingUntil, st.Waiting, write = nil, "", true
+		}
+		if repaced != "" {
+			res.Next = joinNext(repaced, res.Next)
+			write = true
 		}
 		if clauses := holds.settle(st.Judging); len(clauses) > 0 {
 			res.Next = joinNext(append([]string{res.Next}, clauses...)...)
@@ -557,6 +573,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if pending != "" {
 				r.Wrote += "; " + pend(&st, j.Issue, j.Kind, judgedBlob(repoRoot, j.Issue, origin), pending, now)
 			}
+			r.Blob = blobs.of(j.Issue)
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
 		} else if !j.Applied {
@@ -714,6 +731,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if rel := releaseHandedBack(repoRoot, run, *hb, now); rel != "" {
 				r.Wrote += "; " + rel
 			}
+			r.Blob = blobs.of(l.Issue)
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
 		}
@@ -773,8 +791,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if v.Outcome != capture.DrainEligible {
 			continue
 		}
-		if slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.Issue == v.ID }) ||
-			slices.ContainsFunc(st.HandBacks, func(r DrainRoute) bool { return r.Issue == v.ID }) {
+		// An issue this drain has in hand is left; one it handed back is
+		// taken up again once its record has changed on origin
+		// (drain_readmit.go).
+		if st.taken(v.ID, blobs) {
 			continue
 		}
 		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {
@@ -787,9 +807,20 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 					stamp(l.LapsedAt), stamp(ends))})
 			continue
 		}
-		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID }); i >= 0 {
+		// A run of the issue in progress here passes it over. One that is
+		// over, complete or handed back, does too without origin, where
+		// nothing says whether its record has changed since; on origin the
+		// hand-back's tombstone and this drain's routes say so
+		// (drain_readmit.go).
+		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.Complete() && !r.issueHandedBack() }); i >= 0 {
 			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckRun,
 				Reason: "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"})
+			continue
+		}
+		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID }); i >= 0 && origin == nil {
+			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckRun,
+				Reason: "this checkout's run " + runs[i].RunID + " for it is over, and with no remote named " + claim.Remote +
+					" the drain cannot tell whether its record has changed since; it is a person's"})
 			continue
 		}
 		iss, ok := plan.OpenIssue(v.ID)
@@ -802,6 +833,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if reserving {
 			if footprint, ok = issueFootprint(iss); !ok {
 				r := noFoundAtHandBack(v.ID, now)
+				r.Blob = blobs.of(v.ID)
 				st.HandBacks = append(st.HandBacks, r)
 				res.Routed = append(res.Routed, r)
 				continue
@@ -915,7 +947,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			judged, routedHold = &st.Judgements[len(st.Judgements)-1], judging.Hold
 		}
 		st.Judging = nil
+		// Every lane runs on the drain's pace, not on what the configuration
+		// resolves when it opens (drain_pace.go).
 		lane := o
+		lane.Pace, lane.SubAgents, lane.FixRounds, lane.pace = nil, nil, nil, st.Pace
 		lane.reserve = footprint
 		lane.plan = &plan
 		lane.drain = true

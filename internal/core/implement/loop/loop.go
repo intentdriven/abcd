@@ -83,8 +83,14 @@ type Options struct {
 	// checkout's.
 	plan *capture.DrainPlan
 	// drain marks a lane start the drain makes: a reservation it pushes backs
-	// off a hand-back whose record is unchanged on origin (claim.Request.Drain).
+	// off a hand-back whose record is unchanged on origin (claim.Request.Drain),
+	// and an issue run handed back is over, so a lane the drain opens again
+	// on its issue is a new run rather than that run resumed (drain_readmit.go).
 	drain bool
+	// pace is the pace a new run starts on in place of the one the flags and
+	// configuration resolve: the drain's, so every lane it opens runs on the
+	// pace the drain does (spc-2610161044461448 step 16). Nil resolves it.
+	pace *Pace
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -343,7 +349,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	if err != nil {
 		return StartResult{}, err
 	}
-	if res, ok, err := resumeLive(repoRoot, key); err != nil || ok {
+	if res, ok, err := resumeLive(repoRoot, key, o.drain); err != nil || ok {
 		if err == nil && pick != nil {
 			err = pickedLive(res)
 		}
@@ -358,8 +364,10 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		return res, nil
 	}
-	pace, err := resolvePace(o.roots(repoRoot), flags)
-	if err != nil {
+	var pace Pace
+	if o.pace != nil {
+		pace = *o.pace
+	} else if pace, err = resolvePace(o.roots(repoRoot), flags); err != nil {
 		return StartResult{}, err
 	}
 	var shared *implement.Run
@@ -417,7 +425,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		// A start that raced this one past the lookup above created the run
 		// while the checks ran: it is resumed, not duplicated.
-		if st, ok := liveRun(runs, chk.Key); ok {
+		if st, ok := liveRun(runs, chk.Key, o.drain); ok {
 			res = startResult(st, nil, true)
 			keep = true
 			if pick != nil {
@@ -557,7 +565,7 @@ func claimRefusal(session, record string, err error) error {
 // has one. A checkout with no run directory has none, and the lookup creates
 // nothing; a run directory that is not a real directory is left to the create
 // path, which refuses it.
-func resumeLive(repoRoot, key string) (StartResult, bool, error) {
+func resumeLive(repoRoot, key string, drain bool) (StartResult, bool, error) {
 	if !fsutil.IsRealDir(filepath.Join(repoRoot, filepath.FromSlash(RunRelDir))) {
 		return StartResult{}, false, nil
 	}
@@ -568,7 +576,7 @@ func resumeLive(repoRoot, key string) (StartResult, bool, error) {
 		if err != nil {
 			return err
 		}
-		if st, ok := liveRun(runs, key); ok {
+		if st, ok := liveRun(runs, key, drain); ok {
 			res, found = startResult(st, nil, true), true
 		}
 		return nil
@@ -612,10 +620,11 @@ func resumeWithFlags(res StartResult, f paceFlags) error {
 		"resume without --pace, --sub-agents and --fix-rounds; the run keeps the pace it started on")
 }
 
-// liveRun returns the run for key that is not complete.
-func liveRun(runs []State, key string) (State, bool) {
+// liveRun returns the run for key that is not complete. For a drain's lane
+// (drain), an issue run whose lane was handed back is over too.
+func liveRun(runs []State, key string, drain bool) (State, bool) {
 	for _, st := range runs {
-		if recordid.SameID(st.Key, key) && !st.Complete() {
+		if recordid.SameID(st.Key, key) && !st.Complete() && !(drain && st.issueHandedBack()) {
 			return st, true
 		}
 	}

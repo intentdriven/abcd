@@ -250,7 +250,7 @@ on origin's default branch backs off, with a tip or without one
    since the drain's part ends at the open pull request.
 6. When the drain has opened as many lanes as its cap, it ends and says so.
 7. For the next eligible issue in the drain order that the drain has not taken
-   or handed back and this checkout has no run for, it asks the host judgement
+   or handed back and this checkout has no run in progress for, it asks the host judgement
    over the issue's remedy (below) and opens nothing, unless the host has
    already answered no over the remedy as it stands. With that no, it starts
    the implement loop for the issue and names the run. An issue the loop's own
@@ -396,10 +396,28 @@ The drain's state is one file beside the runs,
 and its pace, the window clock, every lane it opened with its outcome, and
 every hand-back it routed with the record change it made. It is written under
 its own lock, so two drains never open two lanes. A drain that has ended is
-kept for reading, and the next invocation begins a new one. The cap and the
-pace are set when a drain begins; a different cap or pace named while it runs is
-refused rather than ignored. The pace is the implement loop's, resolved through
-the same layers, and each lane's run is paced as a run is.
+kept for reading, and the next invocation begins a new one. The cap is set when
+a drain begins, and a different cap named while it runs is refused rather than
+ignored. The pace is the implement loop's, resolved through the same layers when
+the drain begins, and every lane the drain opens starts on the drain's pace, not
+on what the layers resolve when it opens (spc-2610161044461448 step 16,
+dcn-2610161040399117). A running drain given `--pace`, `--sub-agents` or
+`--fix-rounds` takes them: each number named replaces the one stored, the rest
+kept, the drain's state records them with the flag as their origin, the next
+lane opens on them, and each lane in progress takes them into its run's pace,
+which its next stage reads, its run record saying so. Each lane's run is then
+paced as a run is.
+
+A route keeps the blob id of the issue's record on `origin`'s default branch as
+it was routed, and an issue the drain handed back is passed over only while that
+record stands: once a person changes it there, the issue is the drain's to
+consider again, judged afresh, an answer taken before the hand-back deciding
+nothing, as the tombstone lets every other account's drain consider it. The
+issue run a handed-back lane leaves, complete or stopped at its hand-back, no
+longer passes its issue over, and the lane the drain opens for it again is a new
+run, never that run resumed. Without a remote named `origin` nothing says whether
+a record has changed, so a handed-back issue stays passed over for the drain's
+life, and an issue whose run here is over is passed over naming it.
 
 ### The judgement before a lane opens
 
@@ -576,7 +594,7 @@ names the fields but is proposed or superseded, the refusal names it. They
 refuse a malformed record, naming the record and the field, two accepted
 records, naming both, and a store or record that cannot be read safely. The run
 also refuses a checkout without the local tier, a cap that is not a whole
-number, a cap or pace other than the one a drain in progress began with, and a
+number, a cap other than the one a drain in progress began with, and a
 drain state it cannot read as its own; another drain moving in the checkout is
 a contention (exit 3). It refuses a judgement's answer when the drain awaits
 none, when it is given at another path than the one the request names, when it

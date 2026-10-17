@@ -1290,7 +1290,7 @@ is counted once, as its promotion. Nothing but the promotion is written to the
 ledger, and every hand-back is in the summary.
 
 The drain is paced as a run is: its window and pause are --pace, --sub-agents and
---fix-rounds as `abcd build` reads them, set when the drain begins. At the window's
+--fix-rounds as `abcd build` reads them, resolved when the drain begins. At the window's
 end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and
 the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
@@ -1301,8 +1301,12 @@ and asks nothing, writes waiting_until fifteen minutes on (apart from the pace
 window) and waiting, "cap" or "held", for which of the two it waits on, names the
 reservations and pull requests or the holds it waits on, and keeps its judgements;
 run it again at or after that time. Once a drain has ended, the
-next `abcd drain` begins a new one. A cap or pace named while a drain is in
-progress that differs from the one it began with is refused. Once a run gives up on a
+next `abcd drain` begins a new one. A cap named while a drain is in progress that
+differs from the one it began with is refused. Every lane the drain opens runs on
+the drain's pace; --pace, --sub-agents and --fix-rounds given while it runs are
+taken, recorded in its state, and applied from the next lane it opens and the next
+stage of the lane in progress. An issue the drain handed back is taken up again,
+judged afresh, once its record changes on origin's default branch. Once a run gives up on a
 lost connection (`abcd implement outage`), the drain opens nothing and ends with
 stopped "outage", naming the services down, since when, the probes and the lanes it
 opened; the next `abcd drain`, once the outage is cleared, begins a new one.

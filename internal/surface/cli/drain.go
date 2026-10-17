@@ -149,7 +149,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"is counted once, as its promotion. Nothing but the promotion is written to the\n" +
 			"ledger, and every hand-back is in the summary.\n\n" +
 			"The drain is paced as a run is: its window and pause are --pace, --sub-agents and\n" +
-			"--fix-rounds as `abcd build` reads them, set when the drain begins. At the window's\n" +
+			"--fix-rounds as `abcd build` reads them, resolved when the drain begins. At the window's\n" +
 			"end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and\n" +
 			"the call opens nothing; before that time a drain opens nothing, and after it the\n" +
 			"next invocation continues. --max <n> caps the lanes the drain opens (the default\n" +
@@ -160,8 +160,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"window) and waiting, \"cap\" or \"held\", for which of the two it waits on, names the\n" +
 			"reservations and pull requests or the holds it waits on, and keeps its judgements;\n" +
 			"run it again at or after that time. Once a drain has ended, the\n" +
-			"next `abcd drain` begins a new one. A cap or pace named while a drain is in\n" +
-			"progress that differs from the one it began with is refused. Once a run gives up on a\n" +
+			"next `abcd drain` begins a new one. A cap named while a drain is in progress that\n" +
+			"differs from the one it began with is refused. Every lane the drain opens runs on\n" +
+			"the drain's pace; --pace, --sub-agents and --fix-rounds given while it runs are\n" +
+			"taken, recorded in its state, and applied from the next lane it opens and the next\n" +
+			"stage of the lane in progress. An issue the drain handed back is taken up again,\n" +
+			"judged afresh, once its record changes on origin's default branch. Once a run gives up on a\n" +
 			"lost connection (`abcd implement outage`), the drain opens nothing and ends with\n" +
 			"stopped \"outage\", naming the services down, since when, the probes and the lanes it\n" +
 			"opened; the next `abcd drain`, once the outage is cleared, begins a new one.\n\n" +

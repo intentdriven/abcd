@@ -399,8 +399,19 @@ what it did in `next`:
   the lanes it had opened, and `next`.
 
 `--pace`, `--sub-agents` and `--fix-rounds` are `abcd build`'s, read when a
-drain begins; `--max` is set then too. Naming another while the drain runs is
-refused.
+drain begins, and every lane the drain opens runs on them, not on what the
+configuration resolves when it opens. Given while the drain runs, they are
+taken: each number named replaces the one the drain runs on, `pace` shows the
+new pace, `next` says the drain took it, the next lane opens on it, and the
+lane in progress takes it from its next stage. `--max` is set when a drain
+begins; naming another while it runs is refused.
+
+An issue the drain handed back is passed over only while its record stands on
+`origin`'s default branch: once a person changes that record there, the drain
+judges it afresh and may open a new lane for it, though the handed-back run's
+directory remains (`hand_backs[].blob` is the record's blob as it was routed).
+Without a remote named `origin`, a handed-back issue stays passed over, and so
+does an issue whose run in this checkout is over.
 
 ### The hand-back, by kind
 
@@ -435,7 +446,7 @@ all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 the run this move started; `routed` are the hand-backs this move routed and
 `hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement`,
 `reservation` or `field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,
-`wrote`); `judging` is the host judgement the drain awaits (`issue`,
+`wrote`, `blob`); `judging` is the host judgement the drain awaits (`issue`,
 `remedy_sha256`, `request`, `answer`, `requested_at`), `null` when it awaits
 none; `judged` is the answer this move took and `judgements` every one the
 drain has taken (`issue`, `remedy_sha256`, `answer`, `kind`, `reason`,
@@ -487,8 +498,8 @@ a flagged decision: those are a person's.
   past the size cap) refuses. Every one of these
   exits 2 with nothing written, on the dry run and the bare verb alike.
 - The run refuses (exit 2, nothing written) a checkout without the local tier,
-  a negative `--max`, and a `--max` or pace other than the one a drain in
-  progress began with; a drain state it cannot read as its own is refused,
+  a negative `--max`, and a `--max` other than the one a drain in progress
+  began with; a drain state it cannot read as its own is refused,
   naming the file. Another drain moving in the checkout exits 3: back off and
   retry. `--dry-run` refuses `--max`, `--pace`, `--sub-agents`,
   `--fix-rounds`, `--judgement` and `--take-over`.

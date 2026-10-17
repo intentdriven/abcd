@@ -24,7 +24,7 @@ func (st DrainState) textWritten() bool {
 		texts = append(texts, l.Issue, l.RunID, l.Outcome)
 	}
 	for _, r := range st.HandBacks {
-		texts = append(texts, r.Issue, r.From, r.Kind, r.Route, r.Draft, r.Question, r.Rule, r.Home, r.Reason, r.Wrote)
+		texts = append(texts, r.Issue, r.From, r.Kind, r.Route, r.Draft, r.Question, r.Rule, r.Home, r.Reason, r.Wrote, r.Blob)
 	}
 	if j := st.Judging; j != nil {
 		texts = append(texts, j.Issue, j.RemedySHA256, j.Request, j.Answer)
