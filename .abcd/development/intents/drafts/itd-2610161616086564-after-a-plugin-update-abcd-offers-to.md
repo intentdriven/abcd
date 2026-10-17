@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> After a plugin update, abcd offers to bring the repository's setup up to date. When the abcd plugin has been updated since a repository was last set up, the next session opens by saying so and offering to run setup again, so new settings and new setup questions reach the repository instead of waiting until someone happens to run setup. Alice, a solo founder, updates the plugin in the evening; the next morning their session opens with: abcd was updated to 0.16.0, two new setup questions are waiting, run setup now? They answer yes, setup asks only the new questions, and their repository picks up the new settings. Nothing changes without that yes, and noticing the update reads only what is on disk, never the internet.
+> After a plugin update, abcd offers to bring the repository's setup up to date. When the abcd plugin has been updated since a repository was last set up and the update brings something the repository needs, the agent's first reply in the next session says so and offers to run setup again, so new settings and new setup questions reach the repository instead of waiting until someone happens to run setup. Alice, a solo founder, updates the plugin in the evening; the next morning the first reply to their first message says: abcd was updated to 0.16.0, two setup questions are waiting here, run setup now? They answer yes, setup asks only the new questions, and their repository picks up the new settings. Nothing changes without that yes, and noticing the update reads only what is on disk, never the internet.
 
 ## Why This Matters
 
@@ -73,16 +73,28 @@ Seeded by the agent on 2026-10-16 from the code and the two drafts, unconfirmed:
 the planning interview walks each one.
 
 - **Given** Alice, a solo founder, whose repository was set up with 0.15.0 and
-  whose plugin now runs 0.16.0, **when** their next session starts in that
-  repository, **then** the session offers to run setup again, naming the version
-  the repository was set up with, the version now running, and how many setup
-  questions are new, and nothing is written to the repository before they answer.
+  whose plugin now runs 0.16.0 and adds a setup question they have never
+  answered, **when** they send the first message of their next session in that
+  repository, **then** the agent's first reply offers to run setup again in one
+  line, naming the version the repository was set up with, the version now
+  running, and how many questions and changed defaults wait, with their titles
+  on request; nothing is written to the repository before they answer.
+- **Given** an update that brings this repository nothing it needs (no question
+  it has never answered and no setting whose default changed), **when** the next
+  session starts, **then** no offer appears, and `abcd ahoy` stays the place to
+  check.
 - **Given** Alice answers yes, **when** setup runs, **then** it asks only the
-  questions this repository has not answered yet, never re-asks one already
-  answered with a value, and records the new setup version when it completes.
+  questions this repository has never answered and the settings whose default
+  changed in the update, never re-asks a question answered with a value or
+  deferred with "decide later", and records the new setup version when it
+  completes.
 - **Given** Alice answers "not now", **when** later sessions start in that
   repository before the next update, **then** the offer is not repeated, and
   `abcd ahoy` still lists the waiting setup with the command that runs it.
+- **Given** Alice answers the offer either way, **when** the answer is recorded,
+  **then** the abcd verb the agent runs with her answer records it, keyed on the
+  repository and the release, in abcd's own data directory; the session-start
+  hook writes nothing for it.
 - **Given** Alice declined the offer for 0.16.0, **when** the plugin moves on to
   0.16.1, **then** the next session in that repository offers once more.
 - **Given** a session with no person to answer it (a headless or scripted run),
@@ -100,39 +112,34 @@ the planning interview walks each one.
   is fetched from the network (the versions come from the running binary and the
   repository's `.abcd/config.json`), and no word from the repository's tracked
   files reaches the session's context unchecked: the recorded setup version is
-  shape-checked as a release tag or left off that channel.
+  checked to be exactly a release tag of the form vX.Y.Z (digits only) before it
+  reaches the session's context, and any other value is left off that channel.
 
-## Open Questions
+## Decisions
 
-_Seeded by the agent on 2026-10-16, unconfirmed; each lists the defensible
-answers, none recommended._
+The product thinker answered four of these on 2026-10-16; the agent decided the
+rest on 2026-10-17 during an autonomous run, on the grounds given.
 
-- **How often is the offer made?** (a) once per update per repository, then
-  only `abcd ahoy` lists it; (b) every session until it is answered yes or no;
-  (c) once per update per machine, whichever repository is opened first.
-- **Where does the offer appear?** (a) as a question the agent asks at the
-  start of the session; (b) as a session-start notice naming the command, with
-  no question; (c) as a question asked at the first prompt, so a session opened
-  for something urgent is not interrupted before it starts.
-- **Where is "offered" or "declined" remembered?** Session start writes one
-  file today, by an explicit single exception (dcn-2609300000000011). (a) a
-  marker per repository and release in abcd's data directory, a second
-  exception; (b) the repository's local tier, per worktree, so each worktree
-  asks once; (c) nothing written, which makes (b) of the first question the only
-  workable cadence.
-- **Which questions count as new?** (a) only questions that did not exist at the
-  recorded setup version; (b) every question this repository has no value for,
-  including ones answered "decide later" before; (c) (b), but "decide later"
-  answers wait until the person runs setup by hand.
-- **Is the offer one sentence or the full list?** (a) a count of new questions;
-  (b) the new questions' titles; (c) the count, and the titles on request.
-- **Does a plugin update that adds no new question still offer setup?** (a)
-  yes, because settings and records may still change; (b) no, only when a
-  question or a required change waits; (c) offer only when ahoy reports a
-  required gap.
-- **Bundle shape with the summary draft (itd-2610161617096084).** (a) one
-  session-start moment: summary first, then the offer; (b) two separate
-  moments; (c) the offer is one line of the summary.
+- **How often:** once per update per repository; after that only `abcd ahoy`
+  lists it (product thinker).
+- **Where it appears:** asked in the agent's first reply, after the person's
+  first message, so a session opened for something urgent is not interrupted
+  before it starts (product thinker).
+- **Which questions count:** every question this repository has never answered,
+  leaving out those deferred with "decide later", plus every setting whose
+  default changed in the update (product thinker).
+- **An update with nothing needed:** offered only when something is required;
+  an update that brings no such question or setting offers nothing (product
+  thinker).
+- **Where the answer is remembered:** in abcd's data directory, keyed on the
+  repository's root commit and the release, and written by the verb the agent
+  runs with the answer, never by the session-start hook, so the hook's single
+  write exception (dcn-2609300000000011) stays single (agent, from the design
+  review).
+- **One sentence or the list:** one line with the count, the titles on request,
+  matching the summary's one-line form (agent).
+- **Bundle shape with itd-2610161617096084:** one moment in the first reply:
+  the one-line summary of what changed, then the offer (agent).
 
 ## Audit Notes
 

@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> After a plugin update, abcd says what changed in words a person can use. When the next session notices that the abcd plugin was updated, it shows a short summary of what the update means for this repository: new features to try, new setup questions waiting, and anything that now works differently, each in one plain sentence with where to read more. Alice, a solo founder, sees: abcd 0.16.0, live brief sessions are new and need setup, the session page now opens on the brief; read more in the release notes. They know what changed without reading the whole changelog. The summary is built from the release's own records on disk, never fetched from the internet.
+> After a plugin update, abcd says what changed in words a person can use. When the next session notices that the abcd plugin was updated, the agent's first reply gives one line per release saying what changed, with the full summary one command away: what waits on this repository, and anything that now needs the person to act. Alice, a solo founder, sees: abcd 0.16.0, live brief sessions are new and need setup here; ask for details. They know what changed without reading the whole changelog. The summary comes from a short digest each release carries inside abcd itself, never fetched from the internet.
 
 ## Why This Matters
 
@@ -52,18 +52,20 @@ person has to think to open.
 
 _Proposed by the agent on 2026-10-16, unconfirmed._
 
-- The plugin root carries the release's records (`CHANGELOG.md`, `RELEASE.md`,
-  `.abcd/development/`), as it does while the marketplace installs the whole
-  repository. The curated payload itd-108 drafts (`.abcd/config/launch-payload.json`
-  names neither `CHANGELOG.md` nor `.abcd/`) would remove them, so under itd-108
-  the summary's source has to travel in the payload or in the binary.
+- The summary's source travels inside the abcd binary: a digest the release cut
+  writes, one line per shipped record, embedded at build time. The plugin root
+  cannot be relied on, because the curated payload itd-108 drafts
+  (`.abcd/config/launch-payload.json`) carries none of `CHANGELOG.md`,
+  `RELEASE.md` or `.abcd/`.
 - Releases cut by `abcd launch ship`, whose changelog sections are derived from
   records and cite record ids; sections rolled by hand (0.6.0 and earlier) are
   summarised as written, or named as not summarised.
 - The version the repository or machine moved from is known on disk: the
   repository's `setup_version` or the binary record's `previous_tag`.
-- The plugin root has no git history (an installed root is a plain copy), so the
-  summary reads files, never tags or commits.
+- Each digest line is the record's own changelog line as the release cut
+  composed it (the line `launch ship` checks against the record id it cites),
+  so the "one plain sentence" has one source and is never rewritten for the
+  summary.
 
 ## Acceptance Criteria
 
@@ -71,25 +73,26 @@ Seeded by the agent on 2026-10-16 from the code and the two drafts, unconfirmed:
 the planning interview walks each one.
 
 - **Given** Alice, a solo founder, whose abcd moved from 0.15.0 to 0.16.0, **when**
-  the summary is shown, **then** it gives each change in one plain sentence with
-  the record id or release section to read more, breaking changes first, within a
-  fixed length, ending with how many more changes the full section holds and
-  where it is.
+  the agent's first reply after the update is written, **then** it carries one
+  line for the release, naming what waits on this repository and anything that
+  needs Alice to act, and one abcd command shows the full summary: each change
+  as its digest line with the record id to read more, changes that need action
+  first.
 - **Given** an update that skipped releases (0.14.2 to 0.16.0), **when** the
   summary is shown, **then** it covers every release in between, and names the
   releases it covers.
 - **Given** Alice's repository has setup questions waiting from this update,
   **when** the summary is shown, **then** it keeps what waits on this repository
   (questions not yet answered here, from ahoy's own detection) apart from what
-  changed in abcd in general.
-- **Given** a plugin root missing a release's records (no section for a release
-  in the range, no `CHANGELOG.md`, or a payload that carries none), **when** the
-  summary is built, **then** it says which releases it could not describe and
+  changed in abcd in general; the general part is shown once per computer and
+  what waits here once per repository.
+- **Given** a binary whose digest has no entry for a release in the range (a
+  release cut before digests existed), **when** the summary is built, **then** it says which releases it could not describe and
   where their notes are published, and never fills the gap with a guess or
   presents a partial summary as complete.
 - **Given** any session, **when** the summary is built, **then** nothing is
-  fetched from the network: it reads only files in the plugin root of the
-  running release, and the build passes the zero-network test harness.
+  fetched from the network: it reads only the digest inside the running binary,
+  and the build passes the zero-network test harness.
 - **Given** Alice has been shown the summary for 0.16.0, **when** later sessions
   start, **then** it is not shown again, and one abcd command shows it again on
   request.
@@ -98,37 +101,31 @@ the planning interview walks each one.
   next session with a person shows it.
 - **Given** Maya, an AI/agent researcher, working in a repository whose own
   `CHANGELOG.md` is not abcd's, **when** the summary is built, **then** its text
-  comes only from the plugin root the running binary belongs to, never from the
+  comes only from the digest inside the running binary, never from the
   repository being worked in, and every line is sanitised as every other text
   abcd reads at run time.
 
-## Open Questions
+## Decisions
 
-_Seeded by the agent on 2026-10-16, unconfirmed; each lists the defensible
-answers, none recommended._
+The product thinker answered four of these on 2026-10-16; the agent decided the
+rest on 2026-10-17 during an autonomous run, on the grounds given.
 
-- **Shown on its own, or on request?** (a) shown once at the first session after
-  the update; (b) a one-line notice that a summary is waiting, shown in full on
-  request; (c) only on request.
-- **Who sees it: each repository or each machine?** (a) once per machine per
-  update; (b) once per repository per update, since the repository part
-  differs; (c) per machine for the general part, per repository for what waits
-  here.
-- **What makes a change "for this repository"?** (a) only the setup questions
-  and settings waiting here, everything else general; (b) records gain a field
-  naming what they touch, so the summary can leave out what this repository does
-  not use; (c) no filtering beyond breaking changes first.
-- **Which record is the source?** (a) the `CHANGELOG.md` sections; (b) the
-  `RELEASE.md` press releases, which are shorter but exist only for feature
-  releases; (c) a short digest the release cut writes for this purpose, which
-  also survives itd-108's curated payload.
-- **How long is it?** (a) a fixed number of lines, the rest counted; (b) one line
-  per release; (c) breaking changes in full, the rest counted.
-- **Which channel?** The session-start hook may put only fixed text into the
-  session's context today (iss-2608241115201044); the rest goes to the hook's
-  stderr, which the session itself does not read. (a) the agent runs a verb that prints the summary and relays
-  it; (b) the notice channel only; (c) a file the status line or a command points
-  at.
+- **Shown on its own or on request:** one line in the first reply, the full
+  summary on request (product thinker).
+- **Who sees it:** the general news once per computer, what waits here once per
+  repository (product thinker).
+- **How long:** one line per release (product thinker).
+- **What counts as "for this repository":** only what waits here, plus anything
+  that needs the person to act; everything else is in the full summary (product
+  thinker).
+- **Which record is the source:** a digest the release cut writes, one line per
+  shipped record taken from its changelog line, embedded in the binary, because
+  the curated payload carries no changelog or records and the binary is the one
+  thing every install has (agent, from the design review).
+- **Which channel:** the session-start hook adds only a fixed line saying a
+  summary waits; the agent runs an abcd verb that prints the summary and relays
+  it in its first reply, which keeps the hook's fixed-text rule
+  (iss-2608241115201044) (agent).
 
 ## Audit Notes
 
