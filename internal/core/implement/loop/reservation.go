@@ -558,14 +558,18 @@ func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (reserve
 // never the drain's to release. Another's hold is contention, as for
 // reserveKey.
 //
-// The request names the stage of this checkout's lane in progress on id, if
-// any: when the act renews that lane's own live hold, the renewal keeps the
-// stage another account reads rather than clearing it (spc-2610161044461448
-// step 18, dcn-2610170809478944); a fresh, lapsed or taken-over hold names
-// none.
+// A drain move passes over every issue with a live run here before it
+// reserves, so the act reaches an issue whose lane in this checkout holds it
+// live only when a concurrent `abcd build` started that run after the move
+// read the runs. For that case the request names the lane's stage: when the
+// act renews the lane's own live hold, the renewal keeps the stage another
+// account reads rather than clearing it (spc-2610161044461448 step 18,
+// dcn-2610170809478944); a fresh or lapsed hold names none. Under
+// --take-over the request names no stage at all: a take-over is never a
+// renewal that may carry one, and claim refuses a stage beside it.
 func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool, now time.Time) (*DrainHold, error) {
 	stage := ""
-	if runs, err := Runs(repoRoot); err == nil {
+	if runs, err := Runs(repoRoot); err == nil && !takeOver {
 		if run, ok := liveRun(runs, id, true); ok {
 			stage = renewalStage(run)
 		}

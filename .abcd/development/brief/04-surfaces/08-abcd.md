@@ -240,9 +240,9 @@ record, holder, footprint, effective expiry and state (`live`, `expired`,
 default branch, or `unreadable` with its fixed reason and the end of its
 hold), its own copy's marked, a live drain lane's stage when its renewal
 names one (`Abcd-Stage`, one of `worktree`, `brief`, `implement`, `validate`
-and `land`, written by a lane's renewal or a drain's re-reserve that renews
-its own live hold, never by a fresh reservation; a later renewal naming none
-clears it), and each person's count of
+and `land`, written by a lane's renewal, or by a drain's reservation that
+renews the live hold of a lane a concurrent build started, never by a fresh or
+taken-over reservation; a later renewal naming none clears it), and each person's count of
 live reservations; every value a writer chose is shown quoted and
 terminal-safe. Below them, each holder's hand-back tombstones of the last 24
 hours by their `Abcd-Released-At`, with each one's record and kind, newest

@@ -11,7 +11,7 @@ production_mode: hand-written
 found_at: "internal/surface/cli/peers.go"
 remedy: "Show each drain lane's stage and recent hand-backs in abcd peers"
 related_intents: [itd-2610161016401115]
-resolution: "Each renewal a drain lane makes carries its stage as Abcd-Stage from the loop's own stage names, a re-reserve of a held issue included, and abcd peers lists each live reservation's stage and each holder's hand-backs of the last day with their kinds"
+resolution: "Each renewal a drain lane makes carries its stage as Abcd-Stage from the loop's own stage names, a drain's re-reserve of an issue a concurrent build's lane holds included, and abcd peers lists each live reservation's stage and each holder's hand-backs of the last day with their kinds"
 impact: additive
 resolved_by:
   intent: "itd-2610161016401115"

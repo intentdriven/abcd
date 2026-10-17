@@ -88,11 +88,13 @@ func stageOn(t *testing.T, bare, id string) string {
 	return ""
 }
 
-// TestALanesStageSurvivesADrainReReservingTheIssueItHolds: a drain's
-// reservation of an issue whose lane in this checkout already holds it live
-// renews that hold, and the renewal names the lane's stage, so a re-reserve
-// never clears the stage another account reads.
-func TestALanesStageSurvivesADrainReReservingTheIssueItHolds(t *testing.T) {
+// TestALanesStageSurvivesAConcurrentBuildsReReserve covers the concurrent
+// build: a drain move passes over every issue with a live run here before it
+// reserves, so its reservation reaches an issue whose lane in this checkout
+// holds it live only when `abcd build` started that run after the move read
+// the runs. That reservation renews the lane's hold and names the lane's
+// stage, so it never clears the stage another account reads.
+func TestALanesStageSurvivesAConcurrentBuildsReReserve(t *testing.T) {
 	t0 := time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)
 	c := &clock{t: t0}
 	o := Options{Now: c.now}
@@ -114,5 +116,27 @@ func TestALanesStageSurvivesADrainReReservingTheIssueItHolds(t *testing.T) {
 	}
 	if got := stageOn(t, bare, secondIssue); got != string(StageWorktree) {
 		t.Fatalf("the re-reserve keeps the lane's stage: %q", got)
+	}
+}
+
+// TestATakeOverReReserveOfALiveLaneIsNotRefusedForTheStage: under
+// --take-over the drain's reservation names no stage, since a take-over is
+// never a renewal that may carry one, so the act is not refused for it.
+func TestATakeOverReReserveOfALiveLaneIsNotRefusedForTheStage(t *testing.T) {
+	t0 := time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)
+	c := &clock{t: t0}
+	o := Options{Now: c.now}
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	first := drainToLane(t, repo, o, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the documentation issue's lane opens: %+v", first)
+	}
+	c.t = t0.Add(61 * time.Minute)
+	if _, err := Drain(repo.Root(), o, DrainOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	c.t = c.t.Add(time.Minute)
+	if _, err := reserveForJudgement(repo.Root(), secondIssue, []string{"commands/drain.md"}, true, c.t); err != nil {
+		t.Fatalf("a take-over re-reserve of the issue a live lane holds is refused: %v", err)
 	}
 }

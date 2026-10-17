@@ -83,9 +83,10 @@ payload adds:
   first fetched it. The states are `live`, `expired`, `released` and
   `unreadable`. A live reservation a drain lane renewed carries its `stage`,
   one of `worktree`, `brief`, `implement`, `validate` and `land`, the stage
-  the lane was in at its last renewal (a lane's own renewal, or a drain's
-  re-reserve that renewed its own live hold; a fresh reservation carries
-  none). A person's own renewal names none, and a reservation that is not
+  the lane was in at its last renewal (a lane's own renewal, or, when
+  `abcd build` started the lane's run while a drain move was reserving the
+  same issue, that drain's reservation renewing the lane's live hold; a fresh
+  or taken-over reservation carries none). A person's own renewal names none, and a reservation that is not
   live shows none, so the field is then absent; the text form shows the
   stage beside a live one alone.
 - `live_by_holder`: each person's count of live reservations.

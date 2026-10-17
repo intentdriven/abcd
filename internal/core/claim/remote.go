@@ -372,9 +372,11 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 	case j.mine && j.thisCopy:
 		res.Act, res.RenewedLive = ActRenewed, j.verdict.Live
 		if p.req.Drain && j.verdict.Live {
-			// A drain's re-reserve that renews its own live hold is a lane's
-			// renewal, so it carries the lane's stage; one over a lapsed hold
-			// is afresh and carries none (spc-2610161044461448 step 18).
+			// A drain's re-reserve that renews its own live hold, reached
+			// when a build started the lane's run during the drain's move, is
+			// a lane's renewal, so it carries the lane's stage; one over a
+			// lapsed hold is afresh and carries none (spc-2610161044461448
+			// step 18).
 			m.Stage = p.req.Stage
 		}
 		return res, m, j.Commit, nil
