@@ -120,14 +120,15 @@ set -euo pipefail
 # names a path that cannot exist, which git reads as no grafts at all. A
 # commit-graph file is a cache git reads a commit's tree and parents from in
 # place of the commit, and one written by hand can claim the empty tree for a
-# commit carrying files, so no commit-graph is read either: core.commitGraph
-# is set false after any entries the environment already gives.
+# commit carrying files, so no commit-graph is read either. core.commitGraph
+# is set false as the last entry of GIT_CONFIG_PARAMETERS, where a `git -c`
+# given to the push also arrives and the last entry wins, so every git the hook
+# and its scripts run reads it, whatever the environment gave; and
+# GIT_TEST_COMMIT_GRAPH, which loads a graph whatever the setting says, is off.
 export GIT_NO_REPLACE_OBJECTS=1
 export GIT_GRAFT_FILE=/dev/null/none
-cg_n="${GIT_CONFIG_COUNT:-0}"
-case "$cg_n" in '' | *[!0-9]*) cg_n=0 ;; esac
-export "GIT_CONFIG_KEY_$cg_n=core.commitGraph" "GIT_CONFIG_VALUE_$cg_n=false"
-export GIT_CONFIG_COUNT=$((cg_n + 1))
+export GIT_CONFIG_PARAMETERS="${GIT_CONFIG_PARAMETERS:+$GIT_CONFIG_PARAMETERS }'core.commitgraph'='false'"
+export GIT_TEST_COMMIT_GRAPH=0
 cd "$(git rev-parse --show-toplevel)"
 
 protected="main"

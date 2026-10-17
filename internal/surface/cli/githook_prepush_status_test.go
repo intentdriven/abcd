@@ -230,25 +230,39 @@ func TestPrePushAnyRefMerelyLikeTheStatusPrefixNeedsAReceipt(t *testing.T) {
 // TestPrePushReadsNoCommitGraph: a commit-graph file is a cache git reads a
 // commit's tree and parents from in place of the commit itself, so a graph
 // written by hand can claim the empty tree for a commit that carries files.
-// The hook reads commits as stored, never through a commit-graph, so the push
-// is gated and refused without a receipt, and origin is unmoved.
+// The hook reads commits as stored, never through a commit-graph, whether the
+// push asks for one with `git -c core.commitGraph=true` or the environment
+// turns git's test switch for one on, so the push is gated and refused
+// without a receipt, and origin is unmoved.
 func TestPrePushReadsNoCommitGraph(t *testing.T) {
-	c := newPrePushCase(t)
-	files := c.commit("feature.md", "a feature\n")
-	forged := c.git("commit-tree", c.git("rev-parse", files+"^{tree}"), "-m", "abcd announcement: merging #1012")
-	c.git("update-ref", "refs/heads/forged", forged)
-	c.git("commit-graph", "write", "--reachable")
-	empty := c.git("hash-object", "-w", "-t", "tree", "/dev/null")
-	forgeCommitGraphTree(t, filepath.Join(c.git("rev-parse", "--absolute-git-dir"), "objects", "info", "commit-graph"), forged, empty)
-	if tree := c.git("-c", "core.commitGraph=true", "log", "-1", "--format=%T", forged); tree != empty {
-		t.Fatalf("the forged commit-graph does not stand in: %s reads as tree %s", forged, tree)
-	}
-	out, err := c.push("origin", forged+":"+statusRef)
-	if err == nil || !strings.Contains(out, "no passing preflight") {
-		t.Fatalf("a commit carrying files passed under the status prefix behind a forged commit-graph (err %v)\n%s", err, out)
-	}
-	if got := c.remoteRef(statusRef); got != "" {
-		t.Errorf("the remote moved to %s although the push was refused", got)
+	for name, tc := range map[string]struct {
+		args []string
+		env  []string
+	}{
+		"plain push":            {},
+		"push asking for one":   {args: []string{"-c", "core.commitGraph=true"}},
+		"test switch turned on": {env: []string{"GIT_TEST_COMMIT_GRAPH=1"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newPrePushCase(t)
+			files := c.commit("feature.md", "a feature\n")
+			forged := c.git("commit-tree", c.git("rev-parse", files+"^{tree}"), "-m", "abcd announcement: merging #1012")
+			c.git("update-ref", "refs/heads/forged", forged)
+			c.git("commit-graph", "write", "--reachable")
+			empty := c.git("hash-object", "-w", "-t", "tree", "/dev/null")
+			forgeCommitGraphTree(t, filepath.Join(c.git("rev-parse", "--absolute-git-dir"), "objects", "info", "commit-graph"), forged, empty)
+			if tree := c.git("-c", "core.commitGraph=true", "log", "-1", "--format=%T", forged); tree != empty {
+				t.Fatalf("the forged commit-graph does not stand in: %s reads as tree %s", forged, tree)
+			}
+			c.env = append(c.env, tc.env...)
+			out, err := c.run(c.dir, "git", append(tc.args, "push", "origin", forged+":"+statusRef)...)
+			if err == nil || !strings.Contains(out, "no passing preflight") {
+				t.Fatalf("a commit carrying files passed under the status prefix behind a forged commit-graph (err %v)\n%s", err, out)
+			}
+			if got := c.remoteRef(statusRef); got != "" {
+				t.Errorf("the remote moved to %s although the push was refused", got)
+			}
+		})
 	}
 }
 
