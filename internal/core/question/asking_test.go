@@ -131,6 +131,13 @@ func TestAskingRulesStateTheRowsExceptionAndTheDrafter(t *testing.T) {
 			t.Errorf("the drafter rule must say what to hand it (%q): %s", want, drafter)
 		}
 	}
+	// The person sees the finished question and nothing of the round trips
+	// that built it: a refusal or a redraft is never narrated to them.
+	for _, want := range []string{"redraft it without telling the person", "the next thing the person sees is the question itself"} {
+		if !strings.Contains(drafter, want) {
+			t.Errorf("the drafter rule must keep its refusals and redrafts from the person (%q): %s", want, drafter)
+		}
+	}
 	for _, banned := range []string{"iss-", "itd-", "spc-", "adr-", "go run", "make "} {
 		if strings.Contains(text, banned) {
 			t.Errorf("the asking rules name %q; they reach repositories that have no record and no source tree", banned)

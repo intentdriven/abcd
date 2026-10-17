@@ -255,7 +255,7 @@ func TestAWorktreeOutsideHomeIsNamedByAPathAShellTakes(t *testing.T) {
 // TestACommandPathIsOneAShellTakes: a path a command names is home-redacted
 // to "$HOME", the one part in double quotes, which a shell expands where it
 // would not expand ~; the rest is in single quotes, inside which no shell
-// expands anything, `!` included, with each ' written '\”; outside HOME the
+// expands anything, `!` included, with each single quote closed, escaped with a backslash and reopened; outside HOME the
 // path is single-quoted whole, the path itself and never its folder name. HOME
 // is "$HOME" only where it starts the path: met mid-path, a second time, or
 // after a newline, it is single-quoted with the rest. Each form, read back by
