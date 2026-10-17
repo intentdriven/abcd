@@ -419,7 +419,8 @@ drain begins, and every lane the drain opens runs on them, not on what the
 configuration resolves when it opens. Given while the drain runs, they are
 taken: each number named replaces the one the drain runs on, `pace` shows the
 new pace, `next` says the drain took it, the next lane opens on it, and the
-lane in progress takes it from its next stage. `--max` is set when a drain
+lane in progress takes it from its next stage. A move that is refused takes
+none of it, in the drain or in a lane, and says so; give it again. `--max` is set when a drain
 begins; naming another while it runs is refused.
 
 An issue the drain handed back is passed over only while its record stands on

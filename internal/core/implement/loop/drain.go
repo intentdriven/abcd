@@ -367,8 +367,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 	}()
 	started := false
-	// repaced is what this move's new pace came to, "" when it took none.
+	// repaced is what this move's new pace came to, "" when it took none;
+	// repace is the new pace the lanes in progress take once the move's
+	// state is written, and stillPace the pace the drain ran on before it,
+	// which a refused move puts back.
 	repaced := ""
+	var repace *drainRepace
+	stillPace := st.Pace
 	if !live {
 		pace, err := resolvePace(o.roots(repoRoot), flags)
 		if err != nil {
@@ -390,7 +395,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// A running drain takes a new pace rather than refusing it
 		// (drain_pace.go).
 		if flags.set {
-			if repaced, err = repaceDrain(repoRoot, &st, o, flags, now); err != nil {
+			if repace, repaced, err = repaceDrain(repoRoot, &st, o, flags); err != nil {
 				return DrainResult{}, err
 			}
 		}
@@ -455,6 +460,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 			persisted = st.Judging
 		}
+		// The lanes in progress take a new pace only once the move has
+		// written it, so a move refused before here takes none.
+		if repace != nil {
+			if err := repace.lanes(repoRoot, st, now); err != nil {
+				return DrainResult{}, fmt.Errorf("the drain took its new pace, but a lane in progress did not: %w; give the pace again", err)
+			}
+		}
 		res.Max, res.Pace, res.Lanes, res.HandBacks = st.Max, st.Pace, st.Lanes, st.HandBacks
 		res.Judging, res.Judgements = st.Judging, st.Judgements
 		if res.Judgements == nil {
@@ -492,6 +504,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// state no longer records is released. A drain this move began writes
 	// nothing.
 	refuseMoved := func(err error) (DrainResult, error) {
+		// A refused move takes no new pace (drain_pace.go).
+		tookPace := repaced != ""
+		st.Pace = stillPace
 		if live {
 			st.UpdatedAt = now
 			if werr := writeDrain(repoRoot, st); werr != nil {
@@ -505,6 +520,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		if res.Judged != nil {
 			notes = append(notes, "the judgement answer given was taken and recorded before the refusal, so it is not to be given again")
+		}
+		if tookPace {
+			notes = append(notes, "the new pace given was not taken: give it again once this is settled")
 		}
 		if len(notes) == 0 {
 			return DrainResult{}, err

@@ -412,7 +412,8 @@ dcn-2610161040399117). A running drain given a new pace, sub-agent ceiling or
 fix-round cap takes it: each number named replaces the one stored, the rest
 kept, the drain's state records them with the invocation as their origin, the next
 lane opens on them, and each lane in progress takes them into its run's pace,
-which its next stage reads, its run record saying so. Each lane's run is then
+which its next stage reads, its run record saying so, once the move has written
+the drain's state: a move refused takes none of them, in the drain or in a lane. Each lane's run is then
 paced as a run is.
 
 A route keeps the blob id of the issue's record on `origin`'s default branch as

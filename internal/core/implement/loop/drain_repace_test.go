@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -259,5 +260,38 @@ func TestARecordReadWithNoRunNamedAddressesTheNewerRunOfAReadmittedIssue(t *test
 	got, err := LatestRun(repo.Root())
 	if err != nil || got != newer {
 		t.Fatalf("the record read addresses the newer run %s, not the handed-back %s: %q %v", newer, old, got, err)
+	}
+}
+
+// TestARefusedMoveTakesNoNewPace: a move of a running drain given a new pace
+// and an answer it refuses (no judgement is awaited) changes nothing: the
+// lane in progress stays on its pace, its run record says nothing of a new
+// one, and the drain keeps the pace it ran on.
+func TestARefusedMoveTakesNoNewPace(t *testing.T) {
+	repo := drainRepo(t)
+	first := drainToLane(t, repo, Options{}, DrainOptions{})
+	if first.Start == nil {
+		t.Fatalf("the drain opens a lane: %+v", first)
+	}
+	before := paceNumbers(paceOf(t, repo, first.Start.RunID))
+	stBefore, _, err := readDrain(repo.Root())
+	if err != nil || stBefore.Pace == nil {
+		t.Fatal(err)
+	}
+	_, err = Drain(repo.Root(), Options{Pace: strp("60/15"), SubAgents: strp("3")},
+		DrainOptions{Judgement: filepath.Join(repo.Root(), filepath.FromSlash(DrainJudgementAnswerRel))})
+	if _, ok := AsRefusal(err); !ok {
+		t.Fatalf("an answer with no judgement awaited is refused: %v", err)
+	}
+	if got := paceNumbers(paceOf(t, repo, first.Start.RunID)); got != before {
+		t.Fatalf("the lane in progress keeps its pace through a refused move: %v, was %v", got, before)
+	}
+	st, _ := ReadState(repo.Root(), first.Start.RunID)
+	if slices.ContainsFunc(st.Record, func(e Entry) bool { return strings.Contains(e.Note, "the drain's pace changed") }) {
+		t.Fatalf("the lane's run record says nothing of a pace it did not take: %+v", st.Record)
+	}
+	stAfter, _, err := readDrain(repo.Root())
+	if err != nil || stAfter.Pace == nil || paceNumbers(*stAfter.Pace) != paceNumbers(*stBefore.Pace) {
+		t.Fatalf("the drain keeps its pace: %+v %v", stAfter.Pace, err)
 	}
 }
