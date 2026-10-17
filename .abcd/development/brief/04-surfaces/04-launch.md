@@ -124,9 +124,10 @@ records it cites and their impact (`internal/core/releasedigest`, schema 1).
 The write goes through the repository root so a symlinked directory cannot
 carry it outside, and a rollback restores the file or removes the one the cut
 created. abcd declares `internal/core/releasedigest/digest.json`, which its
-binary embeds, so a binary carries every release up to its own and can say what
-changed in an update without reading the network or the repository it runs in
-(spc-2610170635097509). A repository that declares nothing gets no digest. A refused payload returns every reason as data, and the host
+binary embeds, so a binary carries every release from v0.7.0, the first cut
+derived from records, up to its own, and can say what changed in an update
+without reading the network or the repository it runs in; a release it does not
+carry is named as one it cannot describe (spc-2610170635097509). A repository that declares nothing gets no digest. A refused payload returns every reason as data, and the host
 recomposes until it is valid, reporting each attempt (itd-2609231013154443).
 
 **The archive render is the release gate's half of the pin.** It renders the
