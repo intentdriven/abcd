@@ -1454,7 +1454,8 @@ registry, it refuses:
     a substitution, a glob, or a name after an unknown change of directory),
     except a glob removal in a directory inside the working tree, followed
     through symlinks, that no protected name could match, when no earlier
-    part of the line writes or removes a file;
+    part of the line writes or removes a file and no wildcard stands in a
+    directory part of the glob, nor does it end in a /;
   - such a write, or a removal, reaching a protected path, with its directories
     resolved through symlinks and case folded where the filesystem folds it:
     the git common directory and its hooks, each checkout's .git, the home
@@ -1486,7 +1487,10 @@ the command runs. That text is read again with the guard's own parse, and a
 command that would close the braces early or leave them unparsable (a } or
 a ) with nothing open, a fi, done or esac with nothing open, a } after a
 command's words, or a backslash at its end) is refused, since part of it
-could run outside the working tree. Everything else is refused with the guard's reason
+could run outside the working tree. A { or a keyword counts only where the
+line leaves it unquoted: a quoted one is a command's name to the shell, so
+"{" on a line, then }, then a command, is refused for the same reason.
+Everything else is refused with the guard's reason
 and what to run instead, which the harness hands the agent, so the agent can
 rewrite the command. A prompt for any tool but the shell is refused, since
 nobody is there to approve it.

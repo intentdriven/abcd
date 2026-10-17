@@ -76,7 +76,8 @@ func newGuardApproveCommand() *cobra.Command {
 			"    a substitution, a glob, or a name after an unknown change of directory),\n" +
 			"    except a glob removal in a directory inside the working tree, followed\n" +
 			"    through symlinks, that no protected name could match, when no earlier\n" +
-			"    part of the line writes or removes a file;\n" +
+			"    part of the line writes or removes a file and no wildcard stands in a\n" +
+			"    directory part of the glob, nor does it end in a /;\n" +
 			"  - such a write, or a removal, reaching a protected path, with its directories\n" +
 			"    resolved through symlinks and case folded where the filesystem folds it:\n" +
 			"    the git common directory and its hooks, each checkout's .git, the home\n" +
@@ -107,7 +108,10 @@ func newGuardApproveCommand() *cobra.Command {
 			"command that would close the braces early or leave them unparsable (a } or\n" +
 			"a ) with nothing open, a fi, done or esac with nothing open, a } after a\n" +
 			"command's words, or a backslash at its end) is refused, since part of it\n" +
-			"could run outside the working tree. Everything else is refused with the guard's reason\n" +
+			"could run outside the working tree. A { or a keyword counts only where the\n" +
+			"line leaves it unquoted: a quoted one is a command's name to the shell, so\n" +
+			"\"{\" on a line, then }, then a command, is refused for the same reason.\n" +
+			"Everything else is refused with the guard's reason\n" +
 			"and what to run instead, which the harness hands the agent, so the agent can\n" +
 			"rewrite the command. A prompt for any tool but the shell is refused, since\n" +
 			"nobody is there to approve it.\n\n" +

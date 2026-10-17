@@ -362,7 +362,10 @@ its text:
   approved, when no earlier part of the line writes or removes a file (which
   could make that directory a link first), unless a protected name could match
   it: one its literal text aims at, a name starting with a dot only by a
-  pattern that spells the dot, or one already standing in that directory;
+  pattern that spells the dot, or one already standing in that directory. A
+  glob with a wildcard in a directory part (`build/*/*`, `build/*/x.o`), or
+  that ends in `/`, is refused, since it lists directories the line never
+  names, any of which may be a symlink out of the working tree;
 - a write or removal reaching a protected path, compared after the target's
   existing directories are resolved through symlinks and its case folded where
   the filesystem folds it: the git common directory with its hooks and config,
@@ -411,7 +414,11 @@ a command that would close the group early or leave it unparsable (a `}` or
 `)` with nothing open, a `fi`, `done` or `esac` with nothing open, a `}` after
 a command's words, which zsh reads as a close, or a backslash at its very end)
 is refused, since part of it could otherwise run outside the change of
-directory. A change of directory inside the line
+directory. A `{` or a keyword counts as opening or closing only where the line
+leaves it wholly unquoted: a quoted one (`"{"`, `'{'`, `\{`, `{""`) is a
+command's name to the shell, so a line of one, then a `}`, then a command, is
+refused, since that `}` closes the group and the command after it runs outside
+it. A change of directory inside the line
 still holds for the rest of it, and a relative name after a `cd` the line spells
 out and joins with `&&` is read in that directory. Everything else, and
 a prompt for any tool but the shell, is refused with the guard's reason and

@@ -228,7 +228,10 @@ A shell command is approved only when the guard reads it whole and clears it:
   `core.hooksPath` is `tools/hooks`). So `rm -rf build/*` and `rm -f build/*.o`
   are approved, while `rm -rf linkd/*`, where `linkd` is a symlink to a
   directory outside the tree, and `ln -s ~/Library l && rm -rf l/*` are
-  refused (`path-not-fixed`). A relative name after a `cd` the line spells out
+  refused (`path-not-fixed`). So is a glob with a wildcard in a directory part
+  (`rm -rf build/*/*`, `rm -f build/*/x.o`) or one that ends in `/`
+  (`rm -rf build/*/`): it lists directories the line never names, any of which
+  may be a symlink out of the tree. A relative name after a `cd` the line spells out
   and joins with `&&` is read in that directory;
 - no write or removal reaches a protected path (`protected-path`), judged with
   its existing directories resolved through symlinks and its case folded where
@@ -287,7 +290,11 @@ command that would close the group before its end, or leave the text
 unparsable as one group, is refused (`tree-group-broken`): a `}` or `)` with
 nothing open for it to close, a `fi`, `done` or `esac` with nothing open, a `}`
 after a command's words, which zsh reads as a close, or a backslash at the very
-end, which joins the group's `}` to the command's last line. A change of directory inside the command still holds for the
+end, which joins the group's `}` to the command's last line. A `{` or a keyword
+counts as opening or closing only where the line leaves it wholly unquoted: a
+quoted one (`"{"`, `'{'`, `\{`, `{""`) is a command's name to the shell, so a
+line of one, then a `}`, then a command, is refused, since under bash and sh
+that `}` closes the group and the command after it runs outside it. A change of directory inside the command still holds for the
 rest of its line, and a relative name after a `cd` the line spells out and
 joins with `&&` is read in that directory. Anything else is refused with the guard's reason and what to
 run instead, which the harness hands the agent so it can rewrite the command. A
