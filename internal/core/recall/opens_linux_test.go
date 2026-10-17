@@ -3,6 +3,7 @@
 package recall
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
 	"io/fs"
@@ -16,6 +17,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/rules"
 	"github.com/intentdriven/abcd/internal/gittest"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // openRecorder is the filesystem seam that records every open under the
@@ -141,7 +143,10 @@ func TestRecallOpensOnlyTheDeclaredPlaces(t *testing.T) {
 
 	rec := recordOpens(t, home, root)
 	items, refused := ReadItems(home, root)
-	res := Recall(Request{Items: items, Prompt: "the auth login is broken", Budget: rules.InjectionBudgetBytes})
+	// The root is asked of git itself, as the router asks it, so the opens
+	// git makes to answer are among those recorded.
+	here := func() (string, error) { return gitutil.RootCommitContext(context.Background(), root) }
+	res := Recall(Request{Items: items, Prompt: "the auth login is broken", Budget: rules.InjectionBudgetBytes, Root: here})
 	opened := rec.opened(t)
 
 	declared := []string{machineNotes, machinePages, projectNotes, projectPages}
