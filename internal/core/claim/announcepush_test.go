@@ -54,15 +54,25 @@ func TestAStandingAnnouncementIsNotSentAgainBeforeAPush(t *testing.T) {
 	if again[0].Line() != "merging iss-5 was already announced on abcd-status/octo, standing until 2026-10-03T14:30:00Z" {
 		t.Fatalf("line = %q", again[0].Line())
 	}
-	// Another kind of the same item, or another item, is not the one owed.
-	if _, err := p.announce("asking", "iss-5"); err != nil {
+	// Another item's announcement on top does not hide the one standing.
+	if _, err := p.announce("asking", "#7"); err != nil {
 		t.Fatal(err)
 	}
 	if n, err := p.beforePush([]string{"iss-5"}, e); err != nil || !n[0].Live {
-		t.Fatalf("with an asking on top, the merging one still stands: %+v, %v", n, err)
+		t.Fatalf("with another item's asking on top, the merging one still stands: %+v, %v", n, err)
+	}
+	// Another kind of the same item on top is what readers now show for it,
+	// so the merging under it no longer stands, and a new one is sent.
+	if _, err := p.announce("asking", "iss-5"); err != nil {
+		t.Fatal(err)
+	}
+	asking := w.statusTip("octo")
+	n, err := p.beforePush([]string{"iss-5"}, e)
+	if err != nil || len(n) != 1 || n[0].Live || w.parentOf(w.statusTip("octo")) != asking {
+		t.Fatalf("with an asking of iss-5 on top = %+v, %v; want a new merging sent on top of it", n, err)
 	}
 
-	w.set(t0.Add(29*time.Minute + 30*time.Second))
+	w.set(t0.Add(49*time.Minute + 30*time.Second))
 	before := w.statusTip("octo")
 	late, err := p.beforePush([]string{"iss-5"}, e)
 	if err != nil || len(late) != 1 || late[0].Live || w.statusTip("octo") == before {
@@ -70,6 +80,29 @@ func TestAStandingAnnouncementIsNotSentAgainBeforeAPush(t *testing.T) {
 	}
 	if w.parentOf(w.statusTip("octo")) != before {
 		t.Fatalf("the new announcement is not a child of the branch's tip")
+	}
+}
+
+// TestAMergedOnTopEndsTheStandingMerging: octo lands naming iss-5 (merging
+// sent), then announces merged iss-5; a follow-up landing ten minutes later
+// naming iss-5 again announces merging anew, since every reader now shows
+// "merged iss-5", the newest of the item.
+func TestAMergedOnTopEndsTheStandingMerging(t *testing.T) {
+	w := newWorld(t)
+	w.publish(".abcd/work/issues/open/iss-5-the-widget.md")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	e := &embargoProbe{}
+	if n, err := p.beforePush([]string{"iss-5"}, e); err != nil || len(n) != 1 || n[0].Live {
+		t.Fatalf("first push's announcement = %+v, %v; want one sent", n, err)
+	}
+	if _, err := p.announce("merged", "iss-5"); err != nil {
+		t.Fatal(err)
+	}
+	merged := w.statusTip("octo")
+	w.set(t0.Add(10 * time.Minute))
+	n, err := p.beforePush([]string{"iss-5"}, e)
+	if err != nil || len(n) != 1 || n[0].Live || w.parentOf(w.statusTip("octo")) != merged {
+		t.Fatalf("follow-up push after merged iss-5 = %+v, %v; want a new merging sent on top of the merged", n, err)
 	}
 }
 

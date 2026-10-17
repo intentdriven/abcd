@@ -137,10 +137,11 @@ type AnnounceRequest struct {
 	// For is how long it stands; zero means DefaultAnnouncementLife.
 	For time.Duration
 	// UnlessLive sends nothing when the sender's own status branch, as just
-	// fetched, already holds an announcement of this kind and item that
-	// stands for at least MinAnnouncementLife more: the result is that one,
-	// with Live set. abcd's own pushes ask for it (AnnounceBeforePush), so a
-	// landing run again does not announce the same item twice.
+	// fetched, already holds an announcement of this kind and item, the
+	// newest of that item there, that stands for at least
+	// MinAnnouncementLife more: the result is that one, with Live set.
+	// abcd's own pushes ask for it (AnnounceBeforePush), so a landing run
+	// again does not announce the same item twice.
 	UnlessLive bool
 }
 
@@ -427,9 +428,10 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 // *AnnounceError counting the pushes tried before it, among them a failure
 // after a push (the fetch that would show whether it landed, or the rebuilt
 // commit's write). With UnlessLive, an announcement of the same kind and item
-// the sender's branch already holds, standing a minute more, is answered in
-// place of a new one, after every check and before any push. A record absent
-// from the default branch is a *NotPublicError.
+// the sender's branch already holds as its newest of that item, standing a
+// minute more, is answered in place of a new one, after every check and
+// before any push. A record absent from the default branch is a
+// *NotPublicError.
 func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, err error) {
 	pushes, branch := 0, ""
 	defer func() { err = announceFailure(err, pushes, branch) }()
@@ -577,11 +579,14 @@ type liveFound struct {
 }
 
 // liveAnnouncement looks down the sender's status branch, from tip (its tip
-// as just fetched), for a readable announcement of p's kind and item sent by
-// p's sender that still stands, by this clock, for at least
-// MinAnnouncementLife: the newest such is returned. Each commit is read
-// through the reader's own parser, as stored, so an announcement the readers
-// would not show is never taken for one.
+// as just fetched), for the newest readable announcement of p's item sent by
+// p's sender, whatever its kind, and returns it only when it is of p's kind
+// and still stands, by this clock, for at least MinAnnouncementLife. It stops
+// there: a reader shows only the newest announcement of an item, so one of
+// p's kind under a newer one (merging under merged, say) is not what a
+// colleague sees, and does not stand. Each commit is read through the
+// reader's own parser, as stored, so an announcement the readers would not
+// show is never taken for one.
 func liveAnnouncement(root, tree string, p *preparedAnnouncement, tip string) (liveFound, bool, error) {
 	ref := statusBranches.track(p.branch)
 	line, err := firstParents(root, ref, tip, liveWalk-1)
@@ -595,12 +600,13 @@ func liveAnnouncement(root, tree string, p *preparedAnnouncement, tip string) (l
 	for _, c := range line {
 		r := read[c]
 		a := r.a
-		if r.h.Unreadable != "" || a.Kind != p.msg.Kind || a.Item != p.msg.Item || !strings.EqualFold(a.Sender, p.msg.Sender) {
+		if r.h.Unreadable != "" || a.Item != p.msg.Item || !strings.EqualFold(a.Sender, p.msg.Sender) {
 			continue
 		}
-		if p.now.Add(MinAnnouncementLife).Before(a.ExpiresAt) {
+		if a.Kind == p.msg.Kind && p.now.Add(MinAnnouncementLife).Before(a.ExpiresAt) {
 			return liveFound{announcement: a, commit: c}, true, nil
 		}
+		return liveFound{}, false, nil
 	}
 	return liveFound{}, false, nil
 }
