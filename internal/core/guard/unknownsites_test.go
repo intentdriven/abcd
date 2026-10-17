@@ -177,7 +177,8 @@ var wordReaders = map[string]string{
 	"findStarts":      "isUnknown: an unknown word among the starting points is a start",
 
 	// approvegroup.go: the text an approval hands back.
-	"wrapIntact": "exempt: compares the words of the text runFrom wrote itself with the change of directory and the bash call it wrote, word for word; a word holding an unknown mark never equals one",
+	"wrapIntact":   "exempt: compares the words of the text runFrom wrote itself with the change of directory and the bash call it wrote, word for word; a word holding an unknown mark never equals one",
+	"approvedCall": "exempt: spells the bash call runFrom writes, from the guard's own literals; reads no command word",
 
 	// approvepaths.go: the approver's reading of what a line writes.
 	"pathUses":         "commandSites and fixedToken; an operand holding an unknown mark is a target the line does not fix, which is refused",

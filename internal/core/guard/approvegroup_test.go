@@ -12,8 +12,8 @@ import (
 	"testing"
 )
 
-// An approved command comes back as `cd -- '<dir>' && exec /bin/bash
-// --noprofile --norc -c '<command>'`: the host runs that text in the
+// An approved command comes back as `cd -- '<dir>' && /bin/bash
+// --noprofile --norc -p -c '<command>'`: the host runs that text in the
 // person's login shell, which only changes directory and starts bash, and
 // bash, the shell whose grammar the guard reads, runs the command. The
 // approval reads the returned text with the guard's own parse and approves it
@@ -74,12 +74,12 @@ func runText(t *testing.T, sh, from, text string) (string, int) {
 }
 
 // TestApprovedTextIsOneBashCall: the text an approval hands back is the
-// change of directory and one bash call, which reads no start-up file, with
-// the command as one single-quoted word.
+// change of directory and one bash call, which reads no start-up file and
+// ignores the environment's (-p), with the command as one single-quoted word.
 func TestApprovedTextIsOneBashCall(t *testing.T) {
 	r := plainRig(t)
 	command := "printf '%s' \"it's\" > out"
-	want := "cd -- '" + r.dir + "' && exec /bin/bash --noprofile --norc -c 'printf '\\''%s'\\'' \"it'\\''s\" > out'"
+	want := "cd -- '" + r.dir + "' && /bin/bash --noprofile --norc -p -c 'printf '\\''%s'\\'' \"it'\\''s\" > out'"
 	if got := approvedText(t, r, command); got != want {
 		t.Errorf("handed back %q, want %q", got, want)
 	}
@@ -132,7 +132,7 @@ func TestApprovedTextKeepsTheCommandWhole(t *testing.T) {
 		}
 		segs, err := tokenize(text)
 		segs = slices.DeleteFunc(segs, func(s segment) bool { return len(s.tokens) == 0 })
-		if err != nil || len(segs) != 2 || !slices.Equal(segs[1].tokens, []string{"exec", approvedShell, "--noprofile", "--norc", "-c", c}) {
+		if err != nil || len(segs) != 2 || !slices.Equal(segs[1].tokens, []string{approvedShell, "--noprofile", "--norc", "-p", "-c", c}) {
 			t.Errorf("%q: the text %q reads as %d commands (%v)", c, text, len(segs), err)
 		}
 	}
@@ -176,17 +176,22 @@ func TestApproveRefusesATextThatIsNotOneBashCall(t *testing.T) {
 		runFrom(dir, c) + "\ntouch ran",
 		runFrom(dir, c) + " > out",
 		runFrom(dir, c) + " 'x'",
-		"cd -- '/w' ; exec /bin/bash --noprofile --norc -c 'echo hi'",
-		"cd -- '/w' || exec /bin/bash --noprofile --norc -c 'echo hi'",
-		"cd -- '/v' && exec /bin/bash --noprofile --norc -c 'echo hi'",
-		"cd -- '/w' && exec /bin/sh --noprofile --norc -c 'echo hi'",
-		"cd -- '/w' && exec /bin/bash -c 'echo hi'",
-		"cd -- '/w' && exec /bin/bash --noprofile --norc -c 'echo' 'hi'",
-		"cd -- '/w' && exec /bin/bash --noprofile --norc -c 'echo hi",
-		"cd -- '/w' && exec /bin/bash --noprofile --norc -c 'echo hi'\"; touch ran\"",
-		"cd -- '/w' && exec /bin/bash --noprofile --norc -c 'echo hi'*",
-		"touch ran; cd -- '/w' && exec /bin/bash --noprofile --norc -c 'echo hi'",
-		"cd -- '/w' && { exec /bin/bash --noprofile --norc -c 'echo hi'; }",
+		"cd -- '/w' ; /bin/bash --noprofile --norc -p -c 'echo hi'",
+		"cd -- '/w' || /bin/bash --noprofile --norc -p -c 'echo hi'",
+		"cd -- '/v' && /bin/bash --noprofile --norc -p -c 'echo hi'",
+		"cd -- '/w' && /bin/sh --noprofile --norc -p -c 'echo hi'",
+		"cd -- '/w' && /bin/bash -c 'echo hi'",
+		"cd -- '/w' && /bin/bash --noprofile --norc -c 'echo hi'",
+		"cd -- '/w' && /bin/bash -p --noprofile --norc -c 'echo hi'",
+		"cd -- '/w' && /bin/bash --noprofile --norc -p -x -c 'echo hi'",
+		"cd -- '/w' && exec /bin/bash --noprofile --norc -p -c 'echo hi'",
+		"cd -- '/w' && exec /bin/bash --noprofile --norc -c 'echo hi'",
+		"cd -- '/w' && /bin/bash --noprofile --norc -p -c 'echo' 'hi'",
+		"cd -- '/w' && /bin/bash --noprofile --norc -p -c 'echo hi",
+		"cd -- '/w' && /bin/bash --noprofile --norc -p -c 'echo hi'\"; touch ran\"",
+		"cd -- '/w' && /bin/bash --noprofile --norc -p -c 'echo hi'*",
+		"touch ran; cd -- '/w' && /bin/bash --noprofile --norc -p -c 'echo hi'",
+		"cd -- '/w' && { /bin/bash --noprofile --norc -p -c 'echo hi'; }",
 	} {
 		if wrapIntact(dir, c, text) {
 			t.Errorf("%q passed the check", text)

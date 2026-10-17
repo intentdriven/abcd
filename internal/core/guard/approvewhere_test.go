@@ -12,7 +12,7 @@ import (
 // The host keeps the shell's working directory from one call to the next,
 // while the approver judges every command as run from the working tree. An
 // approved command therefore runs from the working tree: the approval hands
-// back `cd -- '<dir>' && exec /bin/bash --noprofile --norc -c '<command>'`,
+// back `cd -- '<dir>' && /bin/bash --noprofile --norc -p -c '<command>'`,
 // so the place it was judged for is the place it runs, nothing in the
 // command runs when the change of directory fails, and a change of directory
 // inside the line still holds for the rest of that line.
@@ -33,7 +33,7 @@ func TestApprovedCommandRunsFromTheWorkingTree(t *testing.T) {
 	if err := json.Unmarshal(updated, &got); err != nil {
 		t.Fatal(err)
 	}
-	want := "cd -- '" + strings.ReplaceAll(dir, `'`, `'\''`) + "' && exec /bin/bash --noprofile --norc -c 'go vet ./...'"
+	want := "cd -- '" + strings.ReplaceAll(dir, `'`, `'\''`) + "' && /bin/bash --noprofile --norc -p -c 'go vet ./...'"
 	if got["command"] != want || got["description"] != "vet" || len(got) != 2 {
 		t.Errorf("updated input = %s; want command %q and the description", updated, want)
 	}

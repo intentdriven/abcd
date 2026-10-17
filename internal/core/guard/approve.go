@@ -171,17 +171,23 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 // runs the text in the person's login shell, which may be zsh, whose grammar
 // is not the one the guard reads (glob qualifiers, `(:A)` modifiers,
 // `{ … } always { … }`). So the login shell only changes directory and,
-// when that succeeds, replaces itself with bash, its profile and rc files
-// switched off, which runs the command, handed over as one single-quoted
-// word. When the
-// directory cannot be entered no part of the command runs, not even one
-// after `||` or `;`. A change of directory inside the command still holds
-// for the rest of it.
+// when that succeeds, starts /bin/bash, which runs the command, handed over
+// as one single-quoted word. Bash ignores its profile, rc and environment
+// start-up files: --noprofile and --norc switch off the profile and rc
+// files, and -p (after the long options, which bash 3.2 refuses after a
+// short one) ignores BASH_ENV, functions exported as BASH_FUNC_* and
+// SHELLOPTS from the environment. The call is not an exec: the host joins
+// its own text after it (`&& pwd -P >| <file>`, its record of the shell's
+// working directory), which must still run, and exec would guard nothing the
+// agent controls. bash's exit status is the text's. When the directory
+// cannot be entered no part of the command runs, not even one after `||` or
+// `;`. A change of directory inside the command still holds for the rest of
+// it.
 func runFrom(dir, command string) string {
 	if !filepath.IsAbs(dir) {
 		return command
 	}
-	return "cd -- " + shellquote.Single(dir) + " && exec " + approvedShell + " --noprofile --norc -c " + shellquote.Single(command)
+	return "cd -- " + shellquote.Single(dir) + " && " + approvedShell + " " + strings.Join(approvedShellFlags, " ") + " -c " + shellquote.Single(command)
 }
 
 // approveShell answers a prompt for one shell command line, read against ld's

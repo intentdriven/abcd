@@ -3,9 +3,9 @@ package guard
 // approvegroup.go checks the text an approval hands back (runFrom): the
 // change into the working tree and the one bash call that runs the command.
 // The check reads that text with the guard's own tokenizer and approves it
-// only when it is exactly `cd -- <dir>`, joined by && to `exec /bin/bash
-// --noprofile --norc -c <command>` with the whole command as its last word,
-// and nothing else: no other command, no redirection, nothing after it.
+// only when it is exactly `cd -- <dir>`, joined by && to `/bin/bash
+// --noprofile --norc -p -c <command>` with the whole command as its last
+// word, and nothing else: no other command, no redirection, nothing after it.
 //
 // runFrom spells the command as one single-quoted word, in which no shell
 // reads anything but the quote that ends it, and spells each quote the
@@ -24,6 +24,13 @@ import "slices"
 // that runs, whatever the person's login shell is.
 const approvedShell = "/bin/bash"
 
+// approvedShellFlags are the options approvedShell runs the command with,
+// before its -c: no profile, no rc file, and -p, under which bash ignores
+// BASH_ENV, functions exported as BASH_FUNC_* and SHELLOPTS from the
+// environment. -p comes after the long options, since bash 3.2 refuses a
+// long option after a short one.
+var approvedShellFlags = []string{"--noprofile", "--norc", "-p"}
+
 // runFromIntact is runFrom(dir, command) and whether that text is intact:
 // the change of directory and the one bash call holding the whole command. A
 // dir that is not absolute is not wrapped, and the command is returned as it
@@ -37,7 +44,7 @@ func runFromIntact(dir, command string) (string, bool) {
 }
 
 // wrapIntact reports whether text, read with the guard's own tokenizer, is
-// exactly `cd -- dir`, joined by && to `exec /bin/bash --noprofile --norc -c
+// exactly `cd -- dir`, joined by && to `/bin/bash --noprofile --norc -p -c
 // command`, with nothing else in it.
 func wrapIntact(dir, command, text string) bool {
 	all, err := tokenize(text)
@@ -61,6 +68,12 @@ func wrapIntact(dir, command, text string) bool {
 	}
 	first, run := segs[0], segs[1]
 	return slices.Equal(first.tokens, []string{"cd", "--", dir}) &&
-		slices.Equal(run.tokens, []string{"exec", approvedShell, "--noprofile", "--norc", "-c", command}) &&
+		slices.Equal(run.tokens, approvedCall(command)) &&
 		run.afterAnd && run.chain == first.chain && run.end == len(text)
+}
+
+// approvedCall is the words of the bash call that runs command: the shell,
+// its options and -c, then the whole command as one word.
+func approvedCall(command string) []string {
+	return append(append([]string{approvedShell}, approvedShellFlags...), "-c", command)
 }
