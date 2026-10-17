@@ -151,8 +151,9 @@ record kind. Only the first ships.
    provider connection, the close sends the request there and ingests the
    verdict. Otherwise the route ends on the harness, and the audit stays owed
    until the host runs the auditor from that request (`abcd intent audit
-   --owed` drains the owed set). Either way the close stands: a failed call
-   leaves the audit owed, and a malformed answer is dead-lettered. A `build` run
+   --owed` drains the owed set). Either way the close stands: a failed call,
+   or an answer that cannot be keyed to its receipt, leaves the audit owed,
+   and a keyed answer that fails validation is dead-lettered. A `build` run
    audits in the implement loop's validate stage, on the lane whose landing
    closes the intent's last open spec and before that lane lands; a `drain` run
    never does, since its lanes are issues and an issue has no criteria. The
