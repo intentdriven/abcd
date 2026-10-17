@@ -579,7 +579,7 @@ func TestPreflightSlotsIgnoresAHomeInsideAWorkingTree(t *testing.T) {
 	home := filepath.Join(tree, "home")
 	writeMachineConfig(t, home, `{"load": {"preflights": 2}}`)
 	n, src, note, err := PreflightSlots(noEnv, home)
-	if err != nil || n != 1 || src != SlotsDefault || !strings.Contains(note, "HOME lies inside the git working tree") {
+	if err != nil || n != 1 || src != SlotsDefault || !strings.Contains(note, "HOME lies inside a git working tree") {
 		t.Fatalf("PreflightSlots = %d, %q, %q, %v; want 1 from the default with a note saying HOME lies inside a working tree", n, src, note, err)
 	}
 }
