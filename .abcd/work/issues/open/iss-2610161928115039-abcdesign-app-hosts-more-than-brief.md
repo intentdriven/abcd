@@ -14,3 +14,8 @@ related_intents: [itd-2610161733316518]
 ---
 
 abcdesign.app hosts more than brief editing: the product thinker's direction (2026-10-16) is that its sessions become the place a team does design work together, with brief editing as the first kind, judging blinded model copies as the second (itd-2610161733316518), and later kinds such as comparing design mocks two at a time. Its record and first-release scope today cover the brief only, so each new kind would otherwise be designed alone.
+
+Extended by the product thinker (2026-10-17):
+
+- Intents are a further, later kind: a team works on its intents together in a session, as it does on the brief.
+- Comparing design mocks is fed by abcd's design rounds, which today run in labs: five mockups, a pick, variations of the pick, then a ranking two at a time. That ranking is to be done in a session, with its results landing in the record and nothing downloaded to anyone's machine. The design-round procedure itself is captured in its own record, linked here once both are on the default branch.
