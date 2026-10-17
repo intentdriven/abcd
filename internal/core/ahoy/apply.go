@@ -640,8 +640,13 @@ func (a *applyCtx) stepSkeleton() {
 	}
 }
 
-// stepConfigValues collects and persists the four config values. Returns nil on
-// partial install (config-change declined and a required value missing).
+// stepConfigValues collects and persists the four config values. Each value
+// answered is saved on its own: one left unanswered (deferred with "decide
+// later", or given an answer setup does not write) stays unset and is
+// reported as remaining, and never keeps an answered one out of the file
+// (iss-2610170930394303). Every answered value goes into the one atomic write
+// of .abcd/config.json. Returns nil when nothing may be saved (the config
+// cannot be parsed, the settings change was declined, or the write failed).
 func (a *applyCtx) stepConfigValues() *InstallConfig {
 	hasConfigGap := a.has("config.visibility_missing") || a.has("config.docs_target_missing") ||
 		a.has("config.oracle_backend_missing") || a.has("config.scan_deep_missing")
@@ -663,8 +668,8 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	// leaves an already-valid value untouched (a silent no-op).
 	// Every effect this step sets ahead of its write — the echoed overrides, the
 	// forced docs target, the retraction — stands only if the write lands. Each
-	// return that saves nothing (a declined category, a value left unanswered, a
-	// failed write) takes them back through this one rollback, so stepMarker
+	// return that saves nothing (a declined category, a failed write) takes them
+	// back through this one rollback, so stepMarker
 	// never retracts a block for a target change that was not saved and the
 	// receipt never echoes one. Receipts earlier steps recorded are kept.
 	mark := len(a.changes)
@@ -708,15 +713,18 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		return nil
 	}
 
-	// Collect the missing values.
+	// Collect the missing values. One left unanswered stays unset and the
+	// rest are still asked and saved; re-detection reports it as remaining,
+	// so the run is partial.
 	got := collectMissingValues(a.cwd, ic, a.overrides, a.resolveValue)
 	if got.retired != "" {
 		// A retired answer is said, with the one explanation; a typo is never
 		// persisted either way.
 		a.refuse(got.retired)
 	}
-	if !got.ok {
-		return nil // a value left unanswered or not one setup writes => partial
+	if !got.answered && !forced {
+		landed = true
+		return ic // every missing value left unanswered: nothing to save
 	}
 	if got.docsChosen {
 		// Choosing the target is the approval to plant into it. At the skip
@@ -732,7 +740,8 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 	// only after every prompt above has been answered: the re-read is the one
 	// the write is made from, so a key another abcd wrote since the first read
 	// is kept (iss-127). If the file turned malformed since the first read,
-	// refuse rather than clobber it.
+	// refuse rather than clobber it. A value left unanswered is not written,
+	// so the key stays as the file has it.
 	err = withConfigLock(a.cwd, func() error {
 		cfgMap, cfgErr := readConfig(a.cwd)
 		if cfgErr != nil {
@@ -741,9 +750,15 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 		if cfgMap == nil {
 			cfgMap = map[string]any{}
 		}
-		setSub(cfgMap, "repo", "visibility", ic.Visibility)
-		setSub(cfgMap, "docs", "target", ic.DocsTarget)
-		setSub(cfgMap, "oracle", "backend", ic.OracleBackend)
+		for _, v := range []struct{ section, key, value string }{
+			{"repo", "visibility", ic.Visibility},
+			{"docs", "target", ic.DocsTarget},
+			{"oracle", "backend", ic.OracleBackend},
+		} {
+			if v.value != "" {
+				setSub(cfgMap, v.section, v.key, v.value)
+			}
+		}
 		if ic.ScanDeep != nil {
 			setSub(cfgMap, "scan", "deep", *ic.ScanDeep)
 		}
@@ -768,8 +783,9 @@ func (a *applyCtx) stepConfigValues() *InstallConfig {
 // collectedValues is what collecting the missing config values decided
 // beside the values themselves.
 type collectedValues struct {
-	// ok: every missing value was answered with one setup writes.
-	ok bool
+	// answered: at least one missing value was answered with one setup
+	// writes, so there is something to save.
+	answered bool
 	// docsChosen: this run chose the repository's first docs target.
 	docsChosen bool
 	// oracleRecorded: the one oracle backend with an adapter was recorded
@@ -781,40 +797,46 @@ type collectedValues struct {
 }
 
 // collectMissingValues fills each config value ic lacks, in the order setup
-// asks them, from resolve, and stops at the first answer that is not a value
-// setup writes: the values after it are not asked. It is the one sequence
+// asks them, from resolve. An answer that is not a value setup writes
+// (deciding later included) leaves that value unset and the values after it
+// are still asked, so one deferred value never holds back an answered one
+// (iss-2610170930394303); the deep-scan question, asked only of a private
+// repository, is not asked while the visibility is unset. It is the one sequence
 // the install's value step (stepConfigValues) and the walk before the
 // install (WalkConfigValueQuestions) both follow, so the walk puts exactly
 // the questions the install would.
 func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]string, resolve func(key string, choices []string, def string) string) collectedValues {
 	var c collectedValues
 	if ic.Visibility == "" {
-		ic.Visibility = resolve("visibility", visibilityChoices, "")
-		if !inSet(ic.Visibility, visibilityChoices) {
-			return c // no valid visibility
+		if v := resolve("visibility", visibilityChoices, ""); inSet(v, visibilityChoices) {
+			ic.Visibility = v
+			c.answered = true
 		}
 	}
 	if ic.DocsTarget == "" {
-		ic.DocsTarget = resolve("docs_target", docsTargetWritable, docsTargetDefault)
-		if !inSet(ic.DocsTarget, docsTargetWritable) {
-			if why, retired := RetiredDocsTarget(ic.DocsTarget); retired {
-				c.retired = why
-			}
-			return c // no writable docs target
+		v := resolve("docs_target", docsTargetWritable, docsTargetDefault)
+		if inSet(v, docsTargetWritable) {
+			ic.DocsTarget = v
+			c.answered = true
+			c.docsChosen = true
+		} else if why, retired := RetiredDocsTarget(v); retired {
+			c.retired = why
 		}
-		c.docsChosen = true
 	}
 	if ic.OracleBackend == "" {
+		var v string
+		recorded := false
 		if overrides["oracle_backend"] == "" && !oracleBackendAsked() {
 			// One answer has an adapter, so there is nothing to ask: record it
 			// and say so once the write lands (iss-2610031236155833).
-			ic.OracleBackend = oracleBackendDefault
-			c.oracleRecorded = true
+			v, recorded = oracleBackendDefault, true
 		} else {
-			ic.OracleBackend = resolve("oracle_backend", oracleBackendChoices, oracleBackendDefault)
+			v = resolve("oracle_backend", oracleBackendChoices, oracleBackendDefault)
 		}
-		if !inSet(ic.OracleBackend, oracleBackendChoices) {
-			return c // no valid oracle backend
+		if inSet(v, oracleBackendChoices) {
+			ic.OracleBackend = v
+			c.answered = true
+			c.oracleRecorded = recorded
 		}
 	}
 	if ic.Visibility == "private" && onPath(cwd, "trufflehog") && ic.ScanDeep == nil {
@@ -825,13 +847,12 @@ func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]st
 		// — an unparseable answer must never resolve to a WEAKER scan than the one
 		// the operator asked for. An explicit "false" still disables it deliberately.
 		ans := resolve("scan_deep", scanDeepChoices, scanDeepDefault)
-		if !inSet(ans, scanDeepChoices) {
-			return c // no valid scan_deep (never persist a typo)
+		if inSet(ans, scanDeepChoices) { // never persist a typo
+			v := ans == "true"
+			ic.ScanDeep = &v
+			c.answered = true
 		}
-		v := ans == "true"
-		ic.ScanDeep = &v
 	}
-	c.ok = true
 	return c
 }
 
@@ -839,8 +860,8 @@ func collectMissingValues(cwd string, ic *InstallConfig, overrides map[string]st
 // questions an install at cwd with opts would ask, in the order it asks them
 // and exactly as far as it would ask them: a value a flag in
 // opts.ValueOverrides gives is not put, and an answer that is not a value
-// setup writes (deciding later included) ends the walk where it ends the
-// install's collection. It is the part of setup's questions settled before
+// setup writes (deciding later included) leaves that value unset and the
+// walk goes on to the next, as the install's collection does. It is the part of setup's questions settled before
 // the install's first write, so a front door that answers from a file checks
 // the file against it before Install runs, and a value the file leaves
 // unanswered refuses with the repository untouched (iss-2610040025088395).
