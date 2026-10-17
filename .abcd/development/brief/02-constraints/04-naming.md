@@ -53,10 +53,12 @@ The exemptions carrying a rationale of their own:
 
 The remaining surfaces are exempt for the plain reason that no maritime cognate
 adds meaning: `banlist`, `build`, `dashboard`, `decide`, `docs`, `drain`,
-`guard`, `history`, `hook`, `ideate`, `identity`, `implement`, `inbox`, `lab`,
-`library`, `lint`, `mode`, `peers`, `reading`, `report`, `rules`, `scribe`,
-`site`, `spec`, `statusline`, and `update`. They are registered here so the
-exemption is on the record.
+`embargo`, `guard`, `history`, `hook`, `ideate`, `identity`, `implement`,
+`inbox`, `lab`, `land`, `library`, `lint`, `memory`, `mode`, `peers`,
+`reading`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`,
+`statusline`, and `update`. They are registered here so the exemption is on the
+record. `embargo` is meant in its disclosure sense, an advisory held private
+until it is published, not the maritime order that once kept ships in port.
 
 **Reserved meta-development commands** (later phases; named now to prevent
 collisions):
