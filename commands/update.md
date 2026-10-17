@@ -222,8 +222,11 @@ answers file:
 It puts only the questions this repository never answered and the settings
 whose default changed, never one answered or deferred with decide later. The
 yes approved the run, so it asks no approval. Start the file with no answers:
-the run stops with exit 2 before any write, naming each value question it
-would ask; put that question to the person, add their answer, and run again.
+a setting value the run would ask (the visibility, the docs target, deep
+scanning) stops it with exit 2 before any write, naming that one question; put
+it to the person, add their answer, and run again. A question the run asks
+later, such as the artefact kind or an offer, is checked when it is asked, and
+a stop there leaves the steps before it done.
 
 **The news alone.** Where no offer was made, run
 `"${CLAUDE_PLUGIN_ROOT}/abcd" update news --seen` once the person has

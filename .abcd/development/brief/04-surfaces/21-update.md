@@ -203,13 +203,16 @@ nothing and writes nothing.
 What the update changed is said apart from that line, after the person's
 first message (spc-2610170635097509). When this computer has not been shown
 the news up to the running release, or the update brings the repository setup
-it never answered, session start prints one constant sentence to the
-session's context, with no version and no count, telling the agent to run
-this verb's news sub-verb and relay what it prints at the start of its first
-reply. Working that out reads only: the binary's version, the repository's
-`setup_version` checked to be exactly a release tag, the binary record's
-`previous_tag`, the setup answers records and the store under
-`~/.abcd.noindex/after-update/`, and nothing is fetched or written. The
+it never answered and the offer for the running release was not answered
+here, session start prints one constant sentence to the session's context,
+with no version and no count, telling the agent to run this verb's news
+sub-verb and relay what it prints at the start of its first reply. Working
+that out reads only what is on this computer: the binary's version and the
+digest it carries, the repository's `setup_version` checked to be exactly a
+release tag, the binary record's `previous_tag`, the setup answers records,
+the store under `~/.abcd.noindex/after-update/`, and, where an offer could be
+due, the repository files setup reads to tell which of its questions apply;
+nothing is fetched or written. The
 sub-verb is described under [Sub-verbs](#sub-verbs); the setup a yes runs is
 the ahoy chapter's.
 
