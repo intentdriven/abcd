@@ -77,6 +77,12 @@ const (
 	// launched working tree, the run's own directories and the temporary
 	// directory.
 	outsideRemovalEntryID = "removal-outside-tree"
+	// groupBrokenEntryID: the command, placed inside the group that runs it
+	// from the working tree, would close that group before its end or leave
+	// the text unparsable as one group (a stray } or ), a closing keyword
+	// with nothing open, a backslash at its end), so part of it could run
+	// outside the change of directory.
+	groupBrokenEntryID = "tree-group-broken"
 )
 
 // approveFoldsCase reports whether the filesystem folds case, so a protected
@@ -141,7 +147,13 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 	if !a.Allow {
 		return a, nil
 	}
-	out := map[string]string{"command": runFrom(files.dir, command)}
+	run, intact := runFromIntact(files.dir, command)
+	if !intact {
+		return refusal(groupBrokenEntryID,
+			"the command closes the group that runs it from the working tree before its end, or leaves that group unparsable (a } or ) with nothing open for it to close, a closing keyword such as fi, done or esac with nothing open, a } after a command's words, which zsh reads as a close, or a backslash at its very end), so part of it could run outside the working tree.",
+			"the same command with every group, if, loop and case it opens closed inside it, and no backslash at its end."), nil
+	}
+	out := map[string]string{"command": run}
 	var description string
 	if json.Unmarshal(fields["description"], &description) == nil && description != "" {
 		out["description"] = description

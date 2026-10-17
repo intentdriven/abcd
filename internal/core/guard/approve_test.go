@@ -183,7 +183,7 @@ func TestApproveLeavesScriptFilesToTheirInterpreter(t *testing.T) {
 // own voice.
 func TestApprovalIDsAreReserved(t *testing.T) {
 	for _, id := range []string{unnamedProgramEntryID, inlineCodeEntryID, checkNoteEntryID, registryEntryID, promptToolEntryID, promptInputEntryID,
-		protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID, unfixedPathEntryID, gitConfigWriteEntryID} {
+		protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID, unfixedPathEntryID, gitConfigWriteEntryID, groupBrokenEntryID} {
 		if !containsString(reservedEntryIDs, id) {
 			t.Errorf("reservedEntryIDs lacks %q", id)
 		}
