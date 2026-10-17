@@ -525,8 +525,9 @@ board and the version flag only report what is installed.
 > status block's readiness read, not from an active-intents section with a
 > spec-store timeout, and the only threshold of its own is the reviews block's
 > twenty commits; a reservation's expiry it shows is the reservation's. There
-> is no alias routing either: `status` is refused and `help`
-> prints the verb list, and neither routes to the board.
+> is no alias routing either: `abcd status` is a verb of its own, everyone's
+> status on the shared remote, and `help` prints the verb list, so neither
+> routes to the board.
 
 The board renders exactly six sections, always in this order, each source a
 local-filesystem read, and each source's absence mapping to a named known-state
@@ -592,7 +593,9 @@ The naming discipline forbids a sub-verb that names what bare already renders.
 bare render and add no behaviour, existing only so the intuitive spelling lands
 on the same board. They are therefore admissible under the rule rather than
 exceptions to it. Had they introduced divergent behaviour, they would be
-forbidden. Nothing routes them today.
+forbidden. Neither routes to the board today: `abcd status` is a verb of its
+own ([`39-status.md`](39-status.md)), and `abcd help` prints the grouped verb
+list.
 
 ## Related documentation
 
