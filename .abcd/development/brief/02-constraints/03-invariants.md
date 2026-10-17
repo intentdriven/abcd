@@ -35,27 +35,64 @@ The following are non-negotiable invariants — any architectural choice that vi
    never makes, moves or deletes a tag of the checkout's own; `build`, whose
    meaning includes the run's reservation as it starts or resumes (a fetch and
    one push, the spec's footprint or the issue's `found_at` naming the files)
-   and, with `--release`, a fetch and
-   one tombstone push; `drain`, whose meaning includes reserving each issue as
-   its lane starts and renewing, at half its lease, the reservation of each
-   lane parked at land; and `implement step` and `implement receipt`, whose
-   meaning includes renewing the run's reservation at half its lease, the land
-   fence's fetch and renewal before a merge is armed, and the tombstone once
-   the run's last lane lands or an issue lane is handed back; the land
-   fence's fetch is made before it judges a release hold whether or not the
-   run holds a reservation (itd-2609151838312703 C7); and `land`, whose
-   meaning includes one fetch of the reservations before it pushes, arms or
-   queues anything, for the same release-hold judgement. The release tags
-   each such fetch copies end a release hold.
+   and, with `--release`, a fetch and one tombstone push; `drain`, whose
+   meaning includes one fetch of the reservations and origin's default branch
+   at the start of every move, which the move plans from (`--dry-run` fetches
+   nothing and reads that view as last fetched, with its age), reserving each
+   issue before its judgement is asked (a fetch and one push; an issue or
+   footprint another copy holds in the move's view is passed over with
+   neither), releasing that reservation when no lane will open on it (a fetch
+   and one tombstone push over the commit the drain's reservation made, and
+   only while it is still the tip: on a yes; on an answer over an issue that
+   has left the eligible set; when the judgement it was taken for is
+   superseded, the order now asking another issue, nothing eligible left, the
+   drain stopping, or a no answered once the window has elapsed; on a lane's
+   start refused or failing; and on a request whose reservation lapsed
+   unanswered; on a yes the tombstone carries the hand-back's kind and the
+   blob id of the issue's record on origin's default branch), pushing the
+   tombstone a handed-back lane's step could not push (a fetch and one push,
+   carrying the lane's hand-back kind), and renewing, at half its lease, the
+   reservation of each lane parked at land and of the lane in progress, on
+   every move, waiting or not (a fetch and one push, spc-2610161044461448
+   step 7), where a move that finds a lane parked at land also makes one
+   listing of the person's latest pull requests through the forge client
+   (`gh pr list`), which reads every parked lane's pull request (step 8); and
+   `implement step` and `implement receipt`, whose meaning
+   includes renewing the run's reservation at half its lease, the land
+   fence's fetch and renewal before the landing pushes the lane's branch and
+   again before a merge is armed, and the tombstone once the run's last lane
+   lands or an issue lane is handed back, the latter carrying the hand-back's
+   kind and the issue's record blob, and, in an issue run, the sync step's
+   fetch of origin's default branch, at each sync: before the landing's
+   records, and again when the open pull request starts to conflict at its
+   arming or its merge wait (spc-2610161044461448 step 13); the land fence's fetch is made before it
+   judges a release hold whether or not the run holds a reservation
+   (itd-2609151838312703 C7); and `land`, whose meaning includes one fetch of
+   the reservations before it pushes, arms or queues anything, for the same
+   release-hold judgement. The release tags each such fetch copies end a
+   release hold.
    `build next`'s exclusions, `build <itd-N>`'s peers check and every render
    of a reservation or a hold read the view as last fetched, from disk, and
    never ask the forge's user endpoint. Each act above that writes a
    reservation may also make one call to that endpoint when git's identity
-   does not name the holder (invariant 10). `reserve --holder`'s meaning is
-   that user-endpoint call alone, and nothing else, made in either of two
-   cases: (a) git's identity is a person's but carries neither a GitHub
-   no-reply address nor a machine key; (b) git's identity is not a person's
-   (unset, or a machine's), in which case the machine key is skipped.
+   does not name the holder (invariant 10). Each such act that the fetched
+   tip shows reserves afresh (a reservation over no tip or a released one, or
+   a take-over, whether `reserve`'s, a `build` start's or a `drain` lane's,
+   each lane asking at its own reservation, not once at the drain's start) may
+   also make, after its fetch and before its push, one call to the forge's
+   repository endpoint for each of origin's push URLs on github.com, to ask
+   whether it is a fork. An answer is kept for the process, so a later act
+   asks nothing about that repository; a call that failed is held a minute
+   and made again by the next act after that, at most one a minute for a
+   repository. A renewal (however it was asked for) and a release never make
+   it, but for a drain's reservation that renews this copy's lapsed one,
+   which is the drain's hold afresh and makes it as a fresh one does, and an
+   unanswered call lets the act through with a warning (spc-2610161044461448,
+   step 10). `reserve --holder`'s meaning is that user-endpoint call alone,
+   and nothing else, made in either of two cases: (a) git's identity is a
+   person's but carries neither a GitHub no-reply address nor a machine key;
+   (b) git's identity is not a person's (unset, or a machine's), in which case
+   the machine key is skipped.
    The status branches (itd-2609151838312703, `abcd-status/<username>` on
    `origin`, one per person) are fetched and pushed only by verbs whose
    documented meaning says so: `announce`, whose meaning is one listing of
@@ -119,7 +156,7 @@ The following are non-negotiable invariants — any architectural choice that vi
 
 18. **Shape claims in the brief's surface chapters are derived, never hand-authored** — every flag and sub-verb the chapters under `04-surfaces/` state comes from the command tree, through one generated appendix at the end of each chapter under `04-surfaces/`, composed from the walk that builds the compatibility snapshot, with one exception: a chapter's `## Sub-verbs` table (adr-40 §6) and its standard note are hand-written, and `surface_coverage` checks them against the snapshot in both directions. A chapter whose command the tree does not register carries the same block saying there is no shipped surface. The prose above the appendix states no flag the tree registers and no sub-verb written as an invocation, and says why a surface exists, what it refuses and which trade was made. The appendix carries flags and sub-verbs only: exit codes, output fields and behavioural claims stay prose and review-grain until the binary records them where a generator can read. Per [adr-2609231028044006](../../decisions/adrs/2609231028044006-surface-chapter-shape-claims-are-derived.md), delivering itd-147. Held by `TestSurfaceAppendicesMatchCommandTree` and `TestSurfaceChapterProseStatesNoShape` (`internal/surface/cli/brief_appendix_test.go`), which run in `go test ./...`. `surface_coverage` stays the row-level presence check over the surfaces index and each chapter's sub-verb table, and says so in every finding. The invariant holds those chapters only: a shape claim elsewhere in the record is not checked by it. How a chapter is added is in [`04-surfaces/README.md` § The generated appendix](../04-surfaces/README.md#the-generated-appendix).
 
-19. **A machine takes an issue alone only when its fields say it needs no decision** — an unattended drain takes an open issue only under the drained repository's own rule, read from an accepted decision record in its own store carrying the four `drain_` fields, and refuses a repository without one, or with a partial, malformed or ambiguous one, never falling back to a looser or a stricter rule. Under that rule it takes an issue only when no record in its `blocked_by` is still open, its category and severity are ones the rule takes, it carries a `remedy:` other than `none (filed automatically)`, the value an automatic filer writes when it has no fix, and its remedy does not open "Waits on" nor is its deferral live at the current anchor tag (every new issue carries a remedy; a record filed before that carries none and is listed as ineligible); every other open issue is handed back, listed as ineligible or skipped by the rule that excluded it, each with exactly one disposition. abcd's strict baseline takes the fixable set (`bug`, `documentation`, `drift`, `inconsistency`, `tech-debt`, `ux`) at `nitpick` or `minor` and hands every `security` issue to a person; a repository's record may narrow it, and may loosen it to `major`, `critical` or `security`, and every floor loosened is named by the dry run and at the start. A host judgement over the remedy may only hand an issue back, never let one through, and the classification is re-derived every run rather than written onto the issue. abcd's own repository states the baseline in [adr-2609291342092738](../../decisions/adrs/2609291342092738-a-drain-takes-an-issue-alone-only-when.md), from itd-82 decision 4 and the product thinker's rulings BX2 and H11; the record is read by `drainrule.Load` in `internal/core/drainrule/drainrule.go`, the rule is `eligibility` in `internal/core/capture/eligible.go`, reached through `capture.PlanDrain`, and `TestAbcdsOwnDrainRuleIsTheStrictBaseline` holds abcd's own record to the baseline and to this citation.
+19. **A machine takes an issue alone only when its fields say it needs no decision** — an unattended drain takes an open issue only under the drained repository's own rule, read from an accepted decision record in its own store carrying the four `drain_` fields, and refuses a repository without one, or with a partial, malformed or ambiguous one, never falling back to a looser or a stricter rule. Under that rule it takes an issue only when no record in its `blocked_by` is still open, its category and severity are ones the rule takes, it carries a `remedy:` other than `none (filed automatically)`, the value an automatic filer writes when it has no fix, and its remedy does not open "Waits on" nor is its deferral live at the current anchor tag (every new issue carries a remedy; a record filed before that carries none and is listed as ineligible); every other open issue is handed back, listed as ineligible or skipped by the rule that excluded it, each with exactly one disposition. Whatever the record says, an issue whose `related_intents` names an intent is handed back by the rule `promoted`, so a machine never takes alone an issue an intent already owns; a record the consistency pass files is not one, since the intents it names are the two its contradiction is between: it is judged by its other fields as if it named no intent, so it waits for a person's remedy as any automatic filer's record does, while an intent it was promoted into, which names it back in `related_issues`, owns it as any intent does (ruling H12, dcn-2610161425496537). abcd's strict baseline takes the fixable set (`bug`, `documentation`, `drift`, `inconsistency`, `tech-debt`, `ux`) at `nitpick` or `minor` and hands every `security` issue to a person; a repository's record may narrow it, and may loosen it to `major`, `critical` or `security`, and every floor loosened is named by the dry run and at the start. A host judgement over the remedy may only hand an issue back, never let one through, and the classification is re-derived every run rather than written onto the issue. abcd's own repository states the baseline in [adr-2609291342092738](../../decisions/adrs/2609291342092738-a-drain-takes-an-issue-alone-only-when.md), from itd-82 decision 4 and the product thinker's rulings BX2 and H11; the record is read by `drainrule.Load` in `internal/core/drainrule/drainrule.go`, the rule is `eligibility` in `internal/core/capture/eligible.go`, reached through `capture.PlanDrain`, and `TestAbcdsOwnDrainRuleIsTheStrictBaseline` holds abcd's own record to the baseline and to this citation.
 
 20. **A workflow asserts a person's authorship only inside a declared bound, and a machine never becomes an identity on the commit** — a bot-opened dependency bump is re-authored only when its author and the run's actor are a bot the repository's declaration names, its branch lives in the repository under the row's prefix, it carries one commit by that bot, and that commit only modifies files the row names at the directory the bot's own configuration declares; anything else is left alone with the failed clause named. The re-authored commit carries the owner the declaration names as author AND committer; the GitHub App that pushes it is never either, so the attribution gate stays unchanged and judges it like any other commit. The bound judges which files change, never their content, and that residual is accepted on the record. The App's credentials are Dependabot secrets, and while the owner or either secret is missing an in-bound bump is refused by name — the workflow never pushes with its own token and never keeps the bot as author. Per [adr-2609292116133348](../../decisions/adrs/2609292116133348-a-dependency-bump-inside-the-bound-is-re.md), on iss-2609221820487644 and itd-2609221842494980; the bound is `scripts/dependency-reauthor.sh`, byte-exact with the template `abcd launch scaffold` lays, held by the tests in `internal/core/launch/scaffold/dependency_reauthor_test.go`.
 

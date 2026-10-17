@@ -195,7 +195,7 @@ conf_value() {
 report_dir="$(conf_value report_dir)"
 report_dir="${report_dir%/}"
 case "/$report_dir/" in
-*/../* | */./* | //*) report_dir="" ;;
+*/../* | */./* | *//*) report_dir="" ;;
 esac
 [[ "$report_dir" =~ $SAFE_RE ]] ||
 	refuse "scripts/cloud/cloud.conf: report_dir must be a relative path inside the checkout."
@@ -348,7 +348,21 @@ if [ -z "$why" ]; then
 	cat "$tmp/report.md" >"$report"
 	printf 'chore(cloud): hand back the report on %s\n\nThe session %s; the report alone, after its work.\n\nAssisted-by: %s\n' \
 		"$item" "$([ "$state" = stopped ] && echo stopped || echo handed its work back)" "$assisted" >"$tmp/message"
-	if ! git add -- "$report" >/dev/null 2>&1 || ! git commit -q --only -F "$tmp/message" -- "$report" >/dev/null 2>&1; then
+	# A hand-back run again within finished_at's second, saying the same
+	# things, writes the report HEAD already holds, and git has nothing to
+	# commit. That is no refusal: as the branch's last commit, alone, and
+	# disclosing the model this run names, the report is pushed as it stands;
+	# otherwise it cannot be last, or this run's disclosure, without a commit
+	# to make, and the reason says so.
+	if git cat-file -e "HEAD:$report" 2>/dev/null && git diff --quiet HEAD -- "$report" 2>/dev/null; then
+		if [ "$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null)" != "$report" ]; then
+			why="a commit already holds the same report, but not alone as the branch's last commit, so there was nothing to commit"
+		elif [ "$(git log -1 --format='%(trailers:key=Assisted-by,valueonly)' HEAD 2>/dev/null)" != "$assisted" ]; then
+			why="the report is unchanged, but its commit carries another Assisted-by than this run names, so it is not pushed as this run's"
+		else
+			echo "hand-back: the report is unchanged from the one committed as $(git rev-parse --short HEAD), so that commit is pushed as it stands." >&2
+		fi
+	elif ! git add -- "$report" >/dev/null 2>&1 || ! git commit -q --only -F "$tmp/message" -- "$report" >/dev/null 2>&1; then
 		# The report is left in the tree, unstaged, as the session wrote it.
 		git reset -q -- "$report" >/dev/null 2>&1 || true
 		why="the report could not be committed (git or a commit hook refused the commit)"

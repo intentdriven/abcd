@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/grounds"
@@ -360,21 +361,27 @@ func promotedInto(repoRoot, id string, related []string, except string) (string,
 	if err != nil {
 		return "", err
 	}
-	for _, itd := range related {
-		if itd == except {
-			continue
-		}
-		it, ok := corpus.Lookup(itd)
-		if !ok {
-			continue
-		}
-		for _, back := range it.RelatedIssues {
-			if back == id {
-				return it.ID, nil
-			}
-		}
+	if into := backLinkedIntents(corpus, id, related, except); len(into) > 0 {
+		return into[0], nil
 	}
 	return "", nil
+}
+
+// backLinkedIntents is every intent in related, in its order and each once,
+// whose own record in corpus names id back in related_issues: the intents the
+// record id was promoted into (promotedInto's pair). except is skipped, as
+// there. An id corpus does not hold is no intent's, so it is left out.
+func backLinkedIntents(corpus intent.Corpus, id string, related []string, except string) []string {
+	var into []string
+	for _, itd := range related {
+		if itd == except || slices.Contains(into, itd) {
+			continue
+		}
+		if it, ok := corpus.Lookup(itd); ok && slices.Contains(it.RelatedIssues, id) {
+			into = append(into, it.ID)
+		}
+	}
+	return into
 }
 
 // PromotedInto names the intent iss was promoted into, or "" — the read-side

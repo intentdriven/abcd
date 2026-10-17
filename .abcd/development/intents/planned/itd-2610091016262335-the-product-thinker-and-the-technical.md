@@ -68,6 +68,10 @@ _Drafted 2026-10-14 from the product thinker's rulings and accepted as drafted t
 
 - The decision record for this trust boundary (adr-2610091016270711) is written from the 2026-10-14 rulings at planning.
 
+## Typed Links
+
+- **built on by `itd-2610161733316518`** (one task done across a model matrix): Its judging step waits on this intent's session, as a session kind beside brief editing; verdicts stay in the host's run record.
+
 ## Audit Notes
 
 _Empty. Populated by intent-auditor when intent moves to shipped/._

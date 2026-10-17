@@ -102,6 +102,19 @@ func TestParseRemoteAcceptsGitHubForms(t *testing.T) {
 		"https://github.com/example/example.git",
 		"https://github.com/example/example/",
 		"http://github.com/example/example",
+		// The forms git takes beyond the three it writes (spc-2610161044461448,
+		// step 10): userinfo, a port, ssh.github.com's ssh-over-443, ssh with no
+		// user, the scp form with no user, and a host in mixed case.
+		"https://octo@github.com/example/example.git",
+		"https://octo:secret@github.com/example/example",
+		"ssh://git@github.com:22/example/example.git",
+		"ssh://git@ssh.github.com:443/example/example.git",
+		"ssh://github.com/example/example",
+		"github.com:example/example.git",
+		"git@ssh.github.com:example/example.git",
+		"git@GitHub.com:example/example.git",
+		"https://GitHub.COM/example/example",
+		"ssh://git@GITHUB.com/example/example",
 	} {
 		owner, name, err := ParseRemote(url)
 		if err != nil || owner != "example" || name != "example" {
@@ -121,6 +134,9 @@ func TestParseRemoteRefusesNonGitHub(t *testing.T) {
 		"https://github.com/example/example/extra",
 		"https://github.com/example/..",
 		"git@github.com:example/-x%2F",
+		"https://ssh.github.com/example/example",
+		"git@github-work:example/example.git",
+		"file:///srv/github.com/example/example",
 	} {
 		if _, _, err := ParseRemote(url); err == nil {
 			t.Errorf("ParseRemote(%q) accepted", url)

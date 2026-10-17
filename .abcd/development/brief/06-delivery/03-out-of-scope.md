@@ -94,7 +94,6 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-163` — A cited source always resolves and an adopted inspiration is always acknowledged: the reference-closure and acknowledgements-mirror gate
 - `itd-164` — A source is licence-vetted before the record may lean on it: cite refresh records the verdict, the gate reads the committed baseline
 - `itd-165` — A failed fidelity verdict becomes work somebody can see
-- `itd-166` — A run records what it was actually run with
 - `itd-167` — The product thinker answers a stop in a medium they already use, and answers it whenever they get to it
 - `itd-168` — The product thinker sets how the system talks to them, and the defaults are plain language and options to choose from
 - `itd-169` — An agent loop that stops says who it is asking and what it needs, and never simply halts
