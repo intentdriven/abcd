@@ -147,12 +147,12 @@ record kind. Only the first ships.
    for itd-16's hash-chain surface. A hand-run `spec close` that ships the
    intent makes its audit owed: it writes an OWED receipt, a marker in the
    intent's `## Audit Notes` and a review request under
-   `.abcd/.work.local/reviews/`. When the auditor's route reaches a provider
-   connection (`oracle.roles.intent-auditor` points at one, or one serves the
-   routed tier), the close sends the request there and ingests the verdict. On
-   the default route, the harness, the audit stays owed until the host runs the
-   auditor from that request (`abcd intent audit --owed` drains the owed set).
-   Either way the close stands, and a failed review stays owed. A `build` run
+   `.abcd/.work.local/reviews/`. When `oracle.roles.intent-auditor` points at a
+   provider connection, the close sends the request there and ingests the
+   verdict. Otherwise the route ends on the harness, and the audit stays owed
+   until the host runs the auditor from that request (`abcd intent audit
+   --owed` drains the owed set). Either way the close stands: a failed call
+   leaves the audit owed, and a malformed answer is dead-lettered. A `build` run
    audits in the implement loop's validate stage, on the lane whose landing
    closes the intent's last open spec and before that lane lands; a `drain` run
    never does, since its lanes are issues and an issue has no criteria. The
