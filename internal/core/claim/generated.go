@@ -3,6 +3,7 @@ package claim
 import (
 	"fmt"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -88,7 +89,8 @@ func GeneratedFiles(root string) (Generated, string) {
 
 // plainDeclaration is why the root declaration is not plain, "" when it is:
 // abcd shares a generated file only on a declaration that is ASCII
-// throughout, quotes no pattern and names no macro.
+// throughout, quotes no pattern, has no line starting with [attr] and
+// converts no file on checkout (ident, working-tree-encoding).
 func plainDeclaration(text string) string {
 	if !isASCII(text) {
 		return "holds a byte outside ASCII"
@@ -100,7 +102,15 @@ func plainDeclaration(text string) string {
 		case strings.HasPrefix(f[0], `"`):
 			return "quotes a pattern"
 		case strings.HasPrefix(f[0], "[attr]"):
-			return "names a macro"
+			return "has a line starting with [attr]"
+		}
+		for _, tok := range f[1:] {
+			name, _, _ := strings.Cut(strings.TrimLeft(tok[:1], "-!")+tok[1:], "=")
+			if name == "ident" || name == "working-tree-encoding" {
+				// The checkout's own .gitattributes could then differ from
+				// the blob read here.
+				return "converts a file on checkout"
+			}
 		}
 	}
 	return ""
@@ -151,6 +161,11 @@ func candidatesOf(entries []string) (candidates []string, why string) {
 		if !ok {
 			continue
 		}
+		if !isASCII(p) && slices.ContainsFunc(strings.Split(p, "/"), func(seg string) bool { return strings.EqualFold(seg, ".gitattributes") }) &&
+			!strings.EqualFold(path.Base(p), ".gitattributes") {
+			// A directory of that name could stand in for a .gitattributes.
+			return nil, "holds a .gitattributes, or a directory of that name, named outside ASCII"
+		}
 		dir, name := path.Split(p)
 		if !strings.EqualFold(name, ".gitattributes") {
 			continue
@@ -159,7 +174,7 @@ func candidatesOf(entries []string) (candidates []string, why string) {
 		case !isASCII(dir):
 			return nil, "holds a .gitattributes in a directory named outside ASCII"
 		case !isASCII(name):
-			return nil, "holds a .gitattributes named outside ASCII"
+			return nil, "holds a .gitattributes, or a directory of that name, named outside ASCII"
 		case dir == "" && name != ".gitattributes":
 			return nil, "holds a second root .gitattributes in other capitals"
 		case dir != "":
