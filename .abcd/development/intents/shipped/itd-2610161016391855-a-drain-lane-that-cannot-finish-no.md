@@ -79,7 +79,9 @@ _None open; the product thinker delegated this bundle's planning decisions on 20
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-710de708faa8 -->
+Fidelity review OWED (receipt rcp-710de708faa8).
+<!-- abcd-review-end receipt=rcp-710de708faa8 -->
 
 ## Decisions
 

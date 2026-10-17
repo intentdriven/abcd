@@ -13,9 +13,9 @@ production_mode: hand-written
 
 This spec delivers the drain-many-accounts bundle:
 
-- [itd-2610161016394967](../../intents/planned/itd-2610161016394967-several-people-each-on-their-own-github.md): drains on several accounts share the work (critical);
-- [itd-2610161016391855](../../intents/planned/itd-2610161016391855-a-drain-lane-that-cannot-finish-no.md): a stuck drain lane hands itself back (major);
-- [itd-2610161016401115](../../intents/planned/itd-2610161016401115-a-drain-runs-unattended-on-a-hosted.md): drains run unattended and visibly (minor).
+- [itd-2610161016394967](../../intents/shipped/itd-2610161016394967-several-people-each-on-their-own-github.md): drains on several accounts share the work (critical);
+- [itd-2610161016391855](../../intents/shipped/itd-2610161016391855-a-drain-lane-that-cannot-finish-no.md): a stuck drain lane hands itself back (major);
+- [itd-2610161016401115](../../intents/shipped/itd-2610161016401115-a-drain-runs-unattended-on-a-hosted.md): drains run unattended and visibly (minor).
 
 The first two block a drain run on several GitHub accounts at once, and the third can follow. The members ship together when this spec closes. Steps 1 to 13 can be used with a host-answered judgement before steps 14 to 18 land. Every planning decision was made facilitator-on-delegation and is recorded in the decision store; each member's `## Decisions` names the records it rests on.
 
