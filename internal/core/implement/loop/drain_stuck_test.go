@@ -211,6 +211,41 @@ func TestOnlyTimeRefusalsKeptComingCountsTowardTheBound(t *testing.T) {
 	inProgress("two minutes of refusing after an idle hour")
 }
 
+// TestAStepThatSucceedsBeforeTheHandBackKeepsTheLane: the drain reads a lane
+// stuck, and before it takes the run's lock a step running at the same time
+// succeeds; the hand-back, judged again under the lock, leaves the lane in
+// progress and its reservation holding.
+func TestAStepThatSucceedsBeforeTheHandBackKeepsTheLane(t *testing.T) {
+	c := &clock{t: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)}
+	o := Options{Now: c.now}
+	repo, bare, runID := stuckDrain(t, c)
+	stages := briefRefusing(sameRefusal)
+	for range 3 {
+		refuseStep(t, repo, runID, stages, o)
+	}
+	read, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b := stuckBounds{refusals: PaceValue{Value: BundledStuckRefusals}, minutes: PaceValue{Value: BundledStuckMinutes}}
+	if stuckReason(read, b) == "" {
+		t.Fatal("the drain's read finds the lane stuck")
+	}
+	if _, err := advance(repo.Root(), runID, DefaultStages(), o); err != nil {
+		t.Fatalf("the step at the same time succeeds: %v", err)
+	}
+	st, err := handBackStuck(repo.Root(), runID, b, c.t)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if l := st.Lanes[0]; l.HandBack != nil || l.Stage == StageHandedBack || l.Refused != nil {
+		t.Fatalf("a lane whose step succeeded since the drain read it is not handed back: %+v", l)
+	}
+	if tip := originReservation(t, bare, claim.RefPrefix+secondIssue); tip.released {
+		t.Fatalf("its reservation is not released: %+v", tip)
+	}
+}
+
 // TestAWaitByDesignIsNotStuck: a lane that has waited ninety minutes for its
 // preflight receipt, or through an outage, is not handed back as stuck: a
 // wait is not a refusal.

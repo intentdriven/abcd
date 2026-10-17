@@ -233,15 +233,18 @@ func times(n int) string {
 	return fmt.Sprintf("%d times", n)
 }
 
-// handBackStuck hands the run's lane in progress back as stuck, with why, and
-// releases the issue's reservation with the hand-back's tombstone
+// handBackStuck hands the run's lane in progress back as stuck by the bounds
+// b, and releases the issue's reservation with the hand-back's tombstone
 // (releaseOnHandBack), under the run's lock; it returns the run as written.
-// A lane the step handed back in the meantime keeps its own hand-back.
-func handBackStuck(repoRoot, runID, why string, now time.Time) (State, error) {
+// The lane is judged again under the lock, so a step running at the same time
+// that succeeded, or handed the lane back itself, since the drain read it
+// leaves the lane as that step wrote it.
+func handBackStuck(repoRoot, runID string, b stuckBounds, now time.Time) (State, error) {
 	var out State
 	err := mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
 		i := st.current()
-		if i < 0 || st.Lanes[i].HandBack != nil {
+		why := stuckReason(*st, b)
+		if i < 0 || st.Lanes[i].HandBack != nil || why == "" {
 			out = *st
 			return false, nil
 		}

@@ -670,8 +670,8 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				}
 				bounds = &b
 			}
-			if why := stuckReason(run, *bounds); why != "" {
-				if run, err = handBackStuck(repoRoot, l.RunID, why, now); err != nil {
+			if stuckReason(run, *bounds) != "" {
+				if run, err = handBackStuck(repoRoot, l.RunID, *bounds, now); err != nil {
 					return refuseMoved(err)
 				}
 				outcome, pr, hb = laneOutcome(run)
