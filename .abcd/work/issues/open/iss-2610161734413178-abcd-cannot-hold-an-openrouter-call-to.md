@@ -10,7 +10,7 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "internal/core/runner/opencode.go"
 remedy: "Two seams, one for each path a call takes. For a tool-using role run through the opencode runner, abcd writes a sealed per-run opencode provider configuration carrying the pin (provider order, fallbacks off, required parameters, quantisations, data collection denied, the canonical model slug), records its hash and opencode's version with the route, and reads OpenRouter's generation record for each call where the generation id is available. For a self-contained call through the OpenAI-compatible adapter, the listed route carries the same pin and the adapter reads the same record into the route receipt. Waits on the planning of itd-2610161733316518, which decides the fallback policy."
-related_intents: [itd-2610161733316518]
+related_intents: [itd-2610161733316518, itd-166]
 ---
 
 abcd cannot hold an OpenRouter call to one named upstream provider, and it records only part of what served it.
