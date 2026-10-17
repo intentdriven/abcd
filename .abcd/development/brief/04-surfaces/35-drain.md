@@ -236,8 +236,8 @@ on origin's default branch backs off, with a tip or without one
    receipt, and every outage wait. The drain hands a stuck lane back as
    `stuck`, naming the refusal, releases its reservation with the hand-back's
    tombstone, and goes on to the next issue in the same move. The lane keeps
-   its worktree and branch until the person discards it with the step verb's
-   `--discard`, which ends the run.
+   its worktree and branch until the person discards it through the step verb,
+   which ends the run.
 5. It reads what that lane has come to: its pull request opened (armed, or left
    open where the repository has no merge queue), the run complete, or the lane
    handed back, which it routes (below). A pull request the forge reports
