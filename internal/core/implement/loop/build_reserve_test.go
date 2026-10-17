@@ -330,6 +330,28 @@ func TestBuildTakeOverPassesThrough(t *testing.T) {
 	}
 }
 
+// TestABuildBacksOffItsOwnersOtherCopysOverlap (spc-2610161044461448 step
+// 11): only a person's own `abcd reserve` goes ahead over a path their other
+// copy holds; a build's reservation is automated, as a drain's is, and backs
+// off it, so two automated lanes never edit the same files.
+func TestABuildBacksOffItsOwnersOtherCopysOverlap(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), footprintedSpec)
+	bare := onOrigin(t, repo)
+	p2 := otherCopy(t, bare, patEmail)
+	if _, err := claim.Reserve(p2, claim.Request{Record: "iss-77", Footprint: []string{"internal/widget/a.go"}}, claim.Options{}); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Start(repo.Root(), "itd-10", Options{})
+	r := mustRefusal(t, err)
+	if !r.Contention || !strings.Contains(r.Reason, `"internal/widget/a.go" is in the footprint of iss-77`) {
+		t.Fatalf("the build over its owner's other copy's footprint = %+v; want the back-off naming the shared path", r)
+	}
+	runTierAbsent(t, repo.Root())
+	if tip := originReservation(t, bare, reservedRef); tip.commit != "" {
+		t.Fatalf("the build's reservation reached origin over the overlap: %+v", tip)
+	}
+}
+
 // TestBuildNextReservesThePickedIntent: `build next` reaches the same start,
 // so the picked intent is reserved with its spec's footprint.
 func TestBuildNextReservesThePickedIntent(t *testing.T) {

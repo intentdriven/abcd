@@ -53,6 +53,11 @@ read, or a github.com URL does not name exactly one owner and one repository,
 (…)`. When origin is the one fork the repository allows, `fork_allowed` names
 it as `<owner>/<name>` and the text reads `origin is a fork the repository
 allows (<owner>/<name>)`. Pass either on to the user.
+`own_overlap` lists each path the reservation shares with the user's own from
+another copy, as `path`, `record` and `effective_expiry` (see **When it
+refuses**); the text form warns of each on stderr. `generated_unread` says why
+no generated file was recognised, so every shared path was judged an overlap.
+Pass both on to the user.
 
 Tell the user what was reserved and until when.
 
@@ -103,11 +108,20 @@ cannot be read and is still within its two-hour hold, or another push reserved
 it while this one was on its way. Say who holds it and until when, and pick
 something else. Never retry in a loop.
 
-**Exit 3 also covers a shared path.** A footprint path that another live
-reservation's footprint also holds, whoever holds it and for whatever record,
-is refused (the user's own reservations from this copy excepted, since that
-work is this copy's: the user's other computer still backs off), naming that path, the other record, its holder and until when. Two
-paths are shared when they are equal or one is a directory holding the other.
+**Exit 3 also covers a shared path.** A footprint path that another person's
+live reservation also holds, for whatever record, is refused, naming that path,
+the other record, its holder and until when. Two paths are shared when they are
+equal or one is a directory holding the other. A shared path that is a file
+`origin`'s default branch declares generated is no overlap: generated files are
+those its root `.gitattributes`, as last fetched, marks `linguist-generated`
+(or `linguist-generated=true`). That one file is read, never a nested
+`.gitattributes`, `.git/info/attributes` or this checkout's own copy, because
+the declaration must be one every account shares; reading it is a disk read,
+never a fetch. A directory is never generated, even when every file under it
+is, so two directory footprints that share still overlap. When the file is
+there but cannot be read (it is not a regular file, or is over 256 KiB),
+nothing is shared, the refusal adds "generated files were not recognised: …",
+and a reservation that is made says the same (`generated_unread`).
 Running the command again to renew is checked the same way, since it names
 its footprint anew, so a reservation is never widened onto another; a build's
 or a drain's own renewal keeps its footprint and is not checked while the
@@ -117,6 +131,17 @@ overlap are judged on the reservations fetched just before the push, and each
 reservation is its own branch, so two people reserving at the same moment can
 both pass them: they are best-effort under a race. Two reservations of the
 same record cannot both land; the second push is refused.
+
+**A path shared with your own other copy warns, and the reservation is
+made.** The user's own reservations from this copy are no overlap at all,
+since that work is this copy's. One the user holds from another computer or
+another checkout that shares a path with this reservation does not refuse it:
+the act goes ahead, exit 0, and warns on stderr, `abcd reserve: warning:
+"<path>" is also in the footprint of <record>, which you hold from your other
+copy until <time>; reserved anyway, since both are yours` (`own_overlap` in
+`--json`). Tell the user both pieces of work change that path. Only this verb
+does so: a build's and a drain's reservations are automated and still back off
+such a path, and so does a drain's pass-over.
 
 **Exit 3 also covers your own other copy.** When the same person holds the
 record from another computer or another checkout, the refusal says "you are
