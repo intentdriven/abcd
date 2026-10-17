@@ -178,16 +178,71 @@ func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 // keeping its term.
 const fenceLease = lease.Max
 
-// landFence is the land fence, at the top of the arming: it fetches the run's
-// reservation and refuses, arming nothing, unless the tip is this person's
-// from this copy and live; when it holds, it renews it with term, the
-// fenceLease. It returns the renewed expiry, zero
-// for a run that holds no reservation.
-func landFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
-	id := c.State.Key
+// landFence is the land fence, at the top of the arming. It fetches the
+// reservations from origin, then refuses, arming nothing, unless the run's own
+// reservation is this person's from this copy and live (renewing it with
+// term, the fenceLease), and while a release another
+// session is cutting holds every merge (releaseHold, C7). A run that holds no
+// reservation fetches them all the same, for the hold
+// (claim.FetchMergeHold, the judgement `abcd land` makes too). It returns the
+// renewed expiry, zero for a run that holds no reservation, and the notice
+// naming each release dated ahead that the hold did not count
+// (claim.MergeHold.Notice), "" when there is none.
+func landFence(c Context, lane Lane, term time.Duration) (time.Time, string, error) {
 	if c.State.ReservedAt == nil {
-		return time.Time{}, nil
+		m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
+		var fe *claim.FetchError
+		switch {
+		case errors.As(err, &fe):
+			return time.Time{}, "", contend(string(StageLand), "", lane.ID,
+				"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and the merge is not armed",
+				"run abcd implement step again once origin answers")
+		case err != nil:
+			return time.Time{}, "", refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
+				"settle what it names, then run `abcd implement step` again")
+		}
+		return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m)
 	}
+	holds, err := renewAtFence(c, lane, term)
+	if err != nil {
+		return time.Time{}, "", err
+	}
+	notice, err := releaseHold(c, lane)
+	return holds, notice, err
+}
+
+// releaseHold refuses the arming, as contention, while the reservations as the
+// fence's renewal just fetched them show a release being cut that is not this
+// copy's own (claim.MergeHolds, the judgement `abcd land` makes too, which
+// keeps this copy's first sighting of a release dated ahead). It returns the
+// notice naming each release dated ahead that the hold did not count.
+func releaseHold(c Context, lane Lane) (string, error) {
+	m, err := claim.MergeHolds(c.RepoRoot, c.Now, claimOptions(c.Now))
+	if err != nil {
+		return "", refuse(string(StageLand), "", lane.ID, "the release holds could not be read at the land fence: "+err.Error(),
+			"settle what it names, then run `abcd implement step` again")
+	}
+	return termsafe.Sanitize(m.Notice()), heldMerge(lane, m)
+}
+
+// heldMerge is the merge hold's refusal at the fence: every other session's
+// lane, the same person's other copy included, leaves its pull request open
+// for the cutting session to merge or hold. It names each release, its holder
+// and until when.
+func heldMerge(lane Lane, m claim.MergeHold) error {
+	if !m.Held() {
+		return nil
+	}
+	return contend(string(StageLand), "", lane.ID,
+		termsafe.Sanitize(m.Reason()+", so this lane does not arm its merge"),
+		termsafe.Sanitize("the pull request stays open and unarmed; "+m.Waits()+", then run `abcd implement step` again"))
+}
+
+// renewAtFence renews the run's own reservation at the fence: it fetches the
+// reservations and refuses, arming nothing, unless the tip is this person's
+// from this copy and live; when it holds, it renews it with term.
+func renewAtFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
+	id := c.State.Key
 	res, err := claim.Reserve(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: term},
 		claimOptions(c.Now))
 	if err == nil {

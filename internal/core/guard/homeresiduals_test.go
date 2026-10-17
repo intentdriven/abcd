@@ -163,7 +163,7 @@ func TestHomeSpellingsTheWrittenCompareReads(t *testing.T) {
 		}
 		for n, cmd := range spellings {
 			t.Run(cmd, func(t *testing.T) {
-				d := verdictOf(t, cmd)
+				d := readingOf(t, cmd)
 				switch tc.want {
 				case VerdictBlock:
 					if d.Verdict != VerdictBlock || d.EntryID != tc.entry {
@@ -279,7 +279,7 @@ func TestRootAndHomeWithRedundantSeparators(t *testing.T) {
 	for _, tc := range cases {
 		for _, cmd := range []string{tc.cmd, `bash -c '` + tc.cmd + `'`} {
 			t.Run(cmd, func(t *testing.T) {
-				d := verdictOf(t, cmd)
+				d := readingOf(t, cmd)
 				if d.Verdict != tc.want || (cmd == tc.cmd && d.EntryID != tc.entry) || (tc.want == VerdictBlock && d.EntryID != tc.entry) {
 					t.Errorf("Check(%q) = %q via %q, want %q via %q", cmd, d.Verdict, d.EntryID, tc.want, tc.entry)
 				}

@@ -62,10 +62,11 @@ func TestRootDispatchUnknownIDFaults(t *testing.T) {
 
 // TestRootNonIDPositionalUnchanged is the golden test: a positional that does
 // not match the record-id shape reproduces the pre-change unknown-command
-// error byte-for-byte, exit code 2.
+// error byte-for-byte, exit code 2. "status" left the list when it became a
+// verb (itd-2609151838312703); "show", the other record-read word, stands in.
 func TestRootNonIDPositionalUnchanged(t *testing.T) {
 	_ = captureLedgerRepo(t)
-	for _, arg := range []string{"nonsense", "status", "iss-", "itd-x", "plan-3", "adr-40-slug"} {
+	for _, arg := range []string{"nonsense", "show", "iss-", "itd-x", "plan-3", "adr-40-slug"} {
 		_, err := runCLIErr(t, arg)
 		if err == nil {
 			t.Fatalf("positional %q must stay on the unknown-command path", arg)

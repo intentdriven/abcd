@@ -71,6 +71,7 @@ var wordReaders = map[string]string{
 	"shellCPayloads":         "clusterCouldCarry on every word",
 	"shellOperands":          "readWord on every unknown word",
 	"pipesIntoInterpreter":   "commandSites and nameCouldBeAny",
+	"deletesFromVariables":   "commandSites and nameCouldBeAny",
 	"readsScriptStream":      "commandSites and nameCouldBeAny",
 	"shellReadsStream":       "readWord and clusterCouldCarry on every unknown word",
 	"sourceReadsStream":      "exempt: reads source's literal `--`; its operand goes through scriptIsStream, which reads wordCouldBe",

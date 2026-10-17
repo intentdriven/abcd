@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -74,7 +75,12 @@ func readTip(root, record, ref, tree string, fetchedAt time.Time, keep bool) (t 
 // (storedGit: a replace ref standing a commit in for a blob does not make the
 // blob read as a commit); ok is false when the ref does not exist.
 func resolveRef(root, ref string) (name, typ string, ok bool, err error) {
-	out, err := storedGit(root, 64<<10, "for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", ref)
+	return resolveRefCtx(context.Background(), root, ref)
+}
+
+// resolveRefCtx is resolveRef bound to ctx.
+func resolveRefCtx(ctx context.Context, root, ref string) (name, typ string, ok bool, err error) {
+	out, err := storedGitCtx(ctx, root, 64<<10, "for-each-ref", "--format=%(refname) %(objectname) %(objecttype)", ref)
 	if err != nil {
 		return "", "", false, fmt.Errorf("reading %s: %w", ref, err)
 	}

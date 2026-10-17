@@ -13,3 +13,7 @@ remedy: "Give the prompt router one deadline for the whole hook, well inside the
 ---
 
 After the 2026-10-16 reboot, with machine load near 160, abcd's UserPromptSubmit hook ran past the host's 120-second timeout. The host discarded its output, so that prompt got no rules, no status block and no memory recall, and nothing said which part was slow. The hook execs abcd hook prompt-router once the binary is present. The router's own stages are each bounded (the status read at 600 ms, the root-commit lookup at 2 s), but nothing bounds the router as a whole.
+
+## Evidence 2026-10-16 (from abcd-a9, the messaging-design session)
+
+It happened a second time, at about 17:26 BST, on the prompt "status?". The 0.14.2 plugin root already held its binary, dated 15 October, and the last bootstrap attempt was at 15:48. So nothing was downloading, and the 120 seconds went to `abcd hook prompt-router` itself, with the one-minute load near 50. One question stays open: which part of the router grows with load (repository reads, git calls, or the first process-table scan after a reboot). The fix should measure it rather than guess.

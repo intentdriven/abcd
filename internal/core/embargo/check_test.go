@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The check fixtures name advisories of the GHSA-xxxx-xxxx-xxxx placeholder
@@ -506,4 +508,98 @@ func TestCheckFoldsConfusablesAndLineWraps(t *testing.T) {
 func TestCheckLineJoinOnlyJoinsWrappedTokens(t *testing.T) {
 	cf := newCheckFixture(t)
 	wantKinds(t, cf.text(t, "a list -\nsample overflow in the parser\nwell-\nknown\n"))
+}
+
+// TestCheckRefusesARecordTheStoreHoldsUnderEmbargo: a record id a caller is
+// about to name in public (an announcement's item, itd-2609151838312703 C5)
+// is refused when the store holds it for an advisory not yet published,
+// closed or public-track ones included, as their advisory ids are; a
+// published advisory's record, and a record the store does not hold, pass.
+// The finding names the record by its place among those asked, never by the
+// id. A record that is not a record id refuses the check, and records alone
+// are something to check.
+func TestCheckRefusesARecordTheStoreHoldsUnderEmbargo(t *testing.T) {
+	cf := newCheckFixture(t)
+	records := func(ids ...string) (CheckResult, error) {
+		return Check(CheckRequest{Home: cf.f.home, RepoRoot: cf.f.repo.Root(), Records: ids,
+			Now: func() time.Time { return fixedNow.Add(time.Hour) }})
+	}
+	for _, id := range []string{"iss-2610120000000001", "iss-2610120000000002", "iss-2610120000000004"} {
+		res, err := records("itd-7", id)
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		wantKinds(t, res, KindEmbargoedRecord)
+		if f := res.Findings[0]; f.Source != "record 2" || strings.Contains(f.Source+f.Where+f.Snippet, id) {
+			t.Fatalf("%s: finding %+v; want it named as the second record, without the id", id, f)
+		}
+	}
+	for _, id := range []string{"iss-2610120000000003", "iss-5", "itd-2610120000000001"} {
+		res, err := records(id)
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		wantKinds(t, res)
+	}
+	_, err := records("not-a-record")
+	mustRefuse(t, err, "record id")
+
+	f := newFixture(t)
+	res, err := Check(CheckRequest{Home: f.home, RepoRoot: f.repo.Root(), Records: []string{"iss-2610120000000001"}})
+	if err != nil || !res.NoStore || !res.Clean() {
+		t.Fatalf("with no store: %+v, %v; want a clean check saying there is none", res, err)
+	}
+}
+
+// TestCheckFindsTheStoreWithHEADOnAnOrphanBranch: the store is keyed on the
+// root commit of origin's default branch, so a checkout whose HEAD is on an
+// orphan branch, or whose history a replace ref cuts short, still finds
+// it, and a record it holds is refused rather than read as nothing under
+// embargo.
+func TestCheckFindsTheStoreWithHEADOnAnOrphanBranch(t *testing.T) {
+	for _, name := range []string{"HEAD on an orphan branch", "a replace ref that cuts the history short"} {
+		t.Run(name, func(t *testing.T) {
+			cf := newCheckFixture(t)
+			r := cf.f.repo
+			r.Write("NEXT.md", "more\n")
+			r.Commit("second")
+			r.Git("update-ref", "refs/remotes/origin/main", "HEAD")
+			r.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+			if name == "HEAD on an orphan branch" {
+				r.Git("checkout", "-q", "--orphan", "elsewhere")
+				r.Commit("an unrelated root")
+			} else {
+				// The tip is stood in for by a commit with no parent, so read
+				// through the replace ref the tip itself is the root.
+				r.Git("replace", r.Git("rev-parse", "HEAD"), r.Git("commit-tree", r.Git("rev-parse", "HEAD^{tree}"), "-m", "a stand-in root"))
+			}
+			res, err := Check(CheckRequest{Home: cf.f.home, RepoRoot: r.Root(), Records: []string{"iss-2610120000000001"},
+				Now: func() time.Time { return fixedNow.Add(time.Hour) }})
+			if err != nil {
+				t.Fatalf("Check: %v", err)
+			}
+			if res.NoStore {
+				t.Fatalf("the store was not found: %+v", res)
+			}
+			wantKinds(t, res, KindEmbargoedRecord)
+		})
+	}
+}
+
+// TestTheStoreOfAnOrdinaryCloneStaysWhereItWas: in a clone whose HEAD shares
+// origin's default branch's root, the store sits where it always has,
+// worktrees/<root commit>/embargo in abcd's home.
+func TestTheStoreOfAnOrdinaryCloneStaysWhereItWas(t *testing.T) {
+	f := newFixture(t)
+	r := f.repo
+	r.Git("update-ref", "refs/remotes/origin/main", "HEAD")
+	r.Git("symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/main")
+	root := r.Git("rev-list", "--max-parents=0", "HEAD")
+	loc, err := locate(f.home, r.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := filepath.Join(abcdhome.Path(f.home, "worktrees", root, StoreName)); loc.Path != want {
+		t.Fatalf("store path %s; want %s", loc.Path, want)
+	}
 }

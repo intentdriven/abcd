@@ -356,11 +356,17 @@ var sentences = map[string]string{
 	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
 		"Writes the fetched reservations; refuses outside a git checkout.",
 
+	"abcd status": "List everyone's announcements, reservations and releases being cut: " +
+		"Writes the fetched status branches and reservations; refuses outside a git checkout.",
+
+	"abcd announce": "Post a fixed-form announcement on the shared remote: " +
+		"Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+
 	"abcd land": "Push a branch whose preflight passed and queue its pull request: " +
 		"Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
 
-	"abcd reserve": "Reserve an issue or intent on the shared remote, or release it: " +
-		"Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
+	"abcd reserve": "Reserve an issue, intent or release on the shared remote, or release it: " +
+		"Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
 
 	"abcd reading": "Render the cold-reading assembler's state: " +
 		"Writes nothing; refuses any argument.",

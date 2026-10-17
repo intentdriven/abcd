@@ -40,6 +40,8 @@ var examples = map[string]string{
 
 	"abcd reserve": "abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go",
 
+	"abcd announce": "abcd announce merging iss-2609010000000001",
+
 	"abcd docs fidelity record": "abcd docs fidelity record --verdict-json verdict.json",
 
 	"abcd disembark coverage":      "abcd disembark coverage probe-report.json",

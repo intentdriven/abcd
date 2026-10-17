@@ -78,3 +78,27 @@ func TestAbcdsOwnConventionsFileCarriesTheManagedBlock(t *testing.T) {
 		t.Errorf("abcd's AGENTS.md managed block differs from the block ahoy plants (internal/core/ahoy/defaults/claude-md-marker-block.md); copy one onto the other.\n--- AGENTS.md\n%s\n--- planted\n%s", got, want)
 	}
 }
+
+// TestManagedBlockKeepsReusedFilesOutOfALinkedWorktree holds the managed
+// block's SCRATCH sentence to where a file reused across sessions goes
+// (iss-2610161501104088): the main checkout's local tier or abcd's home, never
+// a linked worktree's local tier, because git worktree remove deletes that
+// ignored tier with the worktree and without asking.
+func TestManagedBlockKeepsReusedFilesOutOfALinkedWorktree(t *testing.T) {
+	flat := strings.Join(strings.Fields(defaultDomainsList(t, string(markerInner))), " ")
+	start := strings.Index(flat, "`SCRATCH` says")
+	if start < 0 {
+		t.Fatal("the managed block's default-domain section has no sentence opening \"`SCRATCH` says\"")
+	}
+	sentence := flat[start:]
+	for _, want := range []string{
+		"the main checkout's `.abcd/.work.local/scratch/`",
+		"never in a linked worktree's local tier",
+		"`git worktree remove` deletes",
+		"keyed on the root-commit SHA",
+	} {
+		if !strings.Contains(sentence, want) {
+			t.Errorf("the managed block's SCRATCH sentence does not say %q:\n%s", want, sentence)
+		}
+	}
+}

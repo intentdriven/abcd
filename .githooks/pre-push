@@ -43,7 +43,7 @@
 #
 #      The exemptions are the receipt-less prefixes, declared in the table
 #      below, one row per prefix, each with the shape check a push under it
-#      must pass and the record that rules it. There is one: a reservation
+#      must pass and the record that rules it. There are two. The first: a reservation
 #      (`abcd reserve`, itd-2609091034175565) is a
 #      branch under refs/heads/abcd-reserved/ holding a chain of commits whose
 #      tree is the empty tree. They change no file, so there is nothing for a
@@ -59,9 +59,65 @@
 #      (`abcd reserve <id> --release`), and a deleted tip would let the next
 #      reserve take the record with no lease judgement.
 #
+#      The second: a status branch (`abcd announce`, itd-2609151838312703,
+#      adr-2610150729333337), refs/heads/abcd-status/<username>, one per
+#      person, holding that person's announcements as a chain of empty-tree
+#      commits. It passes the same reservation_shape check, so it admits
+#      nothing the reservation row does not: a fast-forward of commits that
+#      change no file. A push under it that changes a file or rewrites the
+#      branch is gated as any branch is, and a deletion is refused outright:
+#      a status branch is kept for ever.
+#
+#      This hook runs only where core.hooksPath points at it. A hosted cloud
+#      session runs no hook at all, so there the server's rulesets (deletion
+#      and non-fast-forward refused under both prefixes, mirrored in
+#      .abcd/work/rulesets/) and abcd's own reader, which shows a status
+#      commit that changes a file as doubtful, are the guards; nothing on the
+#      forge refuses a file-changing push to a status branch.
+#
+#      A cloud session's work-in-progress branch (itd-2610120738075547 C7,
+#      adr-2610120937435856, brief invariant 23) is the third exemption, one
+#      row per prefix a host connector declares, added to the table when the
+#      hook runs. A cloud session cannot earn a receipt where it runs, and no
+#      receipt minted there is trusted anyway (the intent's decision 9: every
+#      cloud result is re-checked by the person's own collect), so its work
+#      goes to <prefix><item-id> without one rather than staying trapped on the
+#      hosted machine. The prefixes are read from the declarations under
+#      scripts/cloud/connectors/ through scripts/cloud/connector.sh, the one
+#      validation every cloud script uses, so the hook names no host. Both are
+#      read from the tree HEAD commits, never the working tree, so an
+#      uncommitted edit cannot widen the exemption. A declaration that fails
+#      the validation adds no row, rather than leave the hook acting on a
+#      partial list: a push to a branch holding the segment abcd-wip is then
+#      refused, naming the file, and every other push is judged as if no
+#      connector existed. A push under a prefix passes
+#      without a receipt only when the branch is the prefix and exactly one
+#      record id, and every commit it moves passes the attribution gate
+#      (scripts/check-attribution.sh): <remote>..<local> on an update, and from
+#      the merge base with origin's default branch on a create. Anything else
+#      under the prefix is gated as any branch is, and the default-branch and
+#      non-fast-forward refusals still come first. A deletion under it is
+#      refused: the branch ends by its collect, and a spent one is swept later
+#      from an ordinary machine. The hook is not what keeps this work off the
+#      default branch; the wip-guard required check and the ruleset are.
+#
+#      A commit is "already on a remote", and needs no receipt for that, only
+#      when a remote-tracking ref outside every receipt-less prefix holds it.
+#      A ref under one was pushed without a receipt, so it vouches for nothing:
+#      counting it would let a commit pushed to <prefix><id> first reach any
+#      other branch with none.
+#
 # `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
 # every gate on the pushed commit and is the authority either way.
 set -euo pipefail
+# Every read below sees objects as stored, as the push sends them: a local
+# refs/replace/* ref can stand one commit in for another, so a commit carrying
+# files could otherwise read as one with the empty tree. A .git/info/grafts
+# file is honoured even then, and can give a commit no parents, hiding the
+# commits beneath it from the walk, so no graft file is read: GIT_GRAFT_FILE
+# names a path that cannot exist, which git reads as no grafts at all.
+export GIT_NO_REPLACE_OBJECTS=1
+export GIT_GRAFT_FILE=/dev/null/none
 cd "$(git rev-parse --show-toplevel)"
 
 protected="main"
@@ -91,13 +147,60 @@ only_empty_trees() {
 # fast-forward (or a create) and every commit it moves has the empty tree. The
 # range is everything new on an update, and everything reachable on a create.
 # A remote tip this clone does not hold fails both tests, so the push is gated.
+# So does any push from a shallow clone: a .git/shallow line stops the walk at
+# the commit it names, as a graft would, and the commits beneath it go unread,
+# so the hook cannot show the range changes no file and asks for a receipt.
 reservation_shape() {
   local remote_sha="$1" local_sha="$2"
+  [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" != "true" ] || return 1
   if is_null_id "$remote_sha"; then
     only_empty_trees "$local_sha"
   else
     git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null &&
       only_empty_trees "$remote_sha..$local_sha"
+  fi
+}
+
+# wip_id_re is the one record id a work-in-progress branch carries after its
+# prefix: an iss-, itd- or spc- id of sixteen digits, or an ordinal itd- or
+# iss- id, and nothing else.
+wip_id_re='^((iss|itd|spc)-[0-9]{16}|(iss|itd)-[0-9]{1,4})$'
+
+# wip_shape is the work-in-progress branches' shape check, for the branch the
+# loop is on and the row receiptless_row found ($branch, $row_prefix): the
+# branch is the prefix and one record id, and every commit the push moves
+# passes the attribution gate. The range is <remote>..<local> on an update, a
+# fast-forward; on a create it starts at the merge base with origin's default
+# branch. A remote tip this clone does not hold, or a default branch it cannot
+# name, fails the check, so the push is gated. It says why on a failure, since
+# the refusal that follows names only the missing receipt. The attribution
+# gate's own findings name the identity it refuses, so they are kept from the
+# output: the hook prints a fixed sentence naming every cause the gate refuses
+# (the identity half and the message half) and the command that shows which,
+# and never an identity itself.
+wip_shape() {
+  local remote_sha="$1" local_sha="$2" id default base
+  id="${branch#"$row_prefix"}"
+  if ! [[ "$id" =~ $wip_id_re ]]; then
+    echo "pre-push: '$branch' is under $row_prefix but is not that prefix and one record id ($row_ruling);" >&2
+    echo "          it is gated as any branch is." >&2
+    return 1
+  fi
+  if is_null_id "$remote_sha"; then
+    if ! default="$(bash scripts/cloud/default-branch.sh </dev/null 2>/dev/null)" ||
+      ! base="$(git merge-base "refs/remotes/origin/$default" "$local_sha" 2>/dev/null)"; then
+      echo "pre-push: cannot find where '$branch' leaves origin's default branch, so its commits cannot be judged;" >&2
+      echo "          it is gated as any branch is." >&2
+      return 1
+    fi
+  else
+    git merge-base --is-ancestor "$remote_sha" "$local_sha" 2>/dev/null || return 1
+    base="$remote_sha"
+  fi
+  if ! bash scripts/check-attribution.sh commits "$base" "$local_sha" </dev/null >/dev/null 2>&1; then
+    echo "pre-push: the pushed commits fail the attribution gate (a machine author or committer, a missing or malformed Assisted-by trailer, an AI Co-Authored-By trailer, or a tool footer or session URL in a message); run scripts/check-attribution.sh commits $base $local_sha to see which ($row_ruling);" >&2
+    echo "          '$branch' is gated as any branch is." >&2
+    return 1
   fi
 }
 
@@ -108,6 +211,7 @@ reservation_shape() {
 shape_check() {
   case "$1" in
   reservation_shape) [ "$#" -eq 1 ] || reservation_shape "$2" "$3" ;;
+  wip_shape) [ "$#" -eq 1 ] || wip_shape "$2" "$3" ;;
   *) return 1 ;;
   esac
 }
@@ -122,18 +226,19 @@ shape_check() {
 # succeeds only for a push of the prefix's own shape, with its own arm in
 # shape_check. The last field is named
 # when a delete under the prefix is refused, with <name> standing for the
-# branch's name after the prefix: a ref under a receipt-less prefix is never
-# deleted by a push.
+# branch's name after the prefix, or is "never" for a branch kept for ever: a
+# ref under a receipt-less prefix is never deleted by a push.
 #
 # A new row needs its own ruling record and its own shape check. A prefix with
 # no shape check, or one naming a check shape_check has no arm for, is never
-# receipt-less: its pushes are gated as any branch is. The next row expected is
-# cloud sessions' work-in-progress branches, ruled by adr-2610120937435856: a
-# prefix ending in abcd-wip/ with at most one segment before it, matched by
-# that suffix shape alone so the hook never names a host. It is added with its
-# own shape check by the spec that delivers it, not here.
+# receipt-less: its pushes are gated as any branch is. Cloud sessions'
+# work-in-progress rows, ruled by adr-2610120937435856, are not written here:
+# their prefixes belong to the host connectors, so the block after
+# receiptless_row appends one row per declared prefix when the hook runs, each
+# with the wip_shape check.
 receiptless_prefixes=(
   "abcd-reserved/|reservation_shape|adr-2610031352212697|abcd reserve <name> --release"
+  "abcd-status/|reservation_shape|adr-2610150729333337|never"
 )
 
 # receiptless_row finds the row whose prefix the branch is under and whose
@@ -152,6 +257,92 @@ receiptless_row() {
   return 1
 }
 
+# The work-in-progress rows: one per prefix the host connectors declare, read
+# through scripts/cloud/connector.sh and never parsed here, so every rule of a
+# declaration (the prefix ends in the segment abcd-wip/ with at most one
+# segment before it, no two connectors share one) is that script's alone.
+#
+# Both the loader and the declarations are read from the tree HEAD commits,
+# extracted to a temporary directory, never from the working tree: an
+# uncommitted or untracked edit there cannot widen the exemption. A checkout
+# whose HEAD carries no loader declares no prefix, and its pushes are gated as
+# before.
+#
+# A declaration the loader refuses (a stray directory, a lost exec bit, a bad
+# key or prefix) adds no row at all, rather than leave the hook acting on a
+# partial list, and its diagnostic is printed, naming the file. It costs only
+# the work-in-progress exemption: a push to a branch holding the segment
+# abcd-wip, in any case, is refused naming the declaration until it is fixed,
+# and every other push is judged as if no connector existed, so a reservation
+# or a branch with its receipt still goes ahead. Each row ends by the person's
+# collect of the item; the spent branch is swept later from an ordinary
+# machine, never deleted by a push through this hook.
+wip_bad=""
+if git cat-file -e HEAD:scripts/cloud/connector.sh 2>/dev/null; then
+  decl_dir="$(mktemp -d "${TMPDIR:-/tmp}/abcd-pre-push.XXXXXX")"
+  trap '/bin/rm -rf -- "$decl_dir"' EXIT
+  wip_prefixes=""
+  if ! git archive --format=tar HEAD -- scripts/cloud 2>/dev/null | tar -x -C "$decl_dir" 2>/dev/null ||
+    [ ! -f "$decl_dir/scripts/cloud/connector.sh" ] || [ -L "$decl_dir/scripts/cloud/connector.sh" ]; then
+    wip_bad="pre-push: the connector loader and declarations HEAD commits under scripts/cloud/ could not be read."
+  elif ! wip_prefixes="$(bash "$decl_dir/scripts/cloud/connector.sh" prefixes </dev/null 2>"$decl_dir/diagnostic")"; then
+    wip_bad="$(cat "$decl_dir/diagnostic")"
+    [ -n "$wip_bad" ] || wip_bad="pre-push: the connector loader refused the declarations under scripts/cloud/connectors/."
+    wip_prefixes=""
+  fi
+  if [ -n "$wip_bad" ]; then
+    printf '%s\n' "$wip_bad" >&2
+    echo "pre-push: a host connector declaration under scripts/cloud/connectors/ fails its validation (scripts/cloud/connector.sh validate names it, as committed at HEAD (commit or discard local edits to compare))." >&2
+    echo "          No work-in-progress prefix is exempt from the receipt, and a push to a branch holding the" >&2
+    echo "          segment abcd-wip is refused until it is fixed (adr-2610120937435856). Every other push is judged as usual." >&2
+  fi
+  while IFS= read -r wip_prefix; do
+    [ -n "$wip_prefix" ] || continue
+    receiptless_prefixes+=("$wip_prefix|wip_shape|adr-2610120937435856|scripts/cloud/collect.sh <name>")
+  done <<<"$wip_prefixes"
+fi
+
+# lower prints its argument in lower case (bash 3.2 has no ${x,,}).
+lower() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+# receiptless_tracking succeeds when a remote-tracking ref, given without its
+# refs/remotes/ part (<remote>/<branch>), is under a receipt-less prefix: any
+# row of the table, or any branch holding the segment abcd-wip whatever the
+# declarations say. Such a ref was pushed without a receipt, so it vouches for
+# nothing. The match is by segment anywhere after the remote's name, and in
+# any case, so it errs towards asking for a receipt, never away from it.
+receiptless_tracking() {
+  local tracked row prefix
+  tracked="/$(lower "$1")/"
+  case "$tracked" in
+  */abcd-wip/*) return 0 ;;
+  esac
+  for row in "${receiptless_prefixes[@]}"; do
+    prefix="$(lower "${row%%|*}")"
+    [ -n "$prefix" ] || continue
+    case "$tracked" in
+    */"$prefix"*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
+# on_a_remote succeeds when a remote-tracking ref outside every receipt-less
+# prefix already holds the commit. A ref under one does not count: a push
+# there needs no receipt, so counting it would let a commit pushed there first
+# reach any other branch with none (push X to <prefix><id>, then X to feat/x).
+on_a_remote() {
+  local ref
+  while IFS= read -r ref; do
+    [ -n "$ref" ] || continue
+    receiptless_tracking "${ref#refs/remotes/}" && continue
+    return 0
+  done < <(git for-each-ref --format='%(refname)' --contains "$1" refs/remotes 2>/dev/null)
+  return 1
+}
+
 missing=""
 while read -r local_ref local_sha remote_ref remote_sha; do
   branch="${remote_ref#refs/heads/}"
@@ -165,12 +356,30 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     exit 1
   fi
 
+  # Under a declaration that fails validation, a branch holding the segment
+  # abcd-wip is refused outright, whatever it carries: no row exempts it, and
+  # a receipt is no answer to a declaration that cannot be read.
+  if [ -n "$wip_bad" ]; then
+    case "/$(lower "$branch")/" in
+    */abcd-wip/*)
+      printf '%s\n' "$wip_bad" >&2
+      echo "pre-push: refusing the push to '$branch': it holds the segment abcd-wip, and a host connector declaration fails its validation (scripts/cloud/connector.sh validate names it, as committed at HEAD (commit or discard local edits to compare))." >&2
+      echo "          Fix the declaration first (adr-2610120937435856)." >&2
+      exit 1
+      ;;
+    esac
+  fi
+
   # A deletion carries no commit to gate, except under a receipt-less prefix:
   # a ref there ends by the push its row names, never a deletion. For a
   # reservation that is a tombstone, because a deleted tip reads as absent and
   # the next reserve takes the record with no lease judgement at all.
   if is_null_id "$local_sha"; then
     if receiptless_row "$branch"; then
+      if [ "$row_end" = "never" ]; then
+        echo "pre-push: refusing to delete '$branch': a branch under $row_prefix is kept for ever and never deleted ($row_ruling)." >&2
+        exit 1
+      fi
       echo "pre-push: refusing to delete '$branch': a branch under $row_prefix ends by a push, never a deletion ($row_ruling);" >&2
       echo "          end it with \`${row_end//<name>/${branch#"$row_prefix"}}\`." >&2
       exit 1
@@ -203,8 +412,9 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   commit="$(git rev-parse --verify --quiet "$local_sha^{commit}" 2>/dev/null || true)"
   [ -n "$commit" ] || continue
 
-  # Already on a remote: pushing it moves no new commit off this machine.
-  if [ -n "$(git for-each-ref --count=1 --contains "$commit" refs/remotes 2>/dev/null)" ]; then
+  # Already on a remote: pushing it moves no new commit off this machine. Only
+  # a ref outside every receipt-less prefix counts (on_a_remote).
+  if on_a_remote "$commit"; then
     continue
   fi
 

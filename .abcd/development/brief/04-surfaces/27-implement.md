@@ -266,8 +266,10 @@ refuses, waits or signals anything. With its wait flag it is the one waiter
 concurrent sessions gate a preflight or a race run with, and `make preflight`
 runs its own test stages through it: it blocks until the one-minute load is
 below the wait limit, no other `go test -race` run is live, no other
-`make preflight` is running and no other waiter is ahead of it in the queue (a
-lower pid) or running its command, under any account; a waiter beneath a waiter
+`make preflight` is running and no other waiter is ahead of it in the queue (one
+that started earlier, or within two seconds of it, and has the lower pid: two
+whose start and pid disagree, as after the process ids wrap, wait on neither) or
+running its command, under any account; a waiter beneath a waiter
 running its command takes that ancestor's place, ahead of every queued waiter. All of that is read from
 the process table, which shows every account's processes, judged from each
 candidate's arguments with the waiter's own ancestry excluded
@@ -280,13 +282,79 @@ running its command holds every later gate for the command's length, by design. 
 gate: the waiter waits a random 15 to 60 seconds and checks everything again,
 and opens only if that re-check is clear too (iss-2610102020442624). Within one
 account it also takes a hold under the abcd home, which a waiter beneath the
-holder ignores. It runs a command given after `--` and exits with its code,
+holder ignores. Across accounts, which share no hold, two waiters whose start
+and pid disagree can still open in one moment, so the command form shows itself
+as running its command from the moment it opens and looks once more two seconds
+later; the one with the higher pid stands back, gives up its hold, re-draws its
+jitter and waits again, at most three times, while the lower pid runs.
+It runs a command given after `--` and exits with its code,
 forwarding an interrupt to it, and gives up after its timeout at exit 1, naming
 what it was still waiting on. Inside `make preflight` each test stage then
 takes a `go test -p` derived from the online cores and the load as the stage
 starts (`machineload.GoTestParallelism`: twice the cores less the load, at most
 the cores, at least a quarter of them), and on a CI runner the gate opens at
 once and go's own default stands.
+
+Before its race stage `make preflight` waits again, at the race gate, which
+has its own flag and never carries the first gate's wait flag (the two are
+refused together): every abcd released before the race gate reads any load
+check carrying the wait flag as a first gate's waiter, so it would read a
+preflight at a race gate spelt with it as queued, not in its test stages, and
+open beside it. At one preflight at a
+time the race gate opens at once, with no look at the machine, no hold, no
+jitter and no settle, so the preflight runs exactly as before. Above one it is
+shut only by another live `go test -race` run, a race waiter queued ahead of
+it by the same rule (started earlier, or within two seconds of it, and with the
+lower pid) or running its command, the load limit and
+the race gate's own hold, so race stages are kept apart among the preflights
+whose checkouts have the race gate, one at a time within an account and across
+accounts all but a narrow window: a race waiter exits as it opens, before its
+preflight's race run shows in the table, and after a pid wrap two race waiters
+whose start and pid disagree wait on neither. A preflight run from a checkout
+older than the gate runs its race stage ungated, so two at once is safe only
+once no such checkout runs one. The setting is each account's own: an account
+at one opens its race gate at once, so its race stage can start beside an
+account at two's, and race stages are kept apart only among accounts that all
+set two. And the plain form of the first gate takes no last look, so across
+accounts two openers whose re-checks fall in one moment can both open beside a
+preflight in its tests, three in their test stages at once. A first gate's waiter never queues
+there, a race waiter never queues at the first gate, and a preflight whose
+waiter is at its race gate counts as in its test stages. Each gate keeps its
+own hold record and is shut only by it: a first gate's command hold lasts
+until its preflight starts its race run, so were it to shut the race gate, an
+earlier preflight's race waiter would wait on it while the holder's own race
+waiter queued behind that earlier one, and neither would move. How many preflights
+the first gate admits to their test stages at once is the person's own machine
+setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
+`~/.abcd.noindex/config.json`, read through the layered configuration with the
+machine layer alone, or `ABCD_LOAD_PREFLIGHTS` in the environment for a trial;
+one by default, from 1 to 2 until a measured trial supports more
+(dcn-2610161814279204), a bad value refused naming where it was set, and no
+repository file ever read for it, because a checkout must not raise the
+machine's load. A machine `config.json` that cannot be read for the count
+(writable by others, not valid JSON, a load that is not an object) is read
+past, with one line on stderr naming the file, the cause and the fix, and one
+preflight at a time applies, since the gate never read that file before the
+setting existed; an unknown key in its load object is named on that line too.
+Only a `load.preflights` that is there and unusable refuses the wait. At one the
+first gate reads exactly as above. Above one it
+admits a waiter while fewer than that many units of work are in their test
+stages (a running preflight, or a waiter running its command, counted once
+where one runs beneath the other), a waiter queued ahead still shuts it, a live
+race run does not shut it by itself and the load limit still does, and an
+opener still stands back from a lower pid that opened beside it, whose mark
+then counts it as a unit in its test stages; an opener stands back only from a
+waiter at its own gate; a lone race run gated in the command form, its
+command `go test -race`, is gated as a race run for both gates: it stays
+shut while another race run is live, judges and takes the race gate's hold as
+well as the first gate's, and counts as a race run to every race gate and every
+other such command from the moment it opens (`machineload.RaceCommandWaiters`),
+so a second one waits for the first rather than open beside it at its full
+`-p`; each
+stage's `go test -p` is at most the cores divided by the setting, since the
+one-minute load a second stage starts under lags the first stage's demand.
+Deriving the count from the machine's resources is a later step
+(iss-2610161756384596). <!-- record-lint: forward-looking -->
 
 ## The implement loop
 
@@ -363,7 +431,26 @@ again for a lane a drain opened, and nothing retries one `abcd build <iss-N>`
 started, whose reservation lapses with its lease),
 whether a drain or `abcd build <iss-N>` started it (iss-2610142247197128); an
 intent's run keeps its reservation through a hand-back. A run holding no reservation
-is neither renewed, fenced nor tombstoned.
+is neither renewed nor tombstoned, and its own reservation is not fenced.
+
+The land fence also reads the release hold (itd-2609151838312703 C7,
+spc-2610150728396006 step 4). Every run's fence, one holding a reservation or
+not, fetches the reservations from origin first (for a run holding one, the
+fetch its renewal makes), then arms nothing, as contention, while a release
+reservation (`rel-vX.Y.Z`, [`37-reserve.md`](37-reserve.md)) is live and not
+this copy's own: the refusal names the release and its holder, or says it is
+the person's own other copy, until when it holds, and that a session cutting a
+release has the final say on what merges before its tag, and leaves the pull
+request open and unarmed for the cutting session to merge or hold. The copy
+cutting the release is not held, since its landing is its own ruling. A
+release whose tag is on origin, or whose holder released it, holds nothing; an
+unreadable release branch within its hold holds like a live one. A release
+dated more than five minutes ahead holds from this copy's first sighting of
+it, which the judgement keeps whichever fetch brought it; one whose sighting
+cannot be kept is not counted, and the arming's note names it
+([`37-reserve.md`](37-reserve.md)). An origin the fetch cannot read arms
+nothing, since a hold it cannot see may be there; a checkout with no remote
+named origin has no reservations and is not held.
 
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
 drain opens for each eligible issue) has one lane. Its brief is the issue's
@@ -474,6 +561,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--race-gate` | bool |
 | `--site` | string |
 | `--timeout` | duration |
 | `--wait` | bool |

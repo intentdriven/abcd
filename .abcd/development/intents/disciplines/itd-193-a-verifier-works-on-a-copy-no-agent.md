@@ -28,9 +28,12 @@ does that on a **copy**, never on the live worktree:
 git -C <worktree> archive HEAD | tar -x -C <scratch>/mut
 ```
 
-The copy goes outside every working tree: the session's scratchpad or a
-directory under `~/.abcd.noindex/`, never `.abcd/.work.local/scratch/`. Before
-reporting, the verifier
+The copy goes outside every working tree, in a directory of its own under
+`~/.abcd.noindex/` keyed on the root-commit SHA (the session's scratchpad only
+for a copy the same turn makes and discards), never
+`.abcd/.work.local/scratch/` (amended 2026-10-16 per iss-2610161501104088: a
+copy handed to a verifier agent is read by a later agent, and the scratchpad
+does not survive a reboot or a new session). Before reporting, the verifier
 proves the original is untouched, and says so:
 
 ```text

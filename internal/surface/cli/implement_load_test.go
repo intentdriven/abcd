@@ -25,7 +25,7 @@ var loadCaller = machineload.Self{PID: 50000, UID: 501}
 func loadFixture(t *testing.T, snap machineload.Snapshot, readErr error) string {
 	t.Helper()
 	_, runDir := implementRepo(t)
-	for _, k := range []string{"GITHUB_ACTIONS", "CI", "ABCD_LOAD_CHECKED"} {
+	for _, k := range []string{"GITHUB_ACTIONS", "CI", "ABCD_LOAD_CHECKED", implement.PreflightSlotsEnv} {
 		t.Setenv(k, "")
 	}
 	prevRead, prevSelf := loadReader, loadSelf
