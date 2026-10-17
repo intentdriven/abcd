@@ -131,34 +131,41 @@ func judgeRouted(o Options, d DrainOptions) bool {
 // returns the judgement it answered, taken as a host's answer would be under
 // plan. With no route it returns nil and asks nothing. When the runner did not
 // answer, it returns nil with the clause the move's next step adds, and the
-// host's request stands; each fallback receipt is kept in st.
+// host's request stands; each fallback receipt is kept in st. started reports
+// whether the runner was dispatched, so a request is marked as asked of it
+// (DrainJudging.RoutedAsked) only once it was: a judge that never started, its
+// directory not made or its request refused before any launch, is asked again
+// by the next move.
 func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict, j DrainJudging, plan capture.DrainPlan,
-	st *DrainState, o Options, d DrainOptions, now time.Time) (*DrainJudgement, string, error) {
+	st *DrainState, o Options, d DrainOptions, now time.Time) (taken *DrainJudgement, clause string, started bool, err error) {
 	if !judgeRouted(o, d) {
-		return nil, "", nil
+		return nil, "", false, nil
 	}
 	ctx := d.Context
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if ctx.Err() != nil {
-		return nil, "", judgeStopped(iss.ID)
+		return nil, "", false, judgeStopped(iss.ID)
+	}
+	notStarted := func(err error) string {
+		return "the drain judge was not started for " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
+			"), so the request is the host's"
 	}
 	dir, err := judgeDir(repoRoot)
 	if err != nil {
-		return nil, "the drain judge was not started for " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
-			"), so the request is the host's", nil
+		return nil, notStarted(err), false, nil
 	}
 	defer os.RemoveAll(dir)
 	root, err := os.OpenRoot(dir)
 	if err != nil {
-		return nil, "", fmt.Errorf("opening the drain judge's directory: %w", err)
+		return nil, "", false, fmt.Errorf("opening the drain judge's directory: %w", err)
 	}
 	defer root.Close()
 	routed := j
 	routed.Request, routed.Answer = filepath.Join(dir, drainJudgeBriefName), filepath.Join(dir, drainJudgeAnswerName)
 	if err := fsutil.WriteFileAtomicInRoot(root, drainJudgeBriefName, []byte(judgementRequest(iss, v, routed, true)), filePerm); err != nil {
-		return nil, "", fmt.Errorf("writing the drain judge's brief: %w", err)
+		return nil, "", false, fmt.Errorf("writing the drain judge's brief: %w", err)
 	}
 	timeout := d.JudgeTimeout
 	if timeout == 0 {
@@ -179,7 +186,11 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 		SessionID: fmt.Sprintf("%s-%s-%d", RoleDrainJudge, iss.ID, now.Unix()),
 		Timeout:   timeout,
 	}
-	var taken *DrainJudgement
+	// A request no runner may be started with (a path its grants cannot
+	// carry) starts nothing, and is no request asked of the runner.
+	if err := req.Check(); err != nil {
+		return nil, notStarted(err), false, nil
+	}
 	dsp := &runner.Dispatcher{
 		Config:      o.Runners,
 		HostSession: true,
@@ -204,24 +215,24 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	}
 	out, err := dsp.Dispatch(ctx, req)
 	if ctx.Err() != nil {
-		return nil, "", judgeStopped(iss.ID)
+		return nil, "", true, judgeStopped(iss.ID)
 	}
 	switch {
 	case err != nil:
 		return nil, "the drain judge's runner did not judge " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
-			"), so the request is the host's", nil
+			"), so the request is the host's", true, nil
 	case out.Handoff:
 		why := "it handed the role back"
 		if fb := out.Fallback; fb != nil {
 			why = fmt.Sprintf("the %s runner was %s, recorded as a fallback", fb.Asked, fb.Reason)
 		}
-		return nil, "the drain judge did not judge " + iss.ID + " (" + why + "), so the request is the host's", nil
+		return nil, "the drain judge did not judge " + iss.ID + " (" + why + "), so the request is the host's", true, nil
 	case taken == nil:
-		return nil, "the drain judge ran but handed no answer back, so the request is the host's", nil
+		return nil, "the drain judge ran but handed no answer back, so the request is the host's", true, nil
 	}
 	route := out.Receipt.Route
 	taken.Route = &route
-	return taken, "", nil
+	return taken, "", true, nil
 }
 
 // keepJudgeFallback records fb in st, keeping the latest maxJudgeFallbacks.

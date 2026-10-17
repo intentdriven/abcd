@@ -89,7 +89,9 @@ type DrainJudging struct {
 	Hold *DrainHold `json:"hold,omitempty"`
 	// RoutedAsked is true once the routed judge was started on this request
 	// and did not answer (drain_judge.go): the polls that follow while the
-	// host's request stands do not start it again.
+	// host's request stands do not start it again. A judge that never
+	// started (its directory not made, its request refused before any
+	// launch) leaves it false, so the next move starts it.
 	RoutedAsked bool `json:"routed_asked,omitempty"`
 }
 

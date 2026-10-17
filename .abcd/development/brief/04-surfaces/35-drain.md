@@ -511,7 +511,7 @@ answer, refuses, fails, or writes an answer out of shape is a fallback: its
 receipt is kept in the drain's state, the latest thirty-two of them, and the
 host's request stands, as with no route. The runner is started once per
 request, which the awaited judgement records, so a move made while the host's
-request stands starts no runner and records no further fallback; a rate limit leaves it standing too. The runner runs under the drain's
+request stands starts no runner and records no further fallback; a rate limit leaves it standing too. A judge that was never started, its directory not made or its request refused before any launch, is not marked as asked, and the next move starts it. The runner runs under the drain's
 lock and stops with the drain: an interrupt or a termination while it judges
 kills the runner's process group before the move ends, records no fallback, and
 refuses the move saying so, so the next move asks the judge again. Whatever

@@ -216,6 +216,11 @@ var (
 	toolRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\([^,\r\n()]{1,1000}\))?$`)
 )
 
+// Check refuses a request no runner may be started with, as every launch
+// does before it starts anything: a caller that must know whether a runner
+// was started asks it first.
+func (r Request) Check() error { return r.check() }
+
 // check refuses a request no runner may be started with, before any launch.
 func (r Request) check() error {
 	if !roleRe.MatchString(r.Role) {

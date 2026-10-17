@@ -961,10 +961,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if judging.RoutedAsked {
 				clause = judgeAskedClause(v.ID)
 			} else {
-				if taken, clause, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
+				var started bool
+				if taken, clause, started, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
 					return refuseMoved(err)
 				}
-				if taken == nil && judgeRouted(o, d) {
+				// Marked as asked only once the runner was started: a
+				// judge that never started is asked again next move.
+				if taken == nil && started {
 					st.Judging.RoutedAsked = true
 				}
 			}

@@ -349,3 +349,33 @@ func TestAJudgePathIsWrittenAsALiteralRule(t *testing.T) {
 		t.Fatalf("absPathRule = %q", got)
 	}
 }
+
+// TestAJudgeThatNeverStartedIsAskedOnTheNextMove: when the judge's directory
+// cannot be made, no runner starts, so the request is not marked as asked of
+// it, and the next move, the directory made, starts the judge and takes its
+// answer rather than saying it was already asked.
+func TestAJudgeThatNeverStartedIsAskedOnTheNextMove(t *testing.T) {
+	repo := issueRepo(t)
+	e := judgeEnv(t, "judge-no")
+	cfg := runnerConfig(t, judgeRoutedConfig, "")
+	tmp := os.Getenv("TMPDIR")
+	t.Setenv("TMPDIR", filepath.Join(t.TempDir(), "gone"))
+	first, err := Drain(repo.Root(), Options{Runners: cfg}, DrainOptions{Transcripts: &memTranscripts{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Judging == nil || first.Judging.RoutedAsked || !strings.Contains(first.Next, "was not started") {
+		t.Fatalf("a judge that never started is not marked as asked: %+v next %q", first.Judging, first.Next)
+	}
+	if n := launches(t, e, "claude"); n != 0 {
+		t.Fatalf("no runner started: %d", n)
+	}
+	t.Setenv("TMPDIR", tmp)
+	again, err := Drain(repo.Root(), Options{Runners: cfg}, DrainOptions{Transcripts: &memTranscripts{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Judged == nil || again.Judged.Answer != JudgementNo || strings.Contains(again.Next, "already asked") {
+		t.Fatalf("the next move starts the judge and takes its answer: judged %+v next %q", again.Judged, again.Next)
+	}
+}

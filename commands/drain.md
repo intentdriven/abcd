@@ -224,7 +224,9 @@ what it did in `next`:
   is left to you, as with no route; `next` says so. The runner is started once
   per request: `judging.routed_asked` records that it was, and a later
   `abcd drain` while the request stands starts no runner and records no
-  further fallback. The runner runs under the drain's lock, for at
+  further fallback. A judge that was never started, because its directory
+  could not be made or its request could not be put to the runner, is not
+  marked as asked, and the next `abcd drain` starts it. The runner runs under the drain's lock, for at
   most fifteen minutes, and stops with the drain: an interrupt or a
   termination while it judges kills its process group before the move ends,
   records no fallback, and refuses the move saying so, and the next
