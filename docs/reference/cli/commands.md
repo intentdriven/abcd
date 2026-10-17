@@ -1196,7 +1196,8 @@ In a checkout with a remote named origin, the ledger is read from origin's defau
 branch, never from the checkout, which may be behind it: each move fetches the
 reservations and that branch first, under the drain's lock and before any judgement
 or reservation, and plans from what it fetched. A move that cannot read origin (the
-fetch fails, the default branch cannot be read, or no origin/HEAD names one) plans
+fetch fails, the default branch cannot be read, or none can be named: no origin/HEAD
+and no origin/main, master, trunk or develop) plans
 nothing: it records the failure in the drain's state and waits as for an outage,
 looking again after one minute, five, ten, then hourly, and exits 0 saying when.
 A probe that fails eight hours into the hourly stage gives up, as the outage gate

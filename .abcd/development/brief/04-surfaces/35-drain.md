@@ -197,7 +197,8 @@ reservation's footprint all read that snapshot, so an issue another account
 finished on origin is neither reserved, judged nor opened, and one filed there
 and not yet in this checkout is judged and opened from origin's record. A move
 that cannot read origin (the fetch fails, the fetch cannot read the default
-branch, or no `origin/HEAD` names one) plans nothing: it records the failure in
+branch, or no default branch of origin can be named: no `origin/HEAD`, and no
+`origin/main`, `master`, `trunk` or `develop`) plans nothing: it records the failure in
 the drain's state as an origin probe and waits as the outage gate waits, on the
 shared schedule (one minute, five, ten, then hourly), a move before the next
 probe reading nothing. It gives up as that gate does: a probe failing eight

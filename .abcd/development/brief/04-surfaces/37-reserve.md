@@ -92,10 +92,9 @@ person, which only the implement loop and the drain make, adds
 record on origin's default branch as last fetched (spc-2610161044461448 step 3,
 dcn-2610161040365515). The kind is one of a closed vocabulary: `user-visible`,
 `trust-rule`, `design-finding`, `second-package`, `unachievable` (a lane
-stopped after its fix rounds), `stuck` and `closed`; the last two are
-reserved for a lane stuck refusing at one stage and one whose pull request was
-closed unmerged, which nothing writes until spc-2610161044461448 steps 5 and 8
-land, though every reader reads them now. Neither carries free
+stopped after its fix rounds), `stuck` and `closed`; the drain writes the last two for a lane stuck
+refusing at one stage (spc-2610161044461448 step 5) and for one whose pull
+request was closed unmerged (step 8), and every reader reads them. Neither carries free
 text: the writer refuses any other kind, and a reader reads a tip whose
 hand-back is not one known kind with one full object name, on a release, as
 unreadable. When origin's default branch holds the record in no file, or in

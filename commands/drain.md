@@ -167,7 +167,8 @@ what it did in `next`:
   checkout is judged and opened from origin's record. `origin` names the
   branch, its commit, the commits this checkout is behind and the issues open
   here it has finished. A move that cannot read origin (the fetch fails, the
-  default branch cannot be read, or no `origin/HEAD` names one) plans nothing:
+  default branch cannot be read, or none can be named: no `origin/HEAD`, and no
+  `origin/main`, `master`, `trunk` or `develop`) plans nothing:
   it asks no judgement, reserves nothing, records the failure in the drain's
   state (`origin_wait`: `since`, `kind` — `fetch`, `default-branch` or
   `origin-head` — `probes`, `next_probe_at`, and `hourly_since` once the

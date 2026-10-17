@@ -256,8 +256,9 @@ tip or without one, and pushes nothing.
 **Over a hand-back.** A drain that hands an issue back to a person releases
 its reservation with a tombstone naming the hand-back's kind (one of
 `user-visible`, `trust-rule`, `design-finding`, `second-package`,
-`unachievable`, `stuck`, `closed`; the last two are reserved for steps not yet
-built, a stuck lane and a closed pull request, and nothing writes them yet) and
+`unachievable`, `stuck`, `closed`; the drain writes `stuck` for a lane that
+kept refusing at one stage and `closed` for one whose pull request was closed
+unmerged) and
 the blob id of the issue's record on
 origin's default branch. Every drain backs off that issue until a person
 changes the record there, and no drain takes over or renews a reservation you
