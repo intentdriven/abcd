@@ -326,7 +326,7 @@ func TestAPushReportedRefusedThatLandedIsNotSentTwice(t *testing.T) {
 				p.git("push", "-q", "origin", landed+":"+StatusRefPrefix+"octo")
 				tip = landed
 				if onTop {
-					tip = runGit(t, w.bare, "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-p", landed, "-m", "on top")
+					tip = runGit(t, w.bare, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-p", landed, "-m", "on top")
 					runGit(t, w.bare, "update-ref", StatusRefPrefix+"octo", tip, landed)
 				}
 				p.git("config", "remote.origin.pushurl", filepath.Join(t.TempDir(), "nowhere.git"))
@@ -907,7 +907,7 @@ func TestACaseCollidingStatusBranchDoesNotStopAnAnnouncement(t *testing.T) {
 	}
 	// The twin ends in a commit of its own, so the two names cannot share one
 	// loose ref here by chance.
-	other := runGit(t, w.bare, "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "a twin")
+	other := runGit(t, w.bare, "-c", "user.name=Test", "-c", "user.email=test@example.com", "commit-tree", "4b825dc642cb6eb9a060e54bf8d69288fbee4904", "-m", "a twin")
 	w.twinOnOrigin("Octo", other)
 	if refs := runGit(t, w.bare, "for-each-ref", "--format=%(refname)", StatusRefPrefix); !strings.Contains(refs, StatusRefPrefix+"Octo") ||
 		!strings.Contains(refs, StatusRefPrefix+"octo") {
