@@ -52,10 +52,14 @@ const (
 	modelKey    = "model"
 )
 
-// roleImplementer is the loop's implementer, the one role outside the agent
-// roster (the loop's RoleImplementer; spelled here so the loop can import this
-// package).
-const roleImplementer = "implementer"
+// roleImplementer is the loop's implementer and roleDrainJudge the drain's
+// judge (spc-2610161044461448 step 14), the two roles outside the agent roster
+// (the loop's RoleImplementer and RoleDrainJudge; spelled here so the loop can
+// import this package).
+const (
+	roleImplementer = "implementer"
+	roleDrainJudge  = "drain-judge"
+)
 
 // Route is where a role runs and the layer that said so.
 type Route struct {
@@ -206,7 +210,7 @@ func (c *Config) readRoles(s *layered.Stack) error {
 		sorted = append(sorted, n)
 	}
 	sort.Strings(sorted)
-	known := map[string]bool{roleImplementer: true}
+	known := map[string]bool{roleImplementer: true, roleDrainJudge: true}
 	for _, a := range oracle.Roster() {
 		known[a] = true
 	}
@@ -225,7 +229,7 @@ func (c *Config) readRoles(s *layered.Stack) error {
 		if !known[role] {
 			where := fmt.Sprintf("%s (%s layer): %s", found[0].Origin, found[0].Layer, key)
 			c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s names %q, which is neither an agent in the roster "+
-				"nor the implementer; the route is skipped and the remaining routes apply", where, role))
+				"nor the implementer or the drain judge; the route is skipped and the remaining routes apply", where, role))
 			continue
 		}
 		// found lists the layers that set the key, highest first (flag, repo,
@@ -244,6 +248,16 @@ func (c *Config) readRoles(s *layered.Stack) error {
 				c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s is %q, which is skipped: only the person's own "+
 					"route may hand a role to a runner, which spends their key, so the role runs as if the repository "+
 					"had not routed it; to run it through %s, set %s in %s", where, name, name, key, layered.Config.MachineOrigin()))
+				continue
+			}
+			if role == roleDrainJudge && name == OpenCode {
+				// The drain's judge reads a record a stranger may have
+				// written, and is held to the tools it is granted; opencode
+				// runs under its own configuration's permissions instead.
+				c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s is %q, which is skipped: opencode runs under "+
+					"the permissions its own configuration sets rather than the tools a role is granted, so it cannot be held "+
+					"to the drain judge's Read and Write, and the judge runs as if it had not been routed; to route it to a "+
+					"runner, name %s", where, name, Claude))
 				continue
 			}
 			if name == Host && !personal(f.Layer) {

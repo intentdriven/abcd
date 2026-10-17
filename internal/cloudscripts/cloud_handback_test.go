@@ -878,6 +878,63 @@ func TestHandBackScrubLeavesNoDomain(t *testing.T) {
 	}
 }
 
+// TestHandBackHookReadsTheConnectorsFromAFile: the pre-push hook reads the
+// connector declarations HEAD commits from an archive file, never through a
+// pipe, so a tar that stops reading its input early, as one may at the
+// end-of-archive marker, cannot leave git archive writing into a closed pipe
+// and refuse the push; and a read that does fail says why. Before the change a
+// loaded macOS runner refused work-in-progress pushes now and then, naming no
+// cause.
+func TestHandBackHookReadsTheConnectorsFromAFile(t *testing.T) {
+	realTar, err := exec.LookPath("tar")
+	if err != nil {
+		t.Skip("tar unavailable")
+	}
+	ref := "refs/heads/" + hostWIPPrefix + handBackItem
+
+	t.Run("a tar that stops reading early", func(t *testing.T) {
+		c := newForgeCase(t, trackingIssue)
+		c.fake("tar", `case " $* " in
+*" -f "*) exec '`+realTar+`' "$@" ;;
+esac
+head -c 512 >/dev/null
+exit 0`)
+		c.work("one.md")
+		out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+		if code != 0 {
+			t.Fatalf("hand-back exited %d\n%s%s", code, out, errOut)
+		}
+		if got, head := c.originRef(ref), c.git("rev-parse", "HEAD"); got != head {
+			t.Fatalf("origin holds %q on %s, want the report commit %s\n%s%s", got, ref, head, out, errOut)
+		}
+	})
+
+	t.Run("a read that fails says why", func(t *testing.T) {
+		c := newForgeCase(t, trackingIssue)
+		c.fake("tar", `echo "tar: the simulated read failure" >&2
+exit 1`)
+		c.work("one.md")
+		out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+		if code != 0 {
+			t.Fatalf("hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+		}
+		if got := c.originRef(ref); got != "" {
+			t.Fatalf("origin holds %q on %s although the hook could not read the connectors", got, ref)
+		}
+		calls := c.forgeCalls()
+		if len(calls) != 1 {
+			t.Fatalf("the fallback called the forge %d times, want once\n%s", len(calls), errOut)
+		}
+		var payload map[string]string
+		if err := json.Unmarshal([]byte(calls[0].stdin), &payload); err != nil {
+			t.Fatalf("the comment's request body is not JSON: %v\n%s", err, calls[0].stdin)
+		}
+		if !strings.Contains(payload["body"], "could not be read (tar: the simulated read failure)") {
+			t.Errorf("the comment does not say why the connectors could not be read:\n%s", payload["body"])
+		}
+	})
+}
+
 // TestHandBackPrintsReportWhenConnectorCannotBeResolved: with no connector to
 // say where it runs (two declared, so none is the default), the hand-back
 // cannot tell the cloud from the person's computer. It commits, pushes and
