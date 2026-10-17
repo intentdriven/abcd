@@ -102,8 +102,9 @@ its reservation says; when that branch cannot be read, the act goes on and the
 output says the check was skipped.
 
 The act is then judged against the rest of the fetched view. A reservation
-that would take its holder past ten live reservations, counted by username
-across every record, is refused naming the ten; a renewal, and a take-over of
+that would take its holder past their cap of live reservations, counted by
+username across every record, is refused naming the cap, how to raise it and
+the reservations; a renewal, and a take-over of
 the same person's other copy, of a reservation still live add none and are
 never refused by the cap, while reviving a lapsed one adds one. A
 footprint path that another live reservation's footprint shares, equal or one
@@ -118,6 +119,20 @@ fetched and are not compared-and-swapped, since each reservation is its own
 branch: two people reserving at once can both pass them, so both are
 best-effort under a race. A collision on one record is atomic, the plain push
 being the compare-and-swap.
+
+The cap is ten unless the person's own machine sets `reservation.max_live` in
+`~/.abcd.noindex/config.json`, a whole number from 1 to 100
+(`internal/core/claim/maxlive.go`, iss-2610170717515674). It stays one ceiling
+per person, counted across all of their sessions and copies, so a person who
+runs many sessions on one account raises it rather than releasing and
+re-taking holds to make room. It is read from the machine layer alone: a
+repository's `.abcd/config.json` that sets it is not read, so a checkout cannot
+raise anyone's ceiling. A value outside the range, or a key under
+`reservation` that nothing reads, refuses a new reservation naming the file,
+never falling back to ten; a `config.json` that cannot be read at all
+(writable by others, not valid JSON) is read past, ten applies, and the
+refusal at the cap says why. The setting is read only by an act that adds a
+reservation, so a bad value never stops a renewal or a release.
 
 Reservations coordinate people who share push access in good faith; they are
 not an access control. Any writer who can push can append to another holder's
@@ -152,8 +167,8 @@ with no leading zero and no suffix, so one release never makes two branches. It 
 
 - It takes no footprint, and refuses one: it holds every merge, not some
   files.
-- It sits outside the cap of ten: it is neither counted toward a person's ten
-  nor refused by them, and the live counts a listing shows leave it out.
+- It sits outside the per-person cap: it is neither counted toward a person's
+  cap nor refused by it, and the live counts a listing shows leave it out.
 - It holds for 24 hours unless a shorter lease is named, where a record holds
   for two. A cut waits on its checks, on a reviewer and on an approval, and
   the release tag is pushed by the release workflow after the merge, so a

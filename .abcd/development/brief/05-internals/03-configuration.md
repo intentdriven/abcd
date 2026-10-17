@@ -10,7 +10,10 @@ interview's list style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
 keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
-(`internal/core/claim/holder.go`), the load gate's `load.preflights`, read
+(`internal/core/claim/holder.go`), the reservation cap's `reservation.max_live`
+(how many live reservations one person may hold across all of their sessions:
+1 to 100 and 10 by default), read from the machine layer alone
+(`internal/core/claim/maxlive.go`), the load gate's `load.preflights`, read
 from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 or
 2 and 1 by default, never from a repository
 (`internal/core/implement/load_slots.go`), and the runner routes under `roles` and
@@ -577,7 +580,8 @@ and the role routes under `roles`, each read with the repo-scope
 `.abcd/config.json` above it, except `land`, whose layers are ANDed; the
 provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
-`interview.list`, `reservation.github_username` and `load.preflights` (how
+`interview.list`, `reservation.github_username`, `reservation.max_live` (1 to
+100, 10 by default) and `load.preflights` (how
 many preflights may be in their test stages at once: 1 or 2, 1 by default,
 never read from a repository, and the one machine key read past, with a
 stderr note, when the file cannot be read for it, so a file that holds other

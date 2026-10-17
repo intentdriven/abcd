@@ -97,6 +97,9 @@ type prepared struct {
 	holder string
 	copy   string
 	label  string
+	// home is where the machine layer of the configuration is read, for the
+	// cap (maxlive.go).
+	home string
 	// derivedGap is why the act's fetch could not read origin's default
 	// branch, "" when it read it: the derived release is then not applied.
 	derivedGap string
@@ -150,7 +153,7 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if term < lease.Min || term > lease.Max {
 		return nil, refuse("lease %s is outside %s to %s; %s", term, lease.Min, lease.Max, nothingPushed)
 	}
-	p := &prepared{root: root, id: id, req: req, lease: term, now: o.now(), label: o.assistedBy()}
+	p := &prepared{root: root, id: id, req: req, lease: term, now: o.now(), label: o.assistedBy(), home: o.home()}
 	if p.copy, err = copyKey(root); err != nil {
 		return nil, err
 	}

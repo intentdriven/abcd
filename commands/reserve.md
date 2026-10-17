@@ -60,7 +60,7 @@ session's land step holds its merge until the cut is done:
 
 The subject is `rel-v` and the version, three plain numbers (`rel-v0.16.0`,
 never `rel-0.16.0` or `rel-v0.16.0-rc1`). It takes no footprint (one is
-refused, exit 2), and it does not count toward the cap of ten. With no
+refused, exit 2), and it does not count toward the cap. With no
 `--lease` it holds for `24h`, so a cut that waits on checks and an approval
 outlasts it; running the same command again from the same copy renews it for
 another day, and without a renewal it holds no longer than a day (see
@@ -117,11 +117,17 @@ already building … on another computer". Pass `--take-over` only when the user
 confirms the work moves here; it moves only the user's own reservation, and the
 output names the copy it replaced. It never moves another person's.
 
-**Exit 2 when the user holds ten.** One person may hold at most ten live
-reservations, counted across every record by username. A reservation past that
-is refused, naming the ten; a renewal, and a take-over of the user's own other
-copy, of a reservation still live are never refused by the cap, while renewing
-one that has lapsed counts as a new one. Release one first, if the user agrees.
+**Exit 2 when the user is at the cap.** One person may hold at most ten live
+reservations by default, counted across every record by username, whichever of
+their sessions and copies holds them. A reservation past that is refused,
+naming the cap and the reservations; a renewal, and a take-over of the user's
+own other copy, of a reservation still live are never refused by the cap, while
+renewing one that has lapsed counts as a new one. Release one first, if the
+user agrees. A person who runs many sessions at once raises the cap with
+`reservation.max_live` in their own `~/.abcd.noindex/config.json` (a whole
+number from 1 to 100), never in a repository's `.abcd/config.json`, which is
+not read for it; a value outside that range, or a misspelt key beside it, is
+refused naming the file.
 
 **Exit 2 is every other refusal**: an id that is not an issue, an intent or a
 release (`rel-vX.Y.Z`), no footprint for a record or one for a release, a

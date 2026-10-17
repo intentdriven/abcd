@@ -171,7 +171,7 @@ func machineHolder(home string) (string, error) {
 	if err != nil {
 		return "", refuse("could not read the configuration that names your GitHub username: %v; %s", err, nothingSent)
 	}
-	if err := stack.Claim(holderNamespace, "github_username"); err != nil {
+	if err := stack.Claim(holderNamespace, reservationKeys...); err != nil {
 		return "", refuse("%v; %s", err, nothingSent)
 	}
 	found, err := stack.Lookup(holderKey)

@@ -78,9 +78,9 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"lease (--lease, from 1m to 24h; default 2h, or 24h for a release).\n\n" +
 			"A session cutting a release reserves the release instead, rel-vX.Y.Z, with no\n" +
 			"footprint: while it is live every other session's land step holds its merge.\n" +
-			"It holds for 24h unless --lease names less, sits outside the cap of ten, and\n" +
-			"ends when the tag vX.Y.Z is on origin or its holder releases it; running the\n" +
-			"same command again from the same copy renews it.\n\n" +
+			"It holds for 24h unless --lease names less, sits outside the per-person cap,\n" +
+			"and ends when the tag vX.Y.Z is on origin or its holder releases it; running\n" +
+			"the same command again from the same copy renews it.\n\n" +
 			"Every act fetches the reservations from origin, judges the tip, writes one\n" +
 			"commit and makes one plain fast-forward push, with the repository's hooks\n" +
 			"running: a reservation, a renewal by the same person and copy, a take-over of\n" +

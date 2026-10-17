@@ -1,18 +1,22 @@
 package claim
 
 import (
+	"fmt"
 	"path"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
-// MaxLive is the most live reservations one person may hold, counted by
+// MaxLive is the most live reservations one person may hold unless their
+// machine's reservation.max_live says otherwise (maxlive.go), counted by
 // username across every record in the view: a laptop and a cloud session that
 // resolve to one username are one person. A release subject is not counted.
 const MaxLive = 10
 
 // crowding refuses an act the rest of the view forbids, judged on the view
 // just fetched: a footprint that shares a path with another live reservation
-// that is not this copy's own (the back-off), and a reservation that would take its holder past MaxLive
+// that is not this copy's own (the back-off), and a reservation that would take its holder past the cap
 // (the cap, checked first, since taking other work does not lift it). A
 // renewal, and a take-over of one's own other copy, add no reservation, so the
 // cap never refuses them. A reserve naming its footprint re-checks it, so a
@@ -35,16 +39,20 @@ func crowding(p *prepared, j judged, res Result) error {
 		}
 	}
 	// A release subject sits outside the cap: it neither counts toward a
-	// person's ten nor is refused by them (release.go).
+	// person's cap nor is refused by it (release.go).
 	if !isRelease(p.id) && addsOne(j) {
+		limit, note, err := maxLive(p.home)
+		if err != nil {
+			return err
+		}
 		var mine []string
 		for _, r := range others {
 			if sameHolder(r.Holder, p.holder) && !isRelease(r.Record) {
 				mine = append(mine, r.Record)
 			}
 		}
-		if len(mine) >= MaxLive {
-			return capRefusal(mine)
+		if len(mine) >= limit {
+			return capRefusal(mine, limit, note)
 		}
 	}
 	// A renew-only act over a live tip keeps the tip's own footprint, so it
@@ -83,15 +91,21 @@ func addsOne(j judged) bool {
 }
 
 // capRefusal names the cap and the holder's live reservations, as the view
-// lists them.
-func capRefusal(mine []string) error {
+// lists them, how to raise the cap, and note, when the machine's
+// configuration was read past for it.
+func capRefusal(mine []string, limit int, note string) error {
 	ids := strings.Join(mine, ", ")
-	if len(mine) == MaxLive {
-		return refuse("you hold %d live reservations, the most one person may hold: %s; release one (abcd reserve <id> --release) first; %s",
-			len(mine), ids, nothingPushed)
+	raise := fmt.Sprintf("release one (abcd reserve <id> --release) first, or raise %s in %s (a whole number from 1 to %d, %d when unset)",
+		MaxLiveKey, layered.Config.MachineOrigin(), MaxLiveCeiling, MaxLive)
+	if note != "" {
+		raise += "; " + note
 	}
-	return refuse("you hold %d live reservations, past the %d one person may hold: %s; release one (abcd reserve <id> --release) first; %s",
-		len(mine), MaxLive, ids, nothingPushed)
+	if len(mine) == limit {
+		return refuse("you hold %d live reservations, the most one person may hold: %s; %s; %s",
+			len(mine), ids, raise, nothingPushed)
+	}
+	return refuse("you hold %d live reservations, past the %d one person may hold: %s; %s; %s",
+		len(mine), limit, ids, raise, nothingPushed)
 }
 
 // sharedPath reports whether two footprint paths are shared, equal or one a

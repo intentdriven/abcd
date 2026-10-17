@@ -27,7 +27,8 @@ func TestTheEleventhReservationIsRefusedNamingTheCap(t *testing.T) {
 	reserveTen(t, p)
 	_, err := p.reserve("iss-11", "f11.go")
 	want := "you hold 10 live reservations, the most one person may hold: iss-1, iss-10, iss-2, iss-3, iss-4, iss-5, " +
-		"iss-6, iss-7, iss-8, iss-9; release one (abcd reserve <id> --release) first; nothing was pushed"
+		"iss-6, iss-7, iss-8, iss-9; release one (abcd reserve <id> --release) first, or raise reservation.max_live " +
+		"in ~/.abcd.noindex/config.json (a whole number from 1 to 100, 10 when unset); nothing was pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("the eleventh reservation = %v; want %q", err, want)
 	}
