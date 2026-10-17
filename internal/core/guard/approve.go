@@ -82,6 +82,10 @@ const (
 	// bash call holding the whole command, so part of it could run outside
 	// the change of directory or outside bash.
 	groupBrokenEntryID = "tree-group-broken"
+	// nulByteEntryID: the shell command holds a NUL byte, which no shell
+	// passes on as written and which the guard's reading removes before it
+	// reads a word, so the command it would judge is not the one sent.
+	nulByteEntryID = "command-holds-nul"
 )
 
 // approveFoldsCase reports whether the filesystem folds case, so a protected
@@ -131,6 +135,13 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 		return refusal(promptInputEntryID,
 			"the shell call carries no command string the guard can read, so nothing was checked.",
 			"the same call with its command as one plain string."), nil
+	}
+	// Refused before the guard reads the line, since its reading (judge)
+	// removes a NUL byte before it reads a word.
+	if strings.ContainsRune(command, 0) {
+		return refusal(nulByteEntryID,
+			"the shell command holds a NUL byte, which no shell passes on as written, so the command the guard would check is not the one that would run.",
+			"the same command without the NUL byte."), nil
 	}
 	if raw, ok := fields["dangerouslyDisableSandbox"]; ok {
 		if v := strings.TrimSpace(string(raw)); v != "false" && v != "null" {

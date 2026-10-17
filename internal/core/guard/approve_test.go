@@ -183,7 +183,8 @@ func TestApproveLeavesScriptFilesToTheirInterpreter(t *testing.T) {
 // own voice.
 func TestApprovalIDsAreReserved(t *testing.T) {
 	for _, id := range []string{unnamedProgramEntryID, inlineCodeEntryID, checkNoteEntryID, registryEntryID, promptToolEntryID, promptInputEntryID,
-		protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID, unfixedPathEntryID, gitConfigWriteEntryID, outsideRemovalEntryID, groupBrokenEntryID} {
+		protectedPathEntryID, criticalRemovalEntryID, sandboxEntryID, unfixedPathEntryID, gitConfigWriteEntryID, outsideRemovalEntryID, groupBrokenEntryID,
+		nulByteEntryID} {
 		if !containsString(reservedEntryIDs, id) {
 			t.Errorf("reservedEntryIDs lacks %q", id)
 		}
@@ -315,4 +316,25 @@ func TestApproveReadsTestCommandsAsPrograms(t *testing.T) {
 		{"[[a]] -f x", refusedAs(unnamedProgramEntryID)},
 		{"[*] -f x", refusedAs(unnamedProgramEntryID)},
 	})
+}
+
+// TestApproveRefusesACommandHoldingANUL: no shell passes a NUL byte on as
+// written, and the guard's own reading removes one before it reads a word, so
+// a command holding one is refused under its own reason before it is judged,
+// wherever the byte stands, and no input to run is handed back.
+func TestApproveRefusesACommandHoldingANUL(t *testing.T) {
+	for _, c := range []string{"echo hi\x00", "\x00go test ./...", "ec\x00ho hi", "echo hi\x00; touch ran", "git status\x00 && rm -rf build"} {
+		in, err := json.Marshal(map[string]string{"command": c})
+		if err != nil {
+			t.Fatal(err)
+		}
+		a, updated := ApprovePrompt(clean(), NewFiles(t.TempDir()), "Bash", in)
+		if a.Allow || a.EntryID != nulByteEntryID || updated != nil {
+			t.Errorf("%q: allow=%v id=%q updated=%s; want a refusal under %q and no input", c, a.Allow, a.EntryID, updated, nulByteEntryID)
+			continue
+		}
+		if !strings.Contains(a.Reason, "NUL") {
+			t.Errorf("%q: the reason does not say the command holds a NUL byte: %s", c, a.Reason)
+		}
+	}
 }
