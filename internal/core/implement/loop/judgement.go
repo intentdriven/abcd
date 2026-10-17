@@ -150,7 +150,7 @@ func remedyDigest(remedy string) string {
 }
 
 // judgementFor is the latest answer the drain took on issue over the remedy
-// whose digest is given, if any. An answer taken before the drain last handed
+// whose digest is given, if any. An answer taken no later than the drain last handed
 // the issue back judged a record since changed, which is why the drain is
 // considering it again (drain_readmit.go), so it decides nothing.
 func judgementFor(st DrainState, issue, digest string) *DrainJudgement {
@@ -158,7 +158,7 @@ func judgementFor(st DrainState, issue, digest string) *DrainJudgement {
 	for i := len(st.Judgements) - 1; i >= 0; i-- {
 		j := st.Judgements[i]
 		if j.Issue == issue && j.RemedySHA256 == digest && j.Applied {
-			if since != nil && j.At.Before(*since) {
+			if since != nil && !j.At.After(*since) {
 				return nil
 			}
 			return &j
