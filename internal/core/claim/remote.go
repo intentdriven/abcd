@@ -104,9 +104,10 @@ type Result struct {
 	// or none was allowed.
 	ForkAllowed string
 	// OwnOverlap is each path this reservation shares with a live reservation
-	// the same person holds from another copy, which a person's own act (one
-	// not a drain's) goes ahead over and is told of (OwnOverlap.Warning); nil
-	// when it shares none. A drain's reservation backs off such a path.
+	// the same person holds from another copy, which an act asking for it
+	// (Request.WarnOwnOverlap) goes ahead over and is told of
+	// (OwnOverlap.Warning); nil when it shares none. Every other act backs off
+	// such a path.
 	OwnOverlap []OwnOverlap
 	// GeneratedUnread is why the overlap judgement recognised no generated
 	// file: origin's default branch declares them but its declaration could

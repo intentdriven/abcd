@@ -139,8 +139,9 @@ another checkout that shares a path with this reservation does not refuse it:
 the act goes ahead, exit 0, and warns on stderr, `abcd reserve: warning:
 "<path>" is also in the footprint of <record>, which you hold from your other
 copy until <time>; reserved anyway, since both are yours` (`own_overlap` in
-`--json`). Tell the user both pieces of work change that path. A drain's own
-reservation still backs off such a path, and so does a drain's pass-over.
+`--json`). Tell the user both pieces of work change that path. Only this verb
+does so: a build's and a drain's reservations are automated and still back off
+such a path, and so does a drain's pass-over.
 
 **Exit 3 also covers your own other copy.** When the same person holds the
 record from another computer or another checkout, the refusal says "you are

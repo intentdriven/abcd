@@ -174,8 +174,10 @@ understand (a macro, a C-quoted pattern, a POSIX class) is skipped, voiding
 every line before it when it could unset the attribute. A shared path with a
 live reservation the same person holds from another copy does not refuse a
 person's own act: it is made, and names each such path, the other record and
-its expiry (`own_overlap`, a warning on stderr in the text form); a drain's
-reservation still backs off it, as the drain's pass-over does. A renewal the verb makes names
+its expiry (`own_overlap`, a warning on stderr in the text form). Only the
+verb asks for this (the request's `WarnOwnOverlap`): a build's and a drain's
+reservations are automated and still back off it, as the drain's pass-over
+does, so two automated lanes never edit the same files. A renewal the verb makes names
 its footprint and is checked the same way, so a footprint is never widened onto
 another reservation, while the implement loop's renewal of a live reservation,
 which keeps the tip's footprint, is not checked, and one that revives a lapsed
@@ -326,8 +328,8 @@ back-off, when another person's reservation is live or lapsed under the
 margin, an unreadable one is within its hold, another push won the race, or the
 same person's other copy holds it and no take-over was asked for, or a
 footprint path that is not a generated file is in another person's live
-reservation's footprint (or, for a drain's reservation, the same person's from
-another copy), or a drain's reservation meets a hand-back that stands. Exit 2 on the cap,
+reservation's footprint (or, for a build's or a drain's reservation, the same
+person's from another copy), or a drain's reservation meets a hand-back that stands. Exit 2 on the cap,
 on a fork origin, and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
 `effective_expiry`, `commit`, `replaced` for a take-over,

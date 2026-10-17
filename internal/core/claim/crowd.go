@@ -34,10 +34,11 @@ type OwnOverlap struct {
 // tip, which keeps the tip's footprint, is not checked for overlap.
 //
 // A path is shared as overlap names it: a file origin's default branch
-// declares generated is no overlap (spc-2610161044461448 step 11). A person's
-// own act (not a drain's) that shares a path with their reservation from
-// another copy goes ahead, and res names each such path (Result.OwnOverlap);
-// a drain's backs off it, as it backs off another person's. res also carries
+// declares generated is no overlap (spc-2610161044461448 step 11). An act
+// that asks for it (Request.WarnOwnOverlap, the reserve verb's) and shares a
+// path with the same person's reservation from another copy goes ahead, and
+// res names each such path (Result.OwnOverlap); every other act backs off it,
+// as it backs off another person's. res also carries
 // why no generated file was recognised, when the overlap was judged without
 // them (Result.GeneratedUnread).
 //
@@ -92,9 +93,10 @@ func crowding(p *prepared, j judged, res *Result) error {
 				shared, ok := overlap(want, held, snap.Generated)
 				switch {
 				case !ok:
-				case mine && !p.req.Drain:
-					// This person's other copy: their own act goes ahead and
-					// is told; a drain's backs off below.
+				case mine && p.req.WarnOwnOverlap:
+					// This person's other copy: their own act, asked by hand,
+					// goes ahead and is told; an automated one (a build's, a
+					// drain's) backs off below.
 					o := OwnOverlap{Path: shared, Record: r.Record, Expiry: r.EffectiveExpiry}
 					if !slices.Contains(own, o) {
 						own = append(own, o)

@@ -209,7 +209,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 				return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was pushed"}
 			}
 			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
-				TakeOver: takeOver, Release: release}, claim.Options{ForgeUser: reserveForgeUser})
+				TakeOver: takeOver, Release: release, WarnOwnOverlap: true}, claim.Options{ForgeUser: reserveForgeUser})
 			if err != nil {
 				return reserveRefusal(err)
 			}

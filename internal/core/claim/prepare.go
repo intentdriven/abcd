@@ -104,6 +104,13 @@ type Request struct {
 	// tombstone whose record is unchanged on origin's default branch, where a
 	// person's own reservation goes ahead and is told (Result.HandedBack).
 	Drain bool
+	// WarnOwnOverlap lets a person's own act go ahead over a footprint path
+	// that their live reservation from another copy holds, naming each such
+	// path (Result.OwnOverlap), where every other act backs off it. Only the
+	// reserve verb sets it: a build's, a drain's and the land fence's acts are
+	// automated, and two automated lanes must never edit the same files
+	// (spc-2610161044461448 step 11).
+	WarnOwnOverlap bool
 	// Live, with Renew, refuses one's own reservation that has lapsed too
 	// (NotHeldLapsed): the land fence renews only a reservation that holds.
 	Live bool

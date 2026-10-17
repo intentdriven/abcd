@@ -155,9 +155,10 @@ func TestAnUnreadableDeclarationIsStrictAndSaysWhy(t *testing.T) {
 }
 
 // TestOnesOwnReserveOverlappingOnesOtherCopyWarns: a person's own reservation
-// sharing a path with their live reservation from another copy is made, and
-// names the path and the record; a drain's reservation over the same path
-// still backs off, and so does another person's.
+// (Request.WarnOwnOverlap, the reserve verb's) sharing a path with their live
+// reservation from another copy is made, and names the path and the record; a
+// drain's reservation over the same path still backs off, so does an act that
+// does not ask for the warning, and so does another person's.
 func TestOnesOwnReserveOverlappingOnesOtherCopyWarns(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
@@ -166,7 +167,7 @@ func TestOnesOwnReserveOverlappingOnesOtherCopyWarns(t *testing.T) {
 	if _, err := p.reserve("iss-1", "internal/core/claim"); err != nil {
 		t.Fatal(err)
 	}
-	res, err := laptop.reserve("iss-5", "internal/core/claim/view.go", "x.go")
+	res, err := laptop.do(Request{Record: "iss-5", Footprint: []string{"internal/core/claim/view.go", "x.go"}, WarnOwnOverlap: true})
 	want := []OwnOverlap{{Path: "internal/core/claim/view.go", Record: "iss-1", Expiry: t0.Add(2 * time.Hour)}}
 	if err != nil || res.Act != ActReserved || !slices.Equal(res.OwnOverlap, want) {
 		t.Fatalf("one's own reserve over one's other copy = %+v, %v; want it reserved, naming %+v", res, err, want)
@@ -182,7 +183,10 @@ func TestOnesOwnReserveOverlappingOnesOtherCopyWarns(t *testing.T) {
 	_, err = q.reserve("iss-7", "internal/core/claim/claim.go")
 	wantBackOff(t, w, err, "iss-7", "internal/core/claim/claim.go", "iss-1")
 	// A reservation that shares nothing names nothing.
-	if res, err := laptop.reserve("iss-8", "y.go"); err != nil || res.OwnOverlap != nil {
+	// An act that does not ask for the warning (a build's) backs off it too.
+	_, err = laptop.reserve("iss-9", "internal/core/claim/crowd.go")
+	wantBackOff(t, w, err, "iss-9", "internal/core/claim/crowd.go", "iss-1")
+	if res, err := laptop.do(Request{Record: "iss-8", Footprint: []string{"y.go"}, WarnOwnOverlap: true}); err != nil || res.OwnOverlap != nil {
 		t.Fatalf("a reserve sharing nothing = %+v, %v; want no overlap named", res, err)
 	}
 }
