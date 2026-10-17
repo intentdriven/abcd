@@ -100,10 +100,15 @@ the reading's output claims, and takes the regime from the definition rather tha
 from any operand or configuration key, so an output claiming a different regime is
 refused.
 
-A definition holds five parts, and a test asserts exactly that composition:
+A definition holds five parts, and a test requires each of them to be present:
 `## Object`, `## Question`, `## The blindness core`, `## Regime`, and
-`## Item shape`. The repository sources the assembler admits at that position are
-stated inside `## Object` rather than standing as a part of their own. The
+`## Item shape`. It ends with a sixth section that is not one of them,
+`## Shell commands the guard refuses`: the block generated from the shell
+guard's registry into the agent prompts that can run a shell, outside the
+blindness core, restating for the sub-agent a command the guard would refuse.
+The test looks each of the five up and does not refuse a section beside them.
+The repository sources the assembler admits at that position are stated inside
+`## Object` rather than standing as a part of their own. The
 blindness core is byte-identical across all four — a test holds it so — and states
 what is true of every reading whatever its position; a definition that edited its
 own copy would be claiming a licence its position does not hold. `## Item shape`
