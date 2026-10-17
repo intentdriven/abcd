@@ -212,3 +212,31 @@ func TestApproveRefusesATargetHoldingAnUnquotedParen(t *testing.T) {
 		{`ls x(/)`, unfixed},
 	})
 }
+
+// TestApproveAllowsTheParensBashNeeds: two ( a command line needs in bash
+// itself name no path and are not read as qualifiers: the (( of an
+// arithmetic for-loop, and the optional ( before a case pattern. Each is
+// approved where the keyword before it stands unquoted, and the words around
+// it are still read; a ( anywhere else in a word is still refused.
+func TestApproveAllowsTheParensBashNeeds(t *testing.T) {
+	r := plainRig(t)
+	unfixed := refusedAs(unfixedPathEntryID)
+	r.run(t, []approveCase{
+		{`for ((i=0;i<3;i++)); do echo $i; done`, nil},
+		{`for((i=0;i<3;i++)); do echo $i; done`, nil},
+		{"for ((i=0; i<3; i++))\ndo\n  echo $i\ndone", nil},
+		{`if true; then for ((i=0;i<2;i++)); do echo $i; done; fi`, nil},
+		{`case a in (a) echo x;; esac`, nil},
+		{`case a in (a) echo x;; (b) echo y;; esac`, nil},
+		{`case "$1" in (a|b) echo x;; (c) echo y;; esac`, nil},
+		{"case a in\n  (a) echo x ;;\nesac", nil},
+		{`if true; then case a in (a) echo x;; esac; fi`, nil},
+		{`for ((i=0;i<3;i++)); do rm -f x(.); done`, unfixed},
+		{`case a in (a) rm -f x(.);; esac`, unfixed},
+		{`"for" ((i=0;i<3;i++)); do echo; done`, unfixed},
+		{`echo for ((i=0))`, unfixed},
+		{`'case' a in (a) echo x;; esac`, unfixed},
+		{`case a "in" (a) echo x;; esac`, unfixed},
+		{`echo case a in (a)`, unfixed},
+	})
+}

@@ -578,6 +578,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// it as segment.leadFrom.
 		leads    map[int]bool
 		leadFrom map[int]leadSource
+		// keywords records, per token index of the command being built, a
+		// for, case or in the line leaves wholly unquoted, which bashParens
+		// reads.
+		keywords map[int]bool
 		// parenNext rides with the segment the next flushSegment ends
 		// (segment.parenWord).
 		parenNext bool
@@ -989,10 +993,17 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		recordVar(true)
 		recordSpelling(tok, tok == string(cur))
 		curFeeds, curVar, curSub, curVarAt = nil, false, false, nil
+		bare := !curQuoted && tok == string(cur) && allStruct(curMask)
+		if bare && parenKeywords[tok] {
+			if keywords == nil {
+				keywords = map[int]bool{}
+			}
+			keywords[len(toks)] = true
+		}
 		// A `{` or `}` the line leaves wholly unquoted, in command position,
 		// opens or closes a group; a quoted one (`}""`, `}''`) is a command's
 		// name, and the group's input still reaches the commands after it.
-		if !curQuoted && tok == string(cur) && allStruct(curMask) && allReserved(toks) {
+		if bare && allReserved(toks) {
 			switch tok {
 			case "{":
 				braceFrom = append(braceFrom, groupOpen{pipeFrom: pipeFrom, in: openGroup()})
@@ -1035,6 +1046,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			splits = nil
 			leads = nil
 			leadFrom = nil
+			keywords = nil
 			feeds = nil
 			braceGroup = false
 			pipeNext = false
@@ -1181,7 +1193,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 	openSubstitution := func(kind parenKind, pos int, procSub bool) {
 		saved := &enclosing{
 			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub,
-			spells: spells, curVarAt: curVarAt, splits: splits, leads: leads, leadFrom: leadFrom,
+			spells: spells, curVarAt: curVarAt, splits: splits, leads: leads, leadFrom: leadFrom, keywords: keywords,
 			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob, curQuoted: curQuoted,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
@@ -1192,7 +1204,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curQuoted = false
 		curRedirs, andNext = nil, false
 		curPieces, vars, curVar, curSub = nil, nil, false, false
-		spells, curVarAt, splits, leads, leadFrom = nil, nil, nil, nil, nil
+		spells, curVarAt, splits, leads, leadFrom, keywords = nil, nil, nil, nil, nil, nil
 		// A substitution is a command string of its own: its pipelines begin
 		// inside it. Its standard input is its command's: what was piped into
 		// the groups around it, and the pipe into the command it sits in
@@ -1264,7 +1276,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits, leads, leadFrom = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom
+		spells, curVarAt, splits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
 		resumeDocs(e)
@@ -1290,7 +1302,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		curStdin, pipeNext, curDocs, curPieces = e.curStdin, e.pipeNext, e.curDocs, e.pieces
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
-		spells, curVarAt, splits, leads, leadFrom = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom
+		spells, curVarAt, splits, leads, leadFrom, keywords = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.keywords
 		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
 		feedFrom(e.segStart)
@@ -1864,8 +1876,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// A `(` glued to a word (a redirection's target included), or
 			// standing after the command's name, is part of a word to zsh,
 			// which reads it as glob qualifiers or modifiers, not a subshell.
-			// A function definition's `()` after its name is not.
-			if c == '(' && arrayName == "" && !funcParens(line, i, toks, cur, hasCur) {
+			// A function definition's `()` after its name is not, nor is a
+			// `(` bash itself needs (bashParens).
+			curBare := hasCur && !curQuoted && allStruct(curMask)
+			if c == '(' && arrayName == "" && !funcParens(line, i, toks, cur, hasCur) && !bashParens(line, i, toks, keywords, string(cur), hasCur, curBare) {
 				glued := hasCur || len(curRedirs) > 0 && i > 0 && !strings.ContainsRune(" \t\n;&|()<>", rune(line[i-1]))
 				parenNext = glued || len(toks) > 0 && !allReserved(toks)
 			}
@@ -2132,6 +2146,30 @@ func funcParens(line string, i int, toks []string, cur []byte, hasCur bool) bool
 		words = append(words, string(cur))
 	}
 	return len(words) == 1 || len(words) == 2 && words[0] == "function"
+}
+
+// parenKeywords are the words bashParens reads before a `(`.
+var parenKeywords = map[string]bool{"for": true, "case": true, "in": true}
+
+// bashParens reports whether the `(` at line[i] is one bash itself needs,
+// which names no path: the `((` of an arithmetic for-loop (`for ((i=0;i<3;i++))`,
+// `for((…))`), or the optional `(` before a case pattern (`case a in (a) …`).
+// Past the reserved words that lead to a command, the words before it are a
+// `for`, or a `case`, one word and an `in`, each of those keywords left wholly
+// unquoted (keywords; curBare for a `for` the `((` is glued to).
+func bashParens(line string, i int, toks []string, keywords map[int]bool, cur string, hasCur, curBare bool) bool {
+	lead := 0
+	for lead < len(toks) && reserved[toks[lead]] {
+		lead++
+	}
+	words := toks[lead:]
+	if i+1 < len(line) && line[i+1] == '(' {
+		if hasCur {
+			return len(words) == 0 && cur == "for" && curBare
+		}
+		return len(words) == 1 && words[0] == "for" && keywords[lead]
+	}
+	return !hasCur && len(words) == 3 && words[0] == "case" && keywords[lead] && words[2] == "in" && keywords[lead+2]
 }
 
 // allReserved reports whether every token so far is a reserved word, so the
@@ -2613,6 +2651,7 @@ type enclosing struct {
 	splits     map[int]bool
 	leads      map[int]bool
 	leadFrom   map[int]leadSource
+	keywords   map[int]bool
 	cur        []byte
 	curMask    []byte
 	hasCur     bool

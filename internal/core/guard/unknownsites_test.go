@@ -157,6 +157,7 @@ var wordReaders = map[string]string{
 	"registryAt":       "exempt: hands git its own options to read the registry at a commit; reads no command word",
 	"allReserved":      "exempt: reserved words are grammar, which no substitution prints",
 	"keywordAt":        "exempt: reserved words are grammar, which no substitution prints",
+	"bashParens":       "exempt: compares the words before a ( with for, case and in, keywords the tokenizer saw unquoted; a word holding an unknown mark never equals one",
 	"emptyable":        "exempt: reads a parameter's name after its `$` (`-` is the option-letter parameter), never a command word",
 	"readHeredocDelim": "exempt: the `<<-` operator is grammar",
 	"simpleParamEnd":   "exempt: reads the `$-` special parameter's name, grammar that makes the word unknown",
