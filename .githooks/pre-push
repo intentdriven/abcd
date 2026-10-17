@@ -43,7 +43,7 @@
 #
 #      The exemptions are the receipt-less prefixes, declared in the table
 #      below, one row per prefix, each with the shape check a push under it
-#      must pass and the record that rules it. There is one: a reservation
+#      must pass and the record that rules it. There are two. The first: a reservation
 #      (`abcd reserve`, itd-2609091034175565) is a
 #      branch under refs/heads/abcd-reserved/ holding a chain of commits whose
 #      tree is the empty tree. They change no file, so there is nothing for a
@@ -59,8 +59,24 @@
 #      (`abcd reserve <id> --release`), and a deleted tip would let the next
 #      reserve take the record with no lease judgement.
 #
+#      The second: a status branch (`abcd announce`, itd-2609151838312703,
+#      adr-2610150729333337), refs/heads/abcd-status/<username>, one per
+#      person, holding that person's announcements as a chain of empty-tree
+#      commits. It passes the same reservation_shape check, so it admits
+#      nothing the reservation row does not: a fast-forward of commits that
+#      change no file. A push under it that changes a file or rewrites the
+#      branch is gated as any branch is, and a deletion is refused outright:
+#      a status branch is kept for ever.
+#
+#      This hook runs only where core.hooksPath points at it. A hosted cloud
+#      session runs no hook at all, so there the server's rulesets (deletion
+#      and non-fast-forward refused under both prefixes, mirrored in
+#      .abcd/work/rulesets/) and abcd's own reader, which shows a status
+#      commit that changes a file as doubtful, are the guards; nothing on the
+#      forge refuses a file-changing push to a status branch.
+#
 #      A cloud session's work-in-progress branch (itd-2610120738075547 C7,
-#      adr-2610120937435856, brief invariant 23) is the other exemption, one
+#      adr-2610120937435856, brief invariant 23) is the third exemption, one
 #      row per prefix a host connector declares, added to the table when the
 #      hook runs. A cloud session cannot earn a receipt where it runs, and no
 #      receipt minted there is trusted anyway (the intent's decision 9: every
@@ -94,6 +110,14 @@
 # `git push --no-verify` skips this hook, as it skips every hook; CI re-runs
 # every gate on the pushed commit and is the authority either way.
 set -euo pipefail
+# Every read below sees objects as stored, as the push sends them: a local
+# refs/replace/* ref can stand one commit in for another, so a commit carrying
+# files could otherwise read as one with the empty tree. A .git/info/grafts
+# file is honoured even then, and can give a commit no parents, hiding the
+# commits beneath it from the walk, so no graft file is read: GIT_GRAFT_FILE
+# names a path that cannot exist, which git reads as no grafts at all.
+export GIT_NO_REPLACE_OBJECTS=1
+export GIT_GRAFT_FILE=/dev/null/none
 cd "$(git rev-parse --show-toplevel)"
 
 protected="main"
@@ -123,8 +147,12 @@ only_empty_trees() {
 # fast-forward (or a create) and every commit it moves has the empty tree. The
 # range is everything new on an update, and everything reachable on a create.
 # A remote tip this clone does not hold fails both tests, so the push is gated.
+# So does any push from a shallow clone: a .git/shallow line stops the walk at
+# the commit it names, as a graft would, and the commits beneath it go unread,
+# so the hook cannot show the range changes no file and asks for a receipt.
 reservation_shape() {
   local remote_sha="$1" local_sha="$2"
+  [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" != "true" ] || return 1
   if is_null_id "$remote_sha"; then
     only_empty_trees "$local_sha"
   else
@@ -198,8 +226,8 @@ shape_check() {
 # succeeds only for a push of the prefix's own shape, with its own arm in
 # shape_check. The last field is named
 # when a delete under the prefix is refused, with <name> standing for the
-# branch's name after the prefix: a ref under a receipt-less prefix is never
-# deleted by a push.
+# branch's name after the prefix, or is "never" for a branch kept for ever: a
+# ref under a receipt-less prefix is never deleted by a push.
 #
 # A new row needs its own ruling record and its own shape check. A prefix with
 # no shape check, or one naming a check shape_check has no arm for, is never
@@ -210,6 +238,7 @@ shape_check() {
 # with the wip_shape check.
 receiptless_prefixes=(
   "abcd-reserved/|reservation_shape|adr-2610031352212697|abcd reserve <name> --release"
+  "abcd-status/|reservation_shape|adr-2610150729333337|never"
 )
 
 # receiptless_row finds the row whose prefix the branch is under and whose
@@ -253,9 +282,17 @@ if git cat-file -e HEAD:scripts/cloud/connector.sh 2>/dev/null; then
   decl_dir="$(mktemp -d "${TMPDIR:-/tmp}/abcd-pre-push.XXXXXX")"
   trap '/bin/rm -rf -- "$decl_dir"' EXIT
   wip_prefixes=""
-  if ! git archive --format=tar HEAD -- scripts/cloud 2>/dev/null | tar -x -C "$decl_dir" 2>/dev/null ||
+  # The archive goes to a file and tar reads the file, never a pipe between
+  # them: a tar that stops at the end-of-archive marker leaves git archive
+  # writing the rest of its last record into a closed pipe, and under
+  # pipefail that read failed now and then on a loaded runner, refusing every
+  # work-in-progress push it judged. What either command says is kept, so a
+  # read that fails names its cause.
+  if ! git archive --format=tar -o "$decl_dir/cloud.tar" HEAD -- scripts/cloud 2>"$decl_dir/read-error" ||
+    ! tar -x -C "$decl_dir" -f "$decl_dir/cloud.tar" 2>>"$decl_dir/read-error" ||
     [ ! -f "$decl_dir/scripts/cloud/connector.sh" ] || [ -L "$decl_dir/scripts/cloud/connector.sh" ]; then
-    wip_bad="pre-push: the connector loader and declarations HEAD commits under scripts/cloud/ could not be read."
+    read_error="$(tr '\n' ' ' <"$decl_dir/read-error" 2>/dev/null | cut -c1-300 || true)"
+    wip_bad="pre-push: the connector loader and declarations HEAD commits under scripts/cloud/ could not be read${read_error:+ (${read_error% })}."
   elif ! wip_prefixes="$(bash "$decl_dir/scripts/cloud/connector.sh" prefixes </dev/null 2>"$decl_dir/diagnostic")"; then
     wip_bad="$(cat "$decl_dir/diagnostic")"
     [ -n "$wip_bad" ] || wip_bad="pre-push: the connector loader refused the declarations under scripts/cloud/connectors/."
@@ -347,6 +384,10 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   # the next reserve takes the record with no lease judgement at all.
   if is_null_id "$local_sha"; then
     if receiptless_row "$branch"; then
+      if [ "$row_end" = "never" ]; then
+        echo "pre-push: refusing to delete '$branch': a branch under $row_prefix is kept for ever and never deleted ($row_ruling)." >&2
+        exit 1
+      fi
       echo "pre-push: refusing to delete '$branch': a branch under $row_prefix ends by a push, never a deletion ($row_ruling);" >&2
       echo "          end it with \`${row_end//<name>/${branch#"$row_prefix"}}\`." >&2
       exit 1

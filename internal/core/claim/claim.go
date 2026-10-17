@@ -111,20 +111,29 @@ func echo(s string) string {
 // refusal quotes git's or the filesystem's own reason.
 func redacted(err error) string { return fsutil.RedactHome(err.Error()) }
 
-// reservableID is the record a reservation names, in canonical form, or a
-// refusal. Only an issue or an intent is reservable — the records a build or a
-// drain takes — and the argument must already be a cited id in canonical
-// grammar, so no ref name is ever formed from anything else and two spellings
-// of one record never make two branches.
+// reservableID is the subject a reservation names, in canonical form, or a
+// refusal. Only an issue or an intent is reservable as a record — the records
+// a build or a drain takes — and a release as a release subject, rel-vX.Y.Z
+// (release.go); the argument must already be a cited id in canonical grammar,
+// or a release subject in its one spelling, so no ref name is ever formed from
+// anything else and two spellings of one subject never make two branches.
 func reservableID(arg string) (string, error) {
+	if isRelease(arg) {
+		return arg, nil
+	}
 	if !recordid.CitedIDRe.MatchString(arg) {
-		return "", refuse("%s is not an issue or intent id (iss-N or itd-N); %s", echo(arg), nothingPushed)
+		return "", notReservable(arg)
 	}
 	id := recordid.CanonCitedID(arg)
 	if id == "" || (id[:4] != "iss-" && id[:4] != "itd-") {
-		return "", refuse("%s is not an issue or intent id (iss-N or itd-N); %s", echo(arg), nothingPushed)
+		return "", notReservable(arg)
 	}
 	return id, nil
+}
+
+// notReservable is the refusal of an argument that is no reservable subject.
+func notReservable(arg string) error {
+	return refuse("%s is not an issue or intent id (iss-N or itd-N), nor a release (rel-vX.Y.Z); %s", echo(arg), nothingPushed)
 }
 
 // refName is a reservable id's branch on the remote, a full ref; trackingName
@@ -140,6 +149,9 @@ const (
 	NotHeldAnotherPerson = "another_person"
 	NotHeldAnotherCopy   = "another_copy"
 	NotHeldLapsed        = "lapsed"
+	// NotHeldMoved: a release naming its Tip found this person's reservation
+	// from this copy at another commit, renewed or reserved again since.
+	NotHeldMoved = "moved"
 )
 
 // NotHeld is the refusal of an act that needs this person's own reservation

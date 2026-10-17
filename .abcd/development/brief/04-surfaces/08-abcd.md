@@ -124,7 +124,8 @@ member an open spec defers to.
 
 Any other positional is refused: the CLI exits **2** with `abcd: unknown command
 …` on stderr, which is the framework's usage-error convention. `abcd status` is
-refused that way, and `abcd help` prints the grouped verb list the
+its own verb, everyone's status on the shared remote
+([`39-status.md`](39-status.md)), not a record read, and `abcd help` prints the grouped verb list the
 [register](README.md#how-the-help-lists-the-verbs) describes and exits 0.
 A shape-matching record id found in no store is a structural fault: the command
 exits non-zero with a diagnostic naming the store it searched, never a silent
@@ -237,10 +238,21 @@ stamps when it ran in the local tier. Each reservation is listed with its
 record, holder, footprint, effective expiry and state (`live`, `expired`,
 `released` by its tombstone or by the record being finished on origin's
 default branch, or `unreadable` with its fixed reason and the end of its
-hold), its own copy's marked, and each person's count of live reservations;
-every value a writer chose is shown quoted and terminal-safe. The JSON form
-adds `reservations`, `live_by_holder` and `view` (`origin`, `fetched_at`,
-`age_seconds`). When the fetch fails, the listing renders the view as last
+hold), its own copy's marked, a live drain lane's stage when its renewal
+names one (`Abcd-Stage`, one of `worktree`, `brief`, `implement`, `validate`
+and `land`, written by a lane's renewal, or by a drain's reservation that
+renews the live hold of a lane a concurrent build started, never by a fresh or
+taken-over reservation; a later renewal naming none clears it), and each person's count of
+live reservations; every value a writer chose is shown quoted and
+terminal-safe. Below them, each holder's hand-back tombstones of the last 24
+hours by their `Abcd-Released-At`, with each one's record and kind, newest
+first, at most ten per holder and the rest counted; one dated more than
+`lease.Skew` ahead of the reader's clock is not listed. Both are read from
+the same view, so they add no network act (spc-2610161044461448 step 18,
+dcn-2610161040394970). The JSON form adds `reservations` (each live one with
+`stage` when it carries one), `live_by_holder`, `hand_backs_by_holder` (`holder`,
+`hand_backs` of `record`, `kind` and `released_at`, and `more`) and `view`
+(`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
 exits 1; the peer rows are unchanged. A checkout with no remote named
 `origin` lists none. The board's peers line reads only the peer reader, and

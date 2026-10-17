@@ -12,9 +12,13 @@ session sees a sibling's capture or fix before it mints a duplicate or re-fixes
 a closed record, then list the reservations on the shared remote, so it sees
 the items another person, computer or hosted session has started. It takes no
 lock. Its one network act is a fetch from `origin` of the reservation
-branches (and the default branch); the fetch updates the remote-tracking
-reservation branches and stamps when it ran in the local tier, and nothing
-else is written.
+branches (and the default branch, and `origin`'s release tags `v*`); the fetch
+updates the remote-tracking reservation branches and the release tags abcd
+keeps under `refs/abcd/release-tags/`, and stamps when it ran in the local
+tier, with when it first fetched each reservation dated ahead of this
+computer's clock or undated, and nothing else is written. The release-tag
+refs are ordinary refs in this checkout, so `git log --all` lists the commits
+they name and `git push --mirror` would push them.
 
 A peer is one of two things, both sharing this repository's git common dir:
 
@@ -77,8 +81,25 @@ payload adds:
   released one; and for an `unreadable` one its fixed `unreadable` reason, no
   holder, and `held_from_fetch` when its hold is counted from when this copy
   first fetched it. The states are `live`, `expired`, `released` and
-  `unreadable`.
+  `unreadable`. A live reservation a drain lane renewed carries its `stage`,
+  one of `worktree`, `brief`, `implement`, `validate` and `land`, the stage
+  the lane was in at its last renewal (a lane's own renewal, or, when
+  `abcd build` started the lane's run while a drain move was reserving the
+  same issue, that drain's reservation renewing the lane's live hold; a fresh
+  or taken-over reservation carries none). A person's own renewal names none, and a reservation that is not
+  live shows none, so the field is then absent; the text form shows the
+  stage beside a live one alone.
 - `live_by_holder`: each person's count of live reservations.
+- `hand_backs_by_holder`: for each holder, the hand-backs of the last 24
+  hours: each released tip carrying a hand-back, as `record`, `kind` (one of
+  `user-visible`, `trust-rule`, `design-finding`, `second-package`,
+  `unachievable`, `stuck` and `closed`) and `released_at`, the tombstone's
+  own release time. Each holder lists its newest ten, newest first, and
+  `more` counts the rest. A tombstone dated more than five minutes ahead of
+  this computer's clock is not listed, so a fast clock cannot keep it on show.
+  It is read from the same view as the reservations, as just fetched or as
+  last fetched, and asks the network nothing more. Tell the user what each
+  other account's drain handed back and why, by its kind.
 - `view`: `origin` (whether there is a remote named origin), and
   `fetched_at` and `age_seconds` for the fetch this view was made by, both
   absent when nothing here has fetched.

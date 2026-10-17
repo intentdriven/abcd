@@ -75,7 +75,13 @@ footprint and term, so another reservation over the same files that a race let
 in does not refuse it) while that footprint still covers every path the spec's
 `- packages:` line names; once the spec has widened its footprint, it reserves
 again with the widened one, which is judged for overlap like any reservation
-and keeps the term, so origin names every path the build will change. It reserves anew one that
+and keeps the term, so origin names every path the build will change. An
+issue's reservation that its landing narrowed to the files the lane changed
+lies within the issue's `found_at`, and while the lane is at its landing it is
+renewed as it stands, never reserved again with the whole `found_at`; at any
+earlier stage nothing has narrowed it, so a reservation narrower than the
+`found_at` means the `found_at` widened, and it is reserved again with the
+whole `found_at`, judged for overlap. It reserves anew one that
 `--release` released or that a run started before reservations never took, and
 records it in the run's state.
 
@@ -97,7 +103,14 @@ flag. The payload is `/abcd:reserve`'s: `act`, `record`, `holder`, `copy`,
 An issue id builds the loop's issue-keyed lane instead: `build <iss-N>` (an
 issue id by shape) checks that the repository's own drain rule takes the issue,
 read as `/abcd:drain --dry-run` reads it, and that no peer holds it, then opens
-one lane whose brief is the issue with its remedy as the work. The receipt must
+one lane whose brief is the issue with its remedy as the work. One hand-back is
+let through: an issue the drain hands back as `promoted` (its `related_intents`
+names an intent) is taken by a person's own build when no other rule would hand
+it back, and the `eligible` row names the intent it goes through; this is how an
+after-merge audit's owed check reaches a lane. The rule is asked again with
+`promoted` set aside, so a linked issue that security, category, severity,
+"Waits on", a deferral or a missing remedy still holds is refused with that
+reason, and every other hand-back is refused. The receipt must
 name the issue in `resolves`, and the landing resolves it. `/abcd:drain` starts
 these runs one at a time; see `/abcd:implement` for the lane's receipt and its
 hand-back.
@@ -531,7 +544,16 @@ A lane's stages run in order:
    merge, says so in the step's note and the run record ("left open for a
    person to merge: the ruleset requires no approval"), and never arms it on a
    later step; a missing mirror requires nothing. It pushes nothing to the lane
-   afterwards. Then `step` exits 3 until the
+   afterwards. Before it arms or leaves anything open, the land fence fetches
+   the reservations from `origin` and, while another session holds a live
+   release reservation (`rel-vX.Y.Z`, `/abcd:reserve`), arms nothing: `step`
+   exits 3 naming the release and its holder (or "your copy on another
+   computer"), and the pull request stays open and unarmed, since a session
+   cutting a release has the final say on what merges before its tag. Tell the
+   user who is cutting which release, and step again once the release is
+   tagged or its holder released it; never merge around the hold. The copy
+   cutting the release is not held. A fetch `origin` does not answer arms
+   nothing either. Then `step` exits 3 until the
    pushed head is an ancestor of the default branch on `origin`; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the

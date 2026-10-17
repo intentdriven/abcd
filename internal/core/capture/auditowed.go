@@ -27,8 +27,9 @@ func init() { intent.SetAuditLedger(fileAuditOwed, clearAuditOwed) }
 // major, since the changelog already announces it. A criterion judged only
 // INCONCLUSIVE is a record that claims shipped with a check that could not
 // confirm it: an inconsistency between the record and its evidence, and
-// minor, since nothing is known to be wrong yet. Both categories are in the
-// drain's fixable set, so the drain's severity rule decides as for any issue.
+// minor, since nothing is known to be wrong yet. The record names the audited
+// intent in related_intents, so a drain hands it back as promoted whatever
+// its severity: the owed check is the intent's, paid through its audit.
 const (
 	auditFailedSeverity    = "major"
 	auditFailedCategory    = "bug"
@@ -239,8 +240,8 @@ func auditOwedText(o intent.AuditOwed, crit string) string {
 	return b.String()
 }
 
-// auditOwedRemedy is the record's remedy: real work a drain can take, not the
-// automatic filers' placeholder, since the flag says what must be done.
+// auditOwedRemedy is the record's remedy: real work, not the automatic filers'
+// placeholder, since the flag says what must be done.
 func auditOwedRemedy(o intent.AuditOwed, crit string) string {
 	if o.Failed {
 		return fmt.Sprintf("fix, then re-run the audit: make %s of %s hold in the delivered code, then re-emit the request with `abcd intent audit %s` "+

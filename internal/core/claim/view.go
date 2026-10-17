@@ -22,8 +22,9 @@ const (
 	StateUnreadable = "unreadable"
 )
 
-// What released a reservation: its own tombstone, or the record finished on
-// origin's default branch (the derived release).
+// What released a reservation: its own tombstone, the record finished on
+// origin's default branch (the derived release), or for a release subject its
+// tag on origin (ReleasedByTag, release.go).
 const (
 	ReleasedByTombstone     = "tombstone"
 	ReleasedByDefaultBranch = "default-branch"
@@ -56,7 +57,24 @@ type Reservation struct {
 	// HeldFromFetch is true when an unreadable tip's hold is counted from
 	// when this copy first fetched it, its commit date being unreadable.
 	HeldFromFetch bool
-	Commit        string
+	// Unsighted is true when the tip needs a first sighting and none is kept
+	// here: its own date (its claimed-at, or its commit date when it is
+	// unreadable) is more than lease.Skew ahead of now, or that date cannot
+	// be read. lease.Judge then counts it from now, so at every reading it
+	// holds as if first seen then.
+	Unsighted bool
+	Commit    string
+	// ReleasedAt is a tombstone's own time.
+	ReleasedAt time.Time
+	// HandedBack is a tombstone's hand-back kind, "" for a plain one, and
+	// RecordChanged is true when origin's default branch as last fetched
+	// holds the record at another blob than the one the tombstone names: a
+	// person has changed it since, so the hand-back no longer stands.
+	HandedBack    string
+	RecordChanged bool
+	// Stage is the drain lane's stage the tip's renewal names, one of
+	// LaneStages; "" when the tip names none.
+	Stage string
 }
 
 // Snapshot is the reservations as this checkout last fetched them.
@@ -65,15 +83,27 @@ type Snapshot struct {
 	// nothing here stamped a fetch, so the view's age is unknown.
 	FetchedAt    time.Time
 	Reservations []Reservation
+	// Generated is the files origin's default branch, as last fetched,
+	// declares generated (GeneratedFiles), which no footprint overlap is
+	// judged on. It is read only when some live reservation has a footprint,
+	// and is empty when the view does not derive (an act whose fetch could
+	// not read origin's default branch).
+	Generated Generated
+	// GeneratedUnread is why generated files were not recognised, though a
+	// live reservation has a footprint: the declaration could not be read, or
+	// the view does not trust origin's default branch as this clone holds
+	// it; "" otherwise.
+	GeneratedUnread string
 }
 
-// LiveByHolder counts each person's live reservations, usernames compared
-// without regard to case and named as first listed.
+// LiveByHolder counts each person's live reservations of records, as the cap
+// counts them: usernames compared without regard to case and named as first
+// listed, and a release subject, which sits outside the cap, not counted.
 func (s Snapshot) LiveByHolder() map[string]int {
 	out := map[string]int{}
 	names := map[string]string{}
 	for _, r := range s.Reservations {
-		if r.State != StateLive {
+		if r.State != StateLive || isRelease(r.Record) {
 			continue
 		}
 		key := strings.ToLower(r.Holder)
@@ -95,7 +125,7 @@ func (s Snapshot) LiveByHolder() map[string]int {
 func Fetch(root string, o Options) (gap string, err error) {
 	defer func() {
 		if err == nil {
-			keepFirstFetched(root, o.now())
+			keepFirstFetched(root, o.now(), nil)
 		}
 	}()
 	out, err := localGit(root, 64<<10, "remote")
@@ -120,6 +150,13 @@ func View(root string, now time.Time) (Snapshot, error) {
 // whose fetch could not read origin's default branch does not trust the copy
 // this clone holds of it.
 func view(root string, now time.Time, derive bool) (Snapshot, error) {
+	return viewOf(root, now, derive, nil)
+}
+
+// viewOf is view over the subjects only admits (every subject when only is
+// nil): a reader that needs the releases alone (releaseHolds) reads no other
+// tip, and origin's default branch only when a record is there to derive.
+func viewOf(root string, now time.Time, derive bool, only func(subject string) bool) (Snapshot, error) {
 	now = now.UTC().Truncate(time.Second)
 	snap := Snapshot{FetchedAt: lastFetched(root, reservations), Reservations: []Reservation{}}
 	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
@@ -129,7 +166,7 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 	var refs []string
 	for _, ref := range strings.Fields(out) {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
-		if canon, err := reservableID(id); err == nil && canon == id {
+		if canon, err := reservableID(id); err == nil && canon == id && (only == nil || only(id)) {
 			refs = append(refs, ref)
 		}
 	}
@@ -140,10 +177,23 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 	if err != nil {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
-	var finished map[string][]string
-	if ref := originDefault(root); derive && ref != "" {
-		if finished, err = peers.FoldersAt(root, ref); err != nil {
+	// The records on origin's default branch as last fetched: a finished one
+	// is released whatever its tip says, and a hand-back's blob is compared
+	// with the one its tombstone names. A view that does not derive reads
+	// neither, so its hand-backs stand; nor does one listing release
+	// subjects alone, which no record there ends.
+	var records map[string][]peers.RecordAt
+	anyRecord := slices.ContainsFunc(refs, func(ref string) bool { return !isRelease(strings.TrimPrefix(ref, TrackingPrefix)) })
+	if ref := originDefault(root); derive && anyRecord && ref != "" {
+		if records, err = peers.RecordsAt(root, ref); err != nil {
 			return snap, fmt.Errorf("reading %s: %s", gitutil.ShortRef(ref), redacted(err))
+		}
+	}
+	// The release tags are read only when a release subject is there to end.
+	var tagged map[string]bool
+	if slices.ContainsFunc(refs, func(ref string) bool { return isRelease(strings.TrimPrefix(ref, TrackingPrefix)) }) {
+		if tagged, err = releaseTags(root); err != nil {
+			return snap, fmt.Errorf("reading the release tags: %s", redacted(err))
 		}
 	}
 	own := ownCopyKey(root)
@@ -160,47 +210,79 @@ func view(root string, now time.Time, derive bool) (Snapshot, error) {
 		if !ok {
 			continue
 		}
-		snap.Reservations = append(snap.Reservations, listed(t, id, terminal(finished, id), own, now))
+		by := ""
+		switch {
+		case isRelease(id) && tagged[releaseTag(id)]:
+			by = ReleasedByTag
+		case !isRelease(id) && terminal(records[id], id):
+			by = ReleasedByDefaultBranch
+		}
+		r := listed(t, id, by, own, now)
+		if r.HandedBack != "" {
+			r.RecordChanged = changedSince(t.RecordBlob, blobOf(records[id]))
+		}
+		snap.Reservations = append(snap.Reservations, r)
+	}
+	// The generated files are read once per view, and only when a live
+	// footprint is there to judge an overlap with; a view that does not trust
+	// origin's default branch recognises none.
+	if slices.ContainsFunc(snap.Reservations, func(r Reservation) bool { return r.State == StateLive && len(r.Footprint) > 0 }) {
+		if derive {
+			snap.Generated, snap.GeneratedUnread = GeneratedFiles(root)
+		} else {
+			snap.GeneratedUnread = "origin's default branch could not be read when the reservations were fetched"
+		}
 	}
 	return snap, nil
 }
 
-// listed is one tip as the view shows it, judged at now.
-func listed(t tip, id string, derived bool, own string, now time.Time) Reservation {
+// listed is one tip as the view shows it, judged at now. derivedBy is what
+// released it outside its own tip (ReleasedByDefaultBranch or ReleasedByTag),
+// "" when nothing did.
+func listed(t tip, id, derivedBy, own string, now time.Time) Reservation {
 	r := Reservation{Record: id, Commit: t.Commit, Unreadable: t.Unreadable, HeldFromFetch: t.DatedFromFetch}
+	date := t.ClaimedAt
+	if t.Unreadable != "" {
+		date = t.WrittenAt
+	}
+	r.Unsighted = t.FirstSeen.IsZero() && (t.DatedFromFetch || lease.Ahead(date, now))
 	if t.Unreadable != "" {
 		r.EffectiveExpiry = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt, FirstSeen: t.FirstSeen}, lease.Default, now).EffectiveExpiry
 		r.State = StateUnreadable
 	} else {
 		v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, now)
 		r.Holder, r.Footprint, r.ClaimedAt, r.EffectiveExpiry = t.Holder, t.Footprint, t.ClaimedAt, v.EffectiveExpiry
+		r.Stage = t.Stage
 		if own != "" && t.Copy == own {
 			r.Copy = CopyThis
 		}
 		switch {
 		case t.message.released():
 			r.State, r.ReleasedBy = StateReleased, ReleasedByTombstone
+			r.ReleasedAt, r.HandedBack = t.ReleasedAt, t.HandedBack
 		case v.Live:
 			r.State = StateLive
 		default:
 			r.State = StateExpired
 		}
 	}
-	if derived && r.ReleasedBy == "" {
-		r.State, r.ReleasedBy = StateReleased, ReleasedByDefaultBranch
+	if derivedBy != "" && r.ReleasedBy == "" {
+		r.State, r.ReleasedBy = StateReleased, derivedBy
 	}
 	return r
 }
 
-// terminal reports whether id sits in a terminal folder in finished, the
-// default branch's record folders.
-func terminal(finished map[string][]string, id string) bool {
-	for _, f := range finished[id] {
-		if slices.Contains(terminalFolders[id[:3]], f) {
-			return true
-		}
+// releaseTags is the set of release tags on origin as last fetched, by tag.
+func releaseTags(root string) (map[string]bool, error) {
+	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", ReleaseTagsTracking)
+	if err != nil {
+		return nil, err
 	}
-	return false
+	tags := map[string]bool{}
+	for _, ref := range strings.Fields(out) {
+		tags[strings.TrimPrefix(ref, ReleaseTagsTracking)] = true
+	}
+	return tags, nil
 }
 
 // lastFetched is the time this checkout's last fetch of ns stamped; zero when

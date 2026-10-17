@@ -182,7 +182,8 @@ file that turned it off.
 ## Exits
 
 Exit 0 when every step did its act or said why it stopped or left the merge
-to a person. Exit 2 on a refusal, which names the steps done before it. The
+to a person. Exit 2 on a refusal, which names the steps done before it,
+reservations that cannot be fetched before the push included. The
 JSON document carries `branch`, `head`, `checkout`, `default_branch`, `push`
 and `enqueue` (each `key`, `on`, `layer`, `origin`), `pull_request` and
 `pull_request_url` when one was found (or the forge proved the head merged,
@@ -190,7 +191,39 @@ the merged pull request's),
 `pushed` when the push sent a commit, `landed` when the head had already
 landed, and `steps`, each
 with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
-`landed`), `note` and an optional `command`.
+`landed`), `note` and an optional `command`; and `notices` when there are
+lines to show beside the steps (a release dated ahead that the hold did not
+count).
+
+A landing a release cut holds exits 3, contention, as every verb that backs
+off does (itd-2609151838312703 C7, spc-2610150728396006 step 4). After the
+gate and before the push, the verb fetches the reservations, which reads
+`origin`'s release tags with them, and makes the implement loop's land-fence
+judgement through the one primitive both call (`claim.FetchMergeHold`): while
+a release is being cut by any session but this copy's own, an unreadable
+release reservation within its hold included, nothing is pushed, armed or
+queued, and the refusal names the release, its holder and until when. The
+push is held as well as the arming, because a push onto a pull request
+already armed can merge it. A fetch that fails refuses the landing too, since a
+hold it cannot see may be there, but as exit 2, not 3: nobody is known to hold
+the release, and an automation backing off on 3 would wait on no one. A
+checkout with no `origin` is not held. The copy cutting the release lands
+through its own hold: under the concurrent-sessions rule the cutting session
+has the final say on what merges before its tag. The hold is judged for the
+checkout the verb runs in, whose copy key the reservation verbs there use,
+not for the worktree that has the branch checked out.
+
+A release reservation dated more than `lease.Skew` (five minutes) ahead of
+this clock holds a day (an unreadable one two hours) from this checkout's first
+sighting of it, which the judgement keeps in the local tier whichever fetch
+brought it. A checkout that cannot keep that sighting, with no local tier or
+one it cannot write, would count such a release from every reading, so it
+does not count it at all: the landing goes on, and one notice line on stderr
+(and `notices` in the JSON document) names the release. The tier is never made
+for it. An honest cut is reserved on a clock within five minutes of the
+reader's, so this lets no landing past one, with one limit: a cutting copy
+whose clock runs more than five minutes fast is not counted by a checkout that
+cannot keep a sighting.
 
 ## Where this sits
 
@@ -199,6 +232,8 @@ with `name`, `status` (`done`, `skipped`, `off`, `stopped`, `left` or
 - The shared primitives: `internal/core/landing`, which the implement loop's
   land stage also reads its receipt lookup, forge client and ruleset mirror
   through.
+- The release hold: `internal/core/claim` (`FetchMergeHold`), shared with the
+  implement loop's land fence.
 - The plugin surface: `commands/land.md`.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->

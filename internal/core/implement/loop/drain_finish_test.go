@@ -122,7 +122,8 @@ func pauseBoth(t *testing.T, f *landFixture) time.Time {
 }
 
 // TestAMergedLaneParkedAtLandIsFinishedOnTheNextDrainMove: while the pull
-// request is open the drain leaves the lane alone and asks the forge nothing;
+// request is open the drain leaves the lane alone and asks the forge nothing
+// but its one listing of the parked lanes' pull requests (step 8);
 // once the lane's pushed head is on the default branch, the next drain move,
 // made while the drain and the run are both paused, removes the lane's
 // worktree and branch, marks the run's lane done and the drain's lane done
@@ -145,7 +146,7 @@ func TestAMergedLaneParkedAtLandIsFinishedOnTheNextDrainMove(t *testing.T) {
 		t.Fatalf("an armed lane not yet merged is a pull request, not finished: %+v %+v", waiting.Lanes, waiting.Finished)
 	}
 	if strings.Contains(f.ghLog(t), "--json state") {
-		t.Fatalf("the drain asks the forge nothing about a lane whose head is not on the default branch:\n%s", f.ghLog(t))
+		t.Fatalf("the drain asks the forge nothing but its listing about a lane whose head is not on the default branch:\n%s", f.ghLog(t))
 	}
 	if _, err := os.Stat(l.Worktree); err != nil {
 		t.Fatalf("an unmerged lane keeps its worktree: %v", err)

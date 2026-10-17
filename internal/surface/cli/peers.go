@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -31,13 +32,26 @@ type peersOutput struct {
 	Peers      []peers.Peer    `json:"peers"`
 	Skipped    []peers.Skipped `json:"skipped"`
 
+	reservationsBlock
+}
+
+// reservationsBlock is the reservations as a listing shows them, `abcd
+// peers`'s and `abcd status`'s alike: its fields sit in the listing's own
+// JSON object.
+type reservationsBlock struct {
 	// The reservations on the shared remote (itd-2609091034175565): every one
 	// as fetched just now, or as last fetched when the fetch failed.
-	Reservations     []reservationRow `json:"reservations"`
-	LiveByHolder     map[string]int   `json:"live_by_holder"`
-	View             reservationView  `json:"view"`
-	FetchError       string           `json:"fetch_error,omitempty"`
-	DerivedUnchecked string           `json:"derived_unchecked,omitempty"`
+	Reservations []reservationRow `json:"reservations"`
+	LiveByHolder map[string]int   `json:"live_by_holder"`
+	// ReleaseHolds is every release being cut, which holds every other
+	// session's merge (itd-2609151838312703 C7, C8).
+	ReleaseHolds []holdRow `json:"release_holds"`
+	// HandBacksByHolder is each holder's hand-back tombstones of the last day,
+	// newest first and bounded (spc-2610161044461448 step 18).
+	HandBacksByHolder []handBackHolder `json:"hand_backs_by_holder"`
+	View              reservationView  `json:"view"`
+	FetchError        string           `json:"fetch_error,omitempty"`
+	DerivedUnchecked  string           `json:"derived_unchecked,omitempty"`
 }
 
 // reservationRow is one reservation as the listing shows it. Every value a
@@ -53,7 +67,45 @@ type reservationRow struct {
 	ReleasedBy      string   `json:"released_by,omitempty"`
 	Unreadable      string   `json:"unreadable,omitempty"`
 	HeldFromFetch   bool     `json:"held_from_fetch,omitempty"`
-	Commit          string   `json:"commit"`
+	// Stage is the drain lane's stage a live reservation's renewal names, one
+	// of claim.LaneStages, absent when it names none or is not live.
+	Stage  string `json:"stage,omitempty"`
+	Commit string `json:"commit"`
+}
+
+// handBackHolder is one holder's hand-backs of the last day, as the listing
+// shows them: the newest claim.HandBacksShown, newest first, and how many more
+// the day holds.
+type handBackHolder struct {
+	Holder    string        `json:"holder"`
+	HandBacks []handBackRow `json:"hand_backs"`
+	More      int           `json:"more"`
+}
+
+// handBackRow is one hand-back tombstone: its record, its kind (one of
+// claim.HandBackKinds) and its Abcd-Released-At.
+type handBackRow struct {
+	Record     string `json:"record"`
+	Kind       string `json:"kind"`
+	ReleasedAt string `json:"released_at"`
+}
+
+// holdRow is one release being cut, as the listing shows it: its release and
+// subject, its holder (absent when the reservation is unreadable, with the
+// reason), whose copy it is when it is this one's, until when it holds,
+// whether it is this copy's own cut (own) or dated ahead with no first
+// sighting kept here (unsighted), neither of which the merge hold counts
+// (claim.MergeHolds), and the line it is shown by.
+type holdRow struct {
+	Release         string `json:"release"`
+	Subject         string `json:"subject"`
+	Holder          string `json:"holder,omitempty"`
+	Copy            string `json:"copy,omitempty"`
+	EffectiveExpiry string `json:"effective_expiry"`
+	Unreadable      string `json:"unreadable,omitempty"`
+	Own             bool   `json:"own"`
+	Unsighted       bool   `json:"unsighted"`
+	Text            string `json:"text"`
 }
 
 // reservationView dates the listing: when abcd last fetched the reservations
@@ -88,12 +140,23 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"abcd-reserved/ branch, with pruning, and of the default branch, then every\n" +
 			"reservation with its record, holder, footprint, effective expiry and state\n" +
 			"(live, expired, released, or unreadable with its reason and the end of its\n" +
-			"hold), and each person's count of live reservations. The fetch is the only\n" +
-			"network act; it updates the remote-tracking reservation branches and stamps\n" +
-			"when it ran in the local tier, and nothing else is written. A checkout with no\n" +
-			"remote named origin lists no reservations. When the fetch fails, the\n" +
-			"reservations are listed as last fetched, with that view's age, and the failure\n" +
-			"is named on stderr and in fetch_error.\n\n" +
+			"hold), a live drain lane's stage when its renewal names one, each person's\n" +
+			"count of live reservations, and a line for each release being cut (a live\n" +
+			"rel-vX.Y.Z reservation, which holds every other session's merge until its\n" +
+			"tag is on origin). Then each holder's hand-backs of the last day, from the\n" +
+			"same view: the record and kind of each released tip marking one, newest\n" +
+			"first, the newest ten shown and the rest counted; one dated more than five\n" +
+			"minutes ahead of this computer's clock is not shown. The fetch is the only\n" +
+			"network act, and it reads origin's release tags with the reservations; it\n" +
+			"updates the remote-tracking reservation branches and the release tags abcd\n" +
+			"keeps under refs/abcd/release-tags/, stamps when it ran in the local tier,\n" +
+			"with when it first fetched each reservation dated ahead of this computer's\n" +
+			"clock or undated, and nothing else is written. The release-tag refs are ordinary\n" +
+			"refs of this checkout, so git log --all lists the commits they name and\n" +
+			"git push --mirror would push them. A checkout with no remote named origin\n" +
+			"lists no reservations.\n" +
+			"When the fetch fails, the reservations are listed as last fetched, with that\n" +
+			"view's age, and the failure is named on stderr and in fetch_error.\n\n" +
 			"A worktree is named home-relative (~/...), or by its directory name when it\n" +
 			"sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when\n" +
 			"the reservations could not be fetched; exit 2 outside a git checkout.",
@@ -111,7 +174,8 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("abcd peers: %w", err)
 			}
-			out := peersView(rep)
+			noteMachineHome(cmd.ErrOrStderr(), "abcd peers")
+			out := peersView(root, rep)
 			failed := addReservations(root, &out, time.Now())
 			if err := render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderPeers(w, out) }); err != nil {
 				return err
@@ -128,12 +192,15 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 
 // peersView is the report as a surface shows it: paths and reasons redacted,
 // each worktree named by fsutil.DisplayPath, so one outside HOME is its
-// directory name rather than an absolute local path (iss-2609281329007423).
-func peersView(rep peers.Report) peersOutput {
+// directory name rather than an absolute local path, and each not-read reason
+// by peers.Peer.NotReadShown, the form the drain and the build print, so a
+// path the reason names outside HOME is no absolute local path either
+// (iss-2609281329007423).
+func peersView(root string, rep peers.Report) peersOutput {
 	out := peersOutput{Sources: rep.Sources, DefaultRef: rep.DefaultRef, Live: rep.Live(), IDs: rep.IDCount(),
 		Peers: make([]peers.Peer, 0, len(rep.Peers)), Skipped: make([]peers.Skipped, 0, len(rep.Skipped))}
 	for _, p := range rep.Peers {
-		p.NotRead = fsutil.DisplayPathsIn(p.NotRead, p.Path)
+		p.NotRead = p.NotReadShown(root)
 		p.Path = fsutil.DisplayPath(p.Path)
 		out.Peers = append(out.Peers, p)
 	}
@@ -149,7 +216,7 @@ func peersView(rep peers.Report) peersOutput {
 // line or two, not one per worktree.
 func renderPeers(w io.Writer, out peersOutput) {
 	renderWorktreePeers(w, out)
-	renderReservations(w, out)
+	renderReservations(w, out.reservationsBlock)
 }
 
 func renderWorktreePeers(w io.Writer, out peersOutput) {
@@ -313,10 +380,32 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 // (the view is then the last one fetched) or the view could not be read, and
 // "" otherwise. A checkout with no remote named origin lists none.
 func addReservations(root string, out *peersOutput, now time.Time) (failed string) {
-	out.Reservations, out.LiveByHolder = []reservationRow{}, map[string]int{}
 	gap, err := claim.Fetch(root, claim.Options{Now: func() time.Time { return now }})
+	return out.fill(root, now, gap, err)
+}
+
+// fill adds to b the reservations as last fetched, judged now, after a fetch
+// that answered gap and err. It returns the failure to name, as
+// addReservations does.
+func (b *reservationsBlock) fill(root string, now time.Time, gap string, err error) (failed string) {
+	failed, ok := b.fillView(root, now, gap, err)
+	if !ok {
+		return failed
+	}
+	// The holds are judged by the merge hold's own rule, so the listing counts
+	// a release exactly as the land fence and `abcd land` do.
+	holds, herr := claim.JudgedHolds(root, now, claim.Options{Now: func() time.Time { return now }})
+	return b.fillHolds(failed, holds, herr)
+}
+
+// fillView is fill's reservations alone: ok is false when there are none to
+// list (no origin) or they could not be read, and failed then says why.
+func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err error) (failed string, ok bool) {
+	out := b
+	out.Reservations, out.LiveByHolder, out.ReleaseHolds = []reservationRow{}, map[string]int{}, []holdRow{}
+	out.HandBacksByHolder = []handBackHolder{}
 	if errors.Is(err, claim.ErrNoOrigin) {
-		return ""
+		return "", false
 	}
 	out.View.Origin = true
 	if err != nil {
@@ -326,11 +415,7 @@ func addReservations(root string, out *peersOutput, now time.Time) (failed strin
 	out.DerivedUnchecked = termsafe.Sanitize(fsutil.RedactHome(gap))
 	snap, verr := claim.View(root, now)
 	if verr != nil {
-		msg := termsafe.Sanitize(fsutil.RedactHome(verr.Error()))
-		if failed != "" {
-			return failed + "; " + msg
-		}
-		return msg
+		return joinFailed(failed, termsafe.Sanitize(fsutil.RedactHome(verr.Error()))), false
 	}
 	if !snap.FetchedAt.IsZero() {
 		out.View.FetchedAt = rfc3339(snap.FetchedAt)
@@ -347,15 +432,57 @@ func addReservations(root string, out *peersOutput, now time.Time) (failed strin
 		for _, f := range r.Footprint {
 			row.Footprint = append(row.Footprint, termsafe.Sanitize(f))
 		}
+		if r.State == claim.StateLive && claim.ValidLaneStage(r.Stage) {
+			// The stage is where a live lane stands, so a lapsed one shows
+			// none, as in the text; and it is from a closed vocabulary the
+			// reader has checked, so only a value inside it is ever shown.
+			row.Stage = r.Stage
+		}
 		out.Reservations = append(out.Reservations, row)
 	}
 	out.LiveByHolder = snap.LiveByHolder()
+	// The hand-backs are read from the same view, as last fetched: no act of
+	// their own touches the network.
+	for _, h := range snap.RecentHandBacks(now) {
+		hh := handBackHolder{Holder: termsafe.Sanitize(h.Holder), HandBacks: make([]handBackRow, 0, len(h.HandBacks)), More: h.More}
+		for _, hb := range h.HandBacks {
+			if !slices.Contains(claim.HandBackKinds, hb.Kind) {
+				// The reader admits no other kind; one is never shown.
+				continue
+			}
+			hh.HandBacks = append(hh.HandBacks, handBackRow{Record: termsafe.Sanitize(hb.Record), Kind: hb.Kind, ReleasedAt: rfc3339(hb.ReleasedAt)})
+		}
+		out.HandBacksByHolder = append(out.HandBacksByHolder, hh)
+	}
+	return failed, true
+}
+
+// fillHolds adds the release holds, read once by whoever calls it (the
+// listing's own read, or `abcd status`'s ReadStatus), to the block; herr is
+// why they could not be read, joined to failed.
+func (b *reservationsBlock) fillHolds(failed string, holds []claim.Hold, herr error) string {
+	if herr != nil {
+		return joinFailed(failed, termsafe.Sanitize(fsutil.RedactHome(herr.Error())))
+	}
+	for _, h := range holds {
+		b.ReleaseHolds = append(b.ReleaseHolds, holdRow{Release: h.Release, Subject: h.Subject, Holder: h.Holder,
+			Copy: h.Copy, EffectiveExpiry: rfc3339(h.EffectiveExpiry), Unreadable: h.Unreadable, Own: h.Own,
+			Unsighted: h.Unsighted, Text: termsafe.Sanitize(h.Line())})
+	}
 	return failed
+}
+
+// joinFailed is failed with msg after it, "; " between them.
+func joinFailed(failed, msg string) string {
+	if failed != "" {
+		return failed + "; " + msg
+	}
+	return msg
 }
 
 // renderReservations is the reservations block of the text form: a heading
 // that dates the view, one line per reservation, and the live counts.
-func renderReservations(w io.Writer, out peersOutput) {
+func renderReservations(w io.Writer, out reservationsBlock) {
 	if !out.View.Origin {
 		fmt.Fprintln(w, "reservations — this checkout has no remote named origin")
 		return
@@ -383,6 +510,9 @@ func renderReservations(w io.Writer, out peersOutput) {
 			line = fmt.Sprintf("  %s  released (%s)  %s", r.Record, strings.ReplaceAll(r.ReleasedBy, "-", " "), r.Holder)
 		default:
 			line = fmt.Sprintf("  %s  %s  %s  until %s", r.Record, r.State, r.Holder, r.EffectiveExpiry)
+			if r.State == claim.StateLive && r.Stage != "" {
+				line += "  stage " + r.Stage
+			}
 		}
 		if r.Copy == claim.CopyThis {
 			line += "  (this copy)"
@@ -396,6 +526,9 @@ func renderReservations(w io.Writer, out peersOutput) {
 		}
 		fmt.Fprintln(w, line)
 	}
+	for _, h := range out.ReleaseHolds {
+		fmt.Fprintln(w, "  "+h.Text)
+	}
 	if len(out.LiveByHolder) > 0 {
 		names := make([]string, 0, len(out.LiveByHolder))
 		for n := range out.LiveByHolder {
@@ -407,6 +540,15 @@ func renderReservations(w io.Writer, out peersOutput) {
 			parts[i] = fmt.Sprintf("%s %d", n, out.LiveByHolder[n])
 		}
 		fmt.Fprintf(w, "  live: %s\n", strings.Join(parts, ", "))
+	}
+	for _, h := range out.HandBacksByHolder {
+		fmt.Fprintf(w, "  handed back by %s in the last day:\n", h.Holder)
+		for _, hb := range h.HandBacks {
+			fmt.Fprintf(w, "    %s  %s  at %s\n", hb.Record, hb.Kind, hb.ReleasedAt)
+		}
+		if h.More > 0 {
+			fmt.Fprintf(w, "    and %d more\n", h.More)
+		}
 	}
 	if out.DerivedUnchecked != "" {
 		fmt.Fprintf(w, "  not checked: which records are finished on origin's default branch (%s)\n", out.DerivedUnchecked)

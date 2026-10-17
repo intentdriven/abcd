@@ -126,8 +126,9 @@ The payload carries `branch`, `head`, `checkout` (home-relative),
 `default_branch`, `push` and `enqueue` (each `key`, `on`, and the `layer` and
 `origin` that decided it), `pull_request` and `pull_request_url` when one was
 found (or proved the head merged), `pushed` (the commit the push sent) when it
-pushed, `landed` when the head had already landed, and `steps`, each with `name`, `status`, `note` and, when it prints
-one, `command`.
+pushed, `landed` when the head had already landed, `steps`, each with `name`, `status`, `note` and, when it prints
+one, `command`, and `notices`, the lines land printed on stderr (a release it
+did not count as a hold, for one), when there are any.
 
 Tell the user what was pushed and where the pull request stands.
 
@@ -150,7 +151,7 @@ it off, and the push step prints the push command to run by hand.
 
 ## When it refuses
 
-Exit 2, naming what was done before the refusal: the default branch, a
+Exit 0 when every step acted or said why it stopped. Exit 2, naming what was done before the refusal: the default branch, a
 detached HEAD, uncommitted changes (staged, unstaged or untracked), a branch
 checked out in no worktree, a preflight that failed or minted no receipt, a
 head that moved while the preflight ran, `origin`'s URLs changed while the
@@ -161,9 +162,28 @@ cannot be asked (whether the branch already merged included), a merged
 listing full with none at the head, a push git or the pre-push hook
 refused, more than one open pull request from this repository, only a fork's
 pull request, a pull request that conflicts with the default branch, a head
-that moved on the forge after arming, an unreadable ruleset mirror, and the
+that moved on the forge after arming, an unreadable ruleset mirror,
+reservations that cannot be fetched from `origin` before the push (a hold
+land cannot see may be there, so nothing is pushed), and the
 forge client missing while an act needs it. Relay the refusal; never retry it with `--no-verify`, a force, or a
 hand-run `gh pr merge` the merge gate did not allow.
+
+**While a release is being cut, exit 3.** Before the push, land fetches the
+reservations and `origin`'s release tags, as the implement loop's land fence
+does, and makes the same judgement. While another session holds a live
+release reservation (`rel-vX.Y.Z`, ended by the tag `vX.Y.Z` reaching
+`origin` or by its holder releasing it), or an unreadable one within its hold,
+nothing is pushed, armed or queued, and the refusal names the release, its
+holder (or "your copy on another computer") and until when. A session cutting
+a release has the final say on what merges before its tag, so the copy that
+reserved the release lands through its own hold; the hold is judged for the
+checkout land runs in, so landing a branch checked out in another worktree
+from the cutting checkout is not held. A checkout with no `origin` is not
+held. A release reserved with a date more than five minutes ahead of this
+clock holds from when this checkout first saw it; a checkout that cannot keep
+that sighting (no `.abcd/.work.local/`) does not count it, and prints one
+notice line naming it. Exit 3 means back off: relay who holds the release, and
+run `abcd land` again once it is tagged.
 
 **Binary resolution.** Run `"${CLAUDE_PLUGIN_ROOT}/abcd"` — a plugin install
 provisions the binary into the plugin root, so this is the rung that fires for a

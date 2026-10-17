@@ -17,6 +17,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	neturl "net/url"
 	"os"
 	"os/exec"
 	"regexp"
@@ -60,27 +61,88 @@ var plainNameRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // into an API path.
 func PlainName(s string) bool { return plainNameRe.MatchString(s) }
 
+// ErrNotGitHub is ParseRemote's refusal of a URL that is not on github.com at
+// all, told apart from a github.com URL that names no one repository.
+var ErrNotGitHub = errors.New("the origin remote is not a github.com URL, and this verb speaks only the GitHub API")
+
+// Remote is a remote URL split into what names the repository it reaches:
+// Form is "scp" for git's scp-like `[user@]host:path`, else the URL's
+// scheme; User and Port are as written (a password is never kept); Host is
+// lower-cased; Path is the repository's path with its slashes and a `.git`
+// suffix trimmed.
+type Remote struct {
+	Form, User, Host, Port, Path string
+}
+
+// SplitRemote splits a remote URL that names a network host, the forms git
+// takes (spc-2610161044461448, step 10): the scp-like `[user@]host:path`
+// and a scheme URL with a host, its userinfo and port included. A local
+// path, a `file://` URL, and anything with no host are not one (ok false).
+func SplitRemote(raw string) (r Remote, ok bool) {
+	if !strings.Contains(raw, "://") {
+		colon := strings.Index(raw, ":")
+		if colon <= 0 || strings.Contains(raw[:colon], "/") {
+			return Remote{}, false
+		}
+		host := raw[:colon]
+		if at := strings.LastIndex(host, "@"); at >= 0 {
+			r.User, host = host[:at], host[at+1:]
+		}
+		if host == "" {
+			return Remote{}, false
+		}
+		r.Form, r.Host, r.Path = "scp", strings.ToLower(host), trimRepoPath(raw[colon+1:])
+		return r, true
+	}
+	u, err := neturl.Parse(raw)
+	if err != nil || u.Scheme == "file" || u.Hostname() == "" {
+		return Remote{}, false
+	}
+	r = Remote{Form: strings.ToLower(u.Scheme), Host: strings.ToLower(u.Hostname()), Port: u.Port(), Path: trimRepoPath(u.Path)}
+	if u.User != nil {
+		r.User = u.User.Username()
+	}
+	return r, true
+}
+
+func trimRepoPath(p string) string {
+	return strings.TrimSuffix(strings.TrimSuffix(strings.Trim(p, "/"), ".git"), "/")
+}
+
+// OnGitHub reports whether r reaches github.com by name: the host github.com
+// in any form, or ssh.github.com (GitHub's ssh over port 443) over ssh.
+func (r Remote) OnGitHub() bool {
+	switch r.Host {
+	case Host:
+		return true
+	case "ssh." + Host:
+		return r.Form == "scp" || r.Form == "ssh" || r.Form == "git+ssh" || r.Form == "ssh+git"
+	}
+	return false
+}
+
+// NamesHostedRepository reports whether url names a network host and exactly
+// two path parts, an owner and a name, on any host: the shape a github.com
+// URL takes, so a caller can tell a repository on a host it does not
+// recognise (an ssh host alias, another forge) from a local path.
+func NamesHostedRepository(url string) bool {
+	r, ok := SplitRemote(url)
+	return ok && len(strings.Split(r.Path, "/")) == 2
+}
+
 // ParseRemote splits a github.com remote URL into owner and repository. It
-// accepts the forms git itself writes (`https://github.com/owner/repo[.git]`,
-// `git@github.com:owner/repo[.git]`, `ssh://git@github.com/owner/repo`) and
-// refuses everything else, without echoing the URL's segments: the URL is
+// accepts the forms git takes for github.com (SplitRemote): the three it
+// writes (`https://github.com/owner/repo[.git]`, `git@github.com:owner/repo[.git]`,
+// `ssh://git@github.com/owner/repo`), and with them userinfo, a port,
+// `ssh.github.com` over ssh, ssh or scp with no user, and a host in any case.
+// It refuses everything else, without echoing the URL's segments: the URL is
 // repo-controlled input, and a refusal is output like any other.
 func ParseRemote(url string) (owner, name string, err error) {
-	rest := ""
-	switch {
-	case strings.HasPrefix(url, "git@github.com:"):
-		rest = strings.TrimPrefix(url, "git@github.com:")
-	case strings.HasPrefix(url, "ssh://git@github.com/"):
-		rest = strings.TrimPrefix(url, "ssh://git@github.com/")
-	case strings.HasPrefix(url, "https://github.com/"):
-		rest = strings.TrimPrefix(url, "https://github.com/")
-	case strings.HasPrefix(url, "http://github.com/"):
-		rest = strings.TrimPrefix(url, "http://github.com/")
-	default:
-		return "", "", fmt.Errorf("the origin remote is not a github.com URL, and this verb speaks only the GitHub API")
+	r, ok := SplitRemote(url)
+	if !ok || !r.OnGitHub() {
+		return "", "", ErrNotGitHub
 	}
-	rest = strings.TrimSuffix(strings.TrimSuffix(strings.Trim(rest, "/"), ".git"), "/")
-	parts := strings.Split(rest, "/")
+	parts := strings.Split(r.Path, "/")
 	if len(parts) != 2 {
 		return "", "", fmt.Errorf("the origin remote does not name exactly one owner and one repository")
 	}
@@ -95,7 +157,12 @@ func ParseRemote(url string) (owner, name string, err error) {
 // API runs `gh api --hostname github.com <args...>` under cwd: Run with the
 // host named by construction, so no caller can forget it.
 func API(cwd string, stdin []byte, args ...string) ([]byte, error) {
-	return Run(cwd, stdin, append([]string{"api", "--hostname", Host}, args...)...)
+	return apiContext(context.Background(), cwd, stdin, args...)
+}
+
+// apiContext is API bound to ctx (runContext).
+func apiContext(ctx context.Context, cwd string, stdin []byte, args ...string) ([]byte, error) {
+	return runContext(ctx, cwd, stdin, append([]string{"api", "--hostname", Host}, args...)...)
 }
 
 // Run executes one `gh` subcommand under cwd and returns its bounded stdout.
@@ -104,13 +171,26 @@ func API(cwd string, stdin []byte, args ...string) ([]byte, error) {
 // the tool registry's explanation (itd-63): what gh is, that these verbs
 // require it, and the exact install step.
 func Run(cwd string, stdin []byte, args ...string) ([]byte, error) {
+	return runContext(context.Background(), cwd, stdin, args...)
+}
+
+// runContext is Run bound to ctx as well as to Timeout: gh is killed at
+// whichever ends first, so a caller with its own deadline is never held past
+// it, and the error then says gh did not answer before that deadline.
+func runContext(parent context.Context, cwd string, stdin []byte, args ...string) ([]byte, error) {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return nil, tools.Missing(errors.New("the GitHub CLI (gh) is not on PATH; abcd speaks to GitHub through it so that a "+
 			"remote write is made by your own authenticated identity, never by a token abcd holds"), "gh", tools.GitHubSettings)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
+	if err := parent.Err(); err != nil {
+		return nil, fmt.Errorf("%w: its deadline had passed before it was asked", ErrTimeout)
+	}
+	ctx, cancel := context.WithTimeout(parent, Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", args...)
+	// Once gh is killed, a process it started that still holds its output
+	// open is waited for at most this long, so the deadline holds.
+	cmd.WaitDelay = time.Second
 	cmd.Dir = cwd
 	cmd.Env = os.Environ()
 	cmd.Stdin = bytes.NewReader(stdin)
@@ -118,6 +198,9 @@ func Run(cwd string, stdin []byte, args ...string) ([]byte, error) {
 	cmd.Stdout = &limitedWriter{w: &out, remaining: MaxOutputBytes}
 	cmd.Stderr = &limitedWriter{w: &errBuf, remaining: MaxOutputBytes}
 	if err := cmd.Run(); err != nil {
+		if parent.Err() != nil {
+			return nil, fmt.Errorf("%w before its caller's deadline", ErrTimeout)
+		}
 		if ctx.Err() != nil {
 			return nil, fmt.Errorf("%w within %s", ErrTimeout, Timeout)
 		}

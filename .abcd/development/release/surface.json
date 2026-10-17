@@ -359,6 +359,22 @@
       ]
     },
     {
+      "path": "abcd announce",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+      "flags": [
+        {
+          "name": "expires-in",
+          "shorthand": "",
+          "type": "duration",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd banlist",
       "hidden": false,
       "group": "agents",
@@ -1323,6 +1339,13 @@
           "name": "sub-agents",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take-over",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }
@@ -3493,7 +3516,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
+      "sentence": "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
       "flags": [
         {
           "name": "footprint",
@@ -3747,6 +3770,14 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd status",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "List everyone's announcements, reservations and releases being cut: Writes the fetched status branches and reservations; refuses outside a git checkout.",
+      "flags": []
     },
     {
       "path": "abcd statusline",

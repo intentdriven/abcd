@@ -1,0 +1,6 @@
+---
+id: dcn-2610171009498218
+slug: a-lane-its-landing-s-sync-sends-back
+date: 2026-10-17
+---
+2026-10-17 — A lane its landing's sync sends back reserves its whole found_at again before the sync merges, not after (facilitator-on-delegation, drain-many-accounts step 12, refining dcn-2610170947246937): once the sync knows it will merge origin's default branch into an issue lane, it makes the overlap-checked widening first, before the merge commit or any other local change, so a widening refused by another's reservation or by the cap refuses the step for a person with the branch and the worktree left at the judged head, nothing merged and nothing pushed; the re-sync from the arming or the merge wait takes the same path; the move keeps the check only for any other way a lane leaves its landing, and takes no act when the sync already made it in the step (grounds: a widening judged after the merge left the loop's own merge on the branch when it was refused, and once the default branch moved again the retry read that merge as a foreign move of the branch and stayed refused until a person reset it, each refusal counting towards a drain handing the lane back as stuck; final review of the fix round on spc-2610161044461448 step 12)
