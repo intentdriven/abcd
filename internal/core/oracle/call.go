@@ -95,10 +95,26 @@ func (c *APIConfig) Call(ctx context.Context, creds credential.Source, req CallR
 		return nil, CallRecord{}, err
 	}
 	payload, rec, err := complete(ctx, p, key, t.Model, req.Brief, req.Settings, req.Contract, c.denylist, opts...)
-	if err == nil {
-		rec.Credential = p.Key
+	if err != nil {
+		// Decision 4: an ordinary call is never sent again without the
+		// field; the refusal names the setting that stops asking.
+		return nil, CallRecord{}, withStreamUsageSetting(err, p.Name)
 	}
-	return payload, rec, err
+	rec.Credential = p.Key
+	return payload, rec, nil
+}
+
+// withStreamUsageSetting adds to err, when the server refused a request's
+// usage in the stream by name (openaiapi.ErrStreamUsage), the setting in the
+// configured block of provider that stops asking for it. Any other error is
+// returned as it is.
+func withStreamUsageSetting(err error, provider string) error {
+	if !errors.Is(err, openaiapi.ErrStreamUsage) {
+		return err
+	}
+	return fmt.Errorf("%w; if this server does not take %s, set %s.%s.%s to false in %s, "+
+		"and its calls are sent without it, their usage recorded as not reported when the answer carries none",
+		err, openaiapi.StreamUsageField, apiKey, provider, streamUsageKey, layered.Config.MachineOrigin())
 }
 
 // resolveKey resolves a provider's key by name; a keyless block resolves to
@@ -123,9 +139,10 @@ func resolveKey(creds credential.Source, p Provider) (string, error) {
 
 // complete is the one place a call is made: the client built on the pinned
 // base URL, the answer read, and the reported model held to oracle.denylist.
-// The request asks for usage in the stream unless p's block turns that off;
-// a server that refuses such a request is refused naming the setting, and is
-// never asked again without it, since a retry is a second request.
+// The request asks for usage in the stream unless p's block turns that off,
+// and a refusal of it is returned as the adapter gave it: Call names the
+// setting that stops asking, and the setup's verification (Connect) asks
+// once more without it. complete itself never sends a second request.
 func complete(ctx context.Context, p Provider, key, model string, brief openaiapi.Brief, settings Settings,
 	contract func([]byte) error, denylist []DenyEntry, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
 	provider := p.Name
@@ -135,11 +152,6 @@ func complete(ctx context.Context, p Provider, key, model string, brief openaiap
 	}
 	req := openaiapi.Request{Model: model, Brief: brief, Settings: settings, NoStreamUsage: !p.AsksStreamUsage()}
 	res, err := client.Complete(ctx, req, contract)
-	if errors.Is(err, openaiapi.ErrStreamUsage) {
-		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s, model %s: %w; if this server does not take %s, "+
-			"set %s.%s.%s to false in %s, and its calls are sent without it, their usage recorded as not reported",
-			provider, model, err, openaiapi.StreamUsageField, apiKey, provider, streamUsageKey, layered.Config.MachineOrigin())
-	}
 	if err != nil {
 		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s, model %s: %w", provider, model, err)
 	}

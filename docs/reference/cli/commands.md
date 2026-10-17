@@ -77,6 +77,7 @@ Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd
       --key string          the credential's name (default: the provider's name)
       --model stringArray   a model the provider may serve, repeated for each (the first allowlist; the verification call asks for the first); omitted at a terminal, the service's models are listed with the key and you pick one
       --resume string       with --guide: the last turn's resume object, or - to read it from stdin
+      --stream-usage        whether calls ask the server for usage in the stream (stream_options.include_usage), written into the block as stream_usage; omitted, the verification asks, and a server that refuses it is asked once more without it and the block is written with false (default true)
 ```
 
 **Example:**

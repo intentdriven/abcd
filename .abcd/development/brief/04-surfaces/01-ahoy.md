@@ -1314,6 +1314,7 @@ Sub-verbs: none.
 | `--key` | string |
 | `--model` | stringArray |
 | `--resume` | string |
+| `--stream-usage` | bool |
 
 ### `abcd ahoy credential`
 

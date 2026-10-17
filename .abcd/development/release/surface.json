@@ -161,6 +161,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "stream-usage",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
         }
       ]
     },

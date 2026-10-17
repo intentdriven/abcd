@@ -66,6 +66,12 @@ type ConnectRequest struct {
 	Pointer credential.Pointer
 	// Timeout bounds the verification call; 0 keeps its own short bound.
 	Timeout time.Duration
+	// StreamUsage is the block's stream_usage, written as given: false sends
+	// the verification call, and every call after it, without asking for
+	// usage in the stream (openaiapi.StreamUsageField). nil asks, and a
+	// refusal of that (HTTP 400 or 422) has the verification asked once more
+	// without it, writing false when that succeeds.
+	StreamUsage *bool
 	// Pick, when Models is empty, chooses one model from the listed ids.
 	// Connect calls it after listing with the key it holds; nil refuses as today.
 	Pick func(ctx context.Context, listed []string) (string, error)
@@ -80,6 +86,13 @@ type ConnectResult struct {
 	KeyName  string   `json:"key_name,omitempty"`
 	// Verified is the verification call's record.
 	Verified CallRecord `json:"verified"`
+	// StreamUsage is the stream_usage written into the block, nil when none
+	// was (the block then asks for usage in the stream).
+	StreamUsage *bool `json:"stream_usage,omitempty"`
+	// StreamUsageNote says why stream_usage false was written when the
+	// setup chose it itself, after the server refused the field; "" when it
+	// did not.
+	StreamUsageNote string `json:"stream_usage_note,omitempty"`
 	// Wrote names each file written, in the tilde form.
 	Wrote []string `json:"wrote"`
 	// Diagnostics are the configuration read's non-fatal reports (APIConfig's),
@@ -140,8 +153,11 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 	}
 	res := ConnectResult{Provider: req.Provider, BaseURL: req.BaseURL, Models: append([]string(nil), req.Models...),
 		KeyHome: req.Home, Diagnostics: append([]string(nil), cfg.Diagnostics...)}
-	svc := providerService(Provider{Name: req.Provider, BaseURL: req.BaseURL, Key: req.KeyName, Models: req.Models},
-		cfg.denylist, &res.Verified, opts...)
+	// fellBack is set when the server refused the verification's usage
+	// request and answered it asked again without (providerService).
+	var fellBack bool
+	svc := providerService(Provider{Name: req.Provider, BaseURL: req.BaseURL, Key: req.KeyName, Models: req.Models, StreamUsage: req.StreamUsage},
+		cfg.denylist, &res.Verified, &fellBack, opts...)
 	block := map[string]any{"base_url": req.BaseURL, "models": req.Models}
 	if req.Home == KeyHomeNone {
 		if err := svc.Verify(ctx, ""); err != nil {
@@ -163,6 +179,18 @@ func Connect(ctx context.Context, req ConnectRequest) (ConnectResult, error) {
 		if walked.Changed {
 			res.Wrote = append(res.Wrote, credential.WritesFor(req.Home, req.KeyName)...)
 		}
+	}
+	res.StreamUsage = req.StreamUsage
+	if fellBack {
+		off := false
+		res.StreamUsage = &off
+		res.StreamUsageNote = fmt.Sprintf("the server refused the verification call while it asked for usage in the stream (%s) "+
+			"and answered when asked again without it, so the block sets %s to false: its calls are sent without the field, "+
+			"and a call whose answer carries no usage records its token counts and cost as not reported",
+			openaiapi.StreamUsageField, streamUsageKey)
+	}
+	if res.StreamUsage != nil {
+		block[streamUsageKey] = *res.StreamUsage
 	}
 	if err := writeProviderBlock(req.Roots.Home, req.Provider, block); err != nil {
 		if len(res.Wrote) > 0 {
@@ -463,7 +491,15 @@ var KeyHomesProse = credential.HomesProse
 // key: what it unlocks, what works without it, and the adapter's own
 // verification call, one short exchange with the first model listed. The
 // call's record is written to rec when rec is non-nil.
-func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, opts ...openaiapi.Option) credential.Service {
+//
+// setup is non-nil for a setup's verification (Connect), the one place a
+// call is asked twice: when p's block does not say whether to ask for usage
+// in the stream and the server refuses the request that asked (HTTP 400 or
+// 422, openaiapi.ErrUsageRefused), the call is asked once more without it,
+// and *setup is set when that succeeds, for the block to say so. With setup
+// nil (a configured provider's key verified again) a refusal is never
+// retried and names the block's setting, as an ordinary call's does.
+func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, setup *bool, opts ...openaiapi.Option) credential.Service {
 	return credential.Service{
 		Name:      p.Key,
 		Unlocks:   "calls to the model provider " + p.Name + " at " + p.BaseURL + ", for the models its allowlist names",
@@ -472,11 +508,36 @@ func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, opts ...
 			// The verification's own bounds come first, so a caller's option
 			// replaces them.
 			bounded := append([]openaiapi.Option{openaiapi.WithTimeout(verifyTimeout), openaiapi.WithFirstByteTimeout(verifyTimeout)}, opts...)
-			_, r, err := complete(ctx, p, key, p.Models[0], verifyBrief,
-				Settings{"max_tokens": json.RawMessage(`16`)}, nil, denylist, bounded...)
-			r.Credential = p.Key
-			if rec != nil {
-				*rec = r
+			verify := func(p Provider) error {
+				_, r, err := complete(ctx, p, key, p.Models[0], verifyBrief,
+					Settings{"max_tokens": json.RawMessage(`16`)}, nil, denylist, bounded...)
+				r.Credential = p.Key
+				if rec != nil {
+					*rec = r
+				}
+				return err
+			}
+			err := verify(p)
+			switch {
+			case err == nil:
+				return nil
+			case setup == nil:
+				return withStreamUsageSetting(err, p.Name)
+			case p.StreamUsage == nil && errors.Is(err, openaiapi.ErrUsageRefused):
+				off := false
+				without := p
+				without.StreamUsage = &off
+				if err := verify(without); err != nil {
+					return fmt.Errorf("%w; the verification was asked once more without %s after a first refusal, and was refused again",
+						err, openaiapi.StreamUsageField)
+				}
+				*setup = true
+				return nil
+			case errors.Is(err, openaiapi.ErrStreamUsage):
+				// The setup was told to ask, and the server refused the
+				// field by name.
+				return fmt.Errorf("%w; if this server does not take %s, run the setup again with --stream-usage=false, "+
+					"and the block it writes sends its calls without it", err, openaiapi.StreamUsageField)
 			}
 			return err
 		},
@@ -495,7 +556,7 @@ func CredentialService(roots layered.Roots, name string) (credential.Service, bo
 	}
 	for _, p := range cfg.Providers() {
 		if p.Key == name && len(p.Models) > 0 {
-			return providerService(p, cfg.denylist, nil), true, cfg.Diagnostics, nil
+			return providerService(p, cfg.denylist, nil, nil), true, cfg.Diagnostics, nil
 		}
 	}
 	return credential.Service{}, false, cfg.Diagnostics, nil

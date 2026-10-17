@@ -159,10 +159,17 @@ rather than skipped:
 - **A call asks for its usage unless the block says not to.** The adapter sends
   `stream_options.include_usage` with every call, so the streamed answer ends
   with the token counts and the cost the call record carries (itd-166). A
-  server that refuses the field fails the call with HTTP 400 or 422, and the
-  refusal names `oracle.api.<provider>.stream_usage`; set to `false`, calls go
-  without it and their usage is recorded as not reported. No call is retried
-  without the field, since a retry is a second request.
+  server that refuses the field fails the call with HTTP 400 or 422; when the
+  refusal's body names `stream_options` or `include_usage`, it names
+  `oracle.api.<provider>.stream_usage`, and set to `false`, calls go without
+  the field and a call whose answer carries no usage records it as not
+  reported. No ordinary call is retried without the field, since a retry is a
+  second request. The setup is the one exception: `abcd ahoy connect` asks
+  its verification call once more without the field when the first is
+  refused with 400 or 422, and when that succeeds writes `stream_usage: false`
+  into the block it creates and says so (`stream_usage_note` in its JSON).
+  `--stream-usage=false` (or `=true`) sets the block's value outright, and
+  the verification is then asked once, as given.
 - **The allowlist alone decides; the denylist is optional and a union.** abcd
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's

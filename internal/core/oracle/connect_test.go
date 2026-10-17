@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,6 +18,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
@@ -560,6 +564,117 @@ func TestTheVerificationCallKeepsItsOwnShortBound(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("the verification call was still waiting after 10s")
+	}
+	if _, err := os.Stat(machineFile(f, "config.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a failed verification wrote the configuration: %v", err)
+	}
+}
+
+// usageRefuser is a provider that refuses, with code and refusal, every chat
+// request asking for usage in the stream and answers ok to one that does not,
+// or refuses it too when always is set. It counts the chat requests.
+func usageRefuser(t *testing.T, code int, refusal string, always bool) (base string, calls *atomic.Int32) {
+	t.Helper()
+	calls = &atomic.Int32{}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			http.NotFound(w, r)
+			return
+		}
+		calls.Add(1)
+		raw, _ := io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		if always || strings.Contains(string(raw), "stream_options") {
+			w.WriteHeader(code)
+			_, _ = io.WriteString(w, refusal)
+			return
+		}
+		_, _ = io.WriteString(w, chat("typesafe/jev-1.13-20260915", "ok"))
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL + "/v1", calls
+}
+
+// TestConnectAsksAgainWithoutUsageWhenItIsRefused is iss-2610170934491794:
+// a server that refuses the verification call's usage request, with 400 or
+// 422 and whatever its body says, is asked once more without it; the setup
+// then writes stream_usage false into the block it creates and says so.
+func TestConnectAsksAgainWithoutUsageWhenItIsRefused(t *testing.T) {
+	for _, tc := range []struct {
+		code int
+		body string
+	}{
+		{400, `{"error":{"message":"Unrecognized request argument supplied: stream_options"}}`},
+		{422, `{"error":{"message":"invalid request"}}`},
+	} {
+		base, calls := usageRefuser(t, tc.code, tc.body, false)
+		f := newFx(t)
+		res, err := Connect(context.Background(), connectReq(f, base))
+		if err != nil {
+			t.Fatalf("HTTP %d: Connect: %v", tc.code, err)
+		}
+		if n := calls.Load(); n != 2 {
+			t.Fatalf("HTTP %d: %d calls, want the refused one and one without the field", tc.code, n)
+		}
+		if res.StreamUsage == nil || *res.StreamUsage || !strings.Contains(res.StreamUsageNote, "stream_usage") {
+			t.Fatalf("HTTP %d: result stream_usage %v, note %q", tc.code, res.StreamUsage, res.StreamUsageNote)
+		}
+		if len(res.Verified.AdapterAdded) != 0 {
+			t.Fatalf("HTTP %d: the record names the field as sent: %v", tc.code, res.Verified.AdapterAdded)
+		}
+		got, ok := f.loadAPI().Provider("openrouter")
+		if !ok || got.StreamUsage == nil || *got.StreamUsage || got.AsksStreamUsage() {
+			t.Fatalf("HTTP %d: block read back = %+v", tc.code, got)
+		}
+	}
+}
+
+// TestConnectWithUsageNotAskedRetriesNothing: a refusal of a request that
+// did not ask for usage, or a second refusal of the one asked again, is the
+// setup's failure: nothing is written, and no third call is made.
+func TestConnectWithUsageNotAskedRetriesNothing(t *testing.T) {
+	base, calls := usageRefuser(t, 400, `{"error":{"message":"bad model"}}`, true)
+	f := newFx(t)
+	_, err := Connect(context.Background(), connectReq(f, base))
+	if err == nil || !strings.Contains(err.Error(), "nothing was written") || !strings.Contains(err.Error(), "without "+openaiapi.StreamUsageField) {
+		t.Fatalf("Connect: %v", err)
+	}
+	if n := calls.Load(); n != 2 {
+		t.Fatalf("%d calls, want two", n)
+	}
+	if _, err := os.Stat(machineFile(f, "config.json")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("a failed verification wrote the configuration: %v", err)
+	}
+}
+
+// TestConnectWritesTheStreamUsageItIsGiven: a setup told the server's
+// stream_usage verifies with it, writes it into the block, and asks nothing
+// again; told true and refused, its refusal names what the person can do.
+func TestConnectWritesTheStreamUsageItIsGiven(t *testing.T) {
+	base, calls := usageRefuser(t, 400, `{"error":{"message":"Unrecognized request argument supplied: stream_options"}}`, false)
+	f := newFx(t)
+	req := connectReq(f, base)
+	off := false
+	req.StreamUsage = &off
+	res, err := Connect(context.Background(), req)
+	if err != nil || calls.Load() != 1 {
+		t.Fatalf("Connect: %v after %d calls", err, calls.Load())
+	}
+	if res.StreamUsage == nil || *res.StreamUsage || res.StreamUsageNote != "" {
+		t.Fatalf("result stream_usage %v, note %q", res.StreamUsage, res.StreamUsageNote)
+	}
+	if got, _ := f.loadAPI().Provider("openrouter"); got.AsksStreamUsage() {
+		t.Fatalf("block read back = %+v", got)
+	}
+
+	calls.Store(0)
+	f = newFx(t)
+	req = connectReq(f, base)
+	on := true
+	req.StreamUsage = &on
+	_, err = Connect(context.Background(), req)
+	if err == nil || calls.Load() != 1 || !strings.Contains(err.Error(), "--stream-usage=false") || strings.Contains(err.Error(), "config.json") {
+		t.Fatalf("Connect told true: %v after %d calls", err, calls.Load())
 	}
 	if _, err := os.Stat(machineFile(f, "config.json")); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("a failed verification wrote the configuration: %v", err)
