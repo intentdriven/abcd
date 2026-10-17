@@ -53,9 +53,11 @@ err="$(cat "$errf")"
 
 failed=0
 [ "$rc" -eq 0 ] || failed=1
-if printf '%s' "$out" | grep -Eq '"is_error"[[:space:]]*:[[:space:]]*true'; then
-	failed=1
-fi
+# Matched on the answer with its whitespace removed, so a line break inside
+# the pair, as pretty-printed JSON has, cannot hide it (iss-2610170635209097).
+case "$(printf '%s' "$out" | tr -d '[:space:]')" in
+*'"is_error":true'*) failed=1 ;;
+esac
 
 if [ "$failed" -eq 1 ]; then
 	said="$(printf '%s\n%s\n' "$err" "$out" | tr '[:upper:]' '[:lower:]')"
