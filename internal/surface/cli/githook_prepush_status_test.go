@@ -152,9 +152,10 @@ func TestPrePushIgnoresAGraftFile(t *testing.T) {
 
 // TestPrePushGatesAStatusPushFromAShallowClone: a .git/shallow line naming an
 // announcement stops a history walk at it, hiding the commit carrying files
-// beneath it, even with no graft file read. The hook cannot see the whole
-// range in a shallow clone, so the status row does not pass it: the push is
-// gated, refused without a receipt, and origin is unmoved.
+// beneath it, even with no graft file read. The range the hook walks lists
+// that commit, whose parents it cannot read, so the status row does not pass
+// it: the push is gated, refused without a receipt, and origin is unmoved.
+// githook_prepush_shallow_test.go pins the same from a real shallow clone.
 func TestPrePushGatesAStatusPushFromAShallowClone(t *testing.T) {
 	c := newPrePushCase(t)
 	files := c.commit("feature.md", "a feature\n")

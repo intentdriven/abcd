@@ -68,12 +68,14 @@
 #      branch is gated as any branch is, and a deletion is refused outright:
 #      a status branch is kept for ever.
 #
-#      This hook runs only where core.hooksPath points at it. A hosted cloud
-#      session runs no hook at all, so there the server's rulesets (deletion
-#      and non-fast-forward refused under both prefixes, mirrored in
-#      .abcd/work/rulesets/) and abcd's own reader, which shows a status
-#      commit that changes a file as doubtful, are the guards; nothing on the
-#      forge refuses a file-changing push to a status branch.
+#      This hook runs only where core.hooksPath points at it. abcd's cloud
+#      setup script points it here, so a hosted session set up by abcd runs
+#      it, from the shallow clone such a session starts with; a session that
+#      skips the setup runs no hook at all. Where no hook runs, the server's
+#      rulesets (deletion and non-fast-forward refused under both prefixes,
+#      mirrored in .abcd/work/rulesets/) and abcd's own reader, which shows a
+#      status commit that changes a file as doubtful, are the guards; nothing
+#      on the forge refuses a file-changing push to a status branch.
 #
 #      A cloud session's work-in-progress branch (itd-2610120738075547 C7,
 #      adr-2610120937435856, brief invariant 23) is the third exemption, one
@@ -136,23 +138,41 @@ is_null_id() {
 # only_empty_trees succeeds when every commit in the range git rev-list is
 # given has the empty tree, and fails when one does not or the range cannot be
 # walked (a remote tip this clone does not hold): the push is then gated.
+#
+# It also fails when the walk could not read the whole range. In a shallow
+# clone a .git/shallow line stops the walk at the commit it names, as a graft
+# would, and the commits beneath it go unread. The walk lists that commit, so
+# the check refuses a range that lists one: its parents may be new commits
+# carrying files. A range that lists none was read in full, because every
+# commit it lists had its parents read, and each parent is either listed too
+# or reachable from the remote tip, so already on the remote. A hosted
+# session's shallow clone therefore pushes an announcement or a reservation
+# over a tip it fetched without a receipt, and the walk only reads: nothing is
+# fetched, deepened or written. When git says the clone is shallow and the
+# file cannot be read, the check fails.
 only_empty_trees() {
-  local trees
-  trees="$(git rev-list --format=%T "$@" 2>/dev/null)" || return 1
+  local listing commits shallow rc=0
+  listing="$(git rev-list --format=%T "$@" 2>/dev/null)" || return 1
   [ -n "$empty_tree" ] || return 1
-  [ -z "$(printf '%s\n' "$trees" | grep -v -e '^commit ' -e "^$empty_tree\$" -e '^$')" ]
+  [ -z "$(printf '%s\n' "$listing" | grep -v -e '^commit ' -e "^$empty_tree\$" -e '^$')" ] || return 1
+  shallow="$(git rev-parse --git-path shallow 2>/dev/null)" || return 1
+  if [ -e "$shallow" ] || [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
+    [ -f "$shallow" ] && [ -r "$shallow" ] || return 1
+    commits="$(printf '%s\n' "$listing" | sed -n 's/^commit //p')"
+    # grep exits 0 on a listed shallow commit and 2 on an unreadable file;
+    # only 1, no line matched, shows the walk read the whole range.
+    grep -qxF -f "$shallow" <<<"$commits" || rc=$?
+    [ "$rc" -eq 1 ] || return 1
+  fi
 }
 
 # reservation_shape is the reservations' shape check: the push is a
 # fast-forward (or a create) and every commit it moves has the empty tree. The
 # range is everything new on an update, and everything reachable on a create.
 # A remote tip this clone does not hold fails both tests, so the push is gated.
-# So does any push from a shallow clone: a .git/shallow line stops the walk at
-# the commit it names, as a graft would, and the commits beneath it go unread,
-# so the hook cannot show the range changes no file and asks for a receipt.
+# So does a range a shallow clone cannot read in full (only_empty_trees).
 reservation_shape() {
   local remote_sha="$1" local_sha="$2"
-  [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" != "true" ] || return 1
   if is_null_id "$remote_sha"; then
     only_empty_trees "$local_sha"
   else
