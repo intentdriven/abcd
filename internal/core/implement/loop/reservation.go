@@ -557,8 +557,20 @@ func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (reserve
 // which the move's view could not show it), which gives no hold (nil): it is
 // never the drain's to release. Another's hold is contention, as for
 // reserveKey.
+//
+// The request names the stage of this checkout's lane in progress on id, if
+// any: when the act renews that lane's own live hold, the renewal keeps the
+// stage another account reads rather than clearing it (spc-2610161044461448
+// step 18, dcn-2610170809478944); a fresh, lapsed or taken-over hold names
+// none.
 func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool, now time.Time) (*DrainHold, error) {
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Footprint: footprint, TakeOver: takeOver, Drain: true}, claimOptions(now))
+	stage := ""
+	if runs, err := Runs(repoRoot); err == nil {
+		if run, ok := liveRun(runs, id, true); ok {
+			stage = renewalStage(run)
+		}
+	}
+	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Footprint: footprint, TakeOver: takeOver, Drain: true, Stage: stage}, claimOptions(now))
 	if _, err := reservedNote(res, err, now); err != nil {
 		return nil, err
 	}

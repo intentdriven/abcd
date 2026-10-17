@@ -2,6 +2,7 @@ package loop
 
 import (
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,5 +73,46 @@ func TestADrainMovesRenewalCarriesTheLanesStage(t *testing.T) {
 	}
 	if len(renewals) != 1 || renewals[0].Record != secondIssue || renewals[0].Stage != string(StageWorktree) {
 		t.Fatalf("the lane's renewal names its stage, worktree: %+v", renewals)
+	}
+}
+
+// stageOn is the Abcd-Stage trailer origin's tip for id carries, "" for none.
+func stageOn(t *testing.T, bare, id string) string {
+	t.Helper()
+	sha := gitIn(t, bare, "for-each-ref", "--format=%(objectname)", claim.RefPrefix+id)
+	for _, line := range strings.Split(gitIn(t, bare, "log", "-1", "--format=%B", sha), "\n") {
+		if v, ok := strings.CutPrefix(line, "Abcd-Stage: "); ok {
+			return v
+		}
+	}
+	return ""
+}
+
+// TestALanesStageSurvivesADrainReReservingTheIssueItHolds: a drain's
+// reservation of an issue whose lane in this checkout already holds it live
+// renews that hold, and the renewal names the lane's stage, so a re-reserve
+// never clears the stage another account reads.
+func TestALanesStageSurvivesADrainReReservingTheIssueItHolds(t *testing.T) {
+	t0 := time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)
+	c := &clock{t: t0}
+	o := Options{Now: c.now}
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	first := drainToLane(t, repo, o, DrainOptions{})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
+	}
+	c.t = t0.Add(61 * time.Minute)
+	if _, err := Drain(repo.Root(), o, DrainOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := stageOn(t, bare, secondIssue); got != string(StageWorktree) {
+		t.Fatalf("the lane's renewal names its stage: %q", got)
+	}
+	c.t = c.t.Add(time.Minute)
+	if _, err := reserveForJudgement(repo.Root(), secondIssue, []string{"commands/drain.md"}, false, c.t); err != nil {
+		t.Fatalf("re-reserving the issue the lane holds: %v", err)
+	}
+	if got := stageOn(t, bare, secondIssue); got != string(StageWorktree) {
+		t.Fatalf("the re-reserve keeps the lane's stage: %q", got)
 	}
 }
