@@ -88,6 +88,34 @@
       ]
     },
     {
+      "path": "abcd ahoy after-update",
+      "hidden": false,
+      "sentence": "Say what changed since the update, and offer the setup that waits: Writes only an answer or --seen, to ~/.abcd.noindex/; refuses --answer with --full or --seen.",
+      "flags": [
+        {
+          "name": "answer",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "full",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "seen",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd ahoy connect",
       "hidden": false,
       "sentence": "Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.",
@@ -270,6 +298,13 @@
           "name": "install-tool",
           "shorthand": "",
           "type": "stringSlice",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "only-waiting",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },

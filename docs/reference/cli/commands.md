@@ -58,6 +58,22 @@ Detect abcd's install state and list its gaps, or report one mode a flag names: 
       --remote      report this repository's GitHub secret-scanning settings and what the remote apply sub-verb would change
 ```
 
+#### `abcd ahoy after-update`
+
+Say what changed since the update, and offer the setup that waits: Writes only an answer or --seen, to ~/.abcd.noindex/; refuses --answer with --full or --seen.
+
+**Usage:** `abcd ahoy after-update [flags]`
+
+After an abcd update, print what the agent relays at the start of its first reply: one line per release this computer has not been shown, saying how many changes it made and which need the person to act, and, where the update brings this repository setup it never answered, the offer to run setup again. It prints nothing when there is nothing to say. --full prints every change of the releases since the last update, those that need action first, each with the record it cites, and what waits here. Neither writes anything. Only a person's reply is recorded: --answer yes|not-now records the answer to the offer for this repository and release, once, and --seen records that the news was read where no offer was made, both in abcd's home folder. On yes, run abcd ahoy install --only-waiting. The text comes only from the binary's own digest and checked release numbers, and nothing is fetched.
+
+**Flags:**
+
+```
+      --answer string   record the person's reply to the offer, yes or not-now, once for this repository and release; run it only with their reply
+      --full            print the full summary of the releases since the last update and what waits here; writes nothing
+      --seen            record that the person read the news where no offer was made; run it only after they were shown it
+```
+
 #### `abcd ahoy connect`
 
 Verify a provider with one call and configure it, or guide setup: Writes ~/.abcd.noindex/ and the key's home, nothing guided; refuses no --model off a terminal.
@@ -124,6 +140,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --dev                     track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary
       --docs-target string      whether AGENTS.md carries the managed block, which names abcd: agents_md | skip (default skip); claude_md and both are refused, with the one setting to change
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
+      --only-waiting            ask only the setup that waits after an abcd update: the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; every kind of change is approved up front, as the yes to the after-update offer approves them; with the approve-everything flag no question is answered, so each still waits
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
       --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
       --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included

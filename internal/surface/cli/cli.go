@@ -4051,6 +4051,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				opts.ReadmeParts = readmeParts
 			}
 			opts.Outbound = outbound
+			opts.OnlyWaiting = onlyWaiting(cmd)
 			opts.VerifyProvenance = ahoyReleaseProvenance
 			named, err := installToolNames(installTools)
 			if err != nil {
@@ -4208,6 +4209,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringVar(&answersPath, "answers", "", "answer the setup questions from this answers file (JSON: schema_version, interview \"setup\", answers by question id), wherever the install runs; a question the file and no flag answers refuses with exit 2, naming its id, the flag and the file key")
 	installCmd.Flags().StringVar(&readmeParts, "readme-parts", "", "answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
 	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
+	addOnlyWaitingFlag(installCmd)
 	ahoyCmd.AddCommand(installCmd)
 
 	// uninstall
@@ -4273,6 +4275,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
+	ahoyCmd.AddCommand(newAhoyAfterUpdateCommand(asJSON))
 
 	return ahoyCmd
 }
