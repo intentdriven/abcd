@@ -293,14 +293,19 @@ A shell command is approved only when the guard reads it whole and clears it:
 An approved call runs with the command judged and its description, and nothing
 else it carried, from the working tree it was judged for and under bash: the
 approval hands the command back as
-`cd -- '<dir>' && exec /bin/bash --noprofile --norc -c '<command>'`, the
+`cd -- '<dir>' && /bin/bash --noprofile --norc -p -c '<command>'`, the
 directory and the command each quoted as one literal word. The host keeps the
 shell's directory from one call to the next, and the approver judges every
 command as run from `--dir`; and the host runs the text in the person's login
 shell, which may be zsh, while the guard reads every command in bash's grammar.
-So the login shell only changes directory and, when that succeeds, starts bash
-with its profile and rc files switched off, and bash runs the command: what the
-guard judged is what runs. bash gives no zsh-only construct its zsh meaning:
+So the login shell only changes directory and, when that succeeds, starts
+/bin/bash with its profile, rc and environment start-up files ignored (-p):
+`--noprofile` and `--norc` skip the profile and rc files, and `-p` makes bash
+ignore `BASH_ENV`, functions exported as `BASH_FUNC_*` and `SHELLOPTS` from
+the environment. bash runs the command: what the guard judged is what runs.
+The bash call is not an `exec`, so text the host joins after it (its own
+`&& pwd -P >| <file>` record of the shell's working directory) still runs.
+bash gives no zsh-only construct its zsh meaning:
 glob qualifiers, `(:A)` modifiers and `{ … } always { … }` are syntax errors to
 it, and it runs nothing of a line holding one. When the directory cannot be entered no
 part of the command runs, a part after `||` or `;` included; a command that
@@ -317,7 +322,8 @@ directory. Anything else is refused with the guard's reason and what to
 run instead, which the harness hands the agent so it can rewrite the command. A
 prompt for any tool but the shell is refused (`prompt-not-shell`), since nobody
 is there to approve it, and so is a shell prompt whose input carries no
-command string the guard can read (`prompt-input-unread`). A role whose contract grants no shell keeps its launch
+command string the guard can read (`prompt-input-unread`) or whose command
+holds a NUL byte, which no shell passes on as written (`command-holds-nul`). A role whose contract grants no shell keeps its launch
 as it was, with every prompt refused unasked. The opencode runner has no
 per-launch prompt answerer, so its launches keep the permissions opencode's own
 configuration sets. A script the line runs is read for the registry's hazards

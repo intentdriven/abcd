@@ -247,3 +247,55 @@ func TestGuardApproveLetsARemovalReachTheRunsOwnDirectories(t *testing.T) {
 		}
 	}
 }
+
+// TestGuardApproveDocsQuoteTheBashCall: every page that says how an approved
+// command runs quotes the text the approver hands back, or says it runs under
+// /bin/bash with its profile, rc and environment start-up files ignored (-p),
+// and none still quotes the exec shape or says only that the rc files are
+// switched off. Each page is read with its line breaks and comment marks
+// folded into spaces, so a phrase wrapped across lines still reads as one.
+func TestGuardApproveDocsQuoteTheBashCall(t *testing.T) {
+	const (
+		shape   = "cd -- '<dir>' && /bin/bash --noprofile --norc -p -c '<command>'"
+		ignored = "profile, rc and environment start-up files ignored (-p)"
+	)
+	root := repoRootFromTest(t)
+	for _, c := range []struct {
+		path  string
+		quote bool // the page quotes the text handed back
+	}{
+		{"commands/guard.md", true},
+		{".abcd/development/brief/04-surfaces/17-guard.md", true},
+		{"docs/reference/cli/commands.md", true},
+		{"internal/surface/cli/guard_approve.go", true},
+		{".abcd/development/brief/04-surfaces/34-build.md", false},
+		{"commands/build.md", false},
+		{"commands/implement.md", false},
+		{"internal/core/runner/claude.go", false},
+	} {
+		raw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(c.path)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(raw)
+		if strings.HasSuffix(c.path, ".go") {
+			// A help string is split into quoted pieces joined by +, and a
+			// comment carries its // on every line.
+			for _, s := range []string{`\n" +`, `"`, "//"} {
+				text = strings.ReplaceAll(text, s, " ")
+			}
+		}
+		text = strings.Join(strings.Fields(text), " ")
+		if c.quote && !strings.Contains(text, shape) {
+			t.Errorf("%s does not quote the text an approval hands back, %s", c.path, shape)
+		}
+		if !strings.Contains(text, ignored) {
+			t.Errorf("%s does not say the approved command runs with its %s", c.path, ignored)
+		}
+		for _, old := range []string{"exec /bin/bash", "rc files switched off"} {
+			if strings.Contains(text, old) {
+				t.Errorf("%s still says %q", c.path, old)
+			}
+		}
+	}
+}

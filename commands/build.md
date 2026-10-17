@@ -398,7 +398,8 @@ registry at the lane's base commit: a change to `.abcd/guard.json` during the
 run takes effect only where it strengthens that registry, and any weakening,
 committed or not, refuses every command. A shell command the guard reads whole
 and clears runs unattended with the command and its description alone, from
-the working tree and under bash, whatever the login shell; a write
+the working tree and under /bin/bash, whatever the login shell, with its
+profile, rc and environment start-up files ignored (-p); a write
 or removal whose target the line does not spell out, one reaching a protected
 path, `git config` beyond the repository's own file, code handed to an
 interpreter the guard does not read, and a removal of a critical directory are

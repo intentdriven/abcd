@@ -1485,17 +1485,20 @@ refuses:
 An approved call runs with the command judged and its description, and
 nothing else it carried, from the working tree it was judged for and under
 bash: the command comes back as
-cd -- '<dir>' && exec /bin/bash --noprofile --norc -c '<command>', since the
+cd -- '<dir>' && /bin/bash --noprofile --norc -p -c '<command>', since the
 host keeps the shell's directory from one call to the next and runs the text
 in the person's login shell, which may be zsh, while the guard reads bash's
-grammar. The login shell only changes directory and starts bash, and bash
-runs the command and gives no zsh-only construct its zsh meaning (a glob
-qualifier is a syntax error to it); when the directory cannot be entered, no
-part of the command runs. That text is read again with the guard's own parse
-and approved only when it is exactly that change of directory and that one
-bash call, with the whole command as its last word.
-Everything else is refused with the guard's reason
-and what to run instead, which the harness hands the agent, so the agent can
+grammar. The login shell only changes directory and starts /bin/bash with its
+profile, rc and environment start-up files ignored (-p), so BASH_ENV,
+exported functions and SHELLOPTS do nothing, and bash runs the command and
+gives no zsh-only construct its zsh meaning (a glob qualifier is a syntax
+error to it); when the directory cannot be entered, no part of the command
+runs. The bash call is not an exec, so text the host joins after it still
+runs. That text is read again with the guard's own parse and approved only
+when it is exactly that change of directory and that one bash call, with the
+whole command as its last word. A command holding a NUL byte is refused
+before it is read. Everything else is refused with the guard's reason and
+what to run instead, which the harness hands the agent, so the agent can
 rewrite the command. A prompt for any tool but the shell is refused, since
 nobody is there to approve it.
 

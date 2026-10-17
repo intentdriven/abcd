@@ -416,11 +416,16 @@ tree it was judged for and under bash (dcn-2610170805446355): the harness keeps
 the shell's directory from one call to the next, and runs the text in the
 person's login shell, which may be zsh, while the guard reads every command in
 bash's grammar. So the approval hands the command back as
-`cd -- '<dir>' && exec /bin/bash --noprofile --norc -c '<command>'`, the
+`cd -- '<dir>' && /bin/bash --noprofile --norc -p -c '<command>'`, the
 directory and the command each quoted as one literal word: the login shell only
-changes directory and, when that succeeds, starts bash with its profile and rc
-files switched off, and bash runs the command, so what the guard judged is what
-runs. bash gives no zsh-only construct its zsh meaning: glob qualifiers, `(:A)`
+changes directory and, when that succeeds, starts /bin/bash with its profile,
+rc and environment start-up files ignored (-p), so `BASH_ENV`, functions
+exported as `BASH_FUNC_*` and `SHELLOPTS` from the environment do nothing, and
+bash runs the command, so what the guard judged is what runs. The call is not
+an `exec`: text the host joins after it (its `&& pwd -P >| <file>` record of
+the shell's working directory) still runs, and `exec` would guard nothing the
+agent controls. bash gives no zsh-only construct its zsh meaning: glob
+qualifiers, `(:A)`
 modifiers and `{ … } always { … }` are syntax errors to it, and it runs nothing
 of a line holding one. When the directory cannot be entered no part of the
 command runs, a part after `||` or `;` included, and the command's exit status
@@ -431,7 +436,9 @@ nothing else; nothing in the command can end that word early, so a `}` or a
 `fi` with nothing open is bash's syntax error inside the working tree, not a
 refusal. A change of directory inside the line
 still holds for the rest of it, and a relative name after a `cd` the line spells
-out and joins with `&&` is read in that directory. Everything else, and
+out and joins with `&&` is read in that directory. A command holding a NUL
+byte, which no shell passes on as written, is refused before it is read
+(`command-holds-nul`). Everything else, and
 a prompt for any tool but the shell, is refused with the guard's reason and
 successor, which the harness hands the agent so it can rewrite the command. The
 checks read the line itself: a script the line runs is read for the registry's
