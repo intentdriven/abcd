@@ -278,7 +278,7 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 		home, _ := os.UserHomeDir()
 		if err := implement.ReleaseWaitHold(home, *res.Hold); err != nil {
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load --wait: the hold %s could not be released (%v); it lapses once this process is gone\n",
-				abcdhome.Display(implement.WaitHoldFileName), err)
+				abcdhome.Display(implement.HoldFileName(res.Hold.Gate)), err)
 		}
 	}
 	if runErr != nil {

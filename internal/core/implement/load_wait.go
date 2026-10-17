@@ -207,6 +207,10 @@ func raceCommandAtBothGates(req WaitRequest, res *WaitResult) bool {
 	return req.RaceCommand && req.Command && !req.Race && res.Slots > 1
 }
 
+// HoldFileName is the hold record of gate, GateTests or GateRace, as the
+// front door names it in a message.
+func HoldFileName(gate string) string { return holdFileName(gate) }
+
 // holdFileName is gate's hold record.
 func holdFileName(gate string) string {
 	if gate == GateRace {
@@ -335,7 +339,8 @@ type WaitResult struct {
 	Slots       int    `json:"slots,omitempty"`
 	SlotsSource string `json:"slots_source,omitempty"`
 	// SlotsNote says why the machine configuration was read past for the
-	// count, when it was (PreflightSlots); the front door prints it once.
+	// count, when it was (PreflightSlots); the front door prints it once per
+	// waiter, so a preflight, which waits at both gates, shows it twice.
 	SlotsNote string `json:"slots_note,omitempty"`
 	// Backoffs is how many times the waiter stood back from another that opened
 	// in the same moment with the lower pid.
@@ -449,7 +454,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				stop()
 				if res.Hold != nil {
 					if err := releaseHoldIn(root, *res.Hold); err != nil {
-						return res, fmt.Errorf("the hold %s could not be given up: %w", abcdhome.Display(WaitHoldFileName), err)
+						return res, fmt.Errorf("the hold %s could not be given up: %w", abcdhome.Display(holdFileName(res.Hold.Gate)), err)
 					}
 				}
 				res.Status, res.Hold, res.Waiters = "", nil, lower
@@ -669,7 +674,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 					continue
 				}
 				if err := root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
-					return err
+					return fmt.Errorf("%s: %w", abcdhome.Display(name), err)
 				}
 			}
 			free = append(free, gate)
@@ -695,7 +700,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				return err
 			}
 			if err := fsutil.WriteFileAtomicInRoot(root, holdFileName(gate), append(raw, '\n'), abcdhome.FileMode); err != nil {
-				return err
+				return fmt.Errorf("%s: %w", abcdhome.Display(holdFileName(gate)), err)
 			}
 		}
 		res.Hold = &own
@@ -708,7 +713,7 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		return nil, false, fmt.Errorf("the hold's lock %s is not a regular file (a symlink, or something else), so it is refused; remove it, and the next wait creates it afresh",
 			abcdhome.Display(waitLockFileName))
 	case err != nil:
-		return nil, false, fmt.Errorf("the hold %s could not be judged or written: %w", abcdhome.Display(WaitHoldFileName), err)
+		return nil, false, fmt.Errorf("the hold could not be judged or written: %w", err)
 	}
 	if len(shut) > 0 || !take {
 		return shut, false, nil
