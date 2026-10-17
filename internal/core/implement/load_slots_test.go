@@ -566,3 +566,20 @@ func TestWaitFirstGateNeverStandsBackFromARaceWaiter(t *testing.T) {
 		})
 	}
 }
+
+// TestPreflightSlotsIgnoresAHomeInsideAWorkingTree: load.preflights in a HOME
+// that lies inside a git working tree is not read as the machine's layer, by
+// the rule layered.RootsFor applies: one preflight at a time, and the note
+// says why.
+func TestPreflightSlotsIgnoresAHomeInsideAWorkingTree(t *testing.T) {
+	tree := t.TempDir()
+	if err := os.Mkdir(filepath.Join(tree, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(tree, "home")
+	writeMachineConfig(t, home, `{"load": {"preflights": 2}}`)
+	n, src, note, err := PreflightSlots(noEnv, home)
+	if err != nil || n != 1 || src != SlotsDefault || !strings.Contains(note, "HOME lies inside a git working tree") {
+		t.Fatalf("PreflightSlots = %d, %q, %q, %v; want 1 from the default with a note saying HOME lies inside a working tree", n, src, note, err)
+	}
+}

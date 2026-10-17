@@ -36,6 +36,49 @@ func Load(repoRoot string) (Corpus, error) {
 	return c, nil
 }
 
+// TreeFile is one file of the intent store as a commit's tree holds it: its
+// bucket, its repository-relative path, and its content, or why it could not
+// be read (a link, a file past the cap, an object not a regular file).
+type TreeFile struct {
+	Bucket string
+	Path   string
+	Text   string
+	Unread string
+}
+
+// LoadTree is Load over the intent store as one commit holds it, the files
+// its caller read out of that commit's tree: each file in a bucket whose name
+// is an intent file's is parsed as Load parses it, in bucket order and then
+// by path, and one that could not be read, or is malformed, is the same hard
+// error Load gives, so a plan read from a commit never reads the checkout's
+// store in its place.
+func LoadTree(files []TreeFile) (Corpus, error) {
+	var c Corpus
+	for _, bucket := range Buckets {
+		var in []TreeFile
+		for _, f := range files {
+			if f.Bucket == bucket && intentFileRe.MatchString(filepath.Base(filepath.FromSlash(f.Path))) {
+				in = append(in, f)
+			}
+		}
+		sort.Slice(in, func(i, j int) bool { return in[i].Path < in[j].Path })
+		for _, f := range in {
+			if f.Unread != "" {
+				return Corpus{}, fmt.Errorf("intent: %s: %s", f.Path, f.Unread)
+			}
+			if len(f.Text) > maxIntentFileBytes {
+				return Corpus{}, fmt.Errorf("intent: %s exceeds the %d-byte cap", f.Path, maxIntentFileBytes)
+			}
+			it, err := parseIntent(f.Path, f.Text, bucket)
+			if err != nil {
+				return Corpus{}, err
+			}
+			c.Intents = append(c.Intents, it)
+		}
+	}
+	return c, nil
+}
+
 // loadBucket reads one bucket directory. A missing directory is soft (nil, nil).
 func loadBucket(repoRoot, bucket string) ([]Intent, error) {
 	dir := filepath.Join(repoRoot, IntentsRelDir, bucket)

@@ -120,3 +120,26 @@ no decision, and route every other open issue by the rule that excluded it.
   loosens it is a trust change: it is committed history, reviewed like code,
   and a loosened floor is named on every dry run and start.
 - Owed and out of this record: where a hand-back flag lives.
+
+## Amendment — 2026-10-16: an issue linked to an intent goes through that intent
+
+Decision 8 names two holds. A third holds whatever the record says, from step 4
+of spc-2610161044461448 and the decision recorded for it
+(dcn-2610161040365515), and brief invariant 19 states it: an open issue whose
+`related_intents` names an intent is handed back under the rule `promoted`,
+naming the intents, because it goes through that intent and a machine never
+takes it alone. In decision 2's order it is asked straight after blocked,
+before security, so a reader is sent to the intent rather than to a field the
+intent's work would settle. This amendment adds to decision 8; it does not
+reverse it or any other decision.
+
+- **A consistency finding is not linked to its intents in this sense.** The
+  consistency pass names the two intents its contradiction is between, so the
+  record it files is judged by its other fields and stays ineligible only until
+  a person writes its remedy, as ruling H12 has every automatic filer's record
+  (dcn-2610161425496537).
+- **A person's own build is still the lane route.** The consequence above that
+  the issue-keyed lane reads the same rule as the drain holds for every rule
+  but this one: `abcd build <iss-N>` takes an issue the drain hands back as
+  `promoted`, naming the intent, which is how an after-merge audit's owed check
+  reaches a lane (dcn-2610161428244461).

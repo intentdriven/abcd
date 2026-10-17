@@ -69,6 +69,10 @@ _None open._
 - **Given** a gate refusal during a lab, **when** it occurs, **then** the lab halts and records it as a finding rather than adapting around it.
 - **Given** the discipline record, **when** it is read, **then** it carries the procedure's amendments in present tense, host-agnostic.
 
+## Typed Links
+
+- **built on by `itd-2610161733316518`** (one feature built across a model matrix): Runs the matrix as a lab, adding a model pin beside the commit and binary pins a lab already records.
+
 ## Audit Notes
 
 <!-- abcd-review: INGESTED receipt=rcp-2e848c471a09 -->
