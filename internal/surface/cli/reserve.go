@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -112,9 +113,9 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"lease (--lease, from 1m to 24h; default 2h, or 24h for a release).\n\n" +
 			"A session cutting a release reserves the release instead, rel-vX.Y.Z, with no\n" +
 			"footprint: while it is live every other session's land step holds its merge.\n" +
-			"It holds for 24h unless --lease names less, sits outside the cap of ten, and\n" +
-			"ends when the tag vX.Y.Z is on origin or its holder releases it; running the\n" +
-			"same command again from the same copy renews it.\n\n" +
+			"It holds for 24h unless --lease names less, sits outside the per-person cap,\n" +
+			"and ends when the tag vX.Y.Z is on origin or its holder releases it; running\n" +
+			"the same command again from the same copy renews it.\n\n" +
 			"Every act fetches the reservations from origin, judges the tip, writes one\n" +
 			"commit and makes one plain fast-forward push, with the repository's hooks\n" +
 			"running: a reservation, a renewal by the same person and copy, a take-over of\n" +
@@ -187,7 +188,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if holder {
-				return runReserveHolder(cmd.OutOrStdout(), *asJSON)
+				return runReserveHolder(cmd.OutOrStdout(), cmd.ErrOrStderr(), *asJSON)
 			}
 			if release {
 				var with []string
@@ -208,6 +209,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was pushed"}
 			}
+			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
 			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
 				TakeOver: takeOver, Release: release, WarnOwnOverlap: true}, claim.Options{ForgeUser: reserveForgeUser})
 			if err != nil {
@@ -237,7 +239,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 // this checkout would be made as, and the source that named it. It writes
 // nothing; when git's identity names no holder it may ask the forge's user
 // endpoint once, as the act itself would.
-func runReserveHolder(w io.Writer, asJSON bool) error {
+func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -246,6 +248,7 @@ func runReserveHolder(w io.Writer, asJSON bool) error {
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was reserved"}
 	}
+	noteMachineHome(errw, "abcd reserve")
 	h, err := claim.ResolveHolder(root, claim.Options{ForgeUser: reserveForgeUser})
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
@@ -363,4 +366,18 @@ func shortCommit(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// noteMachineHome puts on stderr, prefixed by verb, the one line saying the
+// process's HOME lies inside a git working tree and so is not read as this
+// machine's layer (layered.MachineRoots), the home claim's readers are given.
+// It writes nothing for any other home.
+func noteMachineHome(w io.Writer, verb string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	if _, note := layered.MachineRoots(home); note != "" {
+		fmt.Fprintln(w, verb+": "+termsafe.Sanitize(fsutil.RedactHome(note)))
+	}
 }

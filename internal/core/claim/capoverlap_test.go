@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // reserveTen has p reserve iss-1 to iss-10, each with its own file.
@@ -31,7 +33,8 @@ func TestTheEleventhReservationIsRefusedNamingTheCap(t *testing.T) {
 	_, err := p.reserve("iss-11", "f11.go")
 	want := "you hold 10 live reservations, the most one person may hold: iss-1, iss-10, iss-2, iss-3, iss-4, iss-5, " +
 		"iss-6, iss-7, iss-8, iss-9; wait for one of their pull requests to merge, which ends its reservation, " +
-		"or release one whose work is abandoned (abcd reserve <id> --release); nothing was pushed"
+		"or release one whose work is abandoned (abcd reserve <id> --release), or raise reservation.max_live " +
+		"in " + abcdhome.Display("config.json") + " (a whole number from 1 to 100, 10 when unset); nothing was pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("the eleventh reservation = %v; want %q", err, want)
 	}

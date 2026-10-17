@@ -6,9 +6,12 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/layered"
 )
 
-// MaxLive is the most live reservations one person may hold, counted by
+// MaxLive is the most live reservations one person may hold unless their
+// machine's reservation.max_live says otherwise (maxlive.go), counted by
 // username across every record in the view: a laptop and a cloud session that
 // resolve to one username are one person. A release subject is not counted.
 const MaxLive = 10
@@ -26,7 +29,7 @@ type OwnOverlap struct {
 
 // crowding refuses an act the rest of the view forbids, judged on the view
 // just fetched: a footprint that shares a path with another live reservation
-// that is not this copy's own (the back-off), and a reservation that would take its holder past MaxLive
+// that is not this copy's own (the back-off), and a reservation that would take its holder past the cap
 // (the cap, checked first, since taking other work does not lift it). A
 // renewal, and a take-over of one's own other copy, add no reservation, so the
 // cap never refuses them. A reserve naming its footprint re-checks it, so a
@@ -58,16 +61,20 @@ func crowding(p *prepared, j judged, res *Result) error {
 		}
 	}
 	// A release subject sits outside the cap: it neither counts toward a
-	// person's ten nor is refused by them (release.go).
+	// person's cap nor is refused by it (release.go).
 	if !isRelease(p.id) && addsOne(j) {
+		limit, note, err := maxLive(p.home)
+		if err != nil {
+			return err
+		}
 		var mine []string
 		for _, r := range others {
 			if sameHolder(r.Holder, p.holder) && !isRelease(r.Record) {
 				mine = append(mine, r.Record)
 			}
 		}
-		if len(mine) >= MaxLive {
-			return capRefusal(mine)
+		if len(mine) >= limit {
+			return capRefusal(mine, limit, note)
 		}
 	}
 	// A renew-only act over a live tip keeps the tip's own footprint, so it
@@ -156,7 +163,7 @@ func addsOne(j judged) bool {
 }
 
 // CapError is the cap's refusal (spc-2610161044461448 step 6): an act that
-// would take its holder past MaxLive, naming the holder's live reservations
+// would take its holder past their cap (MaxLive, or reservation.max_live), naming the holder's live reservations
 // as the view lists them. It is an ErrRefused refusal, so `abcd reserve`
 // exits 2 on it as before; a drain reads it by its type and waits instead.
 // Its advice is to wait for a pull request to merge: most of a drain's live
@@ -165,34 +172,53 @@ func addsOne(j judged) bool {
 type CapError struct {
 	// Held are the holder's live reservations, the record ids sorted.
 	Held []string
+	// Limit is the cap they reached, the person's reservation.max_live
+	// (maxlive.go); zero means MaxLive.
+	Limit int
+	// Note says why the machine's configuration was read past for the cap,
+	// "" when it was not.
+	Note string
 }
 
-// Error names the cap, the reservations and the advice.
+// Error names the cap, the reservations and the advice, with how to raise
+// the cap below its ceiling.
 func (e *CapError) Error() string {
+	limit := e.Limit
+	if limit == 0 {
+		limit = MaxLive
+	}
 	ids := strings.Join(e.Held, ", ")
 	advice := "wait for one of their pull requests to merge, which ends its reservation, or release one whose work is abandoned (abcd reserve <id> --release)"
-	if len(e.Held) == MaxLive {
+	if limit < MaxLiveCeiling {
+		advice += fmt.Sprintf(", or raise %s in %s (a whole number from 1 to %d, %d when unset)",
+			MaxLiveKey, layered.Config.MachineOrigin(), MaxLiveCeiling, MaxLive)
+	}
+	if e.Note != "" {
+		advice += "; " + e.Note
+	}
+	if len(e.Held) == limit {
 		return fmt.Sprintf("you hold %d live reservations, the most one person may hold: %s; %s; %s", len(e.Held), ids, advice, nothingPushed)
 	}
-	return fmt.Sprintf("you hold %d live reservations, past the %d one person may hold: %s; %s; %s", len(e.Held), MaxLive, ids, advice, nothingPushed)
+	return fmt.Sprintf("you hold %d live reservations, past the %d one person may hold: %s; %s; %s", len(e.Held), limit, ids, advice, nothingPushed)
 }
 
 // Is makes the cap an ErrRefused refusal.
 func (e *CapError) Is(target error) bool { return target == ErrRefused }
 
 // capRefusal names the cap and the holder's live reservations, as the view
-// lists them.
-func capRefusal(mine []string) error {
-	return &CapError{Held: slices.Clone(mine)}
+// lists them, the cap they reached, and note, when the machine's
+// configuration was read past for it.
+func capRefusal(mine []string, limit int, note string) error {
+	return &CapError{Held: slices.Clone(mine), Limit: limit, Note: note}
 }
 
 // LiveHeldBy is the records holder holds live in the view, from any copy,
-// sorted, less except: the count the cap judges a fresh reservation of except
+// sorted, less except and less any release hold, which the cap does not count: the count the cap judges a fresh reservation of except
 // by (crowding), read from the view alone so a caller counts with no fetch.
 func (s Snapshot) LiveHeldBy(holder, except string) []string {
 	var out []string
 	for _, r := range s.Reservations {
-		if r.State == StateLive && r.Record != except && sameHolder(r.Holder, holder) {
+		if r.State == StateLive && r.Record != except && sameHolder(r.Holder, holder) && !isRelease(r.Record) {
 			out = append(out, r.Record)
 		}
 	}

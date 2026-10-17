@@ -1310,7 +1310,8 @@ end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at 
 the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
 is all); at the cap, or when nothing eligible is left, held or not, the drain reports
-and ends. When you hold ten live reservations, the most one person may hold, or every
+and ends. When you hold your cap of live reservations (ten unless reservation.max_live
+in your machine's config.json raises it), or every
 eligible issue left is held by another, a move neither refuses nor ends: it reserves
 and asks nothing, writes waiting_until fifteen minutes on (apart from the pace
 window) and waiting, "cap" or "held", for which of the two it waits on, names the
@@ -4199,9 +4200,9 @@ lease (--lease, from 1m to 24h; default 2h, or 24h for a release).
 
 A session cutting a release reserves the release instead, rel-vX.Y.Z, with no
 footprint: while it is live every other session's land step holds its merge.
-It holds for 24h unless --lease names less, sits outside the cap of ten, and
-ends when the tag vX.Y.Z is on origin or its holder releases it; running the
-same command again from the same copy renews it.
+It holds for 24h unless --lease names less, sits outside the per-person cap,
+and ends when the tag vX.Y.Z is on origin or its holder releases it; running
+the same command again from the same copy renews it.
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks

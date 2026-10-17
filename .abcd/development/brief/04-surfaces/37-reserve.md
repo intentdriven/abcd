@@ -148,11 +148,13 @@ this copy has not fetched reads as unchanged, each until this copy's next
 fetch of that branch succeeds (dcn-2610161837009957).
 
 The act is then judged against the rest of the fetched view. A reservation
-that would take its holder past ten live reservations, counted by username
-across every record, is refused naming the ten, with the advice to wait for one
-of their pull requests to merge, which ends its reservation, rather than release
-one whose work is done; the refusal is typed, so a drain waits on it instead of
-refusing its move ([`35-drain.md`](35-drain.md), spc-2610161044461448 step 6);
+that would take its holder past their cap of live reservations, ten unless
+their machine raises it, counted by username across every record, is refused
+naming the cap and the reservations, with the advice to wait for one of their
+pull requests to merge, which ends its reservation, rather than release one
+whose work is done, or to raise the cap; the refusal is typed, so a drain waits
+on it instead of refusing its move, at the same cap
+([`35-drain.md`](35-drain.md), spc-2610161044461448 step 6);
 a renewal, and a take-over of
 the same person's other copy, of a reservation still live add none and are
 never refused by the cap, while reviving a lapsed one adds one. A
@@ -199,6 +201,25 @@ fetched and are not compared-and-swapped, since each reservation is its own
 branch: two people reserving at once can both pass them, so both are
 best-effort under a race. A collision on one record is atomic, the plain push
 being the compare-and-swap.
+
+The cap is ten unless the person's own machine sets `reservation.max_live` in
+`~/.abcd.noindex/config.json`, a whole number from 1 to 100
+(`internal/core/claim/maxlive.go`, iss-2610170717515674). It stays one ceiling
+per person, counted across all of their sessions and copies, so a person who
+runs many sessions on one account raises it rather than releasing and
+re-taking holds to make room. It is read from the machine layer alone: a
+repository's `.abcd/config.json` that sets it is not read, so a checkout cannot
+raise anyone's ceiling, nor can a `HOME` set inside a working tree that is not
+the account's own. A value outside the range, or a key under `reservation`
+that nothing reads, refuses an act that adds a reservation (reviving a lapsed
+one among them) naming the file, never falling back to ten; no other act reads
+the setting, so a bad value never stops a release or the renewal of a live
+reservation. An unknown key under `reservation` does stop every act of a
+person whose username is read from that file (`reservation.github_username`),
+since the holder's reader claims the same keys. A `config.json` that cannot be
+read at all (writable by others, not valid JSON) is read past, ten applies,
+and the refusal at the cap says why; at the ceiling of 100 the refusal no
+longer offers raising it.
 
 An act the judgement finds reserves afresh, a reservation over no tip or a
 released one, or a take-over, then asks the forge whether origin is a fork,
@@ -277,8 +298,8 @@ with no leading zero and no suffix, so one release never makes two branches. It 
 
 - It takes no footprint, and refuses one: it holds every merge, not some
   files.
-- It sits outside the cap of ten: it is neither counted toward a person's ten
-  nor refused by them, and the live counts a listing shows leave it out.
+- It sits outside the per-person cap: it is neither counted toward a person's
+  cap nor refused by it, and the live counts a listing shows leave it out.
 - It holds for 24 hours unless a shorter lease is named, where a record holds
   for two. A cut waits on its checks, on a reviewer and on an approval, and
   the release tag is pushed by the release workflow after the merge, so a
