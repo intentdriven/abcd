@@ -502,7 +502,7 @@ func TestAPageLargerThanTheBudgetIsNamedAndTheRestComeBack(t *testing.T) {
 	if env.Recalled == nil || !slices.Equal(*env.Recalled, []string{"page:fact_eng_dry-run.md"}) {
 		t.Fatalf("recalled %v:\n%s\nstderr:\n%s", env.Recalled, env.Text, errlog)
 	}
-	if !strings.Contains(errlog, "[page:fact_eng_huge.md] are larger than the whole per-turn budget") {
+	if !strings.Contains(errlog, "[page:fact_eng_huge.md (project)] are larger than the whole per-turn budget") {
 		t.Fatalf("stderr does not name the page too large to come back:\n%s", errlog)
 	}
 
