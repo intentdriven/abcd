@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // TestReserveSaysWhenAHomeInsideAWorkingTreeIsNotRead: a HOME that lies
@@ -63,10 +65,10 @@ func plantHome(t *testing.T) {
 		t.Fatal(err)
 	}
 	home := filepath.Join(tree, "home")
-	if err := os.MkdirAll(filepath.Join(home, ".abcd.noindex"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd.noindex", "config.json"), []byte(`{"reservation": {"github_username": "someone-else"}}`), 0o600); err != nil {
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"), []byte(`{"reservation": {"github_username": "someone-else"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
@@ -79,10 +81,10 @@ func TestImplementLoadRefusesAHomeInsideAWorkingTree(t *testing.T) {
 	waitFixture(t, machine(3, 3, 3))
 	plantHome(t)
 	home, _ := os.UserHomeDir()
-	if err := os.Remove(filepath.Join(home, ".abcd.noindex", "config.json")); err != nil {
+	if err := os.Remove(abcdhome.Path(home, "config.json")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Remove(filepath.Join(home, ".abcd.noindex")); err != nil {
+	if err := os.Remove(abcdhome.Path(home)); err != nil {
 		t.Fatal(err)
 	}
 	for _, flag := range []string{"--wait", "--race-gate"} {
