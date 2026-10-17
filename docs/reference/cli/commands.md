@@ -1455,7 +1455,9 @@ registry, it refuses:
     except a glob removal in a directory inside the working tree, followed
     through symlinks, that no protected name could match, when no earlier
     part of the line writes or removes a file and no wildcard stands in a
-    directory part of the glob, nor does it end in a /;
+    directory part of the glob, nor does it end in a /; every target of a
+    command where an unquoted ( stands in a word (x(:A), x(.)) is refused,
+    since zsh reads it as glob qualifiers that can change the path;
   - such a write, or a removal, reaching a protected path, with its directories
     resolved through symlinks and case folded where the filesystem folds it:
     the git common directory and its hooks, each checkout's .git, the home

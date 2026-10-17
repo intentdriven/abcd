@@ -365,7 +365,12 @@ its text:
   pattern that spells the dot, or one already standing in that directory. A
   glob with a wildcard in a directory part (`build/*/*`, `build/*/x.o`), or
   that ends in `/`, is refused, since it lists directories the line never
-  names, any of which may be a symlink out of the working tree;
+  names, any of which may be a symlink out of the working tree. Every target
+  of a command where an unquoted `(` stands in a word (`build/l(:A)`, `x(.)`,
+  a redirection's target), whatever follows it, is refused too, since zsh
+  reads it as glob qualifiers or modifiers that can change the path
+  (`build/l(:A)` is where the symlink leads), and a `find` or `rsync` there is
+  read as removing; a quoted or escaped `(` is text;
 - a write or removal reaching a protected path, compared after the target's
   existing directories are resolved through symlinks and its case folded where
   the filesystem folds it: the git common directory with its hooks and config,
@@ -559,6 +564,8 @@ it does. A delete chained after `pushd` or `popd` is read as one chained after
 `cd`. A `kill` handed what a process search prints, in a substitution or
 piped into `xargs kill`, is read as the kill by name it is — through a group
 and into one, whose every command is read as handed what is piped into it,
+up to a `}` the line leaves wholly unquoted (a `}""` or `}''` is a command's
+name and does not end it),
 through a shell string that runs the search, and into a shell string `xargs`
 runs or a pipe or redirect feeds, whose every command is read as handed its
 input, or whose positional parameters or own text hold the search's output; out

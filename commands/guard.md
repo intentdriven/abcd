@@ -231,7 +231,13 @@ A shell command is approved only when the guard reads it whole and clears it:
   refused (`path-not-fixed`). So is a glob with a wildcard in a directory part
   (`rm -rf build/*/*`, `rm -f build/*/x.o`) or one that ends in `/`
   (`rm -rf build/*/`): it lists directories the line never names, any of which
-  may be a symlink out of the tree. A relative name after a `cd` the line spells out
+  may be a symlink out of the tree. So is every target of a command where an
+  unquoted `(` stands in a word, whatever follows it (`rm -rf build/l(:A)`,
+  `rm -f x(.)`, `rm -rf a/b(/)`, `echo hi > x(:A)`): zsh reads it as glob
+  qualifiers or modifiers, which can change the path the word names
+  (`build/l(:A)` is where the symlink `build/l` leads), and a `find` or `rsync`
+  there is read as removing. A quoted or escaped `(` is text, so
+  `rm -f 'a(b)'` stays approved. A relative name after a `cd` the line spells out
   and joins with `&&` is read in that directory;
 - no write or removal reaches a protected path (`protected-path`), judged with
   its existing directories resolved through symlinks and its case folded where
@@ -708,7 +714,10 @@ which runs with that pipe as its input (`pgrep … | echo "$(xargs kill)"`);
 behind `xargs` and a launcher the guard does not know, the fail-safe warns. Every command of a string `xargs`
 runs, and every command in a group a pipe feeds, is read as handed that input,
 so `pgrep … | xargs sh -c 'kill 4242'` is a **block** too: the guard does not
-read which of the commands uses it. A `pkill` or `killall` that selects by user, group or terminal
+read which of the commands uses it. The group ends only at a `}` the line
+leaves wholly unquoted: a `}` with a quote in it (`}""`, `}''`) is a command's
+name, so `echo … | { }""; bash; }` is a **block** (`interpreter-reads-stream`),
+as `echo … | { true; bash; }` is. A `pkill` or `killall` that selects by user, group or terminal
 (`-u`, `-t`, and `pkill`'s `-U` and `-G`, written apart from the value or
 against it, as `pkill -tpts/3`) is a **block** too, under `pkill-by-owner`,
 `killall-by-owner` or the entry for a kill by name, because every session under
