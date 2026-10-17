@@ -63,7 +63,7 @@ func rendered(e Entry) string {
 // section of the same tag, line for line and in order, cut from the release
 // below it; every derived section is described and no hand-rolled one is.
 func TestEmbeddedDigestIsTheChangelog(t *testing.T) {
-	d, err := Embedded()
+	d, err := embeddedDigest()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,19 +108,19 @@ func TestEmbeddedDigestIsTheChangelog(t *testing.T) {
 	}
 }
 
-// TestEmbeddedDigestIsCanonical: the embedded file is exactly what Marshal
+// TestEmbeddedDigestIsCanonical: the embedded file is exactly what marshal
 // writes for it, so the cut's append changes only the release it adds.
 func TestEmbeddedDigestIsCanonical(t *testing.T) {
-	d, err := Embedded()
+	d, err := embeddedDigest()
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := Marshal(d)
+	out, err := marshal(d)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(out, embedded) {
-		t.Fatal("digest.json is not in the canonical form Marshal writes")
+		t.Fatal("digest.json is not in the canonical form marshal writes")
 	}
 }
 
@@ -130,7 +130,7 @@ var impactRe = regexp.MustCompile(`(?m)^impact:\s*"?([a-z]+)"?\s*$`)
 // TestEmbeddedDigestImpactsAreTheRecords: each cited record's impact is the
 // one the record itself declares, read from the terminal folder it shipped in.
 func TestEmbeddedDigestImpactsAreTheRecords(t *testing.T) {
-	d, err := Embedded()
+	d, err := embeddedDigest()
 	if err != nil {
 		t.Fatal(err)
 	}

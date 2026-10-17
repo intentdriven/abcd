@@ -13,9 +13,9 @@ import (
 // doc renders a digest document from releases, as a test fixture.
 func doc(t *testing.T, releases ...Release) []byte {
 	t.Helper()
-	out, err := Marshal(&Digest{Releases: releases})
+	out, err := marshal(&Digest{Releases: releases})
 	if err != nil {
-		t.Fatalf("Marshal: %v", err)
+		t.Fatalf("marshal: %v", err)
 	}
 	return out
 }
@@ -67,7 +67,7 @@ func TestParseRoundTrips(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Parse: %v", err)
 	}
-	back, err := Marshal(d)
+	back, err := marshal(d)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -304,7 +304,7 @@ func TestAppendAddsTheNewestRelease(t *testing.T) {
 	if got := strings.Join(tags(d.Releases), " "); got != "v0.16.0 v0.15.0" {
 		t.Fatalf("releases = %s", got)
 	}
-	want, _ := Marshal(&Digest{Releases: []Release{
+	want, _ := marshal(&Digest{Releases: []Release{
 		rel("v0.16.0", "v0.15.0", entry("New.", additive("itd-1"), breaking("itd-2"))),
 		rel("v0.15.0", "v0.14.2", entry("Fix.", fix("iss-5"))),
 	}})
@@ -330,7 +330,7 @@ func TestAppendAddsTheNewestRelease(t *testing.T) {
 
 // TestEmbeddedDigestParses: the digest the binary carries reads cleanly.
 func TestEmbeddedDigestParses(t *testing.T) {
-	d, err := Embedded()
+	d, err := embeddedDigest()
 	if err != nil {
 		t.Fatalf("the embedded digest does not parse: %v", err)
 	}

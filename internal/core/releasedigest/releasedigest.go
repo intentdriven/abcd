@@ -152,21 +152,21 @@ type Summary struct {
 	Partial  bool      `json:"partial"`
 }
 
-// NotesURL is where a release's notes are published: the release origin
+// notesURL is where a release's notes are published: the release origin
 // internal/core/update pins, so the address is derived and never fetched.
-func NotesURL(tag string) string { return core.ReleaseOrigin + "/releases/tag/" + tag }
+func notesURL(tag string) string { return core.ReleaseOrigin + "/releases/tag/" + tag }
 
-// ReleasesURL is where every release's notes are listed.
-func ReleasesURL() string { return core.ReleaseOrigin + "/releases" }
+// releasesURL is where every release's notes are listed.
+func releasesURL() string { return core.ReleaseOrigin + "/releases" }
 
 var loadEmbedded = sync.OnceValues(func() (*Digest, error) { return Parse(embedded) })
 
-// Embedded is the digest this binary carries.
-func Embedded() (*Digest, error) { return loadEmbedded() }
+// embeddedDigest is the digest this binary carries.
+func embeddedDigest() (*Digest, error) { return loadEmbedded() }
 
-// Range is Embedded().Range.
+// Range is the embedded digest's Range.
 func Range(from, to string) (Summary, error) {
-	d, err := Embedded()
+	d, err := embeddedDigest()
 	if err != nil {
 		return Summary{}, err
 	}
@@ -272,9 +272,9 @@ func cleanEntries(tag string, in []Entry) ([]Entry, error) {
 	return out, nil
 }
 
-// Marshal writes the digest in its one canonical form: two-space indented,
+// marshal writes the digest in its one canonical form: two-space indented,
 // HTML characters unescaped, one trailing newline.
-func Marshal(d *Digest) ([]byte, error) {
+func marshal(d *Digest) ([]byte, error) {
 	releases := d.Releases
 	if releases == nil {
 		releases = []Release{}
@@ -314,7 +314,7 @@ func Append(existing []byte, rel Release) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	out, err := Marshal(d)
+	out, err := marshal(d)
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +348,7 @@ func (d *Digest) Range(from, to string) (Summary, error) {
 	for cur := to; ; {
 		i, ok := d.byTag[cur]
 		if !ok {
-			s.Gap = &Gap{After: from, Through: cur, NotesURL: NotesURL(cur), ReleasesURL: ReleasesURL()}
+			s.Gap = &Gap{After: from, Through: cur, NotesURL: notesURL(cur), ReleasesURL: releasesURL()}
 			s.Partial = true
 			break
 		}

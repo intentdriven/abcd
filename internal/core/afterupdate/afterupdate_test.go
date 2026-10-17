@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
 	"github.com/intentdriven/abcd/internal/core/releasedigest"
@@ -176,7 +177,7 @@ func TestMomentNamesWhatItCannotDescribe(t *testing.T) {
 		t.Fatal(err)
 	}
 	gap := "abcd cannot describe the abcd releases after v0.13.0 through v0.14.1; its notes are at " +
-		releasedigest.NotesURL("v0.14.1") + " and every release's at " + releasedigest.ReleasesURL() + ", so this summary is partial."
+		core.ReleaseOrigin + "/releases/tag/v0.14.1" + " and every release's at " + core.ReleaseOrigin + "/releases" + ", so this summary is partial."
 	if !m.Partial || len(m.Lines) != 5 || m.Lines[3] != gap {
 		t.Fatalf("partial=%v lines:\n%s", m.Partial, strings.Join(m.Lines, "\n"))
 	}
