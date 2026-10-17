@@ -206,11 +206,20 @@ func TestMomentNamesWhatItCannotDescribe(t *testing.T) {
 // TestNewsOncePerComputerOfferOncePerRepository: once the news is marked
 // seen, the next session shows only the offer; once the offer is answered,
 // nothing; a second repository on the same computer still gets its offer
-// but not the news; the next release brings both again.
+// but not the news; the next release brings both again. The world records a
+// previous release, as every real install does, so news-seen must win over it
+// or the news would show in every session.
 func TestNewsOncePerComputerOfferOncePerRepository(t *testing.T) {
 	w := newWorld(t)
+	w.previous = "v0.15.0"
+	if p, err := Pending(w.repo, w.det()); err != nil || p != (PendingState{News: true, Offer: true}) {
+		t.Fatalf("before the news was seen: %+v, %v", p, err)
+	}
 	if err := MarkSeen(); err != nil {
 		t.Fatal(err)
+	}
+	if p, err := Pending(w.repo, w.det()); err != nil || p != (PendingState{Offer: true}) {
+		t.Fatalf("after the news was seen: %+v, %v", p, err)
 	}
 	m, err := Moment(w.repo)
 	if err != nil || !slices.Equal(m.Lines, []string{aliceOffer}) {
