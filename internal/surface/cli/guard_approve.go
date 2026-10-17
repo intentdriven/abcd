@@ -57,8 +57,9 @@ func newGuardApproveCommand() *cobra.Command {
 			"A shell command is approved only when the guard reads it whole and clears\n" +
 			"it: no registry entry and no reading signal, a warn included; no note about\n" +
 			"the check, such as a script that does not exist; and every program named by\n" +
-			"the line rather than by a variable, a substitution or a glob. Beyond the\n" +
-			"registry, it refuses:\n\n" +
+			"the line rather than by a variable, a substitution or a glob ([, [[ and test\n" +
+			"are the test commands they name, not globs). Beyond the registry, it\n" +
+			"refuses:\n\n" +
 			"  - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,\n" +
 			"    osascript, lua or Rscript -e, deno eval and PowerShell -Command; a flag\n" +
 			"    after the script's name, or after python's -m module, is the script's;\n" +
@@ -79,7 +80,8 @@ func newGuardApproveCommand() *cobra.Command {
 			"    part of the line writes or removes a file and no wildcard stands in a\n" +
 			"    directory part of the glob, nor does it end in a /; a command where an\n" +
 			"    unquoted ( stands in a word (x(:A), x(.)) is refused whole, since zsh\n" +
-			"    reads it as glob qualifiers that can change the path;\n" +
+			"    reads it as glob qualifiers that can change the path, but for the (( of\n" +
+			"    an arithmetic for-loop and the ( before a case pattern, which bash needs;\n" +
 			"  - such a write, or a removal, reaching a protected path, with its directories\n" +
 			"    resolved through symlinks and case folded where the filesystem folds it:\n" +
 			"    the git common directory and its hooks, each checkout's .git, the home\n" +
@@ -102,17 +104,17 @@ func newGuardApproveCommand() *cobra.Command {
 			"    deletes from home or above; an rsync --delete into such a directory;\n" +
 			"  - a call asking to run outside the host's sandbox.\n\n" +
 			"An approved call runs with the command judged and its description, and\n" +
-			"nothing else it carried, from the working tree it was judged for: the\n" +
-			"command comes back as cd -- '<dir>' && { <command> }, the command on lines\n" +
-			"of its own inside the braces, since the host keeps the shell's directory\n" +
-			"from one call to the next; when the directory cannot be entered, no part of\n" +
-			"the command runs. That text is read again with the guard's own parse, and a\n" +
-			"command that would close the braces early or leave them unparsable (a } or\n" +
-			"a ) with nothing open, a fi, done or esac with nothing open, a } after a\n" +
-			"command's words, or a backslash at its end) is refused, since part of it\n" +
-			"could run outside the working tree. A { or a keyword counts only where the\n" +
-			"line leaves it unquoted: a quoted one is a command's name to the shell, so\n" +
-			"\"{\" on a line, then }, then a command, is refused for the same reason.\n" +
+			"nothing else it carried, from the working tree it was judged for and under\n" +
+			"bash: the command comes back as\n" +
+			"cd -- '<dir>' && exec /bin/bash --noprofile --norc -c '<command>', since the\n" +
+			"host keeps the shell's directory from one call to the next and runs the text\n" +
+			"in the person's login shell, which may be zsh, while the guard reads bash's\n" +
+			"grammar. The login shell only changes directory and starts bash, and bash\n" +
+			"runs the command and gives no zsh-only construct its zsh meaning (a glob\n" +
+			"qualifier is a syntax error to it); when the directory cannot be entered, no\n" +
+			"part of the command runs. That text is read again with the guard's own parse\n" +
+			"and approved only when it is exactly that change of directory and that one\n" +
+			"bash call, with the whole command as its last word.\n" +
 			"Everything else is refused with the guard's reason\n" +
 			"and what to run instead, which the harness hands the agent, so the agent can\n" +
 			"rewrite the command. A prompt for any tool but the shell is refused, since\n" +

@@ -1434,8 +1434,9 @@ committed or not, refuses every command.
 A shell command is approved only when the guard reads it whole and clears
 it: no registry entry and no reading signal, a warn included; no note about
 the check, such as a script that does not exist; and every program named by
-the line rather than by a variable, a substitution or a glob. Beyond the
-registry, it refuses:
+the line rather than by a variable, a substitution or a glob ([, [[ and test
+are the test commands they name, not globs). Beyond the registry, it
+refuses:
 
   - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,
     osascript, lua or Rscript -e, deno eval and PowerShell -Command; a flag
@@ -1457,7 +1458,8 @@ registry, it refuses:
     part of the line writes or removes a file and no wildcard stands in a
     directory part of the glob, nor does it end in a /; a command where an
     unquoted ( stands in a word (x(:A), x(.)) is refused whole, since zsh
-    reads it as glob qualifiers that can change the path;
+    reads it as glob qualifiers that can change the path, but for the (( of
+    an arithmetic for-loop and the ( before a case pattern, which bash needs;
   - such a write, or a removal, reaching a protected path, with its directories
     resolved through symlinks and case folded where the filesystem folds it:
     the git common directory and its hooks, each checkout's .git, the home
@@ -1481,17 +1483,17 @@ registry, it refuses:
   - a call asking to run outside the host's sandbox.
 
 An approved call runs with the command judged and its description, and
-nothing else it carried, from the working tree it was judged for: the
-command comes back as cd -- '<dir>' && { <command> }, the command on lines
-of its own inside the braces, since the host keeps the shell's directory
-from one call to the next; when the directory cannot be entered, no part of
-the command runs. That text is read again with the guard's own parse, and a
-command that would close the braces early or leave them unparsable (a } or
-a ) with nothing open, a fi, done or esac with nothing open, a } after a
-command's words, or a backslash at its end) is refused, since part of it
-could run outside the working tree. A { or a keyword counts only where the
-line leaves it unquoted: a quoted one is a command's name to the shell, so
-"{" on a line, then }, then a command, is refused for the same reason.
+nothing else it carried, from the working tree it was judged for and under
+bash: the command comes back as
+cd -- '<dir>' && exec /bin/bash --noprofile --norc -c '<command>', since the
+host keeps the shell's directory from one call to the next and runs the text
+in the person's login shell, which may be zsh, while the guard reads bash's
+grammar. The login shell only changes directory and starts bash, and bash
+runs the command and gives no zsh-only construct its zsh meaning (a glob
+qualifier is a syntax error to it); when the directory cannot be entered, no
+part of the command runs. That text is read again with the guard's own parse
+and approved only when it is exactly that change of directory and that one
+bash call, with the whole command as its last word.
 Everything else is refused with the guard's reason
 and what to run instead, which the harness hands the agent, so the agent can
 rewrite the command. A prompt for any tool but the shell is refused, since

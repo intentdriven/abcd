@@ -189,7 +189,9 @@ A shell command is approved only when the guard reads it whole and clears it:
   exist (`check-note`);
 - the repository's registry is loaded, switched on and in force as above;
 - every program the line runs is named by the line, not by a variable, a
-  substitution or a glob (`program-name-unread`);
+  substitution or a glob (`program-name-unread`); `[`, `[[` and `test` are the
+  test commands they name, not globs, so `[ -f x ] && rm x` and
+  `if [ -f a ]; then …; fi` are judged by their words;
 - no code reaches an interpreter that the guard does not read
   (`inline-code-unread`): inline code for `python -c`, `node -e` or `-p`,
   `perl -e`, `ruby -e`, `php -r`, `osascript`, `lua` or `Rscript -e`,
@@ -237,9 +239,14 @@ A shell command is approved only when the guard reads it whole and clears it:
   `ls x(/)`): zsh reads it as glob qualifiers or modifiers, which can change
   the path the word names (`build/l(:A)` is where the symlink `build/l`
   leads), and the words after it are not read as the command's own. bash
-  refuses such a line. A quoted or escaped `(` is text, so `rm -f 'a(b)'`
-  stays approved, and so does a function definition's `()` (`f() { … }`). A relative name after a `cd` the line spells out
-  and joins with `&&` is read in that directory;
+  refuses such a line, and every approved command runs under bash (below), so
+  this refusal is a second layer. A quoted or escaped `(` is text, so
+  `rm -f 'a(b)'` stays approved, and so do a function definition's `()`
+  (`f() { … }`), the `((` of an arithmetic for-loop
+  (`for ((i=0;i<3;i++)); do …; done`) and the `(` before a case pattern
+  (`case a in (a) …;; esac`), which bash needs and which name no path. A
+  relative name after a `cd` the line spells out and joins with `&&` is read
+  in that directory;
 - no write or removal reaches a protected path (`protected-path`), judged with
   its existing directories resolved through symlinks and its case folded where
   the filesystem folds it: the git common directory (its hooks and config
@@ -284,26 +291,29 @@ A shell command is approved only when the guard reads it whole and clears it:
   (`dangerouslyDisableSandbox`, refused as `sandbox-off`).
 
 An approved call runs with the command judged and its description, and nothing
-else it carried, from the working tree it was judged for: the approval hands the
-command back as `cd -- '<dir>' && {`, a newline, the command, a newline and
-`}`, because the host keeps the shell's directory from one call to the next, and
-the approver judges every command as run from `--dir`. When the directory cannot
-be entered no part of the command runs, a part after `||` or `;` included, and a
-command that ends in a here-document or a comment runs unchanged inside the
-braces. The text handed back is read again with the guard's own parse, and the
-call is approved only when that text is exactly the change of directory joined
-by `&&` to one group holding the whole command, with nothing after it. A
-command that would close the group before its end, or leave the text
-unparsable as one group, is refused (`tree-group-broken`): a `}` or `)` with
-nothing open for it to close, a `fi`, `done` or `esac` with nothing open, a `}`
-after a command's words, which zsh reads as a close, or a backslash at the very
-end, which joins the group's `}` to the command's last line. A `{` or a keyword
-counts as opening or closing only where the line leaves it wholly unquoted: a
-quoted one (`"{"`, `'{'`, `\{`, `{""`) is a command's name to the shell, so a
-line of one, then a `}`, then a command, is refused, since under bash and sh
-that `}` closes the group and the command after it runs outside it. A change of directory inside the command still holds for the
-rest of its line, and a relative name after a `cd` the line spells out and
-joins with `&&` is read in that directory. Anything else is refused with the guard's reason and what to
+else it carried, from the working tree it was judged for and under bash: the
+approval hands the command back as
+`cd -- '<dir>' && exec /bin/bash --noprofile --norc -c '<command>'`, the
+directory and the command each quoted as one literal word. The host keeps the
+shell's directory from one call to the next, and the approver judges every
+command as run from `--dir`; and the host runs the text in the person's login
+shell, which may be zsh, while the guard reads every command in bash's grammar.
+So the login shell only changes directory and, when that succeeds, starts bash
+with its profile and rc files switched off, and bash runs the command: what the
+guard judged is what runs. bash gives no zsh-only construct its zsh meaning:
+glob qualifiers, `(:A)` modifiers and `{ … } always { … }` are syntax errors to
+it, and it runs nothing of a line holding one. When the directory cannot be entered no
+part of the command runs, a part after `||` or `;` included; a command that
+ends in a here-document or a comment, or spans several lines, runs unchanged;
+and its exit status is the call's. The text handed back is read again with the
+guard's own parse, and the call is approved only when that text is exactly the
+change of directory joined by `&&` to that one bash call, with the whole command
+as its last word and nothing else (`tree-group-broken` otherwise). Nothing in
+the command can end that word early, so a `}` or a `fi` with nothing open is
+bash's syntax error inside the working tree, not a refusal. A change of
+directory inside the command still holds for the rest of it, and a relative
+name after a `cd` the line spells out and joins with `&&` is read in that
+directory. Anything else is refused with the guard's reason and what to
 run instead, which the harness hands the agent so it can rewrite the command. A
 prompt for any tool but the shell is refused (`prompt-not-shell`), since nobody
 is there to approve it, and so is a shell prompt whose input carries no

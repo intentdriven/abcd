@@ -264,7 +264,8 @@ worktree, with the same brief and receipt path; the claude runner runs in print
 mode with `--bare`, so the repository's hooks, plugins and configured servers do
 not run, and, when the role's contract grants the shell, with the guard
 answering its permission prompts (`abcd guard approve`, see `commands/guard.md`):
-a shell command the guard reads whole and clears runs, and anything else is
+a shell command the guard reads whole and clears runs, from the working tree
+and under bash, and anything else is
 refused with the guard's reason, which the agent is handed. opencode runs with `--pure` and its project configuration, its
 `CLAUDE.md` reading and its external skills switched off, so the repository's
 instruction files, settings, agents, skills and plugins do not reach it. A route

@@ -482,8 +482,9 @@ permission prompt tool, served by the guard's approve sub-verb as the one MCP se
 starts (`--mcp-config` inline, `--strict-mcp-config`), under the default
 permission mode, and the shell is no longer granted without a prompt, so every
 shell command the harness would ask a person about is put to the guard, which
-approves a command it reads whole and clears and refuses everything else, and
-every other tool's prompt, with its reason
+approves a command it reads whole and clears, which then runs from the working
+tree under bash, and refuses everything else, and every other tool's prompt,
+with its reason
 ([`17-guard.md`](17-guard.md#answering-a-headless-agents-prompts)). It is
 set per launch on the command line: the person's host settings are not
 touched, a session the person drives is unchanged, and it adds no sandbox;

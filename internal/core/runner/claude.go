@@ -17,7 +17,8 @@ package runner
 // mode, where a prompt reaches that tool rather than being refused. The shell
 // is then no longer granted without a prompt, so every shell command the
 // harness would ask about is put to the guard, which approves a command it
-// reads whole and clears and refuses everything else with its reason. Bare
+// reads whole and clears, handing it back to run from the working tree under
+// bash, and refuses everything else with its reason. Bare
 // mode skips every hook, those a --settings file declares included, so a
 // hook could not carry this; an MCP server --mcp-config names is the one
 // thing bare mode starts. Nothing is written to the person's host settings,

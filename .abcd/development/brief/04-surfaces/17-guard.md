@@ -341,7 +341,8 @@ base is not started.
 The bar is higher than the hook's, because nobody answers after it. Only a
 clean allow approves: no entry and no signal, a warn included; no note about the
 check; the repository's registry in force and switched on; every program named
-by the line, not a variable, a substitution or a glob; and none of the shapes
+by the line, not a variable, a substitution or a glob (`[`, `[[` and `test` are
+the test commands they name, not globs); and none of the shapes
 the approver refuses itself. Those read the guard's own parse of the line, not
 its text:
 
@@ -370,9 +371,12 @@ its text:
   redirection's target), whatever the command and whatever follows the `(`, is
   refused whole, since zsh reads it as glob qualifiers or modifiers that can
   change the path (`build/l(:A)` is where the symlink leads) and the words
-  after it are not read as the command's own; bash refuses such a line. A
-  quoted or escaped `(` is text, and a function definition's `()` is not such
-  a word;
+  after it are not read as the command's own; bash refuses such a line, and
+  every approved command runs under bash, so this refusal is a second layer. A
+  quoted or escaped `(` is text, and a function definition's `()`, the `((` of
+  an arithmetic for-loop (`for ((i=0;i<3;i++))`) and the `(` before a case
+  pattern (`case a in (a) …`), which bash needs and which name no path, are not
+  such a word;
 - a write or removal reaching a protected path, compared after the target's
   existing directories are resolved through symlinks and its case folded where
   the filesystem folds it: the git common directory with its hooks and config,
@@ -408,24 +412,24 @@ safety checks gave in the refuse-every-prompt mode: the prompt tool is told the
 tool and its input, not why the harness asked, so the approver refuses those
 shapes itself. An approved call runs with the command judged and its
 description, re-encoded, and nothing else the call carried, from the working
-tree it was judged for: the harness keeps the shell's directory from one call to
-the next, so the approval hands the command back as `cd -- '<dir>' && {`, a
-newline, the command, a newline and `}`, the directory quoted as one literal
-word. The command sits on lines of its own inside the group, so when the
-directory cannot be entered no part of it runs, a part after `||` or `;`
-included, and a here-document or a comment that ends it closes before the group
-does. The text handed back is read again with the guard's own parse, and the
-call is approved only when its top level is exactly the change of directory
-joined by `&&` to one group holding the whole command, with nothing after it;
-a command that would close the group early or leave it unparsable (a `}` or
-`)` with nothing open, a `fi`, `done` or `esac` with nothing open, a `}` after
-a command's words, which zsh reads as a close, or a backslash at its very end)
-is refused, since part of it could otherwise run outside the change of
-directory. A `{` or a keyword counts as opening or closing only where the line
-leaves it wholly unquoted: a quoted one (`"{"`, `'{'`, `\{`, `{""`) is a
-command's name to the shell, so a line of one, then a `}`, then a command, is
-refused, since that `}` closes the group and the command after it runs outside
-it. A change of directory inside the line
+tree it was judged for and under bash (dcn-2610170805446355): the harness keeps
+the shell's directory from one call to the next, and runs the text in the
+person's login shell, which may be zsh, while the guard reads every command in
+bash's grammar. So the approval hands the command back as
+`cd -- '<dir>' && exec /bin/bash --noprofile --norc -c '<command>'`, the
+directory and the command each quoted as one literal word: the login shell only
+changes directory and, when that succeeds, starts bash with its profile and rc
+files switched off, and bash runs the command, so what the guard judged is what
+runs. bash gives no zsh-only construct its zsh meaning: glob qualifiers, `(:A)`
+modifiers and `{ … } always { … }` are syntax errors to it, and it runs nothing
+of a line holding one. When the directory cannot be entered no part of the
+command runs, a part after `||` or `;` included, and the command's exit status
+is the call's. The text handed back is read again with the guard's own parse,
+and the call is approved only when it is exactly the change of directory joined
+by `&&` to that one bash call, with the whole command as its last word and
+nothing else; nothing in the command can end that word early, so a `}` or a
+`fi` with nothing open is bash's syntax error inside the working tree, not a
+refusal. A change of directory inside the line
 still holds for the rest of it, and a relative name after a `cd` the line spells
 out and joins with `&&` is read in that directory. Everything else, and
 a prompt for any tool but the shell, is refused with the guard's reason and
