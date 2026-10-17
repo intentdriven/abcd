@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // peerCheckout is the ground the peer-listing surface tests stand on: a
@@ -379,7 +380,9 @@ func TestPeersNamesAWorktreeOutsideHomeByItsDirectoryName(t *testing.T) {
 // A worktree whose git file points at a gitdir outside HOME is not read, and
 // git's reason names that gitdir by its absolute path. `abcd peers` shows the
 // reason as the drain and the build do, the gitdir by its last element alone,
-// never by the absolute local path (iss-2609281329007423's class).
+// never by the absolute local path (iss-2609281329007423's class). The name
+// comes from the git file itself: under a git that names no path, as Linux's
+// does, the reason still says where the git file points.
 func TestPeersNamesABrokenGitdirOutsideHomeByItsName(t *testing.T) {
 	home, repo := peerCheckout(t)
 	broken := filepath.Join(home, "wt", "broken")
@@ -389,6 +392,7 @@ func TestPeersNamesABrokenGitdirOutsideHomeByItsName(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(broken, ".git"), []byte("gitdir: "+nowhere+"\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	gittest.ShimGitNamingNoGitfileTarget(t)
 	absForms := []string{outside}
 	if r, err := filepath.EvalSymlinks(outside); err == nil && r != outside {
 		absForms = append(absForms, r)

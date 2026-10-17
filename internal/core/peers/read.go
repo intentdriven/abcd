@@ -195,6 +195,12 @@ func readWorktree(root, common string, wt worktree, merged map[string]bool, defa
 	theirs, err := commonDir(wt.path)
 	if err != nil {
 		p.NotRead = NotReadGitRefused + firstLine(err.Error())
+		// Where the git file points is read from the file, not left to git's
+		// refusal: Linux's git names a broken git file's target "(null)", so
+		// a reason relying on git's stderr names it on macOS alone.
+		if target, ok := gitutil.GitfileTarget(wt.path); ok {
+			p.NotRead += "; its git file points at " + target
+		}
 		p.unjudged = true
 		return p, nil, true
 	}
