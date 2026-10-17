@@ -2088,6 +2088,11 @@ or 60 minutes pass, and a hold whose waiter has died, or whose pid now
 belongs to another process (a different start time), is reclaimed by the next
 waiter. A SIGINT or SIGTERM to the waiter is passed on to the command, and the
 waiter waits for it to exit, exits with its code and releases the hold. A
+command that is a race run (go, then `test` with -race) is gated as one for both
+gates: above one preflight at a time it stays shut while another race run is
+live, judges and takes the race gate's hold as well as its own, and from the
+moment it opens every race gate and every other such command counts it as a
+race run, so a second one waits for the first. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 **Flags:**

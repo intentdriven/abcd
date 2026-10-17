@@ -290,6 +290,46 @@ func RaceAhead(snap Snapshot, self Self, args map[int][]string) []int {
 	return out
 }
 
+// IsRaceCommand reports whether cmd, a command a waiter gates (the words after
+// `--`, its program first), is a race run: its program is go and its go
+// command is `test` with -race, read as a race run's arguments are
+// (isRaceTest). A shell or a make that runs one is not read into.
+func IsRaceCommand(cmd []string) bool {
+	return len(cmd) > 0 && path.Base(cmd[0]) == GoProgram && isRaceTest(cmd[1:])
+}
+
+// gatedCommand is the command a waiter's args gate: the words after the first
+// `--`, or none.
+func gatedCommand(args []string) []string {
+	for i, a := range args {
+		if a == "--" {
+			return args[i+1:]
+		}
+	}
+	return nil
+}
+
+// RaceCommandWaiters returns, in pid order, the first gate's waiters outside
+// self's process and its ancestors that are running a command that is a race
+// run (`--wait -- go test -race`, IsRaceCommand). Such a waiter is a race run
+// for both gates from the moment it opens: its mark shows it running before
+// the go test it starts is in the table, and once that go test is, RaceRuns
+// names it too. A queued one is not.
+func RaceCommandWaiters(snap Snapshot, self Self, args map[int][]string) []int {
+	if !snap.HasProcs {
+		return nil
+	}
+	t := readGate(snap, self, args)
+	running, _ := t.waiters(args, false)
+	var out []int
+	for _, pid := range running {
+		if IsRaceCommand(gatedCommand(args[pid])) {
+			out = append(out, pid)
+		}
+	}
+	return out
+}
+
 // gateTable is one snapshot read for a gate: the processes by pid, the waiters
 // running a command, self's process and ancestors, and the gate candidates.
 type gateTable struct {

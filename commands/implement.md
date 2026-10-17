@@ -795,8 +795,15 @@ runs the command once the gate opens, exits with the command's exit code
 (128+N, as a shell reports it, when signal N killed the command, so a SIGTERM
 reads 143, never a failed gate's 1), and holds the gate until the command has
 started its own race run, the command exits, or 60 minutes pass; to every other
-account its waiter is running its command, and shuts their gates, until the
-command exits. A hold whose waiter has died, or whose pid now belongs to
+account its waiter is running its command until the command exits, which with
+one preflight at a time shuts their first gates and above one takes a slot. A
+command that is a race run (`go`, then `test` with `-race`) is gated as one
+for both gates: above one preflight at a time, where a race run does not shut
+the first gate by itself, it stays shut while another race run is live, judges
+and takes the race gate's hold as well as the first gate's, and from the moment
+it opens every race gate and every other such command counts it as a race run.
+So a second lone race run gated this way waits for the first, as a second
+race stage does. A hold whose waiter has died, or whose pid now belongs to
 another process, is reclaimed by the next waiter. A SIGINT or SIGTERM to the
 waiter is passed on to the command, and the waiter waits for it to exit before
 it exits and releases the hold, so the command is never left running without

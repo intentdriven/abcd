@@ -182,9 +182,28 @@ const (
 	WaitRaceHoldFileName = "load-wait-race.json"
 )
 
-// holdGates are the gates whose hold a wait judges and takes: its own.
+// holdGates are the gates whose hold a wait judges and takes: its own, and
+// for a race command's waiter above one slot both, since its command is a
+// race run (raceCommandAtBothGates).
 func holdGates(req WaitRequest, res *WaitResult) []string {
+	if raceCommandAtBothGates(req, res) {
+		return []string{GateTests, GateRace}
+	}
 	return []string{res.Gate}
+}
+
+// raceCommandAtBothGates reports whether the wait is the command form of a
+// race run at the first gate (`--wait -- go test -race`) with more than one
+// slot, where a race run does not shut the first gate by itself. Its command
+// is a race run, so it is judged as one for both gates: a live race run, or
+// another race command's waiter running its command, shuts it, and it judges
+// and takes the race gate's hold as well as its own; the race gate counts it
+// as a race run from the moment it opens (machineload.RaceCommandWaiters).
+// With one slot the first gate is already shut by every race run and every
+// waiter running its command, and the race gate opens at once, so nothing
+// changes there.
+func raceCommandAtBothGates(req WaitRequest, res *WaitResult) bool {
+	return req.RaceCommand && req.Command && !req.Race && res.Slots > 1
 }
 
 // holdFileName is gate's hold record.
@@ -239,6 +258,9 @@ type WaitRequest struct {
 	// another go test -race run, a race waiter ahead of it, the load and the
 	// race gate's own hold.
 	Race bool
+	// RaceCommand says the command form's command is a race run
+	// (machineload.IsRaceCommand).
+	RaceCommand bool
 	// OnWait is called once, at the first look that finds the gate shut.
 	OnWait func(WaitResult)
 	// OnSettle is called once, at the first look that finds the machine free,
@@ -562,7 +584,8 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		}
 	}
 	procsOK := snap.HasProcs
-	var runs []int
+	raceCmd := raceCommandAtBothGates(req, res)
+	var runs, racing []int
 	var ahead machineload.Ahead
 	var raceAhead []int
 	if procsOK {
@@ -572,6 +595,13 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 			res.Reason = termsafe.Sanitize(err.Error())
 		} else {
 			runs = machineload.RaceRuns(snap, req.Self, args)
+			racing = runs
+			if req.Race || raceCmd {
+				// A race command's waiter running its command is a race run
+				// from its mark onwards, before its go test shows.
+				racing = append(append([]int(nil), runs...), machineload.RaceCommandWaiters(snap, req.Self, args)...)
+				slices.Sort(racing)
+			}
 			ahead = machineload.QueueAhead(snap, req.Self, args)
 			raceAhead = machineload.RaceAhead(snap, req.Self, args)
 		}
@@ -582,12 +612,13 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		}
 	} else {
 		// A live race run shuts the race gate always, and the first gate
-		// only while one preflight at a time may be in its test stages: with
-		// more, the race gate is what keeps race stages one at a time, and the
-		// load limit what keeps the machine from saturating.
-		if len(runs) > 0 && (req.Race || res.Slots <= 1) {
+		// only while one preflight at a time may be in its test stages, or
+		// for a waiter whose own command is a race run: with more, the race
+		// gate is what keeps race stages apart, and the load limit what keeps
+		// the machine from saturating.
+		if len(racing) > 0 && (req.Race || res.Slots <= 1 || raceCmd) {
 			shut = append(shut, WaitOnRaceRun)
-			res.RaceRuns = runs
+			res.RaceRuns = racing
 		}
 		if req.Race {
 			if len(raceAhead) > 0 {

@@ -390,6 +390,8 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		"a first gate's hold never shuts the race gate",
 		// A machine config.json that cannot be read stops nothing.
 		"a `config.json` that cannot be read for it is read past",
+		// A lone race run's waiter is a race run for both gates.
+		"counts as a race run to every race gate and every other such run",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)

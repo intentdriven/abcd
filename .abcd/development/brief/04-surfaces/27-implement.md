@@ -333,7 +333,13 @@ where one runs beneath the other), a waiter queued ahead still shuts it, a live
 race run does not shut it by itself and the load limit still does, and an
 opener still stands back from a lower pid that opened beside it, whose mark
 then counts it as a unit in its test stages; an opener stands back only from a
-waiter at its own gate; each
+waiter at its own gate; a lone race run gated in the command form, its
+command `go test -race`, is gated as a race run for both gates: it stays
+shut while another race run is live, judges and takes the race gate's hold as
+well as the first gate's, and counts as a race run to every race gate and every
+other such command from the moment it opens (`machineload.RaceCommandWaiters`),
+so a second one waits for the first rather than open beside it at its full
+`-p`; each
 stage's `go test -p` is at most the cores divided by the setting, since the
 one-minute load a second stage starts under lags the first stage's demand.
 Deriving the count from the machine's resources is a later step

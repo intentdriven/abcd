@@ -157,6 +157,11 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"belongs to another process (a different start time), is reclaimed by the next\n" +
 			"waiter. A SIGINT or SIGTERM to the waiter is passed on to the command, and the\n" +
 			"waiter waits for it to exit, exits with its code and releases the hold. A\n" +
+			"command that is a race run (go, then `test` with -race) is gated as one for both\n" +
+			"gates: above one preflight at a time it stays shut while another race run is\n" +
+			"live, judges and takes the race gate's hold as well as its own, and from the\n" +
+			"moment it opens every race gate and every other such command counts it as a\n" +
+			"race run, so a second one waits for the first. A\n" +
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
@@ -219,7 +224,7 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	req := implement.WaitRequest{
 		Read: loadReader, ReadArgs: loadArgsReader, Self: loadSelf(),
 		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0, Race: race, Jitter: loadJitter,
-		Mark: loadMark,
+		Mark: loadMark, RaceCommand: machineload.IsRaceCommand(command),
 	}
 	if !asJSON {
 		req.OnWait = func(r implement.WaitResult) { fmt.Fprintf(out, "waiting for capacity: %s\n", waitConditions(r)) }

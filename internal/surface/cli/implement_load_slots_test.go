@@ -196,3 +196,21 @@ func TestImplementLoadWaitNamesAnUnreadableMachineConfig(t *testing.T) {
 		t.Errorf("want the note once and the gate open:\nstdout %s\nstderr %s", out, errOut)
 	}
 }
+
+// TestImplementLoadWaitGatesARaceCommandAsARaceRun: with two slots a live race
+// run does not shut the first gate by itself, but `--wait -- go test -race`
+// gates a race run, so it stays shut while one is live and never starts its
+// command; the plain form opens.
+func TestImplementLoadWaitGatesARaceCommandAsARaceRun(t *testing.T) {
+	race := machineload.Proc{PID: 70000, PPID: 1, PGID: 70000, UID: 502, Age: 3 * time.Minute, Name: "go"}
+	waitFixture(t, machine(3, 3, 3, race))
+	t.Setenv(implement.PreflightSlotsEnv, "2")
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "1m", "--", "go", "test", "-race", "./no/such/package")
+	if code != 1 || !strings.Contains(out, "a go test -race run is live (pid 70000)") {
+		t.Fatalf("race command: exit %d, want 1 still on the race run:\n%s%s", code, out, errOut)
+	}
+	code, out, errOut = implementCLI(t, "implement", "load", "--wait", "--timeout", "1m")
+	if code != 0 || !strings.Contains(out, "load gate open") {
+		t.Fatalf("plain form: exit %d, want 0 and open:\n%s%s", code, out, errOut)
+	}
+}
