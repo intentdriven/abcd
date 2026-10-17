@@ -11,6 +11,7 @@ production_mode: hand-written
 found_at: ".abcd/development/intents/planned/itd-2609170822093401-the-oracle-choice-is-one-repo-wide-value.md"
 refines: [itd-2609170822093401]
 remedy: "Make the review set a setting, in vendor-neutral model classes: by default one reviewer model; optionally two in parallel on the same frozen copy and brief, with a third model as judge or decider that is consulted only when their verdicts disagree; each vendor's models map onto the classes in configuration, never in the rule; and record every review's findings per reviewer (which found what, where they overlap and where they differ) so the default is chosen from measured catch rates, not assumed."
+related_intents: [itd-2610161733316518]
 ---
 Every review should run as a pair of models from two classes, with the top class only an occasional advisor. The classes are vendor-neutral: top, middle, the class below it, and smallest (the scale itd-2610100704270254 uses). For one vendor today, Anthropic, they are Fable, Opus, Sonnet and Haiku. The rule is stated in classes so it survives model churn and holds for any vendor whose models map onto them.
 

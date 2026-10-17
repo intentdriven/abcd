@@ -222,6 +222,10 @@ Ruled by the product thinker on 2026-09-22, after the research pass on model rou
   added without a row, or a row for an agent since removed, must be a lint
   finding on the payload rather than a run-time surprise.
 
+## Typed Links
+
+- **built on by `itd-2610161733316518`** (one feature built across a model matrix): Routes each copy through the per-invocation override, extended to name a runner and its model.
+
 ## Audit Notes
 
 - 2026-10-03 — Acceptance criterion 2 says the proposal in counts rather than one row per agent. The product thinker ruled on 2026-10-03, answering "setup offers a plan giving each of abcd's 16 helpers a model level; with all listed it cannot fit" (options: counts only, split into parts, let it scroll, decide later), verbatim: "Show counts only". The written table is unchanged; only the question's text is (iss-2610031236155833).
