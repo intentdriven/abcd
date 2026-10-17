@@ -73,8 +73,9 @@ The payload carries:
 - `local_tier_missing`: true in a checkout without its local tier
   (`.abcd/.work.local/`), which keeps nothing a fetch brings and so reads no
   announcement;
-- `reservations`, `live_by_holder`, `release_holds`, `view`, `fetch_error`
-  and `derived_unchecked`, the same fields `/abcd:peers` lists;
+- `reservations`, `live_by_holder`, `hand_backs_by_holder`, `release_holds`,
+  `view`, `fetch_error` and `derived_unchecked`, the same fields
+  `/abcd:peers` lists;
 - `grants`, the line that an announcement informs and grants nothing.
 
 Tell the user, in plain words, who is doing what, which release is being cut,

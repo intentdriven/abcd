@@ -250,3 +250,39 @@ func TestRoleOutsideTheRosterIsADiagnostic(t *testing.T) {
 		t.Fatalf("implementer route = %+v", r)
 	}
 }
+
+// TestTheDrainJudgeIsARoleARunnerMayTake: the drain's judge is a loop role
+// outside the agent roster, as the implementer is, so the person's own route
+// to a runner for it stands with no diagnostic (spc-2610161044461448 step 14).
+func TestTheDrainJudgeIsARoleARunnerMayTake(t *testing.T) {
+	c := mustLoad(t, `{"roles":{"drain-judge":{"runner":"claude"}},"runner":{"claude":{}}}`, "")
+	if r := c.RouteFor("drain-judge"); r.Runner != Claude || r.Layer != layered.Machine {
+		t.Fatalf("route = %+v, want the machine's claude", r)
+	}
+	if len(c.Diagnostics) != 0 {
+		t.Fatalf("the route is read with no diagnostic: %v", c.Diagnostics)
+	}
+}
+
+// TestTheDrainJudgeIsNeverRoutedToOpencode: the opencode runner runs under
+// the permissions its own configuration sets, not the tools a role is
+// granted, so it cannot be held to the judge's Read and Write; a route of
+// the drain's judge to it is skipped with a diagnostic saying so, and the
+// judge stays on the host. The implementer's route to opencode stands.
+func TestTheDrainJudgeIsNeverRoutedToOpencode(t *testing.T) {
+	c := mustLoad(t, `{"roles":{"drain-judge":{"runner":"opencode"},"implementer":{"runner":"opencode"}},"runner":{"opencode":{}}}`, "")
+	if r := c.RouteFor("drain-judge"); r.Runner != Host {
+		t.Fatalf("route = %+v, want the host", r)
+	}
+	if r := c.RouteFor("implementer"); r.Runner != OpenCode {
+		t.Fatalf("the implementer's route to opencode stands: %+v", r)
+	}
+	if len(c.Diagnostics) != 1 {
+		t.Fatalf("diagnostics = %q, want one", c.Diagnostics)
+	}
+	for _, want := range []string{"roles.drain-judge.runner", "opencode", "tools", "claude"} {
+		if !strings.Contains(c.Diagnostics[0], want) {
+			t.Errorf("diagnostic %q lacks %q", c.Diagnostics[0], want)
+		}
+	}
+}

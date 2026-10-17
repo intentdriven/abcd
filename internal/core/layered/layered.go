@@ -178,12 +178,27 @@ func RootsFor(cwd string) (Roots, []string) {
 	if err != nil {
 		home = ""
 	}
-	if tree := gitutil.HomeInsideWorkingTree(home); tree != "" {
-		notes = append(notes, fmt.Sprintf("abcd: HOME lies inside the git working tree at %s and is not this account's home, "+
-			"so %s is not read as this machine's layer and nothing is written there; run abcd with your own HOME", tree, abcdhome.Display()))
-		return Roots{Repo: res.Root, HomeRefused: true}, notes
+	r, note := MachineRoots(home)
+	r.Repo = res.Root
+	if note != "" {
+		notes = append(notes, "abcd: "+note)
 	}
-	return Roots{Repo: res.Root, Home: home}, notes
+	return r, notes
+}
+
+// MachineRoots is the Roots of a reader of the machine layer alone (Repo is
+// ""), the one way such a reader resolves the home it was given: judged by
+// the rule RootsFor applies (gitutil.HomeInsideWorkingTree), so a home inside
+// a git working tree that is not the account's own is declined, HomeRefused
+// makes Load read the machine layer as absent, and note says why, for the
+// caller to put on stderr. A home outside every working tree, and "", are
+// passed through with no note.
+func MachineRoots(home string) (Roots, string) {
+	if tree := gitutil.HomeInsideWorkingTree(home); tree != "" {
+		return Roots{HomeRefused: true}, fmt.Sprintf("HOME lies inside the git working tree at %s and is not this account's home, "+
+			"so %s is not read as this machine's layer and nothing is written there; run abcd with your own HOME", tree, abcdhome.Display())
+	}
+	return Roots{Home: home}, ""
 }
 
 // userHomeDir is the package's view of os.UserHomeDir, held as a var for the

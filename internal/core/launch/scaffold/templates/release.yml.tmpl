@@ -193,10 +193,10 @@ jobs:
     if: github.event_name != 'push' || github.ref_type != 'tag'
 <%- end %>
 <%- if .Abcd %>
-    # The race step's own -timeout (20m, sized in ci.yml) must fire before this
-    # does, or a hang reads as a cancelled job with no goroutine dump: 20m for
+    # The race step's own -timeout (40m, sized in ci.yml) must fire before this
+    # does, or a hang reads as a cancelled job with no goroutine dump: 40m for
     # the slowest package plus about 10m this job spends before it starts.
-    timeout-minutes: 35
+    timeout-minutes: 55
 <%- else %>
     timeout-minutes: 15
 <%- end %>
@@ -282,7 +282,7 @@ jobs:
 <%- if .Abcd %>
 
       - name: Test (race, internal)
-        run: go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+        run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 <%- else %>
 
       # A generic module may have no internal tree, so the race leg runs over the

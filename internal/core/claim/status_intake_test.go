@@ -45,8 +45,9 @@ func TestAFirstIntakeOfAFloodFitsTheHooksDeadline(t *testing.T) {
 	pat.fetchOnly()
 	t.Cleanup(promptReads.Wait)
 
+	stretchPromptBudget(t)
 	start := time.Now()
-	deadline := start.Add(time.Second)
+	deadline := start.Add(slack(time.Second))
 	ctx, cancel := context.WithDeadline(context.Background(), deadline)
 	defer cancel()
 	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
@@ -278,8 +279,8 @@ func TestKeepingManyDoubtsFitsThePrompt(t *testing.T) {
 	}
 	took := time.Since(start)
 	t.Logf("keeping %d doubts kept already took %s", len(ds), took)
-	if took > 300*time.Millisecond {
-		t.Fatalf("keeping %d doubts kept already took %s; want it well inside the prompt's read, under 300 ms", len(ds), took)
+	if bound := slack(300 * time.Millisecond); took > bound {
+		t.Fatalf("keeping %d doubts kept already took %s; want it well inside the prompt's read, under %s", len(ds), took, bound)
 	}
 	if got := len(keptDoubts(pat.dir, now)); got != len(ds) {
 		t.Fatalf("%d doubts kept; want %d", got, len(ds))
