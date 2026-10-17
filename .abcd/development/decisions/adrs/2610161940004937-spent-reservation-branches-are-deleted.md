@@ -99,7 +99,9 @@ cannot classify.
 - **People's own pushes are unchanged.** The committed pre-push hook still
   refuses a deletion under the prefix. A person's `--apply` is refused by
   that hook and by origin.
-- **The sweep reads hand-backs locally for now.** Until the drain work lands,
-  the sweep classifies tombstones with its own reader. That reader fails
-  closed on any trailer it does not know. Once the work lands, the kind comes
-  from `internal/core/claim`.
+- **The sweep reads hand-backs through claim's reader.** Each commit's
+  message is read by `claim.ReadReservationMessage`, the reader the drain
+  reads a reservation branch with, so the sweep and the drain agree on what a
+  hand-back is. The sweep stays stricter on top of it: a message that reader
+  refuses, a hand-back kind outside `claim.HandBackKinds`, a trailer it does
+  not know or a tree that is not empty keeps the branch.

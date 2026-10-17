@@ -217,6 +217,7 @@ func handBackText(id string, claimed, released time.Time) string {
 
 func TestTheClassifierReadsEachKind(t *testing.T) {
 	const id = "iss-5"
+	const blob = "0123456789abcdef0123456789abcdef01234567"
 	rel := t0.Add(time.Hour)
 	for name, tc := range map[string]struct {
 		msg  string
@@ -226,7 +227,14 @@ func TestTheClassifierReadsEachKind(t *testing.T) {
 		"a reservation":                           {reservationText(id, t0), emptyTreeSHA1, KindReservation},
 		"a plain tombstone":                       {tombstoneText(id, t0, rel, ""), emptyTreeSHA1, KindPlainTombstone},
 		"a hand-back":                             {handBackText(id, t0, rel), emptyTreeSHA1, KindHandBack},
-		"a hand-back key in another case":         {tombstoneText(id, t0, rel, "abcd-handed-back: needs-decision\n"), emptyTreeSHA1, KindHandBack},
+		"a hand-back key in another case":         {tombstoneText(id, t0, rel, "abcd-handed-back: "+claim.HandBackStuck+"\nabcd-record: "+blob+"\n"), emptyTreeSHA1, KindHandBack},
+		"a hand-back kind outside the vocabulary": {tombstoneText(id, t0, rel, "Abcd-Handed-Back: needs-decision\nAbcd-Record: "+blob+"\n"), emptyTreeSHA1, KindUnknown},
+		"a hand-back without its record blob":     {tombstoneText(id, t0, rel, "Abcd-Handed-Back: "+claim.HandBackStuck+"\n"), emptyTreeSHA1, KindUnknown},
+		"a record blob without its kind":          {tombstoneText(id, t0, rel, "Abcd-Record: "+blob+"\n"), emptyTreeSHA1, KindUnknown},
+		"a holder that is no username":            {strings.Replace(tombstoneText(id, t0, rel, ""), "Abcd-Holder: octo", "Abcd-Holder: not a user", 1), emptyTreeSHA1, KindUnknown},
+		"a copy in another form":                  {strings.Replace(reservationText(id, t0), "Abcd-Copy: "+copyKey, "Abcd-Copy: laptop", 1), emptyTreeSHA1, KindUnknown},
+		"a footprint outside the repository":      {strings.Replace(reservationText(id, t0), "internal/x.go", "../x.go", 1), emptyTreeSHA1, KindUnknown},
+		"a message past the cap":                  {tombstoneText(id, t0, rel, "") + strings.Repeat("x", claim.MaxMessageBytes), emptyTreeSHA1, KindUnknown},
 		"an unknown kind of tombstone":            {tombstoneText(id, t0, rel, "Abcd-Released-Kind: handed-over\n"), emptyTreeSHA1, KindUnknown},
 		"an unknown trailer on a reservation":     {strings.Replace(reservationText(id, t0), "Assisted-by", "Abcd-Lane: 3\nAssisted-by", 1), emptyTreeSHA1, KindUnknown},
 		"a hand-back on a reservation":            {strings.Replace(reservationText(id, t0), "Assisted-by", "Abcd-Handed-Back: needs-decision\nAssisted-by", 1), emptyTreeSHA1, KindUnknown},
