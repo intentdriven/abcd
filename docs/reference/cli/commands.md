@@ -1268,7 +1268,11 @@ step that succeeds as the move hands the lane back keeps it. `abcd implement ste
 renews the reservation of the lane in progress at half its lease, waiting or not
 (a lane handed back is renewed by none), and the landing checks it before its push,
 so a lane whose reservation became another person's pushes nothing and is handed
-back as stuck. A lane
+back as stuck. A move that finds a lane parked at land reads it from its pull
+request, in one listing of your latest pull requests (gh pr list): a closed one
+hands the lane back as closed, releasing its reservation with a tombstone marking
+it closed; a conflicting one is no longer renewed and is named; an open one is
+renewed and named as waiting (parked in --json). A lane
 that finds a decision in its issue hands it back by kind, its work discarded: a
 user-visible change is promoted to an intent draft (`capture promote`, which
 stamps the issue's related_intents and nothing else); a trust or safety rule is

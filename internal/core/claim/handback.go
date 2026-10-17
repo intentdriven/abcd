@@ -27,8 +27,8 @@ import (
 // receipt or the drain's judgement hands an issue back as, a lane stopped
 // after its fix rounds, a lane stuck refusing at one stage, and a lane whose
 // pull request was closed unmerged. A drain writes stuck for a lane it hands
-// back after its bound (spc-2610161044461448 step 5); closed is reserved:
-// every reader reads it, and nothing writes it until step 8 lands.
+// back after its bound (spc-2610161044461448 step 5), and closed for a lane
+// parked at land whose pull request the forge lists closed (step 8).
 const (
 	HandBackUserVisible   = "user-visible"
 	HandBackTrustRule     = "trust-rule"

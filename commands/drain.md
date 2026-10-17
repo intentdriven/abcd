@@ -346,11 +346,22 @@ what it did in `next`:
   branch are removed and the lane is done, during a pause included, since the
   cleanup does no new work. The lane may be this drain's, an ended drain's, or
   one `abcd build <iss-N>` started. The default branch is fetched once, and
-  only while such a lane is parked; a lane whose head is not on it is left as
-  it is. A lane the landing will not finish (its branch moved past what
+  only while such a lane is parked. A lane the landing will not finish (its branch moved past what
   landed, a worktree with changes, its branch checked out in another
   checkout, which the drain names, or a pushed head git cannot read) is named
   in `next` and the move goes on.
+- **It reads parked lanes from their pull requests.** A move that finds a
+  lane parked at land lists your latest 100 pull requests once
+  (`gh pr list --state all --author @me`), and reads each parked lane whose
+  head is not on the default branch from its own: a pull request closed
+  without merging hands its lane back as `closed`, releasing its reservation
+  with a tombstone marking it `closed`, and the drain routes it home to a
+  person (`abcd implement step --run <run-id> --discard <lane-id>` removes the
+  lane's worktree and branch); a conflicting one is no longer renewed, and
+  `next` names it; an open one is renewed and named as waiting. One merged by
+  a squash or rebase, its head not on the default branch, is named and no
+  longer renewed. A pull request the listing does not show, or a listing that
+  fails, keeps its lane held as before, and says so.
 - **It pauses.** At the end of the drain's working window it writes
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
@@ -431,6 +442,9 @@ hand-backs; `passed` names an eligible issue this move did not take, with why;
 `dispositions` is the plan; `finished` lists the merged lanes this move took
 the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
+`parked` reads every other lane parked at land from its pull request
+(`issue`, `run_id`, `pr`, `state`: `waiting`, `conflicting`, `closed`,
+`merged` or `unread`, and a `note`);
 `waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
 again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the

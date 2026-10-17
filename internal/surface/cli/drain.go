@@ -129,7 +129,11 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"renews the reservation of the lane in progress at half its lease, waiting or not\n" +
 			"(a lane handed back is renewed by none), and the landing checks it before its push,\n" +
 			"so a lane whose reservation became another person's pushes nothing and is handed\n" +
-			"back as stuck. A lane\n" +
+			"back as stuck. A move that finds a lane parked at land reads it from its pull\n" +
+			"request, in one listing of your latest pull requests (gh pr list): a closed one\n" +
+			"hands the lane back as closed, releasing its reservation with a tombstone marking\n" +
+			"it closed; a conflicting one is no longer renewed and is named; an open one is\n" +
+			"renewed and named as waiting (parked in --json). A lane\n" +
 			"that finds a decision in its issue hands it back by kind, its work discarded: a\n" +
 			"user-visible change is promoted to an intent draft (`capture promote`, which\n" +
 			"stamps the issue's related_intents and nothing else); a trust or safety rule is\n" +

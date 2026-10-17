@@ -54,7 +54,10 @@ The following are non-negotiable invariants — any architectural choice that vi
    carrying the lane's hand-back kind), and renewing, at half its lease, the
    reservation of each lane parked at land and of the lane in progress, on
    every move, waiting or not (a fetch and one push, spc-2610161044461448
-   step 7); and `implement step` and `implement receipt`, whose meaning
+   step 7), where a move that finds a lane parked at land also makes one
+   listing of the person's latest pull requests through the forge client
+   (`gh pr list`), which reads every parked lane's pull request (step 8); and
+   `implement step` and `implement receipt`, whose meaning
    includes renewing the run's reservation at half its lease, the land
    fence's fetch and renewal before the landing pushes the lane's branch and
    again before a merge is armed, and the tombstone once the run's last lane

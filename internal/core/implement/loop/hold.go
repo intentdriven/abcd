@@ -180,9 +180,11 @@ func discardNote(st State, lane Lane, did []string) string {
 	return fmt.Sprintf("the person discarded %s (%s); step %d stays unlanded in %s", lane.ID, strings.Join(did, ", "), lane.SpecStep, specOf(st))
 }
 
-// stuckLane reports whether l was handed back as stuck.
+// stuckLane reports whether l was handed back as stuck, or as closed, its
+// pull request closed unmerged (drain_finish.go): the drain hands both back
+// keeping the lane's worktree and branch for the person to discard.
 func stuckLane(l Lane) bool {
-	return l.Stage == StageHandedBack && l.HandBack != nil && l.HandBack.Kind == HandBackStuck
+	return l.Stage == StageHandedBack && l.HandBack != nil && (l.HandBack.Kind == HandBackStuck || l.HandBack.Kind == HandBackClosed)
 }
 
 // Discard does not land a held lane, on the person's word (`implement step
@@ -248,7 +250,8 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 				did = append(did, "deleted its branch "+lane.Branch+" at "+shortSHA(tip))
 			}
 		}
-		if lane.PR > 0 {
+		// A lane handed back as closed has a pull request already closed.
+		if lane.PR > 0 && (lane.HandBack == nil || lane.HandBack.Kind != HandBackClosed) {
 			n := strconv.Itoa(lane.PR)
 			if _, err := forge(c, lane, "pr", "close", n); err != nil {
 				if r, ok := AsRefusal(err); ok {
