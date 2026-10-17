@@ -685,8 +685,9 @@ carries that string, and never opened. `--wait` blocks until the one-minute
 load average is below the wait limit (`wait-load`, by default twice the online
 core count), no other `go test -race` run is live, no other `make preflight`
 is running, and no other waiter is ahead of it in the queue (one that started
-earlier, the lower pid first when two started within two seconds of each
-other) or running its command, under any account. All of that is read from the process
+earlier, or within two seconds of it, and has the lower pid: two whose start
+and pid disagree, as after the machine's process ids wrap, wait on neither) or
+running its command, under any account. All of that is read from the process
 table, which shows every account's processes, judged from each process's
 arguments with the waiter's own process and ancestors excluded: no file another
 account can write is read; the gate reads only the process table. A waiter queued ahead of yours still delays yours, under
@@ -698,10 +699,16 @@ queue, and a waiter beneath a waiter running its command (the preflight's own
 gate under `--wait -- make preflight`) takes that ancestor's place, ahead of
 every queued waiter, since the ancestor has already won its turn. Once all of it is clear the waiter waits a random 15 to 60 seconds and
 checks everything again, and opens only if the re-check is clear too, so two
-starters in one quiet minute do not start together. Twice the cores, because a
+starters in one quiet minute do not start together. Across accounts, which
+share no hold, two waiters whose start and pid disagree (as after the process
+ids wrap) wait on neither and can still open in one moment, so the command form
+shows itself as running its command from the moment it opens, looks once more
+two seconds later, and the one with the higher pid stands back: it gives up its
+hold, re-draws its jitter and waits again, at most three times, while the lower
+pid runs its command. Twice the cores, because a
 busy machine with several sessions already sits near one core-count of load;
-one waiter at a time is kept by the process table and the hold, not by the
-load number; and one race run adds about a core-count, so the peak stays near
+one waiter at a time is kept by the process table, the hold and that last look
+(the cross-account exception above), not by the load number; and one race run adds about a core-count, so the peak stays near
 three times the cores, under the extreme limit. Inside `make preflight` each
 test stage then takes a `go test -p` derived from the online cores and the load
 as the stage starts (twice the cores less the load, at most the cores and at
@@ -713,7 +720,8 @@ exiting 1 and naming what it still waited on (`still`: `load`, `race-run`,
 `preflight`, `waiter`, `lock` or `unreadable`). `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
 platform), `waited_on` and `waited_s`, with the `gate` it waited at
-(`tests` or `race`), `slots` and `slots_source`.
+(`tests` or `race`), `slots` and `slots_source`, and `backoffs` when it stood
+back.
 
 Before its race stage `make preflight` waits again, at the race gate,
 `implement load --race-gate`. It is spelt without `--wait`, and the two are
@@ -725,11 +733,14 @@ the default, the race gate opens at once, without reading the machine, judging
 or taking a hold, or waiting a jitter, so the race stage follows the tests
 straight away, as it did before the gate existed (it prints `race gate open at
 once`). Above one it stays shut while another `go test -race` run is live, a
-race waiter queued ahead of it (by the same start-time order) or running its
-command is, the load is at the wait limit, or a hold is in force (the
-preflight's own first gate's two-minute hold among them), so there is one race
-stage at a time whatever the first gate admits. A preflight waiting there has
-passed its first gate and counts as in its test stages.
+race waiter queued ahead of it (by the same rule: started earlier, or within
+two seconds of it, and with the lower pid) or running its command is, the load
+is at the wait limit, or a hold is in force (the preflight's own first gate's
+two-minute hold among them), so there is one race stage at a time whatever the
+first gate admits. A preflight waiting there has passed its first gate and
+counts as in its test stages. A waiter that has opened stands back only from a
+lower pid that opened in the same moment at its own gate, never from one at
+the other gate.
 
 How many preflights may be in their test stages at once is the person's own
 machine setting, never a repository's, so a checkout cannot raise the
@@ -745,7 +756,10 @@ preflight while fewer than that many other preflights or waiters running their
 command are in their test stages (`--wait -- make preflight` counts once), a
 waiter queued ahead still shuts it, and a live race run does not shut it by
 itself; the load limit still does, and the race gate waits as described
-above. Race stages are one at a time only among preflights whose checkouts
+above. The first gate's last look still applies: an opener that finds a lower
+pid opened in the same moment stands back, and its next look counts that
+waiter, from the moment its mark shows it running, as one of the preflights in
+their test stages. Race stages are one at a time only among preflights whose checkouts
 have the race gate: a preflight run from a checkout older than the gate runs
 its race stage ungated, so set 2 only once no such checkout runs a preflight. Each stage's `go test -p` is then at most the cores divided by the
 setting, so two concurrent stages do not each take the whole machine. A value

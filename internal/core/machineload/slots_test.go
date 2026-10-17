@@ -295,23 +295,99 @@ func TestRaceAheadOrdersRaceWaitersOnly(t *testing.T) {
 		t.Fatalf("race waiters ahead = %v, want none: a first gate's waiter and a unit stage are not", got)
 	}
 
-	// A race waiter that started earlier is ahead; one that started later is not.
-	early, earlyArgs := raceStagePreflight(81000, 3*time.Minute)
-	late, lateArgs := raceStagePreflight(82000, 10*time.Second)
+	// A race waiter that started earlier, with the lower pid, is ahead; one
+	// that started later is not.
+	early, earlyArgs := raceStagePreflight(41000, 3*time.Minute)
+	late, lateArgs := raceStagePreflight(42000, 10*time.Second)
 	snap.Procs = append(append(snap.Procs, early...), late...)
 	args = merge(merge(args, earlyArgs), lateArgs)
-	if got := RaceAhead(snap, waiter, args); !reflect.DeepEqual(got, []int{81003}) {
-		t.Fatalf("race waiters ahead = %v, want the earlier one, 81003", got)
+	if got := RaceAhead(snap, waiter, args); !reflect.DeepEqual(got, []int{41003}) {
+		t.Fatalf("race waiters ahead = %v, want the earlier one, 41003", got)
 	}
 	// From the earlier one's side, nothing is ahead.
-	if got := RaceAhead(snap, Self{PID: 81003, UID: otherUID}, args); len(got) != 0 {
+	if got := RaceAhead(snap, Self{PID: 41003, UID: otherUID}, args); len(got) != 0 {
 		t.Fatalf("the earliest race waiter sees %v ahead, want none", got)
 	}
 	// A race waiter running its command is ahead whenever it started.
-	snap.Procs = append(snap.Procs, Proc{PID: 82009, PPID: 82003, PGID: 82000, UID: otherUID, Name: "go"})
-	args[82009] = []string{"test", "-race", "./..."}
-	if got := RaceAhead(snap, waiter, args); !reflect.DeepEqual(got, []int{81003, 82003}) {
-		t.Fatalf("race waiters ahead = %v, want 81003 and the one running its command, 82003", got)
+	snap.Procs = append(snap.Procs, Proc{PID: 42009, PPID: 42003, PGID: 42000, UID: otherUID, Name: "go"})
+	args[42009] = []string{"test", "-race", "./..."}
+	if got := RaceAhead(snap, waiter, args); !reflect.DeepEqual(got, []int{41003, 42003}) {
+		t.Fatalf("race waiters ahead = %v, want 41003 and the one running its command, 42003", got)
+	}
+}
+
+// TestRaceAheadKeepsTheLowerPidRule: the race gate's queue keeps the first
+// gate's rule (dcn-2610162239308903): a race waiter is ahead only when it
+// started earlier and has the lower pid too. One that started earlier with a
+// higher pid, as across a pid wrap, and this one wait on neither, so the two
+// can never wait on each other.
+func TestRaceAheadKeepsTheLowerPidRule(t *testing.T) {
+	procs, args := waiterChain()
+	args[60000] = []string{"implement", "load", "--race-gate", "--timeout", "2h"}
+	procs[3].Age = time.Minute
+	snap := Snapshot{HasLoad: true, Cores: 16, Procs: procs, HasProcs: true}
+	early, earlyArgs := raceStagePreflight(81000, 3*time.Minute)
+	snap.Procs = append(snap.Procs, early...)
+	args = merge(args, earlyArgs)
+	if got := RaceAhead(snap, waiter, args); len(got) != 0 {
+		t.Fatalf("race waiters ahead = %v, want none: 81003 started earlier but has the higher pid", got)
+	}
+	if got := RaceAhead(snap, Self{PID: 81003, UID: otherUID}, args); len(got) != 0 {
+		t.Fatalf("from 81003's side the race waiters ahead = %v, want none: 60000 started later", got)
+	}
+}
+
+// TestAMarkedOpenerTakesASlot: an opener's mark (implement.WaitLoad's
+// /bin/sleep child, dcn-2610162257477571) shows it running its command, so
+// from that moment it is a unit in its test stages and takes a slot: with two
+// slots, it and one other preflight fill them. Unmarked, the same waiter is
+// queued, and with the higher pid it is not ahead (dcn-2610162239308903), so
+// the gate is open beside the other preflight.
+func TestAMarkedOpenerTakesASlot(t *testing.T) {
+	procs, args := ownPreflightWaiter()
+	other, otherArgs := otherPreflight(80000)
+	opener, openerArgs := peerWaiter(90001, 1, otherUID)
+	opener[0].Age, opener[1].Age = 6*time.Minute, 5*time.Minute
+	snap := Snapshot{HasLoad: true, Cores: 16, Procs: append(append(procs, other...), opener...), HasProcs: true}
+	args = merge(merge(args, otherArgs), openerArgs)
+	got := QueueAhead(snap, waiter, args)
+	if len(got.Queued) != 0 || !reflect.DeepEqual(got.Busy, []int{80000}) {
+		t.Fatalf("unmarked: ahead = %+v, want 90001 not ahead (higher pid) and only 80000 busy", got)
+	}
+	if p, w := got.Shut(2); p || w {
+		t.Fatalf("unmarked, two slots: Shut = %v, %v, want open", p, w)
+	}
+
+	snap.Procs = append(snap.Procs, Proc{PID: 90002, PPID: 90001, PGID: 90000, UID: otherUID, Age: time.Second, Name: "sleep"})
+	got = QueueAhead(snap, waiter, args)
+	if !reflect.DeepEqual(got.Busy, []int{80000, 90001}) {
+		t.Fatalf("marked: busy = %v, want 80000 and the marked opener 90001", got.Busy)
+	}
+	if _, w := got.Shut(2); !w {
+		t.Fatalf("marked, two slots: the marked opener does not take a slot (%+v)", got)
+	}
+}
+
+// TestJustOpenedReadsOneGate: an opener stands back only from a waiter that
+// opened at its own gate. A race waiter that has just started its race stage
+// passed its first gate earlier, so a first gate's opener never stands back
+// from it, exactly as an abcd released before the race gate, which reads no
+// race waiter at all, does not; a race gate's opener reads race waiters alone.
+func TestJustOpenedReadsOneGate(t *testing.T) {
+	const window = 4 * time.Second
+	procs, args := waiterChain()
+	snap := Snapshot{HasLoad: true, Cores: 16, Procs: procs, HasProcs: true}
+	race, raceArgs := raceStagePreflight(41000, time.Minute)
+	race = append(race, Proc{PID: 41009, PPID: 41003, PGID: 41000, UID: otherUID, Age: time.Second, Name: "sleep"})
+	first, firstArgs := peerWaiter(50001, 1, otherUID)
+	first = append(first, Proc{PID: 50009, PPID: 50001, PGID: 50000, UID: otherUID, Age: time.Second, Name: "sleep"})
+	snap.Procs = append(append(snap.Procs, race...), first...)
+	args = merge(merge(args, raceArgs), firstArgs)
+	if got := JustOpened(snap, waiter, args, window, false); !reflect.DeepEqual(got, []int{50001}) {
+		t.Fatalf("first gate: just opened = %v, want the first gate's 50001 alone", got)
+	}
+	if got := JustOpened(snap, waiter, args, window, true); !reflect.DeepEqual(got, []int{41003}) {
+		t.Fatalf("race gate: just opened = %v, want the race waiter 41003 alone", got)
 	}
 }
 

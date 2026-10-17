@@ -12,6 +12,16 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-16 (iss-2610161734179773 — a refused draft is redrafted without telling the person)
+
+### question-drafter 0.1.3
+
+PATCH: the generated asking-rules block now says that when the drafter refuses
+a draft or a draft runs over a limit, the caller fixes the brief and redrafts
+without telling the person, so the next thing the person sees is the question
+itself. The drafter's own behaviour is unchanged. Unmeasured, in the `0.x`
+band.
+
 ## 2026-10-12 (itd-2609291923559186 — the consistency pass reads an overflowing corpus in chunks)
 
 ### intent-auditor 0.5.2

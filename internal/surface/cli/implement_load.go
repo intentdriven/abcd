@@ -32,6 +32,8 @@ var (
 	loadSleep      = time.Sleep
 	// loadJitter is the waiter's settle jitter; nil is the core's random one.
 	loadJitter func() time.Duration
+	// loadMark is the command form's mark; nil is the core's /bin/sleep.
+	loadMark func() (func(), error)
 )
 
 // newImplementLoadCommand builds `implement load`, the load check that runs once
@@ -76,8 +78,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"one-minute load average is below the wait limit (`wait-load <load>` in the same\n" +
 			"file; by default twice the online core count), no other `go test -race` run is\n" +
 			"live, no other `make preflight` is running and no other waiter is ahead of it in\n" +
-			"the queue (one that started earlier, the lower pid first when two started within\n" +
-			"two seconds of each other) or running its command, under any account: all of it is\n" +
+			"the queue (one that started earlier, or within two seconds of it, and has the\n" +
+			"lower pid: two whose start and pid disagree, as after the process ids wrap, wait\n" +
+			"on neither) or running its command, under any account: all of it is\n" +
 			"read from the process table, which shows every account's processes: no file\n" +
 			"another account can write is read; the gate reads only the process table (and,\n" +
 			"for the wait limit, your own load-limits). A waiter ahead of yours still delays\n" +
@@ -89,10 +92,15 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"queued waiter. Once it finds all of that clear it waits\n" +
 			"a random " + implement.WaitJitterMin.String() + " to " + implement.WaitJitterMax.String() + " and checks everything again, and opens only if the\n" +
 			"re-check is clear too, so two starters in one quiet minute do not start together.\n" +
+			"With a command it then shows itself as running it and looks once more " + implement.WaitOpenPause.String() + "\n" +
+			"later, before starting it: across accounts, which share no hold, two waiters whose\n" +
+			"start and pid disagree can open in one moment, and the one with the higher pid\n" +
+			"stands back, gives up its hold, re-draws its jitter and waits again (at most " + strconv.Itoa(implement.WaitBackoffCap) + "\n" +
+			"times), while the lower pid runs its command.\n" +
 			"The load limit is twice the cores because a busy multi-session machine already\n" +
 			"idles near one core-count of load, so a limit of the cores never opens; one\n" +
-			"waiter at a time is kept by the process table and the hold below, not by the\n" +
-			"load number; and one race run adds about a core-count, so admitting below twice\n" +
+			"waiter at a time is kept by the process table, the hold below and that last\n" +
+			"look, not by the load number; and one race run adds about a core-count, so admitting below twice\n" +
 			"the cores bounds the peak near three times them, under the extreme limit.\n" +
 			"A race run is a process executing go whose go command is `test` with -race, a\n" +
 			"preflight a make whose goals name preflight, and a waiter an abcd running\n" +
@@ -110,14 +118,15 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"are refused together. At one preflight at a time, the default, it opens at once,\n" +
 			"without reading the machine, taking a hold or waiting a jitter, so a preflight's\n" +
 			"race stage follows its tests exactly as before. Above one it is shut only while\n" +
-			"another `go test -race` run is live, a race waiter is ahead of it (in the same\n" +
-			"order) or running its command, the load is at the wait limit, or a hold is in\n" +
+			"another `go test -race` run is live, a race waiter is ahead of it (by the same\n" +
+			"rule) or running its command, the load is at the wait limit, or a hold is in\n" +
 			"force, so one race stage runs at a time among the preflights whose checkouts\n" +
 			"have the race gate; a checkout older than the gate runs its race stage\n" +
 			"ungated, so set 2 only once no such checkout runs a preflight. A first gate's\n" +
 			"waiter never queues\n" +
 			"behind a race waiter, and a preflight whose waiter is at its race gate is in its\n" +
-			"test stages.\n\n" +
+			"test stages. A waiter that has opened stands back only from a lower pid that\n" +
+			"opened in the same moment at its own gate, never from one at the other gate.\n\n" +
 			"How many preflights may be in their test stages at once is your own machine's\n" +
 			"setting: `" + implement.PreflightSlotsKey + "` in `" + abcdhome.Display("config.json") + "`, or " + implement.PreflightSlotsEnv + " in the\n" +
 			"environment, which wins, for a trial; a whole number from 1 to " + strconv.Itoa(implement.MaxPreflightSlots) + ", 1 by default,\n" +
@@ -206,12 +215,17 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	req := implement.WaitRequest{
 		Read: loadReader, ReadArgs: loadArgsReader, Self: loadSelf(),
 		Now: loadNow, Sleep: loadSleep, Timeout: timeout, Command: len(command) > 0, Race: race, Jitter: loadJitter,
+		Mark: loadMark,
 	}
 	if !asJSON {
 		req.OnWait = func(r implement.WaitResult) { fmt.Fprintf(out, "waiting for capacity: %s\n", waitConditions(r)) }
 		req.OnSettle = func(j time.Duration) {
 			fmt.Fprintf(out, "load gate: the machine looks free; checking everything again in %s before opening, so two starters in one quiet minute do not start together\n",
 				j.Round(time.Second))
+		}
+		req.OnBackoff = func(lower []int, j time.Duration) {
+			fmt.Fprintf(out, "load gate: %s in the same moment with the lower pid; standing back, and checking again in %s\n",
+				pidsText(lower, "another waiter opened", "waiters opened"), j.Round(time.Second))
 		}
 	}
 	res, err := implement.WaitLoad(req)
@@ -227,7 +241,12 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	if len(command) == 0 {
 		return nil
 	}
-	code, runErr := runGated(cmd, command)
+	unmark := func() {}
+	if res.Unmark != nil {
+		unmark = res.Unmark
+	}
+	code, runErr := runGated(cmd, command, unmark)
+	unmark()
 	if res.Hold != nil && res.Hold.Form == implement.HoldCommand {
 		home, _ := os.UserHomeDir()
 		if err := implement.ReleaseWaitHold(home, *res.Hold); err != nil {
@@ -251,8 +270,10 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 // hold then reads as a dead holder's, and the next waiter would be admitted
 // beside the orphan. A command killed by signal N returns 128+N, as a shell
 // reports it, so a command stopped by SIGTERM never reads as one that failed
-// with 1. The caller releases the hold once this returns.
-func runGated(cmd *cobra.Command, command []string) (int, error) {
+// with 1. started is called once the command has started, to stop the
+// waiter's mark (implement.WaitResult.Unmark). The caller releases the hold
+// once this returns.
+func runGated(cmd *cobra.Command, command []string, started func()) (int, error) {
 	c := exec.Command(command[0], command[1:]...)
 	c.Stdin, c.Stdout, c.Stderr = cmd.InOrStdin(), cmd.OutOrStdout(), cmd.ErrOrStderr()
 	sigs := make(chan os.Signal, 2)
@@ -261,6 +282,7 @@ func runGated(cmd *cobra.Command, command []string) (int, error) {
 	if err := c.Start(); err != nil {
 		return 0, err
 	}
+	started()
 	done := make(chan error, 1)
 	go func() { done <- c.Wait() }()
 	var err error

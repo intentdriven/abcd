@@ -405,3 +405,131 @@ func TestPreflightParallelismSharesTheMachine(t *testing.T) {
 		t.Fatalf("two slots on an idle 16 cores: -p %d, want 8", got)
 	}
 }
+
+// TestWaitStandsBackAtTheFirstGateWithTwoSlots: with two slots the first
+// gate's last look still applies (dcn-2610162257477571). Two waiters whose
+// start and pid disagree, across accounts, open in one moment; the higher pid
+// finds the lower opened beside it and stands back, once. Its next look counts
+// the lower pid, running its command, as one unit in its test stages, and with
+// a slot still free it opens beside it, long before that command exits; with
+// one slot the same waiter waits for the command to exit, as on main.
+func TestWaitStandsBackAtTheFirstGateWithTwoSlots(t *testing.T) {
+	const (
+		early, late = 96274, 50460 // early: higher pid; late: lower pid
+		runFor      = 5 * time.Minute
+	)
+	uids := map[int]uint32{early: 502, late: 501}
+	ages := map[int]time.Duration{early: 86 * time.Minute, late: 83 * time.Minute}
+	at := waitT0.Add(testJitter)
+	cmdAt := at.Add(WaitOpenPause)
+	run := func(t *testing.T, slots string) (WaitResult, time.Time) {
+		t.Helper()
+		clock := &fakeClock{now: waitT0}
+		m := &marks{clock: clock}
+		req := waitReq(t.TempDir(), early, clock)
+		req.Getenv = slotsEnv(slots)
+		req.Read = openerRead(clock, early, late, uids, ages, opener{
+			child: func(now time.Time) (string, time.Time, bool) {
+				if now.Before(cmdAt) {
+					return "sleep", at, now.After(at)
+				}
+				return "sh", at, true
+			},
+			gone: func(now time.Time) bool { return !now.Before(cmdAt.Add(runFor)) },
+		})
+		req.ReadArgs = openerArgs(uids, ages, early, late)
+		req.Self = machineload.Self{PID: early, UID: uids[early]}
+		req.Command = true
+		req.Timeout = 30 * time.Minute
+		req.Mark = m.mark
+		res, err := WaitLoad(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return res, clock.Now()
+	}
+
+	res, done := run(t, "2")
+	if res.Status != WaitOpen || res.Backoffs != 1 || res.Slots != 2 {
+		t.Fatalf("two slots: %+v; want open with 2 slots after standing back once from the lower pid %d", res, late)
+	}
+	if !done.Before(cmdAt.Add(runFor)) {
+		t.Fatalf("two slots: done at %s, want open beside the lower pid's command, before it exits at %s", done, cmdAt.Add(runFor))
+	}
+
+	res, done = run(t, "1")
+	if res.Status != WaitOpen || res.Backoffs != 1 || done.Before(cmdAt.Add(runFor)) {
+		t.Fatalf("one slot: %+v, done at %s; want it to stand back once and open only once the lower pid's command exits at %s", res, done, cmdAt.Add(runFor))
+	}
+}
+
+// TestWaitRaceGateNeitherMarksNorLooksWithOneSlot: with one slot the race
+// gate opens before any look, so even in the command form it starts no mark,
+// takes no last look and never stands back: a preflight's race stage follows
+// its tests as on main, where the race stage had no gate.
+func TestWaitRaceGateNeitherMarksNorLooksWithOneSlot(t *testing.T) {
+	clock := &fakeClock{now: waitT0}
+	req := waitReq(t.TempDir(), 60000, clock, poll{load: 3})
+	req.Race, req.Command = true, true
+	req.Read = func() (machineload.Snapshot, error) {
+		t.Fatal("the race gate read the machine with one slot")
+		return machineload.Snapshot{}, nil
+	}
+	req.Mark = func() (func(), error) {
+		t.Fatal("the race gate marked itself with one slot")
+		return nil, nil
+	}
+	res, err := WaitLoad(req)
+	if err != nil || res.Status != WaitOpen || res.Gate != GateRace || res.Backoffs != 0 || res.Unmark != nil || !clock.Now().Equal(waitT0) {
+		t.Fatalf("%+v, err %v, done at %s; want the race gate open at once, unmarked, at %s", res, err, clock.Now(), waitT0)
+	}
+}
+
+// TestWaitFirstGateNeverStandsBackFromARaceWaiter: a first gate's opener with
+// one slot stands back only from a first gate's waiter that opened beside it,
+// as on main, whose abcd reads no race waiter at all. A race waiter with the
+// lower pid that started its race stage in that same moment passed its own
+// first gate earlier, and the opener goes on; a first gate's waiter in its
+// place still stands it back.
+func TestWaitFirstGateNeverStandsBackFromARaceWaiter(t *testing.T) {
+	stage := func(gate ...string) poll {
+		words := append([]string{"implement", "load"}, gate...)
+		return poll{load: 3, procs: []machineload.Proc{
+			{PID: 40000, PPID: 1, PGID: 40000, UID: 502, Age: 9 * time.Minute, Name: "make"},
+			{PID: 40001, PPID: 40000, PGID: 40000, UID: 502, Age: time.Minute, Name: "sh"},
+			{PID: 40002, PPID: 40001, PGID: 40000, UID: 502, Age: time.Minute, Name: "go"},
+			{PID: 40003, PPID: 40002, PGID: 40000, UID: 502, Age: time.Minute, Name: "abcd"},
+			// Its command, started as this waiter's last look reads the table.
+			{PID: 40004, PPID: 40003, PGID: 40000, UID: 502, Age: -(testJitter + WaitOpenPause), Name: "go"},
+		}, args: map[int][]string{
+			40000: {"preflight"},
+			40002: append([]string{"run", "./cmd/abcd"}, words...),
+			40003: words,
+			40004: {"test", "-race", "./internal/..."},
+		}}
+	}
+	for _, c := range []struct {
+		name     string
+		gate     []string
+		backoffs int
+	}{
+		{"a race waiter", []string{"--race-gate", "--timeout", "2h"}, 0},
+		{"a first gate's waiter", []string{"--wait", "--", "make", "preflight"}, 1},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			clock := &fakeClock{now: waitT0}
+			req := waitReq(t.TempDir(), 60000, clock, poll{load: 3}, poll{load: 3}, stage(c.gate...))
+			req.Command = true
+			res, err := WaitLoad(req)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if res.Backoffs != c.backoffs {
+				t.Fatalf("%+v; want %d back-offs from %s with the lower pid that opened beside it", res, c.backoffs, c.name)
+			}
+			if c.backoffs == 0 && (res.Status != WaitOpen || res.Slots != 1) {
+				t.Fatalf("%+v; want open with one slot", res)
+			}
+		})
+	}
+}

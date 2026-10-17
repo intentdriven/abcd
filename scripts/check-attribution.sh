@@ -30,6 +30,15 @@
 # Usage:
 #   check-attribution.sh commits <base-ref> <head-ref>   # every commit in the range
 #   check-attribution.sh body <file>                     # a pull-request body on stdin-file
+#   check-attribution.sh identity <author|committer> <name> <email>
+#                                                        # one identity, before any commit
+#
+# identity mode is the IDENTITY half alone, for a caller that must judge the
+# identity a checkout WILL commit under before any commit exists: the cloud
+# brief's first step (scripts/cloud/begin.sh, spc-2610120941441282) stops when
+# it is not a person's. Same check_ident, same list, in the role named. Like
+# the commits arm it prints the identity it refuses; a caller that must not
+# repeat it discards the output and reads the exit code.
 #
 # In commits mode the two halves have different reach, deliberately. The IDENTITY
 # half reads every commit in the range, merges included: a merge commit carries an
@@ -300,7 +309,7 @@ check_outbound() {
 }
 
 usage() {
-	echo "usage: check-attribution.sh commits <base-ref> <head-ref> | body <file>" >&2
+	echo "usage: check-attribution.sh commits <base-ref> <head-ref> | body <file> | identity <author|committer> <name> <email>" >&2
 	exit 2
 }
 
@@ -646,6 +655,17 @@ body)
 	# the fence here would add a one-line bypass to the only half of this gate whose
 	# subject is a live credential.
 	check_outbound "the pull-request body" "$(cat "$2")"
+	;;
+identity)
+	[ $# -eq 4 ] || usage
+	# Each role is spelled out rather than passed on as "$2": the shell guard
+	# reads a variable argument after a function's name as a word that could
+	# run anything, and this arm takes only the two roles anyway.
+	case "$2" in
+	author) check_ident "the author identity" author "$3" "$4" || true ;;
+	committer) check_ident "the committer identity" committer "$3" "$4" || true ;;
+	*) usage ;;
+	esac
 	;;
 *)
 	usage

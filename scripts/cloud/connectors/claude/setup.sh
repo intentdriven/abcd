@@ -1,0 +1,287 @@
+#!/usr/bin/env bash
+# Prepare a hosted Claude Code cloud session's machine for this repository
+# (spc-2610120941441282 step 4, itd-2610120738075547 C1 and C11, decisions 8,
+# 10, 17 and 18). The host runs it from the SessionStart hook in the committed
+# .claude/settings.json, which every session in this repository reads, the
+# person's own included. So its FIRST act is the connector's remote test: off
+# the cloud it exits 0, silently, having run nothing (C11).
+#
+# In the cloud it runs as root (the container's user), and it is idempotent: a
+# session that starts again finds each prerequisite in place and leaves it so.
+#
+#   1. a normal user `abcd`, with no sudo and no extra group, owning the
+#      checkout. If the user cannot be made it says so and exits 1, before
+#      anything else: every check runs as that user or not at all (decision 8).
+#      Then the checkout is trusted for root in git's system configuration
+#      (`git config --system --add safe.directory <checkout>`, once): from git
+#      2.35.2 git refuses a repository another user owns, so without it every
+#      git command run as root in the checkout, the host's own included, would
+#      stop there;
+#   2. gitleaks at the version .github/workflows/ci.yml pins (GITLEAKS_VERSION,
+#      read from that file as data, so there is one pin), downloaded and
+#      checksum-verified exactly as the CI job does, then installed to
+#      /usr/local/bin;
+#   3. as `abcd`: the toolchain go.mod declares, resolved through
+#      scripts/pinned-toolchain.sh (so `go run ./cmd/abcd` works), and
+#      core.hooksPath=.githooks in the checkout, so the committed hooks run;
+#   3b. as `abcd`: abcd itself, built once from the checkout into its local
+#      tier, .abcd/.work.local/cloud/bin/abcd (`go build`, rebuilt at every
+#      session start, so it is the checkout's own as the session found it; a
+#      session that changes abcd's own checks is judged by the abcd it started
+#      with until the next start). The pre-push hook checks
+#      every commit of a work-in-progress push with `abcd lint outbound`, and
+#      through `go run` each check would build abcd inside the push, past the
+#      push transport's idle timeout on a cold cache. The path is handed to the
+#      session's later shells through the host's file of variables
+#      (CLAUDE_ENV_FILE, which every later Bash command runs first):
+#      ABCD_OUTBOUND_BIN for the attribution gate (scripts/check-attribution.sh)
+#      and ABCD_BIN for the cloud scripts (scripts/cloud/abcd-bin.sh), each
+#      written once;
+#   4. the checkout's LOCAL author identity, from the session's forge token,
+#      through the one primitive: `go run ./cmd/abcd reserve --holder --json`,
+#      which prints {"login","id","noreply","source"}. user.name is the login
+#      and user.email the no-reply address, written with `git config --local`
+#      in the checkout and nowhere else (decisions 17 and 18).
+#
+#      The lookup runs as `abcd` through `runuser -u abcd --`, which is not a
+#      login: the session's environment, the forge token in it included,
+#      passes through unchanged but for HOME, SHELL, USER and LOGNAME. It runs
+#      as `abcd` rather than as root because it builds and runs the checkout's
+#      own code (nothing of the checkout runs as root but this script), because
+#      the build lands in the cache every later command of the session reuses,
+#      and because the identity it reads is the one the user that commits
+#      sees. Its answer is captured, judged here, and written as `abcd`.
+#
+#      It sets NOTHING when the lookup fails, when its answer is not a valid
+#      login and that login's own no-reply address, or when it named the
+#      account from somewhere other than the token while the checkout's
+#      identity is not a person's (the attribution gate's own judgement). Then
+#      it prints one line saying the identity could not be taken from the
+#      forge token, and the brief's first step stops before any work. The
+#      identity the container came with is never printed: it is read only into
+#      variables and judged by exit code, and the verb's own diagnostics are
+#      discarded unread;
+#   5. one line per prerequisite, on standard output, which the host hands to
+#      the session.
+#
+# Exit 0 every prerequisite is in place (or this is not a cloud session);
+# 1 one could not be put in place (each is still attempted, but the user,
+# without which nothing else is).
+set -euo pipefail
+
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# The place: off the cloud, nothing at all.
+"$here/is-remote.sh" || exit 0
+
+root="$(cd "$here/../../../.." && pwd)"
+cd "$root"
+
+USER_NAME=abcd
+LOGIN_RE='^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$'
+failed=0
+
+say() {
+	printf 'setup: %s\n' "$1"
+}
+miss() {
+	printf 'setup: NOT IN PLACE: %s\n' "$1"
+	failed=1
+}
+
+# as_abcd runs a command as the normal user, environment kept (not a login).
+as_abcd() {
+	runuser -u "$USER_NAME" -- "$@"
+}
+
+if [ "$(id -u)" != 0 ]; then
+	say "STOPPING: the setup runs as root, as the host starts it, to make the normal user; this is uid $(id -u). Nothing was changed."
+	exit 1
+fi
+
+# --- 1. The user ------------------------------------------------------------------
+
+if id -u "$USER_NAME" >/dev/null 2>&1; then
+	made="already exists"
+else
+	rc=0
+	useradd -m -s /bin/bash "$USER_NAME" >/dev/null 2>&1 || rc=$?
+	if [ "$rc" -ne 0 ] || ! id -u "$USER_NAME" >/dev/null 2>&1; then
+		say "STOPPING: the normal user $USER_NAME could not be created (useradd exited $rc), so nothing can run as a user other than root; nothing else was set up."
+		exit 1
+	fi
+	made="created"
+fi
+if ! chown -R "$USER_NAME:$USER_NAME" "$root"; then
+	say "STOPPING: the checkout could not be given to the user $USER_NAME; nothing else was set up."
+	exit 1
+fi
+say "user $USER_NAME ($made, no sudo) owns the checkout; run every later command as it (runuser -u $USER_NAME --)."
+
+# The checkout now belongs to another user than root, which git refuses to
+# work in as root unless the checkout is trusted. Read first, so it is added
+# once however often the setup runs.
+trusted="$(git config --system --get-all safe.directory 2>/dev/null)" || trusted=""
+if grep -Fxq -- "$root" <<<"$trusted"; then
+	say "git trusts the checkout for root (safe.directory, system configuration) already."
+elif git config --system --add safe.directory "$root"; then
+	say "git trusts the checkout for root (safe.directory, system configuration), so git run as root works in it."
+else
+	miss "git's system configuration could not be given the checkout as a safe.directory, so git run as root in it refuses it."
+fi
+
+# --- 2. gitleaks ----------------------------------------------------------------------
+
+gitleaks_step() {
+	local pins version arch base url tmp have rc
+	pins="$(sed -n 's/^[[:space:]]*GITLEAKS_VERSION:[[:space:]]*\([0-9][0-9.]*\)[[:space:]]*$/\1/p' .github/workflows/ci.yml 2>/dev/null | sort -u)"
+	if [ -z "$pins" ] || [ "$(printf '%s\n' "$pins" | grep -c .)" -ne 1 ]; then
+		miss "gitleaks: .github/workflows/ci.yml does not pin one GITLEAKS_VERSION, so there is no version to install."
+		return 0
+	fi
+	version="$pins"
+	have="$(gitleaks version 2>/dev/null | tr -d 'v[:space:]')" || have=""
+	if [ "$have" = "$version" ]; then
+		say "gitleaks $version (the version ci.yml pins) is already installed."
+		return 0
+	fi
+	case "$(uname -m)" in
+	x86_64 | amd64) arch=x64 ;;
+	aarch64 | arm64) arch=arm64 ;;
+	*)
+		miss "gitleaks: no release is published for this machine's architecture, $(uname -m)."
+		return 0
+		;;
+	esac
+	tmp="$(mktemp -d "${TMPDIR:-/tmp}/abcd-setup.XXXXXX")"
+	base="gitleaks_${version}_linux_${arch}.tar.gz"
+	url="https://github.com/gitleaks/gitleaks/releases/download/v${version}"
+	# The CI job's own steps (ci.yml, job gitleaks), in a directory of our own.
+	# Chained with &&, not left to set -e: errexit is off inside a subshell
+	# whose status is tested, and an unverified download must never reach
+	# the install.
+	rc=0
+	(
+		set -o pipefail
+		cd "$tmp" &&
+			curl -sSLf -o "$base" "$url/$base" &&
+			curl -sSLf -o checksums.txt "$url/gitleaks_${version}_checksums.txt" &&
+			grep " $base\$" checksums.txt | sha256sum -c - >/dev/null &&
+			tar -xzf "$base" gitleaks &&
+			install gitleaks /usr/local/bin/gitleaks
+	) >/dev/null 2>&1 || rc=$?
+	/bin/rm -rf -- "$tmp"
+	if [ "$rc" -ne 0 ]; then
+		miss "gitleaks $version: the download, its checksum or the install failed (exit $rc); nothing unverified was installed."
+		return 0
+	fi
+	say "gitleaks $version (the version ci.yml pins) installed, checksum verified."
+}
+gitleaks_step
+
+# --- 3. The toolchain and the hooks, as the user ------------------------------------------
+
+version="$(sed -n 's/^go \([0-9][0-9.]*\)$/\1/p' go.mod | head -n 1)"
+if [ -z "$version" ]; then
+	miss "the toolchain: go.mod declares no go <version> line."
+elif goroot="$(as_abcd bash "$root/scripts/pinned-toolchain.sh" "$version" 2>/dev/null)"; then
+	say "toolchain go$version (the one go.mod declares) resolved for $USER_NAME at $goroot."
+else
+	miss "the toolchain go$version could not be resolved for $USER_NAME (scripts/pinned-toolchain.sh $version says why)."
+fi
+
+if as_abcd git -C "$root" config --local core.hooksPath .githooks; then
+	say "core.hooksPath=.githooks is set in the checkout, so the committed hooks run."
+else
+	miss "core.hooksPath could not be set in the checkout."
+fi
+
+# --- 3b. abcd, built once for the session's later shells ------------------------------
+
+bin_rel=".abcd/.work.local/cloud/bin/abcd"
+abcd_step() {
+	local bin="$root/$bin_rel" var line
+	if ! as_abcd mkdir -p "$root/.abcd/.work.local/cloud/bin" ||
+		! as_abcd go build -o "$bin" ./cmd/abcd </dev/null >/dev/null 2>&1 || [ ! -x "$bin" ]; then
+		miss "abcd could not be built from the checkout (go build ./cmd/abcd, as $USER_NAME), so every push builds it per commit."
+		return 0
+	fi
+	case "$bin" in
+	*"'"* | *$'\n'*)
+		say "abcd built at $bin_rel; its path cannot be written as a variable, so set ABCD_OUTBOUND_BIN and ABCD_BIN to it in each shell."
+		return 0
+		;;
+	esac
+	if [ -z "${CLAUDE_ENV_FILE:-}" ]; then
+		say "abcd built at $bin_rel; no file of variables for later shells was given, so set ABCD_OUTBOUND_BIN and ABCD_BIN to it in each shell."
+		return 0
+	fi
+	for var in ABCD_OUTBOUND_BIN ABCD_BIN; do
+		line="export $var='$bin'"
+		if ! grep -Fxq -- "$line" "$CLAUDE_ENV_FILE" 2>/dev/null; then
+			printf '%s\n' "$line" >>"$CLAUDE_ENV_FILE" || {
+				miss "abcd built at $bin_rel, but $var could not be written to the file of variables for later shells."
+				return 0
+			}
+		fi
+	done
+	say "abcd built at $bin_rel and handed to later shells as ABCD_OUTBOUND_BIN and ABCD_BIN."
+}
+abcd_step
+
+# --- 4. The author identity, from the forge token ----------------------------------------
+
+no_identity() {
+	miss "the author identity could not be taken from the forge token, so none was set; the brief's first step stops before any work."
+}
+
+# person says whether the checkout's identity, as the user sees it, is set and
+# a person's. Read into variables only; the gate's output is discarded unread.
+person() {
+	local name mail
+	name="$(as_abcd git -C "$root" config --get user.name 2>/dev/null)" || return 1
+	mail="$(as_abcd git -C "$root" config --get user.email 2>/dev/null)" || return 1
+	[ -n "$name" ] && [ -n "$mail" ] || return 1
+	bash "$root/scripts/check-attribution.sh" identity author "$name" "$mail" >/dev/null 2>&1
+}
+
+# field <name> reads one string field of the verb's flat JSON answer.
+field() {
+	printf '%s' "$answer" | sed -n 's/.*"'"$1"'"[[:space:]]*:[[:space:]]*"\([^"\\]*\)".*/\1/p' | head -n 1
+}
+
+identity_step() {
+	local login noreply source id
+	answer="$(as_abcd go run ./cmd/abcd reserve --holder --json 2>/dev/null)" || {
+		no_identity
+		return 0
+	}
+	answer="$(printf '%s' "$answer" | tr -d '\r\n')"
+	login="$(field login)"
+	noreply="$(field noreply)"
+	source="$(field source)"
+	if ! [[ "$login" =~ $LOGIN_RE ]] || ! [[ "$noreply" =~ ^([0-9]+)\+(.*)@users\.noreply\.github\.com$ ]]; then
+		no_identity
+		return 0
+	fi
+	id="${BASH_REMATCH[1]}"
+	if [ "$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$login" | tr '[:upper:]' '[:lower:]')" ] ||
+		[ "$id" = 0 ]; then
+		no_identity
+		return 0
+	fi
+	if [ "$source" != token ] && ! person; then
+		no_identity
+		return 0
+	fi
+	if as_abcd git -C "$root" config --local user.name "$login" &&
+		as_abcd git -C "$root" config --local user.email "$noreply"; then
+		say "author identity set in the checkout from the forge token's account: $login <$noreply>."
+	else
+		no_identity
+	fi
+}
+answer=""
+identity_step
+
+exit "$failed"

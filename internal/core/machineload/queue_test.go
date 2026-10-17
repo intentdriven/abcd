@@ -1,6 +1,7 @@
 package machineload
 
 import (
+	"math/rand/v2"
 	"reflect"
 	"slices"
 	"testing"
@@ -329,8 +330,10 @@ type qw = struct {
 // 2026-10-16: after a reboot the process ids wrapped, and waiters started
 // between 16:07 and 17:26 with pids 50460 to 71218 all queued ahead of one
 // started at 16:04 with pid 96274, which starved while lower pids kept
-// arriving. The queue is the order the waiters started in, so the 16:04
-// waiter is first whatever its pid.
+// arriving. A waiter is ahead only when it started earlier and has the lower
+// pid too, so no later start holds the 16:04 waiter back whatever its pid; the
+// 16:07 waiter, whose start and pid disagree with it, waits on neither, and
+// the 17:26 waiter waits on the 16:07 one, ahead of it by both.
 func TestQueueOrdersWaitersByStartAcrossAPidWrap(t *testing.T) {
 	// Read at 17:30.
 	snap, args := queueSnap(
@@ -342,11 +345,11 @@ func TestQueueOrdersWaitersByStartAcrossAPidWrap(t *testing.T) {
 	if got := QueueAhead(snap, early, args); len(got.Waiters) != 0 {
 		t.Fatalf("the 16:04 waiter's view = %+v, want nothing ahead: it started first", got)
 	}
-	if got := QueueAhead(snap, Self{PID: 50460, UID: otherUID}, args); !reflect.DeepEqual(got.Waiters, []int{96274}) {
-		t.Fatalf("the 16:07 waiter's view = %+v, want the 16:04 waiter 96274 ahead", got)
+	if got := QueueAhead(snap, Self{PID: 50460, UID: otherUID}, args); len(got.Waiters) != 0 {
+		t.Fatalf("the 16:07 waiter's view = %+v, want nothing ahead: the 16:04 waiter has the higher pid", got)
 	}
-	if got := QueueAhead(snap, Self{PID: 71218, UID: otherUID}, args); !reflect.DeepEqual(got.Waiters, []int{50460, 96274}) {
-		t.Fatalf("the 17:26 waiter's view = %+v, want 50460 and 96274 ahead", got)
+	if got := QueueAhead(snap, Self{PID: 71218, UID: otherUID}, args); !reflect.DeepEqual(got.Waiters, []int{50460}) {
+		t.Fatalf("the 17:26 waiter's view = %+v, want 50460 ahead, and not 96274, whose pid is higher", got)
 	}
 }
 
@@ -364,31 +367,58 @@ func TestQueueBreaksAStartTieByPid(t *testing.T) {
 			t.Fatalf("gap %s: the lower pid's view = %+v, want nothing ahead", gap, got)
 		}
 	}
-	// Past the tolerance the start times are told apart, and the earlier start
-	// is ahead whatever its pid.
+	// Past the tolerance the start times are told apart: the later start is
+	// not ahead however low its pid, and the earlier start, with the higher
+	// pid, is not ahead either, so the two wait on neither.
 	snap, args := queueSnap(qw{40000, time.Minute}, qw{30000, time.Minute - (StartTolerance+1)*time.Second})
-	if got := QueueAhead(snap, Self{PID: 30000, UID: otherUID}, args); !reflect.DeepEqual(got.Waiters, []int{40000}) {
-		t.Fatalf("past the tolerance the lower pid's view = %+v, want the earlier start 40000 ahead", got)
+	for _, pid := range []int{30000, 40000} {
+		if got := QueueAhead(snap, Self{PID: pid, UID: otherUID}, args); len(got.Waiters) != 0 {
+			t.Fatalf("past the tolerance %d's view = %+v, want nothing ahead: start and pid disagree", pid, got)
+		}
 	}
 }
 
 // TestQueueSortsAnUnknownStartLast: a waiter whose start time the table could
 // not give (no measurable age) queues behind every waiter whose start time it
-// could, in pid order among the others like it.
+// could, in pid order among the others like it, so it holds back no known
+// start even with the lower pid; a known start is ahead of it only with the
+// lower pid, as every waiter ahead is.
 func TestQueueSortsAnUnknownStartLast(t *testing.T) {
-	snap, args := queueSnap(qw{20000, 0}, qw{30000, 0}, qw{90000, time.Minute})
-	if got := QueueAhead(snap, Self{PID: 90000, UID: otherUID}, args); len(got.Waiters) != 0 {
-		t.Fatalf("the known start's view = %+v, want nothing ahead: the unknown starts sort last", got)
+	snap, args := queueSnap(qw{20000, time.Minute}, qw{30000, 0}, qw{40000, 0}, qw{90000, time.Minute})
+	for pid, want := range map[int][]int{
+		20000: nil,
+		30000: {20000},
+		40000: {20000, 30000},
+		// The unknown starts 30000 and 40000 queue behind it, lower pids or not.
+		90000: {20000},
+	} {
+		if got := QueueAhead(snap, Self{PID: pid, UID: otherUID}, args); !slices.Equal(got.Waiters, want) {
+			t.Fatalf("waiter %d sees %v ahead, want %v", pid, got.Waiters, want)
+		}
 	}
-	if got := QueueAhead(snap, Self{PID: 20000, UID: otherUID}, args); !reflect.DeepEqual(got.Waiters, []int{90000}) {
-		t.Fatalf("the lower unknown start's view = %+v, want only the known start 90000 ahead", got)
+	// A waiter missing from the table has no start time either: the lower
+	// pids ahead of it, known or not, and nothing above it.
+	if got := QueueAhead(snap, Self{PID: 35000, UID: otherUID}, args); !reflect.DeepEqual(got.Waiters, []int{20000, 30000}) {
+		t.Fatalf("a waiter absent from the table sees %+v, want 20000 and 30000 ahead", got)
 	}
-	if got := QueueAhead(snap, Self{PID: 30000, UID: otherUID}, args); !reflect.DeepEqual(got.Waiters, []int{20000, 90000}) {
-		t.Fatalf("the higher unknown start's view = %+v, want 20000 and 90000 ahead", got)
+}
+
+// TestQueueTakesAZeroAgeAsUnknown: macOS reads ages in whole seconds, so a
+// waiter under a second old reads zero, which is an unknown start, and queues
+// behind a waiter one second old even with the lower pid: read as a start one
+// second apart, it would tie and lead by pid. It does not wait on the higher
+// pid either. A second later both are known and tie, and the lower pid is
+// ahead: the order the two settle on.
+func TestQueueTakesAZeroAgeAsUnknown(t *testing.T) {
+	snap, args := queueSnap(qw{10, 0}, qw{20, time.Second})
+	for _, pid := range []int{10, 20} {
+		if got := QueueAhead(snap, Self{PID: pid, UID: otherUID}, args); len(got.Waiters) != 0 {
+			t.Fatalf("waiter %d sees %v ahead, want nothing: a zero age is an unknown start, behind 20, and 20 has the higher pid", pid, got.Waiters)
+		}
 	}
-	// A waiter missing from the table has no start time either.
-	if got := QueueAhead(snap, Self{PID: 10000, UID: otherUID}, args); !reflect.DeepEqual(got.Waiters, []int{90000}) {
-		t.Fatalf("a waiter absent from the table sees %+v, want only the known start 90000 ahead", got)
+	snap, args = queueSnap(qw{10, time.Second}, qw{20, 2 * time.Second})
+	if got := QueueAhead(snap, Self{PID: 20, UID: otherUID}, args); !slices.Equal(got.Waiters, []int{10}) {
+		t.Fatalf("a second later 20 sees %v ahead, want [10]: the two tie and the lower pid leads", got.Waiters)
 	}
 }
 
@@ -406,5 +436,261 @@ func TestQueueChainedTiesHoldOneOrder(t *testing.T) {
 		if !slices.Equal(got.Waiters, w) {
 			t.Fatalf("waiter %d sees %v ahead, want %v", pid, got.Waiters, w)
 		}
+	}
+}
+
+// pidRuleAhead is the queue as a waiter built before iss-2610161634043273
+// reads it, restated from that code for fixtures whose waiters are all queued
+// (none runs its command or sits beneath another waiter): every queued waiter
+// with a lower pid is ahead. Branches not rebased on the start-order fix run
+// this rule for days, so a queue holds both kinds of waiter.
+func pidRuleAhead(snap Snapshot, self Self, args map[int][]string) []int {
+	var out []int
+	for _, pid := range GateCandidates(snap, self) {
+		if isLoadWaiter(args[pid]) && pid < self.PID {
+			out = append(out, pid)
+		}
+	}
+	return out
+}
+
+// TestQueueMixedVersionsNeverWaitOnEachOther is the deadlock of the night of
+// 2026-10-16: a waiter built from this code, the youngest with the lowest
+// pid, and two built from the pid-ordered code, older with higher pids. The
+// new one saw the two older starts ahead and the old ones saw its lower pid
+// ahead, so all three waited for hours. A waiter counts another as ahead only
+// when it is ahead by start and has the lower pid as well, so it never waits
+// on a waiter the pid order puts behind it, and no pair waits on each other
+// whichever code each runs.
+func TestQueueMixedVersionsNeverWaitOnEachOther(t *testing.T) {
+	snap, args := queueSnap(
+		qw{30000, 5 * time.Minute}, // new code: youngest, lowest pid
+		qw{60000, 3 * time.Hour},   // old code
+		qw{70000, 2 * time.Hour},   // old code
+	)
+	view := map[int][]int{
+		30000: QueueAhead(snap, Self{PID: 30000, UID: otherUID}, args).Waiters,
+		60000: pidRuleAhead(snap, Self{PID: 60000, UID: otherUID}, args),
+		70000: pidRuleAhead(snap, Self{PID: 70000, UID: otherUID}, args),
+	}
+	for a, ahead := range view {
+		for _, b := range ahead {
+			if slices.Contains(view[b], a) {
+				t.Errorf("waiters %d and %d each see the other ahead (%d sees %v, %d sees %v): neither can open", a, b, a, ahead, b, view[b])
+			}
+		}
+	}
+	if len(view[30000]) != 0 {
+		t.Fatalf("the new waiter sees %v ahead, want nothing: both older waiters have higher pids, and their code waits on its lower pid", view[30000])
+	}
+}
+
+// TestQueueWaitsFormNoCycle: across many tables of a few waiters, each built
+// from this code or from the pid-ordered code at random, and each new waiter
+// reading its own table a second either side of the others' (ages read at
+// different looks, on macOS in whole seconds), no waiter waits on itself
+// through any chain of waits. Every wait points at a lower pid, whichever code
+// made it, so no cycle can close.
+func TestQueueWaitsFormNoCycle(t *testing.T) {
+	rng := rand.New(rand.NewPCG(2610161634, 43273))
+	for iter := 0; iter < 5000; iter++ {
+		n := 2 + rng.IntN(4)
+		pids := rng.Perm(900)[:n]
+		ages := make([]int, n)
+		oldCode := make([]bool, n)
+		for i := range pids {
+			pids[i] += 100
+			ages[i] = rng.IntN(21) // seconds; zero is an unknown start
+			oldCode[i] = rng.IntN(2) == 0
+		}
+		edges := map[int][]int{}
+		for v := range pids {
+			ws := make([]qw, n)
+			for i := range pids {
+				age := ages[i]
+				if age > 0 && !oldCode[v] {
+					age = max(1, age+rng.IntN(3)-1)
+				}
+				ws[i] = qw{pids[i], time.Duration(age) * time.Second}
+			}
+			snap, args := queueSnap(ws...)
+			self := Self{PID: pids[v], UID: otherUID}
+			if oldCode[v] {
+				edges[pids[v]] = pidRuleAhead(snap, self, args)
+			} else {
+				edges[pids[v]] = QueueAhead(snap, self, args).Waiters
+			}
+		}
+		if cycle := waitCycle(edges); cycle != nil {
+			t.Fatalf("table %d: pids %v, ages %v s, old code %v: the waits %v close the cycle %v", iter, pids, ages, oldCode, edges, cycle)
+		}
+	}
+}
+
+// waitCycle returns a cycle in the wait graph edges (waiter to the waiters it
+// sees ahead), or nil.
+func waitCycle(edges map[int][]int) []int {
+	const (
+		unseen = iota
+		open
+		done
+	)
+	state := map[int]int{}
+	var path []int
+	var visit func(int) []int
+	visit = func(v int) []int {
+		state[v] = open
+		path = append(path, v)
+		for _, w := range edges[v] {
+			switch state[w] {
+			case open:
+				i := slices.Index(path, w)
+				return append(slices.Clone(path[i:]), w)
+			case unseen:
+				if c := visit(w); c != nil {
+					return c
+				}
+			}
+		}
+		path = path[:len(path)-1]
+		state[v] = done
+		return nil
+	}
+	for v := range edges {
+		if state[v] == unseen {
+			if c := visit(v); c != nil {
+				return c
+			}
+		}
+	}
+	return nil
+}
+
+// TestQueueAPidWrapStarvesNoWaiter: two waiters started before the machine's
+// process ids wrapped, with high pids, and a stream of later waiters after it,
+// one a minute with low pids, every one built from this code. Each minute one
+// waiter at the front (one that sees nothing queued ahead of it) is admitted,
+// chosen at random as the settle jitter chooses. A waiter is only ever held
+// behind waiters that started before it, so later arrivals never delay it, and
+// the two early waiters are admitted within a few minutes while the stream
+// keeps arriving. Ordered by pid, every later low pid queued ahead of them and
+// they starved.
+func TestQueueAPidWrapStarvesNoWaiter(t *testing.T) {
+	rng := rand.New(rand.NewPCG(96274, 50460))
+	type waiter struct {
+		pid     int
+		started int // minute
+	}
+	queue := []waiter{{96274, 0}, {96300, 1}}
+	admitted := map[int]int{}
+	next := 300
+	for minute := 2; minute < 60; minute++ {
+		queue = append(queue, waiter{next, minute})
+		next++
+		var ws []qw
+		started := map[int]int{}
+		for _, w := range queue {
+			ws = append(ws, qw{w.pid, time.Duration(minute-w.started)*time.Minute + time.Second})
+			started[w.pid] = w.started
+		}
+		snap, args := queueSnap(ws...)
+		var front []int
+		for _, w := range queue {
+			ahead := QueueAhead(snap, Self{PID: w.pid, UID: otherUID}, args).Waiters
+			for _, a := range ahead {
+				if started[a] > w.started {
+					t.Fatalf("minute %d: waiter %d (started minute %d) is held behind %d, which started later, at minute %d", minute, w.pid, w.started, a, started[a])
+				}
+			}
+			if len(ahead) == 0 {
+				front = append(front, w.pid)
+			}
+		}
+		if len(front) == 0 {
+			t.Fatalf("minute %d: no waiter of %v sees the front", minute, queue)
+		}
+		pick := front[rng.IntN(len(front))]
+		admitted[pick] = minute
+		queue = slices.DeleteFunc(queue, func(w waiter) bool { return w.pid == pick })
+	}
+	for _, pid := range []int{96274, 96300} {
+		m, ok := admitted[pid]
+		if !ok {
+			t.Fatalf("the early waiter %d was never admitted (admitted: %v), want by minute 12", pid, admitted)
+		}
+		if m > 12 {
+			t.Fatalf("the early waiter %d was admitted at minute %d (admitted: %v), want by minute 12", pid, m, admitted)
+		}
+	}
+}
+
+// TestQueueTwoWaitersThatDisagreeWaitOnNeither: a waiter that started earlier
+// with the higher pid, as after the ids wrap, and one that started later with
+// the lower pid: start order and pid order disagree, and neither is ahead of
+// the other. What keeps them from opening in one moment is the waiter's own
+// settle wait and re-check, and within one account its hold
+// (implement.TestWaitTwoWaitersThatDisagreeOpenApart).
+func TestQueueTwoWaitersThatDisagreeWaitOnNeither(t *testing.T) {
+	snap, args := queueSnap(qw{96274, 86 * time.Minute}, qw{50460, 83 * time.Minute})
+	for _, pid := range []int{96274, 50460} {
+		if got := QueueAhead(snap, Self{PID: pid, UID: otherUID}, args); len(got.Waiters) != 0 {
+			t.Fatalf("waiter %d sees %v ahead, want nothing: start and pid disagree", pid, got.Waiters)
+		}
+	}
+}
+
+// TestJustOpenedNamesWaitersThatOpenedWithinTheWindow: an opener's look just
+// before it starts its command (implement.WaitLoad) names the other waiters
+// that are running their command and opened within the window: a waiter's
+// oldest child other than ps is no older than it. A waiter that has run its
+// command for longer opened before this one's open look and would have shut
+// it, a waiter whose one child is ps is reading the machine, and the waiter's
+// own ancestors never count.
+func TestJustOpenedNamesWaitersThatOpenedWithinTheWindow(t *testing.T) {
+	const window = 4 * time.Second
+	procs, args := waiterChain()
+	snap := Snapshot{HasLoad: true, Cores: 16, Procs: procs, HasProcs: true}
+	add := func(pid int, children ...Proc) {
+		w, a := peerWaiter(pid, 1, otherUID)
+		snap.Procs = append(snap.Procs, w...)
+		args = merge(args, a)
+		snap.Procs = append(snap.Procs, children...)
+	}
+	// Opened a second ago: its marker child, then its command beside it.
+	add(30001, Proc{PID: 30002, PPID: 30001, UID: otherUID, Age: time.Second, Name: "sleep"},
+		Proc{PID: 30003, PPID: 30001, UID: otherUID, Name: "make"})
+	// Opened at the window's edge.
+	add(31001, Proc{PID: 31002, PPID: 31001, UID: otherUID, Age: window, Name: "make"})
+	// Running its command for ten minutes.
+	add(32001, Proc{PID: 32002, PPID: 32001, UID: otherUID, Age: 10 * time.Minute, Name: "make"})
+	// Reading the machine.
+	add(33001, Proc{PID: 33002, PPID: 33001, UID: otherUID, Name: "ps"})
+	// Queued.
+	add(34001)
+	// An abcd that is no waiter, with a fresh child.
+	snap.Procs = append(snap.Procs,
+		Proc{PID: 35001, PPID: 1, UID: otherUID, Age: time.Minute, Name: "abcd"},
+		Proc{PID: 35002, PPID: 35001, UID: otherUID, Name: "git"})
+	args[35001] = []string{"status"}
+	if got := JustOpened(snap, waiter, args, window, false); !reflect.DeepEqual(got, []int{30001, 31001}) {
+		t.Fatalf("just opened = %v, want the two waiters that opened within %s, 30001 and 31001", got, window)
+	}
+
+	// An inner waiter's own ancestor opened a moment ago; it is the work this
+	// waiter is part of, never another opener.
+	inner := Self{PID: 20001, UID: callerUID}
+	snap = Snapshot{HasLoad: true, Cores: 16, HasProcs: true, Procs: []Proc{
+		{PID: 1, PPID: 0, PGID: 1, UID: rootUID, Age: time.Hour, Name: "launchd"},
+		{PID: 15001, PPID: 1, PGID: 15001, UID: callerUID, Age: time.Hour, Name: "abcd"},
+		{PID: 15002, PPID: 15001, PGID: 15001, UID: callerUID, Age: time.Second, Name: "make"},
+		{PID: 20001, PPID: 15002, PGID: 15001, UID: callerUID, Name: "abcd"},
+	}}
+	args = map[int][]string{
+		15001: {"implement", "load", "--wait", "--", "make", "preflight"},
+		15002: {"preflight"},
+		20001: {"implement", "load", "--wait", "--", "go", "test", "-race", "./..."},
+	}
+	if got := JustOpened(snap, inner, args, window, false); len(got) != 0 {
+		t.Fatalf("just opened = %v for an inner waiter, want nothing: its ancestor is its own work", got)
 	}
 }

@@ -1,0 +1,60 @@
+# Cloud brief: {{ITEM}}
+
+You are a cloud session working on one item of this repository, and on
+nothing else: {{ITEM}}, whose record is `{{RECORD}}` on the default branch,
+`{{BASE}}`. Read the record before you start.
+
+## First step
+
+Run `scripts/cloud/begin.sh` before anything else. It checks that this is the
+environment the brief was written for, that you are not running as root, that
+the checkout's author identity is a person's, and that the machine has every
+tool the final checks need.
+
+If it stops because this is not the environment the brief was written for,
+do nothing else, not even a hand-back: end the session there, having changed,
+committed and pushed nothing. If it stops for any other reason, do no work on
+the item: hand back with `--state stopped` (below), saying what it reported.
+
+## Whose name the work goes out under
+
+Every commit is authored under the identity the setup took from the
+forge token this environment holds. This brief names no author, and none was
+read from the computer that sent it. Never set or change the author identity
+yourself; if `scripts/cloud/begin.sh` says the identity is unset or is not a
+person's, stop and hand back.
+
+## Rules
+
+- No hook is ever skipped: never pass `--no-verify`, and never unset or
+  redirect `core.hooksPath`.
+- Every abcd verb runs as `go run ./cmd/abcd <verb>` from the checkout's
+  root, never through an installed binary.
+- Every commit carries an `Assisted-by: <Vendor>:<model-version>` trailer and
+  no co-author trailer.
+- Reserve the item before you change anything:
+  `go run ./cmd/abcd reserve {{ITEM}} --footprint <path>`, once for each path
+  the work will change. If someone else holds it, stop and hand back.
+- Work on {{ITEM}} alone. A finding outside it goes in the report, not in the
+  branch.
+
+## The branch
+
+Every commit goes to the branch `{{BRANCH}}`, finished or not. The hand-back
+pushes it; push nowhere else, and never to `{{BASE}}`.
+
+## The hand-back
+
+End every session, finished or stopped, with the one exception above (a
+stop because this is not the environment the brief was written for, which
+ends with nothing at all):
+
+    scripts/cloud/hand-back.sh --state <handed-back|stopped> --item {{ITEM}} \
+      --assisted-by <Vendor>:<model-version> \
+      --did <text> --failed <text> --needs <text>
+
+It commits the report as `{{REPORT_DIR}}/{{ITEM}}.md`, alone, as the branch's
+last commit, and pushes the branch through the committed hooks. Only when that
+push fails does it post the same report as a comment on the project's
+tracking issue for cloud sessions instead (the fallback). Write the report
+nowhere else, and keep links to this session out of it.
