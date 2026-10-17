@@ -20,8 +20,12 @@ Two flows over the abcd binary, kept apart on purpose:
 - **ship** — the release cut: derive the version from what shipped, compose the
   changelog prose and the release page, write them. It writes the dated section
   of `CHANGELOG.md`, the release page `RELEASE.md`, the outgoing page's copy
-  under `.abcd/development/releases/`, and the `target_release` line of every
-  planned intent whose target the cut passed, moved to `next`; in a repository that publishes a versioned
+  under `.abcd/development/releases/`, the `target_release` line of every
+  planned intent whose target the cut passed, moved to `next`, and, in a
+  repository whose `.abcd/config.json` declares `release.digest`, the cut's
+  release appended to that JSON file (its tag, the tag it was cut from, and
+  each changelog line with the records it cites and their impact; abcd's own
+  is the digest its binary embeds); in a repository that publishes a versioned
   plugin it also pins the release's plugin archive in
   `.claude-plugin/marketplace.json` (refreshing the surface snapshot beside it).
   It **never publishes**.

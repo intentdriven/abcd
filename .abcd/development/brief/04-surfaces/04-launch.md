@@ -110,8 +110,23 @@ launch scan holds the same files to: a hard_fail finding of the canonical
 scanner (a token, a key, the caller's own home or identity) refuses the cut,
 named by kind and line, never quoted (iss-2609290405381338). The outgoing page moves to
 `.abcd/development/releases/<version>.md`, then the page is written, then the
-changelog heading; a failure rolls the earlier writes back. A fixes-only cut
-writes no page. A refused payload returns every reason as data, and the host
+release digest, then the changelog heading; a failure rolls the earlier writes
+back. A fixes-only cut writes no page.
+
+**A repository that declares a digest gets the cut appended to it.** The
+repository's own `.abcd/config.json` (the repository layer alone) may declare
+`release.digest`, a repository-relative path to a `.json` file; a path outside
+the tree, under `.abcd/` or `.git/`, not ending in `.json`, or whose directory
+is not in the tree is refused before any write, and so is a present digest that
+does not parse. The cut appends its release: the derived tag, the tag it was
+cut from, and each validated changelog line, in the section's order, with the
+records it cites and their impact (`internal/core/releasedigest`, schema 1).
+The write goes through the repository root so a symlinked directory cannot
+carry it outside, and a rollback restores the file or removes the one the cut
+created. abcd declares `internal/core/releasedigest/digest.json`, which its
+binary embeds, so a binary carries every release up to its own and can say what
+changed in an update without reading the network or the repository it runs in
+(spc-2610170635097509). A repository that declares nothing gets no digest. A refused payload returns every reason as data, and the host
 recomposes until it is valid, reporting each attempt (itd-2609231013154443).
 
 **The archive render is the release gate's half of the pin.** It renders the
