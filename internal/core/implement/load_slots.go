@@ -16,9 +16,11 @@ import (
 //   - ABCD_LOAD_PREFLIGHTS in the waiter's own environment, so a measured
 //     trial can raise it without editing a file;
 //   - load.preflights in ~/.abcd.noindex/config.json, the machine layer of the
-//     layered configuration, loaded alone (layered.Roots carries no Repo), so
-//     the guarded read refuses a file that is not a regular file this account
-//     owns and nobody else can write, exactly as for every machine setting.
+//     layered configuration, loaded alone (layered.MachineRoots), so the
+//     guarded read refuses a file that is not a regular file this account
+//     owns and nobody else can write, and a home inside a git working tree
+//     that is not the account's own is not read at all, exactly as for every
+//     machine setting.
 //
 // Absent from both it is one, and every gate reads as it did before the
 // setting existed. A value from either place that is not a whole number from
@@ -87,7 +89,11 @@ func PreflightSlots(getenv func(string) string, home string) (int, string, strin
 		}
 		return n, SlotsEnv, "", nil
 	}
-	stack, err := layered.Load(layered.Config, layered.Roots{Home: home})
+	roots, note := layered.MachineRoots(home)
+	if roots.HomeRefused {
+		return 1, SlotsDefault, note + "; one preflight at a time applies", nil
+	}
+	stack, err := layered.Load(layered.Config, roots)
 	if err != nil {
 		return 1, SlotsDefault, machineConfigNote(err), nil
 	}

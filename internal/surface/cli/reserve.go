@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -136,7 +137,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if holder {
-				return runReserveHolder(cmd.OutOrStdout(), *asJSON)
+				return runReserveHolder(cmd.OutOrStdout(), cmd.ErrOrStderr(), *asJSON)
 			}
 			if release {
 				var with []string
@@ -157,6 +158,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was pushed"}
 			}
+			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
 			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
 				TakeOver: takeOver, Release: release}, claim.Options{ForgeUser: reserveForgeUser})
 			if err != nil {
@@ -178,7 +180,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 // this checkout would be made as, and the source that named it. It writes
 // nothing; when git's identity names no holder it may ask the forge's user
 // endpoint once, as the act itself would.
-func runReserveHolder(w io.Writer, asJSON bool) error {
+func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -187,6 +189,7 @@ func runReserveHolder(w io.Writer, asJSON bool) error {
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was reserved"}
 	}
+	noteMachineHome(errw, "abcd reserve")
 	h, err := claim.ResolveHolder(root, claim.Options{ForgeUser: reserveForgeUser})
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
@@ -272,4 +275,18 @@ func shortCommit(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// noteMachineHome puts on stderr, prefixed by verb, the one line saying the
+// process's HOME lies inside a git working tree and so is not read as this
+// machine's layer (layered.MachineRoots), the home claim's readers are given.
+// It writes nothing for any other home.
+func noteMachineHome(w io.Writer, verb string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	if _, note := layered.MachineRoots(home); note != "" {
+		fmt.Fprintln(w, verb+": "+termsafe.Sanitize(fsutil.RedactHome(note)))
+	}
 }

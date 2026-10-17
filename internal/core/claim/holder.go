@@ -167,7 +167,10 @@ func machineHolder(home string) (string, error) {
 	if home == "" {
 		return "", nil
 	}
-	stack, err := layered.Load(layered.Config, layered.Roots{Home: home})
+	// A home inside a working tree reads as absent (layered.MachineRoots);
+	// the front door says so.
+	roots, _ := layered.MachineRoots(home)
+	stack, err := layered.Load(layered.Config, roots)
 	if err != nil {
 		return "", refuse("could not read the configuration that names your GitHub username: %v; %s", err, nothingSent)
 	}

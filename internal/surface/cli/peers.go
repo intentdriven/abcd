@@ -146,6 +146,7 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("abcd peers: %w", err)
 			}
+			noteMachineHome(cmd.ErrOrStderr(), "abcd peers")
 			out := peersView(rep)
 			failed := addReservations(root, &out, time.Now())
 			if err := render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderPeers(w, out) }); err != nil {

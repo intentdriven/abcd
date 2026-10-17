@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // How many live reservations one person may hold (iss-2610170717515674) is a
@@ -23,8 +22,8 @@ import (
 // every act of a person whose username is read from that file: the holder's
 // reader claims the same namespace, holder.go.) A config.json that cannot be
 // read at all (writable by others, not valid JSON) is read past instead, as is
-// a HOME inside a git working tree that is not the account's own, by the rule
-// layered.RootsFor applies: neither is a file the person can be shown to have
+// a HOME inside a git working tree that is not the account's own
+// (layered.MachineRoots): neither is a file the person can be shown to have
 // written, so MaxLive applies, and the refusal at the cap says why.
 
 // MaxLiveKey is the machine configuration key.
@@ -43,11 +42,12 @@ func maxLive(home string) (int, string, error) {
 	if home == "" {
 		return MaxLive, "", nil
 	}
-	if gitutil.HomeInsideWorkingTree(home) != "" {
+	roots, _ := layered.MachineRoots(home)
+	if roots.HomeRefused {
 		return MaxLive, fmt.Sprintf("HOME lies inside a git working tree and is not this account's home, so %s is not read for %s and the default of %d applies",
 			layered.Config.MachineOrigin(), MaxLiveKey, MaxLive), nil
 	}
-	stack, err := layered.Load(layered.Config, layered.Roots{Home: home})
+	stack, err := layered.Load(layered.Config, roots)
 	if err != nil {
 		return MaxLive, fmt.Sprintf("the machine configuration could not be read for %s (%s), so the default of %d applies",
 			MaxLiveKey, redacted(err), MaxLive), nil

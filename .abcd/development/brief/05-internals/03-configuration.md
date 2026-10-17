@@ -586,7 +586,11 @@ refusal at the cap says) and `load.preflights` (how
 many preflights may be in their test stages at once: 1 or 2, 1 by default,
 never read from a repository, and read past, with a stderr note, when the
 file cannot be read for it, so a file that holds other settings never stops
-the load gate) are honoured from the machine layer alone. Its one
+the load gate) are honoured from the machine layer alone, and only from a
+home outside every git working tree but the account's own
+(`layered.MachineRoots`, the rule `RootsFor` applies): under a home inside
+one the machine layer reads as absent, so no holder is named from it, the
+cap is ten and one preflight runs at a time, and one stderr line says why. Its one
 write is the provider block `ahoy connect` adds, and every other config read
 resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
 model-tier routing table in `oracle-routing.json` (read beneath the
