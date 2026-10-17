@@ -111,7 +111,8 @@ func newStatusCommand(asJSON *bool) *cobra.Command {
 		Long: "List everyone's status on the shared remote: the announcements every session\n" +
 			"posted (abcd announce), newest first, each with its sender, kind, item, the\n" +
 			"time sent and how long it still stands, then who holds which reservation and\n" +
-			"each release being cut, which holds every other session's merge.\n\n" +
+			"each release being cut, which holds every other session's merge, with a live\n" +
+			"drain lane's stage and each holder's hand-backs from the last day.\n\n" +
 			"It reads the remote once: it lists the status branches on origin (git\n" +
 			"ls-remote), then fetches, in one command, the reservations with origin's\n" +
 			"release tags, the first 500 status branches whose names are GitHub\n" +

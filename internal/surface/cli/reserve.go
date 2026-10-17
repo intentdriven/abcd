@@ -38,6 +38,40 @@ type reserveOutput struct {
 	Commit           string           `json:"commit"`
 	Replaced         *reserveReplaced `json:"replaced,omitempty"`
 	DerivedUnchecked string           `json:"derived_unchecked,omitempty"`
+	ForkUnchecked    string           `json:"fork_unchecked,omitempty"`
+	ForkAllowed      string           `json:"fork_allowed,omitempty"`
+	// HandedBack is the hand-back tombstone a reservation was made over, its
+	// record unchanged on origin's default branch since; note is the
+	// sentence the text form prints for it.
+	HandedBack *reserveHandedBack `json:"handed_back,omitempty"`
+	// HandBackKept is the hand-back a plain release kept standing, the
+	// released reservation having been made over it with its record unchanged
+	// since; HandBackUnpublished why a release's tombstone marks no hand-back
+	// it would otherwise have marked.
+	HandBackKept        *reserveHandedBack `json:"hand_back_kept,omitempty"`
+	HandBackUnpublished string             `json:"hand_back_unpublished,omitempty"`
+	// OwnOverlap is each path the reservation shares with the person's own
+	// from another copy, which it was made over; the text form warns of each
+	// on stderr. GeneratedUnread is why no generated file was recognised.
+	OwnOverlap      []reserveOwnOverlap `json:"own_overlap,omitempty"`
+	GeneratedUnread string              `json:"generated_unread,omitempty"`
+	note            string
+	warnings        []string
+}
+
+// reserveOwnOverlap is a path shared with one's own reservation from another
+// copy.
+type reserveOwnOverlap struct {
+	Path            string `json:"path"`
+	Record          string `json:"record"`
+	EffectiveExpiry string `json:"effective_expiry"`
+}
+
+// reserveHandedBack is the hand-back a person's own reservation was made over.
+type reserveHandedBack struct {
+	Kind   string `json:"kind"`
+	Holder string `json:"holder"`
+	At     string `json:"at"`
 }
 
 // reserveReplaced is the reservation a take-over replaced.
@@ -91,6 +125,23 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"resolved, won't-fixed, shipped or superseded on origin's default branch counts\n" +
 			"as released whatever its reservation says, and so does a release whose tag is\n" +
 			"on origin.\n\n" +
+			"A new reservation or a take-over asks GitHub whether origin is a fork, and a\n" +
+			"fork is refused unless reservation.fork_origin names it; when GitHub cannot say,\n" +
+			"the act goes on and warns (not checked: whether origin is a fork, fork_unchecked\n" +
+			"in --json). An issue a drain handed back carries the hand-back on its tombstone:\n" +
+			"your own reservation over it is made, with a note (handed_back in --json), and a\n" +
+			"plain --release of it keeps the hand-back standing until a person changes the\n" +
+			"record on origin's default branch (hand_back_kept in --json), so no drain takes\n" +
+			"the issue, nor takes over or renews your reservation over it. A release whose\n" +
+			"tombstone cannot mark the hand-back is still made, plain, and says why\n" +
+			"(hand_back_unpublished in --json).\n\n" +
+			"A footprint sharing a path with another person's live reservation backs off\n" +
+			"(exit 3). A file that origin's default branch, as last fetched, declares\n" +
+			"linguist-generated in its root .gitattributes is shared, never an overlap; a\n" +
+			"directory never is. When that declaration cannot be read nothing is shared, and\n" +
+			"the act says why (generated_unread in --json). Your own reservation sharing a\n" +
+			"path with yours from another copy is made, and warns on stderr (own_overlap in\n" +
+			"--json).\n\n" +
 			"The holder is your GitHub username, from the first of these that names it:\n" +
 			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
 			"in the machine configuration (the repository's own configuration is never read\n" +
@@ -160,12 +211,20 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			}
 			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
 			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
-				TakeOver: takeOver, Release: release}, claim.Options{ForgeUser: reserveForgeUser})
+				TakeOver: takeOver, Release: release, WarnOwnOverlap: true}, claim.Options{ForgeUser: reserveForgeUser})
 			if err != nil {
 				return reserveRefusal(err)
 			}
 			out := reserveView(res)
-			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderReserve(w, out) })
+			if err := render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderReserve(w, out) }); err != nil {
+				return err
+			}
+			if !*asJSON {
+				for _, line := range out.warnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "abcd reserve: warning: %s\n", line)
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringArrayVar(&footprint, "footprint", nil, "a repository-relative path the work will change; repeat once per path (never split on commas)")
@@ -219,7 +278,9 @@ func reserveView(res claim.Result) reserveOutput {
 	out := reserveOutput{Act: res.Act, Record: res.Record, Holder: res.Holder, Copy: res.Copy,
 		Footprint: make([]string, 0, len(res.Footprint)), ClaimedAt: rfc3339(res.ClaimedAt),
 		EffectiveExpiry: rfc3339(res.ExpiresAt), Commit: res.Commit,
-		DerivedUnchecked: termsafe.Sanitize(fsutil.RedactHome(res.DerivedUnchecked))}
+		DerivedUnchecked: termsafe.Sanitize(fsutil.RedactHome(res.DerivedUnchecked)),
+		ForkUnchecked:    termsafe.Sanitize(fsutil.RedactHome(res.ForkUnchecked)),
+		ForkAllowed:      termsafe.Sanitize(res.ForkAllowed)}
 	for _, f := range res.Footprint {
 		out.Footprint = append(out.Footprint, termsafe.Sanitize(f))
 	}
@@ -227,14 +288,29 @@ func reserveView(res claim.Result) reserveOutput {
 		out.Replaced = &reserveReplaced{Holder: r.Holder, Copy: r.Copy, Commit: r.Commit,
 			EffectiveExpiry: rfc3339(r.EffectiveExpiry), Unreadable: r.Unreadable}
 	}
+	if h := res.HandedBack; h != nil {
+		out.HandedBack = &reserveHandedBack{Kind: termsafe.Sanitize(h.Kind), Holder: termsafe.Sanitize(h.Holder), At: rfc3339(h.At)}
+		out.note = termsafe.Sanitize(h.Note(res.Record))
+	}
+	if h := res.HandBackKept; h != nil {
+		out.HandBackKept = &reserveHandedBack{Kind: termsafe.Sanitize(h.Kind), Holder: termsafe.Sanitize(h.Holder), At: rfc3339(h.At)}
+		out.note = termsafe.Sanitize(h.KeptNote(res.Record))
+	}
+	out.HandBackUnpublished = termsafe.Sanitize(fsutil.RedactHome(res.HandBackUnpublished))
+	out.GeneratedUnread = termsafe.Sanitize(fsutil.RedactHome(res.GeneratedUnread))
+	for _, o := range res.OwnOverlap {
+		out.OwnOverlap = append(out.OwnOverlap, reserveOwnOverlap{Path: termsafe.Sanitize(o.Path), Record: termsafe.Sanitize(o.Record),
+			EffectiveExpiry: rfc3339(o.Expiry)})
+		out.warnings = append(out.warnings, o.Warning())
+	}
 	return out
 }
 
 func rfc3339(t time.Time) string { return t.UTC().Truncate(time.Second).Format(time.RFC3339) }
 
 // renderReserve is the text form: one line saying what was done, then the
-// footprint, then what a take-over replaced and a skipped check, each when
-// there is one.
+// footprint, then what a take-over replaced, a skipped check and the hand-back
+// the reservation was made over, each when there is one.
 func renderReserve(w io.Writer, out reserveOutput) {
 	switch out.Act {
 	case claim.ActReserved:
@@ -267,6 +343,21 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if out.DerivedUnchecked != "" {
 		fmt.Fprintf(w, "  not checked: whether %s is already finished on origin's default branch (%s)\n", out.Record, out.DerivedUnchecked)
+	}
+	if out.ForkUnchecked != "" {
+		fmt.Fprintf(w, "  %s\n", claim.ForkUncheckedLine(out.ForkUnchecked))
+	}
+	if out.ForkAllowed != "" {
+		fmt.Fprintf(w, "  %s\n", claim.ForkAllowedLine(out.ForkAllowed))
+	}
+	if out.note != "" {
+		fmt.Fprintf(w, "  note: %s\n", out.note)
+	}
+	if out.HandBackUnpublished != "" {
+		fmt.Fprintf(w, "  no hand-back: %s\n", out.HandBackUnpublished)
+	}
+	if out.GeneratedUnread != "" {
+		fmt.Fprintf(w, "  %s\n", claim.GeneratedUnreadLine(out.GeneratedUnread))
 	}
 }
 

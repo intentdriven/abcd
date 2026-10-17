@@ -32,10 +32,6 @@ const MaxLiveKey = holderNamespace + ".max_live"
 // MaxLiveCeiling bounds the setting.
 const MaxLiveCeiling = 100
 
-// reservationKeys is every key the reservation namespace takes, claimed by
-// each of its readers so neither refuses the other's key.
-var reservationKeys = []string{"github_username", "max_live"}
-
 // maxLive resolves the cap for the account whose home is home, with a note
 // when the machine config.json was read past.
 func maxLive(home string) (int, string, error) {
@@ -65,4 +61,13 @@ func maxLive(home string) (int, string, error) {
 		return 0, "", refuse("%s; %s", redacted(err), nothingPushed)
 	}
 	return v.V, "", nil
+}
+
+// MaxLiveFor is the cap of the person whose home o names (o.Home, else the
+// process's own), as an act that adds a reservation judges it: a caller that
+// counts from a view it already holds (the drain's wait) compares with this.
+// A setting the act would refuse is refused here the same way.
+func MaxLiveFor(o Options) (int, error) {
+	n, _, err := maxLive(o.home())
+	return n, err
 }

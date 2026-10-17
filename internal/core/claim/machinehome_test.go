@@ -26,3 +26,22 @@ func TestAHomeInsideAWorkingTreeNamesNoHolder(t *testing.T) {
 		}
 	}
 }
+
+// TestAHomeInsideAWorkingTreeAllowsNoFork: reservation.fork_origin in a HOME
+// that lies inside a git working tree is not read as the machine's layer, so
+// the bundled "refuse" stands.
+func TestAHomeInsideAWorkingTreeAllowsNoFork(t *testing.T) {
+	tree := gittest.NewRepo(t)
+	home := filepath.Join(tree.Root(), "home")
+	writeConfig(t, home, `{"reservation": {"fork_origin": "someone/fork"}}`)
+	fork, _, err := forkOriginAllowed(t.TempDir(), home)
+	if err != nil || fork != "" {
+		t.Fatalf("forkOriginAllowed = %q, %v; want no fork allowed from a HOME inside a working tree", fork, err)
+	}
+	// The same file under an ordinary home is read.
+	home = t.TempDir()
+	writeConfig(t, home, `{"reservation": {"fork_origin": "someone/fork"}}`)
+	if fork, _, err := forkOriginAllowed(t.TempDir(), home); err != nil || fork != "someone/fork" {
+		t.Fatalf("forkOriginAllowed under an ordinary home = %q, %v; want someone/fork", fork, err)
+	}
+}
