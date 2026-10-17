@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> Every abcd session keeps a checklist on disk that says what it may decide, what it is waiting on and what it can do next, so an autonomous run never stalls and one stalled session never holds up the rest. Alice, a solo founder who is also the product thinker, leaves for the evening and tells their sessions to work on until 09:00. abcd records that as a mode with an owner and an end time, and each session's checklist carries it: Alice's design decisions that are signed off, the technical facilitator set to auto, the kinds of choice still raised with a person (security, performance, compatibility), the items waiting and on whom, the session's own promises ('when that pull request merges, do this'), and the work it owns, read from its claims, its pull requests and its branches. The checklist is repeated to the session at every start and after every compaction, so nothing that matters lives only in its context. A session that tries to stop while it has work it can do is handed the next item instead; when everything waits on something outside, it sets its next wake rather than going quiet. Work a session owns carries a lease like a claim, so when one session stops answering, another takes its items over and says so, and no lock, queue or release role waits on a silent session. Before the run starts, while Alice is still there, the orchestrating session asks every session what could interrupt its part of the night (a design decision not yet made, a step only Alice's hands can do, work it depends on from another session, a credential it lacks) and puts the answers to Alice together; when every session reports none left, it tells Alice the run is likely to stay autonomous, and when some remain, it names them and what each would hold up. In the morning Alice reads two short lists: the steps only their own hands can do, and the decisions taken while they were away, each with its grounds and how to reverse it.
+> Every abcd session keeps a checklist on disk that says what it may decide, what it is waiting on and what it can do next, so an autonomous run never stalls and one stalled session never holds up the rest. Alice, a solo founder who is also the product thinker, leaves for the evening and tells their sessions to work on until 09:00. abcd records that as a mode with an owner and an end time, and each session's checklist carries it: Alice's design decisions that are signed off, the technical facilitator set to auto, the kinds of choice still raised with a person (security, performance, compatibility), the items waiting and on whom, the session's own promises ('when that pull request merges, do this'), and the work it owns, read from its claims, its pull requests and its branches. The checklist is repeated to the session at every start and after every compaction, so nothing that matters lives only in its context. A session that tries to stop while it has work it can do is handed the next item instead; when everything waits on something outside, it sets its next wake rather than going quiet. Before the run starts, while Alice is still there, each session writes into its checklist what could interrupt its part of the night (a design decision not yet made, a step only Alice's hands can do, work it depends on from another session, a credential it lacks), so the pass that coordinates the sessions can put them to Alice together and tell them whether the run is likely to stay autonomous. In the morning Alice reads two short lists: the steps only their own hands can do, and the decisions taken while they were away, each with its grounds and how to reverse it.
 
 ## Why This Matters
 
@@ -83,16 +83,44 @@ unowned pull request.
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
+## Scope Split
+
+Agreed with the session drafting the coordination intent ("Headless agents in
+parallel coordinate through the shared remote, not conversation", on branch
+draft/conductor-intent until it lands; each record links the other once both
+are on the default branch):
+
+- **This intent (one session's own state):** the checklist on disk and its
+  re-injection at start and after compaction, the modes, the waits, the trigger
+  promises, the stop check, the timed wake, and the lists for the person's
+  return. The checklist is also where a session writes what could interrupt it
+  before a run.
+- **The coordination intent (state shared across sessions on the remote):**
+  owned work with leases and take-over, so leases live in one place (its claim,
+  generation number and lapse rule), and the pre-run blocker sweep, which its
+  pass runs by reading every session's records rather than asking each by
+  message.
+
+## Decisions
+
+- **Where the checklist lives:** on this computer only for now. A published
+  option on GitHub (public) and a private shared option (for example through
+  abcdev.app) come later (product thinker, 2026-10-17).
+- **A phone surface:** the product thinker asked whether an iPhone app would
+  help them, and perhaps the technical facilitator, answer the questions that
+  would otherwise stop an autonomous run. The agent's assessment: useful, built
+  first as an installable web app on the private shared option rather than a
+  native app, reusing the live brief session's relay and GitHub sign-in; a
+  native app only if lock-screen answers or widgets prove necessary. An answer
+  from the phone only chooses among the options offered or adds a note. It is a
+  later step of this work, not part of its first delivery (agent, 2026-10-17,
+  awaiting the product thinker's word).
+
 ## Open Questions
 
 _Seeded by the agent on 2026-10-17; each lists the defensible answers, none
 recommended. Everything else in this draft is the agent's to decide and record._
 
-- **Where does the checklist live?** (a) on this computer only, in the
-  checkout's local tier; (b) published on origin, like reservations, so every
-  session, every computer and the second contributor see it; (c) the modes and
-  the lists for the person's return published, each session's own working
-  items local.
 - **How hard does the check at a session's stop bite?** (a) it refuses the stop
   and names the next item; (b) it lets the stop through with a warning that the
   coordinator and the status line see; (c) it refuses only during an autonomous
