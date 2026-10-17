@@ -2,12 +2,15 @@ package claim
 
 import (
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/lease"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // Options carries what a caller may set about the environment an act runs in.
@@ -26,7 +29,9 @@ type Options struct {
 	// ForgeUser answers whose GitHub account the forge token gh resolves from
 	// the session's environment belongs to (login and numeric id): the user endpoint, asked only by an
 	// explicit act when git's identity names no holder. nil means the real
-	// call, `gh api user`; tests set it so none touches the network.
+	// call, `gh api user`, asked once per process for each checkout and forge
+	// credential; tests set it so none touches the network, and an answer it
+	// gives is never cached.
 	ForgeUser func(root string) (login string, id int64, err error)
 }
 
@@ -73,6 +78,12 @@ type Request struct {
 	TakeOver bool
 	// Release pushes the tombstone instead.
 	Release bool
+	// Tip, with Release, names the one reservation commit the release may
+	// tombstone: a tip that has moved since (renewed or reserved again by
+	// hand, or replaced) is refused with a *NotHeld, NotHeldMoved, and nothing
+	// is pushed. Empty releases whatever reservation of this person's from
+	// this copy the tip holds.
+	Tip string
 	// Renew renews this person's own reservation from this copy, live or
 	// lapsed, and nothing else: an absent, unreadable or released tip, and one
 	// another person or another copy holds, is refused with a *NotHeld naming
@@ -80,9 +91,50 @@ type Request struct {
 	// record anew and never takes one over. It keeps the tip's footprint, so
 	// Footprint must be empty.
 	Renew bool
+	// Narrow, with Renew, is the footprint the renewal writes in place of the
+	// tip's, when every path of it lies within the tip's footprint (equal to
+	// one of its paths or beneath one): a hold that narrows never widens
+	// (spc-2610161044461448 step 12). A tip whose footprint does not cover
+	// it keeps its own, and Result.Narrowed is false; so does a narrowing
+	// naming a path no reservation may carry (ValidFootprintPath), or one
+	// too long to write: the renewal is made all the same.
+	Narrow []string
+	// HandBack, with Release, publishes a hand-back: the tombstone names this
+	// kind, one of HandBackKinds, and the blob id of the record on origin's
+	// default branch (Result.HandBackUnpublished says why it names none). A
+	// release subject, which has no record, is refused one.
+	HandBack string
+	// HandBackBlob, with HandBack, is the blob id of the record the hand-back
+	// was judged over: a release finding origin's default branch holding the
+	// record at another blob publishes no hand-back, and says so
+	// (Result.HandBackUnpublished). Empty names the blob as last fetched.
+	HandBackBlob string
+	// Drain marks a reservation a drain makes: it backs off a hand-back
+	// tombstone whose record is unchanged on origin's default branch, where a
+	// person's own reservation goes ahead and is told (Result.HandedBack).
+	Drain bool
+	// WarnOwnOverlap lets a person's own act go ahead over a footprint path
+	// that their live reservation from another copy holds, naming each such
+	// path (Result.OwnOverlap), where every other act backs off it. Only the
+	// reserve verb sets it: a build's, a drain's and the land fence's acts are
+	// automated, and two automated lanes must never edit the same files
+	// (spc-2610161044461448 step 11).
+	WarnOwnOverlap bool
 	// Live, with Renew, refuses one's own reservation that has lapsed too
 	// (NotHeldLapsed): the land fence renews only a reservation that holds.
 	Live bool
+	// Stage, with Renew, is the stage of the drain lane renewing, one of
+	// LaneStages, which the renewal carries as its Abcd-Stage trailer; "" for
+	// every other act, and for a renewal that names no stage (a person's),
+	// which then carries none. With Drain, and no TakeOver, a drain's
+	// reservation may name one too: it is written when the act renews this
+	// copy's own live reservation, and the act is never refused for it when
+	// it reserves afresh (no tip, a released or lapsed one, a take-over),
+	// which writes none, since only a renewal carries a stage. A stage on any
+	// other act (a release, a take-over asked for, a person's reservation or
+	// a build's start), or one outside LaneStages, is refused before anything
+	// is pushed.
+	Stage string
 }
 
 // prepared is a request checked and filled in from the checkout, before the
@@ -97,6 +149,9 @@ type prepared struct {
 	holder string
 	copy   string
 	label  string
+	// home is where the machine layer of the configuration is read, for the
+	// cap (maxlive.go).
+	home string
 	// derivedGap is why the act's fetch could not read origin's default
 	// branch, "" when it read it: the derived release is then not applied.
 	derivedGap string
@@ -120,11 +175,53 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if req.Release && (len(req.Footprint) > 0 || req.TakeOver || req.Lease != 0) {
 		return nil, refuse("a release takes no footprint, take-over or lease; %s", nothingPushed)
 	}
+	if req.Tip != "" && (!req.Release || !gitutil.IsFullSHA(req.Tip)) {
+		return nil, refuse("only a release names the reservation commit it releases, by its full object name; %s", nothingPushed)
+	}
 	if req.Renew && (req.Release || req.TakeOver || len(req.Footprint) > 0) {
 		return nil, refuse("a renewal keeps its reservation's footprint, and takes no footprint, take-over or release; %s", nothingPushed)
 	}
+	if len(req.Narrow) > 0 && !req.Renew {
+		return nil, refuse("only a renewal narrows its reservation's footprint; %s", nothingPushed)
+	}
+	// A narrowing naming a path no reservation may carry is dropped, and the
+	// renewal keeps the tip's footprint, as one over the message cap does
+	// below: a renewal never fails over its narrowing, which would let the
+	// reservation lapse while its work goes on.
+	for _, p := range req.Narrow {
+		if !validFootprint(p) {
+			req.Narrow = nil
+			break
+		}
+	}
 	if req.Live && !req.Renew {
 		return nil, refuse("only a renewal can require a live reservation; %s", nothingPushed)
+	}
+	if req.HandBack != "" && !req.Release {
+		return nil, refuse("only a release publishes a hand-back; %s", nothingPushed)
+	}
+	if req.HandBack != "" && isRelease(id) {
+		// A release subject has no record on origin's default branch, so a
+		// hand-back over it could name no blob and would hold nothing back.
+		return nil, refuse("a release subject has no record to hand back, so its release publishes no hand-back; %s", nothingPushed)
+	}
+	if req.HandBack != "" && !slices.Contains(HandBackKinds, req.HandBack) {
+		return nil, refuse("hand-back kind %s is not one of %s; %s", echo(req.HandBack), strings.Join(HandBackKinds, ", "), nothingPushed)
+	}
+	if req.Stage != "" && !req.Renew && (!req.Drain || req.TakeOver) {
+		return nil, refuse("only a renewal, or a drain's reservation, names a lane stage; %s", nothingPushed)
+	}
+	if req.Stage != "" && !ValidLaneStage(req.Stage) {
+		return nil, refuse("lane stage %s is not one of %s; %s", echo(req.Stage), strings.Join(LaneStages, ", "), nothingPushed)
+	}
+	if req.HandBackBlob != "" && req.HandBack == "" {
+		return nil, refuse("only a hand-back names the record blob it was judged over; %s", nothingPushed)
+	}
+	if req.HandBackBlob != "" && !validBlob(req.HandBackBlob) {
+		return nil, refuse("record blob %s is not an object name; %s", echo(req.HandBackBlob), nothingPushed)
+	}
+	if req.Drain && (req.Release || req.Renew) {
+		return nil, refuse("only a reservation is a drain's to back off a hand-back, never a release or a renewal; %s", nothingPushed)
 	}
 	release := isRelease(id)
 	if release && len(req.Footprint) > 0 {
@@ -150,7 +247,7 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if term < lease.Min || term > lease.Max {
 		return nil, refuse("lease %s is outside %s to %s; %s", term, lease.Min, lease.Max, nothingPushed)
 	}
-	p := &prepared{root: root, id: id, req: req, lease: term, now: o.now(), label: o.assistedBy()}
+	p := &prepared{root: root, id: id, req: req, lease: term, now: o.now(), label: o.assistedBy(), home: o.home()}
 	if p.copy, err = copyKey(root); err != nil {
 		return nil, err
 	}
@@ -172,12 +269,27 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		// the reservation, so that identity never reaches a commit.
 		p.who = identity{Name: h.Login, Email: h.NoReply}
 	}
+	if len(req.Narrow) > 0 {
+		// A narrowed renewal may name more paths than the tip it narrows (a
+		// directory's files), so it is measured as a reservation is, and one
+		// the writer may not write is not narrowed: the renewal keeps the
+		// tip's footprint (Result.Narrowed false) rather than refusing.
+		narrowed := *p
+		narrowed.req.Footprint = req.Narrow
+		for _, text := range []string{narrowed.reservation().text(), narrowed.longestTombstone(req.Narrow).text()} {
+			if checkMessage(root, text) != nil {
+				p.req.Narrow = nil
+				break
+			}
+		}
+	}
 	if !req.Release && !req.Renew {
 		// The reservation is measured by the longer of its own message and the
-		// tombstone that will one day release it (a longer subject and an
-		// Abcd-Released-At line), so a reservation the writer accepts can
-		// always be released.
-		for _, text := range []string{p.reservation().text(), p.tombstone(req.Footprint).text()} {
+		// tombstone that will one day release it (a longer subject, an
+		// Abcd-Released-At line, and the longest hand-back with the longer of
+		// git's object names), so a reservation the writer accepts can always
+		// be released, handed back or not.
+		for _, text := range []string{p.reservation().text(), p.longestTombstone(req.Footprint).text()} {
 			if err := checkMessage(root, text); err != nil {
 				return nil, err
 			}
@@ -201,6 +313,15 @@ func (p *prepared) tombstone(footprint []string) message {
 		Record: p.id, Holder: p.holder, Copy: p.copy, Footprint: footprint,
 		ClaimedAt: p.now, ExpiresAt: p.now, ReleasedAt: p.now, AssistedBy: p.label,
 	}
+}
+
+// longestTombstone is the longest tombstone that may one day release a
+// reservation with footprint: one naming the longest hand-back kind and the
+// longer of git's object names.
+func (p *prepared) longestTombstone(footprint []string) message {
+	m := p.tombstone(footprint)
+	m.HandedBack, m.RecordBlob = longestHandBack(), longestBlob
+	return m
 }
 
 // checkMessage refuses a reservation message the writer may not write

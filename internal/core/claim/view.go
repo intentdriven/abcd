@@ -64,6 +64,17 @@ type Reservation struct {
 	// holds as if first seen then.
 	Unsighted bool
 	Commit    string
+	// ReleasedAt is a tombstone's own time.
+	ReleasedAt time.Time
+	// HandedBack is a tombstone's hand-back kind, "" for a plain one, and
+	// RecordChanged is true when origin's default branch as last fetched
+	// holds the record at another blob than the one the tombstone names: a
+	// person has changed it since, so the hand-back no longer stands.
+	HandedBack    string
+	RecordChanged bool
+	// Stage is the drain lane's stage the tip's renewal names, one of
+	// LaneStages; "" when the tip names none.
+	Stage string
 }
 
 // Snapshot is the reservations as this checkout last fetched them.
@@ -72,6 +83,17 @@ type Snapshot struct {
 	// nothing here stamped a fetch, so the view's age is unknown.
 	FetchedAt    time.Time
 	Reservations []Reservation
+	// Generated is the files origin's default branch, as last fetched,
+	// declares generated (GeneratedFiles), which no footprint overlap is
+	// judged on. It is read only when some live reservation has a footprint,
+	// and is empty when the view does not derive (an act whose fetch could
+	// not read origin's default branch).
+	Generated Generated
+	// GeneratedUnread is why generated files were not recognised, though a
+	// live reservation has a footprint: the declaration could not be read, or
+	// the view does not trust origin's default branch as this clone holds
+	// it; "" otherwise.
+	GeneratedUnread string
 }
 
 // LiveByHolder counts each person's live reservations of records, as the cap
@@ -155,10 +177,15 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	if err != nil {
 		return snap, fmt.Errorf("reading the reservations: %s", redacted(err))
 	}
-	var finished map[string][]string
-	records := slices.ContainsFunc(refs, func(ref string) bool { return !isRelease(strings.TrimPrefix(ref, TrackingPrefix)) })
-	if ref := originDefault(root); derive && records && ref != "" {
-		if finished, err = peers.FoldersAt(root, ref); err != nil {
+	// The records on origin's default branch as last fetched: a finished one
+	// is released whatever its tip says, and a hand-back's blob is compared
+	// with the one its tombstone names. A view that does not derive reads
+	// neither, so its hand-backs stand; nor does one listing release
+	// subjects alone, which no record there ends.
+	var records map[string][]peers.RecordAt
+	anyRecord := slices.ContainsFunc(refs, func(ref string) bool { return !isRelease(strings.TrimPrefix(ref, TrackingPrefix)) })
+	if ref := originDefault(root); derive && anyRecord && ref != "" {
+		if records, err = peers.RecordsAt(root, ref); err != nil {
 			return snap, fmt.Errorf("reading %s: %s", gitutil.ShortRef(ref), redacted(err))
 		}
 	}
@@ -187,10 +214,24 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 		switch {
 		case isRelease(id) && tagged[releaseTag(id)]:
 			by = ReleasedByTag
-		case !isRelease(id) && terminal(finished, id):
+		case !isRelease(id) && terminal(records[id], id):
 			by = ReleasedByDefaultBranch
 		}
-		snap.Reservations = append(snap.Reservations, listed(t, id, by, own, now))
+		r := listed(t, id, by, own, now)
+		if r.HandedBack != "" {
+			r.RecordChanged = changedSince(t.RecordBlob, blobOf(records[id]))
+		}
+		snap.Reservations = append(snap.Reservations, r)
+	}
+	// The generated files are read once per view, and only when a live
+	// footprint is there to judge an overlap with; a view that does not trust
+	// origin's default branch recognises none.
+	if slices.ContainsFunc(snap.Reservations, func(r Reservation) bool { return r.State == StateLive && len(r.Footprint) > 0 }) {
+		if derive {
+			snap.Generated, snap.GeneratedUnread = GeneratedFiles(root)
+		} else {
+			snap.GeneratedUnread = "origin's default branch could not be read when the reservations were fetched"
+		}
 	}
 	return snap, nil
 }
@@ -211,12 +252,14 @@ func listed(t tip, id, derivedBy, own string, now time.Time) Reservation {
 	} else {
 		v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, now)
 		r.Holder, r.Footprint, r.ClaimedAt, r.EffectiveExpiry = t.Holder, t.Footprint, t.ClaimedAt, v.EffectiveExpiry
+		r.Stage = t.Stage
 		if own != "" && t.Copy == own {
 			r.Copy = CopyThis
 		}
 		switch {
 		case t.message.released():
 			r.State, r.ReleasedBy = StateReleased, ReleasedByTombstone
+			r.ReleasedAt, r.HandedBack = t.ReleasedAt, t.HandedBack
 		case v.Live:
 			r.State = StateLive
 		default:
@@ -240,17 +283,6 @@ func releaseTags(root string) (map[string]bool, error) {
 		tags[strings.TrimPrefix(ref, ReleaseTagsTracking)] = true
 	}
 	return tags, nil
-}
-
-// terminal reports whether id sits in a terminal folder in finished, the
-// default branch's record folders.
-func terminal(finished map[string][]string, id string) bool {
-	for _, f := range finished[id] {
-		if slices.Contains(terminalFolders[id[:3]], f) {
-			return true
-		}
-	}
-	return false
 }
 
 // lastFetched is the time this checkout's last fetch of ns stamped; zero when
