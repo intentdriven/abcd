@@ -400,3 +400,19 @@ func neverMoreGenerated(t *testing.T, icase string, cases []attrCase) {
 		}
 	}
 }
+
+// TestTheBudgetBoundsWallTimeOverManyLines: visiting a line costs steps
+// whether or not it can match, so a declaration of as many lines as the cap
+// holds stops within the budget's time against a large tree.
+func TestTheBudgetBoundsWallTimeOverManyLines(t *testing.T) {
+	line := "*q linguist-generated\n"
+	rules := parseAttributes(strings.Repeat(line, attributesCap/len(line)))
+	_, paths := benignScale()
+	start := time.Now()
+	_, spent := rules.generatedAmong(paths)
+	took := time.Since(start)
+	t.Logf("%d lines against %d files stopped after %s (spent %v)", len(rules), len(paths), took, spent)
+	if took > 1500*time.Millisecond {
+		t.Fatalf("it took %s; want it stopped within about a second", took)
+	}
+}

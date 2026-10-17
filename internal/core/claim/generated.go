@@ -350,7 +350,7 @@ func (rs attrRules) judge(p string, total *int) (generated, spent bool) {
 		}
 		start := b.left
 		m := wmNoMatch
-		if b.take(len(rs[i].prefix)+len(rs[i].suffix)) && b.hasPrefix(subject, rs[i].prefix) && b.hasSuffix(subject, rs[i].suffix) {
+		if b.take(ruleVisitSteps+len(rs[i].prefix)+len(rs[i].suffix)) && b.hasPrefix(subject, rs[i].prefix) && b.hasSuffix(subject, rs[i].suffix) {
 			m = dowild(rs[i].pat, subject, &b)
 		}
 		if total != nil {
@@ -540,14 +540,19 @@ func globSupported(pat string) bool {
 // Both budgets are variables, so a test can measure their edge.
 var matchSteps = 1_000_000
 
+// ruleVisitSteps is what visiting one line for one path costs, whether or
+// not it can match: about as long as eight steps of matching take.
+const ruleVisitSteps = 8
+
 // generatedSteps bounds the matching GeneratedFiles does over every file
 // together; past it the declaration declares nothing, and says why. A step
-// costs about a nanosecond: an ordinary tree of 150,000 files against 50
-// lines takes about 3e8 of them (0.22 to 0.56 s, TestALargeOrdinaryTreeFitsTheBudget),
-// and the worst case, a declaration that spends the whole budget
-// (TestTheBudgetBoundsWallTimeOverLongLiterals), stops after about 0.6 to
-// 0.8 s on the machine this was sized on and up to about 1.5 s measured on
-// another; measured 2026-10-17, under load.
+// costs about a nanosecond. Measured 2026-10-17 at a load average of 8: an
+// ordinary tree of 150,000 files against 50 lines fits, in 0.27 to 0.29 s
+// (TestALargeOrdinaryTreeFitsTheBudget); a declaration that spends the whole
+// budget stops after 0.50 to 0.52 s on long literals
+// (TestTheBudgetBoundsWallTimeOverLongLiterals) and 0.28 s on as many lines
+// as the cap holds (TestTheBudgetBoundsWallTimeOverManyLines), and the first
+// was measured at up to about 1.5 s on a busier machine.
 var generatedSteps = 500_000_000
 
 // wildBudget is the steps a match has left: each call, each byte of the
