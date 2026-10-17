@@ -103,6 +103,16 @@ type Result struct {
 	// waived and is said to be (ForkAllowedLine); "" when no fork was named,
 	// or none was allowed.
 	ForkAllowed string
+	// OwnOverlap is each path this reservation shares with a live reservation
+	// the same person holds from another copy, which a person's own act (one
+	// not a drain's) goes ahead over and is told of (OwnOverlap.Warning); nil
+	// when it shares none. A drain's reservation backs off such a path.
+	OwnOverlap []OwnOverlap
+	// GeneratedUnread is why the overlap judgement recognised no generated
+	// file: origin's default branch declares them but its declaration could
+	// not be read (GeneratedUnreadLine), so every shared path was judged an
+	// overlap; "" when it was read, there is none, or no overlap was judged.
+	GeneratedUnread string
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -179,7 +189,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		return res, err
 	}
 	if !p.req.Release {
-		if err := crowding(p, j, res); err != nil {
+		if err := crowding(p, j, &res); err != nil {
 			return Result{}, err
 		}
 	}
