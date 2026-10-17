@@ -35,11 +35,14 @@ Eighteen agent prompts ship in `agents/` today, in five groups:
 - **Repo-workflow reviewers and researchers**, two of them dispatched through a
   verb and two by a person alone. `ruthless-reviewer` and `security-reviewer`
   are the validators of the implement loop's validate stage: on every lane a
-  `build` or `drain` run opens, the loop names each in turn for the host to
-  start, and records the verdict it returns. `docs-currency-reviewer` is one of
-  the release gate's semantic passes: a person runs it before a release, and the
-  release workflow refuses a release whose content commit has no receipt from
-  it, but no verb dispatches it. No verb dispatches `sota-researcher` either.
+  `build` or `drain` run opens, the loop names each in turn and records the
+  verdict it returns. By default the host starts each; a runner the role's
+  route names, or `oracle.review = rp`, has `implement step` start it instead
+  ([Oracle backend resolution](#oracle-backend-resolution)).
+  `docs-currency-reviewer` is one of the release gate's semantic passes: `launch
+  ship` names it in the receipts checklist it ends with, for the operator to
+  run, and `launch receipts` and the release workflow check its receipt, but no
+  verb starts it or records its verdict. No verb dispatches `sota-researcher`.
 - **The cold-reading instrument**: the four position definitions and the ledger
   `scribe` (below).
 - **The question drafter**, `question-drafter`, which the agent running one of
@@ -100,13 +103,15 @@ the reading's output claims, and takes the regime from the definition rather tha
 from any operand or configuration key, so an output claiming a different regime is
 refused.
 
-A definition holds five parts, and a test requires each of them to be present:
-`## Object`, `## Question`, `## The blindness core`, `## Regime`, and
-`## Item shape`. It ends with a sixth section that is not one of them,
+A definition holds five parts: `## Object`, `## Question`,
+`## The blindness core`, `## Regime`, and `## Item shape`. A test looks up four
+of them by heading, and finds the blindness core by the markers around it
+rather than by its heading.
+Each definition ends with a sixth section that is not one of the parts,
 `## Shell commands the guard refuses`: the block generated from the shell
 guard's registry into the agent prompts that can run a shell, outside the
 blindness core, restating for the sub-agent a command the guard would refuse.
-The test looks each of the five up and does not refuse a section beside them.
+No test refuses a section beside the five.
 The repository sources the assembler admits at that position are stated inside
 `## Object` rather than standing as a part of their own. The
 blindness core is byte-identical across all four — a test holds it so — and states
