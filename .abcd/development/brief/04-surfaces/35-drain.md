@@ -441,6 +441,27 @@ Every answer is kept in the drain's state with whether it decided the issue's
 disposition, and is in the summary in text and in the machine-readable payload;
 nothing is written onto the issue for it (decision 8).
 
+The judge is a role, `drain-judge`, on the runner routing the build roles take
+(spc-2610161044461448 step 14, dcn-2610161040390001). With no route, the
+default, the request above is the host's. When the person's own layer routes
+`roles.drain-judge.runner` to a runner, the move that writes the host's request
+also writes the runner a brief of its own,
+`.abcd/.work.local/run/drain-judgement.runner.md`, the same question over the
+same quoted record with an answer shape that carries no digest, and starts the
+runner on it through the dispatch every routed role takes, granted Read and
+Write alone and bounded at fifteen minutes. Its answer, at
+`.abcd/.work.local/run/drain-judgement.runner.json`, is read as strictly as the
+host's, abcd filling in the digest of the remedy the brief showed, and taken in
+that same move as `--judgement` would take it: a no opens the lane on the
+reservation the drain took to ask it, and a yes is routed and the drain asks
+about the next issue, so a drain started in a plain terminal needs no person's
+answer. The judgement records the route that ran it. A runner that does not
+answer, refuses, fails, or writes an answer out of shape is a fallback: its
+receipt is kept in the drain's state and the host's request stands, as with no
+route; a rate limit leaves it standing too. The runner runs under the drain's
+lock, and whatever it reaches over the network is the runner's own, not a
+network act of abcd's.
+
 ### The lane
 
 Each lane is the run `abcd build <iss-N>` starts (decision 10 on

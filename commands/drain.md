@@ -199,6 +199,19 @@ what it did in `next`:
   issue. When the remedy does not let you tell, answer `yes` and say what you
   could not tell. Do not open the lane, edit the record or fix anything while
   judging.
+- **Its judge may be routed to a runner.** When the person's own
+  `~/.abcd.noindex/config.json` routes the `drain-judge` role to a runner
+  (`roles.drain-judge.runner`, `claude` or `opencode`, the runner enabled under
+  `runner.<name>`), the move that writes the request also starts that runner on
+  a brief of its own, `.abcd/.work.local/run/drain-judgement.runner.md`, and
+  takes the answer it writes to `.abcd/.work.local/run/drain-judgement.runner.json`
+  in that same move, validated as yours would be: the routed answer carries no
+  `remedy_sha256`, which abcd computes itself, and no `--judgement` is given.
+  `judged.route` names the runner asked, the one that ran and its model. A
+  runner that does not answer, or answers out of shape, is recorded in the
+  drain's state (`judge_fallbacks`) and the request above is left to you, as
+  with no route; `next` says so. The runner runs under the drain's lock, for at
+  most fifteen minutes.
 - **It reserves the issue.** In a checkout with a remote named `origin`, the
   drain reserves each issue on it before it asks the judgement over it, as
   `abcd reserve` does, with the path the issue's `found_at` names (a `:line`
@@ -422,7 +435,8 @@ none; `judged` is the answer this move took and `judgements` every one the
 drain has taken (`issue`, `remedy_sha256`, `answer`, `kind`, `reason`,
 `applied`, `note`, `at`), `applied` being `false`, with the `note` saying why,
 for an answer over an issue that left the eligible set before it was taken,
-and `hold` the reservation it was asked on;
+`hold` the reservation it was asked on, and `route` the runner that answered
+(`asked`, `ran`, `model`) when the judge is routed, absent for yours;
 `pending_hand_backs` are the hand-backs routed and not yet published on
 `origin` (`issue`, `kind`, `blob`, `why`, `at`), which the text form lists as
 `hand-back pending:` lines;

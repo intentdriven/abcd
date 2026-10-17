@@ -52,10 +52,14 @@ const (
 	modelKey    = "model"
 )
 
-// roleImplementer is the loop's implementer, the one role outside the agent
-// roster (the loop's RoleImplementer; spelled here so the loop can import this
-// package).
-const roleImplementer = "implementer"
+// roleImplementer is the loop's implementer and roleDrainJudge the drain's
+// judge (spc-2610161044461448 step 14), the two roles outside the agent roster
+// (the loop's RoleImplementer and RoleDrainJudge; spelled here so the loop can
+// import this package).
+const (
+	roleImplementer = "implementer"
+	roleDrainJudge  = "drain-judge"
+)
 
 // Route is where a role runs and the layer that said so.
 type Route struct {
@@ -206,7 +210,7 @@ func (c *Config) readRoles(s *layered.Stack) error {
 		sorted = append(sorted, n)
 	}
 	sort.Strings(sorted)
-	known := map[string]bool{roleImplementer: true}
+	known := map[string]bool{roleImplementer: true, roleDrainJudge: true}
 	for _, a := range oracle.Roster() {
 		known[a] = true
 	}
@@ -225,7 +229,7 @@ func (c *Config) readRoles(s *layered.Stack) error {
 		if !known[role] {
 			where := fmt.Sprintf("%s (%s layer): %s", found[0].Origin, found[0].Layer, key)
 			c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s names %q, which is neither an agent in the roster "+
-				"nor the implementer; the route is skipped and the remaining routes apply", where, role))
+				"nor the implementer or the drain judge; the route is skipped and the remaining routes apply", where, role))
 			continue
 		}
 		// found lists the layers that set the key, highest first (flag, repo,

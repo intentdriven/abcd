@@ -250,3 +250,16 @@ func TestRoleOutsideTheRosterIsADiagnostic(t *testing.T) {
 		t.Fatalf("implementer route = %+v", r)
 	}
 }
+
+// TestTheDrainJudgeIsARoleARunnerMayTake: the drain's judge is a loop role
+// outside the agent roster, as the implementer is, so the person's own route
+// to a runner for it stands with no diagnostic (spc-2610161044461448 step 14).
+func TestTheDrainJudgeIsARoleARunnerMayTake(t *testing.T) {
+	c := mustLoad(t, `{"roles":{"drain-judge":{"runner":"claude"}},"runner":{"claude":{}}}`, "")
+	if r := c.RouteFor("drain-judge"); r.Runner != Claude || r.Layer != layered.Machine {
+		t.Fatalf("route = %+v, want the machine's claude", r)
+	}
+	if len(c.Diagnostics) != 0 {
+		t.Fatalf("the route is read with no diagnostic: %v", c.Diagnostics)
+	}
+}

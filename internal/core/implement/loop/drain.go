@@ -35,6 +35,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -118,6 +119,9 @@ type DrainState struct {
 	// issue's lane (scope 3), and Judgements every answer it has taken.
 	Judging    *DrainJudging    `json:"judging,omitempty"`
 	Judgements []DrainJudgement `json:"judgements,omitempty"`
+	// JudgeFallbacks are the receipts of every routed judgement a runner did
+	// not answer, each left to the host's request (drain_judge.go).
+	JudgeFallbacks []runner.FallbackReceipt `json:"judge_fallbacks,omitempty"`
 	// Lapsed are the judgement requests dropped unanswered once the hold the
 	// drain took for them lapsed, the latest last; their issues are asked
 	// again only once a cool-down has passed, and then only after the
@@ -182,6 +186,12 @@ type DrainOptions struct {
 	// Judgement is --judgement: the path of the host's answer to the
 	// judgement the drain awaits; empty when not given.
 	Judgement string
+	// Transcripts is where a routed judge's transcript lands
+	// (drain_judge.go); nil leaves the judgement on the host's request,
+	// routed or not.
+	Transcripts runner.TranscriptStore
+	// JudgeTimeout bounds one routed judgement; drainJudgeTimeout when zero.
+	JudgeTimeout time.Duration
 }
 
 // DrainResult is one drain invocation's summary.
@@ -519,15 +529,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// answered is the hold the answer was asked on: the lane a no opens on it
 	// names the fork check its reservation could not make or waived, as a
 	// lane that reserved for itself does (step 10).
-	if d.Judgement != "" {
-		j, err := takeJudgement(repoRoot, d.Judgement, st, live, plan, now)
-		if err != nil {
-			return DrainResult{}, err
-		}
-		// The judgement keeps the hold it was asked on, so the lane a no
-		// opens on it names the fork check its reservation could not make or
-		// waived, in this move or a later one (step 10).
-		j.Hold = st.Judging.Hold
+	//
+	// take applies a judgement over the request st awaits, the host's or a
+	// routed judge's (drain_judge.go), and records it.
+	take := func(j DrainJudgement) error {
 		if j.Applied && j.Answer == JudgementYes {
 			r, err := routeHandBack(repoRoot, j.Issue, DrainFromJudgement, HandBack{Kind: j.Kind, Reason: j.Reason}, origin, now)
 			if err != nil {
@@ -535,7 +540,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				if rf, ok := AsRefusal(err); ok {
 					rf.Reason += "; the judgement answer given was not taken: give it again with --judgement once this is settled"
 				}
-				return DrainResult{}, err
+				return err
 			}
 			// The release publishes the hand-back on origin, so no other
 			// account's drain judges the issue again while its record stands
@@ -565,6 +570,20 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		st.Judging = nil
 		res.Judged = &j
 		pruneLapse(&st, j.Issue)
+		return nil
+	}
+	if d.Judgement != "" {
+		j, err := takeJudgement(repoRoot, d.Judgement, st, live, plan, now)
+		if err != nil {
+			return DrainResult{}, err
+		}
+		// The judgement keeps the hold it was asked on, so the lane a no
+		// opens on it names the fork check its reservation could not make or
+		// waived, in this move or a later one (step 10).
+		j.Hold = st.Judging.Hold
+		if err := take(j); err != nil {
+			return DrainResult{}, err
+		}
 	}
 
 	// The drain takes its judgement hold once per request (drain_hold.go): a
@@ -809,6 +828,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		hold, owned := ownHold(view, v.ID, footprint)
 		judged := judgementFor(st, v.ID, remedyDigest(iss.Remedy))
+		// routedHold is the hold a routed judge's no was asked on in this
+		// move, which the move's view, fetched before it was taken, cannot
+		// show: the lane opens on it as on one the view shows.
+		var routedHold *DrainHold
 		if j := judged; j == nil || j.Answer != JudgementNo {
 			// The drain's hold is taken once per request: a request awaited
 			// over this issue keeps the one it took, and a poll never renews
@@ -860,8 +883,25 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			judging.Hold = judgeHold
 			st.Judging = &judging
 			pruneLapse(&st, v.ID)
-			res.Next = judgementMove(judging)
-			return finish(true)
+			// A judge routed to a runner answers in this move, taken as the
+			// host's answer is; one that does not answer leaves the host's
+			// request standing (drain_judge.go).
+			taken, clause, err := routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now)
+			if err != nil {
+				return refuseMoved(err)
+			}
+			if taken == nil {
+				res.Next = joinNext(judgementMove(judging), clause)
+				return finish(true)
+			}
+			taken.Hold = judging.Hold
+			if err := take(*taken); err != nil {
+				return refuseMoved(err)
+			}
+			if taken.Answer != JudgementNo || !taken.Applied {
+				continue
+			}
+			judged, routedHold = &st.Judgements[len(st.Judgements)-1], judging.Hold
 		}
 		st.Judging = nil
 		lane := o
@@ -881,6 +921,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				if h.ForkAllowed != "" {
 					lane.held.note += "; " + claim.ForkAllowedLine(h.ForkAllowed)
 				}
+			}
+		} else if h := routedHold; h != nil {
+			lane.held = &heldReservation{at: h.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
+				v.ID, claim.Remote, stamp(h.ExpiresAt), strings.Join(footprint, ", ")),
+				forkUnchecked: h.ForkUnchecked, forkAllowed: h.ForkAllowed}
+			if h.ForkUnchecked != "" {
+				lane.held.note += "; " + claim.ForkUncheckedLine(h.ForkUnchecked)
+			}
+			if h.ForkAllowed != "" {
+				lane.held.note += "; " + claim.ForkAllowedLine(h.ForkAllowed)
 			}
 		}
 		holds.starting(v.ID)

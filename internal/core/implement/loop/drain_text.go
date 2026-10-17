@@ -34,6 +34,12 @@ func (st DrainState) textWritten() bool {
 	}
 	for _, j := range st.Judgements {
 		texts = append(texts, j.Issue, j.RemedySHA256, j.Answer, j.Kind, j.Reason, j.Note)
+		if r := j.Route; r != nil {
+			texts = append(texts, r.Asked, r.Ran, r.Model)
+		}
+	}
+	for _, f := range st.JudgeFallbacks {
+		texts = append(texts, f.Role, f.Asked, string(f.Reason), f.Detail, f.Ran)
 	}
 	for _, p := range st.PendingHandBacks {
 		texts = append(texts, p.Why)

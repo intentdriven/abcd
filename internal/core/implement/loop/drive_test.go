@@ -85,6 +85,25 @@ func loopFakeHarness(mode string) int {
 		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"result":"limit reached","session_id":"fake-session-3"}`)
 		return 1
 	}
+	if answer, ok := strings.CutPrefix(mode, "judge-"); ok {
+		// The drain's judge (judgement.go): the answer the routed brief asks
+		// for, naming the issue the brief names and no digest, which abcd
+		// computes itself.
+		brief, _ := os.ReadFile(field("Brief: "))
+		issue := ""
+		for _, line := range strings.Split(string(brief), "\n") {
+			if v, ok := strings.CutPrefix(line, "- id: "); ok && issue == "" {
+				issue = v
+			}
+		}
+		a := map[string]any{"schema_version": DrainJudgementSchemaVersion, "issue": issue, "answer": answer,
+			"reason": "the fake judge's reason"}
+		if answer == JudgementYes {
+			a["kind"] = HandBackTrustRule
+		}
+		body, _ := json.Marshal(a)
+		_ = os.WriteFile(field("Receipt: "), body, 0o600)
+	}
 	if mode == "ok" || strings.HasPrefix(mode, "model-") {
 		body := "{}\n"
 		if role := field("You are the "); strings.HasPrefix(role, RoleRuthless) {

@@ -82,7 +82,11 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the\n" +
 			"remedy changes what a user sees or a trust boundary, and opens nothing. The host\n" +
 			"writes its answer where the request says and hands it back with --judgement <file>,\n" +
-			"which is validated strictly; a refused answer changes nothing. A yes hands the\n" +
+			"which is validated strictly; a refused answer changes nothing. When your machine's\n" +
+			"config routes the drain-judge role to a runner (roles.drain-judge.runner), the same\n" +
+			"move asks that runner instead, on a brief of its own, and takes its answer as\n" +
+			"--judgement would, abcd computing the remedy's digest itself; a runner that does not\n" +
+			"answer leaves the request to the host, recorded as a fallback. A yes hands the\n" +
 			"issue back before any lane opens, routed as a lane's hand-back of the same kind\n" +
 			"(below); a no lets the lane open on the reservation. The drain releases that\n" +
 			"reservation, and only it, with a fetch and one tombstone push whenever no lane will\n" +
@@ -233,7 +237,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	if cmd.Flags().Changed("judgement") && strings.TrimSpace(judgement) == "" {
 		return &exitError{Code: 2, Msg: "abcd drain: --judgement names no file; give the answer's path the judgement request names (nothing written)"}
 	}
-	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement})
+	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement, Transcripts: &lazyHistoryStore{cmd: cmd}})
 	if isDrainRuleRefusal(err) {
 		return &exitError{Code: 2, Msg: "abcd drain: " + termsafe.Sanitize(err.Error()) + " (nothing written)"}
 	}
