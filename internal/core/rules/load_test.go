@@ -386,6 +386,8 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		"`load.preflights` in `" + abcdhome.Display("config.json") + "`",
 		"`ABCD_LOAD_PREFLIGHTS`",
 		"never read from a repository file",
+		// Each gate is shut only by its own gate's hold.
+		"a first gate's hold never shuts the race gate",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)

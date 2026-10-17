@@ -41,7 +41,10 @@ import (
 // preflight` runs before its race stage, opens at once with one slot, so a
 // preflight's race stage follows its tests exactly as before; above one it is
 // shut only by another race run, a race waiter ahead (machineload.RaceAhead),
-// the load and the hold, so one race stage runs at a time among the preflights whose checkouts have the race gate (a checkout older than the gate runs its race stage ungated).
+// the load and the race gate's own hold. That keeps race stages apart among
+// the preflights whose checkouts have the race gate (a checkout older than the
+// gate runs its race stage ungated), within one account by the hold, and
+// across accounts only by the process table, the jitter and the re-check.
 //
 // The process table is the cross-account half (iss-2610140638074587): it
 // shows every account's processes: no file another account can write is read;
@@ -79,8 +82,8 @@ import (
 // A falling load opens every waiter watching it at once, which on 2026-10-11
 // put four race runs on a 16-core machine together. So within one account the
 // waiter that opens also takes a hold, a record under ~/.abcd.noindex/ written
-// under a flock, and every other waiter of that account stays shut while the
-// hold is in force (a hold whose holder is the waiter's own ancestor, as when
+// under a flock, one record for each gate, and every other waiter of that
+// account at the same gate stays shut while the hold is in force (a hold whose holder is the waiter's own ancestor, as when
 // `--wait -- make preflight` runs a preflight that gates itself, is not; that
 // inner waiter also takes its ancestor's place in the process-table queue,
 // machineload.QueueAhead):
@@ -170,8 +173,27 @@ func waitJitter() time.Duration {
 	return WaitJitterMin + rand.N(WaitJitterMax-WaitJitterMin+1)
 }
 
-// WaitHoldFileName is the hold record under ~/.abcd.noindex/.
-const WaitHoldFileName = "load-wait.json"
+// WaitHoldFileName is the first gate's hold record under ~/.abcd.noindex/,
+// and WaitRaceHoldFileName the race gate's. Each gate judges and takes only
+// its own (holdFileName); the first gate's keeps the name it had before the
+// race gate existed, so an abcd released before it reads the same record.
+const (
+	WaitHoldFileName     = "load-wait.json"
+	WaitRaceHoldFileName = "load-wait-race.json"
+)
+
+// holdGates are the gates whose hold a wait judges and takes: its own.
+func holdGates(req WaitRequest, res *WaitResult) []string {
+	return []string{res.Gate}
+}
+
+// holdFileName is gate's hold record.
+func holdFileName(gate string) string {
+	if gate == GateRace {
+		return WaitRaceHoldFileName
+	}
+	return WaitHoldFileName
+}
 
 // waitLockFileName is the flock every waiter takes to judge and write the hold.
 const waitLockFileName = ".load-wait.lock"
@@ -215,7 +237,7 @@ type WaitRequest struct {
 	// instead of the first gate. With one slot (PreflightSlots) it opens at
 	// once, without a look, a hold or a jitter; above one it is shut only by
 	// another go test -race run, a race waiter ahead of it, the load and the
-	// hold, so one race stage runs at a time among the preflights whose checkouts have the race gate.
+	// race gate's own hold.
 	Race bool
 	// OnWait is called once, at the first look that finds the gate shut.
 	OnWait func(WaitResult)
@@ -246,6 +268,10 @@ type WaitHolder struct {
 	Opened    time.Time `json:"opened"`
 	Until     time.Time `json:"until"`
 	Form      string    `json:"form"`
+	// Gate is the gate whose record this is, GateTests or GateRace; a
+	// record without one, as an abcd released before the race gate writes
+	// it, is the first gate's.
+	Gate string `json:"gate,omitempty"`
 }
 
 // WaitResult is the waiter's report.
@@ -356,9 +382,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 	if req.Race && res.Slots <= 1 {
 		// One preflight at a time: the first gate admitted this preflight's
 		// tests alone, so its race stage follows them at once, as it did
-		// before the race gate existed. No look, no hold (the preflight's own
-		// first gate's settle hold would otherwise keep it shut for up to
-		// WaitSettle), no jitter.
+		// before the race gate existed. No look, no hold, no jitter.
 		res.Status = WaitOpen
 		res.Reason = "one preflight at a time may be in its test stages, so the race stage follows its tests at once"
 		return res, nil
@@ -580,30 +604,45 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 		}
 	}
 
-	// The hold is judged at every look, under the flock, so a command hold whose
-	// work has started its race run is retired by whichever waiter sees it, and
-	// two waiters opened by one load drop cannot both take it.
+	// The hold is judged at every look, under the flock, so a command hold
+	// whose work has started its race run is retired by whichever waiter sees
+	// it, and two waiters opened by one load drop cannot both take it. A wait
+	// judges and takes only its own gate's hold: a first gate's command hold
+	// lasts until its preflight starts its race run, so were it to shut the
+	// race gate too, an earlier preflight's race waiter would wait on it while
+	// that preflight's own race waiter queued behind the earlier one, and
+	// neither would move until its timeout.
 	err := fsutil.WithFileLockIn(root, waitLockFileName, waitLockTimeout, func() error {
-		if h, ok := readHoldIn(root); ok {
-			// A hold taken by this waiter's own ancestor (`--wait -- make
-			// preflight`, whose preflight gates itself) admitted the work this
-			// waiter is part of: it neither shuts this waiter nor is replaced.
-			if procsOK && machineload.Descends(snap.Procs, req.Self.PID, h.PID) {
-				return nil
+		var free []string
+		for _, gate := range holdGates(req, res) {
+			name := holdFileName(gate)
+			if h, ok := readHoldIn(root, gate); ok {
+				// A hold taken by this waiter's own ancestor (`--wait -- make
+				// preflight`, whose preflight gates itself) admitted the work
+				// this waiter is part of: it neither shuts this waiter nor is
+				// replaced.
+				if procsOK && machineload.Descends(snap.Procs, req.Self.PID, h.PID) {
+					continue
+				}
+				if holdInForce(h, snap, procsOK, runs, t) {
+					if res.Holder == nil {
+						res.Holder = &h
+					}
+					if !slices.Contains(shut, WaitOnLock) {
+						shut = append(shut, WaitOnLock)
+					}
+					continue
+				}
+				if err := root.Remove(name); err != nil && !errors.Is(err, os.ErrNotExist) {
+					return err
+				}
 			}
-			if holdInForce(h, snap, procsOK, runs, t) {
-				res.Holder = &h
-				shut = append(shut, WaitOnLock)
-				return nil
-			}
-			if err := root.Remove(WaitHoldFileName); err != nil && !errors.Is(err, os.ErrNotExist) {
-				return err
-			}
+			free = append(free, gate)
 		}
-		if len(shut) > 0 || !take {
+		if len(shut) > 0 || !take || len(free) == 0 {
 			return nil
 		}
-		own := WaitHolder{PID: req.Self.PID, Opened: t, Until: t.Add(WaitSettle), Form: HoldSettle}
+		own := WaitHolder{PID: req.Self.PID, Opened: t, Until: t.Add(WaitSettle), Form: HoldSettle, Gate: res.Gate}
 		if s, ok := procStart(snap, req.Self.PID, t); ok {
 			own.StartUnix = s
 			// The command form rests on its holder's life, so it needs the
@@ -613,12 +652,16 @@ func waitLook(req WaitRequest, root *os.Root, home string, res *WaitResult, now 
 				own.Until, own.Form = t.Add(WaitCommandCap), HoldCommand
 			}
 		}
-		raw, err := json.Marshal(own)
-		if err != nil {
-			return err
-		}
-		if err := fsutil.WriteFileAtomicInRoot(root, WaitHoldFileName, append(raw, '\n'), abcdhome.FileMode); err != nil {
-			return err
+		for _, gate := range free {
+			rec := own
+			rec.Gate = gate
+			raw, err := json.Marshal(rec)
+			if err != nil {
+				return err
+			}
+			if err := fsutil.WriteFileAtomicInRoot(root, holdFileName(gate), append(raw, '\n'), abcdhome.FileMode); err != nil {
+				return err
+			}
 		}
 		res.Hold = &own
 		return nil
@@ -681,15 +724,16 @@ func procStart(snap machineload.Snapshot, pid int, t time.Time) (int64, bool) {
 	return 0, false
 }
 
-// readHoldIn reads the hold record through root. A record that is absent, not
-// a regular file, too large or unreadable holds nothing, and is replaced by the
-// next hold taken.
-func readHoldIn(root *os.Root) (WaitHolder, bool) {
-	fi, err := root.Lstat(WaitHoldFileName)
+// readHoldIn reads gate's hold record through root. A record that is absent,
+// not a regular file, too large or unreadable holds nothing, and is replaced by
+// the next hold taken. A record is its file's gate's, whatever it says.
+func readHoldIn(root *os.Root, gate string) (WaitHolder, bool) {
+	name := holdFileName(gate)
+	fi, err := root.Lstat(name)
 	if err != nil || !fi.Mode().IsRegular() {
 		return WaitHolder{}, false
 	}
-	f, err := root.OpenFile(WaitHoldFileName, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
+	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return WaitHolder{}, false
 	}
@@ -702,12 +746,13 @@ func readHoldIn(root *os.Root) (WaitHolder, bool) {
 	if json.Unmarshal(raw, &h) != nil || h.PID <= 0 || (h.Form != HoldSettle && h.Form != HoldCommand) {
 		return WaitHolder{}, false
 	}
+	h.Gate = gate
 	return h, true
 }
 
-// ReleaseWaitHold removes the hold h when it is still the record in force: the
-// command form calls it when its command exits. A hold another waiter has since
-// taken is left alone.
+// ReleaseWaitHold removes the hold h wherever it is still the record in
+// force: the command form calls it when its command exits. A hold another
+// waiter has since taken is left alone.
 func ReleaseWaitHold(home string, h WaitHolder) error {
 	root, err := fsutil.OpenHomeScope(home, abcdhome.Rel())
 	if err != nil {
@@ -717,16 +762,18 @@ func ReleaseWaitHold(home string, h WaitHolder) error {
 	return releaseHoldIn(root, h)
 }
 
-// releaseHoldIn removes the hold h through root when it is still the record in
-// force.
+// releaseHoldIn removes the hold h through root from each gate's record that
+// is still h, whatever gate h names: one wait may hold more than one gate.
 func releaseHoldIn(root *os.Root, h WaitHolder) error {
 	return fsutil.WithFileLockIn(root, waitLockFileName, waitLockTimeout, func() error {
-		cur, ok := readHoldIn(root)
-		if !ok || cur.PID != h.PID || cur.StartUnix != h.StartUnix || !cur.Opened.Equal(h.Opened) {
-			return nil
-		}
-		if err := root.Remove(WaitHoldFileName); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
+		for _, gate := range []string{GateTests, GateRace} {
+			cur, ok := readHoldIn(root, gate)
+			if !ok || cur.PID != h.PID || cur.StartUnix != h.StartUnix || !cur.Opened.Equal(h.Opened) {
+				continue
+			}
+			if err := root.Remove(holdFileName(gate)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
 		}
 		return nil
 	})
@@ -736,9 +783,9 @@ func releaseHoldIn(root *os.Root, h WaitHolder) error {
 // stages (cmd/test-parallelism prints it), derived from the online cores and
 // the one-minute load as they are when the stage starts, the cores divided
 // among the slots preflights may be in their test stages at once
-// (machineload.GoTestParallelism, PreflightSlots). On a CI runner the machine is not read and
-// go's own default, GOMAXPROCS, stands, as it does when the machine cannot be
-// read.
+// (machineload.GoTestParallelism, PreflightSlots). On a CI runner the machine
+// is not read and go's own default, GOMAXPROCS, stands, as it does when the
+// machine cannot be read.
 func PreflightParallelism(getenv func(string) string, read func() (machineload.Snapshot, error), slots int) int {
 	if getenv == nil {
 		getenv = os.Getenv

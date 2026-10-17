@@ -119,8 +119,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"without reading the machine, taking a hold or waiting a jitter, so a preflight's\n" +
 			"race stage follows its tests exactly as before. Above one it is shut only while\n" +
 			"another `go test -race` run is live, a race waiter is ahead of it (by the same\n" +
-			"rule) or running its command, the load is at the wait limit, or a hold is in\n" +
-			"force, so one race stage runs at a time among the preflights whose checkouts\n" +
+			"rule) or running its command, the load is at the wait limit, or the race gate's\n" +
+			"own hold is in force (each gate is shut only by its own gate's hold), so one\n" +
+			"race stage runs at a time among the preflights whose checkouts\n" +
 			"have the race gate; a checkout older than the gate runs its race stage\n" +
 			"ungated, so set 2 only once no such checkout runs a preflight. A first gate's\n" +
 			"waiter never queues\n" +
@@ -142,8 +143,10 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"valid JSON, or an unknown key under `load`), naming the file and how to fix it,\n" +
 			"and since the first gate stops, so does `make preflight`.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
-			"`" + abcdhome.Display(implement.WaitHoldFileName) + "`, and every other waiter of that account stays shut while\n" +
-			"it is in force; a hold taken by the waiter's own ancestor does not shut it.\n" +
+			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
+			"the race gate, and every other waiter of that account at the same gate stays\n" +
+			"shut while it is in force; a hold taken by the waiter's own ancestor does not\n" +
+			"shut it.\n" +
 			"Without a command the hold lasts " + implement.WaitSettle.String() + ", long enough for the load average to show\n" +
 			"the work admitted. With a command after `--` (`abcd implement load --wait -- go\n" +
 			"test -race ./...`) the waiter runs it once the gate opens and exits with its exit code,\n" +
@@ -202,7 +205,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&site, "site", "", "where the check runs: "+enumHelp(implement.LoadSites()))
 	cmd.Flags().BoolVar(&wait, "wait", false, "wait until the load is below the wait limit and no other go test -race run is live")
-	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the hold")
+	cmd.Flags().BoolVar(&race, "race-gate", false, "wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold")
 	cmd.Flags().DurationVar(&timeout, "timeout", implement.WaitDefaultTimeout, "with --wait or --race-gate, give up after this long and exit 1")
 	return cmd
 }

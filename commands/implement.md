@@ -735,9 +735,13 @@ straight away, as it did before the gate existed (it prints `race gate open at
 once`). Above one it stays shut while another `go test -race` run is live, a
 race waiter queued ahead of it (by the same rule: started earlier, or within
 two seconds of it, and with the lower pid) or running its command is, the load
-is at the wait limit, or a hold is in force (the preflight's own first gate's
-two-minute hold among them), so there is one race stage at a time whatever the
-first gate admits. A preflight waiting there has passed its first gate and
+is at the wait limit, or the race gate's own hold is in force (another race
+waiter of the account opened within two minutes), so there is one race stage at
+a time whatever the first gate admits. Each gate is shut only by its own gate's
+hold: a first gate's `--wait -- make preflight` holds its gate until its
+preflight starts its race run, and were that to shut the race gate too, an
+earlier preflight's race stage would wait on it while the holder's own race
+waiter queued behind that earlier one, and neither would move. A preflight waiting there has passed its first gate and
 counts as in its test stages. A waiter that has opened stands back only from a
 lower pid that opened in the same moment at its own gate, never from one at
 the other gate.
@@ -780,8 +784,10 @@ no key but `preflights`; or move it aside, which drops every machine setting it
 holds, and one preflight at a time applies.
 
 Within one account the waiter that opens also writes a hold,
-`~/.abcd.noindex/load-wait.json`, and every other waiter of that account waits
-on `lock` while it is in force; a hold its own ancestor took does not shut it.
+`~/.abcd.noindex/load-wait.json` at the first gate and
+`~/.abcd.noindex/load-wait-race.json` at the race gate, and every other waiter
+of that account at the same gate waits on `lock` while it is in force; a hold
+its own ancestor took does not shut it.
 Without a command the hold lasts two minutes, so run the gated work straight
 after it opens. The command form, `implement load --wait -- go test -race ./...`,
 runs the command once the gate opens, exits with the command's exit code

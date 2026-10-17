@@ -306,9 +306,13 @@ jitter and no settle, so the preflight runs exactly as before. Above one it is
 shut only by another live `go test -race` run, a race waiter queued ahead of
 it by the same rule (started earlier, or within two seconds of it, and with the
 lower pid) or running its command, the load limit and
-the hold, so one race stage runs at a time among the preflights whose checkouts have the race gate; a preflight run from a checkout older than the gate runs its race stage ungated, so two at once is safe only once no such checkout runs one. A first gate's waiter never queues
+the race gate's own hold, so one race stage runs at a time among the preflights whose checkouts have the race gate; a preflight run from a checkout older than the gate runs its race stage ungated, so two at once is safe only once no such checkout runs one. A first gate's waiter never queues
 there, a race waiter never queues at the first gate, and a preflight whose
-waiter is at its race gate counts as in its test stages. How many preflights
+waiter is at its race gate counts as in its test stages. Each gate keeps its
+own hold record and is shut only by it: a first gate's command hold lasts
+until its preflight starts its race run, so were it to shut the race gate, an
+earlier preflight's race waiter would wait on it while the holder's own race
+waiter queued behind that earlier one, and neither would move. How many preflights
 the first gate admits to their test stages at once is the person's own machine
 setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
 `~/.abcd.noindex/config.json`, read through the layered configuration with the
