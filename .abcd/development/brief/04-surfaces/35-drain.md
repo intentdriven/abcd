@@ -337,13 +337,13 @@ on origin's default branch backs off, with a tip or without one
    or asked, so passing over held work adds no fetch to the move's one; one
    the reservation push itself finds held (a race since the fetch) is passed
    over the same way. One the person's own other copy holds live says so and
-   names `abcd drain --take-over`; a move given that flag lets that copy's
+   names the drain's take-over; a move asked to take over lets that copy's
    reservation of the issue through the view, and its reservation takes it over
-   for this copy, as `abcd build --take-over` does, so a hosted session that
+   for this copy, as a build's take-over does, so a hosted session that
    restarted with its local tier lost takes its own reservations back as the
    drain reaches them (spc-2610161044461448 step 15, dcn-2610161040398791). The
-   flag is the move's alone, never kept in the drain's state, and never moves
-   another person's reservation. An issue whose tip in the move's view is a hand-back
+   take-over is the move's alone, never kept in the drain's state, and never
+   moves another person's reservation. An issue whose tip in the move's view is a hand-back
    that stands, from any copy on any account, is passed over the same way,
    naming its kind, who handed it back and when, and every reservation the
    drain pushes backs off a hand-back that stands, so one the view missed is
@@ -406,9 +406,9 @@ a drain begins, and a different cap named while it runs is refused rather than
 ignored. The pace is the implement loop's, resolved through the same layers when
 the drain begins, and every lane the drain opens starts on the drain's pace, not
 on what the layers resolve when it opens (spc-2610161044461448 step 16,
-dcn-2610161040399117). A running drain given `--pace`, `--sub-agents` or
-`--fix-rounds` takes them: each number named replaces the one stored, the rest
-kept, the drain's state records them with the flag as their origin, the next
+dcn-2610161040399117). A running drain given a new pace, sub-agent ceiling or
+fix-round cap takes it: each number named replaces the one stored, the rest
+kept, the drain's state records them with the invocation as their origin, the next
 lane opens on them, and each lane in progress takes them into its run's pace,
 which its next stage reads, its run record saying so. Each lane's run is then
 paced as a run is.
@@ -482,7 +482,7 @@ runner on it through the dispatch every routed role takes, granted Read and
 Write alone and bounded at fifteen minutes. Its answer, at
 `.abcd/.work.local/run/drain-judgement.runner.json`, is read as strictly as the
 host's, abcd filling in the digest of the remedy the brief showed, and taken in
-that same move as `--judgement` would take it: a no opens the lane on the
+that same move as the host's answer handed back would be: a no opens the lane on the
 reservation the drain took to ask it, and a yes is routed and the drain asks
 about the next issue, so a drain started in a plain terminal needs no person's
 answer. The judgement records the route that ran it. A runner that does not
