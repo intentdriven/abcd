@@ -1438,6 +1438,11 @@ the line rather than by a variable, a substitution or a glob ([, [[ and test
 are the test commands they name, not globs). Beyond the registry, it
 refuses:
 
+  - arithmetic on anything but written numbers: a name, a quote or an
+    expansion in (( )), $(( )) or a for (( )) header, the number tests of
+    [[ ]], let, declare -i, a non-numeric array index or substring offset,
+    ${!name}, and a name not written in the line handed to read, unset,
+    printf -v or a declaration; [ and test compare without evaluating;
   - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,
     osascript, lua or Rscript -e, deno eval and PowerShell -Command; a flag
     after the script's name, or after python's -m module, is the script's;

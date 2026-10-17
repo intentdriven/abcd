@@ -60,6 +60,11 @@ func newGuardApproveCommand() *cobra.Command {
 			"the line rather than by a variable, a substitution or a glob ([, [[ and test\n" +
 			"are the test commands they name, not globs). Beyond the registry, it\n" +
 			"refuses:\n\n" +
+			"  - arithmetic on anything but written numbers: a name, a quote or an\n" +
+			"    expansion in (( )), $(( )) or a for (( )) header, the number tests of\n" +
+			"    [[ ]], let, declare -i, a non-numeric array index or substring offset,\n" +
+			"    ${!name}, and a name not written in the line handed to read, unset,\n" +
+			"    printf -v or a declaration; [ and test compare without evaluating;\n" +
 			"  - inline code for python -c, node -e or -p, perl -e, ruby -e, php -r,\n" +
 			"    osascript, lua or Rscript -e, deno eval and PowerShell -Command; a flag\n" +
 			"    after the script's name, or after python's -m module, is the script's;\n" +

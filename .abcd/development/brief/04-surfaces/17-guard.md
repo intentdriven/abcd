@@ -342,7 +342,10 @@ The bar is higher than the hook's, because nobody answers after it. Only a
 clean allow approves: no entry and no signal, a warn included; no note about the
 check; the repository's registry in force and switched on; every program named
 by the line, not a variable, a substitution or a glob (`[`, `[[` and `test` are
-the test commands they name, not globs); and none of the shapes
+the test commands they name, not globs); every operand bash evaluates as
+arithmetic a written number, since a name there can hold an index that runs a
+command (`arithmetic-operand-unfixed`; `[` and `test` compare numbers without
+evaluating them); and none of the shapes
 the approver refuses itself. Those read the guard's own parse of the line, not
 its text:
 
@@ -374,7 +377,8 @@ its text:
   after it are not read as the command's own; bash refuses such a line, and
   every approved command runs under bash, so this refusal is a second layer. A
   quoted or escaped `(` is text, and a function definition's `()`, the `((` of
-  an arithmetic for-loop (`for ((i=0;i<3;i++))`) and the `(` before a case
+  an arithmetic for-loop (`for ((;;))`; one whose header holds a name is refused
+  as arithmetic) and the `(` before a case
   pattern (`case a in (a) …`), which bash needs and which name no path, are not
   such a word;
 - a write or removal reaching a protected path, compared after the target's

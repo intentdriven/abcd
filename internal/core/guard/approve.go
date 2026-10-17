@@ -204,6 +204,13 @@ func runFrom(dir, command string) string {
 // approveShell answers a prompt for one shell command line, read against ld's
 // registry with files as the directory it runs in.
 func approveShell(ld Loaded, files *Files, command string) Approval {
+	// The arithmetic scan reads the whole text, every string a deeper
+	// judgement would read included, so it runs once here.
+	if why := arithmeticUnfixed(command); why != "" {
+		return refusal(arithmeticEntryID,
+			"the shell command cannot be approved because "+why+", so a name there could run a command the line never names.",
+			"the same work with every arithmetic operand a written number, comparing a value with `[ \"$n\" -gt 0 ]` rather than `[[ … ]]` or `(( … ))`, and a loop over `seq` rather than `for ((…))`.")
+	}
 	return approveShellAt(ld, files, command, 0)
 }
 

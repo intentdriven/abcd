@@ -187,13 +187,14 @@ var wordReaders = map[string]string{
 	"execPinKeys":      "exempt: reads gitutil's own -c pins, not a command word",
 
 	// approvecode.go: code reaching an interpreter outside its inline flag.
-	"otherCode":   "exempt: hands the site to the readers below, each listed",
-	"codeOnStdin": "isUnknown: an operand the line does not fix may name the standard input, and is refused",
-	"awkCode":     "isUnknown: a program the line does not fix is refused",
-	"sedScripts":  "isUnknown: a script the line does not fix is refused",
-	"tarCode":     "exempt: reads tar's literal options; an unknown word reads as no such option, an approval the reading may miss",
-	"vimCode":     "isUnknown: a command the line does not fix is refused",
-	"factsFor":    "exempt: hands git its own options to read the repository's paths; reads no command word",
+	"otherCode":         "exempt: hands the site to the readers below, each listed",
+	"codeOnStdin":       "isUnknown: an operand the line does not fix may name the standard input, and is refused",
+	"awkCode":           "isUnknown: a program the line does not fix is refused",
+	"sedScripts":        "isUnknown: a script the line does not fix is refused",
+	"tarCode":           "exempt: reads tar's literal options; an unknown word reads as no such option, an approval the reading may miss",
+	"vimCode":           "isUnknown: a command the line does not fix is refused",
+	"factsFor":          "exempt: hands git its own options to read the repository's paths; reads no command word",
+	"unfixedSubstrings": "exempt: reads the command text whole for a substring expansion's operator and only ever refuses; it approves no word",
 }
 
 // TestEveryWordReaderGoesThroughUnknown is the grep the rule promises, run as a

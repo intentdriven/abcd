@@ -192,6 +192,20 @@ A shell command is approved only when the guard reads it whole and clears it:
   substitution or a glob (`program-name-unread`); `[`, `[[` and `test` are the
   test commands they name, not globs, so `[ -f x ] && rm x` and
   `if [ -f a ]; then …; fi` are judged by their words;
+- every operand bash evaluates as arithmetic is a written number
+  (`arithmetic-operand-unfixed`). Bash evaluates a name it meets in arithmetic
+  as arithmetic in turn, so a value the line does not fix can hold an index
+  that runs a command. Refused are a name, a quote or an expansion inside
+  `(( … ))`, `$(( … ))`, `$[ … ]` and a `for ((…))` header; the number
+  comparisons of `[[ … ]]` (`-eq`, `-lt` and the rest) and its `-v`; `let`
+  and an integer or name-reference declaration (`declare -i`, `local -n`); an
+  array index that is not a number, in an assignment, an expansion or a
+  compound assignment; a substring offset or length that is not a number;
+  `${!name}`; and a variable name that is not written in the line, handed to
+  `read`, `unset`, `printf -v`, `wait -p`, `test -v` or a declaration. The scan
+  reads the whole text, quotes and here-documents included, so a script that
+  only quotes such a construct is refused too. `[ "$n" -gt 0 ]` and `test`
+  compare numbers without evaluating them, and stay approved;
 - no code reaches an interpreter that the guard does not read
   (`inline-code-unread`): inline code for `python -c`, `node -e` or `-p`,
   `perl -e`, `ruby -e`, `php -r`, `osascript`, `lua` or `Rscript -e`,
@@ -243,7 +257,8 @@ A shell command is approved only when the guard reads it whole and clears it:
   this refusal is a second layer. A quoted or escaped `(` is text, so
   `rm -f 'a(b)'` stays approved, and so do a function definition's `()`
   (`f() { … }`), the `((` of an arithmetic for-loop
-  (`for ((i=0;i<3;i++)); do …; done`) and the `(` before a case pattern
+  (`for ((;;)); do …; done`; a header holding a name is refused as arithmetic,
+  above) and the `(` before a case pattern
   (`case a in (a) …;; esac`), which bash needs and which name no path. A
   relative name after a `cd` the line spells out and joins with `&&` is read
   in that directory;
