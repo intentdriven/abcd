@@ -61,7 +61,8 @@ var (
 // answered with a value, or deferred with "decide later", is recorded), and
 // the settings whose default a release after from up to to changed, which
 // the repository's .abcd/config.json leaves unset and no waiting question
-// already covers.
+// already covers. A to of "" (a running build that is not a release) counts no
+// changed default.
 //
 // A category approval and the adoption are not waiting questions: they are
 // consent to the changes the questions and gaps make, asked whenever there is
@@ -89,6 +90,11 @@ func Waiting(cwd string, det DetectionResult, from, to string) (WaitingSet, erro
 		set.Questions = append(set.Questions, q)
 	}
 
+	// A running build that is not a release (to "") is in no release, so no
+	// default it carries has changed in one.
+	if to == "" {
+		return set, nil
+	}
 	changes, err := waitingDefaultChanges()
 	if err != nil || len(changes) == 0 {
 		return set, err

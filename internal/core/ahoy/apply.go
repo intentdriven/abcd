@@ -110,6 +110,16 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		}
 	}
 
+	// The yes to the after-update offer (--only-waiting): only what waits is
+	// put, and the yes approved every kind of change.
+	opts, waiting, err := onlyWaitingRun(abs, det, opts)
+	if err != nil {
+		return InstallResult{}, err
+	}
+	if waiting != nil {
+		p = waiting.prompter(p)
+	}
+
 	// Adoption gate for an unmanaged repo.
 	adopted := false
 	if det.FolderKind == UnmanagedRepo {
@@ -227,6 +237,7 @@ func install(cwd string, opts InstallOptions, p Prompter) (res InstallResult, er
 		confirmTool: opts.ConfirmTool,
 		provenance:  opts.VerifyProvenance,
 		readmeFlag:  opts.ReadmeParts,
+		waiting:     waiting,
 	}
 
 	// Ordered apply steps.
@@ -436,15 +447,16 @@ type applyCtx struct {
 	writes     []string
 	// writeKinds runs parallel to writes: what each write is, for the summary.
 	writeKinds      []writeKind
-	changes         []string // human-readable value changes an explicit override forced
-	notes           []string // loud refusals (refuse) and informational lines (inform), in the order they arose
-	autoYes         bool     // --yes: every category auto-approved without interaction
-	devMode         bool     // --dev: install the track-latest shim instead of the symlink
-	modeForced      bool     // the requested install mode differs from the on-disk state
-	attribution     bool     // --attribution: opt this repo into the committed prompt hook
-	outbound        bool     // --outbound: opt this repo into both outbound checks, and name the verified copy in abcd.binary
-	verifiedCopy    string   // the owned PATH copy whose build provenance this run verified; "" when none
-	binTarget       string   // the resolved PATH entry this run installs (never re-derived)
+	changes         []string       // human-readable value changes an explicit override forced
+	notes           []string       // loud refusals (refuse) and informational lines (inform), in the order they arose
+	autoYes         bool           // --yes: every category auto-approved without interaction
+	waiting         *waitingFilter // --only-waiting: what this run puts; nil otherwise
+	devMode         bool           // --dev: install the track-latest shim instead of the symlink
+	modeForced      bool           // the requested install mode differs from the on-disk state
+	attribution     bool           // --attribution: opt this repo into the committed prompt hook
+	outbound        bool           // --outbound: opt this repo into both outbound checks, and name the verified copy in abcd.binary
+	verifiedCopy    string         // the owned PATH copy whose build provenance this run verified; "" when none
+	binTarget       string         // the resolved PATH entry this run installs (never re-derived)
 	confirmTool     tools.Confirm
 	readmeFlag      string          // --readme-parts as given; "" when not given
 	provenance      ProvenanceCheck // the build-provenance check a cache promotion must pass; nil refuses
@@ -849,6 +861,21 @@ func WalkConfigValueQuestions(cwd string, opts InstallOptions, approves func(id 
 	det, err := Detect(abs)
 	if err != nil {
 		return err
+	}
+	// An --only-waiting run approves up front and puts only what waits, so
+	// the walk puts only that too.
+	opts, waiting, err := onlyWaitingRun(abs, det, opts)
+	if err != nil {
+		return err
+	}
+	if waiting != nil {
+		walked := answer
+		answer = func(key string, choices []string, def string) string {
+			if !waiting.asks(key) {
+				return ""
+			}
+			return walked(key, choices, def)
+		}
 	}
 	// install's gates before its first question, in its order: each ends the
 	// run before a value is asked.

@@ -208,6 +208,15 @@ type InstallOptions struct {
 	// cannot import it, because update imports ahoy. Nil refuses every
 	// promotion: there is no unverified path.
 	VerifyProvenance ProvenanceCheck
+	// OnlyWaiting is the setup the yes to the after-update offer runs
+	// (spc-2610170635097509, step 7): only the questions and changed
+	// defaults Waiting returns for this repository are put to the prompter,
+	// and every other question is left unanswered, as deciding later leaves
+	// it. The yes approved the run, so every kind of change is approved up
+	// front and no approval is put. With Yes no question is answered at all,
+	// waiting or not: --yes is never a person's answer to a value question.
+	// --only-waiting.
+	OnlyWaiting bool
 }
 
 // ProvenanceCheck verifies a release artefact's build provenance by its
