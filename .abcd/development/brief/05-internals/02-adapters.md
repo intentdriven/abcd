@@ -166,7 +166,9 @@ names it (`served_provider`, the upstream provider an aggregator names;
 cache-read and cache-write tokens; and `cost`, in the provider's credits). Every
 string the provider supplied is scrubbed of the key, cleaned and bounded as the
 reported model is, and a usage member of an unexpected shape is a detail not
-reported, never a refused answer. `unpinned` lists each field of the fixed asked
+reported, never a refused answer: each count it does not carry readably is
+listed as not reported on its own, and a later usage chunk that reads fewer
+fields than an earlier one does not replace it. `unpinned` lists each field of the fixed asked
 and served lists the call could not pin, with its reason: `not_reported` (the
 response does not carry it), `self_reported`, `harness_computed` or
 `not_configured` (no setting or pin names it; a route to this machine lists the
@@ -205,7 +207,11 @@ review is skipped.
   no model, so its served model is empty and listed as not reported, never the
   asked one, and its step-finish events' tokens and cost are summed, a floor,
   since a sub-agent's steps are not among them. Either harness computes the
-  cost from its own price table, so it is listed as `harness_computed`.
+  cost from its own price table, so it is listed as `harness_computed`. A
+  count is read only when present and not negative, and a cost only when it
+  is zero or more and finite, the rule the provider adapter holds its usage
+  member to; a summed count that would overflow, or a summed cost that stops
+  being finite, is listed as not reported rather than recorded.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the
