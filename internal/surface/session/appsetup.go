@@ -78,6 +78,12 @@ var donePage = template.Must(template.New("done").Parse(`<!doctype html>
 <body><h1>{{.Title}}</h1><p>{{.Body}}</p></body></html>
 `))
 
+// LoopbackListener opens the listener on this computer's loopback address
+// that GitHub's answer to the app manifest returns to. It lives here, in a
+// package the listener boundary admits (adr-2610032150581128, as amended
+// 2026-10-14), so the setup verb opens no listener of its own.
+func LoopbackListener() (net.Listener, error) { return net.Listen("tcp", "127.0.0.1:0") }
+
 // Run serves the flow on ln until GitHub's redirect brings a code that
 // converts, ctx ends, or the conversion fails. opened is told the address to
 // open, once the page answers. Every request must name ln's own address as

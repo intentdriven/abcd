@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"net/http"
 	"net/netip"
 	"os"
@@ -817,7 +816,7 @@ func newSessionSetupCommand(asJSON *bool) *cobra.Command {
 				if merr != nil {
 					return refuse(merr.Error())
 				}
-				ln, lerr := net.Listen("tcp", "127.0.0.1:0")
+				ln, lerr := session.LoopbackListener()
 				if lerr != nil {
 					return refuse("cannot listen on this computer for GitHub's answer: " + lerr.Error())
 				}

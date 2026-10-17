@@ -112,7 +112,7 @@ console.log(JSON.stringify({
   ctrlCmd: k({ ctrlKey: true, metaKey: true, shiftKey: true, code: "BracketLeft", key: "{" }),
   ctrlAlt: k({ ctrlKey: true, altKey: true, shiftKey: true, code: "BracketLeft", key: "{" }),
   altGraph: k({ ctrlKey: true, shiftKey: true, code: "BracketLeft", key: "{", getModifierState: (m) => m === "AltGraph" }),
-  altLeft: k({ altKey: true, code: "BracketLeft", key: "“" }),
+  altLeft: k({ altKey: true, code: "BracketLeft", key: "\u201c" }),
   docs: k({ altKey: true, shiftKey: true, code: "KeyD", key: "Î" }),
   side: k({ altKey: true, shiftKey: true, code: "KeyS", key: "Í" }),
   docsNoShift: k({ altKey: true, code: "KeyD", key: "∂" }),

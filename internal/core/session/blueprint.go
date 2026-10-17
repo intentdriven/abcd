@@ -62,9 +62,9 @@ const RootBlueprint = "render.yaml"
 // follows it.
 const renderDeploy = "https://render.com/deploy?repo="
 
-// RenderDeployURL is the Deploy button's link for the repository owner/name
+// renderDeployURL is the Deploy button's link for the repository owner/name
 // on github.com (https://render.com/docs/deploy-to-render).
-func RenderDeployURL(repo string) string { return renderDeploy + "https://github.com/" + repo }
+func renderDeployURL(repo string) string { return renderDeploy + "https://github.com/" + repo }
 
 // relayAsset is the release asset the relay runs: Render builds and runs on
 // linux/amd64.
@@ -396,7 +396,7 @@ EXPOSE 10000
 CMD ["sh", "-c", "exec abcd session serve --listen \"0.0.0.0:${PORT}\" --behind-proxy"]
 `
 	how := `# Dockerfile under .abcd/relay/. Deploy it with Render's Deploy button,
-# ` + RenderDeployURL(repos[0]) + `,
+# ` + renderDeployURL(repos[0]) + `,
 # or on Render choose New, then Blueprint, and pick this repository.`
 	if at != RootBlueprint {
 		how = `# Dockerfile beside this file. On Render, choose New, then Blueprint, pick this
@@ -529,7 +529,7 @@ func WriteBlueprint(req BlueprintRequest) (BlueprintResult, error) {
 	}
 	res.BlueprintPath = at
 	if at == RootBlueprint {
-		res.DeployButton, res.DeployURL = true, RenderDeployURL(req.Repos[0])
+		res.DeployButton, res.DeployURL = true, renderDeployURL(req.Repos[0])
 	}
 	byName := renderBlueprintAt(req.Release, digest, req.Repos, origins, req.ClientID, at)
 	paths := map[string]string{"Dockerfile": BlueprintDir + "/Dockerfile", "render.yaml": at}
