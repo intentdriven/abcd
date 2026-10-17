@@ -100,6 +100,26 @@ func newWorld(t *testing.T) *world {
 	return w
 }
 
+// det is the detection the session start holds for the world's repository.
+func (w *world) det() ahoy.DetectionResult { return ahoy.DetectionResult{RootSHA: w.rootSHA} }
+
+// TestPendingReadsTheCallersDetection: the session start already holds the
+// repository's detection, so Pending answers from it and runs none of its
+// own.
+func TestPendingReadsTheCallersDetection(t *testing.T) {
+	w := newWorld(t)
+	detect = func(string) (ahoy.DetectionResult, error) {
+		t.Error("Pending ran a detection of its own")
+		return ahoy.DetectionResult{}, nil
+	}
+	if p, err := Pending(w.repo, w.det()); err != nil || p != (PendingState{News: true, Offer: true}) {
+		t.Fatalf("Pending = %+v, %v", p, err)
+	}
+	if p, err := Pending(w.repo, ahoy.DetectionResult{}); err != nil || p.Offer {
+		t.Fatalf("a detection with no root commit offers nothing: %+v, %v", p, err)
+	}
+}
+
 // tree lists every path under root with its size and mode, for a
 // wrote-nothing check.
 func tree(t *testing.T, root string) string {
@@ -126,7 +146,7 @@ const (
 func TestMomentForAlice(t *testing.T) {
 	w := newWorld(t)
 	before := tree(t, w.home) + tree(t, w.repo)
-	p, err := Pending(w.repo)
+	p, err := Pending(w.repo, w.det())
 	if err != nil || p != (PendingState{News: true, Offer: true}) {
 		t.Fatalf("Pending = %+v, %v", p, err)
 	}
@@ -200,13 +220,13 @@ func TestNewsOncePerComputerOfferOncePerRepository(t *testing.T) {
 	if err != nil || a != (Answer{SchemaVersion: 1, Release: "v0.16.0", Answer: AnswerNotNow}) {
 		t.Fatalf("Record = %+v, %v", a, err)
 	}
-	if p, err := Pending(w.repo); err != nil || p.Any() {
+	if p, err := Pending(w.repo, w.det()); err != nil || p.Any() {
 		t.Fatalf("after the answer: %+v, %v", p, err)
 	}
 
 	// A second repository on this computer: its own offer, but not the news.
 	w.rootSHA = strings.Repeat("ab", 20)
-	if p, err := Pending(w.repo); err != nil || p != (PendingState{Offer: true}) {
+	if p, err := Pending(w.repo, w.det()); err != nil || p != (PendingState{Offer: true}) {
 		t.Fatalf("a second repository: %+v, %v", p, err)
 	}
 	w.rootSHA = aliceSHA
@@ -214,7 +234,7 @@ func TestNewsOncePerComputerOfferOncePerRepository(t *testing.T) {
 	// The next release offers again here, and its news is unseen (the
 	// fixture digest does not describe it, so the news is the gap naming it).
 	w.running = "v0.16.1"
-	if p, err := Pending(w.repo); err != nil || p != (PendingState{News: true, Offer: true}) {
+	if p, err := Pending(w.repo, w.det()); err != nil || p != (PendingState{News: true, Offer: true}) {
 		t.Fatalf("the next release: %+v, %v", p, err)
 	}
 }
@@ -328,7 +348,7 @@ func TestNoOfferWhereNoneIsDue(t *testing.T) {
 			if c.nothing {
 				w.waiting = ahoy.WaitingSet{Questions: []ahoy.WaitingItem{}, Defaults: []ahoy.WaitingItem{}}
 			}
-			p, err := Pending(w.repo)
+			p, err := Pending(w.repo, w.det())
 			if err != nil || p.Offer {
 				t.Fatalf("Pending = %+v, %v", p, err)
 			}
@@ -354,7 +374,7 @@ func TestNoOfferWhereNoneIsDue(t *testing.T) {
 func TestADevBuildHoldsNothing(t *testing.T) {
 	w := newWorld(t)
 	w.running = "dev"
-	if p, err := Pending(w.repo); err != nil || p.Any() {
+	if p, err := Pending(w.repo, w.det()); err != nil || p.Any() {
 		t.Fatalf("Pending = %+v, %v", p, err)
 	}
 	if err := MarkSeen(); !errors.Is(err, ErrNotRelease) {

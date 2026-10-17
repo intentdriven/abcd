@@ -150,8 +150,9 @@ type Answer struct {
 }
 
 // Pending reports, reading only, what the moment holds for the repository
-// at cwd. A dev build holds nothing.
-func Pending(cwd string) (PendingState, error) {
+// at cwd, whose detection the caller already holds (the session start runs
+// one): Pending runs none of its own. A dev build holds nothing.
+func Pending(cwd string, det ahoy.DetectionResult) (PendingState, error) {
 	running, ok := release(runningVersion())
 	if !ok {
 		return PendingState{}, nil
@@ -162,7 +163,7 @@ func Pending(cwd string) (PendingState, error) {
 		return PendingState{}, err
 	}
 	st.News = news != nil
-	offer, err := dueOffer(cwd, running)
+	offer, err := dueOffer(cwd, running, &det)
 	if err != nil {
 		return PendingState{}, err
 	}
@@ -186,7 +187,7 @@ func Moment(cwd string) (MomentLines, error) {
 		m.Lines = append(m.Lines, newsLines(*news)...)
 		m.Partial = news.Partial
 	}
-	offer, err := dueOffer(cwd, running)
+	offer, err := dueOffer(cwd, running, nil)
 	if err != nil {
 		return MomentLines{}, err
 	}
@@ -321,15 +322,22 @@ func unseenNews(cwd, running string) (*releasedigest.Summary, error) {
 
 // dueOffer is the offer due in the repository at cwd for running, or nil:
 // the setup version is an older release, the repository has a root commit,
-// no answer is recorded for it and running, and something waits.
-func dueOffer(cwd, running string) (*Offer, error) {
+// no answer is recorded for it and running, and something waits. held is the
+// caller's detection of the repository; nil runs one, and only where the
+// setup version is an older release.
+func dueOffer(cwd, running string, held *ahoy.DetectionResult) (*Offer, error) {
 	set, ok := setupVersion(cwd)
 	if !ok || !older(set, running) {
 		return nil, nil
 	}
-	det, err := detect(cwd)
-	if err != nil {
-		return nil, err
+	var det ahoy.DetectionResult
+	if held != nil {
+		det = *held
+	} else {
+		var err error
+		if det, err = detect(cwd); err != nil {
+			return nil, err
+		}
 	}
 	if !rootSHARe.MatchString(det.RootSHA) {
 		return nil, nil
