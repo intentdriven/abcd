@@ -13,8 +13,10 @@ package loop
 //
 // A runner that is absent, refuses, fails, answers unparsably or writes an
 // answer the validation refuses is a fallback, recorded in the drain's state
-// (JudgeFallbacks), and the host's request, written beside it, stands, as it
-// does with no route; a rate limit or any other failure leaves the request
+// (JudgeFallbacks, the latest maxJudgeFallbacks kept), and the host's
+// request, written beside it, stands, as it does with no route; the runner is
+// started once per request (DrainJudging.RoutedAsked), so a poll while the
+// host's request stands starts no runner and records no receipt; a rate limit or any other failure leaves the request
 // standing too, with the reason in the move's next step. The judge never
 // stops the drain.
 //
@@ -40,6 +42,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -62,6 +65,11 @@ const (
 	drainJudgeBriefName  = "drain-judgement.md"
 	drainJudgeAnswerName = "drain-judgement.json"
 )
+
+// maxJudgeFallbacks bounds the fallback receipts a drain's state keeps, the
+// latest last: each request is asked of the runner once, so the receipts
+// grow with the issues a drain judges, and past the bound the oldest go.
+const maxJudgeFallbacks = 32
 
 // drainJudgeTimeout bounds one routed judgement when the caller names none:
 // one question over one record, read and answered, well inside the lease of
@@ -155,7 +163,7 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 			// A runner stopped with the drain is no fallback: the
 			// move refuses below, and the next one asks again.
 			if ctx.Err() == nil {
-				st.JudgeFallbacks = append(st.JudgeFallbacks, fb)
+				keepJudgeFallback(st, fb)
 			}
 			return nil
 		},
@@ -181,6 +189,20 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	route := out.Receipt.Route
 	taken.Route = &route
 	return taken, "", nil
+}
+
+// keepJudgeFallback records fb in st, keeping the latest maxJudgeFallbacks.
+func keepJudgeFallback(st *DrainState, fb runner.FallbackReceipt) {
+	st.JudgeFallbacks = append(st.JudgeFallbacks, fb)
+	if over := len(st.JudgeFallbacks) - maxJudgeFallbacks; over > 0 {
+		st.JudgeFallbacks = slices.Delete(st.JudgeFallbacks, 0, over)
+	}
+}
+
+// judgeAskedClause is the move's clause for a request the routed judge was
+// started on in an earlier move and did not answer: it is not started again.
+func judgeAskedClause(issue string) string {
+	return "the drain judge was already asked over " + issue + " for this request and did not answer, so it is not started again and the request is the host's"
 }
 
 // judgeStopped is the move's refusal when the drain was stopped while its

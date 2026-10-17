@@ -932,13 +932,22 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			pruneLapse(&st, v.ID)
 			// A judge routed to a runner answers in this move, taken as the
 			// host's answer is; one that does not answer leaves the host's
-			// request standing (drain_judge.go).
-			taken, clause, err := routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now)
-			if err != nil {
-				return refuseMoved(err)
+			// request standing, and is not started again for it
+			// (drain_judge.go).
+			var taken *DrainJudgement
+			clause := ""
+			if judging.RoutedAsked {
+				clause = judgeAskedClause(v.ID)
+			} else {
+				if taken, clause, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
+					return refuseMoved(err)
+				}
+				if taken == nil && judgeRouted(o, d) {
+					st.Judging.RoutedAsked = true
+				}
 			}
 			if taken == nil {
-				res.Next = joinNext(judgementMove(judging), clause)
+				res.Next = joinNext(judgementMove(*st.Judging), clause)
 				return finish(true)
 			}
 			taken.Hold = judging.Hold

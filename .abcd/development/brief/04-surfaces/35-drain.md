@@ -495,8 +495,10 @@ reservation the drain took to ask it, and a yes is routed and the drain asks
 about the next issue, so a drain started in a plain terminal needs no person's
 answer. The judgement records the route that ran it. A runner that does not
 answer, refuses, fails, or writes an answer out of shape is a fallback: its
-receipt is kept in the drain's state and the host's request stands, as with no
-route; a rate limit leaves it standing too. The runner runs under the drain's
+receipt is kept in the drain's state, the latest thirty-two of them, and the
+host's request stands, as with no route. The runner is started once per
+request, which the awaited judgement records, so a move made while the host's
+request stands starts no runner and records no further fallback; a rate limit leaves it standing too. The runner runs under the drain's
 lock and stops with the drain: an interrupt or a termination while it judges
 kills the runner's process group before the move ends, records no fallback, and
 refuses the move saying so, so the next move asks the judge again. Whatever

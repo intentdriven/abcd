@@ -65,6 +65,11 @@ func loopFakeHarness(mode string) int {
 	if dir := os.Getenv(loopFakeLogEnv); dir != "" {
 		argv, _ := json.Marshal(os.Args[1:])
 		_ = os.WriteFile(filepath.Join(dir, name+".argv.json"), argv, 0o600)
+		// One line per launch, so a test can count them.
+		if f, err := os.OpenFile(filepath.Join(dir, name+".launches"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+			_, _ = f.WriteString("launched\n")
+			_ = f.Close()
+		}
 	}
 	prompt := os.Args[len(os.Args)-1]
 	field := func(prefix string) string {

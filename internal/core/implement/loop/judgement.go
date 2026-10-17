@@ -87,6 +87,10 @@ type DrainJudging struct {
 	// held the issue from this copy, which is theirs and never the drain's
 	// to release).
 	Hold *DrainHold `json:"hold,omitempty"`
+	// RoutedAsked is true once the routed judge was started on this request
+	// and did not answer (drain_judge.go): the polls that follow while the
+	// host's request stands do not start it again.
+	RoutedAsked bool `json:"routed_asked,omitempty"`
 }
 
 // DrainHold is a reservation the drain took on an issue to judge it: the
@@ -171,7 +175,7 @@ func requestJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict
 		Answer: DrainJudgementAnswerRel, RequestedAt: now}
 	same := prior != nil && prior.Issue == j.Issue && prior.RemedySHA256 == j.RemedySHA256
 	if same {
-		j.RequestedAt = prior.RequestedAt
+		j.RequestedAt, j.RoutedAsked = prior.RequestedAt, prior.RoutedAsked
 	}
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {

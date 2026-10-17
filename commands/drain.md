@@ -215,8 +215,11 @@ what it did in `next`:
   configuration's permissions, not the tools a role is granted.
   `judged.route` names the runner asked, the one that ran and its model. A
   runner that does not answer, or answers out of shape, is recorded in the
-  drain's state (`judge_fallbacks`) and the request above is left to you, as
-  with no route; `next` says so. The runner runs under the drain's lock, for at
+  drain's state (`judge_fallbacks`, the latest 32 kept) and the request above
+  is left to you, as with no route; `next` says so. The runner is started once
+  per request: `judging.routed_asked` records that it was, and a later
+  `abcd drain` while the request stands starts no runner and records no
+  further fallback. The runner runs under the drain's lock, for at
   most fifteen minutes, and stops with the drain: an interrupt or a
   termination while it judges kills its process group before the move ends,
   records no fallback, and refuses the move saying so, and the next

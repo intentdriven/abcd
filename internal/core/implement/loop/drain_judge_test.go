@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -247,5 +248,67 @@ func TestTheRoutedJudgeRunsInADirectoryOfItsOwn(t *testing.T) {
 		if strings.HasPrefix(en.Name(), "drain-judgement.runner") {
 			t.Fatalf("the judge's brief or answer is left in the checkout: %s", en.Name())
 		}
+	}
+}
+
+// launches counts the times the fake harness was started.
+func launches(t *testing.T, e driveEnv, harness string) int {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(e.log, harness+".launches"))
+	if errors.Is(err, os.ErrNotExist) {
+		return 0
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.Count(string(raw), "\n")
+}
+
+// TestASilentRoutedJudgeIsAskedOncePerRequest: a routed judge that does not
+// answer is asked once for the request it was started on; the polls that
+// follow while the host's request stands start no runner and record no
+// further fallback, and say why the request is the host's.
+func TestASilentRoutedJudgeIsAskedOncePerRequest(t *testing.T) {
+	repo := issueRepo(t)
+	e := judgeEnv(t, "silent")
+	o := Options{Runners: runnerConfig(t, judgeRoutedConfig, "")}
+	var last DrainResult
+	for i := range 3 {
+		res, err := Drain(repo.Root(), o, DrainOptions{Transcripts: &memTranscripts{}})
+		if err != nil {
+			t.Fatalf("poll %d: %v", i+1, err)
+		}
+		if res.Judging == nil || res.Judging.Issue != eligibleIssue || res.Judged != nil {
+			t.Fatalf("poll %d: the host's request stands: %+v", i+1, res)
+		}
+		last = res
+	}
+	if n := launches(t, e, "claude"); n != 1 {
+		t.Fatalf("the judge's runner is started once per request, not on every poll: %d launches", n)
+	}
+	st, _, err := readDrain(repo.Root())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(st.JudgeFallbacks) != 1 {
+		t.Fatalf("one fallback receipt for the one request: %+v", st.JudgeFallbacks)
+	}
+	if !strings.Contains(last.Next, "abcd drain --judgement") || !strings.Contains(last.Next, "already") {
+		t.Fatalf("a later poll names the host's answer and why the judge is not asked again: %s", last.Next)
+	}
+}
+
+// TestTheDrainKeepsTheLatestJudgeFallbacksAlone: the fallback receipts a
+// drain keeps are bounded, the oldest dropped and the latest kept last.
+func TestTheDrainKeepsTheLatestJudgeFallbacksAlone(t *testing.T) {
+	var st DrainState
+	for i := range maxJudgeFallbacks + 8 {
+		keepJudgeFallback(&st, runner.FallbackReceipt{Role: RoleDrainJudge, Detail: strconv.Itoa(i)})
+	}
+	if len(st.JudgeFallbacks) != maxJudgeFallbacks {
+		t.Fatalf("the receipts are bounded at %d: %d", maxJudgeFallbacks, len(st.JudgeFallbacks))
+	}
+	if first, last := st.JudgeFallbacks[0].Detail, st.JudgeFallbacks[maxJudgeFallbacks-1].Detail; first != "8" || last != strconv.Itoa(maxJudgeFallbacks+7) {
+		t.Fatalf("the oldest are dropped and the latest kept last: %s .. %s", first, last)
 	}
 }
