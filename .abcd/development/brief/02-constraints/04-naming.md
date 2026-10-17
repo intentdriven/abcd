@@ -47,9 +47,11 @@ The exemptions carrying a rationale of their own:
 - `/abcd:reflect`: release-retrospective surface (itd-24). Not
   metaphor-mapped, soft register.
 - `/abcd` (bare, top-level): where-am-i status board (itd-20). The namespace root
-  refuses any positional that is not a record id, so `status` is not a registered
-  command; `abcd help` prints the root help, a different render from the bare
-  board.
+  refuses any positional that is not a record id, and neither `status` nor
+  `help` routes to the board: `abcd status` is a verb of its own, listing
+  everyone's announcements, reservations and releases being cut
+  ([`../04-surfaces/39-status.md`](../04-surfaces/39-status.md)), and
+  `abcd help` prints the root help, a different render from the bare board.
 
 The remaining surfaces are exempt for the plain reason that no maritime cognate
 adds meaning: `banlist`, `build`, `dashboard`, `decide`, `docs`, `drain`,
