@@ -282,11 +282,17 @@ const maxBaseListing = 8 << 20
 // list is `git ls-tree -l` of the base at path: a file names itself, and
 // "dir/" names the directory's entries, one level deep unless recursive.
 func (b baseTree) list(path string, recursive bool) ([]baseEntry, error) {
+	return b.listPaths([]string{path}, recursive)
+}
+
+// listPaths is list over several paths, in one listing: a directory named
+// without its trailing slash names itself.
+func (b baseTree) listPaths(paths []string, recursive bool) ([]baseEntry, error) {
 	args := []string{"ls-tree", "-l", "-z", "--full-tree"}
 	if recursive {
 		args = append(args, "-r")
 	}
-	out, err := gitutil.RunCapped(b.root, maxBaseListing, append(args, b.sha, "--", path)...)
+	out, err := gitutil.RunCapped(b.root, maxBaseListing, append(append(args, b.sha, "--"), paths...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -351,17 +357,26 @@ func (b baseTree) record(dir, family, id string) ([]baseEntry, error) {
 // blob is the content of a regular file the base carries, refused when the
 // base holds a link or anything but a file there, or when it passes limit.
 func (b baseTree) blob(e baseEntry, limit int64) ([]byte, error) {
-	if e.kind != "blob" || (e.mode != "100644" && e.mode != "100755") {
-		return nil, fmt.Errorf("the base holds it as mode %s %s, not a regular file", e.mode, e.kind)
-	}
-	if e.size < 0 || e.size > limit {
-		return nil, fmt.Errorf("it is %d bytes, past the %d-byte cap", e.size, limit)
+	if err := b.readable(e, limit); err != nil {
+		return nil, err
 	}
 	out, err := gitutil.RunCapped(b.root, int(limit), "cat-file", "blob", e.object)
 	if err != nil {
 		return nil, err
 	}
 	return []byte(out), nil
+}
+
+// readable is why blob refuses e, nil when it reads it: anything but a regular
+// file, or one past limit.
+func (b baseTree) readable(e baseEntry, limit int64) error {
+	if e.kind != "blob" || (e.mode != "100644" && e.mode != "100755") {
+		return fmt.Errorf("the base holds it as mode %s %s, not a regular file", e.mode, e.kind)
+	}
+	if e.size < 0 || e.size > limit {
+		return fmt.Errorf("it is %d bytes, past the %d-byte cap", e.size, limit)
+	}
+	return nil
 }
 
 // describeADR is the cited ADR as the base holds it, routed by the id its

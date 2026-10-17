@@ -57,6 +57,11 @@ const (
 	keyFixRounds    = "fix_rounds"
 )
 
+// paceKeys are every key the pace claims under its namespace: the run's own
+// four, and the drain's stuck bounds (stuck.go), so a repository that sets a
+// bound is not refused as misspelling a pace key.
+var paceKeys = []string{keyWorkMinutes, keyPauseMinutes, keySubAgents, keyFixRounds, keyStuckRefusals, keyStuckMinutes}
+
 // StagePace is the refusal stage of a pace or ceiling the loop cannot run on.
 const StagePace = "pace"
 
@@ -248,7 +253,7 @@ func resolvePace(roots layered.Roots, f paceFlags) (Pace, error) {
 			return Pace{}, paceRefusal(err.Error())
 		}
 	}
-	if err := s.Claim(paceNamespace, keyWorkMinutes, keyPauseMinutes, keySubAgents, keyFixRounds); err != nil {
+	if err := s.Claim(paceNamespace, paceKeys...); err != nil {
 		return Pace{}, paceRefusal(err.Error())
 	}
 	get := func(key string, bundled, lo, hi int, unit string) (PaceValue, error) {

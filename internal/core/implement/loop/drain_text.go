@@ -24,13 +24,25 @@ func (st DrainState) textWritten() bool {
 		texts = append(texts, l.Issue, l.RunID, l.Outcome)
 	}
 	for _, r := range st.HandBacks {
-		texts = append(texts, r.Issue, r.From, r.Kind, r.Route, r.Draft, r.Question, r.Rule, r.Home, r.Reason, r.Wrote)
+		texts = append(texts, r.Issue, r.From, r.Kind, r.Route, r.Draft, r.Question, r.Rule, r.Home, r.Reason, r.Wrote, r.Blob)
 	}
 	if j := st.Judging; j != nil {
 		texts = append(texts, j.Issue, j.RemedySHA256, j.Request, j.Answer)
 	}
+	for _, l := range st.Lapsed {
+		texts = append(texts, l.Issue)
+	}
 	for _, j := range st.Judgements {
 		texts = append(texts, j.Issue, j.RemedySHA256, j.Answer, j.Kind, j.Reason, j.Note)
+		if r := j.Route; r != nil {
+			texts = append(texts, r.Asked, r.Ran, r.Model)
+		}
+	}
+	for _, f := range st.JudgeFallbacks {
+		texts = append(texts, f.Role, f.Asked, string(f.Reason), f.Detail, f.Ran)
+	}
+	for _, p := range st.PendingHandBacks {
+		texts = append(texts, p.Why)
 	}
 	return !slices.ContainsFunc(texts, func(s string) bool { return termsafe.Sanitize(s) != s })
 }

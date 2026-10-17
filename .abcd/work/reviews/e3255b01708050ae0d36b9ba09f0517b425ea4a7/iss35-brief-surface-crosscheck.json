@@ -1,0 +1,220 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "e3255b01708050ae0d36b9ba09f0517b425ea4a7"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-10-17T16:26:51Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:cab647ca79a6c3bee8de4073f849c3a91bfe9c7d93aeaa70eb7c9e6fa8aa8110",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:b93e557f8c9958a71b769599d6093b4860ec0f24542bf3c7403ab65b2bee0c08",
+    "briefVersion": "0.15.1"
+  },
+  "categories": {
+    "criterion-violation": 2,
+    "false-claim": 12,
+    "stale-count": 2,
+    "undocumented-surface": 3
+  },
+  "failing": [
+    {
+      "id": "x-001",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:49-51",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:49-51 (.abcd/development/brief/02-constraints/04-naming.md; raised by opus in a00): claim: The namespace root refuses any positional that is not a record id, so `status` is not a registered command. / reality: `abcd status` is a registered top-level verb (root --help, Records group: 'List everyone's announcements, reservations and releases being cut'), with commands/status.md and .abcd/development/brief/04-surfaces/39-status.md. (also raised by sonnet in a00 at .abcd/development/brief/02-constraints/04-naming.md:/abcd (bare, top-level) exemption bullet, folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2610171626272190",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-002",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:54-59",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:54-59 (.abcd/development/brief/02-constraints/04-naming.md; raised by opus in a00): claim: The remaining surfaces are exempt ... `banlist`, `build`, ... `statusline`, and `update`. They are registered here so the exemption is on the record (and line 9-10: an exemption is a decision rather than an omission). / reality: Six shipped top-level verbs appear nowhere in the naming register, neither as maritime nor as exempt: `announce`, `embargo`, `land`, `memory`, `reserve`, `status` (all in root --help --agent and commands/; documented in 04-surfaces/38-announce.md, 37-embargo.md, 38-land.md, 37-memory.md, 37-reserve.md, 39-status.md). (also raised by sonnet in a00 at .abcd/development/brief/02-constraints/04-naming.md: 'remaining surfaces are exempt' list, folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2610171626280696",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-003",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/README.md:151",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:151 (.abcd/development/brief/04-surfaces/README.md; raised by opus in a01): claim: The help-groups table places only `launch` in the people block's release group / reality: `abcd --help` lists both `embargo` and `launch` under Release:, and surface.json records `abcd embargo` with group `release`; embargo appears in no row of the table (also raised by sonnet in a01 at .abcd/development/brief/04-surfaces/README.md:How the help lists the verbs (block table), folded here as one finding) (also raised by opus in b00 at .abcd/development/brief/04-surfaces/README.md:144-152 (How the help lists the verbs), folded here as one finding) (also raised by sonnet in b00 at .abcd/development/brief/04-surfaces/README.md (How the help lists the verbs table, row 'people | release'), folded here as one finding) (also raised by opus in b01 at .abcd/development/brief/04-surfaces/README.md:151, folded here as one finding) (also raised by sonnet in b01 at .abcd/development/brief/04-surfaces/README.md:151 (How the help lists the verbs, group table), folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2610171626290714",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-004",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/08-abcd.md:232-259",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:232-259 (.abcd/development/brief/04-surfaces/08-abcd.md; raised by opus in a02): claim: abcd peers' one network act is a fetch from origin of every abcd-reserved/ branch (pruned) and of the default branch, which updates the remote-tracking reservation branches and stamps when it ran; the listing is reservations, per-person live counts and hand-backs. It omits release tags and the release-cut line. / reality: abcd peers --help (and commands/peers.md:15-19) says the fetch also reads origin's release tags v* and writes them under refs/abcd/release-tags/, and the listing adds a line for each release being cut (a live rel-vX.Y.Z reservation). The fetch and refs are documented in 37-reserve.md:315, but this chapter's enumeration of what peers fetches, writes and lists is incomplete.",
+      "disposition": "deferred",
+      "record": "iss-2610171626291023",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-005",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/08-abcd.md:523",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:523 (.abcd/development/brief/04-surfaces/08-abcd.md; raised by sonnet in a02): claim: In the itd-20 design-target note: 'There is no alias routing either: `status` is refused and `help` prints the verb list'; line 590 adds 'Nothing routes them today'. / reality: `status` is a shipped top-level verb (bin/abcd-darwin-arm64 status --help: 'List everyone's announcements, reservations and releases being cut'), and the chapter itself says so at 'abcd status is its own verb' (39-status.md); it is not refused.",
+      "disposition": "deferred",
+      "record": "iss-2610171626303019",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-006",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/01-ahoy.md:516",
+      "summary": ".abcd/development/brief/04-surfaces/01-ahoy.md:516 (.abcd/development/brief/04-surfaces/01-ahoy.md; raised by opus in a03): claim: The ~/.abcd.noindex inventory 'is stated as a table under The two .abcd/ scopes in 05-internals/03-configuration.md; the two are one list and must agree.' / reality: 05-internals/03-configuration.md 'The two .abcd/ scopes' (line 596ff) states the user-scope inventory as a prose paragraph, not a table, and it omits two entries the 01-ahoy tree lists and the binary writes: interviews/ (internal/core/interview/interview.go homeRecordsLeaf) and backups/ (internal/core/ahoy/statusline_guard.go backupsRel, newest 10 kept). The two lists do not agree.",
+      "disposition": "deferred",
+      "record": "iss-2610171626311681",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-007",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/06-capture.md:396-432",
+      "summary": ".abcd/development/brief/04-surfaces/06-capture.md:396-432 (.abcd/development/brief/04-surfaces/06-capture.md; raised by opus in a07): claim: The frontmatter block 'per the issue-ledger schema in internal/core/issueschema' lists every field a record may carry; it has no finding_ref / reality: internal/core/issueschema/issueschema.go Known allow-list carries finding_ref (the consistency finding's cfk- key, written by the pass's filer); no brief chapter mentions it, only .abcd/work/issues/README.md:94",
+      "disposition": "deferred",
+      "record": "iss-2610171626317765",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-008",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/05-intent.md:412 (press-release template, ## Grounds comment)",
+      "summary": ".abcd/development/brief/04-surfaces/05-intent.md:412 (press-release template, ## Grounds comment) (.abcd/development/brief/04-surfaces/05-intent.md; raised by sonnet in a21): claim: Grounds is 'Required at the readiness gate for a press-release intent'. / reality: internal/core/intent/ready.go groundsCheck builds its row with Advisory: true, so a missing Grounds section never withholds readiness. The same page says so at line 317: 'the grounds row ... advisory and never withhold readiness'. Only bucket, acceptance_criteria, spec_link, spec_body and open_questions gate.",
+      "disposition": "deferred",
+      "record": "iss-2610171626323993",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-009",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/07-library.md:174-177",
+      "summary": ".abcd/development/brief/04-surfaces/07-library.md:174-177 (.abcd/development/brief/04-surfaces/07-library.md; raised by opus in a25): claim: How a scaffolded hook finds abcd, and whether it does so by default, is a ruling owed to the product thinker (iss-2609250834251447) / reality: iss-2609250834251447 is in .abcd/work/issues/resolved/ with a recorded ruling: `ahoy install --outbound-hook` opts in, never installed by default, finds abcd only through git config --local abcd.binary, and fails open with one warning; the chapter still presents the ruling as owed",
+      "disposition": "deferred",
+      "record": "iss-2610171626324658",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-010",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/16-lint.md:37-42",
+      "summary": ".abcd/development/brief/04-surfaces/16-lint.md:37-42 (.abcd/development/brief/04-surfaces/16-lint.md; raised by opus in a26): claim: The verbs that write stay under the docs, site and identity verbs (the citation baseline, the site render, the recording of the identity block), and 'No check runs under those verbs any more'. / reality: `abcd docs fidelity` is a shipped check under the docs verb ('Judge the brief against every shipped surface and the saved docs review'; 10-docs.md lists it as bucket gate), and `abcd identity render` prints every drifted surface's correction and writes nothing. The list of what stays under those verbs also leaves out `docs fidelity`, `site setup` and `identity render`.",
+      "disposition": "deferred",
+      "record": "iss-2610171626336875",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-011",
+      "category": "criterion-violation",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/37-memory.md:21",
+      "summary": ".abcd/development/brief/04-surfaces/37-memory.md:21 (.abcd/development/brief/04-surfaces/37-memory.md; raised by opus in a27): claim: `list` is a shipped sub-verb of /abcd:memory; the naming constraint (.abcd/development/brief/02-constraints/04-naming.md:90-94) forbids a plain unfiltered `<verb> list` at design time, a sub-verb having to do something the bare invocation cannot. / reality: `abcd memory list` takes no flags and no argument ('refuses any argument') and lists every note in both layers unfiltered; neither 37-memory.md nor the bare-invocation enumeration in 04-surfaces/README.md records it as an exception to the rule.",
+      "disposition": "deferred",
+      "record": "iss-2610171626344967",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-012",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/37-reserve.md:84-93",
+      "summary": ".abcd/development/brief/04-surfaces/37-reserve.md:84-93 (.abcd/development/brief/04-surfaces/37-reserve.md; raised by opus in a31): claim: Each reservation commit's trailers name the record (Abcd-Reservation), holder, copy, footprint, lease (Abcd-Claimed-At, Abcd-Expires-At) and the Assisted-by label; a release adds Abcd-Released-At; a hand-back adds Abcd-Handed-Back and Abcd-Record. The enumeration is presented as the whole trailer set. / reality: A drain lane's renewal of the reservation also writes an Abcd-Stage trailer (internal/core/claim/stage.go keyStage, one of worktree|brief|implement|validate|land, validated by validateStage on read). The reserve chapter never names it; its only documented home is .abcd/development/brief/04-surfaces/08-abcd.md:241-242.",
+      "disposition": "deferred",
+      "record": "iss-2610171626347542",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-013",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/39-status.md:130",
+      "summary": ".abcd/development/brief/04-surfaces/39-status.md:130 (.abcd/development/brief/04-surfaces/39-status.md; raised by opus in a34): claim: Exits: exit 0 when the fetch succeeded or no origin; exit 1 when the fetch failed; exit 2 outside a git checkout or with an operand. / reality: internal/surface/cli/status.go also exits 1 when what was fetched could not be read (ReadStatus error) and in a checkout without its local tier (v.NoTier), and `abcd status --help` says so ('exit 1 when it failed, when what it fetched could not be read, or in a checkout without its local tier'). The brief omits both exit-1 cases. (also raised by sonnet in a34 at .abcd/development/brief/04-surfaces/39-status.md 'Exits', folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2610171626353212",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-014",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/39-status.md:28",
+      "summary": ".abcd/development/brief/04-surfaces/39-status.md:28 (.abcd/development/brief/04-surfaces/39-status.md; raised by opus in a34): claim: The verb fetches 'each status branch whose name is a GitHub username in lower case'; only a non-lower-case-username name is left unfetched. / reality: The binary fetches only the first 500 such branches (internal/core/claim/status.go maxStatusBranches = 500); branches past 500 are counted and not fetched, and their tracking copies deleted, as `abcd status --help` states. The brief never mentions the 500 cap. (also raised by sonnet in a34 at .abcd/development/brief/04-surfaces/39-status.md 'What it reads' (and verb --help), folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2610171626356145",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-015",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/39-status.md 'What it shows'",
+      "summary": ".abcd/development/brief/04-surfaces/39-status.md 'What it shows' (.abcd/development/brief/04-surfaces/39-status.md; raised by sonnet in a34): claim: lists announcements, doubtful branches, then the reservations block and the grants line / reality: abcd status --help also reports a live drain lane's stage and each holder's hand-backs from the last day; JSON also carries unread_names, branches_not_read, branches_left_to_read, announcements_not_read, not_dropped, local_tier_missing, read_error that the doc's key list omits",
+      "disposition": "deferred",
+      "record": "iss-2610171626364475",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-016",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/01-agents.md:137",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:137 (.abcd/development/brief/05-internals/01-agents.md; raised by sonnet in a36): claim: The intent-auditor 'has three roles ... Each role has its own verb ... Only the first ships.' / reality: Two roles ship: the same chapter marks role 2 (`abcd intent consistency`) as '(shipped, itd-48)' at line 162, the binary registers `intent consistency`, and agents/intent-auditor.md declares Role 2 (cross-document). Only role 3 (`intent shape`) is unshipped.",
+      "disposition": "deferred",
+      "record": "iss-2610171626374131",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-017",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/06-delivery/01-build-sequence.md:35-38",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:35-38 (.abcd/development/brief/06-delivery/01-build-sequence.md; raised by opus in a40): claim: Three further adapter packages stand outside the capability seams: openaiapi, hosting and tailscale / reality: internal/adapter/ holds four non-scanner, non-backend adapters: openaiapi, hosting, repoprompt (the RepoPrompt MCP reviewer route, itd-6) and tailscale (gitleaks being the scanner's external backend); 05-internals/02-adapters.md:34 and 04-universal-patterns.md:175 list repoprompt (also raised by sonnet in a40 at .abcd/development/brief/06-delivery/01-build-sequence.md:36-38 (section 0), folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2610171626370813",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-018",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:100",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:100 (.abcd/development/brief/06-delivery/02-verification-matrix.md; raised by opus in a41): claim: Reservation on a fork origin row: 'a plain reserve that renews, `--renew` and a release never ask the forge', naming `--renew` as a reservation flag. / reality: No `--renew` flag exists: `abcd reserve --help` lists only --footprint, --holder, --lease, --release, --take-over (a renewal is the same command run again from the same copy), and no non-test Go source registers or names `--renew`. (also raised by sonnet in a41 at .abcd/development/brief/06-delivery/02-verification-matrix.md row 'Reservation on a fork origin (spc-2610161044461448, step 10)', folded here as one finding)",
+      "disposition": "deferred",
+      "record": "iss-2610171626389087",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "x-019",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md row 'Capture resolve'",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md row 'Capture resolve' (.abcd/development/brief/06-delivery/02-verification-matrix.md; raised by sonnet in a41): claim: 'the optional intent, spec, commit and release references write the structured provenance' / reality: abcd capture resolve --help has --intent, --spec, --commit and --shipped-in (a migration-only release stamp); there is no release-reference flag by that role, and --production-mode is undocumented in the row",
+      "disposition": "deferred",
+      "record": "iss-2610171626380056",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    }
+  ],
+  "_reviewProvenance": "Full tier for an additive release: both directions, the manifest's 47 checkers (Direction A over the 42 brief docs, Direction B over the 5 surfaces), each run twice as a pair, an Opus 5.5 agent and a Sonnet 5.5 agent, each reading its prompt verbatim from a file holding the manifest's pinned context and direction template filled for its item. Run by hand through the host's agent tool in 11 groups, each group run as an Opus 5.5 and a Sonnet 5.5 agent, at most 6 agents at a time. The checkers read an exact export of content commit e3255b01708050ae0d36b9ba09f0517b425ea4a7 with the binary built from it. Findings were merged by the detector's merge (the finding's where plus the first sixty characters of its claim, first kept): Opus raised 16 and Sonnet raised 14, 30 merged, 16 from Opus alone and 14 from Sonnet alone. 11 merged findings repeating another were folded into the finding they repeat. Each remaining finding was re-verified against e3255b01708050ae0d36b9ba09f0517b425ea4a7. 19 remain: 0 fixed, 0 invalid on re-verification, and 19 deferred, each to its own open record."
+}
