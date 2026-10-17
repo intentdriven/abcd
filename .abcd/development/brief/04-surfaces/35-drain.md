@@ -376,7 +376,12 @@ on origin's default branch backs off, with a tip or without one
    land, so a pull request waiting on a person stays held while the drain
    moves, and the reservation of the lane in progress, before its window gate,
    so a move that waits renews too, whether or not a step of the lane ran
-   (spc-2610161044461448 step 7, dcn-2610161040374343). The landing checks the
+   (spc-2610161044461448 step 7, dcn-2610161040374343). Every renewal the loop
+   pushes for a lane, the drain's and the lane's own steps' alike, names the
+   stage the lane is in, one of the loop's own `worktree`, `brief`,
+   `implement`, `validate` and `land`, and a lane with nothing left to perform
+   names none (step 18, dcn-2610161040394970), so every account reads where
+   another's lane stands as of its last renewal. The landing checks the
    reservation before its push as the land fence does before arming, and a
    lane whose hold is now another person's pushes nothing, opens no pull
    request and is handed back at once as stuck; a lane handed back has its reservation tombstoned by the step that

@@ -308,7 +308,9 @@ what it did in `next`:
   (`commands/implement.md`). Every drain move also renews the lane in
   progress at half its lease, waiting or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
-  back is renewed by no move); a lane whose
+  back is renewed by no move). Each renewal names the lane's stage
+  (`worktree`, `brief`, `implement`, `validate` or `land`), so another
+  account sees where the lane stands as of its last renewal; a lane whose
   reservation is another person's by its push pushes nothing, opens no pull
   request, and the next drain hands it back as `stuck` at once. When the lane is
   handed back instead, the step that hands it back pushes the tombstone,
