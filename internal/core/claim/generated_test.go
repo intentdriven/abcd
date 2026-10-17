@@ -221,24 +221,24 @@ func TestContentionAgreesWithCrowdingOnGeneratedFiles(t *testing.T) {
 		{"iss-3", []string{"docs"}},
 		{"iss-4", []string{"a.go"}},
 	} {
-		why := snap.Contention(c.id, c.fp, w.clock())
+		why := snap.Contention(c.id, c.fp, w.clock(), "")
 		_, err := q.reserve(c.id, c.fp...)
 		if (why == "") != (err == nil) {
 			t.Fatalf("%s %v: Contention = %q, but the reservation act = %v", c.id, c.fp, why, err)
 		}
 	}
-	if why := snap.Contention("iss-4", []string{"a.go"}, w.clock()); !strings.HasPrefix(why, `"a.go" is in the footprint of iss-1`) {
+	if why := snap.Contention("iss-4", []string{"a.go"}, w.clock(), ""); !strings.HasPrefix(why, `"a.go" is in the footprint of iss-1`) {
 		t.Fatalf("Contention over a.go = %q", why)
 	}
 }
 
-// wantGenerated fails unless generatedFiles in dir answers want for each path,
+// wantGenerated fails unless GeneratedFiles in dir answers want for each path,
 // with why as its reason.
 func wantGenerated(t *testing.T, dir string, want map[string]bool, why string) {
 	t.Helper()
-	g, got := generatedFiles(dir)
+	g, got := GeneratedFiles(dir)
 	if got != why {
-		t.Fatalf("generatedFiles reason = %q; want %q", got, why)
+		t.Fatalf("GeneratedFiles reason = %q; want %q", got, why)
 	}
 	for p, w := range want {
 		if g.Is(p) != w {

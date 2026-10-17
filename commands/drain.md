@@ -1,7 +1,7 @@
 ---
 name: drain
 description: "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record."
-argument-hint: "[--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>]"
+argument-hint: "[--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over]"
 block: agents
 user-invocable: false
 ---
@@ -199,6 +199,38 @@ what it did in `next`:
   issue. When the remedy does not let you tell, answer `yes` and say what you
   could not tell. Do not open the lane, edit the record or fix anything while
   judging.
+- **Its judge may be routed to a runner.** When the person's own
+  `~/.abcd.noindex/config.json` routes the `drain-judge` role to a runner
+  (`roles.drain-judge.runner: "claude"`, the runner enabled under
+  `runner.claude`), the move that writes the request also starts that runner on
+  a brief of its own and takes the answer it writes in that same move,
+  validated as yours would be: the routed answer carries no `remedy_sha256`,
+  which abcd computes itself, and no `--judgement` is given. The judge runs in
+  a directory of its own, a new private one outside every working tree that
+  holds its brief and its answer alone and is removed once the answer is read.
+  The drain judge may read and write only its own directory: it is granted
+  reading that directory and writing its answer file there, each named by its
+  real absolute path, and nothing else, and it is refused reading or writing
+  anywhere in the checkout. Under the runner's `dontAsk` mode anything it is
+  not granted is refused rather than asked, so it can read nothing outside its
+  directory and change nothing in the checkout. A
+  routed judge's answer steers an unattended lane, so its `no` is a judgement
+  on text a stranger may have written. A route to `opencode` is skipped with a
+  diagnostic and the judge stays on the host: opencode runs under its own
+  configuration's permissions, not the tools a role is granted.
+  `judged.route` names the runner asked, the one that ran and its model. A
+  runner that does not answer, or answers out of shape, is recorded in the
+  drain's state (`judge_fallbacks`, the latest 32 kept) and the request above
+  is left to you, as with no route; `next` says so. The runner is started once
+  per request: `judging.routed_asked` records that it was, and a later
+  `abcd drain` while the request stands starts no runner and records no
+  further fallback. A judge that was never started, because its directory
+  could not be made or its request could not be put to the runner, is not
+  marked as asked, and the next `abcd drain` starts it. The runner runs under the drain's lock, for at
+  most fifteen minutes, and stops with the drain: an interrupt or a
+  termination while it judges kills its process group before the move ends,
+  records no fallback, and refuses the move saying so, and the next
+  `abcd drain` asks the judge again.
 - **It reserves the issue.** In a checkout with a remote named `origin`, the
   drain reserves each issue on it before it asks the judgement over it, as
   `abcd reserve` does, with the path the issue's `found_at` names (a `:line`
@@ -213,7 +245,12 @@ what it did in `next`:
   up on origin, or a `no` comes once the window has elapsed); when the lane's
   start is refused or fails; and when a request lapses. It does so on every
   path the drain's process lives through, an error or a crash in the move
-  included; a drain killed outright (Ctrl-C, or a kill signal) releases
+  included, an interrupt (Ctrl-C) or a termination signal among them: the move
+  runs to its end, stopping a judge that is running. Only the first signal
+  is taken this way: a second interrupt or termination stops the drain at
+  once, as it would any program, which is the way out of a move waiting on a
+  network act, and releases nothing then. A drain killed outright
+  (`SIGKILL`) releases
   nothing, and its reservation lapses after one lease (two hours by default).
   Each release is a fetch and one tombstone push over the commit the drain's
   reservation made, made only while that commit is still the tip, so a
@@ -262,7 +299,13 @@ what it did in `next`:
   copy holds in the move's view, or whose footprint shares a path with another
   copy's live reservation, is passed over before anything is pushed or asked
   (`passed`, check `reservation`, naming the holder), with no fetch beyond the
-  move's one; one the push itself finds held is passed over the same way. An
+  move's one; one the push itself finds held is passed over the same way. When
+  the holder is the user's own other copy (a hosted session that restarted
+  loses its local tier, so its new copy reads its own reservations as another
+  copy's), the reason says so and names `abcd drain --take-over`: run that,
+  with the user's say-so, and the move reserves the issue for this copy,
+  taking the reservation over, as `abcd build --take-over` does. The flag is
+  given per move and never moves another person's reservation. An
   issue whose tip on `origin` is a hand-back, from any copy on any account,
   is passed over the same way, naming the kind, who handed it back and when,
   while origin's default branch holds its record at the blob the tombstone
@@ -302,7 +345,10 @@ what it did in `next`:
   sync sends back to a fresh round reserves its whole `found_at` again before
   it goes on, judged for overlap, since a fix round may follow; when another
   reservation or the cap refuses that, the step is refused for a person,
-  naming it, and the lane stays at its landing with nothing pushed. A lane whose
+  naming it, and the lane stays at its landing with nothing pushed. Each
+  renewal names the lane's stage (`worktree`, `brief`, `implement`,
+  `validate` or `land`), so another account sees where the lane stands as of
+  its last renewal. A lane whose
   reservation is another person's by its push pushes nothing, opens no pull
   request, and the next drain hands it back as `stuck` at once. When the lane is
   handed back instead, the step that hands it back pushes the tombstone,
@@ -341,7 +387,10 @@ what it did in `next`:
   `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move. A
   stuck lane keeps its worktree and branch:
   `abcd implement step --run <run-id> --discard <lane-id>` removes them, closes
-  its pull request if it opened one, and ends the run.
+  its pull request if it opened one, and ends the run. The run ended this way
+  still reads as handed back, not as one whose landing settles the issue, so
+  once its record changes on `origin` the drain takes the issue up again, as
+  it does any issue it handed back.
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
   opens the next lane. Before its records and its push, the lane's sync
@@ -412,8 +461,26 @@ what it did in `next`:
   the lanes it had opened, and `next`.
 
 `--pace`, `--sub-agents` and `--fix-rounds` are `abcd build`'s, read when a
-drain begins; `--max` is set then too. Naming another while the drain runs is
-refused.
+drain begins, and every lane the drain opens runs on them, not on what the
+configuration resolves when it opens. Given while the drain runs, they are
+taken: each number named replaces the one the drain runs on, `pace` shows the
+new pace, `next` says the drain took it, the next lane opens on it, and the
+lane in progress takes it from its next stage. A move that is refused takes
+none of it, in the drain or in a lane, and says so; give it again. `--max` is set when a drain
+begins; naming another while it runs is refused.
+
+An issue the drain handed back is passed over only while its record stands on
+`origin`'s default branch: once a person changes that record there, the drain
+judges it afresh and may open a new lane for it, though the handed-back run's
+directory remains (`hand_backs[].blob` is the record's blob as it was routed).
+That new run is then the issue's: `abcd build <iss-N>` resumes it, and
+`abcd implement step` or a record read with no `--run` addresses it, the
+handed-back run no longer counting as one in progress.
+Every other run of an issue in this checkout passes it over, in progress or
+complete, on `origin` or not: a complete run landed its pull request, which may
+still be open, and the drain never opens a second. Without a remote named
+`origin`, a handed-back issue stays passed over, and so does an issue whose
+run in this checkout was handed back.
 
 ### The hand-back, by kind
 
@@ -448,13 +515,14 @@ all); `pace` is the drain's pace; `lanes` lists every lane the drain opened
 the run this move started; `routed` are the hand-backs this move routed and
 `hand_backs` every one the drain has (`issue`, `from`: `lane`, `judgement`,
 `reservation` or `field`, `kind`, `route`, `draft`, `question`, `rule`, `home`, `reason`,
-`wrote`); `judging` is the host judgement the drain awaits (`issue`,
+`wrote`, `blob`); `judging` is the host judgement the drain awaits (`issue`,
 `remedy_sha256`, `request`, `answer`, `requested_at`), `null` when it awaits
 none; `judged` is the answer this move took and `judgements` every one the
 drain has taken (`issue`, `remedy_sha256`, `answer`, `kind`, `reason`,
 `applied`, `note`, `at`), `applied` being `false`, with the `note` saying why,
 for an answer over an issue that left the eligible set before it was taken,
-and `hold` the reservation it was asked on;
+`hold` the reservation it was asked on, and `route` the runner that answered
+(`asked`, `ran`, `model`) when the judge is routed, absent for yours;
 `pending_hand_backs` are the hand-backs routed and not yet published on
 `origin` (`issue`, `kind`, `blob`, `why`, `at`), which the text form lists as
 `hand-back pending:` lines;
@@ -502,11 +570,11 @@ a flagged decision: those are a person's.
   past the size cap) refuses. Every one of these
   exits 2 with nothing written, on the dry run and the bare verb alike.
 - The run refuses (exit 2, nothing written) a checkout without the local tier,
-  a negative `--max`, and a `--max` or pace other than the one a drain in
-  progress began with; a drain state it cannot read as its own is refused,
+  a negative `--max`, and a `--max` other than the one a drain in progress
+  began with; a drain state it cannot read as its own is refused,
   naming the file. Another drain moving in the checkout exits 3: back off and
   retry. `--dry-run` refuses `--max`, `--pace`, `--sub-agents`,
-  `--fix-rounds` and `--judgement`.
+  `--fix-rounds`, `--judgement` and `--take-over`.
 - `--judgement` refuses (exit 2, nothing written) when the drain awaits no
   judgement, when the path is not the answer's path the request names, when
   the answer cannot be read as a regular file within 64 KiB, and when it is not

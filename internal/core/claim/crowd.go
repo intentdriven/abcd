@@ -223,8 +223,12 @@ func sharedPath(a, b string) (string, bool) {
 // the view holds it off; this copy's own reservations never do. It reads the view alone, so a caller passes over held work with no
 // fetch and no push; the reservation act itself, whose push is the
 // compare-and-swap, still judges what origin holds by then.
-func (s Snapshot) Contention(id string, footprint []string, now time.Time) string {
-	if r, ok := s.Lookup(id); ok && r.Copy != CopyThis {
+//
+// takeOver is the holder an act with --take-over reserves as, "" for any
+// other act: that person's own live reservation of id from another copy does
+// not hold it off, since the act takes it over (spc-2610161044461448 step 15).
+func (s Snapshot) Contention(id string, footprint []string, now time.Time, takeOver string) string {
+	if r, ok := s.Lookup(id); ok && r.Copy != CopyThis && !(takeOver != "" && r.State == StateLive && sameHolder(r.Holder, takeOver)) {
 		switch {
 		case r.State == StateLive:
 			return fmt.Sprintf("%s is reserved by %s until %s, %s", id, r.Holder, stamp(r.EffectiveExpiry), s.AsOf(now))

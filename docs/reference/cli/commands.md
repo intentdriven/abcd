@@ -1169,7 +1169,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [flags]`
+**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1214,6 +1214,13 @@ behind it, and which issues open in the checkout it has already finished. The ho
 judgement over each eligible remedy does not run; it can only ever hand an issue
 back.
 
+--take-over moves your own live reservation of an issue from another copy to this one
+as the move reaches it, as `abcd build --take-over` does: a hosted session that
+restarted lost its local tier, so its new copy reads its own reservations as another
+copy's, which a plain move passes over naming the flag. It never moves another
+person's reservation, and is given per move: a move without it passes such an issue
+over again.
+
 Without --dry-run, each invocation performs one move of the drain and exits. Before
 the next eligible issue's lane opens, the host judges its remedy: on origin, the
 drain first reserves the issue (passing over, with no push, any issue or footprint
@@ -1221,7 +1228,12 @@ another copy holds), then writes
 a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the
 remedy changes what a user sees or a trust boundary, and opens nothing. The host
 writes its answer where the request says and hands it back with --judgement <file>,
-which is validated strictly; a refused answer changes nothing. A yes hands the
+which is validated strictly; a refused answer changes nothing. When your machine's
+config routes the drain-judge role to the claude runner (roles.drain-judge.runner), the
+same move asks that runner instead, on a brief of its own in a private directory
+outside every working tree, and takes its answer as
+--judgement would, abcd computing the remedy's digest itself; a runner that does not
+answer leaves the request to the host, recorded as a fallback. A yes hands the
 issue back before any lane opens, routed as a lane's hand-back of the same kind
 (below); a no lets the lane open on the reservation. The drain releases that
 reservation, and only it, with a fetch and one tombstone push whenever no lane will
@@ -1292,7 +1304,7 @@ is counted once, as its promotion. Nothing but the promotion is written to the
 ledger, and every hand-back is in the summary.
 
 The drain is paced as a run is: its window and pause are --pace, --sub-agents and
---fix-rounds as `abcd build` reads them, set when the drain begins. At the window's
+--fix-rounds as `abcd build` reads them, resolved when the drain begins. At the window's
 end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and
 the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
@@ -1303,8 +1315,12 @@ and asks nothing, writes waiting_until fifteen minutes on (apart from the pace
 window) and waiting, "cap" or "held", for which of the two it waits on, names the
 reservations and pull requests or the holds it waits on, and keeps its judgements;
 run it again at or after that time. Once a drain has ended, the
-next `abcd drain` begins a new one. A cap or pace named while a drain is in
-progress that differs from the one it began with is refused. Once a run gives up on a
+next `abcd drain` begins a new one. A cap named while a drain is in progress that
+differs from the one it began with is refused. Every lane the drain opens runs on
+the drain's pace; --pace, --sub-agents and --fix-rounds given while it runs are
+taken, recorded in its state, and applied from the next lane it opens and the next
+stage of the lane in progress. An issue the drain handed back is taken up again,
+judged afresh, once its record changes on origin's default branch. Once a run gives up on a
 lost connection (`abcd implement outage`), the drain opens nothing and ends with
 stopped "outage", naming the services down, since when, the probes and the lanes it
 opened; the next `abcd drain`, once the outage is cleared, begins a new one.
@@ -1323,6 +1339,7 @@ drain or run holds the state lock.
       --max int             cap the lanes this drain opens; the default is all
       --pace string         the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
       --sub-agents string   the ceiling on lanes and validators alive at once; wins over every configured layer
+      --take-over           move your own live reservation of each issue this move reaches from another copy to this one; never another person's
 ```
 
 **Example:**

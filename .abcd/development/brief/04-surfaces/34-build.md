@@ -446,7 +446,11 @@ sequence.
 A role's route is `roles.<role>.runner` in the layered configuration: `host`,
 the default, or a runner the machine enables under `runner.<name>` (`claude`,
 `opencode`), with an optional model route admitted against its provider's
-allowlist. Only a personal layer, the machine's file or the person's own
+allowlist. A role is an agent in the roster, the implementer, or the drain's
+judge, `drain-judge` ([`35-drain.md`](35-drain.md#the-judgement-before-a-lane-opens));
+a route naming any other is skipped with a diagnostic, and so is a route of the
+drain's judge to opencode, which runs under its own configuration's permissions
+rather than the tools a role is granted. Only a personal layer, the machine's file or the person's own
 invocation, may hand a role to a runner, because a runner spends the person's
 key (rulings RN2 and OC2, 2026-10-02): the repository's file may keep a role on
 the host, and a route there to a runner is skipped with a diagnostic naming the
@@ -468,7 +472,9 @@ stage before anything is created or launched, and its diagnostics (a role no
 agent answers to, a repository route to a runner) go to stderr. When a stage hands the lane to a role that is
 routed to a runner, the step verb starts the runner itself, outside the run's
 lock, in the lane's worktree, with the brief and the receipt path the host would
-be handed, the claude runner with the role's tools granted without a prompt and
+be handed, the claude runner with the role's tools granted without a prompt,
+any tool the role is refused outright in its deny list, and everything else
+refused rather than asked, and
 opencode under the permissions its own configuration sets; the runner's
 transcript lands in abcd's history store, keyed on the repository's root
 commit, and its receipt is handed back through the same receipt verb and

@@ -1,10 +1,14 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"time"
 
@@ -30,11 +34,11 @@ type drainOutput struct {
 // `--dry-run` classifies every open issue by the eligibility rule and writes
 // nothing; the bare verb performs one move of the drain run (loop.Drain).
 func newDrainCommand(asJSON *bool) *cobra.Command {
-	var dryRun bool
+	var dryRun, takeOver bool
 	var maxLanes int
 	var pace, subAgents, fixRounds, judgement string
 	cmd := &cobra.Command{
-		Use: "drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>]",
+		Use: "drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -75,6 +79,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"behind it, and which issues open in the checkout it has already finished. The host\n" +
 			"judgement over each eligible remedy does not run; it can only ever hand an issue\n" +
 			"back.\n\n" +
+			"--take-over moves your own live reservation of an issue from another copy to this one\n" +
+			"as the move reaches it, as `abcd build --take-over` does: a hosted session that\n" +
+			"restarted lost its local tier, so its new copy reads its own reservations as another\n" +
+			"copy's, which a plain move passes over naming the flag. It never moves another\n" +
+			"person's reservation, and is given per move: a move without it passes such an issue\n" +
+			"over again.\n\n" +
 			"Without --dry-run, each invocation performs one move of the drain and exits. Before\n" +
 			"the next eligible issue's lane opens, the host judges its remedy: on origin, the\n" +
 			"drain first reserves the issue (passing over, with no push, any issue or footprint\n" +
@@ -82,7 +92,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the\n" +
 			"remedy changes what a user sees or a trust boundary, and opens nothing. The host\n" +
 			"writes its answer where the request says and hands it back with --judgement <file>,\n" +
-			"which is validated strictly; a refused answer changes nothing. A yes hands the\n" +
+			"which is validated strictly; a refused answer changes nothing. When your machine's\n" +
+			"config routes the drain-judge role to the claude runner (roles.drain-judge.runner), the\n" +
+			"same move asks that runner instead, on a brief of its own in a private directory\n" +
+			"outside every working tree, and takes its answer as\n" +
+			"--judgement would, abcd computing the remedy's digest itself; a runner that does not\n" +
+			"answer leaves the request to the host, recorded as a fallback. A yes hands the\n" +
 			"issue back before any lane opens, routed as a lane's hand-back of the same kind\n" +
 			"(below); a no lets the lane open on the reservation. The drain releases that\n" +
 			"reservation, and only it, with a fetch and one tombstone push whenever no lane will\n" +
@@ -152,7 +167,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"is counted once, as its promotion. Nothing but the promotion is written to the\n" +
 			"ledger, and every hand-back is in the summary.\n\n" +
 			"The drain is paced as a run is: its window and pause are --pace, --sub-agents and\n" +
-			"--fix-rounds as `abcd build` reads them, set when the drain begins. At the window's\n" +
+			"--fix-rounds as `abcd build` reads them, resolved when the drain begins. At the window's\n" +
 			"end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and\n" +
 			"the call opens nothing; before that time a drain opens nothing, and after it the\n" +
 			"next invocation continues. --max <n> caps the lanes the drain opens (the default\n" +
@@ -163,8 +178,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"window) and waiting, \"cap\" or \"held\", for which of the two it waits on, names the\n" +
 			"reservations and pull requests or the holds it waits on, and keeps its judgements;\n" +
 			"run it again at or after that time. Once a drain has ended, the\n" +
-			"next `abcd drain` begins a new one. A cap or pace named while a drain is in\n" +
-			"progress that differs from the one it began with is refused. Once a run gives up on a\n" +
+			"next `abcd drain` begins a new one. A cap named while a drain is in progress that\n" +
+			"differs from the one it began with is refused. Every lane the drain opens runs on\n" +
+			"the drain's pace; --pace, --sub-agents and --fix-rounds given while it runs are\n" +
+			"taken, recorded in its state, and applied from the next lane it opens and the next\n" +
+			"stage of the lane in progress. An issue the drain handed back is taken up again,\n" +
+			"judged afresh, once its record changes on origin's default branch. Once a run gives up on a\n" +
 			"lost connection (`abcd implement outage`), the drain opens nothing and ends with\n" +
 			"stopped \"outage\", naming the services down, since when, the probes and the lanes it\n" +
 			"opened; the next `abcd drain`, once the outage is cleared, begins a new one.\n\n" +
@@ -180,10 +199,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if !dryRun {
-				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement)
+				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement, takeOver)
 			}
-			if cmd.Flags().Changed("max") || cmd.Flags().Changed("pace") || cmd.Flags().Changed("sub-agents") || cmd.Flags().Changed("fix-rounds") || cmd.Flags().Changed("judgement") {
-				return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds or --judgement: it opens no lane and asks no judgement (nothing written)"}
+			if cmd.Flags().Changed("max") || cmd.Flags().Changed("pace") || cmd.Flags().Changed("sub-agents") || cmd.Flags().Changed("fix-rounds") || cmd.Flags().Changed("judgement") || cmd.Flags().Changed("take-over") {
+				return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds, --judgement or --take-over: it opens no lane, asks no judgement and reserves nothing (nothing written)"}
 			}
 			pv, err := loop.DrainDryRun(repoRoot, time.Now())
 			// Every refusal of the rule exits 2, as the bare verb's does: a rule
@@ -210,6 +229,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "the ceiling on lanes and validators alive at once; wins over every configured layer")
 	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane may take before it is handed back; wins over every configured layer")
 	cmd.Flags().StringVar(&judgement, "judgement", "", "the host's answer to the judgement the drain awaits, at the path its request names")
+	cmd.Flags().BoolVar(&takeOver, "take-over", false, "move your own live reservation of each issue this move reaches from another copy to this one; never another person's")
 	return cmd
 }
 
@@ -223,7 +243,7 @@ func warnLoosened(cmd *cobra.Command, record string, loosened []string) {
 }
 
 // runDrain is the bare verb: one move of the drain run.
-func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pace, subAgents, fixRounds, judgement string) error {
+func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pace, subAgents, fixRounds, judgement string, takeOver bool) error {
 	const prefix = "abcd drain"
 	roots, notes := layered.RootsFor(repoRoot)
 	for _, n := range notes {
@@ -233,7 +253,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, prefix, err)
 	}
-	o := loop.Options{Roots: &roots, Runners: cfg}
+	o := loop.Options{Roots: &roots, Runners: cfg, TakeOver: takeOver}
 	if cmd.Flags().Changed("pace") {
 		o.Pace = &pace
 	}
@@ -246,7 +266,14 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	if cmd.Flags().Changed("judgement") && strings.TrimSpace(judgement) == "" {
 		return &exitError{Code: 2, Msg: "abcd drain: --judgement names no file; give the answer's path the judgement request names (nothing written)"}
 	}
-	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement})
+	// An interrupt or a termination ends the context, and the runner kills
+	// the process group of a routed judge it started through its own handle:
+	// a judge never outlives the move that started it. A second signal stops
+	// the process (drainSignalContext).
+	ctx, stop := drainSignalContext()
+	defer stop()
+	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement,
+		Transcripts: &lazyHistoryStore{cmd: cmd}, Context: ctx})
 	if isDrainRuleRefusal(err) {
 		return &exitError{Code: 2, Msg: "abcd drain: " + termsafe.Sanitize(err.Error()) + " (nothing written)"}
 	}
@@ -471,4 +498,17 @@ func renderDrainOrigin(w io.Writer, o *loop.DrainOrigin, unread string) {
 	if len(o.Finished) > 0 {
 		fmt.Fprintf(w, "  finished on %s, still open in this checkout: %s\n", termsafe.Sanitize(o.Ref), termsafe.Sanitize(strings.Join(o.Finished, ", ")))
 	}
+}
+
+// drainSignalContext is the drain's context: the first interrupt or
+// termination ends it, and the drain's handler is released as soon as it
+// ends, so a second signal takes the default action and stops the process,
+// even while a move waits on a network act that does not watch the context.
+func drainSignalContext() (context.Context, context.CancelFunc) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+	return ctx, stop
 }

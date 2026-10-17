@@ -365,6 +365,81 @@ func TestDiscardAcceptsALaneHandedBackAsStuck(t *testing.T) {
 	}
 }
 
+// TestADiscardedStuckLaneLetsItsIssueBeTakenUpOnceItsRecordChanges: a lane
+// handed back as stuck and then discarded, as the route says to, leaves a run
+// that is over and was handed back, not one whose landing settles the issue:
+// once a person changes the record on origin, the drain judges the issue
+// afresh and its no opens a new run.
+func TestADiscardedStuckLaneLetsItsIssueBeTakenUpOnceItsRecordChanges(t *testing.T) {
+	c := &clock{t: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)}
+	o := Options{Now: c.now}
+	repo, bare, runID := stuckDrain(t, c)
+	stages := briefRefusing(sameRefusal)
+	for range 3 {
+		refuseStep(t, repo, runID, stages, o)
+	}
+	c.t = c.t.Add(time.Minute)
+	res, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStuck(t, res, bare, runID, "the record names no remedy")
+	if _, err := Discard(repo.Root(), runID, "lane-1", o); err != nil {
+		t.Fatalf("--discard over a stuck lane: %v", err)
+	}
+
+	editOnOrigin(t, bare, secondIssue)
+	c.t = c.t.Add(time.Minute)
+	again, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range again.Passed {
+		if e.ID == secondIssue {
+			t.Fatalf("the discarded stuck run passes its issue over: %+v", e)
+		}
+	}
+	if again.Judging == nil || again.Judging.Issue != secondIssue {
+		t.Fatalf("once its record changed on origin the issue is judged afresh: %+v passed %+v next %q routed %+v stopped %q", again.Judging, again.Passed, again.Next, again.Routed, again.Stopped)
+	}
+	c.t = c.t.Add(time.Minute)
+	opened := judge(t, repo, o, again, JudgementNo, "", "an internal page fix")
+	if opened.Start == nil || opened.Start.RunID == runID || opened.Lane == nil || opened.Lane.Issue != secondIssue {
+		t.Fatalf("the no opens a new lane for the issue: %+v", opened.Start)
+	}
+}
+
+// TestAJudgementStampedInTheSecondOfItsHandBackIsStale: the no that opened a
+// lane and the move that handed the lane back fall in one second (the clock
+// never moves here). A judgement taken no later than the hand-back judged the
+// record before it changed, so once it changes on origin the issue is judged
+// afresh rather than reopened on the old no.
+func TestAJudgementStampedInTheSecondOfItsHandBackIsStale(t *testing.T) {
+	c := &clock{t: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)}
+	o := Options{Now: c.now}
+	repo, bare, runID := stuckDrain(t, c)
+	stages := briefRefusing(sameRefusal)
+	for range 3 {
+		refuseStep(t, repo, runID, stages, o)
+	}
+	res, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantStuck(t, res, bare, runID, "the record names no remedy")
+	if _, err := Discard(repo.Root(), runID, "lane-1", o); err != nil {
+		t.Fatalf("--discard over a stuck lane: %v", err)
+	}
+	editOnOrigin(t, bare, secondIssue)
+	again, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Judging == nil || again.Judging.Issue != secondIssue {
+		t.Fatalf("an answer stamped in the hand-back's second is stale, so the issue is judged afresh: judging %+v start %+v next %q", again.Judging, again.Start, again.Next)
+	}
+}
+
 // TestTheStuckBoundsAreReadFromThePacesLayers: the repository's
 // pace.stuck_refusals and pace.stuck_minutes set the bounds.
 func TestTheStuckBoundsAreReadFromThePacesLayers(t *testing.T) {

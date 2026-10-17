@@ -50,12 +50,12 @@ func (g Generated) Is(p string) bool {
 	return len(g.files) > 0 && g.files[path.Clean(p)]
 }
 
-// generatedFiles reads the generated files from origin's default branch as
+// GeneratedFiles reads the generated files from origin's default branch as
 // this checkout last fetched it, reading history as stored. The reason is ""
 // when the declaration was read, or there is none (no default branch, no
 // root .gitattributes); otherwise the set is empty and the reason says why
 // generated files were not recognised.
-func generatedFiles(root string) (Generated, string) {
+func GeneratedFiles(root string) (Generated, string) {
 	ref := originDefault(root)
 	if ref == "" {
 		return Generated{}, ""
@@ -409,7 +409,7 @@ const (
 )
 
 // parseAttributes reads the subset of git's gitattributes rules that decide
-// linguist-generated. It follows no macro: generatedFiles reads only a plain
+// linguist-generated. It follows no macro: GeneratedFiles reads only a plain
 // declaration (plainDeclaration), and a line here that defines one, or quotes
 // its pattern, is not understood.
 func parseAttributes(text string) attrRules {
@@ -561,7 +561,7 @@ var matchSteps = 1_000_000
 // not it can match: about as long as eight steps of matching take.
 const ruleVisitSteps = 8
 
-// generatedSteps bounds the matching generatedFiles does over every file
+// generatedSteps bounds the matching GeneratedFiles does over every file
 // together; past it the declaration declares nothing, and says why. A step
 // costs about a nanosecond. Measured 2026-10-17 at a load average of 8: an
 // ordinary tree of 150,000 files against 50 lines fits, in 0.27 to 0.29 s

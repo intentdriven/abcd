@@ -93,13 +93,13 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	if !due {
 		return ""
 	}
-	req := claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own)}
+	req := claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own), Stage: renewalStage(*st)}
 	// At its landing, an issue lane's renewal narrows its footprint to the
 	// files its branch changed (narrow.go); a narrowing that was due and
 	// could not be made is said in the renewal's note.
 	var declined string
 	req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
-	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
+	res, err := reserveRenewal(repoRoot, req, claimOptions(now))
 	if err != nil {
 		return renewFailed(st, now, err)
 	}
@@ -116,6 +116,26 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	}
 	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed, Note: note})
 	st.UpdatedAt = now
+	return ""
+}
+
+// reserveRenewal is claim.Reserve for a renewal of a run's reservation, a
+// seam a test replaces to read the request each renewal makes.
+var reserveRenewal = claim.Reserve
+
+// renewalStage is the stage a renewal of st's reservation names, as its
+// Abcd-Stage trailer (spc-2610161044461448 step 18; dcn-2610161040394970):
+// the stage the run's current lane is in, spelled as the loop spells it,
+// which claim.LaneStages lists; "" for a run with no lane left to perform
+// (done, handed back, held or discarded), whose renewal names none.
+func renewalStage(st State) string {
+	i := st.current()
+	if i < 0 {
+		return ""
+	}
+	if s := string(st.Lanes[i].Stage); claim.ValidLaneStage(s) {
+		return s
+	}
 	return ""
 }
 
@@ -325,7 +345,7 @@ func heldMerge(lane Lane, m claim.MergeHold, act fenceAct) error {
 // term.
 func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, error) {
 	id := c.State.Key
-	res, err := claim.Reserve(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: term},
+	res, err := reserveRenewal(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: term, Stage: renewalStage(c.State)},
 		claimOptions(c.Now))
 	if err == nil {
 		return res.ExpiresAt, nil
@@ -553,8 +573,24 @@ func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (reserve
 // which the move's view could not show it), which gives no hold (nil): it is
 // never the drain's to release. Another's hold is contention, as for
 // reserveKey.
+//
+// A drain move passes over every issue with a live run here before it
+// reserves, so the act reaches an issue whose lane in this checkout holds it
+// live only when a concurrent `abcd build` started that run after the move
+// read the runs. For that case the request names the lane's stage: when the
+// act renews the lane's own live hold, the renewal keeps the stage another
+// account reads rather than clearing it (spc-2610161044461448 step 18,
+// dcn-2610170809478944); a fresh or lapsed hold names none. Under
+// --take-over the request names no stage at all: a take-over is never a
+// renewal that may carry one, and claim refuses a stage beside it.
 func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool, now time.Time) (*DrainHold, error) {
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Footprint: footprint, TakeOver: takeOver, Drain: true}, claimOptions(now))
+	stage := ""
+	if runs, err := Runs(repoRoot); err == nil && !takeOver {
+		if run, ok := liveRun(runs, id, true); ok {
+			stage = renewalStage(run)
+		}
+	}
+	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Footprint: footprint, TakeOver: takeOver, Drain: true, Stage: stage}, claimOptions(now))
 	if _, err := reservedNote(res, err, now); err != nil {
 		return nil, err
 	}
@@ -675,7 +711,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 	now := o.now()
 	i := st.current()
 	landing := i >= 0 && st.Lanes[i].Stage == StageLand
-	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, landing, now)
+	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, landing, renewalStage(st), now)
 	if err != nil {
 		return err
 	}
@@ -715,7 +751,7 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
 // record's footprint, --take-over passed through.
-func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, now time.Time) (reserved, error) {
+func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, stage string, now time.Time) (reserved, error) {
 	plain := claim.Request{Footprint: fp, TakeOver: takeOver}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
@@ -734,7 +770,7 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, now
 	if !narrowed && !covers(r.Footprint, fp) {
 		return widenReservation(repoRoot, key, fp, takeOver, r, now)
 	}
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r)}, claimOptions(now))
+	res, err := reserveRenewal(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r), Stage: stage}, claimOptions(now))
 	var nh *claim.NotHeld
 	if errors.As(err, &nh) && (nh.Why == claim.NotHeldAbsent || nh.Why == claim.NotHeldAnotherCopy ||
 		(nh.Why == claim.NotHeldReleased && !nh.Derived)) {
