@@ -10,7 +10,10 @@ interview's list style, both below, the implement loop's `pace`
 (`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
 keys (`internal/core/intent/consistency_config.go`), the reservation holder's
 `reservation.github_username`, read from the machine layer alone
-(`internal/core/claim/holder.go`), and the runner routes under `roles` and
+(`internal/core/claim/holder.go`), the load gate's `load.preflights`, read
+from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 or
+2 and 1 by default, never from a repository
+(`internal/core/implement/load_slots.go`), and the runner routes under `roles` and
 `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
 answers, or an axis the design commits to and has not built.
@@ -574,8 +577,9 @@ and the role routes under `roles`, each read with the repo-scope
 `.abcd/config.json` above it, except `land`, whose layers are ANDed; the
 provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
-`interview.list` and `reservation.github_username` are honoured from the
-machine layer alone. Its one
+`interview.list`, `reservation.github_username` and `load.preflights` (how
+many preflights may be in their test stages at once: 1 or 2, 1 by default,
+never read from a repository) are honoured from the machine layer alone. Its one
 write is the provider block `ahoy connect` adds, and every other config read
 resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
 model-tier routing table in `oracle-routing.json` (read beneath the
