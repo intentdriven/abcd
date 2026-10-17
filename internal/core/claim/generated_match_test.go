@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -26,6 +27,9 @@ type attrCase struct {
 	attrs string
 	// want is abcd's answer for each path: generated or not.
 	want map[string]bool
+	// minGit, when set, is the oldest git whose check-attr the row is
+	// compared with ("2.42"); an older git skips the row, saying so.
+	minGit string
 	// skipped is true for a declaration the reader does not understand (a
 	// macro, a C-quoted pattern, a POSIX class, an unclosed class): abcd
 	// answers false for every path, and git is not asked to agree.
@@ -67,6 +71,9 @@ var attrCorpus = []attrCase{
 		want: map[string]bool{"docs/a.md": true, "a.md": false}},
 	{name: "! leaves it unspecified, over an earlier line", attrs: "*.md linguist-generated\nb.md !linguist-generated\n",
 		want: map[string]bool{"a.md": true, "b.md": false}},
+	// linguist-generated=true is deliberately read as generated, as GitHub's
+	// linguist reads it, though git itself reports the value "true" rather
+	// than "set"; checkAttr maps both to generated.
 	{name: "=true, =false and any other value", attrs: "t.md linguist-generated=true\nf.md linguist-generated=false\ny.md linguist-generated=yes\n",
 		want: map[string]bool{"t.md": true, "f.md": false, "y.md": false}},
 	{name: "-attr=value is unset", attrs: "*.md linguist-generated\nb.md -linguist-generated=true\n",
@@ -87,8 +94,11 @@ var attrCorpus = []attrCase{
 		want: map[string]bool{"a": true, "x/y.go": true}},
 	{name: "a macro unsetting it is honoured", attrs: "*.md linguist-generated\n[attr]nogen -linguist-generated\nb.md nogen\n",
 		want: map[string]bool{"a.md": true, "b.md": false}},
-	{name: "an invalid or reserved attribute name voids the line", attrs: "*.md linguist-generated\nb.md -linguist-generated bad^name\nc.txt linguist-generated bad^name\nd.md builtin_x -linguist-generated\n",
-		want: map[string]bool{"a.md": true, "b.md": true, "c.txt": false, "d.md": true}},
+	{name: "an invalid attribute name voids the line", attrs: "*.md linguist-generated\nb.md -linguist-generated bad^name\nc.txt linguist-generated bad^name\n",
+		want: map[string]bool{"a.md": true, "b.md": true, "c.txt": false}},
+	// git refuses a builtin_ name as reserved from 2.42 on.
+	{name: "a reserved attribute name voids the line", attrs: "*.md linguist-generated\nd.md builtin_x -linguist-generated\n", minGit: "2.42",
+		want: map[string]bool{"a.md": true, "d.md": true}},
 
 	{name: "a macro setting it is not followed", attrs: "[attr]gen linguist-generated\ngen.md gen\n", skipped: true,
 		want: map[string]bool{"gen.md": false}},
@@ -125,25 +135,57 @@ func TestTheGeneratedMatcherAnswersTheCorpus(t *testing.T) {
 func TestTheGeneratedMatcherAgreesWithGit(t *testing.T) {
 	r := gittest.NewRepo(t)
 	r.Git("config", "core.ignorecase", "false")
+	have := gitVersion(t, r)
 	for _, c := range attrCorpus {
 		if c.skipped {
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(r.Root(), ".gitattributes"), []byte(c.attrs), 0o644); err != nil {
-			t.Fatal(err)
-		}
-		paths := make([]string, 0, len(c.want))
-		for p := range c.want {
-			paths = append(paths, p)
-		}
-		sort.Strings(paths)
-		got := checkAttr(t, r, paths)
-		for _, p := range paths {
-			if got[p] != c.want[p] {
-				t.Errorf("%s: git check-attr says %q is generated=%v; the row says %v\n%s", c.name, p, got[p], c.want[p], c.attrs)
+		t.Run(c.name, func(t *testing.T) {
+			if c.minGit != "" && versionBelow(have, c.minGit) {
+				t.Skipf("this row needs git %s or later to compare with; this machine has git %s", c.minGit, strings.Join(have, "."))
 			}
+			if err := os.WriteFile(filepath.Join(r.Root(), ".gitattributes"), []byte(c.attrs), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			paths := make([]string, 0, len(c.want))
+			for p := range c.want {
+				paths = append(paths, p)
+			}
+			sort.Strings(paths)
+			got := checkAttr(t, r, paths)
+			for _, p := range paths {
+				if got[p] != c.want[p] {
+					t.Errorf("git check-attr says %q is generated=%v; the row says %v\n%s", p, got[p], c.want[p], c.attrs)
+				}
+			}
+		})
+	}
+}
+
+// gitVersion is the fixture's git version, its numbers as git prints them.
+func gitVersion(t *testing.T, r *gittest.Repo) []string {
+	t.Helper()
+	f := strings.Fields(r.Git("version"))
+	if len(f) < 3 {
+		t.Fatalf("git version printed %q", strings.Join(f, " "))
+	}
+	return strings.Split(f[2], ".")
+}
+
+// versionBelow reports whether the version have is older than want, a
+// major.minor such as "2.42".
+func versionBelow(have []string, want string) bool {
+	for i, w := range strings.Split(want, ".") {
+		if i >= len(have) {
+			return true
+		}
+		h, _ := strconv.Atoi(have[i])
+		n, _ := strconv.Atoi(w)
+		if h != n {
+			return h < n
 		}
 	}
+	return false
 }
 
 // checkAttr asks git whether each path is linguist-generated (set or true).

@@ -183,10 +183,10 @@ func TestOnesOwnReserveOverlappingOnesOtherCopyWarns(t *testing.T) {
 	wantBackOff(t, w, err, "iss-6", "internal/core/claim/claim.go", "iss-1")
 	_, err = q.reserve("iss-7", "internal/core/claim/claim.go")
 	wantBackOff(t, w, err, "iss-7", "internal/core/claim/claim.go", "iss-1")
-	// A reservation that shares nothing names nothing.
 	// An act that does not ask for the warning (a build's) backs off it too.
 	_, err = laptop.reserve("iss-9", "internal/core/claim/crowd.go")
 	wantBackOff(t, w, err, "iss-9", "internal/core/claim/crowd.go", "iss-1")
+	// A reservation that shares nothing names nothing.
 	if res, err := laptop.do(Request{Record: "iss-8", Footprint: []string{"y.go"}, WarnOwnOverlap: true}); err != nil || res.OwnOverlap != nil {
 		t.Fatalf("a reserve sharing nothing = %+v, %v; want no overlap named", res, err)
 	}
