@@ -12,4 +12,4 @@ found_at: ".abcd/development/brief/glossary/interview/embark.md"
 remedy: "Mark the grill as a design target here, or rewrite the entry around what ships (the planning interview, or ideate's record-grill leg)."
 ---
 
-The glossary term .abcd/development/brief/glossary/interview/embark.md describes the opening phase of a grill session that a person starts by invoking /abcd:intent grill (lines 4-31), but abcd intent --help lists no grill sub-verb and the glossary README now calls it a design target, not shipped.
+The glossary term .abcd/development/brief/glossary/interview/embark.md describes the opening phase of a grill session that a person starts by invoking /abcd:intent grill (lines 4-32), but abcd intent --help lists no grill sub-verb and the glossary README now calls it a design target, not shipped.
