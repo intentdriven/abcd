@@ -297,7 +297,12 @@ what it did in `next`:
   take the rest. While the validators still judge it, a fix round may change
   another file, so nothing narrows. A narrowing never widens the hold; one
   that would name a file no reservation can carry is not made, and the
-  renewal still is; the run record's renewal line names both footprints. A lane whose
+  renewal still is; the run record's renewal line names both footprints, or
+  says `reservation kept at its full footprint` and why. A lane its landing's
+  sync sends back to a fresh round reserves its whole `found_at` again before
+  it goes on, judged for overlap, since a fix round may follow; when another
+  reservation or the cap refuses that, the step is refused for a person,
+  naming it, and the lane stays at its landing with nothing pushed. A lane whose
   reservation is another person's by its push pushes nothing, opens no pull
   request, and the next drain hands it back as `stuck` at once. When the lane is
   handed back instead, the step that hands it back pushes the tombstone,

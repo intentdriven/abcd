@@ -1268,7 +1268,9 @@ step that succeeds as the move hands the lane back keeps it. `abcd implement ste
 renews the reservation of the lane in progress at half its lease, waiting or not
 (a lane handed back is renewed by none); once the lane's validators pass and it is
 at its landing, the first renewal narrows its footprint to the files the lane changed
-within it, never widening it; and the landing checks it before its push,
+within it, never widening it, and a lane its sync sends back to a fresh round
+reserves its whole found_at again before it goes on, or is refused for you;
+and the landing checks it before its push,
 so a lane whose reservation became another person's pushes nothing and is handed
 back as stuck. A move that finds a lane parked at land reads it from its pull
 request, in one listing of your latest pull requests (gh pr list): a closed one

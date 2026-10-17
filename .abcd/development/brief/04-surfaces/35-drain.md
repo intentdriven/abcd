@@ -374,7 +374,11 @@ on origin's default branch backs off, with a tip or without one
    its footprint to the files it changed within it, measured from its merge
    base with origin's default branch, a hold that only ever narrows, so a
    lane that reserved a directory frees the rest of it for other accounts
-   (step 12, dcn-2610161040385152, dcn-2610170919040486). A move that finds a
+   (step 12, dcn-2610161040385152, dcn-2610170919040486); a lane its
+   landing's sync sends back to a fresh round reserves its whole `found_at`
+   again before it goes on, judged for overlap, a refusal of that refusing the
+   step for a person, and a renewal that could not narrow says so in its
+   record line (dcn-2610170947246937). A move that finds a
    lane parked at land reads every such lane from its pull request, in one
    listing of the person's latest pull requests (spc-2610161044461448 step 8,
    dcn-2610161040380948): a lane whose pull request was closed unmerged is

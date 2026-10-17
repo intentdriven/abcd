@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -66,13 +67,20 @@ type narrowFixture struct {
 
 func newNarrowFixture(t *testing.T) *narrowFixture {
 	t.Helper()
+	return newNarrowFixtureAt(t, "docs/", "docs")
+}
+
+// newNarrowFixtureAt is newNarrowFixture with the documentation issue's
+// found_at, and the footprint its reservation names, given.
+func newNarrowFixtureAt(t *testing.T, foundAt, reserved string) *narrowFixture {
+	t.Helper()
 	repo := briefRepo(t, agentsMarked)
 	repo.Write("docs/guide.md", "the guide\n")
 	repo.Write("docs/page.md", "the page\n")
 	repo.Commit("the docs")
 	issueRepoRule(t, repo)
 	fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, "AGENTS.md")
-	fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", "docs/")
+	fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", foundAt)
 	repo.Commit("the ledger")
 	asPat(t, repo)
 	for _, k := range []string{"GIT_AUTHOR_NAME", "GIT_COMMITTER_NAME"} {
@@ -93,10 +101,37 @@ func newNarrowFixture(t *testing.T) *narrowFixture {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
 	}
 	f := &narrowFixture{repo: repo, bare: bare, runID: first.Start.RunID, stages: DefaultStages()}
-	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
-		t.Fatalf("the lane reserves the directory its found_at names: %q", fp)
+	if fp := f.footprint(t); !slices.Equal(fp, []string{reserved}) {
+		t.Fatalf("the lane reserves the path its found_at names: %q", fp)
 	}
 	return f
+}
+
+// reserveAs pushes, as another account would, holder's live reservation of
+// id on origin with footprint, claimed at at and held five hours on.
+func (f *narrowFixture) reserveAs(t *testing.T, id, holder, footprint string, at time.Time) {
+	t.Helper()
+	msg := "abcd reservation: " + id + "\n\nAbcd-Reservation: " + id + "\nAbcd-Holder: " + holder +
+		"\nAbcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\nAbcd-Footprint: " + footprint +
+		"\nAbcd-Claimed-At: " + stamp(at) + "\nAbcd-Expires-At: " + stamp(at.Add(5*time.Hour)) + "\n"
+	d := filepath.Join(t.TempDir(), "other")
+	gitIn(t, "", "clone", "-q", f.bare, d)
+	mp := filepath.Join(t.TempDir(), "msg")
+	if err := os.WriteFile(mp, []byte(msg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	tree := gitIn(t, d, "hash-object", "-w", "-t", "tree", "/dev/null")
+	sha := gitIn(t, d, "-c", "user.name="+holder, "-c", "user.email="+holder+"@example.invalid", "-c", "commit.gpgsign=false", "commit-tree", tree, "-F", mp)
+	gitIn(t, d, "push", "-q", "origin", sha+":"+claim.RefPrefix+id)
+}
+
+// moveDefault lands another account's change of name on origin's default
+// branch.
+func (f *narrowFixture) moveDefault(t *testing.T, name string) {
+	t.Helper()
+	f.repo.Write(name, "another account's "+name+"\n")
+	f.repo.Commit("another account's change of " + name)
+	f.repo.Git("push", "-q", "origin", "main")
 }
 
 // footprint is the footprint origin's reservation of the issue names.
@@ -323,6 +358,160 @@ func TestANarrowingWithAnUnwritablePathIsNotMade(t *testing.T) {
 			if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
 				t.Fatalf("the footprint is not narrowed: %q", fp)
 			}
+			// The renewal says why it kept the whole footprint, once, in
+			// terminal-safe words.
+			st, err := ReadState(f.repo.Root(), f.runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			i := slices.IndexFunc(st.Record, func(e Entry) bool {
+				return e.Stage == StageReservationRenewed && e.At.Equal(due)
+			})
+			if i < 0 {
+				t.Fatalf("the renewal is recorded: %+v", st.Record)
+			}
+			note := st.Record[i].Note
+			if strings.Count(note, "reservation kept at its full footprint: ") != 1 || !strings.Contains(note, "no reservation may carry") {
+				t.Fatalf("the renewal says once why the footprint was not narrowed: %q", note)
+			}
+			if strings.ContainsAny(note, "\t\u200b") {
+				t.Fatalf("the note is terminal-safe: %q", note)
+			}
 		})
 	}
+}
+
+// TestALaneSentBackFromItsLandingReservesItsFootprintAgain: the first renewal
+// at the landing narrows the reservation to the lane's own change, and the
+// landing's sync in the same step merges the moved default branch and sends
+// the lane back to a fresh round, whose fix round may change any file of the
+// found_at. Before the lane goes on, its reservation names the whole found_at
+// again (dcn-2610170919040486, refined).
+func TestALaneSentBackFromItsLandingReservesItsFootprintAgain(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implement(t, Options{}, "docs/page.md")
+	f.moveDefault(t, "docs/guide.md")
+	f.toLand(t)
+	before := f.tip(t)
+	due := before.claimed.Add(61 * time.Minute)
+	f.stepAt(t, due)
+	l := currentLane(t, f.repo, f.runID)
+	if l.Stage != StageValidate || len(l.Syncs) != 1 {
+		t.Fatalf("the landing's sync sends the lane back to a fresh round: stage %s, syncs %d", l.Stage, len(l.Syncs))
+	}
+	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
+		t.Fatalf("a lane sent back from its landing reserves its whole found_at again: %q", fp)
+	}
+	st, err := ReadState(f.repo.Root(), f.runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(st.Record, func(e Entry) bool {
+		return e.Stage == StageReservationRenewed && strings.Contains(e.Note, "narrowed")
+	}) || !slices.ContainsFunc(st.Record, func(e Entry) bool {
+		return e.Stage == StageReservation && strings.Contains(e.Note, "footprint: docs")
+	}) {
+		t.Fatalf("the run record says the reservation narrowed and was widened again: %+v", st.Record)
+	}
+}
+
+// TestALaneSentBackFromItsLandingIsRefusedWhenItsFootprintIsTaken: the
+// narrowing freed docs/guide.md and another account reserved it; the
+// landing's sync then sends the lane back to a fresh round, whose reservation
+// cannot name the whole found_at again over the other account's. The step is
+// refused for a person, naming the overlap, the reservation stays as it was
+// and nothing of the lane is pushed.
+func TestALaneSentBackFromItsLandingIsRefusedWhenItsFootprintIsTaken(t *testing.T) {
+	f := newNarrowFixture(t)
+	f.implement(t, Options{}, "docs/page.md")
+	f.moveDefault(t, "docs/guide.md")
+	f.toLand(t)
+	before := f.tip(t)
+	due := before.claimed.Add(61 * time.Minute)
+	f.reserveAs(t, "iss-99", "quinn", "docs/guide.md", due.Add(-time.Minute))
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{Now: func() time.Time { return due }})
+	r, ok := AsRefusal(err)
+	if !ok || r.Contention {
+		t.Fatalf("the step is refused for a person: %v", err)
+	}
+	if !strings.Contains(r.Reason, "iss-99") || !strings.Contains(r.Reason, "docs/guide.md") {
+		t.Fatalf("the refusal names the overlap: %s", r.Reason)
+	}
+	if fp := f.footprint(t); !slices.Equal(fp, []string{"docs/page.md"}) {
+		t.Fatalf("the refused widening leaves the narrowed reservation: %q", fp)
+	}
+	l := currentLane(t, f.repo, f.runID)
+	if l.Stage != StageLand || len(l.Syncs) != 0 {
+		t.Fatalf("the lane stays at its landing, its sync unrecorded: stage %s, syncs %d", l.Stage, len(l.Syncs))
+	}
+	if out := gitIn(t, f.bare, "for-each-ref", "--format=%(refname)", "refs/heads/"+BranchPrefix); out != "" {
+		t.Fatalf("nothing of the lane is pushed: %s", out)
+	}
+}
+
+// TestAResumeDuringImplementPublishesAWidenedFoundAt: the issue's found_at
+// named docs/page.md when its lane reserved it, and was widened to docs while
+// the implementer worked. A resumed `abcd build` reserves docs, judged for
+// overlap, since a tip short of the landing was never narrowed.
+func TestAResumeDuringImplementPublishesAWidenedFoundAt(t *testing.T) {
+	for _, taken := range []bool{false, true} {
+		t.Run(map[bool]string{false: "free", true: "taken"}[taken], func(t *testing.T) {
+			f := newNarrowFixtureAt(t, "docs/page.md", "docs/page.md")
+			f.awaitImplementer(t)
+			widenFoundAt(t, f.repo, secondIssue, "docs/")
+			now := f.tip(t).claimed.Add(time.Minute)
+			if taken {
+				f.reserveAs(t, "iss-99", "quinn", "docs/guide.md", now)
+			}
+			_, err := Start(f.repo.Root(), secondIssue, Options{Now: func() time.Time { return now.Add(time.Minute) }})
+			if taken {
+				if r, ok := AsRefusal(err); !ok || !r.Contention {
+					t.Fatalf("the widened reservation is judged for overlap and backs off: %v", err)
+				}
+				if fp := f.footprint(t); !slices.Equal(fp, []string{"docs/page.md"}) {
+					t.Fatalf("a refused widening leaves the reservation: %q", fp)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("the resume reserves the widened found_at: %v", err)
+			}
+			if fp := f.footprint(t); !slices.Equal(fp, []string{"docs"}) {
+				t.Fatalf("the resume publishes the widened found_at: %q", fp)
+			}
+		})
+	}
+}
+
+// widenFoundAt rewrites id's found_at in the checkout's ledger to foundAt and
+// commits it.
+func widenFoundAt(t *testing.T, repo *gittest.Repo, id, foundAt string) {
+	t.Helper()
+	dir := filepath.Join(repo.Root(), ".abcd", "work", "issues", "open")
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range ents {
+		if !strings.HasPrefix(e.Name(), id+"-") {
+			continue
+		}
+		p := filepath.Join(dir, e.Name())
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		lines := strings.Split(string(b), "\n")
+		for i, l := range lines {
+			if strings.HasPrefix(l, "found_at:") {
+				lines[i] = "found_at: " + strconv.Quote(foundAt)
+			}
+		}
+		if err := os.WriteFile(p, []byte(strings.Join(lines, "\n")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		repo.Commit("widen " + id + "'s found_at")
+		return
+	}
+	t.Fatalf("%s is not in %s", id, dir)
 }
