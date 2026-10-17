@@ -11,14 +11,15 @@ impact: additive
 origin: researcher-authored
 production_mode: hand-written
 related_issues: [iss-2610161639025702, iss-2610161634043273, iss-2610162306239284, iss-2610140638074587]
-related_intents: [itd-2609150819440345, itd-2610100704270254, itd-78, itd-115, itd-2609201916151817, itd-82, itd-2609201925079472, itd-148]
+related_intents: [itd-2610100704270254, itd-78, itd-115, itd-2609201916151817, itd-82, itd-2609201925079472, itd-148]
+supersedes: [itd-2609150819440345]
 ---
 
 # Headless agents in parallel coordinate through the shared remote, not conversation
 
 ## Press Release
 
-> **Several headless agents work one repository at once, and none of them needs a conversation to know what the others are doing.** Each agent takes a piece of work by a claim on the shared remote, says in a line abcd reads which other change it waits on, and gets a share of the machine and of the model budget from abcd rather than from a message. A change that waits on another is not queued until that one lands, and is rebuilt on top of it when it does, so it meets its conflict once. Any session can run the pass that compares what the records say should happen with what is happening and acts on the difference, so no one process has to stay alive, and every wait has a deadline.
+> **Several headless agents work one repository at once, and none of them needs a conversation to know what the others are doing.** Each agent takes a piece of work by a claim on the shared remote, says in a line abcd reads which other change it waits on, and gets a share of the machine and of the model budget from abcd rather than from a message. A change that waits on another is not queued until that one lands, and is rebuilt on top of it when it does, so it meets its conflict once. Any session can run the pass that compares what the records say should happen with what is happening and acts on the difference, so no one process has to stay alive, and every wait has a deadline. One central view shows, at a glance, what every session holds, what it is doing and what it waits on, each line saying how long ago it was last seen, while the detail behind each line stays in that session's own checklist on its computer.
 >
 > "Last night one session spent its evening telling four others when a pull request had merged, and a new one had to be asked by message to hold its own," said Maya, an autonomous-development practitioner. "My headless agents never read a message. Now each one writes what it waits on where every other agent already looks, abcd holds it until that lands, and when an agent dies its work goes back to the pool instead of waiting on a promise nobody is left to keep."
 >
@@ -51,6 +52,9 @@ We expect parallel headless agents to stop colliding and stop idling on each oth
 - Given three headless agents on one machine with a budget of two preflights, when all three reach their preflight at once, then two run and the third waits, and no wait lasts beyond its stated deadline without ending in a named refusal.
 - Given the session running the coordination pass is stopped mid-pass, when another session runs the pass, then it reaches the same decisions from the records on the remote alone, with nothing lost.
 - Given two agents running different versions of abcd's coordination records, when they read each other's records, then neither waits on the other in a cycle, and the one meeting a newer format than it knows refuses with a message naming the version.
+- Given several sessions on different computers, each keeping its own checklist locally, when the person or any session opens the central view, then it shows one line per session (what it holds, its one-line state, what it waits on, when it was last seen) built from the short lines the sessions published, with no program having to stay running.
+- Given a session that changes what it holds or waits on, when it next writes its checklist, then it publishes its short line only after the checklist is written, and publishes nothing when nothing in the line changed.
+- Given a session that stops without notice, when the central view is opened, then its line reads as live, then as not seen for a stated time, then as work another session may take over after a delay, then it is gone; it never reads as working once its renewals have stopped.
 - Given an agent about to re-submit a branch after a change it overlaps with has landed, when abcd rebuilds it, then the agent is given a summary of what landed since its base.
 
 ## SOTA
@@ -72,11 +76,16 @@ Path taken: 2. The forge and the shared remote are the native floor (the queue, 
 - Does the dependent branch get rebuilt by merging the landed dependency in or by restacking it, given the repository allows merge, squash and rebase merges and a restack rewrites shas a `resolved_by.commit` stamp may cite?
 - Where does the machine budget live: the load gate's slots (`load.preflights`) extended to every heavy job as weighted slots, or a separate pool? Does the sub-agent budget (itd-2610100704270254) join it, and is it sized from the provider's rate-limit headers or a fixed count?
 - Does the release cut become a lease the merge path checks, replacing the rule that the cutting session has the final say by message?
-- How does this relate to the register draft (itd-2609150819440345) and the announcements intent (itd-2609151838312703): does it consume them, or does one of them grow into this?
+- The fixed-form announcements (itd-2609151838312703) stay their own intent; the pass reads them as one input beside claims and dependency lines. Is "I am merging, hold" then an announcement the pass acts on, or a field of the short status line?
+- How often may the short lines and renewals be pushed? The forge recommends at most six pushes a minute per repository; ten sessions renewing every five minutes is two.
 
 ## Decisions
 
 1. **The draft is split (2026-10-17).** The product thinker confirmed the decomposition as proposed: this intent holds the capability alone. The trust rule (every wait has a deadline, a claim's generation number is re-checked before a push, queue or tag, and a reader refuses a newer coordination record) becomes an ADR at planning, and the stance that coordination lives on the shared remote, never only in conversation, becomes a principle. The table is in the decomposition-calibration note under this date.
+2. **Ownership with take-over lives here, and the check before an unattended run does not (2026-10-17).** The product thinker chose to keep the check of what could block a long run, which asks every session what only the person can unblock, in the per-session checklist draft, done by asking sessions by message. Work owned with an expiry, and taken over when its holder stops renewing, stays in this intent; it had one defensible home, so it was recorded rather than asked. The checklist draft is where a session keeps its own state; this intent is what sessions share.
+3. **The central view is one short published line per session, with the details kept locally (2026-10-17).** The product thinker asked for a central place to see at a glance what is taken and worked on, with each session's details kept within that session so they survive compaction, and asked for a state-of-the-art pass on the link between the two ([research note](../../research/notes/2026-10-17-parallel-headless-agent-coordination.md), "The central view and each session's detail"). Offered a short line per session with the details local, or the full checklist uploaded as well so another computer could resume a dead session, they chose the short line: each session's checklist on its own computer is the source of its detail, the session publishes one short line about itself when that line changes, the claim renewal it already makes shows it is alive, and the view is every line put together, built by whoever reads it. A dead session's unpublished steps are lost; full uploads can be added on top later.
+4. **This intent supersedes the register draft (2026-10-17).** The register draft (itd-2609150819440345) stated the problem this intent answers: who holds what was settled only in conversation. Its want, a central place to see who holds what, is decision 3's view, and its claim branch shipped as reservations. Its helper program on each machine, reachable over a private network to show work not yet pushed, is dropped: it needs a process left running, which decision 3 avoids. It can be raised again as a new idea.
+5. **The central view says what each session is actually doing (2026-10-17).** Restated from the product thinker's ruling relayed by the checklist draft's session: the person must never wrongly believe agents are working or waiting. A line's state is therefore derived from what the machine and the remote can see (the renewal, the process, the last commit), and what an agent writes about itself is a hint beside it, because agents' own status reports lag.
 
 ## Audit Notes
 

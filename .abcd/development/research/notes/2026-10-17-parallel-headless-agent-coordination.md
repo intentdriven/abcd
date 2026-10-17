@@ -134,3 +134,83 @@ How Cursor, Devin, OpenHands, SWE-agent, MetaGPT, AutoGen and LangGraph
 divide work; Codex cloud's parallelism; any measured comparison of
 orchestrator-worker and peer arrangements on coding tasks. None was found
 or opened.
+
+## The central view and each session's detail
+
+A second pass the same day, after the product thinker asked for a central
+place to see at a glance what is taken and worked on, with each session's
+details kept within that session so they survive compaction, and named the
+link between the two as the hard part. Every source below was opened in the
+pass.
+
+### Findings
+
+- Kubernetes separates what was asked for (spec) from what is observed
+  (status). The owner writes status through its own subresource, and data
+  that changes often belongs in separate objects. T1, [API conventions](https://raw.githubusercontent.com/kubernetes/community/master/contributors/devel/sig-architecture/api-conventions.md).
+  A node sends a light lease every ten seconds and its full status only on
+  change or every five minutes. It reads as not ready after about forty to
+  fifty seconds without a lease, and its pods are evicted five minutes later.
+  T1, [node status](https://kubernetes.io/docs/reference/node/node-status/).
+- Presence systems show more than live and dead:
+  - Phoenix Tracker has no single source of truth and moves an entry from
+    live to down after 30 seconds and to gone after 20 minutes. T1, [Tracker](https://phoenix-pubsub.hexdocs.pm/Phoenix.Tracker.html).
+  - Yjs awareness marks a peer offline after 30 seconds without an update.
+    T1, [Yjs](https://docs.yjs.dev/api/about-awareness).
+  - Consul treats a time-to-live as a lower bound and holds a lock for 15
+    seconds after it expires before anyone may retake it. T1, [Consul sessions](https://developer.hashicorp.com/consul/docs/automate/session).
+- Git can carry one record per writer, so writers never contend:
+  - Gerrit keeps each change's metadata under its own ref. T1, [NoteDb](https://gerrit-review.googlesource.com/Documentation/note-db.html).
+  - git-bug keeps one ref per entity and merges concurrent edits with
+    Lamport clocks. T1, [git-bug data model](https://github.com/git-bug/git-bug/blob/master/doc/design/data-model.md).
+  - A push can be made conditional on the ref's current value, and can
+    update several refs atomically. T1, [git push](https://git-scm.com/docs/git-push).
+  - GitHub recommends at most six pushes a minute per repository and warns
+    that many branches add data to every fetch. T1, [repository limits](https://docs.github.com/en/repositories/creating-and-managing-repositories/repository-limits).
+- Current multi-agent tools keep their state on one machine:
+  - Claude Code's agent view keeps each session's state in a local file,
+    and its docs say plainly that sessions are local. T1, [agent view](https://code.claude.com/docs/en/agent-view).
+  - Agent teams admit that task status can lag because teammates do not
+    always mark work done. T1, [agent teams](https://code.claude.com/docs/en/agent-teams).
+  - Claude Squad, uzi and Conductor also keep worktree state on one
+    machine. T1, [Claude Squad](https://github.com/smtg-ai/claude-squad),
+    [uzi](https://github.com/devflowinc/uzi),
+    [Conductor](https://www.conductor.build/docs/concepts/workspaces-and-branches).
+  - Hosted tools (Codex cloud, Cursor cloud agents, Copilot's agent, Devin)
+    serve one vendor's account. None found coordinates across accounts or
+    machines over plain git.
+- Working state outside the context:
+  - After compaction Claude Code re-reads its memory files and the output of
+    session-start hooks. T1, [context window](https://code.claude.com/docs/en/context-window).
+  - Anthropic's long-running harness keeps a progress file and a feature
+    list in JSON, which the model is less likely to overwrite than Markdown,
+    and says compaction alone is not enough. T2, [effective harnesses](https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents).
+- Event sourcing would make the view a replayable projection, but its
+  maintainers call it complex and unnecessary for most systems. T1, [event sourcing](https://learn.microsoft.com/en-us/azure/architecture/patterns/event-sourcing).
+
+### Options weighed
+
+1. Each session's checklist is the source of its detail; the session
+   publishes one short status record of its own when that record changes,
+   after the checklist is written; the claim renewal shows liveness; the
+   view is every record folded together by whoever reads it. Copies
+   Kubernetes' node status and lease, and Gerrit's per-entity refs.
+2. Each session also publishes its checklist history, so another computer
+   can rebuild a dead session's state. Copies git-bug and event sourcing.
+3. Option 1, plus an instant tier for sessions on the same computer read
+   from the process table.
+4. One shared notes record every session appends to. Copies git-appraise.
+   Rejected: every session contends for one record, and dead entries need
+   explicit removal.
+
+The product thinker chose option 1 on 2026-10-17, leaving option 2 as
+something to add later. Option 3's instant local tier stays open. A line's
+state is derived from what the machine and the remote can see, with what
+the agent writes about itself as a hint, because agents' own status lags.
+
+### Not verified
+
+Figma's presence model, Sculptor's internals, Conductor's crash handling,
+the meaning of Devin's status values, git-dit (its repository did not
+load), whether GitHub enforces or only recommends its push rate, and where
+Codex and Vibe Kanban keep their state.
