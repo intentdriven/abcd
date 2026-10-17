@@ -61,7 +61,7 @@ Recorded by the technical facilitator on the product thinker's delegation (2026-
 1. **Who reads it (the open question).** The record stays facilitator-tier. The model-matrix report shows the product thinker a drift flag and the names of the fields that drifted, never their values; the values are read from the run record. Reason: the draft's own constraint, and itd-2610161733316518's decision that a re-run reports drift field by field.
 2. **Extend, do not add, a receipt.** The two sides extend `oracle.CallRecord` and `oracle.ReceiptRoute` (the override's receipt) and `runner.RouteRecord` (the runner's). The shared vocabulary lives in `oracle`, which the runner package already imports, so neither imports the other the wrong way. Reason: itd-2610161733316518 decision 14 says the sides extend the route receipt the override already writes; a second receipt would be a second place to disagree.
 3. **No extra request.** OpenRouter's generation record is not fetched here; what the response itself carries (its `id`, `provider`, `usage` with cost and token details) is recorded, and the readback belongs to the OpenRouter pin (iss-2610161734413178) inside a consented run. Reason: itd-2610161733316518 decision 12 (every network call inside the run the person started) and this record's scope condition 2.
-4. **Usage in the stream, with an opt-out.** The adapter asks for usage in the stream with `stream_options.include_usage`, which OpenAI, vLLM, OpenRouter and Ollama accept and llama.cpp and LM Studio accept or ignore. A provider whose server refuses it is given an opt-out on its connection (default on), and a refusal names that setting. No automatic retry, since a retry is a second request. No provider-specific request field is added. Reason: a server that refused the field would otherwise turn a working route into a failure.
+4. **Usage in the stream, with an opt-out.** The adapter asks for usage in the stream with `stream_options.include_usage`, which OpenAI, vLLM, OpenRouter and Ollama accept and llama.cpp and LM Studio accept or ignore. A provider whose server refuses it is given an opt-out on its connection (default on), and a refusal that names the field names that setting. An ordinary call is never retried, since a retry is a second request; the one exception, decided in the build's review (2026-10-17), is `ahoy connect`, whose verification is asked once more without the field after a 400 or 422 and, when that succeeds, writes the opt-out, because a setup that cannot get past the refusal leaves the person nothing to turn off. No provider-specific request field is added. Reason: a server that refused the field would otherwise turn a working route into a failure.
 5. **The prompt by hash.** The rendered messages are recorded as a sha256, never their text. Reason: the run's transcripts already hold the text where the person has kept them, and a receipt that carries prompts carries whatever they quoted.
 6. **The opencode fix lands here, as its remedy's second branch.** opencode 1.18.31's run mode names no model in its JSON events (checked in the installed binary by the review of 2026-10-17), so the runner stops copying the asked model, leaves the served model empty and lists it as not reported. That resolves iss-2610161709506207.
 7. **Local fingerprints wait on the local pin.** The asked-side weight fingerprint, quantisation and runtime version need a configured pin that does not exist; until iss-2610161734428291 lands, a local route lists them as not configured. Reason: nothing can be recorded that was never configured, and guessing it from the server would be self-reported at best.
@@ -81,8 +81,115 @@ None. The one open question was decided on delegation (decision 1).
 
 ## Audit Notes
 
-<!-- abcd-review: OWED receipt=rcp-f25a69346de1 -->
-Fidelity review OWED (receipt rcp-f25a69346de1).
+<!-- abcd-review: INGESTED receipt=rcp-f25a69346de1 -->
+Fidelity review — receipt rcp-f25a69346de1 (verifier intent-auditor claude-opus-5-5).
+
+Provenance: intent-auditor@claude-opus-5-5 · rubric_hash sha256:effa65b3e9e88ff29433b443ec2be159522a8b0b71cf1434526514aa61edb13e · prompt_hash sha256:beafc9d930e3df84cf97e1f5dd434a99d9edc2c29b38c1df4d1b066c7e38d00d
+Input attestations: diff:7ae8fdde8..f5a25ce84@sha256:9ad6cfb8962de4c4e72d23e030a86520334354f4f25506c6a29eab57ce603037; tree:f5a25ce84@-;
+
+Acceptance rollup: MET 6 · MET_WITH_CONCERNS 2 · NOT_MET 0 · INCONCLUSIVE 0
+
+Per-criterion verdicts:
+- ac-1 — MET: callRecord builds the asked side (model asked, prompt sha256 of the rendered messages, adapter-added field) beside the receipt's existing settings_sent, and the served side (reported model, upstream provider, generation id, finish reason, prompt/completion/reasoning/cache-read/cache-write counts, cost in credits) from the adapter's Result; the dispatch attaches it to the route receipt and a test reads an OpenRouter-shaped answer through to the encoded receipt
+  evidence: internal/core/oracle/call.go:168 — "func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openaiapi.Result) CallRecord {"
+  evidence: internal/core/oracle/call.go:170 — "PromptSHA256: openaiapi.PromptSHA256(brief), AdapterAdded: []string{},"
+  evidence: internal/adapter/openaiapi/client.go:655 — "func readUsage(raw json.RawMessage) *Usage {"
+  evidence: internal/core/oracle/dispatch.go:57 — "return payload, r.Receipt(ModelReported(payload)).WithCall(rec), nil"
+  evidence: internal/core/oracle/receipt.go:72 — "SettingsSent Settings `json:"settings_sent"`"
+  evidence: internal/core/oracle/sides_test.go:138 — "func TestTheCallRecordTravelsInTheReceipt(t *testing.T) {"
+  evidence: internal/core/oracle/sides_test.go:61 — "func TestAProviderCallRecordsBothSides(t *testing.T) {"
+- ac-2 — MET: the claude runner sets the asked model it passes (after the provider prefix), reads the result event's modelUsage keys as served models, its usage counts (thinking tokens as reasoning) and total_cost_usd, and the init event's claude_code_version; a test over a recorded 2.1.302 stream asserts each, with cost listed harness_computed
+  evidence: internal/core/runner/claude.go:99 — "ans.ModelAsked, ans.PromptSHA256 = c.askedModel(), promptSHA256(req)"
+  evidence: internal/core/runner/claude.go:193 — "func meterClaude(ans *Answer, line []byte) {"
+  evidence: internal/core/runner/claude.go:214 — "ans.Cost = &oracle.Cost{Amount: *m.TotalCostUSD, Unit: oracle.CostUSD}"
+  evidence: internal/core/runner/claude.go:236 — "ans.ServedModels = append(ans.ServedModels, cleanHarness(k))"
+  evidence: internal/core/runner/claude.go:272 — "ans.HarnessVersion = cleanHarness(ev.Version)"
+  evidence: internal/core/runner/sides_test.go:83 — "func TestClaudeRecordsBothSidesFromARealStream(t *testing.T) {"
+- ac-3 — MET: the opencode runner no longer copies o.model into ans.Model: it records o.model as ModelAsked only, leaves the served model empty so servedUnpinned lists served.model not_reported, and meterOpenCode sums tokens and cost across step_finish events; a test over a 1.18.31 fixture asserts Model empty, ServedModels empty and the summed usage and cost
+  evidence: internal/core/runner/opencode.go:96 — "ans.ModelAsked, ans.PromptSHA256 = o.model, promptSHA256(req)"
+  evidence: internal/core/runner/opencode.go:99 — "servedUnpinned(&un, ans.Model, ans.Sides, ans.counted)"
+  evidence: internal/core/runner/sides.go:109 — "un.Unless(model != "", oracle.ServedModel, oracle.NotReported)"
+  evidence: internal/core/runner/opencode.go:137 — "func meterOpenCode(ans *Answer, line []byte) {"
+  evidence: internal/core/runner/opencode.go:152 — "sum += ans.Cost.Amount"
+  evidence: internal/core/runner/sides_test.go:153 — "func TestOpenCodeNeverStampsTheAskedModelAsServed(t *testing.T) {"
+- ac-4 — MET_WITH_CONCERNS: every route builds an Unpinned list over the fixed asked and served lists with the four reasons (adapter callRecord, runner askedUnpinned/servedUnpinned, host HandOffUnpinned), and tests hold each list to the fixed fields; concern: the local fields (weights_sha256, quantisation, runtime_version) are listed not_configured only on the provider adapter when its base URL is loopback, while a runner routed to a local model (the opencode test itself uses local/qwen3-coder) omits them, and its test helper excludes LocalFields from the known list
+  evidence: internal/core/oracle/call.go:191 — "if openaiapi.IsLocal(p.BaseURL) {"
+  evidence: internal/core/runner/sides.go:91 — "func askedUnpinned(un *oracle.Unpin, s Sides) {"
+  evidence: internal/core/runner/sides_test.go:49 — "func assertFixedLists(t *testing.T, us []oracle.Unpinned) {"
+  evidence: internal/core/oracle/receipt.go:117 — "func HandOffUnpinned(model string) []Unpinned {"
+  evidence: internal/core/oracle/sides_test.go:97 — "func TestACallNamingNoServedDetailListsEachMissing(t *testing.T) {"
+- ac-5 — MET: on the harness leg Route.Receipt attaches HandOffUnpinned(model), which lists served.model self_reported when the payload declared one (not_reported when it declared none) and every other fixed field with its reason; the model passed is ModelReported(payload); a test asserts the self_reported entry in the encoded receipt
+  evidence: internal/core/oracle/receipt.go:108 — "rr.Unpinned = HandOffUnpinned(model)"
+  evidence: internal/core/oracle/receipt.go:129 — "un.Add(f, SelfReported)"
+  evidence: internal/core/oracle/sides_test.go:220 — "func TestTheHostHandOffMarksTheServedModelSelfReported(t *testing.T) {"
+- ac-6 — MET_WITH_CONCERNS: a provider block's stream_usage false drops stream_options from the request and the call succeeds with counts listed not_reported, and a 400/422 refusal whose body names stream_options or include_usage gets the oracle.api.< provider>.stream_usage setting named; concerns: a refusal whose body does not name the field carries no hint on an ordinary call, so the setting is named only for self-describing refusals; and setup (ahoy connect) retries the verification once without the field on any 400/422 and writes stream_usage false, which the intent's decision 4 (no automatic retry) did not provide for
+  evidence: internal/adapter/openaiapi/client.go:548 — "fields["stream_options"] = map[string]bool{"include_usage": true}"
+  evidence: internal/adapter/openaiapi/client.go:492 — "if named {"
+  evidence: internal/core/oracle/call.go:115 — "return fmt.Errorf("%w; if this server does not take %s, set %s.%s.%s to false in %s, "+"
+  evidence: internal/core/oracle/sides_test.go:165 — "func TestAConnectionThatTurnsStreamUsageOffSendsWithoutIt(t *testing.T) {"
+  evidence: internal/core/oracle/sides_test.go:194 — "func TestARefusedUsageRequestNamesTheSetting(t *testing.T) {"
+  evidence: internal/adapter/openaiapi/served_test.go:300 — "func TestARefusalNotNamingTheUsageFieldCarriesNoHint(t *testing.T) {"
+  evidence: internal/core/oracle/connect.go:526 — "case p.StreamUsage == nil && errors.Is(err, openaiapi.ErrUsageRefused):"
+- ac-7 — MET: the runner's Sides are embedded in the existing runner.RouteRecord that the dispatch and the drive already store on lane receipts and the run state (bumped to schema 13 with version-12 files read as not recorded), the provider call record rides the existing ReceiptRoute the consistency route file holds, maskRoute masks every new string, adapter strings go through scrub and cleanModel and harness strings through cleanHarness, and a test asserts the reviews directory gains no new kind of file
+  evidence: internal/core/runner/receipt.go:24 — "Sides"
+  evidence: internal/core/implement/loop/drive.go:141 — "rec := runner.RecordOf(route.Runner, ran, ans)"
+  evidence: internal/core/implement/loop/state.go:185 — "const SchemaVersion = 13"
+  evidence: internal/core/implement/loop/state_mask.go:177 — "func maskRoute(r runner.RouteRecord) runner.RouteRecord {"
+  evidence: internal/adapter/openaiapi/client.go:747 — "Provider: cleanModel(c.scrub(a.provider)), Usage: a.usage}"
+  evidence: internal/core/runner/sides.go:75 — "func cleanHarness(s string) string {"
+  evidence: internal/surface/cli/sides_test.go:60 — "func TestTheConsistencyRouteFileCarriesBothSides(t *testing.T) {"
+  evidence: internal/core/implement/loop/sides_test.go:112 — "func TestTheDrivePassesBothSidesThrough(t *testing.T) {"
+- ac-8 — MET: callRecord and the runners' meters are pure functions of the request sent and the response or event stream read, and a test counts requests on a sized vLLM-shaped server with and without the usage request and served detail and finds them equal; the setup retry in Connect is a second verification request, not part of building any record (recorded under ac-6 and the gap audit)
+  evidence: internal/adapter/openaiapi/served_test.go:204 — "func TestRecordingTheServedSideAddsNoRequest(t *testing.T) {"
+  evidence: internal/core/oracle/call.go:168 — "func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openaiapi.Result) CallRecord {"
+  evidence: internal/core/oracle/sides_test.go:194 — "func TestARefusedUsageRequestNamesTheSetting(t *testing.T) {"
+
+Gap audit:
+- honoured:
+  - every model call records what abcd asked for and what answered, on the provider adapter, both command-line runners and the host hand-off
+    evidence: internal/core/oracle/sides.go:56 — "AskedFields = []Field{AskedModel, AskedProviderPin, AskedTemperature, AskedTopP, AskedSeed,"
+    evidence: internal/core/oracle/call.go:168 — "func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openaiapi.Result) CallRecord {"
+    evidence: internal/core/runner/claude.go:193 — "func meterClaude(ans *Answer, line []byte) {"
+    evidence: internal/core/oracle/receipt.go:117 — "func HandOffUnpinned(model string) []Unpinned {"
+  - whatever a route cannot show is written down with a reason (not reported, self-reported, harness-computed, not configured), never left out or guessed
+    evidence: internal/core/oracle/sides.go:67 — "const ("
+    evidence: internal/core/runner/sides.go:121 — "un.Add(oracle.ServedCost, oracle.HarnessComputed)"
+  - the opencode runner stops stamping the asked model as served (iss-2610161709506207)
+    evidence: internal/core/runner/opencode.go:96 — "ans.ModelAsked, ans.PromptSHA256 = o.model, promptSHA256(req)"
+    evidence: internal/core/runner/sides_test.go:153 — "func TestOpenCodeNeverStampsTheAskedModelAsServed(t *testing.T) {"
+  - a served model differing from the asked one under the same name is visible on the route line, with upstream provider and cost
+    evidence: internal/surface/cli/dispatch.go:115 — "line += fmt.Sprintf(", model asked %s, model reported %s", pc.ModelAsked, pc.ModelReported)"
+    evidence: internal/surface/cli/sides_test.go:26 — "func TestTheRouteLineNamesTheAskedModelAndCost(t *testing.T) {"
+  - the prompt is recorded by sha256, never its text (decision 5)
+    evidence: internal/core/oracle/call.go:170 — "PromptSHA256: openaiapi.PromptSHA256(brief), AdapterAdded: []string{},"
+- diverged:
+  - decision 4 says no automatic retry, since a retry is a second request; delivered: ahoy connect's verification is asked once more without stream_options on any HTTP 400/422 (whatever the body names) and the block is written with stream_usage false (iss-2610170934491794), while the intent's decision text was left unchanged
+    evidence: .abcd/development/intents/shipped/itd-166-each-run-should-record-the-model.md:64 — "No automatic retry, since a retry is a second request."
+    evidence: internal/core/oracle/connect.go:530 — "if err := verify(without); err != nil {"
+    evidence: internal/core/oracle/connect_test.go:602 — "func TestConnectAsksAgainWithoutUsageWhenItIsRefused(t *testing.T) {"
+  - a refusal names the setting (decision 4) only when the refusal body names stream_options or include_usage; a bare 400/422 on an ordinary call carries no hint
+    evidence: internal/adapter/openaiapi/client.go:183 — "func namesStreamUsage(body string) bool {"
+    evidence: internal/adapter/openaiapi/served_test.go:300 — "func TestARefusalNotNamingTheUsageFieldCarriesNoHint(t *testing.T) {"
+  - a local model's weight fingerprint, quantisation and runtime are listed not configured on a local route (decision 7); delivered only on the provider adapter when its base URL is loopback, not on a runner routed to a local model
+    evidence: internal/adapter/openaiapi/client.go:240 — "return err == nil && u.Host != "" && loopback(u.Hostname())"
+    evidence: internal/core/runner/sides.go:91 — "func askedUnpinned(un *oracle.Unpin, s Sides) {"
+- missing:
+  - a generation id on the runner routes: both runners always list served.generation_id as not reported rather than recording one
+    evidence: internal/core/runner/sides.go:111 — "// Neither harness names a generation id for the run: a run is many"
+
+Scope-condition dispositions:
+- cond-2610170652113675 — survived: the sides were added to exactly the four named routes (claude and opencode runners, the OpenAI-compatible adapter, the oracle hand-off), and a host-run loop role's RouteRecord keeps its old shape because Sides is embedded with every field omitempty and set only when a runner ran
+  evidence: internal/core/runner/receipt.go:24 — "Sides"
+  evidence: internal/core/runner/dispatch.go:156 — "o.Receipt.Route = RecordOf(o.Receipt.Route.Asked, route, ans)"
+  evidence: internal/core/oracle/receipt.go:108 — "rr.Unpinned = HandOffUnpinned(model)"
+- cond-2610170652112593 — survived: every served value is read from the response or the harness event stream, absent ones are listed unpinned, no generation readback is fetched, and the request count is equal with and without the record; the setup retry is a second verification request, not a fetch to fill a field
+  evidence: internal/adapter/openaiapi/served_test.go:204 — "func TestRecordingTheServedSideAddsNoRequest(t *testing.T) {"
+  evidence: internal/core/oracle/call.go:207 — "un.Unless(u != nil && u.Cost != nil, ServedCost, NotReported)"
+- cond-2610170652113516 — narrowed: the local fields are marked not_configured until a pin exists, but only where the provider adapter's base URL is a loopback address; the runners never list them, even for a local model (the opencode test uses local/qwen3-coder), and a local server on a non-loopback address is not recognised as local
+  narrowing: holds for the provider adapter route whose base URL is localhost or a loopback address only; command-line runner routes to local models and local servers reached on non-loopback addresses record no local-field entries at all
+  evidence: internal/core/oracle/call.go:191 — "if openaiapi.IsLocal(p.BaseURL) {"
+  evidence: internal/adapter/openaiapi/client.go:240 — "return err == nil && u.Host != "" && loopback(u.Hostname())"
+  evidence: internal/core/runner/sides_test.go:49 — "func assertFixedLists(t *testing.T, us []oracle.Unpinned) {"
 <!-- abcd-review-end receipt=rcp-f25a69346de1 -->
 
 ## Grounds
