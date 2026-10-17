@@ -171,7 +171,10 @@ directory holding its own `.gitattributes` is never generated, since that file
 could unset the attribute there. Its patterns follow git's
 gitattributes rules for the subset abcd reads (a basename at any depth, a
 pattern with a slash anchored to the root, `*`, `?`, classes and `**`, a later
-line over an earlier one), and a file counts only when origin's default branch
+line over an earlier one); patterns that set the attribute match
+case-sensitively and patterns that unset it match regardless of case, so a
+file is generated only where git would call it generated on a clone that
+ignores case and on one that does not. A file counts only when origin's default branch
 holds it, so a directory is never generated, even when every file under it is.
 Every misreading leans towards "not generated": a declaration that cannot be
 read, is over the cap, holds a NUL byte or passes the step budget its

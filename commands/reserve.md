@@ -117,7 +117,10 @@ those its root `.gitattributes`, as last fetched, marks `linguist-generated`
 (or `linguist-generated=true`). That one file is read, never a nested
 `.gitattributes`, `.git/info/attributes` or this checkout's own copy, because
 the declaration must be one every account shares; reading it is a disk read,
-never a fetch. A file at or below a directory that holds its own
+never a fetch. Patterns that set the attribute match case-sensitively;
+patterns that unset it match regardless of case, so on a clone that ignores
+case nothing is shared that git there would not call generated. A file at or
+below a directory that holds its own
 `.gitattributes` is never shared, since that file could unset the attribute
 there. A directory is never generated, even when every file under it
 is, so two directory footprints that share still overlap. When the file is
