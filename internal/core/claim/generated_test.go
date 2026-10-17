@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -233,13 +232,13 @@ func TestContentionAgreesWithCrowdingOnGeneratedFiles(t *testing.T) {
 	}
 }
 
-// wantGenerated fails unless GeneratedFiles in dir answers want for each path,
+// wantGenerated fails unless generatedFiles in dir answers want for each path,
 // with why as its reason.
 func wantGenerated(t *testing.T, dir string, want map[string]bool, why string) {
 	t.Helper()
-	g, got := GeneratedFiles(dir)
+	g, got := generatedFiles(dir)
 	if got != why {
-		t.Fatalf("GeneratedFiles reason = %q; want %q", got, why)
+		t.Fatalf("generatedFiles reason = %q; want %q", got, why)
 	}
 	for p, w := range want {
 		if g.Is(p) != w {
@@ -362,15 +361,13 @@ func TestAVeryDeepPathIsJudgedQuickly(t *testing.T) {
 // pushes it.
 func (w *world) treeOnMain(files map[string]string) {
 	w.t.Helper()
+	blob := filepath.Join(w.t.TempDir(), "blob")
 	for p, body := range files {
-		cmd := exec.Command("git", "-C", w.seed.Root(), "hash-object", "-w", "--stdin")
-		cmd.Env = w.seed.Env()
-		cmd.Stdin = strings.NewReader(body)
-		out, err := cmd.Output()
-		if err != nil {
+		if err := os.WriteFile(blob, []byte(body), 0o644); err != nil {
 			w.t.Fatal(err)
 		}
-		w.seed.Git("update-index", "--add", "--cacheinfo", "100644,"+strings.TrimSpace(string(out))+","+p)
+		oid := w.seed.Git("hash-object", "-w", "--no-filters", blob)
+		w.seed.Git("update-index", "--add", "--cacheinfo", "100644,"+oid+","+p)
 	}
 	w.seed.Git("commit", "-q", "-m", "tree")
 	w.seed.Git("push", "-q", "origin", "main")
