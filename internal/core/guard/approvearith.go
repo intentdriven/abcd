@@ -71,7 +71,7 @@ var (
 	// It is read where a command starts (or a quoted string a shell may run
 	// starts), so a commit message or a search that only names it is not
 	// one; an alias definition itself is found by its name position.
-	aliasing = regexp.MustCompile(`(^|[;&|(){}` + "`" + `\n'"])\s*(shopt\s+(-\S+\s+)*-s\S*\s+[^;&|\n]*\b(expand_aliases|posix)\b|set\s+-o\s+posix|(export\s+)?POSIXLY_CORRECT=)`)
+	aliasing = regexp.MustCompile(`(^|[;&|(){}` + "`" + `\n'"])\s*(shopt\s+(-\S+\s+)*-s\S*\s+[^;&|\n]*\b(expand_aliases|posix)\b|set\s+-o\s+posix|(export\s+)?POSIXLY_CORRECT=|alias(\s+-\S+)*\s+\S*=)`)
 	// ansiEscape is an escape in a `$'…'` string that writes a byte by its
 	// code, which spells a word the text does not show.
 	ansiEscape = regexp.MustCompile(`\\(x[0-9A-Fa-f]|u[0-9A-Fa-f]|U[0-9A-Fa-f]|[0-7]|c.)`)
@@ -364,7 +364,7 @@ func onlyBytes(s, allowed string) bool {
 // would miss.
 func respelledShell(command string) string {
 	if aliasing.MatchString(command) {
-		return "it turns alias expansion on, so a later word can run a program the line does not name"
+		return "it defines an alias or turns alias expansion on, so a later word can run a program the line does not name"
 	}
 	for _, w := range commandNames(command) {
 		if strings.NewReplacer("$'", "", "$\"", "", "'", "", "\"", "", "\\", "").Replace(w) == "alias" {

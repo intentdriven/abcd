@@ -64,6 +64,7 @@ func TestArithmeticWithAnUnfixedOperandIsRefused(t *testing.T) {
 		"set -o posix\nalias c=rm\nc -rf x",
 		`alias c='python3 -c'`,
 		`x=1; alias c=rm`,
+		"sh -c 'alias c=rm\nc -rf x'",
 		`bash -c 'shopt -s expand_aliases; alias c=rm'`,
 		`POSIXLY_CORRECT=1 bash -c 'echo'`,
 		`eval $'\x28\x28 n \x29\x29'`,
