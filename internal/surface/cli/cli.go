@@ -2086,7 +2086,8 @@ and the --json envelope carries the name as session_title.`,
 			// otherwise redact all of it before the user's first prompt. Whatever
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
-			if det, err := ahoy.Detect(cwd); err == nil && det.RootSHA != "" {
+			det, detErr := ahoy.Detect(cwd)
+			if detErr == nil && det.RootSHA != "" {
 				currentSHA = det.RootSHA
 				// Record which store this session belongs to while a real
 				// working directory is still available to say so. A sub-agent
@@ -2204,6 +2205,11 @@ and the --json envelope carries the name as session_title.`,
 				fmt.Fprintln(cmd.OutOrStdout(), g)
 			} else if n != "" {
 				notices = append(notices, n)
+			}
+			// The moment after an update (spc-2610170635097509): one constant
+			// line, read only, from the detection above (ahoy_after_update.go).
+			if detErr == nil {
+				notices = append(notices, afterUpdateSessionStart(cmd.OutOrStdout(), cwd, det)...)
 			}
 			if len(notices) == 0 {
 				return nil

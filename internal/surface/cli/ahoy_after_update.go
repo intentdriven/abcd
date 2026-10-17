@@ -20,6 +20,8 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/afterupdate"
+	"github.com/intentdriven/abcd/internal/core/ahoy"
+	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -143,6 +145,30 @@ func runAfterUpdateSeen(cmd *cobra.Command, asJSON bool) error {
 
 // runningRelease is the running release after MarkSeen accepted it as one.
 func runningRelease() string { return termsafe.Sanitize(core.Version) }
+
+// afterUpdateSessionLine is the session start's one line for the moment
+// after an update. It is a constant, with no version and no count: stdout of
+// session start reaches the session's context, so nothing a repository's
+// tracked files hold may ride on it (iss-2608241115201044). The moment's own
+// words reach context by the agent's run of the verb.
+const afterUpdateSessionLine = "abcd: an abcd update has news for this session; after the person's first message, " +
+	"run abcd ahoy after-update and relay what it prints at the start of your first reply."
+
+// afterUpdateSessionStart prints afterUpdateSessionLine to w where the moment
+// holds anything for the repository at cwd, whose detection is det, and
+// writes nothing. A failure to work it out is a notice for stderr, never a
+// line on stdout.
+func afterUpdateSessionStart(w io.Writer, cwd string, det ahoy.DetectionResult) []string {
+	st, err := afterupdate.Pending(cwd, det)
+	if err != nil {
+		return []string{"abcd: could not work out what the abcd update brings (" +
+			termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "); `abcd ahoy after-update` says it when asked."}
+	}
+	if st.Any() {
+		fmt.Fprintln(w, afterUpdateSessionLine)
+	}
+	return nil
+}
 
 // afterUpdateRefusal turns core's refusals into exit 2, naming that nothing
 // was written; any other error is returned as it is.

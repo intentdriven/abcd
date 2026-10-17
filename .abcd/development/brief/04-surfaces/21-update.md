@@ -164,9 +164,8 @@ the release it installs replaces an earlier one, and records the replaced
 release as `previous_tag` in the `binary-meta` it writes at the swap (the ruling
 CJ1). A first install, a copy out of the cache at the same release and the
 per-session fast path replace no release and print no such line. The session
-start check does not compare versions and shows nothing about an update, with
-one exception: the bootstrap salvage that the per-prompt, per-command and
-pre-compaction hooks run discards its output, so a swap made there adds
+start check never prints that line, with one exception: the bootstrap salvage
+that the per-prompt, per-command and pre-compaction hooks run discards its output, so a swap made there adds
 `transition_unseen=yes` to the `binary-meta` it writes, and the next session
 start shows the line once. Once is a claim per release: the session check
 creates `cache/update-shown-<new>` in the plugin data directory, or
@@ -179,6 +178,18 @@ empty claim file is the session check's single write, and claims for earlier
 releases stay where they are. A directory failing the shape check every reader
 of the data directory applies, or a tag outside the release-tag alphabet, shows
 nothing and writes nothing.
+
+What the update changed is said apart from that line, after the person's
+first message (spc-2610170635097509). When this computer has not been shown
+the news up to the running release, or the update brings the repository setup
+it never answered, session start prints one constant sentence to the
+session's context, with no version and no count, telling the agent to run
+ahoy's after-update sub-verb and relay what it prints at the start of its
+first reply. Working that out reads only: the binary's version, the repository's
+`setup_version` checked to be exactly a release tag, the binary record's
+`previous_tag`, the setup answers records and the store under
+`~/.abcd.noindex/after-update/`, and nothing is fetched or written. The verb
+and its record are the ahoy chapter's.
 
 ## The receipt
 
