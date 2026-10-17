@@ -426,8 +426,11 @@ An issue the drain handed back is passed over only while its record stands on
 `origin`'s default branch: once a person changes that record there, the drain
 judges it afresh and may open a new lane for it, though the handed-back run's
 directory remains (`hand_backs[].blob` is the record's blob as it was routed).
-Without a remote named `origin`, a handed-back issue stays passed over, and so
-does an issue whose run in this checkout is over.
+Every other run of an issue in this checkout passes it over, in progress or
+complete, on `origin` or not: a complete run landed its pull request, which may
+still be open, and the drain never opens a second. Without a remote named
+`origin`, a handed-back issue stays passed over, and so does an issue whose
+run in this checkout was handed back.
 
 ### The hand-back, by kind
 

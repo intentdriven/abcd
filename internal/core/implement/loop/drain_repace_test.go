@@ -155,3 +155,41 @@ func TestAFinishedHandedBackRunNoLongerPassesItsIssueOver(t *testing.T) {
 		t.Fatalf("the no opens a new run for the issue: %+v", opened.Start)
 	}
 }
+
+// TestADoneRunWithAnOpenPullRequestPassesItsIssueOverInANewDrain: a lane
+// that landed its pull request, still open, is a run that is over but not
+// handed back; a new drain on origin passes its issue over rather than
+// judging it again and opening a second run and a second pull request.
+func TestADoneRunWithAnOpenPullRequestPassesItsIssueOverInANewDrain(t *testing.T) {
+	repo, _ := reservingDrainRepo(t, "commands/drain.md")
+	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
+	o := Options{Now: c.now}
+	first := drainToLane(t, repo, o, DrainOptions{Max: 1})
+	if first.Start == nil || first.Lane.Issue != secondIssue {
+		t.Fatalf("the documentation issue's lane opens: %+v", first)
+	}
+	landLaneOf(t, repo, first.Start.RunID, 41)
+	c.t = c.t.Add(time.Minute)
+	ended, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil || ended.Stopped != DrainStoppedCap {
+		t.Fatalf("the drain stops at its cap: %+v %v", ended.Stopped, err)
+	}
+
+	c.t = c.t.Add(time.Minute)
+	again, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !again.Started {
+		t.Fatalf("a new drain begins: %+v", again)
+	}
+	if again.Judging != nil && again.Judging.Issue == secondIssue {
+		t.Fatalf("the issue whose pull request is open is judged again: %+v", again.Judging)
+	}
+	if e := passedFor(t, again, secondIssue); e.Check != CheckRun || !strings.Contains(e.Reason, first.Start.RunID) {
+		t.Fatalf("the issue is passed over naming its run: %+v", e)
+	}
+	if again.Start != nil || runCount(t, repo) != 1 {
+		t.Fatalf("no second run opens for the issue: %+v", again.Start)
+	}
+}

@@ -811,19 +811,23 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 					stamp(l.LapsedAt), stamp(ends))})
 			continue
 		}
-		// A run of the issue in progress here passes it over. One that is
-		// over, complete or handed back, does too without origin, where
-		// nothing says whether its record has changed since; on origin the
-		// hand-back's tombstone and this drain's routes say so
-		// (drain_readmit.go).
-		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.Complete() && !r.issueHandedBack() }); i >= 0 {
-			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckRun,
-				Reason: "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"})
+		// A run of the issue here that was not handed back passes it over,
+		// in progress or complete: a complete one landed its pull request,
+		// which may still be open, and a second run would open a second.
+		// One handed back does too without origin, where nothing says
+		// whether its record has changed since; on origin the hand-back's
+		// tombstone and this drain's routes say so (drain_readmit.go).
+		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+			reason := "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"
+			if runs[i].Complete() {
+				reason = "this checkout's run " + runs[i].RunID + " for it is complete, and what it landed settles the issue, so no second run opens for it"
+			}
+			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckRun, Reason: reason})
 			continue
 		}
 		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID }); i >= 0 && origin == nil {
 			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckRun,
-				Reason: "this checkout's run " + runs[i].RunID + " for it is over, and with no remote named " + claim.Remote +
+				Reason: "this checkout's run " + runs[i].RunID + " for it was handed back, and with no remote named " + claim.Remote +
 					" the drain cannot tell whether its record has changed since; it is a person's"})
 			continue
 		}

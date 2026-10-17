@@ -420,11 +420,13 @@ it was routed, and an issue the drain handed back is passed over only while that
 record stands: once a person changes it there, the issue is the drain's to
 consider again, judged afresh, an answer taken before the hand-back deciding
 nothing, as the tombstone lets every other account's drain consider it. The
-issue run a handed-back lane leaves, complete or stopped at its hand-back, no
-longer passes its issue over, and the lane the drain opens for it again is a new
-run, never that run resumed. Without a remote named `origin` nothing says whether
-a record has changed, so a handed-back issue stays passed over for the drain's
-life, and an issue whose run here is over is passed over naming it.
+issue run a handed-back lane leaves no longer passes its issue over, and the lane
+the drain opens for it again is a new run, never that run resumed. Every other run of the issue here passes it over, on `origin` or not,
+whether in progress or complete: a complete run landed its pull request, which
+may still be open, and a second run would open a second. Without a remote named
+`origin` nothing says whether a record has changed, so a handed-back issue stays
+passed over for the drain's life, as does an issue whose run here was handed
+back, naming it.
 
 ### The judgement before a lane opens
 
