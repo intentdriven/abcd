@@ -109,7 +109,8 @@ The write list is derived from the launch itself; nothing in the repository wide
 
 - `~/.ssh` and `~/.gnupg`;
 - `~/.aws`, `~/.config/gh`, `~/.netrc`, `~/.git-credentials` and `~/.docker/config.json`;
-- abcd's own credential file under its home.
+- abcd's own credential file under its home;
+- on macOS, the login keychain's files, `~/Library/Keychains`. Step 1's probes added this one: without it the keychain handed a stored GitHub token to a command inside the fence, although `~/.config/gh` was denied (Step 1 evidence, probe 3).
 
 The vendor's guide says why the two layers go together: "Without network isolation, a compromised agent could exfiltrate sensitive files like SSH keys". The model endpoint is reachable, so this narrows what a misled agent can send there. It is not part C's promise.
 
@@ -153,7 +154,7 @@ So the guard keeps its place as adr-42's mistake filter, teaching inside the bou
 
 ### Checks that read the machine run outside
 
-The load gate, the peers scan, and the reservation renewals and fences the loop takes between stages already run in abcd, outside any launch. What changes is what happens to a gate an agent reaches inside the fence: `make preflight` runs its test stages through `abcd implement load --wait`, and inside the fence that waiter would read the fence's view of the process table. On Linux the process namespace shows it only its own processes. It also could not write its hold under abcd's home.
+The load gate, the peers scan, and the reservation renewals and fences the loop takes between stages already run in abcd, outside any launch. What changes is what happens to a gate an agent reaches inside the fence: `make preflight` runs its test stages through `abcd implement load --wait`, and inside the fence that waiter would read the fence's view of the process table. On Linux the process namespace shows it only its own processes. On macOS it sees none at all: `/bin/ps` cannot be started inside the fence and `pgrep` finds nothing, so `implement load` reports the check unavailable and carries on (Step 1 evidence, probe 5). It also could not write its hold under abcd's home, and on macOS today's waiter already refuses for that reason rather than opening.
 
 So a waiter never judges the machine from inside a fence:
 
@@ -187,8 +188,10 @@ The `fence` lane is a Make target that joins `make preflight` beside `smoke` and
 
 - On macOS srt's README gives "no guarantee" for a hard link, inside an allowed path, to a file outside it.
 - On Linux srt's own deny scan is fixed at launch. abcd's explicit denies cover the main git directory, which exists before the launch, and not a repository the agent creates later inside its worktree.
-- Go programs that check TLS through the system's trust service can fail under Seatbelt (the vendor's guide names `gh`, `gcloud` and `terraform`). Step 1 measures whether `go` itself downloads modules inside the fence, and records what it finds.
-- A private module (`GOPRIVATE`) is fetched from its version-control host with the person's own credentials. One held in a store the read list denies (`~/.ssh`, `~/.netrc`, `~/.git-credentials`) cannot be read, and the fetch fails naming the module. A keychain credential helper may still answer; step 1 measures whether it does.
+- Go programs that check TLS through the system's trust service fail under Seatbelt (the vendor's guide names `gh`, `gcloud` and `terraform`), and `go` itself is one of them. Measured on macOS (Step 1 evidence, probe 1): every HTTPS request `go` makes inside the fence fails with `x509: OSStatus -26276`, both a module download from `proxy.golang.org` and the checksum lookup it routes through that proxy, so a module missing from the person's cache, or from `go.sum`, cannot be fetched or verified. A build whose modules are all in `go.sum` and in the person's cache works, through the file proxy, with no network. With `SSL_CERT_FILE` naming the system's certificate file (`/etc/ssl/cert.pem`), Go reads its roots from that file instead of the trust service, and the download and the checksum verification both pass, with nothing in the fence widened. srt's own remedy, `enableWeakerNetworkIsolation`, opens the trust service and is what its README warns is an exfiltration path; it is not used. So on macOS the launch also sets `SSL_CERT_FILE` (step 7). A program that ignores that variable and asks the trust service still fails, and is named where it does.
+- A private module (`GOPRIVATE`) is fetched from its version-control host with the person's own credentials. One held in a store the read list denies (`~/.ssh`, `~/.netrc`, `~/.git-credentials`, `~/.config/gh`) cannot be read, and the fetch fails naming the module. Measured on macOS (probe 3): git's keychain helper gave nothing inside the fence (`failed to get: -128`, as it does outside in a session nobody can answer a prompt in), and the GitHub helper `gh auth git-credential` could not start, so no git credential reached the fence. The keychain itself did answer: a token stored there was returned in full until `~/Library/Keychains` joined the read denies (Reads, above). The ssh agent's socket is refused inside the fence (`Error connecting to agent: Operation not permitted`), so neither a fetch over ssh nor an ssh signature can use the agent.
+- srt's CLI reports no refusal of its own on macOS, with or without `--debug`: the refusal reaches the launch's stderr only as the refused program's own error, `Operation not permitted` with the path (probe 4). The kernel logs each refusal, tagged by srt (`Sandbox: <program>(<pid>) deny(1) file-write-create <path>`, then `CMD64_<command in base64>_END_<session>_SBX`), to the unified log, which a `log stream` running during the launch sees and a later `log show` does not. That stream also carries refusals nothing asked about (`sysctl-read kern.iossupportversion` from every shell). `Fence.Refusals` reads the program errors (step 10); reading the log stream as a second source is left to step 10 to weigh.
+- Every commit inside the fence, with git 2.52, prints `error: Unable to create '<git dir>/packed-refs.lock': Operation not permitted` during its ref update, and still exits 0 with its commit, ref and reflog written (probe 2). `packed-refs` stays off the write list. `Fence.Refusals` records the line like any other refusal, and the lane does not read it as a failed commit.
 - On Linux, srt covers a protected path that does not yet exist with a placeholder on the host, and a SIGKILL skips its cleanup. abcd's timeout kill is the group's SIGKILL (`procgroup.Kill`), so a timeout first sends SIGTERM to srt and kills the group only after a grace period (step 8). After every launch abcd also removes, outside the fence, any empty placeholder that appeared at one of srt's protected names and that git does not track, so none is committed or left in the person's worktree (step 9). Step 1 checks whether bubblewrap's own session takes descendants out of the group abcd kills.
 - srt quotes the argument vector into a shell string on macOS and Linux, which amends `proc.go`'s rule that the argv is never a shell line. abcd's wrapped vector is fixed words, a role name from a closed list, and paths abcd made. A path carrying a quote or a control character is refused before the launch, and a test sends a prompt through with every shell metacharacter (step 7).
 - The intent's press release says the person's other projects and settings "stay out of its reach". With this design that holds for changes. It holds for reads only where the read denies above reach. The wording is question (e).
@@ -210,27 +213,27 @@ The `fence` lane is a Make target that joins `make preflight` beside `smoke` and
 
 ## Questions for the product thinker
 
-Put at step 2, after step 1's probes, so each answer reads what the probes found. Each question carries the answers that can be defended; nothing is built before all five are answered.
+Put at step 2, after step 1's probes. Each question is written for the product thinker, in plain words, and each answer says what it leads to. The mechanism behind each one is in the sections above. Nothing is built before all five are answered.
 
-- **(a) srt as the one required program on the runner route.** srt needs Node 22.12 or later, and on Linux also bubblewrap and `socat` (and `ripgrep`). It would be adr-22's first declared exception, scoped to the runner route, with the per-machine off switch in place of degradation. Defensible answers:
-  - accept srt as the runner route's one required program;
-  - take nono instead, a single binary with no Node and no user namespaces, at the cost of a fence that is not Anthropic's while abcd launches Claude;
-  - hold the fence until one ships without a separate runtime, and leave runner launches unfenced until then.
-- **(b) When srt is missing.** Defensible answers:
-  - offer to install it, and install only after the person's explicit yes; the install runs the package manager's own scripts with the person's full reach;
-  - print the install command and the off switch only, and install nothing.
-- **(c) The host list.** A fenced launch reaches only the hosts it is given. Defensible answers:
-  - the derived list: the model endpoint; with a `go.mod`, the Go proxy and checksum-database hosts and the hosts `GOPRIVATE` and `GONOPROXY` name; plus the hosts added per machine;
-  - the model endpoint and the hosts added per machine only, so every Go host is the person's to name;
-  - the derived list, with the run naming every host it allows once at its start.
-- **(d) Commit signing.** Where the person's git signs every commit, the agent's commit inside the fence cannot reach the key. Defensible answers:
-  - lane commits unsigned inside the fence, and signed by abcd outside it at land, which rewrites each lane commit with the same tree and message;
-  - the signing key readable inside the fence, so a misled agent can sign anything as the person;
-  - refuse a fenced run while `commit.gpgsign` is on, naming it, until the person turns signing off for runner launches or turns the fence off.
-- **(e) The press release's "stay out of its reach".** It holds for writes. For reads it holds only for the credential stores this spec denies; every other file the account can read stays readable to a fenced agent. Defensible answers:
-  - keep the wording and confine reads further, which part A leaves out of scope today;
-  - narrow the wording to what holds: changes everywhere outside the agent's own work, and reads of the credential stores;
-  - keep the wording and state the read limit in the how-to and the brief.
+- **(a) One extra program to install.** Fencing the agents abcd starts needs one program abcd does not ship: Anthropic's sandbox. The person installs it once, with the small runtime it needs. Everything else in abcd keeps needing nothing extra.
+  - Require it for the agents abcd starts. Leads to: on a machine without it, abcd will not start such an agent until the person installs it or switches the fence off for that machine.
+  - Use another open-source fence instead, a single file with nothing else to install. Leads to: less to install, but the fence around Claude is not Anthropic's.
+  - Wait for a fence that needs nothing extra. Leads to: the agents abcd starts keep running unfenced until then.
+- **(b) When the program is missing.**
+  - abcd offers to install it, and installs only after the person says yes. Leads to: one step for the person; the install runs with everything the person's account can do.
+  - abcd says how to install it and how to switch the fence off, and installs nothing. Leads to: the person installs it by hand.
+- **(c) Which internet addresses a fenced agent may reach.** The fence lets an agent reach only the addresses it is given.
+  - The AI service, what the project's build needs to download, and any the person adds. Leads to: builds that download code keep working, and anything more is the person's to add.
+  - The AI service and any the person adds, nothing else. Leads to: a build that needs a download fails until the person names where it downloads from.
+  - The first, with each run listing every address it allows when it starts. Leads to: the same reach, said out loud at every run.
+- **(d) Signed commits.** Where the person signs every commit, an agent inside the fence cannot reach the signing key.
+  - The agent's commits are unsigned inside the fence, and abcd signs them when it hands the work in. Leads to: the work arrives signed, and the agent never holds the key.
+  - The agent may use the signing key. Leads to: commits are signed as today, and a misled agent could sign anything in the person's name.
+  - abcd refuses a fenced run while signing is on. Leads to: the person turns signing off for these runs, or turns the fence off.
+- **(e) The promise that the person's other projects and settings "stay out of its reach".** The probes show the agent cannot change anything outside its own work. It can still read most of what the person can read; only the places that hold passwords, keys and sign-ins are hidden from it.
+  - Keep the words, and hide more from reading. Leads to: more work now, and some tools may stop working inside the fence.
+  - Narrow the words to what holds: it cannot change anything outside its own work, and cannot read the person's passwords, keys and sign-ins. Leads to: a smaller promise that is true as written.
+  - Keep the words, and state the reading limit in the guide. Leads to: the promise reads wider than what it does.
 
 ## Footprint
 
@@ -242,12 +245,13 @@ Put at step 2, after step 1's probes, so each answer reads what the probes found
 1. Probe srt on the real harnesses before anything is signed off or built
    - packages: .abcd/development/research/notes, .abcd/development/intents
    - tests: an abcd lab on macOS and on Linux with bubblewrap, each probe named in the research note: `claude --print --bare` and `opencode run` wrapped by srt 0.0.79 with the step 3 policy written by hand; `CLAUDE_CONFIG_DIR` per launch with the person's `~/.claude` and `~/.claude.json` read-only; opencode with fresh XDG folders, a per-run cache seeded by clone, a read-only credential link, and a refreshing sign-in; `go build` and `go test ./...` of abcd itself with the per-run `GOPATH` and caches, a module missing from `go.sum` verified through the checksum database, a `GOPRIVATE` module fetched from its host, and whether module downloads pass TLS under Seatbelt; whether a keychain credential helper answers git inside the fence; a commit in a linked worktree under the narrowed main `.git`, with and without `gc.auto=0`, with `packed-refs` unwritable, and with `commit.gpgsign` on; a hard link from the worktree to a file outside it on macOS; SIGTERM cleanup, and whether bubblewrap's session leaves the process group abcd kills; what opencode fetches at start with a seeded cache; a prompt with shell metacharacters. Probing builds nothing, and its findings are what step 2's questions read. Each limit found becomes a scope condition on the intent or a capture of its own, and a failure on the macOS or Linux half goes back to the person at step 2, with nono as the named alternative
+   - evidence: the macOS half's first probes ran on 2026-10-17 and are recorded under Step 1 evidence, after the steps. The Linux half, the agent sessions and the probes listed there as not yet run are still to do
 2. Sign-off: the person answers the five questions for the product thinker (waits for the person; nothing is built before it)
    - packages: .abcd/development/brief, .abcd/development/decisions/adrs, .abcd/development/specs
    - tests: each answer recorded as a decision and folded into this spec; on a yes to question (a), the proposed marks come off adr-22's consequence and the dependencies chapter's paragraph (02-constraints/02-dependencies.md), and on a no both are withdrawn; record-lint and docs-lint pass over both and over the ADR's acceptance
 3. Declare the fence seam and derive a launch's fence-neutral policy (itd-2610161621364075 criteria 1, 2, 3)
    - packages: internal/core/fence
-   - tests: fence: `Policy` names no mechanism, and `Fence` is met by a test double the runner's tests use; for a lane launch, for an interview launch, and for each runner, the write list is exactly the worktree (or the record's folder), the receipt folder, the main `.git`'s `objects/`, the lane's own `worktrees/<name>/` without its `config.worktree`, `gitdir` and `commondir`, and `refs/heads/build/` with its reflogs, the run's `GOPATH` and Go caches, the launch's temp and host-state folders and the run's opencode cache; `hooks/`, `config` and `packed-refs` are never granted; abcd's home is read-only but for the worktree; the credential stores are denied for reads; a path given through a symlink is refused; nothing read from the repository's `.abcd/config.json` changes the list; the host list is the runner's endpoint, with a `go.mod` the `GOPROXY`/`GOSUMDB` hosts and the `GOPRIVATE`/`GONOPROXY` hosts, and the machine layer's additions, and a pattern too broad to pass is named
+   - tests: fence: `Policy` names no mechanism, and `Fence` is met by a test double the runner's tests use; for a lane launch, for an interview launch, and for each runner, the write list is exactly the worktree (or the record's folder), the receipt folder, the main `.git`'s `objects/`, the lane's own `worktrees/<name>/` without its `config.worktree`, `gitdir` and `commondir`, and `refs/heads/build/` with its reflogs, the run's `GOPATH` and Go caches, the launch's temp and host-state folders and the run's opencode cache; `hooks/`, `config` and `packed-refs` are never granted; abcd's home is read-only but for the worktree; the credential stores are denied for reads, `~/Library/Keychains` among them on macOS; a path given through a symlink is refused; nothing read from the repository's `.abcd/config.json` changes the list; the host list is the runner's endpoint, with a `go.mod` the `GOPROXY`/`GOSUMDB` hosts and the `GOPRIVATE`/`GONOPROXY` hosts, and the machine layer's additions, and a pattern too broad to pass is named
 4. Read the off switch, the backend and the host additions from the machine layer only (criterion 5)
    - packages: internal/core/runner, .abcd/development/brief
    - tests: runner: `runner.sandbox.off`, `runner.sandbox.backend` and `runner.sandbox.hosts` read from the machine file; the backend defaults to `srt` and an unknown one is refused, naming the known ones; the same keys in a repository's `.abcd/config.json` refuse the load, naming the machine's file; a host entry that is `*`, a bare top-level domain or not `host[:port]` is refused; no flag sets any of them
@@ -259,7 +263,7 @@ Put at step 2, after step 1's probes, so each answer reads what the probes found
    - tests: loop and cli: a `build`, a `drain` lane start and an `intent interview` with a role routed to a runner, on a machine whose fence check fails, exit 2 before the run is created and start no process; a run whose roles all stay on the host checks nothing; with the switch on, the run's output says once that its launches are not fenced and names the machine file; an untested srt version is said once at the run's start
 7. Wrap every launch at the launch point, with its environment (criteria 1, 2)
    - packages: internal/core/runner, internal/core/fence, internal/core/fence/srt, ACKNOWLEDGEMENTS.md
-   - tests: runner: a fenced claude and opencode launch run `srt --settings <file> -- <harness> …` with the harness's own argv unchanged after `--`; the environment sets the per-launch temp, the run's `GOPATH` and Go caches and the host-state folders over the parent's, and seals `gc.auto=0` and `maintenance.auto=false`, and `commit.gpgsign=false` unless question (d) is answered otherwise; the lane's `config.worktree` takes the gc values when the repository has `extensions.worktreeConfig` on, and the main `.git/config` is unchanged either way; opencode's cache is seeded once per run, by clone where the filesystem offers one; the settings file sits outside every writable path and round-trips through srt's schema; a wrap failure is reason `fenced`, records no fallback and runs no other route; `Wrap`'s cleanup runs on every way a launch ends; loop: a lane whose launch is refused as fenced refuses at the runner stage naming the remedy; a path carrying a quote or a control character is refused before the launch; `fence`-tagged: a prompt carrying every shell metacharacter arrives byte for byte; a commit in the lane leaves no gc refusal; the run's fence folder is removed when the run finishes
+   - tests: runner: a fenced claude and opencode launch run `srt --settings <file> -- <harness> …` with the harness's own argv unchanged after `--`; the environment sets the per-launch temp, the run's `GOPATH` and Go caches and the host-state folders over the parent's, on macOS sets `SSL_CERT_FILE` to the system's certificate file, and seals `gc.auto=0` and `maintenance.auto=false`, and `commit.gpgsign=false` unless question (d) is answered otherwise; the lane's `config.worktree` takes the gc values when the repository has `extensions.worktreeConfig` on, and the main `.git/config` is unchanged either way; opencode's cache is seeded once per run, by clone where the filesystem offers one; the settings file sits outside every writable path and round-trips through srt's schema; a wrap failure is reason `fenced`, records no fallback and runs no other route; `Wrap`'s cleanup runs on every way a launch ends; loop: a lane whose launch is refused as fenced refuses at the runner stage naming the remedy; a path carrying a quote or a control character is refused before the launch; `fence`-tagged: a prompt carrying every shell metacharacter arrives byte for byte; a commit in the lane leaves no gc refusal; the run's fence folder is removed when the run finishes
 8. Kill a fenced launch in order (criteria 1, 2)
    - packages: internal/procgroup, internal/core/runner
    - tests: procgroup: a timeout sends SIGTERM to srt first and kills the group only after the grace; an srt that exits on SIGTERM within the grace is not sent SIGKILL; the kill still goes through the pid the handle holds, never a pattern; `fence`-tagged: after a timeout no descendant of the launch survives, including any bubblewrap session step 1 found outside the group
@@ -284,3 +288,84 @@ Put at step 2, after step 1's probes, so each answer reads what the probes found
 15. State the rule and prove it on a real run
    - packages: .abcd/development/brief, commands, docs
    - tests: a brief invariant says an agent abcd launches runs inside a fence the operating system enforces, unless the person turned it off in their user layer, and the adapters chapter describes the fence seam; `commands/build.md` and `commands/intent.md` name the refusal and the off switch; a how-to under `docs/` says how to install the fence and turn it off, crediting the package under the docs-lint allow escape; docs-lint and record-lint pass; a fenced `build` of a real intent on the built binary, on macOS and on Linux, records a refused outside write, commits in its worktree, lands its push, and leaves the person's host settings byte-identical
+
+## Step 1 evidence
+
+### macOS, 2026-10-17
+
+Run on macOS 27.0 (arm64) with srt 0.0.79 from npm, Node 25.1.0, go 1.27.1, git 2.52.0, Claude Code 2.1.302 and opencode 1.18.31. Each probe ran `srt --settings <run>/settings.json -- <command>` from a scratch lane worktree of abcd, `~/.abcd.noindex/worktrees/<root-sha>/probe-lane` on a branch `build/probe-srt-lane` cut from `origin/main`, whose git directory is the main checkout's (`<checkout>/.git`). `<run>` is a fresh folder under `$TMPDIR`. The worktree, both branches it made, its nine loose objects and its receipt folder were removed afterwards.
+
+Nothing in the settings was widened to make a probe pass. One variant was tighter: probe 3 ran again with `~/Library/Keychains` added to `denyRead`.
+
+**The settings file.** srt was given real absolute paths; they are written here with `~`, `<checkout>` and `<run>`.
+
+```json
+{
+  "network": {
+    "allowedDomains": ["api.anthropic.com", "proxy.golang.org", "sum.golang.org"],
+    "deniedDomains": []
+  },
+  "filesystem": {
+    "denyRead": [
+      "~/.ssh", "~/.gnupg", "~/.aws", "~/.config/gh", "~/.netrc",
+      "~/.git-credentials", "~/.docker/config.json", "~/.abcd.noindex/credentials.json"
+    ],
+    "allowRead": [],
+    "allowWrite": [
+      "~/.abcd.noindex/worktrees/<root-sha>/probe-lane",
+      "<checkout>/.abcd/.work.local/run/<run-id>/lane-1",
+      "<checkout>/.git/objects",
+      "<checkout>/.git/worktrees/probe-lane",
+      "<checkout>/.git/refs/heads/build",
+      "<checkout>/.git/logs/refs/heads/build",
+      "<run>/gopath", "<run>/gocache", "<run>/gomodcache", "<run>/tmp",
+      "<run>/claude-config", "<run>/xdg-data", "<run>/xdg-state", "<run>/xdg-cache"
+    ],
+    "denyWrite": [
+      "<checkout>/.git/worktrees/probe-lane/config.worktree",
+      "<checkout>/.git/worktrees/probe-lane/gitdir",
+      "<checkout>/.git/worktrees/probe-lane/commondir"
+    ]
+  }
+}
+```
+
+**The environment.** Each launch started from an empty environment (`env -i`), as the runner's scrubbed one is, with `HOME`, `USER`, `PATH` and `LANG`; `TMPDIR`, `GOTMPDIR` and `CLAUDE_CODE_TMPDIR` set to `<run>/tmp`; `GOPATH`, `GOCACHE` and `GOMODCACHE` set to the run's folders; `GOPROXY=file://~/go/pkg/mod/cache/download,https://proxy.golang.org,direct`; `CLAUDE_CONFIG_DIR` and the three `XDG_*` folders set to the run's; `GIT_TERMINAL_PROMPT=0`; and the seal as `GIT_CONFIG_COUNT=3` with `gc.auto=0`, `maintenance.auto=false` and `commit.gpgsign=false`. `GOFLAGS=-p=4` kept the cold build's share of a machine running three other preflights small; it is not part of the policy.
+
+**Trial launch.** The spec's trial (step 5): the write inside `<run>/tmp` landed, and the write outside was refused, `Operation not permitted`, and was not on disk afterwards. `sh` exits 1 at the refused redirection, so the trial is judged from outside, by the two files, as step 5 says, and not by its exit status.
+
+| Probe | What ran inside the fence | Outcome |
+|---|---|---|
+| 1. Build and test | `go build ./...` with every cache empty | Passed in 16 s. 75 modules came from the person's cache through the file proxy, with no network. |
+| | `go test ./internal/fsutil/` | Passed. |
+| | `go get rsc.io/quote/v4@v4.0.1` in a scratch module, a module not in the person's cache | **Failed**: `tls: failed to verify certificate: x509: OSStatus -26276`. Go asks the system's trust service, which the fence closes. |
+| | `go get github.com/google/go-cmp@v0.7.0`, in the person's cache but not in the scratch `go.sum` | **Failed** at verification: Go asked the checksum database through `https://proxy.golang.org/sumdb/sum.golang.org/supported`, with the same TLS error. |
+| | both again with `SSL_CERT_FILE=/etc/ssl/cert.pem` | Passed. The checksum database's cache was written to `<run>/gopath/pkg/sumdb/sum.golang.org/`, under the run's `GOPATH` as the spec expects. Whether `sum.golang.org` is dialled directly, or only through the proxy, was not measured. |
+| 2. Commit | `git add` and `git commit` in the lane, through the repository's own hooks (`core.hooksPath` names the main checkout's `.githooks`) | Committed, exit 0. `pre-commit`, `prepare-commit-msg` and `commit-msg` all ran inside the fence, and `commit-msg` built abcd with the run's caches. The commit's objects, the lane branch and its reflog landed in `<checkout>/.git`. The seal read back as `gc.auto=0`, `maintenance.auto=false`, `commit.gpgsign=false`. Each commit also printed `error: Unable to create '<checkout>/.git/packed-refs.lock': Operation not permitted`, from git's own ref update, without failing. |
+| | writes to `.git/hooks/`, `.git/config`, `.git/packed-refs`, `.git/HEAD`, the lane's `config.worktree` (create), `gitdir` and `commondir`, and the main checkout's `.githooks/pre-commit` | All refused, `Operation not permitted`. Their checksums matched before and after. |
+| | `git config --local srtprobe.x 1` | Refused: `could not lock config file <checkout>/.git/config: Operation not permitted`. |
+| | `git update-ref refs/heads/srt-probe-outside HEAD` | Refused: the ref's lock file could not be created. |
+| | `git update-ref refs/heads/build/srt-probe-other HEAD` | **Allowed**, as the spec expects: the folder grant covers every lane's branch, and only the ref check after the launch (step 9) catches it. |
+| | write to the lane's receipt folder; open the run's `state.json` for writing | Receipt written; `state.json` refused. |
+| 3. Credentials | `git credential-osxkeychain get` for github.com | `failed to get: -128`, the same as outside in this session: the item needs a prompt nobody can answer. Nothing returned. |
+| | `git credential fill` for github.com (helper: `gh auth git-credential`) | Nothing returned: `gh` could not start, `open ~/.config/gh/config.yml: operation not permitted`. |
+| | `gh auth status` | Same refusal; `gh` does not start. |
+| | `security find-generic-password -s gh:github.com -w`, counting the bytes only | **The keychain answered**: 75 bytes, the same as outside. The GitHub token gh keeps in the login keychain was readable inside the fence. |
+| | the same, with `~/Library/Keychains` added to `denyRead` | Not found (exit 44), 0 bytes. |
+| | `ssh-add -l` with the person's `SSH_AUTH_SOCK` | Refused: `Error connecting to agent: Operation not permitted`. |
+| 4. Outside writes | create `~/probe-outside`, `~/.ssh/x`, `~/.abcd.noindex/trusted-roots.probe`, a file in another worktree, `~/.claude/agents/srt-probe.md`; open `~/.abcd.noindex/config.json` and `~/.claude.json` for writing; `touch`; `mkdir` | All refused, and none was on disk afterwards; `config.json` and `~/.claude.json` matched their checksums before and after. |
+| | reads of `~/.ssh/known_hosts`, `~/.config/gh`, `~/.docker/config.json`; and of `~/.claude.json`, which is not denied | The three denied reads were refused; `~/.claude.json` was read. |
+| | how srt reports a refusal | srt adds nothing to stderr, with or without `--debug`. The only report is the program's own: `<program>: <path>: Operation not permitted`. The kernel logs `Sandbox: <program>(<pid>) deny(1) file-write-create <path>` with srt's tag `CMD64_<command in base64>_END_<session>_SBX` to the unified log: a `log stream` running during the launch sees it, and a later `log show` does not. |
+| 5. Process table | `ps -A`, `ps -p 1`, `pgrep -f 'make preflight'`, `sysctl -n vm.loadavg` | `/bin/ps` cannot be started (`Operation not permitted`, exit 126); `pgrep` found 0 of the 9 preflight processes visible outside; the `sysctl` command was refused. Outside, `ps -A` counted 1444 processes. |
+| | `go run ./cmd/abcd implement load --site preflight` | `LOAD CHECK UNAVAILABLE (preflight): could not read the process table (/bin/ps: fork/exec /bin/ps: operation not permitted); carrying on without checking for stray programs`. The load average was still read (13.9 on 16 cores). |
+| | `go run ./cmd/abcd implement load --wait --timeout 20s -- /usr/bin/true` | Refused, exit 1: `the hold could not be judged or written: openat .load-wait.lock: operation not permitted`. Today's waiter does not open inside the fence. |
+| 6. Harnesses | `claude --version` and `opencode --version`, with fresh `CLAUDE_CONFIG_DIR` and `XDG_*` folders; then again with the keychain denied | Both started and printed their version under both settings, with nothing refused. opencode made `opencode/repos` and `opencode/log` in the data folder, `opencode` in the state folder and `opencode/bin` in the cache folder. No agent session ran and no model was used. |
+
+**What this changes in the spec.**
+
+- The read denies gain `~/Library/Keychains` on macOS (Reads; step 3's tests).
+- On macOS the launch sets `SSL_CERT_FILE` to the system's certificate file, so `go` can fetch and verify modules without srt's weaker trust-service option (Known limits; step 7's tests).
+- The Known limits now state how srt reports a refusal on macOS, the `packed-refs.lock` line each commit prints, and what the keychain and the ssh agent answered.
+- The checks that read the machine: on macOS a fenced command sees no processes at all rather than only its own, and today's waiter already refuses rather than opening. The conclusion, that the gate is read outside, is unchanged.
+
+**Not yet probed.** The Linux half, all of it. `claude --print --bare` and `opencode run` as real sessions, with the person's `~/.claude` and `~/.claude.json` read-only, and opencode's seeded cache, read-only credential link and refreshing sign-in. `go test ./...` over the whole module (only `./internal/fsutil/` ran). A `GOPRIVATE` module. A commit without the gc seal, and one with `commit.gpgsign` on (the person's git does not sign). The hard link from the worktree to a file outside it. SIGTERM cleanup. A prompt carrying shell metacharacters.
