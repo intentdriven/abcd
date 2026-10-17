@@ -125,3 +125,33 @@ func TestApproveJudgesAGlobRemovalsDirectoryThroughSymlinks(t *testing.T) {
 		{`touch build/x && rm -rf build/*`, unfixed},
 	})
 }
+
+// TestApproveRefusesAGlobWithAWildcardInADirectoryPart: a glob whose wildcard
+// stands in a directory part (build/*/*), or that ends in a /, matches names
+// in directories the line never names, and any of them may be a symlink out
+// of the working tree, so the shell would expand it into the link's target.
+// Such a removal is refused as a target the line does not fix; a glob whose
+// wildcards stand only in its last name stays approved.
+func TestApproveRefusesAGlobWithAWildcardInADirectoryPart(t *testing.T) {
+	r, _ := gitRig(t)
+	outside := filepath.Join(r.home, "Library")
+	for _, d := range []string{filepath.Join(r.dir, "build", "obj"), outside} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(outside, filepath.Join(r.dir, "build", "l")); err != nil {
+		t.Fatal(err)
+	}
+	unfixed := refusedAs(unfixedPathEntryID)
+	r.run(t, []approveCase{
+		{`rm -rf build/*`, nil},
+		{`rm -f build/obj/*.o`, nil},
+		{`rm -rf build/*/*`, unfixed},
+		{`rm -rf ./build/*/*`, unfixed},
+		{`rm -f build/*/x.o`, unfixed},
+		{`rm -rf build/*/`, unfixed},
+		{`rm -rf build/o?j/*`, unfixed},
+		{`cd build && rm -rf */*`, unfixed},
+	})
+}

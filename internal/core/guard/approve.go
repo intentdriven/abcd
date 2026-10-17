@@ -290,8 +290,12 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 					// unless a protected name could match it: its directory
 					// judged where it leads, through symlinks, and only when
 					// no earlier part of the line writes or removes a file,
-					// which could make that directory a link first.
-					if wroteBefore || !facts.withinResolved(u.path, facts.tree, true) {
+					// which could make that directory a link first. A
+					// pattern holding a / (a wildcard in a directory part,
+					// build/*/*, or a trailing /) lists directories the line
+					// never names, any of which may be a link out of the
+					// tree, so it is refused too.
+					if wroteBefore || strings.Contains(u.glob, "/") || !facts.withinResolved(u.path, facts.tree, true) {
 						return unfixedRefusal(pathUse{remove: true, written: u.written})
 					}
 					if name, ok := facts.globReaches(u); ok {
