@@ -50,7 +50,7 @@ Eighteen agent prompts ship in `agents/` today, in five groups:
 - **The question drafter**, `question-drafter`, which the agent running one of
   abcd's interviews dispatches to draft each question to the asking rules and
   the rows limit; no verb dispatches it
-  ([`04-surfaces/README.md`](../04-surfaces/README.md#agents-no-verb-dispatches)).
+  ([`04-surfaces/README.md`](../04-surfaces/README.md#agents-outside-the-verb-chapters)).
 
 Fourteen of them return JSON, and the schemas are the core's rather than the
 prompt's. The four repo-workflow reviewer and researcher prompts declare no JSON
