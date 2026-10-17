@@ -485,12 +485,19 @@ default, the request above is the host's. When the person's own layer routes
 `roles.drain-judge.runner` to the claude runner, the move that writes the host's
 request also writes the runner a brief of its own, the same question over the
 same quoted record with an answer shape that carries no digest, and starts the
-runner on it through the dispatch every routed role takes, granted Read and
-Write alone and bounded at fifteen minutes. The judge runs in a directory of its
-own: a new one private to the account, outside every working tree, holding its
-brief and its answer alone and removed once the answer is read, with the
-checkout named to the runner only as the place whose programs are never run.
-It can write nothing the drain, the lane or a peer relies on. A routed judge's
+runner on it through the dispatch every routed role takes, bounded at fifteen
+minutes. The judge runs in a directory of its own: a new one private to the
+account, outside every working tree, holding its brief and its answer alone and
+removed once the answer is read. The drain judge may read and write only its
+own directory: its grants are built from that directory's real path, reading
+that directory (`Read(//<dir>/**)`) and writing its answer file there
+(`Edit(//<dir>/drain-judgement.json)`, the rule a write is judged by), and it is
+refused reading and writing anywhere in the checkout (`Read(//<checkout>/**)`
+and `Edit(//<checkout>/**)` as deny rules, which the harness judges before any
+grant). The runner's `dontAsk` mode refuses whatever no grant names, so no
+tool is granted on every path, and the checkout is otherwise named to the
+runner only as the place whose programs are never run. It can read nothing
+outside its directory and write nothing the drain, the lane or a peer relies on. A routed judge's
 answer steers an unattended lane, so its no is a judgement on text a stranger
 may have written. A route of the judge to opencode is skipped with a diagnostic
 and the judge stays on the host, since opencode runs under its own

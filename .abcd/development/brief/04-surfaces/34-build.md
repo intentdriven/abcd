@@ -472,7 +472,9 @@ stage before anything is created or launched, and its diagnostics (a role no
 agent answers to, a repository route to a runner) go to stderr. When a stage hands the lane to a role that is
 routed to a runner, the step verb starts the runner itself, outside the run's
 lock, in the lane's worktree, with the brief and the receipt path the host would
-be handed, the claude runner with the role's tools granted without a prompt and
+be handed, the claude runner with the role's tools granted without a prompt,
+any tool the role is refused outright in its deny list, and everything else
+refused rather than asked, and
 opencode under the permissions its own configuration sets; the runner's
 transcript lands in abcd's history store, keyed on the repository's root
 commit, and its receipt is handed back through the same receipt verb and

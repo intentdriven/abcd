@@ -30,11 +30,13 @@ package loop
 //
 // The judge runs in a directory of its own (judgeDir): a new private
 // directory outside every working tree, holding the brief and, once it
-// answers, its answer, and removed when the move has read it. The checkout is
-// named to the runner only as the place whose programs are never run, never
-// as a directory it may write: the answer steers an unattended lane, and the
-// brief quotes a record a stranger may have written, so the judge decides from
-// the brief alone and can change nothing the drain or a peer relies on.
+// answers, its answer, and removed when the move has read it. The judge may
+// read only that directory and write only its answer file there, and is
+// refused reading or writing anywhere in the checkout (drainJudgeGrants); the
+// checkout is otherwise named to the runner only as the place whose programs
+// are never run: the answer steers an unattended lane, and the brief quotes a
+// record a stranger may have written, so the judge decides from the brief
+// alone and can change nothing the drain or a peer relies on.
 
 import (
 	"context"
@@ -76,9 +78,37 @@ const maxJudgeFallbacks = 32
 // the reservation the drain took to ask it.
 const drainJudgeTimeout = 15 * time.Minute
 
-// drainJudgeTools are the tools the routed judge is granted: it reads its
-// brief and writes its answer, and judges from the brief alone.
-var drainJudgeTools = []string{"Read", "Write"}
+// drainJudgeGrants are the tools the routed judge is granted and refused,
+// built from its own directory dir and the checkout: it may read only dir and
+// write only its answer file there, and it is refused both reading and
+// writing anywhere in the checkout. Each rule names its real absolute path in
+// the harness's permission-rule form (`//` anchors at the filesystem root),
+// and a grant matches only where the path asked and the file it resolves to
+// both match, so dir is named by its real path (judgeDir). A harness that
+// edits files judges a write against the Edit rules, so the answer's grant is
+// Edit's; under dontAsk anything no grant names is refused, not asked, and a
+// refusal is judged before any grant.
+func drainJudgeGrants(dir, checkout string) (granted, denied []string) {
+	granted = []string{"Read(" + absPathRule(dir) + "/**)", "Edit(" + absPathRule(filepath.Join(dir, drainJudgeAnswerName)) + ")"}
+	c := absPathRule(checkout)
+	denied = []string{"Read(" + c + "/**)", "Edit(" + c + "/**)"}
+	return granted, denied
+}
+
+// absPathRule is the absolute path p as a permission rule names it: `//`
+// before the path, and every character the rule's pattern syntax (gitignore's)
+// reads as a wildcard or an escape escaped, so the rule matches p alone.
+func absPathRule(p string) string {
+	var b strings.Builder
+	b.WriteString("/")
+	for _, r := range filepath.ToSlash(p) {
+		if strings.ContainsRune(`\*?[]`, r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
 
 // RoutedJudgementAnswer is the routed judge's answer, read strictly: the
 // host's shape less the digest, which abcd computes itself.
@@ -134,15 +164,18 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	if timeout == 0 {
 		timeout = drainJudgeTimeout
 	}
-	// The runner runs in the judge's directory, and the checkout is named
+	// The runner runs in the judge's directory, may read only that and write
+	// only its answer, and is refused the checkout, which is named otherwise
 	// only as the place whose programs are never run.
+	granted, denied := drainJudgeGrants(dir, fsutil.RealExistingPath(filepath.Clean(repoRoot)))
 	req := runner.Request{
 		Role:      RoleDrainJudge,
 		Brief:     routed.Request,
 		Receipt:   routed.Answer,
 		Dir:       dir,
 		Checkout:  filepath.Clean(repoRoot),
-		Tools:     append([]string(nil), drainJudgeTools...),
+		Tools:     granted,
+		Denied:    denied,
 		SessionID: fmt.Sprintf("%s-%s-%d", RoleDrainJudge, iss.ID, now.Unix()),
 		Timeout:   timeout,
 	}
@@ -216,7 +249,10 @@ func judgeStopped(issue string) error {
 // judgeDir makes the routed judge's directory: a new one, private to this
 // account (os.MkdirTemp makes it 0700), in the system's temporary directory, and refused, removed
 // again, when that lies inside the checkout, so the judge's directory is
-// never a part of the working tree the drain and its peers read.
+// never a part of the working tree the drain and its peers read. It returns
+// the directory's real path, every symbolic link resolved (the system's
+// temporary directory is reached through one on macOS), since the judge's
+// grants name that path and a grant holds only where the real path matches.
 func judgeDir(repoRoot string) (string, error) {
 	dir, err := os.MkdirTemp("", "abcd-drain-judge-")
 	if err != nil {
@@ -227,7 +263,7 @@ func judgeDir(repoRoot string) (string, error) {
 		_ = os.RemoveAll(dir)
 		return "", errors.New("the system's temporary directory lies inside the checkout, and the judge runs only in a directory outside it")
 	}
-	return dir, nil
+	return real, nil
 }
 
 // readRoutedAnswer reads the routed judge's answer to j, strictly, fills in

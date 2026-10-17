@@ -207,8 +207,13 @@ what it did in `next`:
   validated as yours would be: the routed answer carries no `remedy_sha256`,
   which abcd computes itself, and no `--judgement` is given. The judge runs in
   a directory of its own, a new private one outside every working tree that
-  holds its brief and its answer alone and is removed once the answer is read,
-  granted Read and Write alone, so it can change nothing in the checkout. A
+  holds its brief and its answer alone and is removed once the answer is read.
+  The drain judge may read and write only its own directory: it is granted
+  reading that directory and writing its answer file there, each named by its
+  real absolute path, and nothing else, and it is refused reading or writing
+  anywhere in the checkout. Under the runner's `dontAsk` mode anything it is
+  not granted is refused rather than asked, so it can read nothing outside its
+  directory and change nothing in the checkout. A
   routed judge's answer steers an unattended lane, so its `no` is a judgement
   on text a stranger may have written. A route to `opencode` is skipped with a
   diagnostic and the judge stays on the host: opencode runs under its own

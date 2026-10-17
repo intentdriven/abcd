@@ -181,7 +181,9 @@ review is skipped.
   implementer, the drain's judge, `drain-judge`, takes the same route
   ([`35-drain.md`](../04-surfaces/35-drain.md#the-judgement-before-a-lane-opens)),
   to the claude runner alone, in a private directory of its own outside every
-  working tree.
+  working tree, granted reading that directory and writing its answer file
+  there alone and refused the checkout, each rule naming its real absolute
+  path.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the

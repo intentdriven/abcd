@@ -312,3 +312,40 @@ func TestTheDrainKeepsTheLatestJudgeFallbacksAlone(t *testing.T) {
 		t.Fatalf("the oldest are dropped and the latest kept last: %s .. %s", first, last)
 	}
 }
+
+// TestTheRoutedJudgeMayReadAndWriteOnlyItsOwnDirectory: the routed judge is
+// granted the read of its own directory and the write of its answer file
+// alone, each by its real absolute path in the harness's permission-rule form,
+// and refused both over the checkout; no tool is granted on every path.
+func TestTheRoutedJudgeMayReadAndWriteOnlyItsOwnDirectory(t *testing.T) {
+	repo := issueRepo(t)
+	e := judgeEnv(t, "judge-no")
+	if _, err := Drain(repo.Root(), Options{Runners: runnerConfig(t, judgeRoutedConfig, "")}, DrainOptions{Transcripts: &memTranscripts{}}); err != nil {
+		t.Fatal(err)
+	}
+	dir := fsutil.RealExistingPath(readJudgeDir(t, e).Cwd)
+	checkout := fsutil.RealExistingPath(repo.Root())
+	var allowed, denied []string
+	for _, a := range e.argv(t, "claude") {
+		if v, ok := strings.CutPrefix(a, "--allowedTools="); ok {
+			allowed = append(allowed, v)
+		}
+		if v, ok := strings.CutPrefix(a, "--disallowedTools="); ok {
+			denied = append(denied, v)
+		}
+	}
+	if want := "Read(/" + dir + "/**),Edit(/" + filepath.Join(dir, drainJudgeAnswerName) + ")"; !slices.Equal(allowed, []string{want}) {
+		t.Fatalf("the judge is granted its own directory alone:\n got %q\nwant %q", allowed, want)
+	}
+	if want := "Read(/" + checkout + "/**),Edit(/" + checkout + "/**)"; !slices.Equal(denied, []string{want}) {
+		t.Fatalf("the judge is refused the checkout:\n got %q\nwant %q", denied, want)
+	}
+}
+
+// TestAJudgePathIsWrittenAsALiteralRule: a character the rule's pattern
+// syntax reads as a wildcard is escaped, so a rule names its path alone.
+func TestAJudgePathIsWrittenAsALiteralRule(t *testing.T) {
+	if got := absPathRule(`/tmp/a*b/c?[d]\e`); got != `//tmp/a\*b/c\?\[d\]\\e` {
+		t.Fatalf("absPathRule = %q", got)
+	}
+}
