@@ -499,12 +499,15 @@ board and the version flag only report what is installed.
 ## The board itself is not built
 
 > **Design target (itd-20, `intents/superseded/`, superseded by itd-121, `spec_id: null`).** Everything in
-> the rest of this chapter describes a board that does not exist on any shipped
-> surface. The shipped status path reads `.git`, `.abcd/development` and the
-> three work tiers, and nothing else: no visibility, no disembark log, no
-> dev-sync record, no logbook, no linked intents, no spec store, and no
-> thresholds, walks or timeouts. There is no alias routing either: `status` and
-> `help` route to no render.
+> the rest of this chapter describes a six-section board that does not exist on
+> any shipped surface. The shipped board is the one
+> [What ships today](#what-ships-today) describes, and it reads none of this
+> design's own sources: no repo visibility, no disembark log, no dev-sync record
+> and no logbook, so no logbook walk either. Its intents and specs come from the
+> status block's readiness read, not from an active-intents section with a
+> spec-store timeout, and its one threshold is the reviews block's twenty
+> commits. There is no alias routing either: `status` is refused and `help`
+> prints the verb list, and neither routes to the board.
 
 The board renders exactly six sections, always in this order, each source a
 local-filesystem read, and each source's absence mapping to a named known-state
