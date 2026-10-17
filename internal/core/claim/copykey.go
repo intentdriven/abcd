@@ -93,3 +93,11 @@ func copyKey(root string) (string, error) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// CopyKey is this working copy's key, minted when none is kept yet, as a
+// reservation verb mints it: a drain reads it to draw its own order.
+func CopyKey(root string) (string, error) { return copyKey(root) }
+
+// OwnCopyKey is this working copy's key when one is kept, read without
+// minting one; "" otherwise. A read that writes nothing (a dry run) reads it.
+func OwnCopyKey(root string) string { return ownCopyKey(root) }

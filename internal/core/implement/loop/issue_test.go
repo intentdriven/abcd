@@ -3,6 +3,7 @@ package loop
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -171,6 +172,68 @@ func TestAnIssueKeyIsRefusedUnlessItsShapeAndTheRuleAdmitIt(t *testing.T) {
 		t.Fatalf("an unknown issue is refused: %+v", r)
 	}
 	runTierAbsent(t, repo.Root())
+}
+
+// TestAPersonsOwnBuildTakesAPromotedIssueNamingTheIntent is the lane route for
+// an issue linked to an intent (dcn-2610161040365515: a person's own `abcd
+// build` is let through a hand-back, with a note): the drain hands the issue
+// back as promoted, and a person's `abcd build <iss-N>` starts its run, the
+// eligible row naming the intent the issue goes through. An after-merge
+// audit's owed check reaches a lane this way (ruling DQ1a). A hand-back of
+// any other rule is still refused.
+func TestAPersonsOwnBuildTakesAPromotedIssueNamingTheIntent(t *testing.T) {
+	const promotedIssue = "iss-2609300000000104"
+	repo := briefRepo(t, agentsMarked)
+	issueRepoRule(t, repo)
+	if _, err := capture.Capture(capture.CaptureRequest{RepoRoot: repo.Root(), Text: "The audit of itd-2609300000000201 could not decide ac-1",
+		Severity: capture.SeverityMinor, Category: capture.Category("inconsistency"), Source: "agent-finding", Slug: "owed",
+		FoundDuring: "abcd intent audit ingest", ForceID: promotedIssue, Remedy: "re-run the audit",
+		RelatedIntents: []string{"itd-2609300000000201"}}); err != nil {
+		t.Fatal(err)
+	}
+	fileIssue(t, repo, majorIssue, capture.SeverityMajor, capture.Category("bug"), "A remedy for a major one.")
+	repo.Commit("the ledger")
+
+	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repo.Root()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	i := slices.IndexFunc(plan.Dispositions, func(v capture.DrainVerdict) bool { return v.ID == promotedIssue })
+	if i < 0 || plan.Dispositions[i].Outcome != capture.DrainHandBack || plan.Dispositions[i].Rule != capture.RulePromoted {
+		t.Fatalf("the drain hands the issue back as promoted: %+v", plan.Dispositions)
+	}
+
+	start, err := Start(repo.Root(), promotedIssue, Options{})
+	if err != nil {
+		t.Fatalf("a person's own build of a promoted issue starts: %v", err)
+	}
+	var row *CheckRow
+	for j := range start.Checks {
+		if start.Checks[j].Name == CheckEligible {
+			row = &start.Checks[j]
+		}
+	}
+	if row == nil || !row.OK {
+		t.Fatalf("the eligible row passes: %+v", start.Checks)
+	}
+	for _, want := range []string{"itd-2609300000000201", "promoted", "a drain hands it back", "`abcd intent audit itd-2609300000000201`"} {
+		if !strings.Contains(row.Detail, want) {
+			t.Errorf("the eligible row's note %q does not name %q", row.Detail, want)
+		}
+	}
+	st, err := ReadState(repo.Root(), start.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Key != promotedIssue || len(st.Lanes) != 1 {
+		t.Fatalf("one lane for the promoted issue: %+v", st)
+	}
+
+	// Only promoted is let through: a severity hand-back is still refused.
+	_, err = Start(repo.Root(), majorIssue, Options{})
+	if r := mustRefusal(t, err); r.Check != CheckEligible || !strings.Contains(r.Reason, "severity major") {
+		t.Fatalf("a major issue is still refused by the drain rule: %+v", r)
+	}
 }
 
 // issueAwaiting drives a run for the eligible issue to its implement await.
@@ -377,5 +440,65 @@ func TestAPaddedIssueIdIsNoIssueKey(t *testing.T) {
 		if !validIssueKey(key) {
 			t.Errorf("%q is an issue key", key)
 		}
+	}
+}
+
+// TestAPersonsBuildTakesAPromotedIssueOnlyWhenNothingElseHoldsIt: a person's
+// own build gets past the promoted hand-back only when promoted is the only
+// reason the issue would be handed back (refining dcn-2610161428244461). A
+// security-category or major issue that also names an intent is refused with
+// the reason the drain rule gives with promoted set aside, exactly as before
+// the promoted rule existed; the drain itself still hands both back as
+// promoted.
+func TestAPersonsBuildTakesAPromotedIssueOnlyWhenNothingElseHoldsIt(t *testing.T) {
+	const (
+		securityIssue = "iss-2609300000000105"
+		majorLinked   = "iss-2609300000000106"
+		intentID      = "itd-2609300000000201"
+	)
+	repo := briefRepo(t, agentsMarked)
+	issueRepoRule(t, repo)
+	for _, c := range []struct {
+		id  string
+		sev capture.Severity
+		cat capture.Category
+	}{
+		{securityIssue, capture.SeverityMinor, capture.Category(drainrule.SecurityCategory)},
+		{majorLinked, capture.SeverityMajor, capture.Category("bug")},
+	} {
+		if _, err := capture.Capture(capture.CaptureRequest{RepoRoot: repo.Root(), Text: "A finding linked to " + intentID + " (" + c.id + ")",
+			Severity: c.sev, Category: c.cat, Source: "manual-test", Slug: "linked", FoundDuring: "the loop's tests",
+			ForceID: c.id, Remedy: issueRemedy, RelatedIntents: []string{intentID}}); err != nil {
+			t.Fatalf("capture %s: %v", c.id, err)
+		}
+	}
+	repo.Commit("the ledger")
+
+	plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repo.Root()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{securityIssue, majorLinked} {
+		i := slices.IndexFunc(plan.Dispositions, func(v capture.DrainVerdict) bool { return v.ID == id })
+		if i < 0 || plan.Dispositions[i].Outcome != capture.DrainHandBack || plan.Dispositions[i].Rule != capture.RulePromoted {
+			t.Fatalf("the drain still hands %s back as promoted: %+v", id, plan.Dispositions)
+		}
+	}
+
+	for _, c := range []struct{ name, id, rule, reason string }{
+		{"security", securityIssue, "(security)", "category security is always a person's"},
+		{"severity", majorLinked, "(severity)", "severity major"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			_, err := Start(repo.Root(), c.id, Options{})
+			r := mustRefusal(t, err)
+			if r.Check != CheckEligible || !strings.Contains(r.Reason, c.rule) || !strings.Contains(r.Reason, c.reason) {
+				t.Errorf("%s is refused with its %s reason, not let through as promoted: %+v", c.id, c.rule, r)
+			}
+			if strings.Contains(r.Reason, "promoted") {
+				t.Errorf("%s's refusal names promoted, not the rule that holds it: %+v", c.id, r)
+			}
+			runTierAbsent(t, repo.Root())
+		})
 	}
 }

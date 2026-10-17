@@ -35,8 +35,20 @@ type Repo struct {
 // than failing it: the fixture's subject is abcd's behaviour, not git's presence.
 func NewRepo(t *testing.T) *Repo {
 	t.Helper()
+	return NewRepoFormat(t, "")
+}
+
+// NewRepoFormat is NewRepo with git's object format named ("sha1" or
+// "sha256"; "" is git's default), for a test whose subject is how abcd reads
+// and measures an object name of the longer form.
+func NewRepoFormat(t *testing.T, format string) *Repo {
+	t.Helper()
 	r := &Repo{t: t, root: t.TempDir(), env: Env(t)}
-	init := exec.Command("git", "-C", r.root, "init", "--initial-branch=main")
+	args := []string{"-C", r.root, "init", "--initial-branch=main"}
+	if format != "" {
+		args = append(args, "--object-format="+format)
+	}
+	init := exec.Command("git", args...)
 	init.Env = r.env
 	if out, err := init.CombinedOutput(); err != nil {
 		t.Skipf("git init unavailable: %v (%s)", err, out)
@@ -158,8 +170,18 @@ func (r *Repo) AddSubmodule(rel string) (gitDir string) {
 // git init --bare.
 func InitBare(t *testing.T, path string) {
 	t.Helper()
+	InitBareFormat(t, path, "")
+}
+
+// InitBareFormat is InitBare with git's object format named (NewRepoFormat).
+func InitBareFormat(t *testing.T, path, format string) {
+	t.Helper()
 	env := Env(t)
-	cmd := exec.Command("git", "init", "-q", "--bare", "--initial-branch=main", path)
+	args := []string{"init", "-q", "--bare", "--initial-branch=main"}
+	if format != "" {
+		args = append(args, "--object-format="+format)
+	}
+	cmd := exec.Command("git", append(args, path)...)
 	cmd.Env = env
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git init --bare: %v (%s)", err, out)
