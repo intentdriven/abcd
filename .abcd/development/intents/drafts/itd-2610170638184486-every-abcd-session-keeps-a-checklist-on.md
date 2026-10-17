@@ -15,7 +15,7 @@ production_mode: hand-written
 
 ## Press Release
 
-> Every abcd session keeps a checklist on disk that says what it may decide, what it is waiting on and what it can do next, so an autonomous run never stalls and one stalled session never holds up the rest. Alice, a solo founder who is also the product thinker, leaves for the evening and tells their sessions to work on until 09:00. abcd records that as a mode with an owner and an end time, and each session's checklist carries it: Alice's design decisions that are signed off, the technical facilitator set to auto, the kinds of choice still raised with a person (security, performance, compatibility), the items waiting and on whom, the session's own promises ('when that pull request merges, do this'), and the work it owns, read from its claims, its pull requests and its branches. The checklist is repeated to the session at every start and after every compaction, so nothing that matters lives only in its context. A session that tries to stop while it has work it can do is handed the next item instead; when everything waits on something outside, it sets its next wake rather than going quiet. Work a session owns carries a lease like a claim, so when one session stops answering, another takes its items over and says so, and no lock, queue or release role waits on a silent session. In the morning Alice reads two short lists: the steps only their own hands can do, and the decisions taken while they were away, each with its grounds and how to reverse it.
+> Every abcd session keeps a checklist on disk that says what it may decide, what it is waiting on and what it can do next, so an autonomous run never stalls and one stalled session never holds up the rest. Alice, a solo founder who is also the product thinker, leaves for the evening and tells their sessions to work on until 09:00. abcd records that as a mode with an owner and an end time, and each session's checklist carries it: Alice's design decisions that are signed off, the technical facilitator set to auto, the kinds of choice still raised with a person (security, performance, compatibility), the items waiting and on whom, the session's own promises ('when that pull request merges, do this'), and the work it owns, read from its claims, its pull requests and its branches. The checklist is repeated to the session at every start and after every compaction, so nothing that matters lives only in its context. A session that tries to stop while it has work it can do is handed the next item instead; when everything waits on something outside, it sets its next wake rather than going quiet. Work a session owns carries a lease like a claim, so when one session stops answering, another takes its items over and says so, and no lock, queue or release role waits on a silent session. Before the run starts, while Alice is still there, the orchestrating session asks every session what could interrupt its part of the night (a design decision not yet made, a step only Alice's hands can do, work it depends on from another session, a credential it lacks) and puts the answers to Alice together; when every session reports none left, it tells Alice the run is likely to stay autonomous, and when some remain, it names them and what each would hold up. In the morning Alice reads two short lists: the steps only their own hands can do, and the decisions taken while they were away, each with its grounds and how to reverse it.
 
 ## Why This Matters
 
@@ -59,6 +59,17 @@ collected for their return; decisions taken while a person is away are listed fo
 them with grounds and how to reverse; a list cannot help a session that never
 runs, so stopping needs a check and waiting needs a timed wake; and a
 coordinator needs to see a stall.
+
+The product thinker added the next morning: before an autonomous run starts, or
+as it starts, every session raises what may interrupt it and reports to the
+orchestrating session, so the obvious blockers are raised while the product
+thinker and the technical facilitator are still present. The orchestrator asks
+every session for this, takes the answers to them together, and once every
+session reports nothing left it tells them the run is likely to stay
+autonomous. On the night of 2026-10-16 every blocker that later stopped work
+was already known at 20:48, while the product thinker was still at the
+terminal: the two GitHub Apps and their secrets, and the question about an
+unowned pull request.
 
 ## Mechanism
 
