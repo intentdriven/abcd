@@ -49,7 +49,21 @@ type reserveOutput struct {
 	// it would otherwise have marked.
 	HandBackKept        *reserveHandedBack `json:"hand_back_kept,omitempty"`
 	HandBackUnpublished string             `json:"hand_back_unpublished,omitempty"`
-	note                string
+	// OwnOverlap is each path the reservation shares with the person's own
+	// from another copy, which it was made over; the text form warns of each
+	// on stderr. GeneratedUnread is why no generated file was recognised.
+	OwnOverlap      []reserveOwnOverlap `json:"own_overlap,omitempty"`
+	GeneratedUnread string              `json:"generated_unread,omitempty"`
+	note            string
+	warnings        []string
+}
+
+// reserveOwnOverlap is a path shared with one's own reservation from another
+// copy.
+type reserveOwnOverlap struct {
+	Path            string `json:"path"`
+	Record          string `json:"record"`
+	EffectiveExpiry string `json:"effective_expiry"`
 }
 
 // reserveHandedBack is the hand-back a person's own reservation was made over.
@@ -120,6 +134,13 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"the issue, nor takes over or renews your reservation over it. A release whose\n" +
 			"tombstone cannot mark the hand-back is still made, plain, and says why\n" +
 			"(hand_back_unpublished in --json).\n\n" +
+			"A footprint sharing a path with another person's live reservation backs off\n" +
+			"(exit 3). A file that origin's default branch, as last fetched, declares\n" +
+			"linguist-generated in its root .gitattributes is shared, never an overlap; a\n" +
+			"directory never is. When that declaration cannot be read nothing is shared, and\n" +
+			"the act says why (generated_unread in --json). Your own reservation sharing a\n" +
+			"path with yours from another copy is made, and warns on stderr (own_overlap in\n" +
+			"--json).\n\n" +
 			"The holder is your GitHub username, from the first of these that names it:\n" +
 			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
 			"in the machine configuration (the repository's own configuration is never read\n" +
@@ -193,7 +214,15 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 				return reserveRefusal(err)
 			}
 			out := reserveView(res)
-			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderReserve(w, out) })
+			if err := render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderReserve(w, out) }); err != nil {
+				return err
+			}
+			if !*asJSON {
+				for _, line := range out.warnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "abcd reserve: warning: %s\n", line)
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringArrayVar(&footprint, "footprint", nil, "a repository-relative path the work will change; repeat once per path (never split on commas)")
@@ -265,6 +294,12 @@ func reserveView(res claim.Result) reserveOutput {
 		out.note = termsafe.Sanitize(h.KeptNote(res.Record))
 	}
 	out.HandBackUnpublished = termsafe.Sanitize(fsutil.RedactHome(res.HandBackUnpublished))
+	out.GeneratedUnread = termsafe.Sanitize(fsutil.RedactHome(res.GeneratedUnread))
+	for _, o := range res.OwnOverlap {
+		out.OwnOverlap = append(out.OwnOverlap, reserveOwnOverlap{Path: termsafe.Sanitize(o.Path), Record: termsafe.Sanitize(o.Record),
+			EffectiveExpiry: rfc3339(o.Expiry)})
+		out.warnings = append(out.warnings, o.Warning())
+	}
 	return out
 }
 
@@ -317,6 +352,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	}
 	if out.HandBackUnpublished != "" {
 		fmt.Fprintf(w, "  no hand-back: %s\n", out.HandBackUnpublished)
+	}
+	if out.GeneratedUnread != "" {
+		fmt.Fprintf(w, "  %s\n", claim.GeneratedUnreadLine(out.GeneratedUnread))
 	}
 }
 
