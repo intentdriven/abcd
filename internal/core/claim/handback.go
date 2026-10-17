@@ -17,7 +17,10 @@ package claim
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
+
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/peers"
@@ -107,7 +110,7 @@ func keptHandBack(p *prepared, j judged) (kept *tip, why string) {
 // bound each end the walk with nil. The error is a walk that could not be
 // read.
 func standingBelow(p *prepared, j judged) (*tip, error) {
-	line, err := firstParents(p.root, trackingName(p.id), j.Commit, keptWalk)
+	line, err := reservationLine(p.root, trackingName(p.id), j.Commit, keptWalk)
 	if err != nil {
 		return nil, err
 	}
@@ -154,9 +157,40 @@ func drainOverHandBack(p *prepared, j judged) error {
 		p.id, kept.Holder, kept.HandedBack, stamp(kept.ReleasedAt), Remote, nothingPushed)
 }
 
-// firstParent is commit's first parent, "" for a root commit.
+// reservationLine is the first-parent line below commit on a reservation
+// branch, as firstParents reads it, refused when a commit on it has more than
+// one parent. abcd writes every reservation commit with one parent, so a
+// branch holding a merge is not a line abcd wrote and cannot be judged: the
+// first-parent line of a merge need not hold what its other parents do.
+func reservationLine(root, ref, commit string, limit int) ([]string, error) {
+	out, err := storedGit(root, (limit+1)*4*(len(commit)+1)+1,
+		"rev-list", "--first-parent", "--parents", "--max-count="+strconv.Itoa(limit+1), commit, "--")
+	if err != nil {
+		return nil, fmt.Errorf("reading %s: %w", ref, err)
+	}
+	var line []string
+	for _, row := range strings.Split(strings.TrimSpace(out), "\n") {
+		f := strings.Fields(row)
+		if len(f) == 0 {
+			continue
+		}
+		for _, sha := range f {
+			if !gitutil.IsFullSHA(sha) {
+				return nil, fmt.Errorf("reading %s: git named a commit %s", ref, echo(sha))
+			}
+		}
+		if len(f) > 2 {
+			return nil, fmt.Errorf("reading %s: commit %s has more than one parent, and abcd writes none on a reservation branch", ref, f[0][:12])
+		}
+		line = append(line, f[0])
+	}
+	return line, nil
+}
+
+// firstParent is commit's first parent, "" for a root commit. A commit with
+// more than one parent is refused (reservationLine).
 func firstParent(root, commit string) (string, error) {
-	line, err := firstParents(root, commit, commit, 1)
+	line, err := reservationLine(root, commit, commit, 1)
 	if err != nil || len(line) < 2 {
 		return "", err
 	}
