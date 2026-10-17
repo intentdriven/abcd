@@ -1967,7 +1967,7 @@ abcd implement leave --session s-example
 
 Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.
 
-**Usage:** `abcd implement load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...] [flags]`
+**Usage:** `abcd implement load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>] [flags]`
 
 Read the machine's load averages and process table once and warn when a program
 outside the running work has used nearly all the CPU it could get for longer than
@@ -2040,9 +2040,50 @@ one when it first finds the machine free, and nothing more until it opens, and
 gives up after --timeout (30m0s by default), exiting 1 and naming what it
 was still waiting on. --json reports what it waited on and for how long.
 
+With --race-gate in place of --wait it waits at the race gate, which `make
+preflight` runs before its race stage. It takes no command after `--`: it gates
+the race stage that follows it, and a race run of your own goes through
+`--wait -- go test -race`. It is spelt without --wait because an
+older abcd reads any `implement load --wait` as a waiter at its first gate, and
+would count a preflight at its race gate as queued, not in its tests, so the two
+are refused together. At one preflight at a time, the default, it opens at once,
+without reading the machine, taking a hold or waiting a jitter, so a preflight's
+race stage follows its tests exactly as before. Above one it is shut only while
+another `go test -race` run is live, a race waiter is ahead of it (by the same
+rule) or running its command, the load is at the wait limit, or the race gate's
+own hold is in force (each gate is shut only by its own gate's hold). That keeps
+race stages apart among the preflights whose checkouts have the race gate: one
+at a time within an account, and across accounts all but a narrow window (a
+race waiter gone before its race run shows, or two waiters whose start and pid
+disagree after a pid wrap). An account at one opens its race gate at once
+whatever another account set, and a checkout older than the gate runs its race
+stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's
+waiter never queues
+behind a race waiter, and a preflight whose waiter is at its race gate is in its
+test stages. A waiter that has opened stands back only from a lower pid that
+opened in the same moment at its own gate, never from one at the other gate.
+
+How many preflights may be in their test stages at once is your own machine's
+setting: `load.preflights` in `~/.abcd.noindex/config.json`, or ABCD_LOAD_PREFLIGHTS in the
+environment, which wins, for a trial; a whole number from 1 to 2, 1 by default,
+and never read from a repository file, so a checkout cannot raise the machine's
+load. The most is 2 for a measured trial, and it rises once a measured trial
+supports more. At 1 both gates read as before the setting existed. Above 1 the
+first gate opens while fewer than that many other preflights or waiters running
+their command are in their test stages (a `--wait -- make preflight` counts
+once), a waiter queued ahead still shuts it, and a live race run does not shut
+it by itself; the load limit still does, and the race gate keeps race stages
+apart. A value it cannot use refuses the wait, naming where it was set. A
+`~/.abcd.noindex/config.json` that cannot be read for it (writable by others,
+not valid JSON, or a `load` that is not an object) is read past instead: one
+preflight at a time applies, and one line on stderr names the file, the cause
+and how to fix it; so does a key under `load` that nothing reads.
+
 Within one account the waiter that opens also takes a hold,
-`~/.abcd.noindex/load-wait.json`, and every other waiter of that account stays shut while
-it is in force; a hold taken by the waiter's own ancestor does not shut it.
+`~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at
+the race gate, and every other waiter of that account at the same gate stays
+shut while it is in force; a hold taken by the waiter's own ancestor does not
+shut it.
 Without a command the hold lasts 2m0s, long enough for the load average to show
 the work admitted. With a command after `--` (`abcd implement load --wait -- go
 test -race ./...`) the waiter runs it once the gate opens and exits with its exit code,
@@ -2052,13 +2093,19 @@ or 60 minutes pass, and a hold whose waiter has died, or whose pid now
 belongs to another process (a different start time), is reclaimed by the next
 waiter. A SIGINT or SIGTERM to the waiter is passed on to the command, and the
 waiter waits for it to exit, exits with its code and releases the hold. A
+command that is a race run (go, then `test` with -race) is gated as one for both
+gates: above one preflight at a time it stays shut while another race run is
+live, judges and takes the race gate's hold as well as its own, and from the
+moment it opens every race gate and every other such command counts it as a
+race run, so a second one waits for the first. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 **Flags:**
 
 ```
+      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
       --site string        where the check runs: preflight | eval-harness
-      --timeout duration   with --wait, give up after this long and exit 1 (default 30m0s)
+      --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 30m0s)
       --wait               wait until the load is below the wait limit and no other go test -race run is live
 ```
 

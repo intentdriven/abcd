@@ -641,7 +641,7 @@ func TestPreflightParallelism(t *testing.T) {
 	read := func() (machineload.Snapshot, error) {
 		return machineload.Snapshot{Load1: 28, HasLoad: true, Cores: 16}, nil
 	}
-	if got := PreflightParallelism(noEnv, read); got != 4 {
+	if got := PreflightParallelism(noEnv, read, 1); got != 4 {
 		t.Fatalf("-p at load 28 on 16 cores = %d, want 4", got)
 	}
 	ci := func(k string) string {
@@ -654,13 +654,13 @@ func TestPreflightParallelism(t *testing.T) {
 	got := PreflightParallelism(ci, func() (machineload.Snapshot, error) {
 		called = true
 		return read()
-	})
+	}, 1)
 	if called || got != runtime.GOMAXPROCS(0) {
 		t.Fatalf("on CI: -p %d (read %v), want go's default %d without reading the machine", got, called, runtime.GOMAXPROCS(0))
 	}
 	if got := PreflightParallelism(noEnv, func() (machineload.Snapshot, error) {
 		return machineload.Snapshot{}, machineload.ErrUnsupported
-	}); got != runtime.GOMAXPROCS(0) {
+	}, 1); got != runtime.GOMAXPROCS(0) {
 		t.Fatalf("on an unread machine: -p %d, want go's default %d", got, runtime.GOMAXPROCS(0))
 	}
 }
