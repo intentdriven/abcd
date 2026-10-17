@@ -206,6 +206,16 @@ A shell command is approved only when the guard reads it whole and clears it:
   reads the whole text, quotes and here-documents included, so a script that
   only quotes such a construct is refused too. `[ "$n" -gt 0 ]` and `test`
   compare numbers without evaluating them, and stay approved;
+- no text that bash reads as something other than what it shows
+  (`arithmetic-operand-unfixed` too): an alias, or alias expansion turned on
+  (`shopt -s expand_aliases`, `set -o posix`, `POSIXLY_CORRECT`); a `$'…'`
+  string that writes a byte by its code (`\x28`, `\050`); and a builtin
+  named above spelled with a quote or a backslash in its name (`"let"`,
+  `\let`). A backslash-newline is joined before any of this is read, as bash
+  joins it. These checks read the text as written, so they catch what an agent
+  types by mistake, not every way a line can be built to hide a command: the
+  approver is a mistake filter like the rest of the guard, and the boundary
+  for a launched agent is the OS sandbox, not the approver;
 - no code reaches an interpreter that the guard does not read
   (`inline-code-unread`): inline code for `python -c`, `node -e` or `-p`,
   `perl -e`, `ruby -e`, `php -r`, `osascript`, `lua` or `Rscript -e`,

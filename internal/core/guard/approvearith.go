@@ -46,17 +46,41 @@ var (
 	printfTarget = regexp.MustCompile(`(^|[\s;&|(){}` + "`" + `])(printf\s+(-[^v\s]\S*\s+)*-v|wait\s+(-[^p\s]\S*\s+)*-p)\s*(\S+)`)
 	// testNamed is `[ -v name ]` or `test -v name`, which reads a name.
 	testNamed = regexp.MustCompile(`(^|[\s;&|(){}` + "`" + `])(\[|test)\s[^;&|\n]*-v\s+(\S+)`)
-	// identifier is a name a builtin may be handed without an index.
-	identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-	// arithmeticSubscriptOpen is a name followed by a subscript, in an
-	// assignment (`a[i]=`), an expansion (`${a[i]}`) or a name a builtin is
-	// handed (`printf -v 'a[i]'`, `unset 'a[i]'`).
-	arithmeticSubscriptOpen = regexp.MustCompile(`[A-Za-z_][A-Za-z0-9_]*\[`)
+	// identifier is a name a builtin may be handed: a plain name, or one
+	// with a written index.
+	identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\[[0-9@*]*\])?$`)
+	// subscriptAssignment is an assignment word to an array element
+	// (`a[i]=x`, `a[i]+=x`), where a word may start: bash evaluates its index
+	// as arithmetic, and nowhere else in an ordinary argument, so a regular
+	// expression's character class (`grep 'func[A-Z]'`) is not one. Its first
+	// group ends where the index begins. An index in an expansion is read by
+	// unfixedSubstrings, and one in a name a builtin is handed by
+	// unfixedNames.
+	subscriptAssignment = regexp.MustCompile(`(?:^|[\s;&|(){}` + "`" + `'"])[A-Za-z_][A-Za-z0-9_]*(\[)[^]\n]*\]\+?=`)
+	// respelledBuiltin is a builtin whose operands bash may read as
+	// arithmetic, or that re-reads text as shell, among the words a quote or a
+	// backslash can spell so the name is not written as itself.
+	respelledBuiltins = map[string]bool{"let": true, "declare": true, "typeset": true, "local": true, "readonly": true,
+		"export": true, "read": true, "unset": true, "mapfile": true, "readarray": true, "getopts": true, "printf": true,
+		"wait": true, "alias": true, "eval": true, "shopt": true, "set": true, "builtin": true, "command": true}
+	// aliasing is a line that defines an alias or turns alias expansion on,
+	// which makes a later word run a program the line does not name.
+	aliasing = regexp.MustCompile(`(^|[\s;&|(){}` + "`" + `'"])(alias(\s|$)|shopt\s+(-\S+\s+)*-s\S*\s+[^;&|\n]*\b(expand_aliases|posix)\b|set\s+-o\s+posix|POSIXLY_CORRECT)`)
+	// ansiEscape is an escape in a `$'…'` string that writes a byte by its
+	// code, which spells a word the text does not show.
+	ansiEscape = regexp.MustCompile(`\\(x[0-9A-Fa-f]|u[0-9A-Fa-f]|U[0-9A-Fa-f]|[0-7]|c.)`)
 )
 
 // arithmeticUnfixed reports why command holds an arithmetic context whose
 // operand is not a literal number, or "" when it holds none.
 func arithmeticUnfixed(command string) string {
+	// Bash removes a backslash-newline before it reads a word, so a
+	// trigger split across one is joined again first. Joining one inside
+	// single quotes, where bash keeps it, only scans more text.
+	command = strings.ReplaceAll(command, "\\\n", "")
+	if why := respelledShell(command); why != "" {
+		return why
+	}
 	if why := unfixedArithmeticBodies(command); why != "" {
 		return why
 	}
@@ -109,7 +133,11 @@ func unfixedNames(command string) string {
 			if eq := strings.IndexByte(w, '='); eq >= 0 {
 				name = w[:eq]
 			}
-			if strings.ContainsAny(name, "$`") {
+			name = strings.TrimSuffix(name, "+")
+			if strings.HasPrefix(name, "-") || name == "" {
+				continue
+			}
+			if !identifier.MatchString(unquoteWord(name)) && strings.ContainsAny(name, "$`[") {
 				return why
 			}
 		}
@@ -209,8 +237,8 @@ func unfixedDoubleBrackets(command string) string {
 // name (`a[i]`) and in a compound assignment (`a=([i]=x)`), both of which
 // bash evaluates as arithmetic for an indexed array.
 func unfixedSubscripts(command string) string {
-	for _, loc := range arithmeticSubscriptOpen.FindAllStringIndex(command, -1) {
-		if !literalSubscript(command, loc[1]) {
+	for _, loc := range subscriptAssignment.FindAllStringSubmatchIndex(command, -1) {
+		if !literalSubscript(command, loc[3]) {
 			return "it indexes an array with a name, a quote or an expansion, and bash evaluates an index as arithmetic"
 		}
 	}
@@ -261,9 +289,18 @@ func unfixedSubstrings(command string) string {
 			return "it expands a variable named by another variable `${!v}`, and bash evaluates an index in that name as arithmetic"
 		}
 		name := 0
-		for name < len(body) && (body[name] == '_' || body[name] == '#' ||
+		if name < len(body) && strings.IndexByte("@*-?$#", body[name]) >= 0 {
+			name++
+		}
+		for name < len(body) && (body[name] == '_' ||
 			body[name] >= '0' && body[name] <= '9' || body[name] >= 'A' && body[name] <= 'Z' || body[name] >= 'a' && body[name] <= 'z') {
 			name++
+		}
+		if name < len(body) && body[name] == '[' {
+			if !literalSubscript(body, name+1) {
+				return "it indexes an array with a name, a quote or an expansion, and bash evaluates an index as arithmetic"
+			}
+			name += strings.IndexByte(body[name:], ']') + 1
 		}
 		if name < len(body) && body[name] == ':' && (name+1 >= len(body) || !strings.ContainsRune("-=+?", rune(body[name+1]))) {
 			if !onlyBytes(body[name+1:], arithmeticLiteral) {
@@ -310,3 +347,100 @@ func onlyBytes(s, allowed string) bool {
 	}
 	return true
 }
+
+// respelledShell reports a line that makes bash run text the line does not
+// show as itself: an alias, alias expansion turned on, a `$'…'` string that
+// writes a byte by its code, or a builtin named above spelled with a quote
+// or a backslash in its name, which every check reading the name as written
+// would miss.
+func respelledShell(command string) string {
+	if aliasing.MatchString(command) {
+		return "it defines an alias or turns alias expansion on, so a later word can run a program the line does not name"
+	}
+	for at := 0; ; {
+		i := strings.Index(command[at:], "$'")
+		if i < 0 {
+			break
+		}
+		start := at + i + 2
+		end := start
+		for end < len(command) && command[end] != '\'' {
+			if command[end] == '\\' {
+				end++
+			}
+			end++
+		}
+		if end > len(command) {
+			end = len(command)
+		}
+		if ansiEscape.MatchString(command[start:end]) {
+			return "it holds a `$'…'` string that writes a byte by its code, which spells text the line does not show"
+		}
+		at = end
+		if at >= len(command) {
+			break
+		}
+	}
+	for _, w := range commandNames(command) {
+		plain := strings.NewReplacer("'", "", "\"", "", "\\", "").Replace(w)
+		if plain != w && respelledBuiltins[plain] {
+			return "it spells the builtin `" + plain + "` with a quote or a backslash in its name, which the approver reads only as written"
+		}
+	}
+	return ""
+}
+
+// commandNames is the word in each command's name position: the first word
+// after the start or a list or group operator, past any leading assignment,
+// and the word after a wrapper that runs its next word as the command.
+func commandNames(s string) []string {
+	var segs []string
+	var b strings.Builder
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			if c == quote {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case strings.IndexByte(";&|(){}`\n", c) >= 0:
+			segs = append(segs, b.String())
+			b.Reset()
+			continue
+		}
+		b.WriteByte(c)
+	}
+	segs = append(segs, b.String())
+	var names []string
+	for _, seg := range segs {
+		words := shellWords(seg)
+		k := 0
+		for k < len(words) && assignmentWord.MatchString(words[k]) {
+			k++
+		}
+		for k < len(words) {
+			names = append(names, words[k])
+			plain := strings.NewReplacer("'", "", "\"", "", "\\", "").Replace(words[k])
+			if !commandWrappers[plain] {
+				break
+			}
+			k++
+			for k < len(words) && strings.HasPrefix(words[k], "-") {
+				k++
+			}
+		}
+	}
+	return names
+}
+
+var (
+	// assignmentWord is a leading `name=value` word, which is not the
+	// command's name.
+	assignmentWord = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=`)
+	// commandWrappers run their next word as the command.
+	commandWrappers = map[string]bool{"command": true, "builtin": true, "exec": true, "env": true, "nohup": true, "time": true, "then": true, "do": true, "else": true, "!": true,
+		"if": true, "elif": true, "while": true, "until": true}
+)

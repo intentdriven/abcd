@@ -195,6 +195,8 @@ var wordReaders = map[string]string{
 	"vimCode":           "isUnknown: a command the line does not fix is refused",
 	"factsFor":          "exempt: hands git its own options to read the repository's paths; reads no command word",
 	"unfixedSubstrings": "exempt: reads the command text whole for a substring expansion's operator and only ever refuses; it approves no word",
+	"commandNames":      "exempt: finds the name position to catch a builtin spelled with quotes, and only ever refuses; it approves no word",
+	"unfixedNames":      "exempt: reads the names a builtin is handed and only ever refuses; it approves no word",
 }
 
 // TestEveryWordReaderGoesThroughUnknown is the grep the rule promises, run as a
