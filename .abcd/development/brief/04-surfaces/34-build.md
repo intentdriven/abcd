@@ -265,7 +265,16 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 12. Version 12
+under a run id it does not name. The state is schema version 13. Version 13
+added both sides of a run (itd-166): a runner's `route` on a verified receipt or
+a validator's return carries, beside the route asked, the route that ran and the
+served model, the model the runner asked for (`model_asked`), the SHA-256 of
+the prompt it handed the harness, the served models, provider, finish reason
+and harness version the harness's events name, the token counts and the cost,
+and `unpinned`, each field of the fixed asked and served lists the run could
+not pin with its reason. Version 12 is its strict subset, read as a run whose
+routes recorded neither side; a file of version 12 or lower carrying either is
+refused. Version 12
 added an await's `answered` (itd-6): the reviewer route and the SHA-256 of the
 answer its step placed at the review's return path, written under the run's
 lock with the answer, so a hand-back of that answer is recorded as the route's.
@@ -317,7 +326,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 12 by its next mutation; an earlier version carrying what
+written back at version 13 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -465,9 +474,11 @@ transcript lands in abcd's history store, keyed on the repository's root
 commit, and its receipt is handed back through the same receipt verb and
 verified by the stage's own verifier, so a verified one completes the stage in
 the same call. The verified receipt, or the validator's recorded return, names
-the route that ran it (asked, ran, the model the runner reported), which is the
-only field a runner-run review's record differs in from a host-run one's; the
-record's receipt or verdict line names the runner that ran it. A runner that is absent, refuses, fails, runs past
+the route that ran it (asked, ran, the model the runner reported, and both
+sides of the run: the model it asked for, the token counts, the cost and the
+fields it could not pin), which is the only field a runner-run review's record differs in from a host-run one's; the
+record's receipt or verdict line names the runner that ran it, with the model
+it asked for and the cost when the route carries them. A runner that is absent, refuses, fails, runs past
 its time, answers unparsably or writes a receipt the verifier refuses leaves the
 lane awaiting: the call records one fallback receipt (the role, the runner asked
 for, the reason and the route that runs it) in the state and the record, and

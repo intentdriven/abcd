@@ -155,7 +155,26 @@ prompt, and `reading ingest --dispatch <rdg-N>` sends a parked run's bundle with
 the position's definition. The verb runs the answer through its own ingest, and
 the receipt names the provider as `connection_used` with its call record
 (`provider_call`: provider, model asked, model reported, credential name), so a
-host reading such a receipt knows the step already ran. DR5 is checked before a
+host reading such a receipt knows the step already ran. The call record carries
+both sides of the call (itd-166), built by the dispatch from the request it sent
+and the response it read, never by asking the model about itself: the asked side
+beside the receipt's `settings_sent` (the SHA-256 of the rendered messages,
+never their text, and `adapter_added`, the request field the adapter sent on
+its own, `stream_options.include_usage`), and the served side as the response
+names it (`served_provider`, the upstream provider an aggregator names;
+`generation_id`; `finish_reason`; `usage`, with prompt, completion, reasoning,
+cache-read and cache-write tokens; and `cost`, in the provider's credits). Every
+string the provider supplied is scrubbed of the key, cleaned and bounded as the
+reported model is, and a usage member of an unexpected shape is a detail not
+reported, never a refused answer. `unpinned` lists each field of the fixed asked
+and served lists the call could not pin, with its reason: `not_reported` (the
+response does not carry it), `self_reported`, `harness_computed` or
+`not_configured` (no setting or pin names it; a route to this machine lists the
+weight file's fingerprint, its quantisation and the runtime's version so until a
+local route can be pinned). Recording adds no request to the ones the call
+makes. On the harness leg the receipt's own `unpinned` lists the payload's
+`model_reported` as self-reported and every other field as not configured or not
+reported, since the host reports none of it. DR5 is checked before a
 verb writes anything (`APIConfig.Admitted`), and again by the dispatch. An
 ingest handed a payload the host produced while its agent is routed to a
 provider refuses it, since the receipt would name work the provider never did;
@@ -177,7 +196,16 @@ review is skipped.
   starts a model CLI, `claude` or `opencode`, as a subprocess for a role that
   `roles.<role>.runner` routes to it. The opt-in is that key in
   `~/.abcd.noindex/config.json`; the route, the sealing and the fallback are in
-  [`34-build.md`](../04-surfaces/34-build.md).
+  [`34-build.md`](../04-surfaces/34-build.md). A run records both sides
+  (itd-166) in the same vocabulary as the provider adapter's call record: the
+  model the runner passed and the prompt's SHA-256, beside what the harness's
+  events report. The claude CLI's result event gives the token counts, the
+  stop reason, the cost and the models its per-model usage names, and its init
+  event the served model and the harness's version; opencode's run mode names
+  no model, so its served model is empty and listed as not reported, never the
+  asked one, and its step-finish events' tokens and cost are summed, a floor,
+  since a sub-agent's steps are not among them. Either harness computes the
+  cost from its own price table, so it is listed as `harness_computed`.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the
