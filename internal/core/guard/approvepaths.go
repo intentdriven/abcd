@@ -180,6 +180,9 @@ type pathUse struct {
 	// point that it deletes below, rsync --delete's destination), not as a
 	// removal of every protected path inside it.
 	bound bool
+	// paren marks a target of a command one of whose words holds an
+	// unquoted ( (segment.parenWord), which is never fixed.
+	paren bool
 }
 
 // unplaced is the shell state of a segment the reading did not place (a
@@ -227,6 +230,30 @@ func sameSegment(a, b segment) bool {
 // guard's write model, and the operands of the commands that change, remove
 // or link a path.
 func pathUses(rc *readCtx, s segment, st *shellState) []pathUse {
+	if s.parenWord {
+		// An unquoted ( stands in one of the command's words, which zsh may
+		// read as glob qualifiers or modifiers that change the path the word
+		// names (build/l(:A) is where the link leads), so no target of the
+		// command is fixed. The tokenizer ended the command at the (, so a
+		// word stands in for the one it began there (rm -rf (a)(:A)).
+		t := s
+		t.parenWord = false
+		if len(s.tokens) > 0 {
+			t.tokens = append(append([]string(nil), s.tokens...), "(")
+		}
+		out := pathUses(rc, t, st)
+		for k, u := range out {
+			out[k] = pathUse{remove: u.remove, written: u.written, paren: true}
+		}
+		// The words after the ( are read as another command, so a find's
+		// -delete or an rsync's --delete there is not seen: either removes.
+		for _, a := range commandSites(s) {
+			if n := strings.ToLower(path.Base(s.tokens[a.idx])); n == "find" || n == "rsync" {
+				out = append(out, pathUse{remove: true, paren: true})
+			}
+		}
+		return out
+	}
 	var out []pathUse
 	for _, w := range writesOf(rc, s, st) {
 		written := w.path
@@ -451,6 +478,11 @@ func unfixedRefusal(u pathUse) Approval {
 	verb := "writes"
 	if u.remove {
 		verb = "removes"
+	}
+	if u.paren {
+		return refusal(unfixedPathEntryID,
+			"this "+verb+" a path in a command where an unquoted ( stands in a word, which zsh reads as glob qualifiers or modifiers that can change the path the word names (x(:A) is the path a symlink leads to), so the guard cannot say which file it is.",
+			"the same command with the path spelled out in full, and any ( in a name quoted.")
 	}
 	if u.rel && u.written != "" {
 		return refusal(unfixedPathEntryID,

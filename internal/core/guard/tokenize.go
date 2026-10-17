@@ -125,6 +125,12 @@ type segment struct {
 	// (groupWord in approvegroup.go), wherever it stands. A quoted one is a
 	// command's name or an argument to the shell. nil when no word is one.
 	bareWord map[int]bool
+	// parenWord records that an unquoted ( stands in one of the command's
+	// words after its name: glued to a word (x(.), build/l(:A)) or opening
+	// one (rm -rf (a)(:A)). bash refuses such a line; zsh reads the ( as glob
+	// qualifiers or modifiers, which can change the path the word names. The
+	// tokenizer splits the word there, so the segment holds the record.
+	parenWord bool
 	// leadFrom records, per token index, a spelled word holding a value a
 	// guard keeps from being empty or a site whose empty text leaves a `/`
 	// first (emptyOpensPath in varpath.go), as the word and its sites, from which only a payload re-read's varLead spells
@@ -585,6 +591,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		leadFrom map[int]leadSource
 		// closes rides with the segment (segment.bareWord).
 		closes map[int]bool
+		// parenNext rides with the segment the next flushSegment ends
+		// (segment.parenWord).
+		parenNext bool
 		// curQuoted records that the word being built took a quote or an
 		// escape, an empty quote pair included, which leaves no byte in cur.
 		curQuoted bool
@@ -1031,7 +1040,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
-				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, bareWord: closes, redirects: curRedirs, afterAnd: andNext, end: pos,
+				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, bareWord: closes, parenWord: parenNext, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			if n := len(parens); n > 0 && parens[n-1].array != "" {
 				segs[len(segs)-1].arrayOf = parens[n-1].array
@@ -1054,10 +1063,10 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// A command of redirections alone still opens its files: `> f`
 			// truncates f. It is kept, with no words, for the files it writes.
 			segs = append(segs, segment{chain: chain, home: list, at: len(segs),
-				redirects: curRedirs, afterAnd: andNext, end: pos})
+				redirects: curRedirs, parenWord: parenNext, afterAnd: andNext, end: pos})
 			curRedirs, andNext = nil, false
 		}
-		curStdin, curDocs = false, nil
+		curStdin, curDocs, parenNext = false, nil, false
 	}
 	// follow reads the text of a command substitution the scan found whole —
 	// inside double quotes, or inside an arithmetic expansion — as commands of
@@ -1872,6 +1881,13 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				if strings.HasSuffix(w, "=") && isName(w[:len(w)-1]) {
 					arrayName = w[:len(w)-1]
 				}
+			}
+			// A `(` glued to a word (a redirection's target included), or
+			// standing after the command's name, is part of a word to zsh,
+			// which reads it as glob qualifiers or modifiers, not a subshell.
+			if c == '(' && arrayName == "" {
+				glued := hasCur || len(curRedirs) > 0 && i > 0 && !strings.ContainsRune(" \t\n;&|()<>", rune(line[i-1]))
+				parenNext = glued || len(toks) > 0 && !allReserved(toks)
 			}
 			flushSegment()
 			if c == '(' && i+1 < len(line) && line[i+1] == '(' {

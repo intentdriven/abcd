@@ -2,7 +2,9 @@ package guard
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -153,5 +155,51 @@ func TestApproveRefusesAGlobWithAWildcardInADirectoryPart(t *testing.T) {
 		{`rm -rf build/*/`, unfixed},
 		{`rm -rf build/o?j/*`, unfixed},
 		{`cd build && rm -rf */*`, unfixed},
+	})
+}
+
+// TestApproveRefusesATargetHoldingAnUnquotedParen: zsh reads an unquoted ( in
+// a word as the start of glob qualifiers or modifiers, which can change the
+// path the word names: build/l(:A) is the real path a symlink leads to, out of
+// the working tree, though the line spells a name inside it. So a removal or a
+// write whose target holds an unquoted (, whatever follows it, is refused as a
+// target the line does not fix; a quoted or escaped ( is text, and stays
+// approved.
+func TestApproveRefusesATargetHoldingAnUnquotedParen(t *testing.T) {
+	r, _ := gitRig(t)
+	outside := filepath.Join(r.home, "Library")
+	for _, d := range []string{filepath.Join(r.dir, "build"), filepath.Join(r.dir, "a", "b"), outside} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(outside, filepath.Join(r.dir, "build", "l")); err != nil {
+		t.Fatal(err)
+	}
+	if zsh, err := exec.LookPath("zsh"); err == nil {
+		cmd := exec.Command(zsh, "-fc", "print -r -- build/l(:A)")
+		cmd.Dir = r.dir
+		out, err := cmd.Output()
+		want, _ := filepath.EvalSymlinks(outside)
+		if got := strings.TrimSpace(string(out)); err != nil || got != want {
+			t.Fatalf("zsh read build/l(:A) as %q (%v), want %q, so this case tests nothing", got, err, want)
+		}
+	}
+	unfixed := refusedAs(unfixedPathEntryID)
+	r.run(t, []approveCase{
+		{`rm -f 'a(b)'`, nil},
+		{`rm -f "a(b)"`, nil},
+		{`rm -f a\(b\)`, nil},
+		{`touch 'x(.)'`, nil},
+		{`f() { rm -f x; }; f`, nil},
+		{`rm -rf build/l(:A)`, unfixed},
+		{`rm -f x(.)`, unfixed},
+		{`rm -rf a/b(/)`, unfixed},
+		{`rm -rf (build/l)(:A)`, unfixed},
+		{`rm -f 'x'(.)`, unfixed},
+		{`touch x(.)`, unfixed},
+		{`echo hi > x(:A)`, unfixed},
+		{`> x(.)`, unfixed},
+		{`find a(:A) -delete`, unfixed},
 	})
 }
