@@ -31,7 +31,7 @@ import (
 
 // setupInterviewName names the setup interview in its answers record and in
 // its answers file.
-const setupInterviewName = "setup"
+const setupInterviewName = ahoy.SetupInterview
 
 // isTerminalStream reports whether f is a terminal. Tests stand a pipe in for
 // one, so the drawn door can be driven by a key stream they write.
