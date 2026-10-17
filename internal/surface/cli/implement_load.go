@@ -248,15 +248,15 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 				pidsText(lower, "another waiter opened", "waiters opened"), j.Round(time.Second))
 		}
 	}
+	flag := "--wait"
+	if race {
+		flag = "--race-gate"
+	}
 	res, err := implement.WaitLoad(req)
 	if err != nil {
-		return &exitError{Code: 1, Msg: "abcd implement load --wait: " + err.Error()}
+		return &exitError{Code: 1, Msg: "abcd implement load " + flag + ": " + err.Error()}
 	}
 	if res.SlotsNote != "" {
-		flag := "--wait"
-		if race {
-			flag = "--race-gate"
-		}
 		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load %s: %s\n", flag, res.SlotsNote)
 	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {

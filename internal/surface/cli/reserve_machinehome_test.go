@@ -55,7 +55,7 @@ func TestReserveAndPeersSayWhenAHomeInsideAWorkingTreeIsNotRead(t *testing.T) {
 }
 
 // plantHome points HOME at a directory inside a git working tree whose
-// machine config.json names mallory as the reservation holder.
+// machine config.json names someone-else as the reservation holder.
 func plantHome(t *testing.T) {
 	t.Helper()
 	tree := t.TempDir()
@@ -66,8 +66,33 @@ func plantHome(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".abcd.noindex"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd.noindex", "config.json"), []byte(`{"reservation": {"github_username": "mallory"}}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(home, ".abcd.noindex", "config.json"), []byte(`{"reservation": {"github_username": "someone-else"}}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
+}
+
+// TestImplementLoadRefusesAHomeInsideAWorkingTree: at either gate the load
+// gate exits 1 naming the flag given, says once that it keeps no hold there,
+// and creates nothing under that home.
+func TestImplementLoadRefusesAHomeInsideAWorkingTree(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	plantHome(t)
+	home, _ := os.UserHomeDir()
+	if err := os.Remove(filepath.Join(home, ".abcd.noindex", "config.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(home, ".abcd.noindex")); err != nil {
+		t.Fatal(err)
+	}
+	for _, flag := range []string{"--wait", "--race-gate"} {
+		code, _, errOut := implementCLI(t, "implement", "load", flag, "--timeout", "1m")
+		line := "abcd implement load " + flag + ": the home directory lies inside a working tree, so the load gate keeps no hold there; run with your own home"
+		if code != 1 || strings.Count(errOut, line) != 1 {
+			t.Fatalf("%s: exit %d, stderr %q; want exit 1 with %q once", flag, code, errOut, line)
+		}
+		if entries, _ := os.ReadDir(home); len(entries) != 0 {
+			t.Fatalf("%s: created under the home: %v", flag, entries)
+		}
+	}
 }

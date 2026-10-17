@@ -353,8 +353,9 @@ type WaitResult struct {
 }
 
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
-// refusal before any wait (a home it cannot resolve, a symlinked
-// ~/.abcd.noindex, or a hold lock that is not a regular file), or a hold it
+// refusal before any wait (a home it cannot resolve, a home inside a git
+// working tree that is not the account's own, a symlinked ~/.abcd.noindex, or
+// a hold lock that is not a regular file), or a hold it
 // could not give up when standing back after a wait. A timeout is a status,
 // not an error.
 func WaitLoad(req WaitRequest) (WaitResult, error) {
