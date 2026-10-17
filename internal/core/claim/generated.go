@@ -232,6 +232,12 @@ type attrRule struct {
 	// its first and from its last special byte: a subject that does not begin
 	// and end with them cannot match, so it is turned away without a match.
 	prefix, suffix string
+	// fold is true for a line that does not set the attribute: it matches
+	// where git's would on either kind of clone, one that ignores case or
+	// one that does not, so it unsets at least as far as git's would on any.
+	// A line that sets it matches only where git's would on both, so it
+	// never sets more than git's would on any clone.
+	fold bool
 }
 
 // globSpecial reports whether c is a byte wildmatch reads as other than
@@ -285,13 +291,13 @@ func (rs attrRules) judge(p string, total *int) (generated, spent bool) {
 		if rs[i].basename {
 			subject = base
 		}
-		b := wildBudget{left: matchSteps}
+		b := wildBudget{left: matchSteps, fold: rs[i].fold}
 		if total != nil && *total < b.left {
 			b.left = *total
 		}
 		start := b.left
 		m := wmNoMatch
-		if b.take(len(rs[i].prefix)+len(rs[i].suffix)) && strings.HasPrefix(subject, rs[i].prefix) && strings.HasSuffix(subject, rs[i].suffix) {
+		if b.take(len(rs[i].prefix)+len(rs[i].suffix)) && b.hasPrefix(subject, rs[i].prefix) && b.hasSuffix(subject, rs[i].suffix) {
 			m = dowild(rs[i].pat, subject, &b)
 		}
 		if total != nil {
@@ -458,7 +464,7 @@ func parseAttrLine(line string, macros map[string]bool) (attrRule, lineKind) {
 		return attrRule{}, voidsIf(line, macros)
 	}
 	prefix, suffix := literalEnds(pat)
-	return attrRule{pat: pat, basename: basename, generated: generated, prefix: prefix, suffix: suffix}, lineRule
+	return attrRule{pat: pat, basename: basename, generated: generated, prefix: prefix, suffix: suffix, fold: !generated}, lineRule
 }
 
 // voidsIf is the kind of a line the reader does not understand: it voids the
@@ -536,16 +542,65 @@ var matchSteps = 1_000_000
 // generatedSteps bounds the matching GeneratedFiles does over every file
 // together; past it the declaration declares nothing, and says why. A step
 // costs about a nanosecond: an ordinary tree of 150,000 files against 50
-// lines takes about 3e8 of them (0.22 s, TestALargeOrdinaryTreeFitsTheBudget),
-// and a declaration that would take longer stops at about half a second
-// (TestTheBudgetBoundsWallTimeOverLongLiterals); measured 2026-10-17.
+// lines takes about 3e8 of them (0.22 to 0.56 s, TestALargeOrdinaryTreeFitsTheBudget),
+// and the worst case, a declaration that spends the whole budget
+// (TestTheBudgetBoundsWallTimeOverLongLiterals), stops after about 0.6 to
+// 0.8 s on the machine this was sized on and up to about 1.5 s measured on
+// another; measured 2026-10-17, under load.
 var generatedSteps = 500_000_000
 
 // wildBudget is the steps a match has left: each call, each byte of the
 // pattern or the text compared, skipped or scanned, and each try of a star
 // spends one, so the steps bound the time a match takes; a match past it
 // answers wmAbortAll.
-type wildBudget struct{ left int }
+type wildBudget struct {
+	left int
+	// fold is true when bytes compare without regard to ASCII case
+	// (attrRule.fold).
+	fold bool
+}
+
+// same reports whether the text byte t matches the pattern byte c.
+func (b *wildBudget) same(t, c byte) bool {
+	return t == c || b.fold && lowerByte(t) == lowerByte(c)
+}
+
+// hasPrefix and hasSuffix are strings.HasPrefix and HasSuffix, folding when
+// b folds.
+func (b *wildBudget) hasPrefix(s, prefix string) bool {
+	return len(s) >= len(prefix) && b.equal(s[:len(prefix)], prefix)
+}
+
+func (b *wildBudget) hasSuffix(s, suffix string) bool {
+	return len(s) >= len(suffix) && b.equal(s[len(s)-len(suffix):], suffix)
+}
+
+func (b *wildBudget) equal(x, y string) bool {
+	if !b.fold {
+		return x == y
+	}
+	for i := 0; i < len(x); i++ {
+		if lowerByte(x[i]) != lowerByte(y[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// lowerByte and upperByte change an ASCII letter's case, as git folds it.
+func lowerByte(c byte) byte {
+	if c >= 'A' && c <= 'Z' {
+		return c + 'a' - 'A'
+	}
+	return c
+}
+
+func upperByte(c byte) byte {
+	if c >= 'a' && c <= 'z' {
+		return c - ('a' - 'A')
+	}
+	return c
+}
 
 // spend takes one step, reporting whether the budget still holds.
 func (b *wildBudget) spend() bool {
@@ -603,8 +658,13 @@ func dowild(p, text string, b *wildBudget) int {
 		switch pch {
 		case '\\':
 			// A literal match with the next character.
+			// git ignoring case compares the text byte lowered with the
+			// escaped byte as written.
 			pi++
-			if pi >= len(p) || tch != p[pi] {
+			if pi >= len(p) {
+				return wmNoMatch
+			}
+			if c := p[pi]; b.fold && !b.same(tch, c) || !b.fold && (tch != c || lowerByte(tch) != c) {
 				return wmNoMatch
 			}
 		case '?':
@@ -663,13 +723,13 @@ func dowild(p, text string, b *wildBudget) int {
 				}
 				if c := p[pi]; c != '*' && c != '?' && c != '[' && c != '\\' {
 					// A literal after the star: skip to its next occurrence.
-					for ti < len(text) && (matchSlash || text[ti] != '/') && text[ti] != c {
+					for ti < len(text) && (matchSlash || text[ti] != '/') && !b.same(text[ti], c) {
 						if !b.spend() {
 							return wmAbortAll
 						}
 						ti++
 					}
-					if ti >= len(text) || text[ti] != c {
+					if ti >= len(text) || !b.same(text[ti], c) {
 						if matchSlash {
 							return wmAbortAll
 						}
@@ -700,8 +760,15 @@ func dowild(p, text string, b *wildBudget) int {
 				}
 				c = p[pi]
 			}
+			// The class is judged as git judges it case-sensitively (exact) and
+			// as git judges it ignoring case (folded: the text byte lowered,
+			// and a range also tried with it raised). A folding line matches
+			// when either does, so it matches at least where git's would on
+			// either kind of clone; any other line only when both do, so it
+			// matches no more than git's would on either.
+			lt := lowerByte(tch)
+			var exact, folded bool
 			var prev byte
-			matched := false
 			for {
 				if !b.spend() {
 					return wmAbortAll
@@ -713,9 +780,7 @@ func dowild(p, text string, b *wildBudget) int {
 						return wmAbortAll
 					}
 					c = p[pi]
-					if tch == c {
-						matched = true
-					}
+					exact, folded = exact || tch == c, folded || lt == c
 				case c == '-' && prev != 0 && pi+1 < len(p) && p[pi+1] != ']':
 					pi++
 					c = p[pi]
@@ -726,15 +791,14 @@ func dowild(p, text string, b *wildBudget) int {
 						}
 						c = p[pi]
 					}
-					if tch <= c && tch >= prev {
-						matched = true
-					}
+					in := func(x byte) bool { return x >= prev && x <= c }
+					exact, folded = exact || in(tch), folded || in(lt) || in(upperByte(lt))
 					c = 0
 				case c == '[' && pi+1 < len(p) && p[pi+1] == ':':
 					// A POSIX class, which globSupported refuses before here.
 					return wmAbortAll
-				case tch == c:
-					matched = true
+				default:
+					exact, folded = exact || tch == c, folded || lt == c
 				}
 				prev = c
 				pi++
@@ -745,11 +809,15 @@ func dowild(p, text string, b *wildBudget) int {
 					break
 				}
 			}
-			if matched == negated || tch == '/' {
+			matched := exact != negated && folded != negated
+			if b.fold {
+				matched = exact != negated || folded != negated
+			}
+			if !matched || tch == '/' {
 				return wmNoMatch
 			}
 		default:
-			if tch != pch {
+			if !b.same(tch, pch) {
 				return wmNoMatch
 			}
 		}

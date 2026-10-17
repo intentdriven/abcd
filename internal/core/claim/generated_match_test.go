@@ -323,3 +323,79 @@ func TestALargeOrdinaryTreeFitsTheBudget(t *testing.T) {
 		t.Fatal("a file the declaration names was not generated")
 	}
 }
+
+// TestAnUnsettingLineMatchesRegardlessOfCase: a clone on a case-insensitive
+// file system reads patterns without regard to case, so a line unsetting the
+// attribute matches regardless of case, and reaches at least as far as git's
+// would on any clone; a line setting it matches case-sensitively, so it never
+// sets more than git would on any clone.
+func TestAnUnsettingLineMatchesRegardlessOfCase(t *testing.T) {
+	for _, c := range []struct {
+		attrs string
+		want  map[string]bool
+	}{
+		{"*.go linguist-generated\n*.GO -linguist-generated\n", map[string]bool{"x.go": false, "X.GO": false}},
+		{"*.GO linguist-generated\n", map[string]bool{"x.go": false, "X.GO": true}},
+		{"*.md linguist-generated\nDOCS/*.MD !linguist-generated\n", map[string]bool{"docs/a.md": false, "a.md": true}},
+		{"*.md linguist-generated\n[0-_].MD linguist-generated=false\n", map[string]bool{"a.md": false, "A.md": false, "ab.md": true}},
+		// git ignoring case lowers the text byte but not a class's own, so
+		// [A] matches only A there, as it does case-sensitively.
+		{"*.md linguist-generated\n[A].md -linguist-generated\nB\\.MD -linguist-generated\n", map[string]bool{"A.md": false, "a.md": true, "b.md": false, "c.md": true}},
+		{"* linguist-generated\n[^a-z]* -linguist-generated\n[!]a]x -linguist-generated\n", map[string]bool{"Z": false, "Ax": false, "z": true, "ax": true}},
+		// A setting line must match as git matches on both kinds of clone:
+		// ignoring case, git lowers the text byte, so a negated class or an
+		// escaped capital matches less there.
+		{"[!a-c]x linguist-generated\n\\Ab linguist-generated\n[A]c linguist-generated\n", map[string]bool{"Bx": false, "dx": true, "Ab": false, "Ac": false}},
+	} {
+		rules := parseAttributes(c.attrs)
+		for p, want := range c.want {
+			if got := rules.generated(p); got != want {
+				t.Errorf("generated(%q) = %v; want %v\n%s", p, got, want, c.attrs)
+			}
+		}
+	}
+}
+
+// TestNoGeneratedFileIsUnsetOnEitherKindOfClone: whatever abcd calls
+// generated, git calls generated on a clone that ignores case and on one that
+// does not, for every row the reader supports.
+func TestNoGeneratedFileIsUnsetOnEitherKindOfClone(t *testing.T) {
+	cases := append([]attrCase(nil), attrCorpus...)
+	cases = append(cases, attrCase{name: "an unset in other capitals", attrs: "*.go linguist-generated\n*.GO -linguist-generated\nDocs/*.md linguist-generated\n[0-_].MD -linguist-generated\n",
+		want: map[string]bool{"x.go": false, "docs/a.md": false, "Docs/b.md": false, "Docs/a.md": false, "Docs/x.md": false}},
+		attrCase{name: "a negated class in an unset", attrs: "* linguist-generated\n[^a-z]* -linguist-generated\n[!]a]x -linguist-generated\n",
+			want: map[string]bool{"Z": false, "Ax": false, "z": true, "ax": true, "x/Y": false}},
+		attrCase{name: "a negated class or an escaped capital that sets", attrs: "[!a-c]x linguist-generated\n\\Ab linguist-generated\n[A]c linguist-generated\n[!0-_]y linguist-generated\n",
+			want: map[string]bool{"Bx": false, "dx": true, "Ab": false, "Ac": false, "ay": false, "~y": true}})
+	for _, icase := range []string{"true", "false"} {
+		t.Run("core.ignorecase="+icase, func(t *testing.T) { neverMoreGenerated(t, icase, cases) })
+	}
+}
+
+// neverMoreGenerated fails for each path of cases abcd calls generated and
+// git, under core.ignorecase=icase, does not.
+func neverMoreGenerated(t *testing.T, icase string, cases []attrCase) {
+	r := gittest.NewRepo(t)
+	r.Git("config", "core.ignorecase", icase)
+	have := gitVersion(t, r)
+	for _, c := range cases {
+		if c.skipped || c.minGit != "" && versionBelow(have, c.minGit) {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(r.Root(), ".gitattributes"), []byte(c.attrs), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		paths := make([]string, 0, len(c.want))
+		for p := range c.want {
+			paths = append(paths, p)
+		}
+		sort.Strings(paths)
+		got := checkAttr(t, r, paths)
+		rules := parseAttributes(c.attrs)
+		for _, p := range paths {
+			if rules.generated(p) && !got[p] {
+				t.Errorf("%s: abcd calls %q generated, and git ignoring case does not\n%s", c.name, p, c.attrs)
+			}
+		}
+	}
+}
