@@ -149,7 +149,11 @@ fetch of that branch succeeds (dcn-2610161837009957).
 
 The act is then judged against the rest of the fetched view. A reservation
 that would take its holder past ten live reservations, counted by username
-across every record, is refused naming the ten; a renewal, and a take-over of
+across every record, is refused naming the ten, with the advice to wait for one
+of their pull requests to merge, which ends its reservation, rather than release
+one whose work is done; the refusal is typed, so a drain waits on it instead of
+refusing its move ([`35-drain.md`](35-drain.md), spc-2610161044461448 step 6);
+a renewal, and a take-over of
 the same person's other copy, of a reservation still live add none and are
 never refused by the cap, while reviving a lapsed one adds one. A
 footprint path that another live reservation's footprint shares, equal or one

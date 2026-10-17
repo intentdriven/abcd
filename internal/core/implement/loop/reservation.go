@@ -436,6 +436,11 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 			return reserved{}, contend(StageReservation, CheckReservation, "", err.Error(),
 				"take other work; `abcd peers` lists the reservations on "+claim.Remote)
 		}
+		if ce := (*claim.CapError)(nil); errors.As(err, &ce) {
+			r := refuse(StageReservation, "", "", err.Error(), "wait for one of your pull requests to merge, which ends its reservation, then run the verb again")
+			r.capped = slices.Clone(ce.Held)
+			return reserved{}, r
+		}
 		return reserved{}, refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
 	}
 	verb := map[claim.Act]string{claim.ActReserved: "reserved", claim.ActRenewed: "renewed the reservation on",

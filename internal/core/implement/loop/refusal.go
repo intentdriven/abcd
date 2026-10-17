@@ -55,6 +55,10 @@ type Refusal struct {
 	// reservation now another person's. A drain hands a lane refused so back
 	// at once (stuck.go).
 	final string
+	// capped is the holder's live reservations when the refusal is the cap's
+	// (claim.CapError): the drain waits on it rather than refusing its move
+	// (drain_wait.go).
+	capped []string
 }
 
 // Error renders the refusal as one line: stage, reason, remedy.

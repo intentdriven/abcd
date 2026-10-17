@@ -1222,8 +1222,13 @@ The drain is paced as a run is: its window and pause are --pace, --sub-agents an
 end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and
 the call opens nothing; before that time a drain opens nothing, and after it the
 next invocation continues. --max <n> caps the lanes the drain opens (the default
-is all); at the cap, or when nothing eligible is left, the drain reports and ends,
-and the next `abcd drain` begins a new one. A cap or pace named while a drain is in
+is all); at the cap, or when nothing eligible is left, held or not, the drain reports
+and ends. When you hold ten live reservations, the most one person may hold, or every
+eligible issue left is held by another, a move neither refuses nor ends: it reserves
+and asks nothing, writes waiting_until fifteen minutes on (apart from the pace
+window), names the reservations and pull requests or the holds it waits on, and keeps
+its judgements; run it again at or after that time. Once a drain has ended, the
+next `abcd drain` begins a new one. A cap or pace named while a drain is in
 progress that differs from the one it began with is refused. Once a run gives up on a
 lost connection (`abcd implement outage`), the drain opens nothing and ends with
 stopped "outage", naming the services down, since when, the probes and the lanes it

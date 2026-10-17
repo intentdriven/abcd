@@ -252,7 +252,17 @@ on origin's default branch backs off, with a tip or without one
    already answered no over the remedy as it stands. With that no, it starts
    the implement loop for the issue and names the run. An issue the loop's own
    checks refuse (a peer holds it) is passed over, named with the check. When
-   none is left, the drain ends and says so. In a checkout with a remote named
+   none is left, held or not, the drain ends and says so. At its holder's cap
+   of live reservations, counted in the move's view before any reservation or
+   judgement, or when every eligible issue left is held by another, it neither
+   refuses nor ends (spc-2610161044461448 step 6, dcn-2610161040364312): it
+   reserves and asks nothing, writes `waiting_until` fifteen minutes on, kept
+   apart from `next_eligible_at` so the pace window is not reset, names what it
+   waits on (the reservations and the pull requests waiting to merge, with the
+   advice to wait for a merge rather than release one, or the holds), and keeps
+   its judgements. A move before that time still looks, since passing over held
+   work fetches and pushes nothing, and one that still waits keeps the time
+   first written. In a checkout with a remote named
    `origin`, the issue is first reserved there before its judgement is asked,
    with the path its `found_at` names as the footprint (itd-2609091034175565,
    C37; spc-2610161044461448 step 2), so the reservation push is the

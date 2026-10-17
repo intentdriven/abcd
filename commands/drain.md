@@ -344,9 +344,20 @@ what it did in `next`:
 - **It pauses.** At the end of the drain's working window it writes
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
+- **It waits at the cap and on held work.** When the user holds ten live
+  reservations, the most one person may hold, counted in the move's view
+  before any reservation or judgement, or when every eligible issue left is
+  held by another, the move neither refuses nor ends: it reserves and asks
+  nothing, writes `waiting_until` fifteen minutes on (`waiting` says `cap` or
+  `held`), and names what it waits on: at the cap, the reservations and the
+  pull requests waiting to merge, with the advice to wait for one to merge
+  rather than release one; on held work, each hold. It keeps every judgement
+  it has taken, and the pace window is left as it was. Run it again at or
+  after `waiting_until`; a move before it still looks, and takes any issue
+  freed since.
 - **It ends.** At `--max <n>` lanes (`stopped: "cap"`), or when nothing eligible
-  is left (`stopped: "empty"`), it reports and ends; `complete` is `true`. The
-  next `abcd drain` begins a new drain.
+  is left, held or not (`stopped: "empty"`), it reports and ends; `complete` is
+  `true`. The next `abcd drain` begins a new drain.
 - **It stops on a lost connection.** A drain's lane waits out a lost network or
   model-service connection as any run does (`/abcd:build` names the protocol).
   Once that run gives up, after eight hours of failed hourly probes, the next
@@ -410,7 +421,8 @@ hand-backs; `passed` names an eligible issue this move did not take, with why;
 `dispositions` is the plan; `finished` lists the merged lanes this move took
 the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
-`next_eligible_at`, `stopped` (`cap`, `empty`,
+`waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
+again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the
 drain as it stands: `lanes_opened`, `in_progress`, `pull_requests` (the lanes
 whose landing opened one; a merge is a person's gate and is not counted),

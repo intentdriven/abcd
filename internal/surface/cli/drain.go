@@ -134,8 +134,13 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and\n" +
 			"the call opens nothing; before that time a drain opens nothing, and after it the\n" +
 			"next invocation continues. --max <n> caps the lanes the drain opens (the default\n" +
-			"is all); at the cap, or when nothing eligible is left, the drain reports and ends,\n" +
-			"and the next `abcd drain` begins a new one. A cap or pace named while a drain is in\n" +
+			"is all); at the cap, or when nothing eligible is left, held or not, the drain reports\n" +
+			"and ends. When you hold ten live reservations, the most one person may hold, or every\n" +
+			"eligible issue left is held by another, a move neither refuses nor ends: it reserves\n" +
+			"and asks nothing, writes waiting_until fifteen minutes on (apart from the pace\n" +
+			"window), names the reservations and pull requests or the holds it waits on, and keeps\n" +
+			"its judgements; run it again at or after that time. Once a drain has ended, the\n" +
+			"next `abcd drain` begins a new one. A cap or pace named while a drain is in\n" +
 			"progress that differs from the one it began with is refused. Once a run gives up on a\n" +
 			"lost connection (`abcd implement outage`), the drain opens nothing and ends with\n" +
 			"stopped \"outage\", naming the services down, since when, the probes and the lanes it\n" +
@@ -326,6 +331,9 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 	renderDrainCounts(w, res.Counts)
 	if res.NextEligibleAt != nil {
 		fmt.Fprintf(w, "  next_eligible_at: %s\n", res.NextEligibleAt.UTC().Format(time.RFC3339))
+	}
+	if res.WaitingUntil != nil {
+		fmt.Fprintf(w, "  waiting_until: %s (%s)\n", res.WaitingUntil.UTC().Format(time.RFC3339), termsafe.Sanitize(res.Waiting))
 	}
 	switch res.Stopped {
 	case loop.DrainStoppedCap:
