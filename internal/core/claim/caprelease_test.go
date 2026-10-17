@@ -111,7 +111,10 @@ func TestAHandBackOverTheCapFallsBackToAPlainTombstone(t *testing.T) {
 	}
 	w.fileOnMain("iss-5", "The widget breaks.")
 	newer := old
-	newer.Version = "v1234.5678.90123"
+	// A release version within the label's bound (assistedby.ReleaseVersionPattern),
+	// longer than the old one: a version outside it labels as a development
+	// build, which is shorter.
+	newer.Version = "v123.456.789-rc.1"
 	res, err := Reserve(p.dir, Request{Record: "iss-5", Release: true, HandBack: HandBackUserVisible}, newer)
 	if err != nil || res.Act != ActReleased {
 		t.Fatalf("the release over the cap = %+v, %v; want a plain tombstone pushed", res, err)
