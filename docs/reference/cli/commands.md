@@ -4464,7 +4464,8 @@ List everyone's announcements, reservations and releases being cut: Writes the f
 List everyone's status on the shared remote: the announcements every session
 posted (abcd announce), newest first, each with its sender, kind, item, the
 time sent and how long it still stands, then who holds which reservation and
-each release being cut, which holds every other session's merge.
+each release being cut, which holds every other session's merge, with a live
+drain lane's stage and each holder's hand-backs from the last day.
 
 It reads the remote once: it lists the status branches on origin (git
 ls-remote), then fetches, in one command, the reservations with origin's

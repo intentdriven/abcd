@@ -67,8 +67,8 @@ type reservationRow struct {
 	ReleasedBy      string   `json:"released_by,omitempty"`
 	Unreadable      string   `json:"unreadable,omitempty"`
 	HeldFromFetch   bool     `json:"held_from_fetch,omitempty"`
-	// Stage is the drain lane's stage the tip's renewal names, one of
-	// claim.LaneStages, absent when it names none.
+	// Stage is the drain lane's stage a live reservation's renewal names, one
+	// of claim.LaneStages, absent when it names none or is not live.
 	Stage  string `json:"stage,omitempty"`
 	Commit string `json:"commit"`
 }
@@ -431,9 +431,10 @@ func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err
 		for _, f := range r.Footprint {
 			row.Footprint = append(row.Footprint, termsafe.Sanitize(f))
 		}
-		if claim.ValidLaneStage(r.Stage) {
-			// The stage is from a closed vocabulary the reader has checked;
-			// only a value inside it is ever shown.
+		if r.State == claim.StateLive && claim.ValidLaneStage(r.Stage) {
+			// The stage is where a live lane stands, so a lapsed one shows
+			// none, as in the text; and it is from a closed vocabulary the
+			// reader has checked, so only a value inside it is ever shown.
 			row.Stage = r.Stage
 		}
 		out.Reservations = append(out.Reservations, row)

@@ -71,9 +71,18 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 
 	q := w.clone(t, "q", quinnMail)
 	p := w.clone(t, "p", octoMail)
-	// Q's twelve hand-backs of the last hour, iss-100 the newest.
+	// Q's twelve hand-backs of the last hour, released out of id order: ids[i]
+	// is released ago(i) before now, (i*5)%12 minutes past the hour, so
+	// iss-100 is the newest, iss-102 and iss-107 the two oldest, which the
+	// bound cuts, and neither id order nor its reverse is the order shown.
+	ago := func(i int) time.Duration { return time.Hour + time.Duration(i*5%recent)*time.Minute }
+	kindOf := func(i int) string { return claim.HandBackKinds[i%len(claim.HandBackKinds)] }
 	for i := range recent {
-		handBack(q, ids[i], claim.HandBackKinds[i%len(claim.HandBackKinds)], now.Add(-time.Hour-time.Duration(i)*time.Minute))
+		handBack(q, ids[i], kindOf(i), now.Add(-ago(i)))
+	}
+	newest := make([]int, recent) // the indexes of ids, newest first
+	for i := range recent {
+		newest[i*5%recent] = i
 	}
 	old, ahead, ps := ids[recent], ids[recent+1], ids[recent+2]
 	handBack(q, old, claim.HandBackStuck, now.Add(-30*time.Hour))
@@ -82,6 +91,10 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 	act(q, now.Add(-10*time.Minute), claim.Request{Record: "iss-200", Footprint: []string{"b.go"}})
 	act(q, now.Add(-5*time.Minute), claim.Request{Record: "iss-200", Renew: true, Stage: claim.LaneStageImplement})
 	act(p, now.Add(-5*time.Minute), claim.Request{Record: "iss-201", Footprint: []string{"c.go"}})
+	// Q's lane on iss-202, renewed at the validate stage five hours ago, has
+	// lapsed: its stage is shown on no stream.
+	act(q, now.Add(-5*time.Hour-time.Minute), claim.Request{Record: "iss-202", Footprint: []string{"d.go"}})
+	act(q, now.Add(-5*time.Hour), claim.Request{Record: "iss-202", Renew: true, Stage: claim.LaneStageValidate})
 	// Last: a hand-back dated three hours ahead of every clock here.
 	handBack(q, ahead, claim.HandBackClosed, now.Add(3*time.Hour))
 
@@ -100,9 +113,12 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 		if res.Record == "iss-200" && (res.State != "live" || res.Holder != "quinn") {
 			t.Errorf("iss-200 = %+v; want Q's live lane", res)
 		}
+		if res.Record == "iss-202" && res.State != "expired" {
+			t.Errorf("iss-202 = %+v; want Q's lapsed lane", res)
+		}
 	}
-	if stages["iss-200"] != "implement" || stages["iss-201"] != "" {
-		t.Errorf("the stages = %v; want iss-200 at implement and iss-201 at none", stages)
+	if stages["iss-200"] != "implement" || stages["iss-201"] != "" || stages["iss-202"] != "" {
+		t.Errorf("the stages = %v; want iss-200 at implement, and iss-201 and the lapsed iss-202 at none", stages)
 	}
 
 	byHolder := map[string]int{}
@@ -116,10 +132,11 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 	if len(qh.HandBacks) != claim.HandBacksShown || qh.More != recent-claim.HandBacksShown {
 		t.Fatalf("quinn's hand-backs = %d shown, %d more; want %d and %d", len(qh.HandBacks), qh.More, claim.HandBacksShown, recent-claim.HandBacksShown)
 	}
-	for i, hb := range qh.HandBacks {
-		want := now.Add(-time.Hour - time.Duration(i)*time.Minute).Format(time.RFC3339)
-		if hb.Record != ids[i] || hb.Kind != claim.HandBackKinds[i%len(claim.HandBackKinds)] || hb.ReleasedAt != want {
-			t.Errorf("quinn's hand-back %d = %+v; want %s as %s at %s, newest first", i, hb, ids[i], claim.HandBackKinds[i%len(claim.HandBackKinds)], want)
+	for n, hb := range qh.HandBacks {
+		i := newest[n]
+		want := now.Add(-ago(i)).Format(time.RFC3339)
+		if hb.Record != ids[i] || hb.Kind != kindOf(i) || hb.ReleasedAt != want {
+			t.Errorf("quinn's hand-back %d = %+v; want %s as %s at %s, newest first", n, hb, ids[i], kindOf(i), want)
 		}
 		if hb.Record == old || hb.Record == ahead {
 			t.Errorf("%s is listed, but it was handed back a day ago or ahead of the clock: %+v", hb.Record, hb)
@@ -148,9 +165,12 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 	if l := line("  iss-201  live  octo"); l == "" || strings.Contains(l, "stage") {
 		t.Errorf("P's plain reservation is listed with a stage: %q\n%s", l, text)
 	}
+	if l := line("  iss-202  expired  quinn"); l == "" || strings.Contains(l, "stage") {
+		t.Errorf("Q's lapsed lane is not listed, or is listed with a stage: %q\n%s", l, text)
+	}
 	for _, want := range []string{
-		"  handed back by quinn in the last day:\n    " + ids[0] + "  " + claim.HandBackKinds[0] + "  at " + now.Add(-time.Hour).Format(time.RFC3339) + "\n",
-		"    " + ids[1] + "  " + claim.HandBackKinds[1] + "  at ",
+		"  handed back by quinn in the last day:\n    " + ids[newest[0]] + "  " + kindOf(newest[0]) + "  at " + now.Add(-ago(newest[0])).Format(time.RFC3339) + "\n" +
+			"    " + ids[newest[1]] + "  " + kindOf(newest[1]) + "  at " + now.Add(-ago(newest[1])).Format(time.RFC3339) + "\n",
 		fmt.Sprintf("    and %d more\n", recent-claim.HandBacksShown),
 		"  handed back by octo in the last day:\n    " + ps + "  trust-rule  at ",
 	} {
@@ -158,7 +178,7 @@ func TestPeersListsALanesStageAndItsHoldersRecentHandBacks(t *testing.T) {
 			t.Errorf("the text listing lacks %q:\n%s", want, text)
 		}
 	}
-	for _, id := range []string{old, ahead, ids[claim.HandBacksShown]} {
+	for _, id := range []string{old, ahead, ids[newest[recent-1]], ids[newest[recent-2]]} {
 		if strings.Contains(text, "    "+id+"  ") {
 			t.Errorf("the text listing shows %s's hand-back:\n%s", id, text)
 		}
