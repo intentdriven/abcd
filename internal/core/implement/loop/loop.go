@@ -621,10 +621,11 @@ func resumeWithFlags(res StartResult, f paceFlags) error {
 }
 
 // liveRun returns the run for key that is not complete. For a drain's lane
-// (drain), an issue run whose lane was handed back is over too.
+// (drain), an issue run whose lane was handed back is over too; for any
+// caller, one a newer run of the issue has followed is (superseded).
 func liveRun(runs []State, key string, drain bool) (State, bool) {
-	for _, st := range runs {
-		if recordid.SameID(st.Key, key) && !st.Complete() && !(drain && st.issueHandedBack()) {
+	for i, st := range runs {
+		if recordid.SameID(st.Key, key) && !st.Complete() && !(drain && st.issueHandedBack()) && !superseded(runs, i) {
 			return st, true
 		}
 	}
@@ -1050,7 +1051,9 @@ func readRuns(root *os.Root) ([]State, error) {
 
 // Resolve names the run a call addresses. An explicit id is checked for shape
 // and presence; no id addresses the one run in this checkout that is not
-// complete, and is refused naming them when there are several, or none.
+// complete, and is refused naming them when there are several, or none. An
+// issue run handed back that a newer run of the issue has followed
+// (superseded) is not counted: the newer run is the issue's.
 func Resolve(repoRoot, runID string) (string, error) {
 	if runID != "" {
 		if _, err := ReadState(repoRoot, runID); err != nil {
@@ -1063,20 +1066,18 @@ func Resolve(repoRoot, runID string) (string, error) {
 		return "", err
 	}
 	var live []string
-	for _, st := range runs {
-		if !st.Complete() {
+	only := ""
+	for i, st := range runs {
+		if !st.Complete() && !superseded(runs, i) {
 			live = append(live, st.RunID+" ("+st.Key+")")
+			only = st.RunID
 		}
 	}
 	switch len(live) {
 	case 0:
 		return "", refuse("state", "", "", "no run in this checkout is in progress", "start one with `abcd build <itd-N>`")
 	case 1:
-		for _, st := range runs {
-			if !st.Complete() {
-				return st.RunID, nil
-			}
-		}
+		return only, nil
 	}
 	return "", refuse("state", "", "", fmt.Sprintf("%d runs are in progress: %v", len(live), live), "name one with --run")
 }

@@ -421,7 +421,10 @@ record stands: once a person changes it there, the issue is the drain's to
 consider again, judged afresh, an answer taken before the hand-back deciding
 nothing, as the tombstone lets every other account's drain consider it. The
 issue run a handed-back lane leaves no longer passes its issue over, and the lane
-the drain opens for it again is a new run, never that run resumed. Every other run of the issue here passes it over, on `origin` or not,
+the drain opens for it again is a new run, never that run resumed; once it is
+open, it is the issue's run for every verb: `abcd build <iss-N>` resumes it, and
+a step or a record read with no run named addresses it, the handed-back run it
+followed no longer counting as one in progress. Every other run of the issue here passes it over, on `origin` or not,
 whether in progress or complete: a complete run landed its pull request, which
 may still be open, and a second run would open a second. Without a remote named
 `origin` nothing says whether a record has changed, so a handed-back issue stays

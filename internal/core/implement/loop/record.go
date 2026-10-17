@@ -205,7 +205,9 @@ func ReadRecord(repoRoot, runID string) (RunRecord, error) {
 
 // LatestRun names the run a record read addresses when none is named: the one
 // run in progress when there is one, else the most recently started run in
-// this checkout. Several runs in progress are refused, naming them.
+// this checkout. Several runs in progress are refused, naming them; a
+// handed-back issue run a newer run of the issue followed is not one
+// (superseded).
 func LatestRun(repoRoot string) (string, error) {
 	runs, err := Runs(repoRoot)
 	if err != nil {
@@ -215,8 +217,8 @@ func LatestRun(repoRoot string) (string, error) {
 		return "", refuse(StageRecord, "", "", "no run in this checkout", "start one with `abcd build <itd-N>`")
 	}
 	var live []string
-	for _, st := range runs {
-		if !st.Complete() {
+	for i, st := range runs {
+		if !st.Complete() && !superseded(runs, i) {
 			live = append(live, st.RunID)
 		}
 	}

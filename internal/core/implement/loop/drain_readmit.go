@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/peers"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // issueHandedBack reports whether s is an issue run whose lane was handed back:
@@ -23,6 +24,22 @@ import (
 func (s State) issueHandedBack() bool {
 	outcome, _, _ := laneOutcome(s)
 	return s.Issue() != "" && outcome == DrainLaneHandedBack
+}
+
+// superseded reports whether runs[i], in runs oldest first, is an issue run
+// whose lane was handed back and that a newer run of the same issue has
+// followed: the issue was re-admitted, and the newer run is the issue's. It
+// is not one in progress for any verb that looks for one.
+func superseded(runs []State, i int) bool {
+	if !runs[i].issueHandedBack() {
+		return false
+	}
+	for _, later := range runs[i+1:] {
+		if recordid.SameID(later.Key, runs[i].Key) {
+			return true
+		}
+	}
+	return false
 }
 
 // originBlobs reads, once per move and only when asked, the blob id of each

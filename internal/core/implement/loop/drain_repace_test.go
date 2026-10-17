@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // A drain's pace and sub-agents, and re-admission (spc-2610161044461448 step
@@ -191,5 +193,71 @@ func TestADoneRunWithAnOpenPullRequestPassesItsIssueOverInANewDrain(t *testing.T
 	}
 	if again.Start != nil || runCount(t, repo) != 1 {
 		t.Fatalf("no second run opens for the issue: %+v", again.Start)
+	}
+}
+
+// readmittedRuns hands secondIssue's lane back, changes its record on origin
+// and lets the drain open a new run for it: the handed-back run and the newer
+// one, oldest first.
+func readmittedRuns(t *testing.T) (repo *gittest.Repo, o Options, old, newer string) {
+	t.Helper()
+	repo, bare := reservingDrainRepo(t, "commands/drain.md")
+	c := &clock{t: time.Now().UTC().Truncate(time.Second)}
+	o = Options{Now: c.now}
+	first := drainToLane(t, repo, o, DrainOptions{})
+	handBackLaneOf(t, repo, first.Start.RunID, o, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the page needs a decision", Home: "the brief"})
+	c.t = c.t.Add(time.Minute)
+	if _, err := Drain(repo.Root(), o, DrainOptions{}); err != nil {
+		t.Fatal(err)
+	}
+	editOnOrigin(t, bare, secondIssue)
+	c.t = c.t.Add(time.Minute)
+	again, err := Drain(repo.Root(), o, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.t = c.t.Add(time.Minute)
+	opened := judge(t, repo, o, again, JudgementNo, "", "an internal page fix")
+	if opened.Start == nil || opened.Start.RunID == first.Start.RunID {
+		t.Fatalf("the no opens a new run for the issue: %+v", opened.Start)
+	}
+	return repo, o, first.Start.RunID, opened.Start.RunID
+}
+
+// TestBuildResumesTheNewerRunOfAReadmittedIssue: once a handed-back issue is
+// re-admitted and a new run opened for it, `abcd build <iss>` resumes that
+// newer run, not the one handed back.
+func TestBuildResumesTheNewerRunOfAReadmittedIssue(t *testing.T) {
+	repo, o, old, newer := readmittedRuns(t)
+	res, err := Start(repo.Root(), secondIssue, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.Resumed || res.RunID != newer {
+		t.Fatalf("build resumes the newer run %s, not the handed-back %s: %+v", newer, old, res)
+	}
+}
+
+// TestAStepWithNoRunNamedAddressesTheNewerRunOfAReadmittedIssue: a bare
+// `abcd implement step` addresses the newer run of a re-admitted issue, the
+// handed-back run it supersedes no longer counting as one in progress.
+func TestAStepWithNoRunNamedAddressesTheNewerRunOfAReadmittedIssue(t *testing.T) {
+	repo, _, old, newer := readmittedRuns(t)
+	got, err := Resolve(repo.Root(), "")
+	if err != nil {
+		t.Fatalf("one run is in progress, the handed-back %s superseded: %v", old, err)
+	}
+	if got != newer {
+		t.Fatalf("Resolve addresses %s, want the newer run %s", got, newer)
+	}
+}
+
+// TestARecordReadWithNoRunNamedAddressesTheNewerRunOfAReadmittedIssue: so
+// does a run record read with no run named.
+func TestARecordReadWithNoRunNamedAddressesTheNewerRunOfAReadmittedIssue(t *testing.T) {
+	repo, _, old, newer := readmittedRuns(t)
+	got, err := LatestRun(repo.Root())
+	if err != nil || got != newer {
+		t.Fatalf("the record read addresses the newer run %s, not the handed-back %s: %q %v", newer, old, got, err)
 	}
 }

@@ -426,6 +426,9 @@ An issue the drain handed back is passed over only while its record stands on
 `origin`'s default branch: once a person changes that record there, the drain
 judges it afresh and may open a new lane for it, though the handed-back run's
 directory remains (`hand_backs[].blob` is the record's blob as it was routed).
+That new run is then the issue's: `abcd build <iss-N>` resumes it, and
+`abcd implement step` or a record read with no `--run` addresses it, the
+handed-back run no longer counting as one in progress.
 Every other run of an issue in this checkout passes it over, in progress or
 complete, on `origin` or not: a complete run landed its pull request, which may
 still be open, and the drain never opens a second. Without a remote named
