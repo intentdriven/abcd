@@ -138,8 +138,8 @@ func TestThreeIdenticalRefusalsHandTheLaneBackAsStuck(t *testing.T) {
 }
 
 // TestSixtyMinutesRefusingAtOneStageHandTheLaneBackAsStuck: refusals that
-// differ, at one stage, for sixty minutes hand the lane back as stuck; at
-// thirty minutes the lane is still in progress.
+// differ, at one stage, coming every ten minutes for sixty minutes hand the
+// lane back as stuck; at thirty minutes the lane is still in progress.
 func TestSixtyMinutesRefusingAtOneStageHandTheLaneBackAsStuck(t *testing.T) {
 	c := &clock{t: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)}
 	o := Options{Now: c.now}
@@ -148,8 +148,10 @@ func TestSixtyMinutesRefusingAtOneStageHandTheLaneBackAsStuck(t *testing.T) {
 		return refuse(string(StageBrief), "", lane, fmt.Sprintf("the brief cannot be rendered, try %d", n), "settle it")
 	})
 	refuseStep(t, repo, runID, stages, o)
-	c.t = c.t.Add(30 * time.Minute)
-	refuseStep(t, repo, runID, stages, o)
+	for range 3 {
+		c.t = c.t.Add(10 * time.Minute)
+		refuseStep(t, repo, runID, stages, o)
+	}
 	res, err := Drain(repo.Root(), o, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
@@ -157,16 +159,56 @@ func TestSixtyMinutesRefusingAtOneStageHandTheLaneBackAsStuck(t *testing.T) {
 	if res.Lane == nil || res.Lane.RunID != runID || len(res.Routed) != 0 {
 		t.Fatalf("thirty minutes refusing leave the lane in progress: %+v", res)
 	}
-	c.t = c.t.Add(31 * time.Minute)
-	refuseStep(t, repo, runID, stages, o)
+	for _, step := range []time.Duration{10, 10, 11} {
+		c.t = c.t.Add(step * time.Minute)
+		refuseStep(t, repo, runID, stages, o)
+	}
 	res, err = Drain(repo.Root(), o, DrainOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := wantStuck(t, res, bare, runID, "try 3")
+	r := wantStuck(t, res, bare, runID, "try 7")
 	if !strings.Contains(r.Reason, "61 minutes") {
 		t.Fatalf("the hand-back names how long the lane refused: %q", r.Reason)
 	}
+}
+
+// TestOnlyTimeRefusalsKeptComingCountsTowardTheBound: a lane that refused
+// once and then sat idle for an hour is not stuck, though a move came that
+// renews it; a refusal more than fifteen minutes after the last starts the
+// time afresh, so two refusals an hour apart with one more two minutes later
+// are not an hour of refusing either.
+func TestOnlyTimeRefusalsKeptComingCountsTowardTheBound(t *testing.T) {
+	c := &clock{t: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)}
+	o := Options{Now: c.now}
+	repo, _, runID := stuckDrain(t, c)
+	stages := briefRefusing(func(lane string, n int) *Refusal {
+		return refuse(string(StageBrief), "", lane, fmt.Sprintf("the brief cannot be rendered, try %d", n), "settle it")
+	})
+	inProgress := func(what string) {
+		t.Helper()
+		res, err := Drain(repo.Root(), o, DrainOptions{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if res.Lane == nil || res.Lane.RunID != runID || len(res.Routed) != 0 {
+			t.Fatalf("%s leaves the lane in progress: %+v", what, res)
+		}
+	}
+	refuseStep(t, repo, runID, stages, o)
+	c.t = c.t.Add(61 * time.Minute)
+	inProgress("one refusal and an idle hour")
+	refuseStep(t, repo, runID, stages, o)
+	c.t = c.t.Add(2 * time.Minute)
+	refuseStep(t, repo, runID, stages, o)
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := st.Lanes[0].Refused; r == nil || !r.Since.Equal(c.t.Add(-2*time.Minute)) || !r.Last.Equal(c.t) {
+		t.Fatalf("the refusal after the idle hour starts the time afresh: %+v", r)
+	}
+	inProgress("two minutes of refusing after an idle hour")
 }
 
 // TestAWaitByDesignIsNotStuck: a lane that has waited ninety minutes for its
