@@ -16,8 +16,8 @@ name: ci
 # tree that lands, and on a pull request it reports its required context
 # without taking a macOS runner (see the check job). Separate jobs run full-history
 # secret scanning, a workflow audit, the reviews-charter and issue-resolution
-# gates (RS001-RS003), dependency review, govulncheck, the smoke harness, and the
-# cold-reading evals.
+# gates (RS001-RS003), dependency review, govulncheck, the smoke harness, the
+# cold-reading evals, and the work-in-progress guard.
 #
 # The `changes` job classifies the diff, and the duplicated lanes stand down on a
 # change confined to the record and the user-facing docs. Two properties make
@@ -793,6 +793,107 @@ jobs:
         run: go run ./cmd/abcd implement load --site eval-harness
       - name: Falsify the cold-reading read-block
         run: make evals-cold-reading
+
+  # The work-in-progress guard (spc-2610120941441282 step 7, itd-2610120738075547
+  # C7, adr-2610120937435856, brief invariant 23). A cloud session pushes its
+  # work, checked or not, to a work-in-progress branch, and the pre-push hook
+  # admits that push without a receipt; the hook is skipped by --no-verify, so
+  # this job is the boundary. It refuses a pull request or merge-queue entry
+  # whose source branch holds the path segment `abcd-wip`, or whose diff adds a
+  # cloud report (scripts/check-wip-source.sh). That work reaches the default
+  # branch only through the person's own collect, on a branch of its own.
+  # The check run is the BASE commit's copy of the script, fetched when the
+  # clone lacks the base, so a change cannot edit the check it is judged by.
+  # Only on the first landing, when the base holds no copy yet, does the
+  # change's own copy run, and never for a source branch holding abcd-wip.
+  #
+  # It runs on EVERY event, like cold-reading-evals and for the same reason: it
+  # is a required status check (the ruleset mirror names it), and a stood-down
+  # job reports its context green for work that did not happen. The docs-only
+  # classifier never stands it down: a work-in-progress branch holding only
+  # records is exactly as unchecked as one holding code. On a pull request the
+  # source branch is github.head_ref; a queue entry runs on its own temporary
+  # ref, so the pull request's number is read from that ref and its source
+  # branch from the REST API with this job's read-only token, and the job
+  # refuses when either cannot be read. Every value an event supplies reaches
+  # the script through env, never by interpolation into it: a branch name is
+  # text its author chose. The nightly and dispatched runs carry no change into
+  # the default branch and have nothing to judge.
+  wip-guard:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # The cases first: a check whose refusals have never been watched is an
+      # enforcement claim with nothing behind it (iss-2608230847432286).
+      - name: Work-in-progress guard can fail (cases)
+        run: bash scripts/check-wip-source-cases.sh
+      - name: No work-in-progress branch or cloud report reaches the default branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+          pull_request)
+            source="$HEAD_REF"
+            ;;
+          merge_group)
+            # refs/heads/gh-readonly-queue/<base>/pr-<N>-<base sha>
+            n="$(printf '%s\n' "${QUEUE_REF#refs/heads/}" | sed -n 's|^gh-readonly-queue/..*/pr-\([0-9][0-9]*\)-[0-9a-f][0-9a-f]*$|\1|p')"
+            if [ -z "$n" ]; then
+              echo "::error title=wip-guard::cannot read the pull request number from the merge-queue ref, so its source branch cannot be judged; refusing."
+              exit 1
+            fi
+            if ! source="$(gh api "repos/$REPO/pulls/$n" --jq .head.ref)" || [ -z "$source" ]; then
+              echo "::error title=wip-guard::cannot read pull request #$n's source branch through the REST API; refusing."
+              exit 1
+            fi
+            ;;
+          *)
+            echo "::notice title=wip-guard::a $EVENT_NAME run carries no change into the default branch, so there is nothing to judge."
+            exit 0
+            ;;
+          esac
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "::error title=wip-guard::the $EVENT_NAME event names no usable base, so the change's diff cannot be judged; refusing."
+            exit 1
+          fi
+          # The check that judges the change is the BASE commit's copy, never
+          # the change's own: a pull request could otherwise edit it to exit 0.
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch -q --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          fi
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "::error title=wip-guard::the base commit cannot be read in this clone, so the check it holds cannot be run; refusing."
+            exit 1
+          fi
+          check="$RUNNER_TEMP/check-wip-source.sh"
+          if git cat-file -e "$BASE_SHA:scripts/check-wip-source.sh" 2>/dev/null; then
+            git show "$BASE_SHA:scripts/check-wip-source.sh" >"$check"
+          else
+            # The first landing: the base holds no check yet, so the change's
+            # own copy runs, and only for a source branch without the segment.
+            lowered="$(printf '%s' "$source" | tr '[:upper:]' '[:lower:]')"
+            case "/${lowered#refs/heads/}/" in
+            */abcd-wip/*)
+              echo "::error title=wip-guard::the base holds no work-in-progress guard yet, and the source branch holds the segment abcd-wip; refusing."
+              exit 1
+              ;;
+            esac
+            cat scripts/check-wip-source.sh >"$check"
+          fi
+          bash "$check" "$source" "$BASE_SHA" HEAD
 
   # The one supply-chain vector unreadable by eye: a dependency swap. Diffs the
   # PR's dependency changes against the advisory databases and fails on a known

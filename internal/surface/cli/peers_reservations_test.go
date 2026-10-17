@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // `abcd peers` lists the reservations on the shared remote
@@ -58,14 +60,7 @@ func decodePeers(t *testing.T, out string) peersJSON {
 // hostile or hand-made reservation arrives in.
 func pushTip(t *testing.T, dir, id, msg string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "msg")
-	if err := os.WriteFile(path, []byte(msg), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	tree := gitCmd(t, dir, "hash-object", "-w", "-t", "tree", "/dev/null")
-	sha := gitCommit(t, dir, "commit-tree", tree, "-F", path)
-	gitCmd(t, dir, "-c", "core.hooksPath=/dev/null", "push", "-q", "origin", sha+":refs/heads/abcd-reserved/"+id)
-	return sha
+	return gittest.PushEmptyTreeCommit(t, dir, "refs/heads/abcd-reserved/"+id, msg)
 }
 
 // TestPeersFetchesAndListsEveryReservationWithCounts is C16: a checkout that

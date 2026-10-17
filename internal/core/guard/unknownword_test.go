@@ -17,7 +17,7 @@ func runVerdictCases(t *testing.T, cases []verdictCase) {
 	t.Helper()
 	for _, tc := range cases {
 		t.Run(tc.cmd, func(t *testing.T) {
-			d := verdictOf(t, tc.cmd)
+			d := readingOf(t, tc.cmd)
 			if d.Verdict != tc.want || (tc.entry != "" && d.EntryID != tc.entry) {
 				t.Errorf("Check(%q) = %q via %q, want %q via %q", tc.cmd, d.Verdict, d.EntryID, tc.want, tc.entry)
 			}

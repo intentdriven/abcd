@@ -439,11 +439,7 @@ func terminalOnDefault(root, id string) (bool, error) {
 // a ref under refs/remotes/origin/, or "".
 func originDefault(root string) string {
 	trace("symbolic-ref", "--quiet", "refs/remotes/"+Remote+"/HEAD")
-	ref := gitutil.DefaultRef(root)
-	if !strings.HasPrefix(ref, "refs/remotes/"+Remote+"/") {
-		return ""
-	}
-	return ref
+	return gitutil.TrackedDefaultBranch(root, Remote)
 }
 
 // remoteDefault asks origin which branch is its default, for a clone that

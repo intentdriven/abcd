@@ -1024,5 +1024,46 @@ case_is accept "prose naming the rule without a URL" 'Never put a live session U
 
 Assisted-by: Claude:claude-opus-5'
 
+# --- identity mode: one identity, judged before any commit exists -------------
+#
+# The cloud brief's first step and the hand-back judge the identity a checkout
+# WILL commit under through `check-attribution.sh identity <role> <name>
+# <email>` (spc-2610120941441282). Same check_ident and list as the commits
+# arm, in the role named: a person passes, an AI vendor's name or mail domain
+# and a forge `[bot]` name are refused in both roles, and a bad role or the
+# wrong number of arguments is a usage fault (exit 2), never a pass.
+
+# identity_case <want:accept|reject|fault> <label> <arg>...
+identity_case() {
+	local want="$1" label="$2" got rc=0
+	shift 2
+	bash "$SCRIPT" identity "$@" >/dev/null 2>&1 || rc=$?
+	case "$rc" in
+	0) got=accept ;;
+	1) got=reject ;;
+	*) got=fault ;;
+	esac
+	if [ "$got" = "$want" ]; then
+		pass=$((pass + 1))
+	else
+		fail=$((fail + 1))
+		echo "FAIL: identity mode: $label — wanted $want, got $got (exit $rc)" >&2
+	fi
+}
+
+for role in author committer; do
+	identity_case accept "a person, as $role" "$role" 'Pat Person' pat@example.invalid
+	identity_case accept "a person whose name contains an AI name, as $role" "$role" 'Claudette Martin' claudette@example.invalid
+	identity_case reject "an AI vendor's name and mail, as $role" "$role" Claude noreply@anthropic.com
+	identity_case reject "an AI vendor's name alone, as $role" "$role" Claude claude@example.invalid
+	identity_case reject "an AI vendor's mail domain alone, as $role" "$role" 'Pat Person' pat@anthropic.com
+	identity_case reject "another vendor's mail domain, as $role" "$role" 'Pat Person' pat@openai.com
+	identity_case reject "a [bot] name, as $role" "$role" 'renovate[bot]' renovate@example.invalid
+done
+identity_case fault "a role that is neither author nor committer" reviewer 'Pat Person' pat@example.invalid
+identity_case fault "no role" '' 'Pat Person' pat@example.invalid
+identity_case fault "too few arguments" author 'Pat Person'
+identity_case fault "too many arguments" author 'Pat Person' pat@example.invalid extra
+
 echo "check-attribution-cases: $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

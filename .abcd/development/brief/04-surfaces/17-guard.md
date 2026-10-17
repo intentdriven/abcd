@@ -99,8 +99,10 @@ handed its script through a pipe, as in `cat x | sh`) or `forge-text-outbound`
 (a posting `gh pr` or `gh issue` command whose title or body carries a live
 agent-session URL or a tool attribution footer, in a repository that opted into
 the forge-text check, iss-2610142210511831), is enforced but not
-taught; the scripts the guard reads are taught by one rule the generator adds
-after the entries'. The registry taught is the one the guard
+taught; the scripts the guard reads, and the variable-built `bash -c` or `sh -c`
+script that deletes, which the guard refuses as `shell-c-variable-delete`
+(iss-2610161612200864), are taught by two rules the generator adds after the
+entries', each written beside the code that reads it. The registry taught is the one the guard
 enforces in the repository: an entry the repository adds in its
 `.abcd/guard.json` is taught by the same generator as the bundled ones, its
 rule marked `(repo)` after its entry id, and a guard file the guard refuses is
