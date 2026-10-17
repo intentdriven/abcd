@@ -231,3 +231,60 @@ func TestAnOpenParkedLaneIsRenewedAndNamedAsWaiting(t *testing.T) {
 		t.Fatalf("next names the waiting pull request: %s", res.Next)
 	}
 }
+
+// TestAParkedLaneTheForgeDoesNotAnswerForIsKeptHeld: only an answer the
+// forge gave changes a parked lane (dcn-2610170728074867). A listing that
+// fails, one that does not parse, one that does not show the lane's pull
+// request, and one whose pull request of that number has another head branch
+// each leave the lane unread: renewed past half its lease, not handed back,
+// and named as kept held.
+func TestAParkedLaneTheForgeDoesNotAnswerForIsKeptHeld(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		setup func(t *testing.T, f *landFixture, l Lane)
+		says  string
+	}{
+		{name: "a listing that fails", says: "could not be read from the forge", setup: func(t *testing.T, f *landFixture, _ Lane) {
+			if err := os.WriteFile(filepath.Join(f.gh, "refuse-list"), nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "a listing that does not parse", says: "does not parse", setup: func(t *testing.T, f *landFixture, _ Lane) {
+			if err := os.WriteFile(filepath.Join(f.gh, "pr.json"), []byte("not json"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "a pull request the listing does not show", says: "is not among the forge's listing", setup: func(t *testing.T, f *landFixture, _ Lane) {
+			f.listPRs(t, stubPR{Number: 8, HeadRefName: "someone/else", State: "CLOSED"})
+		}},
+		{name: "a pull request with another head branch", says: "is not among the forge's listing", setup: func(t *testing.T, f *landFixture, _ Lane) {
+			f.listPRs(t, stubPR{Number: 7, HeadRefName: "someone/else", State: "CLOSED"})
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f, l := parkDrainLane(t)
+			tc.setup(t, f, l)
+			ref := claim.RefPrefix + secondIssue
+			fenced := originReservation(t, f.bare, ref)
+			at := fenced.claimed.Add(12*time.Hour + 30*time.Minute)
+
+			res, err := Drain(f.repo.Root(), Options{Now: func() time.Time { return at }}, DrainOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if p := parkedOf(t, res, f.runID); p.State != ParkedUnread || !strings.Contains(p.Note, tc.says) || !strings.Contains(p.Note, "kept held") {
+				t.Fatalf("the lane is read as unread and kept held: %+v", p)
+			}
+			if tip := originReservation(t, f.bare, ref); tip.parent != fenced.commit || tip.released || tip.claimed.Before(at) {
+				t.Fatalf("the lane's reservation is renewed: fenced %+v, now %+v", fenced, tip)
+			}
+			st, err := ReadState(f.repo.Root(), f.runID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if st.Lanes[0].HandBack != nil || st.Lanes[0].Stage != StageLand {
+				t.Fatalf("the lane stays parked at land, not handed back: %+v", st.Lanes[0])
+			}
+		})
+	}
+}
