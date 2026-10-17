@@ -13,6 +13,7 @@ package loop
 // run when the issue's lane opens again.
 
 import (
+	"slices"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/peers"
@@ -20,10 +21,20 @@ import (
 )
 
 // issueHandedBack reports whether s is an issue run whose lane was handed back:
-// nothing further runs in it, and its issue is a person's.
+// nothing further runs in it, and its issue is a person's. A lane handed back
+// and then discarded, the remedy a stuck hand-back names, still was: its run
+// reads as complete (State.Complete), which would otherwise pass the issue
+// over for good as one whose landing settles it.
 func (s State) issueHandedBack() bool {
-	outcome, _, _ := laneOutcome(s)
-	return s.Issue() != "" && outcome == DrainLaneHandedBack
+	if s.Issue() == "" {
+		return false
+	}
+	if outcome, _, _ := laneOutcome(s); outcome == DrainLaneHandedBack {
+		return true
+	}
+	return slices.ContainsFunc(s.Lanes, func(l Lane) bool {
+		return l.HandBack != nil && (l.Stage == StageHandedBack || l.Stage == StageDiscarded)
+	})
 }
 
 // superseded reports whether runs[i], in runs oldest first, is an issue run

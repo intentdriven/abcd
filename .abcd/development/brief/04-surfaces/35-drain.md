@@ -240,7 +240,9 @@ on origin's default branch backs off, with a tip or without one
    `stuck`, naming the refusal, releases its reservation with the hand-back's
    tombstone, and goes on to the next issue in the same move. The lane keeps
    its worktree and branch until the person discards it through the step verb,
-   which ends the run.
+   which ends the run. The run ended so still reads as handed back, never as a
+   run whose landing settles the issue, so once the record changes on origin
+   the issue is re-admitted as any hand-back is.
 5. It reads what that lane has come to: its pull request opened (armed, or left
    open where the repository has no merge queue), the run complete, or the lane
    handed back, which it routes (below). A pull request the forge reports

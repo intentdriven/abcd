@@ -370,7 +370,10 @@ what it did in `next`:
   `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move. A
   stuck lane keeps its worktree and branch:
   `abcd implement step --run <run-id> --discard <lane-id>` removes them, closes
-  its pull request if it opened one, and ends the run.
+  its pull request if it opened one, and ends the run. The run ended this way
+  still reads as handed back, not as one whose landing settles the issue, so
+  once its record changes on `origin` the drain takes the issue up again, as
+  it does any issue it handed back.
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
   opens the next lane. A pull request the forge reports `CONFLICTING` is never
