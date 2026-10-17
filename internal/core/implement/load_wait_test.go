@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1107,5 +1108,50 @@ func TestSleepMarkShowsAsAChild(t *testing.T) {
 	stop()
 	if got := children(); slices.Contains(got, "sleep") {
 		t.Fatalf("children %v once stopped, want no sleep", got)
+	}
+}
+
+// TestWaitRefusesAHomeInsideAWorkingTree: under a home inside a git working
+// tree that is not the account's own (layered.MachineRoots), the gate refuses
+// before the machine is read or anything is created under that home, at
+// either gate: a hold kept there would queue apart from the machine's.
+func TestWaitRefusesAHomeInsideAWorkingTree(t *testing.T) {
+	for _, race := range []bool{false, true} {
+		tree := t.TempDir()
+		if err := os.Mkdir(filepath.Join(tree, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		home := filepath.Join(tree, "home")
+		if err := os.Mkdir(home, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		req := waitReq(home, 60000, &fakeClock{now: waitT0}, poll{load: 3})
+		req.Race = race
+		read := false
+		inner := req.Read
+		req.Read = func() (machineload.Snapshot, error) { read = true; return inner() }
+		_, err := WaitLoad(req)
+		if err == nil || !strings.Contains(err.Error(), "the home directory lies inside a working tree, so the load gate keeps no hold there; run with your own home") {
+			t.Fatalf("race %v: err = %v, want the refusal saying the gate keeps no hold there", race, err)
+		}
+		if read {
+			t.Fatalf("race %v: the machine was read before the refusal", race)
+		}
+		if entries, _ := os.ReadDir(home); len(entries) != 0 {
+			t.Fatalf("race %v: created under the home: %v", race, entries)
+		}
+	}
+}
+
+// TestWaitKeepsItsHoldUnderAnOrdinaryHome: a home outside every working tree
+// is unaffected: the gate opens and keeps its hold there.
+func TestWaitKeepsItsHoldUnderAnOrdinaryHome(t *testing.T) {
+	home := t.TempDir()
+	res, err := WaitLoad(waitReq(home, 60000, &fakeClock{now: waitT0}, poll{load: 3}))
+	if err != nil || res.Status != WaitOpen {
+		t.Fatalf("WaitLoad = %+v, %v; want open", res, err)
+	}
+	if _, err := os.Stat(abcdhome.Path(home)); err != nil {
+		t.Fatalf("no ~/.abcd.noindex under an ordinary home: %v", err)
 	}
 }

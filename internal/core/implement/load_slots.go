@@ -91,8 +91,8 @@ func PreflightSlots(getenv func(string) string, home string) (int, string, strin
 	}
 	roots, _ := layered.MachineRoots(home)
 	if roots.HomeRefused {
-		// Its own note, not MachineRoots': the wait keeps its hold under
-		// this home all the same (WaitLoad), so nothing is claimed of writes.
+		// Its own note, not MachineRoots': the wait refuses such a home
+		// before reading this (WaitLoad), and test-parallelism reads it too.
 		return 1, SlotsDefault, fmt.Sprintf("HOME lies inside a git working tree and is not this account's home, so %s is not read for %s and one preflight at a time applies",
 			layered.Config.MachineOrigin(), PreflightSlotsKey), nil
 	}

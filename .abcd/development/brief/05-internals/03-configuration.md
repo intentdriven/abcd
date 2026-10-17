@@ -589,9 +589,10 @@ file cannot be read for it, so a file that holds other settings never stops
 the load gate) are honoured from the machine layer alone, and only from a
 home outside every git working tree but the account's own
 (`layered.MachineRoots`, the rule `RootsFor` applies): under a home inside
-one the machine layer reads as absent, so no holder is named from it, the
-cap is ten and one preflight runs at a time, and one stderr line says why
-(from `abcd reserve`, `abcd peers` and the load gate). Its one
+one the machine layer reads as absent, so no holder is named from it and the
+cap is ten, and one stderr line from `abcd reserve` and `abcd peers` says
+why; the load gate refuses such a home outright, before it creates anything
+under it, since a hold kept there would queue apart from the machine's. Its one
 write is the provider block `ahoy connect` adds, and every other config read
 resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
 model-tier routing table in `oracle-routing.json` (read beneath the
