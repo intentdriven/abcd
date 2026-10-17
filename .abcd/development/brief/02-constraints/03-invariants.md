@@ -62,7 +62,10 @@ The following are non-negotiable invariants — any architectural choice that vi
    fence's fetch and renewal before the landing pushes the lane's branch and
    again before a merge is armed, and the tombstone once the run's last lane
    lands or an issue lane is handed back, the latter carrying the hand-back's
-   kind and the issue's record blob; the land fence's fetch is made before it
+   kind and the issue's record blob, and, in an issue run, the sync step's
+   fetch of origin's default branch, at each sync: before the landing's
+   records, and again when the open pull request starts to conflict at its
+   arming or its merge wait (spc-2610161044461448 step 13); the land fence's fetch is made before it
    judges a release hold whether or not the run holds a reservation
    (itd-2609151838312703 C7); and `land`, whose meaning includes one fetch of
    the reservations before it pushes, arms or queues anything, for the same

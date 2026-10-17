@@ -630,6 +630,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// closed, its reservation released, by finishMerged; a lane of this
 	// drain's is routed here as a lane's hand-back is (step 8).
 	for _, p := range res.Parked {
+		// A parked lane that went back through its sync is driven again, as
+		// the lane in progress is (step 13).
+		if p.State == ParkedSyncing {
+			for i := range st.Lanes {
+				if st.Lanes[i].RunID == p.RunID && st.Lanes[i].Outcome == DrainLanePullRequest {
+					st.Lanes[i].Outcome, finished = DrainLaneInProgress, true
+				}
+			}
+			continue
+		}
 		if p.State != ParkedClosed {
 			continue
 		}

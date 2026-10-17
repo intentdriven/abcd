@@ -752,6 +752,10 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 		if err != nil {
 			return Outcome{}, err
 		}
+		// An issue lane enters its sync again (sync.go, step 13).
+		if c.State.Issue() != "" {
+			return resyncLane(c, lane, def, tracking, m)
+		}
 		return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
 	}
 	// The arming is pinned to the pushed head: the forge refuses it when the
@@ -803,6 +807,10 @@ func landMerged(c Context, lane *Lane) (Outcome, error) {
 			return Outcome{}, err
 		}
 		if m.conflicting() {
+			// An issue lane enters its sync again (sync.go, step 13).
+			if c.State.Issue() != "" {
+				return resyncLane(c, lane, def, tracking, m)
+			}
 			return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
 		}
 		return Outcome{}, contend(string(StageLand), "", lane.ID,

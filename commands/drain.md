@@ -335,13 +335,19 @@ what it did in `next`:
   its pull request if it opened one, and ends the run.
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
-  opens the next lane. A pull request the forge reports `CONFLICTING` is never
-  armed: its lane stays in progress, and `abcd implement step --run <run-id>`
-  refuses at exit 2 naming the conflicting files and the hand merge that
-  settles it, until the drain hands the lane back as stuck. That is a person's:
-  report it, and do not push to the lane or merge it yourself. One that turns conflicting after it was armed is refused
-  the same way by the run's own step; the drain's part ended at the open pull
-  request.
+  opens the next lane. Before its records and its push, the lane's sync
+  fetches `origin`'s default branch and merges it whenever it has moved, a fresh
+  round judging the merge (`commands/implement.md`): a conflict confined to
+  files `origin` declares `linguist-generated` goes back to an implementer to
+  regenerate them, and any other conflict refuses the step naming the files,
+  nothing pushed, so the next drain hands the lane back as `stuck` at once. A
+  pull request that starts to conflict at its arming, or while it waits
+  parked, on declared generated files alone enters the sync again (the
+  drain's next move takes that step for a parked lane, reads it as `syncing`
+  and drives the lane again); one that conflicts on any other file is never
+  armed, and `abcd implement step --run <run-id>` refuses at exit 2 naming the
+  conflicting files and the hand merge that settles it. That is a person's:
+  report it, and do not push to the lane or merge it yourself.
 - **It finishes merged lanes.** Every move, before it reads the window clock,
   renews the reservation of each issue lane parked at land at half its lease,
   so a pull request waiting on a person's review stays held while the drain
@@ -447,8 +453,8 @@ hand-backs; `passed` names an eligible issue this move did not take, with why;
 the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
 `parked` reads every other lane parked at land from its pull request
-(`issue`, `run_id`, `pr`, `state`: `waiting`, `conflicting`, `closed`,
-`merged` or `unread`, and a `note`);
+(`issue`, `run_id`, `pr`, `state`: `waiting`, `conflicting`, `syncing`,
+`closed`, `merged` or `unread`, and a `note`);
 `waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
 again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the

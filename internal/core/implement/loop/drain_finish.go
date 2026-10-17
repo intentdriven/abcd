@@ -58,6 +58,10 @@ const (
 	ParkedClosed      = "closed"
 	ParkedMerged      = "merged"
 	ParkedUnread      = "unread"
+	// ParkedSyncing: the pull request conflicts only on files origin's
+	// default branch declares generated, or not at all as this checkout
+	// merges, so the lane went back through its sync (step 13).
+	ParkedSyncing = "syncing"
 )
 
 // parkedAtLand is the issue lane of run waiting on its pull request's merge:
@@ -267,6 +271,18 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 		}
 		if !on {
 			p := read[run.RunID]
+			if p.State == ParkedConflicting && syncable(repoRoot, tracking, lane.Landing.Pushed) {
+				// A conflict confined to declared generated files, or one
+				// this checkout cannot reproduce, goes back through the
+				// lane's sync (sync.go, step 13): the run's own step takes it.
+				note, moved, err := resyncParked(repoRoot, run.RunID, now)
+				if err != nil {
+					return nil, nil, err
+				}
+				if moved {
+					p.State, p.Note = ParkedSyncing, note
+				}
+			}
 			if p.State == ParkedClosed {
 				if p.Note, err = handBackClosed(repoRoot, run.RunID, now); err != nil {
 					return nil, nil, err
@@ -315,6 +331,51 @@ func finishMerged(repoRoot string, now time.Time) ([]DrainFinished, []DrainParke
 		}
 	}
 	return out, reads, nil
+}
+
+// syncable reports whether a parked lane whose pull request the forge lists
+// conflicting goes back through its sync: a merge of tracking and its pushed
+// head, as the forge merges, conflicts in no file, or only in files origin's
+// default branch declares generated. Every misreading answers no, which
+// leaves the lane a person's.
+func syncable(repoRoot, tracking, pushed string) bool {
+	f := localConflict(repoRoot, tracking, pushed)
+	if f.err != nil {
+		return false
+	}
+	gen, _ := claim.GeneratedFiles(repoRoot)
+	return len(undeclared(f.paths, gen)) == 0
+}
+
+// resyncParked takes the run's own landing step for its parked lane, under
+// the run's lock, which enters the lane's sync again over its conflicting
+// pull request (resyncLane). moved is true when the lane left its merge wait
+// for the sync; note is the record's line, or why the step refused.
+func resyncParked(repoRoot, runID string, now time.Time) (note string, moved bool, err error) {
+	err = mutate(repoRoot, runID, func(_ *os.Root, st *State) (bool, error) {
+		i := parkedAtLand(*st)
+		if i < 0 {
+			return false, nil
+		}
+		w := laneWant(*st, i)
+		if w.kind != wantBinary || w.hold {
+			return false, nil
+		}
+		res, err := performMove(repoRoot, st, DefaultStages(), w, now)
+		if err != nil {
+			return false, err
+		}
+		moved = parkedAtLand(*st) < 0
+		note = res.Next
+		if n := len(st.Record); n > 0 {
+			note = st.Record[n-1].Note
+		}
+		return true, nil
+	})
+	if r, ok := AsRefusal(err); ok {
+		return fsutil.RedactHome(r.Reason + "; " + r.Remedy), false, nil
+	}
+	return note, moved, err
 }
 
 // handBackClosed hands run's parked lane back as closed, its pull request

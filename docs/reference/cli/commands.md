@@ -1273,8 +1273,13 @@ so a lane whose reservation became another person's pushes nothing and is handed
 back as stuck. A move that finds a lane parked at land reads it from its pull
 request, in one listing of your latest pull requests (gh pr list): a closed one
 hands the lane back as closed, releasing its reservation with a tombstone marking
-it closed; a conflicting one is no longer renewed and is named; an open one is
-renewed and named as waiting (parked in --json). A lane
+it closed; a conflicting one is not renewed and is named; an open one is
+renewed and named as waiting (parked in --json). Before its records and push a
+lane's sync fetches origin's default branch and merges it whenever it has moved, a
+fresh round judging the merge: a conflict confined to files origin declares
+linguist-generated goes back to an implementer to regenerate, any other hands the
+lane back naming the files, nothing pushed, and a pull request that starts to
+conflict on generated files alone enters the sync again. A lane
 that finds a decision in its issue hands it back by kind, its work discarded: a
 user-visible change is promoted to an intent draft (`capture promote`, which
 stamps the issue's related_intents and nothing else); a trust or safety rule is

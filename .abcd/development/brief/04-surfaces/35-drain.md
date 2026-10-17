@@ -381,7 +381,17 @@ on origin's default branch backs off, with a tip or without one
    it so, and routed home to a person; a conflicting one is no longer renewed
    and is named in `next`; an open one is renewed and named as waiting; one
    merged by a squash or rebase, its head not on the default branch, is named
-   and not renewed; one the listing does not show stays held. The landing checks the
+   and not renewed; one the listing does not show stays held. A lane's sync
+   fetches `origin`'s default branch and merges it whenever it has moved, before
+   its records and its push, a fresh round judging the merge head; a conflict
+   confined to files `origin`'s default branch declares `linguist-generated`
+   goes to an implementer to regenerate them, abcd running no command the
+   repository declares, and any other conflict refuses the step in a way that
+   cannot change, naming the files, so the lane is handed back with nothing
+   pushed. A pull request that starts to conflict at its arming or while it
+   waits, on declared generated files alone, enters the sync again, the move
+   reading a parked one as `syncing` and driving it again
+   (spc-2610161044461448 step 13, dcn-2610161040384068). The landing checks the
    reservation before its push as the land fence does before arming, and a
    lane whose hold is now another person's pushes nothing, opens no pull
    request and is handed back at once as stuck; a lane handed back has its reservation tombstoned by the step that
