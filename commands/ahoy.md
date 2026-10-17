@@ -1442,11 +1442,16 @@ what served each call, one extra request per call, made only because the
 person turned it on) are added to the block by hand afterwards, on an
 OpenRouter block alone, as the configuration chapter of the brief describes,
 and a configured provider's verification sends the first listed model's pin
-when it has one and reads its record back when the block says to. A role
+when it has one. The verification never reads the generation record back,
+even when the block says `read_generation: true`: that would be one more
+request for an answer the verification discards. A role
 routed through opencode to a pinned model is refused while the person's
-environment sets `OPENCODE_CONFIG` or `OPENCODE_CONFIG_CONTENT`, since the
-run's own sealed configuration would replace theirs: unset it for pinned
-runs, or route the role without a pin. A `~/.abcd.noindex` that is a
+environment sets `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
+`OPENCODE_CONFIG_CONTENT`, since the run's own sealed configuration would
+replace theirs or be overridden by it: unset it for pinned runs, or route
+the role without a pin. `~/.opencode/opencode.json` is not refused, so a
+routing entry for that model there can override the pin, which is one reason
+the pin is recorded as not verified on that path. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the

@@ -6,27 +6,42 @@ package runner
 // written for that run alone.
 //
 // opencode 1.18.31 loads OPENCODE_CONFIG, the path of one more configuration
-// file, after the person's global configuration and merges it over it (read
-// in the installed binary on 2026-10-17, and checked with `opencode debug
-// config` against a scratch home: a pinned order replaced the global one, and
-// the global file was left as it was). abcd writes the pin there, under the
-// model's options as opencode's OpenRouter provider passes them on
+// file, after the person's global configuration (the opencode.json of its
+// config directory) and merges it over it (read in the installed binary on
+// 2026-10-17, and checked with `opencode debug config` against a scratch
+// home: a pinned order replaced the global one, and the global file was left
+// as it was). abcd writes the pin there, under the model's options as
+// opencode's OpenRouter provider passes them on
 // (provider.<name>.models.<model>.options.provider, opencode's documented
 // shape for OpenRouter's routing object), and never touches the person's own
 // configuration or a file of the repository: the file sits in a directory
 // made for the run (mode 0700, the file 0600) under the system's temporary
 // directory, refused when that resolves inside the repository or its
-// checkout, and removed when the run ends. A configuration opencode reads
-// after it (an organisation's managed configuration or its remote account
-// configuration) is the person's own and still applies.
+// checkout, and removed when the run ends.
+//
+// What opencode merges after OPENCODE_CONFIG, in the same binary and checked
+// the same way, in order: the project's configuration files and the
+// opencode.json of each .opencode directory up from the working directory
+// (both turned off by the seal, OPENCODE_DISABLE_PROJECT_CONFIG), then
+// ~/.opencode/opencode.json, then the opencode.json of OPENCODE_CONFIG_DIR,
+// then OPENCODE_CONFIG_CONTENT, then an organisation's remote account
+// configuration and its managed configuration. The config directory is in
+// that same directory walk, but only its agents, commands and plugins load
+// there: its opencode.json is read once, before OPENCODE_CONFIG. The
+// organisation's configuration is the person's own and still applies.
 //
 // A person who points opencode at a configuration of their own, a file
-// through OPENCODE_CONFIG or inline through OPENCODE_CONFIG_CONTENT (which
-// opencode merges later still), would lose it to the sealed file, or have it
-// override the pin, and with it the key, permission denies and servers it
+// through OPENCODE_CONFIG, a directory through OPENCODE_CONFIG_DIR or inline
+// through OPENCODE_CONFIG_CONTENT, would lose it to the sealed file, or have
+// it override the pin, and with it the key, permission denies and servers it
 // carries. abcd never changes how the person's tools work, so a pinned run is
-// refused before anything is written or launched while either is set and not
-// empty (personsOpenCodeConfig); an unpinned run passes both through.
+// refused before anything is written or launched while any of the three is
+// set and not empty (personsOpenCodeConfig); an unpinned run passes them
+// through. ~/.opencode/opencode.json is deliberately not refused: it is a
+// file the person keeps, not a variable they set for a run, and refusing it
+// would block every pinned run of everyone who keeps one. A routing entry for the pinned model in that file
+// overrides the pin, which is one reason the pin is recorded as not verified
+// on this path.
 //
 // The route records the configuration's SHA-256 and opencode's version, asked
 // with --version under the same seal before the run. The key stays in
@@ -157,8 +172,9 @@ func inside(dir string, roots ...string) bool {
 
 // personsConfigVars are the variables through which a person points opencode
 // at a configuration of their own, which a pinned run's sealed file would
-// set aside or be overridden by.
-var personsConfigVars = []string{"OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT"}
+// set aside (OPENCODE_CONFIG) or be overridden by (OPENCODE_CONFIG_DIR's
+// opencode.json and OPENCODE_CONFIG_CONTENT, both merged after it).
+var personsConfigVars = []string{"OPENCODE_CONFIG", "OPENCODE_CONFIG_DIR", "OPENCODE_CONFIG_CONTENT"}
 
 // personsOpenCodeConfig refuses a pinned run while the environment the
 // harness would inherit names a configuration of the person's own for
@@ -167,8 +183,9 @@ func personsOpenCodeConfig() error {
 	for _, name := range personsConfigVars {
 		if os.Getenv(name) != "" {
 			return fail(OpenCode, ReasonFailed, "%s is set, and a pinned run points opencode at a configuration abcd writes "+
-				"for it, which would set aside the one %s names; abcd never changes how your tools work, so the run is "+
-				"not started: unset %s for pinned runs, or route the role to a model without a pin", name, name, name)
+				"for it, which the configuration %s names would be set aside by or override; abcd never changes how your "+
+				"tools work, so the run is not started: unset %s for pinned runs, or route the role to a model without a pin",
+				name, name, name)
 		}
 	}
 	return nil

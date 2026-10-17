@@ -185,6 +185,17 @@ const (
 	ReadbackFailed = "failed"
 )
 
+// Whose token counts a call's record holds once a generation record was read
+// (CallRecord.UsageSource).
+const (
+	// UsageNative: the record's native counts, all four, replaced the
+	// response's.
+	UsageNative = "native"
+	// UsageResponse: the record did not carry all four native counts, so the
+	// response's counts were kept.
+	UsageResponse = "response"
+)
+
 // readback is one readback's outcome.
 type readback struct {
 	state  string
@@ -216,27 +227,30 @@ func readGeneration(ctx context.Context, client *openaiapi.Client, p Provider, r
 // when the record carries all four counts it has a field for (prompt,
 // completion, reasoning and cache-read), they replace the response's whole,
 // and a count the record has no field for (cache writes, the total) is then
-// not reported; a record missing any of the four leaves the response's
-// counts as they were.
-func withGeneration(res openaiapi.Result, g openaiapi.Generation) openaiapi.Result {
+// not reported; a record missing any of the four (a null among them, which is
+// no count) leaves the response's counts as they were. The second result
+// says which: UsageNative or UsageResponse.
+func withGeneration(res openaiapi.Result, g openaiapi.Generation) (openaiapi.Result, string) {
 	if g.Provider != "" {
 		res.Provider = g.Provider
 	}
 	if g.Usage == nil {
-		return res
+		return res, UsageResponse
 	}
 	gu := g.Usage
 	u := openaiapi.Usage{}
 	if res.Usage != nil {
 		u = *res.Usage
 	}
+	source := UsageResponse
 	if gu.PromptTokens != nil && gu.CompletionTokens != nil && gu.ReasoningTokens != nil && gu.CachedTokens != nil {
 		u = openaiapi.Usage{PromptTokens: gu.PromptTokens, CompletionTokens: gu.CompletionTokens,
 			ReasoningTokens: gu.ReasoningTokens, CachedTokens: gu.CachedTokens, Cost: u.Cost}
+		source = UsageNative
 	}
 	if gu.Cost != nil {
 		u.Cost = gu.Cost
 	}
 	res.Usage = &u
-	return res
+	return res, source
 }

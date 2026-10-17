@@ -243,6 +243,58 @@ func TestAnOptedInReadbackFillsTheServedSide(t *testing.T) {
 	assertListed(t, rec.Unpinned)
 }
 
+// TestTheRecordSaysWhoseCountsItHolds: a readback whose record carries all
+// four native counts records them as the record's own (usage_source
+// "native"); a record that answers null for one (OpenRouter's reasoning
+// count, on a model without one) keeps the response's counts, a null never
+// read as zero, and says so ("response"); a call that read no record says
+// nothing of it.
+func TestTheRecordSaysWhoseCountsItHolds(t *testing.T) {
+	if rec := pinnedCall(t, newORFake(t, http.StatusOK, genRecord), true); rec.UsageSource != UsageNative {
+		t.Fatalf("a full record: usage source %q, want %q", rec.UsageSource, UsageNative)
+	}
+	nullReasoning := strings.Replace(genRecord, `"native_tokens_reasoning":5`, `"native_tokens_reasoning":null`, 1)
+	rec := pinnedCall(t, newORFake(t, http.StatusOK, nullReasoning), true)
+	if rec.UsageSource != UsageResponse {
+		t.Fatalf("a record with a null count: usage source %q, want %q", rec.UsageSource, UsageResponse)
+	}
+	if rec.Usage == nil || rec.Usage.PromptTokens != 120 || rec.Usage.ReasoningTokens != 12 {
+		t.Fatalf("a record with a null count replaced the response's counts: %+v", rec.Usage)
+	}
+	if rec.Cost == nil || rec.Cost.Amount != 0.0007 {
+		t.Fatalf("the record's cost was not taken on its own: %+v", rec.Cost)
+	}
+	raw, _ := json.Marshal(pinnedCall(t, newORFake(t, http.StatusOK, genRecord), false))
+	if strings.Contains(string(raw), "usage_source") {
+		t.Fatalf("a call that read no record names a usage source: %s", raw)
+	}
+}
+
+// TestTheVerificationNeverReadsTheGenerationRecord: verifying a configured
+// provider's key again (the walkthrough's service for it) makes the one
+// verification call and no generation readback, even on a block that sets
+// read_generation: its answer is discarded, so the readback would be one
+// request more for nothing.
+func TestTheVerificationNeverReadsTheGenerationRecord(t *testing.T) {
+	asOpenRouter(t)
+	o := newORFake(t, http.StatusOK, genRecord)
+	f := newFx(t)
+	f.machineConfig(pinBlockReading(o.srv.URL+"/api/v1", goodPin, true))
+	svc, ok, _, err := CredentialService(f.roots, "openrouter")
+	if err != nil || !ok {
+		t.Fatalf("CredentialService: %v, %v", ok, err)
+	}
+	if err := svc.Verify(context.Background(), callKey); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if n := o.chats.Load(); n != 1 {
+		t.Fatalf("%d verification calls, want 1", n)
+	}
+	if n := o.gens.Load(); n != 0 {
+		t.Fatalf("%d generation requests during a verification, want none", n)
+	}
+}
+
 // TestAFailedReadbackNeverFailsTheCall: a generation record the provider
 // will not give leaves the call answered, says the readback failed, and keeps
 // the response's own served side.
@@ -308,7 +360,11 @@ func TestAPartialGenerationRecordNeverMixesCounts(t *testing.T) {
 	resp := openaiapi.Result{Usage: &openaiapi.Usage{PromptTokens: n(120), CompletionTokens: n(30), TotalTokens: n(150),
 		ReasoningTokens: n(12), CachedTokens: n(100), CacheWriteTokens: n(20), Cost: c(0.00042)}}
 	partial := openaiapi.Generation{Usage: &openaiapi.Usage{PromptTokens: n(121), CompletionTokens: n(33), Cost: c(0.0007)}}
-	got := withGeneration(resp, partial).Usage
+	r, source := withGeneration(resp, partial)
+	got := r.Usage
+	if source != UsageResponse {
+		t.Errorf("partial record: usage source %q, want %q", source, UsageResponse)
+	}
 	want := openaiapi.Usage{PromptTokens: n(120), CompletionTokens: n(30), TotalTokens: n(150),
 		ReasoningTokens: n(12), CachedTokens: n(100), CacheWriteTokens: n(20), Cost: c(0.0007)}
 	if !reflect.DeepEqual(*got, want) {
@@ -319,7 +375,11 @@ func TestAPartialGenerationRecordNeverMixesCounts(t *testing.T) {
 	}
 	full := openaiapi.Generation{Usage: &openaiapi.Usage{PromptTokens: n(121), CompletionTokens: n(33),
 		ReasoningTokens: n(5), CachedTokens: n(64)}}
-	got = withGeneration(resp, full).Usage
+	r, source = withGeneration(resp, full)
+	got = r.Usage
+	if source != UsageNative {
+		t.Errorf("full record: usage source %q, want %q", source, UsageNative)
+	}
 	want = openaiapi.Usage{PromptTokens: n(121), CompletionTokens: n(33), ReasoningTokens: n(5), CachedTokens: n(64), Cost: c(0.00042)}
 	if !reflect.DeepEqual(*got, want) {
 		t.Fatalf("full record: usage = %s, want %s", usageText(*got), usageText(want))

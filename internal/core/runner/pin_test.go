@@ -84,6 +84,7 @@ func TestAPinnedOpenCodeRunIsPointedAtASealedConfiguration(t *testing.T) {
 	// own for opencode, so the pinned run is not refused.
 	t.Setenv("OPENCODE_CONFIG_CONTENT", "")
 	t.Setenv("OPENCODE_CONFIG", "")
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
 	pin := testPin
 	o := newOpenCode("openrouter/" + orModel)
 	o.pin = &pin
@@ -149,19 +150,21 @@ func TestAPinnedOpenCodeRunIsPointedAtASealedConfiguration(t *testing.T) {
 
 // TestAPinnedRunRefusesThePersonsOwnOpenCodeConfiguration: a parent that
 // names a configuration of its own for opencode (a file through
-// OPENCODE_CONFIG, or inline through OPENCODE_CONFIG_CONTENT) would lose it to
-// the sealed file, and with it the key, permission denies or servers it
+// OPENCODE_CONFIG, inline through OPENCODE_CONFIG_CONTENT, or a directory
+// through OPENCODE_CONFIG_DIR, whose opencode.json opencode merges over the
+// sealed file) would lose it to the sealed file or override the pin, and with it the key, permission denies or servers it
 // carries; abcd never changes how the person's tools work, so the pinned run
 // is refused before anything is written or launched, naming the variable and
 // what to do.
 func TestAPinnedRunRefusesThePersonsOwnOpenCodeConfiguration(t *testing.T) {
-	for _, name := range []string{"OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT"} {
+	for _, name := range []string{"OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT", "OPENCODE_CONFIG_DIR"} {
 		t.Run(name, func(t *testing.T) {
 			f := newFake(t, "ok", OpenCode)
 			tmp := t.TempDir()
 			t.Setenv("TMPDIR", tmp)
 			t.Setenv("OPENCODE_CONFIG", "")
 			t.Setenv("OPENCODE_CONFIG_CONTENT", "")
+			t.Setenv("OPENCODE_CONFIG_DIR", "")
 			t.Setenv(name, "/home/someone/opencode-work.json")
 			pin := testPin
 			o := newOpenCode("openrouter/" + orModel)
@@ -193,12 +196,13 @@ func TestAPinnedRunRefusesThePersonsOwnOpenCodeConfiguration(t *testing.T) {
 }
 
 // TestAnUnpinnedRunKeepsThePersonsOpenCodeConfiguration: without a pin the
-// person's own OPENCODE_CONFIG and OPENCODE_CONFIG_CONTENT reach opencode as
-// they are.
+// person's own OPENCODE_CONFIG, OPENCODE_CONFIG_CONTENT and
+// OPENCODE_CONFIG_DIR reach opencode as they are.
 func TestAnUnpinnedRunKeepsThePersonsOpenCodeConfiguration(t *testing.T) {
 	f := newFake(t, "ok", OpenCode)
 	t.Setenv("OPENCODE_CONFIG", "/home/someone/opencode-work.json")
 	t.Setenv("OPENCODE_CONFIG_CONTENT", `{"permission":{"bash":"deny"}}`)
+	t.Setenv("OPENCODE_CONFIG_DIR", "/home/someone/opencode-dir")
 	if _, _, err := newOpenCode("openrouter/"+orModel).Run(context.Background(), f.request("ruthless-reviewer")); err != nil {
 		t.Fatal(err)
 	}
@@ -208,6 +212,9 @@ func TestAnUnpinnedRunKeepsThePersonsOpenCodeConfiguration(t *testing.T) {
 	}
 	if v, _ := envValue(env, "OPENCODE_CONFIG_CONTENT"); v != `{"permission":{"bash":"deny"}}` {
 		t.Errorf("OPENCODE_CONFIG_CONTENT = %q", v)
+	}
+	if v, _ := envValue(env, "OPENCODE_CONFIG_DIR"); v != "/home/someone/opencode-dir" {
+		t.Errorf("OPENCODE_CONFIG_DIR = %q", v)
 	}
 }
 

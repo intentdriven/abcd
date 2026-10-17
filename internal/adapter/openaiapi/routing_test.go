@@ -196,3 +196,26 @@ func TestAReadbackThatIsNotARecordFails(t *testing.T) {
 		t.Fatalf("err = %v, want the status refused", err)
 	}
 }
+
+// TestANullInTheGenerationRecordIsNotReported: OpenRouter answers null for a
+// native count the model has none of (reasoning, on a model that does not
+// reason) and may for the cost; a null is a count not reported, never a
+// count of zero, so it never reads as the record carrying it.
+func TestANullInTheGenerationRecordIsNotReported(t *testing.T) {
+	g := newGenFake(t, 0, `{"data":{"id":"gen-1","provider_name":"DeepInfra","total_cost":null,`+
+		`"native_tokens_prompt":130,"native_tokens_completion":31,"native_tokens_reasoning":null,"native_tokens_cached":90}}`)
+	gen, err := quick(t, g.base(), time.Second).Generation(context.Background(), "gen-1")
+	if err != nil {
+		t.Fatalf("Generation: %v", err)
+	}
+	u := gen.Usage
+	if u == nil || u.PromptTokens == nil || *u.PromptTokens != 130 || u.CachedTokens == nil || *u.CachedTokens != 90 {
+		t.Fatalf("usage = %+v, want the counts the record carries", u)
+	}
+	if u.ReasoningTokens != nil {
+		t.Errorf("a null reasoning count read as %d", *u.ReasoningTokens)
+	}
+	if u.Cost != nil {
+		t.Errorf("a null cost read as %v", *u.Cost)
+	}
+}

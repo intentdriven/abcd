@@ -74,6 +74,12 @@ type CallRecord struct {
 	// kept answer is re-emitted as, whole.
 	GenerationReadback      string `json:"generation_readback,omitempty"`
 	GenerationReadbackError string `json:"generation_readback_error,omitempty"`
+	// UsageSource says whose token counts Usage holds once a generation
+	// record was read: UsageNative when the record carried all four native
+	// counts and they replaced the response's, UsageResponse when it did not
+	// (a null count is not a count) and the response's were kept. Absent when
+	// no record was read, and the counts are then the response's own.
+	UsageSource string `json:"usage_source,omitempty"`
 	// Attempts is every provider the generation record names as tried, in
 	// its order, the one that served included, so a fallback shows as an
 	// attempt before it; absent when no record was read.
@@ -188,11 +194,13 @@ func complete(ctx context.Context, p Provider, key, model string, brief openaiap
 	if p.ReadGeneration {
 		rb = readGeneration(ctx, client, p, res)
 	}
+	source := ""
 	if rb.gen != nil {
-		res = withGeneration(res, *rb.gen)
+		res, source = withGeneration(res, *rb.gen)
 	}
 	rec := callRecord(p, brief, settings, res)
 	rec.GenerationReadback, rec.GenerationReadbackError = rb.state, rb.reason
+	rec.UsageSource = source
 	if rb.gen != nil {
 		rec.Attempts = append([]openaiapi.Attempt{}, rb.gen.Attempts...)
 	}

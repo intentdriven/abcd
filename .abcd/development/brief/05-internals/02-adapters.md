@@ -196,8 +196,15 @@ response's from another, so they never mix: when the record carries all four
 of its counts (prompt, completion, reasoning, cache-read) they replace the
 response's all together, and the cache-write count, which the record does not
 carry, is then listed as not reported; a record missing any of the four
-leaves the response's counts as they were. The cost is taken from the record
-whenever it carries one. It is made with the key the
+leaves the response's counts as they were. A null is a count missing, never
+a count of zero (OpenRouter answers null for a count the model has none of,
+the reasoning count of a model that does not reason, say), and so is a null
+cost. The record says whose counts it holds in `usage_source`: `native` when
+the record's four replaced the response's, `response` when the response's
+were kept; it is absent when no record was read. The cost is taken from the
+record whenever it carries one. The setup's verification call (`ahoy
+connect`, fresh or verifying a configured provider's key again) never makes
+the readback, whatever `read_generation` says: its answer is discarded. It is made with the key the
 call used, resolved once by name, on the same pinned client (no redirect, the
 body bounded), and bounded in time as a whole (twenty seconds, a not-found
 asked again after a short doubling wait, since OpenRouter records a
@@ -263,15 +270,24 @@ review is skipped.
   when it resolves inside the repository or its checkout, and removed when the
   run ends). opencode is pointed at it with `OPENCODE_CONFIG`, which opencode
   1.18.31 merges over the person's own global configuration without writing
-  it; a managed or organisation configuration opencode reads later is the
-  person's own and still applies. A person who points opencode at a
-  configuration of their own through `OPENCODE_CONFIG` or
+  it. After it, opencode merges the project's configuration and each
+  `.opencode` directory's `opencode.json` (both turned off by the seal), then
+  `~/.opencode/opencode.json`, then the `opencode.json` in
+  `OPENCODE_CONFIG_DIR`, then `OPENCODE_CONFIG_CONTENT`, then an
+  organisation's remote or managed configuration, which is the person's own
+  and still applies. A person who points opencode at a configuration of their
+  own through `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
   `OPENCODE_CONFIG_CONTENT` (their key through `{env:}`, permission denies,
-  MCP servers) would lose it to the sealed file, and abcd never changes how
-  the person's tools work, so a pinned run is refused before anything is
-  written or launched while either is set and not empty, naming the
-  variable: unset it for pinned runs, or route the role to a model without a
-  pin. An unpinned run passes both through as they are. The route records
+  MCP servers) would lose it to the sealed file or have it override the pin,
+  and abcd never changes how the person's tools work, so a pinned run is
+  refused before anything is written or launched while any of the three is
+  set and not empty, naming the variable, never its value: unset it for
+  pinned runs, or route the role to a model without a pin. An unpinned run
+  passes all three through as they are. `~/.opencode/opencode.json` is not
+  refused, since refusing it would block every pinned run of anyone who
+  keeps one, so a routing entry for the pinned model there overrides the
+  pin; this is one reason the pin is recorded as `not_verified` on this
+  path. The route records
   the pin (`provider_pin`), the configuration's SHA-256
   (`pin_config_sha256`) and opencode's version, asked with `--version` under
   the same seal. opencode holds the key on this path and abcd never reads it,

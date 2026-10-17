@@ -350,6 +350,7 @@ func newFake(t *testing.T, mode string, harnesses ...string) fakeEnv {
 	// tests names one, is not the test's: a test that wants one sets it.
 	t.Setenv("OPENCODE_CONFIG", "")
 	t.Setenv("OPENCODE_CONFIG_CONTENT", "")
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
 	t.Setenv(fakeModeEnv, mode)
 	t.Setenv(fakeLogEnv, f.log)
 	return f

@@ -22,6 +22,7 @@ package openaiapi
 // until the bound; it is never waited on past it.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -193,7 +194,7 @@ func (c *Client) decodeGeneration(raw []byte) (Generation, error) {
 	u := &Usage{PromptTokens: readCount(d["native_tokens_prompt"]), CompletionTokens: readCount(d["native_tokens_completion"]),
 		ReasoningTokens: readCount(d["native_tokens_reasoning"]), CachedTokens: readCount(d["native_tokens_cached"])}
 	var cost float64
-	if r := d["total_cost"]; len(r) > 0 && json.Unmarshal(r, &cost) == nil && ReadableCost(cost) {
+	if r := d["total_cost"]; len(r) > 0 && !isNull(r) && json.Unmarshal(r, &cost) == nil && ReadableCost(cost) {
 		u.Cost = &cost
 	}
 	if u.readable() > 0 {
@@ -213,10 +214,16 @@ func (c *Client) status(raw json.RawMessage) string {
 }
 
 // readCount is raw as a count: a whole number not below zero, nil otherwise.
+// A null is nil, never zero: encoding/json leaves the number as it was, with
+// no error, when it reads a null, and OpenRouter answers null for a count the
+// model has none of.
 func readCount(raw json.RawMessage) *int {
 	var n int
-	if len(raw) == 0 || json.Unmarshal(raw, &n) != nil || n < 0 {
+	if len(raw) == 0 || isNull(raw) || json.Unmarshal(raw, &n) != nil || n < 0 {
 		return nil
 	}
 	return &n
 }
+
+// isNull reports whether raw is JSON's null.
+func isNull(raw json.RawMessage) bool { return string(bytes.TrimSpace(raw)) == "null" }
