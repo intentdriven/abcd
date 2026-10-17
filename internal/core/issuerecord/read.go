@@ -77,22 +77,8 @@ var (
 // set: the record's frontmatter and body when the reader takes it, the stage
 // and reason when it skips it.
 func Judge(path, status string) (fm map[string]any, body string, refusal *Refusal, claims bool) {
-	name := filepath.Base(path)
-	if !fileNumRe.MatchString(name) {
-		// A file that claims to be a record (family prefix + ordinal) and is not
-		// well-formed is REPORTED, not dropped: it sits in the ledger, counted by
-		// nothing and reported by nothing, which is how a record gets silently
-		// lost. A file claiming nothing is silently ignored.
-		//
-		// The stricter slug shape is still enforced — as a filename<->frontmatter
-		// agreement, in ValidateInvariants — but that is a judgement on a record,
-		// not the question of whether one exists.
-		if filepath.Ext(name) == ".md" && nameClaimRe.MatchString(name) {
-			return nil, "", &Refusal{LayerName, fmt.Errorf(
-				"%w: filename %q is not a well-formed record name (iss-N[-slug].md)",
-				ErrInvariantViolation, name)}, true
-		}
-		return nil, "", nil, false
+	if refusal, claims, record := judgeName(path); !record {
+		return nil, "", refusal, claims
 	}
 	// A well-formed name always ends .md — the grammar's pattern requires it —
 	// so no separate extension check is needed on this path.
@@ -106,7 +92,50 @@ func Judge(path, status string) (fm map[string]any, body string, refusal *Refusa
 	if err != nil {
 		return nil, "", &Refusal{LayerRead, err}, true
 	}
-	fm, body, err = Parse(content)
+	return judgeContent(path, status, content)
+}
+
+// JudgeText is Judge over a record's content read from elsewhere than this
+// checkout's disk (a commit's tree, spc-2610161044461448 step 1): path names
+// it, and readErr, when not nil, is why its content could not be read, refused
+// at the read stage. The verdict is Judge's own, stage for stage.
+func JudgeText(path, status, content string, readErr error) (fm map[string]any, body string, refusal *Refusal, claims bool) {
+	if refusal, claims, record := judgeName(path); !record {
+		return nil, "", refusal, claims
+	}
+	if readErr != nil {
+		return nil, "", &Refusal{LayerRead, readErr}, true
+	}
+	return judgeContent(path, status, content)
+}
+
+// judgeName is the reader's verdict on a file's name: record is true for a
+// well-formed record name, whose content is judged next; otherwise claims and
+// refusal are the verdict.
+func judgeName(path string) (refusal *Refusal, claims, record bool) {
+	name := filepath.Base(path)
+	if fileNumRe.MatchString(name) {
+		return nil, true, true
+	}
+	// A file that claims to be a record (family prefix + ordinal) and is not
+	// well-formed is REPORTED, not dropped: it sits in the ledger, counted by
+	// nothing and reported by nothing, which is how a record gets silently
+	// lost. A file claiming nothing is silently ignored.
+	//
+	// The stricter slug shape is still enforced — as a filename<->frontmatter
+	// agreement, in ValidateInvariants — but that is a judgement on a record,
+	// not the question of whether one exists.
+	if filepath.Ext(name) == ".md" && nameClaimRe.MatchString(name) {
+		return &Refusal{LayerName, fmt.Errorf(
+			"%w: filename %q is not a well-formed record name (iss-N[-slug].md)",
+			ErrInvariantViolation, name)}, true, false
+	}
+	return nil, false, false
+}
+
+// judgeContent is the reader's verdict on a record's content once read.
+func judgeContent(path, status, content string) (fm map[string]any, body string, refusal *Refusal, claims bool) {
+	fm, body, err := Parse(content)
 	if err != nil {
 		return nil, "", &Refusal{LayerFrontmatter, err}, true
 	}

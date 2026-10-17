@@ -13,13 +13,29 @@ package loop
 // brought the other side; its receipt must carry the merged sha as an ancestor
 // of the new head, and a fresh round judges it. A sync does not count against
 // the run's fix rounds.
+//
+// An issue lane, a drain's or a person's `abcd build <iss-N>`, has no sibling
+// lanes, and other accounts' lanes land on the default branch beside it
+// (spc-2610161044461448 step 13; iss-2610161015410527; dcn-2610161040384068):
+// its sync fetches origin's default branch at each sync and merges it whenever
+// it has moved past the lane's head, before the records and the push, the
+// merge head judged by a fresh round as a sibling's is. A conflict confined to
+// files origin's default branch declares linguist-generated goes to a fresh
+// implementer, whose brief says to regenerate them under the host's
+// permissions: abcd itself runs no command the repository declares. Any other
+// conflict refuses the step in a way that cannot change, naming the files, so
+// the drain hands the lane back at once (stuck.go), with nothing pushed. The
+// landing enters the sync again from its arming and from its merge wait when
+// the open pull request starts to conflict (resyncLane).
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -30,15 +46,27 @@ const SyncDirName = "sync"
 
 // syncSubject is a sync's merge commit subject.
 func syncSubject(lane Lane, def string, siblings []string) string {
+	if len(siblings) == 0 {
+		return "merge: sync " + lane.Branch + " with " + def + ", which moved since the lane's base"
+	}
 	return "merge: sync " + lane.Branch + " with " + def + " after " + strings.Join(siblings, ", ") + " landed"
+}
+
+// syncCause is why a sync merges the default branch def: the sibling lanes
+// that landed since the lane's base, or, with none, def's own move.
+func syncCause(def string, siblings []string) string {
+	if len(siblings) == 0 {
+		return def + " moved since the lane's base"
+	}
+	return strings.Join(siblings, ", ") + " landed since the lane's base"
 }
 
 // syncMessage is the sync's whole merge message. Its text is computed by abcd
 // from the run's state, so its trailer is the abcd label (ruling PC1).
 func syncMessage(lane Lane, runID, def, merged string, siblings []string) string {
 	return syncSubject(lane, def, siblings) + "\n\n" +
-		fmt.Sprintf("The implement loop merges %s at %s into %s of %s, because %s landed since the lane's base; it never rebases, so every judged commit stays reachable.\n\n",
-			def, shortSHA(merged), lane.ID, runID, strings.Join(siblings, ", ")) +
+		fmt.Sprintf("The implement loop merges %s at %s into %s of %s, because %s; it never rebases, so every judged commit stays reachable.\n\n",
+			def, shortSHA(merged), lane.ID, runID, syncCause(def, siblings)) +
 		composedAssistedBy() + "\n"
 }
 
@@ -62,27 +90,61 @@ func landedSiblings(c Context, lane Lane) ([]string, error) {
 }
 
 // syncLane merges the default branch into the lane when a sibling landed since
-// its base, and reports whether it did anything. A clean merge sends the lane
-// to a fresh round over the merge head; a conflicting one is aborted and sends
-// the lane to a fresh implementer with a sync brief.
+// its base, or, in an issue run, when origin's default branch, fetched here,
+// has moved past the lane's head, and reports whether it did anything. A
+// clean merge sends the lane to a fresh round over the merge head; a
+// conflicting one is aborted and sends the lane to a fresh implementer with a
+// sync brief, or, in an issue run whose conflict is not confined to declared
+// generated files, refuses the step for a person (mergeDefault).
 func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 	siblings, err := landedSiblings(c, *lane)
-	if err != nil || len(siblings) == 0 {
+	issue := c.State.Issue() != ""
+	if err != nil || (len(siblings) == 0 && !issue) {
 		return Outcome{}, false, err
 	}
 	def, err := defaultBranch(c, *lane)
 	if err != nil {
 		return Outcome{}, false, err
 	}
-	merged, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", "refs/remotes/"+Remote+"/"+def+"^{commit}", "--")
+	tracking := "refs/remotes/" + Remote + "/" + def
+	if issue {
+		if tracking, err = fetchDefault(c, *lane, def); err != nil {
+			return Outcome{}, false, err
+		}
+	}
+	return mergeDefault(c, lane, def, tracking, siblings)
+}
+
+// mergeDefault merges tracking, the default branch def's remote-tracking ref,
+// into the lane's branch for syncLane and resyncLane. With no landed sibling
+// it merges nothing while the lane's head already holds tracking's tip.
+func mergeDefault(c Context, lane *Lane, def, tracking string, siblings []string) (Outcome, bool, error) {
+	merged, err := gitutil.Run(c.RepoRoot, "rev-parse", "--verify", "--quiet", tracking+"^{commit}", "--")
 	if err != nil || !gitutil.IsFullSHA(merged) {
 		return Outcome{}, false, fmt.Errorf("resolving %s/%s to sync %s: %v", Remote, def, lane.ID, err)
 	}
+	if len(siblings) == 0 {
+		on, err := gitutil.IsAncestor(c.RepoRoot, merged, lane.HeadSHA)
+		if err != nil {
+			return Outcome{}, false, fmt.Errorf("placing %s/%s on %s: %v", Remote, def, lane.ID, err)
+		}
+		if on {
+			return Outcome{}, false, nil
+		}
+	}
+	issue := c.State.Issue() != ""
 	tip, err := branchTip(c, *lane)
 	if err != nil {
 		return Outcome{}, false, err
 	}
 	s := Sync{At: c.Now, Siblings: siblings, Merged: merged}
+	// The sync sends the lane back to a fresh round, so an issue lane
+	// reserves its whole found_at again first (reserveOnLeavingLand;
+	// dcn-2610171009498218), before
+	// anything changes locally: a refused widening leaves the branch and the
+	// worktree at the judged head, and the retry finds no merge of its own to
+	// read as a foreign move of the branch.
+	var reserved string
 	if tip != lane.HeadSHA {
 		// A call killed after its merge commit and before its state write:
 		// found, when the tip is exactly that merge.
@@ -91,6 +153,9 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 			return Outcome{}, false, refuse(string(StageLand), "", lane.ID,
 				fmt.Sprintf("%s moved to %s, which is not a sync of the judged head %s", lane.Branch, shortSHA(tip), shortSHA(lane.HeadSHA)),
 				"restore the branch to the judged head, then run `abcd implement step` again")
+		}
+		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, c.Now); err != nil {
+			return Outcome{}, false, err
 		}
 	} else {
 		// The merge starts from a clean worktree, so the only change a merge
@@ -102,6 +167,9 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 		} else if dirty != "" {
 			return Outcome{}, false, refuse(string(StageLand), "", lane.ID, "the lane's worktree holds uncommitted changes, so the sync with "+def+" is not merged over them",
 				"commit or remove them in the lane's worktree (a change the validators did not judge goes back through a fix round), then run `abcd implement step` again")
+		}
+		if reserved, err = reserveOnLeavingLand(c.RepoRoot, c.State, *lane, c.Now); err != nil {
+			return Outcome{}, false, err
 		}
 		msg := syncMessage(*lane, c.State.RunID, def, merged, siblings)
 		if err := syncMerge(lane.Worktree, msg, merged); errors.Is(err, errCommitStalled) {
@@ -120,12 +188,23 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 				return Outcome{}, false, refuse(string(StageLand), "", lane.ID, "git could not merge "+def+" into "+lane.Branch+": "+fsutil.RedactHome(err.Error()),
 					"settle what git reports in the lane's worktree, then run `abcd implement step` again")
 			}
+			generated := false
+			if issue {
+				// An issue lane's conflict goes to an implementer only when
+				// every path is a file origin's default branch declares
+				// generated; any other is a person's (dcn-2610161040384068).
+				gen, unread := claim.GeneratedFiles(c.RepoRoot)
+				if others := undeclared(paths, gen); len(others) > 0 {
+					return Outcome{}, false, undeclaredConflict(*lane, def, merged, others, unread)
+				}
+				generated = true
+			}
 			s.Conflicted, s.Paths = true, paths
-			if err := writeSyncBrief(c, *lane, len(lane.Syncs)+1, def, &s); err != nil {
+			if err := writeSyncBriefFor(c, *lane, len(lane.Syncs)+1, def, &s, generated); err != nil {
 				return Outcome{}, false, err
 			}
 			lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
-			return Outcome{Goto: StageValidate, Note: conflictNote(lane.ID, def, merged, paths, siblings, s.Brief)}, true, nil
+			return Outcome{Goto: StageValidate, LandLeft: true, Reservation: reserved, Note: conflictNote(lane.ID, def, merged, paths, siblings, s.Brief)}, true, nil
 		}
 		if tip, err = branchTip(c, *lane); err != nil {
 			return Outcome{}, false, err
@@ -134,8 +213,98 @@ func syncLane(c Context, lane *Lane) (Outcome, bool, error) {
 	s.Head = tip
 	lane.HeadSHA = tip
 	lane.Syncs = append(append([]Sync{}, lane.Syncs...), s)
-	return Outcome{Goto: StageValidate, Note: fmt.Sprintf("synced %s with %s at %s after %s landed: merge commit %s; a fresh round judges it, and counts no fix round",
-		lane.ID, termsafe.Sanitize(def), shortSHA(merged), strings.Join(termsafe.SanitizeAll(siblings), ", "), shortSHA(tip))}, true, nil
+	return Outcome{Goto: StageValidate, LandLeft: true, Reservation: reserved, Note: fmt.Sprintf("synced %s with %s at %s, because %s: merge commit %s; a fresh round judges it, and counts no fix round",
+		lane.ID, termsafe.Sanitize(def), shortSHA(merged), syncCause(termsafe.Sanitize(def), termsafe.SanitizeAll(siblings)), shortSHA(tip))}, true, nil
+}
+
+// undeclared is the paths of ps that gen does not hold as generated files.
+func undeclared(ps []string, gen claim.Generated) []string {
+	var out []string
+	for _, p := range ps {
+		if !gen.Is(p) {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// undeclaredConflict is the refusal of an issue lane whose merge of the
+// default branch conflicts on paths no declaration names generated: a
+// person's to resolve, so it cannot change, and the drain hands the lane back
+// at once (stuck.go). The merge was aborted and nothing is pushed. unread is
+// why the declaration could not be read, "" when it was.
+func undeclaredConflict(lane Lane, def, merged string, paths []string, unread string) *Refusal {
+	named := namedPaths(termsafe.SanitizeAll(paths))
+	reason := fmt.Sprintf("merging %s at %s into %s conflicts in %s, which %s's default branch does not declare generated (linguist-generated in .gitattributes), so the lane is a person's: the merge is aborted with the branch unchanged, and nothing is pushed",
+		termsafe.Sanitize(def), shortSHA(merged), termsafe.Sanitize(lane.Branch), named, Remote)
+	if unread != "" {
+		reason += "; the declaration could not be read (" + termsafe.Sanitize(unread) + "), so no file was taken as generated"
+	}
+	r := refuse(string(StageLand), "", lane.ID, reason,
+		"a person merges "+Remote+"/"+termsafe.Sanitize(def)+" into the lane's branch resolving "+named+", or hands the lane back so the issue is built again")
+	r.final = "its merge of " + Remote + "'s default branch conflicts in " + named + ", which is not declared generated"
+	return r
+}
+
+// resyncLane is an issue lane's landing entering its sync again, from the
+// arming or the merge wait, because the forge reports its open pull request
+// conflicting (spc-2610161044461448 step 13): where a merge of tracking, just
+// fetched, and the pushed head conflicts, as the forge merges, in files origin
+// declares generated alone, or in none (the forge's verdict stale), an armed
+// merge is withdrawn first, as a step of its own whose state is written before
+// any merge is tried, and the step after it, finding the conflict again at the
+// arming, merges the default branch into the lane as its sync merges it, the
+// push and the arming to be made again over the merge
+// once a fresh round, or the implementer it goes to, has judged it; the
+// records and the pull request are kept. Any other conflict is refused for a
+// person, as before (conflictRefusal).
+func resyncLane(c Context, lane *Lane, def, tracking string, m mergeability) (Outcome, error) {
+	ld := lane.Landing
+	f := localConflict(c.RepoRoot, tracking, ld.Pushed)
+	if f.err != nil {
+		return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
+	}
+	if len(f.paths) > 0 {
+		gen, _ := claim.GeneratedFiles(c.RepoRoot)
+		if len(undeclared(f.paths, gen)) > 0 {
+			return Outcome{}, conflictRefusal(c, *lane, def, tracking, m)
+		}
+	}
+	n := strconv.Itoa(lane.PR)
+	// The pushed head already holding the default branch leaves nothing to
+	// merge: the forge's verdict is stale, and the landing waits on it as
+	// before, its arming untouched.
+	if on, err := gitutil.IsAncestor(c.RepoRoot, tracking, lane.HeadSHA); err != nil {
+		return Outcome{}, fmt.Errorf("placing %s/%s on %s: %v", Remote, def, lane.ID, err)
+	} else if on {
+		return Outcome{}, contend(string(StageLand), "", lane.ID,
+			"pull request #"+n+" is reported conflicting, but "+lane.Branch+" already holds "+Remote+"/"+def+" ("+m.note()+")",
+			"run `abcd implement step` again once the forge has computed its mergeability again")
+	}
+	if ld.Armed {
+		// The withdrawal is a step of its own, its state written before the
+		// merge is tried: a merge refused after it (a worktree with a
+		// person's changes, a moved tip, a hook or signing that stalls) would
+		// otherwise discard the state, leaving the lane recorded armed while
+		// the forge holds nothing armed, its merge wait for ever. The next
+		// step reaches the arming, finds the conflict again and enters the
+		// sync with nothing armed.
+		if _, err := forge(c, *lane, "pr", "merge", n, "--disable-auto"); err != nil {
+			return Outcome{}, err
+		}
+		ld.Merge, ld.Armed = "", false
+		return Outcome{Stay: true, Note: "pull request #" + n + " started to conflict with " + def + " (" + m.note() +
+			"), so its armed merge is withdrawn, and armed again once the lane's sync is pushed; the next step enters the sync"}, nil
+	}
+	again := *ld
+	again.Pushed, again.PreflightReceipt, again.CheckWaitSince, again.Merge, again.Armed = "", "", nil, "", false
+	lane.Landing = &again
+	out, _, err := mergeDefault(c, lane, def, tracking, nil)
+	if err != nil {
+		return Outcome{}, err
+	}
+	out.Note = "pull request #" + n + " started to conflict with " + def + " (" + m.note() + "), so the lane entered its sync again: " + out.Note
+	return out, nil
 }
 
 // conflictNote is the record's line for a conflicting sync. The paths are
@@ -189,6 +358,13 @@ func syncMerge(dir, msg, merged string) error {
 // writeSyncBrief renders the brief of the fresh implementer a conflicting sync
 // goes to, and names it and its receipt on s.
 func writeSyncBrief(c Context, lane Lane, n int, def string, s *Sync) error {
+	return writeSyncBriefFor(c, lane, n, def, s, false)
+}
+
+// writeSyncBriefFor is writeSyncBrief, saying, when generated, that every
+// conflicting path is a file the repository declares generated, to be
+// regenerated rather than merged by hand.
+func writeSyncBriefFor(c Context, lane Lane, n int, def string, s *Sync, generated bool) error {
 	dir, err := laneFile(c.State.RunID, lane.ID, StageValidate, fmt.Sprintf("%s/%d", SyncDirName, n))
 	if err != nil {
 		return err
@@ -213,11 +389,21 @@ func writeSyncBrief(c Context, lane Lane, n int, def string, s *Sync) error {
 	var b bytes.Buffer
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
 	p("# Sync brief: %s of %s\n\n", lane.ID, c.State.RunID)
-	p("You are a fresh implementer. %s landed on %s since this lane's base, and merging %s at %s into\n", strings.Join(termsafe.SanitizeAll(s.Siblings), ", "), def, def, s.Merged)
+	if len(s.Siblings) == 0 {
+		p("You are a fresh implementer. %s moved since this lane's base, and merging %s at %s into\n", def, def, s.Merged)
+	} else {
+		p("You are a fresh implementer. %s landed on %s since this lane's base, and merging %s at %s into\n", strings.Join(termsafe.SanitizeAll(s.Siblings), ", "), def, def, s.Merged)
+	}
 	p("`%s` conflicted. The loop aborted that merge, so the branch is where its validators left it.\n\n", branch)
 	p("The conflicting paths:\n\n")
 	for _, path := range s.Paths {
 		p("- `%s`\n", termsafe.Sanitize(path))
+	}
+	if generated {
+		p("\nEvery one of them is a file the repository declares generated (`linguist-generated` in its\n")
+		p(".gitattributes): do not merge its text by hand. Take either side, regenerate it with the\n")
+		p("repository's own generator as its definition of done names it, and commit the regenerated file\n")
+		p("in the merge.\n")
 	}
 	p("\nIn the worktree `%s`, merge %s into `%s` with a merge commit (`git merge %s`; never a\n", worktree, s.Merged, branch, s.Merged)
 	p("rebase), resolve each conflict keeping both lanes' intent, and commit the merge. The merged sha must be an\n")

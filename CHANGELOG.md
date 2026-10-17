@@ -16,6 +16,60 @@ some carry a **Breaking** heading.
 
 ## [Unreleased]
 
+## [0.15.1] - 2026-10-17
+
+These notes list what was added and what was fixed; a breaking change is an Added line that states the break, and nothing else is claimed about earlier behaviour until the composer can see the previous release.
+
+Targeted and not shipped in this release, so each targets the next release (`next`): itd-2610112239022766 (targeted `next`).
+
+### Added
+
+- **Sessions name themselves.** Each session takes a persona name at its first prompt (Alice, Bob, Carol and on through the repository's persona list), shown in its status line, its prompt border and the session list other sessions message it from. A name the person gave keeps, a resumed or compacted session keeps its name, and no two live sessions under one account on the machine share a name, even in different repositories. Naming works on macOS and Linux; where it cannot, a session starts unnamed and is never blocked. (itd-2610111707085098, iss-2610111701536641)
+- **A drain runs unattended.** The drain's judgement of each remedy is a drain-judge role on the runner routing, answered and taken in one move with abcd computing the remedy digest, so no person writes the answer by hand; `abcd drain --take-over` moves a person's own reservations from a lost copy, such as a restarted hosted session, as the drain reaches them. (itd-2610161016401115, iss-2610161015422306)
+- `abcd peers` lists each live reservation's drain stage and each holder's hand-backs of the last day with their kinds, so a person can see what another account's drain is doing. (iss-2610161015434746)
+- A running drain takes a new `--pace`, `--sub-agents` and `--fix-rounds`, applied from the next lane and from the next stage of the lane in progress; a handed-back issue whose record changed on origin is judged afresh, and an old handed-back run no longer passes its issue over. (iss-2610161015457468)
+- `reservation.max_live` in the person's own `~/.abcd.noindex/config.json` sets the per-person reservation cap, from 1 to 100 and ten when unset; it is read from the machine layer alone, and the cap refusal names the setting. (iss-2610170717515674)
+- A release cut is held by a reservation of the release, `rel-vX.Y.Z`: every other session's landing step, the implement loop's land fence and `abcd land`, reads it and refuses to merge while it is live, and `abcd peers` shows the hold. (iss-2609091037191879)
+- A bundled `SCRATCH` rules domain tells an agent that the host's scratchpad holds only a turn's throwaway files, because it does not survive a reboot or a new session, so anything a later turn, session or agent reads goes in the main checkout's local tier or under `~/.abcd.noindex/`; and that before writing a helper script it checks whether an abcd command already does the job. (iss-2610161501104088, iss-2610161614039496)
+
+### Fixed
+
+- **Drains on several accounts share the work.** Each drain move fetches origin and plans from what origin's default branch holds, never from a checkout that has fallen behind; the dry run names its view's age, the commits behind and the issues finished there, and a reservation of an issue already finished there backs off. (itd-2610161016394967, iss-2610160957404827)
+- A drain reserves an issue before it asks for the judgement over it, passes over an issue or footprint another copy holds with no judgement and no fetch, and takes each group of the queue in its own order, file-scoped issues first, so several drains no longer all judge the head of the queue. (iss-2610161015387318)
+- A drain's hand-back is recorded on origin, so every account's drain passes over the issue until a person changes its record; an issue whose related intents name an intent is handed back as promoted and is not judged or promoted again. (iss-2610161015370582)
+- At the per-person reservation cap a drain move waits for a pull request to merge instead of refusing, keeps the judgements it was given and names the pull requests waiting; the cap's refusal advises waiting for a merge rather than releasing a reservation. (iss-2610161015371794)
+- Every drain move renews the lane in progress at half its lease, so a lane the host pauses keeps its reservation, and the landing checks the reservation before its push, so a lapsed lease taken over by another account pushes nothing and opens no duplicate pull request. (iss-2610161015393523)
+- A fresh reservation refuses when origin is a fork, naming its parent and the command that repoints origin, rather than reserving where no other account looks; renewals and releases never ask, and a forge that does not answer warns and lets the reservation through. (iss-2610161015400509)
+- A sibling worktree or branch the drain cannot read stops the move once, naming it and the repair, instead of making every issue read as held by someone else. (iss-2610161015397586)
+- A drain whose remaining eligible issues are all held by others waits, says when it looks again, names the holds and keeps its judgements; it stops as empty only when nothing eligible is left, held or not. (iss-2610161015422836)
+- A drain lane's reservation narrows at its landing to the files its branch changed within its footprint, so an issue scoped to a whole directory no longer locks other accounts out of every file under it; the lane re-reserves its whole footprint before a fresh round. (iss-2610152125101468)
+- **A stuck drain lane hands itself back.** A lane that keeps refusing is handed back as stuck after three identical refusals or sixty minutes at one stage, or at once when the refusal cannot change; its reservation is released and the drain takes up the next issue. A wait by design is never counted as a refusal, and `abcd implement step --discard` ends a stuck lane's run. (itd-2610161016391855, iss-2610161015368630)
+- Each drain move reads every lane parked at landing from one listing of the person's pull requests: a closed one is handed back and its reservation released, a conflicting one is no longer renewed and is named, and an open one is renewed and named as waiting. (iss-2610161015381750)
+- An issue lane merges origin's default branch before its push whenever it has moved; a conflict on files declared as generated goes back to the implementer to regenerate, any other conflict hands the lane back naming the files with nothing pushed, and a waiting pull request that starts to conflict on generated files alone syncs again. (iss-2610161015410527)
+- Every lane a drain opens starts on the drain's own pace and sub-agent ceiling, not only the first. (iss-2610161015417715)
+- A drain move that cannot fetch origin or read its default branch waits on the outage schedule instead of refusing. (iss-2610161015448977)
+- Reservation acts ask the forge who the person is once per process rather than on every act, and ask again after an account switch, a login or a logout. (iss-2610161015433495)
+- The pre-push hook reads every pushed commit exactly as it is stored, so the reservation and status checks judge the same files the push sends. (iss-2610160518331794)
+- The embargo store is found from the root commit of origin's default branch, so a checkout whose current branch has a different history no longer misses the store and reads nothing as under embargo. (iss-2610160518336434)
+- A hosted cloud session sets its clone's author identity from the environment's forge token before any commit, so its commits carry the person's identity rather than the host's default one; it says once when it cannot, without showing the identity the container came with. (iss-2610152046379890)
+- The cloud launch connector recognises a refused start even when the host's answer spreads its error over more than one line, so a refused start is no longer reported as started. (iss-2610170635209097)
+- A cloud hand-back run twice with an unchanged report no longer reports a refused commit: a report that is already the branch's last commit is pushed as it stands, and one an earlier commit holds falls back saying so. (iss-2610161458426987)
+- The load gate queues waiters by when they started rather than by process id alone, so a waiter is no longer starved once the machine's process ids wrap. (iss-2610161634043273)
+- `abcd land` asks origin for its default branch when the checkout's own record of it is stale or missing, instead of refusing and handing the person a manual step; a forge and origin that disagree, or an origin that cannot be asked, still refuse, and the default-branch refusal no longer carries an unrelated hint. (iss-2610161831078335)
+- `abcd peers` judges each release hold by the same rule as the landing steps, so in a checkout without its local tier it no longer lists as holding merges a release hold that `abcd land` does not count; `--json` release holds carry `own` and `unsighted`. (iss-2610160415393242)
+- A status fetch reads an app's push to a status branch as an app's, so the branch is no longer asked about again on every fetch with a line saying the record does not yet name its tip. (iss-2610161928560772)
+- The shell guard refuses a `bash -c` or `sh -c` script built from variables that deletes files, and its refusal and the `SHELL` rules give the rewrite, so an agent writes a command the host can check instead of stalling at the host's permission prompt. (iss-2610161612200864)
+- The asking rules tell an agent to redraft a refused or over-limit question silently, so the person sees only the finished question. (iss-2610161734179773)
+- The launch hook-compliance gate judges a hook file's mode only where the hook text executes it, so a script run through `sh` or `bash` is no longer reported as not executable. (iss-2610160608456302)
+- The `abcd ideate` refusal of a malformed grill citation lists `dcn-N` among the citable forms, as the citation grammar accepts it. (iss-2610160608457651)
+- The inbox's promotion rewrite writes a sender's `dcn-N` id as one word, as it already did for the other record families, so it never cites abcd's own decision record. (iss-2610160608389169)
+- `abcd update --help` says build provenance is pinned to abcd's release workflow on main, as the verb requires. (iss-2610160608453195)
+- The update command page's by-hand provenance check carries `--deny-self-hosted-runners`, matching the check abcd itself applies. (iss-2610160608442201)
+- The reservation status tests allow a fixed tenfold slack on their timing bounds and log the measured time, so they no longer fail on a heavily loaded machine. (iss-2610170730017996)
+- The press release of the reservations intent no longer quotes a persona saying a person's copies never lock each other out; it now says what shipped, that moving a piece of work from one of a person's copies to another is one flag. (iss-2610160608451996)
+- The design brief's update chapter describes the verb as it shipped: it names every network reach (the launch preview and release cut when they read a published baseline, and GitHub's API and Sigstore's TUF repository for the provenance check that update and an ahoy installation both make), the build-provenance verification beside the checksums, the `attested_by` receipt field, the newest-release mark with its `older-than-mark` refusal, and all three refusals that arrive after dispatch. (iss-2610151422073042, iss-2610151422075372, iss-2610151422083596, iss-2610151422086989, iss-2610151422089301, iss-2610160608419844, iss-2610160857121531)
+- The design brief's configuration chapter names every key the binary reads, `reservation.github_username`, the consistency keys and `readme.parts` among them, lists the README question among those install asks, and says the bootstrap hook holds its download to the build-provenance policy as well as the checksums. (iss-2610151422111534, iss-2610160608423720, iss-2610160608426210)
+
 ## [0.15.0] - 2026-10-16
 
 These notes list what was added and what was fixed; a breaking change is an Added line that states the break, and nothing else is claimed about earlier behaviour until the composer can see the previous release.

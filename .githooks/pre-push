@@ -323,9 +323,17 @@ if git cat-file -e HEAD:scripts/cloud/connector.sh 2>/dev/null; then
   decl_dir="$(mktemp -d "${TMPDIR:-/tmp}/abcd-pre-push.XXXXXX")"
   trap '/bin/rm -rf -- "$decl_dir"' EXIT
   wip_prefixes=""
-  if ! git archive --format=tar HEAD -- scripts/cloud 2>/dev/null | tar -x -C "$decl_dir" 2>/dev/null ||
+  # The archive goes to a file and tar reads the file, never a pipe between
+  # them: a tar that stops at the end-of-archive marker leaves git archive
+  # writing the rest of its last record into a closed pipe, and under
+  # pipefail that read failed now and then on a loaded runner, refusing every
+  # work-in-progress push it judged. What either command says is kept, so a
+  # read that fails names its cause.
+  if ! git archive --format=tar -o "$decl_dir/cloud.tar" HEAD -- scripts/cloud 2>"$decl_dir/read-error" ||
+    ! tar -x -C "$decl_dir" -f "$decl_dir/cloud.tar" 2>>"$decl_dir/read-error" ||
     [ ! -f "$decl_dir/scripts/cloud/connector.sh" ] || [ -L "$decl_dir/scripts/cloud/connector.sh" ]; then
-    wip_bad="pre-push: the connector loader and declarations HEAD commits under scripts/cloud/ could not be read."
+    read_error="$(tr '\n' ' ' <"$decl_dir/read-error" 2>/dev/null | cut -c1-300 || true)"
+    wip_bad="pre-push: the connector loader and declarations HEAD commits under scripts/cloud/ could not be read${read_error:+ (${read_error% })}."
   elif ! wip_prefixes="$(bash "$decl_dir/scripts/cloud/connector.sh" prefixes </dev/null 2>"$decl_dir/diagnostic")"; then
     wip_bad="$(cat "$decl_dir/diagnostic")"
     [ -n "$wip_bad" ] || wip_bad="pre-push: the connector loader refused the declarations under scripts/cloud/connectors/."
