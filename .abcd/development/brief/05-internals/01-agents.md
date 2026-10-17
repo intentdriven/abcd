@@ -50,8 +50,11 @@ Eighteen agent prompts ship in `agents/` today, in five groups:
   the rows limit; no verb dispatches it
   ([`04-surfaces/README.md`](../04-surfaces/README.md#agents-no-verb-dispatches)).
 
-Each declares its inputs and outputs as JSON, and the schemas are the core's
-rather than the prompt's. The record families — the issue schema, admissions and
+Fourteen of them return JSON, and the schemas are the core's rather than the
+prompt's. The four repo-workflow reviewer and researcher prompts declare no JSON
+contract: `docs-currency-reviewer` reports a table, `ruthless-reviewer` and
+`security-reviewer` return prose ending in a verdict heading the implement loop
+reads, and `sota-researcher` returns a ranked list. The record families — the issue schema, admissions and
 surprises, dispositions, and the cold-reading run and item contract — share one
 package, `internal/core/issueschema`, deliberately: the verb that writes a record
 and the gate that judges the committed tree have to agree on what a well-formed
