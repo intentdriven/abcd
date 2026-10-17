@@ -116,3 +116,26 @@ func TestADrainRenewsItsOwnReservationMadeOverNoHandBack(t *testing.T) {
 		t.Fatalf("Q's drain over its own lapsed reservation = %+v, %v; want it renewed", res, err)
 	}
 }
+
+// TestADrainBacksOffAReservationLineHoldingAMerge: a reservation branch is
+// a single line of commits, and abcd never writes a merge on one, so a line
+// holding a merge is one abcd cannot judge, and a drain backs off it.
+func TestADrainBacksOffAReservationLineHoldingAMerge(t *testing.T) {
+	w, _, r := handBackUnderQuinn(t)
+	w.set(t0.Add(3 * time.Hour))
+	tip := w.remoteTip("iss-5")
+	msg := runGit(t, w.bare, "log", "-1", "--format=%B", tip)
+	empty := "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
+	id := []string{"-c", "user.name=Test", "-c", "user.email=test@example.com"}
+	root := runGit(t, w.bare, append(id, "commit-tree", empty, "-m", msg)...)
+	merge := runGit(t, w.bare, append(id, "commit-tree", empty, "-p", root, "-p", tip, "-m", msg)...)
+	runGit(t, w.bare, "update-ref", RefPrefix+"iss-5", merge, tip)
+	before := w.remoteTip("iss-5")
+	res, err := r.do(Request{Record: "iss-5", Footprint: []string{"c.go"}, Drain: true})
+	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "more than one parent") {
+		t.Fatalf("R's drain over a reservation line holding a merge = %+v, %v; want a back-off naming the merge", res, err)
+	}
+	if w.remoteTip("iss-5") != before {
+		t.Fatal("the back-off pushed")
+	}
+}
