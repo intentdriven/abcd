@@ -32,7 +32,7 @@ func ValidLaneStage(s string) bool { return slices.Contains(LaneStages, s) }
 // anything else, so a tip whose stage is free text, repeated or on a
 // tombstone reads as unreadable, as a bad hand-back does, and is never shown
 // as a stage. The collector has already read an inexact spelling of the key
-// as the key's, as it does for every reservation trailer.
+// as the key's, as it does for every reservation trailer (dcn-2610170757253644).
 func validateStage(m *message, t trailers) string {
 	stages := t.vals[keyStage]
 	if len(stages) == 0 {
