@@ -53,3 +53,30 @@ func TestARenewalNarrowsOnlyWithinItsFootprint(t *testing.T) {
 		t.Fatalf("a narrowing over the message cap keeps the tip's footprint and renews: %+v %v", res, err)
 	}
 }
+
+// TestARenewalWithAnUnwritableNarrowingStillRenews: a narrowing naming a path
+// a reservation may not carry (a zero-width rune, a bidi mark, a no-break
+// space) is dropped, and the renewal is made keeping the tip's footprint: a
+// renewal never fails over its narrowing, so the reservation does not lapse
+// while the lane lives. ValidFootprintPath is the check, exported for the
+// loop that composes the narrowing.
+func TestARenewalWithAnUnwritableNarrowingStillRenews(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-5", "docs"); err != nil {
+		t.Fatal(err)
+	}
+	for i, bad := range []string{"docs/zero​width.md", "docs/bidi‮mark.md", "docs/no break.md"} {
+		if ValidFootprintPath(bad) {
+			t.Fatalf("%q is not a footprint path a reservation may carry", bad)
+		}
+		w.set(t0.Add(time.Duration(i+1) * time.Hour))
+		res, err := p.do(Request{Record: "iss-5", Renew: true, Narrow: []string{"docs/page.md", bad}})
+		if err != nil || res.Act != ActRenewed || res.Narrowed || strings.Join(res.Footprint, ",") != "docs" {
+			t.Fatalf("an unwritable narrowing (%q) is dropped and the renewal made: %+v %v", bad, res, err)
+		}
+	}
+	if !ValidFootprintPath("docs/page.md") {
+		t.Fatal("a plain repository-relative path is a footprint path")
+	}
+}

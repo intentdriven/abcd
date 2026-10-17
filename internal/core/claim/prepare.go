@@ -95,7 +95,9 @@ type Request struct {
 	// tip's, when every path of it lies within the tip's footprint (equal to
 	// one of its paths or beneath one): a hold that narrows never widens
 	// (spc-2610161044461448 step 12). A tip whose footprint does not cover
-	// it keeps its own, and Result.Narrowed is false.
+	// it keeps its own, and Result.Narrowed is false; so does a narrowing
+	// naming a path no reservation may carry (ValidFootprintPath), or one
+	// too long to write: the renewal is made all the same.
 	Narrow []string
 	// HandBack, with Release, publishes a hand-back: the tombstone names this
 	// kind, one of HandBackKinds, and the blob id of the record on origin's
@@ -167,9 +169,14 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if len(req.Narrow) > 0 && !req.Renew {
 		return nil, refuse("only a renewal narrows its reservation's footprint; %s", nothingPushed)
 	}
+	// A narrowing naming a path no reservation may carry is dropped, and the
+	// renewal keeps the tip's footprint, as one over the message cap does
+	// below: a renewal never fails over its narrowing, which would let the
+	// reservation lapse while its work goes on.
 	for _, p := range req.Narrow {
 		if !validFootprint(p) {
-			return nil, refuse("footprint %s is not a repository-relative path; %s", echo(p), nothingPushed)
+			req.Narrow = nil
+			break
 		}
 	}
 	if req.Live && !req.Renew {
