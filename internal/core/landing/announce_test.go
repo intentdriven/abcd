@@ -196,6 +196,22 @@ func TestLandWithNoItemAnnouncesNothingAndSaysSo(t *testing.T) {
 	}
 }
 
+// TestLandReadsABareNumberInATrailerAsTextNotAPullRequest: "Refs: spc-9
+// step 3" names a spec and its step, and no pull request #3, so there is
+// nothing to announce; only "#N" names a pull request in a trailer.
+func TestLandReadsABareNumberInATrailerAsTextNotAPullRequest(t *testing.T) {
+	f := newFixture(t, "")
+	f.announcing("Refs: spc-2610150728396006 step 3")
+	res, err := f.land(f.options())
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := step(t, res, "announce")
+	if s.Status != StatusSkipped || strings.Contains(s.Note, "#3") || f.statusTip() != "" {
+		t.Fatalf("announce step %+v, status %q; want nothing announced, no #3", s, f.statusTip())
+	}
+}
+
 // TestLandWithPushOffAnnouncesNothing: with land.push off nothing is pushed,
 // so nothing is announced either.
 func TestLandWithPushOffAnnouncesNothing(t *testing.T) {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -21,11 +22,17 @@ const PushKind = "merging"
 
 // PushItems is the announcement items among values, each in its canonical
 // form, the first of each kept, in the order given: an issue or intent id or a
-// pull-request number. Every other value (a spec, a decision, an ADR, text) is
-// not an item and is left out.
+// pull-request number written "#N". Every other value (a spec, a decision, an
+// ADR, text) is not an item and is left out, a bare number among them: values
+// are a trailer's words, and the 3 of "Refs: spc-9 step 3" is not pull
+// request #3. `abcd announce` still takes a bare N, since a shell reads "#N"
+// as a comment; that is announcementItem, which this does not change.
 func PushItems(values []string) []string {
 	var out []string
 	for _, v := range values {
+		if !strings.HasPrefix(v, "#") && prNumberRe.MatchString(v) {
+			continue
+		}
 		canon, _, err := announcementItem(v)
 		if err != nil || slices.Contains(out, canon) {
 			continue

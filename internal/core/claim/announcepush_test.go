@@ -27,6 +27,11 @@ func TestPushItemsKeepsTheAnnouncementItemsInTheirCanonicalForm(t *testing.T) {
 	if want := []string{"iss-5", "#12", "itd-7"}; !slices.Equal(got, want) {
 		t.Fatalf("PushItems = %v; want %v", got, want)
 	}
+	// A bare number in a trailer is a word of its text ("Refs: spc-9 step
+	// 3"), not a pull request: only "#N" names one.
+	if got := PushItems([]string{"spc-9", "step", "3"}); len(got) != 0 {
+		t.Fatalf("PushItems of \"spc-9 step 3\" = %v; want none", got)
+	}
 }
 
 // TestAStandingAnnouncementIsNotSentAgainBeforeAPush: the first push announces
