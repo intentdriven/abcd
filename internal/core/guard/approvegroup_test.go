@@ -286,6 +286,9 @@ func TestApprovedTextKeepsTheCommandsBehaviour(t *testing.T) {
 				"if true; then\n  { printf n > out; }\nfi":     "n",
 				"printf a > out\nprintf b >> out":              "ab",
 				"echo }; printf e > out":                       "e",
+				"[ -d sub ] && printf t > out":                 "t",
+				"[[ -n x ]] && printf u > out":                 "u",
+				"if test -d sub; then printf p > out; fi":      "p",
 				`printf '%s' "${BASH_VERSION:+bash}" > out`:    "bash",
 			} {
 				text := approvedText(t, r, command)

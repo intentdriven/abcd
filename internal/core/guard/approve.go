@@ -332,7 +332,10 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 	for _, s := range v.segs {
 		for _, a := range commandSites(s) {
 			tok := s.tokens[a.idx]
-			if strings.ContainsRune(tok, unknownMark) || strings.ContainsRune(tok, varMark) || s.globAt(a.idx) {
+			// A test command's own name is no glob (testCommands); its
+			// words are read as every command's are.
+			globbed := s.globAt(a.idx) && !testCommands[tok]
+			if strings.ContainsRune(tok, unknownMark) || strings.ContainsRune(tok, varMark) || globbed {
 				return refusal(unnamedProgramEntryID,
 					"a variable, a substitution or a glob stands where the program's name goes, so the guard cannot say which program runs.",
 					"the same command with the program's name spelled out.")

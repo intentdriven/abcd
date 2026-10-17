@@ -945,15 +945,26 @@ func targetsAnExpansion(text string) bool {
 	return false
 }
 
+// testCommands are the shell's test commands: `[`, its reserved word `[[`
+// and `test`. Each judges its words and runs nothing; a lone `[` is no glob
+// to bash, which reads a `[` with no `]` after it in the word as itself, so
+// the approver reads it as the program it names (approveShellAt).
+var testCommands = map[string]bool{"[": true, "[[": true, "test": true}
+
 // testWords are the words a test's comparison can follow (`[ $a = b ]`,
-// `test "$a" = b`, `[[ $a = b && $c = d ]]`), read past the quotes a
+// `test "$a" = b`, `[[ $a = b && $c = d ]]`): a test command, or a word
+// joining two of its tests, read past the quotes a
 // string that holds the test opens with (`bash -c '[ $a = b ]'`). Arithmetic takes none of them
 // before an assignment: `(( 1 && $x = 1 ))` is an error, while `!` and `(`
 // are not in the set because `(( ! $x = 1 ))` (bash 3.2) and
 // `(( ( $x = 1 ) ))` assign.
-var testWords = map[string]bool{
-	"[": true, "[[": true, "test": true, "-a": true, "-o": true, "&&": true, "||": true, `\(`: true,
-}
+var testWords = func() map[string]bool {
+	w := map[string]bool{"-a": true, "-o": true, "&&": true, "||": true, `\(`: true}
+	for c := range testCommands {
+		w[c] = true
+	}
+	return w
+}()
 
 // The operator kinds operatorAt reads.
 const (

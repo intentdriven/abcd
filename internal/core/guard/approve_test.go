@@ -291,3 +291,28 @@ func TestApprovePromptReturnsOnlyWhatWasJudged(t *testing.T) {
 		t.Errorf("a call that keeps the sandbox was refused: %+v", a)
 	}
 }
+
+// TestApproveReadsTestCommandsAsPrograms: `[`, `[[` and `test` are the test
+// commands, which run nothing; a lone `[` is no glob to bash, which reads a
+// `[` with no `]` after it in the word as itself, and `[[` is its reserved
+// word. So a line that tests a file before it acts is judged by its words,
+// as the same line with test is, and the words of the test are still read.
+func TestApproveReadsTestCommandsAsPrograms(t *testing.T) {
+	r := plainRig(t)
+	r.run(t, []approveCase{
+		{"[ -f x ] && rm x", nil},
+		{"test -f x && rm x", nil},
+		{"if [ -f a ]; then echo y; fi", nil},
+		{"if [ -f a ]; then rm a; else echo none; fi", nil},
+		{`[[ -n "$x" ]] && echo ok`, nil},
+		{`[ "$(id -u)" = 0 ] || echo user`, nil},
+		{"[ -d sub ] || mkdir sub", nil},
+		{"[ -f x ] && rm -rf /", refusedAs(criticalRemovalEntryID)},
+		{"[ -f x ] && rm -f .mcp.json", protectedOrRegistry},
+		{"[ -f x ] && $(echo rm) x", refusedAs(unknownProgramEntryID, unnamedProgramEntryID)},
+		{"[ -f x(.) ]", refusedAs(unfixedPathEntryID)},
+		{"[a] -f x", refusedAs(unnamedProgramEntryID)},
+		{"[[a]] -f x", refusedAs(unnamedProgramEntryID)},
+		{"[*] -f x", refusedAs(unnamedProgramEntryID)},
+	})
+}
