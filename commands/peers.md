@@ -81,8 +81,21 @@ payload adds:
   released one; and for an `unreadable` one its fixed `unreadable` reason, no
   holder, and `held_from_fetch` when its hold is counted from when this copy
   first fetched it. The states are `live`, `expired`, `released` and
-  `unreadable`.
+  `unreadable`. A reservation a drain lane renewed carries its `stage`, one
+  of `worktree`, `brief`, `implement`, `validate` and `land`, the stage the
+  lane was in at its last renewal; a person's own renewal names none, so the
+  field is then absent. The text form shows the stage beside a live one.
 - `live_by_holder`: each person's count of live reservations.
+- `hand_backs_by_holder`: for each holder, the hand-backs of the last 24
+  hours: each released tip carrying a hand-back, as `record`, `kind` (one of
+  `user-visible`, `trust-rule`, `design-finding`, `second-package`,
+  `unachievable`, `stuck` and `closed`) and `released_at`, the tombstone's
+  own release time. Each holder lists its newest ten, newest first, and
+  `more` counts the rest. A tombstone dated more than five minutes ahead of
+  this computer's clock is not listed, so a fast clock cannot keep it on show.
+  It is read from the same view as the reservations, as just fetched or as
+  last fetched, and asks the network nothing more. Tell the user what each
+  other account's drain handed back and why, by its kind.
 - `view`: `origin` (whether there is a remote named origin), and
   `fetched_at` and `age_seconds` for the fetch this view was made by, both
   absent when nothing here has fetched.
