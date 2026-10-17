@@ -117,7 +117,7 @@ func TestParseRefusesAMalformedDigest(t *testing.T) {
 		"an internal impact":           withEntry(`{"line":"L.","records":[{"id":"iss-1","impact":"internal"}]}`),
 		"an unknown impact":            withEntry(`{"line":"L.","records":[{"id":"iss-1","impact":"major"}]}`),
 		"too many records":             withEntry(`{"line":"L.","records":[` + strings.Join(manyRecords, ",") + `]}`),
-		"an oversized document":        `{"schema_version":1,"releases":[]}` + strings.Repeat(" ", maxDigestBytes),
+		"an oversized document":        `{"schema_version":1,"releases":[]}` + strings.Repeat(" ", MaxBytes),
 	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := Parse([]byte(raw)); err == nil {

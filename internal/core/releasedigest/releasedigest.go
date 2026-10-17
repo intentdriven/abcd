@@ -38,10 +38,11 @@ import (
 const SchemaVersion = 1
 
 const (
-	// maxDigestBytes caps the document. The seed is a few hundred KiB and a
-	// release adds tens; the cap leaves years of headroom and bounds a file
-	// that has grown wrong.
-	maxDigestBytes = 8 << 20
+	// MaxBytes caps the document, for the reader here and for the cut's read
+	// of the file it appends to. The seed is a few hundred KiB and a release
+	// adds tens; the cap leaves years of headroom and bounds a file that has
+	// grown wrong.
+	MaxBytes = 8 << 20
 	// maxReleases caps the releases one digest holds.
 	maxReleases = 4096
 	// maxEntriesPerRelease, maxRecordsPerEntry, maxLineBytes and
@@ -174,8 +175,8 @@ func Range(from, to string) (Summary, error) {
 
 // Parse reads a digest document strictly and validates every release.
 func Parse(data []byte) (*Digest, error) {
-	if len(data) > maxDigestBytes {
-		return nil, fmt.Errorf("release digest exceeds the %d-byte cap", maxDigestBytes)
+	if len(data) > MaxBytes {
+		return nil, fmt.Errorf("release digest exceeds the %d-byte cap", MaxBytes)
 	}
 	var doc document
 	if err := jsonstrict.Decode(data, &doc); err != nil {
