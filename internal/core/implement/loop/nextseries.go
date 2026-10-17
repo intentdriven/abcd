@@ -129,6 +129,11 @@ type SeriesResult struct {
 // many reports whether the options ask for more than one pick.
 func (n NextOptions) many() bool { return n.UntilEmpty || n.Max > 1 }
 
+// counted reports whether the options name a run count at all: --max 1 is
+// one, so on a live series it is held to the series' own like any other, and
+// only a call with no count continues the series.
+func (n NextOptions) counted() bool { return n.UntilEmpty || n.Max > 0 }
+
 // countPhrase names a series' run count.
 func countPhrase(max int, untilEmpty bool) string {
 	if untilEmpty {
@@ -195,7 +200,7 @@ func continueSeries(repoRoot string, o Options, n NextOptions, flags paceFlags) 
 			return contend(StagePick, "", "", "the series in progress in this checkout ended while this call waited for it",
 				"run `abcd build next` again")
 		}
-		if n.many() && (n.UntilEmpty != st.UntilEmpty || n.Max != st.Max) {
+		if n.counted() && (n.UntilEmpty != st.UntilEmpty || n.Max != st.Max) {
 			return refuse(StagePick, "", "", fmt.Sprintf("the series started %s is in progress with %s; %s names another, and a run count is set when a series starts",
 				st.StartedAt.UTC().Format(time.RFC3339), countPhrase(st.Max, st.UntilEmpty), countPhrase(n.Max, n.UntilEmpty)),
 				"run `abcd build next` without a count; the series keeps the one it started with")
@@ -394,6 +399,20 @@ func readSeries(repoRoot string) (NextSeries, bool, error) {
 	}
 	if st.Max < 0 || (st.UntilEmpty && st.Max != 0) || (!st.UntilEmpty && st.Max < 2) {
 		return NextSeries{}, false, refuse(StagePick, "", "", NextSeriesRel+" names no run count a series takes",
+			"`abcd build next` is the file's only writer; restore it or remove it")
+	}
+	// The stored pace flags take the form the flags take as typed, so no other
+	// text (a hand edit, or control runes in a file a hostile checkout ships)
+	// reaches a move's --json payload; the refusal does not echo them.
+	if _, err := parsePaceFlags(st.Flags.Pace, st.Flags.SubAgents, st.Flags.FixRounds); err != nil {
+		return NextSeries{}, false, refuse(StagePick, "", "", NextSeriesRel+" names pace flags the series never writes",
+			"`abcd build next` is the file's only writer; restore it or remove it")
+	}
+	// The stored pace names the layers and origins the resolver writes, so no
+	// other text reaches a move's --json payload or the refusal of a move typed
+	// with another pace; the refusal does not echo it.
+	if st.Pace != nil && !st.Pace.written() {
+		return NextSeries{}, false, refuse(StagePick, "", "", NextSeriesRel+" names a pace the series never writes",
 			"`abcd build next` is the file's only writer; restore it or remove it")
 	}
 	for _, p := range st.Picks {

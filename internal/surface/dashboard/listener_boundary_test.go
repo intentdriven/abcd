@@ -43,6 +43,7 @@ const listenerPackage = "internal/surface/dashboard"
 // non-test file imports their package, so none reaches the binary.
 var listenerTestDoubles = map[string]string{
 	"internal/adapter/hosting/cloudflare/cloudflaretest/fake.go": "the Cloudflare API fake the hosting adapter's tests serve with httptest; imported by tests only",
+	"internal/adapter/repoprompt/mcptest/mcptest.go":             "the MCP server fake the RepoPrompt reviewer route's tests (the adapter's, the loop's, the CLI's) serve with httptest on the loopback address; imported by tests only",
 }
 
 // listenerCall is one finding.

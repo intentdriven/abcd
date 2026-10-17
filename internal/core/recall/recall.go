@@ -23,6 +23,9 @@ type Request struct {
 	// Disabled is the loader's kill switch: recall is the loader's, so the
 	// switch silences it too.
 	Disabled bool
+	// Root answers the repository's root commit, for the items tied to one;
+	// asked only once a tied item matched (Matching).
+	Root RootFunc
 }
 
 // Result is one prompt's recall. Text is empty when nothing new comes back.
@@ -31,23 +34,46 @@ type Request struct {
 // on the next turn; TooLarge each new candidate whose block alone is larger
 // than the whole per-turn budget (rules.InjectionBudgetBytes), which no turn
 // can carry, so it is set aside without stopping the take and never
-// recorded. Ledger is the updated recalled ledger, a copy.
+// recorded. Ledger is the updated recalled ledger, a copy. RootErr is the
+// root-commit lookup's error (git did not answer in time) when a tied item
+// matched and was left out for it — unrecorded, so retried on the next turn.
 type Result struct {
 	Text     string
 	Recalled []string
 	Omitted  []string
 	TooLarge []string
 	Ledger   map[string]string
+	RootErr  error
+
+	// layers is each candidate's layer, by key, for Labels.
+	layers map[string]string
 }
 
-// Recall matches the items against the prompt, ranks the candidates (Rank),
-// drops every one already sent this session with unchanged content, and
-// takes the rest in ranked order while they fit the budget: the first that
-// does not fit stops the take, so an item never comes back ahead of one
-// ranked above it that a later turn can still carry. An item larger than the
-// whole per-turn budget is set aside as TooLarge instead, so it cannot hold
-// back every item below it on every turn. It performs no I/O and never
-// reflects prompt bytes into the block.
+// Labels names keys as the hook's diagnostic does, each with its layer —
+// "mem-… (project)", "mem-… (machine)" — so the out-of-band log says whose
+// words went into the context, as the rules line's "(repo override)" does.
+// A key this recall did not take or omit is named bare.
+func (r Result) Labels(keys []string) []string {
+	out := make([]string, 0, len(keys))
+	for _, k := range keys {
+		if layer := r.layers[k]; layer != "" {
+			out = append(out, k+" ("+layer+")")
+		} else {
+			out = append(out, k)
+		}
+	}
+	return out
+}
+
+// Recall matches the items against the prompt, judges each tied note's root
+// (Matching), ranks the candidates (Rank), drops every one already sent this
+// session with unchanged content, and takes the rest in ranked order while
+// they fit the budget: the first that does not fit stops the take, so an
+// item never comes back ahead of one ranked above it that a later turn can
+// still carry. An item larger than the whole per-turn budget is set aside as
+// TooLarge instead, so it cannot hold back every item below it on every
+// turn. Its only I/O is req.Root, asked when a tied item matched, and it
+// never reflects prompt bytes into the block.
 func Recall(req Request) Result {
 	ledger := map[string]string{}
 	for k, v := range req.Ledger {
@@ -57,8 +83,10 @@ func Recall(req Request) Result {
 	if req.Disabled {
 		return res
 	}
+	ranked, rootErr := Rank(req.Items, req.Prompt, req.Root)
+	res.RootErr = rootErr
 	var fresh []Item
-	for _, c := range Rank(req.Items, req.Prompt) {
+	for _, c := range ranked {
 		if ledger[c.Item.Key] == signature(c.Item) {
 			continue
 		}
@@ -66,6 +94,10 @@ func Recall(req Request) Result {
 	}
 	if len(fresh) == 0 {
 		return res
+	}
+	res.layers = make(map[string]string, len(fresh))
+	for _, it := range fresh {
+		res.layers[it.Key] = it.Layer
 	}
 	var b strings.Builder
 	size := len(headerLine)
@@ -93,11 +125,13 @@ func Recall(req Request) Result {
 
 // signature is the ledger's key for an item's content, never for the form it
 // was rendered in, so a later change of form never sends an item again while
-// a change of its words does. FNV-1a, as the rules ledger: dedup, not
-// security.
+// a change of its words does. The layer is part of the content: it is whose
+// words these are, and the rendered label says so, so a note promoted from
+// the machine's file into the project's is sent again under its new label.
+// FNV-1a, as the rules ledger: dedup, not security.
 func signature(it Item) string {
 	h := fnv.New64a()
-	for _, part := range append([]string{it.Key, it.Title, it.Body}, it.Recall...) {
+	for _, part := range append([]string{it.Key, it.Layer, it.Title, it.Body}, it.Recall...) {
 		_, _ = h.Write([]byte(part))
 		_, _ = h.Write([]byte{0})
 	}

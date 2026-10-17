@@ -839,3 +839,23 @@ func TestALandedLaneLeavesNow(t *testing.T) {
 		t.Errorf("Now's lanes = %v, want %v: the merged lane and the lane whose branch is gone have left Now", lanes, want)
 	}
 }
+
+// TestAnIssueRowsTitleIsMasked: an issue's first body line is the ledger's
+// text, and the row carries it into `abcd board --json`, so a control, bidi or
+// hidden rune in it is masked in the row itself, not only where the text
+// board prints it.
+func TestAnIssueRowsTitleIsMasked(t *testing.T) {
+	root := store(t)
+	const id = "iss-2610090000000003"
+	openIssue(t, root, id, "The board‮ drops\u009b a tag\U000E0041 title")
+	b, err := Read(root, lanesOf(Started{Intent: id, Lanes: []Lane{{Run: "run-1", Lane: "lane-1", Stage: "implement"}}}), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.Now) == 0 || b.Now[0].ID != id {
+		t.Fatalf("Now = %+v, want the issue's lane row first", b.Now)
+	}
+	if want := "issue: The board? drops? a tag? title"; b.Now[0].Title != want {
+		t.Errorf("Title = %q, want %q", b.Now[0].Title, want)
+	}
+}

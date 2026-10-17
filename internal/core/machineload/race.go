@@ -95,10 +95,10 @@ func Descends(procs []Proc, pid, ancestor int) bool {
 	return lineage(procs, pid)[ancestor]
 }
 
-// RaceCandidates returns, in pid order, the processes a race run could be: those
+// raceCandidates returns, in pid order, the processes a race run could be: those
 // executing go, outside self's process and its ancestors. Only these are asked
 // for their arguments.
-func RaceCandidates(snap Snapshot, self Self) []int {
+func raceCandidates(snap Snapshot, self Self) []int {
 	chain := lineage(snap.Procs, self.PID)
 	var out []int
 	for _, p := range snap.Procs {
@@ -115,7 +115,7 @@ func RaceCandidates(snap Snapshot, self Self) []int {
 // arguments read (gone by the time they were asked for) is not one.
 func RaceRuns(snap Snapshot, self Self, args map[int][]string) []int {
 	var out []int
-	for _, pid := range RaceCandidates(snap, self) {
+	for _, pid := range raceCandidates(snap, self) {
 		if a, ok := args[pid]; ok && isRaceTest(a) {
 			out = append(out, pid)
 		}

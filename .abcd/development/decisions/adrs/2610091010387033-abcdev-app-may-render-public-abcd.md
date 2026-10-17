@@ -1,7 +1,7 @@
 ---
 id: adr-2610091010387033
 slug: abcdev-app-may-render-public-abcd
-status: proposed
+status: deprecated
 date: 2026-10-09
 supersedes: null
 superseded_by: null
@@ -31,14 +31,16 @@ Requirements the product thinker set on 2026-10-09, which any decision here must
 - A build for a signed-in person spends that person's own GitHub allowance, never the site's.
 - A shared cache serves a page built from a public repository to everyone; a page built from a private repository is served only to people that repository admits, never beyond.
 
+On 2026-10-14 the product thinker narrowed these requirements for the first release, verbatim: "for now, public projects only in abcd, but private ones must be an option later". The private-repository requirements above stand for the later intent that adds private repositories; the decision here must leave room for them.
+
 ## Decision
 
-_Not yet decided; settled at the planning interview of itd-2610091010348892, after the research note on building from GitHub within its rate limits._
+Withdrawn, not adopted. On 2026-10-14 the product thinker ruled that abcdev.app renders no other project: each opted-in project's about page and development record is built at each release by its own workflow onto its own GitHub Pages (itd-2610091010348892), abcd runs no server and holds no key, and abcdev.app becomes, if there is a need, a site for the abcd community. [adr-47](0047-abcdev-app-rendered-from-this-repository.md) decision 1 therefore stands for abcdev.app.
 
 ## Alternatives Considered
 
-_To be laid out at planning: render on opt-in only; render every public abcd-managed repository; keep abcdev.app to abcd alone (adr-47 as it stands) and serve other projects elsewhere._
+Rendering every public abcd-managed repository, or only opted-in ones, at abcdev.app/<owner>/<repo>/ was explored on 2026-10-14 (research note 2026-10-14-abcdev-app-github-builds-and-cache.md) and set aside: it needs a server receiving GitHub's release notices or a key-holding GitHub App, both ruled out.
 
 ## Consequences
 
-_To be written with the decision._
+No multi-repository rendering is built. The per-project route needs nothing from abcd beyond the release workflow it ships.

@@ -1,9 +1,12 @@
 package ahoy
 
 import (
+	"bytes"
 	"debug/buildinfo"
+	"errors"
 	"fmt"
 	"os"
+	"regexp"
 	"runtime/debug"
 	"unicode/utf8"
 
@@ -98,3 +101,62 @@ func buildValue(s string, n int, mark string) string {
 	}
 	return string([]rune(s)[:n]) + mark
 }
+
+// releaseWorkflowTag is the tag shape release.yml refuses to build any other
+// than (its tag_re): a core version with at most one pre-release or
+// build-metadata suffix.
+var releaseWorkflowTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?$`)
+
+// buildSetting is one build setting's value, or "".
+func buildSetting(bi *debug.BuildInfo, key string) string {
+	for _, s := range bi.Settings {
+		if s.Key == key {
+			return s.Value
+		}
+	}
+	return ""
+}
+
+// pseudoVersionTail is the commit stamp a Go pseudo-version ends in
+// (yyyymmddhhmmss-abcdefabcdef): the version Go gives a build from an
+// untagged commit, which names no release.
+var pseudoVersionTail = regexp.MustCompile(`[0-9]{14}-[0-9a-f]{12}$`)
+
+// copyRelease names the release an owned PATH copy claims to be, read from
+// its bytes' build metadata, never by running it. A seam: the package's
+// fixtures are shell scripts with no build metadata, so TestMain stands in a
+// fixed release and the tests of the reader itself put the real one back.
+var copyRelease = releaseTagOfBinary
+
+// releaseTagOfBinary reads the release tag a binary's Go build metadata
+// claims (releaseOfBuild), or why it claims none.
+func releaseTagOfBinary(data []byte) (string, error) {
+	bi, err := buildinfo.Read(bytes.NewReader(data))
+	if err != nil {
+		return "", errors.New("it carries no Go build metadata, so it names no release")
+	}
+	return releaseOfBuild(bi)
+}
+
+// releaseOfBuild is the release an abcd build claims: the main module version
+// Go stamps from the release tag the build was made at, in the shape
+// release.yml admits. A release build is made at its tag from a clean tree,
+// so anything else (a source build's (devel), a pseudo-version from an
+// untagged commit, a modified tree, or another program) names no release.
+func releaseOfBuild(bi *debug.BuildInfo) (string, error) {
+	if bi.Path != abcdMainPackage {
+		return "", errors.New("it is not an abcd build: a Go program built from " + buildValue(bi.Path, maxBuildValueRunes, "…"))
+	}
+	v := bi.Main.Version
+	if !releaseWorkflowTag.MatchString(v) || pseudoVersionTail.MatchString(v) || buildSetting(bi, "vcs.modified") == "true" {
+		if v == "" {
+			v = "none"
+		}
+		return "", errors.New("its build metadata names no release tag (version " + buildValue(v, maxBuildValueRunes, "…") + "), so it is not a release build")
+	}
+	return v, nil
+}
+
+// UnverifiedCopyGapID is the outstanding work an install reports when the
+// owned PATH copy it found on a cold cache did not verify (iss-2610120955431790).
+const UnverifiedCopyGapID = "symlink.unverified"

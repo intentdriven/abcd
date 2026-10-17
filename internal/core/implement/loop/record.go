@@ -19,6 +19,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // StageTranscript is the run record's stage for a captured transcript, and
@@ -265,11 +266,12 @@ func CaptureTranscripts(repoRoot, runID string, paths []string, capture Transcri
 		for _, p := range paths {
 			t, err := capture(p)
 			if err != nil {
-				failed = refuse(StageRecord, "", "", fmt.Sprintf("the history capture of a transcript failed: %v", err),
+				failed = refuse(StageRecord, "", "", fmt.Sprintf("the history capture of a transcript failed: %s", termsafe.Sanitize(err.Error())),
 					"settle what the capture names, then capture that transcript and the ones after it again")
 				break
 			}
 			t.At = now
+			t = t.masked()
 			if i := slices.IndexFunc(st.Transcripts, func(o Transcript) bool { return o.Path == t.Path }); i >= 0 {
 				st.Transcripts[i] = t
 			} else {
@@ -285,7 +287,7 @@ func CaptureTranscripts(repoRoot, runID string, paths []string, capture Transcri
 		if changed {
 			st.UpdatedAt = now
 		}
-		rec = recordOf(*st)
+		rec = recordOf(st.masked())
 		final = *st
 		return changed, nil
 	})

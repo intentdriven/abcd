@@ -346,6 +346,42 @@ func TestDescribeSpecMoves(t *testing.T) {
 	}
 }
 
+// TestDescribeSpecOpenQuestionsWithholdsImplement pins the spec page to the
+// verdict `abcd intent ready` reports (intent.ReadyWithQuestions): an open spec
+// whose intent still asks an open question is NOT ready, so the page must not
+// say "implement" and defers to the intent's failing checks instead, as its
+// not-ready branch does for any other failure (iss-2610112214150230).
+func TestDescribeSpecOpenQuestionsWithholdsImplement(t *testing.T) {
+	repo := t.TempDir()
+	body := "---\nid: itd-13\nslug: spec-asks\nspec_id: spc-13\nkind: standalone\n---\n\n# Q\n\n## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- **Given** x, **then** y.\n" + recordGrounds
+	intentFixture(t, repo, "planned", "itd-13", "spec-asks", body+"\n## Open Questions\n\n- Which surface carries the flag?\n")
+	write(t, repo, ".abcd/development/specs/open/spc-13-spec-asks.md",
+		"---\nid: spc-13\nslug: spec-asks\nintent: itd-13\n---\n# spec-asks\n\nA real body: build the thing against these words.\n")
+	before := treeSnapshot(t, repo)
+	d, err := Describe(repo, "spc-13")
+	if err != nil {
+		t.Fatal(err)
+	}
+	moves := strings.Join(d.NextMoves, "\n")
+	if strings.Contains(moves, "implement") || strings.Contains(moves, "spec close") {
+		t.Fatalf("an open spec whose intent has an open question must not be sent to implement: %v", d.NextMoves)
+	}
+	if !strings.Contains(moves, "not ready") || !strings.Contains(moves, "abcd intent ready itd-13") {
+		t.Fatalf("the move must defer to the intent's failing checks: %v", d.NextMoves)
+	}
+	assertZeroWrites(t, repo, before)
+
+	// Settled, the same spec is ready again: the question gates only while asking.
+	intentFixture(t, repo, "planned", "itd-13", "spec-asks", body+"\n## Open Questions\n\n- Which surface carries the flag? — resolved: the CLI.\n")
+	d, err = Describe(repo, "spc-13")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moves := strings.Join(d.NextMoves, "\n"); !strings.Contains(moves, "implement") || !strings.Contains(moves, "spec close spc-13") {
+		t.Fatalf("a settled question must leave the spec ready to implement: %v", d.NextMoves)
+	}
+}
+
 func TestDescribeADRReadOnly(t *testing.T) {
 	repo := t.TempDir()
 	write(t, repo, ".abcd/development/decisions/adrs/0040-three-verbs.md",

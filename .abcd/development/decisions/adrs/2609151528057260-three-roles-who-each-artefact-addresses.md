@@ -138,3 +138,10 @@ the thing being built.
 **Let the agents escalate freely to whoever is available.** Cheapest to
 implement and the fastest way to teach a product thinker that the stops are not
 worth reading, because most of them would be questions they cannot answer.
+
+## Amendments
+
+- [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md)
+  amends the default: a fresh install's facilitator is a person, and a
+  repository becomes `auto` only by a deliberate setting (product thinker,
+  2026-10-15, under the security standard rule).

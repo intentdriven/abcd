@@ -50,7 +50,7 @@ func TestEveryInstallQuestionCarriesPlainLanguageHelp(t *testing.T) {
 	idMustGit(t, repo, "init")
 
 	p := &choiceRecordingPrompter{asked: map[string][]string{}}
-	if _, err := Install(repo, InstallOptions{}, p); err != nil {
+	if _, err := Install(repo, InstallOptions{VerifyProvenance: acceptProvenance}, p); err != nil {
 		t.Fatal(err)
 	}
 
@@ -157,7 +157,7 @@ func TestHelpInShowsTheTrackedCaveatOnlyWhereItApplies(t *testing.T) {
 	}
 
 	tracked := gittest.NewRepo(t)
-	tracked.Write(".abcd/work/DECISIONS.md", "- a decision\n")
+	tracked.Write(".abcd/work/decisions/README.md", "# Decisions\n")
 	tracked.Commit("record tier")
 	h, ok = HelpIn(tracked.Root(), "visibility")
 	if !ok {

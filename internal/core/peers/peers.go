@@ -103,9 +103,13 @@ type Peer struct {
 }
 
 // Skip reasons: a spent peer contributes no rows and is counted instead.
+// SkipEmbargo is the embargo store, which is not spent but private: its
+// records are private security advisories' (adr-2610120558328615), so it is
+// skipped unread and counted with no path.
 const (
-	SkipGone   = "gone"
-	SkipMerged = "merged"
+	SkipGone    = "gone"
+	SkipMerged  = "merged"
+	SkipEmbargo = "embargo store"
 )
 
 // Skipped is a spent peer: its worktree directory is gone, or its branch is

@@ -959,8 +959,17 @@ func Render(domains []ResolvedDomain) string {
 func renderDomain(d ResolvedDomain) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "## %s\n", Label(d.Name, d.Source))
+	// An override's bodies are another party's text: each is fenced, so no
+	// markdown construct inside it renders (iss-2609020219265817). Bundled
+	// bodies are abcd's own words and keep their structure.
+	fence := d.Source == SourceUser || d.Source == SourceRepo
 	for _, r := range d.Rules {
-		body := sanitizeRuleBody(r)
+		var body string
+		if fence {
+			body = FenceRuleBody(r)
+		} else {
+			body = sanitizeRuleBody(r)
+		}
 		// Defence behind Validate's loud refusal: a body that sanitises to
 		// nothing (empty or whitespace-only) never becomes a contentless "- "
 		// bullet, even on an unvalidated render path (iss-2608261550497978).
@@ -972,6 +981,64 @@ func renderDomain(d ResolvedDomain) string {
 	return b.String()
 }
 
+// FenceRuleBody renders an override's rule body as a fenced code block inside
+// its bullet. The line-start contract the indent pass of sanitizeRuleBody
+// defends is not the only reader of the injected block: a markdown renderer
+// reads "- # x", a setext underline or an "<h2>" HTML block as a heading, which
+// would put an unlabelled heading in front of that reader
+// (iss-2609020219265817). Inside a fence CommonMark honours no construct at
+// all, and the fence is computed rather than escaped construct by construct:
+// tildes, one longer than the longest tilde or backtick run in the body (at
+// least three), so no body line can close it (CommonMark 0.31.2 §4.5). Every
+// non-blank line, the closing fence included, sits at the bullet's content
+// column, so the block stays inside its list item and no line starts
+// flush-left. The body's own text is unchanged apart from the normalisation
+// and control-character mask sanitizeRuleBody also applies. An empty body
+// renders to "" so the caller drops it.
+//
+// It is exported as the tree's one fence for another party's text under a
+// "- " bullet: the memory recall fences every note body through it
+// (spc-2610111627213138), so a note from a repository's committed
+// .abcd/memory.json can no more put a heading in front of the reader than an
+// override's rule can. One primitive, never a copy. The returned text starts
+// with the opening fence and carries no indent on that first line, so a
+// caller placing it on a line of its own prefixes "  " to reach the bullet's
+// content column.
+func FenceRuleBody(r string) string {
+	lines := ruleBodyLines(r)
+	if len(lines) == 1 && lines[0] == "" {
+		return ""
+	}
+	longest := 0
+	for _, line := range lines {
+		run, prev := 0, rune(0)
+		for _, c := range line {
+			if (c == '~' || c == '`') && c == prev {
+				run++
+			} else if c == '~' || c == '`' {
+				run = 1
+			} else {
+				run = 0
+			}
+			prev = c
+			if run > longest {
+				longest = run
+			}
+		}
+	}
+	fence := strings.Repeat("~", max(3, longest+1))
+	var b strings.Builder
+	b.WriteString(fence)
+	for _, line := range lines {
+		b.WriteByte('\n')
+		if line != "" {
+			b.WriteString("  " + line)
+		}
+	}
+	b.WriteString("\n  " + fence)
+	return b.String()
+}
+
 // sanitizeRuleBody makes a repo-controlled rule body safe to embed under its
 // domain heading. The rendered "## NAME" lines are the injection contract
 // host-side parsers rely on, and a rule body is untrusted input: control
@@ -979,6 +1046,32 @@ func renderDomain(d ResolvedDomain) string {
 // is indented under the bullet, so a hostile rules.json cannot forge domain
 // headings, forge sibling rules, or smuggle escapes into the rendered block.
 func sanitizeRuleBody(r string) string {
+	lines := ruleBodyLines(r)
+	for i, line := range lines {
+		// The first line is defused by the "- " bullet prefix the renderer adds.
+		// EVERY continuation line sits flush-left otherwise — Validate accepts a
+		// bare newline and the normalisation turns CR, LS and PS into one — so
+		// each is indented two spaces, the markdown list-item continuation:
+		// the line stays inside its bullet instead of reading as a loose
+		// paragraph, a leading "- " cannot forge a sibling rule, and a leading
+		// "#" cannot forge a heading. The contract defended is the line-start
+		// one the host-side parser splits on ("## " flush-left); CommonMark
+		// would still read a two-space "## x" as a heading, which is why an
+		// override's body is fenced instead (FenceRuleBody). A line already
+		// indented keeps its own deeper indent, and a blank line stays blank,
+		// so the pass is a fixed point — rendered text fed back as a body
+		// re-renders unchanged.
+		if i > 0 && line != "" && !strings.HasPrefix(line, "  ") {
+			lines[i] = "  " + line
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// ruleBodyLines is the normalisation both renderings share: line endings
+// unified, trailing whitespace trimmed, the body split into lines, and each
+// line passed through the terminal-safety mask.
+func ruleBodyLines(r string) []string {
 	// CRLF collapses to LF (editor-neutral signatures); a lone CR, LINE
 	// SEPARATOR and PARAGRAPH SEPARATOR become LF — they are line starts to
 	// the host-side parser's multiline split (or overprint terminals), so the
@@ -1004,28 +1097,12 @@ func sanitizeRuleBody(r string) string {
 	r = strings.TrimRight(r, " \t\n")
 	lines := strings.Split(r, "\n")
 	for i, line := range lines {
-		// The first line is defused by the "- " bullet prefix the renderer adds.
-		// EVERY continuation line sits flush-left otherwise — Validate accepts a
-		// bare newline and the normalisation above turns CR, LS and PS into one
-		// — so each is indented two spaces, the markdown list-item continuation:
-		// the line stays inside its bullet instead of reading as a loose
-		// paragraph, a leading "- " cannot forge a sibling rule, and a leading
-		// "#" cannot forge a heading. The contract defended is the line-start
-		// one the host-side parser splits on ("## " flush-left); CommonMark
-		// would still read a two-space "## x" as a heading, which is not the
-		// boundary this block is parsed by. A line already indented keeps its
-		// own deeper indent, and a blank line stays blank, so the pass is a
-		// fixed point — rendered text fed back as a body re-renders unchanged.
-		if i > 0 && line != "" && !strings.HasPrefix(line, "  ") {
-			line = "  " + line
-		}
-		lines[i] = line
 		// Terminal-display safety is the canonical termsafe mask: C0/C1
 		// controls, bidi overrides and zero-width runes become '?', so a
 		// hostile rule body cannot recolour, reorder, or hide rendered text.
-		lines[i] = termsafe.Sanitize(lines[i])
+		lines[i] = termsafe.Sanitize(line)
 	}
-	return strings.Join(lines, "\n")
+	return lines
 }
 
 // Label is a domain name as every provenance surface prints it: bare for a
@@ -1079,6 +1156,17 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 	return out
 }
 
+// CapPrompt is prompt cut to the bytes the loader scans (maxPromptBytes), so
+// a huge pasted prompt cannot blow up matching. Every reader of a prompt —
+// Inject, TermMatcher, Hits and the `rules --prompt` diagnostic — caps
+// through it, so a word past the cap matches nowhere.
+func CapPrompt(prompt string) string {
+	if len(prompt) > maxPromptBytes {
+		return prompt[:maxPromptBytes]
+	}
+	return prompt
+}
+
 // TermMatcher is the loader's term rule, exported so a memory note's recall
 // word hits on exactly the prompts a domain's recall word does
 // (spc-2610111627213138, "One recall for notes and pages"): it indexes prompt
@@ -1086,9 +1174,7 @@ func cloneRuleSet(rs RuleSet) RuleSet {
 // the match a domain's every recall word and alias is judged by (word
 // boundary, stems, multi-word phrases). One function, never a copy.
 func TermMatcher(prompt string) func(term string) bool {
-	if len(prompt) > maxPromptBytes {
-		prompt = prompt[:maxPromptBytes]
-	}
+	prompt = CapPrompt(prompt)
 	idx := indexPrompt(prompt)
 	return idx.termHit
 }
@@ -1121,9 +1207,7 @@ func TextStems(text string) []string {
 // alias that hits, in the order the domain declares them. It says nothing of
 // state or the kill switch; Match decides whether d is injected at all.
 func Hits(d ResolvedDomain, prompt string) []string {
-	if len(prompt) > maxPromptBytes {
-		prompt = prompt[:maxPromptBytes]
-	}
+	prompt = CapPrompt(prompt)
 	if parseStarCommands(prompt)[d.Name] {
 		return []string{"*" + d.Name}
 	}
@@ -1140,8 +1224,8 @@ func Hits(d ResolvedDomain, prompt string) []string {
 }
 
 // SanitizeRuleBody is the rule body's render-safety pass (sanitizeRuleBody),
-// exported so the memory recall renders a note under its "- " bullet through
-// the one pass that keeps a rule body from forging a heading or a sibling:
-// control and bidirectional characters masked, every continuation line
-// indented under the bullet.
+// exported so the memory recall renders a note's head line — its id, its
+// layer and its one-line title — through the same mask a rule body takes:
+// control and bidirectional characters masked, any continuation line indented
+// under the bullet. A note's body is fenced instead (FenceRuleBody).
 func SanitizeRuleBody(r string) string { return sanitizeRuleBody(r) }

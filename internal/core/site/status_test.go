@@ -2,9 +2,12 @@ package site
 
 import (
 	"html"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/statusblock"
 )
 
@@ -152,6 +155,45 @@ func TestStatusSectionShowsEachRowsTarget(t *testing.T) {
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("the block lacks\n%s\nin\n%s", want, got)
+		}
+	}
+}
+
+// TestStatusPageCarriesNoReservation (spc-2610031753359849 step 11): the
+// board names the reservation another copy holds on a record, but the site's
+// Status page is published and shows no checkout's local view, so a live
+// reservation this checkout fetched for a record on the page never reaches it.
+func TestStatusPageCarriesNoReservation(t *testing.T) {
+	f := newFixture(t)
+	now := time.Now().UTC()
+	msg := "abcd reservation: itd-1\n\nAbcd-Reservation: itd-1\nAbcd-Holder: octo\n" +
+		"Abcd-Copy: 9f2c41d07be35a6c80e1f4b2a7d39c55\nAbcd-Footprint: a.go\n" +
+		"Abcd-Claimed-At: " + now.Add(-time.Minute).Format(time.RFC3339) + "\n" +
+		"Abcd-Expires-At: " + now.Add(time.Hour).Format(time.RFC3339) + "\n"
+	tree := f.gitOut("hash-object", "-w", "-t", "tree", "/dev/null")
+	sha := f.gitOut("-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit-tree", tree, "-m", msg)
+	f.gitOut("remote", "add", "origin", filepath.Join(t.TempDir(), "origin.git"))
+	f.gitOut("update-ref", "refs/remotes/origin/abcd-reserved/itd-1", sha)
+	f.write(".abcd/.work.local/reservation/fetched-at", now.Format(time.RFC3339)+"\n")
+	snap, err := claim.View(f.Root(), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if held := snap.HeldBy("itd-1", now); !strings.HasPrefix(held, "reserved by octo") {
+		t.Fatalf("precondition: the checkout's view holds itd-1 for octo, got %q", held)
+	}
+
+	out := t.TempDir()
+	if _, err := Build(Request{RepoRoot: f.Root(), OutDir: out, Stamp: fixtureStamp}); err != nil {
+		t.Fatalf("build: %v", err)
+	}
+	page := outFile(t, out, "record/health/index.html")
+	if !strings.Contains(page, ">itd-1<") {
+		t.Fatal("precondition: itd-1 is on the Status page")
+	}
+	for _, leak := range []string{"reserved by", "octo", "as of the last fetch"} {
+		if strings.Contains(page, leak) {
+			t.Errorf("the published Status page carries %q, a checkout's local view of the reservations", leak)
 		}
 	}
 }

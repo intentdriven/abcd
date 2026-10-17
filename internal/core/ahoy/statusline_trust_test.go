@@ -313,3 +313,128 @@ func TestStatusLineEntryTrustSparesASessionStartedInHome(t *testing.T) {
 		t.Errorf("the documented install was refused because the home folder is a checkout: %s", reason)
 	}
 }
+
+// TestStatusLineEntryTrustJudgesEveryLinkInAChain: a recorded entry reached
+// through a chain of links is judged hop by hop. Whoever can write the
+// directory a MIDDLE link sits in can repoint that link and choose what the
+// line runs, as surely as for the first link or the final target
+// (iss-2610050844241683). The example from the record: ~/.local/bin/abcd links
+// to a link in a group-writable /opt/homebrew/bin, which links to the real
+// binary.
+func TestStatusLineEntryTrustJudgesEveryLinkInAChain(t *testing.T) {
+	// chain makes bin a link to a link at <midDir>/abcd, which links to a
+	// binary in a directory that passes on its own.
+	chain := func(t *testing.T, bin, midDir string) {
+		t.Helper()
+		real := filepath.Join(t.TempDir(), "real", binName)
+		writeTrustBinary(t, real)
+		if err := os.MkdirAll(midDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		mid := filepath.Join(midDir, binName)
+		if err := os.Symlink(real, mid); err != nil {
+			t.Fatal(err)
+		}
+		relink(t, mid, bin)
+	}
+
+	t.Run("a chain through directories that pass is admitted", func(t *testing.T) {
+		bin := trustFixture(t)
+		chain(t, bin, filepath.Join(t.TempDir(), "mid"))
+		if ok, reason := statusLineEntryTrust(bin); !ok {
+			t.Errorf("a two-link chain through owned 0755 directories was refused: %s", reason)
+		}
+	})
+	t.Run("a middle link in a group-writable directory is refused", func(t *testing.T) {
+		bin := trustFixture(t)
+		midDir := filepath.Join(t.TempDir(), "mid")
+		chain(t, bin, midDir)
+		if err := os.Chmod(midDir, 0o775); err != nil {
+			t.Fatal(err)
+		}
+		ok, reason := statusLineEntryTrust(bin)
+		if ok {
+			t.Fatal("a middle link in a group-writable directory was admitted")
+		}
+		if !strings.Contains(reason, "writable by its group") {
+			t.Errorf("reason = %q, want it to name the group-writable directory", reason)
+		}
+	})
+	t.Run("a middle link inside the working tree is refused", func(t *testing.T) {
+		bin := trustFixture(t)
+		repo := t.TempDir()
+		if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		chain(t, bin, filepath.Join(repo, "bin"))
+		t.Chdir(repo)
+		ok, reason := statusLineEntryTrust(bin)
+		if ok {
+			t.Fatal("a middle link inside the working tree was admitted")
+		}
+		if !strings.Contains(reason, "inside the working tree") {
+			t.Errorf("reason = %q, want it to name the working tree", reason)
+		}
+	})
+	t.Run("a middle link another account's directory holds is refused", func(t *testing.T) {
+		bin := trustFixture(t)
+		midDir := filepath.Join(t.TempDir(), "mid")
+		chain(t, bin, midDir)
+		ownPathAs(t, midDir, uint32(os.Getuid())+1)
+		ok, reason := statusLineEntryTrust(bin)
+		if ok {
+			t.Fatal("a middle link in another account's directory was admitted")
+		}
+		if !strings.Contains(reason, "owned by another account") {
+			t.Errorf("reason = %q, want it to name the other account", reason)
+		}
+	})
+	t.Run("a relative middle link is resolved against its own directory", func(t *testing.T) {
+		bin := trustFixture(t)
+		base := t.TempDir()
+		real := filepath.Join(base, "real", binName)
+		writeTrustBinary(t, real)
+		midDir := filepath.Join(base, "mid")
+		if err := os.Mkdir(midDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(filepath.Join("..", "real", binName), filepath.Join(midDir, binName)); err != nil {
+			t.Fatal(err)
+		}
+		relink(t, filepath.Join(midDir, binName), bin)
+		if ok, reason := statusLineEntryTrust(bin); !ok {
+			t.Fatalf("a relative middle link through passing directories was refused: %s", reason)
+		}
+		if err := os.Chmod(midDir, 0o775); err != nil {
+			t.Fatal(err)
+		}
+		if ok, _ := statusLineEntryTrust(bin); ok {
+			t.Fatal("a relative middle link in a group-writable directory was admitted")
+		}
+	})
+	t.Run("a chain longer than the bound is refused", func(t *testing.T) {
+		bin := trustFixture(t)
+		base := t.TempDir()
+		next := filepath.Join(base, "real", binName)
+		writeTrustBinary(t, next)
+		for i := 0; i < maxStatusLineLinks; i++ {
+			link := filepath.Join(base, "hop"+string(rune('a'+i)), binName)
+			if err := os.MkdirAll(filepath.Dir(link), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(next, link); err != nil {
+				t.Fatal(err)
+			}
+			next = link
+		}
+		// bin itself is one more link, so the chain is one past the bound.
+		relink(t, next, bin)
+		ok, reason := statusLineEntryTrust(bin)
+		if ok {
+			t.Fatalf("a chain of %d links was admitted", maxStatusLineLinks+1)
+		}
+		if !strings.Contains(reason, "links") {
+			t.Errorf("reason = %q, want it to name the chain of links", reason)
+		}
+	})
+}

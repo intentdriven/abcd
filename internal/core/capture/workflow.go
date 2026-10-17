@@ -15,6 +15,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/issuerecord"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/provenance"
+	"github.com/intentdriven/abcd/internal/core/record/findingkey"
 	"github.com/intentdriven/abcd/internal/core/record/match"
 	"github.com/intentdriven/abcd/internal/core/relink"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -84,6 +85,12 @@ func captureWith(lock ledgerLocker, req CaptureRequest) (CaptureResult, error) {
 	// (iss-2608290810037524). Nothing has been written yet.
 	if err := validateRequestEnums(req); err != nil {
 		return CaptureResult{}, err
+	}
+	// A finding key is written only in the one shape the pass derives, so the
+	// ledger reader and record_schema never meet a key capture wrote and they
+	// refuse.
+	if req.FindingRef != "" && !findingkey.Valid(req.FindingRef) {
+		return CaptureResult{}, refused(fmt.Errorf("capture: finding_ref %q is not a finding key (cfk- and sixteen lowercase hex digits); nothing written", req.FindingRef))
 	}
 	// Every new issue carries a remedy (ruling BX3 of 2026-09-29, itd-82
 	// decision 6): the fix it proposes, or, from an automatic filer with none,
@@ -285,6 +292,12 @@ func commitCaptureWith(lock ledgerLocker, repoRoot, issuesRoot string, req Captu
 	if req.BlockedBy != nil {
 		fields = append(fields, kv{"blocked_by", req.BlockedBy})
 		fm["blocked_by"] = req.BlockedBy
+	}
+	// Written bare: the key is machine-read, and its shape (already checked)
+	// holds nothing a quote would protect.
+	if req.FindingRef != "" {
+		fields = append(fields, kv{"finding_ref", rawScalar(req.FindingRef)})
+		fm["finding_ref"] = req.FindingRef
 	}
 
 	if err := validateStrict(fm); err != nil {
@@ -857,9 +870,17 @@ func relativiseLedgerPaths(repoRoot string, issues []Issue, skipped []SkipRecord
 	for i := range issues {
 		issues[i].Path = fsutil.RepoRel(repoRoot, issues[i].Path)
 	}
+	// A skip's path is a file name the ledger holds, which only claims to be a
+	// record, and the reader's refusal quotes it and the record's own values;
+	// both reach every capture surface's --json skipped list, so they are
+	// masked (iss-2610121542258778), and only after the root is stripped: a
+	// root holding a rune the mask replaces (a zero-width joiner, a tab) no
+	// longer matches once masked, and the absolute path would ride the
+	// payload. The id a skip claims is read from the masked name exactly as
+	// from the raw one, since a masked rune is never a digit.
 	for i := range skipped {
-		skipped[i].Path = fsutil.RepoRel(repoRoot, skipped[i].Path)
-		skipped[i].Error = strings.ReplaceAll(skipped[i].Error, prefix, "")
+		skipped[i].Path = termsafe.Sanitize(fsutil.RepoRel(repoRoot, skipped[i].Path))
+		skipped[i].Error = termsafe.Sanitize(strings.ReplaceAll(skipped[i].Error, prefix, ""))
 	}
 }
 
@@ -918,6 +939,67 @@ func Status(req StatusRequest) (StatusResult, error) {
 		markUncommitted(set, res.RecentOpen)
 	}
 	return res, nil
+}
+
+// Shown is the list as a front door shows it: a copy whose issues carry
+// every stored string masked (maskShownText). List itself returns the text as
+// stored, because its in-process callers compare it: the drain's judgement
+// digests the remedy the lane works from, and a remedy rewritten with a hidden
+// rune in place of a '?' masks to the same text and would keep its digest.
+func (r ListResult) Shown() ListResult {
+	r.Issues = shownCopy(r.Issues)
+	return r
+}
+
+// Shown is the status as a front door shows it: a copy whose recent-open
+// issues carry every stored string masked, as ListResult.Shown.
+func (r StatusResult) Shown() StatusResult {
+	r.RecentOpen = shownCopy(r.RecentOpen)
+	return r
+}
+
+// shownCopy masks a copy of issues, so the caller's slice keeps the stored
+// text. A nil slice stays nil and an empty one stays empty.
+func shownCopy(issues []Issue) []Issue {
+	if issues == nil {
+		return nil
+	}
+	out := append([]Issue{}, issues...)
+	maskShownText(out)
+	return out
+}
+
+// maskShownText masks, in place, every string a record stores that a list or
+// status payload carries: the body with termsafe.SanitizeBlock, keeping its
+// lines, and each frontmatter string and list item with termsafe.Sanitize.
+// capture encodes the hidden runes of a body it writes, but a hand-edited or
+// repository-shipped record carries whatever it was given, and these payloads
+// reach `capture list --json` and `capture status --json`
+// (iss-2610121653499543). The mask is the payload's, applied by the front
+// door through Shown, never the record's or an in-process caller's: resolve,
+// defer, promote and every other rewrite read the record themselves and
+// round-trip its stored text. The path is not masked: a
+// record the scan reads has a name the filename grammar holds to [a-z0-9-].
+func maskShownText(issues []Issue) {
+	for i := range issues {
+		iss := &issues[i]
+		for _, s := range []*string{&iss.ID, &iss.Slug, &iss.FoundDuring, &iss.FoundAt, &iss.LapsedAt,
+			&iss.Remedy, &iss.Resolution, &iss.WontfixReason} {
+			*s = termsafe.Sanitize(*s)
+		}
+		iss.Severity = Severity(termsafe.Sanitize(string(iss.Severity)))
+		iss.Category = Category(termsafe.Sanitize(string(iss.Category)))
+		iss.Source = Source(termsafe.Sanitize(string(iss.Source)))
+		for _, l := range []*[]string{&iss.RelatedIntents, &iss.RelatedSpecs, &iss.RelatedIssues, &iss.BlockedBy,
+			&iss.Duplicates, &iss.Refines, &iss.Grounds, &iss.BlockedByOpen} {
+			*l = termsafe.SanitizeAll(*l)
+		}
+		if rb := iss.ResolvedBy; rb != nil {
+			iss.ResolvedBy = &ResolvedBy{Intent: termsafe.Sanitize(rb.Intent), Spec: termsafe.Sanitize(rb.Spec),
+				Commit: termsafe.Sanitize(rb.Commit)}
+		}
+		iss.Body = termsafe.SanitizeBlock(iss.Body)
+	}
 }
 
 // severityRank orders severities for the derived-priority view: higher rank
@@ -1056,6 +1138,10 @@ func scanStatusDir(issuesRoot string, sub State) ([]Issue, []SkipRecord, error) 
 			continue
 		}
 		if refusal != nil {
+			// The path and the reader's refusal are kept raw here and masked by
+			// relativiseLedgerPaths once the checkout's root is stripped from
+			// them: a mask applied first changes a root holding a rune the mask
+			// replaces, and the strip then misses it.
 			skipped = append(skipped, SkipRecord{Path: path, Layer: refusal.Layer, Error: refusal.Err.Error()})
 			continue
 		}

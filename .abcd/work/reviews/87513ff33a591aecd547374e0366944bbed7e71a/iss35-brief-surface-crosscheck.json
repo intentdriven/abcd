@@ -1,0 +1,390 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "87513ff33a591aecd547374e0366944bbed7e71a"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-10-15T14:22:54Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:7c24686a047353fd41b487afe1d514ddb6df86cf26640c168bde258af6b5ae1e",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:74469080414a662a08948e3db4f112cf644ab76890f4e53d8b8a814b0230bd1d",
+    "briefVersion": "0.14.2"
+  },
+  "categories": {
+    "false-claim": 21,
+    "fictional-layout": 1,
+    "stale-count": 6,
+    "undocumented-surface": 8
+  },
+  "failing": [
+    {
+      "id": "x-001",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/03-embark.md:17",
+      "summary": ".abcd/development/brief/04-surfaces/03-embark.md:17 (.abcd/development/brief/04-surfaces/03-embark.md; raised by opus in a02): claim: \"What ships is the unpack and the probe\" — the shipped-surface callout enumerates two sub-verbs. / reality: Three embark sub-verbs ship: `abcd embark --help` lists from, lessons and probe; the chapter's own Sub-verbs table (line 42) and generated appendix list `lessons` as shipped too. The callout's enumeration omits `embark lessons`.",
+      "disposition": "deferred",
+      "record": "iss-2610151422058515",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-002",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/06-capture.md:394",
+      "summary": ".abcd/development/brief/04-surfaces/06-capture.md:394 (.abcd/development/brief/04-surfaces/06-capture.md; raised by opus in a05): claim: §3 'Ledger structure' presents the issue frontmatter 'per the issue-ledger schema in internal/core/issueschema' as a field-by-field list of what a record may carry (schema_version through resolved_by). / reality: internal/core/issueschema/issueschema.go:93 adds \"finding_ref\" to the Known allow-list (the key the consistency pass stamps on a filed finding so it is not filed twice); the brief's schema block omits it, and no brief chapter names finding_ref at all.",
+      "disposition": "deferred",
+      "record": "iss-2610151422055601",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-003",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/07-library.md:11-16",
+      "summary": ".abcd/development/brief/04-surfaces/07-library.md:11-16 (.abcd/development/brief/04-surfaces/07-library.md; raised by opus in a06): claim: The library command merges `source` and `memory`, and under adr-40 \"neither old name survives as an alias\". The chapter then calls `.abcd/memory/` \"the memory store\" throughout and never mentions another memory surface. / reality: `source` is gone from the binary, but `memory` is still a registered top-level verb (`abcd memory --help`: \"Count the memory notes in both layers\"). It now addresses a different store, the memory notes in `~/.abcd.noindex/memory.json` and `.abcd/memory.json`, and is documented in 37-memory.md. Strictly it is not an alias, but the old name does survive on the verb tree with a different meaning. This chapter does not mention it or tell the two memory stores apart.",
+      "disposition": "deferred",
+      "record": "iss-2610151422061914",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-004",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/08-abcd.md:413-417, .abcd/development/brief/04-surfaces/08-abcd.md:416",
+      "summary": ".abcd/development/brief/04-surfaces/08-abcd.md:413-417, .abcd/development/brief/04-surfaces/08-abcd.md:416 (.abcd/development/brief/04-surfaces/08-abcd.md; raised by opus+sonnet in a07): claim: A name retired with no alias is answered with what replaced it, and never as a stale binary: ... `memory` and `source`, which merged into `library`. / reality: `memory` is a registered, shipped top-level verb (`abcd memory --help`: 'Count the memory notes in both layers...'; listed under 'For agents and hosts' in `abcd --help --agent`; commands/memory.md exists; brief README row 37 marks `/abcd:memory` shipped). Only `source` is a retired name: `abcd source` prints the merged-into-library line, while `abcd memory` runs. The chapter lists a live verb as retired.",
+      "disposition": "deferred",
+      "record": "iss-2610151422069890",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-005",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/10-docs.md:121-123",
+      "summary": ".abcd/development/brief/04-surfaces/10-docs.md:121-123 (.abcd/development/brief/04-surfaces/10-docs.md; raised by opus in a09): claim: \"The working verbs accept the `docs-lint.json` to load and the repo to work over; the bare citation parent only routes and takes neither.\" / reality: Only the citation leaves take them: `abcd docs cite confirm` and `abcd docs cite refresh` carry --config and --root. The other working verbs under `abcd docs`, `fidelity` (flags --apply, --autonomous, --intent, --report) and `fidelity record` (flag --verdict-json), take neither, as the chapter's own generated appendix (lines 273-290) shows. The sentence holds for the cite sub-tree but is stated of the docs verb's working verbs generally.",
+      "disposition": "deferred",
+      "record": "iss-2610151422061013",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-006",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/11-history.md:216-219",
+      "summary": ".abcd/development/brief/04-surfaces/11-history.md:216-219 (.abcd/development/brief/04-surfaces/11-history.md; raised by opus in a10): claim: The session-start hook that carries the notice channel 'always exits successfully, because a notice is not a failure and a failing session-start hook shows the user an empty error banner'. / reality: The shipped SessionStart hook (hooks/hooks.json -> hooks/session-start.sh) exits 2 when the plugin binary is not installed or when both ~/.abcd and ~/.abcd.noindex exist, and otherwise propagates the non-zero exit of bootstrap.sh or of `abcd hook session-start`/`prompt-router-reset`; only the Go entrypoint itself is the always-exit-0 path. The chapter states the property for 'the hook' without that scope.",
+      "disposition": "deferred",
+      "record": "iss-2610151422063401",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-007",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/19-identity.md:80",
+      "summary": ".abcd/development/brief/04-surfaces/19-identity.md:80 (.abcd/development/brief/04-surfaces/19-identity.md; raised by opus in a14): claim: An unloadable registry is reported as a warn-tier finding rather than as drift, so the symptom reads as a broken check rather than as a missing tagline. / reality: internal/core/repolint/rule_positioning.go:54 reports an unloadable registry through targetRefusal (internal/core/repolint/repolint.go:179), which is SeverityError ('`abcd lint identity` refuses the same registry, so this is an error'), not a warn-tier finding; and `abcd lint identity` refuses such a registry outright.",
+      "disposition": "deferred",
+      "record": "iss-2610151422073415",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-008",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/21-update.md:9",
+      "summary": ".abcd/development/brief/04-surfaces/21-update.md:9 (.abcd/development/brief/04-surfaces/21-update.md; raised by opus in a16): claim: this verb, with its check, is the only **command** that reaches the release origin, and only when invoked / reality: `abcd launch --dry-run --fetch-baseline` and `abcd launch ship --fetch-baseline` also fetch from the release origin (both flags shipped: 'read the parity baseline from the tag's published plugin archive, verified against the release's checksums.txt (a network fetch ...)'); commands/update.md names them among the commands that reach the release origin.",
+      "disposition": "deferred",
+      "record": "iss-2610151422073042",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-009",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/21-update.md:3, .abcd/development/brief/04-surfaces/21-update.md:3-6",
+      "summary": ".abcd/development/brief/04-surfaces/21-update.md:3, .abcd/development/brief/04-surfaces/21-update.md:3-6 (.abcd/development/brief/04-surfaces/21-update.md; raised by opus+sonnet in a16): claim: The verb fetches the release, verifies the platform binary against that release's own checksums, and swaps the installed copy atomically; 'The release is verified in full before anything is written' (line 93). / reality: `abcd update --help` and internal/core/update/update.go also verify the binary against SLSA build provenance (GitHub attestations API, Sigstore trusted root, pinned to intentdriven/abcd's release.yml and the tag's commit) and refuse with shape `unverified-provenance` (update.go:510, :591) when it cannot be verified, offline included. The chapter never mentions provenance verification, the attestations API / Sigstore TUF reach, or this refusal.",
+      "disposition": "deferred",
+      "record": "iss-2610151422075372",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-010",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/21-update.md:48",
+      "summary": ".abcd/development/brief/04-surfaces/21-update.md:48 (.abcd/development/brief/04-surfaces/21-update.md; raised by opus in a16): claim: The verb takes an optional release tag; with none, it resolves the latest (no further condition on the bare form). / reality: A bare update whose latest release is older than ~/.abcd.noindex/release-mark is refused with shape `older-than-mark` (internal/surface/cli/update.go:107); the update writes release-mark and naming an older tag lowers it (update --help). The chapter documents neither the release-mark record nor this refusal.",
+      "disposition": "deferred",
+      "record": "iss-2610151422086989",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-011",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/21-update.md:77",
+      "summary": ".abcd/development/brief/04-surfaces/21-update.md:77 (.abcd/development/brief/04-surfaces/21-update.md; raised by opus in a16): claim: One further refusal arrives after the dispatch, once the release checksums are in hand: a regular file that none of the three proofs vouches for (the only post-dispatch refusal). / reality: At least two more refusals arrive after dispatch: `unverified-provenance` (after the checksums match) and `older-than-mark` (after resolving the latest tag); 'one further refusal' understates the shipped refusal set (commands/update.md lists both).",
+      "disposition": "deferred",
+      "record": "iss-2610151422089301",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-012",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/21-update.md:143",
+      "summary": ".abcd/development/brief/04-surfaces/21-update.md:143 (.abcd/development/brief/04-surfaces/21-update.md; raised by opus in a16): claim: On a run that reached the release origin, the receipt carries beside action the origin, the tag, the asset and its digest, the target path, and the ownership proof; env_ignored when overrides were scrubbed. / reality: The receipt also carries `attested_by`, the verified provenance signer (internal/core/update/update.go:132; commands/update.md tells the host to report it); the chapter's receipt field list omits it.",
+      "disposition": "deferred",
+      "record": "iss-2610151422083596",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-013",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/22-site.md:103-105",
+      "summary": ".abcd/development/brief/04-surfaces/22-site.md:103-105 (.abcd/development/brief/04-surfaces/22-site.md; raised by opus in a17): claim: \"Every repository gets the same pages: the landing page, the record explorer, one page per record, the relationship graph, the timeline, the glossary and the status page.\" / reality: The switchable set does match these seven (internal/core/site/pages.go PageNames). But the build writes more routes than the list names: `contributors/` always (internal/core/site/explorer.go:206, and the attribution gate reads it), and `record/foundations/`, `record/development/` and `references/` whenever their inputs exist (explorer.go:214-227). The chapter itself refers to the references and contributors pages at lines 189-191, but the page set it enumerates names none of the four. Repositories do not all get the same pages either: health, foundations, development, references and glossary each depend on their input.",
+      "disposition": "deferred",
+      "record": "iss-2610151422085155",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-014",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/36-dashboard.md:96",
+      "summary": ".abcd/development/brief/04-surfaces/36-dashboard.md:96 (.abcd/development/brief/04-surfaces/36-dashboard.md; raised by opus in a27): claim: Start refuses outside a checkout abcd manages, when a dashboard already runs, when Tailscale is not running or too old, when the tailscale command sits in the working tree or a world-writable folder, and when the port is Serve's or Funnel's; Stop (line 117) is described with no refusal at all. / reality: `abcd dashboard stop --help` names its refusal as 'refuses when another start or stop holds the lock', and both start and stop take a file lock under ~/.abcd.noindex/dashboard/ with a 5s timeout (internal/surface/dashboard/control.go:41, :246, :642). The chapter never mentions the lock or the refusal it raises.",
+      "disposition": "deferred",
+      "record": "iss-2610151422091770",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-015",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/37-memory.md:6-7",
+      "summary": ".abcd/development/brief/04-surfaces/37-memory.md:6-7 (.abcd/development/brief/04-surfaces/37-memory.md; raised by sonnet in a29): claim: Recall of a note through the prompt hook is the same spec's later step; this chapter covers the store and the verb. / reality: Recall through the prompt hook is already shipped: internal/surface/cli/rules_prompt.go (recallMemory, header says spc-2610111627213138 step 2) calls internal/core/recall on every prompt, the 04-surfaces/README.md library/memory table says notes are brought into a session automatically when a prompt matches their recall words, and commands/memory.md line 76 describes the prompt-match recall. It is not a later step.",
+      "disposition": "deferred",
+      "record": "iss-2610151422092354",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-016",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/README.md:148, .abcd/development/brief/04-surfaces/README.md",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:148, .abcd/development/brief/04-surfaces/README.md (.abcd/development/brief/04-surfaces/README.md; raised by opus+sonnet in a31, b00): claim: The help-placement table gives the people block's `release` group as `launch` alone, and `embargo` appears in no row of the table (neither a people group nor the agents-and-hosts block). / reality: `bin/abcd-darwin-arm64 --help` lists two verbs under Release: `embargo` and `launch`. commands/embargo.md declares `block: people`. The table's placement of every visible verb leaves embargo out.",
+      "disposition": "deferred",
+      "record": "iss-2610151422099918",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-017",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/README.md:262",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:262 (.abcd/development/brief/04-surfaces/README.md; raised by opus+sonnet in a31, b00, b03): claim: The operator-internal `hook` row: \"five host hook entrypoints, live-wired from hooks/hooks.json\", naming prompt-router, prompt-router-reset, session-end, subagent-stop and session-start. / reality: `bin/abcd-darwin-arm64 hook --help` lists six sub-commands; the sixth, `question-answered` (PostToolUse on the question tool), is wired from hooks/hooks.json through hooks/post-tool-use.sh and is missing from the row.",
+      "disposition": "deferred",
+      "record": "iss-2610141705107330",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-018",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:54-59, .abcd/development/brief/02-constraints/04-naming.md:49-54",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:54-59, .abcd/development/brief/02-constraints/04-naming.md:49-54 (.abcd/development/brief/02-constraints/04-naming.md; raised by opus+sonnet in a32): claim: The remaining surfaces are exempt from the maritime metaphor and 'are registered here so the exemption is on the record'; together with the maritime table and the named exemptions this is the full naming register of the shipped verbs. / reality: The shipped verb `embargo` (bin/abcd-darwin-arm64 --help lists it under Release; commands/embargo.md exists) appears in neither the maritime table, the named exemptions nor the plain exemption list.",
+      "disposition": "deferred",
+      "record": "iss-2610151422107680",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-019",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:225",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:225 (.abcd/development/brief/02-constraints/04-naming.md; raised by opus in a32): claim: `voyage/` row (Type column, unmarked): the operations namespace is 'Split by operation: `disembark/history.jsonl`, `embark/provenance.json`, `embark/from/<timestamp>/`'. / reality: Only `disembark/history.jsonl` is written (internal/core/lifeboat/voyage.go joins only `<root-sha>/disembark`); nothing in internal/ writes `embark/provenance.json` or `embark/from/`, and 04-surfaces/03-embark.md §7 marks the `embark/` subtree 'not built yet'. The row carries no **(staged)** mark, which the file's own truth rule (line 156) requires for a design target.",
+      "disposition": "deferred",
+      "record": "iss-2610151422109691",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-020",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:226",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:226 (.abcd/development/brief/02-constraints/04-naming.md; raised by opus in a32): claim: `history.jsonl`: one line per disembark run holding `manifest_sha256`, file list, oracle backend used, verdict. / reality: The shipped record (internal/core/lifeboat/voyage.go) carries schema_version, event, at, manifest_sha256, source_name, source_root_sha, dest, files (a count, not a list) and bytes; it has no file list, no oracle-backend field and no verdict field.",
+      "disposition": "deferred",
+      "record": "iss-2610151422101060",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-021",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:222",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:222 (.abcd/development/brief/02-constraints/04-naming.md; raised by opus in a32): claim: `aliases`: array of prior names a repo has had, 'Recorded in per-root-sha `meta.json`' (unmarked, so a delivery claim per the truth rule). / reality: The per-repo meta.json that ahoy install writes (internal/core/ahoy/apply.go) holds root_commit, name, github and corpus only; no code in internal/core/ahoy reads or writes an `aliases` field, and the index.json entry struct (internal/core/ahoy/store.go) has none either.",
+      "disposition": "deferred",
+      "record": "iss-2610151422107714",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-022",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/01-agents.md:98",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:98 (.abcd/development/brief/05-internals/01-agents.md; raised by opus in a33): claim: A cold-reading definition holds five parts (## Object, ## Question, ## The blindness core, ## Regime, ## Item shape), and a test asserts exactly that composition. / reality: All four agents/cold-reading-*.md carry a sixth top-level section, '## Shell commands the guard refuses' (the guard-lessons block added under iss-2610091942156774, noted in internal/core/reading/definitions_test.go). No test asserts an exact five-part composition: definitions_test.go fetches the named sections individually and asserts exactly one fenced JSON block in Item shape, so a sixth section passes.",
+      "disposition": "deferred",
+      "record": "iss-2610151422111866",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-023",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:97, .abcd/development/brief/05-internals/03-configuration.md",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:97, .abcd/development/brief/05-internals/03-configuration.md (.abcd/development/brief/05-internals/03-configuration.md; raised by opus+sonnet in a34): claim: This repository's own config carries four of these blocks — `docs`, `meta`, `oracle` and `repo`. / reality: .abcd/config.json carries five top-level blocks: docs, meta, oracle, outbound, repo (jq keys).",
+      "disposition": "deferred",
+      "record": "iss-2610151422118638",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-024",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:7",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:7 (.abcd/development/brief/05-internals/03-configuration.md; raised by opus in a34): claim: Beyond those eleven, the binary reads only keys a person opts into: the provider adapter's `oracle` keys and the interview's list style, the implement loop's `pace`, and the runner routes under `roles` and `runner`. / reality: The binary also reads `reservation.github_username` from the machine layer (internal/core/claim/holder.go, holderKey, used by the reserve verb) and `consistency.max_request_bytes` (internal/core/intent/consistency_config.go) through the layered config reader; neither key appears anywhere in the chapter.",
+      "disposition": "deferred",
+      "record": "iss-2610151422111534",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-025",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:542",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:542 (.abcd/development/brief/05-internals/03-configuration.md; raised by opus in a34): claim: The machine layer config.json's readers are the provider adapter's and the filing-time match's `match` keys ... every other config read resolves the repo-scope `.abcd/config.json` alone. / reality: Further config reads go through layered.Load(layered.Config, ...), which includes ~/.abcd.noindex/config.json: oracle.review/oracle.rp (internal/core/oracle/review.go), interview.list (internal/core/layered/interview.go, machine layer only), reservation.github_username (internal/core/claim/holder.go, machine layer only) and consistency.max_request_bytes (internal/core/intent/consistency_config.go); pace.go and runner/config.go call the layered reader too. The chapter's own interview and reviewer-route sections also say those keys are read from the machine layer.",
+      "disposition": "deferred",
+      "record": "iss-2610151422116979",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-026",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:557",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:557 (.abcd/development/brief/05-internals/03-configuration.md; raised by opus in a34): claim: User scope holds 'user-scope memory for personal cross-project knowledge (a later phase too: the shipped memory store is repo-scope)'; ':1023 the user-scope `~/.abcd.noindex/memory/` is a later phase ... (nothing in the binary resolves it today)'. / reality: The shipped `abcd memory` verb (commands/memory.md; sub-verbs add, list, remove) keeps personal memory notes in a machine layer at ~/.abcd.noindex/memory.json (internal/core/memnote/layers.go MachineRelPath), written by `abcd memory add` (with --everywhere for cross-repo recall), plus a repo layer .abcd/memory.json; `abcd hook prompt-router` recalls them. Neither memory.json file appears in the user-scope or repo-scope inventory.",
+      "disposition": "deferred",
+      "record": "iss-2610151422129661",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-027",
+      "category": "undocumented-surface",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:615",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:615 (.abcd/development/brief/05-internals/03-configuration.md; raised by opus in a34): claim: Every file in the user scope whose contents abcd acts on — rules.json, trusted-roots, local-transcript-roots, path-entry, cache-attestation, release-mark, config.json, oracle-routing.json, statusline.json, load-limits, credentials.json and credential-homes.json — is refused behind a symlinked ~/.abcd.noindex. / reality: The list omits ~/.abcd.noindex/memory.json, which abcd acts on (memory notes recalled into every prompt) and reads through rules.ReadUserLayerFile, the rules layers' trust checks (internal/core/memnote/layers.go).",
+      "disposition": "deferred",
+      "record": "iss-2610151422120350",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-028",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:847",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:847 (.abcd/development/brief/05-internals/03-configuration.md; raised by opus in a34): claim: prompt-router stdout carries 'the rendered block of the domains new this turn, and nothing else'; the --json envelope's fields are text, injected, active and error. / reality: `abcd hook prompt-router --help`: plain stdout is the rule block 'followed by a \"## MEMORY\" block of the memory notes the prompt recalls', and the --json envelope is {\"text\", \"injected\", \"recalled\", \"active\", \"error\"}; the chapter does not mention the memory block or the `recalled` field.",
+      "disposition": "deferred",
+      "record": "iss-2610151422122793",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-029",
+      "category": "fictional-layout",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:1118",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:1118 (.abcd/development/brief/05-internals/03-configuration.md; raised by opus in a34): claim: Plugin layout: internal/adapter/ holds scanner/, gitleaks/, hosting/, openaiapi/, tailscale/ ('hosting, openaiapi and tailscale are adapters outside the capability seams'). / reality: internal/adapter/ also holds repoprompt/ (the RepoPrompt reviewer route, itd-6, listed in internal/README.md:290), which the tree omits.",
+      "disposition": "deferred",
+      "record": "iss-2610151422138325",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-030",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/03-configuration.md:667",
+      "summary": ".abcd/development/brief/05-internals/03-configuration.md:667 (.abcd/development/brief/05-internals/03-configuration.md; raised by opus in a34): claim: Two namespaces are not part of [repo scope]: `logbook/`, a retired name, and `rp/`, staged with its adapter. / reality: The RepoPrompt adapter is not staged: internal/adapter/repoprompt ships and the chapter's own 'reviewer route's keys' section (oracle.review = rp) describes it as read by `implement step`. No .abcd/rp/ namespace is written, so only the 'staged with its adapter' reason is stale.",
+      "disposition": "deferred",
+      "record": "iss-2610151422138805",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-031",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/05-prompt-quality.md:13-14,56-57",
+      "summary": ".abcd/development/brief/05-internals/05-prompt-quality.md:13-14,56-57 (.abcd/development/brief/05-internals/05-prompt-quality.md; raised by opus in a35): claim: The unbumped-body-edit check needs a diff range \"which the continuous-integration caller supplies\"; \"The range comes from the CI caller\". / reality: The range is armed locally too: the Makefile `record-lint` target runs `go run ./cmd/record-lint -agent-diff origin/main...HEAD` (Makefile:165), so every `make record-lint` and `make preflight` arms the check, not only CI (.github/workflows/ci.yml:477). The brief presents the CI caller as the only source of the range; the 'never from the in-tree config' half still holds (.abcd/record-lint.json carries no range).",
+      "disposition": "deferred",
+      "record": "iss-2610151422133234",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-032",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/05-internals/05-prompt-quality.md:106-108, .abcd/development/brief/05-internals/05-prompt-quality.md:128-129",
+      "summary": ".abcd/development/brief/05-internals/05-prompt-quality.md:106-108, .abcd/development/brief/05-internals/05-prompt-quality.md:128-129 (.abcd/development/brief/05-internals/05-prompt-quality.md; raised by sonnet in a35): claim: the four review and research prompts enter the changelog at 0.2.0 (the bump that first gave them the untrusted-input contract) / reality: The agent changelog entry '0.2.0 — 2026-08-19 (iss-278)' (.abcd/development/agents/CHANGELOG.md:752-791) lists FIVE prompts: ruthless-reviewer, security-reviewer, docs-currency-reviewer, intent-auditor, sota-researcher. The same chapter says 'five prompts hardened on 2026-08-19' at line 119.",
+      "disposition": "deferred",
+      "record": "iss-2610151422139704",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-033",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/06-delivery/01-build-sequence.md:35, .abcd/development/brief/06-delivery/01-build-sequence.md:26-29",
+      "summary": ".abcd/development/brief/06-delivery/01-build-sequence.md:35, .abcd/development/brief/06-delivery/01-build-sequence.md:26-29 (.abcd/development/brief/06-delivery/01-build-sequence.md; raised by opus+sonnet in a37): claim: Three further adapter packages stand outside the capability seams: `openaiapi`, `hosting`, and `tailscale`. / reality: internal/adapter/ holds four packages beyond the scanner seam and its gitleaks backend: hosting, openaiapi, tailscale and repoprompt (the RepoPrompt reviewer-route MCP client, itd-6, imported by internal/core/oracle/review.go and listed in internal/README.md:290). The count is three where the tree has four, and the chapter never names repoprompt.",
+      "disposition": "deferred",
+      "record": "iss-2610151422144124",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-034",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/06-delivery/02-verification-matrix.md:67",
+      "summary": ".abcd/development/brief/06-delivery/02-verification-matrix.md:67 (.abcd/development/brief/06-delivery/02-verification-matrix.md; raised by opus in a38): claim: Capture filtered list: `abcd capture list` with a state filter prints one line per issue, sorted by id. / reality: capture.List (internal/core/capture/workflow.go:819) sorts by id only as a tiebreak and then calls prioritise(), which stably orders unblocked issues ahead of blocked ones and, within each group, higher severity first (workflow.go:1011-1016). The shipped order is derived priority, as 04-surfaces/06-capture.md §5 states, not id order.",
+      "disposition": "deferred",
+      "record": "iss-2610151422140743",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-035",
+      "category": "stale-count",
+      "severity": "minor",
+      "where": ".abcd/development/brief/02-constraints/04-naming.md:101",
+      "summary": ".abcd/development/brief/02-constraints/04-naming.md:101 (CLI verb tree; raised by opus in b00): claim: \"three verbs (`launch`, `decide` and `build`) refuse instead of rendering\" on a bare call. / reality: Bare `abcd reserve` also refuses as a usage error (`abcd reserve --help`: Usage `abcd reserve <record-id>`), and bare `abcd report` refuses anywhere but a terminal. The enumeration this paragraph defers to (04-surfaces/README.md § Bare invocation) names reserve, so the count of three is stale.",
+      "disposition": "deferred",
+      "record": "iss-2610151422141736",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "x-036",
+      "category": "false-claim",
+      "severity": "minor",
+      "where": ".abcd/development/brief/04-surfaces/README.md:397",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:397 (plugin agent surface; raised by opus in b02): claim: Agent pages table row: `docs-currency-reviewer` | Serves `docs` | Documented in 10-docs.md — where Serves is defined (README.md:384-385) as 'the verb that builds the agent's input or validates what it returns'; README.md:415-416 then says only four agents (ruthless-reviewer, security-reviewer, sota-researcher, question-drafter) serve no verb. / reality: No `docs` sub-verb builds this agent's input or validates its return: `abcd docs --help` lists only `cite` and `fidelity`, and commands/docs.md never names the agent (the docs review it asks for is composed by the host, not dispatched to docs-currency-reviewer). The only command page naming it is commands/launch.md:904-905 (a release-gate semantic gate, internal/core/launch/scaffold/substitutions.go:6). The brief contradicts itself: .abcd/development/brief/05-internals/01-agents.md:35-37 groups docs-currency-reviewer with the reviewers and researcher 'dispatched by a human rather than by a verb', so it is a fifth agent no verb dispatches, or its Serves column should name `launch`.",
+      "disposition": "deferred",
+      "record": "iss-2610141705124287",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches its code. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    }
+  ],
+  "_reviewProvenance": "Full tier for an additive release: both directions, the manifest's 44 checkers (Direction A over the 39 brief docs, Direction B over the 5 surfaces), each run twice as a pair, an Opus 5.5 agent and a Sonnet 5.5 agent, each reading its prompt verbatim from a file holding the manifest's pinned context and direction template filled for its item. Run by hand through the host's agent tool in 11 groups of four checkers per agent, at most seven agents at a time, over an exact export of content commit 87513ff33a591aecd547374e0366944bbed7e71a with the binary built from it. Findings were merged by location (the file:line a finding names, first kept), and seven pairs naming the same claim at neighbouring lines were folded into one. Opus raised 39 and Sonnet 14; 32 merged findings came from Opus alone and 9 from Sonnet alone. 36 discrepancies remain, every one in brief prose and none on a user-facing page; each is deferred to its own open record, two of them to records captured at v0.14.1 that still stand. Coverage limits stated by the checkers: some long chapters (02-ahoy, the verification matrix) were spot-checked rather than read claim by claim, and behaviour needing a remote or a live server was checked in source."
+}

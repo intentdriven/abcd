@@ -404,9 +404,17 @@ func TestColdReadingDefinitionsSatisfyTheAgentContract(t *testing.T) {
 	}
 	// Proof of life: a disabled rule reports nothing, and a test that reads
 	// nothing from a rule that ran nowhere passes for the wrong reason.
-	if rule, ok := cfg.Rules["agent_contract"]; !ok || !rule.Enabled {
+	rule, ok := cfg.Rules["agent_contract"]
+	if !ok || !rule.Enabled {
 		t.Fatalf("%s does not enable the agent_contract rule, so this case asserts nothing", LintConfigPath)
 	}
+	// The committed roots with agent_contract alone: the rule reads only its
+	// own configuration and the agents directory, so every other family the
+	// full config arms would change nothing this test reads. The record-lint
+	// step and make preflight run the full set over the live tree; under -race
+	// the full set cost about 87s here.
+	cfg.BannedTokens = nil
+	cfg.Rules = map[string]lint.RuleConfig{"agent_contract": rule}
 	findings, err := lint.Lint(cfg, root)
 	if err != nil {
 		t.Fatalf("lint: %v", err)

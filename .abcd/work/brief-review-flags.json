@@ -28,7 +28,7 @@
     {
       "chapter": "05-intent.md",
       "sentence": "disciplines follow. The seven written since (itd-190 onwards) head the rule",
-      "replacement": "disciplines follow. The eight written since (itd-190 onwards) head the rule",
+      "replacement": "disciplines follow. The nine written since (itd-190 onwards) head the rule",
       "evidence": ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention.md:1",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
@@ -36,7 +36,7 @@
     {
       "chapter": "05-intent.md",
       "sentence": "**The first trigger has fired, and the enum has not been drawn.** Fourteen",
-      "replacement": "**The first trigger has fired, and the enum has not been drawn.** Fifteen",
+      "replacement": "**The first trigger has fired, and the enum has not been drawn.** Sixteen",
       "evidence": ".abcd/development/intents/disciplines/README.md:1",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
@@ -52,7 +52,7 @@
     {
       "chapter": "05-intent.md",
       "sentence": "four bench drafts and seven of the fourteen disciplines carry no section",
-      "replacement": "four bench drafts and eight of the fifteen disciplines carry no section",
+      "replacement": "four bench drafts and nine of the sixteen disciplines carry no section",
       "evidence": ".abcd/development/intents/disciplines/itd-2609251624540864-a-lab-runs-one-procedure-from-intention.md:1",
       "commit": "6538ab4a6ec349b800ef4b7f8b03819d84c055c4",
       "applied": "2026-10-04T23:45:50Z"
@@ -176,6 +176,38 @@
       "evidence": "internal/surface/cli/source.go:642",
       "commit": "7def7acb298da9e5adbe41af45d801ca76be9294",
       "applied": "2026-10-11T16:01:16Z"
+    },
+    {
+      "chapter": "24-decide.md",
+      "sentence": "Given the quoted text as its one operand, the verb calls `decisions.Record`, the",
+      "replacement": "A single bare word is refused with exit 2 and nothing written, since it reads",
+      "evidence": "internal/surface/cli/decide.go:63",
+      "commit": "25ef6d8ec16483c318b233edbff05162d8a7793b",
+      "applied": "2026-10-15T18:41:10Z"
+    },
+    {
+      "chapter": "README.md",
+      "sentence": "| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision in date order, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |",
+      "replacement": "| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision newest first, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |",
+      "evidence": "internal/core/decisions/record.go:226",
+      "commit": "25ef6d8ec16483c318b233edbff05162d8a7793b",
+      "applied": "2026-10-15T18:41:10Z"
+    },
+    {
+      "chapter": "38-land.md",
+      "sentence": "agents-and-hosts block, and its page is hidden from a person's `/abcd:` menu.",
+      "replacement": "person's records group beside `build`, and its page is on a person's `/abcd:` menu.",
+      "evidence": "commands/land.md:5",
+      "commit": "2a692195fd82fec4229e064a2fb0f15b34c80172",
+      "applied": "2026-10-16T05:32:44Z"
+    },
+    {
+      "chapter": "24-decide.md",
+      "sentence": "Decisions outnumber ADRs about eight to one, so the common act takes the short",
+      "replacement": "Decisions outnumber ADRs about six to one, so the common act takes the short",
+      "evidence": ".abcd/work/decisions/ (538 records) against .abcd/development/decisions/adrs/ (92 files)",
+      "commit": "2a692195fd82fec4229e064a2fb0f15b34c80172",
+      "applied": "2026-10-16T05:32:44Z"
     }
   ]
 }

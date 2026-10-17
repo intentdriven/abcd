@@ -50,6 +50,14 @@ var errKeychainAbsent = errors.New("credential: the keychain home needs the plat
 // person to unlock the keychain first.
 var keychainTimeout = 60 * time.Second
 
+// macKeychainLineMax is the longest command line `security -i` accepts,
+// newline included: measured on a real Mac on 2026-10-12, an add line of 4096
+// bytes round-trips and one of 4098 is refused (iss-2609281654467661). The
+// value travels as hex on that line, so the macOS keychain home holds about
+// 2000 bytes, less than MaxValueBytes; keychainStore refuses a longer one
+// before anything is written.
+const macKeychainLineMax = 4096
+
 // locateKeychain finds the platform's tool at its fixed system path. It is a
 // variable so a test can point the home at a fake and never the real keychain.
 var locateKeychain = func() (keychainTool, error) {
@@ -136,6 +144,9 @@ func keychainStore(name, value string) error {
 	switch t.kind {
 	case keychainMacOS:
 		line := fmt.Sprintf("add-generic-password -s %s -a %s -l abcd:%s -X %s\n", keychainService, name, name, hex.EncodeToString([]byte(value)))
+		if len(line) > macKeychainLineMax {
+			return fmt.Errorf("credential: %s's value is too long for the macOS keychain home: security reads one command line of at most %d bytes and the value, written as hex, makes it %d; nothing was stored (store it in the abcd home instead)", name, macKeychainLineMax, len(line))
+		}
 		_, code, err = runKeychain(t, []byte(line), "-i")
 	default:
 		_, code, err = runKeychain(t, []byte(value), "store", "--label=abcd:"+name, "service", keychainService, "account", name)

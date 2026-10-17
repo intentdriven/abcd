@@ -76,7 +76,9 @@ const (
 	ReasonPersonaRegistry ReasonCode = "persona-registry"
 	// ReasonPrivacy: the rendered page or changelog section carries a hard_fail
 	// finding of the canonical scanner (a token, a key, the caller's own home or
-	// identity), the bar the launch scan holds the same files to.
+	// identity), the bar the launch scan holds the same files to, or another
+	// account's home path (home_path_other), which public release text is held
+	// above that bar to refuse; a username stays allowed (iss-2609290405451613).
 	ReasonPrivacy ReasonCode = "privacy"
 )
 

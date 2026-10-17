@@ -2,19 +2,15 @@ package ahoy
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
-	"regexp"
 	"strings"
-	"time"
 
+	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/core/tools"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -27,16 +23,6 @@ import (
 // all and every claim about it rested on a web console (iss-2608270512210664).
 const RepoSettingsMirrorRelPath = ".abcd/work/rulesets/repo-settings.json"
 
-// remoteAPITimeout bounds each `gh` call. A subprocess reading from the network
-// with no bound is a verb that hangs a session indefinitely on a stalled connection,
-// and this one is invoked from a commit-adjacent workflow.
-const remoteAPITimeout = 30 * time.Second
-
-// maxGHOutputBytes caps what is read back from `gh` (trust boundary): the response
-// is remote-controlled, and an unbounded read into memory is the shape a hostile or
-// broken endpoint exploits.
-const maxGHOutputBytes = 1 << 20
-
 // The two toggles this verb manages, as GitHub names them in the
 // security_and_analysis object.
 const (
@@ -46,16 +32,6 @@ const (
 
 // statusEnabled is the only value either toggle is driven to.
 const statusEnabled = "enabled"
-
-// githubHost is the API host every request names EXPLICITLY. Without it `gh api`
-// picks its host from GH_HOST, or from whichever single host the caller's gh is
-// authenticated to — so the github.com-only rule parseGitHubRemote enforces would
-// constrain the PATH while the environment chose the ENDPOINT. An ambient GH_HOST
-// (a repo direnv file, a CI job, an agent harness) would then send this verb's
-// authenticated PATCH, with whatever credential gh holds for that host, to a
-// machine the origin URL never named. The decision is made once, where the origin
-// is validated, and applied where the request is built.
-const githubHost = "github.com"
 
 // RemoteSecurity is the pair of GitHub-native secret-scanning toggles, as observed
 // or as desired. A toggle GitHub did not report reads "unknown", never "disabled":
@@ -112,15 +88,6 @@ type RemoteResult struct {
 	Notes []string `json:"notes,omitempty"`
 }
 
-// ownerRepoRe is the charset a GitHub owner or repository name may use. It is
-// applied to BOTH segments before either reaches an API path, because the path is
-// assembled by concatenation: a segment carrying a slash or a `..` would not merely
-// name a different repository, it would address a different ENDPOINT — on a verb
-// whose whole purpose is an authenticated write. Anchored, and deliberately
-// narrower than GitHub's own acceptance: refusing a name abcd cannot vouch for
-// costs one error message, and the alternative costs a request nobody intended.
-var ownerRepoRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
-
 // nativeScanningOptedOut reports an explicit `false` at scan.native_secret_scanning
 // in this repo's config. Nil-is-unset, following ScanDeep: enable-by-default is the
 // intended posture for a managed repo (both toggles are free on public
@@ -171,43 +138,11 @@ func resolveGitHubRepo(cwd string) (string, error) {
 		return "", errors.New("this repo has no origin remote, so there is no repository to act on " +
 			"(abcd never picks one for you: `git remote add origin <url>` first)")
 	}
-	owner, name, err := parseGitHubRemote(url)
+	owner, name, err := github.ParseRemote(url)
 	if err != nil {
 		return "", err
 	}
 	return owner + "/" + name, nil
-}
-
-// parseGitHubRemote splits a github.com remote URL into owner and repository. It
-// accepts the two forms git itself writes — `https://github.com/owner/repo[.git]`
-// and `git@github.com:owner/repo[.git]` — and refuses everything else.
-func parseGitHubRemote(url string) (owner, name string, err error) {
-	rest := ""
-	switch {
-	case strings.HasPrefix(url, "git@github.com:"):
-		rest = strings.TrimPrefix(url, "git@github.com:")
-	case strings.HasPrefix(url, "ssh://git@github.com/"):
-		rest = strings.TrimPrefix(url, "ssh://git@github.com/")
-	case strings.HasPrefix(url, "https://github.com/"):
-		rest = strings.TrimPrefix(url, "https://github.com/")
-	case strings.HasPrefix(url, "http://github.com/"):
-		rest = strings.TrimPrefix(url, "http://github.com/")
-	default:
-		return "", "", fmt.Errorf("the origin remote is not a github.com URL, and this verb speaks only the GitHub API")
-	}
-	rest = strings.TrimSuffix(strings.TrimSuffix(strings.Trim(rest, "/"), ".git"), "/")
-	parts := strings.Split(rest, "/")
-	if len(parts) != 2 {
-		return "", "", fmt.Errorf("the origin remote does not name exactly one owner and one repository")
-	}
-	owner, name = parts[0], parts[1]
-	if !ownerRepoRe.MatchString(owner) || !ownerRepoRe.MatchString(name) {
-		// Names the fault without echoing the segment: the URL is repo-controlled
-		// input, and a refusal is output like any other.
-		return "", "", fmt.Errorf("the origin remote's owner or repository name is not a plain GitHub name, " +
-			"so it will not be used to build an API path")
-	}
-	return owner, name, nil
 }
 
 // RemoteRead reports the managed repo's GitHub-native secret-scanning state and
@@ -442,7 +377,7 @@ func displayStatus(s string) string {
 // side, whereas assuming enabled would leave a repo unprotected while reporting it
 // covered.
 func ghSecurityState(cwd, repo string) (RemoteSecurity, RemoteMergeHygiene, error) {
-	out, err := runGH(cwd, nil, "api", "--hostname", githubHost, "-H", "Accept: application/vnd.github+json", "repos/"+repo)
+	out, err := github.API(cwd, nil, "-H", "Accept: application/vnd.github+json", "repos/"+repo)
 	if err != nil {
 		return RemoteSecurity{}, RemoteMergeHygiene{}, err
 	}
@@ -480,70 +415,9 @@ func ghEnable(cwd, repo, key string) error {
 	if err != nil {
 		return err
 	}
-	_, err = runGH(cwd, body, "api", "--hostname", githubHost, "--method", "PATCH",
+	_, err = github.API(cwd, body, "--method", "PATCH",
 		"-H", "Accept: application/vnd.github+json", "repos/"+repo, "--input", "-")
 	return err
-}
-
-// runGH executes one `gh` subcommand under cwd and returns its bounded stdout.
-//
-// The call goes through `gh` rather than a raw HTTP client on purpose: it inherits
-// the caller's own authenticated identity, so abcd never handles a token and a
-// write is made by the person who invoked it — which is what adr-44's "no uninvited
-// remote mutation" rests on. The environment is passed through unchanged for the
-// same reason; scrubbing it would blind gh to the credentials that make the caller
-// the actor.
-func runGH(cwd string, stdin []byte, args ...string) ([]byte, error) {
-	if _, err := exec.LookPath("gh"); err != nil {
-		// The refusal carries the tool registry's explanation (itd-63): what gh
-		// is, that these verbs require it, and the exact install step.
-		return nil, tools.Missing(errors.New("the GitHub CLI (gh) is not on PATH; abcd speaks to GitHub through it so that a "+
-			"remote write is made by your own authenticated identity, never by a token abcd holds"), "gh", tools.GitHubSettings)
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), remoteAPITimeout)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, "gh", args...)
-	cmd.Dir = cwd
-	cmd.Env = os.Environ()
-	cmd.Stdin = bytes.NewReader(stdin)
-	var out, errBuf bytes.Buffer
-	cmd.Stdout = &limitedWriter{w: &out, remaining: maxGHOutputBytes}
-	cmd.Stderr = &limitedWriter{w: &errBuf, remaining: maxGHOutputBytes}
-	if err := cmd.Run(); err != nil {
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("gh did not answer within %s", remoteAPITimeout)
-		}
-		msg := strings.TrimSpace(errBuf.String())
-		if msg == "" {
-			return nil, err
-		}
-		return nil, fmt.Errorf("%w (%s)", err, msg)
-	}
-	return out.Bytes(), nil
-}
-
-// limitedWriter caps what a subprocess can put into memory. It DISCARDS the
-// overflow rather than erroring the command: the cap is a memory bound, and turning
-// a large-but-valid response into a failure would refuse a repository for being
-// verbose.
-type limitedWriter struct {
-	w         io.Writer
-	remaining int
-}
-
-func (l *limitedWriter) Write(p []byte) (int, error) {
-	if l.remaining <= 0 {
-		return len(p), nil
-	}
-	if len(p) > l.remaining {
-		if _, err := l.w.Write(p[:l.remaining]); err != nil {
-			return 0, err
-		}
-		l.remaining = 0
-		return len(p), nil
-	}
-	l.remaining -= len(p)
-	return l.w.Write(p)
 }
 
 // repoSettingsMirror renders the desired state as the committed mirror's bytes:
@@ -612,12 +486,7 @@ func writeRepoSettingsMirror(cwd, repo string, merge RemoteMergeHygiene) (bool, 
 // answer to "which repository may this write reach".
 func GitHubRepo(cwd string) (string, error) { return resolveGitHubRepo(cwd) }
 
-// GH runs one `gh` subcommand under cwd with the same bounds the remote apply
-// uses: a timeout, a capped read, and the caller's own authenticated identity,
-// so a forge write is made by the person who invoked the verb and abcd never
-// holds a forge token. Callers pass `--hostname github.com` explicitly for the
-// reason githubHost states.
-func GH(cwd string, stdin []byte, args ...string) ([]byte, error) { return runGH(cwd, stdin, args...) }
-
-// GitHubHost is the API host every forge request names explicitly.
-const GitHubHost = githubHost
+// runGH is github.Run, kept under the name ahoy's own tests call it by.
+func runGH(cwd string, stdin []byte, args ...string) ([]byte, error) {
+	return github.Run(cwd, stdin, args...)
+}

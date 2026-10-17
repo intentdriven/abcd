@@ -1,0 +1,106 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "0de27c795bb18e621253b3f5fdfa8bff30f1cfda"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-16T06:09:26Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:6b0454e80b614b1728409821819f744ceac6e9abfe9ce72a9360ccd387480555",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.15.0"
+  },
+  "categories": {
+    "broken-link": 1,
+    "false-claim": 1,
+    "stale": 4,
+    "undocumented": 2
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "false-claim",
+      "severity": "major",
+      "where": "RELEASE.md:5",
+      "summary": "RELEASE.md:5 (raised by opus as its dc-01): RELEASE.md quotes: \"My laptop and my cloud session count as me, so they never lock each other out.\" The code does the opposite on purpose (decision 33 of itd-2609091034175565, internal/core/claim/remote.go:262). A second copy held by the same person is refused at exit 3: \"you are already building <id> on another computer, until <expiry>; pass --take-over to continue here\". A footprint that overlaps the person's own reservation from another copy is also refused at exit 3. Both were reproduced live with two clones under one GitHub username. reserve.md:60,72-76 and build --help describe this correctly. The quote comes from the intent's PR/FAQ, which was written before decision 33, so fix it at that source too (intent line 30). Suggested text: \"My laptop and my cloud session count as me, and moving a piece of work from one to the other is one flag.\"",
+      "disposition": "fixed",
+      "note": "Fixed in the re-cut content commit 0de27c795: after the first roll 00e0bd835 was reverted (77a9d8c27), the re-cut release page drops the persona quote, so RELEASE.md no longer claims the same person's copies never lock each other out. The quote's source, the intent's press release, is held by its own open record (iss-2610160608451996)."
+    },
+    {
+      "id": "dc-2",
+      "category": "undocumented",
+      "severity": "minor",
+      "where": "internal/core/surface/sentences.go:130 (abcd drain --help sentence and long help; commands/drain.md:3; docs/reference/cli/commands.md)",
+      "summary": "internal/core/surface/sentences.go:130 (abcd drain --help sentence and long help; commands/drain.md:3; docs/reference/cli/commands.md) (raised by opus as its dc-02): The drain sentence reads \"Writes its state and user-visible drafts\", and its 81-line --help never mentions origin, a push or a reservation. In a checkout with origin, drain reserves each issue it takes by pushing abcd-reserved/<iss-N> to origin (commands/drain.md:146-162; CHANGELOG [0.15.0] 'abcd drain reserves each issue it takes'). build's sentence was updated to 'Writes the run's state and its reservation'; drain's was not, so the CLI surface understates a remote write. Suggested: 'Writes its state, user-visible drafts and each lane's reservation on origin; refuses without the rule's record.'",
+      "disposition": "deferred",
+      "record": "iss-2610160608444348",
+      "note": "A gap in shipped help or code text that misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-3",
+      "category": "broken-link",
+      "severity": "minor",
+      "where": ".abcd/work/reviews/README.md:45",
+      "summary": ".abcd/work/reviews/README.md:45 (raised by opus as its dc-03): The README links [`../DECISIONS.md`](../DECISIONS.md) as 'decisions pending graduation to ADRs'. That file no longer exists in this tree, so the link is dead, and the CHANGELOG [0.15.0] claim that every link to DECISIONS.md was rewritten is not fully true. Point the link at ../decisions/. The page is working-tier, not user-facing docs.",
+      "disposition": "fixed",
+      "note": "Fixed in 1fab6e304, which the re-cut content commit 0de27c795 carries: the link in .abcd/work/reviews/README.md now points at ../decisions/, the folder that replaced DECISIONS.md."
+    },
+    {
+      "id": "dc-4",
+      "category": "stale",
+      "severity": "minor",
+      "where": "commands/update.md:138",
+      "summary": "commands/update.md:138 (raised by opus as its dc-04): The by-hand remedy for the unverified-provenance refusal gives `gh attestation verify --cert-identity <release.yml on main> --source-ref refs/heads/main --source-digest <the tag's commit>`. It leaves out --deny-self-hosted-runners, which the policy abcd itself applies includes: internal/core/update/update.go:645, bootstrap.sh gh_policy, and the install.md and README commands. A person following update.md runs a weaker check than abcd's own. Add --deny-self-hosted-runners.",
+      "disposition": "deferred",
+      "record": "iss-2610160608442201",
+      "note": "Misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-5",
+      "category": "stale",
+      "severity": "nitpick",
+      "where": "internal/core/ideate/record.go:497",
+      "summary": "internal/core/ideate/record.go:497 (raised by opus as its dc-05; also raised by the brief-surface crosscheck (opus in a16) at .abcd/development/brief/04-surfaces/18-ideate.md:57-58, folded here as one finding): When a cited id is malformed, the CLI error says '(want adr-N, itd-N, iss-N, or spc-N)'. CitedIDRe (internal/core/recordid/resolve.go:41) also accepts dcn-N, and commands/ideate.md lists dcn-N as citable. Add dcn-N to the message.",
+      "disposition": "deferred",
+      "record": "iss-2610160608457651",
+      "note": "A gap in shipped help or code text that misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-6",
+      "category": "undocumented",
+      "severity": "minor",
+      "where": "CHANGELOG.md:0.15.0 (Added/Fixed); commands/update.md; docs/how-to/install.md; README.md",
+      "summary": "CHANGELOG.md:0.15.0 (Added/Fixed); commands/update.md; docs/how-to/install.md; README.md (raised by sonnet as its dc-01): Release provenance is now held to release.yml on main (cert-identity, source-ref, deny-self-hosted-runners), and the install one-liner, bootstrap.sh and abcd update refuse otherwise. The docs describe it but the 0.15.0 changelog has no line for it. A user needs gh with the extra flags (gh 2.68 or later), already stated in the install docs.",
+      "disposition": "invalid",
+      "note": "The change it names carries no changelog record by design; the user-facing pages that describe it (README.md, docs/how-to/install.md, commands/update.md) are current."
+    },
+    {
+      "id": "dc-7",
+      "category": "stale",
+      "severity": "nitpick",
+      "where": "abcd update --help (internal/surface/cli update Long text) vs commands/update.md and docs/how-to/install.md",
+      "summary": "abcd update --help (internal/surface/cli update Long text) vs commands/update.md and docs/how-to/install.md (raised by sonnet as its dc-02): The help says provenance is pinned to intentdriven/abcd's release.yml and the tag's commit. The docs and code (update/provenance.go ref refs/heads/main) say release.yml on main. The help omits the main requirement.",
+      "disposition": "deferred",
+      "record": "iss-2610160608453195",
+      "note": "A gap in shipped help or code text that misleads no action. Deferred as its own open record, since correcting it now would change the content commit and re-run every review."
+    },
+    {
+      "id": "dc-8",
+      "category": "stale",
+      "severity": "nitpick",
+      "where": "RELEASE.md:1",
+      "summary": "RELEASE.md:1 (raised by sonnet as its dc-03): docs-currency-lint flags RELEASE.md as stray root markdown. It is the generated release note and AGENTS.md says launch ship writes it; the lint allow-list lacks it. Not a docs falsehood.",
+      "disposition": "invalid",
+      "note": "Invalid: launch ship writes RELEASE.md by design as the release page (commands/launch.md), and the project's docs-lint config permits it: .abcd/docs-lint.json lists RELEASE in the stray_root_docs allowlist, and `abcd lint docs` reports 0 findings at 0de27c795."
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer pair (an Opus 5.5 agent and a Sonnet 5.5 agent on the same brief, full tier for an additive release) over an exact export of the first roll 00e0bd83567074532d21ad5f167d1283851340a2 with the binary built from it: every line of the 0.15.0 CHANGELOG section and RELEASE.md, and every user-facing page changed since v0.14.2, checked against the code and the binary. The checkers read an exact export of the first roll 00e0bd83567074532d21ad5f167d1283851340a2 with the binary built from it; this receipt names the re-cut content commit 0de27c795bb18e621253b3f5fdfa8bff30f1cfda, which differs from it only by RELEASE.md (the persona quote the docs-currency review's dc-1 held on, removed) and .abcd/work/reviews/README.md (one link moved from the removed DECISIONS.md to ../decisions/, dc-3's fix, 1fab6e304): the first roll was reverted (77a9d8c27) and re-cut, and the re-cut's CHANGELOG.md, archived .abcd/development/releases/0.14.2.md and marketplace pin are byte-identical to the first roll's. No brief doc or surface a checker read changed. Sonnet PROMOTE; Opus HOLD on one major finding (dc-1: RELEASE.md quoted a persona saying the same person's copies never lock each other out, while the shipped reservations refuse a second copy and name --take-over), which the re-cut 0de27c795bb18e621253b3f5fdfa8bff30f1cfda fixes by dropping the quote, so the review promotes. dc-3 (a dead link to DECISIONS.md in the reviews charter) is fixed in the same re-cut. Of the other findings, two are invalid on re-verification and four mislead no action, each deferred to its own open record; ideate's citation refusal omitting dcn-N, which the crosscheck also raised, is recorded once, here. Not checked live: ahoy install --outbound (it writes into HOME), land's enqueue against a real forge, reservations against a real remote, and the minimum gh version for the provenance flags."
+}

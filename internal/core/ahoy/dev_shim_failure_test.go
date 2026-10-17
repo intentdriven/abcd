@@ -102,7 +102,7 @@ func TestInstallOwnedEntryNotesAFailedShimRemoval(t *testing.T) {
 	if err := os.Chmod(d, 0o555); err != nil {
 		t.Fatal(err)
 	}
-	a := &applyCtx{cwd: t.TempDir(), det: DetectionResult{pluginRoot: pluginRoot}}
+	a := &applyCtx{cwd: t.TempDir(), det: DetectionResult{pluginRoot: pluginRoot}, provenance: acceptProvenance}
 	a.installOwnedEntry(target, binTargetDevShim)
 	if len(a.writes) != 0 {
 		t.Errorf("a failed switch reported writes %v", a.writes)

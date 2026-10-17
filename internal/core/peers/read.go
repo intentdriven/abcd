@@ -11,7 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
@@ -27,7 +27,7 @@ var families = []struct {
 	rel     string
 	folders []string
 }{
-	{"iss", capture.LedgerRelPath, issueschema.StatusDirs},
+	{"iss", recordid.IssuesRelDir, issueschema.StatusDirs},
 	{"itd", intent.IntentsRelDir, intent.Buckets},
 }
 
@@ -105,11 +105,21 @@ func read(root string, titles bool) (Report, error) {
 	}
 	checkedOut := map[string]bool{}
 	self := realPath(root)
+	home, _ := os.UserHomeDir()
 	for _, wt := range wts {
 		if wt.bare || realPath(wt.path) == self {
 			if wt.branch != "" {
 				checkedOut[wt.branch] = true
 			}
+			continue
+		}
+		if embargoStore(home, wt.path) {
+			// Private records live here: skipped unread, and counted with
+			// neither its path nor its branch (adr-2610120558328615).
+			if wt.branch != "" {
+				checkedOut[wt.branch] = true
+			}
+			rep.Skipped = append(rep.Skipped, Skipped{Source: SourceWorktree, Reason: SkipEmbargo})
 			continue
 		}
 		p, skip, viaBranch := readWorktree(root, common, wt, merged, defaultRef)
@@ -147,6 +157,15 @@ func read(root string, titles bool) (Report, error) {
 		rep.Peers[i].Rows = rep.diff(rep.Peers[i], titles)
 	}
 	return rep, nil
+}
+
+// embargoStore reports whether a worktree at p is an embargo store, by its
+// path alone: worktrees/<key>/embargo in abcd's home, or that shape under
+// any home (storepath.IsStorePath, storepath.HasStoreShape). It asks
+// nothing of the store's lookup, so a lookup that fails or refuses to choose
+// still leaves every store skipped.
+func embargoStore(home, p string) bool {
+	return storepath.IsStorePath(home, p) || storepath.HasStoreShape(p)
 }
 
 // readWorktree reads one linked worktree, or says why it is spent. viaBranch
@@ -228,7 +247,7 @@ func readBranch(root, branch string) Peer {
 // record commonly split others the check cannot tell from legitimate rows.
 func judgeHoldings(h holdings, present bool) string {
 	if !present {
-		return "it holds no records at the committed layout (" + capture.LedgerRelPath + "/, " +
+		return "it holds no records at the committed layout (" + recordid.IssuesRelDir + "/, " +
 			intent.IntentsRelDir + "/); a checkout from before that layout contributes nothing"
 	}
 	var split []string
@@ -439,6 +458,25 @@ func isRealDirChain(root, rel string) bool {
 		}
 	}
 	return true
+}
+
+// FoldersAt is the folder each record sits in on ref, read from the object
+// store by filename (no checkout, no network): record id to every folder a
+// file claiming it sits in (open, resolved, wontfix, or an intent bucket). It
+// is the peers reader's own tree read, exported so the reservation's derived
+// release decides which folder a record is in by the same reader.
+func FoldersAt(root, ref string) (map[string][]string, error) {
+	h, _, err := scanTree(root, ref)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string][]string, len(h))
+	for id, hs := range h {
+		for _, x := range hs {
+			out[id] = append(out[id], x.folder)
+		}
+	}
+	return out, nil
 }
 
 // scanTree reads a ref's holdings from the object store by filename.

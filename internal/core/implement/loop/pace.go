@@ -13,11 +13,13 @@ package loop
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The bundled pace: 120 minutes of work, no pause, two lanes (decision 5, the
@@ -83,6 +85,32 @@ type Pace struct {
 	PauseMinutes PaceValue `json:"pause_minutes"`
 	SubAgents    PaceValue `json:"sub_agents"`
 	FixRounds    PaceValue `json:"fix_rounds,omitzero"`
+}
+
+// paceLayers are the layers a stored pace setting may name: the ones
+// resolvePace writes, as layered.Get reports the layer of a value it resolved
+// (a bundled default included, so never "none").
+var paceLayers = []string{layered.Flag.String(), layered.Repo.String(), layered.Machine.String(), layered.Bundled.String()}
+
+// written reports whether a pace read back from a file (the series' state, a
+// run's state or the drain's state) is one abcd wrote: each setting names a
+// layer resolvePace writes and an origin with no control, bidi or zero-width
+// rune, the runes termsafe.Sanitize masks (iss-2610121206163414). The layer
+// and origin reach the --json streams and the resume refusal as they are
+// stored, so a hand edit, or a file a hostile checkout ships, is refused when
+// it is read rather than echoed. The fix rounds may be wholly unset: a run
+// that started before the pace carried them (a state file before version 6).
+func (p Pace) written() bool {
+	for _, v := range []PaceValue{p.WorkMinutes, p.PauseMinutes, p.SubAgents} {
+		if !v.written() {
+			return false
+		}
+	}
+	return p.FixRounds == (PaceValue{}) || p.FixRounds.written()
+}
+
+func (v PaceValue) written() bool {
+	return slices.Contains(paceLayers, v.Layer) && termsafe.Sanitize(v.Origin) == v.Origin
 }
 
 // FixRoundCap is the fix rounds a lane of the run may take before it is

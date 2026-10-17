@@ -1,0 +1,22 @@
+{
+  "bypass_actors": [],
+  "conditions": {
+    "ref_name": {
+      "exclude": [],
+      "include": [
+        "refs/heads/abcd-status/**"
+      ]
+    }
+  },
+  "enforcement": "active",
+  "name": "status protection",
+  "rules": [
+    {
+      "type": "deletion"
+    },
+    {
+      "type": "non_fast_forward"
+    }
+  ],
+  "target": "branch"
+}

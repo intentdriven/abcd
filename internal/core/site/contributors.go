@@ -35,6 +35,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/assistedby"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/identity"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -91,20 +92,15 @@ type Author struct {
 	email string
 }
 
-// noreplyRe matches GitHub's noreply commit addresses, both forms:
-// `77722411+user@users.noreply.github.com` and the older
-// `user@users.noreply.github.com`. The pattern itself names the forge, so the
-// derivation needs no forge configuration and degrades by absence everywhere
-// else (itd-140).
-var noreplyRe = regexp.MustCompile(`(?i)^(?:\d+\+)?([a-z\d](?:[a-z\d-]*[a-z\d])?)@users\.noreply\.github\.com$`)
-
-// profileURL is the forge profile a noreply address names, or "".
+// profileURL is the forge profile a noreply address names, or "". The
+// address's two forms are spelled once, in the reservation's holder reader
+// (claim.NoReplyUsername), which reads the same username.
 func profileURL(email string) string {
-	m := noreplyRe.FindStringSubmatch(email)
-	if m == nil {
+	u := claim.NoReplyUsername(email)
+	if u == "" {
 		return ""
 	}
-	return "https://github.com/" + m[1]
+	return "https://github.com/" + u
 }
 
 // ModelTally is one distinct `Assisted-by:` value and how often it appears.

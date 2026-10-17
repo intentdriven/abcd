@@ -154,3 +154,115 @@ func TestExclusionWithoutAReasonIsAConfigFault(t *testing.T) {
 		})
 	}
 }
+
+// iss-2610111600051340: a single-character exclusion fragment is a config
+// fault, like a punctuation-only one.
+func TestSingleCharacterExclusionIsAConfigFault(t *testing.T) {
+	for name, frag := range map[string]string{"letter": "e", "digit": "7", "letter with slash": "e/"} {
+		t.Run(name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, ".abcd/config/pii.json",
+				`{"exclude_path_fragments": [{"fragment": "`+frag+`", "reason": "vendored"}]}`)
+			sc, err := New(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bad, why := sc.Unavailable(); !bad || !strings.Contains(why, "exclude_path_fragments") {
+				t.Fatalf("a single-character fragment must fail the config closed naming the field, got %v %q", bad, why)
+			}
+		})
+	}
+}
+
+// An exclusion names whole path segments: a fragment that is part of a
+// segment's name excludes nothing, so the secret in docs/secret.md is still
+// read and hard-fails. A directory fragment excludes only that directory,
+// never a sibling whose name merely ends with it, and an extension-shaped
+// fragment matches the end of the file name only.
+func TestExclusionMatchesWholePathSegments(t *testing.T) {
+	token := "ghp_" + strings.Repeat("a", 36)
+	cases := []struct {
+		name     string
+		fragment string
+		excluded []string
+		scanned  []string
+	}{
+		{"part of a name", "se", nil, []string{"docs/secret.md"}},
+		{"directory prefix", "generated/", []string{"generated/a.md", "sub/generated/b.md"}, []string{"regenerated/secret.md"}},
+		{"nested directory", "testdata/vectors/", []string{"testdata/vectors/v1.md"}, []string{"testdata/vectorsx/secret.md", "testdata/secret.md"}},
+		{"file path", "docs/notes.md", []string{"docs/notes.md"}, []string{"docs/notes.md.d/secret.md", "olddocs/notes.md"}},
+		{"extension", ".jar", []string{"tools/wrapper.jar"}, []string{"lib.jar.d/secret.md"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := t.TempDir()
+			writeFile(t, root, ".abcd/config/pii.json",
+				`{"exclude_path_fragments": [{"fragment": "`+tc.fragment+`", "reason": "declared"}]}`)
+			var files []BundleFile
+			for _, p := range tc.excluded {
+				files = append(files, BundleFile{LogicalPath: p, ResolvedPath: writeFile(t, root, p, "clean content\n")})
+			}
+			for _, p := range tc.scanned {
+				files = append(files, BundleFile{LogicalPath: p, ResolvedPath: writeFile(t, root, p, "token "+token+"\n")})
+			}
+			sc, err := New(root)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if bad, why := sc.Unavailable(); bad {
+				t.Fatalf("the fragment %q must be accepted: %s", tc.fragment, why)
+			}
+			res, err := sc.ScanBundle(files)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, p := range tc.excluded {
+				if !contains(res.Excluded, p) {
+					t.Errorf("%q must exclude %s: %+v", tc.fragment, p, res.Excluded)
+				}
+			}
+			for _, p := range tc.scanned {
+				if contains(res.Excluded, p) {
+					t.Errorf("%q must not exclude %s", tc.fragment, p)
+				}
+			}
+			if len(res.Excluded) != len(tc.excluded) {
+				t.Errorf("excluded-by-choice count = %d, want %d: %v", len(res.Excluded), len(tc.excluded), res.Excluded)
+			}
+			if res.HardFails != len(tc.scanned) || res.Unavailable {
+				t.Errorf("every secret outside the exclusion must hard-fail: hard fails %d, want %d (unavailable %v)", res.HardFails, len(tc.scanned), res.Unavailable)
+			}
+		})
+	}
+}
+
+// iss-2610120929469571: a declared exclusion that matches no bundle file is
+// named in the scan result, in config order; one that matches a file, even a
+// file an earlier exclusion already left out, is not.
+func TestUnmatchedExclusionIsNamed(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, ".abcd/config/pii.json", `{"exclude_path_fragments": [`+
+		`{"fragment": "generatd/", "reason": "rebuilt by the release"}, `+
+		`{"fragment": "testdata/vectors/", "reason": "published test vectors"}, `+
+		`{"fragment": "vectors/", "reason": "the same vectors"}, `+
+		`{"fragment": "old/notes.md", "reason": "renamed away"}]}`)
+	files := []BundleFile{
+		{LogicalPath: "generated/a.md", ResolvedPath: writeFile(t, root, "generated/a.md", "clean content\n")},
+		{LogicalPath: "testdata/vectors/v1.bin", ResolvedPath: writeFile(t, root, "testdata/vectors/v1.bin", "\x00opaque\x00")},
+		{LogicalPath: "commands/a.md", ResolvedPath: writeFile(t, root, "commands/a.md", "clean content\n")},
+	}
+	sc, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := sc.ScanBundle(files)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(res.UnmatchedExclusions, ","); got != "generatd/,old/notes.md" {
+		t.Fatalf("unmatched exclusions = %q, want the typo and the renamed path in config order: %+v", got, res)
+	}
+	if !contains(res.Excluded, "testdata/vectors/v1.bin") || res.FilesScanned != 2 {
+		t.Errorf("the matching exclusion must still exclude, and the rest be scanned: %+v", res)
+	}
+}

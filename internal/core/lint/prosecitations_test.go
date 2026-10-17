@@ -4,6 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // proseCfg builds a one-rule config over a fixture tree. The stores are named
@@ -273,6 +275,26 @@ func TestProseCitationBaselineRefusesAMalformedRecord(t *testing.T) {
 				t.Fatalf("expected %s to be refused at load", name)
 			}
 		})
+	}
+}
+
+// TestProseCitationBaselineRefusalNamesEveryCitedFamily: a baseline entry
+// that is not a record id is refused naming what one may be, and that is what
+// CanonCitedID accepts: every family recordid resolves, dcn among them, read
+// from its one list (the iss-2610160608457651 class).
+func TestProseCitationBaselineRefusalNamesEveryCitedFamily(t *testing.T) {
+	root := t.TempDir()
+	proseCorpus(t, root)
+	writeFile(t, root, DefaultProseBaselinePath,
+		`{"schema_version":1,"ids":[{"id":"adr-4-slug","class":"pruned","note":"n"}]}`)
+	_, err := Lint(proseCfg(), root)
+	if err == nil {
+		t.Fatal("a baseline id that is not a record id was not refused")
+	}
+	for _, fam := range recordid.CitedFamilies() {
+		if !strings.Contains(err.Error(), fam+"-N") {
+			t.Errorf("the refusal does not name %s-N: %v", fam, err)
+		}
 	}
 }
 

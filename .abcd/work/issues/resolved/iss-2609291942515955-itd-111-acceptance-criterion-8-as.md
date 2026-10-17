@@ -8,7 +8,7 @@ source: "review-followup"
 found_during: "autonomous run A resumed 2026-09-25: fidelity audit itd-111"
 origin: researcher-authored
 production_mode: hand-written
-resolution: "The ruling itd-111 criterion 8's amendment cites is recorded: the 2026-09-29 entry in .abcd/work/DECISIONS.md where the product thinker answered twenty-six owed rulings says itd-111's last criterion is met by an agent's timing check on macOS plus the Linux CI run, so the citation resolves as written and the criterion text stands."
+resolution: "The ruling itd-111 criterion 8's amendment cites is recorded: the 2026-09-29 entry dcn-2609290000000007 where the product thinker answered twenty-six owed rulings says itd-111's last criterion is met by an agent's timing check on macOS plus the Linux CI run, so the citation resolves as written and the criterion text stands."
 impact: internal
 resolved_by:
   commit: "ec768aac3"
@@ -18,4 +18,4 @@ itd-111 acceptance criterion 8, as amended at the close, says the product thinke
 
 ## Grounds
 
-- pursued: the amended criterion 8 names a 2026-09-29 ruling in .abcd/work/DECISIONS.md, and the twenty-six-ruling entry of that date carries the itd-111 clause; a DECISIONS.md with no 2026-09-29 line naming itd-111's macOS and Linux runs would show it wrong
+- pursued: the amended criterion 8 names a 2026-09-29 ruling in the decision log, and the twenty-six-ruling entry of that date, [dcn-2609290000000007](../../decisions/dcn-2609290000000007-the-product-thinker-answered-twenty-six.md), carries the itd-111 clause; a decision log with no 2026-09-29 line naming itd-111's macOS and Linux runs would show it wrong

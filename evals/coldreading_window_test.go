@@ -4,8 +4,11 @@ package evals
 
 // The window eval: every committed preset entry is re-measured on every
 // committed change, and an entry that has drifted past the window it declares
-// fails here rather than reaching a reader (spc-2609020626048722, "The eval, and
-// what keeps it from passing vacuously").
+// is reported here as a warning, never a failure (spc-2609020626048722, "The
+// eval, and what keeps it from passing vacuously"). The product thinker ruled on
+// 2026-10-12 that a breach warns and never blocks a merge: the declaration is an
+// early notice of growth for a person to read, and a failure only made every
+// unrelated change that grew a bundled file wait on a hand-raised number.
 //
 // It joins the lane with no Makefile or workflow edit, exactly as the harness
 // README says a later eval does. What it delivers is what the intent claims and
@@ -50,8 +53,13 @@ func (b windowBreach) String() string {
 }
 
 // TestEveryCommittedEntryFitsItsDeclaredWindow is spc-2609020626048722's ac-3:
-// each of the three assembling positions' committed entries measures at or below
-// the window it declares, over a clean clone of HEAD.
+// each of the three assembling positions' committed entries is measured against
+// the window it declares, over a clean clone of HEAD, and every breach is logged
+// as a warning. It does not fail: the 2026-10-12 ruling makes a breach a notice,
+// never a refusal. The log shows under `go test -v`; the notice a person sees is
+// the size report `abcd reading assemble` prints on every assembly, which says
+// the run EXCEEDS its declared window. TestTheWindowCheckReportsABreach still
+// proves the comparison finds a breach.
 func TestEveryCommittedEntryFitsItsDeclaredWindow(t *testing.T) {
 	clone := cloneHeadDetached(t)
 	breaches := windowBreaches(t, clone)
@@ -62,7 +70,7 @@ func TestEveryCommittedEntryFitsItsDeclaredWindow(t *testing.T) {
 	for _, b := range breaches {
 		lines = append(lines, b.String())
 	}
-	t.Fatalf("%d committed entry(s) measure past the window they declare:\n%s\n\n"+
+	t.Logf("WARNING: %d committed entry(s) measure past the window they declare:\n%s\n\n"+
 		"A declaration is what the entry was calibrated for. Re-measure by dry run and move "+
 		"the declaration in %s, or narrow the entry's kinds — either is a commit that records "+
 		"why.", len(breaches), strings.Join(lines, "\n"), presetConfigRel)

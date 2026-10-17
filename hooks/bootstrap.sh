@@ -176,6 +176,11 @@ data_dir="${CLAUDE_PLUGIN_DATA:-}"
 repo_url="https://github.com/intentdriven/abcd"
 releases_url="$repo_url/releases"
 api_url="https://api.github.com/repos/intentdriven/abcd"
+# The build-provenance policy `gh attestation verify` holds a download to
+# (section 7b): signed by this repository's release workflow on main
+# (--cert-identity), built from main (--source-ref) on a GitHub-hosted runner,
+# on github.com. The same policy abcd update and ahoy install verify in process.
+gh_policy='--hostname github.com --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners'
 
 # Every fetch below is HTTPS-only, redirects included, unconditionally: there is
 # no toggle and no code path that clears it. Without the pin a redirect could
@@ -520,6 +525,103 @@ path_entry_owned() {
 	[ -n "$(find "$path_entry" -maxdepth 0 -type f -user "$(id -un 2>/dev/null)" ! -perm -0020 ! -perm -0002 2>/dev/null)" ]
 }
 
+# The newest-release mark (iss-2609151847117977): ~/.abcd.noindex/release-mark
+# names the newest release this machine has installed or verified. This script
+# raises it whenever it provisions a release it verified against the published
+# manifest, and `abcd update` records it whenever it installs or verifies one.
+# The cache attestation pins a binary hash, so on its own it keeps vouching for
+# a release long after a newer one was installed; the mark is the monotonic
+# check that tells the two apart. A release older than the mark is refused
+# here, whether the latest release fell back below it (a publisher withdrew the
+# newer one) or the cache holds an older release than the mark: going back is
+# the person's choice, made with `abcd update <tag>`, which names the tag and
+# records it as the mark. The mark is read only as the attestation is, from a
+# regular file this account owns that no one else can write; anything else
+# reads as no mark. A tag either side cannot parse is never called older.
+release_mark=''
+[ -n "$home_dir" ] && release_mark="$home_dir/.abcd.noindex/release-mark"
+mark_tag=''
+mark_note=''
+
+# tag_parts prints MAJOR MINOR PATCH and a pre-release flag for a vX.Y.Z[-pre]
+# tag, and nothing for anything else.
+tag_parts() {
+	printf '%s\n' "$1" | sed -n 's/^v\{0,1\}\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)$/\1 \2 \3 release/p; s/^v\{0,1\}\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)\.\([0-9]\{1,9\}\)-[0-9A-Za-z.-]\{1,\}$/\1 \2 \3 pre/p'
+}
+
+# tag_older succeeds when release tag $1 is older than release tag $2.
+tag_older() {
+	_to_a=$(tag_parts "$1")
+	_to_b=$(tag_parts "$2")
+	[ -n "$_to_a" ] && [ -n "$_to_b" ] || return 1
+	# tag_parts prints exactly four space-separated fields, split here by
+	# parameter expansion alone.
+	_a1=${_to_a%% *}
+	_ar=${_to_a#* }
+	_a2=${_ar%% *}
+	_as=${_ar#* }
+	_a3=${_as%% *}
+	_ap=${_as#* }
+	_b1=${_to_b%% *}
+	_br=${_to_b#* }
+	_b2=${_br%% *}
+	_bs=${_br#* }
+	_b3=${_bs%% *}
+	_bp=${_bs#* }
+	[ "$_a1" -lt "$_b1" ] && return 0
+	[ "$_a1" -gt "$_b1" ] && return 1
+	[ "$_a2" -lt "$_b2" ] && return 0
+	[ "$_a2" -gt "$_b2" ] && return 1
+	[ "$_a3" -lt "$_b3" ] && return 0
+	[ "$_a3" -gt "$_b3" ] && return 1
+	[ "$_ap" = pre ] && [ "$_bp" = release ]
+}
+
+if [ -n "$release_mark" ] && [ -n "$(find "$release_mark" -maxdepth 0 -type f -user "$(id -un 2>/dev/null)" ! -perm -0020 ! -perm -0002 2>/dev/null)" ]; then
+	mark_tag=$(meta_field "$release_mark" release_tag)
+	[ -n "$(tag_parts "$mark_tag")" ] || mark_tag=''
+fi
+
+# refuse_older refuses a release older than the mark. It is not say_refusal:
+# that text promises a retry with network access fixes it, and nothing a later
+# session fetches can, because the mark is a choice only the person lowers.
+refuse_older() {
+	terminal=yes
+	printf 'abcd bootstrap: %s is older than %s, the newest release this machine has installed or verified, so it was not installed: %s. An older release replaces a newer one only on your say-so. To go back to %s on purpose, run `abcd update %s`, which installs it and records it as the newest release; the next session then provisions this plugin root.\n\nUntil then the abcd binary is not installed in the plugin root, so the abcd hooks cannot run and the shell-hazard guard is inactive.\n' \
+		"$(safe "$1")" "$(safe "$mark_tag")" "$(safe "$2")" "$(safe "$1")" "$(safe "$1")" >&2
+	exit 1
+}
+
+# raise_mark records $1 as the newest release when it is newer than the mark
+# (or there is none), written whole into a mktemp sibling and renamed in, mode
+# 0600, as the attestation is. A failure is said on the notice, never silent.
+raise_mark() {
+	[ -n "$(tag_parts "$1")" ] || return 0
+	if [ -n "$mark_tag" ] && ! tag_older "$mark_tag" "$1"; then
+		return 0
+	fi
+	if [ -z "$home_dir" ]; then
+		mark_note=" (the newest-release mark could not be recorded because $home_refusal)"
+		return 0
+	fi
+	_rm_dir="$home_dir/.abcd.noindex"
+	_rm_tmp=''
+	if [ -e "$release_mark" ] && [ ! -f "$release_mark" ]; then
+		mark_note=' (the newest-release mark could not be recorded because its path is occupied by something that is not a regular file)'
+	elif mkdir -p -m 0700 "$_rm_dir" 2>/dev/null &&
+		_rm_tmp=$(mktemp "$_rm_dir/.release-mark.XXXXXX" 2>/dev/null) &&
+		[ -n "$_rm_tmp" ] &&
+		printf 'release_tag=%s\n' "$(printf '%s' "$1" | tr -d '\000-\037\177')" > "$_rm_tmp" 2>/dev/null &&
+		chmod 0600 "$_rm_tmp" 2>/dev/null &&
+		mv -f "$_rm_tmp" "$release_mark" 2>/dev/null; then
+		mark_tag="$1"
+	else
+		[ -n "$_rm_tmp" ] && rm -f "$_rm_tmp" 2>/dev/null
+		mark_note=' (the newest-release mark could not be recorded, so a later session cannot tell this release from an older one it attested)'
+	fi
+	return 0
+}
+
 # 4. Concurrency lock. mkdir is atomic on POSIX, so the loser of the race is the
 #    process whose mkdir fails; it exits quietly rather than racing the winner.
 #    In cache mode the lock lives in the DATA dir, because per-root locks cannot
@@ -628,6 +730,12 @@ if command -v curl >/dev/null 2>&1; then
 	resolved_tag=$(printf '%s\n' "$redirect" | sed -n 's|.*/releases/tag/\([^/?#]*\).*|\1|p')
 fi
 
+# A latest release older than the mark is a publisher withdrawal (or a fall
+# back the person did not choose): refused before anything is fetched.
+if [ -n "$resolved_tag" ] && [ -n "$mark_tag" ] && tag_older "$resolved_tag" "$mark_tag"; then
+	refuse_older "$resolved_tag" "the latest published release has fallen back below it, so the publisher may have withdrawn $mark_tag"
+fi
+
 # Decide whether the cache is trusted, and on what evidence. A cached artefact
 # and its co-located binary-meta are equally same-UID-writable, so re-hashing
 # the artefact against that record proves only corruption, never tamper: an
@@ -696,6 +804,7 @@ if [ -n "$cached_sha" ]; then
 fi
 
 meta_note=''
+prov_note=''
 cache_note=''
 path_note=''
 from_note=''
@@ -703,6 +812,10 @@ stamp_note=''
 attest_note=''
 update_lead=''
 update_record=''
+
+if [ -n "$use_cache" ] && [ -n "$mark_tag" ] && tag_older "$cached_tag" "$mark_tag"; then
+	refuse_older "$cached_tag" "the plugin cache holds that older release, and a cached release older than the mark is not promoted"
+fi
 
 if [ -n "$use_cache" ]; then
 	release_tag="$cached_tag"
@@ -785,12 +898,81 @@ else
 
 	# The release commit is read from the API when it answers, and left unknown
 	# otherwise: the meta file is the skew notice's only evidence, so it never
-	# records a value it did not resolve.
+	# records a value it did not resolve. It is read before the provenance
+	# check below, which is bound to it.
 	release_sha=unknown
 	body=$(curl -q -fsSL --proto '=https' --proto-redir '=https' --max-time 15 -H 'Accept: application/vnd.github+json' "$api_url/commits/$release_tag" 2>/dev/null) || body=''
 	candidate=$(printf '%s\n' "$body" | tr ',' '\n' |
 		sed -n 's/.*"sha"[[:space:]]*:[[:space:]]*"\([0-9a-f]\{40\}\)".*/\1/p' | head -n 1)
 	[ -n "$candidate" ] && release_sha="$candidate"
+
+	# 7b. Build provenance (iss-2610120617521209, the product thinker's ruling
+	#     of 2026-10-12). checksums.txt sits on the same release page as the
+	#     binary, so whoever can change that page can change both and the check
+	#     above still passes: it proves the download arrived intact, not who
+	#     built it. The release workflow also signs SLSA build provenance over
+	#     every asset, which a page edit cannot forge, and `gh attestation
+	#     verify` checks it. abcd does not require gh, so:
+	#       - gh present: verify, held to this repository's release workflow on
+	#         github.com, and REFUSE on a failed verification — nothing is
+	#         installed, cached or attested;
+	#       - gh absent, too old to have the attestation command, or installed
+	#         but not signed in (its exit 4, authentication required): it cannot
+	#         verify, which is not a failed verification, so the checksum check
+	#         stands alone and the success line says so in a WARNING naming why
+	#         and the command that checks the binary by hand.
+	#     gh's own transport overrides were scrubbed with curl's above; the
+	#     hostname is passed so no GH_HOST can point the check elsewhere.
+	#     The release workflow builds every release, so its signature says who
+	#     built the bytes, not which release they are: an older release's
+	#     genuine build re-uploaded under this tag would pass it. So the check
+	#     is bound to the commit this tag names (--source-digest, which gh
+	#     holds to the commit Fulcio recorded for the signing run), and a gh
+	#     that can verify but whose release commit the API did not answer
+	#     REFUSES rather than ask a question any release's build would pass.
+	#     A gh whose attestation command lacks any flag of the policy
+	#     (--source-digest, --source-ref, --cert-identity,
+	#     --deny-self-hosted-runners) cannot apply it, and counts as one that
+	#     cannot verify.
+	if [ "$release_sha" != unknown ]; then
+		gh_hand_check="gh attestation verify $binary_quoted $gh_policy --source-digest $release_sha"
+	else
+		gh_hand_check="gh attestation verify $binary_quoted $gh_policy --source-digest \$(gh api repos/intentdriven/abcd/commits/$release_tag -H 'Accept: application/vnd.github.sha')"
+	fi
+	gh_cannot=''
+	if ! command -v gh >/dev/null 2>&1; then
+		gh_cannot='gh is not installed'
+	elif ! gh attestation verify --help >/dev/null 2>&1; then
+		gh_cannot='the installed gh has no attestation command (gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--source-digest'; then
+		gh_cannot='the installed gh cannot hold the check to the release commit (its attestation verify has no --source-digest; gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--source-ref'; then
+		gh_cannot='the installed gh cannot hold the check to the ref the release was built from (its attestation verify has no --source-ref; gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--cert-identity'; then
+		gh_cannot='the installed gh cannot hold the check to the release workflow on main (its attestation verify has no --cert-identity; gh 2.68 or later has it)'
+	elif ! gh attestation verify --help 2>/dev/null | grep -q -e '--deny-self-hosted-runners'; then
+		gh_cannot='the installed gh cannot hold the check to a GitHub-hosted runner (its attestation verify has no --deny-self-hosted-runners; gh 2.68 or later has it)'
+	elif [ "$release_sha" = unknown ]; then
+		refuse "the commit release $release_tag names could not be resolved through GitHub's API, so the build provenance of the downloaded $asset cannot be bound to that release, and a provenance check not bound to it would pass any release's build; nothing was installed. Retry once the API answers"
+	else
+		gh_rc=0
+		gh_out=$(GH_PROMPT_DISABLED=1 GH_NO_UPDATE_NOTIFIER=1 gh attestation verify "$tmp/$asset" $gh_policy --source-digest "$release_sha" 2>&1) || gh_rc=$?
+		case "$gh_rc" in
+		0)
+			prov_note=" Its build provenance was verified with gh attestation verify: the release workflow of intentdriven/abcd built it from $release_tag's commit."
+			;;
+		4)
+			gh_cannot='gh is installed but not signed in (run gh auth login, or set GH_TOKEN, and the next update verifies)'
+			;;
+		*)
+			gh_said=$(printf '%s\n' "$gh_out" | grep -v '^[[:space:]]*$' | tail -n 1)
+			refuse "the downloaded $asset matches the release checksums.txt, but gh attestation verify could not verify its build provenance as signed by the release workflow of intentdriven/abcd from $release_tag's commit $release_sha, so nothing was installed (gh said: $gh_said). The checksum came from the same release page as the binary, so it cannot tell a replaced release from the real one"
+			;;
+		esac
+	fi
+	if [ -n "$gh_cannot" ]; then
+		prov_note=" WARNING: this download was checked only against the checksums.txt published beside it on the release page, and was not checked against the signed build record (the build provenance the release workflow signs), because $gh_cannot. To check it by hand: $gh_hand_check"
+	fi
 
 	# 8. Publish into the cache (cache mode): artefact then meta, each by rename
 	#    on the cache's own filesystem. A hash that failed to parse cannot be
@@ -1000,6 +1182,7 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 				{
 					printf 'data_dir=%s\n' "$attest_data_dir"
 					printf 'binary_sha256=%s\n' "$expected_sha"
+					printf 'release_tag=%s\n' "$(printf '%s' "$release_tag" | tr -d '\000-\037\177')"
 					printf 'cache_trust=manifest\n'
 					printf 'attested_at=%s\n' "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 				} > "$attest_tmp" 2>/dev/null &&
@@ -1009,7 +1192,16 @@ if [ -n "$cache_mode" ] && { [ -n "$use_cache" ] || [ "$expected_sha" != unknown
 			else
 				[ -n "$attest_tmp" ] && rm -f "$attest_tmp" 2>/dev/null
 				attest_tmp=''
-				attest_note=' (the cache attestation could not be written, so `ahoy install` will not promote this cache to an owned PATH copy)'
+				# The earlier attestation is REMOVED, never left: it vouches for
+				# whatever release was attested before this one, and leaving it
+				# would let that older release's bytes be promoted after this
+				# run installed a newer one (iss-2609151847117977).
+				rm -f "$attest_path" 2>/dev/null
+				if [ -e "$attest_path" ] || [ -L "$attest_path" ]; then
+					attest_note=' (the cache attestation could not be written, and the earlier one could not be removed either, so it may still vouch for an older release: remove ~/.abcd.noindex/cache-attestation by hand)'
+				else
+					attest_note=' (the cache attestation could not be written, and the earlier one was removed so it cannot vouch for an older release; `ahoy install` will not promote this cache to an owned PATH copy)'
+				fi
 			fi
 		fi
 	fi
@@ -1087,6 +1279,12 @@ if path_entry_owned; then
 	fi
 fi
 
+# A release this run verified against the published manifest raises the mark;
+# an offline cache hit verified nothing and leaves it as it is.
+if [ -z "$use_cache" ] || [ "$cache_trust" = manifest ]; then
+	raise_mark "$release_tag"
+fi
+
 # The one place PATH setup is suggested; the PATH entry itself stays owned by
 # ahoy. This prints once per plugin root, because every later session takes the
 # fast path above.
@@ -1104,5 +1302,5 @@ fi
 #
 # The path is wrapped in SINGLE quotes (binary_quoted, defined at the top) for
 # the reason given there: this string is printed to be pasted into a shell.
-notice "$(printf '%sabcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
-	"$update_lead" "$release_tag" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$degrade_note" "$binary_quoted")"
+notice "$(printf '%sabcd bootstrap: installed the checksum-verified abcd binary (release %s) into the plugin root, so the abcd hooks are live for this session.%s%s%s%s%s%s%s%s%s%s For the abcd command in your own terminal, run this once — the path is absolute because abcd is not on your PATH yet, which is exactly what the command fixes: %s ahoy install' \
+	"$update_lead" "$release_tag" "$prov_note" "$from_note" "$stale_note" "$path_note" "$meta_note" "$cache_note" "$stamp_note" "$attest_note" "$mark_note" "$degrade_note" "$binary_quoted")"

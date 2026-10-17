@@ -20,6 +20,6 @@ Deferred past v0.11.1: Ruled M14 on 2026-09-23: the co-edit rule first (a body c
 
 ## Remedy grounds (2026-09-29)
 
-- The ruling of 2026-09-23 in .abcd/work/DECISIONS.md orders the co-edit rule first, and it is mechanical where a contradiction detector needs judgement.
+- The ruling of 2026-09-23, [dcn-2609230000000006](../../decisions/dcn-2609230000000006-the-resolution-field-of-a-resolved-issue.md), orders the co-edit rule first, and it is mechanical where a contradiction detector needs judgement.
 - The issue-resolution script already walks the range's record moves, so the rule sits beside RS006 rather than in a new gate.
 - Rejected: a semantic contradiction check first, which the ruling sequences second.

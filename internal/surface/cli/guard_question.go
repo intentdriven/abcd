@@ -10,6 +10,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/core/question"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
@@ -94,6 +95,15 @@ func questionGate(cmd *cobra.Command, cwd string, raw json.RawMessage) error {
 	}
 	chip := hasAbcdChip(fields)
 	if !chip && st == mode.Managed {
+		// A question without a chip is abcd's only through the mode store,
+		// found through git's toplevel. In a tree that looks like a checkout
+		// but git would not name the root of, the store was never read, so
+		// whether the mode names somebody is unknown: the question runs, and
+		// the gate says the check did not (iss-2610110432159652). Outside
+		// every repository there is no store to miss, and it stays silent.
+		if rerr != nil && gitutil.RepoShaped(cwd) {
+			return questionFailOpen(stderr, "the repository root could not be found, so the mode store was not read (%s)", rerr)
+		}
 		return nil
 	}
 

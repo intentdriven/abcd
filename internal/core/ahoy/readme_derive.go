@@ -14,6 +14,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
+	"github.com/intentdriven/abcd/internal/core/github"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -214,7 +215,7 @@ func parseForgeRemote(origin string) (forgeRemote, string) {
 	if len(parts) != 2 {
 		return forgeRemote{}, "the origin remote does not name exactly one owner and one repository"
 	}
-	if !ownerRepoRe.MatchString(parts[0]) || !ownerRepoRe.MatchString(parts[1]) {
+	if !github.PlainName(parts[0]) || !github.PlainName(parts[1]) {
 		return forgeRemote{}, "the origin remote's owner or repository is not a plain name"
 	}
 	return forgeRemote{Host: strings.ToLower(host), Owner: parts[0], Name: parts[1], RawQuery: query}, ""

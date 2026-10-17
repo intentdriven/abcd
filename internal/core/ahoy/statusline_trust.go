@@ -23,6 +23,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
@@ -52,12 +54,13 @@ func statusLineEntryTrust(path string) (ok bool, reason string) {
 	}
 	// The recorded entry may be a link to the binary (an owned symlink is one
 	// of the install shapes statusLineEntry admits), and what the line runs is
-	// the link's target: every binary check below judges the target, and the
-	// directory checks judge the target's directory as well as the link's,
-	// since whoever can write either one chooses what runs.
-	target, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return false, "it could not be resolved (" + errText(err) + ")"
+	// the end of its chain: every binary check below judges the target, and the
+	// directory checks judge the directory of EVERY link on the way, not only
+	// the first and the last, since whoever can write any one of them can
+	// repoint the link it holds and choose what runs (iss-2610050844241683).
+	target, dirs, reason := statusLineChain(path)
+	if reason != "" {
+		return false, reason
 	}
 	if target != filepath.Clean(path) {
 		if fi, err = os.Stat(target); err != nil {
@@ -66,18 +69,6 @@ func statusLineEntryTrust(path string) (ok bool, reason string) {
 	}
 	if !fi.Mode().IsRegular() {
 		return false, "it is not a regular file"
-	}
-	// A link into the cache dies with the cache just the same.
-	if inVersionedPluginCache(target) {
-		return false, versionedCacheReason
-	}
-	linkDir, err := filepath.EvalSymlinks(filepath.Dir(path))
-	if err != nil {
-		return false, "its directory could not be resolved"
-	}
-	dirs := []string{linkDir}
-	if targetDir := filepath.Dir(target); targetDir != linkDir {
-		dirs = append(dirs, targetDir)
 	}
 	for _, dir := range dirs {
 		if insideWorkingTree(dir) {
@@ -109,6 +100,52 @@ func statusLineEntryTrust(path string) (ok bool, reason string) {
 		return false, recordShown + " does not record it as the abcd installed here"
 	}
 	return true, ""
+}
+
+// statusLineChain walks the links from path to the file the status line would
+// run, one hop at a time with os.Readlink, and returns that file and the
+// resolved directory of every hop (the entry's own first, the target's last,
+// each once). Each hop's directory is resolved with EvalSymlinks, as the
+// entry's own always was, so a hop is judged where it really sits. A hop into
+// the plugin cache's versioned directory refuses, since the chain dies with
+// it, and so does a chain of more than maxStatusLineLinks links. The reason is
+// "" when the walk completes.
+func statusLineChain(path string) (target string, dirs []string, reason string) {
+	cur := filepath.Clean(path)
+	for links := 0; ; links++ {
+		if inVersionedPluginCache(cur) {
+			return "", nil, versionedCacheReason
+		}
+		dir, err := filepath.EvalSymlinks(filepath.Dir(cur))
+		if err != nil {
+			return "", nil, "its directory could not be resolved"
+		}
+		if !slices.Contains(dirs, dir) {
+			dirs = append(dirs, dir)
+		}
+		cur = filepath.Join(dir, filepath.Base(cur))
+		if inVersionedPluginCache(cur) {
+			return "", nil, versionedCacheReason
+		}
+		lfi, err := os.Lstat(cur)
+		if err != nil {
+			return "", nil, "it could not be resolved (" + errText(err) + ")"
+		}
+		if lfi.Mode()&os.ModeSymlink == 0 {
+			return cur, dirs, ""
+		}
+		if links == maxStatusLineLinks {
+			return "", nil, "it is reached through more than " + strconv.Itoa(maxStatusLineLinks) + " links; point the status line at the binary or at one link to it"
+		}
+		dest, err := os.Readlink(cur)
+		if err != nil {
+			return "", nil, "it could not be resolved (" + errText(err) + ")"
+		}
+		if !filepath.IsAbs(dest) {
+			dest = filepath.Join(dir, dest)
+		}
+		cur = filepath.Clean(dest)
+	}
 }
 
 // statusLineDirRefusal judges one directory the entry is reached through by the
@@ -176,3 +213,10 @@ func insideWorkingTree(dir string) bool {
 	}
 	return under(resolvePath(tree), dir)
 }
+
+// maxStatusLineLinks bounds the links a status-line entry may be reached
+// through. Neither install shape abcd writes is a chain (a copy, or one link to
+// the pinned plugin binary), and a package manager adds one more at most
+// (~/.local/bin/abcd to /opt/homebrew/bin/abcd to its cellar), so four leaves
+// room for every honest shape while keeping the walk short.
+const maxStatusLineLinks = 4

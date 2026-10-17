@@ -74,13 +74,19 @@ A prompt that matches no domain injects nothing (zero added tokens).
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`, `SHELL`, `GRILL`. Each carries recall keywords and its rules, bundled
+`OPINIONS`, `LOAD`, `SHELL`, `GRILL`, `SCRATCH`. Each carries recall keywords and its rules, bundled
 in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 `OPINIONS` points at the canonical conventions under
 `.abcd/development/principles/` rather than copying them. `LOAD` carries the
 trust rule for load experiments: one owned process group killed together through
 a re-checked handle and never by pattern, clean proven by what is running, and
-explicit consent with a cap below the core count on a live development machine.
+explicit consent with a cap below the core count on a live development machine;
+and the load gate a preflight waits at: test stages admitted as many at once as
+the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
+by default and two at most, never set by a repository), and race stages kept
+apart among checkouts that have the race gate: one at a time within an account,
+and across accounts all but a narrow window (a race waiter gone before its race
+run shows, or two waiters whose start and pid disagree after a pid wrap).
 `SHELL` is the teaching half of the shell-hazard guard: it is generated from the
 same hazard registry `abcd guard` enforces in the repository, one rule per entry
 (the command, why it is dangerous, and what to run instead; a rule from the
@@ -94,6 +100,17 @@ widen rather than recommend); it is generated from the same limits the question
 check in `abcd guard hook` enforces, and recalls on words of asking and
 choosing, so it lands in most sessions. A repository that does not want it
 silences it with `{"GRILL": {"state": "dormant"}}` in `.abcd/rules.json`.
+`SCRATCH` says where a session's working files go: what a later turn,
+session or agent reruns or reads (a helper script, a queue ticket, a handover)
+goes in the main checkout's `.abcd/.work.local/scratch/` (or `logs/`) or a
+directory under `~/.abcd.noindex/`, never in a linked worktree's local tier,
+which `git worktree remove` deletes with the worktree; a file for that
+worktree's own work alone may stay in its own tier. A verifier's copy goes in a
+directory of its own under `~/.abcd.noindex/` keyed on the root-commit SHA, and
+the host's own scratchpad keeps only the turn's throwaway files, since a reboot
+or a new session loses it. Its second rule sends an agent to abcd's commands
+before it writes a helper script, and has it capture the gap when none does the
+job.
 
 ### Reset triggers
 
@@ -129,7 +146,7 @@ Run from the repo root.
 make preflight      # the pre-push gate: the load check first (load-check,
                     # a warning, never a failure), then fmt-check +
                     # lint-reviews +
-                    # lint-issues + lint-decisions + record-lint +
+                    # lint-issues + record-lint +
                     # issue-drift + docs-lint + check-attribution +
                     # site-render +
                     # smoke + evals-cold-reading,
@@ -190,7 +207,7 @@ of entries the queue has already dropped, and only those whose queue ref is
 gone; it is not a required check.
 Separate jobs run the reviews-charter check
 (`scripts/check-reviews.sh`) together with the issue-resolution gates
-(RS001–RS006) and the decisions-append gate (DA001–DA003), full-history secret scanning (`gitleaks`), a workflow audit
+(RS001–RS006), full-history secret scanning (`gitleaks`), a workflow audit
 (`zizmor`), dependency review, `govulncheck`, and the smoke harness
 (`make smoke`). A
 fail-closed classifier stands the race lane and the `zizmor`,
@@ -207,8 +224,10 @@ Development material lives under `.abcd/`; `docs/` is user-facing only.
 - `.abcd/development/` — **durable record** (committed): brief, intents, ADRs,
   plans, research. In every repository checkout; not in the released binaries.
 - `.abcd/work/` — **shared working** (committed): `CONTEXT.md` (current
-  orientation) and `DECISIONS.md` (append-only decision log; architecture-shaping
-  decisions graduate to ADRs under `.abcd/development/decisions/adrs/`), plus the
+  orientation) and `decisions/` (one record per decision, `dcn-<id>-<slug>.md`,
+  recorded with `abcd decide "<text>"` and listed by a bare `abcd decide`;
+  architecture-shaping decisions graduate to ADRs under
+  `.abcd/development/decisions/adrs/`), plus the
   issue ledger `issues/` (working-tier data per adr-32), the reviews charter
   `reviews/`, the branch-ruleset mirror `rulesets/`, and `intake.md`, the
   external-contribution runbook.
@@ -222,13 +241,18 @@ Development material lives under `.abcd/`; `docs/` is user-facing only.
 
 **Default to the local tier when in doubt.** Any artefact whose home is unclear —
 tool exports, oracle/review output, traces, intermediate analysis — goes to
-`.abcd/.work.local/scratch/` (or `logs/` for run output) **first**. Never to the
-repo root, and never into a tracked directory on a guess. Promotion is cheap and
+`.abcd/.work.local/scratch/` (or `logs/` for run output) **first**, and to the
+main checkout's tier for anything a later turn, session or agent reuses: a
+linked worktree's tier goes when `git worktree remove` deletes the worktree.
+Never to the repo root, and never into a tracked directory on a guess. Promotion is cheap and
 always available: an artefact that proves durable is moved up to `.abcd/work/` or
 `.abcd/development/` later, in a change that says why. Demotion is not — an
 artefact committed to the wrong tier is already in the history, and a stray
 top-level directory is a `stray_root_docs` finding. **Guessing upward is
-irreversible; guessing downward costs nothing.**
+irreversible; guessing downward costs nothing.** The floor is this tier, not the
+scratchpad the host hands a session: that folder does not survive a reboot or a
+new session, so it holds only throwaway files for the turn at hand (the
+`SCRATCH` rules domain).
 
 ## Boundaries
 
@@ -265,21 +289,33 @@ with `*CONCURRENCY` to force it).
   retire it with `git worktree remove`.
 - **Scan before mutating anything a peer reads or runs.** Check the harness's
   session listing and announce the mutation to any peer found; before
-  capturing, resolving or picking a record, also run `go run ./cmd/abcd peers`.
+  capturing, resolving or picking a record, also run `go run ./cmd/abcd peers`,
+  which also fetches and lists every reservation on `origin`.
+- **Reserve a record before starting it.** Another person, computer or hosted
+  session sees only what reaches `origin`: before working an issue or an
+  intent, reserve it with `go run ./cmd/abcd reserve <id> --footprint <path>`
+  (once per path the work will change), back off on exit 3, and release it
+  with `--release` when done. A build and a drain reserve as they start:
+  `go run ./cmd/abcd build <id>` reserves with the spec's footprint (an
+  issue's `found_at`), `drain` each issue as its lane opens, and the run
+  renews, fences and releases it; reserve by hand only for work neither
+  starts. Each worktree is its own copy: two builds in sibling worktrees
+  whose footprints overlap back off, and the second is refused (exit 3).
 - **A diff you did not make is a peer's work.** Never commit it, revert it, or
   stash it away silently; uncommitted peer work is untouchable.
 - **A verifier works on a copy** (`git -C <wt> archive HEAD | tar -x -C
   <scratch>`), never on a live worktree, and a merge, commit, push or gate run
   proves the tree clean **immediately before the act** (itd-193). The copy goes
-  outside every working tree: the session's scratchpad or a directory under
-  `~/.abcd.noindex/`, never `.abcd/.work.local/scratch/`, where every verb run
-  from it reads the worktree around it instead.
+  outside every working tree, in a directory of its own under `~/.abcd.noindex/`
+  keyed on the root-commit SHA (the session's scratchpad only for a copy the
+  same turn makes and discards), never `.abcd/.work.local/scratch/`, where every
+  verb run from it reads the worktree around it instead.
 - **A session cutting a release has the final say on what merges before its
   tag.** A change ready while a peer is mid-cut is handed over as a pull
   request and merged or held on the cutting session's ruling.
 - **Record ids need no coordination between checkouts.** Captures, intents,
   specs and ADRs mint timestamp-numeric ids through one allocator (adr-45):
-  `abcd decide "<title>"` allocates `adr-<yymmddHHMMSS><rrrr>`, and the
+  `abcd decide --adr "<title>"` allocates `adr-<yymmddHHMMSS><rrrr>`, and the
   ordinals `0001`–`0058` keep their ids, so no record family needs a word
   first — mint the ADR.
 - **A record is resolved on the branch that carries it**, never re-added to the
@@ -288,8 +324,8 @@ with `*CONCURRENCY` to force it).
 
 ## Definition of done
 
-- `make preflight` is clean — the nine gates (`fmt-check`, `lint-reviews`,
-  `lint-issues`, `lint-decisions`, `record-lint`, `issue-drift`, `docs-lint`,
+- `make preflight` is clean — the eight gates (`fmt-check`, `lint-reviews`,
+  `lint-issues`, `record-lint`, `issue-drift`, `docs-lint`,
   `check-attribution`, `site-render`), both tagged eval
   lanes (`smoke`, `evals-cold-reading`), plus `go build ./...`,
   `go vet ./...`, `go test ./...`, and
@@ -395,7 +431,8 @@ gate.
 - **The trailer has exactly three accepted forms:** `<Vendor>:<model-version>`;
   `None`, which a human-only change declares, and which is a false disclosure
   for assisted work; and `abcd:<version>`, which only abcd writes, on a commit
-  it composes from record facts.
+  it composes from record facts, the reservation commits `abcd reserve` pushes
+  among them.
 - **Every commit is authored by a human, and the gate refuses a machine** in
   the author or committer role: an assistant vendor's name or mail domain, a
   `[bot]` name or mailbox, a trailing bot word, and, as author only, a
@@ -418,8 +455,11 @@ gate.
   creating any PR, issue or comment, re-read what was actually created and
   strip either shape from it** — the harness appends them outside the model's
   own output. The commit-msg hook and the attribution gate judge commit
-  messages (`abcd lint outbound`); nothing judges a forge artefact at posting
-  time but that re-read.
+  messages (`abcd lint outbound`). In a repository with `outbound.forge: true`
+  in `.abcd/config.json` (abcd's own included), the shell guard judges the
+  `gh pr`/`gh issue` title, body and body file written on the command line
+  before it posts (`forge-text-outbound`); the re-read stays the control for
+  everything else, a footer a harness appends after the command runs included.
 - **`ACKNOWLEDGEMENTS.md`** credits ideas, tools, and writing in three parts —
   development, inspirations, references. Add an entry in the same change that lands
   it (adopts a pattern, cites a source in an ADR, integrates a tool), never later.

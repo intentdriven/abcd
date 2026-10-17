@@ -71,8 +71,10 @@ log; itd-82 decision 6). This tightens the one-line capture on purpose: a captur
 is one line of text and one line of remedy. A remedy chosen in an autonomous run
 cites its grounds in the record's text, a prior-art or state-of-the-art check
 where the fix depends on outside practice (principle `prefer-sota`). The one
-exception is abcd's own automatic filers, the consistency pass and every
-promoted inbox report: with no fix of a person's to propose they write
+exception is abcd's own automatic filers: the consistency pass, every
+promoted inbox report, and the embargo's intake, which files a private record
+for each new advisory that carries a severity
+([`37-embargo.md`](37-embargo.md)). With no fix of a person's to propose they write
 `none (filed automatically)` (ruling H12 of the same day), the record is filed,
 and a drain skips it until a person writes a real remedy through the remedy
 sub-verb, which writes or replaces the field on an open issue. The fast path
@@ -402,7 +404,7 @@ slug: <kebab-case>
 severity: nitpick|minor|major|critical
 impact: additive|breaking|fix|internal   # required in resolved/; drives the derived version and changelog inclusion
 category: bug|documentation|drift|inconsistency|tech-debt|security|ux|process|architectural-insight|future-work-seed|observation|lapse
-source: plan-review|impl-review|manual-test|review-followup|agent-finding|agent-observation|user-observation|drift-detection|memory-curation|managed-repo
+source: plan-review|impl-review|manual-test|review-followup|agent-finding|agent-observation|user-observation|drift-detection|memory-curation|managed-repo|security-advisory
 found_during: <session-or-command-context>
 found_at: <path-or-conceptual>
 lapsed_at: <rfc3339>       # on a lapse: the instant the discipline gave way, not the write-up (absence parked, iss-2609091009111294)

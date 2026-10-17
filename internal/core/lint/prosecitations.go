@@ -84,9 +84,9 @@ package lint
 //     in either is read as prose and must resolve or carry a marker — which is
 //     the safe direction to be wrong in, and is stated here so an author who
 //     meets it knows why.
-//   - Nine record stores are configured, but only FOUR families resolve
-//     (recordid.familyRoots: adr, itd, iss, spc). The `rdi`, `dsp`, `rdg`, `adm`
-//     and `srp` stores are scanned as FILES — their prose is read like any
+//   - Eleven record stores are configured, but only FIVE families resolve
+//     (recordid.familyRoots: adr, itd, iss, spc, dcn). The `rdi`, `dsp`, `rdg`,
+//     `adm`, `srp` and `rfm` stores are scanned as FILES — their prose is read like any
 //     other — but their own ids are not the cited-id grammar, so a mention of
 //     `rdg-2609022207359936` is not a citation and is not checked by anything
 //     here.
@@ -135,7 +135,7 @@ const proseBaselineSizeLimit = 1 << 20 // 1 MiB
 // \b, so a handle inside a word (`xitd-5`) never matches; the trailing boundary
 // is applied in code because Go's regexp has no lookahead, and consuming the byte
 // after the match would make two adjacent handles read as one.
-var proseCitationRe = regexp.MustCompile(`(?i)\b(?:adr|itd|iss|spc)-[0-9]+`)
+var proseCitationRe = regexp.MustCompile(`(?i)\b(?:adr|itd|iss|spc|dcn)-[0-9]+`)
 
 // proseEscapeRe matches the line-scoped exemption marker in both its spellings.
 // The vocabulary is exactly the ruling's own two words, and there is no third,
@@ -157,6 +157,10 @@ var proseTypedFrontmatterKeys = func() map[string]bool {
 	m := make(map[string]bool, len(recordParsedFields))
 	for _, f := range recordParsedFields {
 		m[f] = true
+	}
+	// A graph field nothing resolves stays prose to this rule.
+	for _, f := range recordUnjudgedGraphFields {
+		delete(m, f)
 	}
 	return m
 }()
@@ -208,12 +212,13 @@ var proseBaselineClasses = map[string]bool{
 	// A numeric id written to demonstrate behaviour rather than to cite, at a
 	// site that CANNOT carry the line marker — the marker is the ordinary door
 	// for this class, and a baseline entry is a GLOBAL licence: every future
-	// mention of that id, anywhere, passes unmarked. No entry uses this class
-	// today; the corpus's illustrative ids (itd-9999, itd-1990,
-	// iss-2608201142077341) are each marked on their own line instead. It stays
-	// as a class because one shape genuinely cannot be marked — a value a reader
-	// consumes verbatim, such as the `slug:` field — and the alternative to a
-	// named class there is an entry that lies about which door it used.
+	// mention of that id, anywhere, passes unmarked. The corpus's illustrative
+	// ids (itd-1990, iss-2608201142077341) are each marked on their own line
+	// instead. It stays as a class because some shapes genuinely cannot be
+	// marked — a value a reader consumes verbatim, such as the `slug:` field, or
+	// a decision record migrated verbatim from the retired single log, which
+	// carries itd-9999 and adr-9999 — and the alternative to a named class there
+	// is an entry that lies about which door it used.
 	"illustrative": true,
 	// A record that is not in this tree yet — typically one living on an
 	// unmerged branch.
@@ -665,7 +670,7 @@ func loadProseBaseline(repoRoot, rel string) (map[string]ProseBaselineEntry, err
 		switch {
 		case recordid.CanonCitedID(e.ID) == "":
 			return nil, &configError{ruleProseCitationResolves + ": " + rel + ": " + quote(e.ID) +
-				" is not a record id (adr-N, itd-N, iss-N, spc-N)"}
+				" is not a record id (" + recordid.CitedIDForms() + ")"}
 		case recordid.CanonCitedID(e.ID) != e.ID:
 			return nil, &configError{ruleProseCitationResolves + ": " + rel + ": " + quote(e.ID) +
 				" is not canonical; write it as " + recordid.CanonCitedID(e.ID) +

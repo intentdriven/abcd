@@ -37,8 +37,9 @@ framing).
 
 ## Examples
 
-- "The impl-review skill hands the scoped diff to the oracle through the host's
-  subagent dispatch."
+- "A `build` run's validate stage packages the lane's diff range and the
+  implementer's report into a brief and hands it to the `ruthless-reviewer`
+  oracle through the host's subagent dispatch."
 - "The transport packages the frontmatter, diff, and schema into a single
   context window."
 

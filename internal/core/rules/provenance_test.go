@@ -55,7 +55,7 @@ func TestRenderMarksRepoOverride(t *testing.T) {
 	repo := ResolvedDomain{Name: "PII", Source: SourceRepo, Domain: Domain{Rules: []string{"x"}}}
 	bundled := ResolvedDomain{Name: "PII", Source: SourceBundled, Domain: Domain{Rules: []string{"x"}}}
 	unset := ResolvedDomain{Name: "PII", Domain: Domain{Rules: []string{"x"}}}
-	if got, want := renderDomain(repo), "## PII (repo override)\n- x\n"; got != want {
+	if got, want := renderDomain(repo), "## PII (repo override)\n- ~~~\n  x\n  ~~~\n"; got != want {
 		t.Fatalf("repo override unmarked:\n got %q\nwant %q", got, want)
 	}
 	if got, want := renderDomain(bundled), "## PII\n- x\n"; got != want {

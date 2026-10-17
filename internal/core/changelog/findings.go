@@ -23,8 +23,14 @@ const issuesLedgerDir = recordid.IssuesRelDir
 // FindingGuardStatus is the unfixed-findings guardrail's verdict on a cut.
 //
 //	FindingGuardPassed — every finding this cycle produced has been answered.
-//	FindingGuardFailed — a consequential finding this cycle produced is still
-//	                     open and unwaived; Reason names every one of them.
+//	FindingGuardFailed — any of the three lists GuardFindings fills is
+//	                     non-empty: Unfixed, a consequential finding this
+//	                     cycle produced that is still open and unwaived;
+//	                     Deleted, a blocking record in open/ at the anchor
+//	                     that is gone from the ledger without a resolution;
+//	                     Uncommitted, an open/ record whose working-tree
+//	                     state differs from HEAD, at any severity. Reason
+//	                     names every entry of every list.
 //
 // There is deliberately no "refused" state, unlike SurfaceGuard. That guardrail
 // can be unable to compare at all — no tag, no baseline in the tag's tree — and

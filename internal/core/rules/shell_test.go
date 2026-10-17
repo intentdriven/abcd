@@ -35,7 +35,7 @@ func TestShellDomainIsGeneratedFromTheGuardRegistry(t *testing.T) {
 		t.Fatalf("the %s domain ships dormant: it would teach only on *%s", ShellDomain, ShellDomain)
 	}
 	reg := guard.Defaults()
-	if want := append(reg.Lessons(), reg.ScriptLesson()); !reflect.DeepEqual(d.Rules, want) {
+	if want := append(reg.Lessons(), reg.ScriptLesson(), reg.ShellCLesson()); !reflect.DeepEqual(d.Rules, want) {
 		t.Errorf("%s rules drifted from the guard registry:\n got %q\nwant %q", ShellDomain, d.Rules, want)
 	}
 	if want := reg.RecallTerms(); !reflect.DeepEqual(d.Recall, want) {
@@ -84,8 +84,8 @@ func TestShellDomainFollowsRegistryEdits(t *testing.T) {
 		t.Fatalf("adding an entry gave %d rules, want %d", len(grown.Rules), len(base.Rules)+1)
 	}
 	// The entries' lessons come first, in id order; the guard's script rule
-	// closes the list.
-	if last := grown.Rules[len(grown.Rules)-2]; !strings.Contains(last, "(zz-shred-disk)") || !strings.Contains(last, "Shredding cannot be undone.") {
+	// and its -c script rule close the list.
+	if last := grown.Rules[len(grown.Rules)-3]; !strings.Contains(last, "(zz-shred-disk)") || !strings.Contains(last, "Shredding cannot be undone.") {
 		t.Errorf("the added entry's lesson is missing or out of id order: %q", last)
 	}
 	if !holds(grown.Recall, "shred") {
@@ -506,5 +506,25 @@ func TestWithheldNoteNamesTheRepositorysOwnLessons(t *testing.T) {
 	}
 	if !strings.Contains(note, guard.RepoRelPath) {
 		t.Errorf("the note says only what abcd ships, not the repository's guard.json: %s", note)
+	}
+}
+
+// TestShellDomainTeachesTheCheckableShellCForms: the rule for a `bash -c` or
+// `sh -c` script built from variables that deletes (iss-2610161612200864) is in
+// the rendered rules and is injected for a prompt about such a script, so an
+// agent is taught the forms a checker can read before it writes one a host
+// would stop to ask a person about.
+func TestShellDomainTeachesTheCheckableShellCForms(t *testing.T) {
+	lesson := guard.Defaults().ShellCLesson()
+	if !strings.Contains(lesson, "Write the script to a file in one command and run it in the next") {
+		t.Fatalf("the guard's -c script rule does not teach the split into a file: %q", lesson)
+	}
+	rs := Defaults()
+	if rendered := Render(rs.Active()); !strings.Contains(rendered, lesson) {
+		t.Errorf("the rendered rules do not carry the -c script rule %q", lesson)
+	}
+	res := Inject(rs, "run a bash -c script that removes the old screenshots", SessionState{}, 0)
+	if !strings.Contains(res.Text, lesson) {
+		t.Errorf("a prompt about a bash -c script that removes files was not taught the -c script rule; injected:\n%.400s", res.Text)
 	}
 }

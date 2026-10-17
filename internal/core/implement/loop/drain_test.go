@@ -20,8 +20,14 @@ import (
 // which the drain order takes before the bug.
 func drainRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
-	repo := issueRepo(t)
-	fileIssue(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.")
+	return drainRepoAt(t, "")
+}
+
+// drainRepoAt is drainRepo with every issue's found_at; "" names none.
+func drainRepoAt(t *testing.T, foundAt string) *gittest.Repo {
+	t.Helper()
+	repo := issueRepoAt(t, foundAt)
+	fileIssueAt(t, repo, secondIssue, capture.SeverityMinor, capture.Category("documentation"), "Name the flag in the page.", foundAt)
 	repo.Commit("a second eligible issue")
 	return repo
 }

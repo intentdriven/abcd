@@ -214,3 +214,76 @@ func TestHarnessJobsRunOnHostedRunners(t *testing.T) {
 		}
 	}
 }
+
+// loadGateCall is the load gate make preflight runs its test stages behind
+// (iss-2610102020442624, iss-2610140638074587).
+const loadGateCall = "go run ./cmd/abcd implement load --wait"
+
+// parallelismCall derives each test stage's go test -p.
+const parallelismCall = `p=$$(go run ./cmd/test-parallelism) && \`
+
+// TestPreflightGatesItsTestStages: make preflight waits at the load gate
+// before its first go test, and each go test stage takes the -p derived as it
+// starts, so overlapping sessions' preflights queue instead of overlapping and
+// one run cannot saturate the machine. CI never runs make preflight
+// (harnessJobs refuses a workflow that does), and the gate opens at once on a
+// runner.
+func TestPreflightGatesItsTestStages(t *testing.T) {
+	recipe, ok := makeRecipe(readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile"), "preflight")
+	if !ok {
+		t.Fatal("Makefile declares no `preflight:` recipe")
+	}
+	lines := strings.Split(recipe, "\n")
+	gate, tests := -1, 0
+	for i, l := range lines {
+		l = strings.TrimSpace(l)
+		if strings.HasPrefix(l, loadGateCall) && gate < 0 {
+			gate = i
+		}
+		if !strings.HasPrefix(l, "go test ") {
+			continue
+		}
+		tests++
+		if gate < 0 || gate > i {
+			t.Errorf("preflight runs %q before the load gate %q", l, loadGateCall)
+		}
+		if i == 0 || strings.TrimSpace(lines[i-1]) != parallelismCall || !strings.Contains(l, ` -p "$$p" `) {
+			t.Errorf("preflight's %q does not take the -p derived as it starts (%s)", l, parallelismCall)
+		}
+	}
+	if gate < 0 || tests != 2 {
+		t.Fatalf("preflight's recipe has the gate at line %d and %d go test stages, want the gate and 2:\n%s", gate, tests, recipe)
+	}
+}
+
+// raceGateCall is the race gate make preflight runs its race stage behind, so
+// one race stage runs at a time whatever load.preflights admits to the test
+// stages (iss-2610161639025702).
+const raceGateCall = "go run ./cmd/abcd implement load --race-gate"
+
+// TestPreflightGatesItsRaceStage: the race stage waits at the race gate after
+// the unit stage and before it derives its -p, so the -p reflects the load as
+// the race stage starts.
+func TestPreflightGatesItsRaceStage(t *testing.T) {
+	recipe, ok := makeRecipe(readRepoFile(t, filepath.Join("..", "..", ".."), "Makefile"), "preflight")
+	if !ok {
+		t.Fatal("Makefile declares no `preflight:` recipe")
+	}
+	lines := strings.Split(recipe, "\n")
+	unit, gate, race := -1, -1, -1
+	for i, l := range lines {
+		l = strings.TrimSpace(l)
+		switch {
+		case strings.HasPrefix(l, raceGateCall):
+			gate = i
+		case strings.HasPrefix(l, "go test -race "):
+			race = i
+		case strings.HasPrefix(l, "go test "):
+			unit = i
+		}
+	}
+	if unit < 0 || gate < 0 || race < 0 || !(unit < gate && gate < race) || strings.TrimSpace(lines[race-1]) != parallelismCall || gate != race-2 {
+		t.Fatalf("preflight's recipe has the unit stage at line %d, the race gate %q at %d and the race stage at %d; want the gate straight before the race stage's -p:\n%s",
+			unit, raceGateCall, gate, race, recipe)
+	}
+}

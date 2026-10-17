@@ -1144,7 +1144,7 @@ func requireSchemaVersion(fm map[string]any) error {
 		return fmt.Errorf("%w: missing required property 'schema_version'", ErrMissingRequiredField)
 	}
 	if n, isInt := sv.(int); !isInt || n != 1 {
-		return fmt.Errorf("%w: unsupported schema_version %v (this reader only handles 1)", ErrMissingRequiredField, sv)
+		return fmt.Errorf("%w: unsupported schema_version %s (this reader only handles 1)", ErrMissingRequiredField, termsafe.Sanitize(fmt.Sprint(sv)))
 	}
 	return nil
 }

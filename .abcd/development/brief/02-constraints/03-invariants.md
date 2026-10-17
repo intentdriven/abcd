@@ -25,6 +25,61 @@ The following are non-negotiable invariants — any architectural choice that vi
    checksum-verified artifact. No version-discovery request exists anywhere
    in abcd ([adr-38](../../decisions/adrs/0038-implicit-checks-are-disk-only.md)).
    Tier-1 paths are enforceable in the zero-network test harness.
+   The reservations on the shared remote (itd-2609091034175565) are fetched
+   and pushed only by verbs whose documented meaning says so: `reserve`, whose
+   meaning is one fetch of the reservations and one push to the record's
+   `abcd-reserved/` branch, and `peers`, whose meaning includes one fetch of
+   the reservations, where every fetch of the reservations, theirs and each
+   one below, also copies `origin`'s `v*` tags into `refs/abcd/release-tags/`
+   (`+refs/tags/v*:refs/abcd/release-tags/v*`), outside `refs/tags/`, so it
+   never makes, moves or deletes a tag of the checkout's own; `build`, whose
+   meaning includes the run's reservation as it starts or resumes (a fetch and
+   one push, the spec's footprint or the issue's `found_at` naming the files)
+   and, with `--release`, a fetch and
+   one tombstone push; `drain`, whose meaning includes reserving each issue as
+   its lane starts and renewing, at half its lease, the reservation of each
+   lane parked at land; and `implement step` and `implement receipt`, whose
+   meaning includes renewing the run's reservation at half its lease, the land
+   fence's fetch and renewal before a merge is armed, and the tombstone once
+   the run's last lane lands or an issue lane is handed back; the land
+   fence's fetch is made before it judges a release hold whether or not the
+   run holds a reservation (itd-2609151838312703 C7); and `land`, whose
+   meaning includes one fetch of the reservations before it pushes, arms or
+   queues anything, for the same release-hold judgement. The release tags
+   each such fetch copies end a release hold.
+   `build next`'s exclusions, `build <itd-N>`'s peers check and every render
+   of a reservation or a hold read the view as last fetched, from disk, and
+   never ask the forge's user endpoint. Each act above that writes a
+   reservation may also make one call to that endpoint when git's identity
+   does not name the holder (invariant 10). `reserve --holder`'s meaning is
+   that user-endpoint call alone, and nothing else, made in either of two
+   cases: (a) git's identity is a person's but carries neither a GitHub
+   no-reply address nor a machine key; (b) git's identity is not a person's
+   (unset, or a machine's), in which case the machine key is skipped.
+   The status branches (itd-2609151838312703, `abcd-status/<username>` on
+   `origin`, one per person) are fetched and pushed only by verbs whose
+   documented meaning says so: `announce`, whose meaning is one listing of
+   the status branches on origin (`git ls-remote`), then one fetch of each
+   status branch whose name is a lower-case GitHub username and origin's
+   default branch (and a second, of those status branches alone, when the
+   default branch cannot be read), then one push to the sender's own status
+   branch, with one more listing and fetch after each push origin refuses, to tell a push that landed anyway and a lost race from another
+   refusal, and one more push for each of at most three retries after a push
+   that lost a race, and, as a reservation act may, one call to the forge's
+   user endpoint when git's identity does not name the sender (invariant 10).
+   The namespace is never fetched by a glob, since two names differing only
+   in case break such a fetch on a case-insensitive filesystem, and a branch
+   is fetched only when the listing names it, since a fetch naming a branch
+   origin does not hold yet fails. The embargo check an announcement passes reads only this machine's
+   store. `status`, whose meaning is one listing of the status branches on
+   `origin` (`git ls-remote`), then one fetch of the reservations with their
+   release tags, of each status branch whose name is a GitHub username in
+   lower case, each by its own refspec so a case-colliding name is never
+   fetched, and of origin's default branch, then one read of the forge's
+   record of who pushed (`gh api`, the repository's activity record) for each
+   status branch holding a standing announcement it has not asked about. The
+   prompt hook shows the announcements, the doubts and the release holds from
+   the last completed fetch, from disk alone, and asks the network nothing.
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it
    listens on this computer's own Tailscale addresses alone, never every
@@ -40,7 +95,7 @@ The following are non-negotiable invariants — any architectural choice that vi
 
 9. **Corpus documents and ledgers never leave the user tier, and a public citation requires both gates** — what crosses from the sources corpus into any repo or render is citation data only, never a document or an influence ledger; and a citation becomes public only when the source's `permission_status` permits *and* a human has flipped the ledger line's `cited_publicly` flag. Per [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md); consumed by itd-76, itd-126, itd-127.
 
-10. **Remotes are read freely, written only on explicit request — and the caller's identity comes from caller-local facts** — no verb mutates remote state (settings, rulesets, environments, roles) except a dedicated, confirmed apply verb that owns its bootstrap ordering and refreshes the committed mirror in the same change; and any probe that needs the caller's identity derives it from caller-local sources (git identity, the noreply-embedded login, `$HOME`), never from who owns the remote. Per [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md); consumed by itd-92 and every later remote-touching verb; already enforced in the launch scanner (iss-283).
+10. **Remotes are read freely, written only on explicit request — and the caller's identity comes from caller-local facts** — no verb mutates remote state (settings, rulesets, environments, roles) except a dedicated, confirmed apply verb that owns its bootstrap ordering and refreshes the committed mirror in the same change; and any probe that needs the caller's identity derives it from caller-local sources (git identity, the noreply-embedded login, `$HOME`), plus the token `gh` resolves from this session's environment, asked only for its account's login and id, with the endpoint pinned to github.com, never from who owns the remote. The reservation holder, which is also an announcement's sender, is the one lookup that consults the token, in one resolver (`internal/core/claim`) every consumer shares, and in this order: the noreply login in git's `user.email`, then the machine key `reservation.github_username`, then the token. When git's identity is not a person's (unset, or a machine identity as the attribution gate judges an author), the token alone is used, its account authors the act's commit, and the identity git had is shown nowhere. If every step fails, the act refuses loudly, naming the failure's class and never the identity it rejected. A git branch push is not remote configuration: a reservation (`abcd reserve`, a branch under `refs/heads/abcd-reserved/`) writes history to a branch, not the remote's settings, so it needs no apply verb and may be renewed by the verb that holds it (itd-2609091034175565 decision 12). An announcement (`abcd announce`, a branch under `refs/heads/abcd-status/`) is a branch push on the same terms: it adds history to the sender's own status branch, never changes a setting, and needs no apply verb; the ruleset that keeps that history (`.abcd/work/rulesets/status-protection.json`, adr-2610150729333337) is remote configuration, applied by a person and mirrored in the same change. The sender is resolved as a reservation's holder is, by the same resolver in the same order, the token included: when git's identity is not a person's, the token's account sends and authors the announcement, and the identity git had appears in no output, commit, trailer or ref. Reading the announcements (`abcd status`) writes nothing remote: it reads the forge's record of who pushed each announcement, a read and never a write, only to show its sender as verified, doubtful or claimed, and it needs no identity of the caller's. Per [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md); consumed by itd-92 and every later remote-touching verb; already enforced in the launch scanner (iss-283).
 
 11. **Record ids are collision-proof by construction and capture-stable** — the mint never allocates by looking at the current maximum (two minters sharing a stale view must still produce distinct ids); an id, once minted, is never renumbered; the grammar stays numeric so every id-consuming surface holds one parser; and a configured forge allocator allocates numbers only — offline it falls back to the native scheme loudly, and capture never blocks on network. Per [adr-45](../../decisions/adrs/0045-record-ids-are-timestamp-numeric-and.md); implemented by itd-114; asserted by the record-lint uniqueness detectors, which stay armed as the scheme's fail-safe.
 
@@ -63,3 +118,6 @@ The following are non-negotiable invariants — any architectural choice that vi
 20. **A workflow asserts a person's authorship only inside a declared bound, and a machine never becomes an identity on the commit** — a bot-opened dependency bump is re-authored only when its author and the run's actor are a bot the repository's declaration names, its branch lives in the repository under the row's prefix, it carries one commit by that bot, and that commit only modifies files the row names at the directory the bot's own configuration declares; anything else is left alone with the failed clause named. The re-authored commit carries the owner the declaration names as author AND committer; the GitHub App that pushes it is never either, so the attribution gate stays unchanged and judges it like any other commit. The bound judges which files change, never their content, and that residual is accepted on the record. The App's credentials are Dependabot secrets, and while the owner or either secret is missing an in-bound bump is refused by name — the workflow never pushes with its own token and never keeps the bot as author. Per [adr-2609292116133348](../../decisions/adrs/2609292116133348-a-dependency-bump-inside-the-bound-is-re.md), on iss-2609221820487644 and itd-2609221842494980; the bound is `scripts/dependency-reauthor.sh`, byte-exact with the template `abcd launch scaffold` lays, held by the tests in `internal/core/launch/scaffold/dependency_reauthor_test.go`.
 
 21. **abcd keeps its folders out of desktop indexing only by changing its own folders, never the computer's search settings** — a folder is kept out of the desktop indexer's work only by a change to that folder itself, inside the space abcd already owns (a name the indexer honours per folder: the `.noindex` suffix the home carries, `~/.abcd.noindex`); abcd never edits the computer's search settings or its search privacy list, never asks for administrator rights to do so, and never touches a folder outside its own space, and a person who wants a system-wide exclusion sets it themselves. No interface reports whether a folder is scanned, so whether an OS version honours the name is a dated receipt per version (the first, 2026-10-04 on macOS 27.0, is the research note [`2026-10-04-noindex-scan-receipt`](../../research/notes/2026-10-04-noindex-scan-receipt.md)); a version that stops honouring it is a finding put to the person, never an escalation to system settings. Pinned by `TestNoCodeNamesTheSearchSettings` in `internal/abcdhome`. Per [adr-2610030720195401](../../decisions/adrs/2610030720195401-abcd-keeps-its-own-folders-out-of.md) (itd-2610030720038073).
+
+22. **A private advisory stays private until it is published, and abcd acts on GitHub for it only on an approval per act** — a private security advisory's record never enters the public ledger while the advisory is unpublished: it lives only in the embargo store, a detached worktree in the machine-scoped worktree store that is never committed, and every verb that touches the store refuses one that is on a branch, tracks a private record, or lies inside the checkout; nothing public carries an unpublished advisory's id, its reserved CVE id, its title or the location of the private records, and the outbound check refuses an artefact that does, naming where without repeating it; and publishing or closing an advisory on GitHub happens only on the person's explicit approval of exactly the plan or text shown, one approval per act, never supplied by an agent on its own, refining [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md)'s confirmed remote write. Ruled by [adr-2610120558328615](../../decisions/adrs/2610120558328615-a-private-advisory-s-record-never-enters.md), accepted by the product thinker on 2026-10-12. Consumed by itd-2610112239022766 (`abcd embargo`).
+23. **No work-in-progress branch reaches the default branch, and a receipt-less push is admitted only for a host connector's declared work-in-progress prefix** — a cloud session abcd starts pushes its work, checked or not, only to `<wip-prefix><item-id>`, where the prefix is declared by that host's connector (never named in the core or the hook), ends in the path segment `abcd-wip/` with at most one segment before it, and is one entry in the pre-push hook's declared list of receipt-less prefixes, with its own commit shape (a valid record id after the prefix, every pushed commit passing the attribution gate) and this rule as its record; every other branch still needs a preflight receipt. A required check on the default branch's ruleset refuses any pull request or merge-queue entry whose source branch holds the segment `abcd-wip` or whose diff adds a cloud report file, and the work reaches the default branch only through the person's own collect, which re-runs preflight on a copy on their computer and mints the receipt there; no receipt minted in the cloud is trusted. The hook is not the boundary (`--no-verify` skips it); the required check, the ruleset and the collect are. Ruled by [adr-2610120937435856](../../decisions/adrs/2610120937435856-a-cloud-session-s-unchecked-work-goes.md), decided by the technical facilitator on the product thinker's delegation of 2026-10-12. Consumed by itd-2610120738075547 (work handed to cloud sessions).

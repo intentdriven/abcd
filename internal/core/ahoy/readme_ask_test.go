@@ -267,6 +267,68 @@ func TestReadmeUnaskedWithoutAConfigIsReportedSkipped(t *testing.T) {
 	}
 }
 
+// TestReadmeSkippedWithoutAConfigNamesTheStarterFiles: a run that ends with no
+// .abcd/config.json reports the README question skipped, and its summary names
+// the route that works: the starter files first. Without them the question is
+// not asked, at a terminal or off one, and --readme-parts is refused, so a hint
+// naming only those two routes names two that fail (iss-2610120505551170).
+func TestReadmeSkippedWithoutAConfigNamesTheStarterFiles(t *testing.T) {
+	setupHermetic(t)
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixture(t, repo, "README.md", "# Project\n", 0o644)
+	p := &helpedPrompter{confirm: func(q string) bool {
+		c := askedCategory(q)
+		return c != "" && c != SafeAutocreate
+	}}
+	adopt := true
+	res, err := Install(repo, InstallOptions{Adopt: &adopt}, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsString(res.OptionalSkipped, ReadmeOfferGapID) {
+		t.Fatalf("optional_skipped = %v, want it to name %s", res.OptionalSkipped, ReadmeOfferGapID)
+	}
+	if !res.ReadmeAwaitsConfig() {
+		t.Errorf("the result does not say the README answer has no config to be stored in")
+	}
+	var item *SummaryItem
+	for i := range res.Summary {
+		if slices.Contains(res.Summary[i].Refs, ReadmeOfferGapID) {
+			item = &res.Summary[i]
+		}
+	}
+	if item == nil {
+		t.Fatalf("no summary item explains %s: %+v", ReadmeOfferGapID, res.Summary)
+	}
+	if !strings.Contains(item.Action, "starter files") {
+		t.Errorf("the action does not name the starter files first: %q", item.Action)
+	}
+	if strings.HasPrefix(item.Action, "Run abcd ahoy install at a terminal, without --yes, and answer it") {
+		t.Errorf("the action names the run just made as the route: %q", item.Action)
+	}
+
+	// With a config, the action is the one that works there.
+	repo2 := installedRepo(t)
+	res2, err := Install(repo2, InstallOptions{Yes: true}, &helpedPrompter{confirm: approveCategories})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !containsString(res2.OptionalSkipped, ReadmeOfferGapID) {
+		t.Fatalf("optional_skipped = %v, want it to name %s", res2.OptionalSkipped, ReadmeOfferGapID)
+	}
+	if res2.ReadmeAwaitsConfig() {
+		t.Errorf("a repository with a config reads as having none")
+	}
+	for _, it := range res2.Summary {
+		if slices.Contains(it.Refs, ReadmeOfferGapID) && strings.Contains(it.Action, "starter files") {
+			t.Errorf("with a config, the action still names the starter files: %q", it.Action)
+		}
+	}
+}
+
 // TestReadmeLaterStoresNothing: deciding later, at Q1 or at any part, stores
 // nothing and writes nothing, the parts after a part decided later are not
 // asked, and the next setup run asks the pair again. Ending the input takes

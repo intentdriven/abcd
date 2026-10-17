@@ -197,6 +197,7 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// never-ended, ended-before-the-store-existed and ended-and-lost, and nothing
 	// could tell them apart. A staged entry says exactly one thing.
 	var stagedAllRepos bool
+	var stagedRootSHA string
 	stagedCmd := &cobra.Command{
 		Use:  "staged",
 		Args: cobra.NoArgs,
@@ -211,9 +212,12 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 			// It resolves no root SHA at all, which is deliberate: run from
 			// anywhere, including outside a git repository, it still answers.
 			if stagedAllRepos {
+				if stagedRootSHA != "" {
+					return fmt.Errorf("history staged: --all-repos and --root-sha name different views; pass one")
+				}
 				return renderBacklogSurvey(cmd, *asJSON)
 			}
-			repoRoot, rootSHA, err := historyStore(cmd)
+			repoRoot, rootSHA, err := historyStoreByRootSHA(cmd, "history staged", stagedRootSHA)
 			if err != nil {
 				return err
 			}
@@ -293,8 +297,11 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 					if s.Err != "" {
 						state = "NOT DRAINABLE: " + termsafe.Sanitize(s.Err)
 					}
-					fmt.Fprintf(w, "%s  %s  %d bytes  %s\n",
-						s.StagedAt.Format("2006-01-02T15:04:05Z"), who, s.Bytes, state)
+					// The file name is the operand `history discard` takes, so the
+					// listing names it, as the quarantine block below does.
+					fmt.Fprintf(w, "%s  %s  %d bytes  %s  %s\n",
+						s.StagedAt.Format("2006-01-02T15:04:05Z"), who, s.Bytes,
+						termsafe.Sanitize(filepath.Base(s.Path)), state)
 				}
 				if len(staged) > 0 {
 					fmt.Fprintf(w, "\n%d staged transcript(s) hold UNREDACTED text until drained; run `abcd history drain`.\n", len(staged))
@@ -328,6 +335,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	}
 	stagedCmd.Flags().BoolVar(&stagedAllRepos, "all-repos", false,
 		"survey every repository in the store, not just this one")
+	stagedCmd.Flags().StringVar(&stagedRootSHA, "root-sha", "",
+		"list the pile of the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)")
 	historyCmd.AddCommand(stagedCmd)
 
 	// drain — finish the capture SessionStart bounded. Unbudgeted by design: the
@@ -455,12 +464,19 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 	// neither prompts nor prints, and this verb is where the human decision is
 	// taken and refused without --yes. Nothing in abcd calls Discard except a
 	// person typing this.
+	//
+	// --root-sha names the repository by its root commit instead of the
+	// working directory, so a pile whose checkout was deleted, which no drain
+	// can ever redact, still has a way out (iss-2609091717146700). It is the
+	// same per-file act under the same --yes; it only changes which store's
+	// file is named.
 	var discardYes bool
+	var discardRootSHA string
 	discardCmd := &cobra.Command{
 		Use:  "discard <staged-filename> --yes",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			repoRoot, rootSHA, err := historyStore(cmd)
+			repoRoot, rootSHA, err := historyStoreByRootSHA(cmd, "history discard", discardRootSHA)
 			if err != nil {
 				return err
 			}
@@ -489,6 +505,8 @@ func newHistoryCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	discardCmd.Flags().BoolVar(&discardYes, "yes", false, "confirm the irreversible deletion of an unredacted transcript")
+	discardCmd.Flags().StringVar(&discardRootSHA, "root-sha", "",
+		"discard from the repository with this root-commit SHA, with no checkout to stand in (one whose checkout is gone)")
 	historyCmd.AddCommand(discardCmd)
 
 	historyCmd.AddCommand(newHistoryMigrateCommand(asJSON))
@@ -602,6 +620,46 @@ func agentWho(r history.Record) string {
 	return "agent " + termsafe.Sanitize(r.AgentID) + " (" + kind + ")"
 }
 
+// historyStoreByRootSHA is historyStore, or, given a root SHA, that
+// repository's store in the user-level corpus with no checkout at all: the
+// way to reach a pile whose checkout was deleted (iss-2609091717146700). The
+// key must already hold something staged or quarantined, so a mistyped SHA is
+// refused rather than creating an empty store for it.
+func historyStoreByRootSHA(cmd *cobra.Command, verb, rootSHA string) (string, string, error) {
+	if rootSHA == "" {
+		return historyStore(cmd)
+	}
+	repos, err := history.SurveyBacklog()
+	if err != nil {
+		return "", "", err
+	}
+	for _, b := range repos {
+		if b.RootSHA == rootSHA {
+			if err := printStoreNotes(cmd, "", rootSHA); err != nil {
+				return "", "", err
+			}
+			return "", rootSHA, nil
+		}
+	}
+	return "", "", fmt.Errorf("%s: no repository in this machine's store with root SHA %q holds a staged or quarantined transcript; `abcd history staged --all-repos` lists the ones that do",
+		verb, termsafe.Sanitize(rootSHA))
+}
+
+// orphanedPileNotice names one pile whose checkout is gone: what it is, how
+// much, why nothing will clear it, and the exact commands that remove it. It
+// carries the repository's name and root SHA and no session id or path from
+// it, like every cross-repository notice. Nothing is deleted here: a checkout
+// that only moved reads as gone too, and the judgement is the person's.
+func orphanedPileNotice(b history.RepoBacklog) string {
+	name := termsafe.Sanitize(b.Name)
+	if name == "" {
+		name = "(unnamed)"
+	}
+	return fmt.Sprintf(
+		"abcd: repository %s (root %s) is gone from this machine: its recorded checkout no longer exists, and it left %s of UNREDACTED transcript text (%d staged, %d quarantined) that no drain can ever redact, because the drain needs that repository's own redaction settings. If the checkout only moved, open a session in it and the drain runs. Otherwise list the pile with `abcd history staged --root-sha %s` and remove each file with `abcd history discard --root-sha %s <file> --yes`.",
+		name, b.RootSHA[:12], humanBytes(int(b.Total())), b.Staged, b.Quarantined, b.RootSHA, b.RootSHA)
+}
+
 // renderBacklogSurvey renders `history staged --all-repos`: every repository in
 // the store that is holding unredacted transcript text.
 //
@@ -640,6 +698,9 @@ func renderBacklogSurvey(cmd *cobra.Command, asJSON bool) error {
 			if !b.OldestStagedAt.IsZero() {
 				line += "  oldest " + b.OldestStagedAt.Format("2006-01-02")
 			}
+			if b.Orphaned {
+				line += "  ORPHANED (checkout gone)"
+			}
 			fmt.Fprintln(w, line)
 			total += b.Total()
 			overdue += b.Overdue
@@ -652,6 +713,11 @@ func renderBacklogSurvey(cmd *cobra.Command, asJSON bool) error {
 		}
 		if quarantined > 0 {
 			fmt.Fprintf(w, "%d transcript(s) can never be redacted and will never leave on their own; `abcd history discard` is the only thing that removes them.\n", quarantined)
+		}
+		for _, b := range repos {
+			if b.Orphaned {
+				fmt.Fprintf(w, "%s\n", strings.TrimPrefix(orphanedPileNotice(b), "abcd: "))
+			}
 		}
 	})
 }

@@ -197,7 +197,7 @@ func TestAPipeIntoAGroupFeedsEveryCommandInIt(t *testing.T) {
 		{`pgrep make | sort | { sleep 1; xargs kill; }`, VerdictBlock, "kill-by-search"},
 		{`echo 1 | { true; pgrep make | { sleep 1; xargs kill; }; }`, VerdictBlock, "kill-by-search"},
 		// Read fail-safe: a command in a group reads its group's input even
-		// behind a pipe of its own, which may pass it on (DECISIONS 2026-09-27).
+		// behind a pipe of its own, which may pass it on (dcn-2609270000000002).
 		{`pgrep make | { true; echo 1 | { sleep 1; xargs kill; }; }`, VerdictBlock, "kill-by-search"},
 		{`pgrep make | { cat | { sleep 1; xargs kill; }; }`, VerdictBlock, "kill-by-search"},
 		{`echo $(pgrep make | { sleep 1; xargs kill; })`, VerdictBlock, "kill-by-search"},
@@ -233,9 +233,10 @@ func TestARedirectIntoAStringReachesItsCommands(t *testing.T) {
 // review-drainG2) in one table, so the group-input and redirect readings are
 // seen to take none of them away.
 func TestKillFeedReviewBlockShapesStillBlock(t *testing.T) {
-	var cases []verdictCase
+	// A name a substitution prints can be lsof or fuser as well as pgrep, so
+	// kill-by-holder fires beside kill-by-search there and either may win.
+	cases := []verdictCase{{`kill $( $(pgrep make) )`, VerdictBlock, ""}}
 	for _, cmd := range []string{
-		`kill $( $(pgrep make) )`,
 		`kill "$(pgrep make)"`,
 		"kill `pgrep make`",
 		`kill -9 $(pgrep -f make) 4242`,
@@ -393,7 +394,7 @@ func TestArgsReaderReadsEachWordOnce(t *testing.T) {
 // command that reads a pipe reads the search piped into that command. (3) A
 // shell string's positional parameters are the words after it, so a search
 // printed into one reaches the string's commands the way xargs's input does
-// (DECISIONS 2026-09-27): every command of the string is read as handed it.
+// (dcn-2609270000000001): every command of the string is read as handed it.
 func TestKillFedThroughAHereDocOrAnInheritedPipeIsBlocked(t *testing.T) {
 	runVerdictCases(t, []verdictCase{
 		{"xargs kill <<EOF\n$(pgrep make)\nEOF", VerdictBlock, "kill-by-search"},

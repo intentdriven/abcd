@@ -36,6 +36,39 @@ func TestDescribeBundleSpecReadsEveryMember(t *testing.T) {
 	}
 }
 
+// iss-2610112214150230: a bundle's shared spec judges each live member by the
+// verdict `abcd intent ready` reports, open questions included, so a member
+// still asking an open question withholds "implement" and the move defers to
+// that member alone.
+func TestDescribeBundleSpecOpenQuestionMemberWithholdsImplement(t *testing.T) {
+	repo := t.TempDir()
+	intentFixture(t, repo, "planned", "itd-30", "alpha", readyMember("itd-30", "alpha", "spc-50"))
+	intentFixture(t, repo, "planned", "itd-31", "beta", readyMember("itd-31", "beta", "spc-50")+"\n## Open Questions\n\n- Which surface carries the flag?\n")
+	write(t, repo, ".abcd/development/specs/open/spc-50-pair.md", bundleSpec)
+
+	d, err := Describe(repo, "spc-50")
+	if err != nil {
+		t.Fatal(err)
+	}
+	moves := strings.Join(d.NextMoves, " ")
+	if strings.Contains(moves, "implement") || strings.Contains(moves, "spec close") {
+		t.Fatalf("a bundle with a member asking an open question must not be sent to implement: %v", d.NextMoves)
+	}
+	if !strings.Contains(moves, "not ready") || !strings.Contains(moves, "intent ready itd-31") || strings.Contains(moves, "intent ready itd-30") {
+		t.Fatalf("the move must defer to the member with the open question, and to it alone: %v", d.NextMoves)
+	}
+
+	// Settled, the bundle is ready again.
+	intentFixture(t, repo, "planned", "itd-31", "beta", readyMember("itd-31", "beta", "spc-50")+"\n## Open Questions\n\n- Which surface carries the flag? — resolved: the CLI.\n")
+	d, err = Describe(repo, "spc-50")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if moves := strings.Join(d.NextMoves, " "); !strings.Contains(moves, "implement") || !strings.Contains(moves, "spec close spc-50") {
+		t.Fatalf("a settled question must leave the bundle ready to implement: %v", d.NextMoves)
+	}
+}
+
 // iss-2609261215160156: after its first member is superseded, a closed bundle
 // spec names the member still in force and says the other was passed over —
 // never a superseded record as the linked intent.

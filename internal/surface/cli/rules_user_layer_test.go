@@ -54,7 +54,7 @@ func TestRulesVerbLabelsTheUserLayer(t *testing.T) {
 		}
 	}
 	out := string(runCLI(t, "rules"))
-	for _, want := range []string{"## PII (user override)\n- house pii rule\n", "## HOUSE (user override)\n", "## ROADMAP (repo override)\n", "## COMMITTING\n"} {
+	for _, want := range []string{"## PII (user override)\n- ~~~\n  house pii rule\n  ~~~\n", "## HOUSE (user override)\n", "## ROADMAP (repo override)\n", "## COMMITTING\n"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("bare rules render lacks %q:\n%s", want, out)
 		}
@@ -88,7 +88,7 @@ func TestHookPromptRouterInjectsTheUserLayer(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	_, repo := userScope(t, userLayerFixture)
 	out, errlog := runHook(t, hookInputJSON(t, "user-layer", repo, "rename the widget"), "hook", "prompt-router")
-	if !strings.Contains(out, "## HOUSE (user override)\n- widgets are named in the singular\n") {
+	if !strings.Contains(out, "## HOUSE (user override)\n- ~~~\n  widgets are named in the singular\n  ~~~\n") {
 		t.Fatalf("the injected block lacks the user domain:\n%s", out)
 	}
 	if !strings.Contains(errlog, "HOUSE (user override)") {

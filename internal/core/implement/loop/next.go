@@ -21,11 +21,14 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/grounds"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/spec"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // StagePick is the refusal stage of a pick that takes nothing.
@@ -34,6 +37,11 @@ const StagePick = "pick"
 // CheckRun is the exclusion of a planned intent this checkout already has a
 // run in progress for: the pick starts a run, never resumes one.
 const CheckRun = "run"
+
+// CheckFootprint is the exclusion of a planned intent whose spec names no
+// footprint packages to reserve it with, in a checkout with a remote named
+// origin: its start would be refused at the reservation.
+const CheckFootprint = "footprint"
 
 // Excluded is a planned intent the pick did not consider, with the first
 // check that excluded it.
@@ -67,7 +75,9 @@ type CandidateSet struct {
 
 // NextOptions are the run count the caller asked for.
 type NextOptions struct {
-	// Max is --max as typed; 0 when not given.
+	// Max is --max as typed; 0 when not given. An explicit --max 0 is told
+	// apart from an absent flag only at the front door, which refuses it with
+	// RunCountRefusal.
 	Max int
 	// UntilEmpty is --until-empty.
 	UntilEmpty bool
@@ -91,6 +101,11 @@ type NextResult struct {
 // the ones that pass. It writes nothing. A fault in reading the checkout is an
 // error; an intent that may not start is an exclusion.
 func candidates(repoRoot, session string) (CandidateSet, error) {
+	return candidatesAt(repoRoot, session, time.Now())
+}
+
+// candidatesAt is candidates, judging the reservations as last fetched at now.
+func candidatesAt(repoRoot, session string, now time.Time) (CandidateSet, error) {
 	set := CandidateSet{Candidates: []intent.PickCandidate{}, Excluded: []Excluded{}}
 	corpus, err := intent.Load(repoRoot)
 	if err != nil {
@@ -127,7 +142,13 @@ func candidates(repoRoot, session string) (CandidateSet, error) {
 	if err != nil {
 		return set, err
 	}
-	snap, err := readPeers(repoRoot)
+	snap, err := readPeers(repoRoot, now)
+	if err != nil {
+		return set, err
+	}
+	// With a remote named origin the start reserves the intent with its
+	// spec's footprint packages, so one that names none is no candidate.
+	reserves, err := claim.HasOrigin(repoRoot)
 	if err != nil {
 		return set, err
 	}
@@ -148,11 +169,21 @@ func candidates(repoRoot, session string) (CandidateSet, error) {
 		if !chk.OK {
 			for _, row := range chk.Checks {
 				if !row.OK {
-					set.Excluded = append(set.Excluded, Excluded{ID: id, Check: row.Name, Reason: row.Detail})
+					set.Excluded = append(set.Excluded, Excluded{ID: id, Check: row.Name, Reason: termsafe.Sanitize(row.Detail)})
 					break
 				}
 			}
 			continue
+		}
+		if reserves {
+			fp, err := specPackages(repoRoot, chk.Spec)
+			if err != nil {
+				return set, err
+			}
+			if len(fp) == 0 {
+				set.Excluded = append(set.Excluded, Excluded{ID: id, Check: CheckFootprint, Reason: noFootprint(chk.Spec, id)})
+				continue
+			}
 		}
 		score, err := readiness(repoRoot, corpus, store, id, chk.Spec)
 		if err != nil {
@@ -174,6 +205,14 @@ func readiness(repoRoot string, corpus intent.Corpus, store spec.Store, id, spec
 	return intent.ReadinessIn(repoRoot, store, it, specID)
 }
 
+// RunCountRefusal is the pick's refusal of a --max below 1, which names no
+// run count. Next refuses a negative Max with it; Max reads 0 when --max is
+// not given, so a front door refuses an explicit --max 0 with it before
+// calling Next, rather than let it read as no count (iss-2610121210280182).
+func RunCountRefusal(max int) error {
+	return refuse(StagePick, "", "", fmt.Sprintf("--max %d is not a run count", max), "give --max a whole number of picks, 1 or more")
+}
+
 // Next picks the readiest planned intent and starts its run. An empty
 // candidate set is refused naming every excluded intent and its check, and
 // writes nothing. With --max above 1 or --until-empty it begins a series
@@ -184,7 +223,7 @@ func readiness(repoRoot string, corpus intent.Corpus, store spec.Store, id, spec
 func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 	switch {
 	case n.Max < 0:
-		return NextResult{}, refuse(StagePick, "", "", fmt.Sprintf("--max %d is not a run count", n.Max), "give --max a whole number of picks, 1 or more")
+		return NextResult{}, RunCountRefusal(n.Max)
 	case n.UntilEmpty && n.Max > 0:
 		return NextResult{}, refuse(StagePick, "", "", fmt.Sprintf("--max %d and --until-empty name two run counts", n.Max),
 			"give one: --max <n> stops after n picks, --until-empty when no candidate is left")
@@ -222,7 +261,7 @@ func Next(repoRoot string, o Options, n NextOptions) (NextResult, error) {
 // choose reads the candidate set, less every intent the series has picked
 // when ser is not nil, and takes the readiest; ok is false when none is left.
 func choose(repoRoot string, o Options, ser *NextSeries) (CandidateSet, intent.Pick, bool, error) {
-	set, err := candidates(repoRoot, o.Session)
+	set, err := candidatesAt(repoRoot, o.Session, o.now())
 	if err != nil {
 		return set, intent.Pick{}, false, err
 	}

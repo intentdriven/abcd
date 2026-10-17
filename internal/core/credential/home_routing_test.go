@@ -3,6 +3,7 @@
 package credential
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // linkedDotfilesHome returns a home whose ~/.abcd.noindex is a symlink into a git
@@ -404,5 +406,101 @@ func TestSetMachineKeepsTheStoreInTheDirectoryItHolds(t *testing.T) {
 	}
 	if after, err := os.ReadFile(filepath.Join(abcd, StoreFileName)); err != nil || string(after) != string(freshBefore) {
 		t.Errorf("the directory swapped in was changed: err %v", err)
+	}
+}
+
+// TestResolveRefusesTheAbcdHomeInsideAWorkingTree is the read half of the
+// write refusal Set already makes (iss-2609300012273350): a home inside a git
+// working tree (HOME set into a checkout by an environment the repository
+// can shape) is never where Set keeps a value, so a credentials.json found
+// there is the checkout's, and Resolve refuses it naming the working tree
+// rather than handing its value to a caller.
+func TestResolveRefusesTheAbcdHomeInsideAWorkingTree(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	home := filepath.Join(repo, "planted-home")
+	if err := os.MkdirAll(home, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetMachine(home, "svc", secretValue); err != nil {
+		t.Fatal(err)
+	}
+	v, err := Store(home).Resolve("svc")
+	if err == nil || v != "" {
+		t.Fatalf("Resolve read the abcd home inside a working tree: value %q, err %v", v, err)
+	}
+	if !strings.Contains(err.Error(), "git working tree") {
+		t.Errorf("the refusal must name the working tree: %v", err)
+	}
+	if strings.Contains(err.Error(), secretValue) {
+		t.Fatal("the refusal echoes the value")
+	}
+}
+
+// TestResolveReadsTheAccountHomeThatIsACheckout is the review finding on the
+// read refusal above: a dotfiles-in-HOME account, whose own home is a git
+// working tree, keeps a value it already holds in the abcd home (one written
+// before the home became a checkout, or by hand). The exemption is the account
+// database's home, judged by file identity, and a failed lookup grants none.
+// The write refusal is a different rule and stays: a value Set wrote there is
+// one `git add -A` away from a commit, whoever's home it is.
+func TestResolveReadsTheAccountHomeThatIsACheckout(t *testing.T) {
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SetMachine(home, "svc", secretValue); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(home, ".git"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	restore := gitutil.SwapAccountHomeForTest(func() (string, error) { return home, nil })
+	v, err := Store(home).Resolve("svc")
+	if err != nil || v != secretValue {
+		restore()
+		t.Fatalf("Resolve refused the account's own home: err %v", err)
+	}
+	if _, err := Set(home, "svc2", Choice{Home: HomeABCD, Value: secretValue}); err == nil {
+		restore()
+		t.Fatal("Set wrote a value into the abcd home inside a working tree because it is the account home")
+	}
+	restore()
+
+	t.Cleanup(gitutil.SwapAccountHomeForTest(func() (string, error) { return "", errors.New("unknown userid") }))
+	if v, err := Store(home).Resolve("svc"); err == nil || v != "" {
+		t.Fatalf("Resolve read a home inside a working tree with no account home to exempt it: value %q, err %v", v, err)
+	}
+}
+
+// TestResolveJudgesTheHomeByItsPhysicalPlace is the unified containment rule
+// the layered machine layer shares: a home spelled inside a checkout whose
+// target lies outside every working tree is read, and the read refusal names
+// the working tree a physical home lies in.
+func TestResolveJudgesTheHomeByItsPhysicalPlace(t *testing.T) {
+	base, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(gitutil.SwapAccountHomeForTest(func() (string, error) { return filepath.Join(base, "account"), nil }))
+	repo := filepath.Join(base, "repo")
+	outside := filepath.Join(base, "outside")
+	for _, d := range []string{filepath.Join(repo, ".git"), outside} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := SetMachine(outside, "svc", secretValue); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(repo, "link-out")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatal(err)
+	}
+	if v, err := Store(link).Resolve("svc"); err != nil || v != secretValue {
+		t.Fatalf("Resolve refused a home whose physical place is outside every working tree: err %v", err)
 	}
 }

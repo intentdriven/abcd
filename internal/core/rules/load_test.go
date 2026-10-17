@@ -15,10 +15,12 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The LOAD domain carries the product thinker's ruling on iss-2609210828122412
-// (DECISIONS.md, 2026-09-23): orphaned background burners from a load
+// (dcn-2609230000000013): orphaned background burners from a load
 // experiment in a managed repository starved a development machine into a
 // kernel panic. Three of the ruling's four conditions hold as rules now, and
 // the bundled domain is how they reach an agent in every repository abcd
@@ -352,23 +354,53 @@ func waitGone(t *testing.T, flag, value string) {
 // TestLoadDomainTeachesTheWaiter: the LOAD domain tells agents to gate a
 // preflight or a race run with abcd's own waiter and never a hand-written loop,
 // and names the self-match that made the hand-written loop wait forever
-// (iss-2610111826193257).
+// (iss-2610111826193257). make preflight gates itself through it, under every
+// account, read from the process table, re-checked after a jitter, with a
+// derived -p (iss-2610102020442624, iss-2610140638074587).
 func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 	all := strings.Join(Defaults().Domains["LOAD"].Rules, "\n")
 	for _, want := range []string{
 		"abcd implement load --wait",
-		"abcd implement load --wait -- make preflight",
+		"`make preflight` gates itself",
+		"needs no wrapper",
+		"under any account",
+		"process table",
+		"15 to 60 seconds",
+		"go test -p",
+		"abcd implement load --wait -- go test -race ./...",
 		"never a hand-written",
 		`pgrep -f "go test -race"`,
 		"matched its own shell",
 		"one waiter at a time",
-		// The command form is the form for a preflight: a plain --wait then
-		// `make preflight` only spaces the starts by the settle hold.
-		"the form for a preflight",
-		"only spaces",
+		// What is true across accounts: no file another account can write is
+		// read, and a waiter ahead still delays you. Another account's processes
+		// and arguments are read, and that account wrote them.
+		"no file another account can write is read; the gate reads only the process table",
+		"still delays yours",
+		// The race stage's own gate, and the person's own slot setting
+		// (iss-2610161639025702).
+		"abcd implement load --race-gate",
+		"never spelt with `--wait`",
+		"two at most until a measured trial supports more",
+		"one race stage at a time within your account",
+		"an account at one opens its race gate at once",
+		"`load.preflights` in `" + abcdhome.Display("config.json") + "`",
+		"`ABCD_LOAD_PREFLIGHTS`",
+		"never read from a repository file",
+		// Each gate is shut only by its own gate's hold.
+		"a first gate's hold never shuts the race gate",
+		// A machine config.json that cannot be read stops nothing.
+		"a `config.json` that cannot be read for it is read past",
+		// A lone race run's waiter is a race run for both gates.
+		"counts as a race run to every race gate and every other such run",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)
+		}
+	}
+	for _, claim := range []string{"no account can hold another's gate shut", "no account writes anything another account's gate reads"} {
+		if strings.Contains(all, claim) {
+			t.Errorf("the LOAD rules claim %q, which is false: a waiter ahead, of any account, delays yours until its timeout", claim)
 		}
 	}
 }

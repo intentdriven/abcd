@@ -196,9 +196,15 @@ func (o *testOrigin) addRelease(tag string, assetName string, content []byte) {
 	o.assets[tag]["checksums.txt"] = manifest
 }
 
+// testUpdater wires the updater to the test origin. Its bytes are synthetic, so
+// no real attestation can name them: the provenance check is a stand-in that
+// accepts, and provenance_test.go drives the real check against recorded
+// bundles.
 func testUpdater(t *testing.T, o *testOrigin) *Updater {
 	t.Helper()
-	return newUpdater(o.srv.URL, nil, testAssetName, true, nil)
+	u := newUpdater(o.srv.URL, nil, testAssetName, true, nil)
+	u.provenance = &recordingProvenance{}
+	return u
 }
 
 const testAssetName = "abcd-test-arch"

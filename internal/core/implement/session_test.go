@@ -235,6 +235,22 @@ func TestPeekCreatesNothing(t *testing.T) {
 	}
 }
 
+// TestOpenMakesTheRunsStoreTheCallersAlone: in a fresh home, every level Open
+// makes, the home and the runs store included, is 0700.
+func TestOpenMakesTheRunsStoreTheCallersAlone(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	r, err := Open(testSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, level := range []string{abcdhome.Path(home), abcdhome.Path(home, "runs"), r.Dir, filepath.Join(r.Dir, claimsDirName), filepath.Join(r.Dir, sessionsDirName)} {
+		if fi, err := os.Lstat(level); err != nil || fi.Mode().Perm() != 0o700 {
+			t.Fatalf("%s is 0700: %v %v", level, fi.Mode(), err)
+		}
+	}
+}
+
 // TestOpenRefusesASymlinkedRunsDirectory: the store is never created through a
 // planted redirect.
 func TestOpenRefusesASymlinkedRunsDirectory(t *testing.T) {

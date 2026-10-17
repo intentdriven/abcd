@@ -279,6 +279,29 @@ func TestTheWorktreeStepMakesTheStoreTheCallersAlone(t *testing.T) {
 	}
 }
 
+// TestTheWorktreeStepMakesTheLaneWorktreeTheCallersAlone: the lane's worktree,
+// which git creates at the process umask, is 0700 once the step has made it, in
+// a home the step created fresh at 0700.
+func TestTheWorktreeStepMakesTheLaneWorktreeTheCallersAlone(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(""))
+	home := os.Getenv("HOME")
+	if _, err := os.Lstat(abcdhome.Path(home)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the test needs a fresh home: %v", err)
+	}
+	start, err := Start(repo.Root(), "itd-10", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := advance(repo.Root(), start.RunID, DefaultStages(), Options{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, level := range []string{abcdhome.Path(home), filepath.Join(laneStore(t, repo), start.RunID+"-lane-1")} {
+		if fi, err := os.Lstat(level); err != nil || fi.Mode().Perm() != 0o700 {
+			t.Fatalf("%s is 0700: %v %v", level, fi.Mode(), err)
+		}
+	}
+}
+
 // TestALaneNameRefusalNamesTheIDItRefuses: each refusal of a malformed id
 // names that id, quoted, and never carries an id it did not refuse — nor any
 // unvalidated id raw into the one-line rendering.

@@ -1,0 +1,92 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "74165cf97423b0a2a2345864b937fbe2aa709702"
+    }
+  },
+  "verifier": {
+    "id": "iss35-brief-surface-crosscheck@release"
+  },
+  "timeVerified": "2026-10-14T17:06:41Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+  "tier": "shallow",
+  "manifestHash": "sha256:a1f18bb638530a6acdc5745d835e2ec799b0709caddce91e1b1a287ceed76cbc",
+  "policy": {
+    "detector": "iss35-brief-surface-crosscheck",
+    "version": "1",
+    "promptHash": "sha256:cbbefe314f294c3517f56b1d6a98886b6d91820db79d1141c8e8718ccc004dad",
+    "briefVersion": "0.14.1"
+  },
+  "categories": {
+    "false-claim": 7,
+    "stale-count": 1
+  },
+  "failing": [
+    {
+      "id": "x-001",
+      "category": "stale-count",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:257 (CLI verb tree; raised by opus+sonnet): claim: Operator-internal verbs row for `hook`: \"Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`\", naming prompt-router, prompt-router-reset, session-end, subagent-stop and session-start; the row is the stated home that, with the register, \"name[s] every verb the binary registers\". / reality: `abcd hook --help` registers SIX sub-commands: prompt-router, prompt-router-reset, question-answered, session-end, session-start, subagent-stop. `hook question-answered` (PostToolUse on the question tool, resets the mode once the answer is back) is missing from the row and the count is stale; it is documented only in .abcd/development/brief/05-internals/03-configuration.md:1118-1121.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred as its own captured record iss-2610141705107330; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-002",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:458 (plugin command surface; raised by opus): claim: The Library-and-memory table heads its memory column 'Memory (`/abcd:memory`)', naming /abcd:memory as a command alongside /abcd:library, with no staged/later-phase marking. / reality: No commands/memory.md exists and the binary registers no memory verb (`abcd memory --help` falls through to the root board). 04-surfaces/07-library.md:11-16 says library merged source and memory and neither old name survives as an alias; memory notes are only designed (itd-2610091918433290, open questions).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred as its own captured record iss-2610141705100828; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-003",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/glossary/core/memory-note.md:18 (plugin command surface; raised by opus): claim: 'An agent writes one with `/abcd:memory add` when it learns something worth keeping', in the present tense, as a shipped command. / reality: There is no /abcd:memory command and no `memory add` sub-verb. The nearest shipped surface, `library add`, registers a source in the corpus, not a memory note. The memory-note design is still an open intent (itd-2610091918433290).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred as its own captured record iss-2610141705112796; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-004",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/05-internals/01-agents.md:35 (plugin agent surface; raised by opus): claim: Repo-workflow reviewers and researchers are 'dispatched by a human rather than by a verb': docs-currency-reviewer, ruthless-reviewer, security-reviewer, and sota-researcher. / reality: commands/build.md:368 has the implement loop's `validate` step name a ruthless-reviewer and a security-reviewer as validators the loop dispatches and records verdicts for. commands/launch.md:900 runs docs-currency-reviewer as a release-gate pass whose receipts launch checks. The brief's own agent table (.abcd/development/brief/04-surfaces/README.md:392, :409-415) maps docs-currency-reviewer to a verb, says build.md and the implement loop dispatch the two reviewers, and gives a different set of four no-verb agents (ruthless-reviewer, security-reviewer, sota-researcher, question-drafter). That set leaves out docs-currency-reviewer.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred as its own captured record iss-2610141705129324; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-005",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/04-surfaces/README.md:392 (plugin agent surface; raised by opus): claim: docs-currency-reviewer row: Serves `docs` (the verb that builds the agent's input or validates what it returns). / reality: Neither commands/docs.md nor the `docs` verb (`abcd docs --help`: cite, fidelity) names or takes this agent's output, and agents/docs-currency-reviewer.md does not mention `docs fidelity`. The agent is run as a release-gate pass under launch (commands/launch.md:898-901), which matches 10-docs.md:220-222 ('The release gate runs both'). The agent serves `launch`'s release gate, not `docs`.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred as its own captured record iss-2610141705124287; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-006",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/glossary/README.md:291 (skills surface; raised by opus): claim: \"The `/abcd:intent grill` sub-verb's glossary capture pattern draws from the `grill-with-docs` skill\" -- names a shipped /abcd:intent grill sub-verb (the former /abcd:grill skill's promoted form). / reality: abcd intent --help lists no grill sub-verb; the brief itself says the intent parent ships no grill sub-verb and that promotion is only a design target (04-surfaces/README.md:370-373, 05-internals/README.md:14).",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred as its own captured record iss-2610141705135681; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-007",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/glossary/core/transport.md:40 (skills surface; raised by opus): claim: Example usage: \"The impl-review skill hands the scoped diff to the oracle through the host's subagent dispatch.\" -- presents an impl-review skill as an existing surface. / reality: abcd ships zero skills (skills/ absent; 05-internals/08-skills.md:8) and no impl-review command, sub-verb or agent exists in commands/ or agents/.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred as its own captured record iss-2610141705138730; not introduced by a defect in the shipped code."
+    },
+    {
+      "id": "x-008",
+      "category": "false-claim",
+      "severity": "minor",
+      "summary": ".abcd/development/brief/glossary/core/oracle.md:42 (skills surface; raised by opus): claim: Example usage: \"The impl-review skill hands the diff to the host-delegated oracle and reads back its verdict.\" -- presents an impl-review skill as an existing surface. / reality: abcd ships zero skills (skills/ absent) and no impl-review surface of any kind exists.",
+      "disposition": "deferred",
+      "note": "Design-record drift in brief prose that no surface gate reads; the shipped surface matches. Deferred as its own captured record iss-2610141705147398; not introduced by a defect in the shipped code."
+    }
+  ],
+  "_reviewProvenance": "Shallow tier for a patch release (impact fix): Direction B only, the manifest's five surface checkers, each run twice as a pair on the same prompt (an Opus 5.5 agent and a Sonnet 5.5 agent), each reading its prompt verbatim from a file holding the manifest's pinned context and Direction B template filled for its surface, run by hand through the host's agent tool at most four at a time, over an exact export of content commit 74165cf97423b0a2a2345864b937fbe2aa709702 with the binary built from it. The pair's findings were merged by location (the file:line a finding names, first kept), and each finding names who raised it. 8 discrepancies after merging: 8 in brief prose and 0 on a user-facing page, each deferred as its own captured record named in its note."
+}

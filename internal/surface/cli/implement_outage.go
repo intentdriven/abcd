@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/implement"
+	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -180,7 +181,15 @@ func newImplementOutageProbeCommand(asJSON *bool) *cobra.Command {
 			// would otherwise prefix it with a message the rendered output already
 			// says.
 			exit := 0
+			var tripped error
 			err := withOutageRun("probe", session, func(run *implement.Run) error {
+				// The network probe reaches the remote through the repository's
+				// own transport settings: the run tripwire of every run in
+				// progress in the checkout is checked first, and a change
+				// refuses the probe (exit 2) before it runs.
+				if tripped = loop.ConfigTripwire(run.RepoRoot); tripped != nil {
+					return nil
+				}
 				p := implement.Prober{Network: outageNetworkProbe(run.RepoRoot), Model: verdict}
 				out, err := run.Outage().ProbeIfDue(session, p)
 				var wait *implement.OutageWaitError
@@ -202,6 +211,9 @@ func newImplementOutageProbeCommand(asJSON *bool) *cobra.Command {
 				}
 				return nil
 			})
+			if err == nil && tripped != nil {
+				return &exitError{Code: 2, Msg: "abcd implement outage probe: " + termsafe.Sanitize(tripped.Error()) + " (nothing probed)"}
+			}
 			if err == nil && exit != 0 {
 				return &exitError{Code: exit}
 			}

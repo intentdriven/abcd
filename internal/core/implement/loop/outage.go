@@ -145,6 +145,11 @@ func outageFor(repoRoot, runID string, o Options) (*outageGate, error) {
 		return nil, outageUnreadable(err)
 	}
 	if g.probeDue() {
+		// The probe reaches the remote through the repository's own transport
+		// settings, so the run tripwire is checked right before it.
+		if err := configTripwire(repoRoot, runID); err != nil {
+			return nil, err
+		}
 		probe := o.NetworkProbe
 		if probe == nil {
 			probe = implement.RemoteProbe(repoRoot)
@@ -319,7 +324,7 @@ func netFailure(stage Stage, lane, what string, err error) *Refusal {
 	if err == nil || !implement.IsNetworkFailure(err.Error()) {
 		return nil
 	}
-	r := contend(string(stage), "", lane, lane+" lost the network at "+what+": "+fsutil.RedactHome(err.Error()),
+	r := contend(string(stage), "", lane, lane+" lost the network at "+what+": "+gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error())),
 		"keep to offline work; the run waits on the shared network probe and the lane retries once it proves the network back")
 	r.outage = &outageReport{service: implement.ServiceNetwork, kind: implement.OutageTool, lane: lane, what: what}
 	return r

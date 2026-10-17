@@ -4,17 +4,21 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"unicode"
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/record/match"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 )
 
 // consistency.go is the ledger half of the intent consistency pass (itd-48,
 // spc-2609211921272106): the pass files each validated finding as one issue
 // with the report as its evidence, and a finding an open record already holds
-// is linked to that record rather than filed twice.
+// is linked to that record rather than filed twice. Since G1 of
+// itd-2609291923559186 the filed record carries the finding's stable key
+// (`finding_ref:`), so the same contradiction found on a later run links to it
+// by key, and one whose record was resolved or won't-fixed is marked addressed
+// and files nothing.
 //
 // It lives here rather than in the intent store because the ledger reads
 // intents: the intent package validates and writes the report, and takes the
@@ -26,21 +30,37 @@ import (
 // files, so a finding that doubles a record in other words is filed with a
 // typed link naming it; nil files unmatched.
 func IngestConsistency(repoRoot string, payload []byte, date string, mc *match.Config) (intent.ConsistencyIngestResult, error) {
-	var open []Issue
+	return IngestConsistencyChunks(repoRoot, [][]byte{payload}, date, mc)
+}
+
+// IngestConsistencyChunks is IngestConsistency over an overflowing emit's
+// chunk set: one payload per chunk (itd-2609291923559186, A4). The set is
+// refused, with nothing filed and no report written, unless it holds exactly
+// one valid payload for every chunk of one emit, and findings that share a key
+// across chunks are filed once.
+func IngestConsistencyChunks(repoRoot string, payloads [][]byte, date string, mc *match.Config) (intent.ConsistencyIngestResult, error) {
+	var ledger, open []Issue
 	var filedHere []string
 	loaded := false
-	// The open records are read once, on the first finding, and only records
-	// that were open BEFORE this pass count: two findings of one pass that
-	// share an end are two findings, not one.
-	loadOpen := func() error {
+	// The ledger is read once, on the first finding, and only records that
+	// were in it BEFORE this pass count: two findings of one pass that share an
+	// end are two findings, not one. Every status folder is read, because a
+	// resolved or won't-fix record carrying a finding's key is what makes the
+	// finding addressed; the prose match reads the open records alone.
+	loadLedger := func() error {
 		if loaded {
 			return nil
 		}
-		list, err := List(ListRequest{RepoRoot: repoRoot, State: StateOpen})
+		list, err := List(ListRequest{RepoRoot: repoRoot, State: StateAll})
 		if err != nil {
 			return err
 		}
-		open, loaded = list.Issues, true
+		ledger, loaded = list.Issues, true
+		for _, iss := range ledger {
+			if iss.Status == StateOpen {
+				open = append(open, iss)
+			}
+		}
 		return nil
 	}
 	filed := func(f intent.ConsistencyFinding, reportRel string) CaptureRequest {
@@ -61,20 +81,21 @@ func IngestConsistency(repoRoot string, payload []byte, date string, mc *match.C
 			// finding's own words: the ends' paths, the class line and the
 			// evidence line are shared by every finding of a pass. The
 			// records this pass has filed are not compared, for the reason
-			// loadOpen gives.
+			// loadLedger gives.
 			Match:       mc,
 			MatchText:   f.Summary + "\n\n" + f.Explanation,
 			MatchExcept: slices.Clone(filedHere),
+			FindingRef:  f.Key,
 		}
 	}
-	// A finding an open record already holds is linked, and writes nothing, so
-	// only a finding that would be FILED is held to the gate — as the record
-	// it would be filed as: its free-text frontmatter, then its body.
+	// A finding a record already holds is linked or addressed, and writes
+	// nothing, so only a finding that would be FILED is held to the gate — as
+	// the record it would be filed as: its free-text frontmatter, then its body.
 	check := func(f intent.ConsistencyFinding, reportRel string) error {
-		if err := loadOpen(); err != nil {
+		if err := loadLedger(); err != nil {
 			return err
 		}
-		if openRecordHolding(open, f) != "" {
+		if _, held := recordKeyed(ledger, f.Key); held || openRecordHolding(open, f) != "" {
 			return nil
 		}
 		req := filed(f, reportRel)
@@ -86,9 +107,17 @@ func IngestConsistency(repoRoot string, payload []byte, date string, mc *match.C
 			[]citedPart{{what: fmt.Sprintf("consistency finding %d", f.Number), text: text}})
 	}
 	filer := func(f intent.ConsistencyFinding, reportRel string) (intent.ConsistencyFiling, error) {
-		if err := loadOpen(); err != nil {
+		if err := loadLedger(); err != nil {
 			return intent.ConsistencyFiling{}, err
 		}
+		if iss, held := recordKeyed(ledger, f.Key); held {
+			if iss.Status == StateOpen {
+				return intent.ConsistencyFiling{IssueID: iss.ID, Linked: true}, nil
+			}
+			return intent.ConsistencyFiling{IssueID: iss.ID, Addressed: true, Folder: statusDirName[iss.Status]}, nil
+		}
+		// A record filed before keys existed carries none; the prose match
+		// still links it, and writes nothing, so no key is back-filled.
 		if id := openRecordHolding(open, f); id != "" {
 			return intent.ConsistencyFiling{IssueID: id, Linked: true}, nil
 		}
@@ -100,7 +129,7 @@ func IngestConsistency(repoRoot string, payload []byte, date string, mc *match.C
 		return intent.ConsistencyFiling{IssueID: res.ID, Match: res.Match}, nil
 	}
 	return intent.IngestConsistency(intent.ConsistencyIngestRequest{
-		RepoRoot: repoRoot, Payload: payload, Date: date, File: filer, Check: check,
+		RepoRoot: repoRoot, Payloads: payloads, Date: date, File: filer, Check: check,
 	})
 }
 
@@ -124,6 +153,33 @@ func endLocator(e intent.ConsistencyEnd) string {
 		return fmt.Sprintf("%s:%d", e.Path, e.Line)
 	}
 	return e.Path
+}
+
+// recordKeyed returns the record carrying key, in this order: the first open
+// record (in ledger order) that carries it, else the first resolved or won't-fix
+// one. An open record wins because the finding is still being answered there;
+// a closed one means it was answered already. The bool is false when no record
+// carries the key, or the key is empty.
+func recordKeyed(ledger []Issue, key string) (Issue, bool) {
+	if key == "" {
+		return Issue{}, false
+	}
+	var closed *Issue
+	for i, iss := range ledger {
+		if iss.FindingRef != key {
+			continue
+		}
+		if iss.Status == StateOpen {
+			return iss, true
+		}
+		if closed == nil {
+			closed = &ledger[i]
+		}
+	}
+	if closed != nil {
+		return *closed, true
+	}
+	return Issue{}, false
 }
 
 // openRecordHolding returns the first open record (in ledger order) that names
@@ -161,25 +217,6 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-// namesID reports whether text names id as a whole token: `itd-4` is not named
-// by `itd-48`, nor by `xitd-4`.
-func namesID(text, id string) bool {
-	if id == "" {
-		return false
-	}
-	for i := 0; ; {
-		k := strings.Index(text[i:], id)
-		if k < 0 {
-			return false
-		}
-		start, end := i+k, i+k+len(id)
-		before := start == 0 || !isIDRune(rune(text[start-1]))
-		after := end == len(text) || !unicode.IsDigit(rune(text[end]))
-		if before && after {
-			return true
-		}
-		i = start + 1
-	}
-}
-
-func isIDRune(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '-' }
+// namesID reports whether text names id as a whole token: the one record-id
+// test (recordid.NamesID) record-lint's cross-document rules apply too.
+func namesID(text, id string) bool { return recordid.NamesID(text, id) }

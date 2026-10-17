@@ -58,7 +58,9 @@ func runBootstrapNoGo(t *testing.T, root string, fx *bootstrapFixture) (string, 
 	script := bootstrapFixtureScript(t, fx.base)
 	cmd := exec.Command(script)
 	cmd.Env = dedupEnvKeepLast(append([]string{
-		"PATH=" + bootstrapGoFreePath,
+		// The verifying gh stub first: the base system's own gh, where a
+		// runner has one, must not be the one asked (gh_stub_test.go).
+		"PATH=" + newGhStub(t, ghVerified).dir + string(os.PathListSeparator) + bootstrapGoFreePath,
 		"HOME=" + t.TempDir(),
 		"CLAUDE_PLUGIN_ROOT=" + root,
 	}, fx.env()...))

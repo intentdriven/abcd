@@ -282,7 +282,10 @@ on the current repository.
   place of `AGENTS.md`, is named as setup names it, as holding the owner's words
   or as only repeating `AGENTS.md`, and the report points at setup's offer to
   retire the second kind rather than acting on it.
-- **Adopts the conventions.** The three-tier layout; a merged, never
+- **Adopts the conventions.** The three-tier layout, with the shared tier's
+  decisions folder seeded (one file per decision, and a README so git keeps
+  the folder) and any single decisions log the repository already keeps left
+  untouched as frozen history; a merged, never
   overwritten, `AGENTS.md` carrying verified repo facts plus a marked
   working-conventions block; a registered identity block; and the commit gates.
   `AGENTS.md` is the one conventions file it writes: it makes no other tool's
@@ -306,7 +309,37 @@ on `PATH`, lands in that one run. It runs a second time, with the attribution
 flag, where the user opts in: that run installs the committed
 `prepare-commit-msg` prompt asking every commit to declare whether a tool
 assisted it, and the choice is recorded, so a later install without the flag
-keeps the hook. The identity verb's render is the follow-on surface and writes
+keeps the hook. The outbound flag is the same kind of opt-in, and one switch
+for two checks (iss-2610152024327989): it installs the committed `commit-msg`
+gate that refuses a live agent-session URL or a tool attribution footer in a
+commit message, and it records `outbound.forge: true` beside `outbound.hook:
+true`, so the shell guard also refuses a posting `gh pr` or `gh issue` command
+whose title, body or body file carries either shape (`forge-text-outbound`,
+iss-2610142210511831). The gate runs only the abcd binary the clone names in
+`git config --local abcd.binary` and lets the commit through with one warning
+when there is none (iss-2609250834251447); the explicit flag writes that key,
+clone-local, to the `PATH` copy whose build provenance the same run verified,
+and writes nothing, saying why, when there is no such copy, when the entry is
+the dev shim or when it lies inside the working tree (iss-2610152024267547).
+It never sets `core.hooksPath`, which chooses every hook git runs in the
+clone. So that the check runs with no manual step, the explicit flag alone also
+writes the same embedded template, marked as abcd's, as the clone's own
+`commit-msg` in the common git directory's `hooks/` (shared by every worktree),
+where no hooks path is set at any scope and nothing occupies that path; it
+never runs or calls the committed copy. Where a hooks path is set (the empty
+value included), or a `commit-msg` hook abcd did not write is there, it leaves
+that hook alone, saves the same template as `hooks/abcd-commit-msg`, a name git
+never runs, and one note says the check is not wired, why, and the line that
+calls that copy from the person's own hook, so the chained check fails open as
+the template does; a rerun leaves a current copy as it is, refreshes one only
+when it is byte for byte a template an earlier abcd wrote, and leaves an edited
+one, saying so. The binary is not
+re-verified at commit time: a swap of the `PATH` copy by the same account is out
+of scope. The two flags that each turned on one half are retired and refused
+naming the switch, and a repository that recorded one half under them, leaving
+the other key absent, raises `outbound.half_on`, which the next install
+completes; a key the repository set to `false` is its choice and raises only
+the advisory `outbound.half_chosen`. The identity verb's render is the follow-on surface and writes
 nothing: it proposes a correction as a diff, and adopting it is always the
 product thinker's move.
 
@@ -377,6 +410,12 @@ earlier version wrote wider is narrowed when abcd next writes it
 
 ```
 ~/.abcd.noindex/                       USER SCOPE — one per machine (machine-local state only)
+  .gitignore                     one * line, so a git repository in the home folder
+                                 never stages this folder; laid once, owner-only, and
+                                 never laid again once deleted (itd-2610140858048004);
+                                 an ignore file already there is left as it is and
+                                 only the marker is written
+  gitignore-laid                 the marker recording that lay
   history/                       the REGISTRY only: identity and lineage keyed on the
                                  root-commit SHA. ahoy owns it; it holds no transcripts
   transcripts/<root-sha>/        the redacted transcript corpus, a SIBLING of the
@@ -387,7 +426,13 @@ earlier version wrote wider is narrowed when abcd next writes it
   lab/<root-sha>/<lab-id>/       one lab's evidence: snapshot, probe records, findings,
                                  harvest; index.jsonl beside the homes registers them,
                                  never committed (itd-2609212137128014)
-  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
+  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout;
+                                 the build loop creates each lane's worktree here today
+                                 and ahoy reports one its repository no longer links;
+                                 the store's own verbs and its reclaim are NOT BUILT
+                                 (itd-2609091014076309)
+  notes/<root-sha>/              the store's notes archive: a reclaimed worktree's
+                                 .abcd/.work.local/, redacted, beside a manifest
                                  (NOT BUILT — itd-2609091014076309)
   runs/<root-sha>/               an autonomous run's shared state: the run log, one
                                  claim per record, one record per joined session
@@ -406,14 +451,22 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  (oracle.api.<provider>) the provider setup writes,
                                  and the only file a provider block may sit in;
                                  that write holds .config.json.lock beside it
-  memory/                        user-scope memory (personal, cross-project — a later
-                                 phase; the shipped store is repo-scope .abcd/memory/)
+  memory.json                    the machine layer of the memory notes: the person's
+                                 own notes, which agents write through the memory
+                                 verb and which it removes at the person's request;
+                                 each is tied to the repository it was written in
+                                 unless written for every project. The prompt router
+                                 recalls them beside the project's .abcd/memory.json,
+                                 a person's reviewed commit, whose note wins an id
+                                 both hold
+  memory/                        curated cross-project memory pages (a later phase;
+                                 nothing resolves it today)
   sources/                       the local sources corpus the library verb maintains
                                  and /abcd:library reads. Created only by its explicit
                                  init: absent means every other corpus verb and the
                                  page say so and stop
   load-limits                    the load check's per-machine limits (stray-minutes,
-                                 extreme-load), read-only; abcd never creates it
+                                 extreme-load, wait-load), read-only; abcd never creates it
                                  (itd-2609231434459890)
   credentials.json               the credential store's abcd home: external
                                  credentials by name (a hosting token, a provider's
@@ -442,8 +495,14 @@ earlier version wrote wider is narrowed when abcd next writes it
   cache-attestation              the bootstrap's record that the plugin data
                                  directory's cached binary matched the published
                                  release manifest, written only after that check
-                                 passed; install promotes the cache to the owned
-                                 PATH copy only when the record agrees
+                                 passed, naming the release; install promotes
+                                 the cache to the owned PATH copy only when the
+                                 record agrees and its release is no older than
+                                 release-mark
+  release-mark                   the newest release this machine has installed or
+                                 verified, raised by the bootstrap and recorded by
+                                 `abcd update`; lowered only by `abcd update <tag>`
+                                 naming an older tag (iss-2609151847117977)
   trusted-roots                  foreign-uid configuration roots the caller vouches for
   local-transcript-roots         checkouts whose transcripts are pulled in to
                                  <repo>/.abcd/.work.local/transcripts/ instead
@@ -461,12 +520,12 @@ are caller-controlled and line-oriented. `trusted-roots` and
 `local-transcript-roots` are the two that widen what a session will trust, so
 each is honoured only when it is a regular file this uid owns that no one else
 can write, and a file failing either test is ignored with one line saying which
-test it failed. `path-entry` and `cache-attestation` are held to the same test,
+test it failed. `path-entry`, `cache-attestation` and `release-mark` are held to the same test,
 by the install verb and by the hook shims that consult `path-entry`, and a record
 failing it vouches for nothing.
 `load-limits` is a setting, not a declaration, but it is read through the same
 guard as the two that widen trust, and a file failing it, or holding a line that
-does not parse, is reported loudly and both of its limits take their defaults.
+does not parse, is reported loudly and all three of its limits take their defaults.
 `rules.json` is read through that guard too, because it injects text into every
 session on the machine, but a file failing it — or failing to parse — fails the
 rules load outright: nothing injects until it is fixed, and the file is named on
@@ -690,6 +749,7 @@ approvals had before they listed anything.
 | `oracle-routing` | the offer of abcd's proposed model-tier routing table (itd-2609170822093401): the machine's `~/.abcd.noindex/oracle-routing.json`, then, as a separate question, the repository's `.abcd/config/oracle-routing.json` | the proposal said in counts (how many agents, how many at each tier, their fan-out bounds), naming no agent so the question fits, and each file written only on its own answered consent, the machine one owner-only; never under the approve-everything flag, and reported as optional work it skipped; a decline records nothing, so the next install offers again; uninstall leaves both files |
 | `drain-rule` | the offer of the repository's drain eligibility record (ruling BX2, itd-82): abcd's strict baseline as an accepted decision record carrying the four `drain_` fields, minted through the decision store's seam | the rule stated in one question and the record written only on a consent answered at a terminal; never under the approve-everything flag and never off a terminal, where neither its category nor the offer is asked (so a piped answer stream keeps its order), and reported as optional work it skipped; a decline records nothing, so the next install offers again; raised only while no accepted record states the rule, so a record stating it badly is never offered a second; only ever the baseline, never a loosened rule |
 | `conventions-file` | an agent tool's own conventions file at the repository root, read in place of `AGENTS.md` (itd-2610030814013772): `CLAUDE.md` and `.claude/CLAUDE.md` for Claude Code, `GEMINI.md` for Gemini CLI at its default settings, `.rules`, `.cursorrules` and `.github/copilot-instructions.md` for Zed, each classified with one guarded read inside the project and never through a link, and named as it is spelt on disk | a file holding the owner's words (or one that cannot be read whole) is never edited, moved, merged or removed and raises the warning `conventions.owner_file`, which install reports in `warnings`, printed first; a file that only repeats `AGENTS.md` (a link the system resolves to the root `AGENTS.md`, or, before there is one, a link whose target names it; that link's target saved as text, an exact copy, a lone `@AGENTS.md` line, or one blank once abcd's block is stripped; a dangling link's target, a saved target or an import counts only in its plain spelling, `AGENTS.md` or `../AGENTS.md`, never one stepping into a folder and back) raises the optional `conventions.retire_offered`, asked after the drain rule as one question per file (`retire`, `keep`, `later`, the default) and only at a terminal, as the drain rule is; on `retire` the file is classified again and removed from the working tree only if it still repeats, else left and named, and the removal takes the entry it checked, in its folder held open, so a folder swapped for a link cannot carry it elsewhere; keep and later record nothing, so the next install asks again |
+| `readme` | the README question (itd-2610031348087517), raised as the optional `readme.offered` while `readme.parts` is absent from `.abcd/config.json` | never asked as a category: the question pair is the consent, asked after `stepMarker` and before the status-line offer, only of a person at a terminal, in a run without the approve-everything flag, and only once `.abcd/config.json` exists; every other run reports the gap under optional work it skipped and names the install flag that answers the pair, which it does in any run; the chosen parts are written into `README.md` on every setup run (below) |
 | `user-state` | the registry entry, re-founding, stale or duplicate entries | guided; never auto-edit user-scope state, report extras read-only |
 
 **A docs-lint root that does not resolve is a report-only gap**
@@ -704,6 +764,37 @@ removes the file and nothing else, and `.abcd/docs-lint.json` is the person's
 file, which setup reads but never edits once it exists. A missing or unloadable
 config raises nothing here, and an entry that is not a plain path inside the
 repository is not looked up: the check's own refusal names both.
+
+**The README question pair** (itd-2610031348087517, spc-2610031704338417).
+Setup asks whether abcd keeps parts of the project's `README.md` current and,
+on a yes, which. The first question, keyed `readme`, stands alone with `yes`,
+`no` and `later`, the default. `yes` asks one question per offered part, keyed
+`readme.<part>` in the fixed order `release-badge`, `build-badge`,
+`abcd-badge`, `licence`, `links`, `contents`, each answered `on`, `off` or
+`later`; the two forge badges are offered only where `repo.visibility` is
+`public`, the owner's declaration, and a line above the parts says so where it
+is not. The defaults are on for the licence, the links and the offered forge
+badges, and off for the table of contents and the managed-with-abcd badge
+(decision 2). Each part's question carries, from core's help (`readmeHelp`,
+reached through `HelpIn`), what the part is, its current setting, the
+change-later line naming the install flag that answers the pair, and the exact
+lines it would write in this project or the reason it writes none, which the
+terminal prints through `HelpedPrompter` and the plugin page relays from the
+`readme` view the dry run carries while the gap is open, its `readme_tool`
+calls holding the first question alone and then the parts as tabs of at most
+four. The answer is `readme.parts`: a list, which every later setup run derives
+and rewrites; `[]` for `no`, never asked again, and abcd's parts already in the
+file removed where their text is still abcd's; nothing for `later`, at either
+question, so the next run asks again. That flag takes a comma-separated list of
+part names or `none`, refuses an unknown or empty name, or `none` beside a
+name, with exit 2 before anything is written, and answers the pair in any run,
+the approve-everything flag included. An answer that changes the stored set is
+echoed as a change (`readme.parts: licence -> licence,links`), and
+`readmeWouldChange` keeps an otherwise current repository from returning early
+while a part would be written, rewritten or removed. Without
+`.abcd/config.json` (the starter files declined) the answer has nowhere to be
+stored, so the pair is not asked, the flag's answer is refused into the notes,
+and the summary names the starter files first (iss-2610120505551170).
 
 **The artefact kind is a gap until it is declared** (itd-2609150819432059). A
 managed repository with no `.abcd/config/artefact.json` raises a required,
@@ -888,7 +979,11 @@ oracle backend, the deep-scan toggle and the repo visibility, select track-lates
 dogfood mode, proceed despite a stale running binary (the default refuses before
 the adoption question and before any write, the writability probe of a named
 `PATH` directory included, and names the rebuild fix), name the directory for the `PATH` entry,
-and opt the repo into the attribution prompt hook. A value flag (marker
+opt the repo into the attribution prompt hook and into both outbound checks,
+answer the README question with the parts abcd keeps current (or none), answer
+yes to installing a named missing tool, and answer the setup questions from an
+answers file, naming where an entry that names no place of its own was
+answered. A value flag (marker
 target, oracle backend, deep-scan toggle, visibility) is held to the
 `config-change` approval like any other settings change: one that would change
 a saved setting puts that approval even with no `config-change` gap, and a
@@ -977,6 +1072,45 @@ cannot land an artefact outside it. The private stub is written only where git
 reports the path as ignored. A clone arms the hooks once by pointing git at the
 hooks directory; abcd never sets that config, and no surface reports a committed
 hook as a running one.
+
+**The README parts** (spc-2610031704338417) are a named sibling of the
+conventions block: one marked place per part, opened by
+`<!-- BEGIN ABCD:<part> sha256=<hash> -->` and closed by
+`<!-- END ABCD:<part> -->`, the hash taken over the body abcd wrote
+(`readme_marker.go`). A named fence never matches the
+conventions block's pattern, and the conventions fences never match the named
+ones. Each part is derived from the project on this computer
+(`readme_derive.go`): the badges from the origin remote, github.com only, the
+build badge naming the one workflow file, or `ci.yml` or `ci.yaml` among
+several; the licence named only from an `SPDX-License-Identifier:` line in the
+first twenty lines or a forge-standard first line, else linked unnamed; the
+links from four guide files at the root, in `.github/` or in `docs/`; the
+contents from the README's live level-two and level-three headings outside
+every part. Each body then passes three checks in order (`readme_check.go`):
+the badge-address check (https, the one allowed host per badge and role,
+`img.shields.io` for the release and abcd badges' images, and a query only on
+the build badge's image with the forge's `branch` and `event` keys), the
+outbound scrub (`scanner.ScrubOutbound`), and the project's own docs-lint bans
+where it keeps `.abcd/docs-lint.json`; a part failing any one, or one that
+cannot be derived, is left out with the reason in the notes, and the derivation
+imports no network package. The write keeps a current part, rewrites a stale
+one where it stands, places an absent one beside the nearest present part, else
+after a leading frontmatter block, else after the first live level-one heading,
+else at the top, and removes one no longer chosen, or no longer derivable,
+whose body still matches its hash. A part whose body does not match its hash
+was edited by hand and is named with its line and left; a duplicated or
+unclosed fence refuses the whole write, naming the line. A run in which every
+part is current writes nothing, so the file's bytes and modification time are
+unchanged. With no `README.md` and a part to write, setup creates the file
+holding only the chosen parts, and records `readme.created: true` so uninstall
+may delete it once nothing but blank lines remains; the record is cleared once
+that file is gone, so it never vouches for a `README.md` the owner writes
+later. The fences name abcd, a mention outside `.abcd/` written only on the
+owner's yes (decision 2 extends ruling F by that consent). Uninstall
+(`uninstallReadme`) removes every part whose body matches its hash, whatever
+`readme.parts` says, leaves and names the others, and reports them in the
+receipt's `readme` field, which the text render prints as its `readme:` line
+("links removed; licence edited by hand, left").
 
 Two writes deserve their own note. The visibility step rewrites the ignore block
 under the config-change approval already given, with no confirmation of its own;
@@ -1214,6 +1348,7 @@ Sub-verbs: none.
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
 | `--oracle-backend` | string |
+| `--outbound` | bool |
 | `--readme-parts` | string |
 | `--refuse-adopt` | bool |
 | `--scan-deep` | string |

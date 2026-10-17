@@ -1,5 +1,5 @@
 // Package record is the read side of `abcd <id>`: dispatch on a record id —
-// iss-N, itd-N, spc-N, adr-N, and the ledger's adm-N, srp-N and rfm-N — and report what the record is, its links, and
+// iss-N, itd-N, spc-N, adr-N, dcn-N, and the ledger's adm-N, srp-N and rfm-N — and report what the record is, its links, and
 // the concrete next move for its lifecycle state (spc-26). It is a leaf
 // package over the capture, intent, and spec read paths plus a thin adr
 // reader; nothing imports it back, and nothing here writes or knows a
@@ -17,14 +17,18 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/readingitem"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // IDRe is the family gate: the only positional shapes the root command routes
@@ -34,7 +38,8 @@ import (
 // reframe spec (spc-2609020626048705) landed after it and inherited the gate
 // rather than making a second edit; describeReframe is that spec's. The
 // reading families rdi, dsp and rdg stay outside it, the residual spc-67 names.
-var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$`)
+// dcn joined with the decision records' family (spc-2610110931381316, step 1).
+var IDRe = regexp.MustCompile(`^(iss|itd|spc|adr|dcn|adm|srp|rfm)-[0-9]+$`)
 
 // adrsRelDir is where decisions live. A file is <N>-<slug>.md carrying an
 // `id: adr-N` frontmatter line, in either of the store's two id vintages: the
@@ -58,13 +63,20 @@ var ErrSkippedRecord = errors.New("skipped on read")
 // superseded_by) as present.
 type Description struct {
 	ID        string            `json:"id"`
-	Family    string            `json:"family"` // issue | intent | spec | adr | admission | surprise | reframe
+	Family    string            `json:"family"` // issue | intent | spec | adr | decision | admission | surprise | reframe
 	Title     string            `json:"title"`
 	Status    string            `json:"status"` // folder/bucket, directory-as-truth; admitted | recorded | open | complete for the folderless ledger families
 	Path      string            `json:"path"`
 	Links     map[string]string `json:"links,omitempty"`
 	NextMoves []string          `json:"next_moves,omitempty"`
+	// Reservation is an issue's or an intent's reservation on the shared
+	// remote as this checkout last fetched it, read from disk alone; nil for
+	// every other family and in a checkout with no remote named origin.
+	Reservation *claim.Line `json:"reservation,omitempty"`
 }
+
+// clock is the time a reservation is judged at; tests fix it.
+var clock = time.Now
 
 // The verb paths a next move may recommend — one closed list, so the
 // anti-drift test can assert every recommended verb resolves to a registered
@@ -122,9 +134,9 @@ func Describe(repoRoot, id string) (Description, error) {
 	}
 	switch m[1] {
 	case "iss":
-		return describeIssue(repoRoot, id)
+		return withReservation(repoRoot, id)(describeIssue(repoRoot, id))
 	case "itd":
-		return describeIntent(repoRoot, id)
+		return withReservation(repoRoot, id)(describeIntent(repoRoot, id))
 	case "spc":
 		return describeSpec(repoRoot, id)
 	case "adm":
@@ -133,8 +145,24 @@ func Describe(repoRoot, id string) (Description, error) {
 		return describeSurprise(repoRoot, id)
 	case "rfm":
 		return describeReframe(repoRoot, id)
+	case "dcn":
+		return describeDecision(repoRoot, id)
 	default:
 		return describeADR(repoRoot, id)
+	}
+}
+
+// withReservation attaches id's reservation line to a description that was
+// found: the view as last fetched, no fetch and no push (itd-2609091034175565).
+func withReservation(repoRoot, id string) func(Description, error) (Description, error) {
+	return func(d Description, err error) (Description, error) {
+		if err != nil {
+			return d, err
+		}
+		if l, ok := claim.LineFor(repoRoot, id, clock(), claim.Options{}); ok {
+			d.Reservation = &l
+		}
+		return d, nil
 	}
 }
 
@@ -149,16 +177,22 @@ func describeIssue(repoRoot, id string) (Description, error) {
 		if iss.ID != id {
 			continue
 		}
+		// capture.List returns the record's text as stored (its in-process
+		// callers compare it), so the description masks every record string
+		// it carries itself: both the text answer and `--json` print it, and
+		// encoding/json leaves a bidi override or a tag rune raw
+		// (iss-2610121653499543). PromotedInto below reads the raw issue.
+		shown := capture.ListResult{Issues: []capture.Issue{iss}}.Shown().Issues[0]
 		d := Description{
 			ID:     id,
 			Family: "issue",
-			Title:  firstLine(iss.Body, iss.Slug),
+			Title:  firstLine(shown.Body, shown.Slug),
 			Status: string(iss.Status),
-			Path:   iss.Path,
+			Path:   termsafe.Sanitize(iss.Path),
 			Links:  map[string]string{},
 		}
-		if len(iss.RelatedIntents) > 0 {
-			d.Links["related_intents"] = strings.Join(iss.RelatedIntents, ", ")
+		if len(shown.RelatedIntents) > 0 {
+			d.Links["related_intents"] = strings.Join(shown.RelatedIntents, ", ")
 		}
 		// Promoted is the two-sided join (itd-4 AC3), not the list: an issue may
 		// name an intent it was only related to.
@@ -166,7 +200,7 @@ func describeIssue(repoRoot, id string) (Description, error) {
 		if err != nil {
 			return Description{}, err
 		}
-		if rb := iss.ResolvedBy; rb != nil {
+		if rb := shown.ResolvedBy; rb != nil {
 			if rb.Intent != "" {
 				d.Links["resolved_by.intent"] = rb.Intent
 			}
@@ -483,7 +517,11 @@ func describeSpec(repoRoot, id string) (Description, error) {
 		d.NextMoves = []string{"none — closed; the linked intent is " + sp.Intent}
 		return d, nil
 	}
-	ready, err := intent.Ready(repoRoot, sp.Intent)
+	// The verdict `abcd intent ready` reports, open questions included, as the
+	// intent page reads it: plain Ready sent an intent with an unanswered
+	// question to "implement" while the verb and the build refused it
+	// (iss-2610112214150230).
+	ready, err := intent.ReadyWithQuestions(repoRoot, sp.Intent)
 	if err != nil {
 		// A one-sided link is the intent store's defect, not a dispatch fault:
 		// report the spec and point at the intent rather than failing the render.
@@ -548,7 +586,9 @@ func describeBundleSpec(repoRoot string, store spec.Store, sp spec.Spec, members
 	}
 	var unread, notReady []string
 	for _, m := range live {
-		ready, err := intent.Ready(repoRoot, m)
+		// Each member by the verdict `abcd intent ready` reports, open questions
+		// included, as describeSpec reads its one intent (iss-2610112214150230).
+		ready, err := intent.ReadyWithQuestions(repoRoot, m)
 		switch {
 		case err != nil:
 			unread = append(unread, "the linked intent "+m+" could not be read: "+err.Error())
@@ -621,6 +661,59 @@ func describeADR(repoRoot, id string) (Description, error) {
 	}
 	d.NextMoves = []string{"none — decisions are read"}
 	return d, nil
+}
+
+// describeDecision renders one decision record read-only: the decision in its
+// own words, its date, and where it sits. It reads the folder through its one
+// reader, decisions.List, as describeIssue reads the ledger through
+// capture.List, so the dispatch describes exactly the records the listing
+// shows. A padded or case-shifted spelling of the id is the handle the citation
+// gate accepts. A file the reader skipped is reported as skipped on read, with
+// the reader's reason, never as not found, since it plainly sits in the folder.
+// A decision is immutable, as every record is: its one next move is to record a
+// correction as a new decision.
+func describeDecision(repoRoot, id string) (Description, error) {
+	canonical := recordid.CanonCitedID(id)
+	if canonical == "" {
+		return Description{}, fmt.Errorf("record: malformed dcn id %q", id)
+	}
+	list, skipped, err := decisions.List(repoRoot)
+	if err != nil {
+		return Description{}, fmt.Errorf("record: %s: %w", canonical, err)
+	}
+	var hits []decisions.Decision
+	for _, d := range list {
+		if recordid.CanonCitedID(d.ID) == canonical {
+			hits = append(hits, d)
+		}
+	}
+	switch {
+	case len(hits) > 1:
+		paths := make([]string, 0, len(hits))
+		for _, d := range hits {
+			paths = append(paths, d.Path)
+		}
+		return Description{}, fmt.Errorf("record: %w", &recordid.AmbiguousIDError{ID: canonical, Paths: paths})
+	case len(hits) == 1:
+		dec := hits[0]
+		return Description{
+			ID:        canonical,
+			Family:    "decision",
+			Title:     termsafe.Sanitize(firstLine(dec.Text, dec.Slug)),
+			Status:    "recorded",
+			Path:      termsafe.Sanitize(dec.Path),
+			Links:     map[string]string{"date": dec.Date},
+			NextMoves: []string{"none — a decision is immutable; a correction is a new decision"},
+		}, nil
+	}
+	for _, sk := range skipped {
+		fileID, _, ok := recordid.SplitRecordFilename(decisions.Family, path.Base(sk.Path))
+		if ok && recordid.CanonCitedID(fileID) == canonical {
+			return Description{}, fmt.Errorf("record: %s is in the decisions folder but was %w: %s: %s",
+				canonical, ErrSkippedRecord, sk.Path, sk.Reason)
+		}
+	}
+	return Description{}, fmt.Errorf("record: %s not found in %s", canonical, decisions.RelDir)
 }
 
 // describeAdmission renders one admission read-only: the grounds as its title,

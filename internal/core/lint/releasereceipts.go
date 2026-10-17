@@ -22,8 +22,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
+	"github.com/intentdriven/abcd/internal/core/changelog"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -129,10 +131,17 @@ type ReceiptCheck struct {
 	DeriveError string `json:"derive_error,omitempty"`
 	// Problems is every refusal the gate would raise, one per gate.
 	Problems []ReceiptProblem `json:"problems"`
-	// Uncommitted lists working-tree changes under the receipts directory. The
-	// release job reads the committed tree, so a receipt that exists only here
-	// would pass locally and be missing there: any such change refuses.
+	// Uncommitted lists working-tree changes to the inputs of the verdict: the
+	// receipts directory, the ledger files of each record a deferred finding
+	// names, the record-lint config, the release-gate manifest, CHANGELOG.md
+	// and the release workflow. The release job reads the committed tree, so an
+	// input that differs here would pass locally and refuse there, or the other
+	// way round: any such change refuses. A ledger change no deferred finding
+	// names is no input, so a peer's concurrent capture is left alone.
 	Uncommitted []string `json:"uncommitted,omitempty"`
+	// Warnings are what the local check notices but does not refuse on,
+	// because the release job would not refuse on it either.
+	Warnings []string `json:"warnings,omitempty"`
 	// Pass is the verdict: exactly when the release job's receipt gate admits
 	// the same repository state.
 	Pass bool `json:"pass"`
@@ -185,7 +194,10 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 	check.Commit = commit
 
 	armed := ArmReceiptGate(cfg, commit, gate.Gates)
-	findings, err := checkReceiptGate(root, armed.Rules["receipt_gate"])
+	rc := armed.Rules["receipt_gate"]
+	deferred := map[string]bool{}
+	rc.onDeferred = func(id string) { deferred[id] = true }
+	findings, err := checkReceiptGate(root, rc)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}
@@ -195,29 +207,117 @@ func CheckReleaseReceipts(root string) (ReceiptCheck, error) {
 		})
 	}
 
+	// The release job checks out full history with its tags, and in the
+	// manifest era the gate judges the release's version by them. A clone with
+	// no release tag, while CHANGELOG.md names an earlier release than the one
+	// cut, cannot reach that verdict, so the local check refuses rather than
+	// pass a tree the release job may refuse. Outside the manifest era the
+	// tags decide nothing, so it only warns. A first release, with no earlier
+	// release to have tagged, is neither.
+	if msg, refuse, err := missingTagsProblem(root); err != nil {
+		return ReceiptCheck{}, err
+	} else if refuse {
+		check.Problems = append(check.Problems, ReceiptProblem{Path: "CHANGELOG.md", Message: msg})
+	} else if msg != "" {
+		check.Warnings = append(check.Warnings, msg)
+	}
+
 	// The repository's content filters are blanked: over receipts whose index
 	// stat no longer matches, git status re-hashes each one through
 	// filter.<name>.clean, a program the repository names
 	// (iss-2610090821548169). A filter git still insists on fails the check.
 	// --ignore-submodules=dirty keeps the status out of a checked-out
 	// submodule, whose own config the overrides cannot name
-	// (iss-2610091935327982).
+	// (iss-2610091935327982). The status reads every input of the verdict
+	// (ReceiptCheck.Uncommitted) and, in the issue ledger, keeps only the
+	// files a deferred finding's record id names: a deferred record is judged
+	// from the tree, so an uncommitted capture is as invisible to the release
+	// job as an uncommitted receipt, while another session's capture of an
+	// unrelated finding is neither the cutter's to commit nor read by the gate.
 	filters, err := gitutil.FilterOverrides(root)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}
-	status, err := gitutil.Run(root, append(filters, "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty", "--", reviewsSubdir)...)
+	issuesDir := filepath.ToSlash(issuesDirOf(rc))
+	args := append(filters, "-c", "core.quotePath=false", "status", "--porcelain", "--untracked-files=all", "--ignore-submodules=dirty",
+		"--", reviewsSubdir, recordLintConfigPath, releaseGateManifestPath, "CHANGELOG.md", ReleaseWorkflowPath, issuesDir)
+	status, err := gitutil.Run(root, args...)
 	if err != nil {
 		return ReceiptCheck{}, err
 	}
 	for _, line := range strings.Split(status, "\n") {
-		if line = strings.TrimSpace(line); line != "" {
+		if line = strings.TrimSpace(line); line != "" && verdictInput(line, issuesDir, deferred) {
 			check.Uncommitted = append(check.Uncommitted, line)
 		}
 	}
 
 	check.Pass = check.Derived && len(check.Problems) == 0 && len(check.Uncommitted) == 0
 	return check, nil
+}
+
+// missingTagsProblem names a clone that carries no vX.Y.Z release tag while
+// CHANGELOG.md names more than one dated release, and reports whether the
+// local check refuses on it: only when the tree carries the release-gate
+// manifest, where the gate judges the release's version by the tags. A
+// repository outside the manifest era — tagged without the v prefix, or never
+// tagged — is admitted by the release job, so it is a warning there, and
+// neither message promises that a fetch clears it.
+func missingTagsProblem(root string) (msg string, refuse bool, err error) {
+	releases, _, err := changelog.DatedReleases(root)
+	if err != nil || len(releases) < 2 {
+		return "", false, err
+	}
+	tags, err := releaseTags(root)
+	if err != nil {
+		return "", false, err
+	}
+	if len(tags) > 0 {
+		return "", false, nil
+	}
+	msg = "this clone carries no release tags (vX.Y.Z), though CHANGELOG.md names " + strconv.Itoa(len(releases)-1) + " earlier release(s)"
+	_, err = os.Lstat(filepath.Join(root, filepath.FromSlash(releaseGateManifestPath)))
+	switch {
+	case err == nil:
+		return msg + "; the release job reads the release tags to judge the release's version against the earlier releases, " +
+			"so this check cannot reach its verdict: if the clone was made without its tags, fetch them (git fetch --tags)", true, nil
+	case os.IsNotExist(err):
+		return msg + "; outside the release-gate manifest's era the tags decide nothing, so this is not a refusal", false, nil
+	default:
+		return "", false, err
+	}
+}
+
+// verdictInput reports whether a git status line concerns an input of the
+// receipt gate's verdict. Every path the status was asked about is one, except
+// in the issue ledger, where only a file whose name carries a deferred
+// finding's record id is: any other record is no input to the verdict.
+func verdictInput(line, issuesDir string, deferred map[string]bool) bool {
+	paths := statusPaths(line)
+	inLedger := false
+	for _, p := range paths {
+		if !strings.HasPrefix(p, issuesDir+"/") {
+			return true
+		}
+		inLedger = true
+		base := filepath.Base(p)
+		if issueFileRe.MatchString(base) && deferred[canonRecordID(issueIDRe.FindString(base))] {
+			return true
+		}
+	}
+	return !inLedger
+}
+
+// statusPaths returns the paths a `git status --porcelain` line names: one,
+// or a rename's two. The line may have lost its leading space to trimming, so
+// the status code is the first field rather than the first two bytes.
+func statusPaths(line string) []string {
+	_, rest, _ := strings.Cut(strings.TrimLeft(line, " "), " ")
+	rest = strings.TrimLeft(rest, " ")
+	var out []string
+	for _, p := range strings.Split(rest, " -> ") {
+		out = append(out, strings.Trim(p, `"`))
+	}
+	return out
 }
 
 // gateOfReceiptPath names the gate a finding's receipt path belongs to:

@@ -1564,7 +1564,7 @@ func TestContextStatusFree(t *testing.T) {
 		`(?i)\bphase [0-9]+(\.[0-9]+)? — `,
 		`(?i)^status:`,
 	}
-	msg := "CONTEXT.md is status-free (DECISIONS.md 2026-07-10): status lives in the live surfaces (CLI, ledger), not in orientation docs"
+	msg := "CONTEXT.md is status-free (dcn-2607100000000005): status lives in the live surfaces (CLI, ledger), not in orientation docs"
 
 	// (1) A CONTEXT.md carrying status claims fires exactly those lines as blockers.
 	t.Run("flags status claims", func(t *testing.T) {

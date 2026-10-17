@@ -204,3 +204,72 @@ func TestHistoryDiscardRefusesWithoutConfirmation(t *testing.T) {
 		t.Errorf("the discard did not say the deletion was irreversible:\n%s", got)
 	}
 }
+
+// TestSessionStartNamesAnOrphanedPileAndDiscardByRootSHAEmptiesIt is
+// iss-2609091717146700 end to end: a transcript staged under a checkout that
+// was then deleted can never be drained (the drain needs that repository's own
+// redaction settings), so the next session start names the pile, its size and
+// the commands that remove it, and discard by --root-sha, run from a different
+// repository with the checkout gone, empties it. The notice still carries no
+// session id from the other repository.
+func TestSessionStartNamesAnOrphanedPileAndDiscardByRootSHAEmptiesIt(t *testing.T) {
+	repo, _ := sessionEndRepo(t)
+	home := os.Getenv("HOME")
+	const goneSHA = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+	gone := filepath.Join(t.TempDir(), "deleted-checkout")
+	if err := os.MkdirAll(gone, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(abcdhome.Path(home, "history", goneSHA), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, "history", goneSHA, "meta.json"),
+		[]byte(`{"root_commit":"`+goneSHA+`","name":"deleted-project"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(abcdhome.Path(home, "history", "index.json"),
+		[]byte(`{"schema":1,"repos":[{"root_commit":"`+goneSHA+`","name":"deleted-project","path":`+mustJSON(t, gone)+`,"status":"active"}]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	first := stageRaw(t, gone, goneSHA, "sess-orphan-1", strings.Repeat("raw transcript text\n", 100))
+	second := stageRaw(t, gone, goneSHA, "sess-orphan-2", "more raw text\n")
+	if err := os.RemoveAll(gone); err != nil {
+		t.Fatal(err)
+	}
+
+	_, stderr := runHook(t, `{"session_id":"s","hook_event_name":"SessionStart","cwd":`+
+		mustJSON(t, repo)+`}`, "hook", "session-start")
+	for _, want := range []string{
+		"deleted-project",
+		"UNREDACTED",
+		"abcd history staged --root-sha " + goneSHA,
+		"abcd history discard --root-sha " + goneSHA + " <file> --yes",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the orphaned pile's notice lacks %q:\n%s", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, "sess-orphan") {
+		t.Errorf("the notice leaked the gone repository's session ids:\n%s", stderr)
+	}
+
+	t.Chdir(repo)
+	listing := string(runCLI(t, "history", "staged", "--root-sha", goneSHA))
+	for _, p := range []string{first, second} {
+		name := filepath.Base(p)
+		if !strings.Contains(listing, name) {
+			t.Errorf("history staged --root-sha does not show the file name to discard, %s:\n%s", name, listing)
+		}
+		if out, err := runCLIErr(t, "history", "discard", "--root-sha", goneSHA, name); err == nil {
+			t.Fatalf("discard by root SHA ran without --yes:\n%s", out)
+		}
+		runCLI(t, "history", "discard", "--root-sha", goneSHA, name, "--yes")
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("discard --root-sha left %s in place", name)
+		}
+	}
+	survey := string(runCLI(t, "history", "staged", "--all-repos"))
+	if strings.Contains(survey, "deleted-project") {
+		t.Errorf("the orphaned pile is still reported after discarding it:\n%s", survey)
+	}
+}

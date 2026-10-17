@@ -23,8 +23,9 @@ func writeWorkflow(t *testing.T, root, body string) {
 // TestReceiptsProtocolNamesTheGatesTheCommitAndTheTwoCommitShape is itd-93
 // AC8: the emit step ends with the receipts protocol as a numbered checklist —
 // the semantic gates to run (read from the release workflow, the list the
-// release job enforces), the commit to key the receipts to, and the two-commit
-// branch shape — so a first-time operator learns it from the verb.
+// release job enforces), the commit to key the receipts to, the branch shape,
+// and the capture each deferred finding needs after the receipts — so a
+// first-time operator learns it from the verb.
 func TestReceiptsProtocolNamesTheGatesTheCommitAndTheTwoCommitShape(t *testing.T) {
 	root := t.TempDir()
 	writeWorkflow(t, root, "jobs:\n  verify:\n    steps:\n      - run: |\n"+
@@ -42,8 +43,11 @@ func TestReceiptsProtocolNamesTheGatesTheCommitAndTheTwoCommitShape(t *testing.T
 	for _, want := range []string{
 		"docs-currency-reviewer", "iss35-brief-surface-crosscheck", // the gates to run
 		"content commit", ".abcd/work/reviews/<content-sha>/<gate>.json", // the commit to key receipts to
-		"exactly two commits",  // the branch shape
-		"abcd launch receipts", // the local proof before merge
+		"the roll, then the receipts naming it", // the branch shape
+		"fixed, invalid or deferred",            // the closed disposition vocabulary
+		"its own open issue record",             // a deferral is its own capture
+		"after the receipts",                    // where the captures land
+		"abcd launch receipts",                  // the local proof before merge
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("protocol must carry %q; steps:\n%s", want, all)

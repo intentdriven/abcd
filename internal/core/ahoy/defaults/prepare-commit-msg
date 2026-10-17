@@ -17,9 +17,18 @@
 #     Assisted-by: <Vendor>:<model-version>
 #     Assisted-by: None
 #
-# Point this repo's hooks at the directory holding this file, once per clone:
+# A committed hook is not a running hook until git runs the directory holding
+# this file. What that takes, once per clone, turns on the hooks directory git
+# runs in the clone, which `abcd ahoy --json` reports as banlist.hooks_path:
 #
-#     git config core.hooksPath .githooks
+#   - `unarmed` — point the clone's hooks at the committed directory:
+#
+#         git config core.hooksPath .githooks
+#
+#   - `foreign` — a global or system hooks dispatcher is in force. Leave it: a
+#     local core.hooksPath would shadow it in this clone. Have the dispatcher
+#     call this hook in .githooks/.
+#   - `armed` — nothing to set: git already runs this clone's .githooks/.
 set -euo pipefail
 # The environment pin the sibling name guard uses, for the same reasons: an
 # inherited xtrace would trace this hook's handling of a message that is not yet

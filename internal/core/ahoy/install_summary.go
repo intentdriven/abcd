@@ -29,12 +29,17 @@ const (
 	writeGitignore               writeKind = "gitignore"
 	writeLocalTier               writeKind = "local-tier"
 	writeRecordTiers             writeKind = "record-tiers"
-	writeDecisionsLedger         writeKind = "decisions-ledger"
+	writeDecisionsFolder         writeKind = "decisions-folder"
 	writeDevelopmentReadme       writeKind = "development-readme"
 	writeNameGuard               writeKind = "name-guard"
 	writePrivateNames            writeKind = "private-names"
 	writeDocsCheck               writeKind = "docs-check"
 	writeAttributionHook         writeKind = "attribution-hook"
+	writeOutboundHook            writeKind = "outbound-hook"
+	writeOutboundForge           writeKind = "outbound-forge"
+	writeOutboundBinary          writeKind = "outbound-binary"
+	writeOutboundShim            writeKind = "outbound-shim"
+	writeOutboundChain           writeKind = "outbound-chain"
 	writeSessionStore            writeKind = "session-store"
 	writeConventionsBlock        writeKind = "conventions-block"
 	writeConventionsBlockRemoved writeKind = "conventions-block-removed"
@@ -56,8 +61,8 @@ const (
 // allWriteKinds is every kind, in the order the summary lists them: the
 // repository's own files first, then this machine, then the optional extras.
 var allWriteKinds = []writeKind{
-	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsLedger, writeNameGuard, writePrivateNames,
-	writeDocsCheck, writeAttributionHook, writeRules, writeConventionsBlock,
+	writeSettings, writeSetupRecord, writeGitignore, writeLocalTier, writeRecordTiers, writeDevelopmentReadme, writeDecisionsFolder, writeNameGuard, writePrivateNames,
+	writeDocsCheck, writeAttributionHook, writeOutboundHook, writeOutboundForge, writeOutboundBinary, writeOutboundShim, writeOutboundChain, writeRules, writeConventionsBlock,
 	writeConventionsBlockRemoved, writeReadmeParts, writeReadmeCreated, writeReadmePartsRemoved, writeToolFileRetired, writeGitIdentity, writeIdentityPin, writeArtefactKind, writeCommandEntry, writeSessionStore,
 	writeStatusLine, writeStatusLineBackup, writeRouting, writeDrainRule,
 }
@@ -94,10 +99,10 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		Why:    "git keeps a folder only once a file is in it, so the folder now reaches every clone of the repository.",
 		Action: "Commit it. Rewrite it for this repository whenever you like.",
 	},
-	writeDecisionsLedger: {
-		What:   "Started .abcd/work/DECISIONS.md, an empty log for the decisions made in this repository.",
-		Why:    "A decision written there is committed, so it survives a fresh clone and the next session can find it.",
-		Action: "Commit it. Add one dated line per decision, newest last, and never edit an old line.",
+	writeDecisionsFolder: {
+		What:   "Started .abcd/work/decisions/, the folder for the decisions made in this repository, with a README saying what it holds.",
+		Why:    "Each decision is a file of its own there, committed, so it survives a fresh clone, the next session can find it, and two branches that each record one merge without a conflict.",
+		Action: "Commit it. Record a decision with abcd decide \"<text>\", and list them with abcd decide.",
 	},
 	writeNameGuard: {
 		What:   "Added a check that runs before every commit and merge and stops one that contains a name you have banned.",
@@ -118,6 +123,31 @@ var writeKindHelp = map[writeKind]SummaryItem{
 		What:   "Added a commit-message prompt that asks every commit to say whether an AI tool helped write it.",
 		Why:    "It keeps an honest record of AI assistance in the repository's history.",
 		Action: "Nothing. Answer the prompt when you commit.",
+	},
+	writeOutboundHook: {
+		What:   "Added a commit-message check that stops a commit whose message carries a live AI-session link or an AI tool's sign-off line.",
+		Why:    "Once pushed, either one can be removed from the repository's history only by rewriting it.",
+		Action: "In each clone, run abcd ahoy install --outbound once: it tells the check where the abcd it verified is and, where git has no hooks path set and no commit-msg hook of its own, places abcd's copy of the check in the hooks directory the clone's worktrees share (.git/hooks in the main checkout); a note says why when it could do neither. Until a clone names an abcd, the check warns and lets each commit through.",
+	},
+	writeOutboundForge: {
+		What:   "Switched on a check that stops your AI assistant posting a pull request, issue or comment whose text carries a live AI-session link or an AI tool's sign-off line.",
+		Why:    "The forge keeps the earlier version of anything posted, so either one cannot be taken back once it is sent.",
+		Action: "Nothing. Your assistant is told what to remove when a post is stopped.",
+	},
+	writeOutboundBinary: {
+		What:   "Told this clone's commit-message check where abcd is: abcd.binary in .git/config now names the abcd command this install verified.",
+		Why:    "The check runs only an abcd named by an absolute path outside the repository, never one found on the command path or in the repository's own files.",
+		Action: "Nothing. It is this clone's own setting and is never committed; to undo it, run git config --local --unset abcd.binary.",
+	},
+	writeOutboundShim: {
+		What:   "Switched on this clone's commit-message check: abcd's own copy of it is now the commit-msg hook in the hooks directory the clone's worktrees share (.git/hooks in the main checkout), which git runs on every commit.",
+		Why:    "No hooks path was set and no commit-msg hook was there, so this needed no setting changed; the copy runs only the abcd that abcd.binary names, never anything the repository carries.",
+		Action: "Nothing. It is this clone's own hook and is never committed; abcd never replaces a commit-msg hook it did not write. The abcd it runs is not checked again at commit time. To undo it, delete hooks/commit-msg in the directory git rev-parse --git-common-dir names.",
+	},
+	writeOutboundChain: {
+		What:   "Saved abcd's own copy of the commit-message check as hooks/abcd-commit-msg in the directory the clone's worktrees share (.git/hooks in the main checkout), a name git never runs.",
+		Why:    "git runs a commit-msg hook abcd did not write, or none at all, and abcd never replaces a hook or changes a hooks setting, so the check runs only once your own hook calls this copy.",
+		Action: "Add the line the note gives to the commit-msg hook git runs: it blocks a commit only when abcd refuses the message, and lets it through when abcd is missing. To undo it, delete hooks/abcd-commit-msg in the directory git rev-parse --git-common-dir names.",
 	},
 	writeRules: {
 		What:   "Created .abcd/rules.json, which switches abcd's working-rule reminders on or off for this repository.",
@@ -300,11 +330,47 @@ var optionalSkippedHelp = map[string]SummaryItem{
 	},
 }
 
+// readmeAwaitsConfigHelp explains the README question a run left unasked with
+// no .abcd/config.json to keep the answer in. Neither route the ordinary
+// action names works there: the question is not asked without the config, and
+// --readme-parts is refused, so the starter files come first
+// (iss-2610120505551170).
+var readmeAwaitsConfigHelp = SummaryItem{
+	What:   optionalSkippedHelp[ReadmeOfferGapID].What,
+	Why:    optionalSkippedHelp[ReadmeOfferGapID].Why,
+	Action: "The answer is kept in .abcd/config.json, which does not exist yet: run abcd ahoy install again and answer y to creating abcd's starter files, then answer the README question at a terminal, or pass --readme-parts " + ReadmePartsChoices + " to abcd ahoy install; none answers no and is not asked again.",
+}
+
 // remainingHelp explains the required work a run left outstanding.
 var remainingHelp = SummaryItem{
 	What:   "Some required set-up steps are still not done.",
 	Why:    "abcd does not work fully in this repository until they are.",
 	Action: "Run abcd ahoy install again and answer y to each question; abcd ahoy doctor lists the steps one by one.",
+}
+
+// unverifiedCopyHelp explains an owned PATH copy whose build provenance did not
+// verify, with the hand check for that file.
+func unverifiedCopyHelp(check, why string) SummaryItem {
+	if check == "" {
+		check = ghAttestationVerifyCommand("<the abcd on your PATH>", "")
+	}
+	if why != "" {
+		// The hand check is bound to the copy's own older tag, which a
+		// genuine older build passes, so it is qualified: a pass is not the
+		// copy being adopted.
+		return SummaryItem{
+			What:   "The abcd on your PATH is " + why + ", so it was not adopted; it was left as it is.",
+			Why:    "With no verified cache to compare it with, the copy names its own release, and a release older than the newest this machine has known is refused so an old build cannot stand in for a newer one.",
+			Action: "Reinstall the newest release with the install one-liner in the README, or run abcd update. You can check the copy by hand with `" + check + "`, but a pass proves only that it is a genuine build of that older release; it does not lift the newest-release floor, and the copy is still refused.",
+			Refs:   []string{UnverifiedCopyGapID},
+		}
+	}
+	return SummaryItem{
+		What:   "The abcd on your PATH could not be verified as a release build of abcd, so it was not adopted; it was left as it is.",
+		Why:    "Its recorded checksum shows only that it is the file that was installed; the build record the release workflow signed is what shows who built it.",
+		Action: "Check it by hand with `" + check + "`, or run abcd ahoy install again once GitHub's attestations API is reachable; if it fails, reinstall with the install one-liner in the README.",
+		Refs:   []string{UnverifiedCopyGapID},
+	}
 }
 
 // statusHeadline is the one sentence that opens the summary for each status.
@@ -370,15 +436,26 @@ func (r *InstallResult) explain() {
 		it.Refs = []string{c}
 		r.Summary = append(r.Summary, it)
 	}
-	if len(r.Remaining) > 0 {
+	var rest []string
+	for _, id := range r.Remaining {
+		if id == UnverifiedCopyGapID {
+			r.Summary = append(r.Summary, unverifiedCopyHelp(r.unverifiedCheck, r.unverifiedWhy))
+			continue
+		}
+		rest = append(rest, id)
+	}
+	if len(rest) > 0 {
 		it := remainingHelp
-		it.Refs = append([]string(nil), r.Remaining...)
+		it.Refs = rest
 		r.Summary = append(r.Summary, it)
 	}
 	for _, id := range r.OptionalSkipped {
 		it, ok := optionalSkippedHelp[id]
 		if !ok {
 			continue
+		}
+		if id == ReadmeOfferGapID && r.readmeAwaitsConfig {
+			it = readmeAwaitsConfigHelp
 		}
 		it.Refs = []string{id}
 		r.Summary = append(r.Summary, it)

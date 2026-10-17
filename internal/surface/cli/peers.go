@@ -5,8 +5,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
+	"time"
 
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -27,6 +30,67 @@ type peersOutput struct {
 	IDs        int             `json:"ids"`
 	Peers      []peers.Peer    `json:"peers"`
 	Skipped    []peers.Skipped `json:"skipped"`
+
+	reservationsBlock
+}
+
+// reservationsBlock is the reservations as a listing shows them, `abcd
+// peers`'s and `abcd status`'s alike: its fields sit in the listing's own
+// JSON object.
+type reservationsBlock struct {
+	// The reservations on the shared remote (itd-2609091034175565): every one
+	// as fetched just now, or as last fetched when the fetch failed.
+	Reservations []reservationRow `json:"reservations"`
+	LiveByHolder map[string]int   `json:"live_by_holder"`
+	// ReleaseHolds is every release being cut, which holds every other
+	// session's merge (itd-2609151838312703 C7, C8).
+	ReleaseHolds     []holdRow       `json:"release_holds"`
+	View             reservationView `json:"view"`
+	FetchError       string          `json:"fetch_error,omitempty"`
+	DerivedUnchecked string          `json:"derived_unchecked,omitempty"`
+}
+
+// reservationRow is one reservation as the listing shows it. Every value a
+// writer chose is terminal-safe here and quoted in the text form.
+type reservationRow struct {
+	Record          string   `json:"record"`
+	Holder          string   `json:"holder,omitempty"`
+	Copy            string   `json:"copy,omitempty"`
+	Footprint       []string `json:"footprint"`
+	ClaimedAt       string   `json:"claimed_at,omitempty"`
+	EffectiveExpiry string   `json:"effective_expiry"`
+	State           string   `json:"state"`
+	ReleasedBy      string   `json:"released_by,omitempty"`
+	Unreadable      string   `json:"unreadable,omitempty"`
+	HeldFromFetch   bool     `json:"held_from_fetch,omitempty"`
+	Commit          string   `json:"commit"`
+}
+
+// holdRow is one release being cut, as the listing shows it: its release and
+// subject, its holder (absent when the reservation is unreadable, with the
+// reason), whose copy it is when it is this one's, until when it holds,
+// whether it is this copy's own cut (own) or dated ahead with no first
+// sighting kept here (unsighted), neither of which the merge hold counts
+// (claim.MergeHolds), and the line it is shown by.
+type holdRow struct {
+	Release         string `json:"release"`
+	Subject         string `json:"subject"`
+	Holder          string `json:"holder,omitempty"`
+	Copy            string `json:"copy,omitempty"`
+	EffectiveExpiry string `json:"effective_expiry"`
+	Unreadable      string `json:"unreadable,omitempty"`
+	Own             bool   `json:"own"`
+	Unsighted       bool   `json:"unsighted"`
+	Text            string `json:"text"`
+}
+
+// reservationView dates the listing: when abcd last fetched the reservations
+// here and how long ago, both absent when nothing here stamped a fetch, and
+// whether the checkout has a remote named origin to fetch them from.
+type reservationView struct {
+	Origin     bool   `json:"origin"`
+	FetchedAt  string `json:"fetched_at,omitempty"`
+	AgeSeconds *int64 `json:"age_seconds"`
 }
 
 // newPeersCommand builds the `peers` verb — the front door onto
@@ -48,10 +112,26 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 			"whose common dir is another repository's, or one whose ledger holds an id in\n" +
 			"two status folders is named with the reason and not read; a gone or refused\n" +
 			"worktree's branch is then read from the object store instead.\n\n" +
-			"Strictly read-only: it writes nothing, takes no lock, and fetches nothing.\n" +
+			"Then the reservations on the shared remote: one fetch from origin of every\n" +
+			"abcd-reserved/ branch, with pruning, and of the default branch, then every\n" +
+			"reservation with its record, holder, footprint, effective expiry and state\n" +
+			"(live, expired, released, or unreadable with its reason and the end of its\n" +
+			"hold), each person's count of live reservations, and a line for each release\n" +
+			"being cut (a live rel-vX.Y.Z reservation, which holds every other session's\n" +
+			"merge until its tag is on origin). The fetch is the only network act, and it\n" +
+			"reads origin's release tags with the reservations; it updates the\n" +
+			"remote-tracking reservation branches and the release tags abcd keeps under\n" +
+			"refs/abcd/release-tags/, stamps when it ran in the local tier, with when it\n" +
+			"first fetched each reservation dated ahead of this computer's clock or\n" +
+			"undated, and nothing else is written. The release-tag refs are ordinary\n" +
+			"refs of this checkout, so git log --all lists the commits they name and\n" +
+			"git push --mirror would push them. A checkout with no remote named origin\n" +
+			"lists no reservations.\n" +
+			"When the fetch fails, the reservations are listed as last fetched, with that\n" +
+			"view's age, and the failure is named on stderr and in fetch_error.\n\n" +
 			"A worktree is named home-relative (~/...), or by its directory name when it\n" +
-			"sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 2\n" +
-			"outside a git checkout.",
+			"sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when\n" +
+			"the reservations could not be fetched; exit 2 outside a git checkout.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
@@ -67,7 +147,16 @@ func newPeersCommand(asJSON *bool) *cobra.Command {
 				return fmt.Errorf("abcd peers: %w", err)
 			}
 			out := peersView(rep)
-			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderPeers(w, out) })
+			failed := addReservations(root, &out, time.Now())
+			if err := render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderPeers(w, out) }); err != nil {
+				return err
+			}
+			if failed != "" {
+				// The last view is rendered; the failure is named and exits 1.
+				fmt.Fprintln(cmd.ErrOrStderr(), "abcd peers: "+failed)
+				return &exitError{Code: 1}
+			}
+			return nil
 		},
 	}
 }
@@ -94,6 +183,11 @@ func peersView(rep peers.Report) peersOutput {
 // with something to say, so a session reading it before every pick reads a
 // line or two, not one per worktree.
 func renderPeers(w io.Writer, out peersOutput) {
+	renderWorktreePeers(w, out)
+	renderReservations(w, out.reservationsBlock)
+}
+
+func renderWorktreePeers(w io.Writer, out peersOutput) {
 	if out.Live == 0 && len(out.Skipped) == 0 {
 		fmt.Fprintln(w, "abcd peers — no peers")
 		return
@@ -151,7 +245,7 @@ func skippedNote(sk []peers.Skipped) string {
 		counts[s.Reason]++
 	}
 	var parts []string
-	for _, reason := range []string{peers.SkipMerged, peers.SkipGone} {
+	for _, reason := range []string{peers.SkipMerged, peers.SkipGone, peers.SkipEmbargo} {
 		if n := counts[reason]; n > 0 {
 			parts = append(parts, fmt.Sprintf("%d %s", n, reason))
 		}
@@ -247,4 +341,152 @@ func peerHeldRefusal(cwd, prefix, id string, err error) error {
 		return &exitError{Code: ee.Code, Msg: msg}
 	}
 	return &peerHeldError{msg: msg, err: err}
+}
+
+// addReservations fetches the reservations from origin and adds them, as
+// judged now, to out. It returns the failure to name when the fetch failed
+// (the view is then the last one fetched) or the view could not be read, and
+// "" otherwise. A checkout with no remote named origin lists none.
+func addReservations(root string, out *peersOutput, now time.Time) (failed string) {
+	gap, err := claim.Fetch(root, claim.Options{Now: func() time.Time { return now }})
+	return out.fill(root, now, gap, err)
+}
+
+// fill adds to b the reservations as last fetched, judged now, after a fetch
+// that answered gap and err. It returns the failure to name, as
+// addReservations does.
+func (b *reservationsBlock) fill(root string, now time.Time, gap string, err error) (failed string) {
+	failed, ok := b.fillView(root, now, gap, err)
+	if !ok {
+		return failed
+	}
+	// The holds are judged by the merge hold's own rule, so the listing counts
+	// a release exactly as the land fence and `abcd land` do.
+	holds, herr := claim.JudgedHolds(root, now, claim.Options{Now: func() time.Time { return now }})
+	return b.fillHolds(failed, holds, herr)
+}
+
+// fillView is fill's reservations alone: ok is false when there are none to
+// list (no origin) or they could not be read, and failed then says why.
+func (b *reservationsBlock) fillView(root string, now time.Time, gap string, err error) (failed string, ok bool) {
+	out := b
+	out.Reservations, out.LiveByHolder, out.ReleaseHolds = []reservationRow{}, map[string]int{}, []holdRow{}
+	if errors.Is(err, claim.ErrNoOrigin) {
+		return "", false
+	}
+	out.View.Origin = true
+	if err != nil {
+		out.FetchError = termsafe.Sanitize(fsutil.RedactHome(err.Error()))
+		failed = out.FetchError
+	}
+	out.DerivedUnchecked = termsafe.Sanitize(fsutil.RedactHome(gap))
+	snap, verr := claim.View(root, now)
+	if verr != nil {
+		return joinFailed(failed, termsafe.Sanitize(fsutil.RedactHome(verr.Error()))), false
+	}
+	if !snap.FetchedAt.IsZero() {
+		out.View.FetchedAt = rfc3339(snap.FetchedAt)
+		age := int64(now.Sub(snap.FetchedAt).Seconds())
+		out.View.AgeSeconds = &age
+	}
+	for _, r := range snap.Reservations {
+		row := reservationRow{Record: r.Record, Holder: r.Holder, Copy: r.Copy, Footprint: make([]string, 0, len(r.Footprint)),
+			EffectiveExpiry: rfc3339(r.EffectiveExpiry), State: r.State, ReleasedBy: r.ReleasedBy,
+			Unreadable: r.Unreadable, HeldFromFetch: r.HeldFromFetch, Commit: r.Commit}
+		if !r.ClaimedAt.IsZero() {
+			row.ClaimedAt = rfc3339(r.ClaimedAt)
+		}
+		for _, f := range r.Footprint {
+			row.Footprint = append(row.Footprint, termsafe.Sanitize(f))
+		}
+		out.Reservations = append(out.Reservations, row)
+	}
+	out.LiveByHolder = snap.LiveByHolder()
+	return failed, true
+}
+
+// fillHolds adds the release holds, read once by whoever calls it (the
+// listing's own read, or `abcd status`'s ReadStatus), to the block; herr is
+// why they could not be read, joined to failed.
+func (b *reservationsBlock) fillHolds(failed string, holds []claim.Hold, herr error) string {
+	if herr != nil {
+		return joinFailed(failed, termsafe.Sanitize(fsutil.RedactHome(herr.Error())))
+	}
+	for _, h := range holds {
+		b.ReleaseHolds = append(b.ReleaseHolds, holdRow{Release: h.Release, Subject: h.Subject, Holder: h.Holder,
+			Copy: h.Copy, EffectiveExpiry: rfc3339(h.EffectiveExpiry), Unreadable: h.Unreadable, Own: h.Own,
+			Unsighted: h.Unsighted, Text: termsafe.Sanitize(h.Line())})
+	}
+	return failed
+}
+
+// joinFailed is failed with msg after it, "; " between them.
+func joinFailed(failed, msg string) string {
+	if failed != "" {
+		return failed + "; " + msg
+	}
+	return msg
+}
+
+// renderReservations is the reservations block of the text form: a heading
+// that dates the view, one line per reservation, and the live counts.
+func renderReservations(w io.Writer, out reservationsBlock) {
+	if !out.View.Origin {
+		fmt.Fprintln(w, "reservations — this checkout has no remote named origin")
+		return
+	}
+	switch {
+	case out.View.AgeSeconds == nil:
+		fmt.Fprintln(w, "reservations — nothing has been fetched here; the age of this view is unknown")
+	case out.FetchError != "":
+		fmt.Fprintf(w, "reservations — as of the fetch %s ago (%s); this fetch failed\n", ageText(*out.View.AgeSeconds), out.View.FetchedAt)
+	default:
+		fmt.Fprintf(w, "reservations — as of the fetch %s ago (%s)\n", ageText(*out.View.AgeSeconds), out.View.FetchedAt)
+	}
+	if len(out.Reservations) == 0 {
+		fmt.Fprintln(w, "  none")
+	}
+	for _, r := range out.Reservations {
+		var line string
+		switch r.State {
+		case claim.StateUnreadable:
+			line = fmt.Sprintf("  %s  unreadable (%s)  held until %s", r.Record, r.Unreadable, r.EffectiveExpiry)
+			if r.HeldFromFetch {
+				line += ", counted from when this copy first fetched it"
+			}
+		case claim.StateReleased:
+			line = fmt.Sprintf("  %s  released (%s)  %s", r.Record, strings.ReplaceAll(r.ReleasedBy, "-", " "), r.Holder)
+		default:
+			line = fmt.Sprintf("  %s  %s  %s  until %s", r.Record, r.State, r.Holder, r.EffectiveExpiry)
+		}
+		if r.Copy == claim.CopyThis {
+			line += "  (this copy)"
+		}
+		if len(r.Footprint) > 0 {
+			quoted := make([]string, len(r.Footprint))
+			for i, f := range r.Footprint {
+				quoted[i] = fmt.Sprintf("%q", f)
+			}
+			line += "  footprint " + strings.Join(quoted, ", ")
+		}
+		fmt.Fprintln(w, line)
+	}
+	for _, h := range out.ReleaseHolds {
+		fmt.Fprintln(w, "  "+h.Text)
+	}
+	if len(out.LiveByHolder) > 0 {
+		names := make([]string, 0, len(out.LiveByHolder))
+		for n := range out.LiveByHolder {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+		parts := make([]string, len(names))
+		for i, n := range names {
+			parts[i] = fmt.Sprintf("%s %d", n, out.LiveByHolder[n])
+		}
+		fmt.Fprintf(w, "  live: %s\n", strings.Join(parts, ", "))
+	}
+	if out.DerivedUnchecked != "" {
+		fmt.Fprintf(w, "  not checked: which records are finished on origin's default branch (%s)\n", out.DerivedUnchecked)
+	}
 }

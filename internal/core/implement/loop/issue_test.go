@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -26,8 +27,15 @@ const (
 // writer, so the record is one the reader accepts.
 func fileIssue(t *testing.T, repo *gittest.Repo, id string, sev capture.Severity, cat capture.Category, remedy string) {
 	t.Helper()
+	fileIssueAt(t, repo, id, sev, cat, remedy, "")
+}
+
+// fileIssueAt is fileIssue with the record's found_at; "" names none.
+func fileIssueAt(t *testing.T, repo *gittest.Repo, id string, sev capture.Severity, cat capture.Category, remedy, foundAt string) {
+	t.Helper()
 	if _, err := capture.Capture(capture.CaptureRequest{RepoRoot: repo.Root(), Text: "The renderer panics on an empty list (" + id + ")",
-		Severity: sev, Category: cat, Source: "manual-test", Slug: "renderer", FoundDuring: "the loop's tests", ForceID: id, Remedy: remedy}); err != nil {
+		Severity: sev, Category: cat, Source: "manual-test", Slug: "renderer", FoundDuring: "the loop's tests", FoundAt: foundAt,
+		ForceID: id, Remedy: remedy}); err != nil {
 		t.Fatalf("capture %s: %v", id, err)
 	}
 }
@@ -36,11 +44,23 @@ func fileIssue(t *testing.T, repo *gittest.Repo, id string, sev capture.Severity
 // issues filed, all committed on the default branch.
 func issueRepo(t *testing.T) *gittest.Repo {
 	t.Helper()
-	repo := briefRepo(t, agentsMarked)
+	return issueRepoAt(t, "")
+}
+
+// issueRepoRule writes the repository's own drain rule, uncommitted.
+func issueRepoRule(t *testing.T, repo *gittest.Repo) {
+	t.Helper()
 	repo.Write(drainrule.ADRsRelDir+"/2609300000000001-drain-rule.md",
 		"---\nid: adr-2609300000000001\nslug: drain-rule\nstatus: accepted\ndate: 2026-09-30\n"+drainrule.ProposalFrontmatter()+"---\n\n# The drain rule\n")
-	fileIssue(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy)
-	fileIssue(t, repo, majorIssue, capture.SeverityMajor, capture.Category("bug"), "A remedy for a major one.")
+}
+
+// issueRepoAt is issueRepo with every issue's found_at; "" names none.
+func issueRepoAt(t *testing.T, foundAt string) *gittest.Repo {
+	t.Helper()
+	repo := briefRepo(t, agentsMarked)
+	issueRepoRule(t, repo)
+	fileIssueAt(t, repo, eligibleIssue, capture.SeverityMinor, capture.Category("bug"), issueRemedy, foundAt)
+	fileIssueAt(t, repo, majorIssue, capture.SeverityMajor, capture.Category("bug"), "A remedy for a major one.", foundAt)
 	repo.Commit("the ledger")
 	return repo
 }
@@ -96,6 +116,35 @@ func TestAnIssueKeyOpensOneLaneWhoseBriefIsTheRecordAndItsRemedy(t *testing.T) {
 	for _, not := range []string{"## The spec:", "## The intent:"} {
 		if strings.Contains(string(brief), not) {
 			t.Errorf("an issue brief has no %q section", not)
+		}
+	}
+}
+
+// TestIssueBriefQuotesDecisionsNamingTheIssue is spc-2610110931381316 step 4:
+// an issue lane's brief quotes the decision records in the folder naming the
+// issue, and the entries of a frozen log naming it, and neither one naming
+// another record.
+func TestIssueBriefQuotesDecisionsNamingTheIssue(t *testing.T) {
+	repo := issueRepo(t)
+	repo.Write(decisions.RelDir+"/dcn-2610010000000001-guard-the-renderer.md",
+		decisionRecord("dcn-2610010000000001", "guard-the-renderer", "2026-10-01", "Guard the renderer first ("+eligibleIssue+")."))
+	repo.Write(decisions.FrozenLog, decisionsLog+"- 2026-09-30 — "+eligibleIssue+" waits for the drain.\n")
+	repo.Commit("decisions naming the issue")
+	brief := firstLaneBrief(t, repo, eligibleIssue)
+	for _, want := range []string{
+		"1 decision record(s) in `" + decisions.RelDir + "/` and 1 entry of the frozen log `" + decisions.FrozenLog + "` naming " + eligibleIssue,
+		"### Decision records in `" + decisions.RelDir + "/` naming " + eligibleIssue + "\n\n" +
+			"- dcn-2610010000000001: 2026-10-01 — Guard the renderer first (" + eligibleIssue + ").\n",
+		"### Entries of the frozen log `" + decisions.FrozenLog + "` naming " + eligibleIssue + "\n\n" +
+			"- 2026-09-30 — " + eligibleIssue + " waits for the drain.\n",
+	} {
+		if !strings.Contains(brief, want) {
+			t.Fatalf("the issue brief must carry %q:\n%s", want, brief)
+		}
+	}
+	for _, absent := range []string{"The run holds one lane", "The loop is a state file"} {
+		if strings.Contains(brief, absent) {
+			t.Fatalf("the issue brief quotes a decision naming another record, %q:\n%s", absent, brief)
 		}
 	}
 }
@@ -254,7 +303,7 @@ func TestAnIssueLaneLandsOnePullRequestThatResolvesItsIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", gh+string(os.PathListSeparator)+os.Getenv("PATH"))
-	start, err := Start(repo.Root(), eligibleIssue, Options{})
+	start, err := Start(repo.Root(), eligibleIssue, Options{noReserve: true})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -54,7 +54,7 @@ func TestRareMatchingWordOutranksACommonOne(t *testing.T) {
 		t.Fatal("the fixture does not make a raw count put the common words first")
 	}
 
-	ranked := Rank(items, prompt)
+	ranked := rankOf(items, prompt)
 	if len(ranked) != len(items) || ranked[0].Item.Key != "mem-2610111200000006" {
 		t.Fatalf("ranked %v, want the rare word's item first", rankedKeys(ranked))
 	}
@@ -72,7 +72,7 @@ func TestRecallFieldOutweighsBody(t *testing.T) {
 		item("mem-2610111200000002", []string{"token"}, "auth", "filler filler"),         // title: 3 + 2 + 2 = 7
 		item("mem-2610111200000003", []string{"token", "auth"}, "", "filler"),            // recall: 6 + 1 = 7
 	}
-	ranked := Rank(items, "the auth token")
+	ranked := rankOf(items, "the auth token")
 	want := []string{"mem-2610111200000003", "mem-2610111200000002", "mem-2610111200000001"}
 	if got := rankedKeys(ranked); !slices.Equal(got, want) {
 		t.Fatalf("ranked %v, want recall over title over body %v", got, want)
@@ -99,7 +99,7 @@ func TestTiesBreakOnScopeThenRecencyThenID(t *testing.T) {
 		mk("mem-2610111200000002", LayerProject, newer),
 		mk("mem-2610111200000005", LayerProject, time.Time{}),
 	}
-	ranked := Rank(items, "auth")
+	ranked := rankOf(items, "auth")
 	for _, r := range ranked[1:] {
 		if r.Score != ranked[0].Score {
 			t.Fatalf("the fixture's scores differ, so it tests no tie: %v", ranked)
@@ -116,12 +116,12 @@ func TestTiesBreakOnScopeThenRecencyThenID(t *testing.T) {
 func TestRankingIsDeterministicAcrossRuns(t *testing.T) {
 	items := goldenCorpus()
 	const prompt = "the auth tokens expire before the deploy"
-	want := fmt.Sprint(Rank(items, prompt))
+	want := fmt.Sprint(rankOf(items, prompt))
 	r := rand.New(rand.NewPCG(1, 2))
 	for i := 0; i < 50; i++ {
 		shuffled := slices.Clone(items)
 		r.Shuffle(len(shuffled), func(a, b int) { shuffled[a], shuffled[b] = shuffled[b], shuffled[a] })
-		if got := fmt.Sprint(Rank(shuffled, prompt)); got != want {
+		if got := fmt.Sprint(rankOf(shuffled, prompt)); got != want {
 			t.Fatalf("run %d ranked differently:\n%s\n---\n%s", i, got, want)
 		}
 	}
@@ -150,7 +150,7 @@ func TestRankingDecidesWhichItemsFitTheBudget(t *testing.T) {
 // TestRankReasonsAddUpToTheScore: each matched term names the fields it was
 // found in, and the contributions sum to the score.
 func TestRankReasonsAddUpToTheScore(t *testing.T) {
-	for _, r := range Rank(goldenCorpus(), "the auth tokens expire before the deploy") {
+	for _, r := range rankOf(goldenCorpus(), "the auth tokens expire before the deploy") {
 		sum := 0.0
 		for _, ts := range r.Terms {
 			if ts.Recall+ts.Title+ts.Body == 0 || ts.Contribution <= 0 {
@@ -199,7 +199,7 @@ func TestRankingGoldenScores(t *testing.T) {
 		"login fails after the token refresh",
 	} {
 		fmt.Fprintf(&b, "prompt: %s\n", prompt)
-		for _, r := range Rank(goldenCorpus(), prompt) {
+		for _, r := range rankOf(goldenCorpus(), prompt) {
 			fmt.Fprintf(&b, "  %s %.6f\n", r.Item.Key, r.Score)
 			for _, ts := range r.Terms {
 				fmt.Fprintf(&b, "    %s recall=%d title=%d body=%d %.6f\n", ts.Term, ts.Recall, ts.Title, ts.Body, ts.Contribution)
@@ -262,7 +262,7 @@ func TestAnItemLargerThanTheWholeBudgetDoesNotBlockTheRest(t *testing.T) {
 		item("page:fact_eng_huge.md", []string{"deploy", "kerberos"}, "Every kerberos deploy ever", huge),
 		item("mem-2610111200000002", []string{"deploy"}, "Deploys need the dry-run flag", "Pass it first."),
 	}
-	ranked := Rank(items, "deploy with kerberos")
+	ranked := rankOf(items, "deploy with kerberos")
 	if ranked[0].Item.Key != "page:fact_eng_huge.md" {
 		t.Fatalf("the fixture does not rank the huge page first: %v", rankedKeys(ranked))
 	}
@@ -302,7 +302,7 @@ func TestOneWordInTwoInflectionsIsOneTerm(t *testing.T) {
 			}
 		}
 	}
-	ranked := Rank([]Item{item("mem-2610111200000001", []string{"merge"}, "Merges need a review", "Ask first.")}, "merge before merging")
+	ranked := rankOf([]Item{item("mem-2610111200000001", []string{"merge"}, "Merges need a review", "Ask first.")}, "merge before merging")
 	if len(ranked) != 1 {
 		t.Fatalf("ranked = %+v", ranked)
 	}
@@ -315,4 +315,10 @@ func TestOneWordInTwoInflectionsIsOneTerm(t *testing.T) {
 	if len(found) != 1 {
 		t.Fatalf("the recall word was found under %d terms %v: %+v", len(found), found, ranked[0].Terms)
 	}
+}
+
+// rankOf is Rank over items tied to no repository, where no root is asked.
+func rankOf(items []Item, prompt string) []Ranked {
+	ranked, _ := Rank(items, prompt, nil)
+	return ranked
 }

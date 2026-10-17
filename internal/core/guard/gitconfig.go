@@ -280,11 +280,17 @@ func readGitConfig(prefix, args, valueFlags []string) gitConfigRead {
 
 	env := map[string]string{}
 	for _, tok := range prefix {
-		if !isAssignment(tok) {
-			continue
+		name, eq, appends, subscript, ok := splitAssignment(tok)
+		switch {
+		case !ok || subscript:
+			// An element of an array is not exported.
+		case appends:
+			// Appended to the environment's value, which the line does
+			// not fix.
+			env[name] = unknownText + tok[eq+1:]
+		default:
+			env[name] = tok[eq+1:]
 		}
-		eq := strings.IndexByte(tok, '=')
-		env[tok[:eq]] = tok[eq+1:]
 	}
 	if _, ok := env["GIT_CONFIG_GLOBAL"]; ok {
 		c.unread = true

@@ -2,12 +2,19 @@
 
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
 questions, records the answers, and gets on with it; `ahoy install
---attribution` writes one more key, and four further keys can be hand-set and
-are read but never written. Beyond those nine, the binary reads only keys a
-person opts into: the provider adapter's `oracle` keys and the interview's list
-style, both below, the implement loop's `pace`
-(`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
-and `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
+--attribution` writes one more key and `ahoy install --outbound` two more, and
+six further keys can be hand-set and are read but never written. Beyond those
+thirteen, the binary reads only keys a person opts into: the provider adapter's
+`oracle` keys (the reviewer route's `oracle.review` among them) and the
+interview's list style, both below, the implement loop's `pace`
+(`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
+keys (`internal/core/intent/consistency_config.go`), the reservation holder's
+`reservation.github_username`, read from the machine layer alone
+(`internal/core/claim/holder.go`), the load gate's `load.preflights`, read
+from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 or
+2 and 1 by default, never from a repository
+(`internal/core/implement/load_slots.go`), and the runner routes under `roles` and
+`runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
 answers, or an axis the design commits to and has not built.
 
@@ -19,13 +26,19 @@ shipped behaviour. Everything after them is **staged**, per the truth rule in
 
 ### The keys the binary reads
 
-Nine keys plus a `meta` block. Install asks about visibility, the docs target,
+Thirteen keys plus a `meta` block. Install asks about visibility, the docs target,
 the oracle backend, and the deep scan (the last only when visibility is private
 and the deep scanner is on `PATH`), and writes exactly those four values back.
-`attribution.hook` is written by `ahoy install --attribution`. The remaining four —
+`attribution.hook` is written by `ahoy install --attribution`, and
+`outbound.hook` and `outbound.forge` together by `ahoy install --outbound`, the
+one outbound switch; the shell guard reads `outbound.forge`, and an install
+completes a repository that records only one of the two and leaves the other
+absent, while a key set to `false` is the repository's choice and is left as it
+is. The remaining six —
 whether abcd should enable the forge's own secret scanning, the rules loader's
-refresh backstop, and the filing-time match's threshold and compared fields —
-are hand-set: the binary reads them and never writes them.
+refresh backstop, the filing-time match's threshold and compared fields, and
+whether `abcd land` pushes and queues — are hand-set: the binary reads them and
+never writes them.
 
 ```json
 {
@@ -59,6 +72,13 @@ are hand-set: the binary reads them and never writes them.
     "hook": true                        // the committed prepare-commit-msg prompt asking each commit to
                                         //   declare whether a tool assisted it
   },
+  "outbound": {
+    "hook": true,                       // the committed commit-msg gate refusing a session URL or a tool
+                                        //   footer; runs only the abcd `git config --local abcd.binary` names,
+                                        //   which --outbound sets, clone-local, to the copy it verified
+    "forge": true                       // the shell guard refuses a posting gh pr/issue command whose title,
+                                        //   body or body file carries either shape (forge-text-outbound)
+  },
   "rules": {
     "force_refresh_every_n": 15         // prompt-router refresh backstop (itd-3). The primary refresh is
                                         //   event-driven, on SessionStart and PreCompact, so this large
@@ -70,6 +90,10 @@ are hand-set: the binary reads them and never writes them.
                                         //   for a duplicates/refines link to be written
     "fields": ["issue.body", "intent.title", "intent.press_release"]
                                         // what each candidate offers; one or more of the three
+  },
+  "land": {                             // `abcd land` (04-surfaces/38-land.md)
+    "push": true,                       // push the branch once a preflight receipt names its head
+    "enqueue": true                     // arm and confirm its pull request where the merge gate allows
   }
 }
 ```
@@ -84,9 +108,21 @@ are refused naming the file, never passed over for the default. A refusal
 there never refuses a filing: the record is written unlinked and the verb says
 which key was refused.
 
+The `land` keys are read through the same reader, which claims the `land`
+namespace, but with a deliberately different precedence: every layer that
+holds a key is decoded and the values are ANDed, so off wins from any layer.
+`~/.abcd.noindex/config.json` can switch an outward act off for every
+repository on the machine and no repository's file switches it back on, as the
+rules loader's kill switch holds against a repository. `--no-push` and
+`--no-enqueue` add a flag-layer off for one run; no flag turns a key on. The
+repository layer is read in the working directory's checkout and in the landed
+branch's own, and both are ANDed; a home the reader refuses hides the machine
+layer and its offs, so both acts read as off. The verb names the layer and file
+that turned an act off.
+
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
-block. This repository's own config carries four of these blocks — `docs`, `meta`,
-`oracle` and `repo` — which is what an unremarkable managed repo looks like.
+block. This repository's own config carries five of these blocks — `docs`, `meta`,
+`oracle`, `outbound` and `repo` — which is what an unremarkable managed repo looks like.
 
 ### The provider adapter's keys
 
@@ -204,6 +240,48 @@ agent's steps there whatever tier the routing tables name, and only a `--route`
 overrides it for one run. The delegating verb sends such a step through the
 adapter itself and ingests the answer (spc-2609251028149555), and its receipt
 names the provider as the connection used.
+
+### The reviewer route's keys
+
+The RepoPrompt reviewer route (itd-6, spc-2609211950427074) reads two keys
+under `oracle` through the layered resolver, each validated when `implement
+step` reads it and refused loudly, naming the file and the key, rather than
+passed over for the default:
+
+```json
+{
+  "oracle": {
+    "review": "rp",                      // "host" (the bundled default) | "rp"; repo or machine,
+                                         //   the repository's file winning a key both set
+    "rp": {                              // MACHINE LAYER ONLY: ~/.abcd.noindex/config.json
+      "url": "http://127.0.0.1:7777/mcp",  // the MCP server's address: http or https to this
+                                           //   machine, no credentials, query or fragment
+      "tool": "oracle_send"              // optional: the tool a review is sent to
+    }
+  }
+}
+```
+
+- **`oracle.review` selects the route.** `host` keeps a build lane's reviews on
+  the host's own agents; `rp` sends the ruthless and security reviews to
+  RepoPrompt over MCP ([`02-adapters.md`](02-adapters.md)). Any other value is
+  refused. No flag sets it in this build.
+- **The server sits on the machine alone.** `oracle.rp` names the address a
+  review request (the lane's diff and its record) is sent to, so a
+  repository's `.abcd/config.json` declaring it is refused, as a provider block
+  is, and the URL is admitted only to localhost or a loopback address. A
+  refusal never quotes the URL, which could carry a credential. An unknown key
+  under `oracle.rp` is refused, and so is an `oracle.rp` with no `url`.
+- **The server block is read on the rp route alone.** With `oracle.review`
+  unset or `host`, `oracle.rp` is not read, so a fault in it refuses nothing in
+  a repository that never opted in; every refusal above is the rp route's.
+- **A route with no server here is not a fault.** A repository that sets
+  `oracle.review` to `rp` on a machine whose file names no `oracle.rp.url`
+  breaks nothing: each review the step hands out falls back to the host with a
+  receipt whose reason is `absent`.
+
+Unconfigured, nothing changes: every review runs on the host, and abcd never
+starts, installs or configures RepoPrompt, and never writes either key.
 
 ### The interview key
 
@@ -486,13 +564,34 @@ acts on the scope that applies.
 
 **User scope, `~/.abcd.noindex/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
-lab store, the staged worktree store, the run state an autonomous run's sessions share
+lab store, the worktree store (the build loop writes each lane's worktree
+there today; the store's own verbs and its reclaim are unbuilt) and its staged
+notes archive (`notes/<root-sha>/`, which nothing writes yet), the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
 ([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the machine layer of the layered configuration in `config.json`
-(its readers are the provider adapter's and the filing-time match's `match`
-keys, each read beneath the repo-scope `.abcd/config.json`, and its one write
-the provider block `ahoy connect` adds; every other config read resolves the
-repo-scope `.abcd/config.json` alone), the load check's two limits in
+(its readers are every key read through the layered reader,
+`internal/core/layered`: the provider adapter's `oracle` keys, the reviewer
+route's `oracle.review`, the filing-time match's `match`, the
+`land` switches, `consistency.max_request_bytes`, the implement loop's `pace`
+and the role routes under `roles`, each read with the repo-scope
+`.abcd/config.json` above it, except `land`, whose layers are ANDed; the
+provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
+`runner` namespace (`runner.fallback_host` and every `runner.<name>`),
+`interview.list`, `reservation.github_username` and `load.preflights` (how
+many preflights may be in their test stages at once: 1 or 2, 1 by default,
+never read from a repository, and the one machine key read past, with a
+stderr note, when the file cannot be read for it, so a file that holds other
+settings never stops the load gate) are honoured from the machine layer alone. Its one
+write is the provider block `ahoy connect` adds, and every other config read
+resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
+model-tier routing table in `oracle-routing.json` (read beneath the
+repository's `.abcd/config/oracle-routing.json`, and written owner-only on the
+install's answered consent), the status line's settings in `statusline.json`
+(written on the status-line offer's consent), the bootstrap's
+`cache-attestation` (the release whose published manifest the cached binary
+matched, without which install never promotes the cache to the owned PATH
+copy) and `release-mark` (the newest release this machine has installed or
+verified, raised by the bootstrap and recorded by `abcd update`), the load check's two limits in
 `load-limits` (read-only and never created, itd-2609231434459890), the external
 credentials adapters resolve by name through the credential store, whose abcd
 home is `credentials.json` and whose index is `credential-homes.json` (each
@@ -503,13 +602,25 @@ across the read and the write as the provider block's write holds
 `config.json`'s, so concurrent setups lose nothing), the
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see
-[the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later
-phase too: the shipped memory store is repo-scope), and the `sources/` corpus
+[the rules layers](#the-rules-layers--bundled-user-repo) below), the machine
+layer of the memory notes in `memory.json` (the person's own notes, which agents
+write through `abcd memory add` and `abcd memory remove` takes out at the
+person's request; read through the rules user layer's guard, a regular file this
+account owns that no one else can write, within 256 KiB, and never created by a
+read; each note is tied to the repository it was written in unless it was added
+with `--everywhere`; [the prompt router](#the-prompt-routers-output) recalls them
+beside the repository's `.abcd/memory.json`, whose notes a person commits in a
+reviewed change and the verb never writes, as one set in which a project note
+shadows a personal note with the same id), curated cross-project memory pages
+under `memory/` (a later phase: nothing resolves it today), and the `sources/` corpus
 `/abcd:library` reads and writes (abcd never creates that one unasked: only its
 explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned
 PATH entry, the trusted configuration roots, and the checkouts whose transcripts
-are pulled in. **Never the design record.** The same inventory is drawn as a tree
+are pulled in. And it keeps itself out of a git repository in the home folder:
+a `.gitignore` holding `*`, laid once beside a `gitignore-laid` marker, so a
+person who deletes the ignore file is never overruled (`internal/core/homeignore`).
+**Never the design record.** The same inventory is drawn as a tree
 in [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md#what-abcd-manages--repos-and-abcdnoindex);
 the two are one list and must agree.
 
@@ -544,9 +655,26 @@ person's, in a plain terminal (spc-2610031309233367).
 abcd never moves the folder itself, and a managed project's block keeps naming
 the old paths until setup runs in that project again.
 
+**`~/.abcd.noindex` ignores itself, once (itd-2610140858048004, adr-2610140859394097).**
+A home folder that is a git repository would stage everything the user scope
+holds. So the CLI front door, before every command and again after it (the status
+line excepted, which writes nothing at all), makes sure an existing `~/.abcd.noindex` carries `.gitignore` holding `*`, owner-only,
+with a marker `gitignore-laid` beside it (`internal/core/homeignore`). It never
+creates the folder, never overwrites a file, never writes through a link, and
+reads or runs nothing of any repository. While the marker stands it writes
+nothing, so a deleted `.gitignore` is the person's deliberate opt-in and stays
+deleted. A symlinked `~/.abcd.noindex` reads as absent and is never laid. A
+failed lay says so once per command on stderr (never under `--json` or in a
+hook call, where a machine reads stderr) and never fails the command; the
+old home's stop lays nothing. The lay is the front door's, not any verb's, so
+a verb whose sentence says it writes nothing may still be the command that
+lays the file in a home that lacks it. **Invariant:** the credential store's abcd home
+stays refused inside any git working tree, the account's own included, whatever
+`.gitignore` says.
+
 **A symlinked `~/.abcd.noindex` hosts nothing abcd trusts.** Every file in the user
 scope whose contents abcd acts on — `rules.json`, `trusted-roots`,
-`local-transcript-roots`, `path-entry`, `cache-attestation`, `config.json`,
+`local-transcript-roots`, `path-entry`, `cache-attestation`, `release-mark`, `config.json`,
 `oracle-routing.json`, `statusline.json`, `load-limits`, `credentials.json` and
 `credential-homes.json` — is refused when `~/.abcd.noindex`, or a directory below it on the way to the file, is a
 symlink: the rule the rules loader states for `rules.json`, applied by one check
@@ -593,8 +721,10 @@ than a gap install would try and fail to close.
 three-tier layout below, the config file with its `meta` block, the rules
 overrides, the per-surface machine records under `config/`, the lint and site
 configuration records, the identity and positioning registry, the citation
-baseline, and the native spec store. A `memory/` namespace is written
-where memory is curated. **The home for project work.** There is no in-tree
+baseline, the native spec store, and the project's memory notes in
+`memory.json` (the layer the prompt router recalls above the machine's
+`~/.abcd.noindex/memory.json`, written by a person in a reviewed change, never by
+`abcd memory`). A `memory/` namespace is written where memory is curated. **The home for project work.** There is no in-tree
 lifeboat directory: the lifeboat is out-of-tree output at an operator-chosen
 destination. Two namespaces are not part of it either: `logbook/`, a retired name,
 and `rp/`, staged with its adapter.
@@ -677,6 +807,14 @@ it: `## NAME (user override)` or `## NAME (repo override)` in the injected block
 in `abcd rules` and in the hook's diagnostic, and `"source": "user"`, `"repo"`
 or `"bundled"` in `abcd rules --json`. A disabled set names every file whose kill
 switch is set.
+
+**An override's words render as text.** Each rule an override domain carries is
+rendered inside a tilde fence under its bullet, one tilde longer than the
+longest run of tildes or backticks in the rule and never shorter than three, so
+a reader that renders the block as markdown shows the rule as written: a `#`
+line, a `===` underline or an `<h2>` in it cannot become a heading that wears
+no override label (iss-2609020219265817). A bundled domain's rules are abcd's
+own and keep their markdown.
 
 **Known limitation.** Replacement is per field, so a user or repo layer cannot
 add one rule to a bundled domain's list: it restates the list. A third layer
@@ -768,8 +906,8 @@ session. It writes to two streams:
 
 | Stream | What it carries | Who reads it |
 |---|---|---|
-| **stdout** | the rendered block of the domains new this turn, and nothing else. A prompt that matches no domain, or matches only domains already injected unchanged this session, writes zero bytes | the host, which adds it to the model's context |
-| **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — plus the load's notes and refusals | the operator, out of band |
+| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), then the status block, and nothing else. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, with no status to show, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title, the status block included | the host, which adds it to the model's context |
+| **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — and, on a turn that recalls or has to leave out a note, one line naming the notes recalled and any that did not fit the budget, plus the load's notes and refusals, a `memory.json` that cannot be read among them (it recalls nothing, and the rules still inject) | the operator, out of band |
 
 **The machine reader's envelope.** With `--json`, the flag every verb takes for
 a machine reader, stdout carries one JSON document in place of the bare block.
@@ -780,21 +918,25 @@ iss-2608261550580260):
 
 ```json
 {
-  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- Widgets are counted twice.\n",
+  "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- ~~~\n  Widgets are counted twice.\n  ~~~\n",
   "injected": ["WIDGETS"],
+  "recalled": [],
   "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
-             "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SHELL", "WIDGETS"]
+             "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SCRATCH",
+             "SHELL", "WIDGETS"]
 }
 ```
 
 That is the bundled set with one repo domain, `WIDGETS`, declared in
 `.abcd/rules.json` and matched by the prompt: the text carries one domain and
-the set names all twelve.
+the set names all thirteen. No memory note matched, so `recalled` is empty.
 
 | Field | Meaning |
 |---|---|
-| `text` | byte for byte what the plain form writes to stdout: empty on a turn with nothing new |
+| `text` | the rendered rule block followed by the `## MEMORY` block and the status block, byte for byte what the plain form writes to stdout on every prompt but the one that sets the session's name, where the plain form wraps it in the titling object: empty on a turn with nothing new |
+| `session_title` | present only on the prompt that sets the session's name: the name the plain form sets as the title |
 | `injected` | the domains whose text `text` carries; an empty list when it carries none |
+| `recalled` | the ids of the memory notes whose text `text` carries after the rules, beside `injected` for the domains; an empty list when it carries none |
 | `active` | the FULL set of domain names in force this turn, sorted, on every evaluated prompt: every domain that is not dormant, plus a dormant one this prompt activated with `*NAME`. An empty list when nothing is in force, as under the kill switch |
 | `error` | present only when the router could not evaluate the prompt — an unreadable payload, or a `rules.json` that will not load |
 
@@ -805,6 +947,18 @@ the next time a prompt matches it. An envelope with `error` carries no `active`
 field at all, which means the set is unknown and the client changes nothing; an
 empty list is a set, and a missing one is not, so a typo in `rules.json` never
 reads as every domain stopping.
+
+**The status block.** After the rules and the memory notes, the router
+appends a `## STATUS` block when the last fetch of the status branches brought
+something this checkout has not shown: each new announcement, release hold,
+doubtful branch and failed fetch, once, newest first, at most ten lines and a
+count of the rest ([`39-status.md`](../04-surfaces/39-status.md),
+itd-2609151838312703). It is read from the local tier alone, under a deadline
+inside the hook's budget, and is one "status unavailable" line when the
+deadline passes first; a checkout with no remote named `origin`, or without its
+local tier, shows none. A `rules.json` that will not load does not switch it
+off: the plain form then writes the block alone, and the envelope carries it as
+`text` beside `error`, still with no `active`.
 
 **The set never enters the model's context.** The hook manifest invokes the
 plain form, so what the host injects is exactly the block above and the
@@ -951,7 +1105,11 @@ and a root-level `memory/` is the legacy snapshot abcd respects and never writes
 to. Which scope a curated page lands in is a routing decision — see
 [`07-memory.md`](07-memory.md). Retrieval across the two is not a flat union, which
 would overflow context, but keyword recall with a budget bracket (itd-39). When
-the brief says "memory" unqualified, it means the repo-scope store.
+the brief says "memory" unqualified, it means the repo-scope store. The memory
+notes are a separate thing from these curated pages, and they ship at both
+scopes today: a `memory.json` in the repository's `.abcd/` and another in
+`~/.abcd.noindex/`, which [the prompt router](#the-prompt-routers-output)
+recalls together.
 
 **AI transparency level (staged).** A second axis, independent of visibility. It
 has no backing intent or ADR, no shipped code reads it, and ahoy neither prompts
@@ -1024,7 +1182,7 @@ A Go binary plus the markdown plugin surface that shells to it:
 ```
 abcd/
 ├── .claude-plugin/                     # plugin.json + marketplace.json
-├── cmd/                                # the shipped entrypoint plus seven build-time binaries
+├── cmd/                                # the shipped entrypoint plus eight build-time binaries
 │   ├── abcd/main.go                    #   entrypoint — wires the CLI front door to the core
 │   ├── record-lint/                    #   the record gate `make preflight` runs (06-lint.md)
 │   ├── scaffold-sync/                  #   keeps the scaffolded release workflows in step
@@ -1032,8 +1190,9 @@ abcd/
 │   ├── asking-sync/                    #   writes the asking rules into the generated blocks of commands/intent.md and agents/question-drafter.md
 │   ├── abcd-gen-surface/               #   writes the command-surface snapshot and the surface chapters' appendices
 │   ├── abcd-gen-cli-ref/               #   writes the generated CLI reference page
+│   ├── test-parallelism/               #   prints the go test -p `make preflight`'s test stages take
 │   └── record-slug-rename/             #   one-off: renames records minted before the 40-character slug cap (iss-2610100626320367)
-│                                       #   The seven are developer tooling, not user surface: they run
+│                                       #   The eight are developer tooling, not user surface: they run
 │                                       #   from the Makefile, `go generate`, CI or by hand, and ship in no release
 ├── internal/
 │   ├── core/                           # transport-agnostic core, one package per capability
@@ -1041,8 +1200,9 @@ abcd/
 │   ├── adapter/                        # the seam packages (adr-22): interface + native default
 │   │   ├── scanner/                    #   + optional plug-in. The scanner is the one capability
 │   │   ├── gitleaks/                   #   seam with a package today; gitleaks is its plug-in, and
-│   │   ├── hosting/                    #   hosting, openaiapi and tailscale are adapters outside
-│   │   ├── openaiapi/                  #   the capability seams; 02-adapters.md is the catalogue
+│   │   ├── hosting/                    #   hosting, openaiapi, repoprompt and tailscale are adapters
+│   │   ├── openaiapi/                  #   outside the capability seams; 02-adapters.md is the
+│   │   ├── repoprompt/                 #   catalogue
 │   │   └── tailscale/
 │   └── surface/                        # front doors: cli/, and dashboard/, the one network
 │                                       #   listener (an mcp/ door is adr-23's third)
@@ -1074,8 +1234,14 @@ names, so what a hook invokes is still checked where it is spelled.
 **The hook wiring, and why it is shaped this way.** `bootstrap.sh` either copies a
 re-verified artefact out of the persistent download cache, or resolves the latest
 release tag and downloads the pinned asset, verified against that release's own
-checksums; its build strings are printed instructions to the operator for the cases
-it cannot provision. `SessionStart` runs one chained command rather than siblings,
+checksums and held to the build-provenance policy abcd's own update applies: where
+the GitHub CLI is installed, recent enough and signed in, its attestation check
+must find the asset signed by this repository's release workflow on `main`, built
+from `main` on a GitHub-hosted runner, from the commit the release tag names, and
+a failed check, or a release commit it cannot resolve, installs nothing. Where the
+GitHub CLI cannot run that check, the checksums stand alone and the success notice
+warns so, naming the check to run by hand. Its build strings are printed
+instructions to the operator for the cases it cannot provision. `SessionStart` runs one chained command rather than siblings,
 because siblings would run in parallel and share one stdin.
 
 `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `PreCompact`

@@ -11,6 +11,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
 	"github.com/intentdriven/abcd/internal/core/mdrecord"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // StepsHeading is the section a spec lists its steps under
@@ -128,11 +129,17 @@ func ParseSteps(content string) ([]Step, error) {
 		}
 		if m := stepItemRe.FindStringSubmatch(line); m != nil {
 			raw := strings.TrimSpace(m[2])
+			// The title is masked with termsafe below: the loop stores and echoes
+			// it (the brief, state.json, `implement status --json`, a pull
+			// request's title), and a spec is the owner's own text, so a
+			// control, bidi or zero-width rune in it is masked rather than
+			// refused (iss-2610121542268630). rawTitle keeps the author's
+			// words for a copy of the steps.
 			title := strings.TrimSpace(strings.Trim(raw, "*_"))
 			if title == "" {
 				return nil, fmt.Errorf("spec: %s step %d (line %d) has no title", StepsHeading, len(steps)+1, i+1)
 			}
-			steps = append(steps, Step{Number: len(steps) + 1, Title: title, rawTitle: raw})
+			steps = append(steps, Step{Number: len(steps) + 1, Title: termsafe.Sanitize(title), rawTitle: raw})
 			continue
 		}
 		indented := line[0] == ' ' || line[0] == '\t'

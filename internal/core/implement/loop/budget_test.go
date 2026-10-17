@@ -8,7 +8,10 @@ package loop
 // the check skipped out loud.
 
 import (
+	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -26,8 +29,8 @@ const claudeImplements = `{"roles":{"implementer":{"runner":"claude"},"ruthless-
 
 // quotaOf is a quota seam: the runners it names report what it maps them to,
 // and every other reports none.
-func quotaOf(m map[string]int) func(string) (runner.Quota, bool, error) {
-	return func(name string) (runner.Quota, bool, error) {
+func quotaOf(m map[string]int) func(context.Context, string) (runner.Quota, bool, error) {
+	return func(_ context.Context, name string) (runner.Quota, bool, error) {
 		n, ok := m[name]
 		return runner.Quota{Remaining: n}, ok, nil
 	}
@@ -120,7 +123,7 @@ func TestARunnerThatReportsNoQuotaIsNamedAndTheCheckSkipped(t *testing.T) {
 		{"host", func(*testing.T) Options { return Options{} },
 			[]string{"skipped", "the host reports no quota", "implementer"}},
 		{"failing", func(t *testing.T) Options {
-			return Options{Runners: runnerConfig(t, claudeImplements, ""), Quota: func(string) (runner.Quota, bool, error) {
+			return Options{Runners: runnerConfig(t, claudeImplements, ""), Quota: func(context.Context, string) (runner.Quota, bool, error) {
 				return runner.Quota{}, true, errors.New("the quota endpoint\x1b[2J is down")
 			}}
 		}, []string{"skipped", "the claude runner did not report its quota", "is down"}},
@@ -147,5 +150,37 @@ func TestARunnerThatReportsNoQuotaIsNamedAndTheCheckSkipped(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// The quota query runs under a deadline, so a runner that reports its quota
+// over I/O cannot hang the start, and its error reaches the start's row and
+// the run record with the home path redacted (iss-2610100913096412).
+func TestTheQuotaQueryHasADeadlineAndItsErrorIsHomeRedacted(t *testing.T) {
+	repo := loopRepo(t, readyIntent("", settledQuestions), specWithSteps(threeSteps))
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	hadDeadline := false
+	res, err := Start(repo.Root(), "itd-10", Options{Runners: runnerConfig(t, claudeImplements, ""),
+		Quota: func(ctx context.Context, _ string) (runner.Quota, bool, error) {
+			_, hadDeadline = ctx.Deadline()
+			return runner.Quota{}, true, errors.New("reading " + filepath.Join(home, "quota.json") + ": the endpoint is down")
+		}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !hadDeadline {
+		t.Fatal("the quota query runs under a deadline")
+	}
+	st, err := ReadState(repo.Root(), res.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, text := range []string{budgetRow(t, res.Checks).Detail, budgetEntry(t, st)} {
+		if strings.Contains(text, home) || !strings.Contains(text, "reading ~/quota.json") {
+			t.Fatalf("the quota error is home-redacted: %s", text)
+		}
 	}
 }

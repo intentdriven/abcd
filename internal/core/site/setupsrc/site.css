@@ -397,6 +397,12 @@ a.tile.lead:hover,a.tile.lead:focus-visible{background:var(--accent-soft);border
    `anywhere` also lowers min-content, and `min-width:0` drops the automatic
    minimum, so the title column gives whatever the record calls itself. */
 .list li>span:not(.id){overflow-wrap:anywhere;min-width:0}
+/* A decision log row's body is the record's own rendered Markdown, a block
+   rather than a title span, so it takes the same two properties, and its first
+   and last paragraphs drop the margins the row's padding already gives. */
+.list li>.decbody{overflow-wrap:anywhere;min-width:0}
+.decbody>:first-child{margin-top:0}
+.decbody>:last-child{margin-bottom:0}
 /* Below 520 px the id column (a timestamp id and its date, about 220 px)
    would leave the title a column a few characters wide, so the row stacks:
    the id above, the title below at the full width of the row. */

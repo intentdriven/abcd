@@ -42,7 +42,7 @@ None stated.
 
 - Refresh is manual now, surfaced by ahoy status and release-preflight nagging; a scheduled-CI wrapper is a later, separately signed-off change.
 - Staleness policy: warn at 180 days in docs lint; blocker at 365 days at the release gate only — commits are never calendar-blocked.
-- The row-has-footnote structural rule deferred from spc-15 is homed here (DECISIONS 2026-07-27): implemented in this intent or not at all.
+- The row-has-footnote structural rule deferred from spc-15 is homed here ([dcn-2607270000000002](../../../work/decisions/dcn-2607270000000002-deferred-the-row-has-footnote-structural.md)): implemented in this intent or not at all.
 
 ## Audit Notes
 

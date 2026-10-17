@@ -59,8 +59,9 @@ configuration rather than under `.abcd/config/`, where `identity.json` already
 means the git commit-author pin.
 
 The severity is the whole family's weight, and it is the one knob that changes
-what a failed check costs. `warn`, the default, reports drift as a warning that
-does not fail the run. `blocker` promotes every positioning finding to an error,
+what a failed check costs. `warn`, the default, reports drift as a warning, and
+a run whose only findings are warnings exits 1, the lint's warnings-only exit,
+not 0. `blocker` promotes every positioning finding to an error, which exits 2,
 so a repo that wants its own strapline treated as load-bearing turns the
 advisory family into a hard `abcd lint` gate with one word.
 
@@ -78,8 +79,9 @@ nothing is ever registered silently.
 The registry is all-or-nothing: it is decoded with unknown fields disallowed and
 validated in full before any of it is used, because every byte of it arrives as
 committed data. `schema_version` is required and must be `1`. An unloadable
-registry is reported as a warn-tier finding rather than as drift, so the symptom
-reads as a broken check rather than as a missing tagline.
+registry is reported as an error-severity finding rather than as drift, whatever
+the family severity says, so bare `abcd lint` exits 2 and the symptom reads as a
+check that could not run rather than as a missing tagline.
 
 ## Behaviour
 

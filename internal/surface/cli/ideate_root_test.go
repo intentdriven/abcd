@@ -6,18 +6,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/core/decisions"
 	"github.com/intentdriven/abcd/internal/core/ideate"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The store an `ideate record` run writes into is the CHECKOUT's research store,
-// and the log its pointer is appended to is the CHECKOUT's decision log —
+// and the folder its pointer is recorded in is the CHECKOUT's decisions folder —
 // wherever in the checkout the caller happens to stand. These are
 // iss-2609091729516940's detectors for the ideate family: the front door handed
 // its working directory to the core as the repo root, verbatim, so a run from a
 // package directory grilled the wrong tree and reported the cited records as
 // records that "do not exist in this repository" — a plausible wrong answer,
 // blaming the operator's grill for the verb's own misaddressing — and, where the
-// caller's directory happened to carry a decision log, wrote the verdict and its
+// caller's directory happened to carry the stores, wrote the verdict and its
 // pointer into a store below the root, reporting repo-relative paths that read
 // exactly like the checkout's. Outside every repository it did the same in a
 // plain directory. A verdict filed that way reaches no gate, no release cut and
@@ -25,7 +27,7 @@ import (
 // again.
 
 // ideateStoreFixture builds a git working tree carrying everything a verdict
-// record needs — the decision log its pointer is appended to and one planned
+// record needs — the shared tier its pointer is recorded in and one planned
 // intent a grill hit can legitimately cite — with a package-shaped subdirectory
 // two levels down, and chdirs into the root.
 func ideateStoreFixture(t *testing.T) (repo, sub string) {
@@ -33,6 +35,7 @@ func ideateStoreFixture(t *testing.T) (repo, sub string) {
 	t.Setenv("HOME", t.TempDir())
 	repo = t.TempDir()
 	gitInitAt(t, repo)
+	gitCommitAt(t, repo, "root")
 	repo = realPath(t, repo)
 	seedIdeateStore(t, repo)
 	sub = filepath.Join(repo, "internal", "core")
@@ -44,22 +47,23 @@ func ideateStoreFixture(t *testing.T) (repo, sub string) {
 }
 
 // seedIdeateStore lays out everything a verdict record needs in a tree: the
-// decision log its pointer is appended to, and one planned intent a grill hit
+// shared tier its pointer is recorded in, and one planned intent a grill hit
 // can legitimately cite. It is used on the NON-repository fixtures too, so that
 // a refusal there is provably the root resolution's and not the core's own
-// missing-decision-log or unresolvable-citation refusal wearing its clothes.
+// missing-shared-tier or unresolvable-citation refusal wearing its clothes.
 func seedIdeateStore(t *testing.T, root string) {
 	t.Helper()
-	writeRepoFile(t, root, ideate.DecisionsRelDir, "# Decisions\n")
+	writeRepoFile(t, root, decisions.SharedTierRel+"/CONTEXT.md", "# Context\n")
 	writeRepoFile(t, root, ".abcd/development/intents/planned/itd-104-ideate.md",
 		"---\nid: itd-104\nslug: ideate\nspec_id: spc-18\nimpact: additive\n---\n\n# itd-104\n")
 }
 
 // recordedVerdict returns the paths a landed verdict occupies in the checkout:
-// the dated research note, and the decision log that must now point at it.
+// the dated research note; the decision that must now point at it is read
+// through decisionTexts.
 func recordedVerdict(t *testing.T, repo, slug string) (note string) {
 	t.Helper()
-	dir := filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir))
+	dir := filepath.Join(repo, filepath.FromSlash(ideate.ResearchRelDir), gitutil.RootCommit(repo))
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatalf("the checkout's research store holds no verdict: %v", err)
@@ -73,8 +77,23 @@ func recordedVerdict(t *testing.T, repo, slug string) (note string) {
 	return ""
 }
 
+// decisionTexts reads every decision record in repo's decisions folder and
+// joins their bodies, one per line.
+func decisionTexts(t *testing.T, repo string) string {
+	t.Helper()
+	ds, skipped, err := decisions.List(repo)
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("decisions.List = %v, skipped %+v", err, skipped)
+	}
+	var b strings.Builder
+	for _, d := range ds {
+		b.WriteString(d.Text + "\n")
+	}
+	return b.String()
+}
+
 // TestIdeateRecordFromSubdirectoryWritesIntoTheCheckoutStore is the write half
-// of the reproduction: the verdict and its decision-log pointer must land in the
+// of the reproduction: the verdict and the decision pointing at it must land in the
 // CHECKOUT's store, and no second store may appear under the subdirectory the
 // caller happened to stand in. It also pins the grill: the cited record resolves,
 // because the grill reads the checkout's record and not the caller's directory.
@@ -83,7 +102,7 @@ func TestIdeateRecordFromSubdirectoryWritesIntoTheCheckoutStore(t *testing.T) {
 	payload := writeVerdict(t, ideateVerdictJSON("itd-104"))
 
 	t.Chdir(sub)
-	out, err := runCLIErr(t, "ideate", "record", "filed-from-a-package-directory", "--verdict-json", payload)
+	out, err := runCLIErr(t, "ideate", "record", "filed-from-a-package-directory", "--public", "--verdict-json", payload)
 	if err != nil {
 		t.Fatalf("`abcd ideate record` from a package directory: %v\n%s", err, out)
 	}
@@ -91,12 +110,8 @@ func TestIdeateRecordFromSubdirectoryWritesIntoTheCheckoutStore(t *testing.T) {
 	if _, serr := os.Stat(note); serr != nil {
 		t.Errorf("the verdict record is not in the checkout's research store: %v", serr)
 	}
-	log, rerr := os.ReadFile(filepath.Join(repo, filepath.FromSlash(ideate.DecisionsRelDir)))
-	if rerr != nil {
-		t.Fatal(rerr)
-	}
-	if !strings.Contains(string(log), "filed-from-a-package-directory") {
-		t.Errorf("the checkout's decision log gained no pointer at the verdict:\n%s", log)
+	if log := decisionTexts(t, repo); !strings.Contains(log, "filed-from-a-package-directory") {
+		t.Errorf("the checkout's decisions folder gained no pointer at the verdict:\n%s", log)
 	}
 	if _, serr := os.Stat(filepath.Join(sub, ".abcd")); serr == nil {
 		t.Errorf("`ideate record` laid a second store at %s/.abcd — a verdict filed there reaches no gate, no release cut and no reader", sub)
@@ -112,13 +127,13 @@ func TestIdeateRecordOutsideAnyRepositoryRefuses(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	plain := realPath(t, t.TempDir())
 	payload := writeVerdict(t, ideateVerdictJSON("itd-104"))
-	// Everything the core demands is present — the decision log its pointer is
-	// appended to, and the record its grill hit cites — so the ONLY thing
+	// Everything the core demands is present — the shared tier its pointer is
+	// recorded in, and the record its grill hit cites — so the ONLY thing
 	// standing between this run and a written verdict is the root resolution.
 	seedIdeateStore(t, plain)
 	t.Chdir(plain)
 
-	out, err := runCLIErr(t, "ideate", "record", "outside-any-repository", "--verdict-json", payload)
+	out, err := runCLIErr(t, "ideate", "record", "outside-any-repository", "--public", "--verdict-json", payload)
 	if err == nil {
 		t.Fatalf("`abcd ideate record` outside a repository succeeded; it must refuse:\n%s", out)
 	}
@@ -148,7 +163,7 @@ func TestIdeateRecordRefusesARepoShapedTreeGitWillNotAnswerFor(t *testing.T) {
 	payload := writeVerdict(t, ideateVerdictJSON("itd-104"))
 	t.Chdir(planted)
 
-	out, err := runCLIErr(t, "ideate", "record", "beneath-a-planted-marker", "--verdict-json", payload)
+	out, err := runCLIErr(t, "ideate", "record", "beneath-a-planted-marker", "--public", "--verdict-json", payload)
 	if err == nil {
 		t.Fatalf("a repo-shaped tree git will not answer for was accepted as a root:\n%s", out)
 	}
@@ -165,7 +180,7 @@ func TestIdeateRecordRefusesARepoShapedTreeGitWillNotAnswerFor(t *testing.T) {
 func TestIdeateRecordFromTheCheckoutRootIsUnchanged(t *testing.T) {
 	repo, _ := ideateStoreFixture(t)
 
-	out, err := runCLIErr(t, "ideate", "record", "filed-from-the-root", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")))
+	out, err := runCLIErr(t, "ideate", "record", "filed-from-the-root", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")))
 	if err != nil {
 		t.Fatalf("`abcd ideate record` at the checkout root: %v\n%s", err, out)
 	}
@@ -195,7 +210,7 @@ func TestIdeateRecordReportsAStrayResearchStoreBelowTheCheckoutRoot(t *testing.T
 	}
 
 	t.Chdir(sub)
-	out, err := runCLIErr(t, "ideate", "record", "filed-beside-a-stray-store", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")))
+	out, err := runCLIErr(t, "ideate", "record", "filed-beside-a-stray-store", "--public", "--verdict-json", writeVerdict(t, ideateVerdictJSON("itd-104")))
 	if err != nil {
 		t.Fatalf("ideate record: %v\n%s", err, out)
 	}

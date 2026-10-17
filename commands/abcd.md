@@ -162,7 +162,7 @@ what comes next. The block is computed each time and nothing stores it.
 ## Record-id dispatch
 
 Bare answers *what can I do*; `abcd <id>` answers *what is this, and what is
-my next move*. A positional matching `^(iss|itd|spc|adr|adm|srp|rfm)-[0-9]+$` locates the
+my next move*. A positional matching `^(iss|itd|spc|adr|dcn|adm|srp|rfm)-[0-9]+$` locates the
 record in its store — any status folder or bucket — and renders it read-only:
 
 ```bash
@@ -188,10 +188,20 @@ read). An admission (`adm-N`) and a surprise (`srp-N`) have no folder, so their
 (`rfm-N`) reads `open` or `complete`; its `links` are `occasioned_by`,
 `occasion_path`, the three `*_before` fingerprints and, once complete, the three
 `*_after` fingerprints and `changed`, and an open one's next move is
-`capture reframe --complete <rfm-N>`. The reading families
+`capture reframe --complete <rfm-N>`. A decision record (`dcn-N`) reads
+`recorded`; its title is the decision in its own words, its one `links` edge is
+its `date`, and its next move says a correction is a new decision. The reading families
 (`rdi-N`, `dsp-N`, `rdg-N`) are not dispatched. For an issue id the JSON also carries `ledger` — the `checkout` and
 `branch` whose ledger was read — because the same id can sit in another
-worktree's ledger in another state; name it when you report. A shipped intent's
+worktree's ledger in another state; name it when you report. For an issue or
+an intent in a checkout with a remote named `origin`, the JSON also carries
+`reservation`: the record's reservation on the shared remote as this checkout
+last fetched it, read from disk with no fetch, with its `state` (`live`,
+`expired`, `released`, `unreadable`, `none`, or `unknown` when nothing has been
+fetched here), `holder`, `copy` (`this copy`, or `another copy` when it is the
+user's own from elsewhere), `effective_expiry`, the view's `fetched_at` and
+`age_seconds`, and `text`, the line the plain render prints. Say how old the
+view is; `unknown` is never "free", and `abcd peers` fetches. A shipped intent's
 move reads its fidelity-review marker: an owed review names its receipt and the
 re-emit command (`abcd intent audit <itd-N>`); a shipped intent with no marker
 owes one too, and the re-emit mints its receipt; a dead-lettered review is

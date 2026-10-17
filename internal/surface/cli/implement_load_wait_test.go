@@ -25,7 +25,7 @@ func waitFixture(t *testing.T, polls ...machineload.Snapshot) time.Time {
 	i := 0
 	t0 := time.Date(2026, 10, 11, 18, 0, 0, 0, time.UTC)
 	now := t0
-	prevRead, prevArgs, prevNow, prevSleep := loadReader, loadArgsReader, loadNow, loadSleep
+	prevRead, prevArgs, prevNow, prevSleep, prevJitter := loadReader, loadArgsReader, loadNow, loadSleep, loadJitter
 	loadReader = func() (machineload.Snapshot, error) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -42,7 +42,10 @@ func waitFixture(t *testing.T, polls ...machineload.Snapshot) time.Time {
 	}
 	loadNow = func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
 	loadSleep = func(d time.Duration) { mu.Lock(); defer mu.Unlock(); now = now.Add(d) }
-	t.Cleanup(func() { loadReader, loadArgsReader, loadNow, loadSleep = prevRead, prevArgs, prevNow, prevSleep })
+	loadJitter = func() time.Duration { return 20 * time.Second }
+	t.Cleanup(func() {
+		loadReader, loadArgsReader, loadNow, loadSleep, loadJitter = prevRead, prevArgs, prevNow, prevSleep, prevJitter
+	})
 	return t0
 }
 
@@ -62,7 +65,7 @@ func TestImplementLoadWaitOpensOnceTheRaceRunExits(t *testing.T) {
 	}
 	for _, want := range []string{
 		"waiting for capacity: a go test -race run is live (pid 70000)",
-		"load gate open after 30s: load 3.0 is below 32 (2 x 16 online cores), and no other go test -race run is live;",
+		"load gate open after 50s: load 3.0 is below 32 (2 x 16 online cores), and no other go test -race run, make preflight or waiter ahead is live;",
 		"held for 2m0s, so one waiter starts at a time",
 	} {
 		if !strings.Contains(out, want) {
@@ -101,7 +104,7 @@ func TestImplementLoadWaitJSON(t *testing.T) {
 	if err := json.Unmarshal([]byte(out), &res); err != nil {
 		t.Fatalf("not one JSON document: %v\n%s", err, out)
 	}
-	if res.Status != implement.WaitOpen || res.WaitedS != 15 || len(res.WaitedOn) != 1 || res.WaitedOn[0] != implement.WaitOnLoad || res.Hold == nil {
+	if res.Status != implement.WaitOpen || res.WaitedS != 35 || len(res.WaitedOn) != 1 || res.WaitedOn[0] != implement.WaitOnLoad || res.Hold == nil {
 		t.Fatalf("result = %+v", res)
 	}
 	// An open after a wait carries nothing still shut: the last shut look's
@@ -164,5 +167,85 @@ func TestImplementLoadWaitRefusesASymlinkedHome(t *testing.T) {
 	code, out, errOut := implementCLI(t, "implement", "load", "--wait")
 	if code == 0 || !strings.Contains(out+errOut, "is a symlink, which abcd refuses rather than follows") {
 		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+}
+
+// TestImplementLoadWaitNamesAnotherAccountsPreflight: the waiter names another
+// account's make preflight, read from the process table, as what it waits on;
+// once the machine is free it says it checks again after the jitter, once, and
+// then opens.
+func TestImplementLoadWaitNamesAnotherAccountsPreflight(t *testing.T) {
+	preflight := machineload.Proc{PID: 80000, PPID: 1, PGID: 80000, UID: 502, Age: 3 * time.Minute, Name: "make"}
+	waitFixture(t, machine(3, 3, 3, preflight), machine(3, 3, 3))
+	loadArgsReader = func(pids []int) (map[int][]string, error) {
+		out := map[int][]string{}
+		for _, p := range pids {
+			if p == 80000 {
+				out[p] = []string{"preflight"}
+			}
+		}
+		return out, nil
+	}
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait")
+	if code != 0 {
+		t.Fatalf("exit %d\n%s%s", code, out, errOut)
+	}
+	for _, want := range []string{
+		"waiting for capacity: another make preflight is running (pid 80000)",
+		"load gate: the machine looks free; checking everything again in 20s before opening",
+		"load gate open after 35s:",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("output lacks %q:\n%s", want, out)
+		}
+	}
+	if n := strings.Count(out, "checking everything again"); n != 1 {
+		t.Fatalf("%d settle lines, want 1:\n%s", n, out)
+	}
+}
+
+// TestImplementLoadWaitMarksUntilTheCommandStarts: the command form shows in
+// the process table as running its command from the moment it opens, by its
+// mark, and stops the mark once the command has started.
+func TestImplementLoadWaitMarksUntilTheCommandStarts(t *testing.T) {
+	waitFixture(t, machine(3, 3, 3))
+	marked, stopped := 0, 0
+	prev := loadMark
+	loadMark = func() (func(), error) {
+		marked++
+		return func() { stopped++ }, nil
+	}
+	t.Cleanup(func() { loadMark = prev })
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", "exit 0")
+	if code != 0 || marked != 1 || stopped != 1 {
+		t.Fatalf("exit %d, marked %d, stopped %d; want 0, one mark, stopped once\n%s%s", code, marked, stopped, out, errOut)
+	}
+}
+
+// TestImplementLoadWaitSaysWhenItStandsBack: a waiter whose last look finds
+// another waiter opened in the same moment with the lower pid says so, names
+// it, and opens later.
+func TestImplementLoadWaitSaysWhenItStandsBack(t *testing.T) {
+	opener := []machineload.Proc{
+		{PID: 40001, PPID: 1, PGID: 40001, UID: 502, Age: time.Hour, Name: "abcd"},
+		{PID: 40002, PPID: 40001, PGID: 40001, UID: 502, Name: "sleep"},
+	}
+	free := machine(3, 3, 3)
+	waitFixture(t, free, free, machine(3, 3, 3, opener...), free)
+	loadArgsReader = func(pids []int) (map[int][]string, error) {
+		out := map[int][]string{}
+		for _, p := range pids {
+			if p == 40001 {
+				out[p] = []string{"implement", "load", "--wait", "--", "make", "preflight"}
+			}
+		}
+		return out, nil
+	}
+	prev := loadMark
+	loadMark = func() (func(), error) { return func() {}, nil }
+	t.Cleanup(func() { loadMark = prev })
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--", "sh", "-c", "exit 0")
+	if code != 0 || !strings.Contains(out, "standing back") || !strings.Contains(out, "pid 40001") {
+		t.Fatalf("exit %d; want 0 and a line standing back from pid 40001\n%s%s", code, out, errOut)
 	}
 }

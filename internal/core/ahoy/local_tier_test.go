@@ -117,7 +117,7 @@ func TestLocalTierFenceCoversTheModeFile(t *testing.T) {
 		}
 	}
 	repo := gittest.NewRepo(t)
-	repo.Write(".abcd/work/DECISIONS.md", "- a decision\n")
+	repo.Write(".abcd/work/decisions/README.md", "# Decisions\n")
 	repo.Commit("record tier")
 	if _, err := applyVisibilityBlock(repo.Root(), "public"); err != nil {
 		t.Fatal(err)

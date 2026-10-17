@@ -13,13 +13,14 @@ import (
 // runRestart is `implement step --restart <lane-id> [--yielded <line>]`: the
 // lane's gone implementer is restarted as a fresh agent from the lane's last
 // commit, its uncommitted work saved aside (iss-2610080620372731).
-func runRestart(w io.Writer, asJSON bool, root, runID, laneID, yielded string) error {
+func runRestart(w io.Writer, asJSON bool, root, runID, laneID, yielded string, accepted []string) error {
 	const prefix = "abcd implement step"
 	res, err := loop.Restart(root, runID, laneID, yielded, loop.Options{})
 	if err != nil {
 		return loopFail(w, asJSON, prefix, err)
 	}
 	res.StepResult = redactStep(res.StepResult)
+	res.AcceptedConfigChange = accepted
 	return render(w, asJSON, res, func(w io.Writer) { renderRestart(w, res) })
 }
 

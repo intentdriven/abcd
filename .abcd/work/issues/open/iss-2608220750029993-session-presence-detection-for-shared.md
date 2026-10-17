@@ -6,7 +6,7 @@ severity: "minor"
 category: "observation"
 source: "user-observation"
 found_during: "manual-capture"
-related_intents: [itd-2609091034175565, itd-2609091416295622]
+related_intents: [itd-2609091034175565, itd-2609091416295622, itd-2609151838312703]
 remedy: "Waits on ruling A (plan the presence lease inside draft itd-2609150819440345, or as its own intent): either way, build it on the implement run store's lease primitive (exclusive create, expiry, lapse logged) rather than a new format, so each live session holds a lease keyed on its worktree path with session id, branch and start time, and have `.githooks/pre-commit` warn, never refuse, when another unexpired lease names the same worktree; prove it with a hook test in which a second session's live lease prints the warning and an expired one prints nothing."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed A): Plan the session-presence lease and its pre-commit warning inside the session-register draft itd-2609150819440345 (M30), or as its own intent?"

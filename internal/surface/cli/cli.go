@@ -224,12 +224,12 @@ func NewRootCommand() *cobra.Command {
 		Use: "abcd [<record-id>]",
 		Long: "Agent-based configuration for development.\n\n" +
 			"Bare `abcd` renders the read-only status board — what can I do. A single\n" +
-			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,\n" +
-			"`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and\n" +
-			"the next move for its lifecycle state — what is this. N is either a short\n" +
-			"ordinal from before ids were minted or the sixteen-digit stamp minted since;\n" +
-			"both resolve. The bare and the id form are strictly read-only; any other\n" +
-			"positional is refused as an unknown command.\n\n" +
+			"positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `dcn-N`,\n" +
+			"`adm-N`, `srp-N` or `rfm-N`) instead reports what that record is, where it\n" +
+			"lives, and the next move for its lifecycle state — what is this. N is either\n" +
+			"a short ordinal from before ids were minted or the sixteen-digit stamp minted\n" +
+			"since; both resolve. The bare and the id form are strictly read-only; any\n" +
+			"other positional is refused as an unknown command.\n\n" +
 			"`--version` reports the running binary's version, install mode and vintage.\n" +
 			"When that binary sits in a plugin root other than the one this session\n" +
 			"resolves, the report — like bare `abcd ahoy` — adds a `superseded_root` note\n" +
@@ -329,6 +329,11 @@ func NewRootCommand() *cobra.Command {
 					for _, m := range d.NextMoves {
 						fmt.Fprintf(w, "  next: %s\n", termsafe.Sanitize(m))
 					}
+					// The reservation as last fetched, from disk alone; its
+					// holder is a username a writer chose, so it is masked.
+					if d.Reservation != nil {
+						fmt.Fprintf(w, "  reservation: %s\n", termsafe.Sanitize(d.Reservation.Text))
+					}
 				})
 			}
 			// The banner: interactive-TTY bare invocation only, per adr-49 —
@@ -397,6 +402,10 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newUpdateCommand(&asJSON))
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
+	root.AddCommand(newReserveCommand(&asJSON))
+	root.AddCommand(newAnnounceCommand(&asJSON))
+	root.AddCommand(newStatusCommand(&asJSON))
+	root.AddCommand(newLandCommand(&asJSON))
 	root.AddCommand(newDrainCommand(&asJSON))
 	root.AddCommand(newBuildCommand(&asJSON))
 	root.AddCommand(newLabCommand(&asJSON))
@@ -584,6 +593,7 @@ func NewRootCommand() *cobra.Command {
 	// `reflect` is the release retrospective (itd-24): the seed a cut release's
 	// interview opens from, and the one write that files it.
 	root.AddCommand(newReflectCommand(&asJSON))
+	root.AddCommand(newEmbargoCommand(&asJSON))
 
 	root.AddCommand(newCaptureCommand(&asJSON))
 	root.AddCommand(newBanlistCommand(&asJSON))
@@ -637,6 +647,9 @@ func NewRootCommand() *cobra.Command {
 	// two operands the design admits, because the operand it most often refuses
 	// is one it used to take (adr-2609021016286571).
 	applyReadingFlagErrors(root)
+	// Also after the generic tagging: the two flags the one outbound switch
+	// replaced are refused naming it (iss-2610152024327989).
+	applyRetiredInstallFlags(root)
 	// Also after the generic tagging: cobra's help verb inherits the root's
 	// flag-error function, and `abcd help --agent` names the spelling that works.
 	applyHelpVerbAgentRefusal(root)
@@ -1549,6 +1562,10 @@ type hookInput struct {
 	Prompt    string `json:"prompt"`
 	Source    string `json:"source"`
 	Event     string `json:"hook_event_name"`
+	// SessionTitle is the session's custom title on the session-start and
+	// prompt payloads: a name the person gave it or one a hook set earlier,
+	// never a generated one. Read by session naming (hook_session_name.go).
+	SessionTitle string `json:"session_title"`
 	// ToolName is supplied by the PostToolUse hook; read by `hook
 	// question-answered` only.
 	ToolName string `json:"tool_name"`
@@ -1636,6 +1653,9 @@ type routerView struct {
 	Recalled []string  `json:"recalled"`
 	Active   *[]string `json:"active,omitempty"`
 	Error    string    `json:"error,omitempty"`
+	// SessionTitle is the session's title when this prompt set it
+	// (hook_session_name.go), and absent on every other prompt.
+	SessionTitle string `json:"session_title,omitempty"`
 }
 
 // routerRefused is the prompt router's fail-open exit when it cannot evaluate
@@ -1694,9 +1714,31 @@ force this turn, so a name missing from it has stopped. error is present only
 when the prompt could not be evaluated, and then active is absent: the set is
 unknown. A memory.json, page store or page that cannot be read is named on
 stderr and recalls nothing, and the rules still inject. Every outcome, an error included,
-exits 0, so the hook can never wedge a session.`,
+exits 0, so the hook can never wedge a session.
+
+After them comes a "## STATUS" block when the last fetch of the status
+branches brought something this checkout has not shown: each new
+announcement, release hold, doubtful branch and failed fetch, once, newest
+first, at most ten lines and one more that counts the rest. It is read from
+disk alone, inside the one-second deadline the hook sets when it starts,
+and says the status is unavailable when the deadline passes first. A rules.json that will not load
+does not switch it off: text then carries the block alone, beside the error.
+
+On the first prompt of a session whose start reserved it a name, when the
+session has no title yet, plain stdout is instead one object that sets the
+title, with the text above as its additional context (the status block
+alone, or empty, when the rules could not be loaded):
+
+  {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
+   "additionalContext": ..., "sessionTitle": ...}}
+
+and the --json envelope carries the name as session_title.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The hook's one deadline (C12), set before anything else runs:
+			// the status block is read, rendered and kept shown inside what
+			// the drain, the rules and the memory notes leave of it.
+			deadline := time.Now().Add(hookBudget)
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
@@ -1727,7 +1769,7 @@ exits 0, so the hook can never wedge a session.`,
 			// stdout is injected into the session's context, and this drain's
 			// strings are transcript paths and capture errors, which are the
 			// least appropriate text in the program to hand to a model.
-			drainWhileLive(cmd, cwd)
+			drained := drainWhileLive(cmd, cwd)
 			// The badge's reset (itd-2609212130146198): a human message after
 			// an admitted question is its answer. Before the rules work, for
 			// the drain's reason: a rules.json that will not load must not
@@ -1740,6 +1782,28 @@ exits 0, so the hook can never wedge a session.`,
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
+				// The status block is the status reader's, not the rules':
+				// a rules.json that will not load does not switch it off
+				// (spc-2610150728396006 step 3).
+				status := routerStatus(cmd, root, deadline)
+				defer status.MarkShown()
+				// The title owed on this prompt is set even so: naming does
+				// not depend on the rules (hook_session_name.go). The status
+				// block, when there is one, is the context it is set with.
+				if title := resendSessionTitle(cmd, in); title != "" {
+					if *asJSON {
+						return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title})
+					}
+					emitTitled(cmd, status.Text, title)
+					return nil
+				}
+				if status.Text != "" && !*asJSON {
+					fmt.Fprint(cmd.OutOrStdout(), status.Text)
+					return nil
+				}
+				if status.Text != "" {
+					return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error()})
+				}
 				return routerRefused(cmd, *asJSON, err.Error())
 			}
 			// A domain Load dropped (no rules of its own) is skipped, not
@@ -1755,7 +1819,8 @@ exits 0, so the hook can never wedge a session.`,
 			// The memory recall, after the rules and within what they left
 			// of the one per-turn budget (spc-2610111627213138). It shares
 			// the session's state file through its own ledger.
-			mem := recallMemory(cmd.ErrOrStderr(), rs, root, in.Prompt, res.State.Recalled, rules.InjectionBudgetBytes-len(res.Text))
+			mem := recallMemory(cmd.ErrOrStderr(), rs, root, in.Prompt, res.State.Recalled, rules.InjectionBudgetBytes-len(res.Text),
+				promptRoot(drained, root))
 			res.State.Recalled = mem.Ledger
 			if err := rules.SaveState(session, res.State); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: state save failed (%s)\n", termsafe.Sanitize(err.Error()))
@@ -1765,17 +1830,35 @@ exits 0, so the hook can never wedge a session.`,
 			// whose words went into the context (GHSA-22f8-qf5r-gjgq).
 			fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: turn %d, injected %d domain(s) %v, %d bytes\n",
 				res.State.Count, len(res.Injected), res.Labels(), len(res.Text))
+			// Each item carries its layer ("mem-… (project)", "page:… (machine)"),
+			// as the rules line's names carry theirs, so the log says whether
+			// the words came from this repository's committed files or from
+			// the person's own.
 			if len(mem.Recalled) > 0 || len(mem.Omitted) > 0 || len(mem.TooLarge) > 0 {
-				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d item(s) %v, %d bytes", len(mem.Recalled), mem.Recalled, len(mem.Text))
+				fmt.Fprintf(cmd.ErrOrStderr(), "abcd memory: recalled %d item(s) [%s], %d bytes", len(mem.Recalled),
+					strings.Join(mem.Labels(mem.Recalled), ", "), len(mem.Text))
 				if len(mem.Omitted) > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) %v did not fit this turn's budget and are tried again on the next", len(mem.Omitted), mem.Omitted)
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] did not fit this turn's budget and are tried again on the next",
+						len(mem.Omitted), strings.Join(mem.Labels(mem.Omitted), ", "))
 				}
 				if len(mem.TooLarge) > 0 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) %v are larger than the whole per-turn budget and do not come back in full", len(mem.TooLarge), mem.TooLarge)
+					fmt.Fprintf(cmd.ErrOrStderr(), "; %d matched item(s) [%s] are larger than the whole per-turn budget and do not come back in full",
+						len(mem.TooLarge), strings.Join(mem.Labels(mem.TooLarge), ", "))
 				}
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
 			text := res.Text + mem.Text
+			// The status block (itd-2609151838312703 C6, C8, C10 to C12,
+			// C18): what the last fetch of the status branches brought that
+			// this checkout has not shown, from disk alone, inside its own
+			// budget, after the rules and the memory notes. It joins text
+			// before the title is read, so both emit paths below carry it.
+			status := routerStatus(cmd, root, deadline)
+			defer status.MarkShown()
+			text = joinBlocks(text, status.Text)
+			// The name this session's start reserved, set once at its first
+			// prompt (hook_session_name.go).
+			title := resendSessionTitle(cmd, in)
 			if *asJSON {
 				injected := res.Injected
 				if injected == nil {
@@ -1785,7 +1868,11 @@ exits 0, so the hook can never wedge a session.`,
 				if recalled == nil {
 					recalled = []string{}
 				}
-				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active})
+				return routerEmit(cmd, routerView{Text: text, Injected: injected, Recalled: recalled, Active: &res.Active, SessionTitle: title})
+			}
+			if title != "" {
+				emitTitled(cmd, text, title)
+				return nil
 			}
 			if text != "" {
 				fmt.Fprint(cmd.OutOrStdout(), text)
@@ -1985,6 +2072,10 @@ exits 0, so the hook can never wedge a session.`,
 					cwd = wd
 				}
 			}
+			// Naming first, before the drain's time budget: it reserves the
+			// name the first prompt sets, and writes nothing to stdout
+			// (hook_session_name.go).
+			startSessionName(cmd, in, cwd)
 			var notices []string
 			// currentSHA is remembered so the cross-repository survey below can
 			// leave this repository out: the drain reports it entry by entry,
@@ -2225,16 +2316,28 @@ var livePromptDrainBudget = history.DrainBudget{MaxEntries: 1, MaxBytes: 512 << 
 // single git call that field actually needs.
 //
 // EVERY output goes to stderr and nothing to stdout — see the call site. A
-// failure to drain is never a failure of the prompt: this function returns
-// nothing and the hook exits 0 whatever happened here, because a transcript
-// backlog must not be able to wedge a session.
-func drainWhileLive(cmd *cobra.Command, cwd string) {
+// failure to drain is never a failure of the prompt: the hook exits 0
+// whatever happened here, because a transcript backlog must not be able to
+// wedge a session. What it returns is only the root-commit lookup it made,
+// for the memory recall to reuse (promptRoot), so one prompt spawns that
+// full-history rev-list once. That lookup is bounded (boundedRootCommit): a
+// git that does not answer in time drains nothing this turn, says so on
+// stderr, and leaves the recall's tied notes out.
+func drainWhileLive(cmd *cobra.Command, cwd string) rootLookup {
 	if cwd == "" {
-		return
+		return rootLookup{}
 	}
-	rootSHA := gitutil.RootCommit(cwd)
+	rootSHA, rootErr := boundedRootCommit(cwd)
+	looked := rootLookup{sha: rootSHA, err: rootErr, asked: true}
+	if rootErr != nil {
+		// git did not answer in time: nothing is drained this turn, and the
+		// staged transcripts wait for the next one.
+		diagnosticLine(cmd.ErrOrStderr(), "abcd history: this repository's root commit: %s; draining no staged transcripts this turn",
+			fsutil.RedactHome(rootErr.Error()))
+		return looked
+	}
 	if rootSHA == "" {
-		return // not a git repo with commits: nothing here has a store
+		return looked // not a git repo with commits: nothing here has a store
 	}
 	// Look before spending: the ordinary prompt has nothing staged, and this
 	// listing is one readdir of a usually-empty directory, so the redaction
@@ -2243,14 +2346,14 @@ func drainWhileLive(cmd *cobra.Command, cwd string) {
 	// drain below, because every store verb now takes it.
 	repoRoot := captureRoot(cwd)
 	if staged, lerr := history.ListStaged(repoRoot, rootSHA); lerr == nil && len(staged) == 0 {
-		return
+		return looked
 	}
 	dr, err := history.Drain(repoRoot, rootSHA, livePromptDrainBudget)
 	if err != nil {
 		fmt.Fprintf(cmd.ErrOrStderr(),
 			"abcd history: could not drain staged transcripts this turn (%s); they hold UNREDACTED text until one succeeds.\n",
 			termsafe.Sanitize(fsutil.RedactHome(err.Error())))
-		return
+		return looked
 	}
 	for _, f := range dr.Failed {
 		fmt.Fprintln(cmd.ErrOrStderr(), drainFailureNotice(f))
@@ -2266,6 +2369,7 @@ func drainWhileLive(cmd *cobra.Command, cwd string) {
 	for _, l := range scanGapLines(dr.ScanGap) {
 		fmt.Fprintln(cmd.ErrOrStderr(), "abcd history: "+l)
 	}
+	return looked
 }
 
 // drainFailureNotice renders one DrainFailure as the operator-facing sentence,
@@ -2319,9 +2423,17 @@ func backlogNotices(skipSHA string) []string {
 	var bytesHeld int64
 	var overdue, quarantined int
 	var oldest time.Time
-	var names []string
+	var names, orphans []string
 	for _, b := range repos {
 		if b.RootSHA == skipSHA {
+			continue
+		}
+		// A pile whose checkout is gone is named on its own line with the
+		// commands that remove it: the aggregate below tells the reader to
+		// open the repository, which for this pile cannot be done
+		// (iss-2609091717146700).
+		if b.Orphaned {
+			orphans = append(orphans, orphanedPileNotice(b))
 			continue
 		}
 		others++
@@ -2336,7 +2448,7 @@ func backlogNotices(skipSHA string) []string {
 		}
 	}
 	if others == 0 {
-		return nil
+		return orphans
 	}
 	where := ""
 	if len(names) > 0 {
@@ -2357,9 +2469,9 @@ func backlogNotices(skipSHA string) []string {
 	if quarantined > 0 {
 		extra += fmt.Sprintf(" %d can never be redacted and are quarantined, awaiting `abcd history discard`.", quarantined)
 	}
-	return []string{fmt.Sprintf(
+	return append(orphans, fmt.Sprintf(
 		"abcd: %d OTHER repositor(y/ies)%s are holding %s of UNREDACTED transcript text that no session here will ever drain — the drain runs per repository.%s%s Run `abcd history staged --all-repos` to see them.",
-		others, where, humanBytes(int(bytesHeld)), age, extra)}
+		others, where, humanBytes(int(bytesHeld)), age, extra))
 }
 
 // readTranscript reads the file named by the Stop payload's transcript_path.
@@ -2477,7 +2589,7 @@ Read-only.`,
 				diagnosticLine(cmd.ErrOrStderr(), "abcd %s", note)
 			}
 			if byPrompt {
-				v := rulesPrompt(rs, root, prompt)
+				v := rulesPrompt(cmd.ErrOrStderr(), rs, root, prompt)
 				return render(cmd.OutOrStdout(), *asJSON, v, func(w io.Writer) { renderRulesPrompt(w, rs, v) })
 			}
 			// Scoped: inspect one domain's configured content regardless of its
@@ -3917,6 +4029,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 		refuseAdopt   bool
 		dev           bool
 		attribution   bool
+		outbound      bool
 		allowStale    bool
 		binDir        string
 		visibility    string
@@ -3948,6 +4061,8 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				opts.ReadmeParts = readmeParts
 			}
+			opts.Outbound = outbound
+			opts.VerifyProvenance = ahoyReleaseProvenance
 			named, err := installToolNames(installTools)
 			if err != nil {
 				return err
@@ -4060,7 +4175,13 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 					if slices.Contains(res.OptionalSkipped, ahoy.ConventionsRetireGapID) {
 						fmt.Fprint(w, "    removing a file that only repeats AGENTS.md is asked only of a person at a terminal: run `abcd ahoy install` there, without --yes, and answer it\n")
 					}
-					if slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID) {
+					switch {
+					case !slices.Contains(res.OptionalSkipped, ahoy.ReadmeOfferGapID):
+					case res.ReadmeAwaitsConfig():
+						// Neither route below works without the config the
+						// answer is kept in (iss-2610120505551170).
+						fmt.Fprint(w, "    the README answer is kept in .abcd/config.json, which does not exist yet: answer y to creating abcd's starter files first, then answer the README question at a terminal, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
+					default:
 						fmt.Fprint(w, "    the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts "+ahoy.ReadmePartsChoices+"\n")
 					}
 				}
@@ -4087,6 +4208,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().BoolVar(&refuseAdopt, "refuse-adopt", false, "decline to adopt an unmanaged repo")
 	installCmd.Flags().BoolVar(&dev, "dev", false, "track-latest dogfood mode: the PATH entry rebuilds from the source tip on every call instead of pinning the built binary")
 	installCmd.Flags().BoolVar(&attribution, "attribution", false, "opt this repo into the committed prepare-commit-msg prompt asking every commit to declare whether a tool assisted it; the choice is recorded, so a later install without the flag keeps the hook")
+	installCmd.Flags().BoolVar(&outbound, "outbound", false, "opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both")
 	installCmd.Flags().BoolVar(&allowStale, "allow-stale-binary", false, "proceed even when the running binary is stale against its source tip or its vintage cannot be determined; the default is to refuse before any write and name the rebuild fix")
 	installCmd.Flags().StringVar(&binDir, "bin-dir", "", "directory for the PATH entry (default ~/.local/bin, or an existing abcd install adopted in place); fails when it is not writable — abcd never escalates privileges")
 	installCmd.Flags().StringVar(&visibility, "visibility", "", "repo visibility: private | public")
@@ -4906,6 +5028,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 				if err != nil {
 					return err
 				}
+				st = st.Shown()
 				// The outstanding-readings report rides the same board. It is the
 				// SAME function the lint rule calls, not a second scan: an item
 				// nobody has answered has no state to sit in, and two readings of
@@ -5168,6 +5291,7 @@ func newCaptureCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			res = res.Shown()
 			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, res, func(w io.Writer) {
 				for _, iss := range res.Issues {
 					fmt.Fprintf(w, "%s  %s  %s  %s%s%s\n", iss.ID, iss.Status, iss.Severity, iss.Slug, blockedNote(iss), summaryNote(iss.Body))
@@ -6633,7 +6757,23 @@ func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	if stop := homeStop(); stop != nil {
 		return renderHomeStop(root, args, stop, stdin, stdout, stderr)
 	}
+	// abcd keeps its home readable only by the account it belongs to: a home
+	// made at the umask by an earlier abcd or by hand is narrowed here, once,
+	// before any verb reads or writes in it (homestop.go, narrowHome).
+	narrowHome()
 
+	// abcd's home ignores itself (itd-2610140858048004): laid before the
+	// command for a home that already exists, and after it for a home the
+	// command has just created. A failed lay is said once and never fails the
+	// command (homestop.go). The status line is the one command it skips: it
+	// writes nothing at all, by the product thinker's ruling of 2026-10-05
+	// (iss-2610050556383525), and every other command lays the file soon enough.
+	if !isStatusline(args) {
+		quiet := jsonRequestedIn(args) || isHookCall(args)
+		if layHomeIgnore(stderr, quiet) {
+			defer layHomeIgnore(stderr, quiet)
+		}
+	}
 	err := root.Execute()
 	if err == nil {
 		return 0

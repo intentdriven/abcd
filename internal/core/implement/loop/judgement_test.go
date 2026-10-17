@@ -373,3 +373,91 @@ func TestAJudgementAnsweredDuringAPauseIsRecorded(t *testing.T) {
 		t.Fatalf("after the pause the drain asks the next issue, not the one already judged: %+v", after.Judging)
 	}
 }
+
+// TestARemedyRewrittenWithAHiddenRuneForAQuestionMarkIsJudgedAgain: the
+// judgement's digest is the remedy the lane works from, raw, never the masked
+// text a list shows. A remedy whose '?' is swapped for U+202E after its
+// judgement masks to the same text, and the answer is still refused.
+func TestARemedyRewrittenWithAHiddenRuneForAQuestionMarkIsJudgedAgain(t *testing.T) {
+	repo := issueRepo(t)
+	if _, err := capture.SetRemedy(capture.RemedyRequest{RepoRoot: repo.Root(), ID: eligibleIssue, Remedy: "Does the empty list panic? Print a dash."}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Judging == nil {
+		t.Fatalf("the drain awaits a judgement: %+v", first)
+	}
+	matches, err := filepath.Glob(filepath.Join(repo.Root(), filepath.FromSlash(capture.LedgerRelPath), "open", eligibleIssue+"-*.md"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("the record: %v %v", matches, err)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "panic? Print") {
+		t.Fatalf("the record carries the remedy: %s", data)
+	}
+	rewritten := strings.Replace(string(data), "panic? Print", "panic‮ Print", 1)
+	if err := os.WriteFile(matches[0], []byte(rewritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	path := writeAnswer(t, repo, first.Judging, judgementAnswer(first.Judging, JudgementNo, "", "internal"))
+	if _, err := Drain(repo.Root(), Options{}, DrainOptions{Judgement: path}); err == nil || !strings.Contains(err.Error(), "rewritten") {
+		t.Fatalf("an answer over a remedy since rewritten with a hidden rune is refused: %v", err)
+	}
+	if runCount(t, repo) != 0 {
+		t.Fatal("no lane opens over the rewritten remedy")
+	}
+}
+
+// TestTheJudgementRequestQuotesARecordsHiddenRunesMasked: the request file is
+// an agent's input, so a remedy or body carrying a bidi override or a tag
+// rune reaches it masked, while the digest stays over the remedy as stored.
+func TestTheJudgementRequestQuotesARecordsHiddenRunesMasked(t *testing.T) {
+	repo := issueRepo(t)
+	if _, err := capture.SetRemedy(capture.RemedyRequest{RepoRoot: repo.Root(), ID: eligibleIssue, Remedy: "Print a dash for the empty list."}); err != nil {
+		t.Fatal(err)
+	}
+	matches, err := filepath.Glob(filepath.Join(repo.Root(), filepath.FromSlash(capture.LedgerRelPath), "open", eligibleIssue+"-*.md"))
+	if err != nil || len(matches) != 1 {
+		t.Fatalf("the record: %v %v", matches, err)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	rewritten := strings.Replace(string(data), "Print a dash", "Print‮ a\U000E0041 dash", 1)
+	if rewritten == string(data) {
+		t.Fatalf("the record carries the remedy: %s", data)
+	}
+	rewritten += "\nThe body hides‮ an override and a tag\U000E0041 rune.\n"
+	if err := os.WriteFile(matches[0], []byte(rewritten), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Judging == nil {
+		t.Fatalf("the drain awaits a judgement: %+v", res)
+	}
+	req, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(res.Judging.Request)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, r := range []string{"‮", "\U000E0041"} {
+		if strings.Contains(string(req), r) {
+			t.Errorf("the request quotes %U raw:\n%s", []rune(r)[0], req)
+		}
+	}
+	if !strings.Contains(string(req), "The body hides? an override") || !strings.Contains(string(req), "Print? a? dash") {
+		t.Errorf("the request quotes the remedy and body masked:\n%s", req)
+	}
+	if res.Judging.RemedySHA256 != remedyDigest("Print‮ a\U000E0041 dash for the empty list.") {
+		t.Errorf("the digest is over the remedy as stored: %s", res.Judging.RemedySHA256)
+	}
+}

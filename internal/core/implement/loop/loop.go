@@ -7,6 +7,7 @@ package loop
 // writes it last; a stage that fails leaves the state exactly as it was.
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -53,8 +54,24 @@ type Options struct {
 	// role of the run is routed to for its remaining quota; nil leaves every
 	// role on the host, which reports none.
 	Runners *runner.Config
-	// Quota asks the named runner for its remaining quota; nil asks Runners.
-	Quota func(name string) (runner.Quota, bool, error)
+	// Quota asks the named runner for its remaining quota, under ctx's
+	// deadline; nil asks Runners.
+	Quota func(ctx context.Context, name string) (runner.Quota, bool, error)
+
+	// TakeOver is `abcd build --take-over`: the start's reservation moves
+	// this person's own live reservation from another copy to this one. It
+	// never moves another person's.
+	TakeOver bool
+
+	// reserve is the footprint a new run reserves its key with on origin
+	// after its checks pass and before it is created (reservation.go), when
+	// the caller has read it: the drain sets it from the issue's found_at.
+	// Nil, the start reads it from the run's record (runFootprint). In a
+	// checkout with no remote named origin nothing is reserved either way.
+	reserve []string
+	// noReserve starts a run on an origin without reserving its key: a test
+	// fixture that stands a run up and takes its reservation by hand sets it.
+	noReserve bool
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -201,7 +218,12 @@ type StartResult struct {
 	Pace *Pace `json:"pace"`
 	// HandBack is set when the run's lane stands handed back to the person.
 	HandBack *HandBack `json:"hand_back,omitempty"`
-	Next     string    `json:"next"`
+	// Reservation is what the start did with the run's reservation on the
+	// shared remote (reserved, renewed or took it over, until when, with what
+	// footprint); empty when it reserved nothing (no remote named origin, or
+	// a resumed run handed back).
+	Reservation string `json:"reservation,omitempty"`
+	Next        string `json:"next"`
 }
 
 // StepResult is what advance and Receipt return.
@@ -249,7 +271,11 @@ type StepResult struct {
 	// window early in this call, with the lanes it checkpointed
 	// (ratelimit.go); NextEligibleAt is then the pause's end.
 	RateLimit *RateLimit `json:"rate_limit,omitempty"`
-	Next      string     `json:"next"`
+	// AcceptedConfigChange names each changed git setting or file the call
+	// accepted (`implement step --accept-config-change`) before its step:
+	// names alone, a URL subsection hidden, never a value (configwatch.go).
+	AcceptedConfigChange []string `json:"accepted_config_change,omitempty"`
+	Next                 string   `json:"next"`
 	// handed is true when this call handed the lane to an agent, false when
 	// it re-told an await an earlier call began: only the call that hands the
 	// work out may start a runner for it.
@@ -303,6 +329,9 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		if err == nil && flags.set {
 			err = resumeWithFlags(res, flags)
 		}
+		if err == nil {
+			err = reserveResumed(repoRoot, &res, o)
+		}
 		if err != nil {
 			return StartResult{}, err
 		}
@@ -320,7 +349,12 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		shared = run
 	}
-	chk, err := check(repoRoot, key, o.Session, nil)
+	snap, err := readPeers(repoRoot, o.now())
+	if err != nil {
+		return StartResult{}, err
+	}
+	snap.takeOver = o.TakeOver
+	chk, err := check(repoRoot, key, o.Session, snap)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -335,6 +369,21 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		chk.OK = false
 		return StartResult{}, chk.refusal()
 	}
+	// The run's reservation on the shared remote (reservation.go), once the
+	// record may start and before the run exists: another's hold refuses the
+	// start, and a run that is then not created releases it.
+	reservedAt, reservedNote, fresh, err := reserveStart(repoRoot, chk, o)
+	if err != nil {
+		return StartResult{}, err
+	}
+	// keep is set once a run in this checkout holds the reservation: the one
+	// created here, or a racing start's run resumed below.
+	keep := false
+	defer func() {
+		if fresh && !keep {
+			releaseKey(repoRoot, chk.Key, o.now())
+		}
+	}()
 	if err := fsutil.EnsureRealDirAll(repoRoot, RunRelDir, dirPerm); err != nil {
 		return StartResult{}, fmt.Errorf("creating %s: %w", RunRelDir, err)
 	}
@@ -348,6 +397,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		// while the checks ran: it is resumed, not duplicated.
 		if st, ok := liveRun(runs, chk.Key); ok {
 			res = startResult(st, nil, true)
+			keep = true
 			if pick != nil {
 				return pickedLive(res)
 			}
@@ -388,6 +438,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			// The run's first window opens at its start.
 			WindowStartedAt: &now,
 			Pace:            &pace,
+			ReservedAt:      reservedAt,
 		}
 		openNextLane(&st)
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
@@ -395,6 +446,9 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
+		if reservedNote != "" {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: reservedNote})
+		}
 		if pick != nil {
 			rp := *pick
 			rp.Lane = st.Lanes[0].ID
@@ -414,6 +468,8 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		res = startResult(st, chk.Checks, false)
 		res.Claim = claim
+		res.Reservation = reservedNote
+		keep = true
 		return nil
 	})
 	return res, err
@@ -616,6 +672,11 @@ func advance(repoRoot, runID string, steps Stages, o Options) (StepResult, error
 // advanceWith is advance; routed reports whether a role is started through a
 // runner (Drive), which a network outage holds as well as a model one.
 func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(role string) bool) (StepResult, error) {
+	// The run tripwire (configwatch.go) comes before anything that may start
+	// git: a program-naming setting changed during the run stops the call.
+	if err := configTripwire(repoRoot, runID); err != nil {
+		return StepResult{}, err
+	}
 	g, err := outageFor(repoRoot, runID, o)
 	if err != nil {
 		return StepResult{}, err
@@ -651,19 +712,31 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			res.Next = pausedMove(*st, until)
 			return true, nil
 		}
+		// The run's reservation is renewed at half its lease before a stage
+		// (reservation.go); a renewal that fails is named and the stage runs.
+		logged := len(st.Record)
+		renewNote := renewReservation(repoRoot, st, now, nil)
+		renewed := len(st.Record) != logged
 		r, moved, err := move(repoRoot, st, steps, now, g)
 		if err != nil {
-			if moved {
+			if rf, ok := AsRefusal(err); ok && renewNote != "" {
+				rf.Remedy += "; " + renewNote
+			}
+			if moved || renewed {
 				// The wait, or a later lane's refusal, is the call's answer,
-				// and the time a lane began waiting for its full check is
-				// written with it (ruling DR6d-2).
+				// and the time a lane began waiting for its full check, or
+				// the reservation's renewal, is written with it (ruling
+				// DR6d-2).
 				wait = err
 				return true, nil
 			}
 			return false, err
 		}
 		res = r
-		return changed || moved, nil
+		if renewNote != "" {
+			res.Next += "; " + renewNote
+		}
+		return changed || moved || renewed, nil
 	})
 	if err == nil && wait != nil {
 		err = wait
@@ -750,10 +823,16 @@ func Receipt(repoRoot, runID, receiptPath string, steps Stages, o Options) (Step
 }
 
 // receipt is Receipt. A route that is not nil is the runner that ran the
-// agent (Drive): it is stamped on what the verifier recorded from the receipt,
-// and the record names it. The host's receipt carries none.
+// agent (Drive), or the reviewer route that answered (DriveReview): it is
+// stamped on what the verifier recorded from the receipt, and the record names
+// it. A nil route is the reviewer route's still when the verifier read, in a
+// reviewer's return, the answer the route's step placed (Await.Answered), so a
+// hand-back after the step could not verify it records the route; the host's
+// own receipt carries none.
 func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *runner.RouteRecord) (StepResult, error) {
 	var res StepResult
+	var noted *runner.RouteRecord
+	renewNote := ""
 	err := mutate(repoRoot, runID, func(root *os.Root, st *State) (bool, error) {
 		now := o.now()
 		i, k := st.findAwait(repoRoot, receipt)
@@ -774,6 +853,17 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			}
 			return false, refuse("receipt", "", lane.ID, err.Error(), "correct what the reason names, then hand the receipt back")
 		}
+		route := route
+		if _, reviewer := reviewerVerdicts[await.Role]; route == nil && reviewer && await.Answered != nil {
+			// Only the ruthless and the security reviewer take the route; the
+			// verifier judged the return it read against the answer placed.
+			noted = validatorRoute(lane, await.Receipt)
+			route = noted
+		}
+		// An agent may have worked past half the lease with no step between:
+		// the receipt renews the run's reservation as a step would
+		// (reservation.go), and every path below writes the state.
+		renewNote = renewReservation(repoRoot, st, now, nil)
 		if route != nil {
 			stampRoute(&lane, await.Receipt, route)
 			st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: StageRunner, Note: routeNote(await.Role, *route)})
@@ -782,6 +872,7 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			// The lane's own receipt handed the work back: the verifier has
 			// discarded it, and the lane ends here, before the validators.
 			handBackLane(st, &lane, *lane.HandBack, "", now)
+			releaseOnHandBack(repoRoot, st, now)
 			st.Lanes[i] = lane
 			st.UpdatedAt = now
 			res = laneResult(*st, lane, "", nil)
@@ -815,6 +906,12 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		res = laneResult(*st, lane, performed, nil)
 		return true, nil
 	})
+	if err == nil && noted != nil {
+		res.Route = noted
+	}
+	if err == nil && renewNote != "" {
+		res.Next += "; " + renewNote
+	}
 	return res, err
 }
 
@@ -1081,12 +1178,12 @@ func StatusLanes(repoRoot string) ([]statusblock.Started, error) {
 // fails closed on each record, as it does for the pick. It is a
 // statusblock.PeerReader.
 func StatusPeers(repoRoot string) (statusblock.HeldBy, error) {
-	snap, err := readPeers(repoRoot)
+	snap, err := readPeers(repoRoot, time.Now())
 	if err != nil {
 		return nil, err
 	}
 	return func(r intent.ReadyResult) string {
-		if row := peersCheck(r.IntentID, r.Bucket, "", snap); !row.OK {
+		if row := peersCheck(r.IntentID, r.Bucket, "", snap, true); !row.OK {
 			return row.Detail
 		}
 		return ""

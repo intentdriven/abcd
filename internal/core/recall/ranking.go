@@ -88,8 +88,10 @@ func found(counts map[string]int, t rules.PromptTerm) int {
 	return n
 }
 
-// Rank matches items against prompt and returns the candidates in ranked
-// order, each with its score and the terms behind it. The score is BM25F:
+// Rank matches items against prompt, judges each tied note's root
+// (Matching, which asks root only when a tied item matched), and returns the
+// candidates in ranked order, each with its score and the terms behind it,
+// with the root lookup's error beside them. The score is BM25F:
 // for each query term t found in the item,
 //
 //	idf(t) · tf_w / (tf_w + k1 · (1 − b + b · len / avg_len))
@@ -97,13 +99,15 @@ func found(counts map[string]int, t rules.PromptTerm) int {
 // summed over the terms, with idf(t) = ln(1 + (N − n_t + 0.5) / (n_t + 0.5))
 // over every item in reach (N items, n_t of them holding t), so a word every
 // item shares counts for little and a rare word that matches counts for a
-// lot. Ties break on the narrower scope (the project's before the
+// lot. Every item read is in reach, a personal note tied to another
+// repository among them: the tie is judged lazily, only for the candidates,
+// so the corpus never depends on whether git was asked. Ties break on the narrower scope (the project's before the
 // machine's), then the more recent At, then the key, so the order is the
 // same on every machine and every run.
-func Rank(items []Item, prompt string) []Ranked {
-	cands := candidates(items, prompt)
+func Rank(items []Item, prompt string, root RootFunc) ([]Ranked, error) {
+	cands, rootErr := Matching(items, prompt, root)
 	if len(cands) == 0 {
-		return nil
+		return nil, rootErr
 	}
 	terms := rules.PromptTerms(prompt)
 	stats := make([]itemStats, len(items))
@@ -150,7 +154,7 @@ func Rank(items []Item, prompt string) []Ranked {
 		out = append(out, r)
 	}
 	sort.SliceStable(out, func(i, j int) bool { return rankedBefore(out[i], out[j]) })
-	return out
+	return out, rootErr
 }
 
 // rankedBefore is the ranked order: the higher score, then the narrower

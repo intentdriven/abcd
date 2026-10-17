@@ -1,7 +1,7 @@
 ---
 name: history
 description: "Keep session transcripts in the user-level store and read them back: Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb."
-argument-hint: "list [--session <id>] | separation | show <session-id-or-filename> | staged [--all-repos] | drain | discard <file> --yes | capture <transcript-file> | capture --session <id> --all [<path>...] | ingest --into <repo-root> [<path>...] | migrate | reconstruct <session-id>"
+argument-hint: "list [--session <id>] | separation | show <session-id-or-filename> | staged [--all-repos | --root-sha <sha>] | drain | discard <file> --yes [--root-sha <sha>] | capture <transcript-file> | capture --session <id> --all [<path>...] | ingest --into <repo-root> [<path>...] | migrate | reconstruct <session-id>"
 block: agents
 user-invocable: false
 ---
@@ -70,7 +70,12 @@ being old. A **session start reports every repository in the store**, and
 `staged --all-repos` is the read-only verb behind the same survey, so a pile in
 a repository nobody is standing in is still visible. A transcript the
 fail-closed scanner will never pass is **quarantined** rather than retried
-forever, and `discard` is the only thing that removes it.
+forever, and `discard` is the only thing that removes it. A pile whose
+repository's **checkout is gone** (its recorded path no longer exists) can never
+be drained, because the drain needs that repository's own redaction settings:
+the survey marks it orphaned, a session start names it with its size and the
+commands that remove it, and `staged` and `discard` reach it by `--root-sha`
+with no checkout to stand in.
 
 ## List
 
@@ -176,7 +181,19 @@ count and bytes. This is the only form that can see the case that actually goes
 wrong — a pile of raw transcripts in a repository nobody opens, which no
 per-repository listing can reach. It resolves no root SHA, so it answers from
 anywhere. Report the totals and the named repositories; the survey deliberately
-carries no session ids or paths from another repository.
+carries no session ids or paths from another repository. An entry with
+`orphaned: true` is a repository whose recorded checkout no longer exists: no
+drain will ever redact its pile. Say so, and that if the checkout only moved,
+opening a session in it drains it.
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" history staged --root-sha <sha> --json
+```
+
+List the pile of the repository with that root-commit SHA instead of this one,
+with no checkout to stand in: the way to see an orphaned pile's files before
+discarding them. A SHA whose store holds nothing staged or quarantined is
+refused.
 
 ## Drain
 
@@ -202,6 +219,7 @@ retries it. Say which kind a failure is: they ask for different actions.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" history discard <staged-filename> --yes --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" history discard <staged-filename> --yes --root-sha <sha> --json
 ```
 
 Permanently delete ONE staged or quarantined raw transcript, named by its bare
@@ -210,6 +228,12 @@ in abcd that destroys a transcript nothing has stored, and it is irreversible.
 It exists because a quarantined transcript will never be redacted and never
 leaves on its own; without a sanctioned removal an operator would reach for `rm`
 in a directory whose neighbouring files they have no reason to know about.
+
+`--root-sha` discards from the repository with that root-commit SHA rather
+than the one the working directory belongs to, so a pile whose checkout was
+deleted, which nothing else can ever clear, still has a way out. It is the same
+one-file act under the same `--yes`; take the file names from `history staged
+--root-sha <sha>`.
 
 **Never run this on the user's behalf.** Run `history staged` first, show the
 user what the file is, and let them say the word; the verb refuses without

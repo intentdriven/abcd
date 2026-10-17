@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -36,23 +37,32 @@ type prePushCase struct {
 
 func newPrePushCase(t *testing.T) *prePushCase {
 	t.Helper()
+	return newPrePushCaseIn(t, "")
+}
+
+// newPrePushCaseIn is newPrePushCase in the object format named ("sha256"), or
+// git's default when format is "". The bare remote is cloned from the seeded
+// clone, so it holds the same format.
+func newPrePushCaseIn(t *testing.T, format string) *prePushCase {
+	t.Helper()
 	for _, tool := range []string{"bash", "git"} {
 		if _, err := exec.LookPath(tool); err != nil {
 			t.Skipf("%s unavailable", tool)
 		}
 	}
-	top := exec.Command("git", "rev-parse", "--show-toplevel")
-	top.Env = gittest.Env(t)
-	out, err := top.Output()
-	if err != nil {
-		t.Skip("not in a git checkout")
-	}
-	root := strings.TrimSpace(string(out))
+	root := prePushSourceRoot(t)
 
 	base := t.TempDir()
 	c := &prePushCase{t: t, dir: filepath.Join(base, "work"), origin: filepath.Join(base, "origin.git"), env: gittest.Env(t)}
-	gittest.InitBare(t, c.origin)
-	c.run(base, "git", "init", "-q", "-b", "main", c.dir)
+	initArgs := []string{"init", "-q", "-b", "main"}
+	if format != "" {
+		initArgs = append(initArgs, "--object-format="+format)
+	} else {
+		gittest.InitBare(t, c.origin)
+	}
+	if out, err := c.run(base, "git", append(initArgs, c.dir)...); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
 	c.git("config", "user.name", "Alice Example")
 	c.git("config", "user.email", "alice@example.com")
 
@@ -70,11 +80,34 @@ func newPrePushCase(t *testing.T) *prePushCase {
 	c.write("seed.md", "seed\n", 0o644)
 	c.git("add", "-A")
 	c.git("-c", "core.hooksPath=/dev/null", "commit", "-q", "-m", "seed")
-	c.git("remote", "add", "origin", c.origin)
-	c.git("-c", "core.hooksPath=/dev/null", "push", "-q", "origin", "main")
+	if format != "" {
+		gittest.CloneBare(t, c.dir, c.origin)
+		c.git("remote", "add", "origin", c.origin)
+		c.git("fetch", "-q", "origin")
+	} else {
+		c.git("remote", "add", "origin", c.origin)
+		c.git("-c", "core.hooksPath=/dev/null", "push", "-q", "origin", "main")
+	}
 	c.git("config", "core.hooksPath", ".githooks")
 	c.git("checkout", "-q", "-b", "feature")
 	return c
+}
+
+// prePushSourceRoot is the root of the source tree this test file sits in
+// (internal/surface/cli/, three levels down), found from the file's own
+// position rather than from git, so the suite runs, and never skips, in a tree
+// that is not a git checkout (an archive of one, say).
+func prePushSourceRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller could not locate the test source file")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+	if _, err := os.Stat(filepath.Join(root, ".githooks", "pre-push")); err != nil {
+		t.Fatalf("the committed pre-push hook is not where this file expects it: %v", err)
+	}
+	return root
 }
 
 func (c *prePushCase) run(dir string, name string, args ...string) (string, error) {
@@ -352,7 +385,9 @@ func TestMakePreflightMintsTheReceiptAfterItsLastGate(t *testing.T) {
 	}
 	raceAt, mintAt := -1, len(lines)-1
 	for i, l := range lines {
-		if strings.HasPrefix(l, "go test -race") {
+		// The race stage is the continuation of the line that derives its -p,
+		// so make -n prints it indented.
+		if strings.HasPrefix(strings.TrimSpace(l), "go test -race") {
 			raceAt = i
 		}
 	}

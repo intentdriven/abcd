@@ -76,7 +76,8 @@ directory).
 
 The exit code is the verdict, and it is **not** the parent verb's Conftest
 tri-state: `0` the artefact is clean, `1` the artefact is refused, `2` the check
-could not run (an unreadable or empty artefact, a degraded scanner config). Both
+could not run (an unreadable or empty artefact, a degraded scanner config, or a
+legacy `~/.abcd` standing beside abcd's home, which stops every verb). Both
 patterns are hard-fail, so the tri-state's advisory middle rung has no meaning
 here; a caller that branches on non-zero is right either way, and one that
 distinguishes must not read "the gate was broken" as a verdict on the text.

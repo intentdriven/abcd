@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // The comparison is derived from the log and from nothing else: the run's
@@ -203,11 +205,21 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 		return sorted[i].Event == EventWindowMode && sorted[j].Event != EventWindowMode
 	})
 	sorted = joinsIntoTheirWindow(sorted)
+	// Every string the report carries that the log supplies (a session's id,
+	// its role, a window's mode and so the leader, an intervention's kind, and
+	// the log an unparsed line names) is masked with termsafe.Sanitize where the
+	// report composes it: the log is a file a hand edit or a hostile checkout
+	// can carry, and the report reaches `implement report --json`
+	// (iss-2610121653432051). The session is masked on the report's own copy of
+	// each event, so every figure keyed on it is keyed on the masked id.
+	for i := range sorted {
+		sorted[i].Session = termsafe.Sanitize(sorted[i].Session)
+	}
 
 	roles := map[string]string{}
 	for _, e := range sorted {
 		if e.Event == EventSessionOpen {
-			if r := normaliseRole(e.String("role")); r != "" {
+			if r := normaliseRole(termsafe.Sanitize(e.String("role"))); r != "" {
 				roles[e.Session] = r
 			}
 		}
@@ -251,7 +263,7 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 	for _, e := range sorted {
 		if e.Event == EventWindowMode {
 			closeWindow()
-			mode := e.String("mode")
+			mode := termsafe.Sanitize(e.String("mode"))
 			if mode == "" {
 				mode = UnsetMode
 			}
@@ -325,16 +337,18 @@ func Compare(events []Event, unparsed []Unparsed) Report {
 	}
 	closeWindow()
 
-	rep := Report{Events: len(sorted), Unparsed: unparsed, Modes: []ModeTally{}, Context: []SessionContext{},
+	masked := make([]Unparsed, 0, len(unparsed))
+	for _, u := range unparsed {
+		u.File = termsafe.Sanitize(u.File)
+		masked = append(masked, u)
+	}
+	rep := Report{Events: len(sorted), Unparsed: masked, Modes: []ModeTally{}, Context: []SessionContext{},
 		LeaderBasis: "lanes landed per wall-clock hour", Evidence: evidenceOf(sorted),
 		MissingFields: missingFields(sorted), Coverage: coverageGaps(sorted), Outages: outageSpans(sorted)}
 	for _, c := range contexts {
 		rep.Context = append(rep.Context, *c)
 	}
 	sort.Slice(rep.Context, func(i, j int) bool { return rep.Context[i].Session < rep.Context[j].Session })
-	if rep.Unparsed == nil {
-		rep.Unparsed = []Unparsed{}
-	}
 	for _, t := range tallies {
 		if t.WallMinutes > 0 {
 			t.LandedPerHour = round2(float64(t.LanesLanded) / (t.WallMinutes / 60))
@@ -421,7 +435,7 @@ func evidenceOf(events []Event) Evidence {
 		switch e.Event {
 		case EventIntervention:
 			ev.Interventions++
-			kind := e.String("kind")
+			kind := termsafe.Sanitize(e.String("kind"))
 			if kind == "" {
 				kind = "unstated"
 			}
@@ -563,6 +577,11 @@ func outageSpans(events []Event) []OutageSpan {
 
 // listField reads a field holding a JSON list of strings, or one string (a
 // comma-separated list when written by hand), as a list.
+//
+// Each item is masked with termsafe.Sanitize: the text comes from the run log
+// the sessions append to, a file a hand edit or a hostile checkout can carry,
+// and an outage span takes it to `implement record --json` and `implement
+// report --json` (iss-2610121542263820).
 func listField(e Event, key string) []string {
 	raw, ok := e.Fields[key]
 	if !ok {
@@ -570,7 +589,7 @@ func listField(e Event, key string) []string {
 	}
 	var list []string
 	if json.Unmarshal(raw, &list) == nil {
-		return list
+		return termsafe.SanitizeAll(list)
 	}
 	s := e.String(key)
 	if s == "" {
@@ -579,7 +598,7 @@ func listField(e Event, key string) []string {
 	var out []string
 	for _, part := range strings.Split(s, ",") {
 		if part = strings.TrimSpace(part); part != "" {
-			out = append(out, part)
+			out = append(out, termsafe.Sanitize(part))
 		}
 	}
 	return out

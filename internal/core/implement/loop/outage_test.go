@@ -75,6 +75,11 @@ func TestLandPushNetworkFailureHoldsOnlyItsLane(t *testing.T) {
 	l1 := f.lane(t, "lane-1")
 	preflighted(t, l1, l1.HeadSHA)
 	f.repo.Git("remote", "set-url", "--push", "origin", "http://127.0.0.1:1/x.git")
+	// A push URL is watched by the run tripwire: the person accepts it.
+	if accepted, err := AcceptConfigChange(f.repo.Root(), f.runID, f.opts()); err != nil ||
+		!slices.Equal(accepted, []string{"remote.origin.pushurl (added)"}) {
+		t.Fatalf("the accept names the push URL it accepted: %q %v", accepted, err)
+	}
 
 	res := f.step(t)
 	if len(res.Blocked) != 1 || res.Blocked[0].Lane != "lane-1" || !res.Blocked[0].Contention ||

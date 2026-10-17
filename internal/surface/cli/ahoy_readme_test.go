@@ -80,3 +80,31 @@ func TestAhoyInstallReadmeOfferLabelIsTrue(t *testing.T) {
 		t.Errorf("no label says the optional work was not asked:\n%s", s)
 	}
 }
+
+// TestAhoyInstallReadmeHintWithoutAConfig: a run that ends with no
+// .abcd/config.json (the starter files declined) does not tell the person to
+// answer the README question at a terminal or with --readme-parts alone, both
+// of which fail until the starter files exist; it names them first
+// (iss-2610120505551170).
+func TestAhoyInstallReadmeHintWithoutAConfig(t *testing.T) {
+	repo := hermeticRepo(t)
+	out, err := runCLIPipedStdin(t, strings.Repeat("n\n", 40), "ahoy", "install", "--adopt",
+		"--visibility", "private", "--docs-target", "agents_md",
+		"--oracle-backend", "host-delegated", "--scan-deep", "false")
+	if err != nil {
+		t.Fatalf("install: %v\n%s", err, out)
+	}
+	if _, serr := os.Stat(filepath.Join(repo, ".abcd", "config.json")); !os.IsNotExist(serr) {
+		t.Fatalf("declining every question left a config (%v):\n%s", serr, out)
+	}
+	s := string(out)
+	if !strings.Contains(s, "readme.offered") {
+		t.Fatalf("the README question is not reported as left:\n%s", s)
+	}
+	if strings.Contains(s, "the README question is asked only of a person at a terminal, without --yes: run `abcd ahoy install` there and answer it, or answer it with --readme-parts") {
+		t.Errorf("the hint names two routes that fail without a config:\n%s", s)
+	}
+	if !strings.Contains(s, "the README answer is kept in .abcd/config.json, which does not exist yet") {
+		t.Errorf("the hint does not name the starter files first:\n%s", s)
+	}
+}

@@ -102,8 +102,12 @@ const principleNullity = "null"
 
 var (
 	// principleEvidenceHandleRe is the record-handle half of evidence's grammar:
-	// the families a principle distils, spelled lower case and unpadded.
-	principleEvidenceHandleRe = regexp.MustCompile(`^(adr|itd|spc|iss|rdi)-([0-9]+)$`)
+	// the families a principle distils, in lower case: every family a citation
+	// names, read from recordid's one list so a decision record (dcn) is
+	// evidence like an ADR, and a reading's items (rdi). A zero-padded number
+	// passes here; the lookup normalises it.
+	principleEvidenceHandleRe = regexp.MustCompile(`^(` +
+		strings.Join(append(recordid.CitedFamilies(), "rdi"), "|") + `)-([0-9]+)$`)
 	// statementLinkRe finds a link of any shape a principle's statement can
 	// carry, because a link target is a citation however its label reads
 	// (iss-2609261039139464): an inline link, a full or collapsed reference
@@ -397,7 +401,7 @@ func (p principleCheck) judge(repoRoot string, r schemaRecord) ([]Finding, error
 			}
 		case "reference":
 			if !validPrincipleReference(raw) {
-				claim(f.line, "'reference' is "+raw+", which is neither a record handle (adr-N, itd-N, spc-N, iss-N) nor a "+
+				claim(f.line, "'reference' is "+raw+", which is neither a record handle ("+recordid.CitedIDForms()+") nor a "+
 					"double-quoted name of a surface")
 			}
 		case "comparison":
@@ -418,8 +422,8 @@ func (p principleCheck) judge(repoRoot string, r schemaRecord) ([]Finding, error
 				}
 				seen[m] = true
 				if !principleEvidenceHandleRe.MatchString(m) && !condition.MarkerIDRe.MatchString(m) {
-					claim(f.line, "evidence member '"+m+"' is neither a record handle (adr-N, itd-N, spc-N, iss-N, "+
-						"rdi-N) nor a scope-condition identity (cond- and sixteen digits)")
+					claim(f.line, "evidence member '"+m+"' is neither a record handle ("+recordid.CitedIDForms()+
+						") nor a reading item (rdi-N) nor a scope-condition identity (cond- and sixteen digits)")
 					continue
 				}
 				evidence = append(evidence, m)

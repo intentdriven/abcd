@@ -24,6 +24,8 @@ package ideate
 import (
 	"regexp"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // SchemaVersion stamps the verdict payload. It is versioned independently of
@@ -41,32 +43,49 @@ const MaxPayloadBytes = 1 << 20 // 1 MiB
 // is the lexical half of the write-containment defence.
 const MaxSlugLen = 64
 
-// ResearchRelDir is the one directory a verdict record is ever written into, and
-// DecisionsRelDir is the log its dated pointer is appended to. Both are constants
-// rather than parameters: a configurable target would let a verdict land somewhere
-// no future session looks.
+// ResearchRelDir is the one directory a PUBLIC verdict record is ever written
+// under. It is a constant rather than a parameter: a configurable target would
+// let a verdict land somewhere no future session looks. A public verdict's
+// pointer is a decision record, written through decisions.Record into the
+// decisions folder (spc-2610110931381316, step 3), so ideate names no log path
+// of its own.
 //
-// It is the research store's notes/ bucket rather than its root because a verdict
-// record IS a dated research note (spc-18: "killed ideas are research outcomes,
-// and the research directory is where a future session looks before re-proposing
-// one"), and research/README.md files dated notes under notes/. Writing to the
-// root would make the shipped binary the standing producer of the very
-// convention violation iss-42 cleared out of that directory by hand.
+// A public verdict lands in ResearchRelDir/<root-sha>/, beside a private one's
+// ~/.abcd.noindex/ideas/<root-sha>/ (PrivateRel), so the two stores share one
+// layout and a verdict moved from one to the other keeps its name. The product
+// thinker's ruling of 2026-10-14 (iss-2610090740139804) set both paths: every
+// idea put through ideate is private or public by the person's answer, asked
+// before anything is written, and only a public one reaches the repository.
+const ResearchRelDir = ".abcd/development/research/ideas"
+
+// PrivateRel is the private store's folder under abcd's home, in slash form
+// relative to the person's home directory: ~/.abcd.noindex/ideas. A private
+// verdict lands in PrivateRel/<root-sha>/, owner-only, and records no
+// decision pointing at it, because the decisions folder is committed.
+var PrivateRel = abcdhome.Rel("ideas")
+
+// Visibility is the person's answer to "is this idea private or public?". It
+// has no default: Record refuses a store without one, because a verdict written
+// to the wrong store is either an idea published before its time or a public
+// record nobody can find.
+type Visibility string
+
 const (
-	ResearchRelDir  = ".abcd/development/research/notes"
-	DecisionsRelDir = ".abcd/work/DECISIONS.md"
+	// VisibilityPrivate keeps the verdict in the person's home store.
+	VisibilityPrivate Visibility = "private"
+	// VisibilityPublic commits the verdict to the repository's research store.
+	VisibilityPublic Visibility = "public"
 )
 
-// decisionsLockRel is the advisory lock serialising the decision log's
-// read-modify-write across concurrent abcd processes in one worktree. It is a
-// runtime artefact beside the log it guards, named like capture's allocator lock
-// and gitignored on the same footing.
-const decisionsLockRel = ".abcd/work/.decisions.lock"
-
-// decisionsLockTimeout bounds the wait for that lock. A verdict record is a
-// once-per-idea act, so contention is brief when it happens at all; waiting
-// longer than this means something is wedged, and saying so beats hanging.
-const decisionsLockTimeout = 5 * time.Second
+// Store names where one verdict is written. RootSHA keys both stores on the
+// repository's root commit, so verdicts about different repositories never
+// share a folder; Home is the person's home directory and is read only for a
+// private verdict.
+type Store struct {
+	Visibility Visibility
+	RootSHA    string
+	Home       string
+}
 
 const (
 	// maxClaims caps the research leg's claims table.
@@ -90,9 +109,6 @@ const (
 	// megabyte of zeros is legal, fails resolution, and is echoed whole into the
 	// operator's terminal.
 	maxRecordIDBytes = 32
-	// maxDecisionsBytes caps the read of the decision log before its line is
-	// appended.
-	maxDecisionsBytes = 4 << 20 // 4 MiB
 )
 
 var (
@@ -285,9 +301,14 @@ type Result struct {
 	// Graduates reports whether this verdict admits the idea to a draft intent.
 	// Ideate mints nothing itself; this is the signal the surface relays.
 	Graduates bool `json:"graduates"`
-	// Path is the verdict record, repo-relative.
+	// Visibility is the store the verdict was written to.
+	Visibility Visibility `json:"visibility"`
+	// Path is the verdict record: repo-relative for a public verdict, and
+	// ~/-relative for a private one, so no absolute home path is ever echoed.
 	Path string `json:"path"`
-	// DecisionPath is the log the dated pointer was appended to, repo-relative.
+	// DecisionPath is the decision record that points at a public verdict,
+	// repo-relative under the decisions folder; empty for a private verdict,
+	// which records no decision.
 	DecisionPath string `json:"decision_path"`
 	// Claims tallies the research leg.
 	Claims ClaimTally `json:"claims"`

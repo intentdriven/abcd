@@ -131,7 +131,9 @@ func Check(home string) *Stop {
 // created at: the account's alone. Every writer hands it to
 // fsutil.EnsureHomeScope, so the home is private whichever command creates it
 // first (iss-2610032205304585); TestEveryHomeWriterMakesTheHomePrivate holds
-// them to it.
+// them to it. A home that already stands open to other accounts (made at the
+// umask by an earlier abcd or by hand) is narrowed to the account's alone at
+// the CLI front door, before any verb runs (iss-2610120949163534).
 const DirMode os.FileMode = 0o700
 
 // FileMode is the mode of a record abcd writes into its home: read and written

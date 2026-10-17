@@ -281,6 +281,13 @@
           "hidden": false
         },
         {
+          "name": "outbound",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "readme-parts",
           "shorthand": "",
           "type": "string",
@@ -346,6 +353,22 @@
           "name": "bin-dir",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd announce",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+      "flags": [
+        {
+          "name": "expires-in",
+          "shorthand": "",
+          "type": "duration",
           "required": false,
           "hidden": false
         }
@@ -447,7 +470,7 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
+      "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.",
       "flags": [
         {
           "name": "fix-rounds",
@@ -464,6 +487,13 @@
           "hidden": false
         },
         {
+          "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "session",
           "shorthand": "",
           "type": "string",
@@ -474,6 +504,13 @@
           "name": "sub-agents",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take-over",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }
@@ -993,8 +1030,16 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.",
-      "flags": []
+      "sentence": "Record a decision, list them bare, or mint an ADR with --adr: Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.",
+      "flags": [
+        {
+          "name": "adr",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd disembark",
@@ -1300,6 +1345,118 @@
       ]
     },
     {
+      "path": "abcd embargo",
+      "hidden": false,
+      "group": "release",
+      "block": "people",
+      "sentence": "Keep private security advisories off the public ledger until closed or published: Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
+      "flags": []
+    },
+    {
+      "path": "abcd embargo check",
+      "hidden": false,
+      "sentence": "Check a commit range or texts for what would disclose an advisory under embargo: Writes nothing; refuses on each id, reserved CVE id, title or store path found.",
+      "flags": [
+        {
+          "name": "allow",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "file",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "range",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo close",
+      "hidden": false,
+      "sentence": "Show an advisory's closing text and digest, or close it on GitHub with it: Writes GitHub and the store only with --approve; refuses a digest for other text.",
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo intake",
+      "hidden": false,
+      "sentence": "Take this repository's private advisories into private records in the embargo store: Writes only the embargo store; refuses a remote that is not on GitHub.",
+      "flags": []
+    },
+    {
+      "path": "abcd embargo publish",
+      "hidden": false,
+      "sentence": "Show the publication plan with computed patched versions, or publish it: Writes GitHub and the store only with --approve; refuses a digest for another plan.",
+      "flags": [
+        {
+          "name": "approve",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd embargo triage",
+      "hidden": false,
+      "sentence": "Record a verdict on a private advisory, drafting a closing verdict's text: Writes the embargo store; refuses an unknown verdict or one missing its reason.",
+      "flags": [
+        {
+          "name": "by",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "cannot-help",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "exists-without",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "reason",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
       "path": "abcd embark",
       "hidden": false,
       "group": "portability",
@@ -1410,6 +1567,13 @@
       "hidden": false,
       "sentence": "Delete one staged or quarantined raw transcript for good: Writes the deletion; refuses without --yes.",
       "flags": [
+        {
+          "name": "root-sha",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "yes",
           "shorthand": "",
@@ -1532,6 +1696,13 @@
           "type": "bool",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "root-sha",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
         }
       ]
     },
@@ -1575,15 +1746,29 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
+      "sentence": "Judge an idea through the host-run admission gauntlet: Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.",
       "flags": []
     },
     {
       "path": "abcd ideate record",
       "hidden": false,
       "block": "agents",
-      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated research record; refuses without an idea slug or --verdict-json.",
+      "sentence": "Validate a host-composed gauntlet verdict: Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.",
       "flags": [
+        {
+          "name": "private",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "public",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "verdict-json",
           "shorthand": "",
@@ -1781,6 +1966,13 @@
       "hidden": false,
       "sentence": "Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.",
       "flags": [
+        {
+          "name": "race-gate",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
         {
           "name": "site",
           "shorthand": "",
@@ -2040,6 +2232,13 @@
       "sentence": "Perform the next stage of an implement loop run's lane and exit: Writes the run's state and the lane's stages; refuses a push with no preflight receipt.",
       "flags": [
         {
+          "name": "accept-config-change",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "discard",
           "shorthand": "",
           "type": "string",
@@ -2231,6 +2430,13 @@
       "sentence": "Emit the consistency request over the brief and every intent, or one intent against them: Writes the request locally; refuses a superseded intent.",
       "flags": [
         {
+          "name": "max-chunks",
+          "shorthand": "",
+          "type": "int",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "route",
           "shorthand": "",
           "type": "stringArray",
@@ -2248,7 +2454,7 @@
         {
           "name": "findings-json",
           "shorthand": "",
-          "type": "string",
+          "type": "stringArray",
           "required": false,
           "hidden": false
         },
@@ -2493,6 +2699,29 @@
       "hidden": false,
       "sentence": "Sweep a lab's documents for every retracted pattern: Writes the sweep artefact, and a finding and halt on an unapplied correction; refuses an unknown lab.",
       "flags": []
+    },
+    {
+      "path": "abcd land",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
+      "flags": [
+        {
+          "name": "no-enqueue",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "no-push",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd launch",
@@ -3128,7 +3357,7 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "List the records sibling worktrees and local branches hold that this checkout does not: Writes nothing; refuses outside a git checkout.",
+      "sentence": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: Writes the fetched reservations; refuses outside a git checkout.",
       "flags": []
     },
     {
@@ -3268,6 +3497,50 @@
       "flags": [
         {
           "name": "template",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd reserve",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
+      "flags": [
+        {
+          "name": "footprint",
+          "shorthand": "",
+          "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "holder",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "lease",
+          "shorthand": "",
+          "type": "duration",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take-over",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -3490,6 +3763,14 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd status",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "List everyone's announcements, reservations and releases being cut: Writes the fetched status branches and reservations; refuses outside a git checkout.",
+      "flags": []
     },
     {
       "path": "abcd statusline",

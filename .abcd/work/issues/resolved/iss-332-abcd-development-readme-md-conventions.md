@@ -16,8 +16,8 @@ impact: internal
 ## Evidence
 
 - `.abcd/development/README.md:22-24` -- says issues graduate into intents/ or principles/ rather than a ledger, inside a live Conventions paragraph.
-- `.abcd/work/issues/README.md:1` titled Issue ledger; adr-32 sites it in the work tier; DECISIONS.md 2026-08-19 single canonical issue store; ~300 records exist.
+- `.abcd/work/issues/README.md:1` titled Issue ledger; adr-32 sites it in the work tier; [dcn-2608190000000001](../../decisions/dcn-2608190000000001-the-abcd-work-issues-ledger-is-the.md) single canonical issue store; ~300 records exist.
 
 ## Refuter verdict -- CONFIRMED (substantive, low end)
 
-Descends from adr-30 (issues are NOT a record folder), whose compression dropped scope and destination, turning a siting claim into a substitution claim. Flagged twice in review notes, routed to iss-36/iss-38 (both resolved, neither touched it). DECISIONS.md 2026-08-03 rules this file the living index. Fix: reword to state the ledger lives in the working tier at ../work/issues/ (adr-32) and a design-significant issue graduates from it into intents/ or principles/.
+Descends from adr-30 (issues are NOT a record folder), whose compression dropped scope and destination, turning a siting claim into a substitution claim. Flagged twice in review notes, routed to iss-36/iss-38 (both resolved, neither touched it). [dcn-2608030000000002](../../decisions/dcn-2608030000000002-iss-42-correction-to-the-entry.md) (2026-08-03) rules this file the living index. Fix: reword to state the ledger lives in the working tier at ../work/issues/ (adr-32) and a design-significant issue graduates from it into intents/ or principles/.

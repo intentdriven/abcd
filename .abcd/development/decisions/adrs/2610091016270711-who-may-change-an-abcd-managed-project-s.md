@@ -1,7 +1,7 @@
 ---
 id: adr-2610091016270711
 slug: who-may-change-an-abcd-managed-project-s
-status: proposed
+status: accepted
 date: 2026-10-09
 supersedes: null
 superseded_by: null
@@ -30,15 +30,31 @@ Requirements the product thinker set on 2026-10-09, which any decision here must
 - A build for a signed-in person spends that person's own GitHub allowance, never the site's.
 - A shared cache is wanted where it is possible: a page built from a public repository can be served to everyone, but one built from a private repository with one person's sign-in may be served only to people that repository also admits, so a private cache entry is keyed to access, never shared beyond it.
 
+On 2026-10-14 the product thinker narrowed these requirements for the first release, verbatim: "for now, public projects only in abcd, but private ones must be an option later". The private-repository requirements above stand for the later intent that adds private repositories; the decision here must leave room for them.
 
 ## Decision
 
-_Not yet decided; settled at the planning interview of itd-2610091016262335._
+Decided by the product thinker's rulings of 2026-10-14, recorded verbatim in itd-2610091016262335's Decisions:
+
+1. **abcd runs no server and holds no key.** A session runs on the team's own machine, reached over Tailscale, or on the team's own relay, deployed once from a blueprint abcd ships to the team's own account (the pattern the rascals demo repository uses on Render). Partner-run hosting is a later intent.
+2. **Joining is by the host's QR code or short code.** There are two kinds of participant:
+   - A **team member** signs in with GitHub through the team's own small GitHub sign-in app, whose secret stays on the team's relay or host machine (pasting a personal access token is the fallback). They are admitted as a team member when GitHub reports that they can change the repository (write access or above). Their changes are credited to them.
+   - A **guest** joins by code alone. A guest's change is a suggestion until a team member approves it, and the approval is recorded with an `Approved-by:` line beside the guest's display name.
+3. **A change lands only through GitHub, as a proposal the team decides on.** The team chooses, per session, between each edit as its own pre-filled GitHub issue (credited to its author or approver) and the whole session as one pull request (authored by the submitter, with a co-author line per credited team member). abcd never writes into the repository itself. The team's own agent session picks these up at its start, the way the inbox surfaces reports; a GitHub Action on the project's own key is a later addition.
+4. **Scope of the first release:** the brief only, public and private repositories alike, with no product thinker / technical facilitator toggle. abcdev.app is read-only and offers no editing.
 
 ## Alternatives Considered
 
-_To be laid out at planning: forge sign-in with repository permissions and changes as pull requests; forge sign-in with direct commits; abcd-issued pairing as on the local dashboard; read-only hosting with every change made in the local session._
+- **A relay abcd runs.** Rejected: abcd never runs a server holding or serving project content ("not us. never.").
+- **A partner's live-collaboration service** (Liveblocks, Tiptap's cloud). Deferred to a later intent: the partner holds a readable copy and someone pays monthly.
+- **Browsers connecting directly, the host's browser as the hub.** Not chosen: unreliable on company networks without a relay.
+- **A shared GitHub branch refreshed every few seconds.** Chosen first, then reversed the same day: not live enough for a team working in a call.
+- **Pasting a personal access token for everyone.** Kept only as the fallback once the team's own relay or host can hold its sign-in secret.
+- **A GitHub App owned by abcd, or GitHub's roles deciding who is product thinker or facilitator.** Rejected: abcd holds no key, custom repository roles are enterprise-only, and personal repositories have no teams (research note 2026-10-14-github-roles-admission-and-issue-links.md).
 
 ## Consequences
 
-_To be written with the decision._
+- Each team does a one-off setup: deploying the relay or joining the host's Tailscale network, and registering its own GitHub sign-in app. Keeping that relay and its secret safe is the team's responsibility, not abcd's.
+- Anyone the host gives the code to sees the brief, a private one included; admission of guests is the host's call.
+- The session needs per-person change tracking and a suggestion mode for guests.
+- abcd adds no network surface of its own: its only network surface stays the local dashboard (adr-2610032150581128), and the hosted page at abcdesign.app is static.

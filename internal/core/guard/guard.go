@@ -193,6 +193,10 @@ type Registry struct {
 	// read for it (script.go); nil for a registry that reads no file, which
 	// is what Defaults returns until a front door names the directory.
 	files *Files
+
+	// forge is the forge-text opt-in of the repository this registry was
+	// loaded for (forge.go); nil for a registry with no repository behind it.
+	forge *forgeGate
 }
 
 // Decision is what core returns for one candidate command. It carries no
@@ -622,6 +626,14 @@ func (r Registry) judge(command string, rc *readCtx, run *scriptRun) (verdicts, 
 			break
 		}
 	}
+	// So does one that runs a script the same text downloaded to a file
+	// (fileCarries).
+	for _, s := range segs {
+		if s.runsFetched {
+			signals = append(signals, fetchedScriptSignal())
+			break
+		}
+	}
 
 	ids := make([]string, 0, len(r.Entries))
 	for id := range r.Entries {
@@ -757,6 +769,17 @@ func (r Registry) decide(v verdicts) Decision {
 	// finding 4). It ranks after an entry the line names and before the
 	// entry-less signals, as the registry match it is.
 	if blockPool {
+		// A variable-built `-c` script that deletes speaks for an entry about
+		// the variable path inside it: its rewrite includes that entry's, and
+		// moving the script into a file is what lets each command be checked
+		// (shellcdelete.go). Any other blocker keeps its own message.
+		if len(unnamedBlockers) == 0 && r.leadsOver(blockers) {
+			for i := range signals {
+				if signals[i].id == shellCDeleteEntryID {
+					return syntheticDecision(VerdictBlock, signals[i], matches)
+				}
+			}
+		}
 		switch {
 		case len(blockers) > 0:
 			return decisionFromEntry(VerdictBlock, r.Entries[blockers[0]], matches)
@@ -908,7 +931,7 @@ func message(v Verdict, e Entry) string {
 }
 
 func cloneRegistry(r Registry) Registry {
-	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files}
+	out := Registry{SchemaVersion: r.SchemaVersion, Disabled: r.Disabled, worktrees: r.worktrees, files: r.files, forge: r.forge}
 	if r.Entries != nil {
 		out.Entries = make(map[string]Entry, len(r.Entries))
 		for id, e := range r.Entries {

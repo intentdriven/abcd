@@ -29,6 +29,7 @@ var delimiterSites = map[string]delimiterSite{
 	// Writers: they emit a delimiter and judge none.
 	"internal/core/capture/serialize.go":         {2, "a WRITER: buildIssueText emits the block's two delimiters; the reader side is frontmatterBounds, which asks IsDelimiter and CloseAfter"},
 	"internal/core/decide/decide.go":             {2, "a WRITER: the ADR skeleton's two delimiters"},
+	"internal/core/decisions/record.go":          {2, "a WRITER: a decision record's two delimiters"},
 	"internal/core/intent/create.go":             {2, "a WRITER: the minted intent's two delimiters"},
 	"internal/core/intent/consistency.go":        {2, "a WRITER: the review record's two delimiters"},
 	"internal/core/spec/spec.go":                 {2, "a WRITER: the minted spec's two delimiters"},
@@ -44,6 +45,7 @@ var delimiterSites = map[string]delimiterSite{
 	"internal/core/lint/subverbs.go":             {1, "a markdown TABLE's separator row (`|---|`), not a frontmatter delimiter"},
 	"internal/core/implement/loop/brief.go":      {1, "a WRITER: the lane brief's thematic break above the intent section, in the body; not frontmatter"},
 	"internal/core/implement/loop/issuebrief.go": {1, "a WRITER: the issue lane brief's thematic break above the issue section, in the body; not frontmatter"},
+	"internal/core/embargo/close.go":             {1, "a WRITER: the thematic break a closed advisory's GitHub description carries between the approved closing text and the reporter's own; not frontmatter, and the read-back compares the approved text, never the break"},
 	// Deliberate, documented differences.
 	"internal/core/memory/yaml.go":     {3, "the memory store's opener tolerates an indented delimiter (documented at frontmatterOpenIndex and textOpensFrontmatter); joinFileFrontmatter WRITES the block's two delimiters; every close is IsDelimiter"},
 	"internal/core/memory/writer.go":   {3, "a WRITER rebuilding a region for parseFrontmatter, and a byte-0 test that leaves a page with a tolerated preamble alone because rebuilding it would drop the preamble"},

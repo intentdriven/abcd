@@ -206,7 +206,7 @@ plugin surface, and a future MCP server share one engine.
   `core/reading`'s one durable-tier writer. It is not inside `core/reading`
   because the two contexts must never share a front door, and a package that
   built both would be one.
-- **`core/decide/`** — the decision record's WRITE side: `abcd decide "<title>"`
+- **`core/decide/`** — the ADR's WRITE side: `abcd decide --adr "<title>"`
   mints an `adr-<stamp>` through `core/recordid` and lays the ADR skeleton under
   `.abcd/development/decisions/adrs/`. It is the last record family to reach that
   seam (the 2026-09-01 ruling, the turn adr-45 ruling 3 deferred), and it adopts it
@@ -217,6 +217,13 @@ plugin surface, and a future MCP server share one engine.
   already resolves. It owns the id, the date, the filename and the four sections,
   and states nothing: the decision is a human's to write, so the record lands
   `proposed` and the skeleton carries questions rather than answers.
+- **`core/decisions/`** — the decision records' folder, `.abcd/work/decisions/`:
+  one `dcn-<id>-<slug>.md` file per decision (adr-2610110925465593). `Record` is
+  its one writer, behind `abcd decide "<text>"`: it mints through
+  `core/recordid` and creates one file exclusively, touching no other path, so two
+  branches that each record a decision merge with nothing to reconcile. `Parse`
+  and `List` read the folder in id order, and `ReadListing` is bare
+  `abcd decide`'s listing.
 - **`core/glossary/`** — the brief glossary's index, derived. The term files under
   `.abcd/development/brief/glossary/` are the source of truth for what terms exist
   and in which bounded context; this package renders the directory tree and the
@@ -287,6 +294,13 @@ plugin surface, and a future MCP server share one engine.
   committed guard hooks, the `.gitattributes` line keeping them at LF, the public
   family, and the gitignored stub) into a repo it configures, importing this package
   for the paths and for the one canonical statement of the private layer's reach.
+- **`adapter/repoprompt/`** — the RepoPrompt reviewer route (itd-6): a client of
+  MCP's Streamable HTTP transport, spoken with the standard library, that sends
+  one review request to the MCP server the person names on their own machine
+  (`oracle.rp.url`, loopback only) and returns the text it answered. It
+  connects and nothing else: it starts no process and reads no file, which a
+  test holds its imports to. `mcptest/` is the MCP server its tests, and the
+  loop's, run against on the loopback address.
 - **`adapter/scanner/`** — the secret/PII seam, and the first adapter seam to
   ship. Its native implementation is pure Go with no external dependency: a
   bundled secret-pattern set plus the probed machine identity, layered with an
@@ -329,6 +343,13 @@ plugin surface, and a future MCP server share one engine.
   reopened, for every command abcd prints for a person to paste or writes into
   a script. A standard-library leaf outside `core/` so `abcdhome/` can use it;
   `TestOnlySingleQuotesForTheShell` refuses a private copy anywhere else.
+- **`procgroup/`** — the one way a command is bounded together with what it
+  starts: `Bound` makes it lead its own process group and makes its context's
+  end kill that group through the pid its own handle holds, never by a
+  pattern; `Lead` and `Kill` are the same two halves for a caller that keeps
+  its own timer and select. The `abcd land` preflight and the status line's
+  previous command use `Bound`; the runner's launcher and the tool installer
+  use `Lead` and `Kill`.
 - **`textwidth/`** — the one display-width measure, word wrap, fit to width
   and break by width (East Asian wide runes count two), a pure leaf with no
   terminal I/O. It sits outside

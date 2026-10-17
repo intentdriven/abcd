@@ -92,7 +92,7 @@ type helpPlacement struct {
 // it: a command a person needs to do their job is a person's, and only a
 // command no person types leaves the person's list (itd-2610090831227812; the
 // entries P1 to P6 in spc-2610100613109045's verb audit). P1 puts abcd (the
-// board), ahoy, build, capture, decide, disembark, embark, intent, launch,
+// board), ahoy, build, capture, decide, disembark, embark, intent, land, launch,
 // update, ideate, dashboard, lab and reading with people, and lint, reflect,
 // inbox, implement, history, site, docs, scribe, identity, guard, hook and
 // statusline with agents. P2 keeps drain with agents until itd-82 ships. P3
@@ -117,16 +117,25 @@ var helpPlacements = map[string]helpPlacement{
 	"decide":    {group: groupRecords},
 	"ideate":    {group: groupRecords},
 	"intent":    {group: groupRecords},
+	"land":      {group: groupRecords},
 	"library":   {group: groupRecords},
+	// status is the people's view of what everyone else is doing
+	// (itd-2609151838312703 decision 21): the announcements, who holds which
+	// reservation and any release being cut.
+	"status":    {group: groupRecords},
 	"lab":       {group: groupChecks},
 	"reading":   {group: groupChecks},
 	"disembark": {group: groupPortability},
 	"embark":    {group: groupPortability},
 	"launch":    {group: groupRelease},
+	// embargo is a person's verb under release (spc-2610120557432880, step
+	// 10): the person decides every verdict and approves every act on GitHub.
+	"embargo": {group: groupRelease},
 
 	// The agents-and-hosts block. rules names the page that installs the rule
 	// loader, and spec the user-facing half of the spec lifecycle (the spec's
 	// decision 2).
+	"announce":            {group: groupAgents, page: "commands/announce.md"},
 	"banlist":             {group: groupAgents, page: "commands/banlist.md"},
 	"docs":                {group: groupAgents, page: "commands/docs.md"},
 	"guard":               {group: groupAgents, page: "commands/guard.md"},
@@ -142,6 +151,7 @@ var helpPlacements = map[string]helpPlacement{
 	"mode":                {group: groupAgents, page: "commands/mode.md"},
 	"peers":               {group: groupAgents, page: "commands/peers.md"},
 	"reflect":             {group: groupAgents, page: "commands/reflect.md"},
+	"reserve":             {group: groupAgents, page: "commands/reserve.md"},
 	"report":              {group: groupAgents, page: "commands/report.md"},
 	"rules":               {group: groupAgents, page: "commands/ahoy.md"},
 	"scribe":              {group: groupAgents, page: "commands/scribe.md"},

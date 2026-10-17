@@ -16,7 +16,7 @@ LDFLAGS := -s -w$(if $(VERSION), -X github.com/intentdriven/abcd/internal/core.V
 # Go step `preflight` makes, below.
 GO_TOOLCHAIN_VERSION := $(shell sed -n 's/^go \([0-9][0-9.]*\)$$/\1/p' go.mod)
 
-.PHONY: build test vet clean preflight load-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint site-render smoke \
+.PHONY: build test vet clean preflight load-check lint-reviews lint-issues record-lint issue-drift docs-lint site-render smoke \
 	evals-cold-reading check-attribution scaffold-sync scaffold-sync-check asking-sync asking-sync-check fmt fmt-check
 
 # Cross-compile every supported target to bin/abcd-<goos>-<arch>.
@@ -159,8 +159,8 @@ check-attribution:
 # over the branch's own changes, the merge-base range `origin/main...HEAD`. CI's
 # step passes the same three-dot range from its base commit. Unarmed, the check
 # is a no-op, and a prompt edit passed three green preflights to be refused in
-# the merge queue (iss-2609021152026246). Like lint-issues and lint-decisions,
-# it needs origin/main.
+# the merge queue (iss-2609021152026246). Like lint-issues, it needs
+# origin/main.
 record-lint:
 	@go run ./cmd/record-lint -agent-diff origin/main...HEAD
 
@@ -189,49 +189,6 @@ lint-issues:
 	@bash scripts/check-issue-resolution-cases.sh
 	@bash scripts/check-issue-resolution.sh ledger HEAD
 	@bash scripts/check-issue-resolution.sh commits origin/main HEAD
-
-# Deterministic append-only gate for .abcd/work/DECISIONS.md
-# (iss-2608271804494867), in internal/core/lint (iss-2608291814575169). The
-# ledger declares itself append-only and newest-last, and nothing enforced it;
-# the backwards date steps already in the file are historical and are NOT
-# repaired, because reordering a committed append-only log is the one thing
-# append-only forbids. Position, not date order, is the first rule: a
-# back-dated entry appended at the tail is honest, an entry written above
-# existing ones is not. Four rules, each per-commit against that commit's own
-# parents:
-#
-#   DA001 position    — an added line lands after the last line the parent had.
-#   DA002 preservation — no committed line below the header is removed, against
-#                        EVERY parent. Position alone only fires while content
-#                        SURVIVES below the addition, so a rewrite that reaches
-#                        end-of-file, and its truncate-then-restore cousin, slip
-#                        past it entirely.
-#   DA003 merge authors nothing — a merge's ledger holds a line no more times
-#                        than the merge base held it plus what each parent
-#                        added. Merges cannot be skipped (a forged resolution is
-#                        an unchecked write path) and DA001 cannot be applied to
-#                        them (the ledger is merge=union, and the driver's
-#                        interleaving leaves the result a tail extension of
-#                        neither side), so the count bound is what holds.
-#   DA004 the ledger is text — no commit introduces a NUL byte. One NUL makes git
-#                        call the file binary, which empties the diff of hunks and
-#                        silently disarms every rule above, permanently. The diffs
-#                        are read with --text so that cannot happen; DA004 keeps
-#                        the byte out of the file, which --text does not.
-#
-# Both operations the gate legitimately refuses — redacting a leaked line, and
-# the ledger's own planned graduation to per-file decisions/ — are deliberate
-# gate-edit-and-review changes, not escape hatches: see the contract at the top
-# of internal/core/lint/decisionsappend.go.
-#
-# The cases run first, as in lint-reviews and lint-issues: a gate nobody has
-# watched fail is an enforcement claim with no evidence behind it. They are the
-# TestDecisionsAppend* tests, which `go test ./...` also runs. Needs full git
-# history, like its siblings: on a shallow checkout the gate refuses (exit 2)
-# rather than read every append as a whole-file add.
-lint-decisions:
-	@go test -count=1 -run 'TestDecisionsAppend' ./internal/core/lint/ ./cmd/record-lint/
-	@go run ./cmd/record-lint decisions-append origin/main HEAD
 
 # Deterministic docs-currency gate (itd-60): the same internal/core/lint engine,
 # driven over docs/ and the repo root via the transport-agnostic `abcd lint docs`
@@ -299,8 +256,8 @@ asking-sync-check:
 # Pre-push gate (run before a push, never by it: .githooks/pre-push checks the
 # receipt the last step mints, below): the load check first (a
 # warning, never a failure: load-check), then the format gate (fmt-check), the
-# seven lint gates
-# (lint-reviews, lint-issues, lint-decisions, record-lint, issue-drift,
+# six lint gates
+# (lint-reviews, lint-issues, record-lint, issue-drift,
 # docs-lint, and check-attribution over the branch's commits), the
 # site-render gate and both tagged eval lanes (smoke, evals-cold-reading) as
 # prerequisites, then build, vet, test,
@@ -323,11 +280,46 @@ asking-sync-check:
 # file reaching for a smoke-only helper compiles under one and not the other,
 # which is the split CI's two jobs cover. About five seconds each on a warm
 # cache, against roughly a minute for the gates already here.
-preflight: load-check fmt-check lint-reviews lint-issues lint-decisions record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
+#
+# The test stages wait their turn on the machine (iss-2610102020442624,
+# iss-2610140638074587). Before them the load gate (`abcd implement load
+# --wait`) stays shut while the load is at the wait limit, another go test
+# -race run is live, another make preflight is running, or another waiter is
+# queued ahead or running its command, under any account: it reads all of that
+# from the process table, which shows every account's processes, never from a
+# file another account could write. Once clear it waits 15 to 60 seconds and
+# checks again, so two preflights in one quiet minute do not start together; a
+# preflight whose own gate is waiting takes that waiter's place in the queue.
+# It gives up after two hours, failing the preflight and naming what it still
+# waited on, and on a CI runner it opens at once. How many preflights may be in
+# their test stages at once is the person's own machine setting, never the
+# checkout's: load.preflights in ~/.abcd.noindex/config.json, or
+# ABCD_LOAD_PREFLIGHTS in the environment for a trial, one by default and two
+# at most until a measured trial supports more (iss-2610161639025702). The race
+# stage waits at its own gate (`--race-gate`, spelt without --wait so an older
+# abcd never reads a preflight there as queued at its first gate). At one, the
+# race gate opens at once, so the preflight runs exactly as before. Above one,
+# the first gate admits a preflight while fewer than that many others are in
+# their test stages, a live race run does not shut it by itself, and a waiter
+# queued ahead still does; and the race gate is shut while another go test
+# -race run or race waiter ahead is live, the load is at the limit or the race
+# gate's own hold is in force. That keeps race stages apart among checkouts
+# that have this gate: one at a time within an account, and across accounts
+# all but a narrow window (a race waiter gone before its race run shows, or two
+# waiters whose start and pid disagree after a pid wrap). An older checkout's
+# race stage is ungated, so set 2 only once none runs a preflight. Each test
+# stage then takes a go test -p derived from the online cores and the load as
+# the stage starts, at most the cores divided by the setting
+# (cmd/test-parallelism), so one run cannot saturate the machine.
+preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
-	go test ./...
-	go test -race -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+	go run ./cmd/abcd implement load --wait --timeout 2h
+	p=$$(go run ./cmd/test-parallelism) && \
+	go test -p "$$p" ./...
+	go run ./cmd/abcd implement load --race-gate --timeout 2h
+	p=$$(go run ./cmd/test-parallelism) && \
+	go test -race -p "$$p" -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
 # The push receipt (iss-2608290810036869, iss-2608210738378295). The pre-push hook

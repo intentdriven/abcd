@@ -68,7 +68,16 @@ func installOpts() InstallOptions {
 			"oracle_backend": "host-delegated",
 			"scan_deep":      "false",
 		},
+		// The build-provenance check the CLI wires is network-bound; a test
+		// that promotes a fixture cache stands in an accepting one, and the
+		// provenance tests replace it (owned_copy_provenance_test.go).
+		VerifyProvenance: acceptProvenance,
 	}
+}
+
+// acceptProvenance is the accepting stand-in for the front door's check.
+func acceptProvenance(string, []byte) (string, error) {
+	return "https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main", nil
 }
 
 func TestInstallThenReinstallIsExactNoOp(t *testing.T) {

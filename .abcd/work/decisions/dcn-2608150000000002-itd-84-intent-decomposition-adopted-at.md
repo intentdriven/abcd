@@ -1,0 +1,6 @@
+---
+id: dcn-2608150000000002
+slug: itd-84-intent-decomposition-adopted-at
+date: 2026-08-15
+---
+2026-08-15 — itd-84 (intent decomposition) ADOPTED at the MVP rung, per its own staged promotion ladder: the `decompose-before-filing` principle is filed, the hand-run four-piece protocol lives in the /abcd:intent surface page (capture and the planning interview both run it, loud-staged as not-yet-automated), a DECOMPOSITION rules domain injects the rule at recall time, and every hand-run is graded into `.abcd/development/research/notes/2026-08-15-decomposition-calibration.md` (the 2026-07-13 auto-merge SPLIT case seeds the corpus retrospectively). The deterministic Go pre-pass is admitted to the predictable-development plan's queue (front-door design open: `decompose` subverb vs a check in `intent ready`; collision with iss-210 noted). The capture-time agent rung stays DEFERRED until ~50 graded captures exist (itd-81 calibration); building or running it earlier is a recorded STOP. Rejected: overriding the bundled INTENTS rules domain to carry the new rule (a per-field override replaces the whole array and would withhold future bundled upgrades — iss-174's exact failure mode), hence the additive custom domain instead.

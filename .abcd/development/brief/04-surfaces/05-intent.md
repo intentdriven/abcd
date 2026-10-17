@@ -151,7 +151,7 @@ role of intent-auditor populates findings here.>
 ```
 
 **Two body idioms are in the tree.** The template above is what the first seven
-disciplines follow. The eight written since (itd-190 onwards) head the rule
+disciplines follow. The nine written since (itd-190 onwards) head the rule
 `## The rule` and carry `## The gate`, `## Fit` and `## Staging` in place of the
 scope, acceptance and reference sections: a shorter shape that says what the rule
 is, what holds it, where it fits and how far it is armed. Nothing arbitrates
@@ -167,7 +167,7 @@ is open work.
 
 Until then, `kind_notes` is the free-text descriptor.
 
-**The first trigger has fired, and the enum has not been drawn.** Fifteen
+**The first trigger has fired, and the enum has not been drawn.** Sixteen
 disciplines are in the tree and every one of them carries a `kind_notes` value,
 against a threshold of three. What is outstanding is the judgement the trigger
 asks for: whether those descriptors fall into shapes a closed enum could name.
@@ -438,7 +438,7 @@ Discipline-kind intents use a different template — see § 1 "Discipline format
 
 ## 5. Frontmatter fields (spc-3 (predecessor store) additions — a later phase)
 
-spc-3 (predecessor store) adds the following optional frontmatter fields to intent files. All are additive — pre-existing intents without them remain valid (schema: `intent.schema.json`, part of the plan-time intent-lint design per [`05-internals/06-lint.md`](../05-internals/06-lint.md) — a later phase). **Not shipped:** the grill sub-verb that writes these fields and the PRD at `.abcd/intents/<itd-N>/prd.md` are a design target (its intent itd-27 is in `intents/superseded/`, superseded by itd-94); the shipped quoted-text create seeds none of them (see § 1's seed skeleton).
+spc-3 (predecessor store) adds the following optional frontmatter fields to intent files. All are additive — pre-existing intents without them remain valid (a legacy design named an `intent.schema.json` for them; no such schema ships, and no shipped check reads these fields). **Not shipped:** the grill sub-verb that writes these fields and the PRD at `.abcd/intents/<itd-N>/prd.md` are a design target (its intent itd-27 is in `intents/superseded/`, superseded by itd-94); the shipped quoted-text create seeds none of them (see § 1's seed skeleton).
 
 | Field | Type | When set | Purpose |
 |-------|------|----------|---------|
@@ -490,17 +490,18 @@ Both the press-release intent and the frozen PRD are immutable input artefacts p
 
 ## 6. Acceptance gates and bidirectional link verification
 
-`internal/core/lint` (cross-cutting; its shipped wiring is the docs currency lint and the `cmd/record-lint` gate) is the record-lint over the committed intent tree — it does not run inside planning; the acceptance-criteria refusal at plan time is the intent package's own `hasAcceptanceCriteria` check (`internal/core/intent`). The armed record-lint rules that bear on the intent tree are `intent_lifecycle` (the directory/kind/`spec_id` invariants and the `status:`-key ban below), `intent_impact_valid` (the `impact:` field's legal value set), `intent_sota` (a `planned/` intent carries a non-empty `## SOTA` declaration, armed at warn), `persona_registry` (press-release quote attributions resolve to the persona roster), `record_schema` (the `itd` store's filename↔id agreement, and `superseded_by` handle validity with two-way agreement across stores), `record_provenance` (the `origin`/`production_mode` disclosure pair and the `related_issues` back-edge), `spec_lifecycle` and `spec_id_unique` (the itd↔spc bidirectional agreement below, and the buckets' agreement: a planned intent has an open spec, and a shipped intent has none left open), `delivery_state` (no CHANGELOG delivery entry, under `Added` or `Changed`, cites an intent still sitting in `drafts/`), and `stale_edge` and `edge_cycle` (the dependency edges below, armed at warn). The `IL0xx` codes per [`05-internals/06-lint.md`](../05-internals/06-lint.md) are plan-time design, a later phase.
+`internal/core/lint` (cross-cutting; its shipped wiring is the docs currency lint and the `cmd/record-lint` gate) is the record-lint over the committed intent tree — it does not run inside planning; the acceptance-criteria refusal at plan time is the intent package's own `hasAcceptanceCriteria` check (`internal/core/intent`). The armed record-lint rules that bear on the intent tree are `intent_lifecycle` (the directory/kind/`spec_id` invariants and the `status:`-key ban below), `intent_impact_valid` (the `impact:` field's legal value set), `intent_sota` (a `planned/` intent carries a non-empty `## SOTA` declaration, armed at warn), `persona_registry` (press-release quote attributions resolve to the persona roster), `record_schema` (the `itd` store's filename↔id agreement, and `superseded_by` handle validity with two-way agreement across stores), `record_provenance` (the `origin`/`production_mode` disclosure pair and the `related_issues` back-edge), `spec_lifecycle` and `spec_id_unique` (the itd↔spc bidirectional agreement below, and the buckets' agreement: a planned intent has an open spec, and a shipped intent has none left open), `delivery_state` (no CHANGELOG delivery entry, under `Added` or `Changed`, cites an intent still sitting in `drafts/`), `stale_edge` and `edge_cycle` (the dependency edges below, armed at warn), and `builds_on_reciprocal`, `routed_from_acknowledged` and `related_issues_backlink` (links the other end never answers, below, armed at warn). The legacy `IL0xx` numbering (`IL012` below) names no shipped rule: the engine names its rules rather than numbering them ([`05-internals/06-lint.md`](../05-internals/06-lint.md)).
 
 The invariants below are the contract the tree is held to, and each names what holds it. A bullet marked **(convention)** is practice the corpus follows by hand, with no shipped check behind it:
 
-- **Acceptance criteria present and well-formed** (per the itd-1 discipline): an intent cannot be planned without a `## Acceptance Criteria` section carrying at least one Given-When-Then bullet. The block is at plan time, not in the record-lint: the refusal is the intent package's own `hasAcceptanceCriteria` check on a draft, plus the `acceptance_criteria` row of the readiness gate. Everything in `planned/` and `shipped/` has therefore passed it. The two buckets the plan step never crosses are held by hand and are **(convention)**: a draft still on the bench may carry none, and so may a discipline, whose route into `disciplines/` does not run through planning at all. Both are true of this corpus today — four bench drafts and eight of the fifteen disciplines carry no section. No record-lint rule reads it, so a committed intent that lost one still passes the gate.
+- **Acceptance criteria present and well-formed** (per the itd-1 discipline): an intent cannot be planned without a `## Acceptance Criteria` section carrying at least one Given-When-Then bullet. The block is at plan time, not in the record-lint: the refusal is the intent package's own `hasAcceptanceCriteria` check on a draft, plus the `acceptance_criteria` row of the readiness gate. Everything in `planned/` and `shipped/` has therefore passed it. The two buckets the plan step never crosses are held by hand and are **(convention)**: a draft still on the bench may carry none, and so may a discipline, whose route into `disciplines/` does not run through planning at all. Both are true of this corpus today — four bench drafts and nine of the sixteen disciplines carry no section. No record-lint rule reads it, so a committed intent that lost one still passes the gate.
 - **A planned intent declares the state of the art** (per [sota-per-intent](../../principles/sota-per-intent.md)): a `## SOTA` section naming the existing alternatives, each one's rough maturity, and the path taken. `intent_sota` flags a `planned/` intent with no such section, or with a heading and nothing under it, at warn severity — the warn-first rung of a ratchet whose next rung is blocker once the planned bucket is back-filled. It judges presence, not the path's spelling, and reads neither `drafts/` (not yet shaped) nor `shipped/` (history, most of it older than the principle).
 - **`kind` is set on intents in `planned/`, `shipped/`, `disciplines/`, and `superseded/`.** Intents in `drafts/` may have `kind: null`. The shipped plan step neither infers a kind nor asks for one: it writes `standalone` wherever the draft left the field null, so `standalone` is what an unstated kind becomes. **A later phase** replaces that default with the proposal the user confirms or overrides (§ 1, "Later phase — plan grows a PRD-freeze front end and multi-kind dispatch"). What the record lint holds meanwhile is the value set per bucket: a draft's kind must be null, `standalone` or `bundle-member`, and a planned or shipped record's must be one of the latter two, non-null (`intent_lifecycle`).
 - **`kind: bundle-member` requires a `bundle:` field** pointing to a bundle ID; *all* members of a bundle reference the same bundle ID, and bundles are bidirectional in their members' frontmatter. `record_schema` refuses a bundle-member naming a bundle no other record names, unless its `reclassification_history` states the bundle now has one member (the survivor a supersession leaves); a bundle-member carrying no `bundle:` at all is **(convention)**, since both writers stamp the name and the shipped records without one are settled. **Exception for superseded bundle-members:** intents in `superseded/` with `kind_at_supersession: bundle-member` carry `bundle: null` AND `bundle_at_supersession: <bundle-id>` (preserves the bundle the intent was part of when retired, while signalling the bundle is no longer active); the reclassify verb writes both, and no lint reads `bundle_at_supersession`.
 - **A dependency edge names a live record, and the edges form no cycle.** `stale_edge` flags a `planned/` or `drafts/` intent whose `builds_on` or `blocked_by` names an intent in `superseded/`, one finding per edge, naming the record the superseded intent's chain ends at: the same walk along `superseded_by` the build's blocked check follows (`intent.SupersessionChainOf`), or why the chain cannot be finished. `edge_cycle` flags a cycle through `builds_on` and `blocked_by` together, across every intent not superseded, in one finding naming every record on it. Both are armed at warn, because this tree carries three `edge_cycle` findings that each wait on a decision rather than a repair: itd-2609201916056194 and itd-2609201916151817 build on each other (iss-2609300848016421); and itd-14 and itd-15, and itd-2609081951381895 and itd-2609170822093401, build on each other (iss-2609300903551032). Both rules become blockers once those are decided.
+- **A link is answered from its other end.** `builds_on_reciprocal` flags a `builds_on` whose target's file never names the source by id; `routed_from_acknowledged` flags a `routed_from` entry `<record>:<item>` whose record carries the item but never names the receiver; `related_issues_backlink` flags an intent's `related_issues` entry whose issue's `related_intents` omits the intent. A target the corpus does not hold is skipped. Each finding names both files and ends with its finding key (`cfk-…`). All three are armed at warn; the one-way `builds_on` edges standing when the rule landed sit in its own `exempt_edges` list, which never grows.
 - **Bundle invariant: no member is blocked by another.** Planning several intents as a bundle refuses a member naming another member in `blocked_by`, naming the edge, before anything moves. See § 1 "Bundle invariant" for the canonical statement.
-- **`surface_history` entries are well-formed.** Every entry must include `date` (ISO YYYY-MM-DD), `from` (free-form surface descriptor), `to`, and `reason` (non-empty). Lint code `IL012` (severity: warn — it's an audit trail, not a gate). See itd-27's `surface_history` (skill → sub-verb on 2026-05-07) for a worked example.
+- **`surface_history` entries are well-formed.** Every entry includes `date` (ISO YYYY-MM-DD), `from` (free-form surface descriptor), `to`, and `reason` (non-empty). This is **(convention)**: no shipped check reads `surface_history`, and the legacy code `IL012` names no rule the engine carries. See itd-27's `surface_history` (skill → sub-verb on 2026-05-07) for a worked example.
 - **`kind: discipline` lives only in `disciplines/` or `superseded/`.** A discipline-kind record in `drafts/` is an error, caught by the record lint over the committed tree rather than at plan time: the `intent_lifecycle` drafts rule admits only a null, `standalone` or `bundle-member` kind, and the disciplines rule demands `discipline`. The gate is the commit, not the promotion.
 - **No intent has a `status` field — across any kind.** Lifecycle state is encoded by directory location only (`drafts/` / `planned/` / `shipped/` / `disciplines/` / `superseded/`). The 2026-05-08 directive removed the cached-mirror option: directory IS the state, no exceptions. Lint hard-blocks any frontmatter containing a `status:` key (shipped lint rule: `intent_lifecycle`, severity: blocker; templates and existing files were stripped in the 2026-05-08 sweep). The historical `status: draft | planned | shipped` field on standalone/bundle-member intents has been retired; uniform "directory is canonical" applies to all kinds.
 - Every intent in `drafts/` has `spec_id: null` (drafts have no plan yet).
@@ -561,13 +562,13 @@ Findings appended to the intent's `## Audit Notes` section. Manual re-run of the
 
 For bundle-member intents, this role runs *per intent* against the same delivered reality (each member's acceptance criteria checked separately).
 
-#### The audit loop — record-only vs loop-to-acceptance (itd-50 / spc-52, predecessor store)
+#### The audit loop — record-only vs loop-to-acceptance (staged: itd-50 / spc-52, predecessor store)
 
 Role 1 records per-criterion verdicts; **itd-50 adds the POLICY that decides what happens to a recorded verdict.** The policy rides the review-queue drainer on the run seam (adr-27) — it is NEVER in the pure on-close lifecycle hook (the lifecycle close stays a pure data function; the mode logic lives in the drainer/policy layer).
 
-**Three audit-loop modes, facilitator-elected per intent** via the `audit_mode` frontmatter key:
+**Two audit-loop modes, facilitator-elected per intent** via the `audit_mode` frontmatter key. This per-intent shape predates itd-50's 2026-09-21 re-scope, which makes the loop the last stage of `abcd build` rather than a per-intent mode; the rewrite is tracked as iss-2610160855131633. No intent carries the key and no shipped code reads `audit_mode` or `audit_budget`. What ships records the verdicts in `## Audit Notes`, and an audit that fails or comes back undecided captures one issue carrying the owed check; no work re-opens.
 
-- **`record-only`** (the default, and today's behaviour) — a `NOT_MET` is written to `## Audit Notes`; no re-work is triggered. An **absent** `audit_mode` key resolves to `record-only` (additive, spc-28/spc-43-compatible — predecessor store).
+- **`record-only`** (the default) — a `NOT_MET` is written to `## Audit Notes`; no re-work is triggered. An **absent** `audit_mode` key resolves to `record-only` (additive, spc-28/spc-43-compatible — predecessor store).
 - **`loop-to-acceptance`** — a `NOT_MET` re-opens the linked work and iterates against the same acceptance criteria until they read `MET`, bounded by `audit_budget` (the spec-grain SHIP/NEEDS_WORK fix-loop lifted to the intent grain). See `05-internals/03-configuration.md` for the `audit_mode` / `audit_budget` keys, the default budget (`3`), and the fail-closed rule for a malformed/zero/negative budget.
 
 **Full state-coverage table** (every Family-2 rollup maps to a defined action — no dead-ends; the loop trigger is `NOT_MET` only):
@@ -579,7 +580,7 @@ Role 1 records per-criterion verdicts; **itd-50 adds the POLICY that decides wha
 | `NOT_MET` (budget remaining) | Re-open linked work (re-enqueue at the queue layer), `audit_iterations_used += 1`. |
 | `NOT_MET` (budget exhausted) | Terminate `UNACHIEVABLE` (budget-exhausted) → replan invitation. |
 | `NOT_MET` + reviewer judges criteria unmeetable | Terminate `UNACHIEVABLE` (reviewer-impossible) **early**, before budget exhaustion → replan invitation. |
-| `INCONCLUSIVE` | Fail-closed: recorded as today, no iterate, no summons, no replan; never flips to `UNACHIEVABLE`. |
+| `INCONCLUSIVE` | Fail-closed: recorded as the shipped audit records it, no iterate, no summons, no replan; never flips to `UNACHIEVABLE`. |
 
 `UNACHIEVABLE` is an intent-level **rollup** terminal the policy layer writes — it is **NOT** a per-criterion verdict (`ACCEPTANCE_VERDICTS = {MET, MET_WITH_CONCERNS, NOT_MET, INCONCLUSIVE}` is unchanged) and is recognised at the `Overall:` / rollup parse layer only.
 
@@ -753,6 +754,7 @@ Sub-verbs: `abcd intent consistency ingest`.
 
 | Flag | Type |
 |---|---|
+| `--max-chunks` | int |
 | `--route` | stringArray |
 
 ### `abcd intent consistency ingest`
@@ -761,7 +763,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
-| `--findings-json` | string |
+| `--findings-json` | stringArray |
 | `--route` | stringArray |
 
 ### `abcd intent edge`

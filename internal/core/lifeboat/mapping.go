@@ -148,10 +148,11 @@ func (m Mapping) StatusAt(t Tier) Status {
 //   - graveyard is the only section grounded at TierGit. What a project
 //     abandoned is written in its git history whether or not anyone wrote it
 //     down, which is why the graveyard is worth a section of its own.
-//   - product/personas is blank at every tier below abcd-native, and only
-//     partial there. If the probe confirms that across the corpus, the section
-//     is not derivable from a repository at all and should not be in a
-//     lifeboat's brief — it is a question for a human, not an extraction.
+//   - product/personas is blank at every tier below abcd-native, and grounded
+//     there only from an authored brief file: a person's writing, never an
+//     extraction. The probe confirmed that across the corpus, so the section is
+//     human-owned (adr-36) — a question for a human, which a lifeboat carries
+//     as a blank to answer wherever no one has written the personas down.
 var Table = []Mapping{
 	{"product/press-release", "brief/01-product/01-press-release.md",
 		StatusBlank, StatusPartial, StatusGrounded,
@@ -166,7 +167,7 @@ var Table = []Mapping{
 		StatusPartial, StatusPartial, StatusGrounded,
 		"README features, intents' in-scope/out-of-scope sections, the code's own surface"},
 	{"product/personas", "brief/01-product/05-personas.md",
-		StatusBlank, StatusBlank, StatusPartial,
+		StatusBlank, StatusBlank, StatusGrounded,
 		"personas registry, press-release quote attributions"},
 	{"product/framing", "brief/01-product/06-framing.md",
 		StatusBlank, StatusPartial, StatusGrounded,

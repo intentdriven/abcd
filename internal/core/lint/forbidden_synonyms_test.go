@@ -218,6 +218,13 @@ func TestForbiddenSynonymsRealGlossary(t *testing.T) {
 	if !found {
 		t.Fatal("record-lint.json forbidden_synonyms.enforce must include 'epic' (itd-43)")
 	}
+	// The committed roots with GL002 alone: the rule reads only its own
+	// configuration and the glossary, so every other family the full config
+	// arms would change nothing this test counts. The record-lint step and
+	// make preflight run the full set over the live tree; under -race the full
+	// set cost about 110s here, against seconds for GL002.
+	cfg.BannedTokens = nil
+	cfg.Rules = map[string]RuleConfig{"forbidden_synonyms": rc}
 	fs, err := Lint(cfg, repoRoot)
 	if err != nil {
 		t.Fatalf("Lint: %v", err)

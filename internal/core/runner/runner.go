@@ -141,14 +141,30 @@ type QuotaReporter interface {
 }
 
 // quotaOf asks r for its remaining quota. reported is false when r reports
-// none; an error is r's failure to report the one it keeps.
+// none; an error is r's failure to report the one it keeps. The deadline is
+// the caller's, held here rather than trusted to the reporter: when ctx ends
+// first, quotaOf returns ctx's error and the reporter's answer, whenever it
+// comes, is discarded.
 func quotaOf(ctx context.Context, r Runner) (q Quota, reported bool, err error) {
 	qr, ok := r.(QuotaReporter)
 	if !ok {
 		return Quota{}, false, nil
 	}
-	q, err = qr.Quota(ctx)
-	return q, true, err
+	type answer struct {
+		q   Quota
+		err error
+	}
+	got := make(chan answer, 1)
+	go func() {
+		q, err := qr.Quota(ctx)
+		got <- answer{q, err}
+	}()
+	select {
+	case a := <-got:
+		return a.q, true, a.err
+	case <-ctx.Done():
+		return Quota{}, true, ctx.Err()
+	}
 }
 
 // Failure is a runner's failure. Detail is written by abcd, never copied from

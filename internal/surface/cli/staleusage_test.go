@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
@@ -215,6 +216,11 @@ func TestStaleUsageRemedyFollowsWhereTheBinarySits(t *testing.T) {
 		root := stalePluginRoot(t)
 		writeCommandPage(t, root, "frobnicate", "# frobnicate\n")
 		setExecutable(t, filepath.Join(t.TempDir(), "abcd"))
+		// A copy `abcd update` provisioned is a release binary, stamped with its
+		// tag; an unstamped build is not told to update (iss-2610120921425348).
+		prev := core.Version
+		core.Version = "v1.2.3"
+		t.Cleanup(func() { core.Version = prev })
 
 		_, _, stderr := runMain(t, "frobnicate")
 		want := "abcd: this binary predates the `frobnicate` command the plugin surface it was provisioned from documents — this PATH copy is stale; run `abcd update`\n"
@@ -340,4 +346,145 @@ func TestUnknownVerbOnStaleBinaryWithoutPageNamesVintage(t *testing.T) {
 			t.Fatalf("stderr =\n%q\nwant\n%q", stderr, want)
 		}
 	})
+}
+
+// A binary the release did not stamp (version "dev") is a local build — `go
+// run` from a source checkout, a hand-run `go build` — never a copy `abcd
+// update` provisioned, so a page documenting what it lacks is no evidence it is
+// stale and updating would change nothing. The note says the thing is not in
+// this build and advises nothing (iss-2610120921425348).
+func TestDevBuildOutsidePluginRootIsNotCalledAStalePATHCopy(t *testing.T) {
+	root := stalePluginRoot(t)
+	writeCommandPage(t, root, "frobnicate", "# frobnicate\n")
+	writeCommandPage(t, root, "lint", "```bash\n\"${CLAUDE_PLUGIN_ROOT}/abcd\" lint --frob\n```\n")
+	// Where `go run` leaves its executable: the build cache, outside every root.
+	setExecutable(t, filepath.Join(t.TempDir(), "go-build", "9a", "9a5c-d", "abcd"))
+	prev := core.Version
+	core.Version = "dev"
+	t.Cleanup(func() { core.Version = prev })
+
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"frobnicate"}, "abcd: the plugin surface documents the `frobnicate` command, which is not in this build — an unstamped `dev` build, not a release binary, so the surface is no evidence that it is stale\n"},
+		{[]string{"lint", "--frob"}, "abcd: the plugin surface documents the `--frob` flag of `abcd lint`, which is not in this build — an unstamped `dev` build, not a release binary, so the surface is no evidence that it is stale\n"},
+	} {
+		_, _, stderr := runMain(t, tc.args...)
+		if !strings.HasSuffix(stderr, tc.want) {
+			t.Errorf("%v: stderr =\n%q\nwant suffix\n%q", tc.args, stderr, tc.want)
+		}
+		for _, not := range []string{"abcd update", "PATH copy", "make build", pluginUpdateRemedy} {
+			if strings.Contains(stderr, not) {
+				t.Errorf("%v: a dev build must not be advised %q:\n%s", tc.args, not, stderr)
+			}
+		}
+	}
+}
+
+// A flag is documented for the sub-verb typed only when that sub-verb's own
+// synopsis line in a fenced block carries it. Prose elsewhere on the page, and
+// another sub-verb's synopsis, are not evidence: `build next --dry-run` was
+// called documented because build.md mentions `/abcd:drain --dry-run` in prose,
+// and `implement log --run` because `implement step` takes --run
+// (iss-2610120921497084).
+func TestFlagNoteIsScopedToTheTypedSubverbsSynopsis(t *testing.T) {
+	root := stalePluginRoot(t)
+	setExecutable(t, filepath.Join(root, "abcd"))
+	// Lines as commands/build.md and commands/implement.md carry them, plus one
+	// flag per synopsis that no binary has, for the positive cases.
+	writeCommandPage(t, root, "build", "# `/abcd:build`\n\n"+
+		"```bash\n\"${CLAUDE_PLUGIN_ROOT}/abcd\" build <itd-N> [--session <id>] [--frob-top] --json\n```\n\n"+
+		"read as `/abcd:drain --dry-run` reads it, and that no peer holds it.\n\n"+
+		"```bash\n\"${CLAUDE_PLUGIN_ROOT}/abcd\" build next [--session <id>] [--max <n> | --until-empty] [--frob-next] --json\n```\n")
+	writeCommandPage(t, root, "implement", "# `/abcd:implement`\n\n"+
+		"```bash\n\"${CLAUDE_PLUGIN_ROOT}/abcd\" implement log <event> --session <id> --field key=value … --json\n```\n\n"+
+		"```bash\n"+
+		"\"${CLAUDE_PLUGIN_ROOT}/abcd\" implement step [--run <run-id>] [--frob-step] --json\n"+
+		"\"${CLAUDE_PLUGIN_ROOT}/abcd\" implement receipt <path> [--run <run-id>] --json\n"+
+		"```\n\n"+
+		"```bash\n"+
+		"\"${CLAUDE_PLUGIN_ROOT}/abcd\" implement outage [--json]\n"+
+		"\"${CLAUDE_PLUGIN_ROOT}/abcd\" implement outage record --session <id> --what <text> [--frob-record] [--json]\n"+
+		"\"${CLAUDE_PLUGIN_ROOT}/abcd\" implement outage probe --session <id> \\\n"+
+		"    [--model ok|fail] [--frob-wrapped] [--json]\n"+
+		"```\n")
+	writeCommandPage(t, root, "abcd", "```bash\n\"${CLAUDE_PLUGIN_ROOT}/abcd\" --frob-root --json\n\"${CLAUDE_PLUGIN_ROOT}/abcd\" mode --frob-mode\n```\n")
+
+	t.Run("prose or another sub-verb's synopsis is not evidence", func(t *testing.T) {
+		for _, args := range [][]string{
+			{"build", "next", "--dry-run"},
+			{"implement", "log", "agent_start", "--run", "r", "--session", "s", "--field", "agent=x"},
+			{"build", "next", "--frob-top"},          // build's own synopsis, not build next's
+			{"build", "--frob-next"},                 // build next's synopsis, not build's
+			{"implement", "outage", "--frob-record"}, // depth two: outage record's, not outage's
+			{"--frob-mode"},                          // a verb's synopsis on the dispatcher page
+		} {
+			_, _, stderr := runMain(t, args...)
+			want := "abcd: unknown flag: " + flagIn(args) + "\n"
+			if stderr != want {
+				t.Errorf("%v: stderr =\n%q\nwant\n%q", args, stderr, want)
+			}
+		}
+	})
+
+	t.Run("the typed sub-verb's own synopsis is", func(t *testing.T) {
+		for _, tc := range []struct {
+			args []string
+			what string
+		}{
+			{[]string{"build", "next", "--frob-next"}, "the `--frob-next` flag of `abcd build next`"},
+			{[]string{"build", "--frob-top"}, "the `--frob-top` flag of `abcd build`"},
+			{[]string{"implement", "step", "--frob-step"}, "the `--frob-step` flag of `abcd implement step`"},
+			{[]string{"implement", "outage", "record", "--frob-record"}, "the `--frob-record` flag of `abcd implement outage record`"},
+			// A synopsis wrapped with a trailing backslash is one invocation.
+			{[]string{"implement", "outage", "probe", "--frob-wrapped"}, "the `--frob-wrapped` flag of `abcd implement outage probe`"},
+			{[]string{"--frob-root"}, "the `--frob-root` flag of `abcd`"},
+		} {
+			_, _, stderr := runMain(t, tc.args...)
+			want := "abcd: this binary predates " + tc.what + " its plugin surface documents — " + pluginUpdateRemedy + "\n"
+			if !strings.HasSuffix(stderr, want) {
+				t.Errorf("%v: stderr =\n%q\nwant suffix\n%q", tc.args, stderr, want)
+			}
+		}
+	})
+}
+
+// flagIn is the first `--` token of args, the one pflag refuses.
+func flagIn(args []string) string {
+	for _, a := range args {
+		if strings.HasPrefix(a, "--") {
+			return a
+		}
+	}
+	return ""
+}
+
+// A command page is read whole on an error path (up to maxCommandPageBytes),
+// so the synopsis scan must stay linear in it. One fenced line of repeated
+// invocations once rescanned the rest of the line per invocation (about two
+// minutes at the cap for a leaf command), and a run of backslash-wrapped lines
+// recopied the joined text per line (0.7s); each now takes milliseconds. The
+// bound is CPU time, which load cannot inflate, and it is not asserted under
+// -race, whose instrumentation multiplies a linear scan's cost tenfold.
+func TestSynopsisScanIsLinearInThePage(t *testing.T) {
+	const size = maxCommandPageBytes
+	fence := func(line string) string { return "```bash\n" + line + "\n```\n" }
+	for _, tc := range []struct {
+		name string
+		body string
+		skew usageSkew
+	}{
+		{"one line of leaf invocations", fence(strings.Repeat("abcd lint ", size/10)), usageSkew{known: []string{"lint"}, flag: "--frob"}},
+		{"one line of invocations with sub-verbs", fence(strings.Repeat("abcd build ", size/11)), usageSkew{known: []string{"build"}, flag: "--frob", subVerbs: true}},
+		{"a run of wrapped lines", fence(strings.Repeat("x \\\n", size/4) + "abcd lint"), usageSkew{known: []string{"lint"}, flag: "--frob"}},
+	} {
+		start := processCPU()
+		if synopsisCarriesFlag(tc.body, tc.skew) {
+			t.Errorf("%s: no line names --frob, yet it was found", tc.name)
+		}
+		if took := processCPU() - start; !raceEnabled && took > 250*time.Millisecond {
+			t.Errorf("%s: a %d KiB page took %v of CPU to scan; the scan is not linear in the page", tc.name, len(tc.body)>>10, took)
+		}
+	}
 }

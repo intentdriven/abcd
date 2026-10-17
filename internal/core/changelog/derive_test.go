@@ -148,22 +148,25 @@ func TestDeriveRefusesUnlabelledRecord(t *testing.T) {
 // TestDeriveCarriesUnlabelledRemovedRecord pins that ONLY the added side of a
 // cut can refuse it. A removed record is read from the anchor tag's immutable
 // tree, which may predate the impact back-fill, so refusing on it would name a
-// record the operator cannot label — at HEAD the file is either gone
-// (supersession) or already carries a valid impact under its new name
-// (re-slug) — and would block every release until the move was reverted.
+// record the operator cannot label — at HEAD the file is gone — and would block
+// every release until the move was reverted. A re-slug inside resolved/ is no
+// longer a removal at all (iss-2610121215586434): the cut is keyed on the id, so
+// relabelling a record under a new slug neither adds nor removes it.
 func TestDeriveCarriesUnlabelledRemovedRecord(t *testing.T) {
 	cases := map[string]struct {
-		mutate     func(r *fixtureRepo)
-		wantAdded  []string
-		wantBumped bool
+		mutate      func(r *fixtureRepo)
+		wantAdded   []string
+		wantRemoved []string
+		wantBumped  bool
 	}{
 		"supersession": {
 			mutate: func(r *fixtureRepo) {
 				r.remove(resolvedDir + "iss-4-unlabelled.md")
 				r.commit("supersede iss-4 out of resolved/")
 			},
-			wantAdded:  []string{},
-			wantBumped: false,
+			wantAdded:   []string{},
+			wantRemoved: []string{"iss-4"},
+			wantBumped:  false,
 		},
 		"re-slug": {
 			mutate: func(r *fixtureRepo) {
@@ -171,8 +174,9 @@ func TestDeriveCarriesUnlabelledRemovedRecord(t *testing.T) {
 				r.record(resolvedDir+"iss-4-renamed.md", "iss-4", "fix")
 				r.commit("re-slug iss-4 and label it at HEAD")
 			},
-			wantAdded:  []string{"iss-4"},
-			wantBumped: true,
+			wantAdded:   []string{},
+			wantRemoved: []string{},
+			wantBumped:  false,
 		},
 	}
 
@@ -198,10 +202,10 @@ func TestDeriveCarriesUnlabelledRemovedRecord(t *testing.T) {
 			if got := ids(d.Records.Added); !reflect.DeepEqual(got, tc.wantAdded) {
 				t.Errorf("added = %v, want %v", got, tc.wantAdded)
 			}
-			if got := ids(d.Records.Removed); !reflect.DeepEqual(got, []string{"iss-4"}) {
-				t.Fatalf("removed = %v, want [iss-4] carried through the cut", got)
+			if got := ids(d.Records.Removed); !reflect.DeepEqual(got, tc.wantRemoved) {
+				t.Fatalf("removed = %v, want %v", got, tc.wantRemoved)
 			}
-			if d.Records.Removed[0].ImpactErr == "" {
+			if len(d.Records.Removed) > 0 && d.Records.Removed[0].ImpactErr == "" {
 				t.Error("the removed record must keep the reason it is unlabelled")
 			}
 			if d.Bumped != tc.wantBumped {

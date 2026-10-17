@@ -14,7 +14,7 @@ func TestDecoderRefusalRedactsTheKey(t *testing.T) {
 	root := seedRepo(t)
 	p := validPayload()
 	p["reviewer_notes /Users/zzotherperson/notes"] = "smuggled" // abcd-lint:allow — a planted home path in a KEY
-	_, err := Record(root, "the-ideate-gate", encode(t, p), at)
+	_, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at)
 	if err == nil {
 		t.Fatal("a payload carrying an undeclared key was accepted")
 	}

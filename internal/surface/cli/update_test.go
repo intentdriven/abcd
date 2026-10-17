@@ -377,3 +377,64 @@ func TestUpdateTerminalStderrGetsProgress(t *testing.T) {
 		t.Errorf("progress reached stdout:\n got %q\nwant %q", stdout, want.String())
 	}
 }
+
+// TestUpdateReceiptNamesTheProvenanceSigner: a swap verified against the
+// release workflow's build provenance says so, naming the signer that was
+// verified (iss-2609231050273096).
+func TestUpdateReceiptNamesTheProvenanceSigner(t *testing.T) {
+	rep := swappedReceipt("v0.7.0")
+	rep.AttestedBy = "https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main"
+	var out bytes.Buffer
+	renderUpdateReport(&out, false, rep)
+	if !strings.Contains(out.String(), "attested: SLSA build provenance signed by "+rep.AttestedBy) {
+		t.Errorf("the receipt must name the verified provenance signer:\n%s", out.String())
+	}
+}
+
+// provenanceRefusingUpdater answers the swap with the core's unverified-
+// provenance refusal, as Apply does when no attestation verifies.
+type provenanceRefusingUpdater struct{}
+
+func (provenanceRefusingUpdater) ResolveTag(requested string) (string, error) { return requested, nil }
+
+func (provenanceRefusingUpdater) Apply(target, tag string, _ io.Writer) (update.Report, error) {
+	return update.Report{
+		Action: update.ActionRefused,
+		Tag:    tag,
+		Refusal: &update.Refusal{
+			Shape:  "unverified-provenance",
+			Detail: "no build-provenance attestation is published for sha256 " + strings.Repeat("ab", 32),
+			Remedy: "install by hand: … `gh attestation verify abcd-test-arch --repo intentdriven/abcd --cert-identity https://github.com/intentdriven/abcd/.github/workflows/release.yml@refs/heads/main --source-ref refs/heads/main --deny-self-hosted-runners` …",
+		},
+	}, nil
+}
+
+// TestUpdateProvenanceRefusalExitsOneNamingTheHandInstall: the refusal reaches
+// the user as a named refusal with its remedy, and the verb exits 1.
+func TestUpdateProvenanceRefusalExitsOneNamingTheHandInstall(t *testing.T) {
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(binDir, "abcd"), []byte("\x7fELFfake"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	t.Setenv("ABCD_PLUGIN_ROOT", "")
+	t.Setenv("CLAUDE_PLUGIN_ROOT", "")
+	t.Setenv("ABCD_BIN_TARGET", "")
+	t.Setenv("PATH", binDir)
+	orig := newUpdater
+	newUpdater = func() updater { return provenanceRefusingUpdater{} }
+	t.Cleanup(func() { newUpdater = orig })
+
+	var stdout, stderr bytes.Buffer
+	code := Run([]string{"update", "v0.6.2"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("exit = %d, want 1; stdout %q stderr %q", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "refused (unverified-provenance)") || !strings.Contains(stdout.String(), "gh attestation verify") {
+		t.Errorf("the refusal and its hand-install remedy must be printed:\n%s", stdout.String())
+	}
+}

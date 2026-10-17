@@ -95,25 +95,74 @@ func TestShippedSinceAgreesAcrossMergeAndSquash(t *testing.T) {
 	}
 }
 
-// TestShippedSinceRenameReadsAsDeleteAndAdd pins a KNOWN LIMIT rather than a
-// desired behaviour: the set-difference compares paths, so re-slugging a file
-// inside shipped/ surfaces as a removal plus an addition. It is pinned so a
-// future change to it (a rename-detecting diff, say) is a loud test failure and
-// a deliberate decision, not a silent shift in what a release reports.
-func TestShippedSinceRenameReadsAsDeleteAndAdd(t *testing.T) {
+// TestShippedSinceSameFolderReslugIsInNeitherSide pins that the cut is keyed on
+// the record ID, not the path (iss-2610121215586434). A record re-slugged inside
+// its own terminal folder did not enter or leave that folder, so it is neither
+// added nor removed. Comparing paths read the 40-character slug-cap rename as
+// 1724 removals and as many re-additions, and the cut then demanded a
+// changelog line for every one of them.
+func TestShippedSinceSameFolderReslugIsInNeitherSide(t *testing.T) {
 	r := baseRepo(t)
 	r.git("mv", shippedDir+"itd-1-first.md", shippedDir+"itd-1-renamed-slug.md")
-	r.commit("re-slug itd-1")
+	r.git("mv", resolvedDir+"iss-1-first.md", resolvedDir+"iss-1-renamed-slug.md")
+	r.commit("re-slug itd-1 and iss-1")
 
 	set, err := ShippedSince(r.root, "v0.1.0")
 	if err != nil {
 		t.Fatalf("ShippedSince: %v", err)
 	}
-	if got := ids(set.Added); !reflect.DeepEqual(got, []string{"itd-1"}) {
-		t.Errorf("added = %v, want the renamed path to read as an addition of itd-1", got)
+	if len(set.Added) != 0 {
+		t.Errorf("added = %v, want none: a re-slug inside its own folder enters nothing", ids(set.Added))
 	}
-	if got := ids(set.Removed); !reflect.DeepEqual(got, []string{"itd-1"}) {
-		t.Errorf("removed = %v, want the old path to read as a removal of itd-1", got)
+	if len(set.Removed) != 0 {
+		t.Errorf("removed = %v, want none: a re-slug inside its own folder leaves nothing", ids(set.Removed))
+	}
+}
+
+// TestShippedSinceEnteringWithANewSlugIsAddedOnce pins that a record which
+// enters a terminal folder and changes its slug in the same window is one
+// addition, read at its HEAD path, and no removal.
+func TestShippedSinceEnteringWithANewSlugIsAddedOnce(t *testing.T) {
+	r := baseRepo(t)
+	r.record(openDir+"iss-2-old-slug.md", "iss-2", "fix")
+	r.commit("capture iss-2")
+	r.remove(openDir + "iss-2-old-slug.md")
+	r.record(resolvedDir+"iss-2-new-slug.md", "iss-2", "fix")
+	r.commit("resolve iss-2 under a new slug")
+
+	set, err := ShippedSince(r.root, "v0.1.0")
+	if err != nil {
+		t.Fatalf("ShippedSince: %v", err)
+	}
+	if got := ids(set.Added); !reflect.DeepEqual(got, []string{"iss-2"}) {
+		t.Fatalf("added = %v, want [iss-2] once", got)
+	}
+	if set.Added[0].Path != resolvedDir+"iss-2-new-slug.md" {
+		t.Errorf("added path = %q, want the HEAD path", set.Added[0].Path)
+	}
+	if len(set.Removed) != 0 {
+		t.Errorf("removed = %v, want none", ids(set.Removed))
+	}
+}
+
+// TestShippedSinceLeavingForWontfixStillReadsAsRemoved pins that keying on the
+// id changes nothing for a record that really left the release set: resolved/
+// to wontfix/ is a removal, re-slugged on the way or not.
+func TestShippedSinceLeavingForWontfixStillReadsAsRemoved(t *testing.T) {
+	r := baseRepo(t)
+	r.remove(resolvedDir + "iss-1-first.md")
+	r.record(wontfixDir+"iss-1-other-slug.md", "iss-1", "fix")
+	r.commit("move iss-1 to wontfix")
+
+	set, err := ShippedSince(r.root, "v0.1.0")
+	if err != nil {
+		t.Fatalf("ShippedSince: %v", err)
+	}
+	if len(set.Added) != 0 {
+		t.Errorf("added = %v, want none (wontfix/ is not in the release set)", ids(set.Added))
+	}
+	if got := ids(set.Removed); !reflect.DeepEqual(got, []string{"iss-1"}) {
+		t.Errorf("removed = %v, want [iss-1]", got)
 	}
 }
 

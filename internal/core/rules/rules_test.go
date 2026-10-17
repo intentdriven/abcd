@@ -85,7 +85,7 @@ func TestDefaultsParseAndValidate(t *testing.T) {
 	if err := Validate(rs); err != nil {
 		t.Fatalf("bundled defaults fail validation: %v", err)
 	}
-	for _, want := range []string{"COMMITTING", "DOCUMENTATION", "ROADMAP", "ISSUES", "INTENTS", "LIFEBOAT", "PII", "OPINIONS", "LOAD"} {
+	for _, want := range []string{"COMMITTING", "DOCUMENTATION", "ROADMAP", "ISSUES", "INTENTS", "LIFEBOAT", "PII", "OPINIONS", "LOAD", "SCRATCH"} {
 		if _, ok := rs.Domains[want]; !ok {
 			t.Errorf("default domain %q missing", want)
 		}
@@ -131,7 +131,7 @@ func TestNoBundledRuleTeachesPhasesOrMilestonesAsCurrent(t *testing.T) {
 // stands on its own in any managed repository. The defaults ship to every
 // repository abcd manages, and none of them holds abcd's own decision record or
 // its roadmap/ phase documents; a managed repository mints adr- ids of the same
-// shape through abcd decide, so a cited abcd ADR reads there as a local record
+// shape through abcd decide --adr, so a cited abcd ADR reads there as a local record
 // that is missing. A bundled rule therefore states its substance and cites no
 // record id and no abcd-only roadmap/ directory.
 func TestNoBundledRuleCitesAbcdInternalRecords(t *testing.T) {

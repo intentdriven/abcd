@@ -165,6 +165,44 @@ func TestGuardQuestionGateFailsOpenLoud(t *testing.T) {
 	}
 }
 
+// TestGuardQuestionGateSaysWhenItCannotFindTheRoot (iss-2610110432159652): a
+// question without abcd's chip is abcd's only through the mode store, and the
+// gate finds the store through git's toplevel. In a checkout git will not name
+// the root of, the gate cannot tell whether the mode names somebody, so the
+// check did not run: the question still runs (exit 1, the host's non-blocking
+// error, nothing on stdout) and one stderr line names the failed root lookup
+// and its error. It used to pass the question with no word at all. Outside
+// every repository there is no mode store to miss, and the gate stays silent.
+func TestGuardQuestionGateSaysWhenItCannotFindTheRoot(t *testing.T) {
+	foreign := hostQuestion{Header: "Ship", Question: "Ship it?", Options: []hostOption{{Label: "Yes"}, {Label: "No"}}}
+	root := managedCheckout(t)
+	setMode(t, root, mode.ProductThinker)
+	outside := realPath(t, t.TempDir())
+	fakeGit(t, `case "$*" in *rev-parse*) echo 'fatal: refused' >&2; exit 128;; esac
+exec "$REAL_GIT" "$@"`)
+
+	stdout, stderr, code := runGuard(askPayload(t, root, foreign), "guard", "hook")
+	if code != 1 || stdout != "" {
+		t.Fatalf("a question whose root lookup failed must fail open loud (exit 1, no stdout); code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+	if lines := strings.Split(strings.TrimRight(stderr, "\n"), "\n"); len(lines) != 1 {
+		t.Errorf("want one stderr line, got %d: %q", len(lines), stderr)
+	}
+	for _, want := range []string{"NOT CHECKED", "repository root", "git could not name the repository root", "UNGATED"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the fail-open must say %q; stderr = %q", want, stderr)
+		}
+	}
+	if strings.Contains(stderr, root) {
+		t.Errorf("the fail-open leaks the checkout's path; stderr = %q", stderr)
+	}
+
+	stdout, stderr, code = runGuard(askPayload(t, outside, foreign), "guard", "hook")
+	if code != 0 || stdout != "" || stderr != "" {
+		t.Errorf("outside every repository the question must pass silently; code=%d stdout=%q stderr=%q", code, stdout, stderr)
+	}
+}
+
 // TestGuardQuestionGateFailsOpenWhereTheModeCannotBeSet
 // (iss-2609260100382261, iss-2610100626211810): with the tier present but not
 // writable, the chip's mode cannot be set and the question cannot be marked

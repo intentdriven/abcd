@@ -201,7 +201,7 @@ last, and a fourth reads its record at the end:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement status [--run <run-id>] --json
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement step [--run <run-id>] [--release <lane-id> | --discard <lane-id> | --restart <lane-id> [--yielded <line>]] [--accept-config-change] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement receipt <path> [--run <run-id>] --json
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement record [--run <run-id>] [--transcript <path>]... --json
 ```
@@ -279,6 +279,21 @@ for, the reason, the route that runs it); start the agent as for any await. A
 `step` that re-tells an await starts no runner. The runner configuration is read
 on every `step`; a fault is refused at the `runner` stage before anything runs.
 
+With `oracle.review` set to `rp` (the repository's `.abcd/config.json` or
+`~/.abcd.noindex/config.json`, the server's `oracle.rp.url` in the latter alone), a
+ruthless or security review the stage hands to the host, and no runner took, is
+sent by `step` itself to RepoPrompt over MCP, with a request rendered beside the
+review's brief (`request.md`); the answer is written to the review's return path
+and verified through the same receipt, so the loop records its verdict, and the
+result's `route` names `rp`. Do not start an agent for it, and give that `step`
+a timeout above the route's thirty-minute bound or run it in the background. A
+review the route does not return, an interrupted step included, leaves the lane
+awaiting, and the result names `awaiting` plus `fallback` (the role,
+`asked: rp`, the reason, `ran: host`): start the reviewer as for any await, and
+tell the user the reason. The route is read on every
+`step`; a fault is refused at the `review` stage before anything runs. Unset,
+nothing changes.
+
 `step` keeps the run's window clock, on the pace the run started with
 (`/abcd:build`). Once the window's working minutes have elapsed, `step` starts
 nothing, writes `next_eligible_at` (now plus the run's pause), records the
@@ -324,16 +339,29 @@ and not to commit, but to stop and end its hand-back with one
 was left uncommitted (staged, unstaged or untracked) is saved aside under the
 lane's directory, `aside/<UTC stamp>/` with `changes.patch`, `aside.json` and any
 partial receipt, once the patch is proved to apply to that commit; the lane's
-worktree is reset and cleaned; the run record names the aside for review; and
+worktree is reset and cleaned as your own git resets and cleans it (the
+repository's hooks run on the reset, which, since its time scales with the
+tree as a checkout's does, is bounded at sixty minutes, a reset stopped there
+refusing the restart naming the reset); the run record
+names the aside for review; and
 the implementer await is re-told. The brief never names the aside, so no agent
-builds on it. It is refused, changing nothing, while the run has an outage
-(open, or given up until `implement outage clear` closes it once the connection
-is back), for a blank `--yielded`, for a lane with no implementer out, and for a
-worktree that is not the one the loop derives.
+builds on it. When a rate limit stops an agent and what it left cannot be saved
+aside, its await is kept and marked in the run state, and the run record says
+so; once you have settled what refused the save, `--restart` re-tells that await
+the same way, a validator's included. A validator edits nothing, so only its
+partial return is saved aside and its worktree is not touched, and a validator
+of the same round that is still out unmarked is left alone. It is refused,
+changing nothing, while the run has an outage (open, or given up until
+`implement outage clear` closes it once the connection is back), for a blank
+`--yielded`, for a lane with neither an implementer out nor an await a rate
+limit kept, and for a worktree that is not the one the loop derives.
 
 The lane's stages are `worktree` (the lane's worktree in
 `~/.abcd.noindex/worktrees/<root-sha>/<run-id>-<lane-id>`, on a branch
-`build/<run-id>-<lane-id>` cut from the default branch), `brief` (the lane's
+`build/<run-id>-<lane-id>` cut from the default branch; its checkout runs the
+repository's post-checkout hook and, since its time scales with the tree, is
+bounded at sixty minutes rather than a commit's ten, a checkout stopped there
+refusing the stage naming the checkout and the bound), `brief` (the lane's
 brief, rendered from that base into
 `.abcd/.work.local/run/<run-id>/<lane-id>/brief.md`, naming the spec step the
 lane builds and each step before it with what landed it), `implement` (awaits an
@@ -347,7 +375,10 @@ then `validate` and `land`. An implementer's receipt is one strict JSON object:
 `receipt` refuses it, naming every gap, unless each commit is on the lane's
 branch past its base, the definition of done's output exists with exit code 0,
 the report exists, and each fixed capture names one of the receipt's commits and
-an impact; any other field, a verdict included, refuses it.
+an impact; any other field, a verdict included, refuses it. The `model` carries
+no control, bidi or zero-width character, and a fixed capture's `note` and
+`grounds` none but a line break or a tab, or `receipt` refuses naming the field
+without quoting it.
 
 An issue-keyed run (`build <iss-N>`, the run `/abcd:drain` starts for each
 eligible issue) has one lane. Its brief is the issue's record read at the lane's
@@ -360,7 +391,9 @@ instead carry `handback` (`kind`: `user-visible`, `trust-rule`,
 last two) with no `resolves` and no definition of done: `receipt` then discards
 the lane's worktree and branch, ends the lane at `handed-back` before the
 validators, and the result's `hand_back` names the kind, the reason, the home
-and the `discarded` head. `/abcd:drain` routes it by kind.
+and the `discarded` head. A lane branch another checkout has checked out is
+not deleted: `receipt` refuses, naming that checkout and removing nothing.
+`/abcd:drain` routes it by kind.
 `validate` hands the lane's head to fresh validators, side by side up to the
 ceiling, and writes a fix brief only once every validator of the round has
 returned; it records each verdict from the validator's own return; the fidelity audit passes only
@@ -388,7 +421,8 @@ has work left:
   removed, then its pull request is closed if it opened one, its stage is
   `discarded`, and its spec step stays unlanded. A removal git refuses (a
   worktree with changes) leaves the pull request open and the lane held, so the
-  retry closes it once.
+  retry closes it once. A lane branch another checkout has checked out is
+  refused the same way, before anything is removed, naming that checkout.
 
 Either is refused, changing nothing, for a lane that is not held or while a lane
 still has work. The run stays in progress, so `build next` passes over its
@@ -401,7 +435,14 @@ while a sibling's landing is under way, the lower spec step landing first.
 Before a lane's landing begins, a sibling of the run that landed since its base
 is merged in (a **sync**): the default branch is merged into the lane's branch
 with a merge commit in its worktree, never a rebase, and a fresh round judges
-the merge head. A merge that conflicts is aborted with the branch unchanged, and
+the merge head. The merge is made as the person's own `git merge` makes it: the
+repository's hooks, merge drivers, commit signing and merge.verifySignatures
+apply, and a merge the repository refuses before it begins refuses the step,
+naming what git reported; one still waiting after ten minutes on a signing
+prompt or a hook is stopped and refuses the step, the merged result git had
+staged reset away so the lane's worktree is clean at its judged head (a sync
+starts only from a clean worktree, so that reset touches no change the loop
+did not make). A merge that conflicts is aborted with the branch unchanged, and
 a fresh implementer is handed a sync brief naming each conflicting path and the
 sibling lanes; its receipt must carry the merged sha as an ancestor of its head.
 A sync counts no fix round. The closing lane, which reaches its landing with no
@@ -451,7 +492,13 @@ over each of the run's lanes' own diff.
    not computed yet, keeps it waiting. A pull request closed without merging,
    or merged in a way that rewrote the head, is refused and nothing is cleaned
    up. So is an open one the forge reports `CONFLICTING`, at exit 2, since it
-   never merges on its own.
+   never merges on its own. Once the lane that completes the run (no step
+   pending, every other lane done) has landed, a run holding a reservation
+   pushes a tombstone over it while it is still this person's from this copy;
+   another person's or another copy's is left as it stands and named in the
+   landing's note, and a tombstone origin refuses is named there and never
+   undoes the landing. The branch removal touches only the lane's
+   `build/<run>-<lane>`, never the reservation branch.
 
 A conflicting pull request is refused naming what this checkout can say about
 it: the files a merge of `origin/<default>` and the pushed head conflicts in
@@ -468,6 +515,55 @@ nothing on its own: the remedy is a person's hand merge in the lane's worktree
 `origin/<default>` into the lane's branch, run `make preflight`, push, re-arm
 with the queue's method), then `step` again; or closing it and handing the
 lane back.
+
+A run that holds a reservation on the shared remote (its state's
+`reserved_at`; `abcd peers` lists it) keeps it for the copy the run lives in.
+Before a step performs a stage, it reads the reservation as last fetched and,
+once half its lease has passed since its `Abcd-Claimed-At`, fetches and pushes
+a renewal that keeps the reservation's own term (at least the default two
+hours, at most a day, so a day-long fence is never cut short), logged in the
+run record as
+`reservation_renewed`; under half, it pushes nothing. A renewal that fails is
+logged as `reservation_renew_failed` and named in the step's answer, and the
+stage still runs: the land fence is where a lost reservation stops the run. A
+renewal only renews this person's own reservation from this copy: it never
+reserves a released record again and never takes one over. At step 5, before
+the merge rule decides, the **land fence** fetches the reservation and arms
+nothing unless it is still this person's, from this copy, and live: it names
+the other person and the expiry, says the reservation moved to your copy on
+another computer, or says it was released (reserve it again with `abcd build
+<id>`), and a fetch origin does not answer is named too, each as contention
+(exit 3 when nothing else moves). When it holds, the fence renews it for a
+day, with a ruleset mirror at the lane's base or without one: every landing
+waits on a person, either the approval the armed merge needs (an approving
+review, or a code owner's) or the merge of a pull request left open for one,
+as a checkout with no mirror always leaves it, and either can wait overnight;
+a day is also past any merge queue's `check_response_timeout_minutes`. The
+fence then reads the **release hold** from the
+reservations it just fetched (a run holding no reservation fetches them for
+it): while a release reservation (`rel-vX.Y.Z`, `/abcd:reserve`) is live and
+not this copy's own, it arms nothing, naming the release, its holder or "your
+copy on another computer", and that a session cutting a release has the final
+say on what merges before its tag, as contention (exit 3); the pull request
+stays open for the cutting session to merge or hold. A release whose tag is on
+`origin`, or whose holder released it, holds nothing. Past the fence the reservation holds only
+while something renews it at half its lease: each step of the run does,
+whatever its stage, an implementer's long stage included, so does handing an
+agent's receipt back with `receipt`, and each `abcd drain` move does for a
+drain's lane parked at land. A run nobody steps, hands a receipt to or drains
+over for longer than its lease loses the reservation, and another person may
+then take the record over. A step or a receipt that finds the reservation held
+by another person or copy says so in its answer and logs `reservation_lost` in
+the run record, once. A run keyed by an issue whose lane is handed back
+releases its reservation as the step hands it back: it pushes the tombstone
+while the reservation is still this copy's and logs `reservation_released`
+with the outcome, since the issue is the person's again; a fetch or push that
+fails is logged `reservation_release_failed` instead. For a lane a drain
+opened, the drain routing the hand-back pushes the tombstone again. A run
+`build <iss-N>` started has no drain routing it, so nothing retries a failed
+release: its reservation lapses with its lease. An intent's run keeps
+its reservation through a hand-back, for the lanes it still holds. A run whose state records no
+reservation is neither renewed nor fenced.
 
 Every landing step is recorded as it completes, so a killed `step` repeats the
 move that did not complete and finds what it made rather than making it twice.
@@ -490,11 +586,70 @@ configured and not installed) carries `scan_gap` in `--json` and a `scan gap:`
 block in the text, as `history capture` names it; relay it as printed. Report
 every refusal as it is.
 
+## Stop when the repository's git settings change
+
+A program the repository's own git settings name (a content filter, a hook, a
+transport or credential helper, a diff or merge driver, a signing program) runs
+on the loop's git steps exactly as it runs on your own `git add` or
+`git fetch`. abcd leaves those settings as the repository set them and never
+switches any of them off. What it adds is a **run tripwire**: it notices when
+they change during a run and stops before its next git step.
+
+The first check of a run records a fingerprint beside its state,
+`.abcd/.work.local/run/<run-id>/config-fingerprint.json`. The fingerprint covers
+every repository-level setting that can name a program (`filter.*`,
+`core.hooksPath`, `core.sshCommand`, `core.fsmonitor`, `core.pager`,
+`core.editor`, `core.askPass`, `core.gitProxy`, `core.worktree`,
+`extensions.worktreeConfig`, `credential.*`, a remote's `url`, `pushurl`,
+`proxy`, `vcs`, `uploadpack` and `receivepack`, `url.*.insteadOf` and
+`pushInsteadOf`, `protocol.*.allow`, diff and merge drivers, the gpg programs
+and `gpg.ssh.defaultKeyCommand`, and `include` and `includeIf` paths), the
+hooks directory and `info/attributes`. For each lane worktree it also covers
+every such setting git reads there, whether from the shared settings, a
+conditional include that applies only there or the worktree's own settings,
+and the hooks directory git runs there: a relative `core.hooksPath` such as
+`.githooks` names the lane's own copy. A lane made after the fingerprint was
+recorded is compared with the checkout as recorded, for any setting or hook it
+adds or holds differently. Your global and system
+settings are your own and are not watched. The file holds salted hashes, never
+a value: a credential helper's value may carry a secret, so only key names and
+file paths are ever stored or reported. A key's name can carry a secret too (a
+URL rewrite or a credential context names a URL, which may hold a token), so a
+key whose subsection can hold a URL is stored and named with that subsection
+replaced by a short salted id, as in `url.<hidden-0123456789abcdef>.insteadof`;
+two such keys keep different ids. Every name a refusal or an accept reports
+also passes through the secret scanner's redaction.
+
+The fingerprint is checked again at the start of every `step`, `--discard` and
+`--restart`, before the shared network probe (a step's and
+`implement outage probe`'s), and before a rate-limit checkpoint saves a lane
+aside. A change refuses the call at the stage `config` (exit 2) before the call
+reaches its git. The reason names each changed key or file, marked added,
+removed or changed, and the state is left as it was. `outage probe` is refused
+without probing, and a checkpoint keeps the lane, its work and its await as
+they are, naming why under `kept`. The check is made when the call starts, not
+together with each git command it runs: a setting changed while a call is
+running is seen by the next call, not by the one already past its check. A run
+started before the tripwire existed records its fingerprint at its next check
+and moves on.
+
+Look at what changed (`git config --local --list --show-origin`, the hooks
+directory, `info/attributes`), then relay the refusal to the person. Accept a
+change only on their word: `step --accept-config-change` records the settings
+as they now stand, names what it accepted on stderr, in the result's
+`accepted_config_change` under `--json` and in the run record, and takes the
+step. The flag goes with `--restart`, `--release` or `--discard` too. A lane
+worktree that has gone is not a change once its lane landed or was discarded.
+While its lane is still in progress the loop still runs git at that path, so a
+worktree that is no longer there is named gone, and a path that stops being a
+real directory (a symlink in its place, say) is named changed.
+
 ## Check the machine's load
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement load --site preflight|eval-harness [--json]
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement load --wait [--timeout <duration>] [--json] [-- <command>...]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement load --race-gate [--timeout <duration>] [--json]
 ```
 
 `make preflight` runs this first and the eval harness runs it once at its
@@ -529,36 +684,161 @@ warning is also written to the run log as a `load` event (`run_log`).
 
 ### Wait for capacity before a preflight or a race run
 
-Gate every `make preflight` and every `go test -race` on a shared machine with
-`--wait`, and never write a waiter loop of your own: a hand-written
+`make preflight` gates itself: before its test stages it runs
+`implement load --wait`, so run it plain, with no wrapper and no waiter loop
+of your own. Gate every other `go test -race` on a shared machine with
+`--wait` too, and never write a waiter loop: a hand-written
 `pgrep -f "go test -race"` loop matched its own shell, whose command line
 carries that string, and never opened. `--wait` blocks until the one-minute
 load average is below the wait limit (`wait-load`, by default twice the online
-core count) and no other `go test -race` run is live, judged from each go
-process's arguments with the waiter's own process and ancestors excluded. Twice,
-because a busy machine with several sessions already sits near one core-count of
-load; one waiter at a time is kept by the race-run condition and the hold, not
-by the load number; and one race run adds about a core-count, so the peak stays
-near three times the cores, under the extreme limit. It reads the
-machine every 15 seconds, prints one line when it starts waiting and nothing
-more until it opens, and gives up after `--timeout` (30 minutes by default),
+core count), no other `go test -race` run is live, no other `make preflight`
+is running, and no other waiter is ahead of it in the queue (one that started
+earlier, or within two seconds of it, and has the lower pid: two whose start
+and pid disagree, as after the machine's process ids wrap, wait on neither) or
+running its command, under any account. All of that is read from the process
+table, which shows every account's processes, judged from each process's
+arguments with the waiter's own process and ancestors excluded: no file another
+account can write is read; the gate reads only the process table. A waiter queued ahead of yours still delays yours, under
+any account, until it opens or reaches its own `--timeout` (it may be shut by
+its own account's stricter `wait-load`, which you cannot see), and a waiter
+running its command holds every later gate for the command's length, by
+design. A preflight whose own waiter is queued takes that waiter's place in the
+queue, and a waiter beneath a waiter running its command (the preflight's own
+gate under `--wait -- make preflight`) takes that ancestor's place, ahead of
+every queued waiter, since the ancestor has already won its turn. Once all of it is clear the waiter waits a random 15 to 60 seconds and
+checks everything again, and opens only if the re-check is clear too, so two
+starters in one quiet minute do not start together. Across accounts, which
+share no hold, two waiters whose start and pid disagree (as after the process
+ids wrap) wait on neither and can still open in one moment, so the command form
+shows itself as running its command from the moment it opens, looks once more
+two seconds later, and the one with the higher pid stands back: it gives up its
+hold, re-draws its jitter and waits again, at most three times, while the lower
+pid runs its command. Twice the cores, because a
+busy machine with several sessions already sits near one core-count of load;
+one waiter at a time is kept by the process table, the hold and that last look
+(the cross-account exception above), not by the load number; and one race run adds about a core-count, so the peak stays near
+three times the cores, under the extreme limit. Inside `make preflight` each
+test stage then takes a `go test -p` derived from the online cores and the load
+as the stage starts (twice the cores less the load, at most the cores and at
+least a quarter of them), so one run cannot saturate the machine. It reads the
+machine every 15 seconds, prints one line when it starts waiting and one when
+it first finds the machine free, and nothing more until it opens, and gives up
+after `--timeout` (30 minutes by default; `make preflight` gives it two hours),
 exiting 1 and naming what it still waited on (`still`: `load`, `race-run`,
-`lock` or `unreadable`). `--json` reports `status` (`open`, `timeout`,
-`skipped` on a CI runner, `unchecked` on an unsupported platform), `waited_on`
-and `waited_s`.
+`preflight`, `waiter`, `lock` or `unreadable`). `--json` reports `status`
+(`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
+platform), `waited_on` and `waited_s`, with the `gate` it waited at
+(`tests` or `race`), `slots` and `slots_source`, and `backoffs` when it stood
+back.
 
-One waiter opens at a time: the one that opens writes a machine-wide hold,
-`~/.abcd.noindex/load-wait.json`, and every other waiter waits on `lock` while
-it is in force. Without a command the hold lasts two minutes, so run the gated
-work straight after it opens. Prefer the command form,
-`implement load --wait -- make preflight`: it runs the command once the gate
-opens, exits with the command's exit code, and holds the gate until the
-command has started its own race run, the command exits, or 60 minutes pass. A
-hold whose waiter has died, or whose pid now belongs to another process, is
-reclaimed by the next waiter. A SIGINT or SIGTERM to the waiter is passed on to
-the command, and the waiter waits for it to exit before it exits and releases
-the hold, so the command is never left running without its waiter. A symlinked
-`~/.abcd.noindex` is refused. Relay a timeout as printed; do not loop around it.
+Before its race stage `make preflight` waits again, at the race gate,
+`implement load --race-gate`. It takes no command: it gates the race stage
+that follows it, so a command after `--` is refused, and a race run of your own
+goes through `--wait -- go test -race` instead. It is spelt without `--wait`,
+and the two are refused together: an abcd released before the race gate reads any `implement
+load --wait` as a waiter at its first gate, so a preflight waiting at a race
+gate spelt with it would read to that older waiter as queued, not in its test
+stages, and the older waiter would open beside it. At one preflight at a time,
+the default, the race gate opens at once, without reading the machine, judging
+or taking a hold, or waiting a jitter, so the race stage follows the tests
+straight away, as it did before the gate existed (it prints `race gate open at
+once`). Above one it stays shut while another `go test -race` run is live, a
+race waiter queued ahead of it (by the same rule: started earlier, or within
+two seconds of it, and with the lower pid) or running its command is, the load
+is at the wait limit, or the race gate's own hold is in force (another race
+waiter of the account opened within two minutes), so race stages are kept
+apart whatever the first gate admits: one at a time within an account, and
+across accounts all but the narrow windows below. Each gate is shut only by its own gate's
+hold: a first gate's `--wait -- make preflight` holds its gate until its
+preflight starts its race run, and were that to shut the race gate too, an
+earlier preflight's race stage would wait on it while the holder's own race
+waiter queued behind that earlier one, and neither would move. A preflight waiting there has passed its first gate and
+counts as in its test stages. A waiter that has opened stands back only from a
+lower pid that opened in the same moment at its own gate, never from one at
+the other gate.
+
+How many preflights may be in their test stages at once is the person's own
+machine setting, never a repository's, so a checkout cannot raise the
+machine's load: `load.preflights` in `~/.abcd.noindex/config.json` (a whole
+number from 1 to 2, read through the same guarded read as every machine
+setting), or `ABCD_LOAD_PREFLIGHTS` in the waiter's environment, which wins,
+for a trial without a file edit. Two is the most for now, for a measured trial
+of two preflights at once; 3 and 4 are refused, saying the limit rises once a
+measured trial supports it. It is 1 by default, and the preflight then runs
+exactly as before the setting existed: the first gate reads as described
+above, and the race gate opens at once. What 2 adds: the first gate admits a
+preflight while fewer than that many other preflights or waiters running their
+command are in their test stages (`--wait -- make preflight` counts once), a
+waiter queued ahead still shuts it, and a live race run does not shut it by
+itself; the load limit still does, and the race gate waits as described
+above. The first gate's last look still applies: an opener that finds a lower
+pid opened in the same moment stands back, and its next look counts that
+waiter, from the moment its mark shows it running, as one of the preflights in
+their test stages. Race stages are kept apart only among preflights whose
+checkouts have the race gate: a preflight run from a checkout older than the
+gate runs its race stage ungated, so set 2 only once no such checkout runs a
+preflight. Each stage's `go test -p` is then at most the cores divided by the
+setting, so two concurrent stages do not each take the whole machine. A value
+that is not a whole number from 1 to 2 refuses the wait, naming where it was
+set; a `load.preflights` in a repository's `.abcd/config.json` is never read.
+
+What 2 does not close, across accounts, which share no hold:
+
+- **Accounts that set it differently.** The setting is each account's own, and
+  an account at 1 opens its race gate at once, as before the gate existed, so
+  its race stage can start while an account at 2 is in its race stage, and the
+  gate of the account at 2 sees that race run only once it is live. Race
+  stages are kept apart only among accounts that all set 2.
+- **A race stage starting.** A race waiter exits as it opens, and its
+  preflight's `go test -race` shows in the process table a few seconds later,
+  once `cmd/test-parallelism` has run; a race waiter of another account that
+  re-checks in that moment opens too. After the process ids wrap, two race
+  waiters whose start and pid disagree wait on neither, and the plain form
+  takes no last look, so their re-checks can both open.
+- **Three in their test stages.** The plain form of the first gate, which
+  `make preflight` runs, takes no last look either, so two accounts' openers
+  whose re-checks fall in one moment can both open beside a preflight already
+  in its tests, three preflights in their test stages at once.
+
+A `~/.abcd.noindex/config.json` that cannot be read for the count does not
+stop the wait: one that others can write, one that is not valid JSON, or one
+whose `load` is not an object is read past, one preflight at a time applies,
+and the waiter prints one line on stderr naming the file, the cause and how to
+fix it: keep it a regular file you own that nobody else can write (`chmod go-w
+~/.abcd.noindex/config.json`), holding one valid JSON object whose `load` names
+no key but `preflights`. A key under `load` other than `preflights` is named on
+that line too, and a usable `load.preflights` beside it still counts. The gate
+never read that file before the setting existed, so a file that holds other
+settings never stops a `make preflight` of someone who did not set the count.
+Only a `load.preflights` that is there and unusable (out of range, or not a
+whole number) refuses the wait, as an unusable `ABCD_LOAD_PREFLIGHTS` does;
+the environment is read first, and with it set the file is not read.
+
+Within one account the waiter that opens also writes a hold,
+`~/.abcd.noindex/load-wait.json` at the first gate and
+`~/.abcd.noindex/load-wait-race.json` at the race gate, and every other waiter
+of that account at the same gate waits on `lock` while it is in force; a hold
+its own ancestor took does not shut it.
+Without a command the hold lasts two minutes, so run the gated work straight
+after it opens. The command form, `implement load --wait -- go test -race ./...`,
+runs the command once the gate opens, exits with the command's exit code
+(128+N, as a shell reports it, when signal N killed the command, so a SIGTERM
+reads 143, never a failed gate's 1), and holds the gate until the command has
+started its own race run, the command exits, or 60 minutes pass; to every other
+account its waiter is running its command until the command exits, which with
+one preflight at a time shuts their first gates and above one takes a slot. A
+command that is a race run (`go`, then `test` with `-race`) is gated as one
+for both gates: above one preflight at a time, where a race run does not shut
+the first gate by itself, it stays shut while another race run is live, judges
+and takes the race gate's hold as well as the first gate's, and from the moment
+it opens every race gate and every other such command counts it as a race run.
+So a second lone race run gated this way waits for the first, as a second
+race stage does. A hold whose waiter has died, or whose pid now belongs to
+another process, is reclaimed by the next waiter. A SIGINT or SIGTERM to the
+waiter is passed on to the command, and the waiter waits for it to exit before
+it exits and releases the hold, so the command is never left running without
+its waiter. A symlinked `~/.abcd.noindex` is refused. Relay a timeout as
+printed; do not loop around it.
 
 ## Wait out a lost connection
 

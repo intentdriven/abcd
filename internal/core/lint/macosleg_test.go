@@ -170,8 +170,14 @@ func TestMacOSLegRunsItsSuiteOnlyWhereItLands(t *testing.T) {
 							}
 							return
 						}
-						if !slices.Contains(passes, "go test ./...") {
-							t.Errorf("the %s leg runs no plain `go test ./...` on a %s event: %q", leg.os, event, passes)
+						// The plain pass may name its slowest packages ahead of
+						// the pattern; TestPlainTestStepRunsTheWholeModule holds
+						// its set to exactly the module's.
+						plain := slices.ContainsFunc(passes, func(p string) bool {
+							return !strings.HasPrefix(p, "go test -race ") && strings.HasSuffix(p, " "+modulePattern)
+						})
+						if !plain {
+							t.Errorf("the %s leg runs no plain `go test ... ./...` on a %s event: %q", leg.os, event, passes)
 						}
 						hasRace := slices.ContainsFunc(passes, func(p string) bool { return strings.HasPrefix(p, "go test -race ") })
 						if want := inert != "true"; hasRace != want {

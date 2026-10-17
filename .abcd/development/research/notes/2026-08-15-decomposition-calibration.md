@@ -76,7 +76,7 @@ Per hand-run, append:
   front door (capability, the floor | new intent); per-host adoptions incl.
   concept mapping (capability | one intent per host, DEFERRED to explicit
   adoption decisions, nameless until then). Typed links: the 2026-08-15
-  DECISIONS entry `reverses` the out-of-scope annotation on itd-22 (human
+  decision [dcn-2608150000000005](../../../work/decisions/dcn-2608150000000005-multi-harness-support-is-in-scope.md) `reverses` the out-of-scope annotation on itd-22 (human
   had already confirmed that reversal); adr-39 `refines` that decision;
   itd-22 rework `supersedes` its own prior single-host framing (id kept).
 - **Confirmed routing:** adopted structurally unchanged; two content edits at
@@ -275,7 +275,7 @@ Per hand-run, append:
 - **Initial routing:** three parts — the rename sweep incl. artefacts and
   agent (capability, breaking | this intent); the adr-40 §5 amendment
   (decision | home ruled by the maintainer: dated in-place amendment in
-  adr-40 + a DECISIONS.md line); the oracle seam itself (adr-25 — cite,
+  adr-40 + the decision [dcn-2608160000000005](../../../work/decisions/dcn-2608160000000005-adr-40-5-reversed-at-the.md)); the oracle seam itself (adr-25 — cite,
   untouched). **One reversal flag, the session's first genuine one:**
   reverses adr-40 §5, investigated and confirmed by the maintainer before
   routing.
@@ -416,8 +416,8 @@ Per hand-run, append:
   tier 3 and itd-108's one-cut coherence carry both, no new ADR; stance
   (notify-only-plus-explicit-verb over silent auto-update) | already carried
   by adr-38, no new principle; decision (Homebrew parked until the verb
-  exists; install-channel refusal ships with the verb) | dated DECISIONS.md
-  entry 2026-08-20; plumbing (bootstrap.sh demoted to cold-start trampoline)
+  exists; install-channel refusal ships with the verb) | dated decision
+  [dcn-2608200000000006](../../../work/decisions/dcn-2608200000000006-homebrew-distribution-recorded-and.md); plumbing (bootstrap.sh demoted to cold-start trampoline)
   | itd-130 open question (sequencing + delegation hardening), brief
   internals when it lands; defect discovered en route (stranded PATH symlink
   classifies foreign) | iss-345, fixed test-first the same day, independent
@@ -2405,3 +2405,70 @@ Verdict: FILE-AS-IS, confirmed ("File as proposed"). The product thinker's rough
 | other facilitator responsibilities follow the same pattern | plumbing | the brief, once itd-97 is planned (adr-2609151528057260: every gate declares both modes) |
 
 Verdict: refine, not file. The proposal entered as a new intent; the record grill found itd-97 and the three-roles ADR already holding the switch, and the product thinker confirmed "Add to the draft". A tension surfaced and is carried as an open question: itd-97 keeps irreversible actions with the product thinker in both modes, which would bar an auto facilitator from merging unless a revertable merge is not one.
+
+## 2026-10-14: abcd's home ignores itself (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| abcd lays `~/.abcd.noindex/.gitignore` holding `*` once, and never again after the person deletes it | capability | intent itd-2610140858048004 (planned, spc-2610140858477542) |
+| credentials never sit in a git working tree, ignore file or not; the laid file's removal is respected | trust rule | adr-2610140859394097, with its brief invariant |
+| the lay runs at the front door, before and after every command, recorded by a marker | plumbing | the brief (05-internals/03-configuration) |
+| a private ideate verdict is allowed in the account's own git-tracked home once it ignores itself | refines iss-2610090740139804 | the same branch |
+
+Verdict: SPLIT, confirmed ("Confirm SPLIT"). The routing survived as proposed. The proposal entered from a security review finding on private ideate verdicts in a dotfiles home; the product thinker widened it from ideate alone to the whole of abcd's home, chose a self-ignoring home over refusing every write ("that may break things"), and kept credentials refused regardless.
+
+## 2026-10-15: sessions announce what they are doing across accounts (product thinker, routing confirmed in part)
+
+| part | type | home |
+|---|---|---|
+| making, reading and listing fixed-form announcements on the shared remote, `abcd announce` and `abcd status` | capability | intent itd-2609151838312703 (planned, spc-2610150728396006) |
+| a release cut held by a reservation the land step reads | capability | the same intent; builds on itd-2609091034175565 and would resolve iss-2609091037191879 |
+| a status branch that moves without a preflight receipt, and the ruleset that keeps its history | trust rule | adr-2610150729333337 (proposed); clauses in brief invariants 7 and 10 with the building change |
+| when abcd fetches announcements | trust rule | brief invariant 7 as it stands (the intent's decision 14) |
+| a peer's message informs and never authorises | stance | cited on the intent (decision 4); no new principle |
+| the sub-agent budget | capability | itd-2610100704270254, beside the intent |
+| which sessions are running now | capability | itd-2609150819440345 and iss-2608220750029993, kept apart (decision 16) |
+| a faster carrier on the local network | capability | itd-2609151838327688, kept as a draft to rewrite later (decision 15) |
+| the status board renamed the dashboard | rename | iss-2610150726321422 |
+| `abcd peers` given its future meaning, its duplicate check moved under `abcd status --local` | capability seed | iss-2610150726331622 |
+
+Verdict: SPLIT, routing confirmed in part. The product thinker answered both overlap questions (keep the broker draft and rewrite it later; plan apart from the session register) and signed off the plan, but no question put the table as a whole. The routing moved twice after filing:
+
+- **The pre-pass caught a conflict.** The draft's first delivery path was a background fetch from the prompt hook, which conflicts with invariant 7. The product thinker kept the invariant whole ("Only when a command checks").
+- **The naming changed after the criteria were accepted.** `abcd-notes/` became `abcd-status/`, and the note became an announcement, posted with `abcd announce` and read with `abcd status`. Two follow-up captures fell out of the vocabulary: the dashboard rename and the future of `peers`.
+
+The planning interview added two criteria from the product thinker's pushback on scope conditions, so the criteria count rose from 16 to 18:
+
+- senders checked against the forge's push record;
+- a cap on how many announcements one prompt shows.
+
+A third added criterion, that an announcement names nobody, was struck when the product thinker returned to GitHub usernames.
+
+## 2026-10-16: the agents abcd launches on its own work inside an OS sandbox (product thinker, routing to be read)
+
+| part | type | home |
+|---|---|---|
+| (A) an agent abcd's runner launches runs inside a boundary the operating system enforces around the whole process, writing only what its run needs (its worktree, its receipt folder, the shared git directory without hooks and config, caches, temp) | capability | intent itd-2610161621364075 (draft) |
+| (B) a drain or build the person's own session drives reports how isolated it is before it starts, since abcd cannot fence a session it did not launch | capability | the same draft, as an open question; a second intent if the product thinker splits it |
+| (C) network access limited to a declared list of hosts, which narrows mistakes and does not stop code being sent elsewhere | capability | a later intent, not filed |
+| an unattended launch executes inside an OS sandbox; the machine checks run outside it; a run without one is the person's choice, in their user layer | trust rule | adr-2610161621415708 (proposed); a brief invariant once accepted |
+| parse-layer checks steer, only the execution layer enforces, and a document calls a launch confined only where the boundary runs | stance | adr-42 and the principle `enforcement-claims-are-facts`, cited; no new principle |
+| how each platform's sandbox is detected and launched, and the derived write set | plumbing | the brief's runner paragraph in `04-surfaces/34-build.md` (§ The lane), which the adapters chapter's command-line-runner entry points at |
+
+Verdict: SPLIT, proposed. The product thinker asked to file it and will read the routing before it is confirmed. The proposal came from the product thinker during the crash recovery of 2026-10-16. Their question was whether a record already forced agents into a sandbox. adr-42 and the guard chapter of the brief had recorded the principle, that an enforced boundary needs an execution-layer control with the guard in front of it, but no record enacted it, and the research note of 2026-08-18 held the state of the art without a record acting on it.
+
+Initial routing, from the two adversarial reviews before the interview: parts A, B and C as the table gives them. The draft first covered every unattended run with writes limited to the worktree and abcd's home and network limited to origin and the forge. The reviews narrowed it to the launches abcd itself makes (host-driven runs default to the person's session, and abcd never edits the host's settings), replaced "abcd's home" with a derived write set (the home holds the runner routes and other repositories' worktrees, so writing it changes the next launch's policy), and moved the network to part C (no platform sandbox names hosts without a proxy, and an allowed forge still takes a push anywhere the credential reaches). Whether the split survives is the planning interview's to grade.
+
+## 2026-10-16: drains on several accounts (facilitator-on-delegation, routing not put to the product thinker)
+
+| part | type | home |
+|---|---|---|
+| planning from origin's default branch; held issues skipped before judging; a per-account start; hand-backs published on origin; waits at the cap and when only held work is left; renewing the lane in progress; refusing a fork origin; refusing once on an unreadable worktree; shared generated files and narrowed directory footprints | capability | intent itd-2610161016394967 (bundle drain-many-accounts) |
+| a lane that keeps refusing handed back as stuck; parked lanes read from their pull requests; lanes merging the default branch and regenerating generated files | capability | intent itd-2610161016391855 (the same bundle) |
+| the judgement routed to a command-line model; take-over after a restart; pace carried into every lane and changeable; changed records re-admitted; a failed fetch waited out; the holder cached; lane stages shown in abcd peers | capability | intent itd-2610161016401115 (the same bundle), building on the other two |
+| an issue naming an intent is not drained | rule clause | brief invariant 19, amended by the bundle's step 4 |
+| new drain network acts | rule clause | brief invariant 7's drain clause, amended by each step that adds one |
+| the hand-back kind and lane stage on the shared remote | cited | the reservation family (adr-2610031352212697) and the fixed-form rule (dcn-2610150000000001); no new trust rule |
+| regenerating generated files after a lane's merge | cited | the implementer's own fix round under the host's permissions (dcn-2610161040384068); abcd runs no repository-declared command, so no new trust rule |
+
+Verdict: FILE-AS-IS for each draft, as three members of one bundle. The product thinker delegated the planning, so no question put the table; the routing is the facilitator's and is graded as unconfirmed. The drafts were filed from 18 captures of a multi-account drain investigation the same day, already split by outcome (sharing the work, unsticking lanes, running unattended), so the decomposition moved nothing between them. Two parts route to clauses in existing invariants rather than to new records. The routing moved once after two adversarial reviews: the first design had abcd run a regenerate command the repository declares, which the design review showed to be a new trust boundary, so regeneration became the implementer's fix round and the trust-rule row fell away.

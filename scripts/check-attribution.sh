@@ -30,6 +30,15 @@
 # Usage:
 #   check-attribution.sh commits <base-ref> <head-ref>   # every commit in the range
 #   check-attribution.sh body <file>                     # a pull-request body on stdin-file
+#   check-attribution.sh identity <author|committer> <name> <email>
+#                                                        # one identity, before any commit
+#
+# identity mode is the IDENTITY half alone, for a caller that must judge the
+# identity a checkout WILL commit under before any commit exists: the cloud
+# brief's first step (scripts/cloud/begin.sh, spc-2610120941441282) stops when
+# it is not a person's. Same check_ident, same list, in the role named. Like
+# the commits arm it prints the identity it refuses; a caller that must not
+# repeat it discards the output and reads the exit code.
 #
 # In commits mode the two halves have different reach, deliberately. The IDENTITY
 # half reads every commit in the range, merges included: a merge commit carries an
@@ -83,8 +92,10 @@ NONE_RE='^Assisted-by: [Nn]one$'
 # line and to ABCD_ANY_RE).
 #
 # It is ONE fixed form, not a free-text escape: the vendor is the literal `abcd`,
-# and the version is `dev` or a release version exactly as the release workflow
-# admits a tag. ABCD_ANY_RE finds every trailer that names abcd as its vendor, in
+# and the version is `dev` or a release version of the shape the release
+# workflow admits a tag in, bounded: numbers of at most three digits, and a
+# pre-release and a build part of at most two SemVer identifiers of at most
+# twelve characters each, so a version is never a sentence. ABCD_ANY_RE finds every trailer that names abcd as its vendor, in
 # any case, and the gate refuses one that is not ABCD_RE (an empty or free-text
 # version, `ABCD:`), although TRAILER_RE's generic <Vendor>:<model-version> shape
 # would otherwise take most of them: a malformed abcd label is an artefact
@@ -92,7 +103,7 @@ NONE_RE='^Assisted-by: [Nn]one$'
 #
 # Like None, it is not a bypass: claiming it for text a model or a person wrote is
 # a false disclosure, and the reviewer reading the diff is the check on it.
-ABCD_RE='^Assisted-by: abcd:(dev|v[0-9]+\.[0-9]+\.[0-9]+([-+][0-9A-Za-z.-]+)?)$'
+ABCD_RE='^Assisted-by: abcd:(dev|v[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}(-[0-9A-Za-z-]{1,12}(\.[0-9A-Za-z-]{1,12})?)?(\+[0-9A-Za-z-]{1,12}(\.[0-9A-Za-z-]{1,12})?)?)$'
 ABCD_ANY_RE='^Assisted-by: [Aa][Bb][Cc][Dd]:'
 
 # Footers a tool emits by default. These name a tool outside the two credit
@@ -300,7 +311,7 @@ check_outbound() {
 }
 
 usage() {
-	echo "usage: check-attribution.sh commits <base-ref> <head-ref> | body <file>" >&2
+	echo "usage: check-attribution.sh commits <base-ref> <head-ref> | body <file> | identity <author|committer> <name> <email>" >&2
 	exit 2
 }
 
@@ -589,7 +600,11 @@ commits)
 			IFS= read -r author_email
 			IFS= read -r committer_name
 			IFS= read -r committer_email
-			IFS= read -r parents
+			# A root commit's %P is empty, and the here-string drops the
+			# trailing newline, so this read meets end of input: `|| true`
+			# keeps `set -e` from ending the gate silently on a parentless
+			# commit (a reservation's create is one).
+			IFS= read -r parents || true
 		} <<<"$(git show -s --format='%an%n%ae%n%cn%n%ce%n%P' "$sha")"
 		# The outbound check runs on EVERY commit in the range, before both
 		# `continue`s below, and that reach is deliberate on both counts.
@@ -642,6 +657,17 @@ body)
 	# the fence here would add a one-line bypass to the only half of this gate whose
 	# subject is a live credential.
 	check_outbound "the pull-request body" "$(cat "$2")"
+	;;
+identity)
+	[ $# -eq 4 ] || usage
+	# Each role is spelled out rather than passed on as "$2": the shell guard
+	# reads a variable argument after a function's name as a word that could
+	# run anything, and this arm takes only the two roles anyway.
+	case "$2" in
+	author) check_ident "the author identity" author "$3" "$4" || true ;;
+	committer) check_ident "the committer identity" committer "$3" "$4" || true ;;
+	*) usage ;;
+	esac
 	;;
 *)
 	usage

@@ -8,18 +8,23 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/decisions"
+	"github.com/intentdriven/abcd/internal/core/recordid"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // at is the pinned clock every test writes with, so a record's filename and its
 // dated pointer are assertions rather than wall-clock reads.
 var at = time.Date(2026, 7, 28, 11, 30, 0, 0, time.UTC)
 
-// seedRepo lays out the minimum a verdict record needs: the research directory it
-// is written into, the decision log its pointer is appended to, and one intent
-// and one ADR a grill hit can legitimately cite.
+// seedRepo lays out the minimum a verdict record needs: a git checkout, the
+// research directory the verdict is written into, the shared tier its pointer
+// is recorded in as a decision (and no single log), and one intent and one ADR
+// a grill hit can legitimately cite.
 func seedRepo(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root := gitRepo(t)
 	mkdir := func(rel string) {
 		if err := os.MkdirAll(filepath.Join(root, filepath.FromSlash(rel)), 0o755); err != nil {
 			t.Fatal(err)
@@ -35,10 +40,17 @@ func seedRepo(t *testing.T) string {
 		}
 	}
 	mkdir(ResearchRelDir)
-	write(DecisionsRelDir, "# Decisions\n\n- 2026-07-01 — an earlier decision.\n")
+	mkdir(decisions.SharedTierRel)
 	write(".abcd/development/intents/planned/itd-104-ideate.md", "# itd-104\n")
 	write(".abcd/development/decisions/adrs/0035-lifeboat.md", "# adr-35\n")
 	return root
+}
+
+// gitRepo is an empty git repository, the checkout the decision writer
+// resolves its root from, made through the shared hermetic fixture.
+func gitRepo(t *testing.T) string {
+	t.Helper()
+	return gittest.NewRepo(t).Root()
 }
 
 // validPayload is the reference payload: three legs in order, a resolvable
@@ -105,19 +117,34 @@ func readFile(t *testing.T, root, rel string) string {
 	return string(data)
 }
 
+// decisionLog reads every decision record in root's decisions folder, oldest
+// first, and joins their bodies one per line: the folder read the way the
+// single log used to be, so a test can ask what the decisions say.
+func decisionLog(t *testing.T, root string) string {
+	t.Helper()
+	ds, skipped, err := decisions.List(root)
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("decisions.List = %v, skipped %+v", err, skipped)
+	}
+	var b strings.Builder
+	for _, d := range ds {
+		b.WriteString(d.Text + "\n")
+	}
+	return b.String()
+}
+
 // TestRecordWritesTheVerdictRecord is the happy path: the dated research record
-// lands with every leg rendered, and the decision log gains exactly one dated
-// pointer at it.
+// lands with every leg rendered, and exactly one decision record points at it.
 func TestRecordWritesTheVerdictRecord(t *testing.T) {
 	root := seedRepo(t)
-	res, err := Record(root, "the-ideate-gate", encode(t, validPayload()), at)
+	res, err := Record(root, "the-ideate-gate", publicStore, encode(t, validPayload()), at)
 	if err != nil {
 		t.Fatalf("Record: %v", err)
 	}
 
 	// A verdict record is a DATED research note, and research/README.md files
 	// dated notes under notes/ — the record's own convention decides the path.
-	wantPath := ".abcd/development/research/notes/2026-07-28-ideate-the-ideate-gate.md"
+	wantPath := ".abcd/development/research/ideas/" + testRootSHA + "/2026-07-28-ideate-the-ideate-gate.md"
 	if res.Path != wantPath {
 		t.Errorf("Path = %q, want %q", res.Path, wantPath)
 	}
@@ -151,12 +178,44 @@ func TestRecordWritesTheVerdictRecord(t *testing.T) {
 		}
 	}
 
-	log := readFile(t, root, DecisionsRelDir)
-	if !strings.Contains(log, "2026-07-28") || !strings.Contains(log, "the-ideate-gate") || !strings.Contains(log, wantPath) {
-		t.Errorf("the decision log has no dated pointer at the record:\n%s", log)
+	log := decisionLog(t, root)
+	if !strings.Contains(log, "the-ideate-gate") || !strings.Contains(log, wantPath) {
+		t.Errorf("no decision points at the record:\n%s", log)
 	}
 	if n := strings.Count(log, wantPath); n != 1 {
-		t.Errorf("the decision log names the record %d times, want exactly 1", n)
+		t.Errorf("the decisions name the record %d times, want exactly 1", n)
+	}
+}
+
+// TestIdeateRecordsItsPointerAsADecision pins step 3 of spc-2610110931381316: a
+// public verdict's pointer is a decision record of its own, written through the
+// one writer (decisions.Record) into .abcd/work/decisions/, and nothing is
+// appended anywhere. A repository with the shared tier and no single log takes
+// the verdict, the result names the new record, and no DECISIONS.md appears.
+func TestIdeateRecordsItsPointerAsADecision(t *testing.T) {
+	root := seedRepo(t)
+	res, err := Record(root, "a-pointed-idea", publicStore, encode(t, validPayload()), at)
+	if err != nil {
+		t.Fatalf("Record: %v", err)
+	}
+	ds, skipped, err := decisions.List(root)
+	if err != nil || len(skipped) != 0 {
+		t.Fatalf("decisions.List = %v, skipped %+v", err, skipped)
+	}
+	if len(ds) != 1 {
+		t.Fatalf("the decisions folder holds %d records, want exactly 1: %+v", len(ds), ds)
+	}
+	d := ds[0]
+	if res.DecisionPath != d.Path {
+		t.Errorf("DecisionPath = %q, want the new record %q", res.DecisionPath, d.Path)
+	}
+	for _, want := range []string{"ideate: a-pointed-idea", "verdict survives", res.Path} {
+		if !strings.Contains(d.Text, want) {
+			t.Errorf("the decision record does not carry %q:\n%s", want, d.Text)
+		}
+	}
+	if _, err := os.Lstat(filepath.Join(root, ".abcd", "work", "DECISIONS.md")); !os.IsNotExist(err) {
+		t.Errorf("recording a verdict laid a single log: %v", err)
 	}
 }
 
@@ -169,7 +228,7 @@ func TestRecordRefusesUnresolvableCitation(t *testing.T) {
 	p["legs"].([]any)[1].(map[string]any)["hits"] = []any{
 		map[string]any{"record": "itd-9999", "relation": "covered"},
 	}
-	_, err := Record(root, "the-ideate-gate", encode(t, p), at)
+	_, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at)
 	var cite *CitationError
 	if !errors.As(err, &cite) {
 		t.Fatalf("Record error = %v, want a *CitationError", err)
@@ -192,8 +251,30 @@ func TestRecordRefusesMalformedCitation(t *testing.T) {
 		p["legs"].([]any)[1].(map[string]any)["hits"] = []any{
 			map[string]any{"record": bad, "relation": "covered"},
 		}
-		if _, err := Record(root, "the-ideate-gate", encode(t, p), at); err == nil {
+		if _, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at); err == nil {
 			t.Errorf("a hit citing %q was accepted", bad)
+		}
+	}
+	assertNothingWritten(t, root)
+}
+
+// TestMalformedCitationRefusalNamesEveryCitedFamily (iss-2610160608457651):
+// the refusal of a malformed grill citation says what a citation may be, and
+// says exactly what CitedIDRe accepts: every family recordid resolves, read
+// from its one list, so a decision record's dcn-N is named as citable.
+func TestMalformedCitationRefusalNamesEveryCitedFamily(t *testing.T) {
+	root := seedRepo(t)
+	p := validPayload()
+	p["legs"].([]any)[1].(map[string]any)["hits"] = []any{
+		map[string]any{"record": "prn-1", "relation": "covered"},
+	}
+	_, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at)
+	if err == nil {
+		t.Fatal("a hit citing prn-1 was accepted")
+	}
+	for _, fam := range recordid.CitedFamilies() {
+		if !strings.Contains(err.Error(), fam+"-N") {
+			t.Errorf("the refusal does not name %s-N as citable: %v", fam, err)
 		}
 	}
 	assertNothingWritten(t, root)
@@ -209,7 +290,7 @@ func TestRecordRefusesUnsafeSlug(t *testing.T) {
 		"", "-leading", "trailing-", "double--hyphen", "dot.segment", "sp ace",
 		strings.Repeat("a", MaxSlugLen+1),
 	} {
-		_, err := Record(root, bad, encode(t, validPayload()), at)
+		_, err := Record(root, bad, publicStore, encode(t, validPayload()), at)
 		var se *SlugError
 		if !errors.As(err, &se) {
 			t.Errorf("slug %q: error = %v, want a *SlugError", bad, err)
@@ -235,7 +316,7 @@ func TestRecordRefusesLegsOutOfOrder(t *testing.T) {
 	for name, legs := range cases {
 		p := validPayload()
 		p["legs"] = legs
-		if _, err := Record(root, "the-ideate-gate", encode(t, p), at); err == nil {
+		if _, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at); err == nil {
 			t.Errorf("%s: legs were accepted", name)
 		}
 	}
@@ -250,7 +331,7 @@ func TestRecordRefusesEmptyLegContent(t *testing.T) {
 	t.Run("no-claims", func(t *testing.T) {
 		p := validPayload()
 		p["legs"].([]any)[0].(map[string]any)["claims"] = []any{}
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("a research leg with no claims was accepted")
 		}
 	})
@@ -259,7 +340,7 @@ func TestRecordRefusesEmptyLegContent(t *testing.T) {
 		p["legs"].([]any)[0].(map[string]any)["claims"] = []any{
 			map[string]any{"claim": "a claim", "status": "verified"},
 		}
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("a claim with no primary source was accepted")
 		}
 	})
@@ -268,7 +349,7 @@ func TestRecordRefusesEmptyLegContent(t *testing.T) {
 		p["legs"].([]any)[0].(map[string]any)["claims"] = []any{
 			map[string]any{"claim": "a claim", "primary_source": "https://example.invalid/", "status": "probably"},
 		}
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("an out-of-enum claim status was accepted")
 		}
 	})
@@ -277,14 +358,14 @@ func TestRecordRefusesEmptyLegContent(t *testing.T) {
 		p["legs"].([]any)[1].(map[string]any)["hits"] = []any{
 			map[string]any{"record": "itd-104", "relation": "mentions"},
 		}
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("an out-of-enum grill relation was accepted")
 		}
 	})
 	t.Run("no-kill-attempts", func(t *testing.T) {
 		p := validPayload()
 		p["legs"].([]any)[2].(map[string]any)["kill_attempts"] = []any{}
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("an adversarial leg with no kill attempt was accepted")
 		}
 	})
@@ -293,7 +374,7 @@ func TestRecordRefusesEmptyLegContent(t *testing.T) {
 		p["legs"].([]any)[0].(map[string]any)["hits"] = []any{
 			map[string]any{"record": "itd-104", "relation": "covered"},
 		}
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("a research leg carrying grill hits was accepted")
 		}
 	})
@@ -306,7 +387,7 @@ func TestRecordAcceptsAnEmptyGrill(t *testing.T) {
 	root := seedRepo(t)
 	p := validPayload()
 	p["legs"].([]any)[1].(map[string]any)["hits"] = []any{}
-	res, err := Record(root, "the-ideate-gate", encode(t, p), at)
+	res, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at)
 	if err != nil {
 		t.Fatalf("an empty grill was refused: %v", err)
 	}
@@ -326,28 +407,28 @@ func TestRecordRefusesOmittedRejectedAlternatives(t *testing.T) {
 	t.Run("omitted", func(t *testing.T) {
 		p := validPayload()
 		delete(p, "rejected_alternatives")
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("an omitted rejected-alternatives list was accepted")
 		}
 	})
 	t.Run("empty-without-marker", func(t *testing.T) {
 		p := validPayload()
 		p["rejected_alternatives"] = []any{}
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("an empty list with no explicit marker was accepted")
 		}
 	})
 	t.Run("marker-contradicts-list", func(t *testing.T) {
 		p := validPayload()
 		p["no_rejected_alternatives"] = true
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("a marker contradicting a populated list was accepted")
 		}
 	})
 	t.Run("alternative-without-reason", func(t *testing.T) {
 		p := validPayload()
 		p["rejected_alternatives"] = []any{map[string]any{"alternative": "something"}}
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("a rejected alternative with no reason was accepted")
 		}
 	})
@@ -361,7 +442,7 @@ func TestRecordAcceptsTheExplicitEmptyMarker(t *testing.T) {
 	p := validPayload()
 	p["rejected_alternatives"] = []any{}
 	p["no_rejected_alternatives"] = true
-	res, err := Record(root, "the-ideate-gate", encode(t, p), at)
+	res, err := Record(root, "the-ideate-gate", publicStore, encode(t, p), at)
 	if err != nil {
 		t.Fatalf("the explicit empty marker was refused: %v", err)
 	}
@@ -376,7 +457,7 @@ func TestRecordRecordsAKilledIdea(t *testing.T) {
 	root := seedRepo(t)
 	p := validPayload()
 	p["verdict"] = "killed"
-	res, err := Record(root, "a-dead-idea", encode(t, p), at)
+	res, err := Record(root, "a-dead-idea", publicStore, encode(t, p), at)
 	if err != nil {
 		t.Fatalf("Record: %v", err)
 	}
@@ -387,8 +468,8 @@ func TestRecordRecordsAKilledIdea(t *testing.T) {
 	if !strings.Contains(body, "killed") {
 		t.Error("the record does not state the verdict")
 	}
-	if !strings.Contains(readFile(t, root, DecisionsRelDir), "a-dead-idea") {
-		t.Error("a killed idea earned no pointer in the decision log")
+	if !strings.Contains(decisionLog(t, root), "a-dead-idea") {
+		t.Error("a killed idea earned no decision pointing at it")
 	}
 }
 
@@ -399,7 +480,7 @@ func TestRecordRefusesOutOfEnumVerdict(t *testing.T) {
 	for _, bad := range []string{"", "SURVIVES", "maybe", "shipped"} {
 		p := validPayload()
 		p["verdict"] = bad
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Errorf("verdict %q was accepted", bad)
 		}
 	}
@@ -414,47 +495,47 @@ func TestRecordRefusesMalformedPayload(t *testing.T) {
 	t.Run("unknown-field", func(t *testing.T) {
 		p := validPayload()
 		p["surprise"] = "smuggled"
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("an unknown field was accepted")
 		}
 	})
 	t.Run("trailing-data", func(t *testing.T) {
 		raw := append(encode(t, validPayload()), []byte(`{"another":"document"}`)...)
-		if _, err := Record(root, "s", raw, at); err == nil {
+		if _, err := Record(root, "s", publicStore, raw, at); err == nil {
 			t.Error("trailing data was accepted")
 		}
 	})
 	t.Run("schema-missing", func(t *testing.T) {
 		p := validPayload()
 		delete(p, "schema_version")
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("a missing schema_version was accepted")
 		}
 	})
 	t.Run("schema-too-new", func(t *testing.T) {
 		p := validPayload()
 		p["schema_version"] = SchemaVersion + 1
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("a future schema_version was accepted")
 		}
 	})
 	t.Run("prompt-version-missing", func(t *testing.T) {
 		p := validPayload()
 		delete(p, "prompt_version")
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("a missing prompt_version was accepted")
 		}
 	})
 	t.Run("empty-idea", func(t *testing.T) {
 		p := validPayload()
 		p["idea"] = "   "
-		if _, err := Record(root, "s", encode(t, p), at); err == nil {
+		if _, err := Record(root, "s", publicStore, encode(t, p), at); err == nil {
 			t.Error("an empty idea was accepted")
 		}
 	})
 	t.Run("oversize", func(t *testing.T) {
 		raw := make([]byte, MaxPayloadBytes+1)
-		if _, err := Record(root, "s", raw, at); err == nil {
+		if _, err := Record(root, "s", publicStore, raw, at); err == nil {
 			t.Error("an oversize payload was accepted")
 		}
 	})
@@ -465,16 +546,16 @@ func TestRecordRefusesMalformedPayload(t *testing.T) {
 // slug on the same day cannot silently replace the first record.
 func TestRecordRefusesOverwritingAnExistingVerdict(t *testing.T) {
 	root := seedRepo(t)
-	res, err := Record(root, "the-ideate-gate", encode(t, validPayload()), at)
+	res, err := Record(root, "the-ideate-gate", publicStore, encode(t, validPayload()), at)
 	if err != nil {
 		t.Fatalf("first Record: %v", err)
 	}
 	before := readFile(t, root, res.Path)
-	logBefore := readFile(t, root, DecisionsRelDir)
+	logBefore := decisionLog(t, root)
 
 	p := validPayload()
 	p["verdict"] = "killed"
-	_, err = Record(root, "the-ideate-gate", encode(t, p), at)
+	_, err = Record(root, "the-ideate-gate", publicStore, encode(t, p), at)
 	var ex *ExistsError
 	if !errors.As(err, &ex) {
 		t.Fatalf("second Record error = %v, want an *ExistsError", err)
@@ -482,23 +563,25 @@ func TestRecordRefusesOverwritingAnExistingVerdict(t *testing.T) {
 	if got := readFile(t, root, res.Path); got != before {
 		t.Error("the existing verdict record was modified")
 	}
-	if got := readFile(t, root, DecisionsRelDir); got != logBefore {
-		t.Error("the refused run still appended to the decision log")
+	if got := decisionLog(t, root); got != logBefore {
+		t.Error("the refused run still recorded a decision")
 	}
 }
 
-// TestRecordRefusesWhenTheDecisionLogIsAbsent proves the pointer is not optional:
-// without a decision log there is nowhere for a later session to find the record,
-// so the run refuses BEFORE writing anything.
-func TestRecordRefusesWhenTheDecisionLogIsAbsent(t *testing.T) {
+// TestRecordRefusesWithoutTheSharedTier proves the pointer is not optional: in
+// a repository with no shared tier there is nowhere to record the decision a
+// later session finds the verdict by, so the run refuses BEFORE writing
+// anything, with the decision writer's own refusal naming `ahoy install`. The
+// missing-log refusal this replaces went with the single log
+// (spc-2610110931381316, step 3).
+func TestRecordRefusesWithoutTheSharedTier(t *testing.T) {
 	root := seedRepo(t)
-	if err := os.Remove(filepath.Join(root, filepath.FromSlash(DecisionsRelDir))); err != nil {
+	if err := os.Remove(filepath.Join(root, filepath.FromSlash(decisions.SharedTierRel))); err != nil {
 		t.Fatal(err)
 	}
-	_, err := Record(root, "the-ideate-gate", encode(t, validPayload()), at)
-	var md *MissingDecisionsError
-	if !errors.As(err, &md) {
-		t.Fatalf("Record error = %v, want a *MissingDecisionsError", err)
+	_, err := Record(root, "the-ideate-gate", publicStore, encode(t, validPayload()), at)
+	if !errors.Is(err, decisions.ErrNoSharedTier) {
+		t.Fatalf("Record error = %v, want decisions.ErrNoSharedTier", err)
 	}
 	assertNothingWritten(t, root)
 }
@@ -525,7 +608,7 @@ func TestRecordNeutralisesInjectedProse(t *testing.T) {
 			"status":         "falsified",
 		},
 	}
-	res, err := Record(root, "injected", encode(t, p), at)
+	res, err := Record(root, "injected", publicStore, encode(t, p), at)
 	if err != nil {
 		t.Fatalf("Record: %v", err)
 	}
@@ -554,11 +637,10 @@ func TestRecordNeutralisesInjectedProse(t *testing.T) {
 			t.Errorf("table row has %d unescaped pipes, want 4: %q", n, line)
 		}
 	}
-	if !strings.Contains(readFile(t, root, DecisionsRelDir), "injected") {
+	if log := decisionLog(t, root); !strings.Contains(log, "injected") {
 		t.Error("the decision pointer is missing")
-	}
-	if n := strings.Count(readFile(t, root, DecisionsRelDir), "\n- "); n != 2 {
-		t.Error("the decision log gained more than one bullet")
+	} else if n := strings.Count(log, "\n"); n != 1 {
+		t.Errorf("the run recorded %d decisions, want exactly one:\n%s", n, log)
 	}
 }
 
@@ -575,15 +657,12 @@ func TestRecordRefusesASymlinkedAncestor(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(root, ".abcd", "work"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(root, filepath.FromSlash(DecisionsRelDir)), []byte("# Decisions\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.Symlink(outside, filepath.Join(root, ".abcd", "development")); err != nil {
 		t.Skipf("symlinks unavailable: %v", err)
 	}
 	p := validPayload()
 	p["legs"].([]any)[1].(map[string]any)["hits"] = []any{}
-	if _, err := Record(root, "escape-test", encode(t, p), at); err == nil {
+	if _, err := Record(root, "escape-test", publicStore, encode(t, p), at); err == nil {
 		t.Fatal("a symlinked .abcd/development did not refuse the write")
 	}
 	entries, err := os.ReadDir(filepath.Join(outside, "research"))
@@ -592,6 +671,39 @@ func TestRecordRefusesASymlinkedAncestor(t *testing.T) {
 	}
 	for _, e := range entries {
 		t.Errorf("the write escaped the repository: %s", e.Name())
+	}
+}
+
+// TestRecordFollowsAnInRootSymlinkedAncestor pins what os.Root actually
+// guarantees: it refuses a path that ESCAPES the root, not every symlink. A
+// relative symlink at an intermediate component that stays inside the tree is
+// followed, and the record lands at its target, still inside the repository.
+// Containment is the only guarantee the writer rests on, so following such a
+// link is correct; a repository that arranges its own tree with an in-tree link
+// is not overridden (iss-2610050259237102).
+func TestRecordFollowsAnInRootSymlinkedAncestor(t *testing.T) {
+	root := seedRepo(t)
+	dev := filepath.Join(root, ".abcd", "development")
+	if err := os.Rename(dev, filepath.Join(root, "elsewhere")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "elsewhere"), dev); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	res, err := Record(root, "in-root-link", publicStore, encode(t, validPayload()), at)
+	if err != nil {
+		t.Fatalf("an in-root symlinked ancestor was refused: %v", err)
+	}
+	target := filepath.Join(root, "elsewhere", "research", "ideas", testRootSHA, filepath.Base(res.Path))
+	fi, err := os.Lstat(target)
+	if err != nil {
+		t.Fatalf("the record did not land at the in-root link's target: %v", err)
+	}
+	if !fi.Mode().IsRegular() {
+		t.Errorf("the record at %s is not a regular file: %v", target, fi.Mode())
+	}
+	if !strings.Contains(decisionLog(t, root), "in-root-link") {
+		t.Error("the decision pointer is missing")
 	}
 }
 
@@ -604,7 +716,7 @@ func TestRecordCreatesTheResearchDirectory(t *testing.T) {
 	if err := os.RemoveAll(filepath.Join(root, filepath.FromSlash(ResearchRelDir))); err != nil {
 		t.Fatal(err)
 	}
-	res, err := Record(root, "first-run", encode(t, validPayload()), at)
+	res, err := Record(root, "first-run", publicStore, encode(t, validPayload()), at)
 	if err != nil {
 		t.Fatalf("an absent research directory was refused: %v", err)
 	}
@@ -653,7 +765,7 @@ func TestRecordProseCannotShiftTableColumns(t *testing.T) {
 			"status":         "falsified",
 		},
 	}
-	res, err := Record(root, "column-shift", encode(t, p), at)
+	res, err := Record(root, "column-shift", publicStore, encode(t, p), at)
 	if err != nil {
 		t.Fatalf("Record: %v", err)
 	}
@@ -685,7 +797,7 @@ func TestRecordIdeaCannotVanish(t *testing.T) {
 	root := seedRepo(t)
 	p := validPayload()
 	p["idea"] = "[x]: https://example.invalid/hidden"
-	res, err := Record(root, "vanishing-idea", encode(t, p), at)
+	res, err := Record(root, "vanishing-idea", publicStore, encode(t, p), at)
 	if err != nil {
 		t.Fatalf("Record: %v", err)
 	}
@@ -711,7 +823,7 @@ func assertNothingWritten(t *testing.T, root string) {
 // record_redact_test.go material — the store-before-commit gate for ideate
 // (iss-2609020127281995, iss-2608291817368607). `ideate record` writes
 // host-composed free text into TWO committed tiers — the dated research note
-// under .abcd/development/ and the dated pointer in .abcd/work/DECISIONS.md —
+// under .abcd/development/ and the decision record pointing at it —
 // and until this ran the package imported no scanner at all: termsafe neutralises
 // terminal escapes and markdown/HTML structure, which is a different job from
 // finding a credential.
@@ -727,11 +839,13 @@ const fakeIdeateToken = "ghp_" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789abcd"
 func TestRecordRedactsSecretsInVerdictProse(t *testing.T) {
 	// A set-for-the-test home so the scanner's identity probe (which reads $HOME)
 	// flags the path as the caller's own — deterministic across platforms.
+	// The fixture's git runs first, under its own pinned home; HOME is set
+	// after it, so the run below reads this one.
+	root := seedRepo(t)
 	home := "/Users/testperson" // abcd-lint:allow
 	t.Setenv("HOME", home)
 	homePath := home + "/private/verdict-notes.md"
 
-	root := seedRepo(t)
 	p := validPayload()
 	p["idea"] = "the gauntlet should read the token " + fakeIdeateToken + " from " + homePath
 	p["legs"].([]any)[0].(map[string]any)["claims"] = []any{
@@ -741,14 +855,14 @@ func TestRecordRedactsSecretsInVerdictProse(t *testing.T) {
 			"status":         "verified",
 		},
 	}
-	res, err := Record(root, "leaky-verdict", encode(t, p), at)
+	res, err := Record(root, "leaky-verdict", publicStore, encode(t, p), at)
 	if err != nil {
 		t.Fatalf("Record: %v", err)
 	}
 
 	body := readFile(t, root, res.Path)
-	log := readFile(t, root, DecisionsRelDir)
-	for name, text := range map[string]string{res.Path: body, DecisionsRelDir: log} {
+	log := decisionLog(t, root)
+	for name, text := range map[string]string{res.Path: body, res.DecisionPath: log} {
 		if strings.Contains(text, fakeIdeateToken) {
 			t.Errorf("%s carries the raw secret span", name)
 		}
@@ -790,9 +904,9 @@ func TestRecordRefusesOnDegradedScanner(t *testing.T) {
 	if err := os.WriteFile(cfg, []byte("{ this is not json"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	before := readFile(t, root, DecisionsRelDir)
+	before := decisionLog(t, root)
 
-	_, err := Record(root, "degraded-scanner", encode(t, validPayload()), at)
+	_, err := Record(root, "degraded-scanner", publicStore, encode(t, validPayload()), at)
 	if err == nil {
 		t.Fatal("Record accepted a verdict with a degraded scanner")
 	}
@@ -800,7 +914,7 @@ func TestRecordRefusesOnDegradedScanner(t *testing.T) {
 		t.Errorf("error = %v, want it to name the degraded scanner", err)
 	}
 	assertNothingWritten(t, root)
-	if got := readFile(t, root, DecisionsRelDir); got != before {
-		t.Errorf("the refused run appended to the decision log:\n%s", got)
+	if got := decisionLog(t, root); got != before {
+		t.Errorf("the refused run recorded a decision:\n%s", got)
 	}
 }

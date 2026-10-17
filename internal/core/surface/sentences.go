@@ -58,7 +58,7 @@ var sentences = map[string]string{
 		"Writes that layer's store; refuses a public entry curated by hand.",
 
 	"abcd build": "Start the loop that takes one READY intent to delivered: " +
-		"Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
+		"Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.",
 	"abcd build next": "Pick the readiest planned intent and start its run: " +
 		"Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.",
 
@@ -91,8 +91,8 @@ var sentences = map[string]string{
 	"abcd capture wontfix": "Move an open issue to wontfix/ with the reason it is not acted on: " +
 		"Writes the moved record; refuses an id this ledger does not hold.",
 
-	"abcd decide": "Mint an ADR id and lay the record's empty skeleton: " +
-		"Writes one proposed record into the decisions store; refuses a missing or unusable title.",
+	"abcd decide": "Record a decision, list them bare, or mint an ADR with --adr: " +
+		"Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.",
 
 	"abcd disembark": "Pack a repository into a lifeboat, probing and planning first: " +
 		"Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.",
@@ -169,9 +169,9 @@ var sentences = map[string]string{
 		"Writes only a missing store and a legacy corpus moved into it; refuses outside a git checkout.",
 
 	"abcd ideate": "Judge an idea through the host-run admission gauntlet: " +
-		"Writes nothing bare, and one research record and its decision-log line; refuses an unknown sub-verb.",
+		"Writes nothing bare, and one verdict record, private or public; refuses an unknown sub-verb.",
 	"abcd ideate record": "Validate a host-composed gauntlet verdict: " +
-		"Writes the dated research record; refuses without an idea slug or --verdict-json.",
+		"Writes the dated record to the private or public store; refuses without an idea slug, the answer or --verdict-json.",
 
 	"abcd identity": "Record the identity block and propose drift corrections: " +
 		"Writes nothing bare, only the block and its pointer; refuses an unknown sub-verb.",
@@ -268,6 +268,19 @@ var sentences = map[string]string{
 	"abcd intent unhold": "Lift an intent's hold: " +
 		"Writes the removal of its held line; refuses a record not held.",
 
+	"abcd embargo": "Keep private security advisories off the public ledger until closed or published: " +
+		"Writes nothing bare, only the embargo store; refuses an unknown sub-verb.",
+	"abcd embargo check": "Check a commit range or texts for what would disclose an advisory under embargo: " +
+		"Writes nothing; refuses on each id, reserved CVE id, title or store path found.",
+	"abcd embargo close": "Show an advisory's closing text and digest, or close it on GitHub with it: " +
+		"Writes GitHub and the store only with --approve; refuses a digest for other text.",
+	"abcd embargo intake": "Take this repository's private advisories into private records in the embargo store: " +
+		"Writes only the embargo store; refuses a remote that is not on GitHub.",
+	"abcd embargo publish": "Show the publication plan with computed patched versions, or publish it: " +
+		"Writes GitHub and the store only with --approve; refuses a digest for another plan.",
+	"abcd embargo triage": "Record a verdict on a private advisory, drafting a closing verdict's text: " +
+		"Writes the embargo store; refuses an unknown verdict or one missing its reason.",
+
 	"abcd lab": "List this repository's labs with their pins, probe counts and halts: " +
 		"Writes nothing; refuses outside a git checkout.",
 	"abcd lab harvest": "Assemble a lab's harvest with its capture candidates: " +
@@ -338,8 +351,20 @@ var sentences = map[string]string{
 	"abcd mode": "Print or set whose answer the agent loop is waiting on: " +
 		"Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.",
 
-	"abcd peers": "List the records sibling worktrees and local branches hold that this checkout does not: " +
-		"Writes nothing; refuses outside a git checkout.",
+	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
+		"Writes the fetched reservations; refuses outside a git checkout.",
+
+	"abcd status": "List everyone's announcements, reservations and releases being cut: " +
+		"Writes the fetched status branches and reservations; refuses outside a git checkout.",
+
+	"abcd announce": "Post a fixed-form announcement on the shared remote: " +
+		"Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+
+	"abcd land": "Push a branch whose preflight passed and queue its pull request: " +
+		"Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
+
+	"abcd reserve": "Reserve an issue, intent or release on the shared remote, or release it: " +
+		"Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
 
 	"abcd reading": "Render the cold-reading assembler's state: " +
 		"Writes nothing; refuses any argument.",

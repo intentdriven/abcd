@@ -145,7 +145,9 @@ func TestAhoyPageArmsHooksOnlyWhenUnarmed(t *testing.T) {
 // dispatcher (hooks_path foreign) either one overrides that dispatcher instead of
 // having it call `.githooks/`. Both are held to the ahoy page's three-way advice.
 // So is a third, iss-2610111820465940's: the header of the pre-commit hook ahoy
-// install scaffolds into every adopted repository, a shell comment block.
+// install scaffolds into every adopted repository, a shell comment block. And a
+// fourth, iss-2610112148115897's: the header of the prepare-commit-msg hook ahoy
+// install --attribution scaffolds beside it, the same kind of comment block.
 func TestHooksPathSiblingsArmOnlyWhenUnarmed(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	for _, f := range []struct {
@@ -155,6 +157,7 @@ func TestHooksPathSiblingsArmOnlyWhenUnarmed(t *testing.T) {
 		{filepath.Join(".github", "CONTRIBUTING.md"), markdownBranchEnd},
 		{filepath.Join(".githooks", "commit-msg"), shellBranchEnd},
 		{filepath.Join("internal", "core", "ahoy", "defaults", "pre-commit"), shellCommentBranchEnd},
+		{filepath.Join("internal", "core", "ahoy", "defaults", "prepare-commit-msg"), shellCommentBranchEnd},
 	} {
 		data, err := os.ReadFile(filepath.Join(root, f.path))
 		if err != nil {

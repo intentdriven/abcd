@@ -148,7 +148,7 @@ func (t Terminal) listSetting() (list, note string) {
 		return v.V, ""
 	}
 	if t.Roots.Repo != "" {
-		mv, merr := layered.InterviewList(layered.Roots{Home: t.Roots.Home})
+		mv, merr := layered.InterviewList(layered.Roots{Home: t.Roots.Home, HomeRefused: t.Roots.HomeRefused})
 		if merr == nil {
 			return mv.V, fmt.Sprintf("abcd: %s; how the list is read is taken from this machine's settings alone.",
 				termsafe.Sanitize(err.Error()))

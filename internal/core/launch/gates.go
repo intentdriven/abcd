@@ -394,7 +394,7 @@ var narrationEscapeRe = regexp.MustCompile(`(?i)<!--\s*docs-lint:\s*allow\b`)
 // (itd-65 AC10); the present-tense warning docs lint carries is where they
 // belong. The gate's specification is narrationSpecification in
 // gates_test.go, and the pairs it cannot tell apart lexically are refused
-// (the escape marker exists for them), a trade recorded in DECISIONS.md.
+// (the escape marker exists for them), a trade recorded in dcn-2609250000000018.
 var narrationConstructs = []struct {
 	name  string
 	re    *regexp.Regexp
@@ -1019,11 +1019,21 @@ func docAuditGate(pre *DocAuditPreflight) GateSummary {
 var hookHandlerTypes = map[string]struct{}{"prompt": {}, "agent": {}, "http": {}}
 
 // hookComplianceGate is the hook-compliance row, at the warn tier: every
-// payload file a hook command invokes is executable in the payload (a hook that
-// tests for an executable silently skips one that is not), every command
-// handler names a command, and every timeout is a positive number. What a hook
+// payload file a hook EXECUTES is executable in the payload (a hook that tests
+// for an executable silently skips one that is not), every command handler
+// names a command, and every timeout is a positive number. What a hook
 // DECLARES is the installability smoke's (a missing file refuses there); this
 // row judges whether the declared hooks would behave.
+//
+// The mode is judged only where some hook text executes the file. A command
+// that runs its script through sh or bash (`sh "${CLAUDE_PLUGIN_ROOT}/hooks/x.sh"`,
+// the form abcd's own hooks/hooks.json uses for every hook) has the interpreter
+// read the script, which runs at any mode, so a 0644 script there is no concern
+// (iss-2610160608456302). A file the command, or a script it runs, executes
+// directly — session-start.sh runs hooks/bootstrap.sh that way — still needs
+// its executable bit, and a missing one is still a finding. The executed set
+// is the union over every hook command, so a file one command hands to sh and
+// another runs directly is judged.
 func hookComplianceGate(bundle Bundle) GateSummary {
 	row := GateSummary{Name: gateHookCompliant, Status: "ran"}
 	tree := NewBundleTree(bundle)
@@ -1044,6 +1054,9 @@ func hookComplianceGate(bundle Bundle) GateSummary {
 		}
 		mode, carried := modes[e.Path]
 		if _, dup := seen[e.Path]; dup || !carried || mode == "100755" {
+			continue
+		}
+		if _, direct := surface.hookExecuted[e.Path]; !direct {
 			continue
 		}
 		seen[e.Path] = struct{}{}

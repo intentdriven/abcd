@@ -262,7 +262,7 @@ func TestTheRootRouterDoesNotSendAnAuthorToCoordinateAnADRMint(t *testing.T) {
 		}
 	}
 	// The facts that replace them: the verb that mints, and the shape it mints.
-	for _, want := range []string{"abcd decide", "yymmddHHMMSS"} {
+	for _, want := range []string{"abcd decide --adr", "yymmddHHMMSS"} {
 		if !strings.Contains(bullet, want) {
 			t.Errorf("the router's coordination bullet does not name %q, so it does not say how an ADR id "+
 				"is allocated and a reader has to reach the verb's help to find out", want)

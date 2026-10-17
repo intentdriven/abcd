@@ -117,9 +117,7 @@ func Inject(rs RuleSet, prompt string, prev SessionState, backstop int) InjectRe
 	if backstop <= 0 {
 		backstop = DefaultRefreshBackstop
 	}
-	if len(prompt) > maxPromptBytes {
-		prompt = prompt[:maxPromptBytes]
-	}
+	prompt = CapPrompt(prompt)
 
 	ledger := map[string]string{}
 	for k, v := range prev.Ledger {

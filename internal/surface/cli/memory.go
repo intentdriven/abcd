@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/memnote"
-	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/core/recall"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -36,19 +36,13 @@ const (
 	reachProject           = "the project's file"
 )
 
-// memoryLayerRefusal names a layer that could not be read, and why.
-type memoryLayerRefusal struct {
-	File   string `json:"file"`
-	Reason string `json:"reason"`
-}
-
 // memoryBareOutput is bare `memory`'s --json envelope.
 type memoryBareOutput struct {
-	ThisRepository    int                  `json:"this_repository"`
-	Everywhere        int                  `json:"everywhere"`
-	OtherRepositories int                  `json:"other_repositories"`
-	Project           int                  `json:"project"`
-	Unreadable        []memoryLayerRefusal `json:"unreadable"`
+	ThisRepository    int              `json:"this_repository"`
+	Everywhere        int              `json:"everywhere"`
+	OtherRepositories int              `json:"other_repositories"`
+	Project           int              `json:"project"`
+	Unreadable        []recall.Refusal `json:"unreadable"`
 }
 
 // memoryNoteView is one listed note.
@@ -67,8 +61,8 @@ type memoryNoteView struct {
 
 // memoryListOutput is `memory list`'s --json envelope.
 type memoryListOutput struct {
-	Notes      []memoryNoteView     `json:"notes"`
-	Unreadable []memoryLayerRefusal `json:"unreadable"`
+	Notes      []memoryNoteView `json:"notes"`
+	Unreadable []recall.Refusal `json:"unreadable"`
 }
 
 // memoryAddOutput is `memory add`'s --json envelope.
@@ -90,44 +84,21 @@ const (
 	memoryEverywhereNotice     = "this note is recalled in every repository, but only this checkout's private names were checked; a name another project bans is yours to keep out of it"
 )
 
-// memoryLayers is what a read of both layers gave: the notes and the layers
-// that could not be read.
-type memoryLayers struct {
-	machine    []memnote.Note
-	project    []memnote.Note
-	root       string
-	unreadable []memoryLayerRefusal
-}
-
-// readMemoryLayers reads both layers for the repository the rules loader
-// resolves from cwd. A layer that cannot be read is named, never fatal here.
-func readMemoryLayers(home, repoRoot string) memoryLayers {
-	var l memoryLayers
-	l.root = memoryRootCommit(repoRoot)
-	if f, _, err := memnote.ReadMachine(home); err != nil {
-		l.unreadable = append(l.unreadable, memoryLayerRefusal{File: memnote.MachineDisplayPath, Reason: memoryReason(err)})
-	} else {
-		l.machine = f.Notes
+// readMemoryLayers reads both layers through the recall's one reader
+// (recall.ReadLayers), for the repository the rules loader resolved, and
+// that repository's root commit, the key a personal note is tied by. A layer
+// that cannot be read is named, never fatal here.
+func readMemoryLayers(home, repoRoot string) (l recall.Layers, root string, unreadable []recall.Refusal) {
+	l, unreadable = recall.ReadLayers(home, repoRoot)
+	if unreadable == nil {
+		unreadable = []recall.Refusal{}
 	}
-	if f, _, err := memnote.ReadRepo(repoRoot); err != nil {
-		l.unreadable = append(l.unreadable, memoryLayerRefusal{File: memnote.RepoRelPath, Reason: memoryReason(err)})
-	} else {
-		l.project = f.Notes
-	}
-	if l.unreadable == nil {
-		l.unreadable = []memoryLayerRefusal{}
-	}
-	return l
+	return l, memoryRootCommit(repoRoot), unreadable
 }
 
 // memoryRootCommit is the repository's root commit, the key a personal note
 // is tied by; "" outside a repository with commits.
 var memoryRootCommit = gitutil.RootCommit
-
-// memoryReason is a refusal's text, home-redacted and terminal-safe.
-func memoryReason(err error) string {
-	return termsafe.Sanitize(fsutil.RedactHome(err.Error()))
-}
 
 // reachOf names a personal note's reach from the repository root key.
 func reachOf(n memnote.Note, root string) string {
@@ -161,7 +132,7 @@ func memoryWhere(w io.Writer) (home, repoRoot string, err error) {
 func memoryRefusal(verb string, err error) error {
 	var fe *memnote.FieldError
 	var ge *memnote.GateError
-	msg := "abcd memory " + verb + ": " + strings.TrimPrefix(memoryReason(err), "memory: ")
+	msg := "abcd memory " + verb + ": " + strings.TrimPrefix(recall.Reason(err), "memory: ")
 	if errors.As(err, &fe) || errors.As(err, &ge) || errors.Is(err, memnote.ErrNoRoot) ||
 		errors.Is(err, memnote.ErrNoHome) || errors.Is(err, memnote.ErrNotFound) {
 		return &exitError{Code: 2, Msg: msg + " (nothing written)"}
@@ -192,10 +163,10 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			l := readMemoryLayers(home, repoRoot)
-			out := memoryBareOutput{Project: len(l.project), Unreadable: l.unreadable}
-			for _, n := range l.machine {
-				switch reachOf(n, l.root) {
+			l, root, unreadable := readMemoryLayers(home, repoRoot)
+			out := memoryBareOutput{Project: len(l.Project), Unreadable: unreadable}
+			for _, n := range l.Machine {
+				switch reachOf(n, root) {
 				case reachThisRepository:
 					out.ThisRepository++
 				case reachEverywhere:
@@ -218,7 +189,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 	}
 
 	var title, by, session string
-	var recall []string
+	var recallWords []string
 	var everywhere, movedFromHost bool
 	add := &cobra.Command{
 		Use: "add --title <title> --recall <word> --by <vendor:model>",
@@ -244,7 +215,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			}
 			n, err := memnote.Add(memnote.AddRequest{
 				Home: home, RepoRoot: repoRoot, Title: title, Body: strings.TrimSpace(string(raw)),
-				Recall: recall, By: by, Session: session, Everywhere: everywhere, MovedFromHost: movedFromHost,
+				Recall: recallWords, By: by, Session: session, Everywhere: everywhere, MovedFromHost: movedFromHost,
 			})
 			if err != nil {
 				return memoryRefusal("add", err)
@@ -265,7 +236,7 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 		},
 	}
 	add.Flags().StringVar(&title, "title", "", fmt.Sprintf("the note's title, one line of at most %d characters", memnote.MaxTitleChars))
-	add.Flags().StringArrayVar(&recall, "recall", nil, fmt.Sprintf("a word or short phrase a later prompt would use (repeatable, %d to %d)", memnote.MinRecall, memnote.MaxRecall))
+	add.Flags().StringArrayVar(&recallWords, "recall", nil, fmt.Sprintf("a word or short phrase a later prompt would use (repeatable, %d to %d)", memnote.MinRecall, memnote.MaxRecall))
 	add.Flags().StringVar(&by, "by", "", "the writer, in the Assisted-by form <Vendor>:<model-version>")
 	add.Flags().StringVar(&session, "session", "", "the host's id for this session; without it the session is recorded as unknown")
 	add.Flags().BoolVar(&everywhere, "everywhere", false, "recall the note in every repository, not only this one")
@@ -287,12 +258,12 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			l := readMemoryLayers(home, repoRoot)
-			out := memoryListOutput{Notes: []memoryNoteView{}, Unreadable: l.unreadable}
-			for _, n := range l.machine {
-				out.Notes = append(out.Notes, noteView("machine", reachOf(n, l.root), n))
+			l, root, unreadable := readMemoryLayers(home, repoRoot)
+			out := memoryListOutput{Notes: []memoryNoteView{}, Unreadable: unreadable}
+			for _, n := range l.Machine {
+				out.Notes = append(out.Notes, noteView("machine", reachOf(n, root), n))
 			}
-			for _, n := range l.project {
+			for _, n := range l.Project {
 				out.Notes = append(out.Notes, noteView("project", reachProject, n))
 			}
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {

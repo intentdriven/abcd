@@ -306,3 +306,27 @@ func TestBoardFitsTheWindow(t *testing.T) {
 		}
 	}
 }
+
+// TestFacilitatorRowNamesAnotherCopysReservation (spc-2610031753359849 step
+// 11): a Now or Next row whose record another copy holds a reservation on
+// carries it in its brackets, after what places the row there, masked like
+// every other value a writer chose.
+func TestFacilitatorRowNamesAnotherCopysReservation(t *testing.T) {
+	b := fixture(1, 0)
+	b.Next[0].Reserved = "reserved by octo until 2026-10-03T16:00:00Z, as of the last fetch 12 minutes ago"
+	b.Now[2].Reserved = "reserved by quinn\x1b[31m until 2026-10-03T16:00:00Z, as of a fetch of unknown age"
+	f := Frame{View: Facilitator, Form: Text, Width: 400, Rung: Mono}
+	got := strings.Join(Render(Input{Status: b, Version: ver}, f), "\n")
+	for _, want := range []string{
+		"itd-100  spc-100  When abcd sets up a project it asks the owner whether abcd keeps its records there  " +
+			"[reserved by octo until 2026-10-03T16:00:00Z, as of the last fetch 12 minutes ago]",
+		"[next up; reserved by quinn",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("the board does not carry %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "\x1b") {
+		t.Errorf("a reservation's text reached the terminal unmasked:\n%q", got)
+	}
+}

@@ -84,16 +84,19 @@ func attestInstallShapeCache(t *testing.T, home, data string) {
 	if err != nil {
 		return // no cache seeded: nothing to attest, and install degrades as documented
 	}
-	sha := ""
+	sha, tag := "", ""
 	for _, line := range strings.Split(string(meta), "\n") {
 		if v, ok := strings.CutPrefix(line, "binary_sha256="); ok {
 			sha = v
+		}
+		if v, ok := strings.CutPrefix(line, "release_tag="); ok {
+			tag = v
 		}
 	}
 	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	body := "data_dir=" + data + "\nbinary_sha256=" + sha + "\ncache_trust=manifest\nattested_at=2026-09-15T00:00:00Z\n"
+	body := "data_dir=" + data + "\nbinary_sha256=" + sha + "\nrelease_tag=" + tag + "\ncache_trust=manifest\nattested_at=2026-09-15T00:00:00Z\n"
 	if err := os.WriteFile(abcdhome.Path(home, "cache-attestation"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -159,6 +162,7 @@ func runAhoyInstall(t *testing.T, dev bool, dataDir string) (home, binDir string
 			"oracle_backend": "host-delegated",
 			"scan_deep":      "false",
 		},
+		VerifyProvenance: ahoyReleaseProvenance,
 	}, ahoy.RefusingPrompter{})
 	if err != nil {
 		t.Fatal(err)

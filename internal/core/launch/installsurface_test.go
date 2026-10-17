@@ -1,10 +1,8 @@
 package launch
 
 import (
-	"path/filepath"
 	"reflect"
 	"testing"
-	"time"
 )
 
 // bundleTreeFor resolves root's payload the way a ship would and returns the
@@ -263,13 +261,7 @@ func TestResolveInstallSurfaceCommittedPayload(t *testing.T) {
 // prevent.
 func TestPayloadTreeImplementationsResolveIdentically(t *testing.T) {
 	root := repoRootForTest(t)
-	dest := filepath.Join(t.TempDir(), "payload")
-	if _, err := RenderPayload(PayloadRenderRequest{
-		RepoRoot: root, Dest: dest, Version: "9.9.9",
-		Entry: ChangelogEntry{Tier: "patch", Reason: "seam parity", Date: time.Now(), SourceSHA: "deadbeef"}, Dirty: DirtySkip,
-	}); err != nil {
-		t.Fatalf("render the payload: %v", err)
-	}
+	dest, _ := renderThisRepo(t)
 
 	fromBundle, err := ResolveInstallSurface(bundleTreeFor(t, root))
 	if err != nil {
