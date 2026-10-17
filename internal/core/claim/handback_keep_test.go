@@ -240,7 +240,7 @@ func TestAHandBackOverAnUnreadDefaultBranchSaysItCouldNotBeRead(t *testing.T) {
 	if err != nil || res.Act != ActReleased {
 		t.Fatalf("the release = %+v, %v", res, err)
 	}
-	if !strings.Contains(res.HandBackUnpublished, "could not be read") || strings.Contains(res.HandBackUnpublished, "holds no one record") {
+	if !strings.Contains(res.HandBackUnpublished, "could not be read") || strings.Contains(res.HandBackUnpublished, "holds no record") {
 		t.Fatalf("the release says %q; want it to say the default branch could not be read", res.HandBackUnpublished)
 	}
 }

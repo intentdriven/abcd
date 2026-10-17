@@ -222,6 +222,25 @@ on origin's default branch backs off, with a tip or without one
    continues.
 4. When the lane it opened last is still in progress, it names the run to drive
    with the implement loop's step verb and opens nothing: one lane at a time.
+   A lane that cannot finish is handed back as stuck instead
+   (spc-2610161044461448 step 5, dcn-2610161040382067). Each refused step of
+   an issue run is logged on its lane with its stage, its check, its reason
+   and a count of the same refusal in a row, and the drain reads the lane as
+   stuck once the step has been refused the same way three times, or has kept
+   being refused at one stage for sixty minutes, counted from its first
+   refusal to its last, a quiet of more than fifteen minutes starting the time
+   afresh (dcn-2610170118506273); both bounds are read from the
+   pace's layers (`pace.stuck_refusals`, `pace.stuck_minutes`) at every move.
+   A refusal that cannot change makes the lane stuck at once: the issue
+   finished at the lane's base, or on origin's default branch as the land
+   fence reads it, or the reservation now another person's. A wait by design
+   is no refusal and is never counted: the landing's wait for its preflight
+   receipt, every outage wait, and a land fence that cannot read origin
+   (dcn-2610170116582725). The drain hands a stuck lane back as
+   `stuck`, naming the refusal, releases its reservation with the hand-back's
+   tombstone, and goes on to the next issue in the same move. The lane keeps
+   its worktree and branch until the person discards it through the step verb,
+   which ends the run.
 5. It reads what that lane has come to: its pull request opened (armed, or left
    open where the repository has no merge queue), the run complete, or the lane
    handed back, which it routes (below). A pull request the forge reports
@@ -236,7 +255,17 @@ on origin's default branch backs off, with a tip or without one
    already answered no over the remedy as it stands. With that no, it starts
    the implement loop for the issue and names the run. An issue the loop's own
    checks refuse (a peer holds it) is passed over, named with the check. When
-   none is left, the drain ends and says so. In a checkout with a remote named
+   none is left, held or not, the drain ends and says so. At its holder's cap
+   of live reservations, counted in the move's view before any reservation or
+   judgement, or when every eligible issue left is held by another, it neither
+   refuses nor ends (spc-2610161044461448 step 6, dcn-2610161040364312): it
+   reserves and asks nothing, writes `waiting_until` fifteen minutes on, kept
+   apart from `next_eligible_at` so the pace window is not reset, names what it
+   waits on (the reservations and the pull requests waiting to merge, with the
+   advice to wait for a merge rather than release one, or the holds), and keeps
+   its judgements. A move before that time still looks, since passing over held
+   work fetches and pushes nothing, and one that still waits keeps the time
+   first written. In a checkout with a remote named
    `origin`, the issue is first reserved there before its judgement is asked,
    with the path its `found_at` names as the footprint (itd-2609091034175565,
    C37; spc-2610161044461448 step 2), so the reservation push is the
@@ -338,7 +367,12 @@ on origin's default branch backs off, with a tip or without one
    and tombstone ([`27-implement.md`](27-implement.md)); every drain move
    renews, at half its lease, the reservation of each issue lane parked at
    land, so a pull request waiting on a person stays held while the drain
-   moves; a lane handed back has its reservation tombstoned by the step that
+   moves, and the reservation of the lane in progress, before its window gate,
+   so a move that waits renews too, whether or not a step of the lane ran
+   (spc-2610161044461448 step 7, dcn-2610161040374343). The landing checks the
+   reservation before its push as the land fence does before arming, and a
+   lane whose hold is now another person's pushes nothing, opens no pull
+   request and is handed back at once as stuck; a lane handed back has its reservation tombstoned by the step that
    hands it back, or by the drain's route when that step's push failed, the
    tombstone publishing the hand-back with the lane's kind (`unachievable` for
    a lane stopped after its fix rounds), and the route the drain writes names
@@ -432,10 +466,11 @@ branch, records the discarded head, and ends the lane. The drain then routes it:
 | `trust-rule` | flagged as needing a decision record, the lane's reason as the question | nothing; no record is minted |
 | `design-finding`, `second-package` | flagged with the home the lane names | nothing |
 | a lane stopped after its fix rounds | flagged, the issue staying open with the last findings | nothing |
+| a lane handed back as stuck (`stuck`) | flagged, the issue staying open, naming the discard of its run | nothing |
 
 Whatever the route, the issue's reservation is released by a tombstone that
 publishes the hand-back on origin, naming its kind (a lane stopped after its
-fix rounds as `unachievable`) and the record's blob, which every drain passes
+fix rounds as `unachievable`, a stuck one as `stuck`) and the record's blob, which every drain passes
 over until a person changes the record (above).
 
 Every issue the rule itself hands back (by category, severity, security, a

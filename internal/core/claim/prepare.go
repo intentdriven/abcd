@@ -93,7 +93,8 @@ type Request struct {
 	Renew bool
 	// HandBack, with Release, publishes a hand-back: the tombstone names this
 	// kind, one of HandBackKinds, and the blob id of the record on origin's
-	// default branch (Result.HandBackUnpublished says why it names none).
+	// default branch (Result.HandBackUnpublished says why it names none). A
+	// release subject, which has no record, is refused one.
 	HandBack string
 	// HandBackBlob, with HandBack, is the blob id of the record the hand-back
 	// was judged over: a release finding origin's default branch holding the
@@ -155,6 +156,11 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	}
 	if req.HandBack != "" && !req.Release {
 		return nil, refuse("only a release publishes a hand-back; %s", nothingPushed)
+	}
+	if req.HandBack != "" && isRelease(id) {
+		// A release subject has no record on origin's default branch, so a
+		// hand-back over it could name no blob and would hold nothing back.
+		return nil, refuse("a release subject has no record to hand back, so its release publishes no hand-back; %s", nothingPushed)
 	}
 	if req.HandBack != "" && !slices.Contains(HandBackKinds, req.HandBack) {
 		return nil, refuse("hand-back kind %s is not one of %s; %s", echo(req.HandBack), strings.Join(HandBackKinds, ", "), nothingPushed)

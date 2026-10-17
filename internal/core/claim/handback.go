@@ -28,9 +28,9 @@ import (
 // The kinds a hand-back tombstone names (Abcd-Handed-Back): the four a lane's
 // receipt or the drain's judgement hands an issue back as, a lane stopped
 // after its fix rounds, a lane stuck refusing at one stage, and a lane whose
-// pull request was closed unmerged. The last two are reserved: every reader
-// reads them, and nothing writes them until spc-2610161044461448 steps 5
-// (stuck) and 8 (closed) land.
+// pull request was closed unmerged. A drain writes stuck for a lane it hands
+// back after its bound (spc-2610161044461448 step 5); closed is reserved:
+// every reader reads it, and nothing writes it until step 8 lands.
 const (
 	HandBackUserVisible   = "user-visible"
 	HandBackTrustRule     = "trust-rule"

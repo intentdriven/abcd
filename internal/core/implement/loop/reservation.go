@@ -25,6 +25,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -178,70 +179,135 @@ func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 // keeping its term.
 const fenceLease = lease.Max
 
-// landFence is the land fence, at the top of the arming. It fetches the
-// reservations from origin, then refuses, arming nothing, unless the run's own
-// reservation is this person's from this copy and live (renewing it with
-// term, the fenceLease), and while a release another
-// session is cutting holds every merge (releaseHold, C7). A run that holds no
-// reservation fetches them all the same, for the hold
-// (claim.FetchMergeHold, the judgement `abcd land` makes too). It returns the
+// fenceAct is the landing step a fence guards, as its refusals name it: the
+// arming (fenceArm), or the push before it (fencePush).
+type fenceAct struct {
+	// not is what the lane does not do, after "so this lane does not".
+	not string
+	// none is what is left undone when origin did not answer, after "so",
+	// or after "no release hold could be judged and".
+	none string
+	// stays is what a refusal over another person's hold, or a release
+	// hold, leaves as it was.
+	stays string
+}
+
+var (
+	fenceArm  = fenceAct{not: "arm its merge", none: "the merge is not armed", stays: "the pull request stays open and unarmed"}
+	fencePush = fenceAct{not: "push its branch", none: "nothing is pushed", stays: "nothing is pushed and no pull request is opened"}
+)
+
+// landFence is the land fence, at the top of the arming (fence, fenceArm),
+// renewing the run's reservation with term, the fenceLease. It returns the
 // renewed expiry, zero for a run that holds no reservation, and the notice
 // naming each release dated ahead that the hold did not count
 // (claim.MergeHold.Notice), "" when there is none.
 func landFence(c Context, lane Lane, term time.Duration) (time.Time, string, error) {
+	return fence(c, lane, term, fenceArm)
+}
+
+// pushFence is the fence before the landing's push (spc-2610161044461448
+// step 7; dcn-2610161040374343): the land fence's check, made before the push
+// as well as at the arming, so a reservation that lapsed and moved to another
+// while the lane worked never becomes a duplicate pull request, and a release
+// another session is cutting holds the push as `abcd land`'s own release hold
+// does (C7). It renews a reservation that holds with the tip's own term
+// (renewalTerm), so the push never cuts a lease; a hold that is now another
+// person's, or released as finished on origin's default branch, cannot
+// change, and a drain hands the lane back at once (stuck.go).
+func pushFence(c Context, lane Lane) (time.Time, string, error) {
+	term := lease.Default
+	if c.State.ReservedAt != nil {
+		if snap, err := claim.View(c.RepoRoot, c.Now); err == nil {
+			if r, ok := snap.Lookup(c.State.Key); ok && r.Copy == claim.CopyThis {
+				term = renewalTerm(r)
+			}
+		}
+	}
+	return fence(c, lane, term, fencePush)
+}
+
+// fence is the land fence for act. It fetches the reservations from origin,
+// then refuses, doing nothing of act, unless the run's own reservation is
+// this person's from this copy and live (renewing it with term,
+// renewAtFence), and while a release another session is cutting holds every
+// merge (releaseHold, C7). A run that holds no reservation fetches them all
+// the same, for the hold (claim.FetchMergeHold, the judgement `abcd land`
+// makes too). A fetch that fails is a wait by design either way
+// (dcn-2610170116582725; fenceUnread). It returns the renewed expiry, zero
+// for a run that holds no reservation, and the notice naming each release
+// dated ahead that the hold did not count, "" when there is none.
+func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, string, error) {
 	if c.State.ReservedAt == nil {
 		m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
 		var fe *claim.FetchError
 		switch {
 		case errors.As(err, &fe):
-			return time.Time{}, "", contend(string(StageLand), "", lane.ID,
-				"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and the merge is not armed",
-				"run abcd implement step again once origin answers")
+			return time.Time{}, "", fenceUnread(lane,
+				"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and "+act.none,
+				fe.Reason, "git fetch the reservations")
 		case err != nil:
 			return time.Time{}, "", refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
 				"settle what it names, then run `abcd implement step` again")
 		}
-		return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m)
+		return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m, act)
 	}
-	holds, err := renewAtFence(c, lane, term)
+	holds, err := renewAtFence(c, lane, term, act)
 	if err != nil {
 		return time.Time{}, "", err
 	}
-	notice, err := releaseHold(c, lane)
+	notice, err := releaseHold(c, lane, act)
 	return holds, notice, err
 }
 
-// releaseHold refuses the arming, as contention, while the reservations as the
+// fenceUnread is the fence's wait on an origin it could not read: never a
+// refusal a drain counts toward a stuck lane (stuck.go), whatever git says,
+// since the drain's own read of origin at every move is what gives up on an
+// origin that stays unread. A lost network also waits on the shared outage
+// probe, as the push's own failure does (netFailure); what names the fetch.
+func fenceUnread(lane Lane, reason, gitReason, what string) *Refusal {
+	r := contend(string(StageLand), "", lane.ID, reason, "run abcd implement step again once origin answers")
+	r.originUnread = true
+	if implement.IsNetworkFailure(gitReason) {
+		r.outage = &outageReport{service: implement.ServiceNetwork, kind: implement.OutageTool, lane: lane.ID, what: what}
+	}
+	return r
+}
+
+// releaseHold refuses act, as contention, while the reservations as the
 // fence's renewal just fetched them show a release being cut that is not this
 // copy's own (claim.MergeHolds, the judgement `abcd land` makes too, which
 // keeps this copy's first sighting of a release dated ahead). It returns the
 // notice naming each release dated ahead that the hold did not count.
-func releaseHold(c Context, lane Lane) (string, error) {
+func releaseHold(c Context, lane Lane, act fenceAct) (string, error) {
 	m, err := claim.MergeHolds(c.RepoRoot, c.Now, claimOptions(c.Now))
 	if err != nil {
 		return "", refuse(string(StageLand), "", lane.ID, "the release holds could not be read at the land fence: "+err.Error(),
 			"settle what it names, then run `abcd implement step` again")
 	}
-	return termsafe.Sanitize(m.Notice()), heldMerge(lane, m)
+	return termsafe.Sanitize(m.Notice()), heldMerge(lane, m, act)
 }
 
-// heldMerge is the merge hold's refusal at the fence: every other session's
-// lane, the same person's other copy included, leaves its pull request open
-// for the cutting session to merge or hold. It names each release, its holder
-// and until when.
-func heldMerge(lane Lane, m claim.MergeHold) error {
+// heldMerge is the merge hold's refusal at the fence for act: every other
+// session's lane, the same person's other copy included, leaves its pull
+// request open (or its branch unpushed) for the cutting session to merge or
+// hold. It names each release, its holder and until when.
+func heldMerge(lane Lane, m claim.MergeHold, act fenceAct) error {
 	if !m.Held() {
 		return nil
 	}
-	return contend(string(StageLand), "", lane.ID,
-		termsafe.Sanitize(m.Reason()+", so this lane does not arm its merge"),
-		termsafe.Sanitize("the pull request stays open and unarmed; "+m.Waits()+", then run `abcd implement step` again"))
+	r := contend(string(StageLand), "", lane.ID,
+		termsafe.Sanitize(m.Reason()+", so this lane does not "+act.not),
+		termsafe.Sanitize(act.stays+"; "+m.Waits()+", then run `abcd implement step` again"))
+	r.releaseHeld = true
+	return r
 }
 
-// renewAtFence renews the run's own reservation at the fence: it fetches the
-// reservations and refuses, arming nothing, unless the tip is this person's
-// from this copy and live; when it holds, it renews it with term.
-func renewAtFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
+// renewAtFence renews the run's own reservation at the fence for act: it
+// fetches the reservations and refuses, doing nothing of act, unless the tip
+// is this person's from this copy and live; when it holds, it renews it with
+// term.
+func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, error) {
 	id := c.State.Key
 	res, err := claim.Reserve(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: term},
 		claimOptions(c.Now))
@@ -251,46 +317,51 @@ func renewAtFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
 	stage := string(StageLand)
 	again := "run `abcd implement step` again"
 	reserveAgain := "reserve it again with abcd build " + id
+	not := ", so this lane does not " + act.not
 	var fe *claim.FetchError
 	var nh *claim.NotHeld
 	switch {
 	case errors.As(err, &fe):
-		return time.Time{}, contend(stage, "", lane.ID,
-			"could not read the reservation on "+id+" from "+claim.Remote+": "+fe.Reason+", so the merge is not armed",
-			"run abcd implement step again once origin answers")
+		return time.Time{}, fenceUnread(lane,
+			"could not read the reservation on "+id+" from "+claim.Remote+": "+fe.Reason+", so "+act.none,
+			fe.Reason, "git fetch the reservation on "+id)
 	case errors.As(err, &nh):
 		switch nh.Why {
 		case claim.NotHeldAnotherPerson:
-			return time.Time{}, contend(stage, "", lane.ID,
-				fmt.Sprintf("the reservation on %s is now %s's, until %s, so this lane does not arm its merge", id, nh.Holder, stamp(nh.Expiry)),
-				"the pull request stays open and unarmed; take other work, or settle the record with "+nh.Holder+", then "+again)
+			r := contend(stage, "", lane.ID,
+				fmt.Sprintf("the reservation on %s is now %s's, until %s%s", id, nh.Holder, stamp(nh.Expiry), not),
+				act.stays+"; take other work, or settle the record with "+nh.Holder+", then "+again)
+			r.final = "the reservation on " + id + " is now " + nh.Holder + "'s"
+			return time.Time{}, r
 		case claim.NotHeldAnotherCopy:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" moved to your copy on another computer, so this lane does not arm its merge here",
+				"the reservation on "+id+" moved to your copy on another computer"+not+" here",
 				"carry the lane on from that copy, or take the reservation back here (`abcd reserve "+id+" --take-over --footprint <path>`), then "+again)
 		case claim.NotHeldReleased:
 			if nh.Derived {
-				return time.Time{}, contend(stage, "", lane.ID,
-					"the reservation on "+id+" was released: "+id+" is finished on "+claim.Remote+"'s default branch, so this lane does not arm its merge",
+				r := contend(stage, "", lane.ID,
+					"the reservation on "+id+" was released: "+id+" is finished on "+claim.Remote+"'s default branch"+not,
 					"confirm the record is finished on the default branch, and hand the lane back or close its pull request")
+				r.final = id + " is finished on " + claim.Remote + "'s default branch"
+				return time.Time{}, r
 			}
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" was released at "+stamp(nh.ReleasedAt)+", so this lane does not arm its merge", reserveAgain)
+				"the reservation on "+id+" was released at "+stamp(nh.ReleasedAt)+not, reserveAgain)
 		case claim.NotHeldAbsent:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" is gone from "+claim.Remote+", so this lane does not arm its merge", reserveAgain)
+				"the reservation on "+id+" is gone from "+claim.Remote+not, reserveAgain)
 		case claim.NotHeldUnreadable:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" is unreadable ("+nh.Unreadable+"), so this lane does not arm its merge",
+				"the reservation on "+id+" is unreadable ("+nh.Unreadable+")"+not,
 				"it can be taken over once its hold ends at "+stamp(nh.Expiry)+" and five minutes more; then "+reserveAgain)
 		case claim.NotHeldLapsed:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"your reservation on "+id+" lapsed at "+stamp(nh.Expiry)+", so this lane does not arm its merge",
+				"your reservation on "+id+" lapsed at "+stamp(nh.Expiry)+not,
 				again+": a step renews this copy's lapsed reservation before its stage")
 		}
 	case errors.Is(err, claim.ErrBackOff):
 		return time.Time{}, contend(stage, "", lane.ID,
-			"the reservation on "+id+" could not be renewed: "+err.Error()+"; so this lane does not arm its merge",
+			"the reservation on "+id+" could not be renewed: "+err.Error()+"; so this lane does not "+act.not,
 			"take it up with the holder it names, then "+again)
 	}
 	return time.Time{}, refuse(stage, "", lane.ID, "the reservation on "+id+" could not be renewed at the land fence: "+err.Error(),
@@ -486,6 +557,11 @@ func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) 
 		if errors.Is(err, claim.ErrBackOff) {
 			return reserved{}, contend(StageReservation, CheckReservation, "", err.Error(),
 				"take other work; `abcd peers` lists the reservations on "+claim.Remote)
+		}
+		if ce := (*claim.CapError)(nil); errors.As(err, &ce) {
+			r := refuse(StageReservation, "", "", err.Error(), "wait for one of your pull requests to merge, which ends its reservation, then run the verb again")
+			r.capped = slices.Clone(ce.Held)
+			return reserved{}, r
 		}
 		return reserved{}, refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
 	}

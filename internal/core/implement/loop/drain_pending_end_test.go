@@ -11,9 +11,9 @@ import (
 )
 
 // A pending hand-back ends only when it is published, or when it is no longer
-// due: the record changed, origin holds no one record of it, or the tombstone
-// would pass the cap. The move says which, and a default branch it could not
-// read keeps the hand-back pending.
+// due: the record changed, origin holds no record of it or several, or the
+// tombstone would pass the cap. The move says which, and a default branch it
+// could not read keeps the hand-back pending.
 
 // editOnOrigin changes the body of id's open record on origin's main, as a
 // person settling the hand-back would.
