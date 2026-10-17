@@ -365,12 +365,14 @@ its text:
   pattern that spells the dot, or one already standing in that directory. A
   glob with a wildcard in a directory part (`build/*/*`, `build/*/x.o`), or
   that ends in `/`, is refused, since it lists directories the line never
-  names, any of which may be a symlink out of the working tree. Every target
-  of a command where an unquoted `(` stands in a word (`build/l(:A)`, `x(.)`,
-  a redirection's target), whatever follows it, is refused too, since zsh
-  reads it as glob qualifiers or modifiers that can change the path
-  (`build/l(:A)` is where the symlink leads), and a `find` or `rsync` there is
-  read as removing; a quoted or escaped `(` is text;
+  names, any of which may be a symlink out of the working tree. A command
+  where an unquoted `(` stands in a word (`build/l(:A)`, `x(.)`, a
+  redirection's target), whatever the command and whatever follows the `(`, is
+  refused whole, since zsh reads it as glob qualifiers or modifiers that can
+  change the path (`build/l(:A)` is where the symlink leads) and the words
+  after it are not read as the command's own; bash refuses such a line. A
+  quoted or escaped `(` is text, and a function definition's `()` is not such
+  a word;
 - a write or removal reaching a protected path, compared after the target's
   existing directories are resolved through symlinks and its case folded where
   the filesystem folds it: the git common directory with its hooks and config,

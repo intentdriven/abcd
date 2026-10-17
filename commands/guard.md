@@ -231,13 +231,14 @@ A shell command is approved only when the guard reads it whole and clears it:
   refused (`path-not-fixed`). So is a glob with a wildcard in a directory part
   (`rm -rf build/*/*`, `rm -f build/*/x.o`) or one that ends in `/`
   (`rm -rf build/*/`): it lists directories the line never names, any of which
-  may be a symlink out of the tree. So is every target of a command where an
-  unquoted `(` stands in a word, whatever follows it (`rm -rf build/l(:A)`,
-  `rm -f x(.)`, `rm -rf a/b(/)`, `echo hi > x(:A)`): zsh reads it as glob
-  qualifiers or modifiers, which can change the path the word names
-  (`build/l(:A)` is where the symlink `build/l` leads), and a `find` or `rsync`
-  there is read as removing. A quoted or escaped `(` is text, so
-  `rm -f 'a(b)'` stays approved. A relative name after a `cd` the line spells out
+  may be a symlink out of the tree. So is any command where an unquoted `(`
+  stands in a word, whatever the command and whatever follows the `(`
+  (`rm -rf build/l(:A)`, `rm -f x(.)`, `sed x(.) -i`, `echo hi(:A)`,
+  `ls x(/)`): zsh reads it as glob qualifiers or modifiers, which can change
+  the path the word names (`build/l(:A)` is where the symlink `build/l`
+  leads), and the words after it are not read as the command's own. bash
+  refuses such a line. A quoted or escaped `(` is text, so `rm -f 'a(b)'`
+  stays approved, and so does a function definition's `()` (`f() { … }`). A relative name after a `cd` the line spells out
   and joins with `&&` is read in that directory;
 - no write or removal reaches a protected path (`protected-path`), judged with
   its existing directories resolved through symlinks and its case folded where
