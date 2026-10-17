@@ -95,8 +95,7 @@ var attrCorpus = []attrCase{
 		want: map[string]bool{"GEN.md": true, "gen.md": false}},
 	{name: "** alone matches every file", attrs: "** linguist-generated\n",
 		want: map[string]bool{"a": true, "x/y.go": true}},
-	{name: "a macro unsetting it is honoured", attrs: "*.md linguist-generated\n[attr]nogen -linguist-generated\nb.md nogen\n",
-		want: map[string]bool{"a.md": true, "b.md": false}},
+
 	{name: "an invalid attribute name voids the line", attrs: "*.md linguist-generated\nb.md -linguist-generated bad^name\nc.txt linguist-generated bad^name\n",
 		want: map[string]bool{"a.md": true, "b.md": true, "c.txt": false}},
 	// git refuses a builtin_ name as reserved from 2.42 on.
@@ -105,6 +104,8 @@ var attrCorpus = []attrCase{
 
 	{name: "a bare [attr] defines no macro", attrs: "*.md linguist-generated\n[attr] nogen linguist-generated\nx.md nogen\n",
 		want: map[string]bool{"x.md": true, "b.md": true}},
+	{name: "a macro definition that unsets voids every earlier line", attrs: "*.md linguist-generated\n[attr]nogen -linguist-generated\nb.md nogen\n", skipped: true,
+		want: map[string]bool{"a.md": false, "b.md": false}},
 	{name: "a macro setting it is not followed", attrs: "[attr]gen linguist-generated\ngen.md gen\n", skipped: true,
 		want: map[string]bool{"gen.md": false}},
 	{name: "a C-quoted pattern is skipped", attrs: "\"gen file.md\" linguist-generated\n", skipped: true,

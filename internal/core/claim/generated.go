@@ -380,8 +380,8 @@ func (rs attrRules) any() bool {
 type lineKind int
 
 const (
-	// lineIgnored decides nothing: a blank, a comment, a macro definition,
-	// a line naming no linguist-generated state, or one git itself ignores
+	// lineIgnored decides nothing: a blank, a comment, a line naming no
+	// linguist-generated state, or one git itself ignores
 	// (a negated pattern, an invalid attribute name).
 	lineIgnored lineKind = iota
 	// lineRule decides linguist-generated for the paths it matches.
@@ -392,13 +392,14 @@ const (
 )
 
 // parseAttributes reads the subset of git's gitattributes rules that decide
-// linguist-generated.
+// linguist-generated. It follows no macro: GeneratedFiles reads only a plain
+// declaration (plainDeclaration), and a line here that defines one, or quotes
+// its pattern, is not understood.
 func parseAttributes(text string) attrRules {
 	lines := strings.Split(strings.TrimPrefix(text, "\ufeff"), "\n")
-	macros := unsettingMacros(lines)
 	var rules attrRules
 	for _, line := range lines {
-		r, kind := parseAttrLine(line, macros)
+		r, kind := parseAttrLine(line)
 		switch kind {
 		case lineRule:
 			rules = append(rules, r)
@@ -425,84 +426,36 @@ func attrToken(tok string) (name string, set bool) {
 	return name, !signed && (!hasValue || value == "true")
 }
 
-// unsettingMacros are the macros, by name, whose expansion names
-// linguist-generated, directly or through another macro. The reader never
-// follows a macro: a line naming one decides "not generated", which can only
-// share less than git would.
-func unsettingMacros(lines []string) map[string]bool {
-	defs := map[string][]string{}
-	for _, line := range lines {
-		f := attrFields(line)
-		if len(f) == 0 || !strings.HasPrefix(f[0], "[attr]") {
-			continue
-		}
-		name, attrs := strings.TrimPrefix(f[0], "[attr]"), f[1:]
-		if name == "" {
-			// A bare [attr] is a pattern to git, never a macro definition.
-			continue
-		}
-		defs[name] = append(defs[name], attrs...)
-	}
-	touching := map[string]bool{}
-	for changed := true; changed; {
-		changed = false
-		for name, attrs := range defs {
-			if touching[name] {
-				continue
-			}
-			for _, a := range attrs {
-				if n, _ := attrToken(a); n == generatedAttr || touching[n] {
-					touching[name], changed = true, true
-					break
-				}
-			}
-		}
-	}
-	return touching
-}
-
 // parseAttrLine reads one line.
-func parseAttrLine(line string, macros map[string]bool) (attrRule, lineKind) {
+func parseAttrLine(line string) (attrRule, lineKind) {
 	if len(line) >= attrLineMax {
-		return attrRule{}, voidsIf(line, macros)
+		return attrRule{}, voidsIf(line)
 	}
 	f := attrFields(line)
-	if len(f) > 0 && f[0] == "[attr]" {
-		// git reads a bare [attr] as a pattern, a class of a, t and r, which
-		// this reader does not take for one.
-		return attrRule{}, voidsIf(line, macros)
-	}
-	if len(f) == 0 || strings.HasPrefix(f[0], "#") || strings.HasPrefix(f[0], "[attr]") {
+	if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 		return attrRule{}, lineIgnored
 	}
 	pat := f[0]
 	switch {
-	case strings.HasPrefix(pat, `"`):
-		// A C-quoted pattern, which git unquotes and this reader does not.
-		return attrRule{}, voidsIf(line, macros)
+	case strings.HasPrefix(pat, "[attr]"), strings.HasPrefix(pat, `"`):
+		// A macro definition, a bare [attr] (a pattern to git) or a C-quoted
+		// pattern, none of which this reader reads.
+		return attrRule{}, voidsIf(line)
 	case strings.HasPrefix(pat, "!"):
 		// git ignores a negative pattern in an attributes file.
 		return attrRule{}, lineIgnored
 	}
-	decides, generated, macro := false, false, false
+	decides, generated := false, false
 	for _, tok := range f[1:] {
 		name, set := attrToken(tok)
 		if !validAttrName(name) {
 			// git ignores the whole line over one invalid attribute name.
 			return attrRule{}, lineIgnored
 		}
-		if macros[name] {
-			macro = true
-		}
 		if name == generatedAttr {
 			// The last token naming it on the line wins, as in git.
 			decides, generated = true, set
 		}
-	}
-	if macro {
-		// A macro naming linguist-generated decides "not generated",
-		// whatever else the line says.
-		decides, generated = true, false
 	}
 	if !decides {
 		return attrRule{}, lineIgnored
@@ -514,7 +467,7 @@ func parseAttrLine(line string, macros map[string]bool) (attrRule, lineKind) {
 	basename := !strings.Contains(pat, "/")
 	pat = strings.TrimPrefix(pat, "/")
 	if pat == "" || !globSupported(pat) {
-		return attrRule{}, voidsIf(line, macros)
+		return attrRule{}, voidsIf(line)
 	}
 	prefix, suffix := literalEnds(pat)
 	return attrRule{pat: pat, basename: basename, generated: generated, prefix: prefix, suffix: suffix, fold: !generated}, lineRule
@@ -522,17 +475,12 @@ func parseAttrLine(line string, macros map[string]bool) (attrRule, lineKind) {
 
 // voidsIf is the kind of a line the reader does not understand: it voids the
 // lines before it when it could unset linguist-generated (it names the
-// attribute other than as set, or names an unsetting macro), and is ignored
-// otherwise, since ignoring a line that sets it only shares less.
-func voidsIf(line string, macros map[string]bool) lineKind {
+// attribute other than as set), and is ignored otherwise, since ignoring a
+// line that sets it only shares less.
+func voidsIf(line string) lineKind {
 	for _, tok := range attrFields(line) {
 		if strings.Contains(tok, generatedAttr) && tok != generatedAttr && tok != generatedAttr+"=true" {
 			return lineVoids
-		}
-		for m := range macros {
-			if strings.Contains(tok, m) {
-				return lineVoids
-			}
 		}
 	}
 	return lineIgnored
