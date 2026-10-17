@@ -103,6 +103,9 @@ type Result struct {
 	// waived and is said to be (ForkAllowedLine); "" when no fork was named,
 	// or none was allowed.
 	ForkAllowed string
+	// Narrowed is true for a renewal that wrote Request.Narrow as its
+	// footprint, the tip's covering it; false for every other act.
+	Narrowed bool
 	// OwnOverlap is each path this reservation shares with a live reservation
 	// the same person holds from another copy, which an act asking for it
 	// (Request.WarnOwnOverlap) goes ahead over and is told of
@@ -542,12 +545,16 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 			fmt.Sprintf("your reservation on %s lapsed at %s; %s", p.id, stamp(exp), nothingPushed))
 	}
 	p.req.Footprint = append([]string(nil), j.Footprint...)
+	narrowed := len(p.req.Narrow) > 0 && within(p.req.Narrow, j.Footprint)
+	if narrowed {
+		p.req.Footprint = append([]string(nil), p.req.Narrow...)
+	}
 	m := p.reservation()
 	// A lane's renewal names its stage; a renewal that names none carries
 	// none, so only the tip's stage is ever read (spc-2610161044461448 step 18).
 	m.Stage = p.req.Stage
 	return Result{Act: ActRenewed, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
-		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
+		ExpiresAt: m.ExpiresAt, Narrowed: narrowed}, m, j.Commit, nil
 }
 
 // notHeld is the *NotHeld a judged tip gives an act that needed this

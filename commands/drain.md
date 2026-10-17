@@ -289,7 +289,20 @@ what it did in `next`:
   (`commands/implement.md`). Every drain move also renews the lane in
   progress at half its lease, waiting or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
-  back is renewed by no move); a lane whose
+  back is renewed by no move). Once the lane's validators have passed and it
+  is at its landing, the first renewal narrows its footprint to the files its
+  branch changed within it, measured from where it meets `origin`'s default
+  branch, so what a sync merged in is left out (a `found_at` naming `docs/`
+  becomes the files under `docs/` the lane changed), and other accounts can
+  take the rest. While the validators still judge it, a fix round may change
+  another file, so nothing narrows. A narrowing never widens the hold; one
+  that would name a file no reservation can carry is not made, and the
+  renewal still is; the run record's renewal line names both footprints, or
+  says `reservation kept at its full footprint` and why. A lane its landing's
+  sync sends back to a fresh round reserves its whole `found_at` again before
+  it goes on, judged for overlap, since a fix round may follow; when another
+  reservation or the cap refuses that, the step is refused for a person,
+  naming it, and the lane stays at its landing with nothing pushed. A lane whose
   reservation is another person's by its push pushes nothing, opens no pull
   request, and the next drain hands it back as `stuck` at once. When the lane is
   handed back instead, the step that hands it back pushes the tombstone,
@@ -331,13 +344,21 @@ what it did in `next`:
   its pull request if it opened one, and ends the run.
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
-  opens the next lane. A pull request the forge reports `CONFLICTING` is never
-  armed: its lane stays in progress, and `abcd implement step --run <run-id>`
-  refuses at exit 2 naming the conflicting files and the hand merge that
-  settles it, until the drain hands the lane back as stuck. That is a person's:
-  report it, and do not push to the lane or merge it yourself. One that turns conflicting after it was armed is refused
-  the same way by the run's own step; the drain's part ended at the open pull
-  request.
+  opens the next lane. Before its records and its push, the lane's sync
+  fetches `origin`'s default branch and merges it whenever it has moved, a fresh
+  round judging the merge (`commands/implement.md`): a conflict confined to
+  files `origin` declares `linguist-generated` goes back to an implementer to
+  regenerate them, and any other conflict refuses the step naming the files,
+  nothing pushed, so the next drain hands the lane back as `stuck` at once. A
+  pull request that starts to conflict at its arming, or while it waits
+  parked, on declared generated files alone enters the sync again (the
+  drain's next move takes that step for a parked lane, withdrawing an armed
+  merge in a step of its own, reads it as `syncing` and drives the lane
+  again; a step that cannot enter the sync is named beside the lane's
+  reading); one that conflicts on any other file is never
+  armed, and `abcd implement step --run <run-id>` refuses at exit 2 naming the
+  conflicting files and the hand merge that settles it. That is a person's:
+  report it, and do not push to the lane or merge it yourself.
 - **It finishes merged lanes.** Every move, before it reads the window clock,
   renews the reservation of each issue lane parked at land at half its lease,
   so a pull request waiting on a person's review stays held while the drain
@@ -346,11 +367,22 @@ what it did in `next`:
   branch are removed and the lane is done, during a pause included, since the
   cleanup does no new work. The lane may be this drain's, an ended drain's, or
   one `abcd build <iss-N>` started. The default branch is fetched once, and
-  only while such a lane is parked; a lane whose head is not on it is left as
-  it is. A lane the landing will not finish (its branch moved past what
+  only while such a lane is parked. A lane the landing will not finish (its branch moved past what
   landed, a worktree with changes, its branch checked out in another
   checkout, which the drain names, or a pushed head git cannot read) is named
   in `next` and the move goes on.
+- **It reads parked lanes from their pull requests.** A move that finds a
+  lane parked at land lists your latest 100 pull requests once
+  (`gh pr list --state all --author @me`), and reads each parked lane whose
+  head is not on the default branch from its own: a pull request closed
+  without merging hands its lane back as `closed`, releasing its reservation
+  with a tombstone marking it `closed`, and the drain routes it home to a
+  person (`abcd implement step --run <run-id> --discard <lane-id>` removes the
+  lane's worktree and branch); a conflicting one is no longer renewed, and
+  `next` names it; an open one is renewed and named as waiting. One merged by
+  a squash or rebase, its head not on the default branch, is named and no
+  longer renewed. A pull request the listing does not show, or a listing that
+  fails, keeps its lane held as before, and says so.
 - **It pauses.** At the end of the drain's working window it writes
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
@@ -431,6 +463,9 @@ hand-backs; `passed` names an eligible issue this move did not take, with why;
 `dispositions` is the plan; `finished` lists the merged lanes this move took
 the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
+`parked` reads every other lane parked at land from its pull request
+(`issue`, `run_id`, `pr`, `state`: `waiting`, `conflicting`, `syncing`,
+`closed`, `merged` or `unread`, and a `note`);
 `waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
 again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the

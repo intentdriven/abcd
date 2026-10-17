@@ -369,7 +369,34 @@ on origin's default branch backs off, with a tip or without one
    land, so a pull request waiting on a person stays held while the drain
    moves, and the reservation of the lane in progress, before its window gate,
    so a move that waits renews too, whether or not a step of the lane ran
-   (spc-2610161044461448 step 7, dcn-2610161040374343). The landing checks the
+   (spc-2610161044461448 step 7, dcn-2610161040374343). Once an issue lane's
+   validators have passed and it is at its landing, its first renewal narrows
+   its footprint to the files it changed within it, measured from its merge
+   base with origin's default branch, a hold that only ever narrows, so a
+   lane that reserved a directory frees the rest of it for other accounts
+   (step 12, dcn-2610161040385152, dcn-2610170919040486); a lane its
+   landing's sync sends back to a fresh round reserves its whole `found_at`
+   again before it goes on, judged for overlap, a refusal of that refusing the
+   step for a person, and a renewal that could not narrow says so in its
+   record line (dcn-2610170947246937). A move that finds a
+   lane parked at land reads every such lane from its pull request, in one
+   listing of the person's latest pull requests (spc-2610161044461448 step 8,
+   dcn-2610161040380948): a lane whose pull request was closed unmerged is
+   handed back as `closed`, its reservation released with a tombstone marking
+   it so, and routed home to a person; a conflicting one is no longer renewed
+   and is named in `next`; an open one is renewed and named as waiting; one
+   merged by a squash or rebase, its head not on the default branch, is named
+   and not renewed; one the listing does not show stays held. A lane's sync
+   fetches `origin`'s default branch and merges it whenever it has moved, before
+   its records and its push, a fresh round judging the merge head; a conflict
+   confined to files `origin`'s default branch declares `linguist-generated`
+   goes to an implementer to regenerate them, abcd running no command the
+   repository declares, and any other conflict refuses the step in a way that
+   cannot change, naming the files, so the lane is handed back with nothing
+   pushed. A pull request that starts to conflict at its arming or while it
+   waits, on declared generated files alone, enters the sync again, the move
+   reading a parked one as `syncing` and driving it again
+   (spc-2610161044461448 step 13, dcn-2610161040384068). The landing checks the
    reservation before its push as the land fence does before arming, and a
    lane whose hold is now another person's pushes nothing, opens no pull
    request and is handed back at once as stuck; a lane handed back has its reservation tombstoned by the step that

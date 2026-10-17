@@ -226,6 +226,9 @@ type DrainResult struct {
 	// Finished are the merged lanes this call took the landing's last step
 	// for, outside the window clock (drain_finish.go).
 	Finished []DrainFinished `json:"finished"`
+	// Parked are the lanes parked at land whose head is not on the default
+	// branch, each as its pull request read (drain_finish.go).
+	Parked []DrainParked `json:"parked"`
 	// Counts are the drain's totals as this call leaves it (scope 8).
 	Counts DrainCounts `json:"counts"`
 	Next   string      `json:"next"`
@@ -382,7 +385,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	}
 	res := DrainResult{State: DrainStateRel, Started: started, Rule: plan.Record, Loosened: plan.Loosened,
 		Order: plan.Order, Dispositions: plan.Dispositions, Routed: []DrainRoute{}, Passed: []Excluded{},
-		Flags: fieldFlags(plan, st.HandBacks), Finished: []DrainFinished{}, Origin: origin}
+		Flags: fieldFlags(plan, st.HandBacks), Finished: []DrainFinished{}, Parked: []DrainParked{}, Origin: origin}
 	// viewUnread is why the reservations this move fetched could not be read,
 	// and lapse what became of a judgement request whose hold lapsed;
 	// leaseNotes are the renewals of the lane in progress that failed or
@@ -432,6 +435,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		res.NextEligibleAt, res.Stopped, res.Complete = st.NextEligibleAt, st.Stopped, st.Stopped != ""
 		res.WaitingUntil, res.Waiting = st.WaitingUntil, st.Waiting
+		if note := parkedNote(res.Parked); note != "" {
+			res.Next = joinNext(note, res.Next)
+		}
 		if note := finishedNote(res.Finished); note != "" {
 			res.Next = joinNext(note, res.Next)
 		}
@@ -606,7 +612,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 
 	// Merged lanes are finished before the window clock is read: the cleanup
 	// does no new work, so the pace does not hold it (iss-2610090936460789).
-	if res.Finished, err = finishMerged(repoRoot, now); err != nil {
+	if res.Finished, res.Parked, err = finishMerged(repoRoot, now); err != nil {
 		return refuseMoved(err)
 	}
 	// The lane in progress is renewed at half its lease on every move,
@@ -618,6 +624,47 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if f.Done && st.Lanes[i].RunID == f.RunID {
 				st.Lanes[i].Outcome, st.Lanes[i].PR, finished = DrainLaneDone, f.PR, true
 			}
+		}
+	}
+	// A parked lane whose pull request was closed unmerged was handed back as
+	// closed, its reservation released, by finishMerged; a lane of this
+	// drain's is routed here as a lane's hand-back is (step 8).
+	for _, p := range res.Parked {
+		// A parked lane that went back through its sync is driven again, as
+		// the lane in progress is (step 13).
+		if p.State == ParkedSyncing {
+			for i := range st.Lanes {
+				if st.Lanes[i].RunID == p.RunID && st.Lanes[i].Outcome == DrainLanePullRequest {
+					st.Lanes[i].Outcome, finished = DrainLaneInProgress, true
+				}
+			}
+			continue
+		}
+		if p.State != ParkedClosed {
+			continue
+		}
+		for i := range st.Lanes {
+			if st.Lanes[i].RunID != p.RunID || st.Lanes[i].Outcome == DrainLaneHandedBack {
+				continue
+			}
+			run, err := ReadState(repoRoot, p.RunID)
+			if err != nil {
+				return refuseMoved(err)
+			}
+			outcome, _, hb := laneOutcome(run)
+			if outcome != DrainLaneHandedBack {
+				continue
+			}
+			r, err := routeHandBack(repoRoot, p.Issue, "lane", *hb, origin, now)
+			if err != nil {
+				return refuseMoved(err)
+			}
+			if rel := releaseHandedBack(repoRoot, run, *hb, now); rel != "" {
+				r.Wrote += "; " + rel
+			}
+			st.HandBacks = append(st.HandBacks, r)
+			res.Routed = append(res.Routed, r)
+			st.Lanes[i].Outcome, finished = DrainLaneHandedBack, true
 		}
 	}
 
@@ -1135,9 +1182,10 @@ func routeHandBack(repoRoot, issue, from string, hb HandBack, origin *DrainOrigi
 		r.Route, r.Question = RouteDecisionRecord, hb.Reason
 	case HandBackDesignFinding, HandBackSecondPackage:
 		r.Route, r.Home = RouteHome, hb.Home
-	case HandBackStuck:
-		// The lane kept refusing (stuck.go): the issue stays open for a
-		// person, and the hand-back names the discard of its run.
+	case HandBackStuck, HandBackClosed:
+		// The lane kept refusing (stuck.go), or its pull request was closed
+		// unmerged (drain_finish.go): the issue stays open for a person, and
+		// the hand-back names the discard of its run.
 		r.Route, r.Home = RouteHome, hb.Home
 	default:
 		// The lane stopped after its fix rounds (itd-50): the issue stays open

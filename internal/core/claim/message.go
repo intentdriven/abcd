@@ -376,6 +376,12 @@ func namesSubject(id, subject string) bool {
 	return recordid.CitedIDRe.MatchString(id) && recordid.CanonCitedID(id) == subject
 }
 
+// ValidFootprintPath reports whether p is a footprint path a reservation may
+// carry (validFootprint), for a caller composing a renewal's Narrow: a path
+// it holds false for is never written, and a renewal naming one in Narrow
+// drops the narrowing.
+func ValidFootprintPath(p string) bool { return validFootprint(p) }
+
 // validFootprint reports whether p is a footprint path a reservation may carry:
 // a repository-relative path (fsutil.ValidRelPath) of printing runes only, no
 // C1 control, bidi mark or zero-width rune among them. The writer refuses any

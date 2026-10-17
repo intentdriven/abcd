@@ -450,7 +450,28 @@ starts only from a clean worktree, so that reset touches no change the loop
 did not make). A merge that conflicts is aborted with the branch unchanged, and
 a fresh implementer is handed a sync brief naming each conflicting path and the
 sibling lanes; its receipt must carry the merged sha as an ancestor of its head.
-A sync counts no fix round. The closing lane, which reaches its landing with no
+A sync counts no fix round.
+
+An issue run's lane (a drain's, or `abcd build <iss-N>`'s) has no siblings,
+and other people's lanes land beside it, so its sync fetches `origin`'s default
+branch at each sync and merges it whenever it has moved past the lane's head,
+before the records and the push, a fresh round judging the merge head. A
+conflict confined to files `origin`'s default branch declares
+`linguist-generated` in its root `.gitattributes` goes to a fresh implementer,
+whose sync brief says to regenerate them with the repository's own generator;
+abcd runs no command the repository declares. Any other conflict refuses the
+step at exit 2, naming the files, in a way that cannot change, and nothing is
+pushed: a drain hands the lane back as `stuck` at once. When the lane's open
+pull request starts to conflict at its arming or while it waits to merge, and
+a merge of the default branch and the pushed head, as the forge merges, conflicts only in
+declared generated files or in none, the lane enters its sync again: an armed
+merge is withdrawn (`gh pr merge <n> --disable-auto`) in a step of its own,
+recorded before any merge is tried, the next step merges the default branch
+in, and the push and the arming are made again once a fresh round has
+judged the merge; the records commit and the pull request are kept. Any other
+conflict there is refused for a person as before.
+
+The closing lane, which reaches its landing with no
 step pending, no other lane open and none handed back, takes the fidelity audit
 over each of the run's lanes' own diff.
 
@@ -528,7 +549,20 @@ once half its lease has passed since its `Abcd-Claimed-At`, fetches and pushes
 a renewal that keeps the reservation's own term (at least the default two
 hours, at most a day, so a day-long fence is never cut short), logged in the
 run record as
-`reservation_renewed`; under half, it pushes nothing. A renewal that fails is
+`reservation_renewed`; under half, it pushes nothing. In an issue run whose
+lane is at its landing, its validators passed, the renewal narrows the
+footprint to the files the lane changed within it (its head against its merge
+base with `origin`'s default branch, so files a sync merged in are left out),
+and the record's line names both; during the validate stage nothing narrows,
+since a fix round may still change another file. A narrowing never widens the
+reservation, and one that would name a file no reservation can carry is not
+made, the renewal made all the same, its record line saying `reservation kept
+at its full footprint` and why. When the landing's sync sends the lane back to
+a fresh round, the step reserves the issue's whole `found_at` again before it
+merges, judged for overlap, since a fix round may follow; a refusal of that
+(another's reservation, or the cap) refuses the step for a person, naming it,
+and the lane stays at its landing, its branch at the judged head, with nothing
+merged and nothing pushed. A renewal that fails is
 logged as `reservation_renew_failed` and named in the step's answer, and the
 stage still runs: the land fence is where a lost reservation stops the run. A
 renewal only renews this person's own reservation from this copy: it never

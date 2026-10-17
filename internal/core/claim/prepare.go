@@ -91,6 +91,14 @@ type Request struct {
 	// record anew and never takes one over. It keeps the tip's footprint, so
 	// Footprint must be empty.
 	Renew bool
+	// Narrow, with Renew, is the footprint the renewal writes in place of the
+	// tip's, when every path of it lies within the tip's footprint (equal to
+	// one of its paths or beneath one): a hold that narrows never widens
+	// (spc-2610161044461448 step 12). A tip whose footprint does not cover
+	// it keeps its own, and Result.Narrowed is false; so does a narrowing
+	// naming a path no reservation may carry (ValidFootprintPath), or one
+	// too long to write: the renewal is made all the same.
+	Narrow []string
 	// HandBack, with Release, publishes a hand-back: the tombstone names this
 	// kind, one of HandBackKinds, and the blob id of the record on origin's
 	// default branch (Result.HandBackUnpublished says why it names none). A
@@ -170,6 +178,19 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if req.Renew && (req.Release || req.TakeOver || len(req.Footprint) > 0) {
 		return nil, refuse("a renewal keeps its reservation's footprint, and takes no footprint, take-over or release; %s", nothingPushed)
 	}
+	if len(req.Narrow) > 0 && !req.Renew {
+		return nil, refuse("only a renewal narrows its reservation's footprint; %s", nothingPushed)
+	}
+	// A narrowing naming a path no reservation may carry is dropped, and the
+	// renewal keeps the tip's footprint, as one over the message cap does
+	// below: a renewal never fails over its narrowing, which would let the
+	// reservation lapse while its work goes on.
+	for _, p := range req.Narrow {
+		if !validFootprint(p) {
+			req.Narrow = nil
+			break
+		}
+	}
 	if req.Live && !req.Renew {
 		return nil, refuse("only a renewal can require a live reservation; %s", nothingPushed)
 	}
@@ -244,6 +265,20 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		// Git's identity is unset or a machine's: the token's account authors
 		// the reservation, so that identity never reaches a commit.
 		p.who = identity{Name: h.Login, Email: h.NoReply}
+	}
+	if len(req.Narrow) > 0 {
+		// A narrowed renewal may name more paths than the tip it narrows (a
+		// directory's files), so it is measured as a reservation is, and one
+		// the writer may not write is not narrowed: the renewal keeps the
+		// tip's footprint (Result.Narrowed false) rather than refusing.
+		narrowed := *p
+		narrowed.req.Footprint = req.Narrow
+		for _, text := range []string{narrowed.reservation().text(), narrowed.longestTombstone(req.Narrow).text()} {
+			if checkMessage(root, text) != nil {
+				p.req.Narrow = nil
+				break
+			}
+		}
 	}
 	if !req.Release && !req.Renew {
 		// The reservation is measured by the longer of its own message and the

@@ -93,12 +93,28 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	if !due {
 		return ""
 	}
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own)}, claimOptions(now))
+	req := claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own)}
+	// At its landing, an issue lane's renewal narrows its footprint to the
+	// files its branch changed (narrow.go); a narrowing that was due and
+	// could not be made is said in the renewal's note.
+	var declined string
+	req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
 	if err != nil {
 		return renewFailed(st, now, err)
 	}
-	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed,
-		Note: fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))})
+	note := fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))
+	switch {
+	case res.Narrowed:
+		note += fmt.Sprintf("; its footprint narrowed from %s to the files its branch changed: %s",
+			strings.Join(own.Footprint, ", "), strings.Join(res.Footprint, ", "))
+	case len(req.Narrow) > 0:
+		declined = "the narrowing to the files its branch changed could not be written into the reservation"
+	}
+	if declined != "" {
+		note += "; reservation kept at its full footprint: " + declined
+	}
+	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed, Note: note})
 	st.UpdatedAt = now
 	return ""
 }
@@ -632,7 +648,9 @@ type heldReservation struct {
 // (reserveAgain), so a resume never cuts the day the land fence gave a pull
 // request waiting on a person nor meets an overlap a race let in, and one
 // whose footprint the record has since widened is reserved again with the
-// widened footprint, judged for overlap. A run
+// widened footprint, judged for overlap. Only a run whose lane is at its
+// landing can hold a narrowed tip, so only there is an issue's tip within its
+// found_at renewed as it stands (reserveAgain's landing). A run
 // handed back starts nothing further and reserves nothing. The run's state
 // records the reservation; a refusal leaves the run unchanged.
 func reserveResumed(repoRoot string, res *StartResult, o Options) error {
@@ -655,7 +673,9 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 		return err
 	}
 	now := o.now()
-	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, now)
+	i := st.current()
+	landing := i >= 0 && st.Lanes[i].Stage == StageLand
+	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, landing, now)
 	if err != nil {
 		return err
 	}
@@ -686,11 +706,16 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // written (a spec's packages line that gained a path) is reserved with it,
 // so the widening is published and judged for overlap like any reservation,
 // with the tip's term, so a widening resume never cuts the fence's day either.
+// An issue's tip that lies within its record's footprint, while its lane is
+// at its landing (landing), is the narrowing of that landing (narrow.go),
+// renewed as it stands, never read as a widening; anywhere short of the
+// landing nothing has narrowed it, so a tip narrower than the found_at is a
+// found_at widened mid-run, and is widened like an intent's.
 // A renewal the fetched tip shows the view was stale for (the reservation
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
 // record's footprint, --take-over passed through.
-func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Time) (reserved, error) {
+func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, now time.Time) (reserved, error) {
 	plain := claim.Request{Footprint: fp, TakeOver: takeOver}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
@@ -700,10 +725,14 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Tim
 	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
 		return reserveKey(repoRoot, key, plain, now)
 	}
-	if !covers(r.Footprint, fp) {
-		widened := plain
-		widened.Lease = renewalTerm(r)
-		return reserveKey(repoRoot, key, widened, now)
+	// An issue run's tip within the record's footprint, its lane at the
+	// landing, is the narrowing that landing made (narrow.go), never a
+	// widening of the record: the resume renews it as it stands, so it
+	// neither publishes the whole found_at again nor is refused by an
+	// overlap the narrowing let in.
+	narrowed := landing && validIssueKey(key) && covers(fp, r.Footprint)
+	if !narrowed && !covers(r.Footprint, fp) {
+		return widenReservation(repoRoot, key, fp, takeOver, r, now)
 	}
 	res, err := claim.Reserve(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r)}, claimOptions(now))
 	var nh *claim.NotHeld
@@ -712,6 +741,61 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Tim
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	return reservedNote(res, err, now)
+}
+
+// widenReservation reserves key again with fp, a footprint the tip own does
+// not cover, keeping own's term: the widening is published and judged for
+// overlap (and against the cap) like any reservation, so a widening never
+// cuts the day a fence gave a pull request either.
+func widenReservation(repoRoot, key string, fp []string, takeOver bool, own claim.Reservation, now time.Time) (reserved, error) {
+	return reserveKey(repoRoot, key, claim.Request{Footprint: fp, TakeOver: takeOver, Lease: renewalTerm(own)}, now)
+}
+
+// reserveOnLeavingLand reserves an issue lane's whole found_at again when the
+// lane leaves its landing for an earlier stage (a landing's sync sends it to
+// a fresh round), before the lane goes on (dcn-2610170947246937, refining
+// dcn-2610170919040486): the landing's renewal may have narrowed the
+// reservation to the lane's changes, and the fix round that may follow can
+// change any file of the found_at. The sync calls it once it knows it will
+// merge and before it merges (mergeDefault; dcn-2610171009498218), so a
+// refusal leaves the branch and the worktree at the judged head; the move
+// calls it for any other way back from the landing (performMove). A tip of this copy's that already covers the found_at, an
+// intent's run, and a run holding no reservation take no act; a tip the view
+// shows lost is the land fence's to stop. The widening is the one a resume
+// makes (widenReservation), judged for overlap and against the cap; a
+// refusal of it refuses the step for a person, naming what it met, with
+// nothing merged by the step and nothing pushed, and the lane stays at its
+// landing. note is the run record's line for a widening made.
+func reserveOnLeavingLand(repoRoot string, st State, lane Lane, now time.Time) (note string, err error) {
+	if st.ReservedAt == nil || st.Issue() == "" {
+		return "", nil
+	}
+	fp, err := runFootprint(repoRoot, st.Key, st.Spec, "the lane stays at its landing and nothing is pushed")
+	if err != nil {
+		return "", err
+	}
+	snap, err := claim.View(repoRoot, now)
+	if err != nil {
+		return "", refuse(string(StageLand), "", lane.ID,
+			"the lane leaves its landing for a fresh round, and its reservation on "+st.Key+" cannot be read to reserve its whole found_at again: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
+			"settle what it names, then run `abcd implement step` again")
+	}
+	own, ok := snap.Lookup(st.Key)
+	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) || covers(own.Footprint, fp) {
+		return "", nil
+	}
+	r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
+	if err != nil {
+		reason := err.Error()
+		if rf, ok := AsRefusal(err); ok {
+			reason = rf.Reason
+		}
+		return "", refuse(string(StageLand), "", lane.ID,
+			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's found_at, but its reservation, narrowed to %s, cannot be widened back to %s: %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
+				st.Key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason, shortSHA(lane.HeadSHA)),
+			"wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again; or hand the lane back so the issue is built again")
+	}
+	return r.note + ", widened again as the lane leaves its landing for a fresh round", nil
 }
 
 // covers reports whether every path of fp lies within held: equal to one of
