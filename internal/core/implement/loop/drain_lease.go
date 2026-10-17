@@ -21,7 +21,11 @@ import (
 // renewInProgress renews the reservation of each lane the drain has in
 // progress at half its lease, judged on view (as the move fetched it; read
 // from disk when nil), and logs it in the lane's run record. A lane parked at
-// land is the merged-lane finish's to renew (finishMerged). It returns the
+// land is the merged-lane finish's to renew (finishMerged), and a lane its run
+// has handed back, by its own step or as stuck, is renewed by nothing: the
+// drain has not routed it yet, as a paused move does not, and its
+// reservation, released or left holding by a release origin refused, is
+// the routing's (releaseHandedBack). It returns the
 // notes of renewals that failed or found the hold another's, for the move's
 // next step; a lane whose run cannot be read is left to the routing below,
 // which names it.
@@ -32,7 +36,7 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 			continue
 		}
 		run, err := ReadState(repoRoot, l.RunID)
-		if err != nil || run.ReservedAt == nil || parkedAtLand(run) >= 0 {
+		if err != nil || !renewable(run) {
 			continue
 		}
 		if view == nil {
@@ -47,7 +51,7 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 		}
 		note := ""
 		if err := mutate(repoRoot, l.RunID, func(_ *os.Root, st *State) (bool, error) {
-			if st.ReservedAt == nil || parkedAtLand(*st) >= 0 {
+			if !renewable(*st) {
 				return false, nil
 			}
 			logged, updated := len(st.Record), st.UpdatedAt
@@ -61,4 +65,11 @@ func renewInProgress(repoRoot string, st DrainState, view *claim.Snapshot, now t
 		}
 	}
 	return notes
+}
+
+// renewable reports whether the drain's move renews run's reservation: it
+// holds one, and its lane is in progress and not parked at land.
+func renewable(run State) bool {
+	outcome, _, _ := laneOutcome(run)
+	return run.ReservedAt != nil && outcome == DrainLaneInProgress && parkedAtLand(run) < 0
 }

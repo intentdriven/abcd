@@ -2,12 +2,14 @@ package loop
 
 import (
 	"net"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // A drain keeps its lane's lease every move, and the landing checks the
@@ -207,6 +209,72 @@ func TestOriginUnreadAtThePushFenceIsAWaitNotARefusal(t *testing.T) {
 			}
 			if got := gitIn(t, f.bare, "for-each-ref", "--format=%(refname)", "refs/heads/"+l.Branch); got != "" {
 				t.Fatalf("nothing was pushed while origin was unread: %s", got)
+			}
+		})
+	}
+}
+
+// TestAPausedDrainDoesNotRenewALaneHandedBack: a lane handed back whose
+// release origin refused, whether by its own step or as stuck, still holds
+// its reservation while the drain is paused and has not routed it; a move
+// past half the lease renews nothing of it.
+func TestAPausedDrainDoesNotRenewALaneHandedBack(t *testing.T) {
+	for name, handBack := range map[string]func(t *testing.T, repo *gittest.Repo, runID string, c *clock){
+		"by its own step": func(t *testing.T, repo *gittest.Repo, runID string, c *clock) {
+			handBackLaneOf(t, repo, runID, Options{Now: c.now}, LaneHandBack{Kind: HandBackDesignFinding, Reason: "the page needs a decision", Home: "the brief"})
+		},
+		"as stuck": func(t *testing.T, repo *gittest.Repo, runID string, c *clock) {
+			o := Options{Now: c.now}
+			for range 3 {
+				refuseStep(t, repo, runID, briefRefusing(sameRefusal), o)
+			}
+			b := stuckBounds{refusals: PaceValue{Value: BundledStuckRefusals}, minutes: PaceValue{Value: BundledStuckMinutes}}
+			if _, err := handBackStuck(repo.Root(), runID, b, c.t); err != nil {
+				t.Fatal(err)
+			}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t0 := time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)
+			c := &clock{t: t0}
+			o := Options{Now: c.now}
+			repo, bare, runID := stuckDrain(t, c)
+			hook := filepath.Join(bare, "hooks", "pre-receive")
+			refuseReservations := "#!/bin/sh\nwhile read old new ref; do case \"$ref\" in refs/heads/abcd-reserved/*) echo 'origin is closed' >&2; exit 1;; esac; done\nexit 0\n"
+			if err := os.WriteFile(hook, []byte(refuseReservations), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			handBack(t, repo, runID, c)
+			if note := recordNote(t, repo, runID, StageReservationReleaseFailed); note == "" {
+				t.Fatal("the hand-back's release was refused")
+			}
+			if err := os.Remove(hook); err != nil {
+				t.Fatal(err)
+			}
+			ref := claim.RefPrefix + secondIssue
+			before := originReservation(t, bare, ref)
+			st, live, err := readDrain(repo.Root())
+			if err != nil || !live {
+				t.Fatalf("a live drain: %v", err)
+			}
+			until := t0.Add(4 * time.Hour)
+			st.NextEligibleAt = &until
+			if err := writeDrain(repo.Root(), st); err != nil {
+				t.Fatal(err)
+			}
+			c.t = t0.Add(61 * time.Minute)
+			res, err := Drain(repo.Root(), o, DrainOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(res.Next, "nothing before") {
+				t.Fatalf("the drain is paused: %+v", res)
+			}
+			if after := originReservation(t, bare, ref); after.commit != before.commit {
+				t.Fatalf("the handed-back lane's reservation is not renewed: before %+v, after %+v", before, after)
+			}
+			if note := recordNote(t, repo, runID, StageReservationRenewed); note != "" {
+				t.Fatalf("the run record logs no renewal: %q", note)
 			}
 		})
 	}
