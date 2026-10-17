@@ -39,8 +39,9 @@ transport that delivers context to it.
 
 ## Examples
 
-- "The impl-review skill hands the diff to the host-delegated oracle and reads
-  back its verdict."
+- "A `build` run's validate stage hands the lane's diff to
+  `ruthless-reviewer`, a host-delegated oracle, and records the verdict it
+  reads back."
 - "The oracle returned NEEDS_WORK on round 6."
 
 ## Related terms
