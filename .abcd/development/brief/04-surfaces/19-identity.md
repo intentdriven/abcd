@@ -59,8 +59,9 @@ configuration rather than under `.abcd/config/`, where `identity.json` already
 means the git commit-author pin.
 
 The severity is the whole family's weight, and it is the one knob that changes
-what a failed check costs. `warn`, the default, reports drift as a warning that
-does not fail the run. `blocker` promotes every positioning finding to an error,
+what a failed check costs. `warn`, the default, reports drift as a warning, and
+a run whose only findings are warnings exits 1, the lint's warnings-only exit,
+not 0. `blocker` promotes every positioning finding to an error, which exits 2,
 so a repo that wants its own strapline treated as load-bearing turns the
 advisory family into a hard `abcd lint` gate with one word.
 
