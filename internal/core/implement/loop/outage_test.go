@@ -5,7 +5,8 @@ package loop
 // probe while the offline lanes move, the step runs the probe when it is due,
 // and a run that gave up stops every step naming what was done and what is
 // left. The clock is the fixture's, the network probe is injected, and the one
-// real network call (a push to a port nothing listens on) fails at once.
+// real network call (a push through a local ext:: remote that prints git's
+// refused-connection message) fails at once.
 
 import (
 	"context"

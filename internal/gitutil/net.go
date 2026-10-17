@@ -213,12 +213,19 @@ func netEnvFor(env []string, underTest bool) []string {
 		return env
 	}
 	n := 0
+	out := make([]string, 0, len(env)+2*len(testTransportGuard)+1)
 	for _, kv := range env {
 		if v, ok := strings.CutPrefix(kv, "GIT_CONFIG_COUNT="); ok {
 			n, _ = strconv.Atoi(v)
 		}
+		// GIT_ALLOW_PROTOCOL outranks every protocol.*.allow entry, so one
+		// inherited from the developer's shell would let the guarded
+		// transports back in; under a test it is dropped.
+		if strings.HasPrefix(kv, "GIT_ALLOW_PROTOCOL=") {
+			continue
+		}
+		out = append(out, kv)
 	}
-	out := append(make([]string, 0, len(env)+2*len(testTransportGuard)+1), env...)
 	for i, kv := range testTransportGuard {
 		out = append(out, "GIT_CONFIG_KEY_"+strconv.Itoa(n+i)+"="+kv[0], "GIT_CONFIG_VALUE_"+strconv.Itoa(n+i)+"="+kv[1])
 	}

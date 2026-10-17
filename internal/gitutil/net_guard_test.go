@@ -47,6 +47,9 @@ func guardedRepo(t *testing.T) (*gittest.Repo, string) {
 // rewrites a github.com URL to, still answers.
 func TestNetUnderTestReachesNoForgeAndCallsNoHelper(t *testing.T) {
 	r, marker := guardedRepo(t)
+	// An allow list inherited from the developer's shell outranks
+	// protocol.*.allow, so the guard has to hold against one.
+	t.Setenv("GIT_ALLOW_PROTOCOL", "http:https:git:ssh:file")
 	for _, k := range []string{"GIT_SSH_COMMAND", "GIT_SSH"} {
 		t.Setenv(k, "")
 		if err := os.Unsetenv(k); err != nil {
