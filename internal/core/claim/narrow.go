@@ -1,9 +1,10 @@
 package claim
 
 // narrow.go is the renewal that narrows its footprint (spc-2610161044461448
-// step 12; dcn-2610161040385152): a lane past its implement stage renews its
-// reservation with the files its branch changed in place of the directory it
-// reserved, which is lock de-escalation, so a narrowing never widens a hold.
+// step 12; dcn-2610161040385152; dcn-2610170919040486): a lane at its landing,
+// its validators passed, renews its reservation with the files it changed in
+// place of the directory it reserved, which is lock de-escalation, so a
+// narrowing never widens a hold.
 
 import (
 	"path"

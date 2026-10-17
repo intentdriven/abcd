@@ -1266,9 +1266,9 @@ outage's wait, and a land fence that cannot read origin are never counted, and a
 step that succeeds as the move hands the lane back keeps it. `abcd implement step
 --discard` removes a stuck lane's worktree and branch and ends its run. Every move
 renews the reservation of the lane in progress at half its lease, waiting or not
-(a lane handed back is renewed by none); once the lane is past its implement stage,
-the first renewal narrows its footprint to the files its branch changed within it,
-never widening it; and the landing checks it before its push,
+(a lane handed back is renewed by none); once the lane's validators pass and it is
+at its landing, the first renewal narrows its footprint to the files the lane changed
+within it, never widening it; and the landing checks it before its push,
 so a lane whose reservation became another person's pushes nothing and is handed
 back as stuck. A move that finds a lane parked at land reads it from its pull
 request, in one listing of your latest pull requests (gh pr list): a closed one

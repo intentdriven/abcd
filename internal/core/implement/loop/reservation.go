@@ -694,6 +694,8 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // written (a spec's packages line that gained a path) is reserved with it,
 // so the widening is published and judged for overlap like any reservation,
 // with the tip's term, so a widening resume never cuts the fence's day either.
+// An issue's tip that lies within its record's footprint is the narrowing of
+// its landing (narrow.go), renewed as it stands, never read as a widening.
 // A renewal the fetched tip shows the view was stale for (the reservation
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
@@ -708,7 +710,13 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Tim
 	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
 		return reserveKey(repoRoot, key, plain, now)
 	}
-	if !covers(r.Footprint, fp) {
+	// An issue run's tip within the record's footprint is the narrowing its
+	// landing made (narrow.go), never a widening of the record: the resume
+	// renews it as it stands, so it neither publishes the whole found_at
+	// again nor is refused by an overlap the narrowing let in. Only an
+	// intent's record, whose spec's packages line can gain a path, widens.
+	narrowed := validIssueKey(key) && covers(fp, r.Footprint)
+	if !narrowed && !covers(r.Footprint, fp) {
 		widened := plain
 		widened.Lease = renewalTerm(r)
 		return reserveKey(repoRoot, key, widened, now)

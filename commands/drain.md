@@ -289,11 +289,15 @@ what it did in `next`:
   (`commands/implement.md`). Every drain move also renews the lane in
   progress at half its lease, waiting or not, though no step of the lane ran,
   so a lane the host paused past its lease is not taken over (a lane handed
-  back is renewed by no move). Once the lane is past its implement stage, the
-  first renewal narrows its footprint to the files its branch changed within
-  it (a `found_at` naming `docs/` becomes the files under `docs/` the lane
-  changed), so other accounts can take the rest; a narrowing never widens the
-  hold, and the run record's renewal line names both footprints. A lane whose
+  back is renewed by no move). Once the lane's validators have passed and it
+  is at its landing, the first renewal narrows its footprint to the files its
+  branch changed within it, measured from where it meets `origin`'s default
+  branch, so what a sync merged in is left out (a `found_at` naming `docs/`
+  becomes the files under `docs/` the lane changed), and other accounts can
+  take the rest. While the validators still judge it, a fix round may change
+  another file, so nothing narrows. A narrowing never widens the hold; one
+  that would name a file no reservation can carry is not made, and the
+  renewal still is; the run record's renewal line names both footprints. A lane whose
   reservation is another person's by its push pushes nothing, opens no pull
   request, and the next drain hands it back as `stuck` at once. When the lane is
   handed back instead, the step that hands it back pushes the tombstone,
