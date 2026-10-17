@@ -32,9 +32,14 @@ Eighteen agent prompts ship in `agents/` today, in five groups:
   checked and drawn by the binary (spc-2610030911534855).
 - **The intent auditor**, `intent-auditor`, which judges a shipped intent's
   promise against delivered reality (below).
-- **Repo-workflow reviewers and researchers**, dispatched by a human rather than
-  by a verb: `docs-currency-reviewer`, `ruthless-reviewer`, `security-reviewer`,
-  and `sota-researcher`.
+- **Repo-workflow reviewers and researchers**, two of them dispatched through a
+  verb and two by a person alone. `ruthless-reviewer` and `security-reviewer`
+  are the validators of the implement loop's validate stage: on every lane a
+  `build` or `drain` run opens, the loop names each in turn for the host to
+  start, and records the verdict it returns. `docs-currency-reviewer` is one of
+  the release gate's semantic passes: a person runs it before a release, and the
+  release workflow refuses a release whose content commit has no receipt from
+  it, but no verb dispatches it. No verb dispatches `sota-researcher` either.
 - **The cold-reading instrument**: the four position definitions and the ledger
   `scribe` (below).
 - **The question drafter**, `question-drafter`, which the agent running one of
