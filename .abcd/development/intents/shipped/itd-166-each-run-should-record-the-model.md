@@ -81,7 +81,9 @@ None. The one open question was decided on delegation (decision 1).
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-f25a69346de1 -->
+Fidelity review OWED (receipt rcp-f25a69346de1).
+<!-- abcd-review-end receipt=rcp-f25a69346de1 -->
 
 ## Grounds
 
