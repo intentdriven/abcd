@@ -284,8 +284,14 @@ what it did in `next`:
   naming each peer with the repair its reason calls for: never a removal, which
   would delete the worktree's ignored files. Left alone, such a peer would
   read as holding every issue, and the drain would pass each over and end.
-  The lane's run then renews the reservation, fences its landing on it and
-  tombstones it once it lands (`commands/implement.md`); when the lane is
+  The lane's run then renews the reservation, fences its landing on it, before
+  its push and again before arming, and tombstones it once it lands
+  (`commands/implement.md`). Every drain move also renews the lane in
+  progress at half its lease, waiting or not, though no step of the lane ran,
+  so a lane the host paused past its lease is not taken over (a lane handed
+  back is renewed by no move); a lane whose
+  reservation is another person's by its push pushes nothing, opens no pull
+  request, and the next drain hands it back as `stuck` at once. When the lane is
   handed back instead, the step that hands it back pushes the tombstone,
   publishing the hand-back with its kind (`unachievable` for a lane stopped
   after its fix rounds), and the route's `wrote` says so as the drain routes
@@ -302,13 +308,34 @@ what it did in `next`:
   resolves it and opens one pull request.
 - **It waits.** While that lane is in progress, a drain opens nothing and names
   the run again. One lane at a time.
+- **It hands a stuck lane back.** A lane that cannot finish does not hold the
+  drain. Each refused step of the lane's run is logged on the lane (`refused`
+  in its state: the stage, the check, the reason and how many times in a row
+  the step was refused that way), and `next` says so while the lane is in
+  progress. Once the step has been refused the same way three times, or has
+  kept being refused at one stage for sixty minutes, counted from its first
+  refusal to its last (a quiet of more than fifteen minutes starts the time
+  afresh, and the quiet after the last refusal never counts), the next drain
+  hands the lane
+  back as `stuck`, naming the refusal, releases its reservation with a
+  tombstone marking it `stuck`, and takes up the next issue in the same move.
+  A refusal that cannot change hands the lane back at once: its issue finished
+  at the lane's base or on `origin`'s default branch, or its reservation now
+  another person's. A wait is not a refusal and is never counted: the
+  landing's wait for its preflight receipt, the wait through an outage, and a
+  land fence that cannot read `origin`.
+  The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move. A
+  stuck lane keeps its worktree and branch:
+  `abcd implement step --run <run-id> --discard <lane-id>` removes them, closes
+  its pull request if it opened one, and ends the run.
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
   opens the next lane. A pull request the forge reports `CONFLICTING` is never
   armed: its lane stays in progress, and `abcd implement step --run <run-id>`
   refuses at exit 2 naming the conflicting files and the hand merge that
-  settles it. That is a person's: report it, and do not push to the lane or
-  merge it yourself. One that turns conflicting after it was armed is refused
+  settles it, until the drain hands the lane back as stuck. That is a person's:
+  report it, and do not push to the lane or merge it yourself. One that turns conflicting after it was armed is refused
   the same way by the run's own step; the drain's part ended at the open pull
   request.
 - **It finishes merged lanes.** Every move, before it reads the window clock,
@@ -327,9 +354,20 @@ what it did in `next`:
 - **It pauses.** At the end of the drain's working window it writes
   `next_eligible_at` into `.abcd/.work.local/run/drain.json` and opens nothing;
   before that time a drain opens nothing. Run it again at or after that time.
+- **It waits at the cap and on held work.** When the user holds ten live
+  reservations, the most one person may hold, counted in the move's view
+  before any reservation or judgement, or when every eligible issue left is
+  held by another, the move neither refuses nor ends: it reserves and asks
+  nothing, writes `waiting_until` fifteen minutes on (`waiting` says `cap` or
+  `held`), and names what it waits on: at the cap, the reservations and the
+  pull requests waiting to merge, with the advice to wait for one to merge
+  rather than release one; on held work, each hold. It keeps every judgement
+  it has taken, and the pace window is left as it was. Run it again at or
+  after `waiting_until`; a move before it still looks, and takes any issue
+  freed since.
 - **It ends.** At `--max <n>` lanes (`stopped: "cap"`), or when nothing eligible
-  is left (`stopped: "empty"`), it reports and ends; `complete` is `true`. The
-  next `abcd drain` begins a new drain.
+  is left, held or not (`stopped: "empty"`), it reports and ends; `complete` is
+  `true`. The next `abcd drain` begins a new drain.
 - **It stops on a lost connection.** A drain's lane waits out a lost network or
   model-service connection as any run does (`/abcd:build` names the protocol).
   Once that run gives up, after eight hours of failed hourly probes, the next
@@ -358,6 +396,7 @@ branch and ends it. The drain routes it:
 | `trust-rule` | `decision-record`: flagged, with the lane's reason as `question` | nothing; no record is minted |
 | `design-finding`, `second-package` | `home`: flagged with the `home` the lane names | nothing |
 | (fix rounds exhausted) | `home`: flagged, the issue staying open | nothing |
+| `stuck` (the lane kept refusing) | `home`: flagged, the issue staying open, naming the discard of the lane's run | nothing |
 
 Every issue the rule hands back is in `flags` with `from: "field"`,
 `route: "rule"` and the `rule` that excluded it; `flags` are re-derived at every
@@ -392,7 +431,8 @@ hand-backs; `passed` names an eligible issue this move did not take, with why;
 `dispositions` is the plan; `finished` lists the merged lanes this move took
 the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
-`next_eligible_at`, `stopped` (`cap`, `empty`,
+`waiting_until` and `waiting` (`cap` or `held`) say when a waiting drain looks
+again and on what; `next_eligible_at`, `stopped` (`cap`, `empty`,
 `outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the
 drain as it stands: `lanes_opened`, `in_progress`, `pull_requests` (the lanes
 whose landing opened one; a merge is a person's gate and is not counted),

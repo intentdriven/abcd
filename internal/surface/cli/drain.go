@@ -112,6 +112,24 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to\n" +
 			"drive with `abcd implement step`. Run it again once that lane is handed back or its\n" +
 			"pull request is open, and it routes the lane's outcome and opens the next. A lane\n" +
+			"that cannot finish does not hold the drain: each refused step of its run is logged\n" +
+			"on the lane (refused in the run's state: the stage, the check, the reason, a count\n" +
+			"of the same refusal in a row, since when and when last it refused there, and why it\n" +
+			"cannot change), and once the step has been refused the same way three times, or has\n" +
+			"kept refusing at one stage for sixty minutes, from its first refusal there to its\n" +
+			"last, a quiet of more than fifteen minutes starting the time afresh\n" +
+			"(pace.stuck_refusals and pace.stuck_minutes in the config layers), the next move\n" +
+			"hands the lane back as stuck, releases its reservation with a tombstone marking it\n" +
+			"stuck, and takes up the next issue. A refusal that cannot change (the issue\n" +
+			"finished at the lane's base or on origin's default branch, the reservation now\n" +
+			"another person's) hands it back at once; the wait for a preflight receipt, an\n" +
+			"outage's wait, and a land fence that cannot read origin are never counted, and a\n" +
+			"step that succeeds as the move hands the lane back keeps it. `abcd implement step\n" +
+			"--discard` removes a stuck lane's worktree and branch and ends its run. Every move\n" +
+			"renews the reservation of the lane in progress at half its lease, waiting or not\n" +
+			"(a lane handed back is renewed by none), and the landing checks it before its push,\n" +
+			"so a lane whose reservation became another person's pushes nothing and is handed\n" +
+			"back as stuck. A lane\n" +
 			"that finds a decision in its issue hands it back by kind, its work discarded: a\n" +
 			"user-visible change is promoted to an intent draft (`capture promote`, which\n" +
 			"stamps the issue's related_intents and nothing else); a trust or safety rule is\n" +
@@ -125,8 +143,14 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and\n" +
 			"the call opens nothing; before that time a drain opens nothing, and after it the\n" +
 			"next invocation continues. --max <n> caps the lanes the drain opens (the default\n" +
-			"is all); at the cap, or when nothing eligible is left, the drain reports and ends,\n" +
-			"and the next `abcd drain` begins a new one. A cap or pace named while a drain is in\n" +
+			"is all); at the cap, or when nothing eligible is left, held or not, the drain reports\n" +
+			"and ends. When you hold ten live reservations, the most one person may hold, or every\n" +
+			"eligible issue left is held by another, a move neither refuses nor ends: it reserves\n" +
+			"and asks nothing, writes waiting_until fifteen minutes on (apart from the pace\n" +
+			"window) and waiting, \"cap\" or \"held\", for which of the two it waits on, names the\n" +
+			"reservations and pull requests or the holds it waits on, and keeps its judgements;\n" +
+			"run it again at or after that time. Once a drain has ended, the\n" +
+			"next `abcd drain` begins a new one. A cap or pace named while a drain is in\n" +
 			"progress that differs from the one it began with is refused. Once a run gives up on a\n" +
 			"lost connection (`abcd implement outage`), the drain opens nothing and ends with\n" +
 			"stopped \"outage\", naming the services down, since when, the probes and the lanes it\n" +
@@ -317,6 +341,9 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 	renderDrainCounts(w, res.Counts)
 	if res.NextEligibleAt != nil {
 		fmt.Fprintf(w, "  next_eligible_at: %s\n", res.NextEligibleAt.UTC().Format(time.RFC3339))
+	}
+	if res.WaitingUntil != nil {
+		fmt.Fprintf(w, "  waiting_until: %s (%s)\n", res.WaitingUntil.UTC().Format(time.RFC3339), termsafe.Sanitize(res.Waiting))
 	}
 	switch res.Stopped {
 	case loop.DrainStoppedCap:

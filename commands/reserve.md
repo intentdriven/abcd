@@ -153,7 +153,11 @@ output names the copy it replaced. It never moves another person's.
 reservations, counted across every record by username. A reservation past that
 is refused, naming the ten; a renewal, and a take-over of the user's own other
 copy, of a reservation still live are never refused by the cap, while renewing
-one that has lapsed counts as a new one. Release one first, if the user agrees.
+one that has lapsed counts as a new one. The refusal advises waiting for one of
+the user's pull requests to merge, which ends its reservation: most of the ten
+are usually lanes whose pull requests wait on a merge, and releasing one would
+free an issue whose work is done. Release one only when its work is abandoned,
+if the user agrees.
 
 **Exit 2 on a fork origin.** A new reservation or a take-over asks GitHub
 whether each URL origin pushes to is a fork; a renewal and a release never ask,

@@ -77,10 +77,10 @@ type Result struct {
 	// HandBackUnpublished is why a release whose tombstone would have marked
 	// a hand-back, one asked for or one it kept (HandBackKept), pushed a plain
 	// tombstone or nothing instead: origin's default branch could not be
-	// read (HandBackUnread), or holds no one record of it to name, the record
-	// changed since the hand-back was judged, or the tombstone with the
-	// hand-back would pass the message cap. "" when the hand-back was
-	// published, or none was due.
+	// read (HandBackUnread), or holds no record of it to name (or several),
+	// the record changed since the hand-back was judged, or the tombstone
+	// with the hand-back would pass the message cap. "" when the hand-back
+	// was published, or none was due.
 	HandBackUnpublished string
 	// HandBackUnread is true when HandBackUnpublished is because origin's
 	// default branch could not be read for the record's blob at all: the
@@ -452,14 +452,14 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 // markHandBack names the hand-back asked for on m, the tombstone a release
 // pushes over j, with the record's blob on origin's default branch, and
 // returns why it named none instead: the branch could not be read (unread is
-// then true), no one record of it there to name, or a record other than the
-// one the hand-back was judged over (HandBackBlob).
+// then true), no record of it there to name (or several), or a record other
+// than the one the hand-back was judged over (HandBackBlob).
 func (p *prepared) markHandBack(m *message, j judged) (why string, unread bool) {
 	switch {
 	case j.blob == "" && j.blobUnread != "":
 		return fmt.Sprintf("%s's default branch could not be read (%s), so the tombstone marks no hand-back", Remote, j.blobUnread), true
 	case j.blob == "":
-		return fmt.Sprintf("%s's default branch as last fetched holds no one record of %s, so the tombstone marks no hand-back", Remote, p.id), false
+		return fmt.Sprintf("%s's default branch as last fetched holds no record of %s, or holds it in more than one file, so the tombstone marks no hand-back", Remote, p.id), false
 	case p.req.HandBackBlob != "" && p.req.HandBackBlob != j.blob:
 		return fmt.Sprintf("%s's record on %s's default branch has changed since the hand-back was judged, so the tombstone marks no hand-back: a person's edit re-admits it",
 			p.id, Remote), false

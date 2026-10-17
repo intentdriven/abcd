@@ -706,3 +706,25 @@ func TestDrainHelpStatesThePromotedRule(t *testing.T) {
 		}
 	}
 }
+
+// TestDrainHelpNamesItsWaitAndRefusalFields: the drain's help names the
+// fields a reader of its state and its lane's run finds: waiting_until and
+// waiting with its two values, and the lane's refused, with how the stuck
+// bound counts it. The generated reference renders this text, so it is held
+// too.
+func TestDrainHelpNamesItsWaitAndRefusalFields(t *testing.T) {
+	var asJSON bool
+	long := strings.Join(strings.Fields(newDrainCommand(&asJSON).Long), " ")
+	for _, want := range []string{
+		"writes waiting_until fifteen minutes on",
+		`waiting, "cap" or "held"`,
+		"refused in the run's state",
+		"kept refusing at one stage for sixty minutes",
+		"a land fence that cannot read origin",
+		"a lane handed back is renewed by none",
+	} {
+		if !strings.Contains(long, want) {
+			t.Errorf("the drain help does not say %q:\n%s", want, long)
+		}
+	}
+}

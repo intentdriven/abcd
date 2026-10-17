@@ -155,16 +155,49 @@ func addsOne(j judged) bool {
 	return !j.present || j.released() || j.Unreadable != "" || !j.mine || !j.verdict.Live
 }
 
+// CapError is the cap's refusal (spc-2610161044461448 step 6): an act that
+// would take its holder past MaxLive, naming the holder's live reservations
+// as the view lists them. It is an ErrRefused refusal, so `abcd reserve`
+// exits 2 on it as before; a drain reads it by its type and waits instead.
+// Its advice is to wait for a pull request to merge: most of a drain's live
+// reservations are lanes whose pull requests wait on one, and the merge ends
+// the reservation, where releasing one would free an issue whose work is done.
+type CapError struct {
+	// Held are the holder's live reservations, the record ids sorted.
+	Held []string
+}
+
+// Error names the cap, the reservations and the advice.
+func (e *CapError) Error() string {
+	ids := strings.Join(e.Held, ", ")
+	advice := "wait for one of their pull requests to merge, which ends its reservation, or release one whose work is abandoned (abcd reserve <id> --release)"
+	if len(e.Held) == MaxLive {
+		return fmt.Sprintf("you hold %d live reservations, the most one person may hold: %s; %s; %s", len(e.Held), ids, advice, nothingPushed)
+	}
+	return fmt.Sprintf("you hold %d live reservations, past the %d one person may hold: %s; %s; %s", len(e.Held), MaxLive, ids, advice, nothingPushed)
+}
+
+// Is makes the cap an ErrRefused refusal.
+func (e *CapError) Is(target error) bool { return target == ErrRefused }
+
 // capRefusal names the cap and the holder's live reservations, as the view
 // lists them.
 func capRefusal(mine []string) error {
-	ids := strings.Join(mine, ", ")
-	if len(mine) == MaxLive {
-		return refuse("you hold %d live reservations, the most one person may hold: %s; release one (abcd reserve <id> --release) first; %s",
-			len(mine), ids, nothingPushed)
+	return &CapError{Held: slices.Clone(mine)}
+}
+
+// LiveHeldBy is the records holder holds live in the view, from any copy,
+// sorted, less except: the count the cap judges a fresh reservation of except
+// by (crowding), read from the view alone so a caller counts with no fetch.
+func (s Snapshot) LiveHeldBy(holder, except string) []string {
+	var out []string
+	for _, r := range s.Reservations {
+		if r.State == StateLive && r.Record != except && sameHolder(r.Holder, holder) {
+			out = append(out, r.Record)
+		}
 	}
-	return refuse("you hold %d live reservations, past the %d one person may hold: %s; release one (abcd reserve <id> --release) first; %s",
-		len(mine), MaxLive, ids, nothingPushed)
+	slices.Sort(out)
+	return out
 }
 
 // sharedPath reports whether two footprint paths are shared, equal or one a

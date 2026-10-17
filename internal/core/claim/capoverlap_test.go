@@ -20,16 +20,24 @@ func reserveTen(t *testing.T, p *participant) {
 
 // TestTheEleventhReservationIsRefusedNamingTheCap is C47: a reservation that
 // would take its holder past ten live reservations is refused, naming the cap
-// and the ten, and nothing is pushed.
+// and the ten, and nothing is pushed. The refusal is typed, carrying the ten
+// (spc-2610161044461448 step 6), and its advice is to wait for a pull request
+// to merge, since most of the ten are usually lanes whose pull requests wait on
+// a merge, and releasing one would free an issue whose work is done.
 func TestTheEleventhReservationIsRefusedNamingTheCap(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	reserveTen(t, p)
 	_, err := p.reserve("iss-11", "f11.go")
 	want := "you hold 10 live reservations, the most one person may hold: iss-1, iss-10, iss-2, iss-3, iss-4, iss-5, " +
-		"iss-6, iss-7, iss-8, iss-9; release one (abcd reserve <id> --release) first; nothing was pushed"
+		"iss-6, iss-7, iss-8, iss-9; wait for one of their pull requests to merge, which ends its reservation, " +
+		"or release one whose work is abandoned (abcd reserve <id> --release); nothing was pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("the eleventh reservation = %v; want %q", err, want)
+	}
+	var capped *CapError
+	if !errors.As(err, &capped) || len(capped.Held) != MaxLive || capped.Held[0] != "iss-1" {
+		t.Fatalf("the cap refusal is typed and names the ten: %#v", err)
 	}
 	if tip := w.remoteTip("iss-11"); tip != "" {
 		t.Fatalf("a reservation over the cap reached origin: %s", tip)

@@ -144,6 +144,36 @@ func TestAHandBackTombstoneCarriesNoFreeText(t *testing.T) {
 	}
 }
 
+// TestAReleaseSubjectIsNeverHandedBack: a release subject has no record on
+// origin's default branch to hand back, so a release of rel-v0.16.0 asked to
+// publish a hand-back is refused, with a fixed message that echoes nothing
+// of the request, before anything reaches the remote; the release itself
+// still goes ahead when asked plainly.
+func TestAReleaseSubjectIsNeverHandedBack(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.do(Request{Record: "rel-v0.16.0"}); err != nil {
+		t.Fatal(err)
+	}
+	before := w.remoteTip("rel-v0.16.0")
+	for _, kind := range []string{HandBackStuck, HandBackClosed} {
+		req := Request{Record: "rel-v0.16.0", Release: true, HandBack: kind}
+		_, err := p.do(req)
+		if !errors.Is(err, ErrRefused) {
+			t.Fatalf("%+v = %v; want it refused", req, err)
+		}
+		if want := "a release subject has no record to hand back, so its release publishes no hand-back; " + nothingPushed; err.Error() != want {
+			t.Fatalf("the refusal = %q; want %q", err.Error(), want)
+		}
+	}
+	if w.remoteTip("rel-v0.16.0") != before {
+		t.Fatal("a refused hand-back of a release subject pushed")
+	}
+	if res, err := p.do(Request{Record: "rel-v0.16.0", Release: true}); err != nil || res.Act != ActReleased || res.HandBackUnpublished != "" {
+		t.Fatalf("the plain release = %+v, %v; want it released, naming no hand-back", res, err)
+	}
+}
+
 // mustErr is the refusal req meets; the test fails when it meets none.
 func (p *participant) mustErr(req Request) string {
 	p.w.t.Helper()
@@ -238,7 +268,7 @@ func TestAHandBackOfARecordOriginDoesNotHoldIsAPlainTombstone(t *testing.T) {
 	if err != nil || rel.Act != ActReleased {
 		t.Fatalf("the release = %+v, %v", rel, err)
 	}
-	if !strings.Contains(rel.HandBackUnpublished, "holds no one record of iss-5") {
+	if !strings.Contains(rel.HandBackUnpublished, "holds no record of iss-5, or holds it in more than one file") {
 		t.Fatalf("the release says why it marks no hand-back: %q", rel.HandBackUnpublished)
 	}
 	if got := w.trailerValues(w.remoteTip("iss-5"), "Abcd-Handed-Back"); got != nil {

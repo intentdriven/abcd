@@ -744,6 +744,11 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote
 			}
+			// An issue run's refused step is logged on its lane, which a
+			// drain reads to hand a stuck lane back (stuck.go).
+			if noteRefusal(st, err, now) {
+				moved = true
+			}
 			if moved || renewed {
 				// The wait, or a later lane's refusal, is the call's answer,
 				// and the time a lane began waiting for its full check, or
@@ -903,6 +908,7 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		}
 		performed := lane.Stage
 		verified := await.Receipt
+		lane.Refused = nil
 		lane.Awaits = slices.Delete(slices.Clone(lane.Awaits), k, k+1)
 		if len(lane.Awaits) == 0 {
 			lane.Awaits = nil
