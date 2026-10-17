@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/06-delivery/01-build-sequence.md"
 remedy: "Rewrite .abcd/development/brief/06-delivery/01-build-sequence.md:35 to match the shipped surface: internal/adapter/ holds four packages beyond the scanner seam and its gitleaks backend: hosting, openaiapi, tailscale and repoprompt (the RepoPrompt reviewer-route MCP client, itd-6, imported by internal/core/oracle/review.go and listed in…"
+resolution: "The build sequence now counts four adapter packages outside the capability seams and names repoprompt, the opt-in RepoPrompt reviewer route, beside openaiapi, hosting and tailscale."
+impact: internal
 ---
 
 The brief at .abcd/development/brief/06-delivery/01-build-sequence.md:35, .abcd/development/brief/06-delivery/01-build-sequence.md:26-29 says: Three further adapter packages stand outside the capability seams: `openaiapi`, `hosting`, and `tailscale`. The shipped surface differs: internal/adapter/ holds four packages beyond the scanner seam and its gitleaks backend: hosting, openaiapi, tailscale and repoprompt (the RepoPrompt reviewer-route MCP client, itd-6, imported by internal/core/oracle/review.go and listed in internal/README.md:290). The count is three where the tree has four, and the chapter never names repoprompt. (v0.14.2 release crosscheck, stale-count, raised by opus+sonnet in a37.)
