@@ -1226,8 +1226,8 @@ is); `abcd` and `keychain` take the key piped in on stdin from a file or a
 variable, or, when the person runs the command in a terminal, pasted on hidden
 input: abcd prints one line on stderr, "Paste the key for <provider> and press
 Enter. It is not shown.", and reads the key with echo off. An empty paste is
-refused as an empty pipe is. It verifies the provider with one call to the first model listed,
-and only when that call succeeds keeps the key in that home and writes the
+refused as an empty pipe is. It verifies the provider with a call to the first model listed,
+asked once more on the usage refusal below, and only when the verification succeeds keeps the key in that home and writes the
 provider block (the base URL, the key's name and the models, the allowlist)
 into `~/.abcd.noindex/config.json`. Nothing goes into the repository or the harness's
 settings, and a failed verification writes nothing. The verification call

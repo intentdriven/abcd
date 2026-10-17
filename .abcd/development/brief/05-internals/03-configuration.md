@@ -154,8 +154,8 @@ rather than skipped:
 - **A provider block sits on the machine alone.** It names the address a key is
   sent to, so a repository's `.abcd/config.json` declaring `oracle.api` is
   refused: a checkout must never be able to aim the person's key at a server of
-  its choosing. `abcd ahoy connect` writes the block, after one verification
-  call, and it is the one write abcd makes to `~/.abcd.noindex/config.json`.
+  its choosing. `abcd ahoy connect` writes the block once its verification
+  succeeds (asked at most twice, below), and it is the one write abcd makes to `~/.abcd.noindex/config.json`.
 - **A call asks for its usage unless the block says not to.** The adapter sends
   `stream_options.include_usage` with every call, so the streamed answer ends
   with the token counts and the cost the call record carries (itd-166). A
