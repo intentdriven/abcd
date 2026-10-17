@@ -3,11 +3,15 @@
 Almost nothing here is a decision anyone has to make. Installing abcd asks four
 questions, records the answers, and gets on with it; `ahoy install
 --attribution` writes one more key and `ahoy install --outbound` two more, and
-four further keys can be hand-set and are read but never written. Beyond those eleven, the binary reads only keys a
-person opts into: the provider adapter's `oracle` keys and the interview's list
-style, both below, the implement loop's `pace`
-(`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
-and `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
+six further keys can be hand-set and are read but never written. Beyond those
+thirteen, the binary reads only keys a person opts into: the provider adapter's
+`oracle` keys (the reviewer route's `oracle.review` among them) and the
+interview's list style, both below, the implement loop's `pace`
+(`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
+keys (`internal/core/intent/consistency_config.go`), the reservation holder's
+`reservation.github_username`, read from the machine layer alone
+(`internal/core/claim/holder.go`), and the runner routes under `roles` and
+`runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
 answers, or an axis the design commits to and has not built.
 
