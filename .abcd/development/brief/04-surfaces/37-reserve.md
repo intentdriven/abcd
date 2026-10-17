@@ -166,7 +166,9 @@ step 11): the declaration is `linguist-generated` (set, or `=true`) in the root
 `.gitattributes` of origin's default branch as last fetched, read as stored
 with a 256 KiB cap and no fetch; a nested `.gitattributes`,
 `.git/info/attributes` and the working tree are never read, because the
-declaration must be one every account shares. Its patterns follow git's
+declaration must be one every account shares, and a file at or below a
+directory holding its own `.gitattributes` is never generated, since that file
+could unset the attribute there. Its patterns follow git's
 gitattributes rules for the subset abcd reads (a basename at any depth, a
 pattern with a slash anchored to the root, `*`, `?`, classes and `**`, a later
 line over an earlier one), and a file counts only when origin's default branch

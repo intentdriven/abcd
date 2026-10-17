@@ -230,3 +230,30 @@ func TestContentionAgreesWithCrowdingOnGeneratedFiles(t *testing.T) {
 		t.Fatalf("Contention over a.go = %q", why)
 	}
 }
+
+// wantGenerated fails unless GeneratedFiles in dir answers want for each path,
+// with why as its reason.
+func wantGenerated(t *testing.T, dir string, want map[string]bool, why string) {
+	t.Helper()
+	g, got := GeneratedFiles(dir)
+	if got != why {
+		t.Fatalf("GeneratedFiles reason = %q; want %q", got, why)
+	}
+	for p, w := range want {
+		if g.Is(p) != w {
+			t.Errorf("Is(%q) = %v; want %v", p, !w, w)
+		}
+	}
+}
+
+// TestAFileUnderANestedDeclarationIsNeverGenerated: only the root
+// .gitattributes is read, so a file at or below a directory holding its own
+// .gitattributes, which could unset the attribute, is never generated.
+func TestAFileUnderANestedDeclarationIsNeverGenerated(t *testing.T) {
+	w := newWorld(t)
+	w.seed.Write("docs/guides/.gitattributes", "* -linguist-generated\n")
+	w.declare("*.md linguist-generated\n", "docs/a.md", "docs/guides/intro.md", "docs/guides/deep/x.md", "docs/guidesx.md")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	wantGenerated(t, p.dir, map[string]bool{"docs/a.md": true, "docs/guidesx.md": true, "README.md": true,
+		"docs/guides/intro.md": false, "docs/guides/deep/x.md": false}, "")
+}

@@ -15,7 +15,9 @@ import (
 // path two reservations share. The declaration is the one every account
 // shares: the root .gitattributes on origin's default branch, as this checkout
 // last fetched it. A nested .gitattributes, .git/info/attributes and the
-// working tree are never read, and reading it is a disk read, never a fetch.
+// working tree are never read, and reading it is a disk read, never a fetch;
+// a file at or below a directory holding its own .gitattributes is never
+// generated, since that file could unset the attribute there.
 //
 // Every misreading leans towards "not generated", so an overlap is still
 // refused: an absent file, or no default branch, declares nothing; a file that
@@ -67,14 +69,39 @@ func GeneratedFiles(root string) (Generated, string) {
 	if err != nil {
 		return Generated{}, fmt.Sprintf("the files on %s could not be listed: %s", gitutil.ShortRef(ref), redacted(err))
 	}
+	entries := strings.Split(out, "\x00")
+	// A directory holding its own .gitattributes could unset the attribute
+	// there, and only the root one is read, so nothing at or below it is
+	// generated.
+	nested := map[string]bool{}
+	for _, entry := range entries {
+		if _, p, ok := strings.Cut(entry, "\t"); ok {
+			if dir, ok := strings.CutSuffix(p, "/.gitattributes"); ok {
+				nested[dir] = true
+			}
+		}
+	}
 	files := map[string]bool{}
-	for _, entry := range strings.Split(out, "\x00") {
+	for _, entry := range entries {
 		meta, p, ok := strings.Cut(entry, "\t")
-		if f := strings.Fields(meta); ok && len(f) == 3 && f[1] == "blob" && rules.generated(p) {
+		if f := strings.Fields(meta); ok && len(f) == 3 && f[1] == "blob" && !underNested(p, nested) && rules.generated(p) {
 			files[p] = true
 		}
 	}
 	return Generated{files: files}, ""
+}
+
+// underNested reports whether p lies at or below a directory in nested.
+func underNested(p string, nested map[string]bool) bool {
+	if len(nested) == 0 {
+		return false
+	}
+	for dir := path.Dir(p); dir != "."; dir = path.Dir(dir) {
+		if nested[dir] {
+			return true
+		}
+	}
+	return false
 }
 
 // rootAttributes is the root .gitattributes on ref, "" when there is none,

@@ -117,7 +117,9 @@ those its root `.gitattributes`, as last fetched, marks `linguist-generated`
 (or `linguist-generated=true`). That one file is read, never a nested
 `.gitattributes`, `.git/info/attributes` or this checkout's own copy, because
 the declaration must be one every account shares; reading it is a disk read,
-never a fetch. A directory is never generated, even when every file under it
+never a fetch. A file at or below a directory that holds its own
+`.gitattributes` is never shared, since that file could unset the attribute
+there. A directory is never generated, even when every file under it
 is, so two directory footprints that share still overlap. When the file is
 there but cannot be read (it is not a regular file, or is over 256 KiB),
 nothing is shared, the refusal adds "generated files were not recognised: …",
