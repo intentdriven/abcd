@@ -1967,7 +1967,7 @@ abcd implement leave --session s-example
 
 Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.
 
-**Usage:** `abcd implement load --site preflight|eval-harness | --wait|--race-gate [--timeout <duration>] [-- <command>...] [flags]`
+**Usage:** `abcd implement load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>] [flags]`
 
 Read the machine's load averages and process table once and warn when a program
 outside the running work has used nearly all the CPU it could get for longer than
@@ -2041,7 +2041,9 @@ gives up after --timeout (30m0s by default), exiting 1 and naming what it
 was still waiting on. --json reports what it waited on and for how long.
 
 With --race-gate in place of --wait it waits at the race gate, which `make
-preflight` runs before its race stage; it is spelt without --wait because an
+preflight` runs before its race stage. It takes no command after `--`: it gates
+the race stage that follows it, and a race run of your own goes through
+`--wait -- go test -race`. It is spelt without --wait because an
 older abcd reads any `implement load --wait` as a waiter at its first gate, and
 would count a preflight at its race gate as queued, not in its tests, so the two
 are refused together. At one preflight at a time, the default, it opens at once,

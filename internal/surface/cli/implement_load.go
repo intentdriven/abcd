@@ -45,7 +45,7 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 	var wait, race bool
 	var timeout time.Duration
 	cmd := &cobra.Command{
-		Use: "load --site preflight|eval-harness | --wait|--race-gate [--timeout <duration>] [-- <command>...]",
+		Use: "load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>]",
 		Long: "Read the machine's load averages and process table once and warn when a program\n" +
 			"outside the running work has used nearly all the CPU it could get for longer than\n" +
 			"the stray limit, or when the one-minute load average is above the extreme limit.\n" +
@@ -112,7 +112,9 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"gives up after --timeout (" + implement.WaitDefaultTimeout.String() + " by default), exiting 1 and naming what it\n" +
 			"was still waiting on. --json reports what it waited on and for how long.\n\n" +
 			"With --race-gate in place of --wait it waits at the race gate, which `make\n" +
-			"preflight` runs before its race stage; it is spelt without --wait because an\n" +
+			"preflight` runs before its race stage. It takes no command after `--`: it gates\n" +
+			"the race stage that follows it, and a race run of your own goes through\n" +
+			"`--wait -- go test -race`. It is spelt without --wait because an\n" +
 			"older abcd reads any `implement load --wait` as a waiter at its first gate, and\n" +
 			"would count a preflight at its race gate as queued, not in its tests, so the two\n" +
 			"are refused together. At one preflight at a time, the default, it opens at once,\n" +
@@ -167,8 +169,14 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			if len(args) == 0 {
 				return nil
 			}
-			if !wait && !race {
-				return &exitError{Code: 2, Msg: "abcd implement load: a command to run is given only with --wait or --race-gate, after `--` (nothing checked)"}
+			if race {
+				// The race gate admits the race stage that follows it in the
+				// preflight's own recipe; it never runs a command, so its
+				// hold is always the settle hold.
+				return &exitError{Code: 2, Msg: "abcd implement load: --race-gate takes no command: it gates the race stage that follows it, so a command to run goes after `--` with --wait (nothing waited for)"}
+			}
+			if !wait {
+				return &exitError{Code: 2, Msg: "abcd implement load: a command to run is given only with --wait, after `--` (nothing checked)"}
 			}
 			if cmd.ArgsLenAtDash() != 0 {
 				return &exitError{Code: 2, Msg: "abcd implement load: the command to run goes after `--`: abcd implement load --wait -- <command> (nothing waited for)"}

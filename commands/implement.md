@@ -641,7 +641,8 @@ real directory (a symlink in its place, say) is named changed.
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" implement load --site preflight|eval-harness [--json]
-"${CLAUDE_PLUGIN_ROOT}/abcd" implement load --wait|--race-gate [--timeout <duration>] [--json] [-- <command>...]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement load --wait [--timeout <duration>] [--json] [-- <command>...]
+"${CLAUDE_PLUGIN_ROOT}/abcd" implement load --race-gate [--timeout <duration>] [--json]
 ```
 
 `make preflight` runs this first and the eval harness runs it once at its
@@ -724,8 +725,10 @@ platform), `waited_on` and `waited_s`, with the `gate` it waited at
 back.
 
 Before its race stage `make preflight` waits again, at the race gate,
-`implement load --race-gate`. It is spelt without `--wait`, and the two are
-refused together: an abcd released before the race gate reads any `implement
+`implement load --race-gate`. It takes no command: it gates the race stage
+that follows it, so a command after `--` is refused, and a race run of your own
+goes through `--wait -- go test -race` instead. It is spelt without `--wait`,
+and the two are refused together: an abcd released before the race gate reads any `implement
 load --wait` as a waiter at its first gate, so a preflight waiting at a race
 gate spelt with it would read to that older waiter as queued, not in its test
 stages, and the older waiter would open beside it. At one preflight at a time,

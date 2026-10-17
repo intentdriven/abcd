@@ -214,3 +214,29 @@ func TestImplementLoadWaitGatesARaceCommandAsARaceRun(t *testing.T) {
 		t.Fatalf("plain form: exit %d, want 0 and open:\n%s%s", code, out, errOut)
 	}
 }
+
+// TestImplementLoadRaceGateTakesNoCommand: --race-gate gates the race stage
+// that follows it and never runs a command, so a command after `--` is
+// refused with a fixed message before the machine is read or the slots are
+// resolved, at one slot as above it, and nothing is run.
+func TestImplementLoadRaceGateTakesNoCommand(t *testing.T) {
+	loadFixture(t, machine(3, 3, 3), nil)
+	prev := loadReader
+	loadReader = func() (machineload.Snapshot, error) {
+		t.Fatal("the race gate read the machine for a command it refuses")
+		return machineload.Snapshot{}, nil
+	}
+	t.Cleanup(func() { loadReader = prev })
+	marker := filepath.Join(t.TempDir(), "ran")
+	const want = "abcd implement load: --race-gate takes no command: it gates the race stage that follows it, so a command to run goes after `--` with --wait (nothing waited for)"
+	for _, slots := range []string{"1", "2"} {
+		t.Setenv(implement.PreflightSlotsEnv, slots)
+		code, out, errOut := implementCLI(t, "implement", "load", "--race-gate", "--", "touch", marker)
+		if code != 2 || !strings.Contains(errOut, want) || out != "" {
+			t.Errorf("%s slot(s): exit %d, want 2 with %q:\nstdout %s\nstderr %s", slots, code, want, out, errOut)
+		}
+		if _, err := os.Stat(marker); err == nil {
+			t.Fatalf("%s slot(s): the refused command ran", slots)
+		}
+	}
+}
