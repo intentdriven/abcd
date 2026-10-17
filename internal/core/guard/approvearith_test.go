@@ -63,6 +63,8 @@ func TestArithmeticWithAnUnfixedOperandIsRefused(t *testing.T) {
 		"shopt -s expand_aliases\nalias c=rm\nc -rf x",
 		"set -o posix\nalias c=rm\nc -rf x",
 		`alias c='python3 -c'`,
+		`x=1; alias c=rm`,
+		`bash -c 'shopt -s expand_aliases; alias c=rm'`,
 		`POSIXLY_CORRECT=1 bash -c 'echo'`,
 		`eval $'\x28\x28 n \x29\x29'`,
 		`bash -c $'\050\050n))'`,
@@ -116,6 +118,9 @@ func TestLiteralArithmeticAndPlainCommandsPass(t *testing.T) {
 		`echo ${line:0:20} "${arr[@]}" "${arr[1]}"`,
 		`unset 'a[1]'`,
 		"echo a \\\n  b",
+		`git commit -m 'fix: alias resolution for users'`,
+		`grep -rn alias internal/`,
+		`rg 'alias ' .`,
 	} {
 		if why := arithmeticUnfixed(cmd); why != "" {
 			t.Errorf("arithmeticUnfixed(%q) = %q; want it left alone", cmd, why)
