@@ -474,14 +474,20 @@ nothing is written onto the issue for it (decision 8).
 The judge is a role, `drain-judge`, on the runner routing the build roles take
 (spc-2610161044461448 step 14, dcn-2610161040390001). With no route, the
 default, the request above is the host's. When the person's own layer routes
-`roles.drain-judge.runner` to a runner, the move that writes the host's request
-also writes the runner a brief of its own,
-`.abcd/.work.local/run/drain-judgement.runner.md`, the same question over the
+`roles.drain-judge.runner` to the claude runner, the move that writes the host's
+request also writes the runner a brief of its own, the same question over the
 same quoted record with an answer shape that carries no digest, and starts the
 runner on it through the dispatch every routed role takes, granted Read and
-Write alone and bounded at fifteen minutes. Its answer, at
-`.abcd/.work.local/run/drain-judgement.runner.json`, is read as strictly as the
-host's, abcd filling in the digest of the remedy the brief showed, and taken in
+Write alone and bounded at fifteen minutes. The judge runs in a directory of its
+own: a new one private to the account, outside every working tree, holding its
+brief and its answer alone and removed once the answer is read, with the
+checkout named to the runner only as the place whose programs are never run.
+It can write nothing the drain, the lane or a peer relies on. A routed judge's
+answer steers an unattended lane, so its no is a judgement on text a stranger
+may have written. A route of the judge to opencode is skipped with a diagnostic
+and the judge stays on the host, since opencode runs under its own
+configuration's permissions rather than the tools a role is granted. Its answer
+is read as strictly as the host's, abcd filling in the digest of the remedy the brief showed, and taken in
 that same move as the host's answer handed back would be: a no opens the lane on the
 reservation the drain took to ask it, and a yes is routed and the drain asks
 about the next issue, so a drain started in a plain terminal needs no person's

@@ -448,7 +448,9 @@ the default, or a runner the machine enables under `runner.<name>` (`claude`,
 `opencode`), with an optional model route admitted against its provider's
 allowlist. A role is an agent in the roster, the implementer, or the drain's
 judge, `drain-judge` ([`35-drain.md`](35-drain.md#the-judgement-before-a-lane-opens));
-a route naming any other is skipped with a diagnostic. Only a personal layer, the machine's file or the person's own
+a route naming any other is skipped with a diagnostic, and so is a route of the
+drain's judge to opencode, which runs under its own configuration's permissions
+rather than the tools a role is granted. Only a personal layer, the machine's file or the person's own
 invocation, may hand a role to a runner, because a runner spends the person's
 key (rulings RN2 and OC2, 2026-10-02): the repository's file may keep a role on
 the host, and a route there to a runner is skipped with a diagnostic naming the

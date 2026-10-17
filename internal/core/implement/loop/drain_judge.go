@@ -22,6 +22,14 @@ package loop
 // this checkout backs off while it judges; the run is bounded by
 // drainJudgeTimeout, a small part of the reservation's lease the drain took
 // to ask it.
+//
+// The judge runs in a directory of its own (judgeDir): a new private
+// directory outside every working tree, holding the brief and, once it
+// answers, its answer, and removed when the move has read it. The checkout is
+// named to the runner only as the place whose programs are never run, never
+// as a directory it may write: the answer steers an unattended lane, and the
+// brief quotes a record a stranger may have written, so the judge decides from
+// the brief alone and can change nothing the drain or a peer relies on.
 
 import (
 	"context"
@@ -43,12 +51,13 @@ import (
 // routes.
 const RoleDrainJudge = "drain-judge"
 
-// DrainJudgementRoutedRequestRel is the brief the routed judge follows, and
-// DrainJudgementRoutedAnswerRel where it writes its answer: apart from the
-// host's, so an answer a runner left can never be taken for the host's.
+// drainJudgeBriefName is the brief the routed judge follows, and
+// drainJudgeAnswerName where it writes its answer, each in the judge's own
+// directory (judgeDir): apart from the host's, so an answer a runner left can
+// never be taken for the host's.
 const (
-	DrainJudgementRoutedRequestRel = RunRelDir + "/drain-judgement.runner.md"
-	DrainJudgementRoutedAnswerRel  = RunRelDir + "/drain-judgement.runner.json"
+	drainJudgeBriefName  = "drain-judgement.md"
+	drainJudgeAnswerName = "drain-judgement.json"
 )
 
 // drainJudgeTimeout bounds one routed judgement when the caller names none:
@@ -87,28 +96,34 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	if !judgeRouted(o, d) {
 		return nil, "", nil
 	}
-	routed := j
-	routed.Request, routed.Answer = DrainJudgementRoutedRequestRel, DrainJudgementRoutedAnswerRel
-	root, err := os.OpenRoot(repoRoot)
+	dir, err := judgeDir(repoRoot)
 	if err != nil {
-		return nil, "", fmt.Errorf("opening the checkout: %w", err)
+		return nil, "the drain judge was not started for " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
+			"), so the request is the host's", nil
+	}
+	defer os.RemoveAll(dir)
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, "", fmt.Errorf("opening the drain judge's directory: %w", err)
 	}
 	defer root.Close()
-	if err := root.Remove(routed.Answer); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return nil, "", fmt.Errorf("removing the earlier routed judgement answer %s: %w", routed.Answer, err)
-	}
-	if err := fsutil.WriteFileAtomicInRoot(root, routed.Request, []byte(judgementRequest(iss, v, routed, true)), filePerm); err != nil {
-		return nil, "", fmt.Errorf("writing the routed judgement brief %s: %w", routed.Request, err)
+	routed := j
+	routed.Request, routed.Answer = filepath.Join(dir, drainJudgeBriefName), filepath.Join(dir, drainJudgeAnswerName)
+	if err := fsutil.WriteFileAtomicInRoot(root, drainJudgeBriefName, []byte(judgementRequest(iss, v, routed, true)), filePerm); err != nil {
+		return nil, "", fmt.Errorf("writing the drain judge's brief: %w", err)
 	}
 	timeout := d.JudgeTimeout
 	if timeout == 0 {
 		timeout = drainJudgeTimeout
 	}
+	// The runner runs in the judge's directory, and the checkout is named
+	// only as the place whose programs are never run.
 	req := runner.Request{
 		Role:      RoleDrainJudge,
-		Brief:     absIn(repoRoot, routed.Request),
-		Receipt:   absIn(repoRoot, routed.Answer),
-		Dir:       filepath.Clean(repoRoot),
+		Brief:     routed.Request,
+		Receipt:   routed.Answer,
+		Dir:       dir,
+		Checkout:  filepath.Clean(repoRoot),
 		Tools:     append([]string(nil), drainJudgeTools...),
 		SessionID: fmt.Sprintf("%s-%s-%d", RoleDrainJudge, iss.ID, now.Unix()),
 		Timeout:   timeout,
@@ -151,23 +166,40 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	return taken, "", nil
 }
 
+// judgeDir makes the routed judge's directory: a new one, private to this
+// account (os.MkdirTemp makes it 0700), in the system's temporary directory, and refused, removed
+// again, when that lies inside the checkout, so the judge's directory is
+// never a part of the working tree the drain and its peers read.
+func judgeDir(repoRoot string) (string, error) {
+	dir, err := os.MkdirTemp("", "abcd-drain-judge-")
+	if err != nil {
+		return "", fmt.Errorf("making a directory of its own: %w", err)
+	}
+	real, checkout := fsutil.RealExistingPath(dir), fsutil.RealExistingPath(filepath.Clean(repoRoot))
+	if fsutil.PathWithin(real, checkout, fsutil.CaseFoldingFS()) {
+		_ = os.RemoveAll(dir)
+		return "", errors.New("the system's temporary directory lies inside the checkout, and the judge runs only in a directory outside it")
+	}
+	return dir, nil
+}
+
 // readRoutedAnswer reads the routed judge's answer to j, strictly, fills in
 // the digest abcd computed over the remedy the brief showed, and judges it
 // as a host's answer is judged. Every refusal is the validator's, so the
 // dispatch records a fallback and the host's request stands.
 func readRoutedAnswer(root *os.Root, j DrainJudging, plan capture.DrainPlan, now time.Time) (DrainJudgement, error) {
-	data, err := fsutil.ReadGuardedInRoot(root, DrainJudgementRoutedAnswerRel, maxJudgementBytes)
+	data, err := fsutil.ReadGuardedInRoot(root, drainJudgeAnswerName, maxJudgementBytes)
 	if err != nil {
-		return DrainJudgement{}, fmt.Errorf("the answer at %s cannot be read: %v", DrainJudgementRoutedAnswerRel, err)
+		return DrainJudgement{}, fmt.Errorf("the answer %s cannot be read: %v", drainJudgeAnswerName, fsutil.RedactHome(err.Error()))
 	}
 	var ra RoutedJudgementAnswer
 	if err := jsonstrict.Decode(data, &ra); err != nil {
-		return DrainJudgement{}, fmt.Errorf("the answer at %s does not parse as a judgement: %s", DrainJudgementRoutedAnswerRel, termsafe.Sanitize(err.Error()))
+		return DrainJudgement{}, fmt.Errorf("the answer %s does not parse as a judgement: %s", drainJudgeAnswerName, termsafe.Sanitize(err.Error()))
 	}
 	a := JudgementAnswer{SchemaVersion: ra.SchemaVersion, Issue: ra.Issue, RemedySHA256: j.RemedySHA256,
 		Answer: ra.Answer, Kind: ra.Kind, Reason: ra.Reason}
 	if gaps := judgementGaps(a, j); len(gaps) > 0 {
-		return DrainJudgement{}, fmt.Errorf("the answer at %s is missing %s", DrainJudgementRoutedAnswerRel, strings.Join(gaps, "; "))
+		return DrainJudgement{}, fmt.Errorf("the answer %s is missing %s", drainJudgeAnswerName, strings.Join(gaps, "; "))
 	}
 	return judgeAnswer(a, j, plan, now)
 }

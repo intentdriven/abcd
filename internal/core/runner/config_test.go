@@ -263,3 +263,26 @@ func TestTheDrainJudgeIsARoleARunnerMayTake(t *testing.T) {
 		t.Fatalf("the route is read with no diagnostic: %v", c.Diagnostics)
 	}
 }
+
+// TestTheDrainJudgeIsNeverRoutedToOpencode: the opencode runner runs under
+// the permissions its own configuration sets, not the tools a role is
+// granted, so it cannot be held to the judge's Read and Write; a route of
+// the drain's judge to it is skipped with a diagnostic saying so, and the
+// judge stays on the host. The implementer's route to opencode stands.
+func TestTheDrainJudgeIsNeverRoutedToOpencode(t *testing.T) {
+	c := mustLoad(t, `{"roles":{"drain-judge":{"runner":"opencode"},"implementer":{"runner":"opencode"}},"runner":{"opencode":{}}}`, "")
+	if r := c.RouteFor("drain-judge"); r.Runner != Host {
+		t.Fatalf("route = %+v, want the host", r)
+	}
+	if r := c.RouteFor("implementer"); r.Runner != OpenCode {
+		t.Fatalf("the implementer's route to opencode stands: %+v", r)
+	}
+	if len(c.Diagnostics) != 1 {
+		t.Fatalf("diagnostics = %q, want one", c.Diagnostics)
+	}
+	for _, want := range []string{"roles.drain-judge.runner", "opencode", "tools", "claude"} {
+		if !strings.Contains(c.Diagnostics[0], want) {
+			t.Errorf("diagnostic %q lacks %q", c.Diagnostics[0], want)
+		}
+	}
+}

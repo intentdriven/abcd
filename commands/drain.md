@@ -201,12 +201,18 @@ what it did in `next`:
   judging.
 - **Its judge may be routed to a runner.** When the person's own
   `~/.abcd.noindex/config.json` routes the `drain-judge` role to a runner
-  (`roles.drain-judge.runner`, `claude` or `opencode`, the runner enabled under
-  `runner.<name>`), the move that writes the request also starts that runner on
-  a brief of its own, `.abcd/.work.local/run/drain-judgement.runner.md`, and
-  takes the answer it writes to `.abcd/.work.local/run/drain-judgement.runner.json`
-  in that same move, validated as yours would be: the routed answer carries no
-  `remedy_sha256`, which abcd computes itself, and no `--judgement` is given.
+  (`roles.drain-judge.runner: "claude"`, the runner enabled under
+  `runner.claude`), the move that writes the request also starts that runner on
+  a brief of its own and takes the answer it writes in that same move,
+  validated as yours would be: the routed answer carries no `remedy_sha256`,
+  which abcd computes itself, and no `--judgement` is given. The judge runs in
+  a directory of its own, a new private one outside every working tree that
+  holds its brief and its answer alone and is removed once the answer is read,
+  granted Read and Write alone, so it can change nothing in the checkout. A
+  routed judge's answer steers an unattended lane, so its `no` is a judgement
+  on text a stranger may have written. A route to `opencode` is skipped with a
+  diagnostic and the judge stays on the host: opencode runs under its own
+  configuration's permissions, not the tools a role is granted.
   `judged.route` names the runner asked, the one that ran and its model. A
   runner that does not answer, or answers out of shape, is recorded in the
   drain's state (`judge_fallbacks`) and the request above is left to you, as

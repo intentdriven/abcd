@@ -88,8 +88,26 @@ func loopFakeHarness(mode string) int {
 	if answer, ok := strings.CutPrefix(mode, "judge-"); ok {
 		// The drain's judge (judgement.go): the answer the routed brief asks
 		// for, naming the issue the brief names and no digest, which abcd
-		// computes itself.
+		// computes itself. It logs the directory it was started in, what that
+		// directory held, and the brief, since the directory is removed once
+		// the move has read the answer.
 		brief, _ := os.ReadFile(field("Brief: "))
+		if dir := os.Getenv(loopFakeLogEnv); dir != "" {
+			cwd, _ := os.Getwd()
+			var held []string
+			if es, err := os.ReadDir("."); err == nil {
+				for _, e := range es {
+					held = append(held, e.Name())
+				}
+			}
+			mode := ""
+			if fi, err := os.Stat("."); err == nil {
+				mode = fi.Mode().Perm().String()
+			}
+			where, _ := json.Marshal(map[string]any{"cwd": cwd, "held": held, "mode": mode})
+			_ = os.WriteFile(filepath.Join(dir, name+".judge-dir.json"), where, 0o600)
+			_ = os.WriteFile(filepath.Join(dir, name+".judge-brief.md"), brief, 0o600)
+		}
 		issue := ""
 		for _, line := range strings.Split(string(brief), "\n") {
 			if v, ok := strings.CutPrefix(line, "- id: "); ok && issue == "" {

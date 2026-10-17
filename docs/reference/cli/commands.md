@@ -1229,8 +1229,9 @@ a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the
 remedy changes what a user sees or a trust boundary, and opens nothing. The host
 writes its answer where the request says and hands it back with --judgement <file>,
 which is validated strictly; a refused answer changes nothing. When your machine's
-config routes the drain-judge role to a runner (roles.drain-judge.runner), the same
-move asks that runner instead, on a brief of its own, and takes its answer as
+config routes the drain-judge role to the claude runner (roles.drain-judge.runner), the
+same move asks that runner instead, on a brief of its own in a private directory
+outside every working tree, and takes its answer as
 --judgement would, abcd computing the remedy's digest itself; a runner that does not
 answer leaves the request to the host, recorded as a fallback. A yes hands the
 issue back before any lane opens, routed as a lane's hand-back of the same kind

@@ -250,6 +250,16 @@ func (c *Config) readRoles(s *layered.Stack) error {
 					"had not routed it; to run it through %s, set %s in %s", where, name, name, key, layered.Config.MachineOrigin()))
 				continue
 			}
+			if role == roleDrainJudge && name == OpenCode {
+				// The drain's judge reads a record a stranger may have
+				// written, and is held to the tools it is granted; opencode
+				// runs under its own configuration's permissions instead.
+				c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s is %q, which is skipped: opencode runs under "+
+					"the permissions its own configuration sets rather than the tools a role is granted, so it cannot be held "+
+					"to the drain judge's Read and Write, and the judge runs as if it had not been routed; to route it to a "+
+					"runner, name %s", where, name, Claude))
+				continue
+			}
 			if name == Host && !personal(f.Layer) {
 				if d, ok := displacedRunnerRoute(found[i+1:]); ok {
 					c.Diagnostics = append(c.Diagnostics, fmt.Sprintf("runner: %s is %q, which keeps the role on the host "+

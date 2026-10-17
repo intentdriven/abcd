@@ -179,7 +179,9 @@ review is skipped.
   `~/.abcd.noindex/config.json`; the route, the sealing and the fallback are in
   [`34-build.md`](../04-surfaces/34-build.md). Besides the reviewers and the
   implementer, the drain's judge, `drain-judge`, takes the same route
-  ([`35-drain.md`](../04-surfaces/35-drain.md#the-judgement-before-a-lane-opens)).
+  ([`35-drain.md`](../04-surfaces/35-drain.md#the-judgement-before-a-lane-opens)),
+  to the claude runner alone, in a private directory of its own outside every
+  working tree.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the

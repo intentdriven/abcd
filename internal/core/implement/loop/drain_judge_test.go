@@ -2,14 +2,17 @@ package loop
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/runner"
+	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
 // The routed drain judge (spc-2610161044461448 step 14; iss-2610161015422306;
@@ -67,8 +70,8 @@ func TestARoutedDrainJudgesAnswerIsTakenWithAbcdComputingTheDigest(t *testing.T)
 	if len(tr.stored) != 1 || tr.stored[0] != "claude "+RoleDrainJudge+" true" {
 		t.Fatalf("the judge's transcript is stored: %v", tr.stored)
 	}
-	brief, err := os.ReadFile(filepath.Join(repo.Root(), filepath.FromSlash(DrainJudgementRoutedRequestRel)))
-	if err != nil {
+	brief, err := os.ReadFile(filepath.Join(e.log, "claude.judge-brief.md"))
+	if err != nil || len(brief) == 0 {
 		t.Fatalf("the judge's brief is written: %v", err)
 	}
 	for _, not := range []string{"remedy_sha256", "abcd drain --judgement"} {
@@ -76,7 +79,7 @@ func TestARoutedDrainJudgesAnswerIsTakenWithAbcdComputingTheDigest(t *testing.T)
 			t.Errorf("the judge's brief asks for no %q:\n%s", not, brief)
 		}
 	}
-	if !strings.Contains(string(brief), DrainJudgementRoutedAnswerRel) {
+	if !strings.Contains(string(brief), drainJudgeAnswerName) {
 		t.Errorf("the judge's brief names where its answer goes:\n%s", brief)
 	}
 	argv := e.argv(t, "claude")
@@ -174,5 +177,75 @@ func TestARoutedNoOpensTheLaneOnTheHoldTakenToAskIt(t *testing.T) {
 	}
 	if note := recordNote(t, repo, res.Start.RunID, StageReservation); !strings.Contains(note, "before its judgement") {
 		t.Fatalf("the run record names the hold it started on: %q", note)
+	}
+}
+
+// judgeDirOf is where the fake judge was started and what it found there.
+type judgeDirOf struct {
+	Cwd  string   `json:"cwd"`
+	Held []string `json:"held"`
+	Mode string   `json:"mode"`
+}
+
+func readJudgeDir(t *testing.T, e driveEnv) judgeDirOf {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(e.log, "claude.judge-dir.json"))
+	if err != nil {
+		t.Fatalf("the judge was not started: %v", err)
+	}
+	var d judgeDirOf
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatal(err)
+	}
+	return d
+}
+
+// TestTheRoutedJudgeRunsInADirectoryOfItsOwn: the routed judge is started in
+// a new private directory outside the checkout, holding its brief alone, and
+// is handed no directory of the checkout's to write; the directory is gone
+// once the move has read the answer, and nothing of the judge's is left in
+// the checkout. Its answer steers an unattended lane, and its brief quotes a
+// record a stranger may have written, so it may write nothing the drain or a
+// peer relies on.
+func TestTheRoutedJudgeRunsInADirectoryOfItsOwn(t *testing.T) {
+	repo := issueRepo(t)
+	e := judgeEnv(t, "judge-no")
+	res, err := Drain(repo.Root(), Options{Runners: runnerConfig(t, judgeRoutedConfig, "")}, DrainOptions{Transcripts: &memTranscripts{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Judged == nil || res.Judged.Answer != JudgementNo || res.Start == nil {
+		t.Fatalf("the judge's no is taken and the lane opens: %+v", res)
+	}
+	d := readJudgeDir(t, e)
+	checkout := fsutil.RealExistingPath(repo.Root())
+	cwd := fsutil.RealExistingPath(d.Cwd)
+	if fsutil.PathWithin(cwd, checkout, fsutil.CaseFoldingFS()) {
+		t.Fatalf("the judge runs inside the checkout: %s in %s", cwd, checkout)
+	}
+	if !slices.Equal(d.Held, []string{drainJudgeBriefName}) {
+		t.Fatalf("the judge's directory holds its brief alone: %v", d.Held)
+	}
+	if d.Mode != "-rwx------" {
+		t.Fatalf("the judge's directory is private to this account: %s", d.Mode)
+	}
+	if _, err := os.Lstat(d.Cwd); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("the judge's directory is removed once its answer is read: %v", err)
+	}
+	for _, a := range e.argv(t, "claude") {
+		v, ok := strings.CutPrefix(a, "--add-dir=")
+		if ok && fsutil.PathWithin(fsutil.RealExistingPath(v), checkout, fsutil.CaseFoldingFS()) {
+			t.Fatalf("the judge is handed a directory of the checkout's: %s", a)
+		}
+	}
+	run := filepath.Join(repo.Root(), filepath.FromSlash(RunRelDir))
+	es, err := os.ReadDir(run)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, en := range es {
+		if strings.HasPrefix(en.Name(), "drain-judgement.runner") {
+			t.Fatalf("the judge's brief or answer is left in the checkout: %s", en.Name())
+		}
 	}
 }
