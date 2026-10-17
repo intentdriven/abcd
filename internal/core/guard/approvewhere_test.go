@@ -12,10 +12,10 @@ import (
 // The host keeps the shell's working directory from one call to the next,
 // while the approver judges every command as run from the working tree. An
 // approved command therefore runs from the working tree: the approval hands
-// back `cd -- '<dir>' && {`, a newline, the command, a newline and `}`, so
-// the place it was judged for is the place it runs, nothing in the command
-// runs when the change of directory fails, and a change of directory inside
-// the line still holds for the rest of that line.
+// back `cd -- '<dir>' && exec /bin/bash --noprofile --norc -c '<command>'`,
+// so the place it was judged for is the place it runs, nothing in the
+// command runs when the change of directory fails, and a change of directory
+// inside the line still holds for the rest of that line.
 
 // TestApprovedCommandRunsFromTheWorkingTree: an allow returns the command
 // prefixed with a change into the working tree, the directory quoted as one
@@ -33,18 +33,18 @@ func TestApprovedCommandRunsFromTheWorkingTree(t *testing.T) {
 	if err := json.Unmarshal(updated, &got); err != nil {
 		t.Fatal(err)
 	}
-	want := "cd -- '" + strings.ReplaceAll(dir, `'`, `'\''`) + "' && {\ngo vet ./...\n}"
+	want := "cd -- '" + strings.ReplaceAll(dir, `'`, `'\''`) + "' && exec /bin/bash --noprofile --norc -c 'go vet ./...'"
 	if got["command"] != want || got["description"] != "vet" || len(got) != 2 {
 		t.Errorf("updated input = %s; want command %q and the description", updated, want)
 	}
 }
 
-// TestApprovedCommandRunsOnlyFromTheWorkingTree: the whole command sits
-// inside the group the change of directory guards, so when the directory
-// cannot be entered no part of it runs, a part after `||` or `;` included,
-// and a command that ends in a here-document or carries a trailing comment
-// runs as the same command inside the group. Each line is run by every
-// shell the host may hand it to that is installed.
+// TestApprovedCommandRunsOnlyFromTheWorkingTree: the whole command is the
+// one word of the bash call the change of directory guards, so when the
+// directory cannot be entered no part of it runs, a part after `||` or `;`
+// included, and a command that ends in a here-document or carries a trailing
+// comment runs as the same command. Each line is run by every shell the host
+// may hand it to that is installed.
 func TestApprovedCommandRunsOnlyFromTheWorkingTree(t *testing.T) {
 	var shells []string
 	for _, sh := range []string{"bash", "zsh", "sh"} {

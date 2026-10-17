@@ -266,8 +266,8 @@ func TestARunnerLaunchsPromptsAreAnsweredByTheGuard(t *testing.T) {
 	if err := json.Unmarshal([]byte(answers["go test ./..."]), &clean); err != nil {
 		t.Fatal(err)
 	}
-	// It runs from the working tree it was judged for.
-	if clean.Behavior != "allow" || clean.UpdatedInput["command"] != "cd -- '"+f.repo+"' && {\ngo test ./...\n}" {
+	// It runs from the working tree it was judged for, under bash.
+	if clean.Behavior != "allow" || clean.UpdatedInput["command"] != "cd -- '"+f.repo+"' && exec /bin/bash --noprofile --norc -c 'go test ./...'" {
 		t.Errorf("the clean command was answered %+v; want allow with the command judged, run from the working tree", clean)
 	}
 }

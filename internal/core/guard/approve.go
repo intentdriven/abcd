@@ -77,11 +77,10 @@ const (
 	// launched working tree, the run's own directories and the temporary
 	// directory.
 	outsideRemovalEntryID = "removal-outside-tree"
-	// groupBrokenEntryID: the command, placed inside the group that runs it
-	// from the working tree, would close that group before its end or leave
-	// the text unparsable as one group (a stray } or ), a closing keyword
-	// with nothing open, a backslash at its end), so part of it could run
-	// outside the change of directory.
+	// groupBrokenEntryID: the text that runs the command from the working
+	// tree under bash does not read back as that change of directory and one
+	// bash call holding the whole command, so part of it could run outside
+	// the change of directory or outside bash.
 	groupBrokenEntryID = "tree-group-broken"
 )
 
@@ -150,8 +149,8 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 	run, intact := runFromIntact(files.dir, command)
 	if !intact {
 		return refusal(groupBrokenEntryID,
-			"the command closes the group that runs it from the working tree before its end, or leaves that group unparsable (a } or ) with nothing open for it to close, a closing keyword such as fi, done or esac with nothing open, a } after a command's words, which zsh reads as a close, or a backslash at its very end), so part of it could run outside the working tree.",
-			"the same command with every group, if, loop and case it opens closed inside it, and no backslash at its end."), nil
+			"the text that runs the command from the working tree under bash did not read back as that change of directory and one bash call holding the whole command, so part of it could run outside the working tree or outside bash.",
+			"the same command as plain text, without bytes the shell cannot pass on; say in the receipt if it is refused again."), nil
 	}
 	out := map[string]string{"command": run}
 	var description string
@@ -166,19 +165,23 @@ func ApprovePrompt(ld Loaded, files *Files, tool string, input json.RawMessage) 
 }
 
 // runFrom is command as the host runs it once approved: from dir, the
-// working tree it was judged for. The host keeps the shell's directory from
-// one call to the next, so without the change an approved command would run
-// wherever the previous one left the shell. The command sits on lines of its
-// own inside a group the change of directory guards, so when the directory
-// cannot be entered no part of it runs, not even one after `||` or `;`, and
-// a here-document that ends it, or a comment at its end, closes before the
-// group does. A change of directory inside the command still holds for the
-// rest of its line.
+// working tree it was judged for, under bash. The host keeps the shell's
+// directory from one call to the next, so without the change an approved
+// command would run wherever the previous one left the shell; and the host
+// runs the text in the person's login shell, which may be zsh, whose grammar
+// is not the one the guard reads (glob qualifiers, `(:A)` modifiers,
+// `{ … } always { … }`). So the login shell only changes directory and,
+// when that succeeds, replaces itself with bash, its profile and rc files
+// switched off, which runs the command, handed over as one single-quoted
+// word. When the
+// directory cannot be entered no part of the command runs, not even one
+// after `||` or `;`. A change of directory inside the command still holds
+// for the rest of it.
 func runFrom(dir, command string) string {
 	if !filepath.IsAbs(dir) {
 		return command
 	}
-	return "cd -- " + shellquote.Single(dir) + " && {\n" + command + "\n}"
+	return "cd -- " + shellquote.Single(dir) + " && exec " + approvedShell + " --noprofile --norc -c " + shellquote.Single(command)
 }
 
 // approveShell answers a prompt for one shell command line, read against ld's
