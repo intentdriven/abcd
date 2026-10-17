@@ -102,6 +102,7 @@ _None open; decisions 5 to 7 settle the interview's questions, and decisions 8 t
 - **refines `itd-50`** (the audit loop to acceptance): The verb's validator stage is where that loop would run.
 - **refines `itd-2609170822093401`** (the model tier): Decides which runner a role gets.
 - **supersedes `itd-29`** (the autonomous spec run): Its run verbs re-land here on the intent key; its budget check and rate-limit checkpoint live in the pacing intent.
+- **built on by `itd-2610161733316518`** (one feature built across a model matrix): Builds one intent several times on a frozen base, once per cell of a model matrix, with this loop's stages and none of its landing.
 
 ## Audit Notes
 

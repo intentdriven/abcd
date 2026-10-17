@@ -26,13 +26,19 @@ This is facilitator-tier diagnostic data and it never surfaces to the product th
 
 The hard constraint is that a model cannot reliably introspect the settings it runs under, so the dispatching layer has to supply them. Any design that asks the agent to state its own settings inherits the truthfulness problem the attribution gate already has.
 
+Widened by the decomposition of itd-2610161733316518 (2026-10-16, routing confirmed by the product thinker): the record has two sides. The **asked** side is what the dispatching layer requested: model and snapshot, provider and any provider pin, sampling, seed, effort, context, and the prompt and tool definitions by hash. The **served** side is what actually answered: the model and upstream provider the response names, any fallback taken, token counts including reasoning and cached, and cost where the provider reports it. A local model adds the weight file's fingerprint, its quantisation, the runtime and its version, and the served context. Whatever a route cannot expose is written down as unpinned or self-reported rather than left out (see the principle that a model run is re-runnable, not reproducible).
+
 ## Acceptance Criteria
 
 > _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
 
 ## Open Questions
 
-_None recorded yet._
+1. **Who reads it.** This record keeps the settings at facilitator tier, never surfaced to the product thinker; the model-matrix run's report shows the product thinker a comparison whose trust rests on them. Settle whether the report shows a drift flag only, with the record itself staying facilitator-tier.
+
+## Typed Links
+
+- **blocks `itd-2610161733316518`** (one feature built across a model matrix): the run's manifest is this record, and nothing it compares is interpretable without it.
 
 ## Audit Notes
 
