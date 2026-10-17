@@ -509,8 +509,20 @@ func (f approveFacts) outsideRemoval(u pathUse) bool {
 	if !u.remove || !u.ok || u.path == "" {
 		return false
 	}
-	resolved := filepath.Join(fsutil.RealExistingPath(filepath.Dir(u.path)), filepath.Base(u.path))
-	return !f.within(u.path, f.removable) || !f.within(resolved, f.removable)
+	return !f.withinResolved(u.path, f.removable, false)
+}
+
+// withinResolved reports whether p is in one of dirs, or is one, both as
+// written and with its existing directories resolved through symlinks. Its
+// own last name is followed only where followLast says: a removal removes a
+// link, not what it leads to, while the directory a glob lists is what the
+// link leads to.
+func (f approveFacts) withinResolved(p string, dirs []string, followLast bool) bool {
+	resolved := filepath.Join(fsutil.RealExistingPath(filepath.Dir(p)), filepath.Base(p))
+	if followLast {
+		resolved = fsutil.RealExistingPath(p)
+	}
+	return f.within(p, dirs) && f.within(resolved, dirs)
 }
 
 // protectedName reports a protected name among p's components, read relative

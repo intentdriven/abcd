@@ -85,3 +85,43 @@ func TestApproveLeavesAScriptsFlagsToTheScript(t *testing.T) {
 		{`ruby -r json -e 'puts 1'`, refusedAs(inlineCodeEntryID)},
 	})
 }
+
+// TestApproveJudgesAGlobRemovalsDirectoryThroughSymlinks: the directory a
+// glob removal lists is judged where it leads, so one that is a symlink to a
+// directory outside the working tree is refused, while one leading to a
+// directory inside the tree is approved. And the glob is approved only when
+// no earlier part of the line writes or removes a file, since an earlier
+// part may make the directory a link (ln, cp -s, cp -l) after the line was
+// judged.
+func TestApproveJudgesAGlobRemovalsDirectoryThroughSymlinks(t *testing.T) {
+	r, _ := gitRig(t)
+	outside := filepath.Join(r.home, "Library")
+	for _, d := range []string{filepath.Join(r.dir, "build"), outside} {
+		if err := os.MkdirAll(d, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Symlink(outside, filepath.Join(r.dir, "linkd")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(r.dir, "build"), filepath.Join(r.dir, "inlink")); err != nil {
+		t.Fatal(err)
+	}
+	unfixed := refusedAs(unfixedPathEntryID)
+	r.run(t, []approveCase{
+		{`rm -rf build/*`, nil},
+		{`rm -rf inlink/*`, nil},
+		{`rm -f build/*.o inlink/*.o`, nil},
+		{`cd build && rm -f *.o`, nil},
+		{`rm -rf build/* && touch done`, nil},
+		{`rm -rf linkd/*`, unfixed},
+		{`rm -f linkd/*.md`, unfixed},
+		{`cd linkd && rm -f *.md`, unfixed},
+		{`mkdir fresh && ln -s ~/Library fresh/l && rm -rf fresh/l/*`, unfixed},
+		{`ln -s ~/Library l2 && rm -rf l2/*`, unfixed},
+		{`ln -s ~/Library l2; rm -rf l2/*`, unfixed},
+		{`cp -s ~/Library/x build/x && rm -rf build/*`, unfixed},
+		{`cp -l ~/Library/x build/x && rm -rf build/*`, unfixed},
+		{`touch build/x && rm -rf build/*`, unfixed},
+	})
+}

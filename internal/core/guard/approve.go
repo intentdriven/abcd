@@ -240,10 +240,12 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 	}
 	vf := r.gitValueFlags()
 	// wrote is set once a segment of the line writes or removes a path: a
-	// command a git setting runs after that is judged against files the line
-	// may have changed, so it is not judged on its own.
+	// command a git setting runs after that, and a glob removal after that,
+	// are judged against files the line may have changed (a directory it may
+	// have made a link), so they are not judged on their own.
 	wrote := false
 	for _, p := range placed {
+		wroteBefore := wrote
 		// A command a git setting runs is judged as run from the working
 		// tree, so only where the reading placed git there.
 		states := p.states
@@ -273,8 +275,11 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 				}
 				if u.ok && u.glob != "" {
 					// A glob removal inside the working tree is approved
-					// unless a protected name could match it.
-					if !facts.within(u.path, facts.tree) {
+					// unless a protected name could match it: its directory
+					// judged where it leads, through symlinks, and only when
+					// no earlier part of the line writes or removes a file,
+					// which could make that directory a link first.
+					if wroteBefore || !facts.withinResolved(u.path, facts.tree, true) {
 						return unfixedRefusal(pathUse{remove: true, written: u.written})
 					}
 					if name, ok := facts.globReaches(u); ok {
