@@ -84,12 +84,20 @@ func GeneratedFiles(root string) (Generated, string) {
 		}
 	}
 	files := map[string]bool{}
+	total := generatedSteps
 	for _, entry := range entries {
 		meta, p, ok := strings.Cut(entry, "\t")
 		// A regular file only, executable or not: never a symbolic link or a
 		// submodule.
 		f := strings.Fields(meta)
-		if ok && len(f) == 3 && (f[0] == "100644" || f[0] == "100755") && f[1] == "blob" && !underNested(p, nested) && rules.generated(p) {
+		if !ok || len(f) != 3 || f[0] != "100644" && f[0] != "100755" || f[1] != "blob" || underNested(p, nested) {
+			continue
+		}
+		generated, spent := rules.judge(p, &total)
+		if spent {
+			return Generated{}, fmt.Sprintf(".gitattributes on %s takes too long to match against the files there", gitutil.ShortRef(ref))
+		}
+		if generated {
 			files[p] = true
 		}
 	}
@@ -162,17 +170,39 @@ type attrRules []attrRule
 
 // generated reports whether the declaration makes the file p generated.
 func (rs attrRules) generated(p string) bool {
+	generated, _ := rs.judge(p, nil)
+	return generated
+}
+
+// judge is generated within budgets: matching p against one line may take
+// matchSteps, and every match together may take *total when total is not
+// nil. A line past its budget makes p not generated, whatever earlier lines
+// say, since it might have unset the attribute; spent is true when *total ran
+// out, so no later path can be judged either.
+func (rs attrRules) judge(p string, total *int) (generated, spent bool) {
 	base := p[strings.LastIndexByte(p, '/')+1:]
 	for i := len(rs) - 1; i >= 0; i-- {
 		subject := p
 		if rs[i].basename {
 			subject = base
 		}
-		if dowild(rs[i].pat, subject) == wmMatch {
-			return rs[i].generated
+		b := wildBudget{left: matchSteps}
+		if total != nil && *total < b.left {
+			b.left = *total
+		}
+		start := b.left
+		m := dowild(rs[i].pat, subject, &b)
+		if total != nil {
+			*total -= start - max(b.left, 0)
+		}
+		if b.left < 0 {
+			return false, total != nil && *total <= 0
+		}
+		if m == wmMatch {
+			return rs[i].generated, false
 		}
 	}
-	return false
+	return false, false
 }
 
 // any reports whether some line can make a file generated.
@@ -395,6 +425,24 @@ func globSupported(pat string) bool {
 	return true
 }
 
+// matchSteps bounds the steps matching one path against one line takes.
+// Both budgets are variables, so a test can measure their edge.
+var matchSteps = 1_000_000
+
+// generatedSteps bounds the matching GeneratedFiles does over every file
+// together; past it the declaration declares nothing, and says why.
+var generatedSteps = 50_000_000
+
+// wildBudget is the steps a match has left; each call and each try of a star
+// spends one, and a match past it answers wmAbortAll.
+type wildBudget struct{ left int }
+
+// spend takes one step, reporting whether the budget still holds.
+func (b *wildBudget) spend() bool {
+	b.left--
+	return b.left >= 0
+}
+
 // wildmatch's answers, as git's wildmatch.c gives them.
 const (
 	wmMatch = iota
@@ -406,8 +454,12 @@ const (
 // dowild is git's wildmatch with WM_PATHNAME, case-sensitive: '*', '?' and a
 // class never match a slash, and "**" matches across slashes only between
 // slashes (a leading "**/", a trailing "/**", a middle "/**/"). A basename
-// holds no slash, so the same matcher serves a pattern with none.
-func dowild(p, text string) int {
+// holds no slash, so the same matcher serves a pattern with none. Every call
+// and every try of a star spends from b, and a match past it is wmAbortAll.
+func dowild(p, text string, b *wildBudget) int {
+	if !b.spend() {
+		return wmAbortAll
+	}
 	ti := 0
 	for pi := 0; pi < len(p); pi, ti = pi+1, ti+1 {
 		pch := p[pi]
@@ -440,7 +492,7 @@ func dowild(p, text string) int {
 				if (prev < 0 || p[prev] == '/') &&
 					(pi == len(p) || p[pi] == '/' || p[pi] == '\\' && pi+1 < len(p) && p[pi+1] == '/') {
 					// "**/" may match no directory at all.
-					if pi < len(p) && p[pi] == '/' && dowild(p[pi+1:], text[ti:]) == wmMatch {
+					if pi < len(p) && p[pi] == '/' && dowild(p[pi+1:], text[ti:], b) == wmMatch {
 						return wmMatch
 					}
 					matchSlash = true
@@ -464,6 +516,9 @@ func dowild(p, text string) int {
 				continue
 			}
 			for ti < len(text) {
+				if !b.spend() {
+					return wmAbortAll
+				}
 				if c := p[pi]; c != '*' && c != '?' && c != '[' && c != '\\' {
 					// A literal after the star: skip to its next occurrence.
 					for ti < len(text) && (matchSlash || text[ti] != '/') && text[ti] != c {
@@ -476,7 +531,7 @@ func dowild(p, text string) int {
 						return wmAbortToStarStar
 					}
 				}
-				if m := dowild(p[pi:], text[ti:]); m != wmNoMatch {
+				if m := dowild(p[pi:], text[ti:], b); m != wmNoMatch {
 					if !matchSlash || m != wmAbortToStarStar {
 						return m
 					}

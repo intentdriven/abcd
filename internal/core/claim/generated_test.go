@@ -284,3 +284,21 @@ func TestOnlyARegularFileIsGenerated(t *testing.T) {
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	wantGenerated(t, p.dir, map[string]bool{"a.md": true, "tool.md": true, "link.md": false}, "")
 }
+
+// TestADeclarationPastTheTotalBudgetDeclaresNothing: the matching over every
+// file together is bounded too (generatedSteps); past it no file is generated,
+// and the reason says so.
+func TestADeclarationPastTheTotalBudgetDeclaresNothing(t *testing.T) {
+	w := newWorld(t)
+	var files []string
+	for i := range 40 {
+		files = append(files, fmt.Sprintf("gen/f%d.md", i))
+	}
+	w.declare("*.md linguist-generated\n", files...)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	wantGenerated(t, p.dir, map[string]bool{"gen/f1.md": true}, "")
+	defer func(was int) { generatedSteps = was }(generatedSteps)
+	generatedSteps = 60
+	wantGenerated(t, p.dir, map[string]bool{"gen/f1.md": false, "gen/f39.md": false},
+		".gitattributes on origin/main takes too long to match against the files there")
+}
