@@ -146,8 +146,6 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610100704270254` — An abcd run sets how many sub-agents it keeps alive by the models they run on
 - `itd-2610110940216682` — Every change is checked in full once, on exactly what lands
 - `itd-2610111655362931` — On the dashboard, the product thinker and facilitator review memory notes and promote the ones worth keeping
-- `itd-2610161616086564` — After a plugin update, abcd offers to bring the repository's setup up to date
-- `itd-2610161617096084` — After a plugin update, abcd says what changed for this repository
 - `itd-2610161647248332` — abcd finds out what the forge can do before choosing a route
 - `itd-2610161710315026` — Unattended runs reach only a declared list of hosts
 - `itd-2610161710316538` — Drains and builds a person's session drives report how isolated they were
