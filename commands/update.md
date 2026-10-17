@@ -1,7 +1,7 @@
 ---
 name: update
 description: "Swap the PATH-installed binary for a verified release, or with --check only compare: Writes the swapped binary; refuses a binary it cannot prove is abcd's."
-argument-hint: "[tag]"
+argument-hint: "[tag | news]"
 block: people
 ---
 
@@ -17,7 +17,9 @@ digest and the provenance signer. abcd never checks for or
 applies updates on its own — this verb reaches the release origin only when
 invoked, as does the one other flag that reaches it, `--fetch-baseline` on
 `launch` and `launch ship`, which downloads a released plugin archive to
-compare against.
+compare against. Its one sub-verb, `news`, fetches and swaps nothing: it says
+what an update changed and offers the setup that waits
+([below](#news--what-an-update-changed-and-the-setup-that-waits)).
 
 **Why two checks.** `checksums.txt` sits on the same release page as the
 binary, so it only proves the download arrived intact: whoever could replace
@@ -157,5 +159,78 @@ too, you are in a source checkout of this repo, where — and only there —
 binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 `"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install`, `abcd ahoy install`, or
 `go run ./cmd/abcd ahoy install` in a source checkout.
+
+## `news` — what an update changed, and the setup that waits
+
+After an abcd update, session start adds one fixed line to the session's
+context: "abcd: an abcd update has news for this session; after the person's
+first message, run abcd update news and relay what it prints at the
+start of your first reply." It carries no version and no count. When you see
+it, wait for the person's first message, then run:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" update news --json
+```
+
+It writes nothing. Relay its `lines` at the start of your first reply, before
+anything else, each exactly as it stands; when `lines` is empty, say nothing
+about it. The lines come in this order:
+
+- one line per release this computer has not been shown, newest first, with
+  how many changes it made and the record ids of those that need the person
+  to act;
+- where the binary cannot describe some releases, one line naming them, where
+  their notes are published, and that the summary is partial (`partial` is
+  true);
+- last, where the update brings this repository setup it never answered, the
+  offer (`offer`): the release it was set up with, the one running, and how
+  many setup questions and changed defaults wait.
+
+Every word comes from the binary: checked release numbers, counts, abcd's own
+titles and the digest of changes the binary carries. Nothing is read from the
+repository's own changelog and nothing is fetched.
+
+**The offer is the person's to answer.** Put `offer.line` to them with the
+host's question tool, quoting it whole, with the two answers yes and not now.
+Then record their reply, and only their reply:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" update news --answer yes      # or --answer not-now
+```
+
+The answer is kept once per repository and release in abcd's home folder
+(`~/.abcd.noindex/after-update/`), never in the repository, and marks the news
+as shown. Not now is not asked again until the next release; `abcd ahoy` still
+lists what waits, with the command that runs it. A second answer for the same
+release is refused with exit 2 and changes nothing. On yes, run the setup that
+waits, `abcd ahoy install --only-waiting`, as
+[What the binary install does](ahoy.md#what-the-binary-install-does) on the ahoy page says, with an
+answers file:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --only-waiting --answers <file> --answered-in "Claude Code" --json
+```
+
+It puts only the questions this repository never answered and the settings
+whose default changed, never one answered or deferred with decide later. The
+yes approved the run, so it asks no approval. Start the file with no answers:
+the run stops with exit 2 before any write, naming each value question it
+would ask; put that question to the person, add their answer, and run again.
+
+**The news alone.** Where no offer was made, run
+`"${CLAUDE_PLUGIN_ROOT}/abcd" update news --seen` once the person has
+replied to the reply that showed it, so the next session does not show it
+again. In a session with no person to answer (a headless or scripted run),
+run neither `--answer` nor `--seen`: the binary cannot tell such a run from a
+person's, and a mark written there would hide the news and the offer from the
+person's next session.
+
+**On request.** When the person asks for details, run
+`"${CLAUDE_PLUGIN_ROOT}/abcd" update news --full` and relay it: every
+change of the releases since the last update, those that need action first,
+each with the record it cites, then what waits in this repository. It writes
+nothing, so it can be shown again at any time, and it is the way to see the
+summary on a host that runs no session-start hook. `--answer` takes neither
+`--full` nor `--seen`.
 
 **User input:** $ARGUMENTS

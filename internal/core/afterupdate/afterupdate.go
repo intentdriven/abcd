@@ -44,7 +44,7 @@ const (
 
 // FullCommand is the command that shows the full summary, named on every
 // news line.
-const FullCommand = "abcd ahoy after-update --full"
+const FullCommand = "abcd update news --full"
 
 // storeLeaf is the store's folder below abcd's home; newsSeenLeaf the file
 // that holds the newest release whose news was shown; lockLeaf the lock its

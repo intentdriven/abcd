@@ -1,16 +1,16 @@
 package cli
 
-// ahoy_after_update.go is the front door of the moment after an abcd update
-// (spc-2610170635097509, step 7): `abcd ahoy after-update` prints what the
-// agent relays at the start of its first reply, the one line per release
-// saying what changed and the offer to run setup again; --full prints the
-// full summary; --answer records the person's answer to the offer and --seen
-// that the news was read. Bare and --full write nothing. The words are
-// core's (internal/core/afterupdate): numbers, checked release tags, core's
-// titles and the digest inside the binary, never the repository's text.
+// update_news.go is the front door of the moment after an abcd update
+// (spc-2610170635097509, step 7): `abcd update news` prints what the agent
+// relays at the start of its first reply, the one line per release saying
+// what changed and the offer to run setup again; --full prints the full
+// summary; --answer records the person's answer to the offer and --seen that
+// the news was read. Bare and --full write nothing. The words are core's
+// (internal/core/afterupdate): numbers, checked release tags, core's titles
+// and the digest inside the binary, never the repository's text.
 //
-// It also holds `ahoy install --only-waiting`, the setup the yes runs: the
-// flag is registered here and read by the install's RunE.
+// The setup a yes runs, `ahoy install --only-waiting`, is ahoy's
+// (ahoy_only_waiting.go).
 
 import (
 	"errors"
@@ -26,39 +26,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// onlyWaitingFlag is the install's flag for the setup the yes runs.
-const onlyWaitingFlag = "only-waiting"
-
-// addOnlyWaitingFlag registers --only-waiting on the install command.
-func addOnlyWaitingFlag(installCmd *cobra.Command) {
-	installCmd.Flags().Bool(onlyWaitingFlag, false, "ask only the setup that waits after an abcd update: "+
-		"the questions this repository never answered and the settings whose default changed, never one answered or deferred with decide later; "+
-		"every kind of change is approved up front, as the yes to the after-update offer approves them; "+
-		"with the approve-everything flag no question is answered, so each still waits")
-}
-
-// onlyWaiting reports whether the install was asked for --only-waiting.
-func onlyWaiting(cmd *cobra.Command) bool {
-	v, _ := cmd.Flags().GetBool(onlyWaitingFlag)
-	return v
-}
-
-// afterUpdateRecorded is what --answer and --seen render.
-type afterUpdateRecorded struct {
+// newsRecorded is what --answer and --seen render.
+type newsRecorded struct {
 	Answer   string `json:"answer,omitempty"`
 	Release  string `json:"release"`
 	NewsSeen bool   `json:"news_seen"`
 	Next     string `json:"next,omitempty"`
 }
 
-// onlyWaitingCommand is the setup a yes runs.
-const onlyWaitingCommand = "abcd ahoy install --only-waiting"
-
-func newAhoyAfterUpdateCommand(asJSON *bool) *cobra.Command {
+func newUpdateNewsCommand(asJSON *bool) *cobra.Command {
 	var full, seen bool
 	var answer string
 	cmd := &cobra.Command{
-		Use:  "after-update",
+		Use:  "news",
 		Args: cobra.NoArgs,
 		Long: "After an abcd update, print what the agent relays at the start of its first reply: " +
 			"one line per release this computer has not been shown, saying how many changes it made and which need the person to act, " +
@@ -73,11 +53,11 @@ func newAhoyAfterUpdateCommand(asJSON *bool) *cobra.Command {
 			answered := cmd.Flags().Changed("answer")
 			switch {
 			case answered && (full || seen):
-				return &exitError{Code: 2, Msg: "abcd ahoy after-update: --answer records the reply to the offer and takes neither --full nor --seen; nothing was written"}
+				return &exitError{Code: 2, Msg: "abcd update news: --answer records the reply to the offer and takes neither --full nor --seen; nothing was written"}
 			case full && seen:
-				return &exitError{Code: 2, Msg: "abcd ahoy after-update: --full shows the summary and writes nothing, so it takes no --seen; nothing was written"}
+				return &exitError{Code: 2, Msg: "abcd update news: --full shows the summary and writes nothing, so it takes no --seen; nothing was written"}
 			case answered && answer != afterupdate.AnswerYes && answer != afterupdate.AnswerNotNow:
-				return &exitError{Code: 2, Msg: "abcd ahoy after-update: --answer is yes or not-now; nothing was written"}
+				return &exitError{Code: 2, Msg: "abcd update news: --answer is yes or not-now; nothing was written"}
 			}
 			cwd, err := os.Getwd()
 			if err != nil {
@@ -85,21 +65,21 @@ func newAhoyAfterUpdateCommand(asJSON *bool) *cobra.Command {
 			}
 			switch {
 			case answered:
-				return runAfterUpdateAnswer(cmd, cwd, answer, *asJSON)
+				return runUpdateNewsAnswer(cmd, cwd, answer, *asJSON)
 			case seen:
-				return runAfterUpdateSeen(cmd, *asJSON)
+				return runUpdateNewsSeen(cmd, *asJSON)
 			case full:
 				f, err := afterupdate.Full(cwd, "")
 				if err != nil {
-					return afterUpdateRefusal(err)
+					return updateNewsRefusal(err)
 				}
-				return render(cmd.OutOrStdout(), *asJSON, f, func(w io.Writer) { printAfterUpdateLines(w, f.Lines) })
+				return render(cmd.OutOrStdout(), *asJSON, f, func(w io.Writer) { printUpdateNewsLines(w, f.Lines) })
 			}
 			m, err := afterupdate.Moment(cwd)
 			if err != nil {
 				return err
 			}
-			return render(cmd.OutOrStdout(), *asJSON, m, func(w io.Writer) { printAfterUpdateLines(w, m.Lines) })
+			return render(cmd.OutOrStdout(), *asJSON, m, func(w io.Writer) { printUpdateNewsLines(w, m.Lines) })
 		},
 	}
 	cmd.Flags().BoolVar(&full, "full", false, "print the full summary of the releases since the last update and what waits here; writes nothing")
@@ -108,13 +88,13 @@ func newAhoyAfterUpdateCommand(asJSON *bool) *cobra.Command {
 	return cmd
 }
 
-// runAfterUpdateAnswer records the person's answer and says what follows.
-func runAfterUpdateAnswer(cmd *cobra.Command, cwd, answer string, asJSON bool) error {
+// runUpdateNewsAnswer records the person's answer and says what follows.
+func runUpdateNewsAnswer(cmd *cobra.Command, cwd, answer string, asJSON bool) error {
 	a, err := afterupdate.Record(cwd, answer)
 	if err != nil && a.Release == "" {
-		return afterUpdateRefusal(err)
+		return updateNewsRefusal(err)
 	}
-	out := afterUpdateRecorded{Answer: a.Answer, Release: a.Release, NewsSeen: err == nil}
+	out := newsRecorded{Answer: a.Answer, Release: a.Release, NewsSeen: err == nil}
 	if a.Answer == afterupdate.AnswerYes {
 		out.Next = onlyWaitingCommand
 	}
@@ -132,12 +112,12 @@ func runAfterUpdateAnswer(cmd *cobra.Command, cwd, answer string, asJSON bool) e
 	return err
 }
 
-// runAfterUpdateSeen records that the news up to the running release was read.
-func runAfterUpdateSeen(cmd *cobra.Command, asJSON bool) error {
+// runUpdateNewsSeen records that the news up to the running release was read.
+func runUpdateNewsSeen(cmd *cobra.Command, asJSON bool) error {
 	if err := afterupdate.MarkSeen(); err != nil {
-		return afterUpdateRefusal(err)
+		return updateNewsRefusal(err)
 	}
-	m := afterUpdateRecorded{Release: runningRelease(), NewsSeen: true}
+	m := newsRecorded{Release: runningRelease(), NewsSeen: true}
 	return render(cmd.OutOrStdout(), asJSON, m, func(w io.Writer) {
 		fmt.Fprintf(w, "abcd: recorded that this computer was shown abcd's news up to %s.\n", m.Release)
 	})
@@ -146,43 +126,43 @@ func runAfterUpdateSeen(cmd *cobra.Command, asJSON bool) error {
 // runningRelease is the running release after MarkSeen accepted it as one.
 func runningRelease() string { return termsafe.Sanitize(core.Version) }
 
-// afterUpdateSessionLine is the session start's one line for the moment
+// updateNewsSessionLine is the session start's one line for the moment
 // after an update. It is a constant, with no version and no count: stdout of
 // session start reaches the session's context, so nothing a repository's
 // tracked files hold may ride on it (iss-2608241115201044). The moment's own
 // words reach context by the agent's run of the verb.
-const afterUpdateSessionLine = "abcd: an abcd update has news for this session; after the person's first message, " +
-	"run abcd ahoy after-update and relay what it prints at the start of your first reply."
+const updateNewsSessionLine = "abcd: an abcd update has news for this session; after the person's first message, " +
+	"run abcd update news and relay what it prints at the start of your first reply."
 
-// afterUpdateSessionStart prints afterUpdateSessionLine to w where the moment
+// updateNewsSessionStart prints updateNewsSessionLine to w where the moment
 // holds anything for the repository at cwd, whose detection is det, and
 // writes nothing. A failure to work it out is a notice for stderr, never a
 // line on stdout.
-func afterUpdateSessionStart(w io.Writer, cwd string, det ahoy.DetectionResult) []string {
+func updateNewsSessionStart(w io.Writer, cwd string, det ahoy.DetectionResult) []string {
 	st, err := afterupdate.Pending(cwd, det)
 	if err != nil {
 		return []string{"abcd: could not work out what the abcd update brings (" +
-			termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "); `abcd ahoy after-update` says it when asked."}
+			termsafe.Sanitize(fsutil.RedactHome(err.Error())) + "); `abcd update news` says it when asked."}
 	}
 	if st.Any() {
-		fmt.Fprintln(w, afterUpdateSessionLine)
+		fmt.Fprintln(w, updateNewsSessionLine)
 	}
 	return nil
 }
 
-// afterUpdateRefusal turns core's refusals into exit 2, naming that nothing
+// updateNewsRefusal turns core's refusals into exit 2, naming that nothing
 // was written; any other error is returned as it is.
-func afterUpdateRefusal(err error) error {
+func updateNewsRefusal(err error) error {
 	for _, refusal := range []error{afterupdate.ErrNotRelease, afterupdate.ErrNoOffer, afterupdate.ErrAlreadyAnswered, afterupdate.ErrBadAnswer} {
 		if errors.Is(err, refusal) {
-			return &exitError{Code: 2, Msg: "abcd ahoy after-update: " + err.Error() + "; nothing was written"}
+			return &exitError{Code: 2, Msg: "abcd update news: " + err.Error() + "; nothing was written"}
 		}
 	}
 	return err
 }
 
-// printAfterUpdateLines writes each line, sanitised for the terminal.
-func printAfterUpdateLines(w io.Writer, lines []string) {
+// printUpdateNewsLines writes each line, sanitised for the terminal.
+func printUpdateNewsLines(w io.Writer, lines []string) {
 	for _, l := range lines {
 		fmt.Fprintln(w, termsafe.Sanitize(l))
 	}

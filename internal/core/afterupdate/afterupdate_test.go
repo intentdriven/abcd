@@ -136,7 +136,7 @@ func tree(t *testing.T, root string) string {
 }
 
 const (
-	aliceNews  = "abcd v0.16.0: 9 changes, 1 needs you to act (itd-2610161616086564). Ask for details: abcd ahoy after-update --full"
+	aliceNews  = "abcd v0.16.0: 9 changes, 1 needs you to act (itd-2610161616086564). Ask for details: abcd update news --full"
 	aliceOffer = "abcd was updated from v0.15.0 to v0.16.0 since this repository was set up; 2 setup questions wait here. Run setup now? (yes / not now)"
 )
 
@@ -179,7 +179,7 @@ func TestMomentCoversSkippedReleases(t *testing.T) {
 	}
 	want := []string{
 		aliceNews,
-		"abcd v0.15.0: 2 changes. Ask for details: abcd ahoy after-update --full",
+		"abcd v0.15.0: 2 changes. Ask for details: abcd update news --full",
 		aliceOffer,
 	}
 	if !slices.Equal(m.Lines, want) {

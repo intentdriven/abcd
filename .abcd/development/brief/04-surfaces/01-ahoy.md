@@ -25,7 +25,6 @@ repo whose stamp says it is current.
 
 | Verb | Bucket | Status |
 |---|---|---|
-| `after-update` | — | shipped |
 | `connect` | — | shipped |
 | `credential` | — | shipped |
 | `doctor` | — | shipped |
@@ -61,22 +60,8 @@ flags.
   setup, never one answered or deferred with decide later, approves every kind
   of change up front, and records the running release. Run with the
   approve-everything flag it answers no question, so each still waits.
-- **After-update** is the moment after an abcd update
-  (itd-2610161617096084, itd-2610161616086564). Bare, it prints what the agent
-  relays at the start of its first reply: one line per release this computer
-  has not been shown, from the digest of changes the binary carries
-  (`internal/core/releasedigest`), naming how many changes each made and the
-  records that need the person to act, a line naming any release the digest
-  cannot describe with where its notes are, and, where the update brings this
-  repository setup it never answered, the offer to run setup again. Its full
-  form prints every change, those needing action first, with the record each
-  cites, then what waits here. Neither writes. Two forms write, and only
-  under `~/.abcd.noindex/after-update/`, never in the repository: one records
-  the person's answer to the offer, yes or not now, once per repository and
-  release, and one records that the news was read where no offer was made.
-  The plugin page runs them only with a person's reply. Its words are
-  numbers, checked release tags, core's titles and the digest, never the
-  repository's text, and nothing is fetched.
+  The yes to the offer of update's news sub-verb runs it; that sub-verb is
+  the update chapter's ([21-update.md](21-update.md#sub-verbs)).
 - **Uninstall** is reversible removal: the marker block, abcd's README parts
   (and a README.md abcd created, once nothing but blank lines remains), abcd's
   own `PATH` entry where abcd owns it, and the provenance record that proves
@@ -1312,7 +1297,7 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd ahoy`
 
-Sub-verbs: `abcd ahoy after-update`, `abcd ahoy connect`, `abcd ahoy credential`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
+Sub-verbs: `abcd ahoy connect`, `abcd ahoy credential`, `abcd ahoy doctor`, `abcd ahoy install`, `abcd ahoy remote`, `abcd ahoy uninstall`.
 
 | Flag | Type |
 |---|---|
@@ -1320,16 +1305,6 @@ Sub-verbs: `abcd ahoy after-update`, `abcd ahoy connect`, `abcd ahoy credential`
 | `--identity` | bool |
 | `--providers` | bool |
 | `--remote` | bool |
-
-### `abcd ahoy after-update`
-
-Sub-verbs: none.
-
-| Flag | Type |
-|---|---|
-| `--answer` | string |
-| `--full` | bool |
-| `--seen` | bool |
 
 ### `abcd ahoy connect`
 

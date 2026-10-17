@@ -31,8 +31,6 @@ var sentences = map[string]string{
 
 	"abcd ahoy": "Detect abcd's install state and list its gaps, or report one mode a flag names: " +
 		"Writes nothing; refuses any argument or two modes at once.",
-	"abcd ahoy after-update": "Say what changed since the update, and offer the setup that waits: " +
-		"Writes only an answer or --seen, to " + abcdhome.Display() + "/; refuses --answer with --full or --seen.",
 	"abcd ahoy connect": "Verify a provider with one call and configure it, or guide setup: " +
 		"Writes " + abcdhome.Display() + "/ and the key's home, nothing guided; refuses no --model off a terminal.",
 	"abcd ahoy credential": "List the credentials abcd reads, explain one, or verify and store it: " +
@@ -412,6 +410,8 @@ var sentences = map[string]string{
 
 	"abcd update": "Swap the PATH-installed binary for a verified release, or with --check only compare: " +
 		"Writes the swapped binary; refuses a binary it cannot prove is abcd's.",
+	"abcd update news": "Say what changed since the update, and offer the setup that waits: " +
+		"Writes only an answer or --seen, to " + abcdhome.Display() + "/; refuses --answer with --full or --seen.",
 }
 
 // SentenceFor returns the sentence the manifest declares for the command at

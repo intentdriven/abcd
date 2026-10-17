@@ -1,7 +1,7 @@
 ---
 name: ahoy
 description: "Detect abcd's install state and list its gaps, or report one mode a flag names: Writes nothing; refuses any argument or two modes at once. Use when the user asks to install abcd in a repository, or to prepare, onboard, scaffold or bootstrap a repository for agent work or bring it up to current conventions (that is ahoy install)."
-argument-hint: "[install | uninstall | doctor | after-update | --dry-run | --remote | remote apply | --providers | connect | credential]"
+argument-hint: "[install | uninstall | doctor | --dry-run | --remote | remote apply | --providers | connect | credential]"
 block: people
 ---
 
@@ -117,79 +117,6 @@ Then summarise the JSON for the user:
 If there are actionable gaps, tell the user to run `/abcd:ahoy install` to apply
 them. If `folder_kind` is `unmanaged-folder`, note there is nothing to act on
 (not a git repo, no abcd markers).
-
-## `after-update` — what an update changed, and the setup that waits
-
-After an abcd update, session start adds one fixed line to the session's
-context: "abcd: an abcd update has news for this session; after the person's
-first message, run abcd ahoy after-update and relay what it prints at the
-start of your first reply." It carries no version and no count. When you see
-it, wait for the person's first message, then run:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy after-update --json
-```
-
-It writes nothing. Relay its `lines` at the start of your first reply, before
-anything else, each exactly as it stands; when `lines` is empty, say nothing
-about it. The lines come in this order:
-
-- one line per release this computer has not been shown, newest first, with
-  how many changes it made and the record ids of those that need the person
-  to act;
-- where the binary cannot describe some releases, one line naming them, where
-  their notes are published, and that the summary is partial (`partial` is
-  true);
-- last, where the update brings this repository setup it never answered, the
-  offer (`offer`): the release it was set up with, the one running, and how
-  many setup questions and changed defaults wait.
-
-Every word comes from the binary: checked release numbers, counts, abcd's own
-titles and the digest of changes the binary carries. Nothing is read from the
-repository's own changelog and nothing is fetched.
-
-**The offer is the person's to answer.** Put `offer.line` to them with the
-host's question tool, quoting it whole, with the two answers yes and not now.
-Then record their reply, and only their reply:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy after-update --answer yes      # or --answer not-now
-```
-
-The answer is kept once per repository and release in abcd's home folder
-(`~/.abcd.noindex/after-update/`), never in the repository, and marks the news
-as shown. Not now is not asked again until the next release; `abcd ahoy` still
-lists what waits, with the command that runs it. A second answer for the same
-release is refused with exit 2 and changes nothing. On yes, run the setup that
-waits, `abcd ahoy install --only-waiting`, as
-[What the binary install does](#what-the-binary-install-does) says, with an
-answers file:
-
-```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install --only-waiting --answers <file> --answered-in "Claude Code" --json
-```
-
-It puts only the questions this repository never answered and the settings
-whose default changed, never one answered or deferred with decide later. The
-yes approved the run, so it asks no approval. Start the file with no answers:
-the run stops with exit 2 before any write, naming each value question it
-would ask; put that question to the person, add their answer, and run again.
-
-**The news alone.** Where no offer was made, run
-`"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy after-update --seen` once the person has
-replied to the reply that showed it, so the next session does not show it
-again. In a session with no person to answer (a headless or scripted run),
-run neither `--answer` nor `--seen`: the binary cannot tell such a run from a
-person's, and a mark written there would hide the news and the offer from the
-person's next session.
-
-**On request.** When the person asks for details, run
-`"${CLAUDE_PLUGIN_ROOT}/abcd" ahoy after-update --full` and relay it: every
-change of the releases since the last update, those that need action first,
-each with the record it cites, then what waits in this repository. It writes
-nothing, so it can be shown again at any time, and it is the way to see the
-summary on a host that runs no session-start hook. `--answer` takes neither
-`--full` nor `--seen`.
 
 ## `install` — prepare the repository and apply the outstanding gaps
 
@@ -590,8 +517,8 @@ yes | "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install
 ```
 
 **`--only-waiting` is the setup after an update.** It is the run the yes to
-the after-update offer starts, and the one the `version.upgrade` gap's fix
-hint names: it puts only the questions this repository never answered and the
+the offer `abcd update news` makes starts ([`/abcd:update`](update.md)), and
+the one the `version.upgrade` gap's fix hint names: it puts only the questions this repository never answered and the
 settings whose default changed, approves every kind of change without asking,
 and records the running release as the setup version. A question answered, or
 deferred with decide later, is left as it is. With `--yes` it answers no

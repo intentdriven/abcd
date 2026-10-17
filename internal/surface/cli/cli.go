@@ -2207,9 +2207,9 @@ and the --json envelope carries the name as session_title.`,
 				notices = append(notices, n)
 			}
 			// The moment after an update (spc-2610170635097509): one constant
-			// line, read only, from the detection above (ahoy_after_update.go).
+			// line, read only, from the detection above (update_news.go).
 			if detErr == nil {
-				notices = append(notices, afterUpdateSessionStart(cmd.OutOrStdout(), cwd, det)...)
+				notices = append(notices, updateNewsSessionStart(cmd.OutOrStdout(), cwd, det)...)
 			}
 			if len(notices) == 0 {
 				return nil
@@ -4281,7 +4281,6 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	ahoyCmd.AddCommand(newAhoyRemoteCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyConnectCommand(asJSON))
 	ahoyCmd.AddCommand(newAhoyCredentialCommand(asJSON))
-	ahoyCmd.AddCommand(newAhoyAfterUpdateCommand(asJSON))
 
 	return ahoyCmd
 }
