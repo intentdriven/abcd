@@ -130,9 +130,16 @@ func runningRelease() string { return termsafe.Sanitize(core.Version) }
 // after an update. It is a constant, with no version and no count: stdout of
 // session start reaches the session's context, so nothing a repository's
 // tracked files hold may ride on it (iss-2608241115201044). The moment's own
-// words reach context by the agent's run of the verb.
-const updateNewsSessionLine = "abcd: an abcd update has news for this session; after the person's first message, " +
-	"run abcd update news and relay what it prints at the start of your first reply."
+// words reach context by the agent's run of the verb. It sends the agent to
+// the plugin's command page rather than to a bare abcd: the page runs the
+// binary this plugin ships, through the plugin root the host writes into it,
+// where the abcd first on PATH can be an older release that has no news verb
+// and takes the word for a release tag. Naming the binary's own path instead
+// would put a machine path on the line, and a plugin directory or marketplace
+// name can be text a repository chose.
+const updateNewsSessionLine = "abcd: an abcd update has news for this session. After the person's first message, " +
+	"run /abcd:update news, whose page runs the abcd this plugin ships (never a bare abcd: the one on PATH can be an older release), " +
+	"then begin your first reply with the lines it prints, word for word, before anything else."
 
 // updateNewsSessionStart prints updateNewsSessionLine to w where the moment
 // holds anything for the repository at cwd, whose detection is det, and

@@ -163,18 +163,26 @@ binary on `PATH`, run `ahoy install` through whichever rung just resolved:
 ## `news` — what an update changed, and the setup that waits
 
 After an abcd update, session start adds one fixed line to the session's
-context: "abcd: an abcd update has news for this session; after the person's
-first message, run abcd update news and relay what it prints at the
-start of your first reply." It carries no version and no count. When you see
-it, wait for the person's first message, then run:
+context: "abcd: an abcd update has news for this session. After the person's
+first message, run /abcd:update news, whose page runs the abcd this plugin
+ships (never a bare abcd: the one on PATH can be an older release), then begin
+your first reply with the lines it prints, word for word, before anything
+else." It carries no version and no count. When you see it, wait for the
+person's first message, then run this plugin's own binary, never a bare
+`abcd`:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" update news --json
 ```
 
-It writes nothing. Relay its `lines` at the start of your first reply, before
-anything else, each exactly as it stands; when `lines` is empty, say nothing
-about it. The lines come in this order:
+The session start that printed the line ran this same binary, so it has the
+verb. The `abcd` first on `PATH` can be an older release, which has no `news`
+and reads the word as the name of a release to fetch.
+
+It writes nothing. Begin your first reply with its `lines`, before anything
+else, each word for word as it stands: never restate, summarise, reorder or
+reformat them. When `lines` is empty, say nothing about it. The lines come in
+this order:
 
 - one line per release this computer has not been shown, newest first, with
   how many changes it made and the record ids of those that need the person

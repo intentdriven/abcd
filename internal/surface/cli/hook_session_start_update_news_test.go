@@ -15,9 +15,13 @@ import (
 )
 
 // theUpdateNewsLine is the session start's one line for the moment after
-// an update, as the spec words it.
-const theUpdateNewsLine = "abcd: an abcd update has news for this session; after the person's first message, " +
-	"run abcd update news and relay what it prints at the start of your first reply."
+// an update, as the spec words it. It names the plugin's command page, which
+// runs the binary this plugin ships, never a bare abcd (on PATH that can be an
+// older release), and asks for the lines word for word at the start of the
+// first reply (the spec's live run, step 9).
+const theUpdateNewsLine = "abcd: an abcd update has news for this session. After the person's first message, " +
+	"run /abcd:update news, whose page runs the abcd this plugin ships (never a bare abcd: the one on PATH can be an older release), " +
+	"then begin your first reply with the lines it prints, word for word, before anything else."
 
 // stdoutLines splits the hook's stdout into its lines.
 func stdoutLines(stdout string) []string {
