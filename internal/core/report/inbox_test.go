@@ -14,6 +14,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/core/lint"
+	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -841,5 +842,22 @@ func TestAPromotedReportIsIneligibleForADrain(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("the dry run lists no disposition for %s: %+v", p.Capture, plan.Dispositions)
+	}
+}
+
+// TestSenderIDsCoverEveryCitedFamily (iss-2610160608389169): a sender's id in
+// ANY family abcd resolves is written as one word, so it cites none of abcd's
+// own records. The families are read from recordid's one list rather than
+// spelt here, so a family added there is covered here without an edit; the
+// decision records (dcn) were the one the hand-kept copy missed.
+func TestSenderIDsCoverEveryCitedFamily(t *testing.T) {
+	for _, fam := range recordid.CitedFamilies() {
+		for _, in := range []string{fam + "-12", strings.ToUpper(fam) + " 12", fam + "_12"} {
+			// The family keeps the sender's spelling; only the separator goes.
+			want := "see " + in[:len(fam)] + "12 for the history"
+			if out, n := senderIDs("see " + in + " for the history"); n != 1 || out != want {
+				t.Errorf("senderIDs(%q) = %q, %d; want %q, 1", "see "+in+" for the history", out, n, want)
+			}
+		}
 	}
 }

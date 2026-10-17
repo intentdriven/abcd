@@ -1,0 +1,6 @@
+---
+id: dcn-2609230000000017
+slug: two-corrections-to-the-entry-above
+date: 2026-09-23
+---
+2026-09-23 — Two corrections to the entry above recording itd-4 AC3 built as ruled, appended because the ledger is append-only. (1) Decision (5) says the drift check is not wired into preflight or CI. That contradicts the criterion it delivers, which says drift detection is ENFORCED, so it is wired: `make issue-drift` runs `abcd intent audit --issue-drift --strict` as a `make preflight` prerequisite, and the CI `check` job runs the same line on its Linux leg. A promote join that stops reading the same from both ends now fails the pre-push gate and CI. (2) Decision (6) is narrowed: the `(historical)` marker goes on the authored passages, never inside an INGESTED Audit Notes block, because an audit receipt is written only by the ingest. The `retired-promote-back-links` ban exempts those receipt lines by the line shapes the ingest renders (a per-criterion verdict, a scope-condition disposition, an evidence pointer), and it exempts the two gap-audit claims that name a retired key by their own text, since a gap-audit claim is a bare nested bullet and exempting that shape would also exempt live prose.

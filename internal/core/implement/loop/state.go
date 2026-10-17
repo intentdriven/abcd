@@ -54,13 +54,15 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 )
 
-// TierRelDir is the local-ephemeral tier the run state lives in. It is never
-// created here.
-const TierRelDir = ".abcd/.work.local"
+// TierRelDir is the local-ephemeral tier the run state lives in, the tier the
+// preflight's receipts live in too (landing.TierRelDir). It is never created
+// here.
+const TierRelDir = landing.TierRelDir
 
 // RunRelDir is the directory every run of this checkout lives under.
 const RunRelDir = TierRelDir + "/run"

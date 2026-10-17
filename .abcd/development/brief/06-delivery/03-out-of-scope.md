@@ -146,8 +146,9 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610100704270254` — An abcd run sets how many sub-agents it keeps alive by the models they run on
 - `itd-2610110940216682` — Every change is checked in full once, on exactly what lands
 - `itd-2610111655362931` — On the dashboard, the product thinker and facilitator review memory notes and promote the ones worth keeping
-- `itd-2610111707085098` — Each session takes a persona name, shown in the status line and the session list
-- `itd-2610150602547271` — The facilitator's mode gates the merge
+- `itd-2610161647248332` — abcd finds out what the forge can do before choosing a route
+- `itd-2610161710315026` — Unattended runs reach only a declared list of hosts
+- `itd-2610161710316538` — Drains and builds a person's session drives report how isolated they were
 - `itd-2610161904178040` — People who think in Emacs can edit the brief with Emacs keys
 <!-- /index -->
 

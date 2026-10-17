@@ -8,7 +8,9 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/rules"
+	"github.com/intentdriven/abcd/internal/core/sessionname"
 	"github.com/intentdriven/abcd/internal/core/vintage"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // cliTestAsBinaryEnv marks a child process of this test binary that must act
@@ -18,6 +20,11 @@ const cliTestAsBinaryEnv = "ABCD_CLI_TEST_AS_BINARY"
 // shippedAhoyReleaseProvenance is ahoyReleaseProvenance as the binary ships it,
 // kept before TestMain stands a stub in.
 var shippedAhoyReleaseProvenance ahoy.ProvenanceCheck
+
+// builtAbcd is abcd built from this checkout once for the whole package: the
+// pre-push hook's work-in-progress tests run it as the attribution gate's
+// outbound half, which the fixture clone cannot `go run`.
+var builtAbcd gittest.Abcd
 
 // TestMain defaults the ahoy build-vintage seam to a fresh, determinable,
 // non-dogfood value for the whole package. runCLI executes the commands
@@ -65,6 +72,11 @@ func TestMain(m *testing.M) {
 	// No install run here starts the machine's own agent tool to read its
 	// version; the one test of that warning swaps in a stub reading.
 	ahoy.NoHostVersionForTest()
+	// No hook run here names a session unless its test asks: naming reads
+	// the machine's process table and writes a register into the home, and a
+	// test that did not ask for either must see stdout exactly as before.
+	// The naming tests swap in a fixture machine (hook_session_name_test.go).
+	sessionNameMachine = func() (sessionname.Machine, bool) { return sessionname.Machine{}, false }
 	real := os.Getenv("HOME")
 	// The machine's own home is out of reach of every test that did not set
 	// HOME itself: its rules.json (the rules loader) and its layered files,
@@ -92,6 +104,7 @@ func TestMain(m *testing.M) {
 	})
 	code := m.Run()
 	_ = os.RemoveAll(emptyHome)
+	builtAbcd.Remove()
 	os.Exit(code)
 }
 

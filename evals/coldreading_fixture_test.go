@@ -155,7 +155,7 @@ var sentinelClasses = []sentinelClass{
 	{
 		Name: "DECISION",
 		Homes: []string{
-			"repo:.abcd/work/DECISIONS.md",
+			"repo:.abcd/work/decisions/dcn-2608300000000001-a-recorded-decision.md",
 			"repo:.abcd/development/decisions/adrs/0001-a-ruled-decision.md",
 			"repo:.abcd/work/issues/open/iss-1-a-lapse-entry.md",
 			"repo:.abcd/work/issues/resolved/iss-2-a-resolved-defect.md",

@@ -34,9 +34,11 @@ var examples = map[string]string{
 	"abcd capture surprise":    `abcd capture surprise --occasioned-by rdi-2609010000000001 "the proposal nobody expected ranked first"`,
 	"abcd capture wontfix":     `abcd capture wontfix iss-2609010000000001 "the behaviour is the documented one"`,
 
-	"abcd decide": `abcd decide "Record ids are minted from a timestamp"`,
+	"abcd decide": `abcd decide "Decisions are one flat file each"`,
 
 	"abcd reserve": "abcd reserve iss-2609010000000001 --footprint internal/core/example/example.go",
+
+	"abcd announce": "abcd announce merging iss-2609010000000001",
 
 	"abcd docs fidelity record": "abcd docs fidelity record --verdict-json verdict.json",
 

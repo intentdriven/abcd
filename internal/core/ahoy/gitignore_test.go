@@ -154,7 +154,7 @@ func TestVisibilityBlockEffectiveGitSemantics(t *testing.T) {
 		{
 			visibility: "private",
 			ignored:    []string{".abcd/.work.local/", ".abcd/.work.local/NEXT.md", ".abcd/.work.local/scratch/notes.md"},
-			notIgnored: []string{".abcd/work/DECISIONS.md"},
+			notIgnored: []string{".abcd/work/decisions/README.md"},
 		},
 	}
 	for _, tc := range cases {
@@ -246,7 +246,7 @@ func TestRemoveGitignoreBlocksUnbalancedPreservesUserContent(t *testing.T) {
 // public fence therefore narrows to the local tier when .abcd/ is tracked.
 func TestPublicVisibilityBlockNarrowsWhenRecordTiersAreTracked(t *testing.T) {
 	repo := gittest.NewRepo(t)
-	repo.Write(".abcd/work/DECISIONS.md", "- a decision\n")
+	repo.Write(".abcd/work/decisions/README.md", "# Decisions\n")
 	repo.Commit("record tier")
 	if _, err := applyVisibilityBlock(repo.Root(), "public"); err != nil {
 		t.Fatalf("applyVisibilityBlock: %v", err)

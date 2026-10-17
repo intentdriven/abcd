@@ -289,7 +289,7 @@ func discardLane(c Context, lane Lane) (string, error) {
 		if err := loopWorktree(c, lane, "receipt"); err != nil {
 			return "", err
 		}
-		wts, err := gitutil.ListWorktrees(c.RepoRoot, maxWorktreeListing)
+		wts, err := gitutil.ListWorktrees(c.RepoRoot, gitutil.MaxWorktreeListing)
 		if err != nil {
 			return "", fmt.Errorf("listing the repository's worktrees: %w", err)
 		}

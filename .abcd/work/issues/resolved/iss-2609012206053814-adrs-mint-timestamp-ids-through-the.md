@@ -15,7 +15,7 @@ resolved_by:
   commit: "901709264eba31d6e34c6743c49dd2d357304bfa"
 ---
 
-Ruled 2026-09-01 (DECISIONS.md, that date): ADRs take timestamp ids through the same recordid seam as issues, because two branches minted 0055 and 0056 on the same day for different decisions. Implementation owed: a verb that mints adr-<timestamp> and writes the ADR skeleton under decisions/adrs with a filename ordered by the stamp; record-lint and the wiki-link resolver admit both the ordinal shape (0001-0058, kept as is) and the timestamp shape; the ADR index and site export sort ordinals first then stamps; adr-45's rollout note names this as the deferred family. Companion to the intent/spec adoption tracked by iss-2608210737260468.
+Ruled 2026-09-01 ([dcn-2609010000000007](../../decisions/dcn-2609010000000007-adrs-take-timestamp-ids-through-the-same.md)): ADRs take timestamp ids through the same recordid seam as issues, because two branches minted 0055 and 0056 on the same day for different decisions. Implementation owed: a verb that mints adr-<timestamp> and writes the ADR skeleton under decisions/adrs with a filename ordered by the stamp; record-lint and the wiki-link resolver admit both the ordinal shape (0001-0058, kept as is) and the timestamp shape; the ADR index and site export sort ordinals first then stamps; adr-45's rollout note names this as the deferred family. Companion to the intent/spec adoption tracked by iss-2608210737260468.
 
 ## Grounds
 

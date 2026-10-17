@@ -105,7 +105,7 @@ func read(root string, titles bool) (Report, error) {
 	}
 	checkedOut := map[string]bool{}
 	self := realPath(root)
-	store := embargoStore(root)
+	home, _ := os.UserHomeDir()
 	for _, wt := range wts {
 		if wt.bare || realPath(wt.path) == self {
 			if wt.branch != "" {
@@ -113,7 +113,7 @@ func read(root string, titles bool) (Report, error) {
 			}
 			continue
 		}
-		if store != "" && realPath(wt.path) == store {
+		if embargoStore(home, wt.path) {
 			// Private records live here: skipped unread, and counted with
 			// neither its path nor its branch (adr-2610120558328615).
 			if wt.branch != "" {
@@ -159,18 +159,13 @@ func read(root string, titles bool) (Report, error) {
 	return rep, nil
 }
 
-// embargoStore is where this repository's embargo store lives on this
-// machine, resolved, or "" when abcd's home cannot be named.
-func embargoStore(root string) string {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ""
-	}
-	p, ok := storepath.Path(home, root)
-	if !ok {
-		return ""
-	}
-	return realPath(p)
+// embargoStore reports whether a worktree at p is an embargo store, by its
+// path alone: worktrees/<key>/embargo in abcd's home, or that shape under
+// any home (storepath.IsStorePath, storepath.HasStoreShape). It asks
+// nothing of the store's lookup, so a lookup that fails or refuses to choose
+// still leaves every store skipped.
+func embargoStore(home, p string) bool {
+	return storepath.IsStorePath(home, p) || storepath.HasStoreShape(p)
 }
 
 // readWorktree reads one linked worktree, or says why it is spent. viaBranch

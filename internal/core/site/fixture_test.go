@@ -314,7 +314,7 @@ func (f *fixture) writeSources() {
             "issue": "issues", "principle": "principles",
             "discipline": "disciplines", "commits": "commits"},
   "record_nav": {"dashboard": "Dashboard", "graph": "Relationships", "timeline": "Genealogy",
-                 "foundations": "Foundation", "development": "Work", "health": "Health",
+                 "foundations": "Foundation", "development": "Work", "decision_log": "Decision log", "health": "Health",
                  "glossary": "Glossary", "contributors": "Contributors"},
   "health": {"unresolved": "References a record the tree does not hold",
              "isolated": "Linked to nothing, and nothing links to it",

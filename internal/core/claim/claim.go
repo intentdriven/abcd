@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -51,11 +52,13 @@ const (
 	// TakeoverMargin is how long past a reservation's effective expiry (or an
 	// unreadable tip's hold) another person waits before taking it over, by
 	// the taker's clock: the slack that absorbs small skew between clocks,
-	// and the only slack. A holder whose clock runs behind by more than half
-	// its lease plus this margin can be taken over between its renewals;
+	// and the only slack. It is lease.Skew, the allowance within which a
+	// reservation dated ahead of the reader is still judged by its own dates.
+	// A holder whose clock runs behind by more than half its lease plus this
+	// margin can be taken over between its renewals;
 	// nothing on the reader's side bounds it, since the commit date comes
 	// from the same clock (spc-2610031753359849, the review of 2026-10-14).
-	TakeoverMargin = 5 * time.Minute
+	TakeoverMargin = lease.Skew
 )
 
 // ErrBackOff marks a refusal whose remedy is to take other work: the record is
@@ -108,26 +111,35 @@ func echo(s string) string {
 // refusal quotes git's or the filesystem's own reason.
 func redacted(err error) string { return fsutil.RedactHome(err.Error()) }
 
-// reservableID is the record a reservation names, in canonical form, or a
-// refusal. Only an issue or an intent is reservable — the records a build or a
-// drain takes — and the argument must already be a cited id in canonical
-// grammar, so no ref name is ever formed from anything else and two spellings
-// of one record never make two branches.
+// reservableID is the subject a reservation names, in canonical form, or a
+// refusal. Only an issue or an intent is reservable as a record — the records
+// a build or a drain takes — and a release as a release subject, rel-vX.Y.Z
+// (release.go); the argument must already be a cited id in canonical grammar,
+// or a release subject in its one spelling, so no ref name is ever formed from
+// anything else and two spellings of one subject never make two branches.
 func reservableID(arg string) (string, error) {
+	if isRelease(arg) {
+		return arg, nil
+	}
 	if !recordid.CitedIDRe.MatchString(arg) {
-		return "", refuse("%s is not an issue or intent id (iss-N or itd-N); %s", echo(arg), nothingPushed)
+		return "", notReservable(arg)
 	}
 	id := recordid.CanonCitedID(arg)
 	if id == "" || (id[:4] != "iss-" && id[:4] != "itd-") {
-		return "", refuse("%s is not an issue or intent id (iss-N or itd-N); %s", echo(arg), nothingPushed)
+		return "", notReservable(arg)
 	}
 	return id, nil
 }
 
-// refName is a reservable id's branch on the remote; trackingName is this
-// checkout's copy of it. Both take only reservableID's answer.
-func refName(id string) string      { return RefPrefix + id }
-func trackingName(id string) string { return TrackingPrefix + id }
+// notReservable is the refusal of an argument that is no reservable subject.
+func notReservable(arg string) error {
+	return refuse("%s is not an issue or intent id (iss-N or itd-N), nor a release (rel-vX.Y.Z); %s", echo(arg), nothingPushed)
+}
+
+// refName is a reservable id's branch on the remote, a full ref; trackingName
+// is this checkout's copy of it. Both take only reservableID's answer.
+func refName(id string) string      { return reservations.ref(id) }
+func trackingName(id string) string { return reservations.track(id) }
 
 // Why a renewal found no reservation of this person's from this copy to renew.
 const (

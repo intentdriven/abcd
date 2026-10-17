@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -29,7 +30,9 @@ const (
 
 // Net runs one git command that reaches the remote, from the checkout at dir:
 // a fetch or a push. It is the one networked git runner, shared by the
-// implement loop's landing and the reservation on the shared remote.
+// implement loop's landing, `abcd land` and the reservation on the shared
+// remote. A git command that reaches no remote runs through LocalGit instead, so
+// a hook it runs sees none of the network settings below.
 //
 // The repository's hooks run (the pre-push gate is the point), under the
 // developer's own configuration less any injected GIT_DIR or GIT_CONFIG_*
@@ -45,26 +48,113 @@ const (
 // connect after 30 seconds and a silent connection after four missed
 // keepalives. Stdout is returned within
 // netOutputCap, on a failure too (a porcelain push reports its rejections
-// there); a failure's error carries git's bounded stderr.
+// there); a failure's error carries git's bounded stderr. On a failure both are
+// scrubbed of credential URLs (ScrubURLCredentials) before they are cut.
 func Net(dir string, args ...string) (string, error) {
+	return runHooked(dir, true, "", args, nil)
+}
+
+// NetEach is Net for a command whose output may run to any length (a
+// listing of every ref under a prefix a pusher can fill): each line of
+// stdout is handed to each as it is read, without its newline, and none is
+// kept, so no bound on the whole output applies. A line longer than maxLine
+// bytes is handed cut to its first maxLine. A failure's error carries git's
+// bounded stderr, scrubbed, as Net's does.
+func NetEach(dir string, maxLine int, each func(line string), args ...string) error {
+	w := &lineSink{max: maxLine, each: each}
+	_, err := runHooked(dir, true, "", args, w)
+	if err == nil {
+		w.flush()
+	}
+	return err
+}
+
+// lineSink splits what it is written into lines for each, keeping at most
+// max bytes of the line it is in.
+type lineSink struct {
+	max  int
+	each func(string)
+	buf  []byte
+	open bool
+}
+
+func (w *lineSink) Write(p []byte) (int, error) {
+	for _, b := range p {
+		if b == '\n' {
+			w.each(string(w.buf))
+			w.buf, w.open = w.buf[:0], false
+			continue
+		}
+		w.open = true
+		if len(w.buf) < w.max {
+			w.buf = append(w.buf, b)
+		}
+	}
+	return len(p), nil
+}
+
+// flush hands each the last line when the output did not end in a newline.
+func (w *lineSink) flush() {
+	if w.open {
+		w.each(string(w.buf))
+		w.buf, w.open = w.buf[:0], false
+	}
+}
+
+// NetInput is Net with stdin fed to the command: a `git fetch --stdin` reads
+// its refspecs there, one per line, so however many a fetch names, none
+// lengthens its command line past the system's argument limit.
+func NetInput(dir, stdin string, args ...string) (string, error) {
+	return runHooked(dir, true, stdin, args, nil)
+}
+
+// LocalGit runs one git command that reaches no remote (a commit, a read of
+// origin's URLs) from the checkout at dir, with the repository's hooks running
+// under the developer's own configuration exactly as their own git runs them:
+// ScrubbedEnv, GIT_TERMINAL_PROMPT=0 and core.quotePath=false, and nothing
+// else, so none of Net's network settings (its low-speed bounds, which reach a
+// hook through GIT_CONFIG_PARAMETERS, and its batch-mode ssh command) changes
+// how a hook of the repository's runs. Its bounds and its output are Net's.
+func LocalGit(dir string, args ...string) (string, error) {
+	return runHooked(dir, false, "", args, nil)
+}
+
+// runHooked is Net (network true) and LocalGit (false), with stdin fed to
+// the command when it is not "". With sink set, stdout is written to it as
+// it is read, none is kept, and the output returned is "".
+func runHooked(dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), NetTimeout)
 	defer cancel()
-	full := append([]string{"-c", "core.quotePath=false",
-		"-c", "http.lowSpeedLimit=" + netLowSpeedLimit, "-c", "http.lowSpeedTime=" + netLowSpeedTime, "-C", dir}, args...)
+	full := []string{"-c", "core.quotePath=false"}
+	if network {
+		full = append(full, "-c", "http.lowSpeedLimit="+netLowSpeedLimit, "-c", "http.lowSpeedTime="+netLowSpeedTime)
+	}
+	full = append(append(full, "-C", dir), args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
-	if ssh := netSSHCommand(dir); ssh != "" {
-		cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
+	if network {
+		if ssh := netSSHCommand(dir); ssh != "" {
+			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
+		}
+	}
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
 	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if sink != nil {
+		cmd.Stdout = sink
+	}
 	what := "git " + args[0]
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
+		// Scrubbed BEFORE the cut: a cut across a credential URL leaves a
+		// fragment with no host, which the scrubber no longer recognises, and
+		// the token's start would go out with it.
+		msg := ScrubURLCredentials(strings.TrimSpace(stderr.String()))
 		if len(msg) > netStderrCap {
 			msg = msg[:netStderrCap]
 		}
-		out := stdout.String()
+		out := ScrubURLCredentials(stdout.String())
 		if len(out) > netOutputCap {
 			out = out[:netOutputCap]
 		}

@@ -282,7 +282,10 @@ on the current repository.
   place of `AGENTS.md`, is named as setup names it, as holding the owner's words
   or as only repeating `AGENTS.md`, and the report points at setup's offer to
   retire the second kind rather than acting on it.
-- **Adopts the conventions.** The three-tier layout; a merged, never
+- **Adopts the conventions.** The three-tier layout, with the shared tier's
+  decisions folder seeded (one file per decision, and a README so git keeps
+  the folder) and any single decisions log the repository already keeps left
+  untouched as frozen history; a merged, never
   overwritten, `AGENTS.md` carrying verified repo facts plus a marked
   working-conventions block; a registered identity block; and the commit gates.
   `AGENTS.md` is the one conventions file it writes: it makes no other tool's
@@ -306,16 +309,37 @@ on `PATH`, lands in that one run. It runs a second time, with the attribution
 flag, where the user opts in: that run installs the committed
 `prepare-commit-msg` prompt asking every commit to declare whether a tool
 assisted it, and the choice is recorded, so a later install without the flag
-keeps the hook. The outbound flag is the same kind of opt-in: it installs the
-committed `commit-msg` gate that refuses a live agent-session URL or a tool
-attribution footer in a commit message, running only the abcd binary the clone
-names in `git config --local abcd.binary` and letting the commit through with
-one warning when there is none (iss-2609250834251447). The outbound-forge flag
-is a third opt-in of the same kind and independent of the second: it records
-`outbound.forge: true`, and the shell guard then refuses a posting `gh pr` or
-`gh issue` command whose title, body or body file carries either shape
-(`forge-text-outbound`). It writes no hook and names no binary, since the guard
-is the abcd already running (iss-2610142210511831). The identity verb's render is the follow-on surface and writes
+keeps the hook. The outbound flag is the same kind of opt-in, and one switch
+for two checks (iss-2610152024327989): it installs the committed `commit-msg`
+gate that refuses a live agent-session URL or a tool attribution footer in a
+commit message, and it records `outbound.forge: true` beside `outbound.hook:
+true`, so the shell guard also refuses a posting `gh pr` or `gh issue` command
+whose title, body or body file carries either shape (`forge-text-outbound`,
+iss-2610142210511831). The gate runs only the abcd binary the clone names in
+`git config --local abcd.binary` and lets the commit through with one warning
+when there is none (iss-2609250834251447); the explicit flag writes that key,
+clone-local, to the `PATH` copy whose build provenance the same run verified,
+and writes nothing, saying why, when there is no such copy, when the entry is
+the dev shim or when it lies inside the working tree (iss-2610152024267547).
+It never sets `core.hooksPath`, which chooses every hook git runs in the
+clone. So that the check runs with no manual step, the explicit flag alone also
+writes the same embedded template, marked as abcd's, as the clone's own
+`commit-msg` in the common git directory's `hooks/` (shared by every worktree),
+where no hooks path is set at any scope and nothing occupies that path; it
+never runs or calls the committed copy. Where a hooks path is set (the empty
+value included), or a `commit-msg` hook abcd did not write is there, it leaves
+that hook alone, saves the same template as `hooks/abcd-commit-msg`, a name git
+never runs, and one note says the check is not wired, why, and the line that
+calls that copy from the person's own hook, so the chained check fails open as
+the template does; a rerun leaves a current copy as it is, refreshes one only
+when it is byte for byte a template an earlier abcd wrote, and leaves an edited
+one, saying so. The binary is not
+re-verified at commit time: a swap of the `PATH` copy by the same account is out
+of scope. The two flags that each turned on one half are retired and refused
+naming the switch, and a repository that recorded one half under them, leaving
+the other key absent, raises `outbound.half_on`, which the next install
+completes; a key the repository set to `false` is its choice and raises only
+the advisory `outbound.half_chosen`. The identity verb's render is the follow-on surface and writes
 nothing: it proposes a correction as a diff, and adopting it is always the
 product thinker's move.
 
@@ -386,6 +410,12 @@ earlier version wrote wider is narrowed when abcd next writes it
 
 ```
 ~/.abcd.noindex/                       USER SCOPE — one per machine (machine-local state only)
+  .gitignore                     one * line, so a git repository in the home folder
+                                 never stages this folder; laid once, owner-only, and
+                                 never laid again once deleted (itd-2610140858048004);
+                                 an ignore file already there is left as it is and
+                                 only the marker is written
+  gitignore-laid                 the marker recording that lay
   history/                       the REGISTRY only: identity and lineage keyed on the
                                  root-commit SHA. ahoy owns it; it holds no transcripts
   transcripts/<root-sha>/        the redacted transcript corpus, a SIBLING of the
@@ -396,7 +426,13 @@ earlier version wrote wider is narrowed when abcd next writes it
   lab/<root-sha>/<lab-id>/       one lab's evidence: snapshot, probe records, findings,
                                  harvest; index.jsonl beside the homes registers them,
                                  never committed (itd-2609212137128014)
-  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
+  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout;
+                                 the build loop creates each lane's worktree here today
+                                 and ahoy reports one its repository no longer links;
+                                 the store's own verbs and its reclaim are NOT BUILT
+                                 (itd-2609091014076309)
+  notes/<root-sha>/              the store's notes archive: a reclaimed worktree's
+                                 .abcd/.work.local/, redacted, beside a manifest
                                  (NOT BUILT — itd-2609091014076309)
   runs/<root-sha>/               an autonomous run's shared state: the run log, one
                                  claim per record, one record per joined session
@@ -415,8 +451,16 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  (oracle.api.<provider>) the provider setup writes,
                                  and the only file a provider block may sit in;
                                  that write holds .config.json.lock beside it
-  memory/                        user-scope memory (personal, cross-project — a later
-                                 phase; the shipped store is repo-scope .abcd/memory/)
+  memory.json                    the machine layer of the memory notes: the person's
+                                 own notes, which agents write through the memory
+                                 verb and which it removes at the person's request;
+                                 each is tied to the repository it was written in
+                                 unless written for every project. The prompt router
+                                 recalls them beside the project's .abcd/memory.json,
+                                 a person's reviewed commit, whose note wins an id
+                                 both hold
+  memory/                        curated cross-project memory pages (a later phase;
+                                 nothing resolves it today)
   sources/                       the local sources corpus the library verb maintains
                                  and /abcd:library reads. Created only by its explicit
                                  init: absent means every other corpus verb and the
@@ -935,7 +979,11 @@ oracle backend, the deep-scan toggle and the repo visibility, select track-lates
 dogfood mode, proceed despite a stale running binary (the default refuses before
 the adoption question and before any write, the writability probe of a named
 `PATH` directory included, and names the rebuild fix), name the directory for the `PATH` entry,
-and opt the repo into the attribution prompt hook. A value flag (marker
+opt the repo into the attribution prompt hook and into both outbound checks,
+answer the README question with the parts abcd keeps current (or none), answer
+yes to installing a named missing tool, and answer the setup questions from an
+answers file, naming where an entry that names no place of its own was
+answered. A value flag (marker
 target, oracle backend, deep-scan toggle, visibility) is held to the
 `config-change` approval like any other settings change: one that would change
 a saved setting puts that approval even with no `config-change` gap, and a
@@ -1301,8 +1349,7 @@ Sub-verbs: none.
 | `--install-tool` | stringSlice |
 | `--live-sessions` | string |
 | `--oracle-backend` | string |
-| `--outbound-forge` | bool |
-| `--outbound-hook` | bool |
+| `--outbound` | bool |
 | `--readme-parts` | string |
 | `--refuse-adopt` | bool |
 | `--scan-deep` | string |

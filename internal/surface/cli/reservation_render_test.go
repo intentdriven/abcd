@@ -26,10 +26,24 @@ func reservedRecords(t *testing.T, w *reserveWorld) {
 	writeRel(t, seed, ".abcd/work/issues/open/iss-5-a-reserved-finding.md", peerIssue("iss-5", "a-reserved-finding", "A reserved finding"))
 	writeRel(t, seed, ".abcd/work/issues/open/iss-6-a-later-finding.md", peerIssue("iss-6", "a-later-finding", "A later finding"))
 	writeRel(t, seed, ".abcd/development/intents/drafts/itd-7-x.md", peerIntent("itd-7", "A reserved draft"))
+	writeRel(t, seed, ".abcd/development/intents/planned/itd-8-ready.md", readyReservedIntent)
+	writeRel(t, seed, ".abcd/development/specs/open/spc-8-ready.md", readyReservedSpec)
 	gitCmd(t, seed, "add", "-A")
 	gitCommit(t, seed, "commit", "-q", "-m", "records")
 	gitCmd(t, seed, "push", "-q", "origin", "main")
 }
+
+// readyReservedIntent is a planned intent every other check `abcd build` runs
+// passes, and readyReservedSpec its spec, so only a reservation can refuse it.
+const (
+	readyReservedIntent = "---\nid: itd-8\nslug: ready\nspec_id: spc-8\nkind: standalone\n---\n# ready\n\n" +
+		"## Mechanism\n\nWe expect it to work because it is small; shown wrong if it is not.\n\n" +
+		"## Scope Conditions\n\nNone stated.\n\n## Acceptance Criteria\n\n- Given x, when y, then z.\n\n" +
+		"## Open Questions\n\n_None open._\n\n" +
+		"## Grounds\n\n- pursued: we expect a reservation to hold it; shown wrong if a build starts it\n"
+	readyReservedSpec = "---\nid: spc-8\nslug: ready\nintent: itd-8\n---\n# ready\n\n## Summary\n\nA written design record.\n\n" +
+		"## Footprint\n\n- packages: d.go\n- tests: none\n"
+)
 
 // recordJSON is the reservation half of `abcd <record-id> --json`.
 type recordJSON struct {
@@ -54,9 +68,11 @@ type boardStatusJSON struct {
 
 // TestReservationRendersTouchNoNetwork is C49: after Q's checkout fetched the
 // reservations, the record render and the board show P's reservations and
-// the view's age from disk alone. A reservation P makes after that fetch is
+// the view's age from disk alone, and `abcd build <itd-N>` and `abcd build
+// next` refuse P's reserved intent at their peers check from disk alone. A reservation P makes after that fetch is
 // not seen, the fetch stamp is not moved, the origin can be gone, and no HTTP
-// request is made.
+// request is made. No render asks the forge's user endpoint either, even for a
+// reader whose git identity is a machine's: only `reserve` asks it.
 func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	w := newReserveWorld(t)
 	reservedRecords(t, w)
@@ -65,6 +81,7 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	for _, args := range [][]string{
 		{"reserve", "iss-5", "--footprint", "a.go"},
 		{"reserve", "itd-7", "--footprint", "b.go"},
+		{"reserve", "itd-8", "--footprint", "d.go"},
 	} {
 		if code, out, errOut := reserveRun(t, p, args...); code != 0 {
 			t.Fatalf("%v: exit %d\n%s%s", args, code, out, errOut)
@@ -84,6 +101,13 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 	if err := os.Rename(w.origin, w.origin+".away"); err != nil {
 		t.Fatal(err)
 	}
+
+	// Q's git identity is now a machine's, so a holder lookup that used the
+	// network would ask the forge's user endpoint; gh is a stub that records
+	// every call, and the renders must make none.
+	gitCmd(t, q, "config", "user.name", "renovate[bot]")
+	gitCmd(t, q, "config", "user.email", "29139614+renovate[bot]@users.noreply.github.com")
+	ghCalls := stubGH(t, `{"login":"quinn","id":99}`)
 
 	var hits int32
 	origTransport := http.DefaultTransport
@@ -148,10 +172,65 @@ func TestReservationRendersTouchNoNetwork(t *testing.T) {
 		t.Fatalf("the holder's own board names its reservation as another's: exit %d\n%s", code, raw)
 	}
 
+	// The build's peers check reads the same view: P's reserved intent is
+	// refused, and `build next` excludes it, with no fetch and no push.
+	code, raw, errOut = reserveRun(t, q, "build", "itd-8", "--json")
+	if code != 3 || !strings.Contains(raw, `"check": "peers"`) || !strings.Contains(raw, "reserved by octo until ") ||
+		!strings.Contains(raw, "as of the last fetch") {
+		t.Fatalf("abcd build itd-8: exit %d, want the peers check naming P's reservation\n%s%s", code, raw, errOut)
+	}
+	code, raw, errOut = reserveRun(t, q, "build", "next", "--json")
+	if code != 2 || !strings.Contains(raw, `"id": "itd-8"`) || !strings.Contains(raw, "reserved by octo until ") {
+		t.Fatalf("abcd build next: exit %d, want itd-8 excluded naming P's reservation\n%s%s", code, raw, errOut)
+	}
+
 	if now, err := os.ReadFile(stampPath); err != nil || string(now) != string(stamped) {
 		t.Errorf("a render moved the fetch stamp: %q, was %q (%v)", now, stamped, err)
 	}
 	if n := atomic.LoadInt32(&hits); n != 0 {
 		t.Fatalf("the renders made %d network request(s)", n)
+	}
+	if calls := ghCalls(); len(calls) != 0 {
+		t.Fatalf("the renders asked GitHub through gh: %q", calls)
+	}
+	// The user endpoint is asked only where documented: `reserve --holder`
+	// (and the reservation acts), once, for the token's account.
+	code, text, errOut = reserveRun(t, q, "reserve", "--holder")
+	if code != 0 || text != "would reserve as quinn (from token)\n" {
+		t.Fatalf("reserve --holder: exit %d\n%s%s", code, text, errOut)
+	}
+	if calls := ghCalls(); len(calls) != 1 || calls[0] != "api --hostname github.com user" {
+		t.Fatalf("reserve --holder asked gh %q; want the user endpoint once", calls)
+	}
+}
+
+// stubGH puts a gh first on PATH that answers every call with answer and
+// records its arguments; the returned func lists the calls so far, one line
+// each.
+func stubGH(t *testing.T, answer string) func() []string {
+	t.Helper()
+	return stubGHScript(t, "printf '%s' '"+answer+"'\n")
+}
+
+// stubGHScript is stubGH with body, a shell fragment, in place of the answer:
+// it may write to stderr and exit as it likes.
+func stubGHScript(t *testing.T, body string) func() []string {
+	t.Helper()
+	dir := t.TempDir()
+	log := filepath.Join(dir, "calls")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\n" + body
+	if err := os.WriteFile(filepath.Join(dir, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return func() []string {
+		raw, err := os.ReadFile(log)
+		if os.IsNotExist(err) {
+			return nil
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		return strings.Split(strings.TrimSuffix(string(raw), "\n"), "\n")
 	}
 }

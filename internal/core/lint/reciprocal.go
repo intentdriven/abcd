@@ -44,6 +44,8 @@ const (
 
 // exemptEdgeRe is one exempt_edges entry: `<source> -> <target>`, the source
 // being the record whose builds_on names the target.
+// It omits dcn deliberately: the list is frozen to the 155 itd edges it
+// landed with (TestBuildsOnExemptionsNeverGrow), so no dcn entry is valid.
 var exemptEdgeRe = regexp.MustCompile(`^((?:adr|itd|iss|spc)-\d+) -> ((?:adr|itd|iss|spc)-\d+)$`)
 
 // scanCorpus reads every store the rule names, or record_schema's where it

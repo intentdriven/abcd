@@ -8,7 +8,7 @@ source: "user-observation"
 found_during: "cold-reading workstream preparation, 2026-08-28"
 found_at: "the whole first-cycle record"
 lapsed_at: "2026-08-28T00:00:00Z"
-resolution: "a lapse disclosure with nothing to decide: DECISIONS 2026-08-28 rules that content defects are disclosed, not fixed"
+resolution: "a lapse disclosure with nothing to decide: dcn-2608280000000005 rules that content defects are disclosed, not fixed"
 impact: internal
 ---
 

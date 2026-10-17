@@ -9,7 +9,8 @@ package recordid
 // next to a consumer (an ingest seam, a lint rule) would drift from the minting
 // side the first time a family moved.
 //
-// Only the four ID-BEARING families are resolvable. The brief carries no
+// Only the five ID-BEARING families are resolvable: intents, specs, issues,
+// ADRs and decision records (dcn, itd-2609151138388536). The brief carries no
 // per-entry id, and the principles carry a slug-keyed one (`prn-<filename
 // stem>`, adr-2609021016270132) that no citation grammar admits, so a citation
 // of either cannot be validated by id here; a caller that needs to reference
@@ -33,17 +34,60 @@ import (
 	"syscall"
 )
 
-// CitedIDRe is the canonical grammar of a cited record id: one of the four
+// CitedIDRe is the canonical grammar of a cited record id: one of the five
 // id-bearing family prefixes, a hyphen, and a bare decimal N. It is exported
 // because every ingest boundary that accepts a citation must bound and shape the
 // string BEFORE it is looked up or echoed, and they must all agree on the shape.
-var CitedIDRe = regexp.MustCompile(`^(?:adr|itd|iss|spc)-[0-9]+$`)
+// Its families are familyRoots' prefixes, so a family the resolver reads is one
+// a citation may name, and no other.
+var CitedIDRe = regexp.MustCompile(`^(?:` + familyAlternation() + `)-[0-9]+$`)
 
 // citedIDPartsRe splits a cited id into its family and its number, folding case.
 // It is CitedIDRe's grammar with the two halves captured, and it exists so the
 // canonicaliser below cannot drift from the shape every ingest boundary bounds a
 // citation with.
-var citedIDPartsRe = regexp.MustCompile(`(?i)^(adr|itd|iss|spc)-([0-9]+)$`)
+var citedIDPartsRe = regexp.MustCompile(`(?i)^(` + familyAlternation() + `)-([0-9]+)$`)
+
+// CitedFamilies returns the id-bearing family prefixes a citation may name, in
+// familyRoots' order: the one list CitedIDRe is built from. It is exported for
+// a caller that has to recognise or describe those families in a shape of its
+// own (the inbox's rewrite of a sender's ids, a refusal naming what a citation
+// may be), so that caller cannot keep a copy that misses a family when one is
+// added. The slice is fresh on every call; a caller may keep or change it.
+func CitedFamilies() []string {
+	out := make([]string, len(familyRoots))
+	for i, fam := range familyRoots {
+		out[i] = fam.prefix
+	}
+	return out
+}
+
+// CitedIDForms describes the cited grammar in words for a refusal to quote:
+// every family as `<prefix>-N`, comma-separated, the last after "or" (`itd-N,
+// spc-N, iss-N, adr-N, or dcn-N`). It is derived from CitedFamilies, so a
+// message saying what a citation may be says what CitedIDRe accepts.
+func CitedIDForms() string {
+	fams := CitedFamilies()
+	forms := make([]string, len(fams))
+	for i, f := range fams {
+		forms[i] = f + "-N"
+	}
+	if len(forms) < 2 {
+		return strings.Join(forms, "")
+	}
+	return strings.Join(forms[:len(forms)-1], ", ") + ", or " + forms[len(forms)-1]
+}
+
+// familyAlternation is CitedFamilies as a regular-expression alternation. The
+// prefixes are quoted although each is plain letters, so a family spelt with a
+// metacharacter could never widen the grammar.
+func familyAlternation() string {
+	fams := CitedFamilies()
+	for i, f := range fams {
+		fams[i] = regexp.QuoteMeta(f)
+	}
+	return strings.Join(fams, "|")
+}
 
 // CanonCitedID folds a cited id into the one spelling Lookup keys on: lower-case
 // family, number with its leading zeros trimmed. "" when the string is not a
@@ -167,8 +211,21 @@ const IssuesRelDir = ".abcd/work/issues"
 // the store the resolver's way.
 const ADRsRelDir = ".abcd/development/decisions/adrs"
 
+// DecisionsRelDir is the decision records' folder, repo-relative and
+// slash-separated: one flat folder of `dcn-<id>-<slug>.md` files, one per
+// decision (adr-2610110925465593). It sits in the shared working tier beside
+// the issue ledger, and every package that reaches it names it through this
+// constant or through internal/core/decisions, which re-exports it.
+const DecisionsRelDir = ".abcd/work/decisions"
+
 // familyRoots names each id-bearing family's store, repo-relative and
 // slash-separated. Written once, in the order a reader expects them.
+//
+// The decision records' prefix is `dcn`, not `dec`: the lifeboat keys a line of
+// a managed repository's frozen decisions log as `dec-L<line>`, and a distinct
+// prefix keeps the two apart for a reader as well as for the grammar (spec
+// spc-2610110931381316, decision 16). The folder is flat, which the shallow
+// scan reads as a root with no buckets.
 var familyRoots = []struct {
 	prefix string
 	dir    string
@@ -177,6 +234,7 @@ var familyRoots = []struct {
 	{"spc", ".abcd/development/specs"},
 	{"iss", IssuesRelDir},
 	{"adr", ADRsRelDir},
+	{"dcn", DecisionsRelDir},
 }
 
 // Resolver is the live record-id set of one repository, read once. It is a
@@ -223,7 +281,7 @@ func NewResolver(repoRoot string) (*Resolver, error) {
 
 // LookupOne resolves one id against its own family's store alone, for a caller
 // that needs a single record rather than a snapshot of the whole record: it
-// reads one family where NewResolver reads four, so a fault in another family's
+// reads one family where NewResolver reads five, so a fault in another family's
 // store is not this lookup's refusal. An id whose prefix names no family
 // resolves to nothing, as Lookup would answer it; an id two files claim is
 // Lookup's *AmbiguousIDError.
@@ -342,7 +400,7 @@ func (r *Resolver) record(prefix, relDir, name string) {
 	r.ids[id] = append(r.ids[id], path.Join(relDir, name))
 }
 
-// fileID derives a record id from a filename within its family. The three
+// fileID derives a record id from a filename within its family. The four
 // slug-prefixed families spell their own id (itd-104-<slug>.md); ADRs carry a
 // bare number instead (0037-<slug>.md → adr-37), read through the one exported
 // derivation the mint's presence check also calls.
@@ -393,7 +451,7 @@ func readDirIfPresent(dir string) ([]os.DirEntry, error) {
 // memory note's id (mem, internal/core/memnote) is one too, since the memory
 // recall brings notes back into running text (spc-2610111627213138 step 2).
 var handleInTextRe = regexp.MustCompile(
-	`(?i)(?:^|[^A-Za-z0-9-])((?:adr|itd|spc|iss|rdi|rdg|dsp|adm|srp|rfm|cond|mem)-[0-9]+)(?:$|[^A-Za-z0-9])`)
+	`(?i)(?:^|[^A-Za-z0-9-])((?:adr|itd|spc|iss|dcn|rdi|rdg|dsp|adm|srp|rfm|cond|mem)-[0-9]+)(?:$|[^A-Za-z0-9])`)
 
 // HandleInText returns the first record handle the text carries, and whether it
 // carries one. It is the one answer the principles lint and the reading

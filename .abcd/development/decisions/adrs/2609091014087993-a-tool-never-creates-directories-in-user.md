@@ -149,7 +149,7 @@ the place a session's worktree goes, and names no sibling-directory form.
 ## Status note
 
 **Accepted by the maintainer's ruling of 2026-09-09**, recorded in
-[`.abcd/work/DECISIONS.md`](../../../work/DECISIONS.md) and split there into
+[dcn-2609090000000002](../../../work/decisions/dcn-2609090000000002-a-tool-never-creates-directories-in.md) and split there into
 three records: this decision (the trust rule), the intent (the store and its
 verbs) and the principle
 [`the-users-directory-is-theirs`](../../principles/the-users-directory-is-theirs.md)

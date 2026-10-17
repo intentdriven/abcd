@@ -15,10 +15,12 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // The LOAD domain carries the product thinker's ruling on iss-2609210828122412
-// (DECISIONS.md, 2026-09-23): orphaned background burners from a load
+// (dcn-2609230000000013): orphaned background burners from a load
 // experiment in a managed repository starved a development machine into a
 // kernel panic. Three of the ruling's four conditions hold as rules now, and
 // the bundled domain is how they reach an agent in every repository abcd
@@ -375,6 +377,22 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		// and arguments are read, and that account wrote them.
 		"no file another account can write is read; the gate reads only the process table",
 		"still delays yours",
+		// The race stage's own gate, and the person's own slot setting
+		// (iss-2610161639025702).
+		"abcd implement load --race-gate",
+		"never spelt with `--wait`",
+		"two at most until a measured trial supports more",
+		"one race stage at a time within your account",
+		"an account at one opens its race gate at once",
+		"`load.preflights` in `" + abcdhome.Display("config.json") + "`",
+		"`ABCD_LOAD_PREFLIGHTS`",
+		"never read from a repository file",
+		// Each gate is shut only by its own gate's hold.
+		"a first gate's hold never shuts the race gate",
+		// A machine config.json that cannot be read stops nothing.
+		"a `config.json` that cannot be read for it is read past",
+		// A lone race run's waiter is a race run for both gates.
+		"counts as a race run to every race gate and every other such run",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)

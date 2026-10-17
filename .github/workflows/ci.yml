@@ -16,8 +16,8 @@ name: ci
 # tree that lands, and on a pull request it reports its required context
 # without taking a macOS runner (see the check job). Separate jobs run full-history
 # secret scanning, a workflow audit, the reviews-charter and issue-resolution
-# gates (RS001-RS003), dependency review, govulncheck, the smoke harness, and the
-# cold-reading evals.
+# gates (RS001-RS003), dependency review, govulncheck, the smoke harness, the
+# cold-reading evals, and the work-in-progress guard.
 #
 # The `changes` job classifies the diff, and the duplicated lanes stand down on a
 # change confined to the record and the user-facing docs. Two properties make
@@ -265,16 +265,20 @@ jobs:
   check:
     needs: changes
     if: ${{ !cancelled() }}
-    # The macOS leg's ceiling is equal to the merge queue's check response
-    # timeout (45 minutes, recorded in .abcd/work/rulesets/main-protection.json),
-    # which is the outer ceiling on a merge-group run: the queue fails the group
-    # when this required check has not concluded by then, so a job ceiling above
-    # it is unreachable there. Both are 45 under ruling Z (2026-09-28, the
-    # technical facilitator), because a 30-minute cap cancelled passing macOS
-    # runs of 23 to 30 minutes (iss-2609281514435020). Raising either again is
-    # an admin act on the live ruleset, left to the technical facilitator, and
-    # the remedy for a leg near the cap is a faster suite. The ubuntu leg runs
-    # well inside 30 minutes and keeps that ceiling. The race step's -timeout lifts go test's 10m
+    # The macOS leg's ceiling sits below the merge queue's check response
+    # timeout (90 minutes since 2026-10-11, recorded in
+    # .abcd/work/rulesets/main-protection.json), which is the outer ceiling on a
+    # merge-group run: the queue fails the group when this required check has
+    # not concluded by then, so a job ceiling above it would be unreachable
+    # there. Ruling Z (2026-09-28, the technical facilitator) raised the leg
+    # from 30 to 45 minutes, because a 30-minute cap cancelled passing macOS
+    # runs of 23 to 30 minutes (iss-2609281514435020). The technical
+    # facilitator raised it to 60 on 2026-10-15, when merge-queue macOS runs had
+    # grown from 31-35 to 34-40 minutes (iss-2610142326511964), so on this leg
+    # the job's own ceiling, not the queue's, is the binding one. Raising it
+    # again is the technical facilitator's call, and the remedy for a leg near
+    # the cap is a faster suite. The ubuntu leg runs well inside 30 minutes and
+    # keeps that ceiling. The race step's -timeout lifts go test's 10m
     # per-package default, so a slow package runs on to this ceiling instead of
     # failing at ten minutes. The step names its slowest packages first, so they
     # start with the step rather than behind every faster package; a hang in one
@@ -283,7 +287,7 @@ jobs:
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 45 || 30 }}
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 60 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -397,9 +401,9 @@ jobs:
       # unrelated pull request from the merge queue (iss-2609260319483365). 20m
       # is about twice the slowest passing run, so a real hang still fails with
       # a goroutine dump where the enclosing ceiling leaves room for it: in
-      # release.yml's verify job it does, while this job's own ceiling, held to
-      # the merge queue's response cap, is the binding one on macOS (see the
-      # job header). The Makefile's preflight recipe and release.yml's verify
+      # release.yml's verify job it does, while this job's own ceiling, held
+      # below the merge queue's response cap, is the binding one on macOS (see
+      # the job header). The Makefile's preflight recipe and release.yml's verify
       # job carry the same flag, and so does the macOS step below;
       # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds all four.
       #
@@ -442,9 +446,9 @@ jobs:
       # `-agent-diff` additionally arms agent_contract's unbumped-edit check,
       # which needs a base revision to compare against.
       #
-      # THE FALLBACK CHAIN, argued once here for the three range-scoped gates
-      # that share it (this step, and the RS001/RS002 and DA001-DA004 steps in
-      # the record-lint job). The two events that gate a merge name their base
+      # THE FALLBACK CHAIN, argued once here for the two range-scoped gates
+      # that share it (this step, and the RS001/RS002 step in the record-lint
+      # job). The two events that gate a merge name their base
       # in different fields, and the chain must cover both or a gate goes quiet
       # on the event it does not cover — which is what happened to the merge
       # queue (iss-2609091258115663). `merge_group.base_sha` is the base the
@@ -517,24 +521,24 @@ jobs:
 
       # Warn before the cap cancels (ruling Z's cancel policy, 2026-09-28). A
       # macOS check that runs past WARN_AFTER_MINUTES is ten minutes from the
-      # merge queue's cap, and a cancellation there carries nothing but the
+      # leg's 60-minute ceiling, and a cancellation there carries nothing but the
       # cancellation. The rule for a cancelled check is to rerun it once; a
       # second cancellation for the same reason stops that pull request and
       # opens a speed lane, never another raise of the timeout. This warning
       # moves that signal ahead of the first cancellation: it is emitted at the
       # job's end, for a run that finished past the line, so a check that
-      # passed between 35 and 45 minutes says so before one is cancelled at
+      # passed between 50 and 60 minutes says so before one is cancelled at
       # the cap. It never fails the
       # job: `always()` runs it however the steps before it ended, and
       # `continue-on-error` holds even a broken script to a warning.
-      # TestCheckJobWarnsBeforeTheQueueCap pins the threshold below the leg's
-      # ceiling.
+      # TestCheckJobWarnsBeforeTheQueueCap pins the threshold ten minutes below
+      # the leg's ceiling.
       - name: Warn when the check nears the queue's cap
         if: always() && matrix.os == 'macos-latest' && github.event_name != 'pull_request'
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
-          WARN_AFTER_MINUTES: 35
+          WARN_AFTER_MINUTES: 50
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)
@@ -546,7 +550,7 @@ jobs:
           minutes=$((elapsed / 60))
           echo "check (macos-latest) has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="check (macos-latest) ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the merge queue's cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
+            msg="check (macos-latest) ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's 60-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
             echo "::warning title=macOS check near the queue's cap::${msg}"
             printf '### macOS check near the merge queue cap\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
           fi
@@ -648,9 +652,9 @@ jobs:
             ghcr.io/zizmorcore/zizmor@sha256:d1117e5dbd9ee4970644067b534ab6ab50371f3c6f7f4d05446eb603a6e78f48 \
             --persona regular /profiles
 
-  # The working-tier ledger gates: the .abcd/work/reviews/ charter (RD001-RD004),
-  # the issue-resolution gate (RS001-RS006) and the decisions-append gate
-  # (DA001-DA004), each after the cases that prove it can fail. The design-record
+  # The working-tier ledger gates: the .abcd/work/reviews/ charter (RD001-RD004)
+  # and the issue-resolution gate (RS001-RS006), each after the cases that prove
+  # it can fail. The design-record
   # drift gate, cmd/record-lint, is NOT here: it is a step of the `check` job.
   # The job keeps the id `record-lint` because that id is the required status
   # check the main-protection ruleset names (.abcd/work/rulesets/
@@ -715,38 +719,6 @@ jobs:
             exit 0
           fi
           bash scripts/check-issue-resolution.sh commits "$BASE_SHA" HEAD
-
-      # The decisions-append gate is Go (internal/core/lint, through
-      # `record-lint decisions-append`), so this job needs the toolchain go.mod
-      # declares — the same one every other Go step here resolves.
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-
-      # Same shape again for the decisions ledger. The cases first, for the same
-      # reason: the TestDecisionsAppend* suite, each case a fixture the gate must
-      # refuse or pass.
-      - name: Decisions-append gate can fail (cases)
-        run: go test -count=1 -run 'TestDecisionsAppend' ./internal/core/lint/ ./cmd/record-lint/
-
-      # DA001-DA004 over the pull request's own range: every line the range adds
-      # to .abcd/work/DECISIONS.md landed after the last line its parent had
-      # (DA001), no committed decision was removed against any parent (DA002),
-      # no merge holds a line more times than its parents hold it between them
-      # (DA003), and no commit introduced a NUL byte (DA004 — one NUL makes git
-      # call the ledger binary, which would leave every rule above with no hunks
-      # to read). Merges are checked, not skipped — a forged conflict resolution
-      # appears in no single-parent commit — including the merge the QUEUE
-      # itself makes, which only a merge_group run has in range at all. Same
-      # chain as the two steps above, argued at the record-lint step. The
-      # unusable-base guard is not restated here: the gate derives its base once,
-      # in Go (gitutil.ResolveRangeBase), announcing a skip for an empty value or
-      # the all-zeroes placeholder and refusing a sha that resolves to nothing.
-      - name: Decisions ledger is append-only (DA001-DA004)
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
-        run: go run ./cmd/record-lint decisions-append "$BASE_SHA" HEAD
 
   # Self-discovering smoke harness (evals/): builds the binary, walks the Cobra
   # command tree in-process, and runs every command's --help plus the read-only
@@ -821,6 +793,107 @@ jobs:
         run: go run ./cmd/abcd implement load --site eval-harness
       - name: Falsify the cold-reading read-block
         run: make evals-cold-reading
+
+  # The work-in-progress guard (spc-2610120941441282 step 7, itd-2610120738075547
+  # C7, adr-2610120937435856, brief invariant 23). A cloud session pushes its
+  # work, checked or not, to a work-in-progress branch, and the pre-push hook
+  # admits that push without a receipt; the hook is skipped by --no-verify, so
+  # this job is the boundary. It refuses a pull request or merge-queue entry
+  # whose source branch holds the path segment `abcd-wip`, or whose diff adds a
+  # cloud report (scripts/check-wip-source.sh). That work reaches the default
+  # branch only through the person's own collect, on a branch of its own.
+  # The check run is the BASE commit's copy of the script, fetched when the
+  # clone lacks the base, so a change cannot edit the check it is judged by.
+  # Only on the first landing, when the base holds no copy yet, does the
+  # change's own copy run, and never for a source branch holding abcd-wip.
+  #
+  # It runs on EVERY event, like cold-reading-evals and for the same reason: it
+  # is a required status check (the ruleset mirror names it), and a stood-down
+  # job reports its context green for work that did not happen. The docs-only
+  # classifier never stands it down: a work-in-progress branch holding only
+  # records is exactly as unchecked as one holding code. On a pull request the
+  # source branch is github.head_ref; a queue entry runs on its own temporary
+  # ref, so the pull request's number is read from that ref and its source
+  # branch from the REST API with this job's read-only token, and the job
+  # refuses when either cannot be read. Every value an event supplies reaches
+  # the script through env, never by interpolation into it: a branch name is
+  # text its author chose. The nightly and dispatched runs carry no change into
+  # the default branch and have nothing to judge.
+  wip-guard:
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # The cases first: a check whose refusals have never been watched is an
+      # enforcement claim with nothing behind it (iss-2608230847432286).
+      - name: Work-in-progress guard can fail (cases)
+        run: bash scripts/check-wip-source-cases.sh
+      - name: No work-in-progress branch or cloud report reaches the default branch
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          HEAD_REF: ${{ github.head_ref }}
+          QUEUE_REF: ${{ github.event.merge_group.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          case "$EVENT_NAME" in
+          pull_request)
+            source="$HEAD_REF"
+            ;;
+          merge_group)
+            # refs/heads/gh-readonly-queue/<base>/pr-<N>-<base sha>
+            n="$(printf '%s\n' "${QUEUE_REF#refs/heads/}" | sed -n 's|^gh-readonly-queue/..*/pr-\([0-9][0-9]*\)-[0-9a-f][0-9a-f]*$|\1|p')"
+            if [ -z "$n" ]; then
+              echo "::error title=wip-guard::cannot read the pull request number from the merge-queue ref, so its source branch cannot be judged; refusing."
+              exit 1
+            fi
+            if ! source="$(gh api "repos/$REPO/pulls/$n" --jq .head.ref)" || [ -z "$source" ]; then
+              echo "::error title=wip-guard::cannot read pull request #$n's source branch through the REST API; refusing."
+              exit 1
+            fi
+            ;;
+          *)
+            echo "::notice title=wip-guard::a $EVENT_NAME run carries no change into the default branch, so there is nothing to judge."
+            exit 0
+            ;;
+          esac
+          if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "::error title=wip-guard::the $EVENT_NAME event names no usable base, so the change's diff cannot be judged; refusing."
+            exit 1
+          fi
+          # The check that judges the change is the BASE commit's copy, never
+          # the change's own: a pull request could otherwise edit it to exit 0.
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            git fetch -q --no-tags --depth=1 origin "$BASE_SHA" 2>/dev/null || true
+          fi
+          if ! git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null; then
+            echo "::error title=wip-guard::the base commit cannot be read in this clone, so the check it holds cannot be run; refusing."
+            exit 1
+          fi
+          check="$RUNNER_TEMP/check-wip-source.sh"
+          if git cat-file -e "$BASE_SHA:scripts/check-wip-source.sh" 2>/dev/null; then
+            git show "$BASE_SHA:scripts/check-wip-source.sh" >"$check"
+          else
+            # The first landing: the base holds no check yet, so the change's
+            # own copy runs, and only for a source branch without the segment.
+            lowered="$(printf '%s' "$source" | tr '[:upper:]' '[:lower:]')"
+            case "/${lowered#refs/heads/}/" in
+            */abcd-wip/*)
+              echo "::error title=wip-guard::the base holds no work-in-progress guard yet, and the source branch holds the segment abcd-wip; refusing."
+              exit 1
+              ;;
+            esac
+            cat scripts/check-wip-source.sh >"$check"
+          fi
+          bash "$check" "$source" "$BASE_SHA" HEAD
 
   # The one supply-chain vector unreadable by eye: a dependency swap. Diffs the
   # PR's dependency changes against the advisory databases and fails on a known

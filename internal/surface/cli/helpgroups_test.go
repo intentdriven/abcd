@@ -85,10 +85,11 @@ func TestRootHelpListsThePersonsGroups(t *testing.T) {
 
 	// The product thinker's placements of 2026-10-09 (P1 to P6 in
 	// spc-2610100613109045's audit) and the spec's decision 1 on the groups;
-	// embargo joins release by spc-2610120557432880's step 10.
+	// embargo joins release by spc-2610120557432880's step 10, and status
+	// joins records by itd-2609151838312703's decision 21.
 	for group, want := range map[string][]string{
 		"Set-up:":      {"ahoy", "completion", "dashboard", "help", "session", "update"},
-		"Records:":     {"build", "capture", "decide", "ideate", "intent", "library"},
+		"Records:":     {"build", "capture", "decide", "ideate", "intent", "land", "library", "status"},
 		"Checks:":      {"lab", "reading"},
 		"Portability:": {"disembark", "embark"},
 		"Release:":     {"embargo", "launch"},

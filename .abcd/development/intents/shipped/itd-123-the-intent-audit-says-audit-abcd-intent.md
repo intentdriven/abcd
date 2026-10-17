@@ -105,7 +105,7 @@ Per-criterion verdicts:
   evidence: internal/core/intent/audit.go:120 — "ReceiptID string `json:"receipt_id"`"
   evidence: .abcd/development/brief/06-delivery/02-verification-matrix.md:56 — "| Intent fidelity review (Role 1) |"
 - ac-3 — MET: The decision log and the ruling ADR keep the old spelling as history while the live surfaces carry none of it; the only remaining old-name hits outside dated records are closed spec records and one open spec's slug, all records the boundary leaves alone.
-  evidence: .abcd/work/DECISIONS.md:1129 — "`intent review` emits family 2 so it is an audit"
+  evidence: [dcn-2608160000000003](../../../work/decisions/dcn-2608160000000003-the-assessment-vocabulary-settled-at-a.md) — "`intent review` emits family 2 so it is an audit"
   evidence: .abcd/development/decisions/adrs/0040-review-audit-lint-are-three-verbs.md:201 — "- **`abcd intent review` → `abcd intent audit`.** It emits family 2; the brief"
   evidence: agents/CHANGELOG.md:416 — "### intent-auditor 0.1.1 (renamed from intent-fidelity-reviewer)"
 - ac-4 — MET_WITH_CONCERNS: The intent sub-verb table carries audit and audit ingest as shipped, the registry README states the surface_coverage rule machine-checks the column, and record-lint exits 0 over the tree at this commit (run by the auditor, warnings only); concern: the landing-order clause (armed before this landed) is a history fact the delivered tree cannot show.

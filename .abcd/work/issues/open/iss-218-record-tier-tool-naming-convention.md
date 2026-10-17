@@ -11,7 +11,7 @@ deferral_reason: "ruling owed to the product thinker (lapsed-deferral triage, ru
 remedy: "Waits on the ruling on a tool-name rule for commitment records: if adopted, add a principle under .abcd/development/principles/ stating that an external tool is named only in a dated research note until its adoption is decided, and a record-lint banned_tokens family candidate/* whose entries are the tools a research note is still evaluating (each removed when adoption is decided), with record-lint's roots widened to .abcd/work/ for it; if declined, move the record to wontfix naming the harness docs-lint rules on docs/ and README as the chosen boundary. Prove an adoption with a record-lint test flagging a candidate name in an open issue and passing it in a research note."
 ---
 
-commitment records (issue ledger, DECISIONS, intents) must not name an external tool before its adoption is decided; names live in the dated research note. Convention exists only as maintainer guidance + docs-lint harness rules scoped to docs/ and README; the working record has no principle file or record-lint rule enforcing it
+commitment records (issue ledger, .abcd/work/decisions/, intents) must not name an external tool before its adoption is decided; names live in the dated research note. Convention exists only as maintainer guidance + docs-lint harness rules scoped to docs/ and README; the working record has no principle file or record-lint rule enforcing it
 
 ## Remedy grounds (2026-09-29)
 

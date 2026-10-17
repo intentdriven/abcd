@@ -1,6 +1,6 @@
 ---
 name: build
-description: "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it."
+description: "Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it."
 argument-hint: "<itd-N> | <iss-N> | next"
 block: people
 ---
@@ -23,7 +23,7 @@ run; the payloads name the stage under `stage` and the spec's step under
 ## Start the run
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] --json
+"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] --json
 ```
 
 Pass `--session` with the host session's id when it has joined the shared run
@@ -35,6 +35,64 @@ is not counted as a peer's. A session that has not joined is refused at the
 `claim` stage with nothing written. Without `--session` the run holds no claim,
 and the result says so (`claim` is null): another checkout cannot see the run
 until its lane shows.
+
+**The reservation.** The claim keeps one person's sessions in one copy apart;
+the reservation keeps people apart. In a checkout with a remote named
+`origin`, the run reserves its key there, as `/abcd:reserve` does, once the
+checks below pass and before the run is created: the branch
+`abcd-reserved/<id>` on `origin`, naming you (your GitHub username, from a
+no-reply `user.email` or `reservation.github_username` in
+`~/.abcd.noindex/config.json`), this copy, and the files the spec's
+`## Footprint` `- packages:` line names (an issue's `found_at` path for
+`build <iss-N>`). Every other participant, a second person, a second
+computer, a cloud session, sees it before starting the same item. The
+payload's `reservation` says what was done (`reserved <id> on origin for this
+copy until <expiry>, footprint: …`); a run in a checkout without `origin`
+reserves nothing and carries none.
+
+- A spec with no footprint is refused at the `reservation` stage, exit 2,
+  starting nothing: `<spc-N> has no footprint under ## Footprint to reserve
+  <itd-N> with; fill its packages line, then run abcd build again; nothing was
+  started`. An issue whose `found_at` names no repository-relative path is
+  refused the same way. Report the refusal as it stands: the footprint is the spec's to name, never one invented here.
+- Another person's live reservation, or yours from another computer, refuses
+  the start as contention, exit 3: back off and take other work. Each
+  worktree is its own copy, so a build in a sibling worktree of this checkout
+  whose footprint overlaps one already reserved there backs off the same way. For your own
+  other copy the refusal says `pass --take-over to continue here` (or, when
+  the view as last fetched already shows it, names `abcd build <itd-N>
+  --take-over`, the form `build next`'s exclusion takes too); pass
+  `--take-over` only when the person means to move the work to this copy. It
+  never moves another person's.
+- Any other refusal of the reservation (no username, no local tier, `origin`
+  not answering) is exit 2, naming it, and starts nothing.
+
+`implement step` then renews the reservation, fences the landing on it and
+tombstones it once the run's last lane lands (`/abcd:implement`); a run whose
+issue lane is handed back releases it then. Starting again while the run is in
+progress reserves again: it renews this copy's live reservation (keeping its
+footprint and term, so another reservation over the same files that a race let
+in does not refuse it) while that footprint still covers every path the spec's
+`- packages:` line names; once the spec has widened its footprint, it reserves
+again with the widened one, which is judged for overlap like any reservation
+and keeps the term, so origin names every path the build will change. It reserves anew one that
+`--release` released or that a run started before reservations never took, and
+records it in the run's state.
+
+### Release the reservation
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" build <itd-N|iss-N> --release --json
+```
+
+`--release` pushes the tombstone over this copy's reservation on the key and
+changes nothing in the run's state: it starts, resumes and steps nothing. A
+later step of the run meets the release at the land fence, which arms
+nothing and says to reserve it again with `abcd build <id>`. A release already
+made exits 0 as `already_released`; another person's reservation, or your
+other copy's, is refused (exit 2), pushing nothing. `--release` takes no other
+flag. The payload is `/abcd:reserve`'s: `act`, `record`, `holder`, `copy`,
+`footprint`, `effective_expiry`, `commit`.
 
 An issue id builds the loop's issue-keyed lane instead: `build <iss-N>` (an
 issue id by shape) checks that the repository's own drain rule takes the issue,
@@ -71,10 +129,18 @@ pass:
   settled chain is named in the passing row.
 - `steps` — the spec's `## Steps` reads, and at least one step is not landed.
 - `peers` — no peer holds the intent: no sibling worktree or local branch holds
-  it in another bucket, and no session other than `--session` holds a live
-  claim on it. A peer that
+  it in another bucket, no session other than `--session` holds a live
+  claim on it, and no other copy holds a reservation on it on `origin`. A peer that
   cannot be read (a worktree git will not answer for, a ledger holding one id
   twice) and an unreadable claim count as holding it: what they hold is unknown.
+  The reservations are read as this checkout last fetched them, from disk
+  alone, with no fetch and no push: another person's live reservation (or an
+  unreadable one within its hold) is named with its holder, its expiry and the
+  view's age, `reserved by octo until 2026-10-03T15:00:00Z, as of the last
+  fetch 12 minutes ago`, and so is yours from another computer, its reason and
+  remedy naming `--take-over` (another person's never does). This copy's own
+  reservation is never a holder. `/abcd:peers` fetches them afresh; a view
+  nothing here fetched holds none.
 
 A refusal writes nothing. It exits 2, or 3 when a peer holds the intent or the
 run state is locked (back off and take other work). Under `--json` the refusal comes as its own document
@@ -86,7 +152,7 @@ goes back to the planning interview, a hold to the person who placed it.
 When the checks pass, the payload names the `run_id`, the `state` file
 (`.abcd/.work.local/run/<run-id>/state.json`), the first `lane` (the spec's first
 unlanded step), the `pending` spec steps, `claim` (the claim `--session` took,
-or null),
+or null), `reservation` (above; absent when nothing was reserved),
 and `next`, the move to make. The
 local tier is never created: in a repository abcd does not manage the verb
 refuses. Starting again while the run is in progress creates nothing, runs no
@@ -104,6 +170,9 @@ When the argument is `next`, let the run choose the intent:
 
 The candidates are the planned intents that pass every check above, judged by
 the same function, less one this checkout already has a run in progress for.
+In a checkout with `origin`, an intent whose spec's `## Footprint` names no
+packages is excluded too, at the check `footprint`, since its start would be
+refused at the reservation; the pick moves to the next candidate.
 Each is scored from its record, three parts at equal weight, each 0 to 100:
 
 - criteria clarity: the share of its acceptance criteria written in
@@ -117,7 +186,7 @@ reason says the spec carries no footprint. The readiest is taken, the oldest
 among equals; the reason then says the tie was broken by age.
 
 The pick starts the run `build <itd-N>` would start for that intent, with the
-same brief, worktree and receipt, and records the pick in the run's state. Its
+same brief, worktree, receipt and reservation, and records the pick in the run's state. Its
 reason is one grounds entry, `pursued: picked by run <run-id> on <date>; …`,
 naming every candidate with its score, the rule, the runner-up and why it lost,
 and the falsifier (fix rounds past the pace rule's count, or an unachievable
@@ -136,7 +205,8 @@ most recent conjecture.
 
 The payload carries `candidates` (each with its `score` parts and `total`),
 `excluded` (each planned intent a check excluded, with the `check` and the
-`reason`), `pick` (`chosen`, `runner_up`, `tie_broken_by_age`, `rule`,
+`reason`; an intent another copy reserved is excluded at `peers`, its reason
+naming the holder, the expiry and the view's age as last fetched), `pick` (`chosen`, `runner_up`, `tie_broken_by_age`, `rule`,
 `falsifier`), `entry` (the reason's text), `start`, the run as
 `build <itd-N>` reports it, `series` (below; `null` for a single pick) and
 `next`, the move to make. Tell the user which intent was picked and why, then
@@ -461,7 +531,16 @@ A lane's stages run in order:
    merge, says so in the step's note and the run record ("left open for a
    person to merge: the ruleset requires no approval"), and never arms it on a
    later step; a missing mirror requires nothing. It pushes nothing to the lane
-   afterwards. Then `step` exits 3 until the
+   afterwards. Before it arms or leaves anything open, the land fence fetches
+   the reservations from `origin` and, while another session holds a live
+   release reservation (`rel-vX.Y.Z`, `/abcd:reserve`), arms nothing: `step`
+   exits 3 naming the release and its holder (or "your copy on another
+   computer"), and the pull request stays open and unarmed, since a session
+   cutting a release has the final say on what merges before its tag. Tell the
+   user who is cutting which release, and step again once the release is
+   tagged or its holder released it; never merge around the hold. The copy
+   cutting the release is not held. A fetch `origin` does not answer arms
+   nothing either. Then `step` exits 3 until the
    pushed head is an ancestor of the default branch on `origin`; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the

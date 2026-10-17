@@ -48,8 +48,10 @@ planned and unbuilt. Until it ships the rule is applied by hand: a session that 
 worktree puts it under `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, the location
 [adr-2610031751065746](../decisions/adrs/2610031751065746-the-worktree-store-lives-under-the.md)
 sets, a verifier's
-copy goes outside every working tree (the session's scratchpad or a directory
-under `~/.abcd.noindex/`), never `.abcd/.work.local/scratch/`, and a reviewer
+copy goes outside every working tree, in a directory of its own under
+`~/.abcd.noindex/` keyed on the root-commit SHA (the session's scratchpad only
+for a copy the same turn makes and discards), never
+`.abcd/.work.local/scratch/`, and a reviewer
 who sees a directory
 appear beside a checkout names it.
 

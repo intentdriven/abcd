@@ -288,14 +288,7 @@
           "hidden": false
         },
         {
-          "name": "outbound-forge",
-          "shorthand": "",
-          "type": "bool",
-          "required": false,
-          "hidden": false
-        },
-        {
-          "name": "outbound-hook",
+          "name": "outbound",
           "shorthand": "",
           "type": "bool",
           "required": false,
@@ -367,6 +360,22 @@
           "name": "bin-dir",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd announce",
+      "hidden": false,
+      "group": "agents",
+      "block": "agents",
+      "sentence": "Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+      "flags": [
+        {
+          "name": "expires-in",
+          "shorthand": "",
+          "type": "duration",
           "required": false,
           "hidden": false
         }
@@ -468,7 +477,7 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
+      "sentence": "Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.",
       "flags": [
         {
           "name": "fix-rounds",
@@ -485,6 +494,13 @@
           "hidden": false
         },
         {
+          "name": "release",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "session",
           "shorthand": "",
           "type": "string",
@@ -495,6 +511,13 @@
           "name": "sub-agents",
           "shorthand": "",
           "type": "string",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "take-over",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         }
@@ -1014,8 +1037,16 @@
       "hidden": false,
       "group": "records",
       "block": "people",
-      "sentence": "Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.",
-      "flags": []
+      "sentence": "Record a decision, list them bare, or mint an ADR with --adr: Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.",
+      "flags": [
+        {
+          "name": "adr",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd disembark",
@@ -1943,6 +1974,13 @@
       "sentence": "Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.",
       "flags": [
         {
+          "name": "race-gate",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
           "name": "site",
           "shorthand": "",
           "type": "string",
@@ -2668,6 +2706,29 @@
       "hidden": false,
       "sentence": "Sweep a lab's documents for every retracted pattern: Writes the sweep artefact, and a finding and halt on an unapplied correction; refuses an unknown lab.",
       "flags": []
+    },
+    {
+      "path": "abcd land",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
+      "flags": [
+        {
+          "name": "no-enqueue",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "no-push",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        }
+      ]
     },
     {
       "path": "abcd launch",
@@ -3469,12 +3530,19 @@
       "hidden": false,
       "group": "agents",
       "block": "agents",
-      "sentence": "Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
+      "sentence": "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
       "flags": [
         {
           "name": "footprint",
           "shorthand": "",
           "type": "stringArray",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "holder",
+          "shorthand": "",
+          "type": "bool",
           "required": false,
           "hidden": false
         },
@@ -3899,6 +3967,14 @@
           "hidden": false
         }
       ]
+    },
+    {
+      "path": "abcd status",
+      "hidden": false,
+      "group": "records",
+      "block": "people",
+      "sentence": "List everyone's announcements, reservations and releases being cut: Writes the fetched status branches and reservations; refuses outside a git checkout.",
+      "flags": []
     },
     {
       "path": "abcd statusline",

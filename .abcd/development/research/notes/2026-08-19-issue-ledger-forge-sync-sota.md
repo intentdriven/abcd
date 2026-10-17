@@ -5,7 +5,7 @@ issue ledger with forge-hosted issues (GitHub Issues), given two hard
 constraints: (a) autonomous CI/cloud agents produce findings, (b) some users
 have no forge access and must read/write the record with only a checkout.
 Recency assessed against 2026-08-19. This note grounds the 2026-08-19 decision
-in `../../../work/DECISIONS.md` (ledger-canonical, one-way mirror).
+[dcn-2608190000000001](../../../work/decisions/dcn-2608190000000001-the-abcd-work-issues-ledger-is-the.md) (ledger-canonical, one-way mirror).
 
 ## Ranked findings
 

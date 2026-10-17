@@ -9,7 +9,7 @@ found_during: "autonomous-run field experiment in a managed repository, 2026-09-
 origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/intent.md"
-resolution: "the grounds refusal it documents is parked (DECISIONS 2026-09-09, 667a57f4): intent ready reports grounds as advisory, so no reader meets a refusal first"
+resolution: "the grounds refusal it documents is parked (dcn-2609090000000001, 667a57f4): intent ready reports grounds as advisory, so no reader meets a refusal first"
 impact: internal
 resolved_by:
   commit: "667a57f4fad4198182c01e82d5b7106474064dd6"

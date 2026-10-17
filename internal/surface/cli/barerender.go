@@ -12,11 +12,11 @@ package cli
 // way until it renders or is listed here. The brief's one enumeration of the
 // exceptions (04-surfaces/README.md, "Bare invocation") is held to this table.
 var bareRenderExceptions = map[string]string{
+	"announce": "its two operands are the kind and the item it announces on the shared " +
+		"remote, so bare refuses as a usage error (exit 2) naming the kinds, and pushes nothing",
 	"build": "its one operand is the intent it starts or resumes a run for, so bare " +
 		"refuses as a usage error (exit 2) and writes nothing; the run's state renders " +
 		"through `abcd implement status`",
-	"decide": "its one operand is the quoted title it mints a record from, so bare " +
-		"refuses (exit 2) naming the form, and writes nothing",
 	"disembark": "a parent of stage sub-verbs that each act on a named repository or " +
 		"lifeboat; with no operand there is no state to render, so bare prints its sub-verbs",
 	"drain": "bare is the run itself, one move per invocation, so it is not a render; " +
@@ -36,6 +36,10 @@ var bareRenderExceptions = map[string]string{
 		"standing state beyond the records it writes, so bare prints its usage and sub-verbs",
 	"identity": "a parent of its init and render sub-verbs; its report is `abcd lint " +
 		"identity`, so bare prints its sub-verbs",
+	"land": "bare is the landing itself, of the checkout's current branch: it gates, " +
+		"pushes and arms rather than rendering, and on the default branch, a detached HEAD " +
+		"or uncommitted work it refuses (exit 2) and pushes nothing; --no-push --no-enqueue " +
+		"limits it to the gate",
 	"launch": "its state is the release preview, asked for with --dry-run; bare refuses " +
 		"(exit 1) naming the flag, because publishing is not wired",
 	"reflect": "its one operand is the cut release whose seed it renders, and a " +

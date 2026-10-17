@@ -28,7 +28,7 @@ ADRs are *not* used for:
 
 ADR IDs follow the pattern `adr-N` (unpadded, mirrors `itd-N` / `rfc-N`) as the prose handle, and the filename is `<N>-<slug>.md` — the number the handle carries, then the slug ([ADR-30](0030-record-information-architecture.md)).
 
-**An ADR is minted by the binary, not numbered by hand:** `abcd decide "<title>"` draws `adr-<yymmddHHMMSS><rrrr>` through the same record-id seam captures, intents and specs mint through ([ADR-45](0045-record-ids-are-timestamp-numeric-and.md), and the ruling of 2026-09-01 in [`.abcd/work/DECISIONS.md`](../../../work/DECISIONS.md) that this is the family ADR-45's rollout note 3 deferred). The mint reads no maximum anywhere, which is the property being bought: a hand-allocated ordinal is read off the directory, so two branches deciding on the same day allocate the same number — `0055` and `0056` were each minted twice, for different decisions, on the day the ruling was taken.
+**An ADR is minted by the binary, not numbered by hand:** `abcd decide --adr "<title>"` draws `adr-<yymmddHHMMSS><rrrr>` through the same record-id seam captures, intents and specs mint through ([ADR-45](0045-record-ids-are-timestamp-numeric-and.md), and the ruling of 2026-09-01 ([dcn-2609010000000007](../../../work/decisions/dcn-2609010000000007-adrs-take-timestamp-ids-through-the-same.md)) that this is the family ADR-45's rollout note 3 deferred). The mint reads no maximum anywhere, which is the property being bought: a hand-allocated ordinal is read off the directory, so two branches deciding on the same day allocate the same number — `0055` and `0056` were each minted twice, for different decisions, on the day the ruling was taken.
 
 **`0001`–`0058` keep their IDs and their filenames.** Nothing is renumbered. Those records carry the zero-padded four-digit ordinal (`adr-7` lives in `0007-<slug>.md`); a minted record carries the sixteen-digit stamp (`adr-2609021016286571` lives in `2609021016286571-<slug>.md`). Every reader of an ADR ID admits both vintages through one derivation — the citation resolver, the `abcd <record-id>` dispatch, the `record_schema` and citation-currency gates, the website's decisions index, and the lifeboat packer. Every ordinal is shorter and numerically smaller than every stamp, so the hand-numbered records sort first in both the directory listing and the derived index order.
 
@@ -51,7 +51,7 @@ Transitions are deliberate. Accepted ADRs are retained in the record. A supersed
 
 ## Format
 
-`abcd decide "<title>"` writes this shape — the frontmatter, the H1, and the four sections, each carrying the question it answers. Every ADR has frontmatter (machine-readable) plus a Markdown body following this structure:
+`abcd decide --adr "<title>"` writes this shape — the frontmatter, the H1, and the four sections, each carrying the question it answers. Every ADR has frontmatter (machine-readable) plus a Markdown body following this structure:
 
 ```markdown
 ---
@@ -112,7 +112,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 > supersession is read from its `supersedes` and `superseded_by` fields, and
 > status and date are its frontmatter. Never edit it by hand: a wrong title,
 > status or date is fixed in the record (its H1 or its frontmatter) and then
-> regenerated, not in the table. After `abcd decide` or a status change, run
+> regenerated, not in the table. After `abcd decide --adr` or a status change, run
 > `go generate ./internal/surface/cli`; a merge conflict inside the markers is
 > resolved the same way, by rerunning it on the merged tree. The `index_drift`
 > record-lint rule fails while the table differs from what the records derive.
@@ -198,7 +198,7 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2609301720596683](2609301720596683-abcd-adds-a-missing-site-label-to-an.md) | abcd adds a missing site label to an existing ui.json and never rewrites one | accepted | 2026-09-30 |
 | [adr-2610030720195401](2610030720195401-abcd-keeps-its-own-folders-out-of.md) | abcd keeps its own folders out of desktop indexing only by changing those folders, never the computer's search settings | accepted | 2026-10-03 |
 | [adr-2610030814023326](2610030814023326-agents-md-is-the-one-conventions-file.md) | AGENTS.md is the one conventions file abcd writes; it never writes a host-specific copy | proposed | 2026-10-03 |
-| [adr-2610031352212697](2610031352212697-claims-are-branches-on-the-shared-remote.md) | Claims are branches on the shared remote; nothing kept on one computer is the register; claim text is data | proposed | 2026-10-03 |
+| [adr-2610031352212697](2610031352212697-claims-are-branches-on-the-shared-remote.md) | Claims are branches on the shared remote; nothing kept on one computer is the register; claim text is data | accepted | 2026-10-03 |
 | [adr-2610031751065746](2610031751065746-the-worktree-store-lives-under-the.md) | The worktree store lives under the renamed home, `~/.abcd.noindex/worktrees/<root-sha>/<name>/`, and the rest of its rule is unchanged (supersedes adr-2609091248200336) | accepted | 2026-10-03 |
 | [adr-2610031751066232](2610031751066232-the-transcript-store-is-spelled-under.md) | The transcript store is spelled under the renamed home, `~/.abcd.noindex/transcripts/<root-sha>/`, and the rest of its decision is unchanged (supersedes adr-2609091248201071) | accepted | 2026-10-03 |
 | [adr-2610032150581128](2610032150581128-abcd-is-reachable-on-a-network-only.md) | abcd is reachable on a network only through the dashboard, only while the person runs it, and only for people the person lets in | accepted | 2026-10-03 |
@@ -209,10 +209,12 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610091918443997](2610091918443997-what-may-enter-abcd-s-memory-notes.md) | What may enter abcd's memory notes without the person's yes, and how a note reaches the record | accepted | 2026-10-09 |
 | [adr-2610110925465593](2610110925465593-decisions-are-one-flat-file-each-and-the.md) | Decisions are one flat file each and the single log is retired (supersedes adr-2609151138420062) | accepted | 2026-10-11 |
 | [adr-2610120558328615](2610120558328615-a-private-advisory-s-record-never-enters.md) | A private advisory's record never enters the public ledger, its store is never committed, and nothing public carries an advisory id or hint | accepted | 2026-10-12 |
+| [adr-2610120937435856](2610120937435856-a-cloud-session-s-unchecked-work-goes.md) | A cloud session's unchecked work goes only to a declared work-in-progress prefix that never reaches the default branch | accepted | 2026-10-12 |
 | [adr-2610140859394097](2610140859394097-abcd-s-home-ignores-itself-once-and.md) | abcd's home ignores itself once, and credentials never sit in a working tree | proposed | 2026-10-14 |
 | [adr-2610141949110653](2610141949110653-the-brief-session-s-browser-editor-ships.md) | The brief session's browser editor ships as a vendored bundle the binary embeds | accepted | 2026-10-14 |
 | [adr-2610142147242544](2610142147242544-abcd-s-site-is-built-onto-its-own-github.md) | abcd's record is built onto its own GitHub Pages, and abcdev.app becomes abcd's documentation site | proposed | 2026-10-14 |
 | [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md) | A fresh install's facilitator is a person until the repository says auto | accepted | 2026-10-15 |
 | [adr-2610150729333337](2610150729333337-a-status-branch-moves-without-a.md) | A status branch moves without a preflight receipt | proposed | 2026-10-15 |
 | [adr-2610161400542916](2610161400542916-the-brief-session-page-asks-nobody-for-a.md) | The brief session page asks nobody for a relay address or a token, and a local session signs in by GitHub's device flow | accepted | 2026-10-16 |
+| [adr-2610161621415708](2610161621415708-abcd-s-command-guard-steers-agents-an-os.md) | Unattended runs abcd launches execute inside an OS sandbox | proposed | 2026-10-16 |
 <!-- /index -->

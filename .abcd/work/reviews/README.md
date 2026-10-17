@@ -42,7 +42,7 @@ Until these land in abcd's own lint (`internal/core/lint`), the standalone gate 
 ## Related Documentation
 
 - [`../CONTEXT.md`](../CONTEXT.md) — current working state
-- [`../DECISIONS.md`](../DECISIONS.md) — decisions pending graduation to ADRs
+- [`../decisions/`](../decisions/) — the decision records, one file per decision; one that shapes the architecture graduates to an ADR
 - [`../../development/decisions/`](../../development/decisions/) — where review outcomes graduate
 
 ## Receipt keys

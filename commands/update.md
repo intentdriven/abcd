@@ -29,8 +29,8 @@ read without a token), fetches the Sigstore trusted root through TUF from
 binary, cached nowhere), and verifies the signed bundle in process: its
 certificate must chain to Sigstore's Fulcio CA, its entry must be in the Rekor
 transparency log, its signer must be `intentdriven/abcd`'s
-`.github/workflows/release.yml` (at `main` or a `v` tag) under GitHub Actions'
-OIDC issuer, and its SLSA provenance must name exactly the downloaded bytes.
+`.github/workflows/release.yml` on `main`, run on a GitHub-hosted runner under
+GitHub Actions' OIDC issuer, and its SLSA provenance must name exactly the downloaded bytes.
 The signature alone says who built the bytes, not which release they are, so
 the check is also bound to the release: the tag is resolved to its commit
 through GitHub's git API (`https://api.github.com/repos/intentdriven/abcd/git/ref/tags/<tag>`,
@@ -135,9 +135,10 @@ refusal is a named shape with a remedy in `refusal`:
   included). Nothing was swapped. Relay the
   detail, which names what failed, and the remedy: retry once both are
   reachable, or install by hand — download the asset, check it with
-  `gh attestation verify --cert-identity <release.yml on main> --source-ref
-  refs/heads/main --source-digest <the tag's commit>`, then copy it over the
-  PATH copy.
+  `gh attestation verify <asset> --repo intentdriven/abcd --cert-identity
+  <release.yml on main> --source-ref refs/heads/main
+  --deny-self-hosted-runners --source-digest <the tag's commit>`, then copy it
+  over the PATH copy.
 - `older-than-mark` — a bare `abcd update` resolved a latest release older
   than `~/.abcd.noindex/release-mark`, the newest release this machine has
   installed or verified: the publisher may have withdrawn the newer one.

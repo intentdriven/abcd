@@ -19,12 +19,12 @@ Render the status board, or say what one record id is and its next move: Writes 
 Agent-based configuration for development.
 
 Bare `abcd` renders the read-only status board — what can I do. A single
-positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `adm-N`,
-`srp-N` or `rfm-N`) instead reports what that record is, where it lives, and
-the next move for its lifecycle state — what is this. N is either a short
-ordinal from before ids were minted or the sixteen-digit stamp minted since;
-both resolve. The bare and the id form are strictly read-only; any other
-positional is refused as an unknown command.
+positional matching a record id (`iss-N`, `itd-N`, `spc-N`, `adr-N`, `dcn-N`,
+`adm-N`, `srp-N` or `rfm-N`) instead reports what that record is, where it
+lives, and the next move for its lifecycle state — what is this. N is either
+a short ordinal from before ids were minted or the sixteen-digit stamp minted
+since; both resolve. The bare and the id form are strictly read-only; any
+other positional is refused as an unknown command.
 
 `--version` reports the running binary's version, install mode and vintage.
 When that binary sits in a plugin root other than the one this session
@@ -126,8 +126,7 @@ Apply the install gaps the detection finds: Writes .abcd/, the name-guard hooks 
       --install-tool strings    answer yes to installing this missing tool (repeatable): the answer a host's question tool relays; without it a tool is installed only on an answer typed at a terminal, never on the approve-everything flag, a piped answer or CI
       --live-sessions string    answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up
       --oracle-backend string   oracle backend: host-delegated | native | cli | api | mcp
-      --outbound-forge          opt this repo into the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge, which it refuses when they carry a live agent-session URL or a tool attribution footer; it writes no hook and names no binary, and the choice is recorded in .abcd/config.json as outbound.forge, so a later install without the flag keeps it
-      --outbound-hook           opt this repo into the committed commit-msg hook that refuses a commit message carrying a live agent-session URL or a tool attribution footer; it runs only the abcd named by git config --local abcd.binary and lets the commit through with one warning when none is set; the choice is recorded, so a later install without the flag keeps the hook
+      --outbound                opt this repo into both outbound checks, which refuse a live agent-session URL or a tool attribution footer: the committed commit-msg hook over every commit message, and the shell guard's check of the title, body and body file a posting gh pr or gh issue command hands the forge; it also sets this clone's git config --local abcd.binary to the abcd copy whose build provenance it verified and, where no core.hooksPath is set and no commit-msg hook is there, writes abcd's copy of that hook into the clone's git hooks directory, and says so when it cannot do either; the choice is recorded in .abcd/config.json as outbound.hook and outbound.forge, so a later install without the flag keeps both
       --readme-parts string     answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included
       --refuse-adopt            decline to adopt an unmanaged repo
       --scan-deep string        enable deep scan: true | false
@@ -163,6 +162,57 @@ Remove abcd from this repository, leaving .abcd/ in place: Writes the removal of
 
 ```
       --bin-dir string   directory holding the PATH entry to remove; needed only when it was installed with --bin-dir into a directory that is not on PATH
+```
+
+### `abcd announce`
+
+Post a fixed-form announcement on the shared remote: Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.
+
+**Usage:** `abcd announce <kind> <item> [flags]`
+
+abcd announce <kind> <item> [--expires-in <duration>]
+
+Post a short fixed-form announcement on the shared remote, so every other
+session sees what this one is doing. The kind is one of merging, merged, asking, answered, handed-over;
+the item is the record it concerns (iss-N or itd-N) or a pull request (#N, or
+the bare number, since a shell reads #N as a comment). --expires-in sets how
+long it stands (default 30m, from 1m to 24h). An announcement carries no free text: a
+question points at the item, and the conversation happens there.
+
+The announcement is one commit that changes no file on your own status branch,
+abcd-status/<your GitHub username in lower case> on the remote named origin,
+carrying the kind, the item, you as sender, this working copy, the time sent
+and the expiry. The verb lists the status branches on origin (git ls-remote),
+fetches each one named by a lower-case GitHub username, with origin's default
+branch, then makes one plain fast-forward push with the repository's hooks
+running. A push that lost a race to another of your sessions is rebuilt on the
+new tip and pushed again, up to three times; then it says "not sent" and why.
+Nothing is ever forced.
+
+A record must already be on origin's default branch, since an announcement is
+public; a record the embargo store on this machine holds is refused, and so is
+every announcement when that store cannot be checked. The sender is worked out
+as reserve's holder is: from user.email when it is a GitHub no-reply address,
+then reservation.github_username in the machine configuration, then the
+session's forge token, asked whose account it is. When git's identity is not a
+person's, the token's account sends and authors the announcement, and the
+identity git had is shown nowhere.
+
+Exit 0 when the announcement reached origin; exit 2 on every refusal, when it
+was not sent, and when a push was made but whether it landed cannot be told.
+Nothing is pushed on a refusal except "not sent", which follows pushes origin
+refused; the unknown outcome says a refused push may still have reached origin.
+
+**Flags:**
+
+```
+      --expires-in duration   how long the announcement stands, from 1m to 24h (default 30m)
+```
+
+**Example:**
+
+```
+abcd announce merging iss-2609010000000001
 ```
 
 ### `abcd banlist`
@@ -239,9 +289,9 @@ abcd banlist remove --private acme-internal
 
 ### `abcd build`
 
-Start the loop that takes one READY intent to delivered: Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.
+Start the loop that takes one READY intent to delivered: Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.
 
-**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [flags]`
+**Usage:** `abcd build <itd-N|iss-N> [--session <id>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--take-over] [--release] [flags]`
 
 Start the implement loop for one intent, or resume the run already in progress for it.
 An issue id starts the loop's issue-keyed lane instead (below).
@@ -249,10 +299,28 @@ A new run's checks run first, and every one must pass:
 the intent is READY (planned, criteria written, its spec linked and written), asks no
 open question, has no unanswered claim section, is not held, names no unsettled blocker
 in `blocked_by`, its spec leaves a step to build, and no peer holds it (no sibling
-worktree or local branch holds it in another bucket, and no session holds a live claim
-on it; a peer or claim that cannot be read counts as holding it). A refusal names the
+worktree or local branch holds it in another bucket, no session holds a live claim on
+it, and no other copy holds a reservation on it on origin, as this checkout last fetched
+the reservations; a peer, claim or view that cannot be read counts as holding it). The
+check reads the reservations from disk alone, and names another copy's with its holder,
+its expiry and the view's age; this copy's own is never a holder. A refusal names the
 check, the reason and the remedy, and writes nothing. `abcd build next` picks the intent
 instead of taking one named.
+
+In a checkout with a remote named origin, the run reserves its key there, as
+`abcd reserve` does, once the checks pass and before the run is created: a new run, and a
+resumed one, with the files the spec's `## Footprint` packages line names (an issue's
+found_at path for an issue id), so every other participant sees it is taken. A spec with
+no footprint, or an issue with no found_at path, is refused at the reservation and nothing
+is started. Another person's reservation, or your own from another computer, refuses
+the start as contention; --take-over moves your own live reservation from another copy
+to this one, never another person's. `abcd implement step` renews the reservation, fences
+the landing with it and releases it once the run lands; a run whose issue lane is handed
+back releases it then. --release pushes the tombstone over this copy's reservation on the
+key and changes nothing in the run's state: a later step meets it at the land fence, and
+`abcd build` again reserves it anew. --release takes no other flag. The reservation needs
+your GitHub username, read from a no-reply user.email or from
+reservation.github_username in ~/.abcd.noindex/config.json.
 
 When the checks pass, the run is created in this checkout's local tier,
 `.abcd/.work.local/run/<run-id>/state.json`: one lane for the spec's first unlanded step,
@@ -322,8 +390,10 @@ Exit 2 on a refusal, exit 3 when a peer holds the intent or the run state is loc
 ```
       --fix-rounds string   the fix rounds a lane of this run may take before it is handed back, a whole number from 0 (bundled: 3); wins over every configured layer
       --pace string         this run's working window and pause, <work-minutes>/<pause-minutes> (e.g. 90/240); wins over every configured layer
+      --release             push the tombstone over this copy's reservation on the key, changing nothing in the run's state
       --session string      the host session's id in the shared run state; a new run claims the intent for it
       --sub-agents string   this run's ceiling on lanes and validators alive at once, a whole number; wins over every configured layer
+      --take-over           move your own live reservation on the key from another copy to this one; never another person's
 ```
 
 **Example:**
@@ -844,26 +914,39 @@ nothing signalled. It never stops anything by name.
 
 ### `abcd decide`
 
-Mint an ADR id and lay the record's empty skeleton: Writes one proposed record into the decisions store; refuses a missing or unusable title.
+Record a decision, list them bare, or mint an ADR with --adr: Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.
 
-**Usage:** `abcd decide "<title>"`
+**Usage:** `abcd decide ["<text>" | --adr "<title>"] [flags]`
 
-Mint an architecture decision record: allocate its id through the shared record-id
-seam and write the store's skeleton under .abcd/development/decisions/adrs/.
+Record a decision, list the decisions recorded, or mint an architecture decision record.
 
-The id is `adr-<yymmddHHMMSS><rrrr>` and the filename is ordered by that stamp, so two
-branches deciding on the same day cannot allocate the same number — the collision a
-hand-numbered ordinal has by construction. The hand-numbered records 0001-0058 keep
-their ids and their filenames; nothing is renumbered, and every reader admits both.
+abcd decide "<text>" records a decision: one new file, .abcd/work/decisions/dcn-<id>-<slug>.md,
+whose id is minted through the shared record-id seam and whose body is `<date> — <text>`.
+Nothing is appended anywhere, so two branches that each record a decision merge with nothing
+to reconcile. It needs the shared tier .abcd/work/, which `abcd ahoy install` lays.
 
-The verb writes an EMPTY record: it owns the id, the date, the filename and the four
-sections, and states nothing. The decision is the author's to write, and the status it
-lands with is `proposed` until the author sets `accepted`.
+abcd decide with no operand lists every decision recorded, newest first, read from the folder
+each time: the id, then the decision. Where a frozen .abcd/work/DECISIONS.md also exists, the
+listing ends by naming it as earlier history it does not list. It writes nothing.
+
+abcd decide --adr "<title>" mints an architecture decision record: its id is
+`adr-<yymmddHHMMSS><rrrr>` and the store's skeleton lands under
+.abcd/development/decisions/adrs/, with the filename ordered by the stamp, so two branches
+deciding on the same day cannot allocate the same number. The hand-numbered records
+0001-0058 keep their ids and their filenames. The ADR is EMPTY: the verb owns the id, the
+date, the filename and the four sections, and states nothing; it lands `proposed` until the
+author sets `accepted`.
+
+**Flags:**
+
+```
+      --adr   mint an architecture decision record from the operand as its title, instead of recording a decision
+```
 
 **Example:**
 
 ```
-abcd decide "Record ids are minted from a timestamp"
+abcd decide "Decisions are one flat file each"
 ```
 
 ### `abcd disembark`
@@ -1743,8 +1826,8 @@ Validate a host-composed gauntlet verdict: Writes the dated record to the privat
 **Flags:**
 
 ```
-      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision-log line (exclusive with --public)
-      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ with its decision-log line (exclusive with --private)
+      --private               the idea is private: record the verdict in ~/.abcd.noindex/ideas/<root-sha>/, owner-only, with no decision pointing at it (exclusive with --public)
+      --public                the idea is public: commit the verdict under .abcd/development/research/ideas/<root-sha>/ and record a decision pointing at it (exclusive with --private)
       --verdict-json string   path to the host-composed verdict JSON (or - for stdin)
 ```
 
@@ -1936,7 +2019,7 @@ abcd implement leave --session s-example
 
 Check the load before abcd's tests start, or wait for capacity: Writes a run-log event or the wait's hold; refuses an unknown --site, never a loaded machine.
 
-**Usage:** `abcd implement load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...] [flags]`
+**Usage:** `abcd implement load --site preflight|eval-harness | --wait [--timeout <duration>] [-- <command>...] | --race-gate [--timeout <duration>] [flags]`
 
 Read the machine's load averages and process table once and warn when a program
 outside the running work has used nearly all the CPU it could get for longer than
@@ -1975,7 +2058,9 @@ loop; `make preflight` runs its test stages through it. It blocks until the
 one-minute load average is below the wait limit (`wait-load <load>` in the same
 file; by default twice the online core count), no other `go test -race` run is
 live, no other `make preflight` is running and no other waiter is ahead of it in
-the queue (a lower pid) or running its command, under any account: all of it is
+the queue (one that started earlier, or within two seconds of it, and has the
+lower pid: two whose start and pid disagree, as after the process ids wrap, wait
+on neither) or running its command, under any account: all of it is
 read from the process table, which shows every account's processes: no file
 another account can write is read; the gate reads only the process table (and,
 for the wait limit, your own load-limits). A waiter ahead of yours still delays
@@ -1987,10 +2072,15 @@ command (`--wait -- make preflight`) takes that ancestor's place, ahead of every
 queued waiter. Once it finds all of that clear it waits
 a random 15s to 1m0s and checks everything again, and opens only if the
 re-check is clear too, so two starters in one quiet minute do not start together.
+With a command it then shows itself as running it and looks once more 2s
+later, before starting it: across accounts, which share no hold, two waiters whose
+start and pid disagree can open in one moment, and the one with the higher pid
+stands back, gives up its hold, re-draws its jitter and waits again (at most 3
+times), while the lower pid runs its command.
 The load limit is twice the cores because a busy multi-session machine already
 idles near one core-count of load, so a limit of the cores never opens; one
-waiter at a time is kept by the process table and the hold below, not by the
-load number; and one race run adds about a core-count, so admitting below twice
+waiter at a time is kept by the process table, the hold below and that last
+look, not by the load number; and one race run adds about a core-count, so admitting below twice
 the cores bounds the peak near three times them, under the extreme limit.
 A race run is a process executing go whose go command is `test` with -race, a
 preflight a make whose goals name preflight, and a waiter an abcd running
@@ -2002,9 +2092,50 @@ one when it first finds the machine free, and nothing more until it opens, and
 gives up after --timeout (30m0s by default), exiting 1 and naming what it
 was still waiting on. --json reports what it waited on and for how long.
 
+With --race-gate in place of --wait it waits at the race gate, which `make
+preflight` runs before its race stage. It takes no command after `--`: it gates
+the race stage that follows it, and a race run of your own goes through
+`--wait -- go test -race`. It is spelt without --wait because an
+older abcd reads any `implement load --wait` as a waiter at its first gate, and
+would count a preflight at its race gate as queued, not in its tests, so the two
+are refused together. At one preflight at a time, the default, it opens at once,
+without reading the machine, taking a hold or waiting a jitter, so a preflight's
+race stage follows its tests exactly as before. Above one it is shut only while
+another `go test -race` run is live, a race waiter is ahead of it (by the same
+rule) or running its command, the load is at the wait limit, or the race gate's
+own hold is in force (each gate is shut only by its own gate's hold). That keeps
+race stages apart among the preflights whose checkouts have the race gate: one
+at a time within an account, and across accounts all but a narrow window (a
+race waiter gone before its race run shows, or two waiters whose start and pid
+disagree after a pid wrap). An account at one opens its race gate at once
+whatever another account set, and a checkout older than the gate runs its race
+stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's
+waiter never queues
+behind a race waiter, and a preflight whose waiter is at its race gate is in its
+test stages. A waiter that has opened stands back only from a lower pid that
+opened in the same moment at its own gate, never from one at the other gate.
+
+How many preflights may be in their test stages at once is your own machine's
+setting: `load.preflights` in `~/.abcd.noindex/config.json`, or ABCD_LOAD_PREFLIGHTS in the
+environment, which wins, for a trial; a whole number from 1 to 2, 1 by default,
+and never read from a repository file, so a checkout cannot raise the machine's
+load. The most is 2 for a measured trial, and it rises once a measured trial
+supports more. At 1 both gates read as before the setting existed. Above 1 the
+first gate opens while fewer than that many other preflights or waiters running
+their command are in their test stages (a `--wait -- make preflight` counts
+once), a waiter queued ahead still shuts it, and a live race run does not shut
+it by itself; the load limit still does, and the race gate keeps race stages
+apart. A value it cannot use refuses the wait, naming where it was set. A
+`~/.abcd.noindex/config.json` that cannot be read for it (writable by others,
+not valid JSON, or a `load` that is not an object) is read past instead: one
+preflight at a time applies, and one line on stderr names the file, the cause
+and how to fix it; so does a key under `load` that nothing reads.
+
 Within one account the waiter that opens also takes a hold,
-`~/.abcd.noindex/load-wait.json`, and every other waiter of that account stays shut while
-it is in force; a hold taken by the waiter's own ancestor does not shut it.
+`~/.abcd.noindex/load-wait.json` at the first gate and `~/.abcd.noindex/load-wait-race.json` at
+the race gate, and every other waiter of that account at the same gate stays
+shut while it is in force; a hold taken by the waiter's own ancestor does not
+shut it.
 Without a command the hold lasts 2m0s, long enough for the load average to show
 the work admitted. With a command after `--` (`abcd implement load --wait -- go
 test -race ./...`) the waiter runs it once the gate opens and exits with its exit code,
@@ -2014,13 +2145,19 @@ or 60 minutes pass, and a hold whose waiter has died, or whose pid now
 belongs to another process (a different start time), is reclaimed by the next
 waiter. A SIGINT or SIGTERM to the waiter is passed on to the command, and the
 waiter waits for it to exit, exits with its code and releases the hold. A
+command that is a race run (go, then `test` with -race) is gated as one for both
+gates: above one preflight at a time it stays shut while another race run is
+live, judges and takes the race gate's hold as well as its own, and from the
+moment it opens every race gate and every other such command counts it as a
+race run, so a second one waits for the first. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
 **Flags:**
 
 ```
+      --race-gate          wait at the race gate, before a race stage, instead of the first gate: open at once at one preflight at a time, and above that shut only by another go test -race run, a race waiter ahead, the load and the race gate's hold
       --site string        where the check runs: preflight | eval-harness
-      --timeout duration   with --wait, give up after this long and exit 1 (default 30m0s)
+      --timeout duration   with --wait or --race-gate, give up after this long and exit 1 (default 30m0s)
       --wait               wait until the load is below the wait limit and no other go test -race run is live
 ```
 
@@ -3053,6 +3190,78 @@ instance itself. A sweep that passes lifts that halt.
 abcd lab sweep lab-260901000000-0123abc
 ```
 
+### `abcd land`
+
+Push a branch whose preflight passed and queue its pull request: Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.
+
+**Usage:** `abcd land [<branch>] [flags]`
+
+abcd land [<branch>] [--no-push] [--no-enqueue]
+
+Land a branch whose work is committed: the checkout's current branch, or the one
+named, from the worktree that has it checked out. Each step can be resumed by
+running abcd land again.
+
+land runs the branch's own `make preflight` with your environment and
+credentials, so run it only on a branch whose content you trust.
+
+  1. Origin: every fetch and push URL of origin must be the repository the forge
+     client resolves, and the forge's default branch must be the one origin
+     itself names (git ls-remote --symref origin HEAD) and not the branch;
+     checked before anything runs. A stale or missing local origin/HEAD is
+     reported and passed over, never written.
+  2. Landed: origin's default branch is fetched; a head already on it has landed,
+     and so has one the forge lists a merged pull request of this repository's
+     branch at (a squash or rebase merge): land says so and stops, pushing,
+     gating and queueing nothing. A forge that cannot be asked gets no push.
+  3. Gate: when a preflight receipt already names the branch's head (in any
+     worktree, as the pre-push hook looks), the gate is skipped; otherwise
+     `make preflight` runs in the branch's checkout, its output on stderr, and the
+     head must be unchanged, a receipt present and origin's URLs as checked after
+     it. A repository whose make file declares no preflight target gets no push.
+  4. Push (land.push): a plain push of the gated commit to the branch's name on
+     origin, with the repository's hooks running, never forced, never the default
+     branch.
+  5. Enqueue (land.enqueue): the branch's open pull request, armed for the merge
+     queue where the merge gate allows it (today: only where a merge queue gates the
+     default branch and a ruleset requires a person's approval), pinned to the
+     head, then confirmed in the queue. An arming someone else made is left as it
+     is. With no pull request it prints the `gh pr create` command and stops; it
+     never opens one.
+
+land.push and land.enqueue are read from .abcd/config.json (in the working
+directory's checkout and the branch's own) and ~/.abcd.noindex/config.json,
+default true, and off wins from any layer: any file can turn an act off and none
+can turn it back on. --no-push and --no-enqueue turn one off for this run. An act
+that is off says which layer turned it off; with both off nothing runs. With
+land.push off and land.enqueue on the gate still runs: arming says the head is
+ready, and readiness is the gate.
+
+Refused on the default branch, a detached HEAD, a tree with uncommitted changes, an
+origin that is not the repository the forge client resolves (an SSH host alias
+included), and a pull request only another repository opened.
+
+Before the push, the reservations and origin's release tags are fetched, and the
+release hold is judged for the checkout land runs in: while another session cuts
+a release (a live rel-vX.Y.Z reservation, or an unreadable one within its hold),
+nothing is pushed, armed or queued. The copy cutting the release lands through
+its own hold. A release reserved with a date more than five minutes ahead of
+this clock holds from when this checkout first saw it; one this checkout cannot
+keep that sighting for (no .abcd/.work.local/) is not counted, and a notice
+line on stderr names it.
+
+Exit 0 when every step did its act or said why it stopped. Exit 2 on a refusal,
+which names what was done before it; reservations that cannot be fetched are
+one, made before anything is pushed. Exit 3 when a release being cut holds the
+landing: it names the release, its holder and until when.
+
+**Flags:**
+
+```
+      --no-enqueue   do not arm or queue the pull request this run
+      --no-push      do not push the branch this run; print the push command instead
+```
+
 ### `abcd launch`
 
 Preview the release cut, the launch bundle, its secret scan and the gates: Writes only its pre-flight report, to the local tier; refuses without --dry-run.
@@ -3378,7 +3587,7 @@ names it.
 ```
       --claim string          what was decided or claimed
       --corrects int          the line this record corrects
-      --decision string       the decision influenced: a DECISIONS.md date, an ADR or intent id, or free text
+      --decision string       the decision influenced: a decision id, an ADR or intent id, or free text
       --flip int              cite line N publicly (the person's act; checks the source's permission first)
       --influence string      the influence: supports | contradicts | method | background
       --list                  print the ledger, numbered (read-only)
@@ -3632,12 +3841,19 @@ Then the reservations on the shared remote: one fetch from origin of every
 abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
-hold), and each person's count of live reservations. The fetch is the only
-network act; it updates the remote-tracking reservation branches and stamps
-when it ran in the local tier, and nothing else is written. A checkout with no
-remote named origin lists no reservations. When the fetch fails, the
-reservations are listed as last fetched, with that view's age, and the failure
-is named on stderr and in fetch_error.
+hold), each person's count of live reservations, and a line for each release
+being cut (a live rel-vX.Y.Z reservation, which holds every other session's
+merge until its tag is on origin). The fetch is the only network act, and it
+reads origin's release tags with the reservations; it updates the
+remote-tracking reservation branches and the release tags abcd keeps under
+refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
+first fetched each reservation dated ahead of this computer's clock or
+undated, and nothing else is written. The release-tag refs are ordinary
+refs of this checkout, so git log --all lists the commits they name and
+git push --mirror would push them. A checkout with no remote named origin
+lists no reservations.
+When the fetch fails, the reservations are listed as last fetched, with that
+view's age, and the failure is named on stderr and in fetch_error.
 
 A worktree is named home-relative (~/...), or by its directory name when it
 sits outside HOME, on every stream. Exit 0 whatever the peers hold; exit 1 when
@@ -3860,19 +4076,26 @@ nothing filed. After the editor ran, both name where what was written is kept.
 
 ### `abcd reserve`
 
-Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.
+Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3.
 
 **Usage:** `abcd reserve <record-id> [flags]`
 
 abcd reserve <record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>]
 abcd reserve <record-id> --release
+abcd reserve --holder
 
 Reserve an issue or an intent on the shared remote before starting work on it, so
 every other participant sees it is taken. The reservation is the branch
 abcd-reserved/<record-id> on the remote named origin: a chain of empty-tree commits
 naming the record, the holder (your GitHub username), this working copy, the files
 the work will change (--footprint, once per repository-relative path) and the
-lease (--lease, default 2h, from 1m to 24h).
+lease (--lease, from 1m to 24h; default 2h, or 24h for a release).
+
+A session cutting a release reserves the release instead, rel-vX.Y.Z, with no
+footprint: while it is live every other session's land step holds its merge.
+It holds for 24h unless --lease names less, sits outside the cap of ten, and
+ends when the tag vX.Y.Z is on origin or its holder releases it; running the
+same command again from the same copy renews it.
 
 Every act fetches the reservations from origin, judges the tip, writes one
 commit and makes one plain fast-forward push, with the repository's hooks
@@ -3881,13 +4104,26 @@ a reservation lapsed past its expiry by five minutes, or a release (--release),
 which pushes a tombstone. --take-over moves your own live reservation from
 another copy to this one; it never moves another person's. A record already
 resolved, won't-fixed, shipped or superseded on origin's default branch counts
-as released whatever its reservation says.
+as released whatever its reservation says, and so does a release whose tag is
+on origin.
 
-The holder is read from user.email when it is a GitHub no-reply address, or from
-reservation.github_username in the machine configuration; the repository's
-own configuration is never read for it. The checkout must have its local tier
-(.abcd/.work.local/), where this copy's key is kept. `abcd peers` lists every
-reservation.
+The holder is your GitHub username, from the first of these that names it:
+user.email, when it is a GitHub no-reply address; reservation.github_username
+in the machine configuration (the repository's own configuration is never read
+for it); and the account this session's own GitHub token belongs to, which
+takes one call to GitHub's user endpoint, through gh. When git's identity is
+not a person's (unset, or a machine's), the token alone names the holder, that
+account authors the reservation commit, and the identity git had is shown
+nowhere. The checkout must have its local tier (.abcd/.work.local/), where this
+copy's key is kept. `abcd peers` lists every reservation.
+
+--holder prints the account an act from this checkout would reserve as and the
+source that named it (git, config or token), or its --json document. It may
+make that one call to the user endpoint in two cases: git's identity is a
+person's but carries neither a GitHub no-reply address nor a machine key; or
+git's identity is not a person's (unset, or a machine's), when the machine key
+is skipped. It takes no record id and no other flag, and reserves, writes and
+pushes nothing. It exits 0 when the account is known and 2 when not.
 
 Exit 0 when the act reached origin (or a release was already made); exit 3 when
 the record is held by someone else or by your other copy, so back off; exit 2
@@ -3898,7 +4134,8 @@ push leaves no reservation and nothing in the checkout.
 
 ```
       --footprint stringArray   a repository-relative path the work will change; repeat once per path (never split on commas)
-      --lease duration          how long the reservation holds, from 1m to 24h (default 2h)
+      --holder                  say which GitHub account an act would reserve as, and from where; reserves nothing
+      --lease duration          how long the reservation holds, from 1m to 24h (default 2h, or 24h for a release)
       --release                 release your reservation from this copy by pushing a tombstone
       --take-over               move your own live reservation from another copy to this one
 ```
@@ -4368,6 +4605,49 @@ In the repository whose brief describes the binary, a close that ships an intent
 abcd spec close spc-2609010000000001
 ```
 
+### `abcd status`
+
+List everyone's announcements, reservations and releases being cut: Writes the fetched status branches and reservations; refuses outside a git checkout.
+
+**Usage:** `abcd status`
+
+List everyone's status on the shared remote: the announcements every session
+posted (abcd announce), newest first, each with its sender, kind, item, the
+time sent and how long it still stands, then who holds which reservation and
+each release being cut, which holds every other session's merge.
+
+It reads the remote once: it lists the status branches on origin (git
+ls-remote), then fetches, in one command, the reservations with origin's
+release tags, the first 500 status branches whose names are GitHub
+usernames in lower case, and origin's default branch, and stamps when in
+the local tier. A branch under abcd-status/ by any other name is counted,
+never named, and not fetched; branches past the 500 are counted and not
+fetched. Before the fetch, this checkout's copy of each status branch that
+is not among the names it fetches is deleted, so a branch deleted on
+origin, one whose name is not read and one past the 500 leave nothing to
+read; a copy that cannot be deleted is named, and the fetch goes on. Then
+it asks the forge (gh api, the repository's activity record) who pushed
+each standing announcement it has not asked about yet, on at most ten
+branches, the one waiting longest first: a sender is verified when the
+forge names the branch's owner, doubtful when it names someone else, and
+claimed when the forge cannot say or an app pushed it.
+
+An announcement stands for its life from when this checkout first fetched it,
+not by the sender's clock. One whose sender is not its branch's owner, one
+that does not read as an announcement (never shown but by its branch and the
+reason), and a branch that was rewritten, passed a merge or gained more than
+one read covers are marked doubtful, and every other branch is still read.
+A running session sees each new line once, at its next prompt, in a
+block headed STATUS of at most ten lines and one more that counts the
+rest, read from disk alone.
+An announcement informs and grants nothing.
+
+When the fetch fails, the status is listed as last fetched, with that view's
+age and a line saying it is unread since then and why. Exit 0 when the fetch
+succeeded and with no remote named origin; exit 1 when it failed, when
+what it fetched could not be read, or in a checkout without its local
+tier; exit 2 outside a git checkout or with an operand.
+
 ### `abcd statusline`
 
 Render abcd's status-line row from the host's payload on stdin: Writes nothing; never refuses.
@@ -4380,11 +4660,12 @@ The harness runs this on every status refresh, with its JSON status
 payload on stdin, and shows what it prints. In a checkout abcd manages the
 row is abcd's own: the presence badge first — `abcd-managed`, `waiting on
 the technical facilitator` or `waiting on the product thinker`, from the state
-`abcd mode` stores, its colour ending at the badge — then the
-repository name, the branch, the model, the context percentage, the
-five-hour and seven-day usage percentages, and the record's counts of
-intents not yet shipped and open issues. Each element after the badge is
-switchable in `~/.abcd.noindex/statusline.json`; a payload field the harness did not
+`abcd mode` stores, its colour ending at the badge — then the session's
+name when the harness supplies one, the repository name, the branch, the
+model, the context percentage, the five-hour and seven-day usage
+percentages, and the record's counts of intents not yet shipped and open
+issues. Each element after the session name is switchable in
+`~/.abcd.noindex/statusline.json`; a payload field the harness did not
 supply drops its element with no placeholder.
 
 Outside a managed checkout, or with `disabled` set in the user-level
@@ -4414,8 +4695,8 @@ Fetches the named release (or resolves the latest, naming it before acting),
 verifies the platform binary against the same release's checksums.txt and
 against the SLSA build provenance the release workflow signed for it
 (fetched from GitHub's attestations API and checked against the Sigstore
-trusted root, pinned to intentdriven/abcd's release.yml and to the commit
-the release tag names), and swaps the
+trusted root, pinned to intentdriven/abcd's release.yml on main and to
+the commit the release tag names), and swaps the
 PATH-installed copy atomically. A binary whose provenance cannot be
 verified, offline included, is refused with the way to install it by hand;
 nothing is swapped unverified. The verb is the only ask: abcd

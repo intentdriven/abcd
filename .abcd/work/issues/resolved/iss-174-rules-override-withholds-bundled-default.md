@@ -9,7 +9,7 @@ found_during: "iss-156 adversarial review 2026-07-30"
 found_at: "internal/core/rules/rules.go"
 deferred_after: "v0.10.0"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25): For security-bearing arrays in a repo override: union with the bundled entries, a replace-vs-extend marker, or a diagnostic naming withheld entries?"
-resolution: "The silence is closed: for the guardrail domains (COMMITTING, LOAD, PII) Load names every bundled recall keyword, alias and rule an override's list leaves out, with the file whose list is in force, on stderr from abcd rules and from the hook on every prompt. The comparison is against the list the running binary bundles, so an upgrade that adds an entry is named on the first load after it. The merge stays per field, as documented. Whether security-bearing lists should union or take a replace-versus-extend marker stays the product thinker's question (itd-117's finer-grained-merging follow-up; DECISIONS.md 2026-09-26)."
+resolution: "The silence is closed: for the guardrail domains (COMMITTING, LOAD, PII) Load names every bundled recall keyword, alias and rule an override's list leaves out, with the file whose list is in force, on stderr from abcd rules and from the hook on every prompt. The comparison is against the list the running binary bundles, so an upgrade that adds an entry is named on the first load after it. The merge stays per field, as documented. Whether security-bearing lists should union or take a replace-versus-extend marker stays the product thinker's question (itd-117's finer-grained-merging follow-up; dcn-2609260000000006)."
 impact: fix
 resolved_by:
   commit: "aea2ae7e"

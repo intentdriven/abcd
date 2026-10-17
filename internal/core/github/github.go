@@ -37,7 +37,10 @@ const Host = "github.com"
 
 // Timeout bounds each `gh` call. A subprocess reading from the network with no
 // bound is a verb that hangs a session indefinitely on a stalled connection.
-const Timeout = 30 * time.Second
+var Timeout = 30 * time.Second
+
+// ErrTimeout is what Run's error wraps when gh did not answer within Timeout.
+var ErrTimeout = errors.New("gh did not answer")
 
 // MaxOutputBytes caps what is read back from `gh`, stdout and stderr each
 // (trust boundary): the response is remote-controlled, and an unbounded read
@@ -92,7 +95,12 @@ func ParseRemote(url string) (owner, name string, err error) {
 // API runs `gh api --hostname github.com <args...>` under cwd: Run with the
 // host named by construction, so no caller can forget it.
 func API(cwd string, stdin []byte, args ...string) ([]byte, error) {
-	return Run(cwd, stdin, append([]string{"api", "--hostname", Host}, args...)...)
+	return apiContext(context.Background(), cwd, stdin, args...)
+}
+
+// apiContext is API bound to ctx (runContext).
+func apiContext(ctx context.Context, cwd string, stdin []byte, args ...string) ([]byte, error) {
+	return runContext(ctx, cwd, stdin, append([]string{"api", "--hostname", Host}, args...)...)
 }
 
 // Run executes one `gh` subcommand under cwd and returns its bounded stdout.
@@ -101,13 +109,26 @@ func API(cwd string, stdin []byte, args ...string) ([]byte, error) {
 // the tool registry's explanation (itd-63): what gh is, that these verbs
 // require it, and the exact install step.
 func Run(cwd string, stdin []byte, args ...string) ([]byte, error) {
+	return runContext(context.Background(), cwd, stdin, args...)
+}
+
+// runContext is Run bound to ctx as well as to Timeout: gh is killed at
+// whichever ends first, so a caller with its own deadline is never held past
+// it, and the error then says gh did not answer before that deadline.
+func runContext(parent context.Context, cwd string, stdin []byte, args ...string) ([]byte, error) {
 	if _, err := exec.LookPath("gh"); err != nil {
 		return nil, tools.Missing(errors.New("the GitHub CLI (gh) is not on PATH; abcd speaks to GitHub through it so that a "+
 			"remote write is made by your own authenticated identity, never by a token abcd holds"), "gh", tools.GitHubSettings)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), Timeout)
+	if err := parent.Err(); err != nil {
+		return nil, fmt.Errorf("%w: its deadline had passed before it was asked", ErrTimeout)
+	}
+	ctx, cancel := context.WithTimeout(parent, Timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", args...)
+	// Once gh is killed, a process it started that still holds its output
+	// open is waited for at most this long, so the deadline holds.
+	cmd.WaitDelay = time.Second
 	cmd.Dir = cwd
 	cmd.Env = os.Environ()
 	cmd.Stdin = bytes.NewReader(stdin)
@@ -115,8 +136,11 @@ func Run(cwd string, stdin []byte, args ...string) ([]byte, error) {
 	cmd.Stdout = &limitedWriter{w: &out, remaining: MaxOutputBytes}
 	cmd.Stderr = &limitedWriter{w: &errBuf, remaining: MaxOutputBytes}
 	if err := cmd.Run(); err != nil {
+		if parent.Err() != nil {
+			return nil, fmt.Errorf("%w before its caller's deadline", ErrTimeout)
+		}
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("gh did not answer within %s", Timeout)
+			return nil, fmt.Errorf("%w within %s", ErrTimeout, Timeout)
 		}
 		msg := strings.TrimSpace(errBuf.String())
 		if msg == "" {

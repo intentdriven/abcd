@@ -489,16 +489,34 @@ The version is derived from the impact the shipped records declare, and the
 tier and its reason are recorded so every published version is traceable to
 *why* it bumped.
 
-| Tier | Trigger |
-|---|---|
-| **Major** | Any shipped intent since the last release carries `impact: breaking`. |
-| **Minor** | No breaking, at least one `impact: additive`. |
-| **Patch** | Only `impact: fix` intents, or a release with no intent-tied change. |
+| Strongest impact in the cut | From `1.0.0` | Before `1.0.0` (`0.y.z`) |
+|---|---|---|
+| `breaking` | **Major** | **Minor** |
+| `additive` | **Minor** | **Patch** |
+| `fix` | **Patch** | **Patch** |
+| `internal`, or no record at all | no release (`empty-cut`) | no release (`empty-cut`) |
 
-Every intent carries an impact, set when the intent is shaped and enforced by
-the record lint (adr-31). At release, the cut gathers the intents shipped since
-the previous release and takes the highest-severity impact. A change not tied to
-any intent falls back to conventional-commit derivation.
+An intent's impact (adr-31) is required at the close that moves it to
+`shipped/`: the spec verb's close refuses to ship an intent that records none
+when none is given on the close, and moves nothing
+(`internal/core/intent/lifecycle.go`),
+and the record lint's `intent_impact_valid` rule flags an intent in `shipped/`
+without one. Before that close the field may be absent, since a draft or a
+planned intent can still be unjudged; wherever it is set, its value is checked
+in every bucket, by the same rule, which flags a value outside the enum and
+`internal` on an intent (`internal/core/lint/lint.go`). An issue declares its
+impact when it is resolved, which the capture verb's resolve refuses without. At release, the cut gathers the records that entered
+or left `intents/shipped/` and `issues/resolved/` since the previous release tag,
+leaving out an entering record whose `shipped_in:` names a release tag the
+previous tag already reaches, since that release carried its work; a value that
+names no such tag keeps the record in (`internal/core/changelog/shipped.go`),
+takes the highest-severity impact among
+them (`internal/core/changelog/impact.go`), and applies the table above
+(`DeriveNext`, `internal/core/changelog/version.go`). The records' declared
+impact is the only input: nothing derives a version from commit messages. A cut
+whose strongest impact is `internal`, or that holds no record, derives no
+version and is refused as `empty-cut` (`internal/core/release/emit.go`). No set
+of records derives `1.0.0` from a `0.y.z` base.
 
 ### Refusal kinds
 
@@ -514,7 +532,7 @@ would be wrong. There are ten, and an operator sees them as
 | `release-in-flight` | the newest changelog heading is ahead of the newest tag, so a release sits between its merge and its tag |
 | `unlabelled-record` | a record the cut adds carries no valid impact |
 | `uncommitted-records` | a record file in a terminal folder (`intents/shipped/`, `issues/resolved/`) differs from HEAD, where the cut reads it, so a spec close or resolve left uncommitted would be missing from the cut; every path is named, and no override waives it |
-| `stale-intent` | an intent in `planned/` has a spec that has closed |
+| `stale-intent` | an intent in `planned/` whose every realising spec has closed: it has at least one, and none is still open, so the record never moved to `shipped/`. A planned intent with one spec closed and another open is a partial delivery and is not refused |
 | `surface-guard` | the surface guardrail failed, or could not compare |
 | `unfixed-finding` | a consequential finding this cycle captured is still open, with no recorded decision to defer it; or an open issue record that differs from HEAD, where the gate reads the ledger, at any severity, every path named and no override waiving it |
 | `deleted-finding` | a consequential record the anchor held in `open/` is in no status directory at HEAD: the cut removed the finding instead of answering it |
@@ -697,6 +715,49 @@ renders it — which releases a line keeps, which the plan would prune, and the
 reason a refusal stands — and stops there: no shipped path deletes a tag, a
 release or an asset, so the plan is a statement of intent a person still carries
 out.
+
+### The release hold
+
+A cut is held against other sessions' merges by a reservation of the release,
+`rel-vX.Y.Z`, which every other session's land step reads (itd-2609151838312703
+C7 and C8, spc-2610150728396006 step 4, resolving iss-2609091037191879; the
+subject is in [`37-reserve.md`](37-reserve.md), the fence in
+[`27-implement.md`](27-implement.md)). It guards the one hazard of release day:
+a change merging between the release pull request's merge and its tag, which
+makes the release workflow read the wrong commit.
+
+The cutting session takes the hold itself, with `abcd reserve rel-vX.Y.Z`,
+before the cut's first step, and the ship sub-verb neither takes nor releases it.
+Three facts decided that, with the least change:
+
+- The tag is not pushed by abcd: the release workflow pushes it after the
+  release pull request merges, when no abcd verb is running, so there is no
+  moment in the ship sub-verb to release the hold "at the tag". The hold ends by
+  itself instead, once the tag is on origin as last fetched, so no step has to
+  remember to release it.
+- The ship sub-verb's emit step writes nothing and its ingest step writes the
+  checkout alone; neither touches the network except through an explicit flag,
+  and invariant 7 names the verbs whose meaning is a fetch or a push of the
+  reservations. A push from it would change what the verb means,
+  where the reservation verb already means exactly that push.
+- The ship sub-verb runs in repositories with no remote named origin and many
+  times in one cut (an emit step is a preview, and a refused ingest is
+  recomposed and run again), so a hold taken there would be taken, retaken and
+  renewed by steps that are not the start of a cut.
+
+The hold lasts a day unless a shorter lease is named, and the cutting session
+renews it by running the same command again from the same copy at each stage
+of a slow cut; without a renewal nothing holds past a day from its claim, or
+from a copy's first fetch of one claimed ahead of that copy's clock. A cut
+abandoned before its tag is released by its holder, or lapses within the day.
+
+The hold stops a merge from being armed; it does not stop a merge armed, or
+queued, before the release was reserved: a pull request with auto-merge
+already on, or already in the merge queue, lands when its checks pass. So the
+cut's runbook (`commands/launch.md`, "Before step 1") has the cutting session
+check for pull requests with auto-merge on and for merge-queue entries once it
+has reserved, and again just before it merges the release pull request, and
+still tell people working in the repository by hand to hold.
 
 ## 4. Reports
 

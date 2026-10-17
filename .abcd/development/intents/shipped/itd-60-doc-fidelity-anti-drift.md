@@ -334,7 +334,7 @@ Gap audit:
 - diverged:
   - The semantic layer was promised as a review the close and the cut run over what the change delivered; delivered is a receipt the host saves beforehand for HEAD, found automatically, reviewing the chapters against the code as a whole — the shape ruling DR3 chose, which the committed decision log does not carry
     evidence: internal/core/docfidelity/store.go:3-10 — "the delegated docs review saves a verdict receipt labelled with the commit it reviewed; `spec close` and `launch ship` find it automatically"
-    evidence: .abcd/work/DECISIONS.md:2614 — "The person answered eighteen rulings of autonomous run A on 2026-09-30 (CF1, CF2, CG1, CI1, CI2, CJ1, CK1, CL1, CM1, DR1, DR2, DR4, DR5, DR6, DQ1a, DQ1b, DQ2, DQ3)"
+    evidence: [dcn-2609300000000009](../../../work/decisions/dcn-2609300000000009-the-person-answered-eighteen-rulings-of.md) — "The person answered eighteen rulings of autonomous run A on 2026-09-30 (CF1, CF2, CG1, CI1, CI2, CJ1, CK1, CL1, CM1, DR1, DR2, DR4, DR5, DR6, DQ1a, DQ1b, DQ2, DQ3)"
   - Layer 1 treats every regular *.md under 04-surfaces/ as a chapter, the index README.md included; four surfaces at BASE are covered by the index alone
     evidence: internal/core/docfidelity/store.go:70 — "names, err := regularMarkdown(root, ChaptersDir)"
     evidence: .abcd/development/brief/04-surfaces/README.md:262 — "`abcd spec` addresses the spec store under `.abcd/development/specs/`"

@@ -57,8 +57,8 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   not a question; the same word and colon mid-sentence are prose.
   Every other list item is a question whatever it says: one led `**Open`, one
   that only points to another record, and one that merely mentions deferral
-  all count (the 2026-09-25 entry in `.abcd/work/DECISIONS.md`, and its
-  2026-09-28 correction).
+  all count (the 2026-09-25 decision [dcn-2609250000000028](../../../work/decisions/dcn-2609250000000028-the-build-s-open-question-check-reads.md), and its
+  2026-09-28 correction [dcn-2609280000000008](../../../work/decisions/dcn-2609280000000008-correction-to-the-2026-09-25-entry-on.md)).
 - **claim sections** — the mechanism prompt is answered or the section absent,
   and the scope conditions are recorded. The readiness gate reports both as
   advisory; a run is where they bind, because an autonomous lane has nobody to
@@ -93,7 +93,17 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
   ledger holds one id in two folders) and an unreadable claim file each count
   as a holding, naming why. A peer of another repository, or one holding no
   records at the committed layout, holds nothing of this checkout's and does
-  not count.
+  not count. For an intent, a reservation on `origin` another copy holds is a
+  holding too (itd-2609091034175565): another person's live one, or an
+  unreadable one within its hold, named with its holder, its expiry and the
+  view's age, and this person's own from another computer, named as theirs.
+  The reservations are read as this checkout last fetched them
+  (`claim.View`), from disk alone, so the check makes no network act; this
+  copy's own reservation is never a holding, and a view that cannot be read
+  fails closed. The pick excludes such an intent at `peers` with that
+  reason, and the board's next-up head passes over it, through the same check.
+  An issue key's peers row does not read them: its run's reservation, fetched
+  afresh at the start, judges it.
 
 A build started for a named session, one joined to the shared run, claims its intent in the shared run state when it creates the run, with
 the run id as the lane and the longest lease a claim takes, so a build of the
@@ -111,13 +121,45 @@ A refusal names the check, the reason and the remedy, carries every check's row,
 and writes nothing. A peer's holding is contention rather than a fault in the
 record.
 
+**The reservation across people** (itd-2609091034175565, spc-2610031753359849
+step 13). The claim above keeps one person's sessions in one copy apart; the
+reservation keeps people, and one person's computers, apart. In a checkout
+with a remote named `origin`, a run reserves its key there once its checks and
+its budget check pass and before the run is created, through
+`internal/core/claim`, as `abcd reserve` does: with the packages its spec's
+`## Footprint` `- packages:` line names, each cleaned of a trailing slash, for
+an intent, and the path an issue's `found_at` names for an issue. A spec with
+no footprint, or an issue with no such path, is refused at the `reservation`
+stage, starting nothing (C35); another's hold, a person's or this person's
+other copy's, is contention at the same stage; a take-over asked for passes
+through, moving this person's own live reservation from another copy and never
+another person's, and the peers check then does not count that copy as a holder. The
+run's state records the reservation (`reserved_at`) and its record names it;
+a run that is then not created releases a reservation it made fresh. A
+resumed start reserves too, with its record's footprint: it renews this
+copy's own while the reservation's footprint covers every path the spec names, and
+reserves it again, judged for overlap, once the spec has widened it; either
+way it keeps the reservation's term, so a resume never cuts the day the land
+fence gave a waiting pull request. It reserves anew one a release released
+or a run started before reservations never took, recording it in the run's
+state; a run handed back reserves nothing. A release asked of the
+verb pushes the tombstone over this copy's reservation on the key and changes
+nothing in the run's state (C36); the run's next step meets it at the land fence. A run whose
+issue lane is handed back releases its reservation as the step hands it back,
+whoever started the run (iss-2610142247197128). In a checkout with no remote
+named `origin` nothing is reserved. The pick starts the same run, so the
+picked intent is reserved the same way.
+
 ## The pick
 
 The pick sub-verb chooses the intent instead of taking one named
 (itd-2609211116005482, spc-2609212015048113). Its candidates are the planned
 intents that pass every check above, judged by the same function, less one
-this checkout already has a run in progress for; a planned intent a check
-excludes is named with the first check that excluded it. Each candidate is
+this checkout already has a run in progress for, and, in a checkout with a
+remote named `origin`, less one whose spec's `## Footprint` names no packages
+to reserve it with (the check `footprint`), since its start would be refused
+at the reservation; a planned intent a check excludes is named with the first
+check that excluded it. Each candidate is
 scored from its record, three parts of 0 to 100 at equal weight (decision 7,
 the bundled default): criteria clarity (the share of its acceptance criteria
 with all three Given-When-Then clauses), a test path (its spec's `## Footprint`
@@ -523,8 +565,11 @@ still the base's: the intent and the spec whole, the conventions of `AGENTS.md` 
 section between `<!-- working-conventions … -->` and
 `<!-- /working-conventions -->` when it marks one, the whole file when it does
 not), and the decisions the intent cites (each ADR id in the intent, with its
-title and path, and every entry of `.abcd/work/DECISIONS.md` that names the
-intent or its spec). It opens by naming each source and the base it was read
+title and path; every decision record in `.abcd/work/decisions/` whose text
+names the intent or its spec, in id order, with any such file the record reader
+refuses named rather than quoted; and, in a managed repository that kept its
+frozen single log, every entry of it naming either). An issue lane's brief
+quotes the decisions naming the issue the same way. It opens by naming each source and the base it was read
 at, then gives the lane (the spec step it builds, the worktree, the branch), the
 spec's steps before the lane's (itd-2609212103565953, criterion 4), each with
 what landed it — the `landed:` line the spec at the base records, and the lane
@@ -784,8 +829,10 @@ Sub-verbs: `abcd build next`.
 |---|---|
 | `--fix-rounds` | string |
 | `--pace` | string |
+| `--release` | bool |
 | `--session` | string |
 | `--sub-agents` | string |
+| `--take-over` | bool |
 
 ### `abcd build next`
 

@@ -58,7 +58,7 @@ var sentences = map[string]string{
 		"Writes that layer's store; refuses a public entry curated by hand.",
 
 	"abcd build": "Start the loop that takes one READY intent to delivered: " +
-		"Writes the run's state file in the local tier; refuses an open question, a hold or a peer holding it.",
+		"Writes the run's state and its reservation; refuses an open question, a hold or a peer holding it.",
 	"abcd build next": "Pick the readiest planned intent and start its run: " +
 		"Writes the run's state and the reason as the lane's first commit; refuses when nothing passes the checks.",
 
@@ -91,8 +91,8 @@ var sentences = map[string]string{
 	"abcd capture wontfix": "Move an open issue to wontfix/ with the reason it is not acted on: " +
 		"Writes the moved record; refuses an id this ledger does not hold.",
 
-	"abcd decide": "Mint an ADR id and lay the record's empty skeleton: " +
-		"Writes one proposed record into the decisions store; refuses a missing or unusable title.",
+	"abcd decide": "Record a decision, list them bare, or mint an ADR with --adr: " +
+		"Writes one decision record or one proposed ADR; refuses a text with nothing slug-able.",
 
 	"abcd disembark": "Pack a repository into a lifeboat, probing and planning first: " +
 		"Writes nothing in the source, only inside the lifeboat; refuses an unknown sub-verb.",
@@ -367,8 +367,17 @@ var sentences = map[string]string{
 	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
 		"Writes the fetched reservations; refuses outside a git checkout.",
 
-	"abcd reserve": "Reserve an issue or intent on the shared remote, or release it: " +
-		"Writes one commit to its origin branch; refuses a record someone else holds, with exit 3.",
+	"abcd status": "List everyone's announcements, reservations and releases being cut: " +
+		"Writes the fetched status branches and reservations; refuses outside a git checkout.",
+
+	"abcd announce": "Post a fixed-form announcement on the shared remote: " +
+		"Writes one commit to your status branch; refuses free text, a record not yet public and an embargoed one.",
+
+	"abcd land": "Push a branch whose preflight passed and queue its pull request: " +
+		"Writes a push to origin and arms a merge; refuses the default branch or a dirty tree.",
+
+	"abcd reserve": "Reserve an issue, intent or release on the shared remote, or release it: " +
+		"Writes one commit to its origin branch; refuses what someone else holds, with exit 3.",
 
 	"abcd reading": "Render the cold-reading assembler's state: " +
 		"Writes nothing; refuses any argument.",

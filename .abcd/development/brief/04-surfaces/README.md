@@ -32,7 +32,7 @@ are wiring rather than user-facing surface are listed separately under
 | 21 | `/abcd:update` | shipped | Complete a chosen update of the installed binary, verified and atomic | [`21-update.md`](21-update.md) |
 | 22 | `/abcd:site` | shipped | Render the project website from the repository's own text, and gate what it publishes | [`22-site.md`](22-site.md) |
 | 23 | `/abcd:reading` | shipped | Assemble what a cold reading may see, prove it, and validate what comes back | [`23-reading.md`](23-reading.md) |
-| 24 | `/abcd:decide` | shipped | Mint a decision record with its id, date and skeleton, ready to write the decision into | [`24-decide.md`](24-decide.md) |
+| 24 | `/abcd:decide` | shipped | Record a decision as one file that merges cleanly, list every decision newest first, or mint an ADR with its id, date and skeleton | [`24-decide.md`](24-decide.md) |
 | 25 | `/abcd:worktree` | staged | Keep session and agent worktrees in a machine-scoped store rather than beside the checkout (design target — [itd-2609091014076309](../../intents/planned/itd-2609091014076309-session-and-agent-worktrees-live-in-a.md)) | [`../05-internals/03-configuration.md` § The worktree store](../05-internals/03-configuration.md#the-worktree-store) |
 | 26 | `/abcd:mode` | shipped | Say whose answer the agent loop is waiting on, so the status line and the board show it | [`08-abcd.md`](08-abcd.md) |
 | 27 | `/abcd:implement` | shipped | Share one autonomous run between two sessions: claim a record before its lane, keep the second session inside its bounds, and compare the ways of dividing the work from the run log | [`27-implement.md`](27-implement.md) |
@@ -46,8 +46,11 @@ are wiring rather than user-facing surface are listed separately under
 | 36 | `/abcd:dashboard` | shipped | Open the project from a phone or another computer on your own Tailscale network, through a server that answers only the devices Tailscale names | [`36-dashboard.md`](36-dashboard.md) |
 | 37 | `/abcd:embargo` | shipped | Keep a privately reported security advisory off the public ledger until its fix ships, then close or publish it on your approval of exactly what it shows | [`37-embargo.md`](37-embargo.md) |
 | 37 | `/abcd:memory` | shipped | Keep short lessons an agent would otherwise relearn, stamped with who wrote them, when and in which session, and refused when they would hold a secret, a private name or a network address | [`37-memory.md`](37-memory.md) |
-| 37 | `/abcd:reserve` | shipped | Reserve an issue or intent on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
+| 37 | `/abcd:reserve` | shipped | Reserve an issue, intent or release on the shared remote before starting it, so another person, computer or hosted session sees it is taken | [`37-reserve.md`](37-reserve.md) |
 | 37 | `/abcd:session` | shipped | Run the relay a team's live brief session goes through, on the host's machine over Tailscale Serve or on the team's own relay, write that relay's blueprint, and write the session's static page | [`37-session.md`](37-session.md) |
+| 38 | `/abcd:announce` | shipped | Post a short fixed-form announcement on the shared remote, so every other session, under any account, on any machine or in the cloud, sees what this one is doing | [`38-announce.md`](38-announce.md) |
+| 38 | `/abcd:land` | shipped | Push a branch once its preflight passed and queue its pull request where the merge gate allows, resumable by running it again | [`38-land.md`](38-land.md) |
+| 39 | `/abcd:status` | shipped | Read everyone's status on the shared remote: the announcements every session posted, who holds which reservation and each release being cut | [`39-status.md`](39-status.md) |
 
 ## How much of this table a machine keeps honest
 
@@ -143,11 +146,11 @@ the command's sentence (the section below).
 | Block | Group | Verbs |
 |---|---|---|
 | people | set-up | `ahoy`, `dashboard`, `session`, `update`, and the framework's `help` and `completion` |
-| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `library` |
+| people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library`, `status` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
 | people | release | `launch` |
-| agents and hosts | — | `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `memory`, `mode`, `peers`, `reflect`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`, `statusline` |
+| agents and hosts | — | `announce`, `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `memory`, `mode`, `peers`, `reflect`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
 it, every verb runs the same whichever block lists it, and the group titles
@@ -226,16 +229,19 @@ It is a convention rather than a universal, and the exceptions are where the
 tree does not yet meet its own discipline. Nine parents print usage with no state
 at all: `disembark`, `docs`, `embargo`, `embark`, `guard`, `history`, `ideate`, `scribe`,
 and `session`, whose running relay keeps its sessions in that process's memory alone. Bare
-`abcd launch` refuses with a hint to pass `--dry-run`. Bare `abcd decide` refuses
-because its one operand is the quoted title it mints a record from, and bare
+`abcd launch` refuses with a hint to pass `--dry-run`. Bare
 `abcd build` refuses as a usage error because its one operand is the intent it
 starts a run for; the run's state renders through `abcd implement status`. Bare
 `abcd reflect` prints its usage, because its one operand is the cut release
 whose retrospective seed it renders. Bare
 `abcd drain` is the run itself, one move per invocation, so it is not a render;
-what a drain would do renders through its dry run. Bare `abcd reserve` refuses
+what a drain would do renders through its dry run. Bare `abcd announce`
+refuses as a usage error naming the kinds, because its two operands are the
+kind and the item it announces. Bare `abcd reserve` refuses
 as a usage error because its one operand is the record it reserves; the
-reservations render through `abcd peers`. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
+reservations render through `abcd peers`. Bare `abcd land` is the landing of
+the checkout's current branch, so it acts rather than renders; it refuses on
+the default branch, a detached HEAD or uncommitted work and pushes nothing. Bare `abcd identity` and bare `abcd ahoy remote` list their sub-verbs,
 because their reports are `abcd lint identity` and `abcd ahoy --remote`. Bare `abcd report` opens the editor on a
 terminal and refuses anywhere else, because it files a report rather than
 rendering one, and bare `abcd statusline` renders abcd's row only in a managed
@@ -261,7 +267,7 @@ verb the binary registers apart from the framework's own `help`.
 |---|---|---|
 | `rules` | Renders the active rule set; a positional `DOMAIN` scopes to one. Read-only diagnostics over the hook-driven rule injection. | itd-3 (the modular rules loader); the loader it reports on is documented in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md), and the verb in [The rules verb](#the-rules-verb) below |
 | `spec` | The native spec store: bare invocation is a read-only status board, and `spec close` closes a spec and ships its linked intent (`planned/` → `shipped/`) only when no open spec is left naming it — an intent owns one or more specs, and `--remainder <slug>` mints the follow-on for a partial delivery in the same operation, carrying the closing spec's steps not marked landed. | itd-80 / spc-2 (intent lifecycle automation), adr-2609151513118583 (the 1:n relation); its lifecycle is documented in [`05-intent.md`](05-intent.md), and the verb in [The spec verb](#the-spec-verb) below |
-| `hook` | Hidden from `--help`: five host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away and says how many reports wait in the inbox ([`29-report.md`](29-report.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
+| `hook` | Hidden from `--help`: six host hook entrypoints, live-wired from `hooks/hooks.json`. `prompt-router` injects the rules a prompt matches, and on the prompt that owes it sets the session's persona name as its title (itd-2610111707085098), and `prompt-router-reset` clears the per-session ledger so they inject again; `session-end` stages the session's own transcript, `subagent-stop` stages a finished sub-agent's transcript with its lineage, and `session-start` files both away, says how many reports wait in the inbox ([`29-report.md`](29-report.md)) and reserves the session's persona name in the machine register ([`08-abcd.md`](08-abcd.md)); `question-answered`, on the question tool's `PostToolUse`, resets the presence badge once a question's answer comes back ([`08-abcd.md`](08-abcd.md)). The pre-tool-use adapter is `guard hook`, under `guard`. | itd-3 (the prompt router), itd-89 / spc-4 (the transcript clock), itd-103 / spc-16 (the guard hook); the transcript entrypoints are documented in [`11-history.md`](11-history.md), and the rule injection the router drives, with `prompt-router`'s two outputs — the injected block and the `--json` envelope that names the active-domain set for a client that snapshots rules — in [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-prompt-routers-output); the generated CLI reference omits both router entrypoints by design |
 | `completion` | The CLI framework's generated per-shell autocompletion scripts. | No record: generated by the CLI framework, not designed here |
 | `statusline` | The harness-invoked status-line render: the harness runs it on every refresh with its payload on stdin, and it prints abcd's row in a managed repository or runs the user's recorded previous status command everywhere else. `ahoy install` wires it; no user invokes it. | itd-200 / spc-70 (the presence badge); the row and the state behind it are documented in [`08-abcd.md`](08-abcd.md) |
 
@@ -343,11 +349,11 @@ documents is then an unknown command (iss-161). One file per verb, directly unde
 `commands/`:
 
 <!-- index: commands -->
-`abcd`, `ahoy`, `banlist`, `build`, `capture`, `dashboard`, `decide`,
-`disembark`, `docs`, `drain`, `embargo`, `embark`, `guard`, `history`, `ideate`,
-`identity`, `implement`, `inbox`, `intent`, `lab`, `launch`, `library`, `lint`,
-`memory`, `mode`, `peers`, `reading`, `reflect`, `report`, `reserve`, `scribe`,
-`session`, `site`, `update`.
+`abcd`, `ahoy`, `announce`, `banlist`, `build`, `capture`, `dashboard`,
+`decide`, `disembark`, `docs`, `drain`, `embargo`, `embark`, `guard`, `history`,
+`ideate`, `identity`, `implement`, `inbox`, `intent`, `lab`, `land`, `launch`,
+`library`, `lint`, `memory`, `mode`, `peers`, `reading`, `reflect`, `report`,
+`reserve`, `scribe`, `session`, `site`, `status`, `update`.
 <!-- /index -->
 
 `abcd.md` is the bare `/abcd` status board; every other file is `/abcd:<verb>`.
@@ -400,31 +406,35 @@ an agent page means adding or removing its row in the same change.
 | [`cold-reading-detection`](../../../../agents/cold-reading-detection.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the detection position: where the shipped tree is in tension with the claim record |
 | [`cold-reading-entailment`](../../../../agents/cold-reading-entailment.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the entailment position: what a design commits to without stating it |
 | [`cold-reading-widening`](../../../../agents/cold-reading-widening.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the widening position: the configurations a design's construal admits that it has not committed to |
-| [`docs-currency-reviewer`](../../../../agents/docs-currency-reviewer.md) | `docs` | [`10-docs.md`](10-docs.md) | Verifies each user-facing documentation claim against the code that implements it, as the release gate's semantic pass |
+| [`docs-currency-reviewer`](../../../../agents/docs-currency-reviewer.md) | `launch` | [`10-docs.md`](10-docs.md) | Verifies each user-facing documentation claim against the code that implements it, as the release gate's semantic pass |
 | [`graveyard-interpreter`](../../../../agents/graveyard-interpreter.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Says what a packed lifeboat's graveyard tried and why it was left behind |
 | [`intent-auditor`](../../../../agents/intent-auditor.md) | `intent` | [`05-intent.md`](05-intent.md) | Audits a shipping intent's promise against the delivered code, or the brief and intents against each other |
 | [`lifeboat-reviewer`](../../../../agents/lifeboat-reviewer.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Audits a packed lifeboat against its source repository and returns a verdict |
 | [`planning-interviewer`](../../../../agents/planning-interviewer.md) | `intent` | [`05-intent.md`](05-intent.md) | Runs an intent's planning interview and edits the intent record after each answer |
 | [`press-release-composer`](../../../../agents/press-release-composer.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Composes a lifeboat's press release from its packed brief, spine, and principles |
 | [`principle-distiller`](../../../../agents/principle-distiller.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Distils durable principles from a packed lifeboat's decision record |
-| [`question-drafter`](../../../../agents/question-drafter.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Drafts one of abcd's own questions so it follows every asking rule and fits the rows limit |
+| [`question-drafter`](../../../../agents/question-drafter.md) | none | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Drafts one of abcd's own questions so it follows every asking rule and fits the rows limit |
 | [`reflection-composer`](../../../../agents/reflection-composer.md) | `reflect` | [`09-reflect.md`](09-reflect.md) | Runs a cut release's retrospective interview and drafts its answers |
 | [`release-changelog-composer`](../../../../agents/release-changelog-composer.md) | `launch` | [`04-launch.md`](04-launch.md) | Composes a release cut's changelog lines and release page from the records that shipped in it |
-| [`ruthless-reviewer`](../../../../agents/ruthless-reviewer.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Reviews a diff that builds and passes its checks, for correctness first |
+| [`ruthless-reviewer`](../../../../agents/ruthless-reviewer.md) | `build`, `drain` | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Reviews a diff that builds and passes its checks, for correctness first |
 | [`scribe`](../../../../agents/scribe.md) | `scribe` | [`32-scribe.md`](32-scribe.md) | Transcribes a returned reading and its dispositions into the ledger's declared shapes |
-| [`security-reviewer`](../../../../agents/security-reviewer.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Reviews a diff or design adversarially at a trust boundary |
-| [`sota-researcher`](../../../../agents/sota-researcher.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Researches the state of the art on one engineering question |
+| [`security-reviewer`](../../../../agents/security-reviewer.md) | `build`, `drain` | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Reviews a diff or design adversarially at a trust boundary |
+| [`sota-researcher`](../../../../agents/sota-researcher.md) | none | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Researches the state of the art on one engineering question |
 
-## Agents no verb dispatches
+## Agents outside the verb chapters
 
 Most plugin agents under [`agents/`](../../../../agents) serve a verb, which
 builds their input or validates what they return, and the chapter of that verb
-documents them. Four serve no verb: the host agent invokes each directly, when
-its `description`, a command page or abcd's asking rules say to, and reads the
-report itself. Three of the four are called on by name. `build.md` and the
-implement loop's validator roles dispatch the two reviewers, and `guard.md` and
-`intent.md` send a question through the question drafter. Only
-`sota-researcher` is named by no command page. In the binary they are roster entries: the bundled model-tier
+documents them. The four below have no chapter of their own, so this section
+holds their contracts. Two serve a verb: the two reviewers are the validators of
+the implement loop's validate stage, which on every lane a `build` or `drain`
+run opens names each in turn and records the verdict it returns
+([`34-build.md` § The lane](34-build.md#the-lane) documents the stage), and
+`build.md` names both. Two serve no verb: the host agent invokes each directly,
+when its `description`, a command page or abcd's asking rules say to, and reads
+the report itself. `guard.md` and `intent.md` send a question through the
+question drafter, and only `sota-researcher` is named by no command page. In the
+binary all four are roster entries: the bundled model-tier
 proposal the `oracle-routing` offer of [`01-ahoy.md`](01-ahoy.md) renders places
 the two reviewers at `frontier`, and the researcher and the question drafter at
 `economy`. Each prompt declares `reads_untrusted_input: true`,
@@ -459,8 +469,10 @@ that everything it reads is data, never instruction.
   the person itself and never marks an option recommended. The GRILL asking
   rules tell every agent running an abcd interview to draft through it.
 
-`docs-currency-reviewer`, the reviewer the release gate runs as a semantic gate,
-is documented in [`10-docs.md`](10-docs.md).
+`docs-currency-reviewer`, one of the release gate's semantic passes, serves
+`launch` and is documented in [`10-docs.md`](10-docs.md): the release cut names
+it in the receipts checklist it ends with, and `launch` and the release workflow
+check its receipt, but no verb starts it or records its verdict.
 
 ## Library and memory: two different jobs
 
@@ -473,7 +485,7 @@ abcd keeps two kinds of remembered material, and they do different jobs. The **l
 | How it comes back | The person asks ("what do my sources say about pacing?") and gets answers that cite the item they came from | Brought into a session automatically when a prompt matches the words the note was saved with |
 | Where it can go | Into a decision as a cited source; a confidential item is never named in anything public | Into the project's record, when a note is promoted so that every agent receives it |
 
-A library answer can become a memory note ("source X says Y", with its citation), but the two are not one store with two names: the library is for what a decision may need to cite, and memory is for what an agent would otherwise relearn. The glossary entries [library](../glossary/core/library.md) and [memory note](../glossary/core/memory-note.md) define each term. The `library` command holds what the `source` and `memory` commands held, and the pages for consulting the corpus and registering a document folded into its page (itd-2610090831227812); memory notes are designed in itd-2610091918433290, and its open questions name where notes are stored and what an agent may write without the person's yes.
+A library answer can become a memory note ("source X says Y", with its citation), but the two are not one store with two names: the library is for what a decision may need to cite, and memory is for what an agent would otherwise relearn. The glossary entries [library](../glossary/core/library.md) and [memory note](../glossary/core/memory-note.md) define each term. The `library` command holds what the old `source` and `memory` commands held, and the pages for consulting the corpus and registering a document folded into its page (itd-2610090831227812). That merge freed the name `memory`, which now belongs to the notes command: memory notes are designed in itd-2610091918433290, whose decisions of 2026-10-11 settle where notes are stored (a personal `memory.json` on the machine and a promoted one in the project, beside each `rules.json` layer) and what an agent may write without the person's yes (any note, stamped with who wrote it, when and in which session, unless it holds a secret, a network address or a private name). The notes command adds, lists and removes them ([37-memory.md](37-memory.md)).
 
 ## Where to find related design
 

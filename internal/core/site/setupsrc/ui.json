@@ -42,6 +42,7 @@
     "glossary": "Glossary",
     "contributors": "Contributors",
     "development": "Work",
+    "decision_log": "Decision log",
     "health": "Health"
   },
   "panels": {

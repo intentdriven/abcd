@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -49,6 +49,54 @@ func TestAReservationMessageCarriesItsTrailers(t *testing.T) {
 	}
 }
 
+// TestAReservationStillReadsAnInexactTrailer guards the reservation's
+// tolerance: a trailer indented, with its key in another case, or spaced around
+// the colon or the value reads exactly as the canonical line does, as it did
+// before the collector began marking such lines for the announcement's
+// validator, which refuses them. Each shape is tried on every trailer line at
+// once, the tombstone's released-at and the attribution included.
+func TestAReservationStillReadsAnInexactTrailer(t *testing.T) {
+	const record = "iss-2609020716570699"
+	m := message{
+		Record: record, Holder: "octo", Copy: "9f2c41d07be35a6c80e1f4b2a7d39c55",
+		Footprint: []string{"internal/core/claim/claim.go", "commands/reserve.md"},
+		ClaimedAt: t0, ExpiresAt: t0.Add(time.Hour), ReleasedAt: t0.Add(time.Hour), AssistedBy: "abcd:v0.9.0",
+	}
+	canonical := m.text()
+	want, reason := parseMessage(record, canonical)
+	if reason != "" || !want.released() || want.Holder != "octo" || len(want.Footprint) != 2 || want.AssistedBy != "abcd:v0.9.0" {
+		t.Fatalf("the canonical message reads as %+v (%q)", want, reason)
+	}
+	subject, body, _ := strings.Cut(canonical, "\n\n")
+	for _, tc := range []struct {
+		name  string
+		shape func(key, val string) string
+	}{
+		{"indented", func(k, v string) string { return "  " + k + ": " + v }},
+		{"tab-indented", func(k, v string) string { return "\t" + k + ": " + v }},
+		{"lower-case key", func(k, v string) string { return strings.ToLower(k) + ": " + v }},
+		{"upper-case key", func(k, v string) string { return strings.ToUpper(k) + ": " + v }},
+		{"spaced around the colon", func(k, v string) string { return k + " :  " + v }},
+		{"no space after the colon", func(k, v string) string { return k + ":" + v }},
+		{"space-padded value", func(k, v string) string { return k + ":   " + v + "   " }},
+		{"all at once", func(k, v string) string { return " " + strings.ToLower(k) + "\t:  " + v + " " }},
+	} {
+		var lines []string
+		for _, l := range strings.Split(strings.TrimRight(body, "\n"), "\n") {
+			k, v, ok := strings.Cut(l, ": ")
+			if !ok {
+				t.Fatalf("the canonical trailer %q has no colon", l)
+			}
+			lines = append(lines, tc.shape(k, v))
+		}
+		text := subject + "\n\n" + strings.Join(lines, "\n") + "\n"
+		got, reason := parseMessage(record, text)
+		if reason != "" || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: %q reads as %+v (%q); want %+v", tc.name, text, got, reason, want)
+		}
+	}
+}
+
 // TestALeaseOverADayIsRefusedBeforeAnyGit is C11: a lease outside one minute to
 // a day is refused before any git command runs.
 func TestALeaseOverADayIsRefusedBeforeAnyGit(t *testing.T) {
@@ -74,7 +122,7 @@ func TestAnInvalidIDIsRefusedBeforeAnyRefName(t *testing.T) {
 	for _, arg := range []string{"", "ISS-5", "adr-5", "spc-5", "iss-", "iss-0", "itd-5 ", "iss-5/../main",
 		"iss-5:refs/heads/main", "+iss-5", "\x1b[31miss-5"} {
 		_, err := prepare(t.TempDir(), Request{Record: arg, Footprint: []string{"a.go"}}, Options{})
-		if !errors.Is(err, ErrRefused) || !strings.HasSuffix(err.Error(), " is not an issue or intent id (iss-N or itd-N); nothing was pushed") {
+		if !errors.Is(err, ErrRefused) || !strings.HasSuffix(err.Error(), " is not an issue or intent id (iss-N or itd-N), nor a release (rel-vX.Y.Z); nothing was pushed") {
 			t.Fatalf("%q: %v; want the not-an-id refusal", arg, err)
 		}
 		if strings.ContainsRune(err.Error(), 0x1b) {
@@ -125,9 +173,9 @@ func TestARepositoryConfiguredUsernameIsNeverUsed(t *testing.T) {
 	r := newCheckout(t, "pat@example.com")
 	r.Write(".abcd/config.json", `{"reservation": {"github_username": "mallory"}}`)
 	log := traced(t)
-	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir()})
-	want := "cannot tell which GitHub user you are: user.email is not a GitHub no-reply address, and " + abcdhome.Display("config.json") + " sets no " +
-		"reservation.github_username; set one of them (the repository's own configuration is never read for this); nothing was pushed"
+	noToken := (&forgeFake{err: errors.New("gh: not logged in")}).user
+	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir(), ForgeUser: noToken})
+	want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was sent or pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("prepare = %v; want %q", err, want)
 	}
@@ -380,7 +428,9 @@ func TestAReservationNamesNoHostNoHomeAndPassesTheOutboundPolicy(t *testing.T) {
 }
 
 // TestACheckoutWithoutAGitIdentityIsRefused: git would otherwise compose an
-// author from the machine's name, which a public commit may not carry.
+// author from the machine's name, which a public commit may not carry. With no
+// git identity only the session's token can name the author, so when it
+// cannot answer the act is refused.
 func TestACheckoutWithoutAGitIdentityIsRefused(t *testing.T) {
 	r := gittest.NewRepo(t)
 	// Neither a global nor a system file may lend the checkout a name.
@@ -390,8 +440,9 @@ func TestACheckoutWithoutAGitIdentityIsRefused(t *testing.T) {
 		t.Fatal(err)
 	}
 	r.Git("config", "user.email", "1234+octo@users.noreply.github.com")
-	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir()})
-	want := "git has no user.name or user.email to author the reservation; set them, then retry; nothing was pushed"
+	noToken := (&forgeFake{err: errors.New("gh: not logged in")}).user
+	_, err := prepare(r.Root(), Request{Record: "iss-5", Footprint: []string{"a.go"}}, Options{Now: clockAt(t0), Home: t.TempDir(), ForgeUser: noToken})
+	want := "could not work out whose GitHub account this session uses: " + errForgeNoToken.Error() + "; nothing was sent or pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("prepare without user.name = %v; want %q", err, want)
 	}

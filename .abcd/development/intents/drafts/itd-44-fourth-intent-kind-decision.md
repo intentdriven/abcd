@@ -51,7 +51,7 @@ builds_on: [itd-39]
 > binary has no capture-time classifier verdict, no `decision` route into the ADR
 > store from `abcd intent`, and no "decisions are not plannable" refusal — the
 > brief states the same (`brief/04-surfaces/05-intent.md`, the fourth capture
-> verdict). This draft carries the design for a later plan; `abcd decide` mints an
+> verdict). This draft carries the design for a later plan; `abcd decide --adr` mints an
 > ADR directly and is not this capture-time route.
 
 ## Why This Matters

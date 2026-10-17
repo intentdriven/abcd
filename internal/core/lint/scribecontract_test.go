@@ -40,8 +40,8 @@ const (
 
 // scribeLedgerRoot is the ONE tree the definition may name — the same root the
 // definition, the brief's protocol and the agent changelog all state. A broader
-// root admits `.abcd/work/DECISIONS.md`, which is shared working material and not
-// the ledger.
+// root admits `.abcd/work/decisions/`, the decision records, which are shared
+// working material and not the ledger.
 const scribeLedgerRoot = ".abcd/work/issues/"
 
 // scribeAgentContractRule is the shipped rule id, spelled as `.abcd/record-lint.json`
@@ -285,7 +285,7 @@ func TestScribeAccessCheckRefusesEveryBypass(t *testing.T) {
 		{"a fullwidth solidus", "\n- `internal／core／lint／agentcontract.go` — the rule.\n", "non-ascii"},
 		{"a backslash separator", "\n- `internal\\core\\lint\\agentcontract.go` — the rule.\n", "path"},
 		{"a traversal out of the ledger", "\n- `.abcd/work/issues/../../development/readings/` — the run record.\n", "traversal"},
-		{"the shared decision log", "\n- `.abcd/work/DECISIONS.md` — the decisions.\n", "path"},
+		{"a shared decision record", "\n- `.abcd/work/decisions/dcn-2609250000000001-x.md` — a decision.\n", "path"},
 		{"a session-transcript store path", "\n- `~/.abcd.noindex/history/aaaa/transcripts/` — prior sessions.\n", "path"},
 		{"a bare shipped-tree directory", "\n- `internal/core` — where the rule lives.\n", "path"},
 		{"a bare docs directory", "\n- `docs/` — the user-facing tree.\n", "path"},

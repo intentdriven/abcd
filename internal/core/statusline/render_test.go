@@ -655,3 +655,32 @@ func TestRoleBadgeWordsAreTheModeVocabulary(t *testing.T) {
 		t.Errorf("managed owes nobody, yet WaitingOn() = %q", got)
 	}
 }
+
+// TestRenderShowsTheSessionNameAfterTheBadge is C1's status line: a session
+// name in the payload renders as the first element after the badge, which
+// keeps the badge leading every prefix of the row (ac-1, ac-10); an absent
+// name drops the element, so the row is exactly the row without naming.
+func TestRenderShowsTheSessionNameAfterTheBadge(t *testing.T) {
+	in := fullInput(t)
+	in.Payload.SessionName = "Alice"
+	row := renderRow(in, Defaults())
+	want := "abcd-managed · Alice · abcd · main · Opus · ctx 8% · 5h 24% · 7d 41% · itd 12 · iss 34"
+	if got := row.Plain(); got != want {
+		t.Fatalf("row.Plain() =\n  %q\nwant\n  %q", got, want)
+	}
+	if row.Elements[0].Key != KeyPresence || row.Elements[1].Key != KeySession {
+		t.Fatalf("elements begin %q, %q; want the badge, then the session name", row.Elements[0].Key, row.Elements[1].Key)
+	}
+	// Every switchable element off still shows the name: it is the
+	// session's, not one of the row's switches.
+	if got := renderRow(in, withOff(Order()...)).Plain(); got != "abcd-managed · Alice" {
+		t.Fatalf("everything switched off renders %q, want the badge and the name", got)
+	}
+	if got := renderRow(in, Settings{Disabled: true}); !got.Empty() {
+		t.Fatalf("a disabled row renders %+v", got)
+	}
+	in.Payload.SessionName = ""
+	if got := renderRow(in, Defaults()).Plain(); got != wantFullRow {
+		t.Fatalf("an absent name renders %q, want %q", got, wantFullRow)
+	}
+}

@@ -213,3 +213,32 @@ func TestParsePayloadLiftsTheWorkingDirectory(t *testing.T) {
 		t.Fatalf("fixture Cwd = %q, want /repo", full.Cwd)
 	}
 }
+
+// TestParsePayloadLiftsTheSessionName is the status line's half of C1: the
+// payload's session_name (a title the person or abcd's session-start hook
+// gave the session) is lifted sanitised and cut to 32 characters, and an
+// absent, null or empty one is absence.
+func TestParsePayloadLiftsTheSessionName(t *testing.T) {
+	for name, c := range map[string]struct {
+		json, want string
+	}{
+		"named":       {`{"session_name":"Alice"}`, "Alice"},
+		"a round":     {`{"session_name":"Alice Two"}`, "Alice Two"},
+		"trimmed":     {`{"session_name":"  Bob  "}`, "Bob"},
+		"absent":      {`{}`, ""},
+		"null":        {`{"session_name":null}`, ""},
+		"empty":       {`{"session_name":""}`, ""},
+		"cut":         {`{"session_name":"` + strings.Repeat("é", 40) + `"}`, strings.Repeat("é", 32)},
+		"escape":      {`{"session_name":"Al\u001b[31mice"}`, "Al?[31mice"},
+		"bidi":        {`{"session_name":"Ali‮ce"}`, "Ali?ce"},
+		"line broken": {`{"session_name":"Al\nice"}`, "Al?ice"},
+	} {
+		p, err := ParsePayload([]byte(c.json))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if p.SessionName != c.want {
+			t.Errorf("%s: SessionName = %q, want %q", name, p.SessionName, c.want)
+		}
+	}
+}

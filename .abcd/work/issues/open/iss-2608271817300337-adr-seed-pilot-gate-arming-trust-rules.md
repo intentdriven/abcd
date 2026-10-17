@@ -7,7 +7,7 @@ category: "observation"
 source: "user-observation"
 found_during: "itd-84 decomposition of the pilot-note proposal (2026-08-27)"
 found_at: ".abcd/development/research/notes/2026-08-27-security-advisory-handling-pilot.md"
-remedy: "Waits on ruling E: if filed before planning, mint the ADR with `go run ./cmd/abcd decide` stating the three trust rules (auto-merge arms only after a no-bypass required-check set and an independent adversarial APPROVE; the two human-by-design release gates stay human; every required pass re-runs against the final content commit), add its brief invariant line, and list it in itd-149's related ADRs, proven by lint-decisions and record-lint green; if left to planning, move the three rules into itd-149's open questions and resolve this record pointing there."
+remedy: "Waits on ruling E: if filed before planning, mint the ADR with `go run ./cmd/abcd decide --adr` stating the three trust rules (auto-merge arms only after a no-bypass required-check set and an independent adversarial APPROVE; the two human-by-design release gates stay human; every required pass re-runs against the final content commit), add its brief invariant line, and list it in itd-149's related ADRs, proven by lint-decisions and record-lint green; if left to planning, move the three rules into itd-149's open questions and resolve this record pointing there."
 deferred_after: "v0.11.1"
 deferral_reason: "ruling owed to the product thinker (away; run A 2026-09-25; rulings-owed E): File the ADR for the pilot's trust rules (auto-merge arming, human release gates, no verdict transfer) before itd-149 is planned?"
 ---
