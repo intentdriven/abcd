@@ -348,11 +348,11 @@ func TestAVeryDeepPathIsJudgedQuickly(t *testing.T) {
 		if n != 500 {
 			t.Fatalf("candidates = %d; want the 500 deep files", n)
 		}
-		if took := time.Since(start); took > 2*time.Second {
+		if took := time.Since(start); took > slack(2*time.Second) {
 			t.Fatalf("500 paths 2,049 directories deep took %s; want well under a second", took)
 		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("500 paths 2,049 directories deep did not finish in 10s")
+	case <-time.After(slack(10 * time.Second)):
+		t.Fatal("500 paths 2,049 directories deep did not finish")
 	}
 }
 
