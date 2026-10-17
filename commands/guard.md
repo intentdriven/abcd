@@ -159,7 +159,7 @@ invalid UTF-8, or is over 4096 bytes.
 ## `approve` — answering a headless agent's permission prompts
 
 ```bash
-abcd guard approve --dir=<the agent's working tree> --base=<the commit the run started on> [--run-dir=<the run's own directory>]...
+"${CLAUDE_PLUGIN_ROOT}/abcd" guard approve --dir=<the agent's working tree> --base=<the commit the run started on> [--run-dir=<the run's own directory>]...
 ```
 
 You never run this yourself. When abcd starts an agent through its claude

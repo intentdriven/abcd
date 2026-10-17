@@ -99,36 +99,42 @@ func factsFor(f *Files) approveFacts {
 	if filepath.IsAbs(f.dir) {
 		tops = append(tops, f.dir)
 		facts.trees = append(facts.trees, both(f.dir)...)
-		if out, err := gitutil.Run(f.dir, "rev-parse", "--path-format=absolute", "--git-common-dir", "--show-toplevel"); err == nil {
-			if lines := strings.Split(out, "\n"); len(lines) == 2 {
-				add(lines[0])
-				top := filepath.Clean(lines[1])
-				if top != f.dir {
-					tops = append(tops, top)
-				}
-				if wts, err := gitutil.ListWorktrees(top, gitutil.MaxWorktreeListing); err == nil {
-					for _, wt := range wts {
-						p := filepath.Clean(wt.Path)
-						if !filepath.IsAbs(p) || fsutil.PathWithin(fsutil.RealExistingPath(top), fsutil.RealExistingPath(p), facts.fold) &&
-							fsutil.PathWithin(fsutil.RealExistingPath(p), fsutil.RealExistingPath(top), facts.fold) {
-							continue
-						}
-						facts.others = append(facts.others, both(p)...)
-						tops = append(tops, p)
+		// The toplevel is asked through gitutil.Toplevel, which checks its
+		// shape; either answer missing skips the repository's facts, as a
+		// directory outside any checkout has none.
+		top, err := gitutil.Toplevel(f.dir)
+		var common string
+		if err == nil {
+			common, err = gitutil.RevParseAbsPath(f.dir, "--git-common-dir")
+		}
+		if err == nil {
+			add(common)
+			top = filepath.Clean(top)
+			if top != f.dir {
+				tops = append(tops, top)
+			}
+			if wts, err := gitutil.ListWorktrees(top, gitutil.MaxWorktreeListing); err == nil {
+				for _, wt := range wts {
+					p := filepath.Clean(wt.Path)
+					if !filepath.IsAbs(p) || fsutil.PathWithin(fsutil.RealExistingPath(top), fsutil.RealExistingPath(p), facts.fold) &&
+						fsutil.PathWithin(fsutil.RealExistingPath(p), fsutil.RealExistingPath(top), facts.fold) {
+						continue
 					}
+					facts.others = append(facts.others, both(p)...)
+					tops = append(tops, p)
 				}
-				if hooks, err := gitutil.HooksPaths(top); err == nil {
-					for _, h := range hooks {
-						switch {
-						case h == "":
-						case filepath.IsAbs(h):
-							add(h)
-						default:
-							// A relative hooks path is relative to the
-							// working tree git runs the hook in: any of them.
-							for _, t := range tops {
-								add(filepath.Join(t, h))
-							}
+			}
+			if hooks, err := gitutil.HooksPaths(top); err == nil {
+				for _, h := range hooks {
+					switch {
+					case h == "":
+					case filepath.IsAbs(h):
+						add(h)
+					default:
+						// A relative hooks path is relative to the
+						// working tree git runs the hook in: any of them.
+						for _, t := range tops {
+							add(filepath.Join(t, h))
 						}
 					}
 				}

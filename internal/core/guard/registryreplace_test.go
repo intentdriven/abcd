@@ -2,7 +2,6 @@ package guard
 
 import (
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,8 +21,8 @@ func TestRegistryAtReadsObjectsAsStored(t *testing.T) {
 	}
 	stand := strings.TrimSpace(repo.Git("hash-object", "-w", other))
 	repo.Git("replace", blob, stand)
-	if out, err := exec.Command("git", "-C", repo.Root(), "cat-file", "blob", base+":"+RepoRelPath).Output(); err != nil || !strings.Contains(string(out), `"disabled":true`) {
-		t.Fatalf("the replacement is not in place (%v): %s", err, out)
+	if out := repo.Git("cat-file", "blob", base+":"+RepoRelPath); !strings.Contains(out, `"disabled":true`) {
+		t.Fatalf("the replacement is not in place: %s", out)
 	}
 	r := registryAt(repo.Root(), base)
 	if r.Disabled {

@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // abcdLayerRig is a working tree kept where abcd keeps a run's worktree,
@@ -11,7 +13,7 @@ import (
 func abcdLayerRig(t *testing.T) (approveRig, string) {
 	t.Helper()
 	home := t.TempDir()
-	layer := filepath.Join(home, ".abcd.noindex")
+	layer := abcdhome.Path(home)
 	r := approveRig{dir: filepath.Join(layer, "worktrees", "0123abcd", "lane"), home: home}
 	for _, d := range []string{r.dir, filepath.Join(layer, "worktrees", "0123abcd", "other"), filepath.Join(r.dir, "build")} {
 		if err := os.MkdirAll(d, 0o700); err != nil {
@@ -34,17 +36,17 @@ func abcdLayerRig(t *testing.T) (approveRig, string) {
 func TestApproveProtectsAbcdsOwnUserLayer(t *testing.T) {
 	r, layer := abcdLayerRig(t)
 	r.run(t, []approveCase{
-		{`echo /x >> ~/.abcd.noindex/trusted-roots`, protectedOrRegistry},
-		{`printf '{}' > ~/.abcd.noindex/rules.json`, protectedOrRegistry},
+		{`echo /x >> ` + abcdhome.Display("trusted-roots"), protectedOrRegistry},
+		{`printf '{}' > ` + abcdhome.Display("rules.json"), protectedOrRegistry},
 		{`echo '{}' > ` + filepath.Join(layer, "config.json"), protectedOrRegistry},
-		{`cp x ~/.abcd.noindex/local-transcript-roots`, protectedOrRegistry},
+		{`cp x ` + abcdhome.Display("local-transcript-roots"), protectedOrRegistry},
 		{`touch ../other/notes.txt`, protectedOrRegistry},
-		{`rm -f ~/.abcd.noindex/trusted-roots`, protectedOrRegistry},
+		{`rm -f ` + abcdhome.Display("trusted-roots"), protectedOrRegistry},
 		// The run's own worktree.
 		{`echo x > notes.txt`, nil},
 		{`echo x > ` + filepath.Join(r.dir, "notes.txt"), nil},
 		{`rm -rf build`, nil},
-		{`cat ~/.abcd.noindex/trusted-roots > roots.copy`, nil},
+		{`cat ` + abcdhome.Display("trusted-roots") + ` > roots.copy`, nil},
 	})
 }
 
