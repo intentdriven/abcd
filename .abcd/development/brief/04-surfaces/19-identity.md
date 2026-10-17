@@ -79,8 +79,9 @@ nothing is ever registered silently.
 The registry is all-or-nothing: it is decoded with unknown fields disallowed and
 validated in full before any of it is used, because every byte of it arrives as
 committed data. `schema_version` is required and must be `1`. An unloadable
-registry is reported as a warn-tier finding rather than as drift, so the symptom
-reads as a broken check rather than as a missing tagline.
+registry is reported as an error-severity finding rather than as drift, whatever
+the family severity says, so bare `abcd lint` exits 2 and the symptom reads as a
+check that could not run rather than as a missing tagline.
 
 ## Behaviour
 
