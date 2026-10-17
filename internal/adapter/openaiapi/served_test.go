@@ -368,3 +368,31 @@ func TestALaterThinnerUsageKeepsTheFullerOne(t *testing.T) {
 	}
 	assertServed(t, res)
 }
+
+// TestANullCountOrCostIsNotReportedAsZero: encoding/json reads a null into a
+// number as 0 with no error, so a usage member answering null for a count or
+// the cost (a provider's way of saying it has none) must leave it unset.
+func TestANullCountOrCostIsNotReportedAsZero(t *testing.T) {
+	f := newFake(t, streams(
+		chunkLine("m", `{"verdict":"yes"}`, "stop"), "",
+		`data: {"id":"gen-1","model":"m","choices":[],"usage":{"prompt_tokens":4,"completion_tokens":null,`+
+			`"completion_tokens_details":{"reasoning_tokens":null},"prompt_tokens_details":{"cached_tokens":null},"cost":null}}`, "",
+		"data: [DONE]", "",
+	))
+	res, err := mustClient(t, f.base(), testKey).Complete(context.Background(), request(), jsonObject)
+	if err != nil {
+		t.Fatalf("Complete: %v", err)
+	}
+	u := res.Usage
+	if u == nil || u.PromptTokens == nil || *u.PromptTokens != 4 {
+		t.Fatalf("usage = %+v, want the prompt count it carries", u)
+	}
+	for name, p := range map[string]*int{"completion": u.CompletionTokens, "reasoning": u.ReasoningTokens, "cached": u.CachedTokens} {
+		if p != nil {
+			t.Errorf("a null %s count read as %d", name, *p)
+		}
+	}
+	if u.Cost != nil {
+		t.Errorf("a null cost read as %v", *u.Cost)
+	}
+}

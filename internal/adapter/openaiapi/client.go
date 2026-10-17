@@ -657,9 +657,12 @@ func readUsage(raw json.RawMessage) *Usage {
 	if len(raw) == 0 || json.Unmarshal(raw, &m) != nil || m == nil {
 		return nil
 	}
+	// A null is nil, never zero: encoding/json reads a null into a number as
+	// 0 with no error, and a provider answers null for a count it has none of.
+	null := func(raw json.RawMessage) bool { return string(bytes.TrimSpace(raw)) == "null" }
 	count := func(raw json.RawMessage) *int {
 		var n int
-		if len(raw) == 0 || json.Unmarshal(raw, &n) != nil || n < 0 {
+		if len(raw) == 0 || null(raw) || json.Unmarshal(raw, &n) != nil || n < 0 {
 			return nil
 		}
 		return &n
@@ -679,7 +682,7 @@ func readUsage(raw json.RawMessage) *Usage {
 		ReasoningTokens:  detail("completion_tokens_details", "reasoning_tokens"),
 	}
 	var cost float64
-	if raw := m["cost"]; len(raw) > 0 && json.Unmarshal(raw, &cost) == nil && ReadableCost(cost) {
+	if raw := m["cost"]; len(raw) > 0 && !null(raw) && json.Unmarshal(raw, &cost) == nil && ReadableCost(cost) {
 		u.Cost = &cost
 	}
 	if u.readable() == 0 {
