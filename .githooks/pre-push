@@ -151,18 +151,25 @@ is_null_id() {
 # fetched, deepened or written. When git says the clone is shallow and the
 # file cannot be read, the check fails.
 only_empty_trees() {
-  local listing commits shallow rc=0
+  local listing commits shallow cut lines c
   listing="$(git rev-list --format=%T "$@" 2>/dev/null)" || return 1
   [ -n "$empty_tree" ] || return 1
   [ -z "$(printf '%s\n' "$listing" | grep -v -e '^commit ' -e "^$empty_tree\$" -e '^$')" ] || return 1
   shallow="$(git rev-parse --git-path shallow 2>/dev/null)" || return 1
   if [ -e "$shallow" ] || [ "$(git rev-parse --is-shallow-repository 2>/dev/null)" = "true" ]; then
     [ -f "$shallow" ] && [ -r "$shallow" ] || return 1
-    commits="$(printf '%s\n' "$listing" | sed -n 's/^commit //p')"
-    # grep exits 0 on a listed shallow commit and 2 on an unreadable file;
-    # only 1, no line matched, shows the walk read the whole range.
-    grep -qxF -f "$shallow" <<<"$commits" || rc=$?
-    [ "$rc" -eq 1 ] || return 1
+    # git reads each shallow line as its first object id's worth of hex in
+    # either case and ignores what follows (a carriage return, a space), so
+    # the lines are read the same way here: a line only git would accept
+    # cannot hide a shallow commit from the match. A read that fails refuses.
+    cut="$(cut -c "1-${#empty_tree}" -- "$shallow")" || return 1
+    lines="$(printf '%s\n' "$cut" | tr 'A-F' 'a-f')" || return 1
+    commits="$(printf '%s\n' "$listing" | sed -n 's/^commit //p')" || return 1
+    for c in $commits; do
+      case $'\n'"$lines"$'\n' in
+        *$'\n'"$c"$'\n'*) return 1 ;;
+      esac
+    done
   fi
 }
 

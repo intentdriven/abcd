@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -205,4 +206,41 @@ func TestPrePushStaysStrictFromAShallowClone(t *testing.T) {
 			t.Errorf("the remote moved to %s although the push was refused", got)
 		}
 	})
+}
+
+// TestPrePushReadsAShallowLineAsGitDoes: git reads a .git/shallow line as its
+// first object id's worth of hex, in either case, and ignores what follows, so
+// the hook reads the line the same way. A shallow line written in upper case,
+// with a carriage return, or with trailing text still cuts git's walk at the
+// announcement, and the commit carrying files beneath it is still gated.
+func TestPrePushReadsAShallowLineAsGitDoes(t *testing.T) {
+	for name, line := range map[string]func(string) string{
+		"upper case":      strings.ToUpper,
+		"carriage return": func(id string) string { return id + "\r" },
+		"trailing text":   func(id string) string { return id + " written by hand" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newPrePushCase(t)
+			files := c.commit("feature.md", "a feature\n")
+			empty := c.git("hash-object", "-w", "-t", "tree", "/dev/null")
+			announcement := c.commitTree(empty, files, "abcd announcement: merging #1012")
+			gitDir := c.git("rev-parse", "--absolute-git-dir")
+			if err := os.WriteFile(filepath.Join(gitDir, "shallow"), []byte(line(announcement)+"\n"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			c.env = append(c.env, "GIT_NO_REPLACE_OBJECTS=1", "GIT_GRAFT_FILE=/dev/null/none")
+			n := c.git("rev-list", "--count", announcement)
+			c.env = c.env[:len(c.env)-2]
+			if n != "1" {
+				t.Fatalf("git does not read the %s line as shallow: %s commits reachable from the announcement", name, n)
+			}
+			out, err := c.push("origin", announcement+":"+statusRef)
+			if err == nil || !strings.Contains(out, "no passing preflight") {
+				t.Fatalf("a commit carrying files passed under the status prefix behind a %s shallow line (err %v)\n%s", name, err, out)
+			}
+			if got := c.remoteRef(statusRef); got != "" {
+				t.Errorf("the remote moved to %s although the push was refused", got)
+			}
+		})
+	}
 }
