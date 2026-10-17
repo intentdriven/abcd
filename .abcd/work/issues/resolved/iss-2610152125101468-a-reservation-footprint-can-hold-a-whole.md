@@ -11,6 +11,10 @@ production_mode: hand-written
 found_at: "internal/core/implement/loop/reservation.go"
 remedy: "Treat generated files (those a go:generate directive writes) as shareable in the overlap check, and warn rather than refuse when the overlap is between two reservations of the same holder"
 related_intents: [itd-2610161016394967]
+resolution: "A drain lane's reservation narrows at its landing to the files its branch changed within its footprint, never widening, and re-reserves its whole footprint before it leaves the landing for a fresh round (spc-2610161044461448 step 12)."
+impact: fix
+resolved_by:
+  commit: "6c0640b70c6e1022f46c78abb13412e97175dd49"
 ---
 
 A reservation footprint can hold a whole directory (docs, hooks, internal/surface/cli), and the overlap check then refuses every other reservation naming any file inside it. Generated files that every verb-adding branch regenerates, such as docs/reference/cli/commands.md, sit inside such directories, so two unrelated intents held by the same person from two copies could not both declare an honest footprint: on 2026-10-15 the messaging reservation's renewal was refused twice and had to leave out .githooks/pre-push, the ruleset mirror and the generated CLI reference, which it does change.
