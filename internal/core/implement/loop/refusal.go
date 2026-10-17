@@ -50,6 +50,10 @@ type Refusal struct {
 	// outage is the lost connection a stage met, which the call records in
 	// the shared run once the tier lock is released.
 	outage *outageReport
+	// originUnread marks a land fence that could not read the reservation
+	// from origin: a wait by design, never logged on a drain's lane
+	// (stuck.go).
+	originUnread bool
 	// final is why the refusal cannot change, "" when it can: an issue
 	// finished at the lane's base or on origin's default branch, or the
 	// reservation now another person's. A drain hands a lane refused so back

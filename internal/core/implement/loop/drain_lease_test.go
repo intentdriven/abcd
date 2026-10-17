@@ -1,6 +1,7 @@
 package loop
 
 import (
+	"net"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -60,8 +61,11 @@ func TestAWaitingDrainMoveRenewsTheLaneInProgress(t *testing.T) {
 // records and the push, the issue's reservation becomes Quinn's; the push step
 // refuses, pushes nothing and opens no pull request, and the drain's next move
 // hands the lane back at once.
-func TestALaneWhoseReservationIsAnothersPushesNothingAndIsHandedBack(t *testing.T) {
-	f := drainLandFixture(t)
+// pushReadyLane drives the drain's documentation-issue lane to its push: a
+// fix commit and a receipt resolving the issue, a passing round, the records
+// committed and the preflight receipt minted for its head.
+func pushReadyLane(t *testing.T, f *landFixture) Lane {
+	t.Helper()
 	first := drainToLane(t, f.repo, Options{}, DrainOptions{})
 	if first.Start == nil || first.Lane.Issue != secondIssue {
 		t.Fatalf("the drain opens the documentation issue's lane: %+v", first)
@@ -91,6 +95,13 @@ func TestALaneWhoseReservationIsAnothersPushesNothingAndIsHandedBack(t *testing.
 		t.Fatalf("the lane is at its push: %+v", l.Landing)
 	}
 	preflighted(t, l, l.HeadSHA)
+	return l
+}
+
+func TestALaneWhoseReservationIsAnothersPushesNothingAndIsHandedBack(t *testing.T) {
+	f := drainLandFixture(t)
+	l := pushReadyLane(t, f)
+	repo := f.repo
 
 	// The reservation becomes Quinn's.
 	if _, err := claim.Reserve(repo.Root(), claim.Request{Record: secondIssue, Release: true}, claim.Options{}); err != nil {
@@ -123,5 +134,80 @@ func TestALaneWhoseReservationIsAnothersPushesNothingAndIsHandedBack(t *testing.
 	}
 	if tip := originReservation(t, f.bare, claim.RefPrefix+secondIssue); tip.holder != "quinn" || tip.released {
 		t.Fatalf("Quinn's reservation is left as it stands: %+v", tip)
+	}
+}
+
+// TestOriginUnreadAtThePushFenceIsAWaitNotARefusal: origin cannot be read
+// when the push fence fetches the lane's reservation, whether its address is
+// gone or it refuses the connection. However often the host steps the lane,
+// nothing is logged as its refusal, and the drain's next move, once origin
+// answers, leaves the lane in progress rather than handing it back as stuck.
+// A network failure also waits on the shared outage probe, as the push's
+// own does.
+func TestOriginUnreadAtThePushFenceIsAWaitNotARefusal(t *testing.T) {
+	closed := func(t *testing.T) string {
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		addr := ln.Addr().String()
+		if err := ln.Close(); err != nil {
+			t.Fatal(err)
+		}
+		return "http://" + addr + "/origin.git"
+	}
+	for name, tc := range map[string]struct {
+		url     func(t *testing.T, bare string) string
+		network bool
+	}{
+		"origin's address is gone":      {url: func(t *testing.T, _ string) string { return filepath.Join(t.TempDir(), "gone.git") }},
+		"origin refuses the connection": {url: func(t *testing.T, _ string) string { return closed(t) }, network: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := drainLandFixture(t)
+			l := pushReadyLane(t, f)
+			repo := f.repo
+			// The address is changed as a person would, accepting the
+			// changed configuration the run's watch names.
+			setOrigin := func(url string) {
+				repo.Git("remote", "set-url", "origin", url)
+				if _, err := AcceptConfigChange(repo.Root(), f.runID, Options{}); err != nil {
+					t.Fatal(err)
+				}
+			}
+			setOrigin(tc.url(t, f.bare))
+			for n := range 4 {
+				_, err := advance(repo.Root(), f.runID, f.stages, Options{})
+				r, ok := AsRefusal(err)
+				if !ok || !r.Contention {
+					t.Fatalf("step %d waits on origin: %v", n+1, err)
+				}
+				if n == 0 && !strings.Contains(r.Reason, "could not read the reservation on "+secondIssue) {
+					t.Fatalf("the push fence names the reservation it could not read: %v", err)
+				}
+				if n == 0 && tc.network != (r.outage != nil || r.Outage != nil) {
+					t.Fatalf("only a lost network waits on the shared outage probe (network %v): %+v", tc.network, r)
+				}
+			}
+			if got := currentLane(t, repo, f.runID); got.Refused != nil {
+				t.Fatalf("origin unread is no refusal of the lane: %+v", got.Refused)
+			}
+			setOrigin(f.bare)
+			res, err := Drain(repo.Root(), Options{}, DrainOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, r := range res.Routed {
+				if r.Issue == secondIssue {
+					t.Fatalf("the lane origin kept waiting is not handed back: %+v", r)
+				}
+			}
+			if res.Lane == nil || res.Lane.RunID != f.runID || !strings.Contains(res.Next, "drive "+secondIssue) {
+				t.Fatalf("the lane stays in progress: %+v", res)
+			}
+			if got := gitIn(t, f.bare, "for-each-ref", "--format=%(refname)", "refs/heads/"+l.Branch); got != "" {
+				t.Fatalf("nothing was pushed while origin was unread: %s", got)
+			}
+		})
 	}
 }

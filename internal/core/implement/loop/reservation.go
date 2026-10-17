@@ -25,6 +25,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -242,9 +243,19 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, e
 	var nh *claim.NotHeld
 	switch {
 	case errors.As(err, &fe):
-		return time.Time{}, contend(stage, "", lane.ID,
+		// Origin unread is a wait by design, never a refusal a drain counts
+		// toward a stuck lane (stuck.go), whatever git says: the drain's own
+		// read of origin at every move is what gives up on an origin that
+		// stays unread. A lost network also waits on the shared outage
+		// probe, as the push's own failure does (netFailure).
+		r := contend(stage, "", lane.ID,
 			"could not read the reservation on "+id+" from "+claim.Remote+": "+fe.Reason+", "+act.unread,
 			"run abcd implement step again once origin answers")
+		r.originUnread = true
+		if implement.IsNetworkFailure(fe.Reason) {
+			r.outage = &outageReport{service: implement.ServiceNetwork, kind: implement.OutageTool, lane: lane.ID, what: "git fetch the reservation on " + id}
+		}
+		return time.Time{}, r
 	case errors.As(err, &nh):
 		switch nh.Why {
 		case claim.NotHeldAnotherPerson:
