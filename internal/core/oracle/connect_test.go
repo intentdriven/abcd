@@ -629,10 +629,10 @@ func TestConnectAsksAgainWithoutUsageWhenItIsRefused(t *testing.T) {
 	}
 }
 
-// TestConnectWithUsageNotAskedRetriesNothing: a refusal of a request that
+// TestConnectRefusedAgainMakesNoThirdCall: a refusal of a request that
 // did not ask for usage, or a second refusal of the one asked again, is the
 // setup's failure: nothing is written, and no third call is made.
-func TestConnectWithUsageNotAskedRetriesNothing(t *testing.T) {
+func TestConnectRefusedAgainMakesNoThirdCall(t *testing.T) {
 	base, calls := usageRefuser(t, 400, `{"error":{"message":"bad model"}}`, true)
 	f := newFx(t)
 	_, err := Connect(context.Background(), connectReq(f, base))
