@@ -3928,14 +3928,18 @@ Then the reservations on the shared remote: one fetch from origin of every
 abcd-reserved/ branch, with pruning, and of the default branch, then every
 reservation with its record, holder, footprint, effective expiry and state
 (live, expired, released, or unreadable with its reason and the end of its
-hold), each person's count of live reservations, and a line for each release
-being cut (a live rel-vX.Y.Z reservation, which holds every other session's
-merge until its tag is on origin). The fetch is the only network act, and it
-reads origin's release tags with the reservations; it updates the
-remote-tracking reservation branches and the release tags abcd keeps under
-refs/abcd/release-tags/, stamps when it ran in the local tier, with when it
-first fetched each reservation dated ahead of this computer's clock or
-undated, and nothing else is written. The release-tag refs are ordinary
+hold), a live drain lane's stage when its renewal names one, each person's
+count of live reservations, and a line for each release being cut (a live
+rel-vX.Y.Z reservation, which holds every other session's merge until its
+tag is on origin). Then each holder's hand-backs of the last day, from the
+same view: the record and kind of each released tip marking one, newest
+first, the newest ten shown and the rest counted; one dated more than five
+minutes ahead of this computer's clock is not shown. The fetch is the only
+network act, and it reads origin's release tags with the reservations; it
+updates the remote-tracking reservation branches and the release tags abcd
+keeps under refs/abcd/release-tags/, stamps when it ran in the local tier,
+with when it first fetched each reservation dated ahead of this computer's
+clock or undated, and nothing else is written. The release-tag refs are ordinary
 refs of this checkout, so git log --all lists the commits they name and
 git push --mirror would push them. A checkout with no remote named origin
 lists no reservations.
@@ -4476,7 +4480,8 @@ List everyone's announcements, reservations and releases being cut: Writes the f
 List everyone's status on the shared remote: the announcements every session
 posted (abcd announce), newest first, each with its sender, kind, item, the
 time sent and how long it still stands, then who holds which reservation and
-each release being cut, which holds every other session's merge.
+each release being cut, which holds every other session's merge, with a live
+drain lane's stage and each holder's hand-backs from the last day.
 
 It reads the remote once: it lists the status branches on origin (git
 ls-remote), then fetches, in one command, the reservations with origin's

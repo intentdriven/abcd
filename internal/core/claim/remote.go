@@ -371,6 +371,12 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 		return res, m, j.Commit, nil
 	case j.mine && j.thisCopy:
 		res.Act, res.RenewedLive = ActRenewed, j.verdict.Live
+		if p.req.Drain && j.verdict.Live {
+			// A drain's re-reserve that renews its own live hold is a lane's
+			// renewal, so it carries the lane's stage; one over a lapsed hold
+			// is afresh and carries none (spc-2610161044461448 step 18).
+			m.Stage = p.req.Stage
+		}
 		return res, m, j.Commit, nil
 	}
 	exp := j.verdict.EffectiveExpiry
@@ -526,6 +532,9 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 	}
 	p.req.Footprint = append([]string(nil), j.Footprint...)
 	m := p.reservation()
+	// A lane's renewal names its stage; a renewal that names none carries
+	// none, so only the tip's stage is ever read (spc-2610161044461448 step 18).
+	m.Stage = p.req.Stage
 	return Result{Act: ActRenewed, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
 		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
 }
