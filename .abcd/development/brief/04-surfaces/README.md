@@ -146,7 +146,7 @@ the command's sentence (the section below).
 | people | records | `build`, `capture`, `decide`, `ideate`, `intent`, `land`, `library` |
 | people | checks | `lab`, `reading` |
 | people | portability | `disembark`, `embark` |
-| people | release | `launch` |
+| people | release | `embargo`, `launch` |
 | agents and hosts | — | `banlist`, `docs`, `drain`, `guard`, `guard hook`, `history`, `ideate record`, `identity`, `implement`, `inbox`, `intent audit ingest`, `intent consistency ingest`, `intent prepass`, `lint`, `memory`, `mode`, `peers`, `reflect`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`, `statusline` |
 
 The placement is presentation. No verb is hidden, renamed, moved or nested by
