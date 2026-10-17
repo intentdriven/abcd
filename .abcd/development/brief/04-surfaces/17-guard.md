@@ -357,10 +357,12 @@ its text:
   ones the guard's write model resolves, in every shell state the reading placed
   the command in, with the operands of the commands that change, remove or link
   a path; a variable, a substitution's output, a glob or a name after an unknown
-  change of directory may be any file. A glob removal whose fixed directory is
-  inside the working tree is approved unless a protected name could match it:
-  one its literal text aims at, a name starting with a dot only by a pattern
-  that spells the dot, or one already standing in that directory;
+  change of directory may be any file. A glob removal whose fixed directory,
+  followed through symlinks to where it leads, is inside the working tree is
+  approved, when no earlier part of the line writes or removes a file (which
+  could make that directory a link first), unless a protected name could match
+  it: one its literal text aims at, a name starting with a dot only by a
+  pattern that spells the dot, or one already standing in that directory;
 - a write or removal reaching a protected path, compared after the target's
   existing directories are resolved through symlinks and its case folded where
   the filesystem folds it: the git common directory with its hooks and config,
@@ -402,7 +404,14 @@ newline, the command, a newline and `}`, the directory quoted as one literal
 word. The command sits on lines of its own inside the group, so when the
 directory cannot be entered no part of it runs, a part after `||` or `;`
 included, and a here-document or a comment that ends it closes before the group
-does. A change of directory inside the line
+does. The text handed back is read again with the guard's own parse, and the
+call is approved only when its top level is exactly the change of directory
+joined by `&&` to one group holding the whole command, with nothing after it;
+a command that would close the group early or leave it unparsable (a `}` or
+`)` with nothing open, a `fi`, `done` or `esac` with nothing open, a `}` after
+a command's words, which zsh reads as a close, or a backslash at its very end)
+is refused, since part of it could otherwise run outside the change of
+directory. A change of directory inside the line
 still holds for the rest of it, and a relative name after a `cd` the line spells
 out and joins with `&&` is read in that directory. Everything else, and
 a prompt for any tool but the shell, is refused with the guard's reason and

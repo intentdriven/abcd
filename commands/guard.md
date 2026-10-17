@@ -185,7 +185,8 @@ A shell command is approved only when the guard reads it whole and clears it:
 
 - no registry entry and no reading signal fired, a **warn included**, since
   nobody is there to see the warning;
-- the check left no note, such as a script the command runs that does not exist;
+- the check left no note, such as a script the command runs that does not
+  exist (`check-note`);
 - the repository's registry is loaded, switched on and in force as above;
 - every program the line runs is named by the line, not by a variable, a
   substitution or a glob (`program-name-unread`);
@@ -217,14 +218,18 @@ A shell command is approved only when the guard reads it whole and clears it:
   `mv`'s sources and `ln`'s link targets. A target held in a variable, a
   substitution's output or a glob, or a relative name after a change of
   directory the line leaves unknown, is refused. A glob removal whose fixed
-  directory is inside the working tree is the exception: it is approved unless
-  a protected name could match the glob, either one its literal text aims at
+  directory is inside the working tree, followed through symlinks to where it
+  leads, is the exception when no earlier part of the line writes or removes a
+  file (which could make that directory a link first, as `ln`, `cp -s` or
+  `cp -l` do): it is approved unless a protected name could match the glob, either one its literal text aims at
   (`build/.git*`, `.env*`), read with the shell's default that a name starting
   with a dot is matched only by a pattern that spells the dot, or one already
   standing in that directory, or a protected path below it (`tools/*` where
   `core.hooksPath` is `tools/hooks`). So `rm -rf build/*` and `rm -f build/*.o`
-  are approved. A relative name after a `cd` the line spells out and joins
-  with `&&` is read in that directory;
+  are approved, while `rm -rf linkd/*`, where `linkd` is a symlink to a
+  directory outside the tree, and `ln -s ~/Library l && rm -rf l/*` are
+  refused (`path-not-fixed`). A relative name after a `cd` the line spells out
+  and joins with `&&` is read in that directory;
 - no write or removal reaches a protected path (`protected-path`), judged with
   its existing directories resolved through symlinks and its case folded where
   the filesystem folds it: the git common directory (its hooks and config
@@ -275,12 +280,20 @@ command back as `cd -- '<dir>' && {`, a newline, the command, a newline and
 the approver judges every command as run from `--dir`. When the directory cannot
 be entered no part of the command runs, a part after `||` or `;` included, and a
 command that ends in a here-document or a comment runs unchanged inside the
-braces. A change of directory inside the command still holds for the
+braces. The text handed back is read again with the guard's own parse, and the
+call is approved only when that text is exactly the change of directory joined
+by `&&` to one group holding the whole command, with nothing after it. A
+command that would close the group before its end, or leave the text
+unparsable as one group, is refused (`tree-group-broken`): a `}` or `)` with
+nothing open for it to close, a `fi`, `done` or `esac` with nothing open, a `}`
+after a command's words, which zsh reads as a close, or a backslash at the very
+end, which joins the group's `}` to the command's last line. A change of directory inside the command still holds for the
 rest of its line, and a relative name after a `cd` the line spells out and
 joins with `&&` is read in that directory. Anything else is refused with the guard's reason and what to
 run instead, which the harness hands the agent so it can rewrite the command. A
 prompt for any tool but the shell is refused (`prompt-not-shell`), since nobody
-is there to approve it. A role whose contract grants no shell keeps its launch
+is there to approve it, and so is a shell prompt whose input carries no
+command string the guard can read (`prompt-input-unread`). A role whose contract grants no shell keeps its launch
 as it was, with every prompt refused unasked. The opencode runner has no
 per-launch prompt answerer, so its launches keep the permissions opencode's own
 configuration sets. A script the line runs is read for the registry's hazards

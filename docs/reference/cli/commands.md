@@ -1452,8 +1452,9 @@ registry, it refuses:
     writers, so a program outside the list writes unread), or a removal,
     whose target the line does not spell out (a variable,
     a substitution, a glob, or a name after an unknown change of directory),
-    except a glob removal in a directory inside the working tree that no
-    protected name could match;
+    except a glob removal in a directory inside the working tree, followed
+    through symlinks, that no protected name could match, when no earlier
+    part of the line writes or removes a file;
   - such a write, or a removal, reaching a protected path, with its directories
     resolved through symlinks and case folded where the filesystem folds it:
     the git common directory and its hooks, each checkout's .git, the home
@@ -1481,7 +1482,11 @@ nothing else it carried, from the working tree it was judged for: the
 command comes back as cd -- '<dir>' && { <command> }, the command on lines
 of its own inside the braces, since the host keeps the shell's directory
 from one call to the next; when the directory cannot be entered, no part of
-the command runs. Everything else is refused with the guard's reason
+the command runs. That text is read again with the guard's own parse, and a
+command that would close the braces early or leave them unparsable (a } or
+a ) with nothing open, a fi, done or esac with nothing open, a } after a
+command's words, or a backslash at its end) is refused, since part of it
+could run outside the working tree. Everything else is refused with the guard's reason
 and what to run instead, which the harness hands the agent, so the agent can
 rewrite the command. A prompt for any tool but the shell is refused, since
 nobody is there to approve it.
