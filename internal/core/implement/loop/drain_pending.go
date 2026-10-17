@@ -92,8 +92,8 @@ func publishPending(repoRoot string, st *DrainState, view *claim.Snapshot, now t
 				continue
 			}
 			// A release that pushed no hand-back ends it only when it is no
-			// longer due (the record changed, origin holds no one record of
-			// it, the cap, or a tip that already marks one), and says so.
+			// longer due (the record changed, origin holds no record of it or
+			// several, the cap, or a tip that already marks one), and says so.
 			c := "published the hand-back of " + p.Issue + " pending since " + stamp(p.At) + " over its release " + shortSHA(r.Commit) + ": " + rel.clause
 			if !rel.published {
 				c = "dropped the hand-back of " + p.Issue + " pending since " + stamp(p.At) + " unpublished, as it is no longer due at its release " +
