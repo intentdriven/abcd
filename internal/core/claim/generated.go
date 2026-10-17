@@ -97,8 +97,10 @@ func plainDeclaration(text string) string {
 	}
 	for line := range strings.SplitSeq(text, "\n") {
 		f := attrFields(line)
+		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
 		switch {
-		case len(f) == 0:
 		case strings.HasPrefix(f[0], `"`):
 			return "quotes a pattern"
 		case strings.HasPrefix(f[0], "[attr]"):
