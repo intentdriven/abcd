@@ -18,7 +18,7 @@ then fetches, in one command, the reservations with `origin`'s release tags,
 the first 500 status branches whose names are GitHub usernames in lower case,
 in `origin`'s order, and `origin`'s default branch. The status branches are
 named on the fetch's standard input (`git fetch --stdin`), which needs git
-2.29 or later once `origin` holds a status branch: an older git then fetches
+2.29 or later once `origin` holds a status branch: An older git then fetches
 nothing, and the failed fetch names its version. Before the fetch it
 deletes each remote-tracking branch under `abcd-status/` that is not among
 the names it fetches, so a status branch deleted on `origin` leaves nothing
@@ -72,6 +72,8 @@ The payload carries:
 - `local_tier_missing`: true in a checkout without its local tier
   (`.abcd/.work.local/`), which keeps nothing a fetch brings and so reads no
   announcement;
+- `read_error`: why the status branches as fetched could not be read, when
+  they could not;
 - `reservations`, `live_by_holder`, `hand_backs_by_holder`, `release_holds`,
   `view`, `fetch_error` and `derived_unchecked`, the same fields
   `/abcd:peers` lists;

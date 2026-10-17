@@ -33,7 +33,8 @@ local tier. Such branches past the 500 are counted and not fetched. A branch und
 in case make every fetch fail on a case-insensitive filesystem, and the
 no-deletion ruleset would keep the bad branch for ever (decision 10), so such
 names are counted as doubtful, never shown: a pusher chose each, and agents
-read both outputs. The per-branch refspecs travel on `git fetch --stdin`, so
+read both outputs. The per-branch refspecs travel on `git fetch --stdin`, which needs git 2.29
+or later, so
 no number of branches passes the argument limit, and before the fetch every
 tracking ref under the namespace that is not among the names it fetches is
 deleted, since named refspecs prune nothing: a branch deleted on `origin`

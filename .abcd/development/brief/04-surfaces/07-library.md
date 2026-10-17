@@ -175,7 +175,9 @@ environment variable. The product thinker's ruling on how a scaffolded hook
 finds abcd (iss-2609250834251447) keeps this shape for the commit-message
 check: Opt-in and never armed by default, it runs only the absolute path the
 clone's `abcd.binary` names, which the install's outbound opt-in writes to the
-PATH copy that run verified, and it fails open with one warning. Without the setting, AC3 holds in this repository and in a managed
+PATH copy that run verified unless the clone already names one
+(iss-2610152024267547), and it fails open with one warning. Without
+`abcd.sourcesBinary`, AC3 holds in this repository and in a managed
 repository that opted in, and the scaffolded guard names the setting on one
 line.
 
