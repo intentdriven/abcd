@@ -226,14 +226,17 @@ on origin's default branch backs off, with a tip or without one
    (spc-2610161044461448 step 5, dcn-2610161040382067). Each refused step of
    an issue run is logged on its lane with its stage, its check, its reason
    and a count of the same refusal in a row, and the drain reads the lane as
-   stuck once the step has been refused the same way three times, or has been
-   refused at one stage for sixty minutes; both bounds are read from the
+   stuck once the step has been refused the same way three times, or has kept
+   being refused at one stage for sixty minutes, counted from its first
+   refusal to its last, a quiet of more than fifteen minutes starting the time
+   afresh (dcn-2610170118506273); both bounds are read from the
    pace's layers (`pace.stuck_refusals`, `pace.stuck_minutes`) at every move.
    A refusal that cannot change makes the lane stuck at once: the issue
    finished at the lane's base, or on origin's default branch as the land
    fence reads it, or the reservation now another person's. A wait by design
    is no refusal and is never counted: the landing's wait for its preflight
-   receipt, and every outage wait. The drain hands a stuck lane back as
+   receipt, every outage wait, and a land fence that cannot read origin
+   (dcn-2610170116582725). The drain hands a stuck lane back as
    `stuck`, naming the refusal, releases its reservation with the hand-back's
    tombstone, and goes on to the next issue in the same move. The lane keeps
    its worktree and branch until the person discards it through the step verb,

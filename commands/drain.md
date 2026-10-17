@@ -288,7 +288,8 @@ what it did in `next`:
   its push and again before arming, and tombstones it once it lands
   (`commands/implement.md`). Every drain move also renews the lane in
   progress at half its lease, waiting or not, though no step of the lane ran,
-  so a lane the host paused past its lease is not taken over; a lane whose
+  so a lane the host paused past its lease is not taken over (a lane handed
+  back is renewed by no move); a lane whose
   reservation is another person's by its push pushes nothing, opens no pull
   request, and the next drain hands it back as `stuck` at once. When the lane is
   handed back instead, the step that hands it back pushes the tombstone,
@@ -312,13 +313,17 @@ what it did in `next`:
   in its state: the stage, the check, the reason and how many times in a row
   the step was refused that way), and `next` says so while the lane is in
   progress. Once the step has been refused the same way three times, or has
-  been refused at one stage for sixty minutes, the next drain hands the lane
+  kept being refused at one stage for sixty minutes, counted from its first
+  refusal to its last (a quiet of more than fifteen minutes starts the time
+  afresh, and the quiet after the last refusal never counts), the next drain
+  hands the lane
   back as `stuck`, naming the refusal, releases its reservation with a
   tombstone marking it `stuck`, and takes up the next issue in the same move.
   A refusal that cannot change hands the lane back at once: its issue finished
   at the lane's base or on `origin`'s default branch, or its reservation now
   another person's. A wait is not a refusal and is never counted: the
-  landing's wait for its preflight receipt, and the wait through an outage.
+  landing's wait for its preflight receipt, the wait through an outage, and a
+  land fence that cannot read `origin`.
   The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
   `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move. A
   stuck lane keeps its worktree and branch:
