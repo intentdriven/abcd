@@ -386,7 +386,11 @@ the forge refuses the withdrawal, the step refused naming the pull request; the
 person's word on a held lane is given through the step verb, one lane per
 invocation: release lands it as it is, and discard removes its worktree and
 branch, then closes its pull request, and leaves its step unlanded, each refused, changing nothing, unless the lane is
-held and no lane has work left.
+held and no lane has work left. Discard also takes an issue run's lane a drain
+handed back as stuck, and that run is then over
+([`35-drain.md`](35-drain.md); spc-2610161044461448 step 5). An issue run logs
+each refused step on its lane, the stage, the check, the reason and a count,
+for the drain to read; an intent's run refuses as before, writing nothing.
 Without a named run, the step
 and receipt verbs act on the one run in progress in the checkout and refuse naming
 the runs when there are several. Their refusals name the stage, the reason and
@@ -417,7 +421,11 @@ merge needs, or the merge of a pull request left open, as a checkout with no
 mirror always leaves it), which is also past any queue's
 `check_response_timeout_minutes`. Past the fence the hold rests on renewals at half the lease: each step
 of the run, whatever its stage, each receipt handed back, and each drain move
-for a drain lane parked at land. A run neither stepped, given a receipt nor
+for a drain lane parked at land or in progress, waiting or not
+(spc-2610161044461448 step 7). The landing checks the reservation before its
+push as the fence does before arming, renewing it with its own term, so a
+reservation that moved while the lane worked pushes nothing and opens no
+pull request. A run neither stepped, given a receipt nor
 drained over for longer than its lease loses its reservation; one that finds
 it held by another person or copy says so and logs `reservation_lost` once. Once the run's last lane has landed, the
 step pushes a tombstone over the reservation while it is still this person's
@@ -426,7 +434,10 @@ tombstone that fails is named without undoing the landing; the lane branch
 removal touches only the lane's `build/` branch. A run keyed by an issue whose
 lane is handed back pushes a tombstone over its reservation as the step (or
 the receipt) hands it back, logging `reservation_released` with the outcome
-(`reservation_release_failed` when the push fails: the drain's route tries
+(`reservation_release_failed` when the push fails, or the tip refuses the
+release for a reason of its own, never `reservation_released`; a tombstone
+the cap would refuse with its hand-back is pushed plain, saying why: the
+drain's route tries
 again for a lane a drain opened, and nothing retries one `abcd build <iss-N>`
 started, whose reservation lapses with its lease),
 whether a drain or `abcd build <iss-N>` started it (iss-2610142247197128); an

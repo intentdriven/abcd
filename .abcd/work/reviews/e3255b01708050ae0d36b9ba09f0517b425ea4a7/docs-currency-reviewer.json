@@ -1,0 +1,118 @@
+{
+  "subject": {
+    "digest": {
+      "gitCommit": "e3255b01708050ae0d36b9ba09f0517b425ea4a7"
+    }
+  },
+  "verifier": {
+    "id": "docs-currency-reviewer@release"
+  },
+  "timeVerified": "2026-10-17T16:26:51Z",
+  "verificationResult": "PROMOTE",
+  "judgeModel": "claude-opus-5-5+claude-sonnet-5-5",
+  "tier": "full",
+  "manifestHash": "sha256:cab647ca79a6c3bee8de4073f849c3a91bfe9c7d93aeaa70eb7c9e6fa8aa8110",
+  "policy": {
+    "detector": "docs-currency-reviewer",
+    "version": "1",
+    "promptHash": "sha256:host-run-agent-harness-review-no-pinned-prompt",
+    "briefVersion": "0.15.1"
+  },
+  "categories": {
+    "misleading": 4,
+    "stale": 1,
+    "undocumented": 4
+  },
+  "failing": [
+    {
+      "id": "dc-1",
+      "category": "undocumented",
+      "severity": "minor",
+      "where": "CHANGELOG.md:19-72",
+      "summary": "CHANGELOG.md:19-72 (raised by opus as its dc-01): INCOMPLETE (judgement call). The 0.15.1 section has no Added line for user-facing surfaces that are new since v0.15.0 and present in this binary. (1) `abcd status`, a top-level verb in `abcd --help` with a user-invocable commands/status.md (block: people); commands/status.md does not exist at v0.15.0. (2) `abcd announce` (commands/announce.md). Both come from the planned itd-2609151838312703 and its open spc-2610150728396006. (3) `abcd implement load --race-gate` and the `load.preflights` / ABCD_LOAD_PREFLIGHTS setting (internal/core/implement/load_slots.go:42-51), whose records iss-2610161639025702 and iss-2610161756384596 are still open. (4) The scripts/cloud hand-off (planned itd-2610120738075547). The derivation includes only records in terminal folders, so the omission is by design. Still, a reader of the release notes never learns that `abcd status` exists. Fix: ship or resolve a record that announces `abcd status` and `abcd announce`, or accept the omission and record that decision for the cut.",
+      "disposition": "deferred",
+      "record": "iss-2610171626398856",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "dc-2",
+      "category": "misleading",
+      "severity": "minor",
+      "where": "CHANGELOG.md:54-56,61",
+      "summary": "CHANGELOG.md:54-56,61 (raised by opus as its dc-02): Four Fixed lines are written as fixes to behaviour no earlier release had. 'A status fetch reads an app's push ... no longer asked about again' (iss-2610161928560772) concerns `abcd status`, which did not exist at v0.15.0. The three cloud lines ('no longer reported as started', 'no longer reports a refused commit', and the author identity line) concern scripts/cloud, which `git ls-tree v0.15.0 -- scripts/cloud` shows did not exist then either. A reader infers the features shipped earlier. The 'no longer' wording also contradicts the section's own preamble, which says nothing is claimed about earlier behaviour. Fix: let these lines fold into the Added line that dc-01 asks for, or state them as present behaviour without 'no longer'.",
+      "disposition": "deferred",
+      "record": "iss-2610171626391435",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "dc-3",
+      "category": "undocumented",
+      "severity": "minor",
+      "where": "commands/peers.md:72-108",
+      "summary": "commands/peers.md:72-108 (raised by opus as its dc-03): INCOMPLETE. The payload list never names `release_holds`. The verb emits it (internal/surface/cli/peers.go:48, with the holdRow fields release, subject, holder, copy, effective_expiry, unreadable, own, unsighted and text at :99-109). `abcd peers --help` says it lists 'a line for each release being cut (a live rel-vX.Y.Z reservation, which holds every other session's merge until its tag is on origin)'. The changelog says '`abcd peers` shows the hold' and '`--json` release holds carry `own` and `unsighted`'. An agent following this page is never told to relay a release cut to the user. Fix: add a `release_holds` bullet with its fields and the meaning of own and unsighted, as commands/reserve.md:91-97 and commands/status.md:76 already describe.",
+      "disposition": "deferred",
+      "record": "iss-2610171626406129",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "dc-4",
+      "category": "stale",
+      "severity": "minor",
+      "where": "commands/peers.md:78-80",
+      "summary": "commands/peers.md:78-80 (raised by opus as its dc-04): STALE. The page says `released_by` is '`tombstone`, or `default-branch` when the record is already resolved...'. The code also emits `tag` (internal/core/claim/release.go:46, ReleasedByTag) for a release reservation whose tag vX.Y.Z is on origin, and commands/reserve.md documents it as '`released_by: tag`'. Fix: add `tag` (a release whose tag is on origin) to the list.",
+      "disposition": "deferred",
+      "record": "iss-2610171626416207",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "dc-5",
+      "category": "undocumented",
+      "severity": "minor",
+      "where": "commands/launch.md:112-114,122-124; commands/reserve.md:82-85",
+      "summary": "commands/launch.md:112-114,122-124; commands/reserve.md:82-85 (raised by opus as its dc-05): INCOMPLETE. Both pages describe the release hold as binding the implement loop's land step only. launch.md says 'every other session's land step (an `implement step` arming a merge ...) refuses to arm' and 'The hold binds abcd's own land step'. reserve.md says 'an `implement step` at the land fence in any other copy ... exits 3'. In the code, `abcd land` is held too: internal/core/landing/releasehold.go:11-29 calls claim.FetchMergeHold. commands/land.md documents 'While a release is being cut, exit 3', and the changelog line names both 'the implement loop's land fence and `abcd land`'. Fix: name `abcd land` beside `implement step` in both places.",
+      "disposition": "deferred",
+      "record": "iss-2610171626419054",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "dc-6",
+      "category": "undocumented",
+      "severity": "minor",
+      "where": "README.md:69; commands/announce.md",
+      "summary": "README.md:69; commands/announce.md (raised by opus as its dc-06): INCOMPLETE. The README says '`abcd status` needs git 2.29 or later, which reads a fetch's branches from its standard input (`git fetch --stdin`)'. `abcd announce` fetches the status branches by name through the same path: internal/core/claim/announce.go:95-96 sets ns.only and calls fetchWith, and remote.go:765-766 switches to `fetch --stdin` whenever a namespace has ns.only. So announce needs git 2.29 too once origin holds any status branch, and on an older git it refuses with an error that names 'the status fetch'. commands/announce.md does not mention the requirement. Fix: 'abcd status and abcd announce need git 2.29 or later ...' in the README, plus a line in announce.md.",
+      "disposition": "deferred",
+      "record": "iss-2610171626424230",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "dc-7",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "commands/status.md:53-54",
+      "summary": "commands/status.md:53-54 (raised by opus as its dc-07): Change narration on a user-facing page: '`branch` is the full branch name, `abcd-status/maya` (it was `maya` before step 3's fix rounds)'. It narrates an internal build step of an unreleased spec; `abcd status` is new in this release, so no user ever saw `maya`. It breaks the present-tense rule, and docs-currency-lint misses it because the page is under commands/. Fix: delete the parenthesis.",
+      "disposition": "deferred",
+      "record": "iss-2610171626433972",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "dc-8",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "commands/launch.md:115-116",
+      "summary": "commands/launch.md:115-116 (raised by opus as its dc-08): The page is addressed to the person cutting the release and says '`/abcd:peers` shows \"release vX.Y.Z being cut by @you: merges are held\"'. Run from the cutting copy, peers renders Hold.Line(), which is 'you are cutting release vX.Y.Z from this copy: every other session's merges are held' (internal/core/claim/release.go:122-126; peers.go:470). The quoted line is what other copies see. commands/reserve.md:91-95 states both correctly. Fix: say that other sessions see the quoted line and this copy sees the 'you are cutting' line.",
+      "disposition": "deferred",
+      "record": "iss-2610171626439671",
+      "note": "minor documentation drift, deferred to its own record past v0.15.1"
+    },
+    {
+      "id": "dc-9",
+      "category": "misleading",
+      "severity": "nitpick",
+      "where": "RELEASE.md:1",
+      "summary": "RELEASE.md:1 (raised by sonnet as its dc-01): docs-currency-lint reports RELEASE.md as stray root markdown (allowed: README, AGENTS, CHANGELOG, CONTRIBUTING, SECURITY, LICENSE, ACKNOWLEDGEMENTS). The page is the release page by design, so this is not a doc falsehood. Either add RELEASE.md to the linter's allow-list or leave it as known. No change needed to the content.",
+      "disposition": "invalid",
+      "note": ".abcd/docs-lint.json allows RELEASE.md at the root; it is the release page by design"
+    }
+  ],
+  "_reviewProvenance": "Host-run docs-currency-reviewer pair (an Opus 5.5 agent and a Sonnet 5.5 agent on the same brief, full tier for an additive release) over an exact export of content commit e3255b01708050ae0d36b9ba09f0517b425ea4a7 with the binary built from it: every line of the 0.15.1 CHANGELOG section and RELEASE.md, and every user-facing page changed since v0.15.0, checked against the code and the binary. Opus PROMOTE; Sonnet PROMOTE. 9 findings recorded: 0 fixed, 1 invalid on re-verification, 8 deferred, each to its own open record."
+}

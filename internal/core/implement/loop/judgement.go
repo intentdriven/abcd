@@ -33,6 +33,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
@@ -81,6 +82,32 @@ type DrainJudging struct {
 	Request      string    `json:"request"`
 	Answer       string    `json:"answer"`
 	RequestedAt  time.Time `json:"requested_at"`
+	// Hold is the reservation the drain took on the issue to ask this
+	// judgement; nil when it took none (no origin, or this person already
+	// held the issue from this copy, which is theirs and never the drain's
+	// to release).
+	Hold *DrainHold `json:"hold,omitempty"`
+	// RoutedAsked is true once the routed judge was started on this request
+	// and did not answer (drain_judge.go): the polls that follow while the
+	// host's request stands do not start it again. A judge that never
+	// started (its directory not made, its request refused before any
+	// launch) leaves it false, so the next move starts it.
+	RoutedAsked bool `json:"routed_asked,omitempty"`
+}
+
+// DrainHold is a reservation the drain took on an issue to judge it: the
+// commit its push made, and when it was claimed and lapses. The drain releases
+// that commit and no other, so a reservation this person made or renewed by
+// hand since is left as it stands. ForkUnchecked and ForkAllowed are the fork
+// check the act could not make or waived (claim's Result), kept so the lane a
+// no opens on the hold says so as a lane that reserved for itself does
+// (spc-2610161044461448 step 10).
+type DrainHold struct {
+	Commit        string    `json:"commit"`
+	ClaimedAt     time.Time `json:"claimed_at"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	ForkUnchecked string    `json:"fork_unchecked,omitempty"`
+	ForkAllowed   string    `json:"fork_allowed,omitempty"`
 }
 
 // DrainJudgement is one answer the drain took: the question's answer, the kind
@@ -96,6 +123,13 @@ type DrainJudgement struct {
 	Applied      bool      `json:"applied"`
 	Note         string    `json:"note,omitempty"`
 	At           time.Time `json:"at"`
+	// Hold is the reservation the answer was asked on, nil when the drain
+	// took none: the lane a no opens on it, in this move or a later one,
+	// names the fork check it could not make or waived.
+	Hold *DrainHold `json:"hold,omitempty"`
+	// Route is the runner that answered, when the drain's judge is routed to
+	// one (drain_judge.go); nil for the host's answer.
+	Route *runner.RouteRecord `json:"route,omitempty"`
 }
 
 // JudgementAnswer is the host's answer file, read strictly: any other field
@@ -116,28 +150,21 @@ func remedyDigest(remedy string) string {
 }
 
 // judgementFor is the latest answer the drain took on issue over the remedy
-// whose digest is given, if any.
+// whose digest is given, if any. An answer taken no later than the drain last handed
+// the issue back judged a record since changed, which is why the drain is
+// considering it again (drain_readmit.go), so it decides nothing.
 func judgementFor(st DrainState, issue, digest string) *DrainJudgement {
+	since := st.handedBackAt(issue)
 	for i := len(st.Judgements) - 1; i >= 0; i-- {
 		j := st.Judgements[i]
 		if j.Issue == issue && j.RemedySHA256 == digest && j.Applied {
+			if since != nil && !j.At.After(*since) {
+				return nil
+			}
 			return &j
 		}
 	}
 	return nil
-}
-
-// openIssues reads the open ledger by id.
-func openIssues(repoRoot string) (map[string]capture.Issue, error) {
-	lr, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: capture.StateOpen})
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]capture.Issue, len(lr.Issues))
-	for _, iss := range lr.Issues {
-		out[iss.ID] = iss
-	}
-	return out, nil
 }
 
 // requestJudgement writes the request for iss's judgement and returns what
@@ -150,7 +177,7 @@ func requestJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict
 		Answer: DrainJudgementAnswerRel, RequestedAt: now}
 	same := prior != nil && prior.Issue == j.Issue && prior.RemedySHA256 == j.RemedySHA256
 	if same {
-		j.RequestedAt = prior.RequestedAt
+		j.RequestedAt, j.RoutedAsked = prior.RequestedAt, prior.RoutedAsked
 	}
 	root, err := os.OpenRoot(repoRoot)
 	if err != nil {
@@ -162,7 +189,7 @@ func requestJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict
 			return DrainJudging{}, fmt.Errorf("removing the earlier judgement answer %s: %w", DrainJudgementAnswerRel, err)
 		}
 	}
-	if err := fsutil.WriteFileAtomicInRoot(root, DrainJudgementRequestRel, []byte(judgementRequest(iss, v, j)), filePerm); err != nil {
+	if err := fsutil.WriteFileAtomicInRoot(root, DrainJudgementRequestRel, []byte(judgementRequest(iss, v, j, false)), filePerm); err != nil {
 		return DrainJudging{}, fmt.Errorf("writing the judgement request %s: %w", DrainJudgementRequestRel, err)
 	}
 	return j, nil
@@ -192,7 +219,11 @@ const judgementQuoteNote = "The remedy and the record are quoted as the ledger h
 // (iss-2610121653499543). The digest is not: j.RemedySHA256 is over the
 // remedy as stored, so a remedy rewritten with a hidden rune where a '?'
 // stood still changes it.
-func judgementRequest(iss capture.Issue, v capture.DrainVerdict, j DrainJudging) string {
+//
+// routed is the brief the drain's routed judge follows (drain_judge.go): its
+// answer goes where j.Answer says, carries no digest, which abcd computes
+// itself, and is taken by the move that asked it, so it names no verb to run.
+func judgementRequest(iss capture.Issue, v capture.DrainVerdict, j DrainJudging, routed bool) string {
 	path := termsafe.Sanitize(iss.Path)
 	var b strings.Builder
 	p := func(format string, a ...any) { fmt.Fprintf(&b, format, a...) }
@@ -223,9 +254,16 @@ func judgementRequest(iss capture.Issue, v capture.DrainVerdict, j DrainJudging)
 	p("### The record's body\n\n<!-- begin %s -->\n\n%s\n\n<!-- end %s -->\n\n", path, fenceQuote(termsafe.SanitizeBlock(strings.TrimSpace(iss.Body))), path)
 	p("## Your answer\n\n")
 	p("Write this JSON to `%s`, strictly in this shape (any other field refuses it):\n\n", j.Answer)
-	p("    {\n      \"schema_version\": %d,\n      \"issue\": %q,\n      \"remedy_sha256\": %q,\n", DrainJudgementSchemaVersion, iss.ID, j.RemedySHA256)
+	p("    {\n      \"schema_version\": %d,\n      \"issue\": %q,\n", DrainJudgementSchemaVersion, iss.ID)
+	if !routed {
+		p("      \"remedy_sha256\": %q,\n", j.RemedySHA256)
+	}
 	p("      \"answer\": \"yes or no\",\n      \"kind\": \"%s or %s, with yes only; leave the field out with no\",\n", HandBackUserVisible, HandBackTrustRule)
 	p("      \"reason\": \"one sentence; with %s, the question the decision record must answer\"\n    }\n\n", HandBackTrustRule)
+	if routed {
+		p("Write nothing else and run nothing: abcd reads the answer once you have written it.\n")
+		return b.String()
+	}
 	p("`remedy_sha256` is the digest of the remedy as the ledger holds it; copy it as it stands. Then run\n")
 	p("`abcd drain --judgement %s`. A remedy rewritten in the meantime refuses the answer, and the next\n", j.Answer)
 	p("`abcd drain` asks again.\n")
@@ -309,6 +347,14 @@ func takeJudgement(repoRoot, path string, st DrainState, live bool, plan capture
 		return DrainJudgement{}, refuse(StageDrain, "", "", j.Answer+" is missing "+strings.Join(gaps, "; "),
 			"correct the answer as "+j.Request+" states it, then run `abcd drain --judgement "+j.Answer+"`")
 	}
+	return judgeAnswer(a, j, plan, now)
+}
+
+// judgeAnswer is the judgement a valid answer a to j makes under plan: one
+// applied to nothing when the issue has left the eligible set since the
+// request, a refusal when its remedy has been rewritten since, and otherwise
+// the issue's disposition.
+func judgeAnswer(a JudgementAnswer, j DrainJudging, plan capture.DrainPlan, now time.Time) (DrainJudgement, error) {
 	out := DrainJudgement{Issue: j.Issue, RemedySHA256: j.RemedySHA256, Answer: a.Answer, Kind: a.Kind,
 		Reason: termsafe.Sanitize(strings.TrimSpace(a.Reason)), At: now}
 	var verdict *capture.DrainVerdict
@@ -327,11 +373,7 @@ func takeJudgement(repoRoot, path string, st DrainState, live bool, plan capture
 		out.Note = j.Issue + " is no longer eligible, so the judgement decides nothing: " + why
 		return out, nil
 	}
-	issues, err := openIssues(repoRoot)
-	if err != nil {
-		return DrainJudgement{}, err
-	}
-	if iss, ok := issues[j.Issue]; !ok || remedyDigest(iss.Remedy) != j.RemedySHA256 {
+	if iss, ok := plan.OpenIssue(j.Issue); !ok || remedyDigest(iss.Remedy) != j.RemedySHA256 {
 		return DrainJudgement{}, refuse(StageDrain, "", "", j.Issue+"'s remedy has been rewritten since the judgement was requested, so the answer judges a remedy the lane would not work from",
 			"run `abcd drain`; it asks again over the remedy as it stands")
 	}
