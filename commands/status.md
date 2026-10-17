@@ -12,6 +12,12 @@ account on another computer or in a hosted cloud session, then who holds which
 reservation and each release being cut. It is a person's view; the same
 announcements reach a running session at its next prompt, once each.
 
+abcd's own pushes announce first: `/abcd:land`, and a build or drain lane's
+landing, post `merging <item>` and push only once it is on `origin`, so this
+view shows the announcement before the branch is there. A push someone types
+by hand with `git push` posts no announcement, so this view cannot show one
+for it.
+
 **What it does to the remote.** The command's documented meaning is one read
 of the remote: it lists the status branches on `origin` (`git ls-remote`),
 then fetches, in one command, the reservations with `origin`'s release tags,

@@ -104,6 +104,25 @@ not a refusal: exit 2 says a refused push may still have reached origin.
   working copy and the remote named `origin` are checked first, so a checkout
   refused on its own facts never asks GitHub.
 
+## abcd's own pushes announce first
+
+The pushes abcd makes for an item post an announcement before they push, so a
+colleague's session sees `merging <item>` before the work is on `origin`
+(iss-2610161645224876, dcn-2610161645360719, dcn-2610170655202547): `abcd land`
+for each issue, intent or pull request its branch's own commits name in a
+`Refs:`, `Resolves:` or `Delivers:` trailer (dcn-2610170704191129), and the
+landing of a build or drain lane (the implement loop's land stage, which
+`abcd build` and `abcd drain` drive) for the lane's own record. Each goes through
+`claim.AnnounceBeforePush`, which calls `Announce` with the kind `merging`:
+the same checks, the same fetch and the same push, and the push it was made
+for waits until it has reached `origin`. One the person already sent, of
+that kind and item and standing a minute more, is not sent again (read from
+the sender's own status branch as just fetched, at most its newest 100
+commits). A record not yet on the default branch is not announced and the
+verb says so; any other failure refuses that push, nothing pushed
+(dcn-2610170704189712). A push a person types by hand with `git push` posts
+no announcement, and no hook posts one: the pre-push hook is unchanged.
+
 ## Exits
 
 Exit 0 when the announcement reached origin; exit 2 on every refusal, and when

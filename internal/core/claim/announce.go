@@ -1,6 +1,7 @@
 package claim
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"regexp"
@@ -135,6 +136,12 @@ type AnnounceRequest struct {
 	Item string
 	// For is how long it stands; zero means DefaultAnnouncementLife.
 	For time.Duration
+	// UnlessLive sends nothing when the sender's own status branch, as just
+	// fetched, already holds an announcement of this kind and item that
+	// stands for at least MinAnnouncementLife more: the result is that one,
+	// with Live set. abcd's own pushes ask for it (AnnounceBeforePush), so a
+	// landing run again does not announce the same item twice.
+	UnlessLive bool
 }
 
 // AnnounceResult is an announcement that reached origin.
@@ -149,9 +156,26 @@ type AnnounceResult struct {
 	SentAt    time.Time
 	ExpiresAt time.Time
 	Commit    string
-	// Attempts is how many pushes it took: 1, or more after a lost race.
+	// Attempts is how many pushes it took: 1, or more after a lost race; 0
+	// when Live.
 	Attempts int
+	// Live is set when nothing was sent because an announcement of this kind
+	// and item already stood on the sender's branch (UnlessLive): Commit,
+	// SentAt and ExpiresAt are then that announcement's.
+	Live bool
 }
+
+// NotPublicError is an announcement refused because the record it names is
+// not on origin's default branch as just fetched (C4): an announcement names
+// only a public record. It is an ErrRefused refusal, and nothing was pushed.
+type NotPublicError struct {
+	// Item is the record, in its canonical form.
+	Item string
+	msg  string
+}
+
+func (e *NotPublicError) Error() string        { return e.msg }
+func (e *NotPublicError) Is(target error) bool { return target == ErrRefused }
 
 // NotSentError is an announcement origin did not take: the race was lost on
 // every retry, or the push was refused for another reason. Reason says why,
@@ -402,7 +426,10 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 // ever forced. Every other refusal pushes nothing. Any other error is an
 // *AnnounceError counting the pushes tried before it, among them a failure
 // after a push (the fetch that would show whether it landed, or the rebuilt
-// commit's write).
+// commit's write). With UnlessLive, an announcement of the same kind and item
+// the sender's branch already holds, standing a minute more, is answered in
+// place of a new one, after every check and before any push. A record absent
+// from the default branch is a *NotPublicError.
 func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, err error) {
 	pushes, branch := 0, ""
 	defer func() { err = announceFailure(err, pushes, branch) }()
@@ -455,6 +482,17 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 	}
 	ref := statusBranches.ref(p.branch)
 	branch = "abcd-status/" + p.branch
+	if req.UnlessLive && parent != "" {
+		live, ok, err := liveAnnouncement(root, tree, p, parent)
+		if err != nil {
+			return AnnounceResult{}, refuse("could not read whether %s already holds a standing announcement of %s %s: %s; %s",
+				branch, p.msg.Kind, p.msg.Item, redacted(err), noAnnouncement)
+		}
+		if ok {
+			return AnnounceResult{Kind: live.Kind, Item: live.Item, Sender: live.Sender, Branch: branch,
+				SentAt: live.SentAt, ExpiresAt: live.ExpiresAt, Commit: live.commit, Live: true}, nil
+		}
+	}
 	sent := func(sha string, attempts int) AnnounceResult {
 		return AnnounceResult{Kind: p.msg.Kind, Item: p.msg.Item, Sender: p.msg.Sender, Branch: branch,
 			SentAt: p.msg.SentAt, ExpiresAt: p.msg.ExpiresAt, Commit: sha, Attempts: attempts}
@@ -526,6 +564,47 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 	}
 }
 
+// liveWalk bounds how far down the sender's own status branch the check for
+// a standing announcement reads (UnlessLive): its newest commits, at most this
+// many. One standing deeper than that is not found, and a second one is sent,
+// which costs a line in every reader's view and nothing else.
+const liveWalk = 100
+
+// liveFound is a standing announcement the live check found, and its commit.
+type liveFound struct {
+	announcement
+	commit string
+}
+
+// liveAnnouncement looks down the sender's status branch, from tip (its tip
+// as just fetched), for a readable announcement of p's kind and item sent by
+// p's sender that still stands, by this clock, for at least
+// MinAnnouncementLife: the newest such is returned. Each commit is read
+// through the reader's own parser, as stored, so an announcement the readers
+// would not show is never taken for one.
+func liveAnnouncement(root, tree string, p *preparedAnnouncement, tip string) (liveFound, bool, error) {
+	ref := statusBranches.track(p.branch)
+	line, err := firstParents(root, ref, tip, liveWalk-1)
+	if err != nil || len(line) == 0 {
+		return liveFound{}, false, err
+	}
+	read, err := readAnnouncements(context.Background(), root, tree, line)
+	if err != nil {
+		return liveFound{}, false, err
+	}
+	for _, c := range line {
+		r := read[c]
+		a := r.a
+		if r.h.Unreadable != "" || a.Kind != p.msg.Kind || a.Item != p.msg.Item || !strings.EqualFold(a.Sender, p.msg.Sender) {
+			continue
+		}
+		if p.now.Add(MinAnnouncementLife).Before(a.ExpiresAt) {
+			return liveFound{announcement: a, commit: c}, true, nil
+		}
+	}
+	return liveFound{}, false, nil
+}
+
 // statusHolds reports whether commit is on the status branch that ends in
 // tip: an ancestor of it, read as stored (storedGit). git answers in the
 // exit status, 1 meaning no.
@@ -584,8 +663,8 @@ func publicOnDefault(root, id, ref, gap string) error {
 		return refuse("could not read whether %s is on %s's default branch: %s; %s", id, Remote, redacted(err), noAnnouncement)
 	}
 	if len(recs[id]) == 0 {
-		return refuse("%s is not on %s's default branch as last fetched (%s), so it is not public yet: an announcement names only a public record; %s",
-			id, Remote, strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/"), noAnnouncement)
+		return &NotPublicError{Item: id, msg: fmt.Sprintf("%s is not on %s's default branch as last fetched (%s), so it is not public yet: an announcement names only a public record; %s",
+			id, Remote, strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/"), noAnnouncement)}
 	}
 	return nil
 }

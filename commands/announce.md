@@ -57,6 +57,23 @@ push lost a race and was sent again).
 
 Tell the user what went out and until when.
 
+## abcd's own pushes announce first
+
+You do not need to announce before abcd pushes for you. `/abcd:land`, and the
+landing of a build or drain lane (`/abcd:implement` step, which `/abcd:build`
+and `/abcd:drain` drive), post `merging <item>` through this same code before
+they push, and push only once the announcement is on `origin`, so a
+colleague's `/abcd:status` shows it before the branch exists there. Land
+announces each issue, intent or pull request the branch's own commits name in
+a `Refs:`, `Resolves:` or `Delivers:` trailer; a lane announces its own
+record. An item you already announced `merging`, still standing for a minute
+or more, is not announced again. A record not yet on the default branch is
+not announced (the refusal above), and the verb says so and pushes. Any other
+failure refuses the push with the reason, and nothing is pushed.
+
+A push a person types by hand with `git push` posts no announcement. Neither
+does any hook. Run this verb first when a colleague should see it.
+
 ## When it refuses
 
 **Exit 2 is every refusal.** Nothing is pushed on a refusal except "not sent"

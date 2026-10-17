@@ -22,7 +22,10 @@ package loop
 //     head (the pre-push hook's gate, checked before any connection opens) and
 //     the run's reservation is still this person's from this copy and no
 //     release another session is cutting holds it (the push fence, the land
-//     fence's check), then a plain `git push` of the lane's
+//     fence's check), then "merging <the lane's record>" announced on the
+//     person's status branch (claim.AnnounceBeforePush, the code `abcd
+//     announce` runs), the push refused when it cannot be, then a plain
+//     `git push` of the lane's
 //     branch from the checkout the run lives in, its hooks running: the loop
 //     never skips a hook and never forces.
 //  4. pull request: through the forge client the repository already uses
@@ -61,6 +64,8 @@ import (
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/landing"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -529,6 +534,18 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	if err != nil {
 		return Outcome{}, err
 	}
+	// Before the push, "merging <the lane's record>" is posted on the
+	// person's status branch, through the code `abcd announce` runs, and the
+	// push waits for it to reach origin (iss-2610161645224876,
+	// dcn-2610170655202547); one that cannot be published refuses the push,
+	// nothing pushed (dcn-2610170704189712), and the next step tries again.
+	// A record not yet public is passed over, and the note says so.
+	notices, err := announceBeforePush(c.RepoRoot, claim.PushItems([]string{lane.Key}), announceOptions(c.Now))
+	if err != nil {
+		return Outcome{}, refuse(string(StageLand), "", lane.ID,
+			gitutil.ScrubURLCredentials(fsutil.RedactHome(err.Error()))+", so "+lane.Branch+" was not pushed: the landing announces before it pushes",
+			"settle what it names, then run `abcd implement step` again; nothing was pushed")
+	}
 	// The head the receipt names is pushed by its commit id, not the branch's
 	// ref, so a branch that moves after the check cannot change what is pushed.
 	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, lane.HeadSHA+":refs/heads/"+lane.Branch); err != nil {
@@ -548,8 +565,25 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	if notice != "" {
 		note += "; " + notice
 	}
+	for _, n := range notices {
+		note += "; " + n.Line()
+	}
 	ld.PreflightReceipt, ld.Pushed, ld.CheckWaitSince = fsutil.RedactHome(rcp), lane.HeadSHA, nil
 	return Outcome{Stay: true, Note: note}, nil
+}
+
+// announceBeforePush is claim.AnnounceBeforePush, the one path abcd's pushes
+// announce by; a seam the package's tests replace, since most of them land
+// with no status branch to post to.
+var announceBeforePush = claim.AnnounceBeforePush
+
+// announceOptions are the options the announcement before a lane's push is
+// made with: the step's clock, and the embargo check `abcd announce` holds an
+// announcement to.
+func announceOptions(now time.Time) claim.Options {
+	o := claimOptions(now)
+	o.Embargo = embargo.AnnouncementCheck
+	return o
 }
 
 // forge runs the forge client with args from the checkout the run lives in

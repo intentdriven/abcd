@@ -117,7 +117,20 @@ The following are non-negotiable invariants — any architectural choice that vi
    lower case, each by its own refspec so a case-colliding name is never
    fetched, and of origin's default branch, then one read of the forge's
    record of who pushed (`gh api`, the repository's activity record) for each
-   status branch holding a standing announcement it has not asked about. The
+   status branch holding a standing announcement it has not asked about.
+   abcd's own pushes for an item announce first, by `announce`'s own code
+   (iss-2610161645224876, dcn-2610170655202547): `land`, whose meaning
+   includes, after its release-hold fetch and before its push, `announce`'s
+   listing, fetch and push of `merging <item>` for each issue, intent or pull
+   request its branch's own commits name in a `Refs:`, `Resolves:` or
+   `Delivers:` trailer, with the user-endpoint call `announce` may make, and
+   no push to the branch until each has reached `origin`; and `implement
+   step`, the step `build` and `drain` drive, whose meaning includes the same
+   for a lane's own record before the landing pushes the lane's branch. An
+   item the sender's own status branch, as that fetch brought it, already
+   announces is read from disk and not sent again. A push a person types with
+   `git push` posts no announcement, and the pre-push hook neither fetches nor
+   pushes a status branch. The
    prompt hook shows the announcements, the doubts and the release holds from
    the last completed fetch, from disk alone, and asks the network nothing.
    The away mode (itd-2610180912189125) is the person's word that sessions
