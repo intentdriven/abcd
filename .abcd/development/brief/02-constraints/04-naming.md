@@ -58,10 +58,10 @@ adds meaning: `announce`, `banlist`, `build`, `dashboard`, `decide`, `docs`,
 `drain`, `embargo`, `guard`, `history`, `hook`, `ideate`, `identity`,
 `implement`, `inbox`, `lab`, `land`, `library`, `lint`, `memory`, `mode`,
 `peers`, `reading`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`,
-`status`, `statusline`, and `update`. They are registered here so the exemption is on the
-record. `embargo` is meant in its disclosure sense, an advisory held private
-until it is closed or published, not the maritime order that once kept ships
-in port.
+`status`, `statusline`, and `update`. They are registered here so the
+exemption is on the record. `embargo` is meant in its disclosure sense, an
+advisory held private until it is closed or published, not the maritime order
+that once kept ships in port.
 
 **Reserved meta-development commands** (later phases; named now to prevent
 collisions):
