@@ -336,7 +336,14 @@ on origin's default branch backs off, with a tip or without one
    with the check `reservation`, naming the holder, before anything is pushed
    or asked, so passing over held work adds no fetch to the move's one; one
    the reservation push itself finds held (a race since the fetch) is passed
-   over the same way. An issue whose tip in the move's view is a hand-back
+   over the same way. One the person's own other copy holds live says so and
+   names `abcd drain --take-over`; a move given that flag lets that copy's
+   reservation of the issue through the view, and its reservation takes it over
+   for this copy, as `abcd build --take-over` does, so a hosted session that
+   restarted with its local tier lost takes its own reservations back as the
+   drain reaches them (spc-2610161044461448 step 15, dcn-2610161040398791). The
+   flag is the move's alone, never kept in the drain's state, and never moves
+   another person's reservation. An issue whose tip in the move's view is a hand-back
    that stands, from any copy on any account, is passed over the same way,
    naming its kind, who handed it back and when, and every reservation the
    drain pushes backs off a hand-back that stands, so one the view missed is
@@ -608,5 +615,6 @@ Sub-verbs: none.
 | `--max` | int |
 | `--pace` | string |
 | `--sub-agents` | string |
+| `--take-over` | bool |
 
 <!-- surface-appendix:end -->

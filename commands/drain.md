@@ -1,7 +1,7 @@
 ---
 name: drain
 description: "Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record."
-argument-hint: "[--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>]"
+argument-hint: "[--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over]"
 block: agents
 user-invocable: false
 ---
@@ -275,7 +275,13 @@ what it did in `next`:
   copy holds in the move's view, or whose footprint shares a path with another
   copy's live reservation, is passed over before anything is pushed or asked
   (`passed`, check `reservation`, naming the holder), with no fetch beyond the
-  move's one; one the push itself finds held is passed over the same way. An
+  move's one; one the push itself finds held is passed over the same way. When
+  the holder is the user's own other copy (a hosted session that restarted
+  loses its local tier, so its new copy reads its own reservations as another
+  copy's), the reason says so and names `abcd drain --take-over`: run that,
+  with the user's say-so, and the move reserves the issue for this copy,
+  taking the reservation over, as `abcd build --take-over` does. The flag is
+  given per move and never moves another person's reservation. An
   issue whose tip on `origin` is a hand-back, from any copy on any account,
   is passed over the same way, naming the kind, who handed it back and when,
   while origin's default branch holds its record at the blob the tombstone
@@ -485,7 +491,7 @@ a flagged decision: those are a person's.
   progress began with; a drain state it cannot read as its own is refused,
   naming the file. Another drain moving in the checkout exits 3: back off and
   retry. `--dry-run` refuses `--max`, `--pace`, `--sub-agents`,
-  `--fix-rounds` and `--judgement`.
+  `--fix-rounds`, `--judgement` and `--take-over`.
 - `--judgement` refuses (exit 2, nothing written) when the drain awaits no
   judgement, when the path is not the answer's path the request names, when
   the answer cannot be read as a regular file within 64 KiB, and when it is not

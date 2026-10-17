@@ -1341,6 +1341,13 @@
           "type": "string",
           "required": false,
           "hidden": false
+        },
+        {
+          "name": "take-over",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
         }
       ]
     },

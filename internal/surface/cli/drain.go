@@ -30,11 +30,11 @@ type drainOutput struct {
 // `--dry-run` classifies every open issue by the eligibility rule and writes
 // nothing; the bare verb performs one move of the drain run (loop.Drain).
 func newDrainCommand(asJSON *bool) *cobra.Command {
-	var dryRun bool
+	var dryRun, takeOver bool
 	var maxLanes int
 	var pace, subAgents, fixRounds, judgement string
 	cmd := &cobra.Command{
-		Use: "drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>]",
+		Use: "drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over]",
 		Long: "Work the open issue ledger unattended: fix the issues that need no decision, and\n" +
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
@@ -75,6 +75,12 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"behind it, and which issues open in the checkout it has already finished. The host\n" +
 			"judgement over each eligible remedy does not run; it can only ever hand an issue\n" +
 			"back.\n\n" +
+			"--take-over moves your own live reservation of an issue from another copy to this one\n" +
+			"as the move reaches it, as `abcd build --take-over` does: a hosted session that\n" +
+			"restarted lost its local tier, so its new copy reads its own reservations as another\n" +
+			"copy's, which a plain move passes over naming the flag. It never moves another\n" +
+			"person's reservation, and is given per move: a move without it passes such an issue\n" +
+			"over again.\n\n" +
 			"Without --dry-run, each invocation performs one move of the drain and exits. Before\n" +
 			"the next eligible issue's lane opens, the host judges its remedy: on origin, the\n" +
 			"drain first reserves the issue (passing over, with no push, any issue or footprint\n" +
@@ -171,10 +177,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 				return err
 			}
 			if !dryRun {
-				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement)
+				return runDrain(cmd, *asJSON, repoRoot, maxLanes, pace, subAgents, fixRounds, judgement, takeOver)
 			}
-			if cmd.Flags().Changed("max") || cmd.Flags().Changed("pace") || cmd.Flags().Changed("sub-agents") || cmd.Flags().Changed("fix-rounds") || cmd.Flags().Changed("judgement") {
-				return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds or --judgement: it opens no lane and asks no judgement (nothing written)"}
+			if cmd.Flags().Changed("max") || cmd.Flags().Changed("pace") || cmd.Flags().Changed("sub-agents") || cmd.Flags().Changed("fix-rounds") || cmd.Flags().Changed("judgement") || cmd.Flags().Changed("take-over") {
+				return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds, --judgement or --take-over: it opens no lane, asks no judgement and reserves nothing (nothing written)"}
 			}
 			pv, err := loop.DrainDryRun(repoRoot, time.Now())
 			// Every refusal of the rule exits 2, as the bare verb's does: a rule
@@ -201,6 +207,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 	cmd.Flags().StringVar(&subAgents, "sub-agents", "", "the ceiling on lanes and validators alive at once; wins over every configured layer")
 	cmd.Flags().StringVar(&fixRounds, "fix-rounds", "", "the fix rounds a lane may take before it is handed back; wins over every configured layer")
 	cmd.Flags().StringVar(&judgement, "judgement", "", "the host's answer to the judgement the drain awaits, at the path its request names")
+	cmd.Flags().BoolVar(&takeOver, "take-over", false, "move your own live reservation of each issue this move reaches from another copy to this one; never another person's")
 	return cmd
 }
 
@@ -214,7 +221,7 @@ func warnLoosened(cmd *cobra.Command, record string, loosened []string) {
 }
 
 // runDrain is the bare verb: one move of the drain run.
-func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pace, subAgents, fixRounds, judgement string) error {
+func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pace, subAgents, fixRounds, judgement string, takeOver bool) error {
 	const prefix = "abcd drain"
 	roots, notes := layered.RootsFor(repoRoot)
 	for _, n := range notes {
@@ -224,7 +231,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	if err != nil {
 		return loopFail(cmd.OutOrStdout(), asJSON, prefix, err)
 	}
-	o := loop.Options{Roots: &roots, Runners: cfg}
+	o := loop.Options{Roots: &roots, Runners: cfg, TakeOver: takeOver}
 	if cmd.Flags().Changed("pace") {
 		o.Pace = &pace
 	}

@@ -817,11 +817,22 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 					Reason: termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked: it is a person's until its record changes"})
 				continue
 			}
-			if why := view.Contention(v.ID, footprint, now); why != "" {
+			// Under --take-over, this person's own reservation from another
+			// copy (a hosted session's, lost with its local tier) holds
+			// nothing off: the reservation act below takes it over
+			// (spc-2610161044461448 step 15).
+			takeOver := ""
+			if o.TakeOver {
+				takeOver = capHolder
+			}
+			if why := view.Contention(v.ID, footprint, now, takeOver); why != "" {
 				// The reason quotes what another writer chose (a reserved
 				// footprint), and the agent driving the drain reads it.
-				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckReservation,
-					Reason: termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked"})
+				why = termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked"
+				if r, ok := view.Lookup(v.ID); ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && claim.SameHolder(r.Holder, capHolder) {
+					why += "; it is your own reservation from another copy: to move it to this one, run `abcd drain --take-over`"
+				}
+				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckReservation, Reason: why})
 				held = append(held, termsafe.Sanitize(why))
 				continue
 			}

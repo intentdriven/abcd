@@ -1169,7 +1169,7 @@ abcd docs fidelity record --verdict-json verdict.json
 
 Fix the issues needing no decision, one lane at a time, and hand the rest back: Writes its state and user-visible drafts; refuses without the rule's record.
 
-**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [flags]`
+**Usage:** `abcd drain [--dry-run] [--max <n>] [--pace <work-minutes>/<pause-minutes>] [--sub-agents <n>] [--fix-rounds <n>] [--judgement <file>] [--take-over] [flags]`
 
 Work the open issue ledger unattended: fix the issues that need no decision, and
 hand the rest back by kind. Which issues need no decision is this repository's own
@@ -1213,6 +1213,13 @@ last fetched, and says how old that view is, how many commits the checkout is
 behind it, and which issues open in the checkout it has already finished. The host
 judgement over each eligible remedy does not run; it can only ever hand an issue
 back.
+
+--take-over moves your own live reservation of an issue from another copy to this one
+as the move reaches it, as `abcd build --take-over` does: a hosted session that
+restarted lost its local tier, so its new copy reads its own reservations as another
+copy's, which a plain move passes over naming the flag. It never moves another
+person's reservation, and is given per move: a move without it passes such an issue
+over again.
 
 Without --dry-run, each invocation performs one move of the drain and exits. Before
 the next eligible issue's lane opens, the host judges its remedy: on origin, the
@@ -1314,6 +1321,7 @@ drain or run holds the state lock.
       --max int             cap the lanes this drain opens; the default is all
       --pace string         the drain's working window and pause, <work-minutes>/<pause-minutes>; wins over every configured layer
       --sub-agents string   the ceiling on lanes and validators alive at once; wins over every configured layer
+      --take-over           move your own live reservation of each issue this move reaches from another copy to this one; never another person's
 ```
 
 **Example:**
