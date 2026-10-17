@@ -5,8 +5,8 @@ deterministic half for itself. What that buys a user: the default install needs 
 API key and no model configuration, and a verb checks every judgement it takes in.
 A JSON payload is validated against the core's schema, so a model that
 hallucinates a citation produces a refusal rather than a record; a reviewer's
-prose return is read by the verdict heading it ends with, and refused without
-one. What it costs: abcd cannot judge anything on its own, and a verb whose
+prose return is read by its one verdict heading, and refused with none or more
+than one. What it costs: abcd cannot judge anything on its own, and a verb whose
 agent was never dispatched has no fallback verdict to offer.
 
 An agent here is a **markdown prompt file** under `agents/`, host-delegated by
@@ -144,11 +144,14 @@ record kind. Only the first ships.
    of record; the per-run artefact beside it is an ephemeral review request in the
    gitignored local tier. The verb name is `audit` per adr-40, which reserves it
    for promise-versus-reality verdicts; the top-level `/abcd:audit` stays reserved
-   for itd-16's hash-chain surface. Running it is manual: closing a spec moves the
-   linked intent to `shipped/`, but nothing fires the auditor off that transition
-   (spc-6 disowned auto-firing, and no spec owns it now). The term-drift,
-   PRD-fidelity and modification-grammar outputs the role was drawn with are
-   **deferred**: none is in the shipped prompt or in any lint.
+   for itd-16's hash-chain surface. A hand-run `spec close` moves the linked
+   intent to `shipped/` but fires nothing off that transition (spc-6 disowned
+   auto-firing), so outside a build the audit is run by hand. A `build` run
+   audits in the implement loop's validate stage, on the lane whose landing
+   closes the intent's last open spec and before that lane lands; a `drain` run
+   never does, since its lanes are issues and an issue has no criteria. The
+   term-drift, PRD-fidelity and modification-grammar outputs the role was drawn
+   with are **deferred**: none is in the shipped prompt or in any lint.
 2. **Cross-document fidelity → `abcd intent consistency [<itd-N>]`** (shipped,
    itd-48). It reads the brief and every intent outside `superseded/` and reports
    terminology drift, premise contradictions, scope leakage, sequencing
