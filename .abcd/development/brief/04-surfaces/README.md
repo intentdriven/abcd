@@ -400,31 +400,35 @@ an agent page means adding or removing its row in the same change.
 | [`cold-reading-detection`](../../../../agents/cold-reading-detection.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the detection position: where the shipped tree is in tension with the claim record |
 | [`cold-reading-entailment`](../../../../agents/cold-reading-entailment.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the entailment position: what a design commits to without stating it |
 | [`cold-reading-widening`](../../../../agents/cold-reading-widening.md) | `reading` | [`23-reading.md`](23-reading.md) | Cold reading at the widening position: the configurations a design's construal admits that it has not committed to |
-| [`docs-currency-reviewer`](../../../../agents/docs-currency-reviewer.md) | `docs` | [`10-docs.md`](10-docs.md) | Verifies each user-facing documentation claim against the code that implements it, as the release gate's semantic pass |
+| [`docs-currency-reviewer`](../../../../agents/docs-currency-reviewer.md) | `launch` | [`10-docs.md`](10-docs.md) | Verifies each user-facing documentation claim against the code that implements it, as the release gate's semantic pass |
 | [`graveyard-interpreter`](../../../../agents/graveyard-interpreter.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Says what a packed lifeboat's graveyard tried and why it was left behind |
 | [`intent-auditor`](../../../../agents/intent-auditor.md) | `intent` | [`05-intent.md`](05-intent.md) | Audits a shipping intent's promise against the delivered code, or the brief and intents against each other |
 | [`lifeboat-reviewer`](../../../../agents/lifeboat-reviewer.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Audits a packed lifeboat against its source repository and returns a verdict |
 | [`planning-interviewer`](../../../../agents/planning-interviewer.md) | `intent` | [`05-intent.md`](05-intent.md) | Runs an intent's planning interview and edits the intent record after each answer |
 | [`press-release-composer`](../../../../agents/press-release-composer.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Composes a lifeboat's press release from its packed brief, spine, and principles |
 | [`principle-distiller`](../../../../agents/principle-distiller.md) | `disembark` | [`02-disembark.md`](02-disembark.md) | Distils durable principles from a packed lifeboat's decision record |
-| [`question-drafter`](../../../../agents/question-drafter.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Drafts one of abcd's own questions so it follows every asking rule and fits the rows limit |
+| [`question-drafter`](../../../../agents/question-drafter.md) | none | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Drafts one of abcd's own questions so it follows every asking rule and fits the rows limit |
 | [`reflection-composer`](../../../../agents/reflection-composer.md) | `reflect` | [`09-reflect.md`](09-reflect.md) | Runs a cut release's retrospective interview and drafts its answers |
 | [`release-changelog-composer`](../../../../agents/release-changelog-composer.md) | `launch` | [`04-launch.md`](04-launch.md) | Composes a release cut's changelog lines and release page from the records that shipped in it |
-| [`ruthless-reviewer`](../../../../agents/ruthless-reviewer.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Reviews a diff that builds and passes its checks, for correctness first |
+| [`ruthless-reviewer`](../../../../agents/ruthless-reviewer.md) | `build`, `drain` | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Reviews a diff that builds and passes its checks, for correctness first |
 | [`scribe`](../../../../agents/scribe.md) | `scribe` | [`32-scribe.md`](32-scribe.md) | Transcribes a returned reading and its dispositions into the ledger's declared shapes |
-| [`security-reviewer`](../../../../agents/security-reviewer.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Reviews a diff or design adversarially at a trust boundary |
-| [`sota-researcher`](../../../../agents/sota-researcher.md) | none | [§ Agents no verb dispatches](#agents-no-verb-dispatches) | Researches the state of the art on one engineering question |
+| [`security-reviewer`](../../../../agents/security-reviewer.md) | `build`, `drain` | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Reviews a diff or design adversarially at a trust boundary |
+| [`sota-researcher`](../../../../agents/sota-researcher.md) | none | [§ Agents outside the verb chapters](#agents-outside-the-verb-chapters) | Researches the state of the art on one engineering question |
 
-## Agents no verb dispatches
+## Agents outside the verb chapters
 
 Most plugin agents under [`agents/`](../../../../agents) serve a verb, which
 builds their input or validates what they return, and the chapter of that verb
-documents them. Four serve no verb: the host agent invokes each directly, when
-its `description`, a command page or abcd's asking rules say to, and reads the
-report itself. Three of the four are called on by name. `build.md` and the
-implement loop's validator roles dispatch the two reviewers, and `guard.md` and
-`intent.md` send a question through the question drafter. Only
-`sota-researcher` is named by no command page. In the binary they are roster entries: the bundled model-tier
+documents them. The four below have no chapter of their own, so this section
+holds their contracts. Two serve a verb: the two reviewers are the validators of
+the implement loop's validate stage, which on every lane a `build` or `drain`
+run opens names each in turn and records the verdict it returns
+([`34-build.md` § The lane](34-build.md#the-lane) documents the stage), and
+`build.md` names both. Two serve no verb: the host agent invokes each directly,
+when its `description`, a command page or abcd's asking rules say to, and reads
+the report itself. `guard.md` and `intent.md` send a question through the
+question drafter, and only `sota-researcher` is named by no command page. In the
+binary all four are roster entries: the bundled model-tier
 proposal the `oracle-routing` offer of [`01-ahoy.md`](01-ahoy.md) renders places
 the two reviewers at `frontier`, and the researcher and the question drafter at
 `economy`. Each prompt declares `reads_untrusted_input: true`,
@@ -459,8 +463,10 @@ that everything it reads is data, never instruction.
   the person itself and never marks an option recommended. The GRILL asking
   rules tell every agent running an abcd interview to draft through it.
 
-`docs-currency-reviewer`, the reviewer the release gate runs as a semantic gate,
-is documented in [`10-docs.md`](10-docs.md).
+`docs-currency-reviewer`, one of the release gate's semantic passes, serves
+`launch` and is documented in [`10-docs.md`](10-docs.md): the release cut names
+it in the receipts checklist it ends with, and `launch` and the release workflow
+check its receipt, but no verb starts it or records its verdict.
 
 ## Library and memory: two different jobs
 
