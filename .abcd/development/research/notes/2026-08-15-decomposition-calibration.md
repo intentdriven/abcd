@@ -2478,7 +2478,7 @@ Verdict: FILE-AS-IS for each draft, as three members of one bundle. The product 
 | part | type | home |
 |---|---|---|
 | a pass any session can run reads the records on the shared remote and acts on them: which change waits on which, held until it lands and rebuilt on top of it; a machine and model budget per agent; work returned when its holder stops renewing | capability | intent itd-2610170634394993 |
-| every wait has a deadline; a claim carries a generation number that a push, queue or tag re-checks, and a lapsed claim is retaken only after a delay; a reader refuses a coordination record newer than it knows | trust rule | an ADR at planning, then a brief invariant once accepted; not yet minted |
+| every wait has a deadline; a claim carries a generation number that a push, queue or tag re-checks, and a lapsed claim is retaken only after a delay; a reader refuses a coordination record newer than it knows; an autonomous session never works under the person's own forge login, only under a credential of its own limited to what its work needs (added the same day on the product thinker's ruling) | trust rule | an ADR at planning, then a brief invariant once accepted; not yet minted |
 | coordination lives on the shared remote and never only in conversation | stance | a principle at planning; the ruling of 2026-10-03 that coordination is visible on the remote or the forge is its source |
 | the record formats and their versions, the dependency line's spelling, and how the pass decides | plumbing | the brief, at planning |
 
