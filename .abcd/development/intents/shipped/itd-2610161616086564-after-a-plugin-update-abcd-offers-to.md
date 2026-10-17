@@ -145,7 +145,9 @@ rest on 2026-10-17 during an autonomous run, on the grounds given.
 
 ## Audit Notes
 
-_Empty. Populated by intent-auditor when intent moves to shipped/._
+<!-- abcd-review: OWED receipt=rcp-139f1fd28b60 -->
+Fidelity review OWED (receipt rcp-139f1fd28b60).
+<!-- abcd-review-end receipt=rcp-139f1fd28b60 -->
 
 ## Grounds
 
