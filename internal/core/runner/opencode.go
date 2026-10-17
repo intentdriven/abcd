@@ -38,6 +38,7 @@ import (
 	"context"
 	"encoding/json"
 	"math"
+	"os"
 
 	"github.com/intentdriven/abcd/internal/core/oracle"
 )
@@ -54,7 +55,10 @@ var openCodeSeal = []string{
 type OpenCodeCLI struct {
 	// model is the model route, <provider>/<model> as opencode spells it too,
 	// or "" for the harness's own default.
-	model  string
+	model string
+	// pin is the machine's pin for the model, nil when it sets none: a
+	// pinned run reads it from a sealed configuration of its own (pin.go).
+	pin    *oracle.Pin
 	launch launcher
 }
 
@@ -84,7 +88,19 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 	if err != nil {
 		return Answer{}, nil, err
 	}
-	res, err := o.launch.run(ctx, OpenCode, bin, o.args(req), openCodeSeal, req.Dir, req.timeout())
+	seal, version := openCodeSeal, ""
+	var sealed sealedPin
+	if o.pin != nil {
+		// A pinned run reads the pin from a configuration made for it alone
+		// (pin.go), and its opencode's version is recorded beside it.
+		if sealed, err = o.sealPin(req); err != nil {
+			return Answer{}, nil, err
+		}
+		defer os.RemoveAll(sealed.dir)
+		seal = pinnedSeal(sealed)
+		version = o.version(ctx, bin, seal, req.Dir)
+	}
+	res, err := o.launch.run(ctx, OpenCode, bin, o.args(req), seal, req.Dir, req.timeout())
 	transcript := res.transcript()
 	if err != nil {
 		return Answer{}, transcript, err
@@ -94,6 +110,10 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 		return Answer{}, transcript, err
 	}
 	ans.ModelAsked, ans.PromptSHA256 = o.model, promptSHA256(req)
+	if o.pin != nil {
+		pin := *o.pin
+		ans.ProviderPin, ans.PinConfigSHA256, ans.HarnessVersion = &pin, sealed.sha256, version
+	}
 	var un oracle.Unpin
 	askedUnpinned(&un, ans.Sides)
 	servedUnpinned(&un, ans.Model, ans.Sides, ans.counted)

@@ -146,6 +146,9 @@ type Request struct {
 	// The adapter asks for usage in the stream by default (itd-166 decision
 	// 4); a provider connection whose server refuses the field turns it off.
 	NoStreamUsage bool
+	// Provider is OpenRouter's provider routing object, sent as the
+	// request's provider member when set (routing.go); nil sends none.
+	Provider *ProviderRouting
 }
 
 // StreamUsageField is the request field the adapter adds to ask for usage in
@@ -262,7 +265,13 @@ type Client struct {
 	// tokenize is the exact count's address (size.go), empty when the base
 	// URL gives none.
 	tokenize string
-	hc       *http.Client
+	// generation is the generation record's address, genWait the bound on
+	// one readback end to end and genBackoff its first wait between asks
+	// (routing.go).
+	generation string
+	genWait    time.Duration
+	genBackoff time.Duration
+	hc         *http.Client
 }
 
 // Option configures a Client.
@@ -337,18 +346,23 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 	// on it, so only the path changes: the scheme, host and port the block
 	// names are the ones each request goes to.
 	c := &Client{
-		endpoint:  under(u, basePath(u)+"/chat/completions"),
-		models:    under(u, basePath(u)+"/models"),
-		tokenize:  tokenizeURL(u),
-		listWait:  ListTimeout,
-		key:       key,
-		forms:     keyForms(key),
-		host:      u.Host,
-		timeout:   DefaultTotalTimeout,
-		firstByte: DefaultFirstByteTimeout,
-		idle:      DefaultIdleTimeout,
-		events:    defaultEventTimeout,
-		errorWait: errorBodyWait,
+		endpoint: under(u, basePath(u)+"/chat/completions"),
+		models:   under(u, basePath(u)+"/models"),
+		tokenize: tokenizeURL(u),
+		listWait: ListTimeout,
+		// The generation record's address (routing.go), asked only by a
+		// caller that opted in.
+		generation: under(u, basePath(u)+"/generation"),
+		genWait:    GenerationTimeout,
+		genBackoff: generationBackoff,
+		key:        key,
+		forms:      keyForms(key),
+		host:       u.Host,
+		timeout:    DefaultTotalTimeout,
+		firstByte:  DefaultFirstByteTimeout,
+		idle:       DefaultIdleTimeout,
+		events:     defaultEventTimeout,
+		errorWait:  errorBodyWait,
 	}
 	for _, o := range opts {
 		o(c)
@@ -546,6 +560,9 @@ func (c *Client) render(req Request) ([]byte, error) {
 	}
 	if !req.NoStreamUsage {
 		fields["stream_options"] = map[string]bool{"include_usage": true}
+	}
+	if req.Provider != nil {
+		fields[ProviderRoutingField] = req.Provider
 	}
 	keys := make([]string, 0, len(req.Settings))
 	for k := range req.Settings {

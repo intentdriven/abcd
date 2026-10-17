@@ -180,8 +180,15 @@ rather than skipped:
         "key": "openrouter",             // a credential NAME, resolved through the credential
                                          //   source; omitted for a server that takes no key
         "models": ["typesafe/jev-1.13"], // the allowlist: the only models it may serve
-        "stream_usage": false            // optional, default true: false stops asking for
+        "stream_usage": false,           // optional, default true: false stops asking for
                                          //   usage in the stream, for a server that refuses it
+        "pins": {                        // optional, OpenRouter's base URL only: one per listed model
+          "typesafe/jev-1.13": {
+            "order": ["deepinfra"],      // exactly one provider
+            "quantizations": ["fp8"],    // exactly one quantization
+            "canonical_slug": "typesafe/jev-1.13-20260915" // the model's permanent slug
+          }
+        }
       }
     },
     "denylist": ["openai/*"],            // optional, none bundled; repo or machine
@@ -210,6 +217,22 @@ rather than skipped:
   into the block it creates and says so (`stream_usage_note` in its JSON).
   `--stream-usage=false` (or `=true`) sets the block's value outright, and
   the verification is then asked once, as given.
+- **A pin holds a listed model to one OpenRouter provider**
+  (iss-2610161734413178, itd-2610161733316518 decisions 5 and 6).
+  `oracle.api.<provider>.pins.<model>` names exactly one provider in `order`,
+  exactly one quantisation in `quantizations` (OpenRouter's values: int4,
+  int8, fp4, fp6, fp8, fp16, bf16, fp32, unknown) and the model's permanent
+  `canonical_slug`; the model must be on the block's list and not a `~`
+  alias. A call to that model sends OpenRouter's provider routing object with
+  `allow_fallbacks: false`, `require_parameters: true` and
+  `data_collection: "deny"` beside them, which are the pin's own and not
+  settable, so an outage is never served by another provider. One provider
+  and one quantisation, because with fallbacks off OpenRouter still tries each
+  provider `order` names, and one provider can serve a model at two
+  quantisations. A pin is read only on a block whose `base_url` is
+  OpenRouter's (`openrouter.ai`), since a server that ignored the object would
+  leave the record claiming a pin nothing held; elsewhere it is refused. A pin
+  sits in the provider block, so like the block it is the machine's alone.
 - **The allowlist alone decides; the denylist is optional and a union.** abcd
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's

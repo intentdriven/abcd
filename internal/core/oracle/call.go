@@ -63,6 +63,21 @@ type CallRecord struct {
 	Cost *Cost `json:"cost"`
 	// Unpinned lists every field of the fixed lists the call could not pin.
 	Unpinned []Unpinned `json:"unpinned"`
+	// ProviderPin is the pin the call was sent with (pin.go): the routing
+	// object as sent and the model's permanent slug; absent when the model is
+	// not pinned, and the provider pin is then listed as not configured.
+	ProviderPin *Pin `json:"provider_pin,omitempty"`
+	// GenerationReadback is whether OpenRouter's generation record was read
+	// into the served side: not_asked (the default, no request made), read,
+	// or failed, with GenerationReadbackError saying why in abcd's words.
+	// Absent only on a record written before the readback existed, which a
+	// kept answer is re-emitted as, whole.
+	GenerationReadback      string `json:"generation_readback,omitempty"`
+	GenerationReadbackError string `json:"generation_readback_error,omitempty"`
+	// Attempts is every provider the generation record names as tried, in
+	// its order, the one that served included, so a fallback shows as an
+	// attempt before it; absent when no record was read.
+	Attempts []openaiapi.Attempt `json:"attempts,omitempty"`
 }
 
 // CallRequest is one call: where it goes, the brief, the settings as sent and
@@ -74,6 +89,11 @@ type CallRequest struct {
 	// Contract is the output contract the host sub-agent's payload is judged
 	// by; nil admits any answer.
 	Contract func([]byte) error
+	// ReadGeneration asks for OpenRouter's generation record of the call
+	// once it is answered (pin.go): a request of its own, so it is false
+	// unless the run the call belongs to was started with the person's
+	// consent to it (itd-2610161733316518 decision 12).
+	ReadGeneration bool
 }
 
 // Call sends req through its target's provider and returns the answer the
@@ -94,7 +114,7 @@ func (c *APIConfig) Call(ctx context.Context, creds credential.Source, req CallR
 	if err != nil {
 		return nil, CallRecord{}, err
 	}
-	payload, rec, err := complete(ctx, p, key, t.Model, req.Brief, req.Settings, req.Contract, c.denylist, opts...)
+	payload, rec, err := complete(ctx, p, key, t.Model, req.Brief, req.Settings, req.Contract, c.denylist, req.ReadGeneration, opts...)
 	if err != nil {
 		// Decision 4: an ordinary call is never sent again without the
 		// field; the refusal names the setting that stops asking.
@@ -142,15 +162,24 @@ func resolveKey(creds credential.Source, p Provider) (string, error) {
 // The request asks for usage in the stream unless p's block turns that off,
 // and a refusal of it is returned as the adapter gave it: Call names the
 // setting that stops asking, and the setup's verification (Connect) asks
-// once more without it. complete itself never sends a second request.
+// once more without it. complete itself never sends the call a second time;
+// the one request it may add is the generation readback, made when read asks
+// for it and only after the answer is admitted (pin.go).
+//
+// A model p's block pins is sent with its pin as OpenRouter's provider
+// routing object, and the record carries the pin on the asked side.
 func complete(ctx context.Context, p Provider, key, model string, brief openaiapi.Brief, settings Settings,
-	contract func([]byte) error, denylist []DenyEntry, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
+	contract func([]byte) error, denylist []DenyEntry, read bool, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
 	provider := p.Name
 	client, err := openaiapi.New(p.BaseURL, key, opts...)
 	if err != nil {
 		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s: %w", provider, err)
 	}
 	req := openaiapi.Request{Model: model, Brief: brief, Settings: settings, NoStreamUsage: !p.AsksStreamUsage()}
+	if pin, ok := p.pin(model); ok {
+		r := pin.Routing()
+		req.Provider = &r
+	}
 	res, err := client.Complete(ctx, req, contract)
 	if err != nil {
 		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s, model %s: %w", provider, model, err)
@@ -159,7 +188,19 @@ func complete(ctx context.Context, p Provider, key, model string, brief openaiap
 		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s was asked for %s and reported answering with %s, "+
 			"which %s refuses (%s, from %s); the answer is discarded", provider, model, res.ModelReported, denylistKey, e.Pattern, e.Origin)
 	}
-	return res.Content, callRecord(p, brief, settings, res), nil
+	rb := readback{state: ReadbackNotAsked}
+	if read {
+		rb = readGeneration(ctx, client, p, res)
+	}
+	if rb.gen != nil {
+		res = withGeneration(res, *rb.gen)
+	}
+	rec := callRecord(p, brief, settings, res)
+	rec.GenerationReadback, rec.GenerationReadbackError = rb.state, rb.reason
+	if rb.gen != nil {
+		rec.Attempts = append([]openaiapi.Attempt{}, rb.gen.Attempts...)
+	}
+	return res.Content, rec, nil
 }
 
 // callRecord is the call's both sides, built from the request this layer sent
@@ -168,16 +209,20 @@ func complete(ctx context.Context, p Provider, key, model string, brief openaiap
 func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openaiapi.Result) CallRecord {
 	rec := CallRecord{Provider: p.Name, ModelAsked: res.ModelAsked, ModelReported: res.ModelReported,
 		PromptSHA256: openaiapi.PromptSHA256(brief), AdapterAdded: []string{},
-		ServedProvider: res.Provider, GenerationID: res.GenerationID, FinishReason: res.FinishReason}
+		ServedProvider: res.Provider, GenerationID: res.GenerationID, FinishReason: res.FinishReason,
+		GenerationReadback: ReadbackNotAsked}
 	if p.AsksStreamUsage() {
 		rec.AdapterAdded = append(rec.AdapterAdded, openaiapi.StreamUsageField)
 	}
 	var un Unpin
-	// The asked side: the model and the prompt are always the call's own. No
-	// provider pin exists yet (iss-2610161734413178), no setting names an
-	// effort or a context variant, and a sampling setting not sent leaves the
-	// server's default, whatever it is.
-	un.Add(AskedProviderPin, NotConfigured)
+	// The asked side: the model and the prompt are always the call's own, and
+	// the provider pin is the block's for the model, when it sets one
+	// (pin.go). No setting names an effort or a context variant, and a
+	// sampling setting not sent leaves the server's default, whatever it is.
+	if pin, ok := p.pin(res.ModelAsked); ok {
+		rec.ProviderPin = &pin
+	}
+	un.Unless(rec.ProviderPin != nil, AskedProviderPin, NotConfigured)
 	for _, s := range []struct {
 		f    Field
 		name string

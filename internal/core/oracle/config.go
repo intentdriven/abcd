@@ -104,6 +104,9 @@ type Provider struct {
 	// usage in the stream (openaiapi.StreamUsageField), for a server that
 	// refuses the field. nil, the default, asks (itd-166 decision 4).
 	StreamUsage *bool `json:"stream_usage,omitempty"`
+	// Pins is the block's pins, by the listed model each holds to one
+	// OpenRouter provider (pin.go); nil when it pins none.
+	Pins map[string]Pin `json:"pins,omitempty"`
 }
 
 // AsksStreamUsage reports whether a call through p asks for usage in the
@@ -148,10 +151,11 @@ type APIConfig struct {
 
 // providerFile is a provider block as the file spells it, decoded strictly.
 type providerFile struct {
-	BaseURL     string   `json:"base_url"`
-	Key         *string  `json:"key"`
-	Models      []string `json:"models"`
-	StreamUsage *bool    `json:"stream_usage"`
+	BaseURL     string             `json:"base_url"`
+	Key         *string            `json:"key"`
+	Models      []string           `json:"models"`
+	StreamUsage *bool              `json:"stream_usage"`
+	Pins        map[string]pinFile `json:"pins"`
 }
 
 // LoadAPI reads the provider configuration through the layered resolver and
@@ -245,7 +249,7 @@ func (c *APIConfig) readProviders(s *layered.Stack) error {
 				origin, apiKey, name, Harness)
 		}
 	}
-	if err := s.Claim(apiKey+".*", "base_url", "key", "models", streamUsageKey); err != nil {
+	if err := s.Claim(apiKey+".*", "base_url", "key", "models", streamUsageKey, pinsKey); err != nil {
 		return fmt.Errorf("oracle adapter: %w", err)
 	}
 	for _, name := range names {
@@ -304,6 +308,9 @@ func (c *APIConfig) provider(name string, fd layered.Found) (Provider, error) {
 		}
 	}
 	p.Models = append([]string(nil), pf.Models...)
+	if p.Pins, err = readPins(p.BaseURL, p.Models, pf.Pins); err != nil {
+		return Provider{}, err
+	}
 	return p, nil
 }
 

@@ -1435,7 +1435,11 @@ without it, and when that succeeds the block is written with
 `stream_usage: false` (its calls then go without the field) and the result
 says so in `stream_usage_note`: relay that line. `--stream-usage=false`
 writes that setting outright, for a server known to refuse the field, and
-the verification is then asked once, as given. A `~/.abcd.noindex` that is a
+the verification is then asked once, as given. The block it writes pins no
+model: a pin to one OpenRouter provider (`pins`, iss-2610161734413178) is
+added to the block by hand afterwards, as the configuration chapter of the
+brief describes, and a configured provider's verification sends the first
+listed model's pin when it has one. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the

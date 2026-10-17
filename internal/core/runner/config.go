@@ -73,7 +73,11 @@ type RunnerConfig struct {
 	Name string
 	// Model is the admitted <provider>/<model> route, "" for the harness's own
 	// default.
-	Model  string
+	Model string
+	// Pin is the machine's pin for that model on that provider
+	// (oracle.Pin), nil when it sets none; the opencode runner holds a run
+	// to it.
+	Pin    *oracle.Pin
 	Origin string
 }
 
@@ -159,6 +163,10 @@ func (c *Config) readRunners(s *layered.Stack) error {
 				return fmt.Errorf("runner: %s is %q, %w", where, layered.BoundKey(text), err)
 			}
 			rc.Model = text
+			provider, model, _ := strings.Cut(text, "/")
+			if pin, ok := c.api.PinFor(provider, model); ok {
+				rc.Pin = &pin
+			}
 		}
 		c.runners[n] = rc
 	}
@@ -342,7 +350,9 @@ func (c *Config) Quota(ctx context.Context, name string) (Quota, bool, error) {
 // adapter builds the enabled runner's adapter.
 func (c *Config) adapter(rc RunnerConfig) Runner {
 	if rc.Name == OpenCode {
-		return newOpenCode(rc.Model)
+		o := newOpenCode(rc.Model)
+		o.pin = rc.Pin
+		return o
 	}
 	return newClaude(rc.Model)
 }

@@ -54,6 +54,11 @@ type Sides struct {
 	Cost  *oracle.Cost  `json:"cost,omitempty"`
 	// Unpinned lists every field of the fixed lists the run could not pin.
 	Unpinned []oracle.Unpinned `json:"unpinned,omitempty"`
+	// ProviderPin is the pin the run's opencode was pointed at, and
+	// PinConfigSHA256 the SHA-256 of the sealed configuration that carried it
+	// (pin.go); empty when the run was not pinned.
+	ProviderPin     *oracle.Pin `json:"provider_pin,omitempty"`
+	PinConfigSHA256 string      `json:"pin_config_sha256,omitempty"`
 }
 
 // RecordOf is the route record of a role ran ran, routed to asked, whose
@@ -85,12 +90,14 @@ func cleanHarness(s string) string {
 }
 
 // askedUnpinned lists the asked side's fields neither command-line runner
-// can pin: no provider pin, sampling setting, seed, effort or context variant
-// is passed to a harness (each is the harness's or the owner's configuration),
-// nor, when the runner passed none, a model.
+// can pin: no sampling setting, seed, effort or context variant is passed to
+// a harness (each is the harness's or the owner's configuration), nor, when
+// the runner passed none, a model, nor a provider pin unless the run was
+// pointed at one (an opencode run to a pinned model, pin.go).
 func askedUnpinned(un *oracle.Unpin, s Sides) {
 	un.Unless(s.ModelAsked != "", oracle.AskedModel, oracle.NotConfigured)
-	for _, f := range []oracle.Field{oracle.AskedProviderPin, oracle.AskedTemperature, oracle.AskedTopP,
+	un.Unless(s.ProviderPin != nil, oracle.AskedProviderPin, oracle.NotConfigured)
+	for _, f := range []oracle.Field{oracle.AskedTemperature, oracle.AskedTopP,
 		oracle.AskedSeed, oracle.AskedEffort, oracle.AskedContext} {
 		un.Add(f, oracle.NotConfigured)
 	}

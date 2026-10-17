@@ -510,7 +510,7 @@ func providerService(p Provider, denylist []DenyEntry, rec *CallRecord, setup *b
 			bounded := append([]openaiapi.Option{openaiapi.WithTimeout(verifyTimeout), openaiapi.WithFirstByteTimeout(verifyTimeout)}, opts...)
 			verify := func(p Provider) error {
 				_, r, err := complete(ctx, p, key, p.Models[0], verifyBrief,
-					Settings{"max_tokens": json.RawMessage(`16`)}, nil, denylist, bounded...)
+					Settings{"max_tokens": json.RawMessage(`16`)}, nil, denylist, false, bounded...)
 				r.Credential = p.Key
 				if rec != nil {
 					*rec = r

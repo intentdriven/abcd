@@ -174,7 +174,29 @@ response does not carry it), `self_reported`, `harness_computed` or
 `not_configured` (no setting or pin names it; a route to this machine lists the
 weight file's fingerprint, its quantisation and the runtime's version so until a
 local route can be pinned). Recording adds no request to the ones the call
-makes. On the harness leg the receipt's own `unpinned` lists the payload's
+makes. A model its provider block pins to one OpenRouter provider
+(`oracle.api.<provider>.pins`, iss-2610161734413178) is sent with OpenRouter's
+provider routing object (one provider in `order`, `allow_fallbacks: false`,
+`require_parameters: true`, `data_collection: "deny"`, one quantisation), and
+the record carries it as `provider_pin` with the model's `canonical_slug`, so
+the provider pin is no longer listed as not configured. The served side can
+also be read from OpenRouter's generation record (`GET
+/api/v1/generation?id=`), but that is a request of its own, so it is made only
+when the caller opts in (`CallRequest.ReadGeneration`, which a model-matrix
+run the person started and consented to sets; itd-2610161733316518 decision
+12) and never otherwise: `generation_readback` says `not_asked`, `read` or
+`failed`. Read, it replaces the served provider, the prompt, completion,
+reasoning and cache-read counts and the cost with the record's own, and
+`attempts` lists every provider OpenRouter tried, in order, so a fallback
+shows as an attempt before the one that served. It is made with the key the
+call used, resolved once by name, on the same pinned client (no redirect, the
+body bounded), and bounded in time as a whole (twenty seconds, a not-found
+asked again after a short doubling wait, since OpenRouter records a
+generation a moment after its answer ends); a failure, a provider that is not
+OpenRouter or an answer that named no generation id leaves the response's own
+served side, says `failed` with the reason in `generation_readback_error`, and
+never fails the call. Every string the record carries is scrubbed, cleaned and
+bounded as the response's are. On the harness leg the receipt's own `unpinned` lists the payload's
 `model_reported` as self-reported and every other field as not configured or not
 reported, since the host reports none of it. DR5 is checked before a
 verb writes anything (`APIConfig.Admitted`), and again by the dispatch. An
@@ -223,6 +245,23 @@ review is skipped.
   working tree, granted reading that directory and writing its answer file
   there alone and refused the checkout, each rule naming its real absolute
   path.
+  A role routed
+  through opencode to a model the machine pins to one OpenRouter provider
+  (iss-2610161734413178) runs against a sealed configuration abcd writes for
+  that run alone, carrying the pin under the model's options
+  (`provider.<name>.models.<model>.options.provider`), in a directory made for
+  the run under the system's temporary directory (0700, the file 0600, refused
+  when it resolves inside the repository or its checkout, and removed when the
+  run ends). opencode is pointed at it with `OPENCODE_CONFIG`, which opencode
+  1.18.31 merges over the person's own global configuration without writing
+  it, and `OPENCODE_CONFIG_CONTENT` is cleared for the run so an inline
+  configuration cannot override the pin; a managed or organisation
+  configuration opencode reads later is the person's own and still applies.
+  The route records the pin (`provider_pin`), the configuration's SHA-256
+  (`pin_config_sha256`) and opencode's version, asked with `--version` under
+  the same seal. opencode holds the key on this path and abcd never reads it,
+  so the generation readback is not made there: the served provider and the
+  provider's own counts stay not reported.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the
