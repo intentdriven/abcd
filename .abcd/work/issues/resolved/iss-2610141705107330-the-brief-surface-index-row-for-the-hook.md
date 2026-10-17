@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/README.md"
 remedy: "Make the hook row say six entrypoints and name question-answered with the event that runs it."
+resolution: "Already fixed by f96d60190 (PR #1033): the brief surface index's hook row now says six host hook entrypoints and names question-answered with the PostToolUse event on the question tool that runs it."
+impact: internal
+resolved_by:
+  commit: "f96d60190"
 ---
 
 The brief surface index row for the hook verb says five host hook entrypoints and names prompt-router, prompt-router-reset, session-end, subagent-stop and session-start, but abcd hook --help lists six: question-answered (PostToolUse on the question tool, wired through hooks/post-tool-use.sh) is neither counted nor named; it is documented only in 05-internals/03-configuration.md:1118-1119. Raised by three checkers (CLI verb tree Opus, hook entrypoints Opus and Sonnet).

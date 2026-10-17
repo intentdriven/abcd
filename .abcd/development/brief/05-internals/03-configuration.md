@@ -114,8 +114,8 @@ layer and its offs, so both acts read as off. The verb names the layer and file
 that turned an act off.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
-block. This repository's own config carries four of these blocks — `docs`, `meta`,
-`oracle` and `repo` — which is what an unremarkable managed repo looks like.
+block. This repository's own config carries five of these blocks — `docs`, `meta`,
+`oracle`, `outbound` and `repo` — which is what an unremarkable managed repo looks like.
 
 ### The provider adapter's keys
 
@@ -557,13 +557,31 @@ acts on the scope that applies.
 
 **User scope, `~/.abcd.noindex/`** — one per machine, machine-local shared state only: the
 history registry, the transcript corpus, the voyage operations namespace, the
-lab store, the staged worktree store, the run state an autonomous run's sessions share
+lab store, the worktree store (the build loop writes each lane's worktree
+there today; the store's own verbs and its reclaim are unbuilt) and its staged
+notes archive (`notes/<root-sha>/`, which nothing writes yet), the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
 ([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the machine layer of the layered configuration in `config.json`
-(its readers are the provider adapter's and the filing-time match's `match`
-keys, each read beneath the repo-scope `.abcd/config.json`, and its one write
-the provider block `ahoy connect` adds; every other config read resolves the
-repo-scope `.abcd/config.json` alone), the load check's two limits in
+(its readers are every key read through the layered reader,
+`internal/core/layered`: the provider adapter's `oracle` keys, the reviewer
+route's `oracle.review`, the filing-time match's `match`, the
+`land` switches, `consistency.max_request_bytes`, the implement loop's `pace`
+and the role routes under `roles`, each read with the repo-scope
+`.abcd/config.json` above it, except `land`, whose layers are ANDed; the
+provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
+`runner` namespace (`runner.fallback_host` and every `runner.<name>`),
+`interview.list` and `reservation.github_username` are honoured from the
+machine layer alone. Its one
+write is the provider block `ahoy connect` adds, and every other config read
+resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
+model-tier routing table in `oracle-routing.json` (read beneath the
+repository's `.abcd/config/oracle-routing.json`, and written owner-only on the
+install's answered consent), the status line's settings in `statusline.json`
+(written on the status-line offer's consent), the bootstrap's
+`cache-attestation` (the release whose published manifest the cached binary
+matched, without which install never promotes the cache to the owned PATH
+copy) and `release-mark` (the newest release this machine has installed or
+verified, raised by the bootstrap and recorded by `abcd update`), the load check's two limits in
 `load-limits` (read-only and never created, itd-2609231434459890), the external
 credentials adapters resolve by name through the credential store, whose abcd
 home is `credentials.json` and whose index is `credential-homes.json` (each
@@ -574,13 +592,25 @@ across the read and the write as the provider block's write holds
 `config.json`'s, so concurrent setups lose nothing), the
 machine's rule conventions in `rules.json` (the user layer of the rules loader,
 read-only and never created, itd-117 — see
-[the rules layers](#the-rules-layers--bundled-user-repo) below), user-scope memory for personal cross-project knowledge (a later
-phase too: the shipped memory store is repo-scope), and the `sources/` corpus
+[the rules layers](#the-rules-layers--bundled-user-repo) below), the machine
+layer of the memory notes in `memory.json` (the person's own notes, which agents
+write through `abcd memory add` and `abcd memory remove` takes out at the
+person's request; read through the rules user layer's guard, a regular file this
+account owns that no one else can write, within 256 KiB, and never created by a
+read; each note is tied to the repository it was written in unless it was added
+with `--everywhere`; [the prompt router](#the-prompt-routers-output) recalls them
+beside the repository's `.abcd/memory.json`, whose notes a person commits in a
+reviewed change and the verb never writes, as one set in which a project note
+shadows a personal note with the same id), curated cross-project memory pages
+under `memory/` (a later phase: nothing resolves it today), and the `sources/` corpus
 `/abcd:library` reads and writes (abcd never creates that one unasked: only its
 explicit init does, and every other corpus verb and the page say so and stop
 when it is absent). It also holds the caller-controlled declarations: the owned
 PATH entry, the trusted configuration roots, and the checkouts whose transcripts
-are pulled in. **Never the design record.** The same inventory is drawn as a tree
+are pulled in. And it keeps itself out of a git repository in the home folder:
+a `.gitignore` holding `*`, laid once beside a `gitignore-laid` marker, so a
+person who deletes the ignore file is never overruled (`internal/core/homeignore`).
+**Never the design record.** The same inventory is drawn as a tree
 in [`../04-surfaces/01-ahoy.md`](../04-surfaces/01-ahoy.md#what-abcd-manages--repos-and-abcdnoindex);
 the two are one list and must agree.
 
@@ -681,8 +711,10 @@ than a gap install would try and fail to close.
 three-tier layout below, the config file with its `meta` block, the rules
 overrides, the per-surface machine records under `config/`, the lint and site
 configuration records, the identity and positioning registry, the citation
-baseline, and the native spec store. A `memory/` namespace is written
-where memory is curated. **The home for project work.** There is no in-tree
+baseline, the native spec store, and the project's memory notes in
+`memory.json` (the layer the prompt router recalls above the machine's
+`~/.abcd.noindex/memory.json`, written by a person in a reviewed change, never by
+`abcd memory`). A `memory/` namespace is written where memory is curated. **The home for project work.** There is no in-tree
 lifeboat directory: the lifeboat is out-of-tree output at an operator-chosen
 destination. Two namespaces are not part of it either: `logbook/`, a retired name,
 and `rp/`, staged with its adapter.
@@ -864,8 +896,8 @@ session. It writes to two streams:
 
 | Stream | What it carries | Who reads it |
 |---|---|---|
-| **stdout** | the rendered block of the domains new this turn, and nothing else. A prompt that matches no domain, or matches only domains already injected unchanged this session, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title | the host, which adds it to the model's context |
-| **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — plus the load's notes and refusals | the operator, out of band |
+| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), and nothing else. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title | the host, which adds it to the model's context |
+| **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — and, on a turn that recalls or has to leave out a note, one line naming the notes recalled and any that did not fit the budget, plus the load's notes and refusals, a `memory.json` that cannot be read among them (it recalls nothing, and the rules still inject) | the operator, out of band |
 
 **The machine reader's envelope.** With `--json`, the flag every verb takes for
 a machine reader, stdout carries one JSON document in place of the bare block.
@@ -878,6 +910,7 @@ iss-2608261550580260):
 {
   "text": "# abcd rules — 1 domain(s) active\n## WIDGETS (repo override)\n- ~~~\n  Widgets are counted twice.\n  ~~~\n",
   "injected": ["WIDGETS"],
+  "recalled": [],
   "active": ["COMMITTING", "DOCUMENTATION", "GRILL", "INTENTS", "ISSUES",
              "LIFEBOAT", "LOAD", "OPINIONS", "PII", "ROADMAP", "SCRATCH",
              "SHELL", "WIDGETS"]
@@ -886,13 +919,14 @@ iss-2608261550580260):
 
 That is the bundled set with one repo domain, `WIDGETS`, declared in
 `.abcd/rules.json` and matched by the prompt: the text carries one domain and
-the set names all thirteen.
+the set names all thirteen. No memory note matched, so `recalled` is empty.
 
 | Field | Meaning |
 |---|---|
-| `text` | the rendered block, byte for byte what the plain form writes to stdout on every prompt but the one that sets the session's name, where the plain form wraps it in the titling object: empty on a turn with nothing new |
+| `text` | the rendered rule block followed by the `## MEMORY` block, byte for byte what the plain form writes to stdout on every prompt but the one that sets the session's name, where the plain form wraps it in the titling object: empty on a turn with nothing new |
 | `session_title` | present only on the prompt that sets the session's name: the name the plain form sets as the title |
 | `injected` | the domains whose text `text` carries; an empty list when it carries none |
+| `recalled` | the ids of the memory notes whose text `text` carries after the rules, beside `injected` for the domains; an empty list when it carries none |
 | `active` | the FULL set of domain names in force this turn, sorted, on every evaluated prompt: every domain that is not dormant, plus a dormant one this prompt activated with `*NAME`. An empty list when nothing is in force, as under the kill switch |
 | `error` | present only when the router could not evaluate the prompt — an unreadable payload, or a `rules.json` that will not load |
 
@@ -1049,7 +1083,11 @@ and a root-level `memory/` is the legacy snapshot abcd respects and never writes
 to. Which scope a curated page lands in is a routing decision — see
 [`07-memory.md`](07-memory.md). Retrieval across the two is not a flat union, which
 would overflow context, but keyword recall with a budget bracket (itd-39). When
-the brief says "memory" unqualified, it means the repo-scope store.
+the brief says "memory" unqualified, it means the repo-scope store. The memory
+notes are a separate thing from these curated pages, and they ship at both
+scopes today: a `memory.json` in the repository's `.abcd/` and another in
+`~/.abcd.noindex/`, which [the prompt router](#the-prompt-routers-output)
+recalls together.
 
 **AI transparency level (staged).** A second axis, independent of visibility. It
 has no backing intent or ADR, no shipped code reads it, and ahoy neither prompts
@@ -1140,8 +1178,9 @@ abcd/
 │   ├── adapter/                        # the seam packages (adr-22): interface + native default
 │   │   ├── scanner/                    #   + optional plug-in. The scanner is the one capability
 │   │   ├── gitleaks/                   #   seam with a package today; gitleaks is its plug-in, and
-│   │   ├── hosting/                    #   hosting, openaiapi and tailscale are adapters outside
-│   │   ├── openaiapi/                  #   the capability seams; 02-adapters.md is the catalogue
+│   │   ├── hosting/                    #   hosting, openaiapi, repoprompt and tailscale are adapters
+│   │   ├── openaiapi/                  #   outside the capability seams; 02-adapters.md is the
+│   │   ├── repoprompt/                 #   catalogue
 │   │   └── tailscale/
 │   └── surface/                        # front doors: cli/, and dashboard/, the one network
 │                                       #   listener (an mcp/ door is adr-23's third)
