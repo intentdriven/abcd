@@ -144,9 +144,15 @@ record kind. Only the first ships.
    of record; the per-run artefact beside it is an ephemeral review request in the
    gitignored local tier. The verb name is `audit` per adr-40, which reserves it
    for promise-versus-reality verdicts; the top-level `/abcd:audit` stays reserved
-   for itd-16's hash-chain surface. A hand-run `spec close` moves the linked
-   intent to `shipped/` but fires nothing off that transition (spc-6 disowned
-   auto-firing), so outside a build the audit is run by hand. A `build` run
+   for itd-16's hash-chain surface. A hand-run `spec close` that ships the
+   intent makes its audit owed: it writes an OWED receipt, a marker in the
+   intent's `## Audit Notes` and a review request under
+   `.abcd/.work.local/reviews/`. When the auditor's route reaches a provider
+   connection (`oracle.roles.intent-auditor` points at one, or one serves the
+   routed tier), the close sends the request there and ingests the verdict. On
+   the default route, the harness, the audit stays owed until the host runs the
+   auditor from that request (`abcd intent audit --owed` drains the owed set).
+   Either way the close stands, and a failed review stays owed. A `build` run
    audits in the implement loop's validate stage, on the lane whose landing
    closes the intent's last open spec and before that lane lands; a `drain` run
    never does, since its lanes are issues and an issue has no criteria. The
