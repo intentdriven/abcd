@@ -183,3 +183,26 @@ func TestWaitingCountsNoChangedDefaultInADevBuild(t *testing.T) {
 		t.Fatalf("defaults %v, range asked %v; a dev build counts in no release", w.Defaults, *asked)
 	}
 }
+
+// TestOnlyWaitingDeclinesAnOfferThatDoesNotWait: of two offers an
+// only-waiting install meets, the one that waits (the drain rule offer here)
+// reaches the person and the one that does not (the commit identity) is
+// declined without being put; the adoption is consent and always reaches
+// them.
+func TestOnlyWaitingDeclinesAnOfferThatDoesNotWait(t *testing.T) {
+	identity := "Commit to this repository as Alice <alice@example.com>?"
+	if setupConfirmID(identity) != "git_identity.establish" || setupConfirmID(drainRuleQuestion()) != DrainRuleOfferGapID {
+		t.Fatal("the fixture's texts no longer carry the identity and drain rule offer ids")
+	}
+	f := &waitingFilter{keys: map[string]bool{DrainRuleOfferGapID: true}}
+	inner := &keyRecordingPrompter{}
+	p := f.prompter(inner)
+	if p.Confirm(identity) {
+		t.Error("the identity offer, which does not wait, was accepted")
+	}
+	p.Confirm(drainRuleQuestion())
+	p.Confirm("Adopt this unmanaged repo into abcd?")
+	if want := []string{DrainRuleOfferGapID, "adopt"}; !slices.Equal(inner.keys, want) {
+		t.Fatalf("the person was put %v, want %v", inner.keys, want)
+	}
+}
