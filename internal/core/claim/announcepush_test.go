@@ -106,6 +106,37 @@ func TestAMergedOnTopEndsTheStandingMerging(t *testing.T) {
 	}
 }
 
+// TestALostRaceRechecksForAStandingAnnouncement: two sessions of one person
+// push work naming iss-5 at the same moment. The session whose push loses
+// the race finds, on the new tip, the merging iss-5 the other just sent, and
+// sends nothing more: one announcement, not two.
+func TestALostRaceRechecksForAStandingAnnouncement(t *testing.T) {
+	w := newWorld(t)
+	w.publish(".abcd/work/issues/open/iss-5-the-widget.md")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	q := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.announce("asking", "#7"); err != nil {
+		t.Fatal(err)
+	}
+	var rival string
+	beforePush = func(root string) {
+		if root != p.dir {
+			return
+		}
+		beforePush = nil
+		n, err := q.beforePush([]string{"iss-5"}, &embargoProbe{})
+		if err != nil || len(n) != 1 || n[0].Live {
+			t.Errorf("the rival announcement: %+v, %v", n, err)
+		}
+		rival = w.statusTip("octo")
+	}
+	t.Cleanup(func() { beforePush = nil })
+	n, err := p.beforePush([]string{"iss-5"}, &embargoProbe{})
+	if err != nil || len(n) != 1 || !n[0].Live || rival == "" || w.statusTip("octo") != rival {
+		t.Fatalf("the push that lost the race = %+v, %v, tip %s, rival %s; want the rival's standing one, nothing more sent", n, err, w.statusTip("octo"), rival)
+	}
+}
+
 // TestAStandingAnnouncementOfAnotherPersonIsNotTheOneOwed: a colleague's own
 // merging iss-5 is theirs; this person's push still announces its own.
 func TestAStandingAnnouncementOfAnotherPersonIsNotTheOneOwed(t *testing.T) {

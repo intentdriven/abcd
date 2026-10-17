@@ -430,8 +430,8 @@ func prepareAnnouncement(root string, req AnnounceRequest, o Options) (*prepared
 // commit's write). With UnlessLive, an announcement of the same kind and item
 // the sender's branch already holds as its newest of that item, standing a
 // minute more, is answered in place of a new one, after every check and
-// before any push. A record absent from the default branch is a
-// *NotPublicError.
+// before any push, and again after each lost race, against the tip that won.
+// A record absent from the default branch is a *NotPublicError.
 func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, err error) {
 	pushes, branch := 0, ""
 	defer func() { err = announceFailure(err, pushes, branch) }()
@@ -484,6 +484,10 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 	}
 	ref := statusBranches.ref(p.branch)
 	branch = "abcd-status/" + p.branch
+	standing := func(live liveFound) AnnounceResult {
+		return AnnounceResult{Kind: live.Kind, Item: live.Item, Sender: live.Sender, Branch: branch,
+			SentAt: live.SentAt, ExpiresAt: live.ExpiresAt, Commit: live.commit, Live: true}
+	}
 	if req.UnlessLive && parent != "" {
 		live, ok, err := liveAnnouncement(root, tree, p, parent)
 		if err != nil {
@@ -491,8 +495,7 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 				branch, p.msg.Kind, p.msg.Item, redacted(err), noAnnouncement)
 		}
 		if ok {
-			return AnnounceResult{Kind: live.Kind, Item: live.Item, Sender: live.Sender, Branch: branch,
-				SentAt: live.SentAt, ExpiresAt: live.ExpiresAt, Commit: live.commit, Live: true}, nil
+			return standing(live), nil
 		}
 	}
 	sent := func(sha string, attempts int) AnnounceResult {
@@ -561,6 +564,20 @@ func Announce(root string, req AnnounceRequest, o Options) (_ AnnounceResult, er
 		if attempt > maxAnnounceRetries {
 			return AnnounceResult{}, &NotSentError{Reason: fmt.Sprintf("abcd-status/%s moved under this push and each of %d retries; %s",
 				p.branch, maxAnnounceRetries, refused)}
+		}
+		// The race was lost to another session of this sender, which may have
+		// sent this very announcement: the check made before the first push
+		// is made again against the new tip, so two sessions landing the same
+		// item at once send it once.
+		if req.UnlessLive && next != "" {
+			live, ok, err := liveAnnouncement(root, tree, p, next)
+			if err != nil {
+				return AnnounceResult{}, fmt.Errorf("%s; %s moved, and whether it now holds a standing announcement of %s %s could not be read: %s",
+					refused, branch, p.msg.Kind, p.msg.Item, redacted(err))
+			}
+			if ok {
+				return standing(live), nil
+			}
 		}
 		parent = next
 	}
