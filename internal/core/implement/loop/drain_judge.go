@@ -21,7 +21,10 @@ package loop
 // The runner is started under the drain's lock, so another `abcd drain` in
 // this checkout backs off while it judges; the run is bounded by
 // drainJudgeTimeout, a small part of the reservation's lease the drain took
-// to ask it.
+// to ask it, and by the drain's own context (DrainOptions.Context): a drain
+// interrupted or terminated while its judge runs kills the runner's process
+// group before the move returns, records no fallback for the stop, and
+// refuses the move saying so, so the judge is asked again by the next move.
 //
 // The judge runs in a directory of its own (judgeDir): a new private
 // directory outside every working tree, holding the brief and, once it
@@ -96,6 +99,13 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	if !judgeRouted(o, d) {
 		return nil, "", nil
 	}
+	ctx := d.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if ctx.Err() != nil {
+		return nil, "", judgeStopped(iss.ID)
+	}
 	dir, err := judgeDir(repoRoot)
 	if err != nil {
 		return nil, "the drain judge was not started for " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
@@ -142,12 +152,19 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 			return nil
 		},
 		Record: func(fb runner.FallbackReceipt) error {
-			st.JudgeFallbacks = append(st.JudgeFallbacks, fb)
+			// A runner stopped with the drain is no fallback: the
+			// move refuses below, and the next one asks again.
+			if ctx.Err() == nil {
+				st.JudgeFallbacks = append(st.JudgeFallbacks, fb)
+			}
 			return nil
 		},
 		Now: func() time.Time { return now },
 	}
-	out, err := dsp.Dispatch(context.Background(), req)
+	out, err := dsp.Dispatch(ctx, req)
+	if ctx.Err() != nil {
+		return nil, "", judgeStopped(iss.ID)
+	}
 	switch {
 	case err != nil:
 		return nil, "the drain judge's runner did not judge " + iss.ID + " (" + termsafe.Sanitize(fsutil.RedactHome(err.Error())) +
@@ -164,6 +181,14 @@ func routedJudgement(repoRoot string, iss capture.Issue, v capture.DrainVerdict,
 	route := out.Receipt.Route
 	taken.Route = &route
 	return taken, "", nil
+}
+
+// judgeStopped is the move's refusal when the drain was stopped while its
+// judge ran over issue, or before it could start.
+func judgeStopped(issue string) error {
+	return refuse(StageDrain, "", "", "the drain was stopped while its judge ran over "+issue+
+		", and the judge's runner was stopped with it, its process group killed; the move took no answer",
+		"run `abcd drain` again, which asks the judge again")
 }
 
 // judgeDir makes the routed judge's directory: a new one, private to this

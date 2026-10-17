@@ -281,8 +281,10 @@ on origin's default branch backs off, with a tip or without one
    elapsed); a lane's start refused or failing; and a request that lapsed.
    Each is a fetch and one push, made only while that commit is still the tip,
    so a reservation this person made or renewed by hand since is left as it
-   stands. A process killed outright (SIGINT or SIGKILL) runs no release, so
-   its hold lapses after one lease. Every push the drain makes for a judgement
+   stands. An interrupt or a termination lets the move run to its end, stopping
+   a judge that is running, so it releases as any move does; a process killed
+   outright (SIGKILL) runs no
+   release, so its hold lapses after one lease. Every push the drain makes for a judgement
    is its hold, a renewal of this person's reservation that had lapsed
    included; one this person still held live when the drain reached the issue
    is theirs and never released. When the move can read origin's
@@ -495,8 +497,10 @@ answer. The judgement records the route that ran it. A runner that does not
 answer, refuses, fails, or writes an answer out of shape is a fallback: its
 receipt is kept in the drain's state and the host's request stands, as with no
 route; a rate limit leaves it standing too. The runner runs under the drain's
-lock, and whatever it reaches over the network is the runner's own, not a
-network act of abcd's.
+lock and stops with the drain: an interrupt or a termination while it judges
+kills the runner's process group before the move ends, records no fallback, and
+refuses the move saying so, so the next move asks the judge again. Whatever
+the runner reaches over the network is its own, not a network act of abcd's.
 
 ### The lane
 

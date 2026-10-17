@@ -217,7 +217,10 @@ what it did in `next`:
   runner that does not answer, or answers out of shape, is recorded in the
   drain's state (`judge_fallbacks`) and the request above is left to you, as
   with no route; `next` says so. The runner runs under the drain's lock, for at
-  most fifteen minutes.
+  most fifteen minutes, and stops with the drain: an interrupt or a
+  termination while it judges kills its process group before the move ends,
+  records no fallback, and refuses the move saying so, and the next
+  `abcd drain` asks the judge again.
 - **It reserves the issue.** In a checkout with a remote named `origin`, the
   drain reserves each issue on it before it asks the judgement over it, as
   `abcd reserve` does, with the path the issue's `found_at` names (a `:line`
@@ -232,7 +235,9 @@ what it did in `next`:
   up on origin, or a `no` comes once the window has elapsed); when the lane's
   start is refused or fails; and when a request lapses. It does so on every
   path the drain's process lives through, an error or a crash in the move
-  included; a drain killed outright (Ctrl-C, or a kill signal) releases
+  included, an interrupt (Ctrl-C) or a termination signal among them: the move
+  runs to its end, stopping a judge that is running; a drain killed outright
+  (`SIGKILL`) releases
   nothing, and its reservation lapses after one lease (two hours by default).
   Each release is a fetch and one tombstone push over the commit the drain's
   reservation made, made only while that commit is still the tip, so a

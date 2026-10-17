@@ -28,8 +28,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -84,6 +86,20 @@ func loopFakeHarness(mode string) int {
 		fmt.Println(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"fake-session-3"}`)
 		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"result":"limit reached","session_id":"fake-session-3"}`)
 		return 1
+	}
+	if mode == "hang" {
+		// A harness that does not finish, with a child of its own in its
+		// process group: both pids are logged, the child's first, so a test
+		// can stop the run and see that neither outlived it.
+		if dir := os.Getenv(loopFakeLogEnv); dir != "" {
+			child := exec.Command("/bin/sleep", "60")
+			if child.Start() == nil {
+				_ = os.WriteFile(filepath.Join(dir, name+".child.pid"), []byte(strconv.Itoa(child.Process.Pid)), 0o600)
+			}
+			_ = os.WriteFile(filepath.Join(dir, name+".pid"), []byte(strconv.Itoa(os.Getpid())), 0o600)
+		}
+		time.Sleep(60 * time.Second)
+		return 0
 	}
 	if answer, ok := strings.CutPrefix(mode, "judge-"); ok {
 		// The drain's judge (judgement.go): the answer the routed brief asks

@@ -1,10 +1,14 @@
 package cli
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 
 	"time"
 
@@ -249,7 +253,13 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	if cmd.Flags().Changed("judgement") && strings.TrimSpace(judgement) == "" {
 		return &exitError{Code: 2, Msg: "abcd drain: --judgement names no file; give the answer's path the judgement request names (nothing written)"}
 	}
-	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement, Transcripts: &lazyHistoryStore{cmd: cmd}})
+	// An interrupt or a termination ends the context, and the runner kills
+	// the process group of a routed judge it started through its own handle:
+	// a judge never outlives the move that started it.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement,
+		Transcripts: &lazyHistoryStore{cmd: cmd}, Context: ctx})
 	if isDrainRuleRefusal(err) {
 		return &exitError{Code: 2, Msg: "abcd drain: " + termsafe.Sanitize(err.Error()) + " (nothing written)"}
 	}

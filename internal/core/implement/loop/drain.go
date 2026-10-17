@@ -21,6 +21,7 @@ package loop
 // lanes' hand-backs it routed, with the record change each made.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -196,6 +197,9 @@ type DrainOptions struct {
 	Transcripts runner.TranscriptStore
 	// JudgeTimeout bounds one routed judgement; drainJudgeTimeout when zero.
 	JudgeTimeout time.Duration
+	// Context ends the move's routed judge: the front door ends it on an
+	// interrupt or a termination. context.Background when nil.
+	Context context.Context
 }
 
 // DrainResult is one drain invocation's summary.
