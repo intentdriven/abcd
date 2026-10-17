@@ -19,11 +19,10 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-
-	"github.com/intentdriven/abcd/internal/gitutil"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/peers"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // The kinds a hand-back tombstone names (Abcd-Handed-Back): the four a lane's

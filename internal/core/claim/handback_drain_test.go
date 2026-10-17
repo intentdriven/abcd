@@ -132,8 +132,8 @@ func TestADrainBacksOffAReservationLineHoldingAMerge(t *testing.T) {
 	runGit(t, w.bare, "update-ref", RefPrefix+"iss-5", merge, tip)
 	before := w.remoteTip("iss-5")
 	res, err := r.do(Request{Record: "iss-5", Footprint: []string{"c.go"}, Drain: true})
-	if !errors.Is(err, ErrBackOff) {
-		t.Fatalf("R's drain over a reservation line holding a merge = %+v, %v; want a back-off", res, err)
+	if !errors.Is(err, ErrBackOff) || !strings.Contains(err.Error(), "more than one parent") {
+		t.Fatalf("R's drain over a reservation line holding a merge = %+v, %v; want a back-off naming the merge", res, err)
 	}
 	if w.remoteTip("iss-5") != before {
 		t.Fatal("the back-off pushed")
