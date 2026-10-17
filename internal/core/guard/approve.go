@@ -238,6 +238,11 @@ func approveShellAt(ld Loaded, files *Files, command string, depth int) Approval
 	facts := factsFor(r.files)
 	placed := placedLine(rc.line, v.segs)
 	for _, p := range placed {
+		if p.seg.parenWord {
+			return parenRefusal()
+		}
+	}
+	for _, p := range placed {
 		for _, st := range p.states {
 			target, unplacedName, ok := criticalRemoval(p.seg, st, facts)
 			switch {

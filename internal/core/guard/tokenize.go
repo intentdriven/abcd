@@ -1885,7 +1885,8 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			// A `(` glued to a word (a redirection's target included), or
 			// standing after the command's name, is part of a word to zsh,
 			// which reads it as glob qualifiers or modifiers, not a subshell.
-			if c == '(' && arrayName == "" {
+			// A function definition's `()` after its name is not.
+			if c == '(' && arrayName == "" && !funcParens(line, i, toks, cur, hasCur) {
 				glued := hasCur || len(curRedirs) > 0 && i > 0 && !strings.ContainsRune(" \t\n;&|()<>", rune(line[i-1]))
 				parenNext = glued || len(toks) > 0 && !allReserved(toks)
 			}
@@ -2141,6 +2142,24 @@ const arithmeticOperand = "0"
 
 // allReserved reports whether every token so far is a reserved word, so the
 // next word stands in command position.
+// funcParens reports whether the `(` at line[i] opens a function
+// definition's `()`: a `)` follows it with only blanks between, and the words
+// before it are one name, or `function` and one name (f(), f (), function f()).
+func funcParens(line string, i int, toks []string, cur []byte, hasCur bool) bool {
+	j := i + 1
+	for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
+		j++
+	}
+	if j >= len(line) || line[j] != ')' {
+		return false
+	}
+	words := append([]string(nil), toks...)
+	if hasCur {
+		words = append(words, string(cur))
+	}
+	return len(words) == 1 || len(words) == 2 && words[0] == "function"
+}
+
 func allReserved(toks []string) bool {
 	for _, t := range toks {
 		if !reserved[t] {

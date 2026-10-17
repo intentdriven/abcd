@@ -161,10 +161,12 @@ func TestApproveRefusesAGlobWithAWildcardInADirectoryPart(t *testing.T) {
 // TestApproveRefusesATargetHoldingAnUnquotedParen: zsh reads an unquoted ( in
 // a word as the start of glob qualifiers or modifiers, which can change the
 // path the word names: build/l(:A) is the real path a symlink leads to, out of
-// the working tree, though the line spells a name inside it. So a removal or a
-// write whose target holds an unquoted (, whatever follows it, is refused as a
-// target the line does not fix; a quoted or escaped ( is text, and stays
-// approved.
+// the working tree, though the line spells a name inside it, and the words
+// after the ( are not read as the command's own. So a command with an unquoted
+// ( in a word, whatever the command and whatever follows the (, is refused as
+// one whose targets the line does not fix; bash refuses such a line. A quoted
+// or escaped ( is text, and a function definition's () is not a word, so both
+// stay approved.
 func TestApproveRefusesATargetHoldingAnUnquotedParen(t *testing.T) {
 	r, _ := gitRig(t)
 	outside := filepath.Join(r.home, "Library")
@@ -192,6 +194,9 @@ func TestApproveRefusesATargetHoldingAnUnquotedParen(t *testing.T) {
 		{`rm -f a\(b\)`, nil},
 		{`touch 'x(.)'`, nil},
 		{`f() { rm -f x; }; f`, nil},
+		{`f () { rm -f x; }; f`, nil},
+		{`function g() { true; }; g`, nil},
+		{`function g () { true; }; g`, nil},
 		{`rm -rf build/l(:A)`, unfixed},
 		{`rm -f x(.)`, unfixed},
 		{`rm -rf a/b(/)`, unfixed},
@@ -201,5 +206,9 @@ func TestApproveRefusesATargetHoldingAnUnquotedParen(t *testing.T) {
 		{`echo hi > x(:A)`, unfixed},
 		{`> x(.)`, unfixed},
 		{`find a(:A) -delete`, unfixed},
+		{`sed x(.) -i`, unfixed},
+		{`cp a(.) -t dir`, unfixed},
+		{`echo hi(:A)`, unfixed},
+		{`ls x(/)`, unfixed},
 	})
 }
