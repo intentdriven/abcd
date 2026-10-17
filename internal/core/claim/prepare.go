@@ -108,6 +108,11 @@ type Request struct {
 	// Live, with Renew, refuses one's own reservation that has lapsed too
 	// (NotHeldLapsed): the land fence renews only a reservation that holds.
 	Live bool
+	// Stage, with Renew, is the stage of the drain lane renewing, one of
+	// LaneStages, which the renewal carries as its Abcd-Stage trailer; "" for
+	// every other act. Not yet written or checked: step 18's claim half adds
+	// the writer and the refusal of an unknown stage.
+	Stage string
 }
 
 // prepared is a request checked and filled in from the checkout, before the
