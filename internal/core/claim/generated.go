@@ -83,25 +83,39 @@ func GeneratedFiles(root string) (Generated, string) {
 			}
 		}
 	}
-	files := map[string]bool{}
-	total := generatedSteps
+	var candidates []string
 	for _, entry := range entries {
 		meta, p, ok := strings.Cut(entry, "\t")
 		// A regular file only, executable or not: never a symbolic link or a
 		// submodule.
 		f := strings.Fields(meta)
-		if !ok || len(f) != 3 || f[0] != "100644" && f[0] != "100755" || f[1] != "blob" || underNested(p, nested) {
-			continue
+		if ok && len(f) == 3 && (f[0] == "100644" || f[0] == "100755") && f[1] == "blob" && !underNested(p, nested) {
+			candidates = append(candidates, p)
 		}
-		generated, spent := rules.judge(p, &total)
+	}
+	files, spent := rules.generatedAmong(candidates)
+	if spent {
+		return Generated{}, fmt.Sprintf(".gitattributes on %s takes too long to match against the files there", gitutil.ShortRef(ref))
+	}
+	return Generated{files: files}, ""
+}
+
+// generatedAmong is the paths the declaration makes generated, judged within
+// generatedSteps together; spent is true, and the set nil, when the budget
+// ran out first.
+func (rs attrRules) generatedAmong(paths []string) (map[string]bool, bool) {
+	files := map[string]bool{}
+	total := generatedSteps
+	for _, p := range paths {
+		generated, spent := rs.judge(p, &total)
 		if spent {
-			return Generated{}, fmt.Sprintf(".gitattributes on %s takes too long to match against the files there", gitutil.ShortRef(ref))
+			return nil, true
 		}
 		if generated {
 			files[p] = true
 		}
 	}
-	return Generated{files: files}, ""
+	return files, false
 }
 
 // underNested reports whether p lies at or below a directory in nested.
@@ -162,6 +176,39 @@ type attrRule struct {
 	// generated is the state the line gives: true only for linguist-generated
 	// set or =true.
 	generated bool
+	// prefix and suffix are the literal bytes pat begins and ends with, up to
+	// its first and from its last special byte: a subject that does not begin
+	// and end with them cannot match, so it is turned away without a match.
+	prefix, suffix string
+}
+
+// globSpecial reports whether c is a byte wildmatch reads as other than
+// itself.
+func globSpecial(c byte) bool {
+	return c == '*' || c == '?' || c == '[' || c == ']' || c == '\\'
+}
+
+// literalEnds is the literal prefix and suffix of pat (attrRule).
+func literalEnds(pat string) (prefix, suffix string) {
+	i := 0
+	for i < len(pat) && !globSpecial(pat[i]) {
+		i++
+	}
+	if i == len(pat) {
+		return pat, pat
+	}
+	j := len(pat)
+	for j > 0 && !globSpecial(pat[j-1]) {
+		j--
+	}
+	prefix, suffix = pat[:i], pat[j:]
+	// A slash beside a star may be part of "**/" or "/**/", which can match
+	// no directory at all, so it is not required.
+	if strings.HasPrefix(suffix, "/") {
+		suffix = suffix[1:]
+	}
+	prefix = strings.TrimSuffix(prefix, "/")
+	return prefix, suffix
 }
 
 // attrRules are the deciding lines in file order: the last that matches a
@@ -191,7 +238,10 @@ func (rs attrRules) judge(p string, total *int) (generated, spent bool) {
 			b.left = *total
 		}
 		start := b.left
-		m := dowild(rs[i].pat, subject, &b)
+		m := wmNoMatch
+		if b.take(len(rs[i].prefix)+len(rs[i].suffix)) && strings.HasPrefix(subject, rs[i].prefix) && strings.HasSuffix(subject, rs[i].suffix) {
+			m = dowild(rs[i].pat, subject, &b)
+		}
 		if total != nil {
 			*total -= start - max(b.left, 0)
 		}
@@ -354,7 +404,8 @@ func parseAttrLine(line string, macros map[string]bool) (attrRule, lineKind) {
 	if pat == "" || !globSupported(pat) {
 		return attrRule{}, voidsIf(line, macros)
 	}
-	return attrRule{pat: pat, basename: basename, generated: generated}, lineRule
+	prefix, suffix := literalEnds(pat)
+	return attrRule{pat: pat, basename: basename, generated: generated, prefix: prefix, suffix: suffix}, lineRule
 }
 
 // voidsIf is the kind of a line the reader does not understand: it voids the
@@ -430,17 +481,39 @@ func globSupported(pat string) bool {
 var matchSteps = 1_000_000
 
 // generatedSteps bounds the matching GeneratedFiles does over every file
-// together; past it the declaration declares nothing, and says why.
-var generatedSteps = 50_000_000
+// together; past it the declaration declares nothing, and says why. A step
+// costs about a nanosecond: an ordinary tree of 150,000 files against 50
+// lines takes about 3e8 of them (0.22 s, TestALargeOrdinaryTreeFitsTheBudget),
+// and a declaration that would take longer stops at about half a second
+// (TestTheBudgetBoundsWallTimeOverLongLiterals); measured 2026-10-17.
+var generatedSteps = 500_000_000
 
-// wildBudget is the steps a match has left; each call and each try of a star
-// spends one, and a match past it answers wmAbortAll.
+// wildBudget is the steps a match has left: each call, each byte of the
+// pattern or the text compared, skipped or scanned, and each try of a star
+// spends one, so the steps bound the time a match takes; a match past it
+// answers wmAbortAll.
 type wildBudget struct{ left int }
 
 // spend takes one step, reporting whether the budget still holds.
 func (b *wildBudget) spend() bool {
 	b.left--
 	return b.left >= 0
+}
+
+// take takes n steps, one for each byte a scan reads.
+func (b *wildBudget) take(n int) bool {
+	b.left -= n
+	return b.left >= 0
+}
+
+// scanSlash is strings.IndexByte(s, '/'), charged one step per byte read.
+func scanSlash(s string, b *wildBudget) (int, bool) {
+	i := strings.IndexByte(s, '/')
+	n := len(s)
+	if i >= 0 {
+		n = i + 1
+	}
+	return i, b.take(n)
 }
 
 // wildmatch's answers, as git's wildmatch.c gives them.
@@ -454,14 +527,18 @@ const (
 // dowild is git's wildmatch with WM_PATHNAME, case-sensitive: '*', '?' and a
 // class never match a slash, and "**" matches across slashes only between
 // slashes (a leading "**/", a trailing "/**", a middle "/**/"). A basename
-// holds no slash, so the same matcher serves a pattern with none. Every call
-// and every try of a star spends from b, and a match past it is wmAbortAll.
+// holds no slash, so the same matcher serves a pattern with none. Every call,
+// every byte compared, skipped or scanned and every try of a star spends from
+// b, and a match past it is wmAbortAll.
 func dowild(p, text string, b *wildBudget) int {
 	if !b.spend() {
 		return wmAbortAll
 	}
 	ti := 0
 	for pi := 0; pi < len(p); pi, ti = pi+1, ti+1 {
+		if !b.spend() {
+			return wmAbortAll
+		}
 		pch := p[pi]
 		if ti >= len(text) && pch != '*' {
 			return wmAbortAll
@@ -487,6 +564,9 @@ func dowild(p, text string, b *wildBudget) int {
 			if pi < len(p) && p[pi] == '*' {
 				prev := pi - 2
 				for pi < len(p) && p[pi] == '*' {
+					if !b.spend() {
+						return wmAbortAll
+					}
 					pi++
 				}
 				if (prev < 0 || p[prev] == '/') &&
@@ -501,14 +581,23 @@ func dowild(p, text string, b *wildBudget) int {
 			if pi == len(p) {
 				// A trailing "**" matches everything; a trailing "*" only
 				// what holds no slash.
-				if !matchSlash && strings.IndexByte(text[ti:], '/') >= 0 {
-					return wmNoMatch
+				if !matchSlash {
+					slash, ok := scanSlash(text[ti:], b)
+					if !ok {
+						return wmAbortAll
+					}
+					if slash >= 0 {
+						return wmNoMatch
+					}
 				}
 				return wmMatch
 			}
 			if !matchSlash && p[pi] == '/' {
 				// One '*' then a slash matches the rest of this directory.
-				slash := strings.IndexByte(text[ti:], '/')
+				slash, ok := scanSlash(text[ti:], b)
+				if !ok {
+					return wmAbortAll
+				}
 				if slash < 0 {
 					return wmNoMatch
 				}
@@ -522,6 +611,9 @@ func dowild(p, text string, b *wildBudget) int {
 				if c := p[pi]; c != '*' && c != '?' && c != '[' && c != '\\' {
 					// A literal after the star: skip to its next occurrence.
 					for ti < len(text) && (matchSlash || text[ti] != '/') && text[ti] != c {
+						if !b.spend() {
+							return wmAbortAll
+						}
 						ti++
 					}
 					if ti >= len(text) || text[ti] != c {
@@ -558,6 +650,9 @@ func dowild(p, text string, b *wildBudget) int {
 			var prev byte
 			matched := false
 			for {
+				if !b.spend() {
+					return wmAbortAll
+				}
 				switch {
 				case c == '\\':
 					pi++
