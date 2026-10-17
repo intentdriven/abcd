@@ -1184,10 +1184,7 @@ func TermMatcher(prompt string) func(term string) bool {
 // uses it, with its candidate roots. It reads the bytes TermMatcher
 // reads, from the same index.
 func PromptTerms(prompt string) []PromptTerm {
-	if len(prompt) > maxPromptBytes {
-		prompt = prompt[:maxPromptBytes]
-	}
-	return indexPrompt(prompt).terms
+	return indexPrompt(CapPrompt(prompt)).terms
 }
 
 // TextStems is the stem of each token of text, in order — lower-cased, split
