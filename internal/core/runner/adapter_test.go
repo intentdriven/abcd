@@ -78,7 +78,9 @@ func TestOpenCodeLaunch(t *testing.T) {
 	if argv[len(argv)-2] != "--" {
 		t.Errorf("the prompt is not behind the end-of-options marker: %q", argv)
 	}
-	if ans.SessionID != "ses_fake1" || ans.Text != "done" || ans.Model != "openrouter/qwen/qwen3-coder" {
+	// Run mode names no model, so the served model is empty and the one the
+	// runner passed is the asked side's (iss-2610161709506207).
+	if ans.SessionID != "ses_fake1" || ans.Text != "done" || ans.Model != "" || ans.ModelAsked != "openrouter/qwen/qwen3-coder" {
 		t.Errorf("answer = %+v", ans)
 	}
 }

@@ -7,15 +7,21 @@ package runner
 
 import "time"
 
-// RouteRecord is the route a role asked for and the one that ran it.
+// RouteRecord is the route a role asked for and the one that ran it, and,
+// when a runner ran it, both sides of the run (itd-166).
 type RouteRecord struct {
 	// Asked is the route the configuration named: host or a runner.
 	Asked string `json:"asked"`
 	// Ran is the route that ran the role: host, a runner, or none.
 	Ran string `json:"ran"`
-	// Model is the model the runner that ran it reported; "" on the host,
-	// whose own receipt reports it.
+	// Model is the model the runner that ran it reported, the canonical
+	// served model; "" on the host, whose own receipt reports it, and when
+	// the runner reported none.
 	Model string `json:"model"`
+	// Sides is both sides of the run, present when a runner ran it; its
+	// fields are omitted when empty, so a host's or an older record reads as
+	// it always has.
+	Sides
 }
 
 // RoleReceipt is a role run's receipt block. Everything but Route is the

@@ -324,7 +324,7 @@ func TestReceiptsDifferOnlyInRoute(t *testing.T) {
 		t.Fatal(err)
 	}
 	a, b := viaRunner.Receipt, viaHost.Receipt
-	if a.Route == b.Route {
+	if reflect.DeepEqual(a.Route, b.Route) {
 		t.Fatal("the two receipts do not name different routes")
 	}
 	a.Route, b.Route = RouteRecord{}, RouteRecord{}

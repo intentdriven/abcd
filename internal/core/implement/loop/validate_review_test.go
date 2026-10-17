@@ -98,7 +98,7 @@ func TestTheReviewsGoToRepoPromptOverMCPAndTheLoopRecordsTheirVerdicts(t *testin
 		if err != nil {
 			t.Fatalf("the %s over the route: %v", role, err)
 		}
-		if got.Route == nil || *got.Route != (runner.RouteRecord{Asked: "rp", Ran: "rp"}) || got.Awaiting != nil || got.Stage != StageValidate {
+		if got.Route == nil || !reflect.DeepEqual(*got.Route, runner.RouteRecord{Asked: "rp", Ran: "rp"}) || got.Awaiting != nil || got.Stage != StageValidate {
 			t.Fatalf("the route ran the %s and the lane stays at validate: %+v", role, got)
 		}
 		sent := sentTo(srv)
@@ -684,7 +684,7 @@ func TestAHandBackAfterABusyLockRecordsTheRoute(t *testing.T) {
 				return
 			}
 			want := runner.RouteRecord{Asked: "rp", Ran: "rp"}
-			if v.Route == nil || *v.Route != want || got.Route == nil || *got.Route != want || v.Verdict != "SHIP" {
+			if v.Route == nil || !reflect.DeepEqual(*v.Route, want) || got.Route == nil || !reflect.DeepEqual(*got.Route, want) || v.Verdict != "SHIP" {
 				t.Fatalf("the hand-back records the route that ran the review: %+v %+v", v, got.Route)
 			}
 			var record strings.Builder

@@ -84,11 +84,18 @@ type Request struct {
 type Answer struct {
 	// Text is the harness's final message.
 	Text string
-	// Model is the model the harness reports, or the one it was asked for when
-	// it reports none.
+	// Model is the model the harness reports, "" when it reports none: the
+	// model the runner asked for is Sides.ModelAsked, and never stands in for
+	// the one that answered (itd-166, iss-2610161709506207).
 	Model string
 	// SessionID is the harness's own session id, "" when it reports none.
 	SessionID string
+	// Sides is both sides of the run: what the runner asked for, and the
+	// token counts, cost and served models the harness's events report.
+	Sides
+	// counted is which token counts the harness's events carried, read
+	// with them, for the record's list of what it could not pin.
+	counted counted
 }
 
 // Runner is one route a role can run through.
