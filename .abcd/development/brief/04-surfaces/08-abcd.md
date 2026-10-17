@@ -232,25 +232,30 @@ lookup fails. That reader writes nothing, takes no lock and fetches nothing.
 **The reservations in `/abcd:peers`** (itd-2609091034175565,
 spc-2610031753359849). Below the peer rows, `abcd peers` lists the
 reservations on the shared remote. It is the verb's one network act: a fetch
-from `origin` of every `abcd-reserved/` branch, with pruning, and of the
-default branch, which updates the remote-tracking reservation branches and
-stamps when it ran in the local tier. Each reservation is listed with its
+from `origin` of every `abcd-reserved/` branch, with pruning, of the default
+branch and of `origin`'s release tags, which updates the remote-tracking
+reservation branches and the release tags abcd keeps under
+`refs/abcd/release-tags/` ([`37-reserve.md`](37-reserve.md#the-release-hold)),
+and stamps when it ran in the local tier. Each reservation is listed with its
 record, holder, footprint, effective expiry and state (`live`, `expired`,
-`released` by its tombstone or by the record being finished on origin's
-default branch, or `unreadable` with its fixed reason and the end of its
-hold), its own copy's marked, a live drain lane's stage when its renewal
+`released` by its tombstone, by the record being finished on origin's default
+branch or, for a release, by its tag being on origin, or `unreadable` with its
+fixed reason and the end of its hold), its own copy's marked, a live drain lane's stage when its renewal
 names one (`Abcd-Stage`, one of `worktree`, `brief`, `implement`, `validate`
 and `land`, written by a lane's renewal, or by a drain's reservation that
 renews the live hold of a lane a concurrent build started, never by a fresh or
-taken-over reservation; a later renewal naming none clears it), and each person's count of
-live reservations; every value a writer chose is shown quoted and
+taken-over reservation; a later renewal naming none clears it), then a line
+for each release being cut (a live reservation of the release itself, which
+holds every other session's merge until its tag is on origin), and each
+person's count of live reservations, which leaves a release out; every value a writer chose is shown quoted and
 terminal-safe. Below them, each holder's hand-back tombstones of the last 24
 hours by their `Abcd-Released-At`, with each one's record and kind, newest
 first, at most ten per holder and the rest counted; one dated more than
 `lease.Skew` ahead of the reader's clock is not listed. Both are read from
 the same view, so they add no network act (spc-2610161044461448 step 18,
 dcn-2610161040394970). The JSON form adds `reservations` (each live one with
-`stage` when it carries one), `live_by_holder`, `hand_backs_by_holder` (`holder`,
+`stage` when it carries one), `live_by_holder`, `release_holds` (one per
+release being cut), `hand_backs_by_holder` (`holder`,
 `hand_backs` of `record`, `kind` and `released_at`, and `more`) and `view`
 (`origin`, `fetched_at`, `age_seconds`). When the fetch fails, the listing renders the view as last
 fetched with its age, names the failure on stderr and in `fetch_error`, and
