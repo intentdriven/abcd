@@ -185,8 +185,9 @@ leaves that path not generated) and the act says why
 understand (a POSIX class, say) is skipped, voiding every line before it when
 it could unset the attribute. abcd shares a generated file only when every line
 of the root declaration that git reads (each but a blank or comment line) is
-ASCII, with no quoting, macros or checkout conversion (`ident`, `working-tree-encoding`), and otherwise warns and
-shares none. A shared path with a
+ASCII, with no quoting, macros or checkout conversion (`ident`,
+`working-tree-encoding`), and otherwise warns and shares none. A byte-order
+mark counts as outside ASCII, even before a comment. A shared path with a
 live reservation the same person holds from another copy does not refuse a
 person's own act: it is made, and names each such path, the other record and
 its expiry (`own_overlap`, a warning on stderr in the text form). Only the
