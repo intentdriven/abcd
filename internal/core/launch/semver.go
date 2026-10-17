@@ -1,6 +1,7 @@
 package launch
 
 import (
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
@@ -57,6 +58,41 @@ func ParseSemver(value string) (Semver, error) {
 		return Semver{}, fmt.Errorf("semver component out of range: %q: %w", value, err)
 	}
 	return Semver{Major: major, Minor: minor, Patch: patch, Prerelease: m[4], Build: m[5]}, nil
+}
+
+// releaseTagRe is a release tag: exactly vMAJOR.MINOR.PATCH, ASCII digits
+// only, no leading zero, no pre-release and no build part, each component at
+// most nine digits. The bound keeps every component inside int32 on any
+// platform, far above any release this repository will cut, and caps the
+// whole tag at 30 bytes, so a value read from a tracked file cannot carry
+// anything past the version it claims to be.
+var releaseTagRe = regexp.MustCompile(`\Av(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\z`)
+
+// errNotReleaseTag is the refusal ParseReleaseTag returns. It does not echo
+// the value: the value is often read from a repository's tracked files, and a
+// caller relaying the error must not relay it.
+var errNotReleaseTag = errors.New("not a release tag of the form vMAJOR.MINOR.PATCH (digits only, no leading zero)")
+
+// ParseReleaseTag parses a release tag, the one strict form every release
+// version abcd reads must take (spc-2610170635097509): the running binary's
+// core.Version, a repository's recorded setup version, the binary record's
+// previous tag, a digest's tags. Anything else, a dev build or a pre-release
+// included, is refused and takes no part in a comparison. Order the result
+// with CoreGreater.
+func ParseReleaseTag(tag string) (Semver, error) {
+	m := releaseTagRe.FindStringSubmatch(tag)
+	if m == nil {
+		return Semver{}, errNotReleaseTag
+	}
+	var n [3]int
+	for i := range n {
+		v, err := strconv.Atoi(m[i+1])
+		if err != nil {
+			return Semver{}, errNotReleaseTag
+		}
+		n[i] = v
+	}
+	return Semver{Major: n[0], Minor: n[1], Patch: n[2]}, nil
 }
 
 // BumpTier names the SemVer component that moved from prev to next: "major",
