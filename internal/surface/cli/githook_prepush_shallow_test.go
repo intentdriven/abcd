@@ -208,16 +208,22 @@ func TestPrePushStaysStrictFromAShallowClone(t *testing.T) {
 	})
 }
 
-// TestPrePushReadsAShallowLineAsGitDoes: git reads a .git/shallow line as its
-// first object id's worth of hex, in either case, and ignores what follows, so
-// the hook reads the line the same way. A shallow line written in upper case,
-// with a carriage return, or with trailing text still cuts git's walk at the
-// announcement, and the commit carrying files beneath it is still gated.
+// TestPrePushReadsAShallowLineAsGitDoes: however a .git/shallow line is
+// written, the hook judges the walk git itself makes. A line in upper case,
+// with a carriage return, with trailing text, or naming a second commit past
+// byte 1023 of a long line still cuts git's walk at the announcement, and the
+// commit carrying files beneath it is still gated.
 func TestPrePushReadsAShallowLineAsGitDoes(t *testing.T) {
 	for name, line := range map[string]func(string) string{
 		"upper case":      strings.ToUpper,
 		"carriage return": func(id string) string { return id + "\r" },
 		"trailing text":   func(id string) string { return id + " written by hand" },
+		// git reads the file in pieces of at most 1023 bytes, so a long line
+		// names a second commit from byte 1024 on.
+		"second id on a long line": func(id string) string {
+			pad := strings.Repeat("0", 40) + strings.Repeat(" ", 1023-40)
+			return pad + id
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			c := newPrePushCase(t)
