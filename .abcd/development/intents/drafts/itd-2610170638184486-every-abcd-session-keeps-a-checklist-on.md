@@ -88,43 +88,85 @@ unowned pull request.
 Agreed with the session drafting the coordination intent ("Headless agents in
 parallel coordinate through the shared remote, not conversation", on branch
 draft/conductor-intent until it lands; each record links the other once both
-are on the default branch):
+are on the default branch), and settled by the product thinker in that
+session's interview on 2026-10-17:
 
 - **This intent (one session's own state):** the checklist on disk and its
   re-injection at start and after compaction, the modes, the waits, the trigger
-  promises, the stop check, the timed wake, and the lists for the person's
-  return. The checklist is also where a session writes what could interrupt it
-  before a run.
+  promises, the stop check, the timed wake, the lists for the person's return,
+  and the pre-run blocker sweep, which asks each session by message what could
+  interrupt it (the product thinker chose this over moving the sweep into the
+  coordination pass).
 - **The coordination intent (state shared across sessions on the remote):**
-  owned work with leases and take-over, so leases live in one place (its claim,
-  generation number and lapse rule), and the pre-run blocker sweep, which its
-  pass runs by reading every session's records rather than asking each by
-  message.
+  owned work with leases and take-over, so leases live in one place; the
+  central view, one short status line per session (what it holds, its state in
+  one line, what it waits on, when it was last seen), published only when it
+  changes and only after the session has written its checklist; and each
+  autonomous session's own credential.
 
 ## Decisions
 
+The product thinker's answers of 2026-10-17, restated, and the agent's
+technical decisions on state-of-the-art grounds, each marked.
+
 - **Where the checklist lives:** on this computer only for now. A published
   option on GitHub (public) and a private shared option (for example through
-  abcdev.app) come later (product thinker, 2026-10-17).
-- **A phone surface:** the product thinker asked whether an iPhone app would
-  help them, and perhaps the technical facilitator, answer the questions that
-  would otherwise stop an autonomous run. The agent's assessment: useful, built
-  first as an installable web app on the private shared option rather than a
-  native app, reusing the live brief session's relay and GitHub sign-in; a
-  native app only if lock-screen answers or widgets prove necessary. An answer
-  from the phone only chooses among the options offered or adds a note. It is a
-  later step of this work, not part of its first delivery (agent, 2026-10-17,
-  awaiting the product thinker's word).
+  abcdev.app) are part of this work (product thinker).
+- **What the private shared option shares:** everything by default,
+  configurable later (product thinker).
+- **The phone surface is part of this work.** An installable web app on the
+  private shared option, rather than a native app, reusing the live brief
+  session's relay and GitHub sign-in; a native app only if lock-screen answers
+  or widgets prove necessary. An answer from the phone only chooses among the
+  options offered or adds a note. Its look is chosen in design rounds in
+  lab-261017071130-6fd3032 (product thinker for scope; agent for the form).
+- **Who answers from the phone:** each person by their role: product questions
+  to the product thinker, technical trade-offs to the technical facilitator
+  (product thinker).
+- **When the phone notifies:** configurable; by default only when a session's
+  work would otherwise stop (product thinker).
+- **The stop check:** a session that tries to stop while it has work it can do
+  is refused and handed its next item only while the product thinker is
+  recorded as away; while they are present the stop is allowed and flagged.
+  The refusal is always made plain to them, so it never surprises them. A
+  session genuinely waiting on something outside records what it waits for and
+  when it will look again, and is never kept spinning (product thinker).
+- **How a session learns the product thinker is away:** they say so, or set it
+  in the app, either until a set time or open-ended; open-ended, they say when
+  they are back. The state is always shown plainly, so they never wrongly
+  believe agents are waiting or working (product thinker). Their stated goal,
+  which the design must make possible: almost all work runs autonomously once
+  the human design work is done.
+- **The release:** this intent and the coordination intent form the
+  autonomous-agents bundle, built as the next big release once current work
+  settles; dashboard work joins later (product thinker).
+- **Credentials:** autonomous sessions never use the product thinker's own
+  forge login; each runs under its own weaker credential, owned by the
+  coordination intent. The checklist records the credential's kind, scope and
+  expiry, never its value or anything that retrieves it; a missing or expiring
+  credential is a blocker-sweep question and owed work (product thinker, with
+  the coordination session).
+- **Crash safety:** the checklist survives a session killed mid-write, a host
+  or terminal restart and a reboot, leaving the last complete checklist
+  readable and re-injected, never truncated or empty (captured by the product
+  thinker on the coordination session's branch; linked once it lands). The claim
+  is confirmed only after a state-of-the-art pass and a lab that kills a session
+  mid-write and reboots.
+- **Format and re-injection (agent, on state-of-the-art grounds):** the
+  checklist is JSON, not Markdown, because long-running agent harnesses find
+  models overwrite Markdown state more readily; it is re-injected through the
+  session-start hook's compact event, which the host re-reads after compaction.
+  Writes use a temporary file, fsync, rename and a directory fsync, keep a
+  last-good copy, and validate on read.
+- **What the product thinker sees (agent):** a session's state shown to a
+  person is derived from what the machine can see (its claim renewal, its
+  process, its last commit); what the agent writes about itself is a hint,
+  since agent-written status lags.
 
 ## Open Questions
 
-_Seeded by the agent on 2026-10-17; each lists the defensible answers, none
-recommended. Everything else in this draft is the agent's to decide and record._
-
-- **How hard does the check at a session's stop bite?** (a) it refuses the stop
-  and names the next item; (b) it lets the stop through with a warning that the
-  coordinator and the status line see; (c) it refuses only during an autonomous
-  run and warns otherwise.
+_None for the product thinker at this point; the acceptance criteria are walked
+in the planning interview._
 
 ## Audit Notes
 
