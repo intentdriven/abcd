@@ -1201,17 +1201,23 @@ lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the ru
 drive with `abcd implement step`. Run it again once that lane is handed back or its
 pull request is open, and it routes the lane's outcome and opens the next. A lane
 that cannot finish does not hold the drain: each refused step of its run is logged
-on the lane, and once the step has been refused the same way three times, or at one
-stage for sixty minutes (pace.stuck_refusals and pace.stuck_minutes in the config
-layers), the next move hands the lane back as stuck, releases its reservation with
-a tombstone marking it stuck, and takes up the next issue. A refusal that cannot
-change (the issue finished at the lane's base or on origin's default branch, the
-reservation now another person's) hands it back at once; the wait for a preflight
-receipt and an outage's wait are never counted. `abcd implement step --discard`
-removes a stuck lane's worktree and branch and ends its run. Every move renews the
-reservation of the lane in progress at half its lease, waiting or not, and the
-landing checks it before its push, so a lane whose reservation became another
-person's pushes nothing and is handed back as stuck. A lane
+on the lane (refused in the run's state: the stage, the check, the reason, a count
+of the same refusal in a row, since when and when last it refused there, and why it
+cannot change), and once the step has been refused the same way three times, or has
+kept refusing at one stage for sixty minutes, from its first refusal there to its
+last, a quiet of more than fifteen minutes starting the time afresh
+(pace.stuck_refusals and pace.stuck_minutes in the config layers), the next move
+hands the lane back as stuck, releases its reservation with a tombstone marking it
+stuck, and takes up the next issue. A refusal that cannot change (the issue
+finished at the lane's base or on origin's default branch, the reservation now
+another person's) hands it back at once; the wait for a preflight receipt, an
+outage's wait, and a land fence that cannot read origin are never counted, and a
+step that succeeds as the move hands the lane back keeps it. `abcd implement step
+--discard` removes a stuck lane's worktree and branch and ends its run. Every move
+renews the reservation of the lane in progress at half its lease, waiting or not
+(a lane handed back is renewed by none), and the landing checks it before its push,
+so a lane whose reservation became another person's pushes nothing and is handed
+back as stuck. A lane
 that finds a decision in its issue hands it back by kind, its work discarded: a
 user-visible change is promoted to an intent draft (`capture promote`, which
 stamps the issue's related_intents and nothing else); a trust or safety rule is
@@ -1230,8 +1236,9 @@ is all); at the cap, or when nothing eligible is left, held or not, the drain re
 and ends. When you hold ten live reservations, the most one person may hold, or every
 eligible issue left is held by another, a move neither refuses nor ends: it reserves
 and asks nothing, writes waiting_until fifteen minutes on (apart from the pace
-window), names the reservations and pull requests or the holds it waits on, and keeps
-its judgements; run it again at or after that time. Once a drain has ended, the
+window) and waiting, "cap" or "held", for which of the two it waits on, names the
+reservations and pull requests or the holds it waits on, and keeps its judgements;
+run it again at or after that time. Once a drain has ended, the
 next `abcd drain` begins a new one. A cap or pace named while a drain is in
 progress that differs from the one it began with is refused. Once a run gives up on a
 lost connection (`abcd implement outage`), the drain opens nothing and ends with
