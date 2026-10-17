@@ -77,9 +77,11 @@ func GeneratedFiles(root string) (Generated, string) {
 	// generated.
 	nested := map[string]bool{}
 	for _, entry := range entries {
+		// Its name in any capitals: git on a case-insensitive checkout reads
+		// it.
 		if _, p, ok := strings.Cut(entry, "\t"); ok {
-			if dir, ok := strings.CutSuffix(p, "/.gitattributes"); ok {
-				nested[dir] = true
+			if dir, name := path.Split(p); dir != "" && strings.EqualFold(name, ".gitattributes") {
+				nested[strings.TrimSuffix(dir, "/")] = true
 			}
 		}
 	}

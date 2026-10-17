@@ -259,6 +259,17 @@ func TestAFileUnderANestedDeclarationIsNeverGenerated(t *testing.T) {
 		"docs/guides/intro.md": false, "docs/guides/deep/x.md": false}, "")
 }
 
+// TestANestedDeclarationIsFoundWhateverItsCapitals: git on a case-insensitive
+// checkout reads a nested .gitattributes spelled in other capitals, so it
+// leaves the files below it out too.
+func TestANestedDeclarationIsFoundWhateverItsCapitals(t *testing.T) {
+	w := newWorld(t)
+	w.seed.Write("docs/.GITATTRIBUTES", "* -linguist-generated\n")
+	w.declare("*.md linguist-generated\n", "docs/a.md", "other/b.md")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	wantGenerated(t, p.dir, map[string]bool{"docs/a.md": false, "other/b.md": true, "README.md": true}, "")
+}
+
 // TestADeclarationHoldingANULDeclaresNothing: git stops reading an attributes
 // file at a NUL byte, so a declaration holding one declares nothing, and says
 // why.
