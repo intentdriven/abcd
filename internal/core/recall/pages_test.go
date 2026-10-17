@@ -204,3 +204,25 @@ func TestAWorkspacePageShadowsTheMachinePageEvenWhenItIsSilent(t *testing.T) {
 		t.Fatalf("refused = %+v", refused)
 	}
 }
+
+// TestARecalledPageIsLabelledAsAPage: a page's head names it as a page of
+// its scope, never as a note — the machine's label "personal note,
+// agent-written" would misstate whose words a page is
+// (GHSA-22f8-qf5r-gjgq's provenance rule).
+func TestARecalledPageIsLabelledAsAPage(t *testing.T) {
+	home, repo, workspace, machine := pagesFixture(t)
+	writePage(t, workspace, "lesson_auth_tokens.md", "# Auth tokens\n\nRotate them.\n", "auth")
+	writePage(t, machine, "lesson_auth_sessions.md", "# Auth sessions\n\nExpire them.\n", "auth")
+	res := readAndRecall(t, home, repo, "the auth flow", nil)
+	for _, want := range []string{
+		"- page:lesson_auth_tokens.md (project page, committed in this repository): ",
+		"- page:lesson_auth_sessions.md (machine page, this account's memory store): ",
+	} {
+		if !strings.Contains(res.Text, want) {
+			t.Errorf("block lacks %q:\n%s", want, res.Text)
+		}
+	}
+	if strings.Contains(res.Text, "note") {
+		t.Errorf("a page is labelled as a note:\n%s", res.Text)
+	}
+}
