@@ -80,6 +80,17 @@ type Snapshot struct {
 	// nothing here stamped a fetch, so the view's age is unknown.
 	FetchedAt    time.Time
 	Reservations []Reservation
+	// Generated is the files origin's default branch, as last fetched,
+	// declares generated (generatedFiles), which no footprint overlap is
+	// judged on. It is read only when some live reservation has a footprint,
+	// and is empty when the view does not derive (an act whose fetch could
+	// not read origin's default branch).
+	Generated Generated
+	// GeneratedUnread is why generated files were not recognised, though a
+	// live reservation has a footprint: the declaration could not be read, or
+	// the view does not trust origin's default branch as this clone holds
+	// it; "" otherwise.
+	GeneratedUnread string
 }
 
 // LiveByHolder counts each person's live reservations of records, as the cap
@@ -208,6 +219,16 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 			r.RecordChanged = changedSince(t.RecordBlob, blobOf(records[id]))
 		}
 		snap.Reservations = append(snap.Reservations, r)
+	}
+	// The generated files are read once per view, and only when a live
+	// footprint is there to judge an overlap with; a view that does not trust
+	// origin's default branch recognises none.
+	if slices.ContainsFunc(snap.Reservations, func(r Reservation) bool { return r.State == StateLive && len(r.Footprint) > 0 }) {
+		if derive {
+			snap.Generated, snap.GeneratedUnread = generatedFiles(root)
+		} else {
+			snap.GeneratedUnread = "origin's default branch could not be read when the reservations were fetched"
+		}
 	}
 	return snap, nil
 }

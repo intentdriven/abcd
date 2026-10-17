@@ -4189,6 +4189,14 @@ the issue, nor takes over or renews your reservation over it. A release whose
 tombstone cannot mark the hand-back is still made, plain, and says why
 (hand_back_unpublished in --json).
 
+A footprint sharing a path with another person's live reservation backs off
+(exit 3). A file that origin's default branch, as last fetched, declares
+linguist-generated in its root .gitattributes is shared, never an overlap; a
+directory never is. When that declaration cannot be read nothing is shared, and
+the act says why (generated_unread in --json). Your own reservation sharing a
+path with yours from another copy is made, and warns on stderr (own_overlap in
+--json).
+
 The holder is your GitHub username, from the first of these that names it:
 user.email, when it is a GitHub no-reply address; reservation.github_username
 in the machine configuration (the repository's own configuration is never read

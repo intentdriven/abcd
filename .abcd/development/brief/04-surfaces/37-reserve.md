@@ -160,7 +160,38 @@ never refused by the cap, while reviving a lapsed one adds one. A
 footprint path that another live reservation's footprint shares, equal or one
 a directory holding the other, is refused, unless that reservation is the same
 person's from this copy, naming the deeper of the two paths,
-the other record, its holder and its expiry; a renewal the verb makes names
+the other record, its holder and its expiry. A shared path that is a file
+origin's default branch declares generated is no overlap (spc-2610161044461448
+step 11): the declaration is `linguist-generated` (set, or `=true`) in the root
+`.gitattributes` of origin's default branch as last fetched, read as stored
+with a 256 KiB cap and no fetch; a nested `.gitattributes`,
+`.git/info/attributes` and the working tree are never read, because the
+declaration must be one every account shares, and a file at or below a
+directory holding its own `.gitattributes` is never generated, since that file
+could unset the attribute there. Its patterns follow git's
+gitattributes rules for the subset abcd reads (a basename at any depth, a
+pattern with a slash anchored to the root, `*`, `?`, classes and `**`, a later
+line over an earlier one); patterns that set the attribute match
+case-sensitively and patterns that unset it match regardless of case, so a
+file is generated only where git would call it generated on a clone that
+ignores case and on one that does not. A file counts only when origin's default branch
+holds it, so a directory is never generated, even when every file under it is.
+Every misreading leans towards "not generated": a declaration that cannot be
+read, is over the cap, holds a NUL byte or passes the step budget its
+matching is held to shares nothing (a line past its own budget for one path
+leaves that path not generated) and the act says why
+(`generated_unread`, and the back-off's own words), and a line abcd does not
+understand (a POSIX class, say) is skipped, voiding every line before it when
+it could unset the attribute. abcd shares a generated file only when the root
+declaration is plain ASCII with no quoting, macros or
+checkout conversion (`ident`, `working-tree-encoding`), and otherwise warns and
+shares none. A shared path with a
+live reservation the same person holds from another copy does not refuse a
+person's own act: it is made, and names each such path, the other record and
+its expiry (`own_overlap`, a warning on stderr in the text form). Only the
+verb asks for this (the request's `WarnOwnOverlap`): a build's and a drain's
+reservations are automated and still back off it, as the drain's pass-over
+does, so two automated lanes never edit the same files. A renewal the verb makes names
 its footprint and is checked the same way, so a footprint is never widened onto
 another reservation, while the implement loop's renewal of a live reservation,
 which keeps the tip's footprint, is not checked, and one that revives a lapsed
@@ -310,8 +341,9 @@ Exit 0 when the act reached origin, or a release was already made. Exit 3, the
 back-off, when another person's reservation is live or lapsed under the
 margin, an unreadable one is within its hold, another push won the race, or the
 same person's other copy holds it and no take-over was asked for, or a
-footprint path is in another live reservation's footprint, or a drain's
-reservation meets a hand-back that stands. Exit 2 on the cap,
+footprint path that is not a generated file is in another person's live
+reservation's footprint (or, for a build's or a drain's reservation, the same
+person's from another copy), or a drain's reservation meets a hand-back that stands. Exit 2 on the cap,
 on a fork origin, and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
 `effective_expiry`, `commit`, `replaced` for a take-over,
@@ -323,7 +355,11 @@ the repository allows, and
 that stands, which the text form prints as a `note:` line, `hand_back_kept`
 (the same three) for a release whose tombstone kept that hand-back, also a
 `note:` line, and `hand_back_unpublished` for a release whose tombstone marks
-no hand-back it would otherwise have marked, a `no hand-back:` line.
+no hand-back it would otherwise have marked, a `no hand-back:` line,
+`own_overlap` (`path`, `record`, `effective_expiry`) for each path shared with
+the same person's reservation from another copy, a `warning:` line on stderr,
+and `generated_unread` when generated files were not recognised, a `not
+recognised:` line.
 
 ## Where this sits
 

@@ -13,6 +13,17 @@ import (
 // resolve to one username are one person. A release subject is not counted.
 const MaxLive = 10
 
+// OwnOverlap is a path a person's own reservation shares with the live
+// reservation of another record they hold from another copy.
+type OwnOverlap struct {
+	// Path is the shared path, the deeper of the two (sharedPath).
+	Path string
+	// Record is the other reservation's record.
+	Record string
+	// Expiry is when the other reservation stops holding.
+	Expiry time.Time
+}
+
 // crowding refuses an act the rest of the view forbids, judged on the view
 // just fetched: a footprint that shares a path with another live reservation
 // that is not this copy's own (the back-off), and a reservation that would take its holder past MaxLive
@@ -22,11 +33,20 @@ const MaxLive = 10
 // reservation is never widened past another; a renew-only act over a live
 // tip, which keeps the tip's footprint, is not checked for overlap.
 //
+// A path is shared as overlap names it: a file origin's default branch
+// declares generated is no overlap (spc-2610161044461448 step 11). An act
+// that asks for it (Request.WarnOwnOverlap, the reserve verb's) and shares a
+// path with the same person's reservation from another copy goes ahead, and
+// res names each such path (Result.OwnOverlap); every other act backs off it,
+// as it backs off another person's. res also carries
+// why no generated file was recognised, when the overlap was judged without
+// them (Result.GeneratedUnread).
+//
 // Both are judged on the view just fetched, not compared-and-swapped: each
 // reservation is its own ref, so two people racing can each pass the cap or
 // the overlap against a view without the other's. They are best-effort under
 // a race; only a collision on one record is atomic (the plain push).
-func crowding(p *prepared, j judged, res Result) error {
+func crowding(p *prepared, j judged, res *Result) error {
 	snap, err := view(p.root, p.now, p.derivedGap == "")
 	if err != nil {
 		return refuse("could not read the reservations to count and compare: %s; %s", err, noReservation)
@@ -58,23 +78,73 @@ func crowding(p *prepared, j judged, res Result) error {
 	if p.req.Renew && j.verdict.Live {
 		return nil
 	}
+	res.GeneratedUnread = snap.GeneratedUnread
+	var own []OwnOverlap
 	for _, r := range others {
+		mine := sameHolder(r.Holder, p.holder)
 		// This copy's own reservations on other records are no overlap: the
 		// work they name is this copy's, as a drain's next issue beside its
-		// own open lane. This person's other copy still backs off.
-		if r.Copy == CopyThis && sameHolder(r.Holder, p.holder) {
+		// own open lane.
+		if r.Copy == CopyThis && mine {
 			continue
 		}
 		for _, want := range res.Footprint {
 			for _, held := range r.Footprint {
-				if shared, ok := sharedPath(want, held); ok {
-					return backOff("%s is in the footprint of %s, reserved by %s until %s; take other work; %s",
-						echo(shared), r.Record, r.Holder, stamp(r.EffectiveExpiry), nothingPushed)
+				shared, ok := overlap(want, held, snap.Generated)
+				switch {
+				case !ok:
+				case mine && p.req.WarnOwnOverlap:
+					// This person's other copy: their own act, asked by hand,
+					// goes ahead and is told; an automated one (a build's, a
+					// drain's) backs off below.
+					o := OwnOverlap{Path: shared, Record: r.Record, Expiry: r.EffectiveExpiry}
+					if !slices.Contains(own, o) {
+						own = append(own, o)
+					}
+				default:
+					return backOff("%s is in the footprint of %s, reserved by %s until %s%s; take other work; %s",
+						echo(shared), r.Record, r.Holder, stamp(r.EffectiveExpiry), notRecognised(snap.GeneratedUnread), nothingPushed)
 				}
 			}
 		}
 	}
+	res.OwnOverlap = own
 	return nil
+}
+
+// overlap is the path two footprint paths share as an overlap: sharedPath's,
+// unless that path, the deeper of the two, is a generated file. A directory
+// is never generated, so two directory footprints that share still overlap.
+// It is the one judgement crowding and Contention share.
+func overlap(want, held string, g Generated) (string, bool) {
+	shared, ok := sharedPath(want, held)
+	if !ok || g.Is(shared) {
+		return "", false
+	}
+	return shared, true
+}
+
+// notRecognised is the words a back-off adds when generated files were not
+// recognised, "" when they were (or none are declared).
+func notRecognised(why string) string {
+	if why == "" {
+		return ""
+	}
+	return " (generated files were not recognised: " + why + ")"
+}
+
+// GeneratedUnreadLine is how an act tells a person that no generated file was
+// recognised, and why (Result.GeneratedUnread), the same words wherever it is
+// shown.
+func GeneratedUnreadLine(why string) string {
+	return "not recognised: generated files (" + why + "), so no shared path was let through as one"
+}
+
+// Warning is how a person is told their reservation shares a path with their
+// own from another copy, the same words wherever it is shown.
+func (o OwnOverlap) Warning() string {
+	return fmt.Sprintf("%s is also in the footprint of %s, which you hold from your other copy until %s; reserved anyway, since both are yours",
+		echo(o.Path), o.Record, stamp(o.Expiry))
 }
 
 // addsOne reports whether an act on the judged tip adds a live reservation to
@@ -147,9 +217,10 @@ func sharedPath(a, b string) (string, bool) {
 // Contention is why a reservation of id with footprint would back off on the
 // view s at now, as crowding and the record's own tip would judge it: id
 // reserved by another copy (live, or unreadable within its hold), or a path of
-// footprint shared with another copy's live reservation of another record. ""
-// when nothing in the view holds it off; this copy's own reservations never
-// do. It reads the view alone, so a caller passes over held work with no
+// footprint shared with another copy's live reservation of another record
+// (overlap: a generated file is shared, as crowding shares it), this person's
+// other copy included, as a drain's reservation judges it. "" when nothing in
+// the view holds it off; this copy's own reservations never do. It reads the view alone, so a caller passes over held work with no
 // fetch and no push; the reservation act itself, whose push is the
 // compare-and-swap, still judges what origin holds by then.
 func (s Snapshot) Contention(id string, footprint []string, now time.Time) string {
@@ -167,9 +238,9 @@ func (s Snapshot) Contention(id string, footprint []string, now time.Time) strin
 		}
 		for _, want := range footprint {
 			for _, held := range r.Footprint {
-				if shared, ok := sharedPath(want, held); ok {
-					return fmt.Sprintf("%s is in the footprint of %s, reserved by %s until %s, %s",
-						echo(shared), r.Record, r.Holder, stamp(r.EffectiveExpiry), s.AsOf(now))
+				if shared, ok := overlap(want, held, s.Generated); ok {
+					return fmt.Sprintf("%s is in the footprint of %s, reserved by %s until %s, %s%s",
+						echo(shared), r.Record, r.Holder, stamp(r.EffectiveExpiry), s.AsOf(now), notRecognised(s.GeneratedUnread))
 				}
 			}
 		}
