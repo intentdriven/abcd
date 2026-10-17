@@ -183,7 +183,8 @@ leaves that path not generated) and the act says why
 (`generated_unread`, and the back-off's own words), and a line abcd does not
 understand (a POSIX class, say) is skipped, voiding every line before it when
 it could unset the attribute. abcd shares a generated file only when the root
-declaration is plain ASCII with no quoting or macros, and otherwise warns and
+declaration is plain ASCII with no quoting, macros or
+checkout conversion (`ident`, `working-tree-encoding`), and otherwise warns and
 shares none. A shared path with a
 live reservation the same person holds from another copy does not refuse a
 person's own act: it is made, and names each such path, the other record and
