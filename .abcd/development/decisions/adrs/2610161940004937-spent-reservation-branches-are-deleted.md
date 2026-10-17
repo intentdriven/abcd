@@ -88,17 +88,26 @@ cannot classify.
 ## Consequences
 
 - **Setup by hand, once.** Someone has to create the App, install it on the
-  repository with Contents read and write, create the `reservation-sweep`
-  environment with a deployment-branch rule admitting the default branch
-  alone, set `RESERVATION_SWEEP_APP_ID` and `RESERVATION_SWEEP_APP_KEY` as that
+  repository with Contents read and write, give the `reservation-sweep`
+  environment (the first scheduled run creates it empty, with no rule) a
+  deployment-branch rule of "Selected branches and tags" naming the default
+  branch alone, never "Protected branches only", since any writer can push the
+  ruleset-protected reservation branches, and only then set `RESERVATION_SWEEP_APP_ID` and `RESERVATION_SWEEP_APP_KEY` as that
   environment's secrets (never as repository secrets, which a workflow run
   from any branch can read), and apply the ruleset change mirrored in
   `.abcd/work/rulesets/reservations-protection.json`. Until then the workflow
   runs the dry run and deletes nothing.
-- **Only the default branch reaches the key.** The job declares the
-  environment, so a run from any other branch, which a writer can start with
-  `workflow_dispatch` after changing the code it runs, resolves neither secret.
-  The default branch needs code-owner review, so the key stays behind review.
+- **Only the default branch reaches the key, and only the minting step holds
+  it.** The job declares the environment, so a run from any other branch,
+  which a writer can start with `workflow_dispatch` after changing the code it
+  runs, resolves neither secret. On the default branch the key lives in the
+  step that mints the installation token and ends; the step that runs abcd's
+  code receives the token alone, and a final step revokes it.
+- **The token reaches whatever code is on the default branch.** `cmd/` and
+  `internal/` merge without a required approval, so a writer can land code that
+  reads the installation token on its next run: for at most an hour, with
+  Contents write and the reservations bypass. That is the residual this
+  design accepts for now; the long-lived key itself never reaches that code.
 - **A leaked App key is worse than before.** Whoever holds it can delete or
   force any reservation branch, which the ruleset forbids today. It can also
   write any branch no other ruleset protects, as any write token can. `main`

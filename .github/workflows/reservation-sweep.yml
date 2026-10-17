@@ -56,7 +56,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Sweep the spent reservation branches
+      # The App's long-lived key is in this step alone. It mints the one-hour
+      # installation token and ends, so the key never reaches the step that
+      # runs abcd's code: a change landed on the default branch can read what
+      # its own process holds, and that is the token, never the key.
+      - name: Mint the App's installation token
+        id: mint
         env:
           RESERVATION_SWEEP_APP_ID: ${{ secrets.RESERVATION_SWEEP_APP_ID }}
           RESERVATION_SWEEP_APP_KEY: ${{ secrets.RESERVATION_SWEEP_APP_KEY }}
@@ -65,7 +70,7 @@ jobs:
 
           if [ -z "${RESERVATION_SWEEP_APP_ID:-}" ] || [ -z "${RESERVATION_SWEEP_APP_KEY:-}" ]; then
             echo "::warning title=reservation sweep did not delete::the App's secrets RESERVATION_SWEEP_APP_ID and RESERVATION_SWEEP_APP_KEY are not set, so this is the dry run; nothing was deleted."
-            go run ./cmd/abcd reserve --sweep
+            echo "mode=dry" >>"$GITHUB_OUTPUT"
             exit 0
           fi
           printf '%s' "$RESERVATION_SWEEP_APP_ID" | grep -Eq '^[0-9]+$' || {
@@ -113,8 +118,20 @@ jobs:
             exit 2
           fi
           echo "::add-mask::$token"
-          trap 'call DELETE /installation/token "$token" >/dev/null 2>&1 || true' EXIT
-
+          {
+            echo "mode=apply"
+            echo "token=$token"
+          } >>"$GITHUB_OUTPUT"
+      - name: Sweep the spent reservation branches
+        env:
+          SWEEP_MODE: ${{ steps.mint.outputs.mode }}
+          ABCD_SWEEP_TOKEN: ${{ steps.mint.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ "$SWEEP_MODE" != apply ]; then
+            go run ./cmd/abcd reserve --sweep
+            exit 0
+          fi
           # The token reaches git through a credential helper reading the
           # environment: the helper list is reset first, so no other helper
           # answers, and the token is never written to the repository's config.
@@ -122,4 +139,12 @@ jobs:
           # shellcheck disable=SC2016 # the helper expands the variable, not this shell
           git config --local --add credential.helper \
             '!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$ABCD_SWEEP_TOKEN"; }; f'
-          ABCD_SWEEP_TOKEN="$token" go run ./cmd/abcd reserve --sweep --apply
+          go run ./cmd/abcd reserve --sweep --apply
+      - name: Revoke the installation token
+        if: always() && steps.mint.outputs.token != ''
+        env:
+          ABCD_SWEEP_TOKEN: ${{ steps.mint.outputs.token }}
+        run: |
+          curl -fsS --max-time 30 -X DELETE -H 'Accept: application/vnd.github+json' \
+            -H @<(printf 'Authorization: Bearer %s\n' "$ABCD_SWEEP_TOKEN") \
+            "${GITHUB_API_URL:-https://api.github.com}/installation/token" >/dev/null || true
