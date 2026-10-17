@@ -417,8 +417,9 @@ production_mode: hand-written # how the text was produced: hand-written | dictat
                             #   conditions AND no nullity) is reported on the advisory row, naming the
                             #   field, and never withholds readiness
 
-## Grounds                  # Required at the readiness gate for a press-release intent (a discipline
-                            #   record is exempt). One bullet per gate decision, appended by
+## Grounds                  # Reported at the readiness gate on an advisory row for a press-release
+                            #   intent (a discipline record is exempt), and never withholds
+                            #   readiness. One bullet per gate decision, appended by
                             #   the readiness gate's grounds; the section is append-only (adr-57), so a
                             #   later decision adds a bullet beside the earlier one. Each reads
                             #   `- <pursued|deferred|declined>: <what is expected, and what would
