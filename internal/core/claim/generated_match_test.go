@@ -103,6 +103,8 @@ var attrCorpus = []attrCase{
 	{name: "a reserved attribute name voids the line", attrs: "*.md linguist-generated\nd.md builtin_x -linguist-generated\n", minGit: "2.42",
 		want: map[string]bool{"a.md": true, "d.md": true}},
 
+	{name: "a bare [attr] defines no macro", attrs: "*.md linguist-generated\n[attr] nogen linguist-generated\nx.md nogen\n",
+		want: map[string]bool{"x.md": true, "b.md": true}},
 	{name: "a macro setting it is not followed", attrs: "[attr]gen linguist-generated\ngen.md gen\n", skipped: true,
 		want: map[string]bool{"gen.md": false}},
 	{name: "a C-quoted pattern is skipped", attrs: "\"gen file.md\" linguist-generated\n", skipped: true,

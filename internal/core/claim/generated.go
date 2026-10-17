@@ -328,8 +328,9 @@ func unsettingMacros(lines []string) map[string]bool {
 			continue
 		}
 		name, attrs := strings.TrimPrefix(f[0], "[attr]"), f[1:]
-		if name == "" && len(attrs) > 0 {
-			name, attrs = attrs[0], attrs[1:]
+		if name == "" {
+			// A bare [attr] is a pattern to git, never a macro definition.
+			continue
 		}
 		defs[name] = append(defs[name], attrs...)
 	}
