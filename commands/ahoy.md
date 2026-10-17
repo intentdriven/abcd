@@ -1436,10 +1436,17 @@ without it, and when that succeeds the block is written with
 says so in `stream_usage_note`: relay that line. `--stream-usage=false`
 writes that setting outright, for a server known to refuse the field, and
 the verification is then asked once, as given. The block it writes pins no
-model: a pin to one OpenRouter provider (`pins`, iss-2610161734413178) is
-added to the block by hand afterwards, as the configuration chapter of the
-brief describes, and a configured provider's verification sends the first
-listed model's pin when it has one. A `~/.abcd.noindex` that is a
+model and reads nothing back: a pin to one OpenRouter provider (`pins`,
+iss-2610161734413178) and `read_generation: true` (OpenRouter's record of
+what served each call, one extra request per call, made only because the
+person turned it on) are added to the block by hand afterwards, on an
+OpenRouter block alone, as the configuration chapter of the brief describes,
+and a configured provider's verification sends the first listed model's pin
+when it has one and reads its record back when the block says to. A role
+routed through opencode to a pinned model is refused while the person's
+environment sets `OPENCODE_CONFIG` or `OPENCODE_CONFIG_CONTENT`, since the
+run's own sealed configuration would replace theirs: unset it for pinned
+runs, or route the role without a pin. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the

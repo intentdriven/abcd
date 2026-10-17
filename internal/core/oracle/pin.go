@@ -19,11 +19,13 @@ package oracle
 //     configuration (internal/core/runner).
 //   - The generation readback reads OpenRouter's record of the call into the
 //     served side: the provider that served, every provider attempted, the
-//     native token counts and the cost. It is a request of its own, so it is
-//     made only when the caller asks (CallRequest.ReadGeneration), which a run
-//     the person started and consented to does; it is off by default, made
-//     with the key the call used (resolved through the one credential reader,
-//     never again), bounded in time, and its failure never fails the call.
+//     native token counts and the cost. It is one extra request per call, so
+//     it is made only on a block the person set read_generation true in, on
+//     their own machine (oracle.api.<provider>.read_generation, OpenRouter's
+//     block alone, refused from a repository as every member of a block is);
+//     it is off by default, made with the key the call used (resolved
+//     through the one credential reader, never again), bounded in time, and
+//     its failure never fails the call.
 //
 // Exactly one provider, because with fallbacks off OpenRouter still tries
 // each provider order names, so a second entry is a fallback by another name;
@@ -139,6 +141,20 @@ func readPins(baseURL string, models []string, raw map[string]pinFile) (map[stri
 	return pins, nil
 }
 
+// readGenerationSetting checks a block's read_generation: true only on a
+// block whose base URL is OpenRouter's, the one server that keeps a
+// generation record; false, or no setting, is the default anywhere.
+func readGenerationSetting(baseURL string, set *bool) (bool, error) {
+	if set == nil || !*set {
+		return false, nil
+	}
+	if !isOpenRouter(baseURL) {
+		return false, fmt.Errorf("%s reads OpenRouter's generation record of each call, and base_url does not reach OpenRouter (%s), "+
+			"so there is no record to read; remove it from this block", readGenerationKey, openRouterHost)
+	}
+	return true, nil
+}
+
 // PinFor returns the pin this machine sets for model on provider.
 func (c *APIConfig) PinFor(provider, model string) (Pin, bool) {
 	p, ok := c.providers[provider]
@@ -194,8 +210,14 @@ func readGeneration(ctx context.Context, client *openaiapi.Client, p Provider, r
 }
 
 // withGeneration is res with the served side g reads in its place: the
-// provider that served, and each count and the cost the record carries; a
-// field the record does not carry keeps the response's own.
+// provider that served, the cost when the record carries one, and the token
+// counts only all together. The record's counts are the serving model's own
+// tokenizer's and the response's may be another's, so the two never mix:
+// when the record carries all four counts it has a field for (prompt,
+// completion, reasoning and cache-read), they replace the response's whole,
+// and a count the record has no field for (cache writes, the total) is then
+// not reported; a record missing any of the four leaves the response's
+// counts as they were.
 func withGeneration(res openaiapi.Result, g openaiapi.Generation) openaiapi.Result {
 	if g.Provider != "" {
 		res.Provider = g.Provider
@@ -203,23 +225,17 @@ func withGeneration(res openaiapi.Result, g openaiapi.Generation) openaiapi.Resu
 	if g.Usage == nil {
 		return res
 	}
+	gu := g.Usage
 	u := openaiapi.Usage{}
 	if res.Usage != nil {
 		u = *res.Usage
 	}
-	for _, f := range []struct {
-		dst **int
-		src *int
-	}{
-		{&u.PromptTokens, g.Usage.PromptTokens}, {&u.CompletionTokens, g.Usage.CompletionTokens},
-		{&u.ReasoningTokens, g.Usage.ReasoningTokens}, {&u.CachedTokens, g.Usage.CachedTokens},
-	} {
-		if f.src != nil {
-			*f.dst = f.src
-		}
+	if gu.PromptTokens != nil && gu.CompletionTokens != nil && gu.ReasoningTokens != nil && gu.CachedTokens != nil {
+		u = openaiapi.Usage{PromptTokens: gu.PromptTokens, CompletionTokens: gu.CompletionTokens,
+			ReasoningTokens: gu.ReasoningTokens, CachedTokens: gu.CachedTokens, Cost: u.Cost}
 	}
-	if g.Usage.Cost != nil {
-		u.Cost = g.Usage.Cost
+	if gu.Cost != nil {
+		u.Cost = gu.Cost
 	}
 	res.Usage = &u
 	return res

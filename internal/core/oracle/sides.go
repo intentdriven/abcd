@@ -76,6 +76,10 @@ const (
 	// NotConfigured: no setting or pin names the value, so the server's
 	// default applied, whatever it was.
 	NotConfigured UnpinnedReason = "not_configured"
+	// NotVerified: abcd configured the value and the record carries it, but
+	// nothing on the route shows it reached the provider: a harness was
+	// handed it and its answer does not say what the provider was sent.
+	NotVerified UnpinnedReason = "not_verified"
 )
 
 // Unpinned is one field a record could not pin, and why.

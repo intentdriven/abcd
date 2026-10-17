@@ -74,15 +74,16 @@ func personsOpenCode(t *testing.T) (string, []byte) {
 
 // TestAPinnedOpenCodeRunIsPointedAtASealedConfiguration: the run's opencode
 // reads the pin from a configuration abcd wrote for it alone (OPENCODE_CONFIG,
-// which opencode 1.18.31 merges over the person's own), with the parent's
-// inline configuration cleared so it cannot override the pin; the file is
-// private, outside the repository, and gone when the run ends; the person's
-// own configuration is untouched.
+// which opencode 1.18.31 merges over the person's own); the file is private,
+// outside the repository, and gone when the run ends; the person's own
+// configuration is untouched, and no inline configuration is set for the run.
 func TestAPinnedOpenCodeRunIsPointedAtASealedConfiguration(t *testing.T) {
 	own, ownBody := personsOpenCode(t)
 	f := newFake(t, "ok", OpenCode)
-	t.Setenv("OPENCODE_CONFIG_CONTENT", `{"provider":{"openrouter":{"models":{"`+orModel+`":{"options":{"provider":{"allow_fallbacks":true}}}}}}}`)
-	t.Setenv("OPENCODE_CONFIG", "/somewhere/else.json")
+	// Empty is as good as unset: the parent names no configuration of its
+	// own for opencode, so the pinned run is not refused.
+	t.Setenv("OPENCODE_CONFIG_CONTENT", "")
+	t.Setenv("OPENCODE_CONFIG", "")
 	pin := testPin
 	o := newOpenCode("openrouter/" + orModel)
 	o.pin = &pin
@@ -92,11 +93,11 @@ func TestAPinnedOpenCodeRunIsPointedAtASealedConfiguration(t *testing.T) {
 	}
 	env := envOf(t, f, OpenCode+".env")
 	cfg, set := envValue(env, "OPENCODE_CONFIG")
-	if !set || cfg == "/somewhere/else.json" || !filepath.IsAbs(cfg) {
+	if !set || !filepath.IsAbs(cfg) {
 		t.Fatalf("OPENCODE_CONFIG = %q, want the run's own", cfg)
 	}
-	if v, set := envValue(env, "OPENCODE_CONFIG_CONTENT"); !set || v != "" {
-		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q (set %v), want it cleared", v, set)
+	if v, _ := envValue(env, "OPENCODE_CONFIG_CONTENT"); v != "" {
+		t.Fatalf("OPENCODE_CONFIG_CONTENT = %q, want no inline configuration", v)
 	}
 	for _, under := range []string{f.repo, filepath.Dir(own)} {
 		if strings.HasPrefix(cfg, under+string(filepath.Separator)) {
@@ -127,10 +128,13 @@ func TestAPinnedOpenCodeRunIsPointedAtASealedConfiguration(t *testing.T) {
 		t.Fatalf("provider pin = %+v", ans.ProviderPin)
 	}
 	got := reasons(ans.Unpinned)
-	for _, f := range []oracle.Field{oracle.AskedProviderPin, oracle.AskedHarnessVersion} {
-		if r, listed := got[f]; listed {
-			t.Errorf("%s is listed as %s on a pinned run", f, r)
-		}
+	if r, listed := got[oracle.AskedHarnessVersion]; listed {
+		t.Errorf("%s is listed as %s on a pinned run", oracle.AskedHarnessVersion, r)
+	}
+	// The pin was written where opencode reads it, but nothing on this path
+	// shows it reached OpenRouter: it is recorded and listed as not verified.
+	if got[oracle.AskedProviderPin] != oracle.NotVerified {
+		t.Errorf("provider pin listed as %q, want %q", got[oracle.AskedProviderPin], oracle.NotVerified)
 	}
 	// The readback is not made here: opencode holds the key.
 	if got[oracle.ServedProvider] != oracle.NotReported {
@@ -143,6 +147,70 @@ func TestAPinnedOpenCodeRunIsPointedAtASealedConfiguration(t *testing.T) {
 	}
 }
 
+// TestAPinnedRunRefusesThePersonsOwnOpenCodeConfiguration: a parent that
+// names a configuration of its own for opencode (a file through
+// OPENCODE_CONFIG, or inline through OPENCODE_CONFIG_CONTENT) would lose it to
+// the sealed file, and with it the key, permission denies or servers it
+// carries; abcd never changes how the person's tools work, so the pinned run
+// is refused before anything is written or launched, naming the variable and
+// what to do.
+func TestAPinnedRunRefusesThePersonsOwnOpenCodeConfiguration(t *testing.T) {
+	for _, name := range []string{"OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT"} {
+		t.Run(name, func(t *testing.T) {
+			f := newFake(t, "ok", OpenCode)
+			tmp := t.TempDir()
+			t.Setenv("TMPDIR", tmp)
+			t.Setenv("OPENCODE_CONFIG", "")
+			t.Setenv("OPENCODE_CONFIG_CONTENT", "")
+			t.Setenv(name, "/home/someone/opencode-work.json")
+			pin := testPin
+			o := newOpenCode("openrouter/" + orModel)
+			o.pin = &pin
+			_, _, err := o.Run(context.Background(), f.request("ruthless-reviewer"))
+			var fl *Failure
+			if !errors.As(err, &fl) || fl.Reason != ReasonFailed {
+				t.Fatalf("err = %v, want a failure", err)
+			}
+			for _, want := range []string{name, "unset", "without a pin"} {
+				if !strings.Contains(fl.Detail, want) {
+					t.Errorf("the refusal does not say %q: %s", want, fl.Detail)
+				}
+			}
+			if strings.Contains(fl.Detail, "opencode-work.json") {
+				t.Errorf("the refusal quotes the variable's value: %s", fl.Detail)
+			}
+			if f.launched(OpenCode) {
+				t.Fatal("opencode was launched")
+			}
+			if _, err := os.Stat(filepath.Join(f.log, "version.env")); err == nil {
+				t.Error("the version was asked")
+			}
+			if entries, _ := os.ReadDir(tmp); len(entries) != 0 {
+				t.Fatalf("a configuration was written: %v", entries)
+			}
+		})
+	}
+}
+
+// TestAnUnpinnedRunKeepsThePersonsOpenCodeConfiguration: without a pin the
+// person's own OPENCODE_CONFIG and OPENCODE_CONFIG_CONTENT reach opencode as
+// they are.
+func TestAnUnpinnedRunKeepsThePersonsOpenCodeConfiguration(t *testing.T) {
+	f := newFake(t, "ok", OpenCode)
+	t.Setenv("OPENCODE_CONFIG", "/home/someone/opencode-work.json")
+	t.Setenv("OPENCODE_CONFIG_CONTENT", `{"permission":{"bash":"deny"}}`)
+	if _, _, err := newOpenCode("openrouter/"+orModel).Run(context.Background(), f.request("ruthless-reviewer")); err != nil {
+		t.Fatal(err)
+	}
+	env := envOf(t, f, OpenCode+".env")
+	if v, _ := envValue(env, "OPENCODE_CONFIG"); v != "/home/someone/opencode-work.json" {
+		t.Errorf("OPENCODE_CONFIG = %q", v)
+	}
+	if v, _ := envValue(env, "OPENCODE_CONFIG_CONTENT"); v != `{"permission":{"bash":"deny"}}` {
+		t.Errorf("OPENCODE_CONFIG_CONTENT = %q", v)
+	}
+}
+
 // TestAnUnpinnedOpenCodeRunWritesNoConfiguration: without a pin the launch
 // is what it was: no configuration written, no version asked, the provider
 // pin listed as not configured.
@@ -151,9 +219,6 @@ func TestAnUnpinnedOpenCodeRunWritesNoConfiguration(t *testing.T) {
 	ans, _, err := newOpenCode("openrouter/"+orModel).Run(context.Background(), f.request("ruthless-reviewer"))
 	if err != nil {
 		t.Fatal(err)
-	}
-	if _, set := envValue(envOf(t, f, OpenCode+".env"), "OPENCODE_CONFIG_CONTENT"); set && os.Getenv("OPENCODE_CONFIG_CONTENT") == "" {
-		t.Error("an unpinned run clears OPENCODE_CONFIG_CONTENT")
 	}
 	if _, err := os.Stat(filepath.Join(f.log, "version.env")); err == nil {
 		t.Error("an unpinned run asked for the version")

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/adapter/openaiapi"
 	"github.com/intentdriven/abcd/internal/core/credential"
 )
 
@@ -24,9 +25,16 @@ import (
 const pinModel = "meta-llama/llama-3.1-8b-instruct"
 
 // pinBlock is an OpenRouter block at base pinning pinModel with pins.
-func pinBlock(base, pins string) string {
+func pinBlock(base, pins string) string { return pinBlockReading(base, pins, false) }
+
+// pinBlockReading is pinBlock, setting read_generation when read.
+func pinBlockReading(base, pins string, read bool) string {
+	extra := ""
+	if read {
+		extra = `,"read_generation":true`
+	}
 	return `{"oracle":{"api":{"openrouter":{"base_url":"` + base + `","key":"openrouter","models":["` + pinModel + `","~vendor/latest"],` +
-		`"pins":` + pins + `}},"roles":{"scribe":"openrouter/` + pinModel + `"}}}`
+		`"pins":` + pins + extra + `}},"roles":{"scribe":"openrouter/` + pinModel + `"}}}`
 }
 
 const goodPin = `{"` + pinModel + `":{"order":["deepinfra"],"quantizations":["fp8"],"canonical_slug":"meta-llama/llama-3.1-8b-instruct-20240723"}}`
@@ -134,7 +142,8 @@ const genRecord = `{"data":{"id":"gen-1760000000-abcdef","model":"meta-llama/lla
 	`"provider_responses":[{"provider_name":"DeepInfra","status":200}]}}`
 
 // pinnedCall configures OpenRouter at o with goodPin and the key stored by
-// name, and makes one call to pinModel, reading the generation when read.
+// name, its block setting read_generation when read, and makes one call to
+// pinModel: the caller asks for nothing beyond the call itself.
 func pinnedCall(t *testing.T, o *orFake, read bool) CallRecord {
 	t.Helper()
 	asOpenRouter(t)
@@ -142,10 +151,10 @@ func pinnedCall(t *testing.T, o *orFake, read bool) CallRecord {
 	if _, err := credential.SetMachine(f.roots.Home, "openrouter", callKey); err != nil {
 		t.Fatal(err)
 	}
-	f.machineConfig(pinBlock(o.srv.URL+"/api/v1", goodPin))
+	f.machineConfig(pinBlockReading(o.srv.URL+"/api/v1", goodPin, read))
 	c := f.loadAPI()
 	_, rec, err := c.Call(context.Background(), credential.Machine(f.roots.Home), CallRequest{
-		Target: Target{Provider: "openrouter", Model: pinModel}, Brief: sidesBrief, ReadGeneration: read})
+		Target: Target{Provider: "openrouter", Model: pinModel}, Brief: sidesBrief})
 	if err != nil {
 		t.Fatalf("Call: %v", err)
 	}
@@ -183,8 +192,9 @@ func TestAPinnedCallSendsAndRecordsThePin(t *testing.T) {
 	assertListed(t, rec.Unpinned)
 }
 
-// TestTheReadbackIsOffByDefault is decision 12: a call no caller opted in for
-// makes no request to the generation record, and says it did not ask.
+// TestTheReadbackIsOffByDefault is decision 12: a call on a block that does
+// not set read_generation makes no request to the generation record, and
+// says it did not ask.
 func TestTheReadbackIsOffByDefault(t *testing.T) {
 	o := newORFake(t, http.StatusOK, genRecord)
 	rec := pinnedCall(t, o, false)
@@ -199,9 +209,10 @@ func TestTheReadbackIsOffByDefault(t *testing.T) {
 	}
 }
 
-// TestAnOptedInReadbackFillsTheServedSide: the record's served provider, the
-// attempts, the native token counts and the cost replace what the response
-// carried, with the key the call used, read by name.
+// TestAnOptedInReadbackFillsTheServedSide: on a block that sets
+// read_generation, the record's served provider, the attempts, the native
+// token counts and the cost replace what the response carried, with the key
+// the call used, read by name.
 func TestAnOptedInReadbackFillsTheServedSide(t *testing.T) {
 	o := newORFake(t, http.StatusOK, genRecord)
 	rec := pinnedCall(t, o, true)
@@ -217,10 +228,14 @@ func TestAnOptedInReadbackFillsTheServedSide(t *testing.T) {
 	if len(rec.Attempts) != 1 || rec.Attempts[0].Provider != "DeepInfra" || rec.Attempts[0].Status != "200" {
 		t.Fatalf("attempts = %+v", rec.Attempts)
 	}
-	// Cache writes are not in the generation record, so the response's own
-	// count stands.
-	if rec.Usage == nil || *rec.Usage != (Usage{PromptTokens: 121, CompletionTokens: 33, ReasoningTokens: 5, CacheReadTokens: 64, CacheWriteTokens: 20}) {
+	// The record carries its full set of native counts, so they replace the
+	// response's all together; cache writes are not among them, and the
+	// response's count, from the other tokenizer, is not kept beside them.
+	if rec.Usage == nil || *rec.Usage != (Usage{PromptTokens: 121, CompletionTokens: 33, ReasoningTokens: 5, CacheReadTokens: 64}) {
 		t.Fatalf("usage = %+v", rec.Usage)
+	}
+	if r, ok := listed(rec, ServedCacheWriteTokens); !ok || r != NotReported {
+		t.Fatalf("cache writes listed as %q, %v; want not reported", r, ok)
 	}
 	if rec.Cost == nil || *rec.Cost != (Cost{Amount: 0.0007, Unit: CostCredits}) {
 		t.Fatalf("cost = %+v", rec.Cost)
@@ -242,24 +257,77 @@ func TestAFailedReadbackNeverFailsTheCall(t *testing.T) {
 	}
 }
 
-// TestAReadbackOffOpenRouterIsNotMade: a provider that is not OpenRouter has
-// no generation record to read, so an opted-in call asks for none and says so.
-func TestAReadbackOffOpenRouterIsNotMade(t *testing.T) {
+// TestAReadbackOffOpenRouterIsRefused: a provider that is not OpenRouter has
+// no generation record to read, so a block there that sets read_generation
+// is refused when the configuration is read, as a pin is; false is the
+// default and is read anywhere.
+func TestAReadbackOffOpenRouterIsRefused(t *testing.T) {
 	o := newORFake(t, http.StatusOK, genRecord)
 	f := newFx(t)
-	if _, err := credential.SetMachine(f.roots.Home, "openrouter", callKey); err != nil {
-		t.Fatal(err)
+	block := func(read string) string {
+		return `{"oracle":{"api":{"local":{"base_url":"` + o.srv.URL + `/v1","models":["` + pinModel + `"],"read_generation":` + read + `}}}}`
 	}
-	f.machineConfig(`{"oracle":{"api":{"openrouter":{"base_url":"` + o.srv.URL + `/api/v1","key":"openrouter","models":["` + pinModel + `"]}}}}`)
-	_, rec, err := f.loadAPI().Call(context.Background(), credential.Machine(f.roots.Home), CallRequest{
-		Target: Target{Provider: "openrouter", Model: pinModel}, Brief: sidesBrief, ReadGeneration: true})
-	if err != nil {
-		t.Fatal(err)
+	f.machineConfig(block("true"))
+	err := f.loadAPIErr()
+	for _, want := range []string{"oracle.api.local", "read_generation", "OpenRouter"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not name %q: %v", want, err)
+		}
 	}
-	if o.gens.Load() != 0 || rec.GenerationReadback != ReadbackFailed || !strings.Contains(rec.GenerationReadbackError, "OpenRouter") {
-		t.Fatalf("gens %d, readback %q (%q)", o.gens.Load(), rec.GenerationReadback, rec.GenerationReadbackError)
+	f.machineConfig(block("false"))
+	if p := f.loadAPI().providers["local"]; p.ReadGeneration {
+		t.Fatal("read_generation false reads as set")
 	}
-	if r, ok := listed(rec, AskedProviderPin); !ok || r != NotConfigured {
-		t.Fatalf("an unpinned call lists the provider pin as %q, %v", r, ok)
+}
+
+// TestReadGenerationIsTheMachinesAlone: like every member of a provider
+// block, read_generation is refused from a repository's configuration, which
+// cannot make a person's calls send a request of their own.
+func TestReadGenerationIsTheMachinesAlone(t *testing.T) {
+	asOpenRouter(t)
+	o := newORFake(t, http.StatusOK, genRecord)
+	f := newFx(t)
+	f.machineConfig(pinBlock(o.srv.URL+"/api/v1", goodPin))
+	f.repoConfig(`{"oracle":{"api":{"openrouter":{"read_generation":true}}}}`)
+	err := f.loadAPIErr()
+	for _, want := range []string{".abcd/config.json (repo layer)", "oracle.api", "refused"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("the refusal does not say %q: %v", want, err)
+		}
 	}
+}
+
+// TestAPartialGenerationRecordNeverMixesCounts: the response's counts and the
+// generation record's native ones come from two tokenizers, so the record's
+// replace the response's only all together, when it carries every count it
+// has a field for; a record missing one leaves the response's counts as they
+// were. Its cost is taken on its own, either way.
+func TestAPartialGenerationRecordNeverMixesCounts(t *testing.T) {
+	n := func(v int) *int { return &v }
+	c := func(v float64) *float64 { return &v }
+	resp := openaiapi.Result{Usage: &openaiapi.Usage{PromptTokens: n(120), CompletionTokens: n(30), TotalTokens: n(150),
+		ReasoningTokens: n(12), CachedTokens: n(100), CacheWriteTokens: n(20), Cost: c(0.00042)}}
+	partial := openaiapi.Generation{Usage: &openaiapi.Usage{PromptTokens: n(121), CompletionTokens: n(33), Cost: c(0.0007)}}
+	got := withGeneration(resp, partial).Usage
+	want := openaiapi.Usage{PromptTokens: n(120), CompletionTokens: n(30), TotalTokens: n(150),
+		ReasoningTokens: n(12), CachedTokens: n(100), CacheWriteTokens: n(20), Cost: c(0.0007)}
+	if !reflect.DeepEqual(*got, want) {
+		t.Fatalf("partial record: usage = %s, want %s", usageText(*got), usageText(want))
+	}
+	if *resp.Usage.Cost != 0.00042 {
+		t.Fatal("the response's usage was changed underneath it")
+	}
+	full := openaiapi.Generation{Usage: &openaiapi.Usage{PromptTokens: n(121), CompletionTokens: n(33),
+		ReasoningTokens: n(5), CachedTokens: n(64)}}
+	got = withGeneration(resp, full).Usage
+	want = openaiapi.Usage{PromptTokens: n(121), CompletionTokens: n(33), ReasoningTokens: n(5), CachedTokens: n(64), Cost: c(0.00042)}
+	if !reflect.DeepEqual(*got, want) {
+		t.Fatalf("full record: usage = %s, want %s", usageText(*got), usageText(want))
+	}
+}
+
+// usageText spells a usage's counts for a failure message.
+func usageText(u openaiapi.Usage) string {
+	raw, _ := json.Marshal(u)
+	return string(raw)
 }

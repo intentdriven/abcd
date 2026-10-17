@@ -346,6 +346,10 @@ func newFake(t *testing.T, mode string, harnesses ...string) fakeEnv {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", f.bin)
+	// The person's own opencode configuration, if the machine running the
+	// tests names one, is not the test's: a test that wants one sets it.
+	t.Setenv("OPENCODE_CONFIG", "")
+	t.Setenv("OPENCODE_CONFIG_CONTENT", "")
 	t.Setenv(fakeModeEnv, mode)
 	t.Setenv(fakeLogEnv, f.log)
 	return f

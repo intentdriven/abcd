@@ -170,10 +170,11 @@ reported, never a refused answer: each count it does not carry readably is
 listed as not reported on its own, and a later usage chunk that reads fewer
 fields than an earlier one does not replace it. `unpinned` lists each field of the fixed asked
 and served lists the call could not pin, with its reason: `not_reported` (the
-response does not carry it), `self_reported`, `harness_computed` or
+response does not carry it), `self_reported`, `harness_computed`,
 `not_configured` (no setting or pin names it; a route to this machine lists the
 weight file's fingerprint, its quantisation and the runtime's version so until a
-local route can be pinned). Recording adds no request to the ones the call
+local route can be pinned) or `not_verified` (abcd configured the value and the
+record carries it, but nothing on the route shows it reached the provider). Recording adds no request to the ones the call
 makes. A model its provider block pins to one OpenRouter provider
 (`oracle.api.<provider>.pins`, iss-2610161734413178) is sent with OpenRouter's
 provider routing object (one provider in `order`, `allow_fallbacks: false`,
@@ -181,14 +182,22 @@ provider routing object (one provider in `order`, `allow_fallbacks: false`,
 the record carries it as `provider_pin` with the model's `canonical_slug`, so
 the provider pin is no longer listed as not configured. The served side can
 also be read from OpenRouter's generation record (`GET
-/api/v1/generation?id=`), but that is a request of its own, so it is made only
-when the caller opts in (`CallRequest.ReadGeneration`, which a model-matrix
-run the person started and consented to sets; itd-2610161733316518 decision
+/api/v1/generation?id=`), but that is one extra request for every call, so it
+is made only when the person turns it on for the provider in their own
+machine's configuration (`oracle.api.<provider>.read_generation: true`,
+OpenRouter's block alone, never a repository's;
+[`03-configuration.md`](03-configuration.md); itd-2610161733316518 decision
 12) and never otherwise: `generation_readback` says `not_asked`, `read` or
-`failed`. Read, it replaces the served provider, the prompt, completion,
-reasoning and cache-read counts and the cost with the record's own, and
-`attempts` lists every provider OpenRouter tried, in order, so a fallback
-shows as an attempt before the one that served. It is made with the key the
+`failed`. Read, it replaces the served provider and the cost with the
+record's own, and `attempts` lists every provider OpenRouter tried, in order,
+so a fallback shows as an attempt before the one that served. The record's
+native token counts come from the serving model's own tokenizer and the
+response's from another, so they never mix: when the record carries all four
+of its counts (prompt, completion, reasoning, cache-read) they replace the
+response's all together, and the cache-write count, which the record does not
+carry, is then listed as not reported; a record missing any of the four
+leaves the response's counts as they were. The cost is taken from the record
+whenever it carries one. It is made with the key the
 call used, resolved once by name, on the same pinned client (no redirect, the
 body bounded), and bounded in time as a whole (twenty seconds, a not-found
 asked again after a short doubling wait, since OpenRouter records a
@@ -254,14 +263,23 @@ review is skipped.
   when it resolves inside the repository or its checkout, and removed when the
   run ends). opencode is pointed at it with `OPENCODE_CONFIG`, which opencode
   1.18.31 merges over the person's own global configuration without writing
-  it, and `OPENCODE_CONFIG_CONTENT` is cleared for the run so an inline
-  configuration cannot override the pin; a managed or organisation
-  configuration opencode reads later is the person's own and still applies.
-  The route records the pin (`provider_pin`), the configuration's SHA-256
+  it; a managed or organisation configuration opencode reads later is the
+  person's own and still applies. A person who points opencode at a
+  configuration of their own through `OPENCODE_CONFIG` or
+  `OPENCODE_CONFIG_CONTENT` (their key through `{env:}`, permission denies,
+  MCP servers) would lose it to the sealed file, and abcd never changes how
+  the person's tools work, so a pinned run is refused before anything is
+  written or launched while either is set and not empty, naming the
+  variable: unset it for pinned runs, or route the role to a model without a
+  pin. An unpinned run passes both through as they are. The route records
+  the pin (`provider_pin`), the configuration's SHA-256
   (`pin_config_sha256`) and opencode's version, asked with `--version` under
   the same seal. opencode holds the key on this path and abcd never reads it,
-  so the generation readback is not made there: the served provider and the
-  provider's own counts stay not reported.
+  so the generation readback is not made there, whatever `read_generation`
+  says: the served provider and the provider's own counts stay not reported,
+  and nothing shows the pin reached OpenRouter, so the provider pin is
+  listed as `not_verified` beside the pin the record carries: configured,
+  not verified on the wire.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the

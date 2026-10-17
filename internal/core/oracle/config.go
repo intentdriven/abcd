@@ -66,6 +66,9 @@ const (
 	judgementsKey = "oracle.judgements"
 	// streamUsageKey is a provider block's opt-out of usage in the stream.
 	streamUsageKey = "stream_usage"
+	// readGenerationKey is a provider block's opt-in to the generation
+	// readback (pin.go).
+	readGenerationKey = "read_generation"
 )
 
 // Bounds on what the configuration may carry.
@@ -107,6 +110,11 @@ type Provider struct {
 	// Pins is the block's pins, by the listed model each holds to one
 	// OpenRouter provider (pin.go); nil when it pins none.
 	Pins map[string]Pin `json:"pins,omitempty"`
+	// ReadGeneration is the block's read_generation: true makes every call
+	// through it read OpenRouter's generation record back once it is
+	// answered (pin.go), a request of its own. false, the default, makes
+	// none; true is read only on a block whose base URL is OpenRouter's.
+	ReadGeneration bool `json:"read_generation,omitempty"`
 }
 
 // AsksStreamUsage reports whether a call through p asks for usage in the
@@ -156,6 +164,8 @@ type providerFile struct {
 	Models      []string           `json:"models"`
 	StreamUsage *bool              `json:"stream_usage"`
 	Pins        map[string]pinFile `json:"pins"`
+	// ReadGeneration is read_generation, nil when the block omits it.
+	ReadGeneration *bool `json:"read_generation"`
 }
 
 // LoadAPI reads the provider configuration through the layered resolver and
@@ -249,7 +259,7 @@ func (c *APIConfig) readProviders(s *layered.Stack) error {
 				origin, apiKey, name, Harness)
 		}
 	}
-	if err := s.Claim(apiKey+".*", "base_url", "key", "models", streamUsageKey, pinsKey); err != nil {
+	if err := s.Claim(apiKey+".*", "base_url", "key", "models", streamUsageKey, pinsKey, readGenerationKey); err != nil {
 		return fmt.Errorf("oracle adapter: %w", err)
 	}
 	for _, name := range names {
@@ -309,6 +319,9 @@ func (c *APIConfig) provider(name string, fd layered.Found) (Provider, error) {
 	}
 	p.Models = append([]string(nil), pf.Models...)
 	if p.Pins, err = readPins(p.BaseURL, p.Models, pf.Pins); err != nil {
+		return Provider{}, err
+	}
+	if p.ReadGeneration, err = readGenerationSetting(p.BaseURL, pf.ReadGeneration); err != nil {
 		return Provider{}, err
 	}
 	return p, nil

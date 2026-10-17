@@ -188,7 +188,9 @@ rather than skipped:
             "quantizations": ["fp8"],    // exactly one quantization
             "canonical_slug": "typesafe/jev-1.13-20260915" // the model's permanent slug
           }
-        }
+        },
+        "read_generation": true          // optional, OpenRouter's base URL only, default false:
+                                         //   one extra request per call, to read what served it
       }
     },
     "denylist": ["openai/*"],            // optional, none bundled; repo or machine
@@ -233,6 +235,22 @@ rather than skipped:
   OpenRouter's (`openrouter.ai`), since a server that ignored the object would
   leave the record claiming a pin nothing held; elsewhere it is refused. A pin
   sits in the provider block, so like the block it is the machine's alone.
+  A role routed through opencode to a pinned model is refused while the
+  person's environment sets `OPENCODE_CONFIG` or `OPENCODE_CONFIG_CONTENT`,
+  which the run's sealed configuration would otherwise replace
+  ([`02-adapters.md`](02-adapters.md)).
+- **Reading back what served a call is the person's choice, per provider.**
+  `oracle.api.<provider>.read_generation: true` makes every call through that
+  block read OpenRouter's generation record once it is answered (the
+  provider that served, every provider tried, the native token counts and
+  the cost; itd-2610161733316518 decision 12). That is one extra request per
+  call, with the same key, made only because the person turned it on: unset
+  or `false`, the default, no call makes it. It is read only on a block whose
+  `base_url` is OpenRouter's, the one server that keeps such a record, and
+  refused elsewhere when the configuration is read, as a pin is; like every
+  member of a provider block it is the machine's alone, so a repository can
+  never make the person's calls send it. The opencode runner never makes it,
+  since opencode holds the key there.
 - **The allowlist alone decides; the denylist is optional and a union.** abcd
   bundles no vendor denylist (adr-2609300107513982), so a model a provider lists
   is served whichever vendor made it. `oracle.denylist` is the configuration's

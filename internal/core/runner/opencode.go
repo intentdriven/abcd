@@ -92,7 +92,12 @@ func (o *OpenCodeCLI) Run(ctx context.Context, req Request) (Answer, []byte, err
 	var sealed sealedPin
 	if o.pin != nil {
 		// A pinned run reads the pin from a configuration made for it alone
-		// (pin.go), and its opencode's version is recorded beside it.
+		// (pin.go), and its opencode's version is recorded beside it; one
+		// whose parent names a configuration of the person's own is refused
+		// first, since the sealed file would set it aside.
+		if err := personsOpenCodeConfig(); err != nil {
+			return Answer{}, nil, err
+		}
 		if sealed, err = o.sealPin(req); err != nil {
 			return Answer{}, nil, err
 		}

@@ -89,11 +89,6 @@ type CallRequest struct {
 	// Contract is the output contract the host sub-agent's payload is judged
 	// by; nil admits any answer.
 	Contract func([]byte) error
-	// ReadGeneration asks for OpenRouter's generation record of the call
-	// once it is answered (pin.go): a request of its own, so it is false
-	// unless the run the call belongs to was started with the person's
-	// consent to it (itd-2610161733316518 decision 12).
-	ReadGeneration bool
 }
 
 // Call sends req through its target's provider and returns the answer the
@@ -114,7 +109,7 @@ func (c *APIConfig) Call(ctx context.Context, creds credential.Source, req CallR
 	if err != nil {
 		return nil, CallRecord{}, err
 	}
-	payload, rec, err := complete(ctx, p, key, t.Model, req.Brief, req.Settings, req.Contract, c.denylist, req.ReadGeneration, opts...)
+	payload, rec, err := complete(ctx, p, key, t.Model, req.Brief, req.Settings, req.Contract, c.denylist, opts...)
 	if err != nil {
 		// Decision 4: an ordinary call is never sent again without the
 		// field; the refusal names the setting that stops asking.
@@ -163,13 +158,14 @@ func resolveKey(creds credential.Source, p Provider) (string, error) {
 // and a refusal of it is returned as the adapter gave it: Call names the
 // setting that stops asking, and the setup's verification (Connect) asks
 // once more without it. complete itself never sends the call a second time;
-// the one request it may add is the generation readback, made when read asks
-// for it and only after the answer is admitted (pin.go).
+// the one request it may add is the generation readback, made only when p's
+// block sets read_generation, the person's own choice on their machine, and
+// only after the answer is admitted (pin.go).
 //
 // A model p's block pins is sent with its pin as OpenRouter's provider
 // routing object, and the record carries the pin on the asked side.
 func complete(ctx context.Context, p Provider, key, model string, brief openaiapi.Brief, settings Settings,
-	contract func([]byte) error, denylist []DenyEntry, read bool, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
+	contract func([]byte) error, denylist []DenyEntry, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
 	provider := p.Name
 	client, err := openaiapi.New(p.BaseURL, key, opts...)
 	if err != nil {
@@ -189,7 +185,7 @@ func complete(ctx context.Context, p Provider, key, model string, brief openaiap
 			"which %s refuses (%s, from %s); the answer is discarded", provider, model, res.ModelReported, denylistKey, e.Pattern, e.Origin)
 	}
 	rb := readback{state: ReadbackNotAsked}
-	if read {
+	if p.ReadGeneration {
 		rb = readGeneration(ctx, client, p, res)
 	}
 	if rb.gen != nil {

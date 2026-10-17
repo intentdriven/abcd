@@ -16,17 +16,25 @@ package runner
 // configuration or a file of the repository: the file sits in a directory
 // made for the run (mode 0700, the file 0600) under the system's temporary
 // directory, refused when that resolves inside the repository or its
-// checkout, and removed when the run ends. OPENCODE_CONFIG_CONTENT, which
-// opencode merges later still, is cleared for the run, so an inline
-// configuration the parent holds cannot override the pin. A configuration
-// opencode reads after both (an organisation's managed configuration or its
-// remote account configuration) is the person's own and still applies.
+// checkout, and removed when the run ends. A configuration opencode reads
+// after it (an organisation's managed configuration or its remote account
+// configuration) is the person's own and still applies.
+//
+// A person who points opencode at a configuration of their own, a file
+// through OPENCODE_CONFIG or inline through OPENCODE_CONFIG_CONTENT (which
+// opencode merges later still), would lose it to the sealed file, or have it
+// override the pin, and with it the key, permission denies and servers it
+// carries. abcd never changes how the person's tools work, so a pinned run is
+// refused before anything is written or launched while either is set and not
+// empty (personsOpenCodeConfig); an unpinned run passes both through.
 //
 // The route records the configuration's SHA-256 and opencode's version, asked
 // with --version under the same seal before the run. The key stays in
 // opencode's own configuration or environment and abcd never reads it, so the
 // generation readback is not made on this path and the served provider, the
-// attempts and the provider's own counts stay not reported.
+// attempts and the provider's own counts stay not reported. Nothing on this
+// path shows the pin reached OpenRouter either, so the record carries the pin
+// and lists it as not verified: configured, not verified on the wire.
 
 import (
 	"bytes"
@@ -147,10 +155,30 @@ func inside(dir string, roots ...string) bool {
 	return false
 }
 
-// pinnedSeal is the seal of a pinned run: opencode's own, the run's
-// configuration, and the parent's inline configuration cleared.
+// personsConfigVars are the variables through which a person points opencode
+// at a configuration of their own, which a pinned run's sealed file would
+// set aside or be overridden by.
+var personsConfigVars = []string{"OPENCODE_CONFIG", "OPENCODE_CONFIG_CONTENT"}
+
+// personsOpenCodeConfig refuses a pinned run while the environment the
+// harness would inherit names a configuration of the person's own for
+// opencode: the variable is named, its value never quoted.
+func personsOpenCodeConfig() error {
+	for _, name := range personsConfigVars {
+		if os.Getenv(name) != "" {
+			return fail(OpenCode, ReasonFailed, "%s is set, and a pinned run points opencode at a configuration abcd writes "+
+				"for it, which would set aside the one %s names; abcd never changes how your tools work, so the run is "+
+				"not started: unset %s for pinned runs, or route the role to a model without a pin", name, name, name)
+		}
+	}
+	return nil
+}
+
+// pinnedSeal is the seal of a pinned run: opencode's own and the run's
+// configuration. personsOpenCodeConfig has refused a parent that names one
+// of its own, so nothing the person set is replaced.
 func pinnedSeal(p sealedPin) []string {
-	return append(slices.Clone(openCodeSeal), "OPENCODE_CONFIG="+p.path, "OPENCODE_CONFIG_CONTENT=")
+	return append(slices.Clone(openCodeSeal), "OPENCODE_CONFIG="+p.path)
 }
 
 // version asks bin for its version under seal, "" when it gives none that

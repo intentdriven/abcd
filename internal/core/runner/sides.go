@@ -3,7 +3,7 @@ package runner
 // sides.go is what a runner records of both sides of a run (itd-166): the
 // model it passed the harness and the prompt it handed it, beside what the
 // harness's events say answered, with the token counts and the cost they
-// carry. The vocabulary (the fixed field lists, the four reasons, the usage
+// carry. The vocabulary (the fixed field lists, the reasons, the usage
 // and the cost) is internal/core/oracle's, shared with the provider adapter's
 // record, so two runs compare field by field whatever routes they took.
 //
@@ -56,7 +56,8 @@ type Sides struct {
 	Unpinned []oracle.Unpinned `json:"unpinned,omitempty"`
 	// ProviderPin is the pin the run's opencode was pointed at, and
 	// PinConfigSHA256 the SHA-256 of the sealed configuration that carried it
-	// (pin.go); empty when the run was not pinned.
+	// (pin.go); empty when the run was not pinned. It is what was configured,
+	// not what reached OpenRouter, so Unpinned lists it as not verified.
 	ProviderPin     *oracle.Pin `json:"provider_pin,omitempty"`
 	PinConfigSHA256 string      `json:"pin_config_sha256,omitempty"`
 }
@@ -93,10 +94,17 @@ func cleanHarness(s string) string {
 // can pin: no sampling setting, seed, effort or context variant is passed to
 // a harness (each is the harness's or the owner's configuration), nor, when
 // the runner passed none, a model, nor a provider pin unless the run was
-// pointed at one (an opencode run to a pinned model, pin.go).
+// pointed at one (an opencode run to a pinned model, pin.go). A pin a run was
+// pointed at is listed as not verified beside the pin the record carries:
+// the harness was handed it, and nothing it returns shows it reached the
+// provider.
 func askedUnpinned(un *oracle.Unpin, s Sides) {
 	un.Unless(s.ModelAsked != "", oracle.AskedModel, oracle.NotConfigured)
-	un.Unless(s.ProviderPin != nil, oracle.AskedProviderPin, oracle.NotConfigured)
+	if s.ProviderPin != nil {
+		un.Add(oracle.AskedProviderPin, oracle.NotVerified)
+	} else {
+		un.Add(oracle.AskedProviderPin, oracle.NotConfigured)
+	}
 	for _, f := range []oracle.Field{oracle.AskedTemperature, oracle.AskedTopP,
 		oracle.AskedSeed, oracle.AskedEffort, oracle.AskedContext} {
 		un.Add(f, oracle.NotConfigured)
