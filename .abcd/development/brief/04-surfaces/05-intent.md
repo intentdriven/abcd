@@ -529,7 +529,7 @@ Drift triggers a warning, not a block (since spec-store state may legitimately l
 
 ## 7. The `intent-auditor` agent (three roles, three verbs)
 
-`intent-auditor` is a single agent in the catalog (per `05-internals/01-agents.md`) that owns three roles. Roles share the agent's prompt scaffolding, oracle backend resolution, and receipts; they differ in what they review, when they run, where findings land, and **which subverb users invoke them through**. Each role has its own dedicated verb — no role-by-kind dispatch, no hidden-state forking.
+`intent-auditor` is a single agent in the catalog (per `05-internals/01-agents.md`) that owns three roles. Roles share the agent's prompt scaffolding, oracle backend resolution, and receipts; they differ in what they review, when they run, where findings land, and **which subverb users invoke them through**. Each role has its own dedicated verb — no role-by-kind dispatch, no hidden-state forking. The first two ship; the third is a design target, with no verb registered.
 
 The audit verb names Role 1, per adr-40: it emits family-2 promise-vs-reality verdicts, and the four-bucket vocabulary reserves *review* for family-1 change-judgement (`plan-review`, `impl-review` stay family-1 nouns). The top-level conformance check is `abcd lint`, with `/abcd:audit` reserved for itd-16's hash-chain fidelity checks. Each verb means one thing.
 
