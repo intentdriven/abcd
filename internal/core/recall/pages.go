@@ -71,7 +71,7 @@ func readPages(home, repoRoot string) ([]Item, []Refusal) {
 // before pages (page:…) — and every layer, scope or page that could not be
 // read. It is what the prompt router and `rules --prompt` hand the recall.
 func ReadItems(home, repoRoot string) ([]Item, []Refusal) {
-	notes, refused := ReadNotes(home, repoRoot)
+	notes, refused := readNotes(home, repoRoot)
 	pages, pr := readPages(home, repoRoot)
 	return append(notes, pages...), append(refused, pr...)
 }

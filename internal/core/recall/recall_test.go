@@ -83,7 +83,7 @@ func TestANoteInTheProjectsFileIsRecalled(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(repo, ".abcd", "memory.json"), []byte(project), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	items, refused := ReadNotes(t.TempDir(), repo)
+	items, refused := readNotes(t.TempDir(), repo)
 	if len(refused) != 0 {
 		t.Fatalf("refused = %+v", refused)
 	}
@@ -326,7 +326,7 @@ func TestRootIsAskedOnlyForAMatchedTiedNote(t *testing.T) {
 // TestReadLayersIsTheOneReader (F3): ReadLayers reads both note layers as
 // they stand — the notes in full, for the memory verb's list — and names a
 // layer it could not read, home-redacted, while still reading the other.
-// ReadNotes is the same read turned into items.
+// readNotes is the same read turned into items.
 func TestReadLayersIsTheOneReader(t *testing.T) {
 	home, repo := t.TempDir(), t.TempDir()
 	if err := os.MkdirAll(filepath.Join(repo, ".abcd"), 0o755); err != nil {
@@ -352,8 +352,8 @@ func TestReadLayersIsTheOneReader(t *testing.T) {
 	if len(refused) != 1 || refused[0].File != memnote.MachineDisplayPath || strings.Contains(refused[0].Reason, home) {
 		t.Fatalf("refused = %+v", refused)
 	}
-	items, again := ReadNotes(home, repo)
+	items, again := readNotes(home, repo)
 	if len(items) != 1 || items[0].Key != "mem-2610111200004321" || !slices.Equal(again, refused) {
-		t.Fatalf("ReadNotes = %+v, %+v", items, again)
+		t.Fatalf("readNotes = %+v, %+v", items, again)
 	}
 }

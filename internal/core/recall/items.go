@@ -78,7 +78,7 @@ type Refusal struct {
 // noteItems turns both note layers into items, in id order. A personal note
 // carries the root it is tied to (Item.Tie), and is recalled only in that
 // repository, or everywhere when its root is null; the tie is judged after
-// matching (Matching), so reading the layers asks git nothing. Every note in
+// matching (see matching), so reading the layers asks git nothing. Every note in
 // the project's file is an item. A note in both layers (an id is minted once,
 // so only a hand copy does that) is the project's: the machine's copy is
 // suppressed.
@@ -139,9 +139,9 @@ func ReadLayers(home, repoRoot string) (Layers, []Refusal) {
 	return l, refused
 }
 
-// ReadNotes is ReadLayers turned into the recall's items. A personal note's
+// readNotes is ReadLayers turned into the recall's items. A personal note's
 // tie is judged after matching, against the RootFunc the recall is handed.
-func ReadNotes(home, repoRoot string) ([]Item, []Refusal) {
+func readNotes(home, repoRoot string) ([]Item, []Refusal) {
 	l, refused := ReadLayers(home, repoRoot)
 	return noteItems(l.Machine, l.Project), refused
 }

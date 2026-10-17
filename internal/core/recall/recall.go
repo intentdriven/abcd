@@ -24,7 +24,7 @@ type Request struct {
 	// switch silences it too.
 	Disabled bool
 	// Root answers the repository's root commit, for the items tied to one;
-	// asked only once a tied item matched (Matching).
+	// asked only once a tied item matched (matching).
 	Root RootFunc
 }
 
@@ -66,7 +66,7 @@ func (r Result) Labels(keys []string) []string {
 }
 
 // Recall matches the items against the prompt, judges each tied note's root
-// (Matching), ranks the candidates (Rank), drops every one already sent this
+// (matching), ranks the candidates (Rank), drops every one already sent this
 // session with unchanged content, and takes the rest in ranked order while
 // they fit the budget: the first that does not fit stops the take, so an
 // item never comes back ahead of one ranked above it that a later turn can

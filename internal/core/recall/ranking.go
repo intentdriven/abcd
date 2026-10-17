@@ -89,7 +89,7 @@ func found(counts map[string]int, t rules.PromptTerm) int {
 }
 
 // Rank matches items against prompt, judges each tied note's root
-// (Matching, which asks root only when a tied item matched), and returns the
+// (matching, which asks root only when a tied item matched), and returns the
 // candidates in ranked order, each with its score and the terms behind it,
 // with the root lookup's error beside them. The score is BM25F:
 // for each query term t found in the item,
@@ -105,7 +105,7 @@ func found(counts map[string]int, t rules.PromptTerm) int {
 // machine's), then the more recent At, then the key, so the order is the
 // same on every machine and every run.
 func Rank(items []Item, prompt string, root RootFunc) ([]Ranked, error) {
-	cands, rootErr := Matching(items, prompt, root)
+	cands, rootErr := matching(items, prompt, root)
 	if len(cands) == 0 {
 		return nil, rootErr
 	}
