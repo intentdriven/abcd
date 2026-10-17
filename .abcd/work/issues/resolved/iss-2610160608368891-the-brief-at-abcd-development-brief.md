@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/04-surfaces/01-ahoy.md"
 remedy: "Add --outbound, --readme-parts, --answers/--answered-in and --install-tool to the list of non-interactive flags at 01-ahoy.md:956."
+resolution: "The ahoy chapter's list of non-interactive flags left out five that pre-answer a prompt; it now also names the outbound opt-in, the README parts answer, the install-a-tool answer and the answers file with where its answers were given."
+impact: internal
 ---
 
 The brief at .abcd/development/brief/04-surfaces/01-ahoy.md:956 says 'The non-interactive flags pre-answer the prompts:' and lists approve-everything, adopt, marker target, oracle backend, deep scan, visibility, dev mode, the stale-binary override, the PATH directory and the attribution hook as the whole set. `abcd ahoy install --help` also registers --outbound, --readme-parts, --answers, --answered-in and --install-tool, each of which pre-answers a prompt.
