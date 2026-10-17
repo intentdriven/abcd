@@ -163,8 +163,9 @@ func TestImplementLoadRaceGateTakesNoWait(t *testing.T) {
 }
 
 // TestImplementLoadWaitNamesAnUnreadableMachineConfig: a group-writable
-// ~/.abcd.noindex/config.json fails the first gate, and so make preflight,
-// with a refusal that names the file and says how to fix it.
+// ~/.abcd.noindex/config.json no longer stops the first gate, and so make
+// preflight: the gate takes one preflight at a time and says so once on
+// stderr, naming the file, the cause and the fix.
 func TestImplementLoadWaitNamesAnUnreadableMachineConfig(t *testing.T) {
 	waitFixture(t, machine(3, 3, 3))
 	home, _ := os.UserHomeDir()
@@ -178,15 +179,20 @@ func TestImplementLoadWaitNamesAnUnreadableMachineConfig(t *testing.T) {
 	if err := os.Chmod(cfg, 0o660); err != nil {
 		t.Fatal(err)
 	}
-	code, _, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "1m")
+	code, out, errOut := implementCLI(t, "implement", "load", "--wait", "--timeout", "1m")
 	file := abcdhome.Display("config.json")
+	note := "abcd implement load --wait: the machine configuration " + file + " cannot be read for load.preflights"
 	for _, want := range []string{
-		"abcd implement load --wait: nothing was waited for: the machine configuration " + file + " cannot be read for load.preflights",
+		note,
 		"writable by group or other",
-		"To fix it, keep " + file + " a regular file you own that nobody else can write (chmod go-w " + file + ")",
+		"so one preflight at a time applies",
+		"keep " + file + " a regular file you own that nobody else can write (chmod go-w " + file + ")",
 	} {
-		if code != 1 || !strings.Contains(errOut, want) {
-			t.Errorf("exit %d, want 1 with %q:\n%s", code, want, errOut)
+		if code != 0 || !strings.Contains(errOut, want) {
+			t.Errorf("exit %d, want 0 with %q on stderr:\n%s", code, want, errOut)
 		}
+	}
+	if strings.Count(errOut, note) != 1 || !strings.Contains(out, "load gate open") {
+		t.Errorf("want the note once and the gate open:\nstdout %s\nstderr %s", out, errOut)
 	}
 }

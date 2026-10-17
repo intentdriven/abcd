@@ -388,6 +388,8 @@ func TestLoadDomainTeachesTheWaiter(t *testing.T) {
 		"never read from a repository file",
 		// Each gate is shut only by its own gate's hold.
 		"a first gate's hold never shuts the race gate",
+		// A machine config.json that cannot be read stops nothing.
+		"a `config.json` that cannot be read for it is read past",
 	} {
 		if !strings.Contains(all, want) {
 			t.Errorf("the LOAD rules do not carry %q", want)

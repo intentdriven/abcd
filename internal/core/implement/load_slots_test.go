@@ -42,7 +42,7 @@ func writeMachineConfig(t *testing.T, home, body string) {
 
 // TestPreflightSlotsDefaultsToOne: with nothing set, one preflight at a time.
 func TestPreflightSlotsDefaultsToOne(t *testing.T) {
-	n, src, err := PreflightSlots(noEnv, t.TempDir())
+	n, src, _, err := PreflightSlots(noEnv, t.TempDir())
 	if err != nil || n != 1 || src != SlotsDefault {
 		t.Fatalf("PreflightSlots = %d, %q, %v; want 1 from the default", n, src, err)
 	}
@@ -53,7 +53,7 @@ func TestPreflightSlotsDefaultsToOne(t *testing.T) {
 func TestPreflightSlotsFromTheMachineConfig(t *testing.T) {
 	home := t.TempDir()
 	writeMachineConfig(t, home, `{"load": {"preflights": 2}}`)
-	n, src, err := PreflightSlots(noEnv, home)
+	n, src, _, err := PreflightSlots(noEnv, home)
 	if err != nil || n != 2 || src != SlotsMachine {
 		t.Fatalf("PreflightSlots = %d, %q, %v; want 2 from the machine's config.json", n, src, err)
 	}
@@ -64,7 +64,7 @@ func TestPreflightSlotsFromTheMachineConfig(t *testing.T) {
 func TestPreflightSlotsFromTheEnvironment(t *testing.T) {
 	home := t.TempDir()
 	writeMachineConfig(t, home, `{"load": {"preflights": 1}}`)
-	n, src, err := PreflightSlots(slotsEnv("2"), home)
+	n, src, _, err := PreflightSlots(slotsEnv("2"), home)
 	if err != nil || n != 2 || src != SlotsEnv {
 		t.Fatalf("PreflightSlots = %d, %q, %v; want 2 from %s", n, src, err, PreflightSlotsEnv)
 	}
@@ -72,10 +72,10 @@ func TestPreflightSlotsFromTheEnvironment(t *testing.T) {
 
 // TestPreflightSlotsRefusesABadValue: a value that is not a whole number from
 // one to MaxPreflightSlots, from either place, is refused naming where it was
-// set, never replaced by the default; so is an unknown key under load.
+// set, never replaced by the default.
 func TestPreflightSlotsRefusesABadValue(t *testing.T) {
 	for _, v := range []string{"0", "5", "two", "1.5", "-1"} {
-		if _, _, err := PreflightSlots(slotsEnv(v), t.TempDir()); err == nil || !strings.Contains(err.Error(), PreflightSlotsEnv) {
+		if _, _, _, err := PreflightSlots(slotsEnv(v), t.TempDir()); err == nil || !strings.Contains(err.Error(), PreflightSlotsEnv) {
 			t.Errorf("%s=%q: err = %v, want a refusal naming the variable", PreflightSlotsEnv, v, err)
 		}
 	}
@@ -84,11 +84,11 @@ func TestPreflightSlotsRefusesABadValue(t *testing.T) {
 		`{"load": {"preflights": 5}}`,
 		`{"load": {"preflights": "2"}}`,
 		`{"load": {"preflights": 1.5}}`,
-		`{"load": {"preflight": 2}}`,
+		`{"load": {"preflights": null}}`,
 	} {
 		home := t.TempDir()
 		writeMachineConfig(t, home, body)
-		if _, _, err := PreflightSlots(noEnv, home); err == nil || !strings.Contains(err.Error(), "config.json") {
+		if _, _, _, err := PreflightSlots(noEnv, home); err == nil || !strings.Contains(err.Error(), "config.json") {
 			t.Errorf("%s: err = %v, want a refusal naming config.json", body, err)
 		}
 	}
@@ -104,25 +104,26 @@ func TestPreflightSlotsIsCappedAtTwoUntilMeasured(t *testing.T) {
 	}
 	const why = "the limit rises once a measured trial supports it"
 	for _, v := range []string{"3", "4"} {
-		_, _, err := PreflightSlots(slotsEnv(v), t.TempDir())
+		_, _, _, err := PreflightSlots(slotsEnv(v), t.TempDir())
 		if err == nil || !strings.Contains(err.Error(), PreflightSlotsEnv) || !strings.Contains(err.Error(), why) {
 			t.Errorf("%s=%s: err = %v, want a refusal naming the variable and saying %q", PreflightSlotsEnv, v, err, why)
 		}
 		home := t.TempDir()
 		writeMachineConfig(t, home, `{"load": {"preflights": `+v+`}}`)
-		_, _, err = PreflightSlots(noEnv, home)
+		_, _, _, err = PreflightSlots(noEnv, home)
 		if err == nil || !strings.Contains(err.Error(), "config.json") || !strings.Contains(err.Error(), why) {
 			t.Errorf("load.preflights %s: err = %v, want a refusal naming config.json and saying %q", v, err, why)
 		}
 	}
 }
 
-// TestPreflightSlotsNamesTheFileAndTheFix: a machine config.json that fails
-// to read (group-writable, not valid JSON, or an unknown key under load) still
-// fails the wait loudly, as the layered reader's rule says, and the refusal
-// names the file and says how to fix it, so a default user whose make
-// preflight stops at its first gate can act on it.
-func TestPreflightSlotsNamesTheFileAndTheFix(t *testing.T) {
+// TestPreflightSlotsReadsPastAnUnreadableFile: a machine config.json that
+// cannot be read for the count (group-writable, not valid JSON, a load that is
+// not an object, or a key under load nothing reads) does not stop the gate,
+// which never read that file before the setting existed: the count is the
+// default, one, and a note names the file, the cause and the fix. Only a
+// load.preflights that is present and unusable is refused.
+func TestPreflightSlotsReadsPastAnUnreadableFile(t *testing.T) {
 	file := abcdhome.Display("config.json")
 	for _, c := range []struct {
 		name, body string
@@ -131,6 +132,7 @@ func TestPreflightSlotsNamesTheFileAndTheFix(t *testing.T) {
 	}{
 		{"group-writable", `{"load": {"preflights": 2}}`, 0o660, "writable by group or other"},
 		{"invalid", `{"load": {"preflights": 2}`, 0o600, "not valid JSON"},
+		{"load not an object", `{"load": 5}`, 0o600, "not an object"},
 		{"unknown key", `{"load": {"preflight": 2}}`, 0o600, "unknown key load.preflight"},
 	} {
 		home := t.TempDir()
@@ -138,26 +140,57 @@ func TestPreflightSlotsNamesTheFileAndTheFix(t *testing.T) {
 		if err := os.Chmod(filepath.Join(abcdhome.Path(home), "config.json"), c.mode); err != nil {
 			t.Fatal(err)
 		}
-		_, _, err := PreflightSlots(noEnv, home)
-		if err == nil {
-			t.Errorf("%s: no refusal", c.name)
+		n, src, note, err := PreflightSlots(noEnv, home)
+		if err != nil || n != 1 || src != SlotsDefault {
+			t.Errorf("%s: PreflightSlots = %d, %q, %v; want 1 from the default", c.name, n, src, err)
 			continue
 		}
-		msg := err.Error()
 		for _, want := range []string{
 			"the machine configuration " + file + " cannot be read for " + PreflightSlotsKey,
 			c.cause,
-			"To fix it, keep " + file + " a regular file you own that nobody else can write (chmod go-w " + file + ")",
-			`whose "load" names no key but "preflights", a whole number from 1 to 2`,
-			"or move it aside, which drops every machine setting it holds, and one preflight at a time applies",
+			"so one preflight at a time applies",
+			"keep " + file + " a regular file you own that nobody else can write (chmod go-w " + file + ")",
+			`whose "load" names no key but "preflights"`,
 		} {
-			if !strings.Contains(msg, want) {
-				t.Errorf("%s: refusal lacks %q:\n%s", c.name, want, msg)
+			if !strings.Contains(note, want) {
+				t.Errorf("%s: note lacks %q:\n%s", c.name, want, note)
 			}
 		}
-		if strings.Contains(msg, home) {
-			t.Errorf("%s: refusal carries the home path:\n%s", c.name, msg)
+		if strings.Contains(note, home) {
+			t.Errorf("%s: note carries the home path:\n%s", c.name, note)
 		}
+	}
+
+	// A key nothing reads beside a usable load.preflights leaves the count
+	// as set, and the note names the key.
+	home := t.TempDir()
+	writeMachineConfig(t, home, `{"load": {"preflights": 2, "preflight": 1}}`)
+	n, src, note, err := PreflightSlots(noEnv, home)
+	if err != nil || n != 2 || src != SlotsMachine || !strings.Contains(note, "unknown key load.preflight") {
+		t.Fatalf("PreflightSlots = %d, %q, %q, %v; want 2 from the machine with a note naming load.preflight", n, src, note, err)
+	}
+
+	// The environment is read first, and the file is then not read at all.
+	n, src, note, err = PreflightSlots(slotsEnv("2"), home)
+	if err != nil || n != 2 || src != SlotsEnv || note != "" {
+		t.Fatalf("PreflightSlots = %d, %q, %q, %v; want 2 from the environment and no note", n, src, note, err)
+	}
+}
+
+// TestWaitReadsPastAnUnreadableMachineConfig: the wait carries the note and
+// opens, at either gate, rather than refusing.
+func TestWaitReadsPastAnUnreadableMachineConfig(t *testing.T) {
+	home := t.TempDir()
+	writeMachineConfig(t, home, `{"load": {"preflights": 2}`)
+	res, err := WaitLoad(waitReq(home, 60000, &fakeClock{now: waitT0}, poll{load: 3}))
+	if err != nil || res.Status != WaitOpen || res.Slots != 1 || !strings.Contains(res.SlotsNote, "not valid JSON") {
+		t.Fatalf("first gate = %+v, %v; want open with one slot and a note", res, err)
+	}
+	req := waitReq(home, 60000, &fakeClock{now: waitT0}, poll{load: 3})
+	req.Race = true
+	res, err = WaitLoad(req)
+	if err != nil || res.Status != WaitOpen || res.Slots != 1 || !strings.Contains(res.SlotsNote, "not valid JSON") {
+		t.Fatalf("race gate = %+v, %v; want open at once with one slot and a note", res, err)
 	}
 }
 
@@ -172,7 +205,7 @@ func TestPreflightSlotsIgnoresTheRepository(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Chdir(repo)
-	n, src, err := PreflightSlots(noEnv, t.TempDir())
+	n, src, _, err := PreflightSlots(noEnv, t.TempDir())
 	if err != nil || n != 1 || src != SlotsDefault {
 		t.Fatalf("PreflightSlots in a checkout setting 4 = %d, %q, %v; want 1 from the default", n, src, err)
 	}

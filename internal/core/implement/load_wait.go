@@ -311,6 +311,9 @@ type WaitResult struct {
 	// gate opens at once.
 	Slots       int    `json:"slots,omitempty"`
 	SlotsSource string `json:"slots_source,omitempty"`
+	// SlotsNote says why the machine configuration was read past for the
+	// count, when it was (PreflightSlots); the front door prints it once.
+	SlotsNote string `json:"slots_note,omitempty"`
 	// Backoffs is how many times the waiter stood back from another that opened
 	// in the same moment with the lower pid.
 	Backoffs int `json:"backoffs,omitempty"`
@@ -376,7 +379,7 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
 	}
 	defer root.Close()
-	if res.Slots, res.SlotsSource, err = PreflightSlots(getenv, home); err != nil {
+	if res.Slots, res.SlotsSource, res.SlotsNote, err = PreflightSlots(getenv, home); err != nil {
 		return res, fmt.Errorf("nothing was waited for: %w", err)
 	}
 	if req.Race && res.Slots <= 1 {

@@ -579,7 +579,9 @@ provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
 `interview.list`, `reservation.github_username` and `load.preflights` (how
 many preflights may be in their test stages at once: 1 or 2, 1 by default,
-never read from a repository) are honoured from the machine layer alone. Its one
+never read from a repository, and the one machine key read past, with a
+stderr note, when the file cannot be read for it, so a file that holds other
+settings never stops the load gate) are honoured from the machine layer alone. Its one
 write is the provider block `ahoy connect` adds, and every other config read
 resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
 model-tier routing table in `oracle-routing.json` (read beneath the

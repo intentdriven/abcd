@@ -2,9 +2,12 @@ package main
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 )
@@ -56,5 +59,24 @@ func TestAnUnusableSlotSettingStillPrintsANumber(t *testing.T) {
 	run(&out, &errOut, env, idle, t.TempDir())
 	if got := out.String(); got != "16\n" || !strings.Contains(errOut.String(), implement.PreflightSlotsEnv) {
 		t.Fatalf("printed %q (stderr %q), want %q and a note naming %s", got, errOut.String(), "16\n", implement.PreflightSlotsEnv)
+	}
+}
+
+// TestAnUnreadableMachineConfigTakesOneSlot: a machine config.json that
+// cannot be read is no error here either: the stage takes one slot, and the
+// load gate before it is what names the file.
+func TestAnUnreadableMachineConfigTakesOneSlot(t *testing.T) {
+	home := t.TempDir()
+	dir := abcdhome.Path(home)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "config.json"), []byte(`{"load": {"preflights": 2}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, errOut bytes.Buffer
+	run(&out, &errOut, func(string) string { return "" }, idle, home)
+	if got := out.String(); got != "16\n" || errOut.Len() != 0 {
+		t.Fatalf("printed %q (stderr %q), want %q and nothing on stderr", got, errOut.String(), "16\n")
 	}
 }

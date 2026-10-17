@@ -770,18 +770,19 @@ setting, so two concurrent stages do not each take the whole machine. A value
 that is not a whole number from 1 to 2 refuses the wait, naming where it was
 set; a `load.preflights` in a repository's `.abcd/config.json` is never read.
 
-A `~/.abcd.noindex/config.json` that cannot be read refuses the wait too, at
-either gate, even for someone who never set `load.preflights` (only an
-`ABCD_LOAD_PREFLIGHTS` in the environment, which is read first, skips the
-file): one that others can write, one that is not valid JSON, or
-one with a key under `load` other than `preflights`. Like every guarded read
-of a machine setting it fails loudly rather than read past the file and
-silently drop what it sets, and since the first gate stops, so does `make
-preflight`. The refusal names the file and how to fix it: keep it a regular
-file you own that nobody else can write (`chmod go-w
+A `~/.abcd.noindex/config.json` that cannot be read for the count does not
+stop the wait: one that others can write, one that is not valid JSON, or one
+whose `load` is not an object is read past, one preflight at a time applies,
+and the waiter prints one line on stderr naming the file, the cause and how to
+fix it: keep it a regular file you own that nobody else can write (`chmod go-w
 ~/.abcd.noindex/config.json`), holding one valid JSON object whose `load` names
-no key but `preflights`; or move it aside, which drops every machine setting it
-holds, and one preflight at a time applies.
+no key but `preflights`. A key under `load` other than `preflights` is named on
+that line too, and a usable `load.preflights` beside it still counts. The gate
+never read that file before the setting existed, so a file that holds other
+settings never stops a `make preflight` of someone who did not set the count.
+Only a `load.preflights` that is there and unusable (out of range, or not a
+whole number) refuses the wait, as an unusable `ABCD_LOAD_PREFLIGHTS` does;
+the environment is read first, and with it set the file is not read.
 
 Within one account the waiter that opens also writes a hold,
 `~/.abcd.noindex/load-wait.json` at the first gate and

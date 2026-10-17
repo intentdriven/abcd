@@ -138,10 +138,11 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"their command are in their test stages (a `--wait -- make preflight` counts\n" +
 			"once), a waiter queued ahead still shuts it, and a live race run does not shut\n" +
 			"it by itself; the load limit still does, and the race gate keeps race stages one\n" +
-			"at a time. A value it cannot use refuses the wait, naming where it was set; so\n" +
-			"does a `" + abcdhome.Display("config.json") + "` that cannot be read (writable by others, not\n" +
-			"valid JSON, or an unknown key under `load`), naming the file and how to fix it,\n" +
-			"and since the first gate stops, so does `make preflight`.\n\n" +
+			"at a time. A value it cannot use refuses the wait, naming where it was set. A\n" +
+			"`" + abcdhome.Display("config.json") + "` that cannot be read for it (writable by others,\n" +
+			"not valid JSON, or a `load` that is not an object) is read past instead: one\n" +
+			"preflight at a time applies, and one line on stderr names the file, the cause\n" +
+			"and how to fix it; so does a key under `load` that nothing reads.\n\n" +
 			"Within one account the waiter that opens also takes a hold,\n" +
 			"`" + abcdhome.Display(implement.WaitHoldFileName) + "` at the first gate and `" + abcdhome.Display(implement.WaitRaceHoldFileName) + "` at\n" +
 			"the race gate, and every other waiter of that account at the same gate stays\n" +
@@ -234,6 +235,13 @@ func runLoadWait(cmd *cobra.Command, asJSON bool, timeout time.Duration, race bo
 	res, err := implement.WaitLoad(req)
 	if err != nil {
 		return &exitError{Code: 1, Msg: "abcd implement load --wait: " + err.Error()}
+	}
+	if res.SlotsNote != "" {
+		flag := "--wait"
+		if race {
+			flag = "--race-gate"
+		}
+		fmt.Fprintf(cmd.ErrOrStderr(), "abcd implement load %s: %s\n", flag, res.SlotsNote)
 	}
 	if err := render(out, asJSON, res, func(w io.Writer) { renderLoadWait(w, res) }); err != nil {
 		return err

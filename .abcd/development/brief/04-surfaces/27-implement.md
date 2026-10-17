@@ -320,9 +320,12 @@ machine layer alone, or `ABCD_LOAD_PREFLIGHTS` in the environment for a trial;
 one by default, from 1 to 2 until a measured trial supports more
 (dcn-2610161814279204), a bad value refused naming where it was set, and no
 repository file ever read for it, because a checkout must not raise the
-machine's load. A machine `config.json` that cannot be read (writable by
-others, not valid JSON, an unknown key in its load object) refuses the wait, and so
-the preflight, with a message naming the file and how to fix it. At one the
+machine's load. A machine `config.json` that cannot be read for the count
+(writable by others, not valid JSON, a load that is not an object) is read
+past, with one line on stderr naming the file, the cause and the fix, and one
+preflight at a time applies, since the gate never read that file before the
+setting existed; an unknown key in its load object is named on that line too.
+Only a `load.preflights` that is there and unusable refuses the wait. At one the
 first gate reads exactly as above. Above one it
 admits a waiter while fewer than that many units of work are in their test
 stages (a running preflight, or a waiter running its command, counted once

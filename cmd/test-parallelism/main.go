@@ -14,7 +14,8 @@
 // It is developer tooling, never part of a release: it prints one number and a
 // newline, reads the machine once, writes nothing and exits 0. A slot setting
 // it cannot use is named on stderr and read as one; the load gate before the
-// stage refuses that setting first.
+// stage refuses that setting first. A machine config.json it cannot read is
+// read as one without a word: the load gate before the stage names it.
 package main
 
 import (
@@ -34,7 +35,7 @@ func main() {
 // run prints the parallelism derived from getenv, read and the slot setting
 // under home.
 func run(w, errw io.Writer, getenv func(string) string, read func() (machineload.Snapshot, error), home string) {
-	slots, _, err := implement.PreflightSlots(getenv, home)
+	slots, _, _, err := implement.PreflightSlots(getenv, home)
 	if err != nil {
 		fmt.Fprintf(errw, "test-parallelism: %v; taking one preflight at a time\n", err)
 		slots = 1
