@@ -157,7 +157,7 @@ Two things to read the table with:
 
 - **A row is a reserved name, not a delivery claim.** Where the machinery a row describes is a design target rather than shipped behaviour, the row says **(staged)** in its Type column, per the truth rule in [`../00-meta.md`](../00-meta.md#the-truth-rule). Current delivery state lives in the roadmap dashboard, never here.
 - **A row the shipped design has superseded says so.** Some names entered this register from the retired predecessor implementation and describe machinery abcd neither ships nor plans; they stay registered so the name is not re-minted on a different meaning, marked **(predecessor vocabulary; superseded)** with a pointer to what replaced it.
-- **Source ids carry their namespace.** A `spc-N` in the Source column that names the retired predecessor store is written *(predecessor store)*, per the two-namespace rule in [`../../specs/README.md`](../../specs/README.md#two-spc-n-namespaces--always-qualify-above-the-ceiling). The two id spaces overlap below the live ceiling, so an unqualified `spc-2` or `spc-3` resolves in the live store to a spec about something else entirely.
+- **Source ids carry their namespace.** A `spc-N` in the Source column that names the retired predecessor store is written *(predecessor store)*, per the two-namespace rule in [`../../specs/README.md`](../../specs/README.md#two-spc-n-namespaces--always-qualify-a-predecessor-id). The two id spaces overlap below the live ceiling, so an unqualified `spc-2` or `spc-3` resolves in the live store to a spec about something else entirely.
 
 | Term | Type | Source |
 |---|---|---|
