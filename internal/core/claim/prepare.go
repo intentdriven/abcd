@@ -23,6 +23,9 @@ type Options struct {
 	// Version is the binary's version the Assisted-by label names; "" means
 	// the running binary's (core.Version).
 	Version string
+	// Embargo is the embargo check an announcement is held to (C5); nil
+	// refuses every announcement, since an unchecked one is never let through.
+	Embargo EmbargoCheck
 	// ForgeUser answers whose GitHub account the forge token gh resolves from
 	// the session's environment belongs to (login and numeric id): the user endpoint, asked only by an
 	// explicit act when git's identity names no holder. nil means the real
@@ -60,12 +63,15 @@ func (o Options) assistedBy() string {
 
 // Request is one reservation act asked for.
 type Request struct {
-	// Record is the issue or intent id, as the person typed it.
+	// Record is the issue or intent id, as the person typed it, or a release
+	// subject, rel-vX.Y.Z.
 	Record string
 	// Footprint is the repository-relative files the work will change; a
-	// reservation requires at least one, a release takes none.
+	// reservation of a record requires at least one, and a release subject
+	// and a release (the tombstone) take none.
 	Footprint []string
-	// Lease is how long the reservation holds; zero means lease.Default.
+	// Lease is how long the reservation holds; zero means lease.Default, or
+	// lease.Max for a release subject.
 	Lease time.Duration
 	// TakeOver moves this person's own live reservation from another copy to
 	// this one. It never overrides another person's.
@@ -162,7 +168,11 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if req.Drain && (req.Release || req.Renew) {
 		return nil, refuse("only a reservation is a drain's to back off a hand-back, never a release or a renewal; %s", nothingPushed)
 	}
-	if !req.Release && !req.Renew && len(req.Footprint) == 0 {
+	release := isRelease(id)
+	if release && len(req.Footprint) > 0 {
+		return nil, refuse("a release reservation holds every merge and takes no footprint; %s", nothingPushed)
+	}
+	if !release && !req.Release && !req.Renew && len(req.Footprint) == 0 {
 		return nil, refuse("a reservation names the files the work will change: pass --footprint <path> once per path; %s", nothingPushed)
 	}
 	for _, p := range req.Footprint {
@@ -171,7 +181,12 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		}
 	}
 	term := req.Lease
-	if term == 0 {
+	switch {
+	case term == 0 && release && !req.Release:
+		// A release holds for a day unless a lease is named: a cut waits on
+		// checks and an approval, and must outlast them (release.go).
+		term = lease.Max
+	case term == 0:
 		term = lease.Default
 	}
 	if term < lease.Min || term > lease.Max {

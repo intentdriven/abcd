@@ -19,7 +19,12 @@ An **oracle** is abcd's abstraction for an AI model used in a review or reasonin
 role. By default the oracle is **host-delegated**
 ([adr-25](../../../decisions/adrs/0025-host-delegated-llm-default.md)): abcd's
 core does the deterministic work, hands a prompt to the host's subagent dispatch,
-and consumes the structured verdict (SHIP / NEEDS_WORK / MAJOR_RETHINK). When an
+and consumes the structured verdict. The verdict words depend on the role: a
+lifeboat review states SHIP / NEEDS_WORK / MAJOR_RETHINK, the intent auditor
+states MET, NOT_MET and their kin per criterion, and the implement loop's
+reviewers state words of their own
+([verdict-tag protocol](../../05-internals/01-agents.md#verdict-tag-protocol)).
+When an
 operator wants abcd to reach a model directly, a concrete **oracle adapter** —
 native, CLI, API, or MCP — is wired behind the same seam. Referring to it as
 "oracle" rather than by a generic model name emphasises its role as a decider
@@ -39,8 +44,9 @@ transport that delivers context to it.
 
 ## Examples
 
-- "The impl-review skill hands the diff to the host-delegated oracle and reads
-  back its verdict."
+- "A `build` run's validate stage hands the lane's diff to
+  `ruthless-reviewer`, a host-delegated oracle, and records the verdict it
+  reads back."
 - "The oracle returned NEEDS_WORK on round 6."
 
 ## Related terms

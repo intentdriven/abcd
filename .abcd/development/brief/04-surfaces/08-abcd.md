@@ -124,7 +124,8 @@ member an open spec defers to.
 
 Any other positional is refused: the CLI exits **2** with `abcd: unknown command
 …` on stderr, which is the framework's usage-error convention. `abcd status` is
-refused that way, and `abcd help` prints the grouped verb list the
+its own verb, everyone's status on the shared remote
+([`39-status.md`](39-status.md)), not a record read, and `abcd help` prints the grouped verb list the
 [register](README.md#how-the-help-lists-the-verbs) describes and exits 0.
 A shape-matching record id found in no store is a structural fault: the command
 exits non-zero with a diagnostic naming the store it searched, never a silent

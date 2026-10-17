@@ -701,13 +701,16 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	// The land fence (spc-2610031753359849 spec 2): before the rule decides,
 	// the run's reservation must still be this person's from this copy, and
 	// it is renewed for fenceLease, a day.
-	holds, err := landFence(c, *lane, fenceLease)
+	holds, notice, err := landFence(c, *lane, fenceLease)
 	if err != nil {
 		return Outcome{}, err
 	}
 	held := ""
 	if !holds.IsZero() {
 		held = "; the reservation on " + c.State.Key + " holds until " + stamp(holds)
+	}
+	if notice != "" {
+		held += "; " + notice
 	}
 	n := strconv.Itoa(lane.PR)
 	if method == "" {

@@ -244,6 +244,12 @@ type trailers struct {
 	vals map[string][]string
 	// other is the final paragraph's lines that carry no known key, verbatim.
 	other []string
+	// inexact is the final paragraph's lines that carry a known key but are
+	// not written exactly `Key: value` in its canonical spelling: indented,
+	// spaced around the colon or the value, or the key in another case. The
+	// collector reads them as the key's (a reservation tolerates them); a
+	// family that admits only its own trailers refuses on them.
+	inexact []string
 	// lead is the message before its final paragraph (the subject, and any
 	// paragraph after it), "" when the message is one paragraph.
 	lead string
@@ -272,7 +278,11 @@ func collectTrailers(text string, keys []string) trailers {
 			t.other = append(t.other, l)
 			continue
 		}
-		t.vals[known] = append(t.vals[known], strings.TrimSpace(v))
+		val := strings.TrimSpace(v)
+		if l != known+": "+val || val == "" {
+			t.inexact = append(t.inexact, l)
+		}
+		t.vals[known] = append(t.vals[known], val)
 	}
 	return t
 }
@@ -293,15 +303,16 @@ func parseMessage(record, text string) (message, string) {
 }
 
 // validateReservation is the reservation family's validator: the trailers must
-// name record exactly once, one GitHub username as holder, one working copy,
-// the lease's times and only repository-relative footprint paths, and a
-// tombstone's hand-back, when it carries one, one kind from the vocabulary
-// with one object name (validateHandBack). A key it does not know, and any
-// text outside the trailers, is ignored.
+// name record (the reservation's subject) exactly once, one GitHub username
+// as holder, one working copy, the lease's times and only
+// repository-relative footprint paths, and a tombstone's hand-back, when it
+// carries one, one kind from the vocabulary with one object name
+// (validateHandBack). A key it does not know, and any text outside the
+// trailers, is ignored.
 func validateReservation(record string, t trailers) (message, string) {
 	var m message
 	id, ok := t.one(keyReservation)
-	if !ok || !recordid.CitedIDRe.MatchString(id) || recordid.CanonCitedID(id) != record {
+	if !ok || !namesSubject(id, record) {
 		return m, reasonRecord
 	}
 	m.Record = record
@@ -342,6 +353,16 @@ func validateReservation(record string, t trailers) (message, string) {
 		m.AssistedBy = v
 	}
 	return m, ""
+}
+
+// namesSubject reports whether a trailer's id names the reservation's
+// subject: a release subject exactly, a record in any spelling that
+// canonicalises to it.
+func namesSubject(id, subject string) bool {
+	if isRelease(subject) {
+		return id == subject
+	}
+	return recordid.CitedIDRe.MatchString(id) && recordid.CanonCitedID(id) == subject
 }
 
 // validFootprint reports whether p is a footprint path a reservation may carry:

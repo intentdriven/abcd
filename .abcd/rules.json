@@ -55,6 +55,7 @@
       "recall": [
         "abcd",
         "ahoy",
+        "announce",
         "banlist",
         "build",
         "capture",
@@ -90,6 +91,7 @@
         "scribe",
         "site",
         "spec",
+        "status",
         "statusline",
         "update",
         "version"

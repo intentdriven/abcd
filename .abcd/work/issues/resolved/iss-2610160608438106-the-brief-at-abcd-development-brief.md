@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/05-internals/08-skills.md"
 remedy: "Replace 'audit' with 'lint' among the verbs named at 08-skills.md:84-86."
+resolution: "the skills chapter now names the lint verb the ahoy install section's Audit phase runs, not an audit verb"
+impact: internal
 ---
 
 The brief at .abcd/development/brief/05-internals/08-skills.md:84-86 says the ahoy page's install section prepares a repository by running the binary's audit, install and identity verbs. abcd has no audit verb (`abcd audit` exits 2 as unknown); the install section's Audit phase runs `abcd lint --json` (commands/ahoy.md:202), beside ahoy install and identity init and render.

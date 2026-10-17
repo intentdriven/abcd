@@ -658,7 +658,12 @@ func RunCapped(root string, maxBytes int, args ...string) (string, error) {
 // truncated answer. git also exits 1 on some refusals (merge-tree's "not
 // something we can merge"), so a caller checks the answer's shape.
 func RunCappedExitOne(root string, maxBytes int, args ...string) ([]byte, bool, error) {
-	cmd := isolatedGit(root, args...)
+	return runCappedExitOneCmd(isolatedGit(root, args...), maxBytes, args)
+}
+
+// runCappedExitOneCmd is RunCappedExitOne's body, for an isolated command
+// already built.
+func runCappedExitOneCmd(cmd *exec.Cmd, maxBytes int, args []string) ([]byte, bool, error) {
 	w := &capWriter{remaining: maxBytes}
 	e := &capWriter{remaining: 4096}
 	cmd.Stdout, cmd.Stderr = w, e

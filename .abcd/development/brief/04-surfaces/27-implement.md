@@ -434,7 +434,26 @@ again for a lane a drain opened, and nothing retries one `abcd build <iss-N>`
 started, whose reservation lapses with its lease),
 whether a drain or `abcd build <iss-N>` started it (iss-2610142247197128); an
 intent's run keeps its reservation through a hand-back. A run holding no reservation
-is neither renewed, fenced nor tombstoned.
+is neither renewed nor tombstoned, and its own reservation is not fenced.
+
+The land fence also reads the release hold (itd-2609151838312703 C7,
+spc-2610150728396006 step 4). Every run's fence, one holding a reservation or
+not, fetches the reservations from origin first (for a run holding one, the
+fetch its renewal makes), then arms nothing, as contention, while a release
+reservation (`rel-vX.Y.Z`, [`37-reserve.md`](37-reserve.md)) is live and not
+this copy's own: the refusal names the release and its holder, or says it is
+the person's own other copy, until when it holds, and that a session cutting a
+release has the final say on what merges before its tag, and leaves the pull
+request open and unarmed for the cutting session to merge or hold. The copy
+cutting the release is not held, since its landing is its own ruling. A
+release whose tag is on origin, or whose holder released it, holds nothing; an
+unreadable release branch within its hold holds like a live one. A release
+dated more than five minutes ahead holds from this copy's first sighting of
+it, which the judgement keeps whichever fetch brought it; one whose sighting
+cannot be kept is not counted, and the arming's note names it
+([`37-reserve.md`](37-reserve.md)). An origin the fetch cannot read arms
+nothing, since a hold it cannot see may be there; a checkout with no remote
+named origin has no reservations and is not held.
 
 A run keyed by an issue (decision 10 on itd-2609201916151817, the lane the
 drain opens for each eligible issue) has one lane. Its brief is the issue's
