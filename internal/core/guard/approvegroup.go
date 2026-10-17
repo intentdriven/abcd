@@ -14,7 +14,11 @@ package guard
 // words the shell can read as opening or closing a group, an if, a loop or a
 // case. It reads more of them than the shell does, never fewer, and asks for
 // the outer group to close at the very end and nowhere before, so a word it
-// misreads can refuse a command but cannot approve one.
+// misreads can refuse a command but cannot approve one. It counts a word only
+// when the line leaves it wholly unquoted (segment.bareWord): a quoted { or
+// keyword (`"{"`, `'{'`, `\{`, `{""`, `'then'`) is a command's name to the
+// shell, and the words after it are its arguments, so counting one as an
+// opener would pair it with a } that in fact closes the outer group.
 
 import "slices"
 
@@ -40,13 +44,33 @@ var leadWords = map[string]bool{
 	"{": true, "!": true, "time": true, endGroup: true, endIf: true, endLoop: true, endCase: true,
 }
 
+// groupWord reports whether w is a word the walk below reads at the start of
+// a command: an opener, a lead word, a close or `function`. The tokenizer
+// records where one stands unquoted (segment.bareWord).
+func groupWord(w string) bool {
+	_, open := openers[w]
+	return open || leadWords[w] || w == "function"
+}
+
+// allStruct reports whether every byte of a word reached the tokenizer
+// unquoted and unescaped.
+func allStruct(mask []byte) bool {
+	for _, m := range mask {
+		if m&wordStruct == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 // runFromIntact is runFrom(dir, command) and whether that text is intact: the
 // change of directory and one group holding the whole command. A dir that is
 // not absolute is not wrapped, and the command is returned as it is.
 //
 // Besides the closes the shells share, zsh also reads a } after a command's
 // words as closing a group (`{ echo a }`), so every unquoted } word must be
-// one the walk counts as a close.
+// one the walk counts as a close. Openers, lead words and closes are counted
+// only where they stand unquoted, the test the tokenizer applies to that }.
 func runFromIntact(dir, command string) (string, bool) {
 	text := runFrom(dir, command)
 	if text == command {
@@ -83,6 +107,9 @@ func runFromIntact(dir, command string) (string, bool) {
 		closed := false
 		for i := 0; i < len(toks); i++ {
 			t := toks[i]
+			if !s.bareWord[i] {
+				break // a quoted word is a command's name, not a keyword
+			}
 			if end, ok := openers[t]; ok {
 				if closed {
 					return text, false // an opener straight after a close
@@ -99,7 +126,7 @@ func runFromIntact(dir, command string) (string, bool) {
 				counted[i], closed = true, true
 			}
 			// `function NAME {` opens its body after the name.
-			if i == 0 && t == "function" && len(toks) > 2 && toks[2] == "{" {
+			if i == 0 && t == "function" && len(toks) > 2 && toks[2] == "{" && s.bareWord[2] {
 				stack = append(stack, endGroup)
 				break
 			}
@@ -107,8 +134,8 @@ func runFromIntact(dir, command string) (string, bool) {
 				break
 			}
 		}
-		for i := range s.bareClose {
-			if !counted[i] {
+		for i := range s.bareWord {
+			if toks[i] == endGroup && !counted[i] {
 				return text, false
 			}
 		}

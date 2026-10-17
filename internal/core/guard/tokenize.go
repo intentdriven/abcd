@@ -119,10 +119,12 @@ type segment struct {
 	// an entry's arg_shapes read it (ShapeUnguardedVariablePath). nil when no
 	// word does.
 	varLead map[int]bool
-	// bareClose records, per token index, a word that is a `}` the line
-	// leaves unquoted and unescaped, wherever it stands: a word some shell
-	// may read as closing a group. nil when no word is one.
-	bareClose map[int]bool
+	// bareWord records, per token index, a word the line leaves wholly
+	// unquoted and unescaped, with not even an empty quote pair in it, that
+	// a shell may read as a reserved word or as opening or closing a group
+	// (groupWord in approvegroup.go), wherever it stands. A quoted one is a
+	// command's name or an argument to the shell. nil when no word is one.
+	bareWord map[int]bool
 	// leadFrom records, per token index, a spelled word holding a value a
 	// guard keeps from being empty or a site whose empty text leaves a `/`
 	// first (emptyOpensPath in varpath.go), as the word and its sites, from which only a payload re-read's varLead spells
@@ -581,8 +583,11 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		// it as segment.leadFrom.
 		leads    map[int]bool
 		leadFrom map[int]leadSource
-		// closes rides with the segment (segment.bareClose).
+		// closes rides with the segment (segment.bareWord).
 		closes map[int]bool
+		// curQuoted records that the word being built took a quote or an
+		// escape, an empty quote pair included, which leaves no byte in cur.
+		curQuoted bool
 		// curMask is parallel to cur and records, per byte, whether it reached
 		// the tokenizer unquoted (wordStruct) and whether it began its word
 		// (wordRawStart) — what the brace expander needs to read a word the way
@@ -791,6 +796,9 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			curMask = append(curMask, mask)
 		}
 		hasCur = true
+		if mask&wordStruct == 0 {
+			curQuoted = true
+		}
 	}
 	// addText appends one decoded byte as text: an ANSI-C escape that
 	// decodes to varMark hands bash that byte, and no mark (readAnsiCQuote).
@@ -798,6 +806,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		cur = append(cur, c)
 		curMask = append(curMask, 0)
 		hasCur = true
+		curQuoted = true
 	}
 	// recordFeeds files the word being built's feeds under the index it is
 	// about to take.
@@ -963,7 +972,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					toks = append(toks, word)
 					globs = append(globs, w.globbed())
 				}
-				cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
+				cur, curMask, hasCur, curGlob, curBrace, curQuoted = nil, nil, false, false, false, false
 				curPieces, curFeeds, curVar, curSub, curVarAt = nil, nil, false, false, nil
 				return
 			}
@@ -984,7 +993,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		recordVar(true)
 		recordSpelling(tok, tok == string(cur))
 		curFeeds, curVar, curSub, curVarAt = nil, false, false, nil
-		if tok == "}" && len(curMask) == 1 && curMask[0]&wordStruct != 0 {
+		if !curQuoted && tok == string(cur) && groupWord(tok) && allStruct(curMask) {
 			if closes == nil {
 				closes = map[int]bool{}
 			}
@@ -1003,7 +1012,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		}
 		toks = append(toks, tok)
 		globs = append(globs, curGlob)
-		cur, curMask, hasCur, curGlob, curBrace = nil, nil, false, false, false
+		cur, curMask, hasCur, curGlob, curBrace, curQuoted = nil, nil, false, false, false, false
 	}
 	flushSegment := func() {
 		flushToken()
@@ -1019,7 +1028,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 				tokens: toks, chain: chain, braceGroup: braceGroup, globbed: globsOrNil(globs),
 				stdinStream: curStdin || pipeNext || len(groupIn) > 0, literal: lits, feeds: feeds, piped: piped,
 				stdinIn: groupIn, home: list, at: len(segs), variable: vars, spelled: spells,
-				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, bareClose: closes, redirects: curRedirs, afterAnd: andNext, end: pos,
+				ifsSplit: splits, varLead: leads, leadFrom: leadFrom, bareWord: closes, redirects: curRedirs, afterAnd: andNext, end: pos,
 			})
 			if n := len(parens); n > 0 && parens[n-1].array != "" {
 				segs[len(segs)-1].arrayOf = parens[n-1].array
@@ -1182,13 +1191,14 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		saved := &enclosing{
 			toks: toks, globs: globs, lits: lits, vars: vars, curVar: curVar, curSub: curSub,
 			spells: spells, curVarAt: curVarAt, splits: splits, leads: leads, leadFrom: leadFrom, closes: closes,
-			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob,
+			cur: cur, curMask: curMask, hasCur: hasCur, curGlob: curGlob, curQuoted: curQuoted,
 			curBrace: curBrace, braceGroup: braceGroup, chain: chain, procSub: procSub,
 			curStdin: curStdin, pipeNext: pipeNext, curDocs: curDocs, pieces: curPieces,
 			feeds: feeds, curFeeds: curFeeds, pipeFrom: pipeFrom, segStart: len(segs), braceFrom: braceFrom,
 			groupIn: groupIn, docFloor: docFloor, redirs: curRedirs, andNext: andNext,
 		}
 		toks, globs, lits, cur, curMask, hasCur, curGlob, curBrace, braceGroup = nil, nil, nil, nil, nil, false, false, false, false
+		curQuoted = false
 		curRedirs, andNext = nil, false
 		curPieces, vars, curVar, curSub = nil, nil, false, false
 		spells, curVarAt, splits, leads, leadFrom, closes = nil, nil, nil, nil, nil, nil
@@ -1264,6 +1274,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
 		spells, curVarAt, splits, leads, leadFrom, closes = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.closes
+		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
 		resumeDocs(e)
 		if !f.bare {
@@ -1289,6 +1300,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 		feeds, curFeeds, pipeFrom, braceFrom, groupIn = e.feeds, e.curFeeds, e.pipeFrom, e.braceFrom, e.groupIn
 		vars, curVar, curSub = e.vars, e.curVar, e.curSub
 		spells, curVarAt, splits, leads, leadFrom, closes = e.spells, e.curVarAt, e.splits, e.leads, e.leadFrom, e.closes
+		curQuoted = e.curQuoted
 		curRedirs, andNext = e.redirs, e.andNext
 		feedFrom(e.segStart)
 		if e.procSub {
@@ -1526,7 +1538,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 			if !closed {
 				return fail(fmt.Errorf("%w: unterminated double quote", ErrUnparsableCommand))
 			}
-			hasCur = true
+			hasCur, curQuoted = true, true
 			lastList = false
 			i = j + 1
 		case c == ' ' || c == '\t' || c == '\r':
@@ -1697,7 +1709,7 @@ func tokenizeAt(line string, depth int, budget *int) ([]segment, error) {
 					fd = n
 				}
 				cur, curMask = nil, nil
-				hasCur = false
+				hasCur, curQuoted = false, false
 				curGlob = false
 			} else {
 				flushToken()
@@ -2580,6 +2592,7 @@ type enclosing struct {
 	cur        []byte
 	curMask    []byte
 	hasCur     bool
+	curQuoted  bool
 	curGlob    bool
 	curBrace   bool
 	braceGroup bool

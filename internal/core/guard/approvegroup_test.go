@@ -102,3 +102,50 @@ func TestApproveKeepsOrdinaryCommandsInTheGroup(t *testing.T) {
 		_ = os.Remove(filepath.Join(r.dir, "out"))
 	}
 }
+
+// TestApproveRefusesAQuotedGroupOpener: a quoted { is a command's name to
+// the shell, not a group opener, and a quoted keyword is a command's name,
+// after which the next word is an argument. A line of one, then a }, then a
+// command, closes the group early under bash and sh, and runs that command
+// though the change of directory failed. Each such line is refused with the
+// fixed reason.
+func TestApproveRefusesAQuotedGroupOpener(t *testing.T) {
+	r := plainRig(t)
+	var shells []string
+	for _, name := range []string{"bash", "sh"} {
+		if p, err := exec.LookPath(name); err == nil {
+			shells = append(shells, p)
+		}
+	}
+	if len(shells) == 0 {
+		t.Skip("neither bash nor sh is installed")
+	}
+	missing := filepath.Join(t.TempDir(), "missing")
+	for _, opener := range []string{
+		`"{"`, `'{'`, `\{`, `{""`, `{''`, `$'{'`,
+		`'then' {`, `\! {`, `"time" {`, `'function' f {`, `'if' {`,
+	} {
+		c := opener + "\n}\ntouch ran"
+		if a := approveShell(clean(), r.files(), c); !a.Allow {
+			t.Fatalf("%q: the guard no longer clears the line on its own (%s), so this case tests nothing", c, a.EntryID)
+		}
+		for _, sh := range shells {
+			work := t.TempDir()
+			cmd := exec.Command(sh, "-c", runFrom(missing, c))
+			cmd.Dir = work
+			_ = cmd.Run()
+			if _, err := os.Stat(filepath.Join(work, "ran")); err != nil {
+				t.Fatalf("%q under %s: the command after the } did not run (%v), so this case tests nothing", c, sh, err)
+			}
+		}
+		in, _ := json.Marshal(map[string]string{"command": c})
+		a, updated := ApprovePrompt(clean(), r.files(), "Bash", in)
+		if a.Allow || updated != nil {
+			t.Errorf("%q was approved as %s", c, updated)
+			continue
+		}
+		if a.EntryID != groupBrokenEntryID {
+			t.Errorf("%q: refused under %q, want %q (%s)", c, a.EntryID, groupBrokenEntryID, a.Reason)
+		}
+	}
+}
