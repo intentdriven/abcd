@@ -25,3 +25,22 @@ var LaneStages = []string{LaneStageWorktree, LaneStageBrief, LaneStageImplement,
 
 // ValidLaneStage reports whether s is a stage a renewal may name.
 func ValidLaneStage(s string) bool { return slices.Contains(LaneStages, s) }
+
+// validateStage reads a message's lane stage into m, which validateReservation
+// has filled: none, or exactly one of LaneStages, on a reservation that is not
+// released, since only a renewal writes one. It returns reasonStage for
+// anything else, so a tip whose stage is free text, repeated or on a
+// tombstone reads as unreadable, as a bad hand-back does, and is never shown
+// as a stage. The collector has already read an inexact spelling of the key
+// as the key's, as it does for every reservation trailer.
+func validateStage(m *message, t trailers) string {
+	stages := t.vals[keyStage]
+	if len(stages) == 0 {
+		return ""
+	}
+	if len(stages) != 1 || !ValidLaneStage(stages[0]) || m.released() {
+		return reasonStage
+	}
+	m.Stage = stages[0]
+	return ""
+}

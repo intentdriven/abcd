@@ -526,6 +526,9 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 	}
 	p.req.Footprint = append([]string(nil), j.Footprint...)
 	m := p.reservation()
+	// A lane's renewal names its stage; a renewal that names none carries
+	// none, so only the tip's stage is ever read (spc-2610161044461448 step 18).
+	m.Stage = p.req.Stage
 	return Result{Act: ActRenewed, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
 		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
 }
