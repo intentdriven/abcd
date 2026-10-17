@@ -18,6 +18,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/core/identity"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
@@ -2054,7 +2055,7 @@ func (a *applyCtx) stepVersionStamp() {
 		}
 		meta := subMap(cfgMap, "meta")
 		meta["schema_version"] = 1
-		meta["setup_version"] = pluginVersion()
+		meta["setup_version"] = stampedVersion(meta, pluginVersion())
 		meta["setup_date"] = time.Now().UTC().Format("2006-01-02")
 		meta["project_name"] = a.det.RepoIdentity.Name
 		cfgMap["meta"] = meta
@@ -2071,6 +2072,24 @@ func (a *applyCtx) stepVersionStamp() {
 		return
 	}
 	a.note(writeSetupRecord, configPath(a.cwd))
+}
+
+// stampedVersion is the setup version a stamp records: the running version,
+// unless the meta block already records a release tag the running version is
+// not at least (an older release, or a build that is not a release at all),
+// in which case the recorded release stays (spc-2610170635097509 step 1). A
+// teammate's newer committed setup version is never written back down.
+func stampedVersion(meta map[string]any, running string) string {
+	recorded, _ := stringVal(meta, "setup_version")
+	rv, err := launch.ParseReleaseTag(recorded)
+	if err != nil {
+		return running
+	}
+	cv, err := launch.ParseReleaseTag(running)
+	if err != nil || launch.CoreGreater(rv, cv) {
+		return recorded
+	}
+	return running
 }
 
 // Uninstall removes the marker block, abcd's README parts, abcd's status line

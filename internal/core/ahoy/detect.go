@@ -13,6 +13,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/adapter/gitleaks"
 	"github.com/intentdriven/abcd/internal/core/identity"
+	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
@@ -1023,18 +1024,39 @@ func detectVersion(cwd string) []Gap {
 			FixHint: "ahoy install stamps the meta block.", Required: true, Resolvable: true,
 		}}
 	}
-	// Neither side a dev build (iss-2608241115259170): the gap is required, and
-	// against a dev stamp or a dev binary it could never settle — every
-	// release install would re-stamp and every dev install undo it.
-	if current := pluginVersion(); !isDevOrUnknown(current) && !isDevOrUnknown(setupVersion) && setupVersion != current {
+	// Both sides release tags, and the running one newer (spc-2610170635097509
+	// step 1). A dev build on either side never takes part (iss-2608241115259170):
+	// the gap is required, and against a dev stamp or a dev binary it could never
+	// settle. A teammate's newer committed setup version is no upgrade, and setup
+	// is never a way to record an older one. Only versions that passed the strict
+	// parser reach the title, so no other word of the tracked file does.
+	if recorded, current, ok := upgradeFrom(setupVersion, pluginVersion()); ok {
 		return []Gap{{
 			ID: "version.upgrade", Category: SafeAutocreate, Scope: "repo",
-			Title:   "plugin upgrade " + setupVersion + " -> " + current,
-			Detail:  "Recorded setup_version differs from the current plugin version.",
-			FixHint: "ahoy install re-stamps setup_version + setup_date.", Required: true, Resolvable: true,
+			Title:   "plugin upgrade " + recorded + " -> " + current,
+			Detail:  "abcd has been updated since this repository's setup was recorded.",
+			FixHint: "abcd ahoy install --only-waiting asks only what waits here and re-stamps setup_version + setup_date.", Required: true, Resolvable: true,
 		}}
 	}
 	return nil
+}
+
+// upgradeFrom reports whether running is a release newer than the release
+// recorded, returning both as tags. Either side that is not exactly a release
+// tag (launch.ParseReleaseTag) is no upgrade.
+func upgradeFrom(recorded, running string) (string, string, bool) {
+	rv, err := launch.ParseReleaseTag(recorded)
+	if err != nil {
+		return "", "", false
+	}
+	cv, err := launch.ParseReleaseTag(running)
+	if err != nil {
+		return "", "", false
+	}
+	if !launch.CoreGreater(cv, rv) {
+		return "", "", false
+	}
+	return rv.Tag(), cv.Tag(), true
 }
 
 // ---------------------------------------------------------------------------
