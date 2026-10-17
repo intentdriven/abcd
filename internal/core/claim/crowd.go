@@ -95,8 +95,11 @@ func addsOne(j judged) bool {
 // configuration was read past for it.
 func capRefusal(mine []string, limit int, note string) error {
 	ids := strings.Join(mine, ", ")
-	raise := fmt.Sprintf("release one (abcd reserve <id> --release) first, or raise %s in %s (a whole number from 1 to %d, %d when unset)",
-		MaxLiveKey, layered.Config.MachineOrigin(), MaxLiveCeiling, MaxLive)
+	raise := "release one (abcd reserve <id> --release) first"
+	if limit < MaxLiveCeiling {
+		raise += fmt.Sprintf(", or raise %s in %s (a whole number from 1 to %d, %d when unset)",
+			MaxLiveKey, layered.Config.MachineOrigin(), MaxLiveCeiling, MaxLive)
+	}
 	if note != "" {
 		raise += "; " + note
 	}

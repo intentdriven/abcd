@@ -127,12 +127,17 @@ per person, counted across all of their sessions and copies, so a person who
 runs many sessions on one account raises it rather than releasing and
 re-taking holds to make room. It is read from the machine layer alone: a
 repository's `.abcd/config.json` that sets it is not read, so a checkout cannot
-raise anyone's ceiling. A value outside the range, or a key under
-`reservation` that nothing reads, refuses a new reservation naming the file,
-never falling back to ten; a `config.json` that cannot be read at all
-(writable by others, not valid JSON) is read past, ten applies, and the
-refusal at the cap says why. The setting is read only by an act that adds a
-reservation, so a bad value never stops a renewal or a release.
+raise anyone's ceiling, nor can a `HOME` set inside a working tree that is not
+the account's own. A value outside the range, or a key under `reservation`
+that nothing reads, refuses an act that adds a reservation (reviving a lapsed
+one among them) naming the file, never falling back to ten; no other act reads
+the setting, so a bad value never stops a release or the renewal of a live
+reservation. An unknown key under `reservation` does stop every act of a
+person whose username is read from that file (`reservation.github_username`),
+since the holder's reader claims the same keys. A `config.json` that cannot be
+read at all (writable by others, not valid JSON) is read past, ten applies,
+and the refusal at the cap says why; at the ceiling of 100 the refusal no
+longer offers raising it.
 
 Reservations coordinate people who share push access in good faith; they are
 not an access control. Any writer who can push can append to another holder's

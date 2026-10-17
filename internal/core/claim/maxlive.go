@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // How many live reservations one person may hold (iss-2610170717515674) is a
@@ -15,12 +16,16 @@ import (
 // and copies; a person who runs many sessions on one account raises it.
 //
 // A value that is not a whole number from 1 to MaxLiveCeiling, or a key under
-// reservation that nothing reads, refuses the reservation naming the file,
-// never replaced by the default. A config.json that cannot be read at all
-// (writable by others, not valid JSON) is read past instead: such a file
-// could only ever have raised the cap, so MaxLive applies, and the refusal at
-// the cap says why the file was read past. The cap is read only when an act
-// adds a reservation, so a bad setting never stops a renewal or a release.
+// reservation that nothing reads, refuses an act that adds a reservation
+// (reviving a lapsed one among them) naming the file, never replaced by the
+// default; the cap is read by no other act, so a bad value never stops a
+// release or the renewal of a live reservation. (An unknown key still stops
+// every act of a person whose username is read from that file: the holder's
+// reader claims the same namespace, holder.go.) A config.json that cannot be
+// read at all (writable by others, not valid JSON) is read past instead, as is
+// a HOME inside a git working tree that is not the account's own, by the rule
+// layered.RootsFor applies: neither is a file the person can be shown to have
+// written, so MaxLive applies, and the refusal at the cap says why.
 
 // MaxLiveKey is the machine configuration key.
 const MaxLiveKey = holderNamespace + ".max_live"
@@ -38,10 +43,14 @@ func maxLive(home string) (int, string, error) {
 	if home == "" {
 		return MaxLive, "", nil
 	}
+	if gitutil.HomeInsideWorkingTree(home) != "" {
+		return MaxLive, fmt.Sprintf("HOME lies inside a git working tree and is not this account's home, so %s is not read for %s and the default of %d applies",
+			layered.Config.MachineOrigin(), MaxLiveKey, MaxLive), nil
+	}
 	stack, err := layered.Load(layered.Config, layered.Roots{Home: home})
 	if err != nil {
-		return MaxLive, fmt.Sprintf("%s cannot be read (%s), so the default of %d applies",
-			layered.Config.MachineOrigin(), redacted(err), MaxLive), nil
+		return MaxLive, fmt.Sprintf("the machine configuration could not be read for %s (%s), so the default of %d applies",
+			MaxLiveKey, redacted(err), MaxLive), nil
 	}
 	if err := stack.Claim(holderNamespace, reservationKeys...); err != nil {
 		return 0, "", refuse("%s; %s", redacted(err), nothingPushed)

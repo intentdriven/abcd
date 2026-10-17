@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The cap on one person's live reservations is the person's own machine
@@ -27,10 +28,10 @@ func reserveN(t *testing.T, p *participant, n int) {
 	}
 }
 
-// TestARaisedCapAdmitsTheEleventh: reservation.max_live 12 in the person's
-// own config.json lets them hold twelve, and the thirteenth is refused naming
-// twelve and the setting.
-func TestARaisedCapAdmitsTheEleventh(t *testing.T) {
+// TestARaisedCapAdmitsPastTen: reservation.max_live 12 in the person's own
+// config.json admits an eleventh and a twelfth, and the thirteenth is refused
+// naming twelve and the setting.
+func TestARaisedCapAdmitsPastTen(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", machineConfig(t, `{"reservation": {"max_live": 12}}`))
 	reserveN(t, p, 12)
@@ -157,6 +158,36 @@ func TestTheHolderReadsBesideTheCap(t *testing.T) {
 	h, err := ResolveHolder(r.Root(), Options{Home: machineConfig(t, `{"reservation": {"github_username": "octo", "max_live": 20}}`), ForgeUser: fake.user})
 	if err != nil || h.Login != "octo" || h.Source != HolderFromConfig {
 		t.Fatalf("holder = %+v, %v; want octo from the machine configuration", h, err)
+	}
+}
+
+// TestAHomeInsideAWorkingTreeCannotRaiseTheCap: a HOME that lies inside a
+// git working tree, which a repository's committed settings could point a
+// session at, is not read as the machine's layer for the cap, as
+// layered.RootsFor refuses it for every other machine key.
+func TestAHomeInsideAWorkingTreeCannotRaiseTheCap(t *testing.T) {
+	w := newWorld(t)
+	tree := gittest.NewRepo(t)
+	home := filepath.Join(tree.Root(), "home")
+	writeConfig(t, home, `{"reservation": {"max_live": 50}}`)
+	p := w.clone("1234+octo@users.noreply.github.com", home)
+	reserveN(t, p, 10)
+	_, err := p.reserve("iss-11", "f11.go")
+	if !errors.Is(err, ErrRefused) || !strings.Contains(err.Error(), "you hold 10 live reservations, the most one person may hold") ||
+		!strings.Contains(err.Error(), "HOME lies inside a git working tree") {
+		t.Fatalf("the eleventh with a HOME inside a working tree setting 50 = %v; want the cap of ten saying why", err)
+	}
+}
+
+// TestAtTheCeilingTheRefusalOffersNoRaise: at 100 the setting cannot go
+// higher, so the refusal does not offer raising it.
+func TestAtTheCeilingTheRefusalOffersNoRaise(t *testing.T) {
+	err := capRefusal([]string{"iss-1"}, MaxLiveCeiling, "")
+	if strings.Contains(err.Error(), "raise") {
+		t.Fatalf("the refusal at the ceiling = %v; want no offer to raise it", err)
+	}
+	if err := capRefusal([]string{"iss-1"}, 1, ""); !strings.Contains(err.Error(), "raise reservation.max_live") {
+		t.Fatalf("the refusal below the ceiling = %v; want the offer to raise it", err)
 	}
 }
 
