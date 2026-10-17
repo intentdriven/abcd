@@ -369,7 +369,11 @@ on origin's default branch backs off, with a tip or without one
    land, so a pull request waiting on a person stays held while the drain
    moves, and the reservation of the lane in progress, before its window gate,
    so a move that waits renews too, whether or not a step of the lane ran
-   (spc-2610161044461448 step 7, dcn-2610161040374343). A move that finds a
+   (spc-2610161044461448 step 7, dcn-2610161040374343). Once an issue lane is
+   past its implement stage, its first renewal narrows its footprint to the
+   files its branch changed within it, a hold that only ever narrows, so a
+   lane that reserved a directory frees the rest of it for other accounts
+   (step 12, dcn-2610161040385152). A move that finds a
    lane parked at land reads every such lane from its pull request, in one
    listing of the person's latest pull requests (spc-2610161044461448 step 8,
    dcn-2610161040380948): a lane whose pull request was closed unmerged is

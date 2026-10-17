@@ -127,7 +127,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"step that succeeds as the move hands the lane back keeps it. `abcd implement step\n" +
 			"--discard` removes a stuck lane's worktree and branch and ends its run. Every move\n" +
 			"renews the reservation of the lane in progress at half its lease, waiting or not\n" +
-			"(a lane handed back is renewed by none), and the landing checks it before its push,\n" +
+			"(a lane handed back is renewed by none); once the lane is past its implement stage,\n" +
+			"the first renewal narrows its footprint to the files its branch changed within it,\n" +
+			"never widening it; and the landing checks it before its push,\n" +
 			"so a lane whose reservation became another person's pushes nothing and is handed\n" +
 			"back as stuck. A move that finds a lane parked at land reads it from its pull\n" +
 			"request, in one listing of your latest pull requests (gh pr list): a closed one\n" +

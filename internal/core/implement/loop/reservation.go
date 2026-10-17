@@ -93,12 +93,20 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	if !due {
 		return ""
 	}
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own)}, claimOptions(now))
+	req := claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own)}
+	// Past its implement stage, an issue lane's renewal narrows its footprint
+	// to the files its branch changed (narrow.go).
+	req.Narrow, _ = narrowedFootprint(repoRoot, *st, *own)
+	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
 	if err != nil {
 		return renewFailed(st, now, err)
 	}
-	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed,
-		Note: fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))})
+	note := fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))
+	if res.Narrowed {
+		note += fmt.Sprintf("; its footprint narrowed from %s to the files its branch changed: %s",
+			strings.Join(own.Footprint, ", "), strings.Join(res.Footprint, ", "))
+	}
+	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed, Note: note})
 	st.UpdatedAt = now
 	return ""
 }

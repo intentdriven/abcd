@@ -528,7 +528,10 @@ once half its lease has passed since its `Abcd-Claimed-At`, fetches and pushes
 a renewal that keeps the reservation's own term (at least the default two
 hours, at most a day, so a day-long fence is never cut short), logged in the
 run record as
-`reservation_renewed`; under half, it pushes nothing. A renewal that fails is
+`reservation_renewed`; under half, it pushes nothing. In an issue run past its
+implement stage, the renewal narrows the footprint to the files the lane's
+branch changed within it, and the record's line names both; a narrowing never
+widens the reservation. A renewal that fails is
 logged as `reservation_renew_failed` and named in the step's answer, and the
 stage still runs: the land fence is where a lost reservation stops the run. A
 renewal only renews this person's own reservation from this copy: it never
