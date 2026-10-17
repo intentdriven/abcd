@@ -63,6 +63,10 @@ func GeneratedFiles(root string) (Generated, string) {
 	if why != "" {
 		return Generated{}, why
 	}
+	short := gitutil.ShortRef(ref)
+	if why := plainDeclaration(text); why != "" {
+		return Generated{}, ".gitattributes on " + short + " " + why
+	}
 	rules := parseAttributes(text)
 	if !rules.any() {
 		return Generated{}, ""
@@ -71,12 +75,45 @@ func GeneratedFiles(root string) (Generated, string) {
 	if err != nil {
 		return Generated{}, fmt.Sprintf("the files on %s could not be listed: %s", gitutil.ShortRef(ref), redacted(err))
 	}
-	candidates := candidatesOf(strings.Split(out, "\x00"))
+	candidates, why := candidatesOf(strings.Split(out, "\x00"))
+	if why != "" {
+		return Generated{}, short + " " + why
+	}
 	files, spent := rules.generatedAmong(candidates)
 	if spent {
-		return Generated{}, fmt.Sprintf(".gitattributes on %s takes too long to match against the files there", gitutil.ShortRef(ref))
+		return Generated{}, fmt.Sprintf(".gitattributes on %s takes too long to match against the files there", short)
 	}
 	return Generated{files: files}, ""
+}
+
+// plainDeclaration is why the root declaration is not plain, "" when it is:
+// abcd shares a generated file only on a declaration that is ASCII
+// throughout, quotes no pattern and names no macro.
+func plainDeclaration(text string) string {
+	if !isASCII(text) {
+		return "holds a byte outside ASCII"
+	}
+	for line := range strings.SplitSeq(text, "\n") {
+		f := attrFields(line)
+		switch {
+		case len(f) == 0:
+		case strings.HasPrefix(f[0], `"`):
+			return "quotes a pattern"
+		case strings.HasPrefix(f[0], "[attr]"):
+			return "names a macro"
+		}
+	}
+	return ""
+}
+
+// isASCII reports whether s holds no byte of 0x80 or above.
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] >= 0x80 {
+			return false
+		}
+	}
+	return true
 }
 
 // generatedAmong is the paths the declaration makes generated, judged within
@@ -102,25 +139,41 @@ func (rs attrRules) generatedAmong(paths []string) (map[string]bool, bool) {
 // submodule, and none at or below a directory holding its own .gitattributes.
 // Such a file could unset the attribute there, and only the root one is read.
 // The directory and the file's path are compared without regard to ASCII
-// case, as git on a case-insensitive checkout compares them.
-func candidatesOf(entries []string) []string {
+// case, as git on a case-insensitive checkout compares them, and a file whose
+// path is not ASCII is never generated. why, when it is not "", is a
+// .gitattributes the listing holds that abcd shares nothing beside: one in a
+// directory or under a name outside ASCII, or a second at the root in other
+// capitals.
+func candidatesOf(entries []string) (candidates []string, why string) {
 	nested := &dirTrie{}
 	for _, entry := range entries {
-		if _, p, ok := strings.Cut(entry, "\t"); ok {
-			if dir, name := path.Split(p); dir != "" && strings.EqualFold(name, ".gitattributes") {
-				nested.add(asciiLower(strings.TrimSuffix(dir, "/")))
-			}
+		_, p, ok := strings.Cut(entry, "\t")
+		if !ok {
+			continue
+		}
+		dir, name := path.Split(p)
+		if !strings.EqualFold(name, ".gitattributes") {
+			continue
+		}
+		switch {
+		case !isASCII(dir):
+			return nil, "holds a .gitattributes in a directory named outside ASCII"
+		case !isASCII(name):
+			return nil, "holds a .gitattributes named outside ASCII"
+		case dir == "" && name != ".gitattributes":
+			return nil, "holds a second root .gitattributes in other capitals"
+		case dir != "":
+			nested.add(asciiLower(strings.TrimSuffix(dir, "/")))
 		}
 	}
-	var candidates []string
 	for _, entry := range entries {
 		meta, p, ok := strings.Cut(entry, "\t")
 		f := strings.Fields(meta)
-		if ok && len(f) == 3 && (f[0] == "100644" || f[0] == "100755") && f[1] == "blob" && !nested.holdsAncestor(asciiLower(p)) {
+		if ok && len(f) == 3 && (f[0] == "100644" || f[0] == "100755") && f[1] == "blob" && isASCII(p) && !nested.holdsAncestor(asciiLower(p)) {
 			candidates = append(candidates, p)
 		}
 	}
-	return candidates
+	return candidates, ""
 }
 
 // dirTrie is a set of directories, one node per path segment, so a path's

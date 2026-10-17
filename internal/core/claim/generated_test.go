@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -323,7 +324,7 @@ func blobEntry(p string) string {
 // .gitattributes is the same directory to git on a case-insensitive checkout
 // whatever the capitals of its name or a file's path under it.
 func TestANestedDeclarationIsLookedUpWhateverTheCapitals(t *testing.T) {
-	got := candidatesOf([]string{blobEntry("Docs/.gitattributes"), blobEntry("docs/x.gen"), blobEntry("DOCS/deep/y.gen"), blobEntry("other/z.gen")})
+	got, _ := candidatesOf([]string{blobEntry("Docs/.gitattributes"), blobEntry("docs/x.gen"), blobEntry("DOCS/deep/y.gen"), blobEntry("other/z.gen")})
 	if !slices.Equal(got, []string{"other/z.gen"}) {
 		t.Fatalf("candidates = %v; want other/z.gen alone", got)
 	}
@@ -339,7 +340,10 @@ func TestAVeryDeepPathIsJudgedQuickly(t *testing.T) {
 	}
 	done := make(chan int, 1)
 	start := time.Now()
-	go func() { done <- len(candidatesOf(entries)) }()
+	go func() {
+		got, _ := candidatesOf(entries)
+		done <- len(got)
+	}()
 	select {
 	case n := <-done:
 		if n != 500 {
@@ -351,4 +355,69 @@ func TestAVeryDeepPathIsJudgedQuickly(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("500 paths 2,049 directories deep did not finish in 10s")
 	}
+}
+
+// treeOnMain commits each path with body as a blob straight into the index of
+// origin's default branch, whatever this file system makes of the name, and
+// pushes it.
+func (w *world) treeOnMain(files map[string]string) {
+	w.t.Helper()
+	for p, body := range files {
+		cmd := exec.Command("git", "-C", w.seed.Root(), "hash-object", "-w", "--stdin")
+		cmd.Env = w.seed.Env()
+		cmd.Stdin = strings.NewReader(body)
+		out, err := cmd.Output()
+		if err != nil {
+			w.t.Fatal(err)
+		}
+		w.seed.Git("update-index", "--add", "--cacheinfo", "100644,"+strings.TrimSpace(string(out))+","+p)
+	}
+	w.seed.Git("commit", "-q", "-m", "tree")
+	w.seed.Git("push", "-q", "origin", "main")
+}
+
+// TestOnlyAPlainDeclarationIsShared: abcd shares a generated file only on a
+// plain declaration; otherwise it declares nothing and names why.
+func TestOnlyAPlainDeclarationIsShared(t *testing.T) {
+	const decl = "*.md linguist-generated\n"
+	for name, c := range map[string]struct {
+		files map[string]string
+		why   string
+	}{
+		"a byte outside ASCII in the declaration": {map[string]string{".gitattributes": decl + "# r\xc3\xa9sum\xc3\xa9\n"},
+			".gitattributes on origin/main holds a byte outside ASCII"},
+		"a quoted pattern": {map[string]string{".gitattributes": decl + "\"b.md\" text\n"},
+			".gitattributes on origin/main quotes a pattern"},
+		"a quoted macro": {map[string]string{".gitattributes": decl + "\"[attr]x\" -linguist-generated\nb.md x\n"},
+			".gitattributes on origin/main quotes a pattern"},
+		"a macro": {map[string]string{".gitattributes": decl + "[attr]x text\n"},
+			".gitattributes on origin/main names a macro"},
+		"a bare [attr]": {map[string]string{".gitattributes": decl + "[attr] text\n"},
+			".gitattributes on origin/main names a macro"},
+		"a .gitattributes named outside ASCII": {map[string]string{".gitattributes": decl, "d/.gitattribute\xc5\xbf": "* -linguist-generated\n"},
+			"origin/main holds a .gitattributes named outside ASCII"},
+		"a root .gitattributes named outside ASCII": {map[string]string{".gitattributes": decl, ".gitattribute\xc5\xbf": "* -linguist-generated\n"},
+			"origin/main holds a .gitattributes named outside ASCII"},
+		"a .gitattributes under a directory named outside ASCII": {map[string]string{".gitattributes": decl, "\xc3\x89/.gitattributes": "* -linguist-generated\n", "\xc3\xa9/a.md": "x\n"},
+			"origin/main holds a .gitattributes in a directory named outside ASCII"},
+		"a second root .gitattributes in other capitals": {map[string]string{".gitattributes": decl, ".GITATTRIBUTES": "* -linguist-generated\n"},
+			"origin/main holds a second root .gitattributes in other capitals"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			w := newWorld(t)
+			c.files["a.md"] = "x\n"
+			w.treeOnMain(c.files)
+			p := w.clone("1234+octo@users.noreply.github.com", "")
+			wantGenerated(t, p.dir, map[string]bool{"a.md": false, "README.md": false}, c.why)
+		})
+	}
+}
+
+// TestAFileNamedOutsideASCIIIsNeverGenerated: a file whose path holds a byte
+// outside ASCII is never generated; the rest still are.
+func TestAFileNamedOutsideASCIIIsNeverGenerated(t *testing.T) {
+	w := newWorld(t)
+	w.treeOnMain(map[string]string{".gitattributes": "*.md linguist-generated\n", "a.md": "x\n", "r\xc3\xa9sum\xc3\xa9.md": "x\n", "\xc3\xa9/b.md": "x\n"})
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	wantGenerated(t, p.dir, map[string]bool{"a.md": true, "r\xc3\xa9sum\xc3\xa9.md": false, "\xc3\xa9/b.md": false}, "")
 }
