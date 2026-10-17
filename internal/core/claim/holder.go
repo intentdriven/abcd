@@ -54,10 +54,10 @@ const (
 )
 
 // reservationKeys are every key the reservation namespace takes, in every
-// layer: the holder's (read from the machine layer alone) and the fork
-// check's opt-out (fork.go, read from both). Each reader claims them all, so
-// one reader's key is never another's unknown key.
-var reservationKeys = []string{"github_username", "fork_origin"}
+// layer: the holder's and the cap's (each read from the machine layer alone,
+// maxlive.go) and the fork check's opt-out (fork.go, read from both). Each
+// reader claims them all, so one reader's key is never another's unknown key.
+var reservationKeys = []string{"github_username", "fork_origin", "max_live"}
 
 // identity is a git identity: the one read under the person's own
 // configuration, and the author and committer of every reservation commit.
@@ -179,7 +179,10 @@ func machineHolder(home string) (string, error) {
 	if home == "" {
 		return "", nil
 	}
-	stack, err := layered.Load(layered.Config, layered.Roots{Home: home})
+	// A home inside a working tree reads as absent (layered.MachineRoots);
+	// the front door says so.
+	roots, _ := layered.MachineRoots(home)
+	stack, err := layered.Load(layered.Config, roots)
 	if err != nil {
 		return "", refuse("could not read the configuration that names your GitHub username: %v; %s", err, nothingSent)
 	}

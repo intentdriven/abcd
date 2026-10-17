@@ -75,7 +75,13 @@ footprint and term, so another reservation over the same files that a race let
 in does not refuse it) while that footprint still covers every path the spec's
 `- packages:` line names; once the spec has widened its footprint, it reserves
 again with the widened one, which is judged for overlap like any reservation
-and keeps the term, so origin names every path the build will change. It reserves anew one that
+and keeps the term, so origin names every path the build will change. An
+issue's reservation that its landing narrowed to the files the lane changed
+lies within the issue's `found_at`, and while the lane is at its landing it is
+renewed as it stands, never reserved again with the whole `found_at`; at any
+earlier stage nothing has narrowed it, so a reservation narrower than the
+`found_at` means the `found_at` widened, and it is reserved again with the
+whole `found_at`, judged for overlap. It reserves anew one that
 `--release` released or that a run started before reservations never took, and
 records it in the run's state.
 

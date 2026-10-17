@@ -77,10 +77,10 @@ type Result struct {
 	// HandBackUnpublished is why a release whose tombstone would have marked
 	// a hand-back, one asked for or one it kept (HandBackKept), pushed a plain
 	// tombstone or nothing instead: origin's default branch could not be
-	// read (HandBackUnread), or holds no one record of it to name, the record
-	// changed since the hand-back was judged, or the tombstone with the
-	// hand-back would pass the message cap. "" when the hand-back was
-	// published, or none was due.
+	// read (HandBackUnread), or holds no record of it to name (or several),
+	// the record changed since the hand-back was judged, or the tombstone
+	// with the hand-back would pass the message cap. "" when the hand-back
+	// was published, or none was due.
 	HandBackUnpublished string
 	// HandBackUnread is true when HandBackUnpublished is because origin's
 	// default branch could not be read for the record's blob at all: the
@@ -103,6 +103,20 @@ type Result struct {
 	// waived and is said to be (ForkAllowedLine); "" when no fork was named,
 	// or none was allowed.
 	ForkAllowed string
+	// Narrowed is true for a renewal that wrote Request.Narrow as its
+	// footprint, the tip's covering it; false for every other act.
+	Narrowed bool
+	// OwnOverlap is each path this reservation shares with a live reservation
+	// the same person holds from another copy, which an act asking for it
+	// (Request.WarnOwnOverlap) goes ahead over and is told of
+	// (OwnOverlap.Warning); nil when it shares none. Every other act backs off
+	// such a path.
+	OwnOverlap []OwnOverlap
+	// GeneratedUnread is why the overlap judgement recognised no generated
+	// file: origin's default branch declares them but its declaration could
+	// not be read (GeneratedUnreadLine), so every shared path was judged an
+	// overlap; "" when it was read, there is none, or no overlap was judged.
+	GeneratedUnread string
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -179,7 +193,7 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		return res, err
 	}
 	if !p.req.Release {
-		if err := crowding(p, j, res); err != nil {
+		if err := crowding(p, j, &res); err != nil {
 			return Result{}, err
 		}
 	}
@@ -371,6 +385,14 @@ func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 		return res, m, j.Commit, nil
 	case j.mine && j.thisCopy:
 		res.Act, res.RenewedLive = ActRenewed, j.verdict.Live
+		if p.req.Drain && j.verdict.Live {
+			// A drain's re-reserve that renews its own live hold, reached
+			// when a build started the lane's run during the drain's move, is
+			// a lane's renewal, so it carries the lane's stage; one over a
+			// lapsed hold is afresh and carries none (spc-2610161044461448
+			// step 18).
+			m.Stage = p.req.Stage
+		}
 		return res, m, j.Commit, nil
 	}
 	exp := j.verdict.EffectiveExpiry
@@ -441,14 +463,14 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 // markHandBack names the hand-back asked for on m, the tombstone a release
 // pushes over j, with the record's blob on origin's default branch, and
 // returns why it named none instead: the branch could not be read (unread is
-// then true), no one record of it there to name, or a record other than the
-// one the hand-back was judged over (HandBackBlob).
+// then true), no record of it there to name (or several), or a record other
+// than the one the hand-back was judged over (HandBackBlob).
 func (p *prepared) markHandBack(m *message, j judged) (why string, unread bool) {
 	switch {
 	case j.blob == "" && j.blobUnread != "":
 		return fmt.Sprintf("%s's default branch could not be read (%s), so the tombstone marks no hand-back", Remote, j.blobUnread), true
 	case j.blob == "":
-		return fmt.Sprintf("%s's default branch as last fetched holds no one record of %s, so the tombstone marks no hand-back", Remote, p.id), false
+		return fmt.Sprintf("%s's default branch as last fetched holds no record of %s, or holds it in more than one file, so the tombstone marks no hand-back", Remote, p.id), false
 	case p.req.HandBackBlob != "" && p.req.HandBackBlob != j.blob:
 		return fmt.Sprintf("%s's record on %s's default branch has changed since the hand-back was judged, so the tombstone marks no hand-back: a person's edit re-admits it",
 			p.id, Remote), false
@@ -525,9 +547,16 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 			fmt.Sprintf("your reservation on %s lapsed at %s; %s", p.id, stamp(exp), nothingPushed))
 	}
 	p.req.Footprint = append([]string(nil), j.Footprint...)
+	narrowed := len(p.req.Narrow) > 0 && within(p.req.Narrow, j.Footprint)
+	if narrowed {
+		p.req.Footprint = append([]string(nil), p.req.Narrow...)
+	}
 	m := p.reservation()
+	// A lane's renewal names its stage; a renewal that names none carries
+	// none, so only the tip's stage is ever read (spc-2610161044461448 step 18).
+	m.Stage = p.req.Stage
 	return Result{Act: ActRenewed, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
-		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
+		ExpiresAt: m.ExpiresAt, Narrowed: narrowed}, m, j.Commit, nil
 }
 
 // notHeld is the *NotHeld a judged tip gives an act that needed this

@@ -261,3 +261,82 @@ func TestTheFenceArmsPastAReleaseDatedAheadItCannotKeepASightingOf(t *testing.T)
 		t.Fatalf("the arming's note = %q; want it to name %q", note, want)
 	}
 }
+
+// toPush takes a validated lane through its records to the push, with its
+// preflight receipt minted, stopping before the push fence.
+func (f *landFixture) toPush(t *testing.T) Lane {
+	t.Helper()
+	f.validated(t)
+	f.step(t)
+	f.step(t)
+	l := currentLane(t, f.repo, f.runID)
+	preflighted(t, l, l.HeadSHA)
+	return l
+}
+
+// TestThePushFenceHoldsWhileAnotherPersonCutsARelease is C7 at the push: the
+// push fence makes the land fence's release-hold judgement too, as `abcd
+// land` judges it before it pushes, so a lane reaching its push while Q cuts
+// a release pushes nothing and opens no pull request, whether the run holds a
+// reservation of its own or not.
+func TestThePushFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
+	for _, reserved := range []bool{true, false} {
+		name := map[bool]string{true: "a run holding its reservation", false: "a run holding none"}[reserved]
+		t.Run(name, func(t *testing.T) {
+			f := newLandFixture(t, queueRuleset("MERGE"))
+			l := f.toPush(t)
+			now := time.Now().UTC().Truncate(time.Second)
+			if reserved {
+				reserveRun(t, f.repo, f.runID, "itd-10", now.Add(-30*time.Minute), "internal/widget")
+			}
+			q := otherCopy(t, f.bare, quinnEmail)
+			reserveRelease(t, q, "rel-v0.16.0", now.Add(-time.Minute))
+			_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+			r, ok := AsRefusal(err)
+			if !ok || !r.Contention || r.Stage != string(StageLand) {
+				t.Fatalf("the push fence refuses the push as contention: %v", err)
+			}
+			want := "release v0.16.0 is being cut by quinn, until " + now.Add(-time.Minute).Add(24*time.Hour).Format(time.RFC3339) +
+				", and a session cutting a release has the final say on what merges before its tag, so this lane does not push its branch"
+			if r.Reason != want {
+				t.Fatalf("the push fence's reason = %q; want %q", r.Reason, want)
+			}
+			// A release cut is a pause someone chose, so a drain never counts
+			// it towards handing the lane back as stuck.
+			if !waitByDesign(r) {
+				t.Fatalf("a release hold is a wait by design, never a refusal a drain counts: %+v", r)
+			}
+			if !strings.Contains(r.Remedy, "nothing is pushed and no pull request is opened") || !strings.Contains(r.Remedy, "quinn") {
+				t.Fatalf("the remedy names what stays and the holder: %q", r.Remedy)
+			}
+			if got := f.remoteBranch(t, l.Branch); got != "" {
+				t.Fatalf("nothing is pushed: origin holds %s at %s", l.Branch, got)
+			}
+			if l := currentLane(t, f.repo, f.runID); l.Landing == nil || l.Landing.Pushed != "" || l.PR != 0 {
+				t.Fatalf("the lane still waits to push: %+v", l)
+			}
+		})
+	}
+}
+
+// TestThePushFenceWaitsWhenItCannotReadTheHold: a run holding no reservation
+// still fetches the reservations at the push fence, for the hold, and an
+// origin it cannot read pushes nothing; like every fence fetch that fails, it
+// is a wait by design, never a refusal a drain counts (dcn-2610170116582725).
+func TestThePushFenceWaitsWhenItCannotReadTheHold(t *testing.T) {
+	f := newLandFixture(t, queueRuleset("MERGE"))
+	f.toPush(t)
+	if err := os.Rename(f.bare, f.bare+".gone"); err != nil {
+		t.Fatal(err)
+	}
+	_, err := advance(f.repo.Root(), f.runID, f.stages, Options{})
+	r, ok := AsRefusal(err)
+	if !ok || !r.Contention || !waitByDesign(r) {
+		t.Fatalf("the push fence waits on an unread origin: %v", err)
+	}
+	if !strings.HasPrefix(r.Reason, "could not read the reservations from origin: ") ||
+		!strings.HasSuffix(r.Reason, ", so no release hold could be judged and nothing is pushed") ||
+		r.Remedy != "run abcd implement step again once origin answers" {
+		t.Fatalf("the push fence names the failed fetch: %+v", r)
+	}
+}

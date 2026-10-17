@@ -21,6 +21,7 @@ package loop
 // lanes' hand-backs it routed, with the record change each made.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -35,6 +36,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/jsonstrict"
+	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -63,7 +65,8 @@ const (
 	// DrainStoppedCap: the drain opened --max lanes.
 	DrainStoppedCap = "cap"
 	// DrainStoppedEmpty: no eligible issue is left that this drain has not
-	// taken.
+	// taken, held by another or not; with held work left the drain waits
+	// (drain_wait.go).
 	DrainStoppedEmpty = "empty"
 	// DrainStoppedOutage (outage.go): the run gave up on a lost connection.
 	// DrainStoppedOrigin (drain_origin.go): the drain gave up waiting on
@@ -117,6 +120,9 @@ type DrainState struct {
 	// issue's lane (scope 3), and Judgements every answer it has taken.
 	Judging    *DrainJudging    `json:"judging,omitempty"`
 	Judgements []DrainJudgement `json:"judgements,omitempty"`
+	// JudgeFallbacks are the receipts of every routed judgement a runner did
+	// not answer, each left to the host's request (drain_judge.go).
+	JudgeFallbacks []runner.FallbackReceipt `json:"judge_fallbacks,omitempty"`
 	// Lapsed are the judgement requests dropped unanswered once the hold the
 	// drain took for them lapsed, the latest last; their issues are asked
 	// again only once a cool-down has passed, and then only after the
@@ -132,6 +138,13 @@ type DrainState struct {
 	// OriginWait is the wait on origin a move that could not read it began
 	// (drain_origin.go); nil while origin answers.
 	OriginWait *DrainOriginWait `json:"origin_wait,omitempty"`
+	// WaitingUntil is when a drain waiting at its holder's cap, or on work
+	// others hold alone, looks again, and Waiting which of the two it waits
+	// on (DrainWaitCap, DrainWaitHeld); both empty otherwise. It is kept
+	// apart from NextEligibleAt, so a wait never resets the pace window
+	// (drain_wait.go).
+	WaitingUntil *time.Time `json:"waiting_until,omitempty"`
+	Waiting      string     `json:"waiting,omitempty"`
 }
 
 // DrainLane is one issue the drain handed to a lane.
@@ -165,6 +178,10 @@ type DrainRoute struct {
 	// flag.
 	Wrote string     `json:"wrote"`
 	At    *time.Time `json:"at,omitempty"`
+	// Blob is the blob id of the issue's record on origin's default branch
+	// when the hand-back was routed, "" without origin: once that record
+	// changes, the drain takes the issue up again (drain_readmit.go).
+	Blob string `json:"blob,omitempty"`
 }
 
 // DrainOptions are the drain's own flags.
@@ -174,6 +191,15 @@ type DrainOptions struct {
 	// Judgement is --judgement: the path of the host's answer to the
 	// judgement the drain awaits; empty when not given.
 	Judgement string
+	// Transcripts is where a routed judge's transcript lands
+	// (drain_judge.go); nil leaves the judgement on the host's request,
+	// routed or not.
+	Transcripts runner.TranscriptStore
+	// JudgeTimeout bounds one routed judgement; drainJudgeTimeout when zero.
+	JudgeTimeout time.Duration
+	// Context ends the move's routed judge: the front door ends it on an
+	// interrupt or a termination. context.Background when nil.
+	Context context.Context
 }
 
 // DrainResult is one drain invocation's summary.
@@ -209,11 +235,18 @@ type DrainResult struct {
 	Passed         []Excluded             `json:"passed"`
 	Dispositions   []capture.DrainVerdict `json:"dispositions"`
 	NextEligibleAt *time.Time             `json:"next_eligible_at"`
-	Stopped        string                 `json:"stopped,omitempty"`
-	Complete       bool                   `json:"complete"`
+	// WaitingUntil is when a drain waiting at the cap, or on held work alone,
+	// looks again, and Waiting which it waits on (drain_wait.go).
+	WaitingUntil *time.Time `json:"waiting_until"`
+	Waiting      string     `json:"waiting,omitempty"`
+	Stopped      string     `json:"stopped,omitempty"`
+	Complete     bool       `json:"complete"`
 	// Finished are the merged lanes this call took the landing's last step
 	// for, outside the window clock (drain_finish.go).
 	Finished []DrainFinished `json:"finished"`
+	// Parked are the lanes parked at land whose head is not on the default
+	// branch, each as its pull request read (drain_finish.go).
+	Parked []DrainParked `json:"parked"`
 	// Counts are the drain's totals as this call leaves it (scope 8).
 	Counts DrainCounts `json:"counts"`
 	Next   string      `json:"next"`
@@ -337,6 +370,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 	}()
 	started := false
+	// repaced is what this move's new pace came to, "" when it took none;
+	// repace is the new pace the lanes in progress take once the move's
+	// state is written, and stillPace the pace the drain ran on before it,
+	// which a refused move puts back.
+	repaced := ""
+	var repace *drainRepace
+	stillPace := st.Pace
 	if !live {
 		pace, err := resolvePace(o.roots(repoRoot), flags)
 		if err != nil {
@@ -355,8 +395,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				st.StartedAt.Format(time.RFC3339), capPhrase(st.Max), d.Max),
 				"drain again without --max; the drain keeps the cap it started with")
 		}
+		// A running drain takes a new pace rather than refusing it
+		// (drain_pace.go).
 		if flags.set {
-			if err := resumeWithFlags(StartResult{RunID: "the drain started " + st.StartedAt.Format(time.RFC3339), Pace: st.Pace}, flags); err != nil {
+			if repace, repaced, err = repaceDrain(repoRoot, &st, o, flags); err != nil {
 				return DrainResult{}, err
 			}
 		}
@@ -368,12 +410,19 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if err != nil {
 		return DrainResult{}, err
 	}
+	// blobs are the issues' record blobs on origin's default branch as this
+	// move planned from it, read once when a hand-back is routed or a
+	// handed-back issue is considered again (drain_readmit.go).
+	blobs := &originBlobs{repoRoot: repoRoot, origin: origin}
 	res := DrainResult{State: DrainStateRel, Started: started, Rule: plan.Record, Loosened: plan.Loosened,
 		Order: plan.Order, Dispositions: plan.Dispositions, Routed: []DrainRoute{}, Passed: []Excluded{},
-		Flags: fieldFlags(plan, st.HandBacks), Finished: []DrainFinished{}, Origin: origin}
+		Flags: fieldFlags(plan, st.HandBacks), Finished: []DrainFinished{}, Parked: []DrainParked{}, Origin: origin}
 	// viewUnread is why the reservations this move fetched could not be read,
-	// and lapse what became of a judgement request whose hold lapsed.
+	// and lapse what became of a judgement request whose hold lapsed;
+	// leaseNotes are the renewals of the lane in progress that failed or
+	// found the hold another's (drain_lease.go).
 	viewUnread, lapse := "", ""
+	var leaseNotes []string
 	// published is what became of the pending hand-backs this move ended.
 	var published []string
 	finish := func(write bool) (DrainResult, error) {
@@ -381,6 +430,13 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		// leaves unused is released before the state is written.
 		if st.Stopped != "" && st.Judging != nil {
 			st.Judging, write = nil, true
+		}
+		if st.Stopped != "" && st.WaitingUntil != nil {
+			st.WaitingUntil, st.Waiting, write = nil, "", true
+		}
+		if repaced != "" {
+			res.Next = joinNext(repaced, res.Next)
+			write = true
 		}
 		if clauses := holds.settle(st.Judging); len(clauses) > 0 {
 			res.Next = joinNext(append([]string{res.Next}, clauses...)...)
@@ -397,6 +453,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if viewUnread != "" {
 			res.Next = joinNext(res.Next, viewUnread)
 		}
+		if len(leaseNotes) > 0 {
+			res.Next = joinNext(append([]string{res.Next}, leaseNotes...)...)
+		}
 		if write {
 			st.UpdatedAt = now
 			if err := writeDrain(repoRoot, st); err != nil {
@@ -404,12 +463,23 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			}
 			persisted = st.Judging
 		}
+		// The lanes in progress take a new pace only once the move has
+		// written it, so a move refused before here takes none.
+		if repace != nil {
+			if err := repace.lanes(repoRoot, st, now); err != nil {
+				return DrainResult{}, fmt.Errorf("the drain took its new pace, but a lane in progress did not: %w; give the pace again", err)
+			}
+		}
 		res.Max, res.Pace, res.Lanes, res.HandBacks = st.Max, st.Pace, st.Lanes, st.HandBacks
 		res.Judging, res.Judgements = st.Judging, st.Judgements
 		if res.Judgements == nil {
 			res.Judgements = []DrainJudgement{}
 		}
 		res.NextEligibleAt, res.Stopped, res.Complete = st.NextEligibleAt, st.Stopped, st.Stopped != ""
+		res.WaitingUntil, res.Waiting = st.WaitingUntil, st.Waiting
+		if note := parkedNote(res.Parked); note != "" {
+			res.Next = joinNext(note, res.Next)
+		}
 		if note := finishedNote(res.Finished); note != "" {
 			res.Next = joinNext(note, res.Next)
 		}
@@ -440,6 +510,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// state no longer records is released. A drain this move began writes
 	// nothing.
 	refuseMoved := func(err error) (DrainResult, error) {
+		// A refused move takes no new pace (drain_pace.go).
+		tookPace := repaced != ""
+		st.Pace = stillPace
 		if live {
 			st.UpdatedAt = now
 			if werr := writeDrain(repoRoot, st); werr != nil {
@@ -453,6 +526,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		if res.Judged != nil {
 			notes = append(notes, "the judgement answer given was taken and recorded before the refusal, so it is not to be given again")
+		}
+		if tookPace {
+			notes = append(notes, "the new pace given was not taken: give it again once this is settled")
 		}
 		if len(notes) == 0 {
 			return DrainResult{}, err
@@ -497,15 +573,10 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// answered is the hold the answer was asked on: the lane a no opens on it
 	// names the fork check its reservation could not make or waived, as a
 	// lane that reserved for itself does (step 10).
-	if d.Judgement != "" {
-		j, err := takeJudgement(repoRoot, d.Judgement, st, live, plan, now)
-		if err != nil {
-			return DrainResult{}, err
-		}
-		// The judgement keeps the hold it was asked on, so the lane a no
-		// opens on it names the fork check its reservation could not make or
-		// waived, in this move or a later one (step 10).
-		j.Hold = st.Judging.Hold
+	//
+	// take applies a judgement over the request st awaits, the host's or a
+	// routed judge's (drain_judge.go), and records it.
+	take := func(j DrainJudgement) error {
 		if j.Applied && j.Answer == JudgementYes {
 			r, err := routeHandBack(repoRoot, j.Issue, DrainFromJudgement, HandBack{Kind: j.Kind, Reason: j.Reason}, origin, now)
 			if err != nil {
@@ -513,7 +584,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				if rf, ok := AsRefusal(err); ok {
 					rf.Reason += "; the judgement answer given was not taken: give it again with --judgement once this is settled"
 				}
-				return DrainResult{}, err
+				return err
 			}
 			// The release publishes the hand-back on origin, so no other
 			// account's drain judges the issue again while its record stands
@@ -530,6 +601,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if pending != "" {
 				r.Wrote += "; " + pend(&st, j.Issue, j.Kind, judgedBlob(repoRoot, j.Issue, origin), pending, now)
 			}
+			r.Blob = blobs.of(j.Issue)
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
 		} else if !j.Applied {
@@ -543,6 +615,20 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		st.Judging = nil
 		res.Judged = &j
 		pruneLapse(&st, j.Issue)
+		return nil
+	}
+	if d.Judgement != "" {
+		j, err := takeJudgement(repoRoot, d.Judgement, st, live, plan, now)
+		if err != nil {
+			return DrainResult{}, err
+		}
+		// The judgement keeps the hold it was asked on, so the lane a no
+		// opens on it names the fork check its reservation could not make or
+		// waived, in this move or a later one (step 10).
+		j.Hold = st.Judging.Hold
+		if err := take(j); err != nil {
+			return DrainResult{}, err
+		}
 	}
 
 	// The drain takes its judgement hold once per request (drain_hold.go): a
@@ -584,15 +670,62 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 
 	// Merged lanes are finished before the window clock is read: the cleanup
 	// does no new work, so the pace does not hold it (iss-2610090936460789).
-	if res.Finished, err = finishMerged(repoRoot, now); err != nil {
+	if res.Finished, res.Parked, err = finishMerged(repoRoot, now); err != nil {
 		return refuseMoved(err)
 	}
+	// The lane in progress is renewed at half its lease on every move,
+	// waiting or not, before the window gate (drain_lease.go).
+	leaseNotes = renewInProgress(repoRoot, st, view, now)
 	finished := false
 	for _, f := range res.Finished {
 		for i := range st.Lanes {
 			if f.Done && st.Lanes[i].RunID == f.RunID {
 				st.Lanes[i].Outcome, st.Lanes[i].PR, finished = DrainLaneDone, f.PR, true
 			}
+		}
+	}
+	// A parked lane whose pull request was closed unmerged was handed back as
+	// closed, its reservation released, by finishMerged; a lane of this
+	// drain's is routed here as a lane's hand-back is (step 8).
+	for _, p := range res.Parked {
+		// A parked lane that went back through its sync is driven again, as
+		// the lane in progress is (step 13).
+		if p.State == ParkedSyncing {
+			for i := range st.Lanes {
+				if st.Lanes[i].RunID == p.RunID && st.Lanes[i].Outcome == DrainLanePullRequest {
+					st.Lanes[i].Outcome, finished = DrainLaneInProgress, true
+				}
+			}
+			continue
+		}
+		if p.State != ParkedClosed {
+			continue
+		}
+		for i := range st.Lanes {
+			if st.Lanes[i].RunID != p.RunID || st.Lanes[i].Outcome == DrainLaneHandedBack {
+				continue
+			}
+			run, err := ReadState(repoRoot, p.RunID)
+			if err != nil {
+				return refuseMoved(err)
+			}
+			outcome, _, hb := laneOutcome(run)
+			if outcome != DrainLaneHandedBack {
+				continue
+			}
+			r, err := routeHandBack(repoRoot, p.Issue, "lane", *hb, origin, now)
+			if err != nil {
+				return refuseMoved(err)
+			}
+			if rel := releaseHandedBack(repoRoot, run, *hb, now); rel != "" {
+				r.Wrote += "; " + rel
+			}
+			// The record it judged, so a change to it on origin is a new
+			// question this drain takes up again, as every route keeps.
+			r.Blob = blobs.of(p.Issue)
+			st.HandBacks = append(st.HandBacks, r)
+			res.Routed = append(res.Routed, r)
+			st.Lanes[i].Outcome, finished = DrainLaneHandedBack, true
 		}
 	}
 
@@ -622,6 +755,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	}
 
 	// The lane the drain opened last: route what it has come to, or wait on it.
+	// A lane in progress that is stuck, refusing past the bounds the pace's
+	// layers set or in a way that cannot change, is handed back as stuck here,
+	// its reservation released with the tombstone, and the move takes up the
+	// next issue (stuck.go).
+	var bounds *stuckBounds
 	for i := range st.Lanes {
 		l := &st.Lanes[i]
 		if l.Outcome != DrainLaneInProgress {
@@ -632,10 +770,28 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			return refuseMoved(err)
 		}
 		outcome, pr, hb := laneOutcome(run)
+		if outcome == DrainLaneInProgress {
+			if bounds == nil {
+				b, err := resolveStuckBounds(o.roots(repoRoot))
+				if err != nil {
+					return refuseMoved(err)
+				}
+				bounds = &b
+			}
+			if stuckReason(run, *bounds) != "" {
+				if run, err = handBackStuck(repoRoot, l.RunID, *bounds, now); err != nil {
+					return refuseMoved(err)
+				}
+				outcome, pr, hb = laneOutcome(run)
+			}
+		}
 		switch outcome {
 		case DrainLaneInProgress:
 			res.Next = fmt.Sprintf("drive %s's lane, run %s: `abcd implement step --run %s` (one lane at a time); run `abcd drain` again once it is handed back or its pull request is open",
 				l.Issue, l.RunID, l.RunID)
+			if note := refusingNote(run, *bounds); note != "" {
+				res.Next += "; " + note
+			}
 			return finish(true)
 		case DrainLaneHandedBack:
 			r, err := routeHandBack(repoRoot, l.Issue, "lane", *hb, origin, now)
@@ -647,6 +803,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			if rel := releaseHandedBack(repoRoot, run, *hb, now); rel != "" {
 				r.Wrote += "; " + rel
 			}
+			r.Blob = blobs.of(l.Issue)
 			st.HandBacks = append(st.HandBacks, r)
 			res.Routed = append(res.Routed, r)
 		}
@@ -690,12 +847,31 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	// out ends, zero when none: a drain left with only such issues waits
 	// for it rather than ending.
 	var cooling time.Time
+	// The wait this move may end in (drain_wait.go): the cap, counted in the
+	// move's view before any reservation or judgement for the holder this
+	// copy reserves as, read with no network act ("" when only the forge
+	// could name it, where each reservation act counts it instead), and the
+	// issues passed over because another holds them. A wait the drain was
+	// in is taken off here, and written again if the move still waits.
+	prevWait := waitFrom(&st)
+	capHolder := ""
+	// The cap is the person's own (reservation.max_live); a setting that
+	// cannot be used leaves the count to the reservation act, which refuses
+	// naming the file.
+	capLimit, capErr := claim.MaxLive, error(nil)
+	if view != nil && reserving {
+		capHolder = claim.ReaderHolder(repoRoot, claimOptions(now))
+		capLimit, capErr = claim.MaxLiveFor(claimOptions(now))
+	}
+	var capped, held []string
 	for _, v := range lapsedLast(plan.Dispositions, st.Lapsed) {
 		if v.Outcome != capture.DrainEligible {
 			continue
 		}
-		if slices.ContainsFunc(st.Lanes, func(l DrainLane) bool { return l.Issue == v.ID }) ||
-			slices.ContainsFunc(st.HandBacks, func(r DrainRoute) bool { return r.Issue == v.ID }) {
+		// An issue this drain has in hand is left; one it handed back is
+		// taken up again once its record has changed on origin
+		// (drain_readmit.go).
+		if st.taken(v.ID, blobs) {
 			continue
 		}
 		if l, ok := lapseOf(st, v.ID); ok && now.Before(l.coolDownEnds()) {
@@ -708,9 +884,24 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 					stamp(l.LapsedAt), stamp(ends))})
 			continue
 		}
-		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID }); i >= 0 {
+		// A run of the issue here that was not handed back passes it over,
+		// in progress or complete: a complete one landed its pull request,
+		// which may still be open, and a second run would open a second.
+		// One handed back does too without origin, where nothing says
+		// whether its record has changed since; on origin the hand-back's
+		// tombstone and this drain's routes say so (drain_readmit.go).
+		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID && !r.issueHandedBack() }); i >= 0 {
+			reason := "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"
+			if runs[i].Complete() {
+				reason = "this checkout's run " + runs[i].RunID + " for it is complete, and what it landed settles the issue, so no second run opens for it"
+			}
+			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckRun, Reason: reason})
+			continue
+		}
+		if i := slices.IndexFunc(runs, func(r State) bool { return r.Key == v.ID }); i >= 0 && origin == nil {
 			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckRun,
-				Reason: "this checkout already has run " + runs[i].RunID + " for it; drive or finish that run"})
+				Reason: "this checkout's run " + runs[i].RunID + " for it was handed back, and with no remote named " + claim.Remote +
+					" the drain cannot tell whether its record has changed since; it is a person's"})
 			continue
 		}
 		iss, ok := plan.OpenIssue(v.ID)
@@ -723,6 +914,7 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		if reserving {
 			if footprint, ok = issueFootprint(iss); !ok {
 				r := noFoundAtHandBack(v.ID, now)
+				r.Blob = blobs.of(v.ID)
 				st.HandBacks = append(st.HandBacks, r)
 				res.Routed = append(res.Routed, r)
 				continue
@@ -738,16 +930,32 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 					Reason: termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked: it is a person's until its record changes"})
 				continue
 			}
-			if why := view.Contention(v.ID, footprint, now); why != "" {
+			// Under --take-over, this person's own reservation from another
+			// copy (a hosted session's, lost with its local tier) holds
+			// nothing off: the reservation act below takes it over
+			// (spc-2610161044461448 step 15).
+			takeOver := ""
+			if o.TakeOver {
+				takeOver = capHolder
+			}
+			if why := view.Contention(v.ID, footprint, now, takeOver); why != "" {
 				// The reason quotes what another writer chose (a reserved
 				// footprint), and the agent driving the drain reads it.
-				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckReservation,
-					Reason: termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked"})
+				why = termsafe.Sanitize(why) + "; passed over with nothing pushed and no judgement asked"
+				if r, ok := view.Lookup(v.ID); ok && r.State == claim.StateLive && r.Copy != claim.CopyThis && claim.SameHolder(r.Holder, capHolder) {
+					why += "; it is your own reservation from another copy: to move it to this one, run `abcd drain --take-over`"
+				}
+				res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: CheckReservation, Reason: why})
+				held = append(held, termsafe.Sanitize(why))
 				continue
 			}
 		}
-		hold, held := ownHold(view, v.ID, footprint)
+		hold, owned := ownHold(view, v.ID, footprint)
 		judged := judgementFor(st, v.ID, remedyDigest(iss.Remedy))
+		// routedHold is the hold a routed judge's no was asked on in this
+		// move, which the move's view, fetched before it was taken, cannot
+		// show: the lane opens on it as on one the view shows.
+		var routedHold *DrainHold
 		if j := judged; j == nil || j.Answer != JudgementNo {
 			// The drain's hold is taken once per request: a request awaited
 			// over this issue keeps the one it took, and a poll never renews
@@ -767,11 +975,24 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 					}
 				}
 			}
-			if reserving && !held && judgeHold == nil {
+			if reserving && !owned && judgeHold == nil {
+				// At the cap no reservation is made and no judgement asked:
+				// the drain waits for a pull request to merge.
+				if capHolder != "" && capErr == nil {
+					if mine := view.LiveHeldBy(capHolder, v.ID); len(mine) >= capLimit {
+						capped = mine
+						break
+					}
+				}
 				h, err := reserveForJudgement(repoRoot, v.ID, footprint, o.TakeOver, now)
 				if err != nil {
+					if r, ok := AsRefusal(err); ok && r.capped != nil {
+						capped = r.capped
+						break
+					}
 					if r, ok := AsRefusal(err); ok && r.Contention {
 						res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: termsafe.Sanitize(r.Reason)})
+						held = append(held, termsafe.Sanitize(r.Reason))
 						continue
 					}
 					return refuseMoved(err)
@@ -786,15 +1007,47 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			judging.Hold = judgeHold
 			st.Judging = &judging
 			pruneLapse(&st, v.ID)
-			res.Next = judgementMove(judging)
-			return finish(true)
+			// A judge routed to a runner answers in this move, taken as the
+			// host's answer is; one that does not answer leaves the host's
+			// request standing, and is not started again for it
+			// (drain_judge.go).
+			var taken *DrainJudgement
+			clause := ""
+			if judging.RoutedAsked {
+				clause = judgeAskedClause(v.ID)
+			} else {
+				var started bool
+				if taken, clause, started, err = routedJudgement(repoRoot, iss, v, judging, plan, &st, o, d, now); err != nil {
+					return refuseMoved(err)
+				}
+				// Marked as asked only once the runner was started: a
+				// judge that never started is asked again next move.
+				if taken == nil && started {
+					st.Judging.RoutedAsked = true
+				}
+			}
+			if taken == nil {
+				res.Next = joinNext(judgementMove(*st.Judging), clause)
+				return finish(true)
+			}
+			taken.Hold = judging.Hold
+			if err := take(*taken); err != nil {
+				return refuseMoved(err)
+			}
+			if taken.Answer != JudgementNo || !taken.Applied {
+				continue
+			}
+			judged, routedHold = &st.Judgements[len(st.Judgements)-1], judging.Hold
 		}
 		st.Judging = nil
+		// Every lane runs on the drain's pace, not on what the configuration
+		// resolves when it opens (drain_pace.go).
 		lane := o
+		lane.Pace, lane.SubAgents, lane.FixRounds, lane.pace = nil, nil, nil, st.Pace
 		lane.reserve = footprint
 		lane.plan = &plan
 		lane.drain = true
-		if held {
+		if owned {
 			lane.held = &heldReservation{at: hold.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
 				v.ID, claim.Remote, stamp(hold.EffectiveExpiry), strings.Join(hold.Footprint, ", "))}
 			// The fork check the hold's reservation could not make or waived
@@ -808,6 +1061,16 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 					lane.held.note += "; " + claim.ForkAllowedLine(h.ForkAllowed)
 				}
 			}
+		} else if h := routedHold; h != nil {
+			lane.held = &heldReservation{at: h.ClaimedAt, note: fmt.Sprintf("reserved %s on %s for this copy until %s before its judgement, footprint: %s",
+				v.ID, claim.Remote, stamp(h.ExpiresAt), strings.Join(footprint, ", ")),
+				forkUnchecked: h.ForkUnchecked, forkAllowed: h.ForkAllowed}
+			if h.ForkUnchecked != "" {
+				lane.held.note += "; " + claim.ForkUncheckedLine(h.ForkUnchecked)
+			}
+			if h.ForkAllowed != "" {
+				lane.held.note += "; " + claim.ForkAllowedLine(h.ForkAllowed)
+			}
 		}
 		holds.starting(v.ID)
 		if drainBeforeStart != nil {
@@ -816,6 +1079,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		started, err := startLane(repoRoot, v.ID, lane)
 		if err != nil {
 			r, ok := AsRefusal(err)
+			// At the cap the lane's own reservation is not made: the drain
+			// waits for a pull request to merge, the judgement kept.
+			if ok && r.capped != nil {
+				if clause, _, _ := holds.release(v.ID, ""); clause != "" {
+					res.Next = joinNext(res.Next, clause)
+				}
+				capped = r.capped
+				break
+			}
 			// A reservation refused for a reason of this checkout's own (no
 			// username, origin not answering, the reservations unreadable
 			// here) stops the drain's move; another's hold passes over the
@@ -837,6 +1109,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 				reason += "; " + clause
 			}
 			res.Passed = append(res.Passed, Excluded{ID: v.ID, Check: r.Check, Reason: reason})
+			if r.Contention {
+				held = append(held, reason)
+			}
 			continue
 		}
 		holds.keep(v.ID)
@@ -847,6 +1122,15 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		return finish(true)
 	}
 	st.Judging = nil
+	// At the cap, or with only work others hold left, the drain waits and
+	// keeps its judgements; it stops as empty only when nothing eligible is
+	// left, held or not (drain_wait.go).
+	if capped != nil {
+		return finish(waitMove(&st, &res, prevWait, DrainWaitCap, capWaitText(capped, runs), now, time.Time{}))
+	}
+	if len(held) > 0 {
+		return finish(waitMove(&st, &res, prevWait, DrainWaitHeld, heldWaitText(held, len(st.Judgements)), now, cooling))
+	}
 	if !cooling.IsZero() {
 		at := stamp(cooling)
 		res.Next = fmt.Sprintf("nothing to ask before %s: the only eligible work left is a lapsed judgement request's issue, asked again once its cool-down has passed; run `abcd drain` again at or after %s", at, at)
@@ -1040,6 +1324,11 @@ func routeHandBack(repoRoot, issue, from string, hb HandBack, origin *DrainOrigi
 		r.Route, r.Question = RouteDecisionRecord, hb.Reason
 	case HandBackDesignFinding, HandBackSecondPackage:
 		r.Route, r.Home = RouteHome, hb.Home
+	case HandBackStuck, HandBackClosed:
+		// The lane kept refusing (stuck.go), or its pull request was closed
+		// unmerged (drain_finish.go): the issue stays open for a person, and
+		// the hand-back names the discard of its run.
+		r.Route, r.Home = RouteHome, hb.Home
 	default:
 		// The lane stopped after its fix rounds (itd-50): the issue stays open
 		// with the last findings, a person's to judge.
@@ -1104,6 +1393,10 @@ func readDrain(repoRoot string) (DrainState, bool, error) {
 	}
 	if !st.textWritten() {
 		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" carries text the drain never writes: a control, bidi or zero-width character in its rule, a lane, a hand-back or a judgement",
+			"the drain is the file's only writer; restore it or remove it")
+	}
+	if !st.waitWritten() {
+		return DrainState{}, false, refuse(StageDrain, "", "", DrainStateRel+" names a wait the drain never writes",
 			"the drain is the file's only writer; restore it or remove it")
 	}
 	if !st.pendingWritten() {

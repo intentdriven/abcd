@@ -92,10 +92,9 @@ person, which only the implement loop and the drain make, adds
 record on origin's default branch as last fetched (spc-2610161044461448 step 3,
 dcn-2610161040365515). The kind is one of a closed vocabulary: `user-visible`,
 `trust-rule`, `design-finding`, `second-package`, `unachievable` (a lane
-stopped after its fix rounds), `stuck` and `closed`; the last two are
-reserved for a lane stuck refusing at one stage and one whose pull request was
-closed unmerged, which nothing writes until spc-2610161044461448 steps 5 and 8
-land, though every reader reads them now. Neither carries free
+stopped after its fix rounds), `stuck` and `closed`; the drain writes the last two for a lane stuck
+refusing at one stage (spc-2610161044461448 step 5) and for one whose pull
+request was closed unmerged (step 8), and every reader reads them. Neither carries free
 text: the writer refuses any other kind, and a reader reads a tip whose
 hand-back is not one known kind with one full object name, on a release, as
 unreadable. When origin's default branch holds the record in no file, or in
@@ -149,14 +148,51 @@ this copy has not fetched reads as unchanged, each until this copy's next
 fetch of that branch succeeds (dcn-2610161837009957).
 
 The act is then judged against the rest of the fetched view. A reservation
-that would take its holder past ten live reservations, counted by username
-across every record, is refused naming the ten; a renewal, and a take-over of
+that would take its holder past their cap of live reservations, ten unless
+their machine raises it, counted by username across every record, is refused
+naming the cap and the reservations, with the advice to wait for one of their
+pull requests to merge, which ends its reservation, rather than release one
+whose work is done, or to raise the cap; the refusal is typed, so a drain waits
+on it instead of refusing its move, at the same cap
+([`35-drain.md`](35-drain.md), spc-2610161044461448 step 6);
+a renewal, and a take-over of
 the same person's other copy, of a reservation still live add none and are
 never refused by the cap, while reviving a lapsed one adds one. A
 footprint path that another live reservation's footprint shares, equal or one
 a directory holding the other, is refused, unless that reservation is the same
 person's from this copy, naming the deeper of the two paths,
-the other record, its holder and its expiry; a renewal the verb makes names
+the other record, its holder and its expiry. A shared path that is a file
+origin's default branch declares generated is no overlap (spc-2610161044461448
+step 11): the declaration is `linguist-generated` (set, or `=true`) in the root
+`.gitattributes` of origin's default branch as last fetched, read as stored
+with a 256 KiB cap and no fetch; a nested `.gitattributes`,
+`.git/info/attributes` and the working tree are never read, because the
+declaration must be one every account shares, and a file at or below a
+directory holding its own `.gitattributes` is never generated, since that file
+could unset the attribute there. Its patterns follow git's
+gitattributes rules for the subset abcd reads (a basename at any depth, a
+pattern with a slash anchored to the root, `*`, `?`, classes and `**`, a later
+line over an earlier one); patterns that set the attribute match
+case-sensitively and patterns that unset it match regardless of case, so a
+file is generated only where git would call it generated on a clone that
+ignores case and on one that does not. A file counts only when origin's default branch
+holds it, so a directory is never generated, even when every file under it is.
+Every misreading leans towards "not generated": a declaration that cannot be
+read, is over the cap, holds a NUL byte or passes the step budget its
+matching is held to shares nothing (a line past its own budget for one path
+leaves that path not generated) and the act says why
+(`generated_unread`, and the back-off's own words), and a line abcd does not
+understand (a POSIX class, say) is skipped, voiding every line before it when
+it could unset the attribute. abcd shares a generated file only when the root
+declaration is plain ASCII with no quoting, macros or
+checkout conversion (`ident`, `working-tree-encoding`), and otherwise warns and
+shares none. A shared path with a
+live reservation the same person holds from another copy does not refuse a
+person's own act: it is made, and names each such path, the other record and
+its expiry (`own_overlap`, a warning on stderr in the text form). Only the
+verb asks for this (the request's `WarnOwnOverlap`): a build's and a drain's
+reservations are automated and still back off it, as the drain's pass-over
+does, so two automated lanes never edit the same files. A renewal the verb makes names
 its footprint and is checked the same way, so a footprint is never widened onto
 another reservation, while the implement loop's renewal of a live reservation,
 which keeps the tip's footprint, is not checked, and one that revives a lapsed
@@ -165,6 +201,26 @@ fetched and are not compared-and-swapped, since each reservation is its own
 branch: two people reserving at once can both pass them, so both are
 best-effort under a race. A collision on one record is atomic, the plain push
 being the compare-and-swap.
+
+The cap is ten unless the person's own machine sets `reservation.max_live` in
+`~/.abcd.noindex/config.json`, a whole number from 1 to 100
+(`internal/core/claim/maxlive.go`, iss-2610170717515674). It stays one ceiling
+per person, counted across all of their sessions and copies, so a person who
+runs many sessions on one account raises it rather than releasing and
+re-taking holds to make room. It is read from the machine layer alone: a
+repository's `.abcd/config.json` that sets it is not read, so a checkout cannot
+raise anyone's ceiling, nor can a `HOME` set inside a working tree that is not
+the account's own. A value outside the range, or a key under `reservation`
+that nothing reads, refuses an act that adds a reservation (reviving a lapsed
+one among them) naming the file, never falling back to ten; no other act reads
+the setting, so a bad value never stops a release or the renewal of a live
+reservation. The holder's reader (`reservation.github_username`) reads the
+same file first for every person whose git email is not a GitHub no-reply
+address, so an unknown key under `reservation`, or a file that cannot be read,
+stops every act of such a person, a username from their token included. For
+anyone else a `config.json` that cannot be read at all (writable by others,
+not valid JSON) is read past, ten applies, and the refusal at the cap says
+why; at the ceiling of 100 the refusal no longer offers raising it.
 
 An act the judgement finds reserves afresh, a reservation over no tip or a
 released one, or a take-over, then asks the forge whether origin is a fork,
@@ -243,8 +299,8 @@ with no leading zero and no suffix, so one release never makes two branches. It 
 
 - It takes no footprint, and refuses one: it holds every merge, not some
   files.
-- It sits outside the cap of ten: it is neither counted toward a person's ten
-  nor refused by them, and the live counts a listing shows leave it out.
+- It sits outside the per-person cap: it is neither counted toward a person's
+  cap nor refused by it, and the live counts a listing shows leave it out.
 - It holds for 24 hours unless a shorter lease is named, where a record holds
   for two. A cut waits on its checks, on a reviewer and on an approval, and
   the release tag is pushed by the release workflow after the merge, so a
@@ -306,8 +362,11 @@ Exit 0 when the act reached origin, or a release was already made. Exit 3, the
 back-off, when another person's reservation is live or lapsed under the
 margin, an unreadable one is within its hold, another push won the race, or the
 same person's other copy holds it and no take-over was asked for, or a
-footprint path is in another live reservation's footprint, or a drain's
-reservation meets a hand-back that stands. Exit 2 on the cap,
+footprint path that is not a generated file is in another person's live
+reservation's footprint (or, for a build's or a drain's reservation, the same
+person's from another copy), or a drain's reservation meets a hand-back that stands,
+or the record is finished (resolved, won't-fixed, shipped or superseded) on
+origin's default branch. Exit 2 on the cap,
 on a fork origin, and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
 `effective_expiry`, `commit`, `replaced` for a take-over,
@@ -319,7 +378,11 @@ the repository allows, and
 that stands, which the text form prints as a `note:` line, `hand_back_kept`
 (the same three) for a release whose tombstone kept that hand-back, also a
 `note:` line, and `hand_back_unpublished` for a release whose tombstone marks
-no hand-back it would otherwise have marked, a `no hand-back:` line.
+no hand-back it would otherwise have marked, a `no hand-back:` line,
+`own_overlap` (`path`, `record`, `effective_expiry`) for each path shared with
+the same person's reservation from another copy, a `warning:` line on stderr,
+and `generated_unread` when generated files were not recognised, a `not
+recognised:` line.
 
 ## Where this sits
 

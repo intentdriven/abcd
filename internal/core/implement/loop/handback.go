@@ -49,6 +49,10 @@ func keyOf(st State) string {
 // with: the intent, the verdict, the cap, and what the last round found.
 func handBackSummary(key string, hb HandBack) string {
 	var b strings.Builder
+	if hb.Kind == HandBackStuck || hb.Kind == HandBackClosed {
+		fmt.Fprintf(&b, "%s is handed back as %s: %s; its home: %s", key, hb.Kind, hb.Reason, hb.Home)
+		return b.String()
+	}
 	if hb.Kind != "" {
 		fmt.Fprintf(&b, "%s is handed back by its lane as %s: %s", key, hb.Kind, hb.Reason)
 		if hb.Home != "" {

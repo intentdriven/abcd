@@ -267,7 +267,14 @@ repository abcd manages has one, so a run is managed-only by construction. Each
 run directory is created one level at a time and proved real, the state file is
 replaced atomically inside an `os.Root`, and the reader decodes strictly,
 refusing an unknown field, a schema version it does not know, or a file stored
-under a run id it does not name. The state is schema version 12. Version 12
+under a run id it does not name. The state is schema version 13. Version 13
+added a lane's `refused` (spc-2610161044461448 step 5): an issue run's lane
+logs its run of refused steps, the stage, the check, the reason, a count of the
+same refusal in a row and since when it has refused at that stage, which a
+drain reads to hand a stuck lane back ([`35-drain.md`](35-drain.md)). Version
+12 is its strict subset, read as a run whose lanes have refused nothing; a file
+of version 12 or lower carrying `refused` is refused, and an abcd that writes
+version 12 refuses a version-13 file as a newer abcd's. Version 12
 added an await's `answered` (itd-6): the reviewer route and the SHA-256 of the
 answer its step placed at the review's return path, written under the run's
 lock with the answer, so a hand-back of that answer is recorded as the route's.
@@ -319,7 +326,7 @@ added the fix-round cap (ruling DR1): the pace's `fix_rounds` and a lane's
 `validation`). Each earlier version is the next one's strict subset, read as a
 run that predates the addition (a version-5 run runs on the bundled cap, a
 version-7 run is one the host ran every agent of) and
-written back at version 12 by its next mutation; an earlier version carrying what
+written back at version 13 by its next mutation; an earlier version carrying what
 only a later one writes is refused. Version 4
 renamed the lane's stage (BU1, iss-2609291313276243): a lane's and a record
 line's `step` became `stage`, so "step" names only the spec's steps (`spec_step`,
@@ -439,7 +446,11 @@ sequence.
 A role's route is `roles.<role>.runner` in the layered configuration: `host`,
 the default, or a runner the machine enables under `runner.<name>` (`claude`,
 `opencode`), with an optional model route admitted against its provider's
-allowlist. Only a personal layer, the machine's file or the person's own
+allowlist. A role is an agent in the roster, the implementer, or the drain's
+judge, `drain-judge` ([`35-drain.md`](35-drain.md#the-judgement-before-a-lane-opens));
+a route naming any other is skipped with a diagnostic, and so is a route of the
+drain's judge to opencode, which runs under its own configuration's permissions
+rather than the tools a role is granted. Only a personal layer, the machine's file or the person's own
 invocation, may hand a role to a runner, because a runner spends the person's
 key (rulings RN2 and OC2, 2026-10-02): the repository's file may keep a role on
 the host, and a route there to a runner is skipped with a diagnostic naming the
@@ -461,7 +472,9 @@ stage before anything is created or launched, and its diagnostics (a role no
 agent answers to, a repository route to a runner) go to stderr. When a stage hands the lane to a role that is
 routed to a runner, the step verb starts the runner itself, outside the run's
 lock, in the lane's worktree, with the brief and the receipt path the host would
-be handed, the claude runner with the role's tools granted without a prompt and
+be handed, the claude runner with the role's tools granted without a prompt,
+any tool the role is refused outright in its deny list, and everything else
+refused rather than asked, and
 opencode under the permissions its own configuration sets; the runner's
 transcript lands in abcd's history store, keyed on the repository's root
 commit, and its receipt is handed back through the same receipt verb and

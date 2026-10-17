@@ -53,6 +53,11 @@ read, or a github.com URL does not name exactly one owner and one repository,
 (…)`. When origin is the one fork the repository allows, `fork_allowed` names
 it as `<owner>/<name>` and the text reads `origin is a fork the repository
 allows (<owner>/<name>)`. Pass either on to the user.
+`own_overlap` lists each path the reservation shares with the user's own from
+another copy, as `path`, `record` and `effective_expiry` (see **When it
+refuses**); the text form warns of each on stderr. `generated_unread` says why
+no generated file was recognised, so every shared path was judged an overlap.
+Pass both on to the user.
 
 Tell the user what was reserved and until when.
 
@@ -67,7 +72,7 @@ session's land step holds its merge until the cut is done:
 
 The subject is `rel-v` and the version, three plain numbers (`rel-v0.16.0`,
 never `rel-0.16.0` or `rel-v0.16.0-rc1`). It takes no footprint (one is
-refused, exit 2), and it does not count toward the cap of ten. With no
+refused, exit 2), and it does not count toward the cap. With no
 `--lease` it holds for `24h`, so a cut that waits on checks and an approval
 outlasts it; running the same command again from the same copy renews it for
 another day, and without a renewal it holds no longer than a day (see
@@ -103,11 +108,29 @@ cannot be read and is still within its two-hour hold, or another push reserved
 it while this one was on its way. Say who holds it and until when, and pick
 something else. Never retry in a loop.
 
-**Exit 3 also covers a shared path.** A footprint path that another live
-reservation's footprint also holds, whoever holds it and for whatever record,
-is refused (the user's own reservations from this copy excepted, since that
-work is this copy's: the user's other computer still backs off), naming that path, the other record, its holder and until when. Two
-paths are shared when they are equal or one is a directory holding the other.
+**Exit 3 also covers a shared path.** A footprint path that another person's
+live reservation also holds, for whatever record, is refused, naming that path,
+the other record, its holder and until when. Two paths are shared when they are
+equal or one is a directory holding the other. A shared path that is a file
+`origin`'s default branch declares generated is no overlap: generated files are
+those its root `.gitattributes`, as last fetched, marks `linguist-generated`
+(or `linguist-generated=true`). That one file is read, never a nested
+`.gitattributes`, `.git/info/attributes` or this checkout's own copy, because
+the declaration must be one every account shares; reading it is a disk read,
+never a fetch. Patterns that set the attribute match case-sensitively;
+patterns that unset it match regardless of case, so on a clone that ignores
+case nothing is shared that git there would not call generated. A file at or
+below a directory that holds its own
+`.gitattributes` is never shared, since that file could unset the attribute
+there. A directory is never generated, even when every file under it
+is, so two directory footprints that share still overlap. When the file is
+there but cannot be read (it is not a regular file, is over 256 KiB, holds a
+NUL byte, or takes too long to match against the files),
+nothing is shared, the refusal adds "generated files were not recognised: …",
+and a reservation that is made says the same (`generated_unread`). abcd
+shares a generated file only when the root declaration is plain ASCII with no
+quoting, macros or checkout conversion (`ident`, `working-tree-encoding`), and
+otherwise warns and shares none.
 Running the command again to renew is checked the same way, since it names
 its footprint anew, so a reservation is never widened onto another; a build's
 or a drain's own renewal keeps its footprint and is not checked while the
@@ -118,17 +141,38 @@ reservation is its own branch, so two people reserving at the same moment can
 both pass them: they are best-effort under a race. Two reservations of the
 same record cannot both land; the second push is refused.
 
+**A path shared with your own other copy warns, and the reservation is
+made.** The user's own reservations from this copy are no overlap at all,
+since that work is this copy's. One the user holds from another computer or
+another checkout that shares a path with this reservation does not refuse it:
+the act goes ahead, exit 0, and warns on stderr, `abcd reserve: warning:
+"<path>" is also in the footprint of <record>, which you hold from your other
+copy until <time>; reserved anyway, since both are yours` (`own_overlap` in
+`--json`). Tell the user both pieces of work change that path. Only this verb
+does so, a reserve with `--take-over` included. A build's and a drain's
+reservations are automated and still back off such a path, and so does a
+drain's pass-over.
+
 **Exit 3 also covers your own other copy.** When the same person holds the
 record from another computer or another checkout, the refusal says "you are
 already building … on another computer". Pass `--take-over` only when the user
 confirms the work moves here; it moves only the user's own reservation, and the
 output names the copy it replaced. It never moves another person's.
 
-**Exit 2 when the user holds ten.** One person may hold at most ten live
-reservations, counted across every record by username. A reservation past that
-is refused, naming the ten; a renewal, and a take-over of the user's own other
-copy, of a reservation still live are never refused by the cap, while renewing
-one that has lapsed counts as a new one. Release one first, if the user agrees.
+**Exit 2 when the user is at the cap.** One person may hold at most ten live
+reservations by default, counted across every record by username, whichever of
+their sessions and copies holds them. A reservation past that is refused,
+naming the cap and the reservations; a renewal, and a take-over of the user's
+own other copy, of a reservation still live are never refused by the cap, while
+renewing one that has lapsed counts as a new one. The refusal advises waiting
+for one of the user's pull requests to merge, which ends its reservation: most
+of them are usually lanes whose pull requests wait on a merge, and releasing
+one would free an issue whose work is done. Release one only when its work is
+abandoned, if the user agrees. A person who runs many sessions at once raises
+the cap with `reservation.max_live` in their own `~/.abcd.noindex/config.json`
+(a whole number from 1 to 100), never in a repository's `.abcd/config.json`,
+which is not read for it; a value outside that range, or a misspelt key beside
+it, is refused naming the file.
 
 **Exit 2 on a fork origin.** A new reservation or a take-over asks GitHub
 whether each URL origin pushes to is a fork; a renewal and a release never ask,
@@ -217,8 +261,9 @@ tip or without one, and pushes nothing.
 **Over a hand-back.** A drain that hands an issue back to a person releases
 its reservation with a tombstone naming the hand-back's kind (one of
 `user-visible`, `trust-rule`, `design-finding`, `second-package`,
-`unachievable`, `stuck`, `closed`; the last two are reserved for steps not yet
-built, a stuck lane and a closed pull request, and nothing writes them yet) and
+`unachievable`, `stuck`, `closed`; the drain writes `stuck` for a lane that
+kept refusing at one stage and `closed` for one whose pull request was closed
+unmerged) and
 the blob id of the issue's record on
 origin's default branch. Every drain backs off that issue until a person
 changes the record there, and no drain takes over or renews a reservation you

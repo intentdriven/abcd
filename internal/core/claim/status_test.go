@@ -88,7 +88,8 @@ func (p *participant) read() StatusView {
 // notes is p's prompt block at the world's time, kept shown.
 func (p *participant) notes() string {
 	p.w.t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	stretchPromptBudget(p.w.t)
+	ctx, cancel := context.WithTimeout(context.Background(), slack(5*time.Second))
 	defer cancel()
 	n, err := PromptNotes(ctx, p.dir, p.w.clock(), p.opts())
 	if err != nil {
@@ -908,7 +909,8 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	w.pushMany("maya", msgs)
 	pat.fetchOnly()
 	t.Cleanup(promptReads.Wait)
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	stretchPromptBudget(t)
+	ctx, cancel := context.WithTimeout(context.Background(), slack(time.Second))
 	defer cancel()
 	start := time.Now()
 	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
@@ -918,8 +920,8 @@ func TestMarkingAFloodShownFitsThePrompt(t *testing.T) {
 	n.MarkShown()
 	took := time.Since(start)
 	t.Logf("reading and marking 300 announcements took %s", took)
-	if took > 500*time.Millisecond {
-		t.Fatalf("reading and marking 300 announcements took %s; want it near its cost, under 500 ms", took)
+	if bound := slack(500 * time.Millisecond); took > bound {
+		t.Fatalf("reading and marking 300 announcements took %s; want it near its cost, under %s", took, bound)
 	}
 	// One intake takes in the newest maxIntakeCommits and leaves the rest
 	// for the next; the block shows nine of them, counts the rest and says

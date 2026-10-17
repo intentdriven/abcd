@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
@@ -53,8 +54,15 @@ func readIssueBriefSources(repoRoot string, st State, lane *Lane) (issueBriefSou
 		if len(found) > 0 {
 			where = "holds it in " + folders(found)
 		}
-		return src, refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("%s is not open at %s: the default branch %s", id, base, where),
+		r := refuse(string(StageBrief), "", lane.ID, fmt.Sprintf("%s is not open at %s: the default branch %s", id, base, where),
 			"land the issue on the default branch first; a lane is built off the default branch")
+		// An issue finished at the base, resolved or wontfix there, is
+		// finished for good: the lane's base never moves, so a drain hands
+		// the lane back at once (stuck.go).
+		if slices.ContainsFunc(found, func(e baseEntry) bool { return e.folder == "resolved" || e.folder == "wontfix" }) {
+			r.final = id + " is finished at the lane's base"
+		}
+		return src, r
 	}
 	read := func(e baseEntry, limit int64) ([]byte, error) {
 		b, err := at.blob(e, limit)

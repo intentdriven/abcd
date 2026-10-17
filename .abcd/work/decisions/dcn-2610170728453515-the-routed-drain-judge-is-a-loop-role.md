@@ -1,0 +1,6 @@
+---
+id: dcn-2610170728453515
+slug: the-routed-drain-judge-is-a-loop-role
+date: 2026-10-17
+---
+2026-10-17 — The routed drain judge is a loop role, asked and taken in one move (facilitator-on-delegation, drain-many-accounts, spc-2610161044461448 step 14; refines dcn-2610161040390001): drain-judge joins the implementer as a role outside the agent roster, so it needs no agents/ definition and the runner routing accepts it by name; the move that writes the host's request also writes the runner a brief of its own whose answer carries no digest, which abcd fills in from the remedy the brief showed, and takes that answer in the same move as --judgement would, so a no opens the lane on the reservation the drain took to ask it; the runner gets Read and Write alone, runs under the drain's lock and is bounded at fifteen minutes, a small part of the lease it is asked under; a runner that does not answer is a fallback receipt kept in the drain's state, and the host's request stands (grounds: one dispatch and one fallback rule for every model-run role, as the build roles use; a strict answer read once and validated by the same gaps as the host's; a bounded worker inside a lease, as lease-holding job queues bound their workers; iss-2610161015422306)

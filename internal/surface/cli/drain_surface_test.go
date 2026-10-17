@@ -706,3 +706,47 @@ func TestDrainHelpStatesThePromotedRule(t *testing.T) {
 		}
 	}
 }
+
+// TestDrainHelpNamesItsWaitAndRefusalFields: the drain's help names the
+// fields a reader of its state and its lane's run finds: waiting_until and
+// waiting with its two values, and the lane's refused, with how the stuck
+// bound counts it. The generated reference renders this text, so it is held
+// too.
+func TestDrainHelpNamesItsWaitAndRefusalFields(t *testing.T) {
+	var asJSON bool
+	long := strings.Join(strings.Fields(newDrainCommand(&asJSON).Long), " ")
+	for _, want := range []string{
+		"writes waiting_until fifteen minutes on",
+		`waiting, "cap" or "held"`,
+		"refused in the run's state",
+		"kept refusing at one stage for sixty minutes",
+		"a land fence that cannot read origin",
+		"a lane handed back is renewed by none",
+	} {
+		if !strings.Contains(long, want) {
+			t.Errorf("the drain help does not say %q:\n%s", want, long)
+		}
+	}
+}
+
+// TestDrainListsTakeOverInItsHelpAndTheReference: `--take-over` is a drain
+// flag (spc-2610161044461448 step 15), listed in its help and in the
+// generated CLI reference, and the dry run refuses it.
+func TestDrainListsTakeOverInItsHelpAndTheReference(t *testing.T) {
+	help := string(runCLI(t, "drain", "--help"))
+	if !strings.Contains(help, "--take-over") {
+		t.Fatalf("drain --help lists --take-over:\n%s", help)
+	}
+	ref := GenerateReference()
+	start := strings.Index(ref, "## `abcd drain`")
+	if start < 0 {
+		t.Fatal("the reference has no drain section")
+	}
+	section := ref[start:]
+	if end := strings.Index(section[1:], "\n## "); end > 0 {
+		section = section[:end+1]
+	}
+	if !strings.Contains(section, "--take-over") {
+		t.Fatalf("the reference's drain section lists --take-over:\n%s", section)
+	}
+}

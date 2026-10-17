@@ -83,8 +83,14 @@ type Options struct {
 	// checkout's.
 	plan *capture.DrainPlan
 	// drain marks a lane start the drain makes: a reservation it pushes backs
-	// off a hand-back whose record is unchanged on origin (claim.Request.Drain).
+	// off a hand-back whose record is unchanged on origin (claim.Request.Drain),
+	// and an issue run handed back is over, so a lane the drain opens again
+	// on its issue is a new run rather than that run resumed (drain_readmit.go).
 	drain bool
+	// pace is the pace a new run starts on in place of the one the flags and
+	// configuration resolve: the drain's, so every lane it opens runs on the
+	// pace the drain does (spc-2610161044461448 step 16). Nil resolves it.
+	pace *Pace
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -136,6 +142,13 @@ type Outcome struct {
 	// Goto sends the lane back to an earlier stage (the landing's sync sends
 	// it to a fresh round); set only with no Await, HandBack or Stay.
 	Goto Stage
+	// LandLeft is set by a landing body that sends the lane back (the sync)
+	// once it has reserved an issue's whole found_at again, before it changed
+	// anything locally (reserveOnLeavingLand), so the move does not judge
+	// the reservation a second time; Reservation is the run record's line for
+	// a widening it made, "" when the reservation already covered the found_at.
+	LandLeft    bool
+	Reservation string
 	// Note is the run record's line for the stage.
 	Note string
 }
@@ -343,7 +356,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	if err != nil {
 		return StartResult{}, err
 	}
-	if res, ok, err := resumeLive(repoRoot, key); err != nil || ok {
+	if res, ok, err := resumeLive(repoRoot, key, o.drain); err != nil || ok {
 		if err == nil && pick != nil {
 			err = pickedLive(res)
 		}
@@ -358,8 +371,10 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		return res, nil
 	}
-	pace, err := resolvePace(o.roots(repoRoot), flags)
-	if err != nil {
+	var pace Pace
+	if o.pace != nil {
+		pace = *o.pace
+	} else if pace, err = resolvePace(o.roots(repoRoot), flags); err != nil {
 		return StartResult{}, err
 	}
 	var shared *implement.Run
@@ -417,7 +432,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		// A start that raced this one past the lookup above created the run
 		// while the checks ran: it is resumed, not duplicated.
-		if st, ok := liveRun(runs, chk.Key); ok {
+		if st, ok := liveRun(runs, chk.Key, o.drain); ok {
 			res = startResult(st, nil, true)
 			keep = true
 			if pick != nil {
@@ -557,7 +572,7 @@ func claimRefusal(session, record string, err error) error {
 // has one. A checkout with no run directory has none, and the lookup creates
 // nothing; a run directory that is not a real directory is left to the create
 // path, which refuses it.
-func resumeLive(repoRoot, key string) (StartResult, bool, error) {
+func resumeLive(repoRoot, key string, drain bool) (StartResult, bool, error) {
 	if !fsutil.IsRealDir(filepath.Join(repoRoot, filepath.FromSlash(RunRelDir))) {
 		return StartResult{}, false, nil
 	}
@@ -568,7 +583,7 @@ func resumeLive(repoRoot, key string) (StartResult, bool, error) {
 		if err != nil {
 			return err
 		}
-		if st, ok := liveRun(runs, key); ok {
+		if st, ok := liveRun(runs, key, drain); ok {
 			res, found = startResult(st, nil, true), true
 		}
 		return nil
@@ -612,10 +627,12 @@ func resumeWithFlags(res StartResult, f paceFlags) error {
 		"resume without --pace, --sub-agents and --fix-rounds; the run keeps the pace it started on")
 }
 
-// liveRun returns the run for key that is not complete.
-func liveRun(runs []State, key string) (State, bool) {
-	for _, st := range runs {
-		if recordid.SameID(st.Key, key) && !st.Complete() {
+// liveRun returns the run for key that is not complete. For a drain's lane
+// (drain), an issue run whose lane was handed back is over too; for any
+// caller, one a newer run of the issue has followed is (superseded).
+func liveRun(runs []State, key string, drain bool) (State, bool) {
+	for i, st := range runs {
+		if recordid.SameID(st.Key, key) && !st.Complete() && !(drain && st.issueHandedBack()) && !superseded(runs, i) {
 			return st, true
 		}
 	}
@@ -743,6 +760,11 @@ func advanceWith(repoRoot, runID string, steps Stages, o Options, routed func(ro
 		if err != nil {
 			if rf, ok := AsRefusal(err); ok && renewNote != "" {
 				rf.Remedy += "; " + renewNote
+			}
+			// An issue run's refused step is logged on its lane, which a
+			// drain reads to hand a stuck lane back (stuck.go).
+			if noteRefusal(st, err, now) {
+				moved = true
 			}
 			if moved || renewed {
 				// The wait, or a later lane's refusal, is the call's answer,
@@ -903,6 +925,7 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 		}
 		performed := lane.Stage
 		verified := await.Receipt
+		lane.Refused = nil
 		lane.Awaits = slices.Delete(slices.Clone(lane.Awaits), k, k+1)
 		if len(lane.Awaits) == 0 {
 			lane.Awaits = nil
@@ -1035,7 +1058,9 @@ func readRuns(root *os.Root) ([]State, error) {
 
 // Resolve names the run a call addresses. An explicit id is checked for shape
 // and presence; no id addresses the one run in this checkout that is not
-// complete, and is refused naming them when there are several, or none.
+// complete, and is refused naming them when there are several, or none. An
+// issue run handed back that a newer run of the issue has followed
+// (superseded) is not counted: the newer run is the issue's.
 func Resolve(repoRoot, runID string) (string, error) {
 	if runID != "" {
 		if _, err := ReadState(repoRoot, runID); err != nil {
@@ -1048,20 +1073,18 @@ func Resolve(repoRoot, runID string) (string, error) {
 		return "", err
 	}
 	var live []string
-	for _, st := range runs {
-		if !st.Complete() {
+	only := ""
+	for i, st := range runs {
+		if !st.Complete() && !superseded(runs, i) {
 			live = append(live, st.RunID+" ("+st.Key+")")
+			only = st.RunID
 		}
 	}
 	switch len(live) {
 	case 0:
 		return "", refuse("state", "", "", "no run in this checkout is in progress", "start one with `abcd build <itd-N>`")
 	case 1:
-		for _, st := range runs {
-			if !st.Complete() {
-				return st.RunID, nil
-			}
-		}
+		return only, nil
 	}
 	return "", refuse("state", "", "", fmt.Sprintf("%d runs are in progress: %v", len(live), live), "name one with --run")
 }

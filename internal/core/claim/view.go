@@ -72,6 +72,9 @@ type Reservation struct {
 	// person has changed it since, so the hand-back no longer stands.
 	HandedBack    string
 	RecordChanged bool
+	// Stage is the drain lane's stage the tip's renewal names, one of
+	// LaneStages; "" when the tip names none.
+	Stage string
 }
 
 // Snapshot is the reservations as this checkout last fetched them.
@@ -80,6 +83,17 @@ type Snapshot struct {
 	// nothing here stamped a fetch, so the view's age is unknown.
 	FetchedAt    time.Time
 	Reservations []Reservation
+	// Generated is the files origin's default branch, as last fetched,
+	// declares generated (GeneratedFiles), which no footprint overlap is
+	// judged on. It is read only when some live reservation has a footprint,
+	// and is empty when the view does not derive (an act whose fetch could
+	// not read origin's default branch).
+	Generated Generated
+	// GeneratedUnread is why generated files were not recognised, though a
+	// live reservation has a footprint: the declaration could not be read, or
+	// the view does not trust origin's default branch as this clone holds
+	// it; "" otherwise.
+	GeneratedUnread string
 }
 
 // LiveByHolder counts each person's live reservations of records, as the cap
@@ -209,6 +223,16 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 		}
 		snap.Reservations = append(snap.Reservations, r)
 	}
+	// The generated files are read once per view, and only when a live
+	// footprint is there to judge an overlap with; a view that does not trust
+	// origin's default branch recognises none.
+	if slices.ContainsFunc(snap.Reservations, func(r Reservation) bool { return r.State == StateLive && len(r.Footprint) > 0 }) {
+		if derive {
+			snap.Generated, snap.GeneratedUnread = GeneratedFiles(root)
+		} else {
+			snap.GeneratedUnread = "origin's default branch could not be read when the reservations were fetched"
+		}
+	}
 	return snap, nil
 }
 
@@ -228,6 +252,7 @@ func listed(t tip, id, derivedBy, own string, now time.Time) Reservation {
 	} else {
 		v := lease.Judge(lease.Stamp{ClaimedAt: t.ClaimedAt, ExpiresAt: t.ExpiresAt, FirstSeen: t.FirstSeen}, lease.Default, now)
 		r.Holder, r.Footprint, r.ClaimedAt, r.EffectiveExpiry = t.Holder, t.Footprint, t.ClaimedAt, v.EffectiveExpiry
+		r.Stage = t.Stage
 		if own != "" && t.Copy == own {
 			r.Copy = CopyThis
 		}

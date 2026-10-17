@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -49,7 +50,21 @@ type reserveOutput struct {
 	// it would otherwise have marked.
 	HandBackKept        *reserveHandedBack `json:"hand_back_kept,omitempty"`
 	HandBackUnpublished string             `json:"hand_back_unpublished,omitempty"`
-	note                string
+	// OwnOverlap is each path the reservation shares with the person's own
+	// from another copy, which it was made over; the text form warns of each
+	// on stderr. GeneratedUnread is why no generated file was recognised.
+	OwnOverlap      []reserveOwnOverlap `json:"own_overlap,omitempty"`
+	GeneratedUnread string              `json:"generated_unread,omitempty"`
+	note            string
+	warnings        []string
+}
+
+// reserveOwnOverlap is a path shared with one's own reservation from another
+// copy.
+type reserveOwnOverlap struct {
+	Path            string `json:"path"`
+	Record          string `json:"record"`
+	EffectiveExpiry string `json:"effective_expiry"`
 }
 
 // reserveHandedBack is the hand-back a person's own reservation was made over.
@@ -100,9 +115,9 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"lease (--lease, from 1m to 24h; default 2h, or 24h for a release).\n\n" +
 			"A session cutting a release reserves the release instead, rel-vX.Y.Z, with no\n" +
 			"footprint: while it is live every other session's land step holds its merge.\n" +
-			"It holds for 24h unless --lease names less, sits outside the cap of ten, and\n" +
-			"ends when the tag vX.Y.Z is on origin or its holder releases it; running the\n" +
-			"same command again from the same copy renews it.\n\n" +
+			"It holds for 24h unless --lease names less, sits outside the per-person cap,\n" +
+			"and ends when the tag vX.Y.Z is on origin or its holder releases it; running\n" +
+			"the same command again from the same copy renews it.\n\n" +
 			"Every act fetches the reservations from origin, judges the tip, writes one\n" +
 			"commit and makes one plain fast-forward push, with the repository's hooks\n" +
 			"running: a reservation, a renewal by the same person and copy, a take-over of\n" +
@@ -122,6 +137,13 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			"the issue, nor takes over or renews your reservation over it. A release whose\n" +
 			"tombstone cannot mark the hand-back is still made, plain, and says why\n" +
 			"(hand_back_unpublished in --json).\n\n" +
+			"A footprint sharing a path with another person's live reservation backs off\n" +
+			"(exit 3). A file that origin's default branch, as last fetched, declares\n" +
+			"linguist-generated in its root .gitattributes is shared, never an overlap; a\n" +
+			"directory never is. When that declaration cannot be read nothing is shared, and\n" +
+			"the act says why (generated_unread in --json). Your own reservation sharing a\n" +
+			"path with yours from another copy is made, and warns on stderr (own_overlap in\n" +
+			"--json).\n\n" +
 			"The holder is your GitHub username, from the first of these that names it:\n" +
 			"user.email, when it is a GitHub no-reply address; reservation.github_username\n" +
 			"in the machine configuration (the repository's own configuration is never read\n" +
@@ -187,7 +209,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 				return runReserveSweep(cmd.OutOrStdout(), *asJSON, sweep)
 			}
 			if holder {
-				return runReserveHolder(cmd.OutOrStdout(), *asJSON)
+				return runReserveHolder(cmd.OutOrStdout(), cmd.ErrOrStderr(), *asJSON)
 			}
 			if release {
 				var with []string
@@ -208,13 +230,22 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was pushed"}
 			}
+			noteMachineHome(cmd.ErrOrStderr(), "abcd reserve")
 			res, err := claim.Reserve(root, claim.Request{Record: args[0], Footprint: footprint, Lease: leaseFor,
-				TakeOver: takeOver, Release: release}, claim.Options{ForgeUser: reserveForgeUser})
+				TakeOver: takeOver, Release: release, WarnOwnOverlap: true}, claim.Options{ForgeUser: reserveForgeUser})
 			if err != nil {
 				return reserveRefusal(err)
 			}
 			out := reserveView(res)
-			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderReserve(w, out) })
+			if err := render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) { renderReserve(w, out) }); err != nil {
+				return err
+			}
+			if !*asJSON {
+				for _, line := range out.warnings {
+					fmt.Fprintf(cmd.ErrOrStderr(), "abcd reserve: warning: %s\n", line)
+				}
+			}
+			return nil
 		},
 	}
 	cmd.Flags().StringArrayVar(&footprint, "footprint", nil, "a repository-relative path the work will change; repeat once per path (never split on commas)")
@@ -230,7 +261,7 @@ func newReserveCommand(asJSON *bool) *cobra.Command {
 // this checkout would be made as, and the source that named it. It writes
 // nothing; when git's identity names no holder it may ask the forge's user
 // endpoint once, as the act itself would.
-func runReserveHolder(w io.Writer, asJSON bool) error {
+func runReserveHolder(w, errw io.Writer, asJSON bool) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return err
@@ -239,6 +270,7 @@ func runReserveHolder(w io.Writer, asJSON bool) error {
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + err.Error() + "; nothing was reserved"}
 	}
+	noteMachineHome(errw, "abcd reserve")
 	h, err := claim.ResolveHolder(root, claim.Options{ForgeUser: reserveForgeUser})
 	if err != nil {
 		return &exitError{Code: 2, Msg: "abcd reserve: " + termsafe.Sanitize(fsutil.RedactHome(err.Error()))}
@@ -287,6 +319,12 @@ func reserveView(res claim.Result) reserveOutput {
 		out.note = termsafe.Sanitize(h.KeptNote(res.Record))
 	}
 	out.HandBackUnpublished = termsafe.Sanitize(fsutil.RedactHome(res.HandBackUnpublished))
+	out.GeneratedUnread = termsafe.Sanitize(fsutil.RedactHome(res.GeneratedUnread))
+	for _, o := range res.OwnOverlap {
+		out.OwnOverlap = append(out.OwnOverlap, reserveOwnOverlap{Path: termsafe.Sanitize(o.Path), Record: termsafe.Sanitize(o.Record),
+			EffectiveExpiry: rfc3339(o.Expiry)})
+		out.warnings = append(out.warnings, o.Warning())
+	}
 	return out
 }
 
@@ -340,6 +378,9 @@ func renderReserve(w io.Writer, out reserveOutput) {
 	if out.HandBackUnpublished != "" {
 		fmt.Fprintf(w, "  no hand-back: %s\n", out.HandBackUnpublished)
 	}
+	if out.GeneratedUnread != "" {
+		fmt.Fprintf(w, "  %s\n", claim.GeneratedUnreadLine(out.GeneratedUnread))
+	}
 }
 
 func shortCommit(sha string) string {
@@ -347,4 +388,18 @@ func shortCommit(sha string) string {
 		return sha[:12]
 	}
 	return sha
+}
+
+// noteMachineHome puts on stderr, prefixed by verb, the one line saying the
+// process's HOME lies inside a git working tree and so is not read as this
+// machine's layer (layered.MachineRoots), the home claim's readers are given.
+// It writes nothing for any other home.
+func noteMachineHome(w io.Writer, verb string) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	if _, note := layered.MachineRoots(home); note != "" {
+		fmt.Fprintln(w, verb+": "+termsafe.Sanitize(fsutil.RedactHome(note)))
+	}
 }

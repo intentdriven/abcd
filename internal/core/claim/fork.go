@@ -201,7 +201,9 @@ const (
 // plain name, a misspelt key under the namespace and an unreadable file
 // refuse, naming the file.
 func forkOriginAllowed(root, home string) (fork, origin string, err error) {
-	r := layered.Roots{Repo: root, Home: home, HomeRefused: home == ""}
+	// A home inside a working tree reads as absent (layered.MachineRoots).
+	r, _ := layered.MachineRoots(home)
+	r.Repo, r.HomeRefused = root, r.HomeRefused || home == ""
 	stack, err := layered.Load(layered.Config, r)
 	if err != nil {
 		return "", "", err
