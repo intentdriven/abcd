@@ -275,6 +275,11 @@ func parseAttrLine(line string, macros map[string]bool) (attrRule, lineKind) {
 		return attrRule{}, voidsIf(line, macros)
 	}
 	f := attrFields(line)
+	if len(f) > 0 && f[0] == "[attr]" {
+		// git reads a bare [attr] as a pattern, a class of a, t and r, which
+		// this reader does not take for one.
+		return attrRule{}, voidsIf(line, macros)
+	}
 	if len(f) == 0 || strings.HasPrefix(f[0], "#") || strings.HasPrefix(f[0], "[attr]") {
 		return attrRule{}, lineIgnored
 	}

@@ -95,6 +95,8 @@ var attrCorpus = []attrCase{
 		want: map[string]bool{"gen file.md": false}},
 	{name: "a C-quoted pattern that unsets voids every earlier line", attrs: "*.md linguist-generated\n\"b c.md\" -linguist-generated\n", skipped: true,
 		want: map[string]bool{"a.md": false, "b c.md": false}},
+	{name: "a bare [attr] is a pattern git reads, and its unset voids every earlier line", attrs: "* linguist-generated\n[attr] -linguist-generated\n", skipped: true,
+		want: map[string]bool{"a": false, "x": false}},
 	{name: "a POSIX class is skipped", attrs: "gen[[:digit:]].md linguist-generated\n", skipped: true,
 		want: map[string]bool{"gen1.md": false}},
 	{name: "an unclosed class is skipped", attrs: "gen[.md linguist-generated\n", skipped: true,
