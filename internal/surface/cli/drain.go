@@ -255,8 +255,9 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	}
 	// An interrupt or a termination ends the context, and the runner kills
 	// the process group of a routed judge it started through its own handle:
-	// a judge never outlives the move that started it.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// a judge never outlives the move that started it. A second signal stops
+	// the process (drainSignalContext).
+	ctx, stop := drainSignalContext()
 	defer stop()
 	res, err := loop.Drain(repoRoot, o, loop.DrainOptions{Max: maxLanes, Judgement: judgement,
 		Transcripts: &lazyHistoryStore{cmd: cmd}, Context: ctx})
@@ -484,4 +485,17 @@ func renderDrainOrigin(w io.Writer, o *loop.DrainOrigin, unread string) {
 	if len(o.Finished) > 0 {
 		fmt.Fprintf(w, "  finished on %s, still open in this checkout: %s\n", termsafe.Sanitize(o.Ref), termsafe.Sanitize(strings.Join(o.Finished, ", ")))
 	}
+}
+
+// drainSignalContext is the drain's context: the first interrupt or
+// termination ends it, and the drain's handler is released as soon as it
+// ends, so a second signal takes the default action and stops the process,
+// even while a move waits on a network act that does not watch the context.
+func drainSignalContext() (context.Context, context.CancelFunc) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+	return ctx, stop
 }

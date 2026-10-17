@@ -284,7 +284,11 @@ on origin's default branch backs off, with a tip or without one
    Each is a fetch and one push, made only while that commit is still the tip,
    so a reservation this person made or renewed by hand since is left as it
    stands. An interrupt or a termination lets the move run to its end, stopping
-   a judge that is running, so it releases as any move does; a process killed
+   a judge that is running, so it releases as any move does. The drain's handler
+   takes the first signal alone and is released as the move's context ends, so a
+   second interrupt or termination stops the process at once by the signal's
+   default action, a move waiting on a network act included, and runs no
+   release; a process killed
    outright (SIGKILL) runs no
    release, so its hold lapses after one lease. Every push the drain makes for a judgement
    is its hold, a renewal of this person's reservation that had lapsed

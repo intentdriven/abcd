@@ -246,7 +246,10 @@ what it did in `next`:
   start is refused or fails; and when a request lapses. It does so on every
   path the drain's process lives through, an error or a crash in the move
   included, an interrupt (Ctrl-C) or a termination signal among them: the move
-  runs to its end, stopping a judge that is running; a drain killed outright
+  runs to its end, stopping a judge that is running. Only the first signal
+  is taken this way: a second interrupt or termination stops the drain at
+  once, as it would any program, which is the way out of a move waiting on a
+  network act, and releases nothing then. A drain killed outright
   (`SIGKILL`) releases
   nothing, and its reservation lapses after one lease (two hours by default).
   Each release is a fetch and one tombstone push over the commit the drain's
