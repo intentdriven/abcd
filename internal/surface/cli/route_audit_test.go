@@ -94,7 +94,8 @@ func TestIntentAuditIngestCarriesTheReceipt(t *testing.T) {
 	var rc oracle.ReceiptRoute
 	member(t, []byte(stdout), "route", &rc)
 	want := oracle.ReceiptRoute{Agent: "intent-auditor", TierAsked: oracle.Economy, ConnectionUsed: oracle.Harness,
-		FallbackReason: rc.FallbackReason, Override: "intent-auditor=economy", SettingsSent: oracle.Settings{}}
+		FallbackReason: rc.FallbackReason, Override: "intent-auditor=economy", SettingsSent: oracle.Settings{},
+		Unpinned: oracle.HandOffUnpinned("")}
 	if rc.FallbackReason == "" || !receiptEqual(rc, want) {
 		t.Fatalf("route = %+v", rc)
 	}

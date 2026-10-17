@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
+	"github.com/intentdriven/abcd/internal/core/oracle"
 	"github.com/intentdriven/abcd/internal/core/runner"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
@@ -792,7 +794,7 @@ func renderStepResult(w io.Writer, verb string, res loop.StepResult) {
 		fmt.Fprintf(w, "%s: %s is complete\n", verb, res.RunID)
 	}
 	if r := res.Route; r != nil {
-		fmt.Fprintf(w, "  ran on:  the %s runner (asked %s; model %s)\n", termsafe.Sanitize(r.Ran), termsafe.Sanitize(r.Asked), termsafe.Sanitize(modelOrNone(r.Model)))
+		fmt.Fprintf(w, "  ran on:  the %s runner (%s)\n", termsafe.Sanitize(r.Ran), routeDetail(r))
 	}
 	if fb := res.Fallback; fb != nil {
 		fmt.Fprintf(w, "  fallback: %s was routed to %s, which was %s (%s); %s runs it\n", termsafe.Sanitize(fb.Role), termsafe.Sanitize(fb.Asked),
@@ -1313,7 +1315,28 @@ func routeSuffix(r *runner.RouteRecord) string {
 	if r == nil {
 		return ""
 	}
-	return fmt.Sprintf(" — ran on the %s runner (asked %s; model %s)", termsafe.Sanitize(r.Ran), termsafe.Sanitize(r.Asked), termsafe.Sanitize(modelOrNone(r.Model)))
+	return fmt.Sprintf(" — ran on the %s runner (%s)", termsafe.Sanitize(r.Ran), routeDetail(r))
+}
+
+// routeDetail is a runner route's parenthesis: the route asked for and the
+// model that served, then the model the runner asked for and the cost when
+// the record carries them (itd-166). The token counts and the fields the run
+// could not pin stay in the record, for a reader tracing a run back.
+func routeDetail(r *runner.RouteRecord) string {
+	d := fmt.Sprintf("asked %s; model %s", termsafe.Sanitize(r.Asked), termsafe.Sanitize(modelOrNone(r.Model)))
+	if r.ModelAsked != "" {
+		d += "; model asked " + termsafe.Sanitize(r.ModelAsked)
+	}
+	if r.Cost != nil {
+		d += "; cost " + costText(*r.Cost)
+	}
+	return d
+}
+
+// costText is a recorded cost as a route line names it: the amount as
+// recorded, and its unit.
+func costText(c oracle.Cost) string {
+	return strconv.FormatFloat(c.Amount, 'f', -1, 64) + " " + termsafe.Sanitize(c.Unit)
 }
 
 func modelOrNone(m string) string {
