@@ -142,15 +142,15 @@ func sweepView(rep reservesweep.Report, days int) sweepOutput {
 
 // sweepReasons says each reason in words.
 var sweepReasons = map[string]string{
-	reservesweep.SpentTerminal:    "the record is finished on origin's default branch",
-	reservesweep.SpentReleased:    "released by a plain tombstone, no hand-back on the branch",
-	reservesweep.SpentLapsed:      "its lease lapsed over a plain release, no hand-back on the branch",
-	reservesweep.KeptRecent:       "touched or held too recently",
-	reservesweep.KeptHandBack:     "a hand-back stands on it and the record is open",
-	reservesweep.KeptUnknown:      "it carries a commit the sweep cannot classify",
-	reservesweep.KeptNeverRelease: "never released, and the record is open",
-	reservesweep.KeptHistory:      "its history could not be read to its root",
-	reservesweep.KeptUnreadable:   "its tip is unreadable",
+	reservesweep.SpentTerminal:   "the record is finished on origin's default branch",
+	reservesweep.SpentReleased:   "released by a plain tombstone, no hand-back on the branch",
+	reservesweep.SpentLapsed:     "its lease lapsed over a plain release, no hand-back on the branch",
+	reservesweep.SpentUnreleased: "its lease lapsed and it was never released, no hand-back on the branch",
+	reservesweep.KeptRecent:      "touched or held too recently",
+	reservesweep.KeptHandBack:    "a hand-back stands on it and the record is open",
+	reservesweep.KeptUnknown:     "it carries a commit the sweep cannot classify",
+	reservesweep.KeptHistory:     "its history could not be read to its root",
+	reservesweep.KeptUnreadable:  "its tip is unreadable",
 }
 
 // renderReserveSweep is the text form: a heading, one line per branch, the totals.

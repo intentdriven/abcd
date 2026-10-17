@@ -59,7 +59,9 @@ past the five-minute take-over margin included, and either:
 
 - (a) its record sits only in terminal folders on origin's default branch; or
 - (b) every commit on its first-parent line is a reservation or a plain
-  release, and at least one is a release.
+  release. That includes a reservation that lapsed without ever being
+  released: once its lease lapses any session may take it over, so it
+  protects nothing.
 
 A hand-back on an open record keeps the branch. So does any commit the sweep
 cannot classify.

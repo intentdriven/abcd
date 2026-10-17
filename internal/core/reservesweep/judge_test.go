@@ -142,10 +142,28 @@ func TestAnUnknownCommitAnywhereKeepsAnOpenRecordsBranch(t *testing.T) {
 	}
 }
 
-func TestALapsedReservationNeverReleasedIsKept(t *testing.T) {
-	f := facts{Chain: root(reservationAt(t0.Add(time.Hour)), reservationAt(t0)), ChainWhole: true, EffectiveExpiry: t0.Add(3 * time.Hour)}
-	if v := judge(f, t0.Add(10*week), week); v.Spent || v.Reason != KeptNeverRelease {
-		t.Fatalf("a reservation never released = %+v; want kept as never released", v)
+// TestALapsedReservationNeverReleasedIsSpentOnceOlderThanTheAge: a lease
+// that lapsed without a release protects nothing, since any session may take
+// it over, so the branch is spent once its lapse is older than the age, and
+// kept a second before.
+func TestALapsedReservationNeverReleasedIsSpentOnceOlderThanTheAge(t *testing.T) {
+	exp := t0.Add(3 * time.Hour)
+	f := facts{Chain: root(reservationAt(t0.Add(time.Hour)), reservationAt(t0)), ChainWhole: true, EffectiveExpiry: exp}
+	settled := exp.Add(claim.TakeoverMargin)
+	if v := judge(f, settled.Add(week-time.Second), week); v.Spent || v.Reason != KeptRecent {
+		t.Fatalf("a reservation never released, a second before the age = %+v; want kept as recent", v)
+	}
+	if v := judge(f, settled.Add(week), week); !v.Spent || v.Reason != SpentUnreleased {
+		t.Fatalf("a reservation never released, at the age = %+v; want spent as lapsed unreleased", v)
+	}
+}
+
+// TestALapsedReservationNeverReleasedWithUnreadHistoryIsKept: the lapse rule
+// reads the whole line, as the release rule does.
+func TestALapsedReservationNeverReleasedWithUnreadHistoryIsKept(t *testing.T) {
+	f := facts{Chain: root(reservationAt(t0)), ChainWhole: false, EffectiveExpiry: t0.Add(time.Hour)}
+	if v := judge(f, t0.Add(10*week), week); v.Spent || v.Reason != KeptHistory {
+		t.Fatalf("a reservation never released, history unread = %+v; want kept as history unread", v)
 	}
 }
 

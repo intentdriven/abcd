@@ -18,16 +18,19 @@ const (
 	// SpentLapsed: the tip is a reservation whose lease lapsed, over a plain
 	// tombstone, and no hand-back stands anywhere on the branch.
 	SpentLapsed = "lapsed"
+	// SpentUnreleased: every commit on the branch is a reservation and the
+	// tip's lease lapsed, so any session may already take it over and the
+	// branch protects nothing.
+	SpentUnreleased = "lapsed_unreleased"
 )
 
 // Why a branch is kept.
 const (
-	KeptUnreadable   = "unreadable"
-	KeptRecent       = "recent"
-	KeptUnknown      = "unknown_kind"
-	KeptHandBack     = "hand_back"
-	KeptNeverRelease = "never_released"
-	KeptHistory      = "history_unread"
+	KeptUnreadable = "unreadable"
+	KeptRecent     = "recent"
+	KeptUnknown    = "unknown_kind"
+	KeptHandBack   = "hand_back"
+	KeptHistory    = "history_unread"
 )
 
 // facts is what the sweep read about one reservation branch.
@@ -67,8 +70,10 @@ type verdict struct {
 //   - (a) the record is terminal on origin's default branch and the tip is a
 //     commit the sweep can classify; or
 //   - (b) every commit on its first-parent line, read to the root, is a
-//     reservation or a plain tombstone, at least one is a plain tombstone,
-//     and the tip is that tombstone or a lapsed reservation over it.
+//     reservation or a plain tombstone, and the tip is a plain tombstone or a
+//     lapsed reservation. A reservation that lapsed without ever being
+//     released counts: any session may already take it over, so the branch
+//     protects nothing once the lapse is older than the age.
 //
 // So a hand-back anywhere on a branch whose record is still open keeps it,
 // and so does a commit of any kind the sweep does not know.
@@ -107,7 +112,7 @@ func judge(f facts, now time.Time, olderThan time.Duration) verdict {
 	case !f.ChainWhole:
 		v.Reason = KeptHistory
 	case !released:
-		v.Reason = KeptNeverRelease
+		v.Spent, v.Reason = true, SpentUnreleased
 	case tip.Kind == KindPlainTombstone:
 		v.Spent, v.Reason = true, SpentReleased
 	default:

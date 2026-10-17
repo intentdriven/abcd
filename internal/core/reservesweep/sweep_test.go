@@ -221,8 +221,8 @@ func TestABranchReReservedAfterItWasJudgedSurvives(t *testing.T) {
 }
 
 // TestTheDefaultBranchDecidesTerminal: a lapsed reservation never released is
-// spent while its record sits in resolved/ on origin's default branch, and
-// kept once the record is back in open/ there.
+// spent as terminal while its record sits in resolved/ on origin's default
+// branch, and as lapsed unreleased once the record is back in open/ there.
 func TestTheDefaultBranchDecidesTerminal(t *testing.T) {
 	w := newWorld(t)
 	dir := w.clone()
@@ -242,8 +242,8 @@ func TestTheDefaultBranchDecidesTerminal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b := find(t, rep, "iss-5"); b.Spent || b.Reason != KeptNeverRelease {
-		t.Fatalf("iss-5 reopened on main = %+v; want kept as never released", b)
+	if b := find(t, rep, "iss-5"); !b.Spent || b.Reason != SpentUnreleased {
+		t.Fatalf("iss-5 reopened on main = %+v; want spent as lapsed unreleased", b)
 	}
 }
 
