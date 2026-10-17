@@ -81,7 +81,7 @@ type Snapshot struct {
 	FetchedAt    time.Time
 	Reservations []Reservation
 	// Generated is the files origin's default branch, as last fetched,
-	// declares generated (GeneratedFiles), which no footprint overlap is
+	// declares generated (generatedFiles), which no footprint overlap is
 	// judged on. It is read only when some live reservation has a footprint,
 	// and is empty when the view does not derive (an act whose fetch could
 	// not read origin's default branch).
@@ -225,7 +225,7 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	// origin's default branch recognises none.
 	if slices.ContainsFunc(snap.Reservations, func(r Reservation) bool { return r.State == StateLive && len(r.Footprint) > 0 }) {
 		if derive {
-			snap.Generated, snap.GeneratedUnread = GeneratedFiles(root)
+			snap.Generated, snap.GeneratedUnread = generatedFiles(root)
 		} else {
 			snap.GeneratedUnread = "origin's default branch could not be read when the reservations were fetched"
 		}
