@@ -143,7 +143,7 @@ the act goes ahead, exit 0, and warns on stderr, `abcd reserve: warning:
 "<path>" is also in the footprint of <record>, which you hold from your other
 copy until <time>; reserved anyway, since both are yours` (`own_overlap` in
 `--json`). Tell the user both pieces of work change that path. Only this verb
-does so: a build's and a drain's reservations are automated and still back off
+does so, a reserve with `--take-over` included: a build's and a drain's reservations are automated and still back off
 such a path, and so does a drain's pass-over.
 
 **Exit 3 also covers your own other copy.** When the same person holds the
