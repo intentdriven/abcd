@@ -171,7 +171,18 @@ const lockFileName = ".lock"
 // as a version they do not know. From version 12 on, decodeState refuses a
 // version above its own before any strict decode, so whatever a later version
 // adds is read as a newer abcd's file, never as one that does not parse.
-const SchemaVersion = 12
+//
+// Version 13 added a lane's `refused` (spc-2610161044461448 step 5): an issue
+// run's lane logs its run of refused steps, which a drain reads to hand a
+// stuck lane back. Version 12 is its strict subset, read as a run whose lanes
+// have refused nothing and written back at version 13; a file of version 12 or
+// lower carrying `refused` is not one its version wrote, and is refused.
+// Releases that write version 12 refuse a version-13 file as a newer abcd's.
+const SchemaVersion = 13
+
+// schemaVersionUnrefused is the version before a lane's `refused`: read,
+// never written.
+const schemaVersionUnrefused = 12
 
 // schemaVersionUnanswered is the version before an await's `answered`: read,
 // never written.
@@ -459,6 +470,11 @@ type Lane struct {
 	// recorded as it completes, so a killed landing resumes at the step that
 	// did not.
 	Landing *Landing `json:"landing,omitempty"`
+	// Refused is the lane's run of refused steps in an issue run (stuck.go):
+	// the stage, check and reason of the last, how many in a row were the
+	// same, and since when the lane has refused at that stage. Nil while the
+	// lane's steps succeed, and in an intent's run.
+	Refused *LaneRefused `json:"refused,omitempty"`
 }
 
 // ReceiptRecord is one implementer's receipt the loop verified.
@@ -595,14 +611,16 @@ type Entry struct {
 	Note  string `json:"note,omitempty"`
 }
 
-// Complete reports whether the run has nothing left: every lane is done and no
-// spec step is waiting for one.
+// Complete reports whether the run has nothing left: every lane is done (or,
+// in an issue run, discarded) and no spec step is waiting for one.
 func (s State) Complete() bool {
 	if len(s.Pending) > 0 {
 		return false
 	}
 	for _, l := range s.Lanes {
-		if l.Stage != StageDone {
+		// An issue run's lane discarded after it was handed back as stuck is
+		// over (stuck.go): the issue is a person's, and the run holds nothing.
+		if l.Stage != StageDone && (l.Stage != StageDiscarded || s.Issue() == "") {
 			return false
 		}
 	}
@@ -706,6 +724,17 @@ func (s State) answered() string {
 			if a.Answered != nil {
 				return "`answered` on " + l.ID + "'s " + a.Role
 			}
+		}
+	}
+	return ""
+}
+
+// refused reports the first lane, in a state, that carries `refused`, which
+// only version 13 writes, or "".
+func (s State) refused() string {
+	for _, l := range s.Lanes {
+		if l.Refused != nil {
+			return "`refused` on " + l.ID
 		}
 	}
 	return ""
@@ -853,7 +882,10 @@ func readStateIn(root *os.Root, runID string) (State, error) {
 	case st.SchemaVersion <= schemaVersionUnanswered && st.answered() != "":
 		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.answered(), st.SchemaVersion),
 			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
-	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnanswered:
+	case st.SchemaVersion <= schemaVersionUnrefused && st.refused() != "":
+		return State{}, refuse("state", "", "", fmt.Sprintf("%s is schema version %d but carries %s, which version %d never wrote", rel, st.SchemaVersion, st.refused(), st.SchemaVersion),
+			"the loop is the file's only writer; restore it or remove the run directory "+runRel(runID))
+	case st.SchemaVersion >= schemaVersionUnpaced && st.SchemaVersion <= schemaVersionUnrefused:
 		// Read as the current version, its stages already carried over by
 		// decodeState when it named them `step`; the next write carries it, and
 		// this read writes nothing.

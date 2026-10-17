@@ -46,3 +46,14 @@ scripts/cloud/** text eol=lf
 # is a syntax error — no shebang required to break it. A render from a CRLF
 # checkout would publish an installer that cannot run.
 site-src/install.sh.tmpl text eol=lf
+
+# Files written whole by `go generate ./internal/surface/cli`, never by hand: the
+# CLI reference (cmd/abcd-gen-cli-ref) and the surface manifest
+# (cmd/abcd-gen-surface). Every branch that adds or changes a verb regenerates
+# them, so a reservation footprint naming one shares it rather than counting it
+# as an overlap (abcd reserve reads this file from origin's default branch;
+# spc-2610161044461448 step 11), and the forge collapses their diffs in review.
+# The brief's surface chapters are not named: each mixes hand-written prose with
+# a generated appendix, so none is a generated file.
+docs/reference/cli/commands.md linguist-generated
+.abcd/development/release/surface.json linguist-generated

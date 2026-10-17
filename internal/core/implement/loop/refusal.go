@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/peers"
 )
 
 // Refusal is the one shape every refusal of the loop takes (criterion 13): the
@@ -38,12 +40,33 @@ type Refusal struct {
 	// probe a lane waits on, or, at the stage "outage", the give-up with what
 	// the run had done and what is left (iss-2610080620372731).
 	Outage *OutageInfo `json:"outage,omitempty"`
+	// unjudged is each peer a start's peers check could not read, copied from
+	// its row: the drain stops its move on them rather than passing the issue
+	// over as contended.
+	unjudged []peers.Peer
 	// checkWait is when a landing began waiting for its full check (ruling
 	// DR6d-2): the call that finds the wait writes it on the lane once.
 	checkWait time.Time
 	// outage is the lost connection a stage met, which the call records in
 	// the shared run once the tier lock is released.
 	outage *outageReport
+	// originUnread marks a land fence that could not read the reservation
+	// from origin: a wait by design, never logged on a drain's lane
+	// (stuck.go).
+	originUnread bool
+	// releaseHeld marks a fence held by another person's release cut: a
+	// pause someone chose, so a wait by design, never logged on a drain's
+	// lane (stuck.go).
+	releaseHeld bool
+	// final is why the refusal cannot change, "" when it can: an issue
+	// finished at the lane's base or on origin's default branch, or the
+	// reservation now another person's. A drain hands a lane refused so back
+	// at once (stuck.go).
+	final string
+	// capped is the holder's live reservations when the refusal is the cap's
+	// (claim.CapError): the drain waits on it rather than refusing its move
+	// (drain_wait.go).
+	capped []string
 }
 
 // Error renders the refusal as one line: stage, reason, remedy.

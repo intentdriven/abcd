@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/abcdhome"
 )
 
 // reserveTen has p reserve iss-1 to iss-10, each with its own file.
@@ -20,16 +22,25 @@ func reserveTen(t *testing.T, p *participant) {
 
 // TestTheEleventhReservationIsRefusedNamingTheCap is C47: a reservation that
 // would take its holder past ten live reservations is refused, naming the cap
-// and the ten, and nothing is pushed.
+// and the ten, and nothing is pushed. The refusal is typed, carrying the ten
+// (spc-2610161044461448 step 6), and its advice is to wait for a pull request
+// to merge, since most of the ten are usually lanes whose pull requests wait on
+// a merge, and releasing one would free an issue whose work is done.
 func TestTheEleventhReservationIsRefusedNamingTheCap(t *testing.T) {
 	w := newWorld(t)
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	reserveTen(t, p)
 	_, err := p.reserve("iss-11", "f11.go")
 	want := "you hold 10 live reservations, the most one person may hold: iss-1, iss-10, iss-2, iss-3, iss-4, iss-5, " +
-		"iss-6, iss-7, iss-8, iss-9; release one (abcd reserve <id> --release) first; nothing was pushed"
+		"iss-6, iss-7, iss-8, iss-9; wait for one of their pull requests to merge, which ends its reservation, " +
+		"or release one whose work is abandoned (abcd reserve <id> --release), or raise reservation.max_live " +
+		"in " + abcdhome.Display("config.json") + " (a whole number from 1 to 100, 10 when unset); nothing was pushed"
 	if !errors.Is(err, ErrRefused) || err.Error() != want {
 		t.Fatalf("the eleventh reservation = %v; want %q", err, want)
+	}
+	var capped *CapError
+	if !errors.As(err, &capped) || len(capped.Held) != MaxLive || capped.Held[0] != "iss-1" {
+		t.Fatalf("the cap refusal is typed and names the ten: %#v", err)
 	}
 	if tip := w.remoteTip("iss-11"); tip != "" {
 		t.Fatalf("a reservation over the cap reached origin: %s", tip)
@@ -87,8 +98,9 @@ func TestTheCapCountsNeitherReleasedNorExpiredReservations(t *testing.T) {
 }
 
 // TestAnOverlappingFootprintIsRefusedNamingTheSharedPath is C48: a footprint
-// sharing a path with another live reservation, whoever holds it, is refused
-// with the back-off, naming that reservation, its holder and the shared path.
+// sharing a path with another live reservation is refused with the back-off
+// (the holder's own reserve from another copy warns instead, step 11 of
+// spc-2610161044461448, so here the holder's other copy reserves as a drain), naming that reservation, its holder and the shared path.
 // Two paths are shared when equal or when one is a parent directory of the
 // other, segment by segment; the path named is the deeper one, which lies in
 // both footprints.
@@ -102,18 +114,19 @@ func TestAnOverlappingFootprintIsRefusedNamingTheSharedPath(t *testing.T) {
 	}
 	const held = ", reserved by octo until 2026-10-03T16:00:00Z; take other work; nothing was pushed"
 	for name, c := range map[string]struct {
-		who  *participant
-		id   string
-		fp   []string
-		path string
+		who   *participant
+		id    string
+		fp    []string
+		path  string
+		drain bool
 	}{
-		"an equal path":                     {q, "iss-2", []string{"docs/a.md", "internal/core/claim"}, "internal/core/claim"},
-		"a file under a reserved directory": {q, "iss-3", []string{"internal/core/claim/claim.go"}, "internal/core/claim/claim.go"},
-		"a directory over a reserved file":  {q, "iss-4", []string{"commands"}, "commands/reserve.md"},
-		"the holder's other copy":           {laptop, "iss-5", []string{"internal/core/claim/view.go"}, "internal/core/claim/view.go"},
+		"an equal path":                      {q, "iss-2", []string{"docs/a.md", "internal/core/claim"}, "internal/core/claim", false},
+		"a file under a reserved directory":  {q, "iss-3", []string{"internal/core/claim/claim.go"}, "internal/core/claim/claim.go", false},
+		"a directory over a reserved file":   {q, "iss-4", []string{"commands"}, "commands/reserve.md", false},
+		"the holder's other copy, a drain's": {laptop, "iss-5", []string{"internal/core/claim/view.go"}, "internal/core/claim/view.go", true},
 	} {
 		t.Run(name, func(t *testing.T) {
-			_, err := c.who.reserve(c.id, c.fp...)
+			_, err := c.who.do(Request{Record: c.id, Footprint: c.fp, Drain: c.drain})
 			want := `"` + c.path + `" is in the footprint of iss-1` + held
 			if !errors.Is(err, ErrBackOff) || err.Error() != want {
 				t.Fatalf("reserve %v = %v; want %q", c.fp, err, want)

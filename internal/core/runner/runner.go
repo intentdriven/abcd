@@ -31,6 +31,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 
@@ -77,6 +78,10 @@ type Request struct {
 	// that grants the shell needs it, since the approver judges every
 	// command against the hazard registry at that commit.
 	Base string
+	// Denied are the tools the role is refused outright, whatever else would
+	// grant them: a harness that keeps a deny list takes them there, ahead of
+	// every grant.
+	Denied []string
 	// SessionID names the run's transcript record when the harness reports no
 	// session of its own.
 	SessionID string
@@ -210,10 +215,17 @@ var (
 	// provider/model, a bracketed context suffix): bounded and plain, as a
 	// session id is, since it is written into the run's state and records.
 	modelRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:/-]{0,127}(\[[A-Za-z0-9._-]{1,16}\])?$`)
-	// toolRe is one tool as a contract names it (Read, Bash(git log:*)). A
-	// comma or a line break would split the one flag the tools travel in.
-	toolRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\([^,\r\n()]{1,120}\))?$`)
+	// toolRe is one tool as a contract names it (Read, Bash(git log:*),
+	// Read(//abs/dir/**)). A comma or a line break would split the one flag
+	// the tools travel in. The specifier is bounded to hold an absolute path
+	// (Go's regexp bounds a repeat at 1000).
+	toolRe = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_]*(\([^,\r\n()]{1,1000}\))?$`)
 )
+
+// Check refuses a request no runner may be started with, as every launch
+// does before it starts anything: a caller that must know whether a runner
+// was started asks it first.
+func (r Request) Check() error { return r.check() }
 
 // check refuses a request no runner may be started with, before any launch.
 func (r Request) check() error {
@@ -228,7 +240,7 @@ func (r Request) check() error {
 			return fmt.Errorf("runner: the %s %q is not a clean absolute path", p.name, termsafe.Sanitize(p.path))
 		}
 	}
-	for _, t := range r.Tools {
+	for _, t := range slices.Concat(r.Tools, r.Denied) {
 		if !toolRe.MatchString(t) {
 			return fmt.Errorf("runner: tool %q is not a tool name as a contract spells it", termsafe.Sanitize(t))
 		}
