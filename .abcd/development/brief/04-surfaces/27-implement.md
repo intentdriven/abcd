@@ -295,6 +295,67 @@ starts (`machineload.GoTestParallelism`: twice the cores less the load, at most
 the cores, at least a quarter of them), and on a CI runner the gate opens at
 once and go's own default stands.
 
+Before its race stage `make preflight` waits again, at the race gate, which
+has its own flag and never carries the first gate's wait flag (the two are
+refused together): every abcd released before the race gate reads any load
+check carrying the wait flag as a first gate's waiter, so it would read a
+preflight at a race gate spelt with it as queued, not in its test stages, and
+open beside it. At one preflight at a
+time the race gate opens at once, with no look at the machine, no hold, no
+jitter and no settle, so the preflight runs exactly as before. Above one it is
+shut only by another live `go test -race` run, a race waiter queued ahead of
+it by the same rule (started earlier, or within two seconds of it, and with the
+lower pid) or running its command, the load limit and
+the race gate's own hold, so race stages are kept apart among the preflights
+whose checkouts have the race gate, one at a time within an account and across
+accounts all but a narrow window: a race waiter exits as it opens, before its
+preflight's race run shows in the table, and after a pid wrap two race waiters
+whose start and pid disagree wait on neither. A preflight run from a checkout
+older than the gate runs its race stage ungated, so two at once is safe only
+once no such checkout runs one. The setting is each account's own: an account
+at one opens its race gate at once, so its race stage can start beside an
+account at two's, and race stages are kept apart only among accounts that all
+set two. And the plain form of the first gate takes no last look, so across
+accounts two openers whose re-checks fall in one moment can both open beside a
+preflight in its tests, three in their test stages at once. A first gate's waiter never queues
+there, a race waiter never queues at the first gate, and a preflight whose
+waiter is at its race gate counts as in its test stages. Each gate keeps its
+own hold record and is shut only by it: a first gate's command hold lasts
+until its preflight starts its race run, so were it to shut the race gate, an
+earlier preflight's race waiter would wait on it while the holder's own race
+waiter queued behind that earlier one, and neither would move. How many preflights
+the first gate admits to their test stages at once is the person's own machine
+setting (iss-2610161639025702): `load.preflights` in <!-- record-lint: forward-looking -->
+`~/.abcd.noindex/config.json`, read through the layered configuration with the
+machine layer alone, or `ABCD_LOAD_PREFLIGHTS` in the environment for a trial;
+one by default, from 1 to 2 until a measured trial supports more
+(dcn-2610161814279204), a bad value refused naming where it was set, and no
+repository file ever read for it, because a checkout must not raise the
+machine's load. A machine `config.json` that cannot be read for the count
+(writable by others, not valid JSON, a load that is not an object) is read
+past, with one line on stderr naming the file, the cause and the fix, and one
+preflight at a time applies, since the gate never read that file before the
+setting existed; an unknown key in its load object is named on that line too.
+Only a `load.preflights` that is there and unusable refuses the wait. At one the
+first gate reads exactly as above. Above one it
+admits a waiter while fewer than that many units of work are in their test
+stages (a running preflight, or a waiter running its command, counted once
+where one runs beneath the other), a waiter queued ahead still shuts it, a live
+race run does not shut it by itself and the load limit still does, and an
+opener still stands back from a lower pid that opened beside it, whose mark
+then counts it as a unit in its test stages; an opener stands back only from a
+waiter at its own gate; a lone race run gated in the command form, its
+command `go test -race`, is gated as a race run for both gates: it stays
+shut while another race run is live, judges and takes the race gate's hold as
+well as the first gate's, and counts as a race run to every race gate and every
+other such command from the moment it opens (`machineload.RaceCommandWaiters`),
+so a second one waits for the first rather than open beside it at its full
+`-p`; each
+stage's `go test -p` is at most the cores divided by the setting, since the
+one-minute load a second stage starts under lags the first stage's demand.
+Deriving the count from the machine's resources is a later step
+(iss-2610161756384596). <!-- record-lint: forward-looking -->
+
 ## The implement loop
 
 Three sub-verbs drive the loop a build starts, each over the run's state file in
@@ -484,6 +545,7 @@ Sub-verbs: none.
 
 | Flag | Type |
 |---|---|
+| `--race-gate` | bool |
 | `--site` | string |
 | `--timeout` | duration |
 | `--wait` | bool |

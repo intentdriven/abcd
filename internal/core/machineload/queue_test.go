@@ -233,7 +233,7 @@ func TestGoTestParallelism(t *testing.T) {
 		{9, true, 2, 1, "a two-core machine: one at least"},
 	} {
 		snap := Snapshot{Load1: c.load, HasLoad: c.has, Cores: c.cores}
-		if got := GoTestParallelism(snap); got != c.want {
+		if got := GoTestParallelism(snap, 1); got != c.want {
 			t.Errorf("%s: GoTestParallelism(load %v on %d) = %d, want %d", c.comment, c.load, c.cores, got, c.want)
 		}
 	}
@@ -672,7 +672,7 @@ func TestJustOpenedNamesWaitersThatOpenedWithinTheWindow(t *testing.T) {
 		Proc{PID: 35001, PPID: 1, UID: otherUID, Age: time.Minute, Name: "abcd"},
 		Proc{PID: 35002, PPID: 35001, UID: otherUID, Name: "git"})
 	args[35001] = []string{"status"}
-	if got := JustOpened(snap, waiter, args, window); !reflect.DeepEqual(got, []int{30001, 31001}) {
+	if got := JustOpened(snap, waiter, args, window, false); !reflect.DeepEqual(got, []int{30001, 31001}) {
 		t.Fatalf("just opened = %v, want the two waiters that opened within %s, 30001 and 31001", got, window)
 	}
 
@@ -690,7 +690,7 @@ func TestJustOpenedNamesWaitersThatOpenedWithinTheWindow(t *testing.T) {
 		15002: {"preflight"},
 		20001: {"implement", "load", "--wait", "--", "go", "test", "-race", "./..."},
 	}
-	if got := JustOpened(snap, inner, args, window); len(got) != 0 {
+	if got := JustOpened(snap, inner, args, window, false); len(got) != 0 {
 		t.Fatalf("just opened = %v for an inner waiter, want nothing: its ancestor is its own work", got)
 	}
 }
