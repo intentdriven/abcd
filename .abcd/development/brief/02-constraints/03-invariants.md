@@ -29,54 +29,88 @@ The following are non-negotiable invariants — any architectural choice that vi
    and pushed only by verbs whose documented meaning says so: `reserve`, whose
    meaning is one fetch of the reservations and one push to the record's
    `abcd-reserved/` branch, and `peers`, whose meaning includes one fetch of
-   the reservations; `build`, whose meaning includes the run's reservation as
-   it starts or resumes (a fetch and one push, the spec's footprint or the
-   issue's `found_at` naming the files) and, with `--release`, a fetch and
-   one tombstone push; `drain`, whose meaning includes one fetch of the
-   reservations and origin's default branch at the start of every move, which
-   the move plans from (`--dry-run` fetches nothing and reads that view as last
-   fetched, with its age), reserving each issue before its judgement is asked
-   (a fetch and one push; an issue or footprint another copy holds in the
-   move's view is passed over with neither), releasing that reservation when
-   no lane will open on it (a fetch and one tombstone push over the commit the
-   drain's reservation made, and only while it is still the tip: on a yes; on
-   an answer over an issue that has left the eligible set; when the judgement
-   it was taken for is superseded, the order now asking another issue, nothing eligible
-   left, the drain stopping, or a no answered once the window has elapsed; on
-   a lane's start refused or failing; and on a request whose reservation
-   lapsed unanswered; on a yes the tombstone carries the hand-back's kind and
-   the blob id of the issue's record on origin's default branch), pushing the
+   the reservations, where every fetch of the reservations, theirs and each
+   one below, also copies `origin`'s `v*` tags into `refs/abcd/release-tags/`
+   (`+refs/tags/v*:refs/abcd/release-tags/v*`), outside `refs/tags/`, so it
+   never makes, moves or deletes a tag of the checkout's own; `build`, whose
+   meaning includes the run's reservation as it starts or resumes (a fetch and
+   one push, the spec's footprint or the issue's `found_at` naming the files)
+   and, with `--release`, a fetch and one tombstone push; `drain`, whose
+   meaning includes one fetch of the reservations and origin's default branch
+   at the start of every move, which the move plans from (`--dry-run` fetches
+   nothing and reads that view as last fetched, with its age), reserving each
+   issue before its judgement is asked (a fetch and one push; an issue or
+   footprint another copy holds in the move's view is passed over with
+   neither), releasing that reservation when no lane will open on it (a fetch
+   and one tombstone push over the commit the drain's reservation made, and
+   only while it is still the tip: on a yes; on an answer over an issue that
+   has left the eligible set; when the judgement it was taken for is
+   superseded, the order now asking another issue, nothing eligible left, the
+   drain stopping, or a no answered once the window has elapsed; on a lane's
+   start refused or failing; and on a request whose reservation lapsed
+   unanswered; on a yes the tombstone carries the hand-back's kind and the
+   blob id of the issue's record on origin's default branch), pushing the
    tombstone a handed-back lane's step could not push (a fetch and one push,
-   carrying the lane's hand-back kind), and
-   renewing, at half its lease, the reservation of each lane parked at land
-   and of the lane in progress, on every move, waiting or not (a fetch and one
-   push, spc-2610161044461448 step 7); and `implement step` and `implement receipt`, whose
-   meaning includes renewing the run's reservation at half its lease, the land
+   carrying the lane's hand-back kind), and renewing, at half its lease, the
+   reservation of each lane parked at land and of the lane in progress, on
+   every move, waiting or not (a fetch and one push, spc-2610161044461448
+   step 7); and `implement step` and `implement receipt`, whose meaning
+   includes renewing the run's reservation at half its lease, the land
    fence's fetch and renewal before the landing pushes the lane's branch and
-   again before a merge is armed, and the tombstone once
-   the run's last lane lands or an issue lane is handed back, the latter
-   carrying the hand-back's kind and the issue's record blob. `build next`'s
-   exclusions, `build <itd-N>`'s peers check and every render of a
-   reservation read the view as last fetched, from disk, and never ask the
-   forge's user endpoint. Each act above that writes a reservation may also
-   make one call to that endpoint when git's identity does not name the
-   holder (invariant 10). Each such act that the fetched tip shows reserves
-   afresh (a reservation over no tip or a released one, or a take-over,
-   whether `reserve`'s, a `build` start's or a `drain` lane's, each lane
-   asking at its own reservation, not once at the drain's start) may also
-   make, after its fetch and before its push, one call to the forge's
+   again before a merge is armed, and the tombstone once the run's last lane
+   lands or an issue lane is handed back, the latter carrying the hand-back's
+   kind and the issue's record blob; the land fence's fetch is made before it
+   judges a release hold whether or not the run holds a reservation
+   (itd-2609151838312703 C7); and `land`, whose meaning includes one fetch of
+   the reservations before it pushes, arms or queues anything, for the same
+   release-hold judgement. The release tags each such fetch copies end a
+   release hold.
+   `build next`'s exclusions, `build <itd-N>`'s peers check and every render
+   of a reservation or a hold read the view as last fetched, from disk, and
+   never ask the forge's user endpoint. Each act above that writes a
+   reservation may also make one call to that endpoint when git's identity
+   does not name the holder (invariant 10). Each such act that the fetched
+   tip shows reserves afresh (a reservation over no tip or a released one, or
+   a take-over, whether `reserve`'s, a `build` start's or a `drain` lane's,
+   each lane asking at its own reservation, not once at the drain's start) may
+   also make, after its fetch and before its push, one call to the forge's
    repository endpoint for each of origin's push URLs on github.com, to ask
    whether it is a fork. An answer is kept for the process, so a later act
    asks nothing about that repository; a call that failed is held a minute
    and made again by the next act after that, at most one a minute for a
    repository. A renewal (however it was asked for) and a release never make
    it, but for a drain's reservation that renews this copy's lapsed one,
-   which is the drain's hold afresh and makes it as a fresh one does, and an unanswered call lets the act through with a warning
-   (spc-2610161044461448, step 10). `reserve --holder`'s meaning is that user-endpoint
-   call alone, and nothing else, made in either of two cases: (a) git's
-   identity is a person's but carries neither a GitHub no-reply address nor a
-   machine key; (b) git's identity is not a person's (unset, or a machine's),
-   in which case the machine key is skipped.
+   which is the drain's hold afresh and makes it as a fresh one does, and an
+   unanswered call lets the act through with a warning (spc-2610161044461448,
+   step 10). `reserve --holder`'s meaning is that user-endpoint call alone,
+   and nothing else, made in either of two cases: (a) git's identity is a
+   person's but carries neither a GitHub no-reply address nor a machine key;
+   (b) git's identity is not a person's (unset, or a machine's), in which case
+   the machine key is skipped.
+   The status branches (itd-2609151838312703, `abcd-status/<username>` on
+   `origin`, one per person) are fetched and pushed only by verbs whose
+   documented meaning says so: `announce`, whose meaning is one listing of
+   the status branches on origin (`git ls-remote`), then one fetch of each
+   status branch whose name is a lower-case GitHub username and origin's
+   default branch (and a second, of those status branches alone, when the
+   default branch cannot be read), then one push to the sender's own status
+   branch, with one more listing and fetch after each push origin refuses, to tell a push that landed anyway and a lost race from another
+   refusal, and one more push for each of at most three retries after a push
+   that lost a race, and, as a reservation act may, one call to the forge's
+   user endpoint when git's identity does not name the sender (invariant 10).
+   The namespace is never fetched by a glob, since two names differing only
+   in case break such a fetch on a case-insensitive filesystem, and a branch
+   is fetched only when the listing names it, since a fetch naming a branch
+   origin does not hold yet fails. The embargo check an announcement passes reads only this machine's
+   store. `status`, whose meaning is one listing of the status branches on
+   `origin` (`git ls-remote`), then one fetch of the reservations with their
+   release tags, of each status branch whose name is a GitHub username in
+   lower case, each by its own refspec so a case-colliding name is never
+   fetched, and of origin's default branch, then one read of the forge's
+   record of who pushed (`gh api`, the repository's activity record) for each
+   status branch holding a standing announcement it has not asked about. The
+   prompt hook shows the announcements, the doubts and the release holds from
+   the last completed fetch, from disk alone, and asks the network nothing.
    Inbound, abcd listens on a network only through the dashboard, only while
    someone has started it on purpose, and only for the people let in: it
    listens on this computer's own Tailscale addresses alone, never every
@@ -92,7 +126,7 @@ The following are non-negotiable invariants — any architectural choice that vi
 
 9. **Corpus documents and ledgers never leave the user tier, and a public citation requires both gates** — what crosses from the sources corpus into any repo or render is citation data only, never a document or an influence ledger; and a citation becomes public only when the source's `permission_status` permits *and* a human has flipped the ledger line's `cited_publicly` flag. Per [adr-41](../../decisions/adrs/0041-corpus-trust-boundary.md); consumed by itd-76, itd-126, itd-127.
 
-10. **Remotes are read freely, written only on explicit request — and the caller's identity comes from caller-local facts** — no verb mutates remote state (settings, rulesets, environments, roles) except a dedicated, confirmed apply verb that owns its bootstrap ordering and refreshes the committed mirror in the same change; and any probe that needs the caller's identity derives it from caller-local sources (git identity, the noreply-embedded login, `$HOME`), plus the token `gh` resolves from this session's environment, asked only for its account's login and id, with the endpoint pinned to github.com, never from who owns the remote. The reservation holder is the one lookup that consults the token, in one resolver (`internal/core/claim`) every consumer shares, and in this order: the noreply login in git's `user.email`, then the machine key `reservation.github_username`, then the token. When git's identity is not a person's (unset, or a machine identity as the attribution gate judges an author), the token alone is used, its account authors the act's commit, and the identity git had is shown nowhere. If every step fails, the act refuses loudly, naming the failure's class and never the identity it rejected. A git branch push is not remote configuration: a reservation (`abcd reserve`, a branch under `refs/heads/abcd-reserved/`) writes history to a branch, not the remote's settings, so it needs no apply verb and may be renewed by the verb that holds it (itd-2609091034175565 decision 12). Per [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md); consumed by itd-92 and every later remote-touching verb; already enforced in the launch scanner (iss-283).
+10. **Remotes are read freely, written only on explicit request — and the caller's identity comes from caller-local facts** — no verb mutates remote state (settings, rulesets, environments, roles) except a dedicated, confirmed apply verb that owns its bootstrap ordering and refreshes the committed mirror in the same change; and any probe that needs the caller's identity derives it from caller-local sources (git identity, the noreply-embedded login, `$HOME`), plus the token `gh` resolves from this session's environment, asked only for its account's login and id, with the endpoint pinned to github.com, never from who owns the remote. The reservation holder, which is also an announcement's sender, is the one lookup that consults the token, in one resolver (`internal/core/claim`) every consumer shares, and in this order: the noreply login in git's `user.email`, then the machine key `reservation.github_username`, then the token. When git's identity is not a person's (unset, or a machine identity as the attribution gate judges an author), the token alone is used, its account authors the act's commit, and the identity git had is shown nowhere. If every step fails, the act refuses loudly, naming the failure's class and never the identity it rejected. A git branch push is not remote configuration: a reservation (`abcd reserve`, a branch under `refs/heads/abcd-reserved/`) writes history to a branch, not the remote's settings, so it needs no apply verb and may be renewed by the verb that holds it (itd-2609091034175565 decision 12). An announcement (`abcd announce`, a branch under `refs/heads/abcd-status/`) is a branch push on the same terms: it adds history to the sender's own status branch, never changes a setting, and needs no apply verb; the ruleset that keeps that history (`.abcd/work/rulesets/status-protection.json`, adr-2610150729333337) is remote configuration, applied by a person and mirrored in the same change. The sender is resolved as a reservation's holder is, by the same resolver in the same order, the token included: when git's identity is not a person's, the token's account sends and authors the announcement, and the identity git had appears in no output, commit, trailer or ref. Reading the announcements (`abcd status`) writes nothing remote: it reads the forge's record of who pushed each announcement, a read and never a write, only to show its sender as verified, doubtful or claimed, and it needs no identity of the caller's. Per [adr-44](../../decisions/adrs/0044-remote-mutation-and-caller-identity.md); consumed by itd-92 and every later remote-touching verb; already enforced in the launch scanner (iss-283).
 
 11. **Record ids are collision-proof by construction and capture-stable** — the mint never allocates by looking at the current maximum (two minters sharing a stale view must still produce distinct ids); an id, once minted, is never renumbered; the grammar stays numeric so every id-consuming surface holds one parser; and a configured forge allocator allocates numbers only — offline it falls back to the native scheme loudly, and capture never blocks on network. Per [adr-45](../../decisions/adrs/0045-record-ids-are-timestamp-numeric-and.md); implemented by itd-114; asserted by the record-lint uniqueness detectors, which stay armed as the scheme's fail-safe.
 

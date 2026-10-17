@@ -124,7 +124,8 @@ member an open spec defers to.
 
 Any other positional is refused: the CLI exits **2** with `abcd: unknown command
 …` on stderr, which is the framework's usage-error convention. `abcd status` is
-refused that way, and `abcd help` prints the grouped verb list the
+its own verb, everyone's status on the shared remote
+([`39-status.md`](39-status.md)), not a record read, and `abcd help` prints the grouped verb list the
 [register](README.md#how-the-help-lists-the-verbs) describes and exits 0.
 A shape-matching record id found in no store is a structural fault: the command
 exits non-zero with a diagnostic naming the store it searched, never a silent
@@ -439,7 +440,7 @@ dispatcher, `abcd <record-id>`, which answers that question. A name retired
 with no alias is answered with what replaced it, and never as a stale binary:
 `version`, whose page retired when the board took the version; `changelog`,
 which the launch preview replaced; `prepare-this-repo`, whose page retired into
-the install; `memory` and `source`, which merged into `library`; and `consult`
+the install; `source`, which merged into `library`; and `consult`
 and `ingest`, whose pages retired into the library page. Failing that evidence,
 the disk-only vintage the version flag renders stands in. When neither says
 anything, the framework's line stands byte-for-byte. The exit code, the stream and the JSON envelope are the
@@ -499,12 +500,17 @@ board and the version flag only report what is installed.
 ## The board itself is not built
 
 > **Design target (itd-20, `intents/superseded/`, superseded by itd-121, `spec_id: null`).** Everything in
-> the rest of this chapter describes a board that does not exist on any shipped
-> surface. The shipped status path reads `.git`, `.abcd/development` and the
-> three work tiers, and nothing else: no visibility, no disembark log, no
-> dev-sync record, no logbook, no linked intents, no spec store, and no
-> thresholds, walks or timeouts. There is no alias routing either: `status` and
-> `help` route to no render.
+> the rest of this chapter describes a six-section board that does not exist on
+> any shipped surface. The shipped board is the one
+> [What ships today](#what-ships-today) describes. It names the repository, as
+> this design's first section did, but reads none of this design's other
+> sources: no repo visibility, no disembark log, no dev-sync record and no
+> logbook, so no logbook walk either. Its intents and specs come from the
+> status block's readiness read, not from an active-intents section with a
+> spec-store timeout, and the only threshold of its own is the reviews block's
+> twenty commits; a reservation's expiry it shows is the reservation's. There
+> is no alias routing either: `status` is refused and `help`
+> prints the verb list, and neither routes to the board.
 
 The board renders exactly six sections, always in this order, each source a
 local-filesystem read, and each source's absence mapping to a named known-state

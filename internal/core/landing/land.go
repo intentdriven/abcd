@@ -29,6 +29,9 @@ package landing
 //     the branch's checkout (it waits on the machine load waiter itself), and
 //     HEAD must be unchanged and a receipt present after it, and origin's
 //     URLs as they were before it (the branch's preflight could rewrite them).
+//     Then the release hold (releasehold.go), judged from the checkout land
+//     runs in: nothing is pushed, armed or queued while another session cuts
+//     a release, or when it cannot be read.
 //  5. push (land.push): a plain `git push --porcelain origin
 //     <head>:refs/heads/B` from the branch's checkout, so the commit pushed is
 //     the one the gate checked whatever the branch names by then, the
@@ -159,6 +162,9 @@ type Result struct {
 	// forge lists PR as merged at it.
 	Landed bool   `json:"landed,omitempty"`
 	Steps  []Step `json:"steps"`
+	// Notices are lines the landing shows beside its steps, whatever its
+	// outcome: each release dated ahead that the release hold did not count.
+	Notices []string `json:"notices,omitempty"`
 }
 
 func (r *Result) add(name, status, note, command string) {
@@ -169,10 +175,13 @@ func (r *Result) add(name, status, note, command string) {
 // supplied (a remote URL carrying a token), before land reports it.
 func clean(s string) string { return gitutil.ScrubURLCredentials(s) }
 
-// Refusal is a landing refused: Reason says why, Fix what settles it.
+// Refusal is a landing refused: Reason says why, Fix what settles it. Held
+// marks a landing a release being cut holds (releaseHold): contention, which
+// the surface exits 3 on, as every verb that backs off does.
 type Refusal struct {
 	Reason string
 	Fix    string
+	Held   bool
 }
 
 func (r *Refusal) Error() string {
@@ -290,6 +299,17 @@ func Land(cwd string, o Options) (Result, error) {
 	// environment: it could rewrite origin's URLs (a pushurl, a pushInsteadOf)
 	// after they were checked, so they are read again before the push.
 	if err := origin.unchanged(dir); err != nil {
+		return res, err
+	}
+	// The hold is judged from the checkout land runs in, not the branch's:
+	// that is the copy the reservation verbs run here speak for, so a session
+	// that reserved the release here lands through its own hold whichever
+	// worktree has the branch checked out.
+	notice, err := releaseHold(root, o.Roots.Home)
+	if notice != "" {
+		res.Notices = append(res.Notices, notice)
+	}
+	if err != nil {
 		return res, err
 	}
 	moved, err := push(&res, o, dir)

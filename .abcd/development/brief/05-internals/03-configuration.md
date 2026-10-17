@@ -1,13 +1,21 @@
 # Configuration Model
 
-Almost nothing here is a decision anyone has to make. Installing abcd asks four
-questions, records the answers, and gets on with it; `ahoy install
+Almost nothing here is a decision anyone has to make. Installing abcd asks
+four questions and, at a terminal, a fifth about the README, records the
+answers and whether it created the README, and gets on with it; `ahoy install
 --attribution` writes one more key and `ahoy install --outbound` two more, and
-seven further keys can be hand-set and are read but never written. Beyond those fourteen, the binary reads only keys a
-person opts into: the provider adapter's `oracle` keys and the interview's list
-style, both below, the implement loop's `pace`
-(`internal/core/implement/loop/pace.go`), and the runner routes under `roles`
-and `runner` (`internal/core/runner/config.go`). Everything else on this page is either a
+seven further keys can be hand-set and are read but never written. Beyond those
+sixteen, the binary reads only keys a person opts into: the provider adapter's
+`oracle` keys (the reviewer route's `oracle.review` among them) and the
+interview's list style, both below, the implement loop's `pace`
+(`internal/core/implement/loop/pace.go`), the consistency pass's `consistency`
+keys (`internal/core/intent/consistency_config.go`), the reservation holder's
+`reservation.github_username`, read from the machine layer alone
+(`internal/core/claim/holder.go`), the load gate's `load.preflights`, read
+from the machine layer alone (the person's `~/.abcd.noindex/config.json`), 1 or
+2 and 1 by default, never from a repository
+(`internal/core/implement/load_slots.go`), and the runner routes under `roles` and
+`runner` (`internal/core/runner/config.go`). Everything else on this page is either a
 store abcd lays out for itself, a policy that follows from one of those four
 answers, or an axis the design commits to and has not built.
 
@@ -604,8 +612,11 @@ and the role routes under `roles`, each read with the repo-scope
 `.abcd/config.json` above it, except `land`, whose layers are ANDed; the
 provider blocks, `oracle.rp`, `oracle.bundled_context_providers`, the whole
 `runner` namespace (`runner.fallback_host` and every `runner.<name>`),
-`interview.list` and `reservation.github_username` are honoured from the
-machine layer alone. Its one
+`interview.list`, `reservation.github_username` and `load.preflights` (how
+many preflights may be in their test stages at once: 1 or 2, 1 by default,
+never read from a repository, and the one machine key read past, with a
+stderr note, when the file cannot be read for it, so a file that holds other
+settings never stops the load gate) are honoured from the machine layer alone. Its one
 write is the provider block `ahoy connect` adds, and every other config read
 resolves the repo-scope `.abcd/config.json` alone), the machine layer of the
 model-tier routing table in `oracle-routing.json` (read beneath the
@@ -930,7 +941,7 @@ session. It writes to two streams:
 
 | Stream | What it carries | Who reads it |
 |---|---|---|
-| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), and nothing else. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title | the host, which adds it to the model's context |
+| **stdout** | the rendered block of the domains new this turn, followed by a `## MEMORY` block of the memory notes the prompt recalls that this session has not yet been given (from `.abcd/memory.json` and `~/.abcd.noindex/memory.json`, within what the rules leave of the turn's injection budget), then the status block, and nothing else. A prompt that matches no domain and recalls no note, or matches only domains and notes already injected unchanged this session, with no status to show, writes zero bytes. The one exception is the prompt that owes the session its name (itd-2610111707085098, usually its first): stdout is then one JSON object, `{"hookSpecificOutput":{"hookEventName":"UserPromptSubmit","additionalContext":<the block>,"sessionTitle":<the name>}}`, which the host reads as the same context plus the title, the status block included | the host, which adds it to the model's context |
 | **stderr** | one diagnostic line per prompt — the turn, the labels of the injected domains, the byte count — and, on a turn that recalls or has to leave out a note, one line naming the notes recalled and any that did not fit the budget, plus the load's notes and refusals, a `memory.json` that cannot be read among them (it recalls nothing, and the rules still inject) | the operator, out of band |
 
 **The machine reader's envelope.** With `--json`, the flag every verb takes for
@@ -957,7 +968,7 @@ the set names all thirteen. No memory note matched, so `recalled` is empty.
 
 | Field | Meaning |
 |---|---|
-| `text` | the rendered rule block followed by the `## MEMORY` block, byte for byte what the plain form writes to stdout on every prompt but the one that sets the session's name, where the plain form wraps it in the titling object: empty on a turn with nothing new |
+| `text` | the rendered rule block followed by the `## MEMORY` block and the status block, byte for byte what the plain form writes to stdout on every prompt but the one that sets the session's name, where the plain form wraps it in the titling object: empty on a turn with nothing new |
 | `session_title` | present only on the prompt that sets the session's name: the name the plain form sets as the title |
 | `injected` | the domains whose text `text` carries; an empty list when it carries none |
 | `recalled` | the ids of the memory notes whose text `text` carries after the rules, beside `injected` for the domains; an empty list when it carries none |
@@ -971,6 +982,18 @@ the next time a prompt matches it. An envelope with `error` carries no `active`
 field at all, which means the set is unknown and the client changes nothing; an
 empty list is a set, and a missing one is not, so a typo in `rules.json` never
 reads as every domain stopping.
+
+**The status block.** After the rules and the memory notes, the router
+appends a `## STATUS` block when the last fetch of the status branches brought
+something this checkout has not shown: each new announcement, release hold,
+doubtful branch and failed fetch, once, newest first, at most ten lines and a
+count of the rest ([`39-status.md`](../04-surfaces/39-status.md),
+itd-2609151838312703). It is read from the local tier alone, under a deadline
+inside the hook's budget, and is one "status unavailable" line when the
+deadline passes first; a checkout with no remote named `origin`, or without its
+local tier, shows none. A `rules.json` that will not load does not switch it
+off: the plain form then writes the block alone, and the envelope carries it as
+`text` beside `error`, still with no `active`.
 
 **The set never enters the model's context.** The hook manifest invokes the
 plain form, so what the host injects is exactly the block above and the

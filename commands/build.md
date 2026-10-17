@@ -538,7 +538,16 @@ A lane's stages run in order:
    merge, says so in the step's note and the run record ("left open for a
    person to merge: the ruleset requires no approval"), and never arms it on a
    later step; a missing mirror requires nothing. It pushes nothing to the lane
-   afterwards. Then `step` exits 3 until the
+   afterwards. Before it arms or leaves anything open, the land fence fetches
+   the reservations from `origin` and, while another session holds a live
+   release reservation (`rel-vX.Y.Z`, `/abcd:reserve`), arms nothing: `step`
+   exits 3 naming the release and its holder (or "your copy on another
+   computer"), and the pull request stays open and unarmed, since a session
+   cutting a release has the final say on what merges before its tag. Tell the
+   user who is cutting which release, and step again once the release is
+   tagged or its holder released it; never merge around the hold. The copy
+   cutting the release is not held. A fetch `origin` does not answer arms
+   nothing either. Then `step` exits 3 until the
    pushed head is an ancestor of the default branch on `origin`; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the

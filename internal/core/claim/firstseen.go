@@ -48,11 +48,13 @@ func seen(root string, t tip, fetchedAt time.Time, keep bool) tip {
 	return t
 }
 
-// keepFirstFetched reads every reservation tip as last fetched with keep, so
-// the time this copy first fetched each tip that needs one, dated ahead or
-// undated, is recorded. It is best effort: a tip it cannot read is left to
-// the reader that reports it.
-func keepFirstFetched(root string, now time.Time) {
+// keepFirstFetched reads every reservation tip as last fetched whose subject
+// only admits (every tip when only is nil) with keep, so the time this copy
+// first fetched each tip that needs one, dated ahead or undated, is recorded.
+// It is best effort: a tip it cannot read is left to the reader that reports
+// it, and a time it cannot keep (no local tier, or one it cannot write) is
+// left unrecorded, for the reader to see that none is kept.
+func keepFirstFetched(root string, now time.Time, only func(subject string) bool) {
 	out, err := localGit(root, 1<<20, "for-each-ref", "--format=%(refname)", TrackingPrefix)
 	if err != nil {
 		return
@@ -63,7 +65,7 @@ func keepFirstFetched(root string, now time.Time) {
 	}
 	for _, ref := range strings.Fields(out) {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
-		if canon, err := reservableID(id); err == nil && canon == id {
+		if canon, err := reservableID(id); err == nil && canon == id && (only == nil || only(id)) {
 			_, _, _ = readSeen(root, id, ref, tree, now.UTC().Truncate(time.Second), true)
 		}
 	}

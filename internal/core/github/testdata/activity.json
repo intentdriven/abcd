@@ -1,0 +1,72 @@
+[
+  {
+    "id": 46717067315,
+    "node_id": "PSH_kwLOTQTS4M8AAAAK4I3gMw",
+    "before": "{{before-force}}",
+    "after": "{{after-force}}",
+    "ref": "refs/heads/abcd-status/octo",
+    "timestamp": "2026-10-16T12:53:37Z",
+    "activity_type": "force_push",
+    "actor": {"login": "octo", "id": 1001, "node_id": "MDQ6VXNlcjEwMDE=", "type": "User", "site_admin": false, "user_view_type": "public"}
+  },
+  {
+    "id": 46717065088,
+    "node_id": "PSH_kwLOTQTS4M8AAAAK4I3XgA",
+    "before": "{{before-bot}}",
+    "after": "{{after-bot}}",
+    "ref": "refs/heads/abcd-status/octo",
+    "timestamp": "2026-10-16T12:53:36Z",
+    "activity_type": "push",
+    "actor": {"login": "hosted-app[bot]", "id": 2002, "node_id": "BOT_kgDOBw3L4g", "type": "Bot", "site_admin": false, "user_view_type": "public"}
+  },
+  {
+    "id": 46717064147,
+    "node_id": "PSH_kwLOTQTS4M8AAAAK4I3T0w",
+    "before": "{{before-push}}",
+    "after": "{{after-push}}",
+    "ref": "refs/heads/abcd-status/octo",
+    "timestamp": "2026-10-16T12:53:35Z",
+    "activity_type": "push",
+    "actor": {"login": "octo", "id": 1001, "node_id": "MDQ6VXNlcjEwMDE=", "type": "User", "site_admin": false, "user_view_type": "public"}
+  },
+  {
+    "id": 46715975603,
+    "node_id": "PSH_kwLOTQTS4M8AAAAK4H03sw",
+    "before": "0000000000000000000000000000000000000000",
+    "after": "{{after-creation}}",
+    "ref": "refs/heads/abcd-status/octo",
+    "timestamp": "2026-10-16T12:41:54Z",
+    "activity_type": "branch_creation",
+    "actor": {"login": "mallory", "id": 3003, "node_id": "MDQ6VXNlcjMwMDM=", "type": "User", "site_admin": false, "user_view_type": "public"}
+  },
+  {
+    "id": 46715369014,
+    "node_id": "PSH_kwLOTQTS4M8AAAAK4HP2Ng",
+    "before": "{{before-deletion}}",
+    "after": "0000000000000000000000000000000000000000",
+    "ref": "refs/heads/abcd-status/octo",
+    "timestamp": "2026-10-16T12:35:16Z",
+    "activity_type": "branch_deletion",
+    "actor": {"login": "mallory", "id": 3003, "node_id": "MDQ6VXNlcjMwMDM=", "type": "User", "site_admin": false, "user_view_type": "public"}
+  },
+  {
+    "id": 46715369012,
+    "node_id": "PSH_kwLOTQTS4M8AAAAK4HP2Ne",
+    "before": "{{before-pr}}",
+    "after": "{{after-pr}}",
+    "ref": "refs/heads/abcd-status/octo",
+    "timestamp": "2026-10-16T12:35:14Z",
+    "activity_type": "pr_merge",
+    "actor": {"login": "octo", "id": 1001, "node_id": "MDQ6VXNlcjEwMDE=", "type": "User", "site_admin": false, "user_view_type": "public"}
+  },
+  {
+    "id": 46715369013,
+    "node_id": "PSH_kwLOTQTS4M8AAAAK4HP2Nf",
+    "before": "{{before-queue}}",
+    "after": "{{after-queue}}",
+    "ref": "refs/heads/abcd-status/octo",
+    "timestamp": "2026-10-16T12:35:15Z",
+    "activity_type": "merge_queue_merge",
+    "actor": {"login": "github-merge-queue[bot]", "id": 118344674, "node_id": "BOT_kgDOBw3P4g", "type": "Bot", "site_admin": false, "user_view_type": "public"}
+  }
+]

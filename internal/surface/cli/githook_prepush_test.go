@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -49,13 +50,7 @@ func newPrePushCaseIn(t *testing.T, format string) *prePushCase {
 			t.Skipf("%s unavailable", tool)
 		}
 	}
-	top := exec.Command("git", "rev-parse", "--show-toplevel")
-	top.Env = gittest.Env(t)
-	out, err := top.Output()
-	if err != nil {
-		t.Skip("not in a git checkout")
-	}
-	root := strings.TrimSpace(string(out))
+	root := prePushSourceRoot(t)
 
 	base := t.TempDir()
 	c := &prePushCase{t: t, dir: filepath.Join(base, "work"), origin: filepath.Join(base, "origin.git"), env: gittest.Env(t)}
@@ -96,6 +91,23 @@ func newPrePushCaseIn(t *testing.T, format string) *prePushCase {
 	c.git("config", "core.hooksPath", ".githooks")
 	c.git("checkout", "-q", "-b", "feature")
 	return c
+}
+
+// prePushSourceRoot is the root of the source tree this test file sits in
+// (internal/surface/cli/, three levels down), found from the file's own
+// position rather than from git, so the suite runs, and never skips, in a tree
+// that is not a git checkout (an archive of one, say).
+func prePushSourceRoot(t *testing.T) string {
+	t.Helper()
+	_, file, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller could not locate the test source file")
+	}
+	root := filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
+	if _, err := os.Stat(filepath.Join(root, ".githooks", "pre-push")); err != nil {
+		t.Fatalf("the committed pre-push hook is not where this file expects it: %v", err)
+	}
+	return root
 }
 
 func (c *prePushCase) run(dir string, name string, args ...string) (string, error) {

@@ -41,6 +41,17 @@ func breakGitFile(t *testing.T, wt string) string {
 	return nowhere
 }
 
+// breakGitFileOnLinuxGit is breakGitFile under a git that names no path for
+// a broken git file, as Linux's names it "(null)" where macOS's names where
+// the file points: a reason that says where the git file points must read it
+// from the file, not from git's stderr.
+func breakGitFileOnLinuxGit(t *testing.T, wt string) string {
+	t.Helper()
+	nowhere := breakGitFile(t, wt)
+	gittest.ShimGitNamingNoGitfileTarget(t)
+	return nowhere
+}
+
 // TestAnUnreadableWorktreeRefusesTheDrainMoveOnce: a sibling worktree whose
 // git file points nowhere refuses the move naming it, with its repair, which
 // is a plain `git worktree repair` and never a forced removal; the reason
@@ -52,7 +63,7 @@ func TestAnUnreadableWorktreeRefusesTheDrainMoveOnce(t *testing.T) {
 	repo, bare := reservingDrainRepo(t, "commands/drain.md")
 	broken := filepath.Join(t.TempDir(), "wt-broken")
 	repo.Git("worktree", "add", "-q", "-b", "lane-broken", broken)
-	nowhere := breakGitFile(t, broken)
+	nowhere := breakGitFileOnLinuxGit(t, broken)
 
 	for move := 1; move <= 2; move++ {
 		res, err := Drain(repo.Root(), Options{}, DrainOptions{})
@@ -418,7 +429,7 @@ func TestTheBuildSideHolderLineCarriesNoAbsoluteGitdir(t *testing.T) {
 	repo := drainRepo(t)
 	broken := filepath.Join(t.TempDir(), "wt-broken")
 	repo.Git("worktree", "add", "-q", "-b", "lane-broken", broken)
-	nowhere := breakGitFile(t, broken)
+	nowhere := breakGitFileOnLinuxGit(t, broken)
 
 	snap, err := readPeers(repo.Root(), time.Now())
 	if err != nil {

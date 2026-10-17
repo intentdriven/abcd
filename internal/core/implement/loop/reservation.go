@@ -184,52 +184,129 @@ const fenceLease = lease.Max
 type fenceAct struct {
 	// not is what the lane does not do, after "so this lane does not".
 	not string
-	// unread is the clause for a reservation origin did not answer for.
-	unread string
-	// stays is what a refusal over another person's hold leaves as it was.
+	// none is what is left undone when origin did not answer, after "so",
+	// or after "no release hold could be judged and".
+	none string
+	// stays is what a refusal over another person's hold, or a release
+	// hold, leaves as it was.
 	stays string
 }
 
 var (
-	fenceArm  = fenceAct{not: "arm its merge", unread: "so the merge is not armed", stays: "the pull request stays open and unarmed"}
-	fencePush = fenceAct{not: "push its branch", unread: "so nothing is pushed", stays: "nothing is pushed and no pull request is opened"}
+	fenceArm  = fenceAct{not: "arm its merge", none: "the merge is not armed", stays: "the pull request stays open and unarmed"}
+	fencePush = fenceAct{not: "push its branch", none: "nothing is pushed", stays: "nothing is pushed and no pull request is opened"}
 )
 
-// landFence is the land fence, at the top of the arming: it fetches the run's
-// reservation and refuses, arming nothing, unless the tip is this person's
-// from this copy and live; when it holds, it renews it with term, the
-// fenceLease. It returns the renewed expiry, zero
-// for a run that holds no reservation.
-func landFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
+// landFence is the land fence, at the top of the arming (fence, fenceArm),
+// renewing the run's reservation with term, the fenceLease. It returns the
+// renewed expiry, zero for a run that holds no reservation, and the notice
+// naming each release dated ahead that the hold did not count
+// (claim.MergeHold.Notice), "" when there is none.
+func landFence(c Context, lane Lane, term time.Duration) (time.Time, string, error) {
 	return fence(c, lane, term, fenceArm)
 }
 
 // pushFence is the fence before the landing's push (spc-2610161044461448
 // step 7; dcn-2610161040374343): the land fence's check, made before the push
 // as well as at the arming, so a reservation that lapsed and moved to another
-// while the lane worked never becomes a duplicate pull request. It renews a
-// reservation that holds with the tip's own term (renewalTerm), so the push
-// never cuts a lease; a hold that is now another person's, or released as
-// finished on origin's default branch, cannot change, and a drain hands the
-// lane back at once (stuck.go).
-func pushFence(c Context, lane Lane) (time.Time, error) {
+// while the lane worked never becomes a duplicate pull request, and a release
+// another session is cutting holds the push as `abcd land`'s own release hold
+// does (C7). It renews a reservation that holds with the tip's own term
+// (renewalTerm), so the push never cuts a lease; a hold that is now another
+// person's, or released as finished on origin's default branch, cannot
+// change, and a drain hands the lane back at once (stuck.go).
+func pushFence(c Context, lane Lane) (time.Time, string, error) {
 	term := lease.Default
-	if snap, err := claim.View(c.RepoRoot, c.Now); err == nil {
-		if r, ok := snap.Lookup(c.State.Key); ok && r.Copy == claim.CopyThis {
-			term = renewalTerm(r)
+	if c.State.ReservedAt != nil {
+		if snap, err := claim.View(c.RepoRoot, c.Now); err == nil {
+			if r, ok := snap.Lookup(c.State.Key); ok && r.Copy == claim.CopyThis {
+				term = renewalTerm(r)
+			}
 		}
 	}
 	return fence(c, lane, term, fencePush)
 }
 
-// fence is the land fence for act: it fetches the run's reservation and
-// refuses, doing nothing of act, unless the tip is this person's from this
-// copy and live; when it holds, it renews it with term.
-func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, error) {
-	id := c.State.Key
+// fence is the land fence for act. It fetches the reservations from origin,
+// then refuses, doing nothing of act, unless the run's own reservation is
+// this person's from this copy and live (renewing it with term,
+// renewAtFence), and while a release another session is cutting holds every
+// merge (releaseHold, C7). A run that holds no reservation fetches them all
+// the same, for the hold (claim.FetchMergeHold, the judgement `abcd land`
+// makes too). A fetch that fails is a wait by design either way
+// (dcn-2610170116582725; fenceUnread). It returns the renewed expiry, zero
+// for a run that holds no reservation, and the notice naming each release
+// dated ahead that the hold did not count, "" when there is none.
+func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, string, error) {
 	if c.State.ReservedAt == nil {
-		return time.Time{}, nil
+		m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
+		var fe *claim.FetchError
+		switch {
+		case errors.As(err, &fe):
+			return time.Time{}, "", fenceUnread(lane,
+				"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and "+act.none,
+				fe.Reason, "git fetch the reservations")
+		case err != nil:
+			return time.Time{}, "", refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
+				"settle what it names, then run `abcd implement step` again")
+		}
+		return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m, act)
 	}
+	holds, err := renewAtFence(c, lane, term, act)
+	if err != nil {
+		return time.Time{}, "", err
+	}
+	notice, err := releaseHold(c, lane, act)
+	return holds, notice, err
+}
+
+// fenceUnread is the fence's wait on an origin it could not read: never a
+// refusal a drain counts toward a stuck lane (stuck.go), whatever git says,
+// since the drain's own read of origin at every move is what gives up on an
+// origin that stays unread. A lost network also waits on the shared outage
+// probe, as the push's own failure does (netFailure); what names the fetch.
+func fenceUnread(lane Lane, reason, gitReason, what string) *Refusal {
+	r := contend(string(StageLand), "", lane.ID, reason, "run abcd implement step again once origin answers")
+	r.originUnread = true
+	if implement.IsNetworkFailure(gitReason) {
+		r.outage = &outageReport{service: implement.ServiceNetwork, kind: implement.OutageTool, lane: lane.ID, what: what}
+	}
+	return r
+}
+
+// releaseHold refuses act, as contention, while the reservations as the
+// fence's renewal just fetched them show a release being cut that is not this
+// copy's own (claim.MergeHolds, the judgement `abcd land` makes too, which
+// keeps this copy's first sighting of a release dated ahead). It returns the
+// notice naming each release dated ahead that the hold did not count.
+func releaseHold(c Context, lane Lane, act fenceAct) (string, error) {
+	m, err := claim.MergeHolds(c.RepoRoot, c.Now, claimOptions(c.Now))
+	if err != nil {
+		return "", refuse(string(StageLand), "", lane.ID, "the release holds could not be read at the land fence: "+err.Error(),
+			"settle what it names, then run `abcd implement step` again")
+	}
+	return termsafe.Sanitize(m.Notice()), heldMerge(lane, m, act)
+}
+
+// heldMerge is the merge hold's refusal at the fence for act: every other
+// session's lane, the same person's other copy included, leaves its pull
+// request open (or its branch unpushed) for the cutting session to merge or
+// hold. It names each release, its holder and until when.
+func heldMerge(lane Lane, m claim.MergeHold, act fenceAct) error {
+	if !m.Held() {
+		return nil
+	}
+	return contend(string(StageLand), "", lane.ID,
+		termsafe.Sanitize(m.Reason()+", so this lane does not "+act.not),
+		termsafe.Sanitize(act.stays+"; "+m.Waits()+", then run `abcd implement step` again"))
+}
+
+// renewAtFence renews the run's own reservation at the fence for act: it
+// fetches the reservations and refuses, doing nothing of act, unless the tip
+// is this person's from this copy and live; when it holds, it renews it with
+// term.
+func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, error) {
+	id := c.State.Key
 	res, err := claim.Reserve(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: term},
 		claimOptions(c.Now))
 	if err == nil {
@@ -243,19 +320,9 @@ func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, e
 	var nh *claim.NotHeld
 	switch {
 	case errors.As(err, &fe):
-		// Origin unread is a wait by design, never a refusal a drain counts
-		// toward a stuck lane (stuck.go), whatever git says: the drain's own
-		// read of origin at every move is what gives up on an origin that
-		// stays unread. A lost network also waits on the shared outage
-		// probe, as the push's own failure does (netFailure).
-		r := contend(stage, "", lane.ID,
-			"could not read the reservation on "+id+" from "+claim.Remote+": "+fe.Reason+", "+act.unread,
-			"run abcd implement step again once origin answers")
-		r.originUnread = true
-		if implement.IsNetworkFailure(fe.Reason) {
-			r.outage = &outageReport{service: implement.ServiceNetwork, kind: implement.OutageTool, lane: lane.ID, what: "git fetch the reservation on " + id}
-		}
-		return time.Time{}, r
+		return time.Time{}, fenceUnread(lane,
+			"could not read the reservation on "+id+" from "+claim.Remote+": "+fe.Reason+", so "+act.none,
+			fe.Reason, "git fetch the reservation on "+id)
 	case errors.As(err, &nh):
 		switch nh.Why {
 		case claim.NotHeldAnotherPerson:

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -50,7 +51,61 @@ const (
 // there); a failure's error carries git's bounded stderr. On a failure both are
 // scrubbed of credential URLs (ScrubURLCredentials) before they are cut.
 func Net(dir string, args ...string) (string, error) {
-	return runHooked(dir, true, args)
+	return runHooked(dir, true, "", args, nil)
+}
+
+// NetEach is Net for a command whose output may run to any length (a
+// listing of every ref under a prefix a pusher can fill): each line of
+// stdout is handed to each as it is read, without its newline, and none is
+// kept, so no bound on the whole output applies. A line longer than maxLine
+// bytes is handed cut to its first maxLine. A failure's error carries git's
+// bounded stderr, scrubbed, as Net's does.
+func NetEach(dir string, maxLine int, each func(line string), args ...string) error {
+	w := &lineSink{max: maxLine, each: each}
+	_, err := runHooked(dir, true, "", args, w)
+	if err == nil {
+		w.flush()
+	}
+	return err
+}
+
+// lineSink splits what it is written into lines for each, keeping at most
+// max bytes of the line it is in.
+type lineSink struct {
+	max  int
+	each func(string)
+	buf  []byte
+	open bool
+}
+
+func (w *lineSink) Write(p []byte) (int, error) {
+	for _, b := range p {
+		if b == '\n' {
+			w.each(string(w.buf))
+			w.buf, w.open = w.buf[:0], false
+			continue
+		}
+		w.open = true
+		if len(w.buf) < w.max {
+			w.buf = append(w.buf, b)
+		}
+	}
+	return len(p), nil
+}
+
+// flush hands each the last line when the output did not end in a newline.
+func (w *lineSink) flush() {
+	if w.open {
+		w.each(string(w.buf))
+		w.buf, w.open = w.buf[:0], false
+	}
+}
+
+// NetInput is Net with stdin fed to the command: a `git fetch --stdin` reads
+// its refspecs there, one per line, so however many a fetch names, none
+// lengthens its command line past the system's argument limit.
+func NetInput(dir, stdin string, args ...string) (string, error) {
+	return runHooked(dir, true, stdin, args, nil)
 }
 
 // LocalGit runs one git command that reaches no remote (a commit, a read of
@@ -61,11 +116,13 @@ func Net(dir string, args ...string) (string, error) {
 // hook through GIT_CONFIG_PARAMETERS, and its batch-mode ssh command) changes
 // how a hook of the repository's runs. Its bounds and its output are Net's.
 func LocalGit(dir string, args ...string) (string, error) {
-	return runHooked(dir, false, args)
+	return runHooked(dir, false, "", args, nil)
 }
 
-// runHooked is Net (network true) and LocalGit (false).
-func runHooked(dir string, network bool, args []string) (string, error) {
+// runHooked is Net (network true) and LocalGit (false), with stdin fed to
+// the command when it is not "". With sink set, stdout is written to it as
+// it is read, none is kept, and the output returned is "".
+func runHooked(dir string, network bool, stdin string, args []string, sink io.Writer) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), NetTimeout)
 	defer cancel()
 	full := []string{"-c", "core.quotePath=false"}
@@ -80,8 +137,14 @@ func runHooked(dir string, network bool, args []string) (string, error) {
 			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
 		}
 	}
+	if stdin != "" {
+		cmd.Stdin = strings.NewReader(stdin)
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if sink != nil {
+		cmd.Stdout = sink
+	}
 	what := "git " + args[0]
 	if err := cmd.Run(); err != nil {
 		// Scrubbed BEFORE the cut: a cut across a credential URL leaves a

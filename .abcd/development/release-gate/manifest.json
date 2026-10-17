@@ -23,6 +23,7 @@
     ".abcd/development/brief/04-surfaces/README.md",
     ".abcd/development/brief/04-surfaces/08-abcd.md",
     ".abcd/development/brief/04-surfaces/01-ahoy.md",
+    ".abcd/development/brief/04-surfaces/38-announce.md",
     ".abcd/development/brief/04-surfaces/20-banlist.md",
     ".abcd/development/brief/04-surfaces/34-build.md",
     ".abcd/development/brief/04-surfaces/06-capture.md",
@@ -52,6 +53,7 @@
     ".abcd/development/brief/04-surfaces/37-reserve.md",
     ".abcd/development/brief/04-surfaces/32-scribe.md",
     ".abcd/development/brief/04-surfaces/22-site.md",
+    ".abcd/development/brief/04-surfaces/39-status.md",
     ".abcd/development/brief/04-surfaces/21-update.md",
     ".abcd/development/brief/05-internals/01-agents.md",
     ".abcd/development/brief/05-internals/03-configuration.md",
@@ -63,6 +65,7 @@
   "commands": [
     "abcd",
     "ahoy",
+    "announce",
     "banlist",
     "build",
     "capture",
@@ -94,6 +97,7 @@
     "reserve",
     "scribe",
     "site",
+    "status",
     "update"
   ],
   "agents": [

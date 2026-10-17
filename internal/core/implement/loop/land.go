@@ -19,8 +19,9 @@ package loop
 //     records carry its prose), with the repository's hooks running.
 //  3. push: refused unless the repository's preflight receipt names the lane's
 //     head (the pre-push hook's gate, checked before any connection opens) and
-//     the run's reservation is still this person's from this copy (the push
-//     fence, the land fence's check), then a plain `git push` of the lane's
+//     the run's reservation is still this person's from this copy and no
+//     release another session is cutting holds it (the push fence, the land
+//     fence's check), then a plain `git push` of the lane's
 //     branch from the checkout the run lives in, its hooks running: the loop
 //     never skips a hook and never forces.
 //  4. pull request: through the forge client the repository already uses
@@ -454,8 +455,9 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	// The reservation is checked before the push as well as at the arming
 	// (spc-2610161044461448 step 7): one that moved to another while the
 	// lane worked pushes nothing, so it never becomes a duplicate pull
-	// request.
-	holds, err := pushFence(c, *lane)
+	// request; and a release another session is cutting holds the push, as
+	// it holds `abcd land`'s (C7).
+	holds, notice, err := pushFence(c, *lane)
 	if err != nil {
 		return Outcome{}, err
 	}
@@ -474,6 +476,9 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	}
 	if !holds.IsZero() {
 		note += "; the reservation on " + c.State.Key + " holds until " + stamp(holds)
+	}
+	if notice != "" {
+		note += "; " + notice
 	}
 	ld.PreflightReceipt, ld.Pushed, ld.CheckWaitSince = fsutil.RedactHome(rcp), lane.HeadSHA, nil
 	return Outcome{Stay: true, Note: note}, nil
@@ -714,13 +719,16 @@ func landArm(c Context, lane *Lane) (Outcome, error) {
 	// The land fence (spc-2610031753359849 spec 2): before the rule decides,
 	// the run's reservation must still be this person's from this copy, and
 	// it is renewed for fenceLease, a day.
-	holds, err := landFence(c, *lane, fenceLease)
+	holds, notice, err := landFence(c, *lane, fenceLease)
 	if err != nil {
 		return Outcome{}, err
 	}
 	held := ""
 	if !holds.IsZero() {
 		held = "; the reservation on " + c.State.Key + " holds until " + stamp(holds)
+	}
+	if notice != "" {
+		held += "; " + notice
 	}
 	n := strconv.Itoa(lane.PR)
 	if method == "" {
