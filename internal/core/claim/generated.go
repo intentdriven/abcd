@@ -71,30 +71,7 @@ func GeneratedFiles(root string) (Generated, string) {
 	if err != nil {
 		return Generated{}, fmt.Sprintf("the files on %s could not be listed: %s", gitutil.ShortRef(ref), redacted(err))
 	}
-	entries := strings.Split(out, "\x00")
-	// A directory holding its own .gitattributes could unset the attribute
-	// there, and only the root one is read, so nothing at or below it is
-	// generated.
-	nested := map[string]bool{}
-	for _, entry := range entries {
-		// Its name in any capitals: git on a case-insensitive checkout reads
-		// it.
-		if _, p, ok := strings.Cut(entry, "\t"); ok {
-			if dir, name := path.Split(p); dir != "" && strings.EqualFold(name, ".gitattributes") {
-				nested[strings.TrimSuffix(dir, "/")] = true
-			}
-		}
-	}
-	var candidates []string
-	for _, entry := range entries {
-		meta, p, ok := strings.Cut(entry, "\t")
-		// A regular file only, executable or not: never a symbolic link or a
-		// submodule.
-		f := strings.Fields(meta)
-		if ok && len(f) == 3 && (f[0] == "100644" || f[0] == "100755") && f[1] == "blob" && !underNested(p, nested) {
-			candidates = append(candidates, p)
-		}
-	}
+	candidates := candidatesOf(strings.Split(out, "\x00"))
 	files, spent := rules.generatedAmong(candidates)
 	if spent {
 		return Generated{}, fmt.Sprintf(".gitattributes on %s takes too long to match against the files there", gitutil.ShortRef(ref))
@@ -120,17 +97,90 @@ func (rs attrRules) generatedAmong(paths []string) (map[string]bool, bool) {
 	return files, false
 }
 
-// underNested reports whether p lies at or below a directory in nested.
-func underNested(p string, nested map[string]bool) bool {
-	if len(nested) == 0 {
-		return false
-	}
-	for dir := path.Dir(p); dir != "."; dir = path.Dir(dir) {
-		if nested[dir] {
-			return true
+// candidatesOf is the files of an ls-tree -r -z listing that may be
+// generated: regular files, executable or not, never a symbolic link or a
+// submodule, and none at or below a directory holding its own .gitattributes.
+// Such a file could unset the attribute there, and only the root one is read.
+// The directory and the file's path are compared without regard to ASCII
+// case, as git on a case-insensitive checkout compares them.
+func candidatesOf(entries []string) []string {
+	nested := &dirTrie{}
+	for _, entry := range entries {
+		if _, p, ok := strings.Cut(entry, "\t"); ok {
+			if dir, name := path.Split(p); dir != "" && strings.EqualFold(name, ".gitattributes") {
+				nested.add(asciiLower(strings.TrimSuffix(dir, "/")))
+			}
 		}
 	}
-	return false
+	var candidates []string
+	for _, entry := range entries {
+		meta, p, ok := strings.Cut(entry, "\t")
+		f := strings.Fields(meta)
+		if ok && len(f) == 3 && (f[0] == "100644" || f[0] == "100755") && f[1] == "blob" && !nested.holdsAncestor(asciiLower(p)) {
+			candidates = append(candidates, p)
+		}
+	}
+	return candidates
+}
+
+// dirTrie is a set of directories, one node per path segment, so a path's
+// ancestors are looked up in one pass over it.
+type dirTrie struct {
+	children map[string]*dirTrie
+	// end is true when the directory ending at this node is in the set.
+	end bool
+}
+
+// add puts the directory dir, slash-separated, in the set.
+func (t *dirTrie) add(dir string) {
+	n := t
+	for seg := range strings.SplitSeq(dir, "/") {
+		if n.children == nil {
+			n.children = map[string]*dirTrie{}
+		}
+		next := n.children[seg]
+		if next == nil {
+			next = &dirTrie{}
+			n.children[seg] = next
+		}
+		n = next
+	}
+	n.end = true
+}
+
+// holdsAncestor reports whether a directory in the set holds the file p, at
+// any depth, reading p once.
+func (t *dirTrie) holdsAncestor(p string) bool {
+	n := t
+	for {
+		i := strings.IndexByte(p, '/')
+		if i < 0 || n.children == nil {
+			return false
+		}
+		if n = n.children[p[:i]]; n == nil {
+			return false
+		}
+		if n.end {
+			return true
+		}
+		p = p[i+1:]
+	}
+}
+
+// asciiLower is s with ASCII capitals lowered, as git folds case.
+func asciiLower(s string) string {
+	for i := 0; i < len(s); i++ {
+		if c := s[i]; c >= 'A' && c <= 'Z' {
+			b := []byte(s)
+			for j := i; j < len(b); j++ {
+				if b[j] >= 'A' && b[j] <= 'Z' {
+					b[j] += 'a' - 'A'
+				}
+			}
+			return string(b)
+		}
+	}
+	return s
 }
 
 // rootAttributes is the root .gitattributes on ref, "" when there is none,

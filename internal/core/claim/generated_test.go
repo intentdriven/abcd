@@ -313,3 +313,42 @@ func TestADeclarationPastTheTotalBudgetDeclaresNothing(t *testing.T) {
 	wantGenerated(t, p.dir, map[string]bool{"gen/f1.md": false, "gen/f39.md": false},
 		".gitattributes on origin/main takes too long to match against the files there")
 }
+
+// blobEntry is one ls-tree -r -z entry for a regular file at p.
+func blobEntry(p string) string {
+	return "100644 blob 0123456789abcdef0123456789abcdef01234567\t" + p
+}
+
+// TestANestedDeclarationIsLookedUpWhateverTheCapitals: a directory holding a
+// .gitattributes is the same directory to git on a case-insensitive checkout
+// whatever the capitals of its name or a file's path under it.
+func TestANestedDeclarationIsLookedUpWhateverTheCapitals(t *testing.T) {
+	got := candidatesOf([]string{blobEntry("Docs/.gitattributes"), blobEntry("docs/x.gen"), blobEntry("DOCS/deep/y.gen"), blobEntry("other/z.gen")})
+	if !slices.Equal(got, []string{"other/z.gen"}) {
+		t.Fatalf("candidates = %v; want other/z.gen alone", got)
+	}
+}
+
+// TestAVeryDeepPathIsJudgedQuickly: looking a path's directories up among
+// the nested declarations reads the path once, however deep it is.
+func TestAVeryDeepPathIsJudgedQuickly(t *testing.T) {
+	deep := strings.Repeat("d/", 2049)
+	entries := []string{blobEntry("n/.gitattributes")}
+	for i := range 500 {
+		entries = append(entries, blobEntry(fmt.Sprintf("%sf%d", deep, i)))
+	}
+	done := make(chan int, 1)
+	start := time.Now()
+	go func() { done <- len(candidatesOf(entries)) }()
+	select {
+	case n := <-done:
+		if n != 500 {
+			t.Fatalf("candidates = %d; want the 500 deep files", n)
+		}
+		if took := time.Since(start); took > 2*time.Second {
+			t.Fatalf("500 paths 2,049 directories deep took %s; want well under a second", took)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("500 paths 2,049 directories deep did not finish in 10s")
+	}
+}
