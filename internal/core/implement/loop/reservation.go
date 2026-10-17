@@ -296,9 +296,11 @@ func heldMerge(lane Lane, m claim.MergeHold, act fenceAct) error {
 	if !m.Held() {
 		return nil
 	}
-	return contend(string(StageLand), "", lane.ID,
+	r := contend(string(StageLand), "", lane.ID,
 		termsafe.Sanitize(m.Reason()+", so this lane does not "+act.not),
 		termsafe.Sanitize(act.stays+"; "+m.Waits()+", then run `abcd implement step` again"))
+	r.releaseHeld = true
+	return r
 }
 
 // renewAtFence renews the run's own reservation at the fence for act: it

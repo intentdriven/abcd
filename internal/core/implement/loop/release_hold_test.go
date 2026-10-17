@@ -301,6 +301,11 @@ func TestThePushFenceHoldsWhileAnotherPersonCutsARelease(t *testing.T) {
 			if r.Reason != want {
 				t.Fatalf("the push fence's reason = %q; want %q", r.Reason, want)
 			}
+			// A release cut is a pause someone chose, so a drain never counts
+			// it towards handing the lane back as stuck.
+			if !waitByDesign(r) {
+				t.Fatalf("a release hold is a wait by design, never a refusal a drain counts: %+v", r)
+			}
 			if !strings.Contains(r.Remedy, "nothing is pushed and no pull request is opened") || !strings.Contains(r.Remedy, "quinn") {
 				t.Fatalf("the remedy names what stays and the holder: %q", r.Remedy)
 			}

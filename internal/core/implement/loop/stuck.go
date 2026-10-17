@@ -116,7 +116,7 @@ func resolveStuckBounds(roots layered.Roots) (stuckBounds, error) {
 // than a refusal: the landing's wait for its preflight receipt, an outage's,
 // and a land fence's that could not read origin.
 func waitByDesign(r *Refusal) bool {
-	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread
+	return !r.checkWait.IsZero() || r.Outage != nil || r.outage != nil || r.Stage == StageOutage || r.originUnread || r.releaseHeld
 }
 
 // noteRefusal logs err on the lane it names, in an issue run (stuck.go's
