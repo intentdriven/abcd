@@ -4,9 +4,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/core/oracle"
@@ -254,5 +258,68 @@ func TestHarnessStringsAreCleanedAndBounded(t *testing.T) {
 		if len(v) > maxHarnessText+len("...") {
 			t.Errorf("%q is %d bytes, over the bound", v, len(v))
 		}
+	}
+}
+
+// servedReasons is the served side's list for ans, as a run builds it.
+func servedReasons(ans Answer) map[oracle.Field]oracle.UnpinnedReason {
+	var un oracle.Unpin
+	servedUnpinned(&un, ans.Model, ans.Sides, ans.counted)
+	return reasons(un.List())
+}
+
+// TestOpenCodeSumsPastTheirBoundAreNotReported: a cost summed past the
+// largest float is not finite, so it is dropped and listed as not reported
+// (and the state that records it still writes); a token sum that would
+// overflow is unreadable, listed as not reported, and a later step does not
+// bring it back.
+func TestOpenCodeSumsPastTheirBoundAreNotReported(t *testing.T) {
+	maxInt := strconv.Itoa(math.MaxInt)
+	stream := strings.Join([]string{
+		`{"type":"step_finish","part":{"reason":"tool-calls","cost":1e308,"tokens":{"input":` + maxInt + `,"output":5}}}`,
+		`{"type":"step_finish","part":{"reason":"tool-calls","cost":1e308,"tokens":{"input":1,"output":6}}}`,
+		`{"type":"step_finish","part":{"reason":"stop","cost":0.5,"tokens":{"input":3,"output":1}}}`,
+		`{"type":"text","part":{"type":"text","text":"done"}}`,
+	}, "\n")
+	ans, err := parseOpenCode([]byte(stream))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ans.Cost != nil {
+		t.Fatalf("cost = %+v, want it dropped once its sum stopped being finite", ans.Cost)
+	}
+	if ans.Usage == nil || ans.Usage.PromptTokens != 0 || ans.Usage.CompletionTokens != 12 {
+		t.Fatalf("usage = %+v, want the prompt sum dropped and the completion sum kept", ans.Usage)
+	}
+	got := servedReasons(ans)
+	if got[oracle.ServedCost] != oracle.NotReported || got[oracle.ServedPromptTokens] != oracle.NotReported {
+		t.Fatalf("cost %q, prompt %q: want both not_reported", got[oracle.ServedCost], got[oracle.ServedPromptTokens])
+	}
+	if _, listed := got[oracle.ServedCompletionTokens]; listed {
+		t.Fatalf("the completion sum is listed: %v", got)
+	}
+	if _, err := json.Marshal(RecordOf("opencode", "opencode", ans)); err != nil {
+		t.Fatalf("the record does not write: %v", err)
+	}
+}
+
+// TestClaudeNegativeCountIsNotReported: a count the harness sends below zero
+// is unreadable, listed as not reported, never recorded as a zero it
+// reported; the counts beside it stand.
+func TestClaudeNegativeCountIsNotReported(t *testing.T) {
+	stream := strings.Join([]string{
+		`{"type":"system","subtype":"init","model":"claude-haiku-4-5","session_id":"s"}`,
+		`{"type":"result","subtype":"success","result":"ok","total_cost_usd":-1,"usage":{"input_tokens":-5,"output_tokens":3}}`,
+	}, "\n")
+	ans, err := parseClaude([]byte(stream))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := servedReasons(ans)
+	if got[oracle.ServedPromptTokens] != oracle.NotReported || got[oracle.ServedCost] != oracle.NotReported {
+		t.Fatalf("prompt %q, cost %q: want both not_reported", got[oracle.ServedPromptTokens], got[oracle.ServedCost])
+	}
+	if _, listed := got[oracle.ServedCompletionTokens]; listed || ans.Usage == nil || ans.Usage.CompletionTokens != 3 {
+		t.Fatalf("usage %+v, list %v", ans.Usage, got)
 	}
 }

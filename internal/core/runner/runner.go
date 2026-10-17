@@ -96,6 +96,11 @@ type Answer struct {
 	// counted is which token counts the harness's events carried, read
 	// with them, for the record's list of what it could not pin.
 	counted counted
+	// lost is which summed counts stopped being readable (a sum that would
+	// overflow), and costLost whether the summed cost did (a sum that is no
+	// longer finite): each stays unread for the rest of the run.
+	lost     counted
+	costLost bool
 }
 
 // Runner is one route a role can run through.

@@ -37,6 +37,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"math"
 
 	"github.com/intentdriven/abcd/internal/core/oracle"
 )
@@ -142,11 +143,19 @@ func meterOpenCode(ans *Answer, line []byte) {
 	if p.Reason != "" {
 		ans.FinishReason = cleanHarness(p.Reason)
 	}
-	if p.Cost != nil && *p.Cost >= 0 {
-		if ans.Cost == nil {
-			ans.Cost = &oracle.Cost{Unit: oracle.CostUSD}
+	// A step's cost is summed when it is readable (oracle.ReadableCost); a
+	// sum that stops being finite is dropped, not reported for the rest of
+	// the run, since +Inf is no cost and no record can write it.
+	if p.Cost != nil && !ans.costLost && oracle.ReadableCost(*p.Cost) {
+		sum := *p.Cost
+		if ans.Cost != nil {
+			sum += ans.Cost.Amount
 		}
-		ans.Cost.Amount += *p.Cost
+		if oracle.ReadableCost(sum) {
+			ans.Cost = &oracle.Cost{Amount: sum, Unit: oracle.CostUSD}
+		} else {
+			ans.Cost, ans.costLost = nil, true
+		}
 	}
 	t := p.Tokens
 	if t == nil {
@@ -155,18 +164,24 @@ func meterOpenCode(ans *Answer, line []byte) {
 	if ans.Usage == nil {
 		ans.Usage = &oracle.Usage{}
 	}
-	add := func(sum *int, n *int, seen *bool) {
-		if n != nil && *n >= 0 {
+	// A count is summed when present and not negative; a sum that would
+	// overflow is unreadable, zeroed and not reported for the rest of the run.
+	add := func(sum *int, n *int, seen, lost *bool) {
+		switch {
+		case *lost || n == nil || *n < 0:
+		case *sum > math.MaxInt-*n:
+			*sum, *seen, *lost = 0, false, true
+		default:
 			*sum += *n
 			*seen = true
 		}
 	}
-	c := &ans.counted
-	add(&ans.Usage.PromptTokens, t.Input, &c.prompt)
-	add(&ans.Usage.CompletionTokens, t.Output, &c.completion)
-	add(&ans.Usage.ReasoningTokens, t.Reasoning, &c.reasoning)
-	add(&ans.Usage.CacheReadTokens, t.Cache.Read, &c.cacheRead)
-	add(&ans.Usage.CacheWriteTokens, t.Cache.Write, &c.cacheWrite)
+	c, l := &ans.counted, &ans.lost
+	add(&ans.Usage.PromptTokens, t.Input, &c.prompt, &l.prompt)
+	add(&ans.Usage.CompletionTokens, t.Output, &c.completion, &l.completion)
+	add(&ans.Usage.ReasoningTokens, t.Reasoning, &c.reasoning, &l.reasoning)
+	add(&ans.Usage.CacheReadTokens, t.Cache.Read, &c.cacheRead, &l.cacheRead)
+	add(&ans.Usage.CacheWriteTokens, t.Cache.Write, &c.cacheWrite, &l.cacheWrite)
 }
 
 // parseOpenCode reads the event stream: one JSON object per line. An error

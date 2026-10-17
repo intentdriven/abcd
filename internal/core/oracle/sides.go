@@ -9,6 +9,8 @@ package oracle
 // field by field whatever routes they took. The runner package imports this
 // one; nothing here imports the runner.
 
+import "github.com/intentdriven/abcd/internal/adapter/openaiapi"
+
 // Field is one field of the fixed lists a call's record is held to (itd-166
 // decision 10). Every route records each field or lists it in its Unpinned
 // with the reason, so a field is never silently absent.
@@ -99,6 +101,12 @@ type Cost struct {
 	Amount float64 `json:"amount"`
 	Unit   string  `json:"unit"`
 }
+
+// ReadableCost reports whether a cost a route reported, or a sum of them, is
+// one a record keeps: zero or more, and finite. It is the adapter's policy
+// (openaiapi.ReadableCost), the one every route's cost is held to: a cost
+// that fails it is not reported.
+func ReadableCost(c float64) bool { return openaiapi.ReadableCost(c) }
 
 // The units a Cost is reported in.
 const (

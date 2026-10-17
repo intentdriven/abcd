@@ -174,12 +174,15 @@ type claudeMeter struct {
 	} `json:"modelUsage"`
 }
 
-// claudeCounted reports which of the counts a result event carries.
+// claudeCounted reports which of the counts a result event carries readably:
+// present and not negative, as the provider adapter reads a count. A count
+// below zero is unreadable, listed as not reported.
 func claudeCounted(m claudeMeter) counted {
 	u := m.Usage
-	return counted{prompt: u.InputTokens != nil, completion: u.OutputTokens != nil,
-		reasoning: u.OutputTokensDetails.ThinkingTokens != nil,
-		cacheRead: u.CacheReadInputTokens != nil, cacheWrite: u.CacheCreationInputTokens != nil}
+	ok := func(p *int) bool { return p != nil && *p >= 0 }
+	return counted{prompt: ok(u.InputTokens), completion: ok(u.OutputTokens),
+		reasoning: ok(u.OutputTokensDetails.ThinkingTokens),
+		cacheRead: ok(u.CacheReadInputTokens), cacheWrite: ok(u.CacheCreationInputTokens)}
 }
 
 // meterClaude reads the result event's metering onto ans: the token counts
@@ -207,7 +210,7 @@ func meterClaude(ans *Answer, line []byte) {
 			ReasoningTokens: n(u.OutputTokensDetails.ThinkingTokens),
 			CacheReadTokens: n(u.CacheReadInputTokens), CacheWriteTokens: n(u.CacheCreationInputTokens)}
 	}
-	if m.TotalCostUSD != nil && *m.TotalCostUSD >= 0 {
+	if m.TotalCostUSD != nil && oracle.ReadableCost(*m.TotalCostUSD) {
 		ans.Cost = &oracle.Cost{Amount: *m.TotalCostUSD, Unit: oracle.CostUSD}
 	}
 	keys := make([]string, 0, len(m.ModelUsage))
