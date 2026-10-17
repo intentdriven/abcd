@@ -113,7 +113,9 @@ func busyLanes(st State) []string {
 }
 
 // decidable finds the held lane a --release or --discard names, refusing a
-// lane that is not held and a run with any lane still at work.
+// lane that is not held and a run with any lane still at work. --discard also
+// takes a lane a drain handed back as stuck (stuck.go), whose worktree and
+// branch the hand-back left.
 func decidable(st State, laneID, flag string) (int, error) {
 	i := -1
 	for k, l := range st.Lanes {
@@ -124,6 +126,9 @@ func decidable(st State, laneID, flag string) (int, error) {
 	if i < 0 {
 		return -1, refuse(string(StageHeld), "", "", fmt.Sprintf("%s has no lane %q", st.RunID, laneID),
 			"name a held lane `abcd implement status` lists")
+	}
+	if l := st.Lanes[i]; flag == "--discard" && stuckLane(l) {
+		return i, nil
 	}
 	if l := st.Lanes[i]; l.Stage != StageHeld || l.Hold == nil {
 		return -1, refuse(string(StageHeld), "", laneID, fmt.Sprintf("%s is %s, not held, so %s does not apply to it", laneID, l.Stage, flag),
@@ -161,6 +166,23 @@ func Release(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		return true, nil
 	})
 	return res, err
+}
+
+// discardNote is the run record's line for a discard: an issue run's lane
+// leaves its issue open, a person's; an intent run's leaves its step unlanded.
+func discardNote(st State, lane Lane, did []string) string {
+	if st.Issue() != "" {
+		if len(did) == 0 {
+			did = []string{"nothing of its own was left to remove"}
+		}
+		return fmt.Sprintf("the person discarded %s (%s); %s stays open, a person's, and the run is over", lane.ID, strings.Join(did, ", "), st.Issue())
+	}
+	return fmt.Sprintf("the person discarded %s (%s); step %d stays unlanded in %s", lane.ID, strings.Join(did, ", "), lane.SpecStep, specOf(st))
+}
+
+// stuckLane reports whether l was handed back as stuck.
+func stuckLane(l Lane) bool {
+	return l.Stage == StageHandedBack && l.HandBack != nil && l.HandBack.Kind == HandBackStuck
 }
 
 // Discard does not land a held lane, on the person's word (`implement step
@@ -239,7 +261,7 @@ func Discard(repoRoot, runID, laneID string, o Options) (StepResult, error) {
 		lane.Stage = StageDiscarded
 		st.Lanes[i] = lane
 		st.Record = append(st.Record, Entry{At: now, Lane: lane.ID, Stage: "discard",
-			Note: fmt.Sprintf("the person discarded %s (%s); step %d stays unlanded in %s", lane.ID, strings.Join(did, ", "), lane.SpecStep, specOf(*st))})
+			Note: discardNote(*st, lane, did)})
 		st.UpdatedAt = now
 		res = laneResult(*st, lane, "", nil)
 		return true, nil

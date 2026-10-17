@@ -102,6 +102,10 @@ func (l Lane) masked() Lane {
 		ld.Body, ld.PRURL, ld.Merge, ld.Merged = line(ld.Body), line(ld.PRURL), line(ld.Merge), line(ld.Merged)
 		return ld
 	})
+	l.Refused = maskPtr(l.Refused, func(r LaneRefused) LaneRefused {
+		r.Stage, r.Check, r.Reason, r.Final = line(r.Stage), line(r.Check), free(r.Reason), free(r.Final)
+		return r
+	})
 	return l
 }
 

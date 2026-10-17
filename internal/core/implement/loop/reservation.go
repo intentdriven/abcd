@@ -206,18 +206,22 @@ func landFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
 	case errors.As(err, &nh):
 		switch nh.Why {
 		case claim.NotHeldAnotherPerson:
-			return time.Time{}, contend(stage, "", lane.ID,
+			r := contend(stage, "", lane.ID,
 				fmt.Sprintf("the reservation on %s is now %s's, until %s, so this lane does not arm its merge", id, nh.Holder, stamp(nh.Expiry)),
 				"the pull request stays open and unarmed; take other work, or settle the record with "+nh.Holder+", then "+again)
+			r.final = "the reservation on " + id + " is now " + nh.Holder + "'s"
+			return time.Time{}, r
 		case claim.NotHeldAnotherCopy:
 			return time.Time{}, contend(stage, "", lane.ID,
 				"the reservation on "+id+" moved to your copy on another computer, so this lane does not arm its merge here",
 				"carry the lane on from that copy, or take the reservation back here (`abcd reserve "+id+" --take-over --footprint <path>`), then "+again)
 		case claim.NotHeldReleased:
 			if nh.Derived {
-				return time.Time{}, contend(stage, "", lane.ID,
+				r := contend(stage, "", lane.ID,
 					"the reservation on "+id+" was released: "+id+" is finished on "+claim.Remote+"'s default branch, so this lane does not arm its merge",
 					"confirm the record is finished on the default branch, and hand the lane back or close its pull request")
+				r.final = id + " is finished on " + claim.Remote + "'s default branch"
+				return time.Time{}, r
 			}
 			return time.Time{}, contend(stage, "", lane.ID,
 				"the reservation on "+id+" was released at "+stamp(nh.ReleasedAt)+", so this lane does not arm its merge", reserveAgain)

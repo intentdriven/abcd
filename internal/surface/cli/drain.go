@@ -112,6 +112,15 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"lane (the run `abcd build <iss-N>` starts), one lane at a time, and names the run to\n" +
 			"drive with `abcd implement step`. Run it again once that lane is handed back or its\n" +
 			"pull request is open, and it routes the lane's outcome and opens the next. A lane\n" +
+			"that cannot finish does not hold the drain: each refused step of its run is logged\n" +
+			"on the lane, and once the step has been refused the same way three times, or at one\n" +
+			"stage for sixty minutes (pace.stuck_refusals and pace.stuck_minutes in the config\n" +
+			"layers), the next move hands the lane back as stuck, releases its reservation with\n" +
+			"a tombstone marking it stuck, and takes up the next issue. A refusal that cannot\n" +
+			"change (the issue finished at the lane's base or on origin's default branch, the\n" +
+			"reservation now another person's) hands it back at once; the wait for a preflight\n" +
+			"receipt and an outage's wait are never counted. `abcd implement step --discard`\n" +
+			"removes a stuck lane's worktree and branch and ends its run. A lane\n" +
 			"that finds a decision in its issue hands it back by kind, its work discarded: a\n" +
 			"user-visible change is promoted to an intent draft (`capture promote`, which\n" +
 			"stamps the issue's related_intents and nothing else); a trust or safety rule is\n" +

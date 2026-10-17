@@ -302,13 +302,30 @@ what it did in `next`:
   resolves it and opens one pull request.
 - **It waits.** While that lane is in progress, a drain opens nothing and names
   the run again. One lane at a time.
+- **It hands a stuck lane back.** A lane that cannot finish does not hold the
+  drain. Each refused step of the lane's run is logged on the lane (`refused`
+  in its state: the stage, the check, the reason and how many times in a row
+  the step was refused that way), and `next` says so while the lane is in
+  progress. Once the step has been refused the same way three times, or has
+  been refused at one stage for sixty minutes, the next drain hands the lane
+  back as `stuck`, naming the refusal, releases its reservation with a
+  tombstone marking it `stuck`, and takes up the next issue in the same move.
+  A refusal that cannot change hands the lane back at once: its issue finished
+  at the lane's base or on `origin`'s default branch, or its reservation now
+  another person's. A wait is not a refusal and is never counted: the
+  landing's wait for its preflight receipt, and the wait through an outage.
+  The bounds are `pace.stuck_refusals` and `pace.stuck_minutes` in
+  `.abcd/config.json` or `~/.abcd.noindex/config.json`, read at every move. A
+  stuck lane keeps its worktree and branch:
+  `abcd implement step --run <run-id> --discard <lane-id>` removes them, closes
+  its pull request if it opened one, and ends the run.
 - **It routes.** Once the lane is handed back or its pull request is open, the
   next drain records the outcome in `lanes`, routes a hand-back (below), and
   opens the next lane. A pull request the forge reports `CONFLICTING` is never
   armed: its lane stays in progress, and `abcd implement step --run <run-id>`
   refuses at exit 2 naming the conflicting files and the hand merge that
-  settles it. That is a person's: report it, and do not push to the lane or
-  merge it yourself. One that turns conflicting after it was armed is refused
+  settles it, until the drain hands the lane back as stuck. That is a person's:
+  report it, and do not push to the lane or merge it yourself. One that turns conflicting after it was armed is refused
   the same way by the run's own step; the drain's part ended at the open pull
   request.
 - **It finishes merged lanes.** Every move, before it reads the window clock,
@@ -358,6 +375,7 @@ branch and ends it. The drain routes it:
 | `trust-rule` | `decision-record`: flagged, with the lane's reason as `question` | nothing; no record is minted |
 | `design-finding`, `second-package` | `home`: flagged with the `home` the lane names | nothing |
 | (fix rounds exhausted) | `home`: flagged, the issue staying open | nothing |
+| `stuck` (the lane kept refusing) | `home`: flagged, the issue staying open, naming the discard of the lane's run | nothing |
 
 Every issue the rule hands back is in `flags` with `from: "field"`,
 `route: "rule"` and the `rule` that excluded it; `flags` are re-derived at every

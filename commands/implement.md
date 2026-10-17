@@ -425,7 +425,12 @@ has work left:
   refused the same way, before anything is removed, naming that checkout.
 
 Either is refused, changing nothing, for a lane that is not held or while a lane
-still has work. The run stays in progress, so `build next` passes over its
+still has work. `--discard` also takes an issue run's lane a drain handed back
+as `stuck` (`/abcd:drain`): its worktree and branch are removed, its pull
+request closed if it opened one, and the run is over, so no run directory is
+removed by hand. An issue run logs each refused step on its lane (`refused` in
+its state: the stage, the check, the reason and a count), which the drain
+reads; an intent's run refuses as before, writing nothing. The run stays in progress, so `build next` passes over its
 intent; no verb clears it, and the refusal names the way out: once the intent
 is replanned, remove the run's directory, `.abcd/.work.local/run/<run-id>`.
 

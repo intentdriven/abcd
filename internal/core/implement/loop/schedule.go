@@ -605,6 +605,8 @@ func performMove(repoRoot string, st *State, steps Stages, w want, now time.Time
 	performed := Stage("")
 	var handed *Await
 	stage := string(lane.Stage)
+	// A step that succeeds ends the lane's run of refusals (stuck.go).
+	lane.Refused = nil
 	switch {
 	case out.HandBack != nil:
 		handBackLane(st, &lane, *out.HandBack, out.Note, now)

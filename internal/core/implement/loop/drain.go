@@ -622,6 +622,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	}
 
 	// The lane the drain opened last: route what it has come to, or wait on it.
+	// A lane in progress that is stuck, refusing past the bounds the pace's
+	// layers set or in a way that cannot change, is handed back as stuck here,
+	// its reservation released with the tombstone, and the move takes up the
+	// next issue (stuck.go).
+	var bounds *stuckBounds
 	for i := range st.Lanes {
 		l := &st.Lanes[i]
 		if l.Outcome != DrainLaneInProgress {
@@ -632,10 +637,28 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 			return refuseMoved(err)
 		}
 		outcome, pr, hb := laneOutcome(run)
+		if outcome == DrainLaneInProgress {
+			if bounds == nil {
+				b, err := resolveStuckBounds(o.roots(repoRoot))
+				if err != nil {
+					return refuseMoved(err)
+				}
+				bounds = &b
+			}
+			if why := stuckReason(run, *bounds, now); why != "" {
+				if run, err = handBackStuck(repoRoot, l.RunID, why, now); err != nil {
+					return refuseMoved(err)
+				}
+				outcome, pr, hb = laneOutcome(run)
+			}
+		}
 		switch outcome {
 		case DrainLaneInProgress:
 			res.Next = fmt.Sprintf("drive %s's lane, run %s: `abcd implement step --run %s` (one lane at a time); run `abcd drain` again once it is handed back or its pull request is open",
 				l.Issue, l.RunID, l.RunID)
+			if note := refusingNote(run, *bounds); note != "" {
+				res.Next += "; " + note
+			}
 			return finish(true)
 		case DrainLaneHandedBack:
 			r, err := routeHandBack(repoRoot, l.Issue, "lane", *hb, origin, now)
@@ -1039,6 +1062,10 @@ func routeHandBack(repoRoot, issue, from string, hb HandBack, origin *DrainOrigi
 	case HandBackTrustRule:
 		r.Route, r.Question = RouteDecisionRecord, hb.Reason
 	case HandBackDesignFinding, HandBackSecondPackage:
+		r.Route, r.Home = RouteHome, hb.Home
+	case HandBackStuck:
+		// The lane kept refusing (stuck.go): the issue stays open for a
+		// person, and the hand-back names the discard of its run.
 		r.Route, r.Home = RouteHome, hb.Home
 	default:
 		// The lane stopped after its fix rounds (itd-50): the issue stays open

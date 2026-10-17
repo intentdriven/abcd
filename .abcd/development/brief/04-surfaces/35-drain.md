@@ -222,6 +222,22 @@ on origin's default branch backs off, with a tip or without one
    continues.
 4. When the lane it opened last is still in progress, it names the run to drive
    with the implement loop's step verb and opens nothing: one lane at a time.
+   A lane that cannot finish is handed back as stuck instead
+   (spc-2610161044461448 step 5, dcn-2610161040382067). Each refused step of
+   an issue run is logged on its lane with its stage, its check, its reason
+   and a count of the same refusal in a row, and the drain reads the lane as
+   stuck once the step has been refused the same way three times, or has been
+   refused at one stage for sixty minutes; both bounds are read from the
+   pace's layers (`pace.stuck_refusals`, `pace.stuck_minutes`) at every move.
+   A refusal that cannot change makes the lane stuck at once: the issue
+   finished at the lane's base, or on origin's default branch as the land
+   fence reads it, or the reservation now another person's. A wait by design
+   is no refusal and is never counted: the landing's wait for its preflight
+   receipt, and every outage wait. The drain hands a stuck lane back as
+   `stuck`, naming the refusal, releases its reservation with the hand-back's
+   tombstone, and goes on to the next issue in the same move. The lane keeps
+   its worktree and branch until the person discards it with the step verb's
+   `--discard`, which ends the run.
 5. It reads what that lane has come to: its pull request opened (armed, or left
    open where the repository has no merge queue), the run complete, or the lane
    handed back, which it routes (below). A pull request the forge reports
@@ -432,10 +448,11 @@ branch, records the discarded head, and ends the lane. The drain then routes it:
 | `trust-rule` | flagged as needing a decision record, the lane's reason as the question | nothing; no record is minted |
 | `design-finding`, `second-package` | flagged with the home the lane names | nothing |
 | a lane stopped after its fix rounds | flagged, the issue staying open with the last findings | nothing |
+| a lane handed back as stuck (`stuck`) | flagged, the issue staying open, naming the discard of its run | nothing |
 
 Whatever the route, the issue's reservation is released by a tombstone that
 publishes the hand-back on origin, naming its kind (a lane stopped after its
-fix rounds as `unachievable`) and the record's blob, which every drain passes
+fix rounds as `unachievable`, a stuck one as `stuck`) and the record's blob, which every drain passes
 over until a person changes the record (above).
 
 Every issue the rule itself hands back (by category, severity, security, a
