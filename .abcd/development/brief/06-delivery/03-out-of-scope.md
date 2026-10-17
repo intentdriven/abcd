@@ -149,6 +149,7 @@ That is what keeps "not hand-counted" true after the day it was written.
 - `itd-2610161647248332` — abcd finds out what the forge can do before choosing a route
 - `itd-2610161710315026` — Unattended runs reach only a declared list of hosts
 - `itd-2610161710316538` — Drains and builds a person's session drives report how isolated they were
+- `itd-2610170638184486` — Every session keeps a checklist on disk, so no run stalls and no stall spreads
 <!-- /index -->
 
 **Later-phase items with no intent id.** These four were written into the brief
