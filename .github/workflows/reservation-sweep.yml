@@ -48,20 +48,59 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      attestations: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: false
+      # The sweep runs the latest published release of abcd, never the code on
+      # the default branch (adr-2610161940004937): code reaches the default
+      # branch with no required approval, while a release passes the release
+      # cut, so only released code ever holds the bypass token. The binary is
+      # checked twice before anything is minted, as site.yml checks the binary
+      # it runs: its SHA-256 against the release's checksums.txt, then its
+      # build-provenance attestation against release.yml on main at the
+      # tagged commit, on a GitHub-hosted runner.
+      - name: Download and verify the latest release of abcd
+        id: abcd
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)"
+          if ! printf '%s' "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::the latest release's tag is not a release version; nothing was deleted."
+            exit 2
+          fi
+          dir="$RUNNER_TEMP/abcd-release"
+          mkdir -p "$dir"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --dir "$dir" \
+            --pattern abcd-linux-amd64 --pattern checksums.txt
+          (cd "$dir" && grep ' abcd-linux-amd64$' checksums.txt | sha256sum -c -)
+          commit="$(gh api "repos/$GITHUB_REPOSITORY/commits/$tag" --jq .sha)"
+          gh attestation verify "$dir/abcd-linux-amd64" \
+            --repo "$GITHUB_REPOSITORY" \
+            --cert-identity "https://github.com/$GITHUB_REPOSITORY/.github/workflows/release.yml@refs/heads/main" \
+            --source-ref refs/heads/main \
+            --source-digest "$commit" \
+            --deny-self-hosted-runners
+          chmod 0755 "$dir/abcd-linux-amd64"
+          # A release cut before the sweep existed has no `reserve --sweep`:
+          # the run says so and deletes nothing, rather than failing on usage.
+          if "$dir/abcd-linux-amd64" reserve --help 2>&1 | grep -q -- '--sweep'; then
+            echo "has_sweep=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "::warning title=reservation sweep did not delete::the latest release, $tag, has no reserve --sweep; nothing was deleted until a release carries it."
+            echo "has_sweep=false" >>"$GITHUB_OUTPUT"
+          fi
+          echo "bin=$dir/abcd-linux-amd64" >>"$GITHUB_OUTPUT"
       # The App's long-lived key is in this step alone. It mints the one-hour
       # installation token and ends, so the key never reaches the step that
       # runs abcd's code: a change landed on the default branch can read what
       # its own process holds, and that is the token, never the key.
       - name: Mint the App's installation token
         id: mint
+        if: steps.abcd.outputs.has_sweep == 'true'
         env:
           RESERVATION_SWEEP_APP_ID: ${{ secrets.RESERVATION_SWEEP_APP_ID }}
           RESERVATION_SWEEP_APP_KEY: ${{ secrets.RESERVATION_SWEEP_APP_KEY }}
@@ -123,13 +162,15 @@ jobs:
             echo "token=$token"
           } >>"$GITHUB_OUTPUT"
       - name: Sweep the spent reservation branches
+        if: steps.abcd.outputs.has_sweep == 'true'
         env:
+          ABCD: ${{ steps.abcd.outputs.bin }}
           SWEEP_MODE: ${{ steps.mint.outputs.mode }}
           ABCD_SWEEP_TOKEN: ${{ steps.mint.outputs.token }}
         run: |
           set -euo pipefail
           if [ "$SWEEP_MODE" != apply ]; then
-            go run ./cmd/abcd reserve --sweep
+            "$ABCD" reserve --sweep
             exit 0
           fi
           # The token reaches git through a credential helper reading the
@@ -139,7 +180,7 @@ jobs:
           # shellcheck disable=SC2016 # the helper expands the variable, not this shell
           git config --local --add credential.helper \
             '!f() { test "$1" = get || exit 0; echo username=x-access-token; echo "password=$ABCD_SWEEP_TOKEN"; }; f'
-          go run ./cmd/abcd reserve --sweep --apply
+          "$ABCD" reserve --sweep --apply
       - name: Revoke the installation token
         if: always() && steps.mint.outputs.token != ''
         env:

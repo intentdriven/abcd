@@ -103,11 +103,17 @@ cannot classify.
   runs, resolves neither secret. On the default branch the key lives in the
   step that mints the installation token and ends; the step that runs abcd's
   code receives the token alone, and a final step revokes it.
-- **The token reaches whatever code is on the default branch.** `cmd/` and
-  `internal/` merge without a required approval, so a writer can land code that
-  reads the installation token on its next run: for at most an hour, with
-  Contents write and the reservations bypass. That is the residual this
-  design accepts for now; the long-lived key itself never reaches that code.
+- **Only released code holds the token.** `cmd/` and `internal/` merge
+  without a required approval, so running the default branch's code would let
+  a writer land code that reads the token on its next run. The job therefore
+  runs the latest published release, never the default branch's code: it
+  checks the binary's SHA-256 against the release's `checksums.txt` and its
+  build-provenance attestation against `release.yml` on main at the tagged
+  commit, on a GitHub-hosted runner, before any token is minted. Code reaches
+  the token only by passing a release cut. The cost: a fix to the sweep reaches
+  the job only with the next release, and a release that predates
+  `reserve --sweep` makes the run a stated no-op (technical facilitator,
+  2026-10-17).
 - **A leaked App key is worse than before.** Whoever holds it can delete or
   force any reservation branch, which the ruleset forbids today. It can also
   write any branch no other ruleset protects, as any write token can. `main`
