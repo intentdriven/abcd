@@ -952,6 +952,10 @@ func TestBothActsOffRunsNoGate(t *testing.T) {
 	if s := step(t, res, "gate"); s.Status != StatusSkipped {
 		t.Fatalf("gate step %+v, want skipped", s)
 	}
+	// Nothing asked the forge or origin, so no default branch is claimed.
+	if res.Default != "" {
+		t.Fatalf("default %q with both acts off: want none claimed, since neither the forge nor origin was asked", res.Default)
+	}
 }
 
 // M1: a branch whose upstream is origin's default branch (as `git worktree

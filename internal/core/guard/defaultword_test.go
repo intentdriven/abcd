@@ -42,7 +42,7 @@ func checkSpellingCases(t *testing.T, cases []spellingCase) {
 		}
 		for n, cmd := range spellings {
 			t.Run(cmd, func(t *testing.T) {
-				d := verdictOf(t, cmd)
+				d := readingOf(t, cmd)
 				switch tc.want {
 				case VerdictBlock:
 					if d.Verdict != VerdictBlock || d.EntryID != tc.entry {

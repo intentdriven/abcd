@@ -197,6 +197,11 @@ func expandPayloads(segs []segment, depth int) ([]segment, []payloadSignal) {
 					}
 					psegs = pseg
 					spellPayload(psegs, named[r], leadNamed(r), leadAdds)
+					// Read after the spelling, which marks the values the
+					// enclosing shell puts into a double-quoted string.
+					if ref.shellC && deletesFromVariables(psegs) {
+						signals = append(signals, shellCDeleteSignal())
+					}
 				case kindShellWarn:
 					signals = append(signals, shellUnresolvedSignal())
 					continue
@@ -1168,6 +1173,9 @@ type payloadRef struct {
 	payload  string
 	trailing []string
 	guessed  bool
+	// shellC marks the string a shell's own `-c` carries, the one place the
+	// refusal of a variable-built delete reads (shellcdelete.go).
+	shellC bool
 }
 
 // payloadRefsOf is payloadsOf, and then payloadsOf again over the segment with
@@ -1478,7 +1486,7 @@ func payloadsOf(s segment) []payloadRef {
 		}
 		values, unresolved := shellCPayloads(s.tokens, group.sites)
 		for _, p := range values {
-			add(kindShell, familyShell, p, nil, group.guessed)
+			out = append(out, payloadRef{kind: kindShell, family: familyShell, payload: p, guessed: group.guessed, shellC: true})
 		}
 		if unresolved {
 			// A `-c` string is present but its operand could not be located;

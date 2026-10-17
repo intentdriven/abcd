@@ -158,6 +158,10 @@ block	rm -rf ${PWD:0:1}
 block	rm -rf ${X/*/$HOME}
 block	sh -c "rm -rf ${DIR:-$HOME}"
 block	bash -c 'rm -rf ${DIR:-/}'
+# A -c string built from variables that deletes is refused as a whole,
+# whatever path it names (shell-c-variable-delete, iss-2610161612200864):
+# no check made before it runs can read what it removes.
+block	sh -c "rm -rf ${DIR:-./build}"
 block	rm -rf ${X:+${X:+${X:+${X:+${X:+${X:+${X:+${X:+${X:+./build}}}}}}}}}
 
 # --- quiet: the same expansions naming a safe path ---------------------------
@@ -171,7 +175,6 @@ quiet	rm -rf ${DIR:?set DIR}
 quiet	rm -rf "${OUT%/}"
 quiet	rm -rf "${DIR/#\~/$HOME}"
 quiet	rm -rf ${X:+${X:+${X:+${X:+./build}}}}
-quiet	sh -c "rm -rf ${DIR:-./build}"
 quiet	echo ${X:+${X:+${X:+${X:+${X:+${X:+${X:+${X:+${X:+x}}}}}}}}}
 
 # --- block: a trim or a replacement whose pattern can take the rest ---------

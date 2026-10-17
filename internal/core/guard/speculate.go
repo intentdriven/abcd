@@ -109,7 +109,7 @@ var reservedEntryIDs = []string{
 	syntheticEntryID, speculativeEntryID, braceEntryID, heredocEntryID, substitutionEntryID,
 	gitConfigEntryID, stashEntryID, interpreterStreamEntryID, commandTooLongEntryID, unparsableEntryID,
 	unknownProgramEntryID, ifsSplitEntryID, scriptHazardEntryID, scriptWrittenEntryID, scriptUnreadEntryID,
-	forgeTextEntryID, forgeUnreadEntryID,
+	forgeTextEntryID, forgeUnreadEntryID, shellCDeleteEntryID,
 }
 
 // speculate runs Tier 2 over every segment Tier 1 left unmatched, returning at

@@ -12,9 +12,13 @@ session sees a sibling's capture or fix before it mints a duplicate or re-fixes
 a closed record, then list the reservations on the shared remote, so it sees
 the items another person, computer or hosted session has started. It takes no
 lock. Its one network act is a fetch from `origin` of the reservation
-branches (and the default branch); the fetch updates the remote-tracking
-reservation branches and stamps when it ran in the local tier, and nothing
-else is written.
+branches (and the default branch, and `origin`'s release tags `v*`); the fetch
+updates the remote-tracking reservation branches and the release tags abcd
+keeps under `refs/abcd/release-tags/`, and stamps when it ran in the local
+tier, with when it first fetched each reservation dated ahead of this
+computer's clock or undated, and nothing else is written. The release-tag
+refs are ordinary refs in this checkout, so `git log --all` lists the commits
+they name and `git push --mirror` would push them.
 
 A peer is one of two things, both sharing this repository's git common dir:
 

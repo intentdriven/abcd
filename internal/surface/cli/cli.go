@@ -403,6 +403,8 @@ func NewRootCommand() *cobra.Command {
 	root.AddCommand(newModeCommand(&asJSON))
 	root.AddCommand(newPeersCommand(&asJSON))
 	root.AddCommand(newReserveCommand(&asJSON))
+	root.AddCommand(newAnnounceCommand(&asJSON))
+	root.AddCommand(newStatusCommand(&asJSON))
 	root.AddCommand(newLandCommand(&asJSON))
 	root.AddCommand(newDrainCommand(&asJSON))
 	root.AddCommand(newBuildCommand(&asJSON))
@@ -1713,10 +1715,18 @@ unknown. A memory.json that cannot be read is named on stderr and recalls
 nothing, and the rules still inject. Every outcome, an error included,
 exits 0, so the hook can never wedge a session.
 
+After them comes a "## STATUS" block when the last fetch of the status
+branches brought something this checkout has not shown: each new
+announcement, release hold, doubtful branch and failed fetch, once, newest
+first, at most ten lines and one more that counts the rest. It is read from
+disk alone, inside the one-second deadline the hook sets when it starts,
+and says the status is unavailable when the deadline passes first. A rules.json that will not load
+does not switch it off: text then carries the block alone, beside the error.
+
 On the first prompt of a session whose start reserved it a name, when the
 session has no title yet, plain stdout is instead one object that sets the
-title, with the text above as its additional context (empty when the rules
-could not be loaded):
+title, with the text above as its additional context (the status block
+alone, or empty, when the rules could not be loaded):
 
   {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit",
    "additionalContext": ..., "sessionTitle": ...}}
@@ -1724,6 +1734,10 @@ could not be loaded):
 and the --json envelope carries the name as session_title.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// The hook's one deadline (C12), set before anything else runs:
+			// the status block is read, rendered and kept shown inside what
+			// the drain, the rules and the memory notes leave of it.
+			deadline := time.Now().Add(hookBudget)
 			in, err := readHookInput(cmd)
 			if err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd rules: unreadable hook payload (%s); injecting nothing\n", termsafe.Sanitize(err.Error()))
@@ -1767,14 +1781,27 @@ and the --json envelope carries the name as session_title.`,
 				// wrap with a bare "abcd" to avoid "abcd rules: rules: …"
 				// (iss-2608261550491547).
 				fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s; injecting nothing\n", termsafe.Sanitize(err.Error()))
+				// The status block is the status reader's, not the rules':
+				// a rules.json that will not load does not switch it off
+				// (spc-2610150728396006 step 3).
+				status := routerStatus(cmd, root, deadline)
+				defer status.MarkShown()
 				// The title owed on this prompt is set even so: naming does
-				// not depend on the rules (hook_session_name.go).
+				// not depend on the rules (hook_session_name.go). The status
+				// block, when there is one, is the context it is set with.
 				if title := resendSessionTitle(cmd, in); title != "" {
 					if *asJSON {
-						return routerEmit(cmd, routerView{Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title})
+						return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error(), SessionTitle: title})
 					}
-					emitTitled(cmd, "", title)
+					emitTitled(cmd, status.Text, title)
 					return nil
+				}
+				if status.Text != "" && !*asJSON {
+					fmt.Fprint(cmd.OutOrStdout(), status.Text)
+					return nil
+				}
+				if status.Text != "" {
+					return routerEmit(cmd, routerView{Text: status.Text, Injected: []string{}, Recalled: []string{}, Error: err.Error()})
 				}
 				return routerRefused(cmd, *asJSON, err.Error())
 			}
@@ -1816,6 +1843,14 @@ and the --json envelope carries the name as session_title.`,
 				fmt.Fprintln(cmd.ErrOrStderr())
 			}
 			text := res.Text + mem.Text
+			// The status block (itd-2609151838312703 C6, C8, C10 to C12,
+			// C18): what the last fetch of the status branches brought that
+			// this checkout has not shown, from disk alone, inside its own
+			// budget, after the rules and the memory notes. It joins text
+			// before the title is read, so both emit paths below carry it.
+			status := routerStatus(cmd, root, deadline)
+			defer status.MarkShown()
+			text = joinBlocks(text, status.Text)
 			// The name this session's start reserved, set once at its first
 			// prompt (hook_session_name.go).
 			title := resendSessionTitle(cmd, in)

@@ -77,7 +77,8 @@ type judged struct {
 	tip
 	present bool
 	// derived is true when the record is terminal on the default branch as
-	// fetched, so its reservation counts as released whatever its expiry.
+	// fetched, or a release subject's tag is on origin as fetched, so its
+	// reservation counts as released whatever its expiry.
 	derived bool
 	verdict lease.Verdict
 	// mine and thisCopy compare a readable tip's holder and copy with the
@@ -98,7 +99,7 @@ func (j judged) released() bool {
 // tip it judged allows. A refusal pushes nothing; a failure leaves nothing
 // locally but an unreferenced commit git's collection removes.
 func Reserve(root string, req Request, o Options) (Result, error) {
-	p, err := prepare(root, req, o, originPresent)
+	p, err := prepare(root, req, o, func(root string) error { return originPresent(root, "reservations") })
 	if err != nil {
 		return Result{}, err
 	}
@@ -111,6 +112,16 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		return Result{}, err
 	}
 	p.derivedGap = gap
+	if isRelease(p.id) && !p.req.Release && !p.req.Renew {
+		// A release already tagged has no cut left to hold.
+		tagged, err := taggedOnOrigin(root, p.id)
+		if err != nil {
+			return Result{}, refuse("could not read whether %s is tagged on %s: %s; %s", releaseTag(p.id), Remote, redacted(err), noReservation)
+		}
+		if tagged {
+			return Result{}, refuse("%s is already tagged on %s, so there is no cut to hold; %s", releaseTag(p.id), Remote, nothingPushed)
+		}
+	}
 	j, err := judge(p, tree)
 	if err != nil {
 		return Result{}, err
@@ -317,7 +328,7 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 			fmt.Sprintf("%s holds no reservation on %s to renew; %s", p.id, Remote, nothingPushed))
 	case j.derived:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldReleased, ErrBackOff,
-			fmt.Sprintf("the reservation on %s is released: %s is finished on %s's default branch; %s", p.id, p.id, Remote, nothingPushed))
+			fmt.Sprintf("the reservation on %s is released: %s; %s", p.id, derivedWhy(p.id), nothingPushed))
 	case j.Unreadable != "":
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldUnreadable, ErrBackOff,
 			fmt.Sprintf("the reservation on %s is unreadable (%s); %s", p.id, j.Unreadable, nothingPushed))
@@ -367,14 +378,21 @@ func judge(p *prepared, tree string) (judged, error) {
 	if !ok {
 		return j, nil
 	}
-	// A default branch the fetch could not read derives nothing: the copy
-	// this clone holds may be stale, so it is not read.
-	if p.derivedGap == "" {
-		j.derived, err = terminalOnDefault(p.root, p.id)
-	}
-	if err != nil {
-		return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
-			p.id, redacted(err), noReservation)
+	switch {
+	case isRelease(p.id):
+		// A release's tag is read by the same fetch as its reservation, so
+		// it is never stale beside it.
+		if j.derived, err = taggedOnOrigin(p.root, p.id); err != nil {
+			return judged{}, refuse("could not read whether %s is tagged on %s: %s; %s",
+				releaseTag(p.id), Remote, redacted(err), noReservation)
+		}
+	case p.derivedGap == "":
+		// A default branch the fetch could not read derives nothing: the
+		// copy this clone holds may be stale, so it is not read.
+		if j.derived, err = terminalOnDefault(p.root, p.id); err != nil {
+			return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
+				p.id, redacted(err), noReservation)
+		}
 	}
 	if t.Unreadable != "" {
 		j.verdict = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)
@@ -384,6 +402,15 @@ func judge(p *prepared, tree string) (judged, error) {
 	j.mine = sameHolder(t.Holder, p.holder)
 	j.thisCopy = t.Copy == p.copy
 	return j, nil
+}
+
+// derivedWhy says what released a subject outside its own tip: a release's
+// tag on origin, or a record finished on origin's default branch.
+func derivedWhy(id string) string {
+	if isRelease(id) {
+		return releaseTag(id) + " is tagged on " + Remote
+	}
+	return id + " is finished on " + Remote + "'s default branch"
 }
 
 // terminalFolders are the folders whose membership finishes a record: an
@@ -412,16 +439,48 @@ func terminalOnDefault(root, id string) (bool, error) {
 // a ref under refs/remotes/origin/, or "".
 func originDefault(root string) string {
 	trace("symbolic-ref", "--quiet", "refs/remotes/"+Remote+"/HEAD")
-	ref := gitutil.DefaultRef(root)
-	if !strings.HasPrefix(ref, "refs/remotes/"+Remote+"/") {
-		return ""
+	return gitutil.TrackedDefaultBranch(root, Remote)
+}
+
+// remoteDefault asks origin which branch is its default, for a clone that
+// names none (no origin/HEAD, and no conventional branch name fetched), and
+// returns that branch's remote-tracking ref, refs/remotes/origin/<branch>. It
+// asks with `git ls-remote --symref origin HEAD`, which reads the remote's
+// advertisement and writes nothing here: origin/HEAD stays as the repository
+// has it, unset. An answer that names no branch, or a branch whose name is
+// not a valid ref, is an error, never a guess. A branch literally named HEAD
+// names no branch: its remote-tracking ref would be origin/HEAD itself.
+func remoteDefault(root string) (string, error) {
+	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
+	trace(args...)
+	out, err := gitutil.Net(root, args...)
+	if err != nil {
+		return "", errors.New(redacted(err))
 	}
-	return ref
+	for _, line := range strings.Split(out, "\n") {
+		rest, ok := strings.CutPrefix(line, "ref: ")
+		if !ok {
+			continue
+		}
+		target, name, ok := strings.Cut(rest, "\t")
+		if !ok || name != "HEAD" {
+			continue
+		}
+		branch, ok := strings.CutPrefix(target, "refs/heads/")
+		if !ok || branch == "" || branch == "HEAD" {
+			return "", errors.New("origin's HEAD does not name a branch")
+		}
+		if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
+			return "", errors.New("origin's HEAD names a branch whose name is not a valid ref")
+		}
+		return "refs/remotes/" + Remote + "/" + branch, nil
+	}
+	return "", errors.New("origin did not name a default branch")
 }
 
 // originPresent refuses a checkout with no remote named origin, naming the
-// remotes it has.
-func originPresent(root string) error {
+// remotes it has; what names what lives there ("reservations").
+func originPresent(root, what string) error {
 	out, err := localGit(root, 64<<10, "remote")
 	if err != nil {
 		return refuse("could not list this checkout's remotes: %s; %s", redacted(err), nothingPushed)
@@ -431,14 +490,14 @@ func originPresent(root string) error {
 		return nil
 	}
 	if len(names) == 0 {
-		return refuse("reservations live on the remote named %s, and this checkout has no remote; %s", Remote, nothingPushed)
+		return refuse("%s live on the remote named %s, and this checkout has no remote; %s", what, Remote, nothingPushed)
 	}
 	quoted := make([]string, len(names))
 	for i, n := range names {
 		quoted[i] = echoName(n)
 	}
-	return refuse("reservations live on the remote named %s, and this checkout's remotes are: %s; %s",
-		Remote, strings.Join(quoted, ", "), nothingPushed)
+	return refuse("%s live on the remote named %s, and this checkout's remotes are: %s; %s",
+		what, Remote, strings.Join(quoted, ", "), nothingPushed)
 }
 
 // echoName renders a remote's name bare when it is a plain name, quoted
@@ -470,27 +529,73 @@ func echoName(n string) string {
 // before it keep their stamps, each true, and it and those after it keep the
 // stamp of their last fetch that recorded one.
 func fetch(root string, now time.Time, outcome string, spaces ...namespace) (gap string, err error) {
+	return fetchWith(root, now, outcome, originDefault(root), spaces...)
+}
+
+// fetchWith is fetch with the default branch's remote-tracking ref named by
+// the caller: ref is refs/remotes/origin/<branch>, or "" to fetch the
+// namespaces alone.
+func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namespace) (gap string, err error) {
 	if len(spaces) == 0 {
 		return "", refuse("a fetch names no namespace; %s", outcome)
 	}
-	args := []string{"fetch", "--prune", "--no-tags", Remote}
+	// A namespace that names each branch (only) may name thousands: those
+	// refspecs travel on stdin (`git fetch --stdin`), never on the command
+	// line, which the system's argument limit bounds. A globbed refspec stays
+	// on the command line.
+	var listed []string
 	for _, ns := range spaces {
-		args = append(args, ns.refspec())
+		if ns.only != nil {
+			listed = append(listed, ns.refspecs()...)
+		}
 	}
-	ref := originDefault(root)
+	args := []string{"fetch", "--prune", "--no-tags", Remote}
+	if len(listed) > 0 {
+		args = []string{"fetch", "--prune", "--no-tags", "--stdin", Remote}
+	}
+	bare := len(args)
+	for _, ns := range spaces {
+		if ns.only == nil {
+			args = append(args, ns.refspecs()...)
+		}
+		args = append(args, ns.also...)
+	}
+	stdin := ""
+	if len(listed) > 0 {
+		stdin = strings.Join(listed, "\n") + "\n"
+	}
 	withDefault := args
 	if ref != "" {
 		branch := strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/")
 		withDefault = append(append([]string(nil), args...), "+refs/heads/"+branch+":"+ref)
 	}
-	trace(withDefault...)
-	_, ferr := gitutil.Net(root, withDefault...)
-	if ferr != nil && ref != "" {
-		gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
-		trace(args...)
-		_, ferr = gitutil.Net(root, args...)
+	// A fetch naming no refspec at all (a listed namespace origin holds
+	// nothing of, and no default branch) is not run: a bare `git fetch
+	// origin` would fetch whatever this clone is configured to.
+	var ferr error
+	if len(listed) > 0 {
+		ferr = stdinFetchFloor()
+	}
+	if ferr == nil {
+		if len(withDefault) > bare || len(listed) > 0 {
+			trace(withDefault...)
+			_, ferr = gitutil.NetInput(root, stdin, withDefault...)
+		}
+		if ferr != nil && ref != "" {
+			gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
+			ferr = nil
+			if len(args) > bare || len(listed) > 0 {
+				trace(args...)
+				_, ferr = gitutil.NetInput(root, stdin, args...)
+			}
+		}
 	}
 	if ferr != nil {
+		// Each namespace keeps that its fetch failed, and why, for every
+		// reader to say rather than show the last view as current (C10).
+		for _, ns := range spaces {
+			noteFetchFailure(root, ns, now, redacted(ferr))
+		}
 		e := &FetchError{Reason: redacted(ferr)}
 		if what := nouns(spaces); what != reservations.noun || outcome != noReservation {
 			e.what, e.outcome = what, outcome
@@ -499,10 +604,26 @@ func fetch(root string, now time.Time, outcome string, spaces ...namespace) (gap
 	}
 	for _, ns := range spaces {
 		if err := stampFetch(root, ns, now); err != nil {
+			noteFetchFailure(root, ns, now, "fetched, but could not record when: "+redacted(err))
 			return "", refuse("fetched %s, but could not record when: %s; %s", ns.noun, redacted(err), outcome)
 		}
+		clearFetchFailure(root, ns)
 	}
 	return gap, nil
+}
+
+// stdinFetchFloor refuses a fetch that reads its refspecs on standard input
+// (`git fetch --stdin`) on a git older than 2.29, which first read them
+// there, in fixed words naming the version: nil when git is at the floor.
+func stdinFetchFloor() error {
+	ok, version := gitutil.GitAtLeast(2, 29)
+	switch {
+	case ok:
+		return nil
+	case version == "":
+		return errors.New("`git fetch --stdin`, which the status fetch reads its branches on, needs git 2.29 or later, and this git's version could not be read")
+	}
+	return fmt.Errorf("`git fetch --stdin`, which the status fetch reads its branches on, needs git 2.29 or later, and this git is %s", version)
 }
 
 // FetchError is a failed fetch from origin: Reason is git's own,

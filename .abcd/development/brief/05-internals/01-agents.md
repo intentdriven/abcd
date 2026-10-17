@@ -2,9 +2,11 @@
 
 abcd hands every judgement call to a model the host already runs, and keeps the
 deterministic half for itself. What that buys a user: the default install needs no
-API key and no model configuration, and every judgement comes back as JSON a verb
-validates, so a model that hallucinates a citation produces a refusal rather than
-a record. What it costs: abcd cannot judge anything on its own, and a verb whose
+API key and no model configuration, and a verb checks every judgement it takes in.
+A JSON payload is validated against the core's schema, so a model that
+hallucinates a citation produces a refusal rather than a record; a reviewer's
+prose return is read by its one verdict heading, and refused with none or more
+than one. What it costs: abcd cannot judge anything on its own, and a verb whose
 agent was never dispatched has no fallback verdict to offer.
 
 An agent here is a **markdown prompt file** under `agents/`, host-delegated by
@@ -32,24 +34,36 @@ Eighteen agent prompts ship in `agents/` today, in five groups:
   checked and drawn by the binary (spc-2610030911534855).
 - **The intent auditor**, `intent-auditor`, which judges a shipped intent's
   promise against delivered reality (below).
-- **Repo-workflow reviewers and researchers**, dispatched by a human rather than
-  by a verb: `docs-currency-reviewer`, `ruthless-reviewer`, `security-reviewer`,
-  and `sota-researcher`.
+- **Repo-workflow reviewers and researchers**, two of them dispatched through a
+  verb and two by a person alone. `ruthless-reviewer` and `security-reviewer`
+  are the validators of the implement loop's validate stage: on every lane a
+  `build` or `drain` run opens, the loop names each in turn and records the
+  verdict it returns. By default the host starts each; a runner the role's
+  route names, or `oracle.review = rp`, has `implement step` start it instead
+  ([Oracle backend resolution](#oracle-backend-resolution)).
+  `docs-currency-reviewer` is one of the release gate's semantic passes: `launch
+  ship` names it in the receipts checklist it ends with, for the operator to
+  run, and `launch receipts` and the release workflow check its receipt, but no
+  verb starts it or records its verdict. No verb dispatches `sota-researcher`.
 - **The cold-reading instrument**: the four position definitions and the ledger
   `scribe` (below).
 - **The question drafter**, `question-drafter`, which the agent running one of
   abcd's interviews dispatches to draft each question to the asking rules and
   the rows limit; no verb dispatches it
-  ([`04-surfaces/README.md`](../04-surfaces/README.md#agents-no-verb-dispatches)).
+  ([`04-surfaces/README.md`](../04-surfaces/README.md#agents-outside-the-verb-chapters)).
 
-Each declares its inputs and outputs as JSON, and the schemas are the core's
-rather than the prompt's. The record families — the issue schema, admissions and
-surprises, dispositions, and the cold-reading run and item contract — share one
-package, `internal/core/issueschema`, deliberately: the verb that writes a record
-and the gate that judges the committed tree have to agree on what a well-formed
-record carries, and two hand-kept copies drift the moment one side gains a field.
-So the cold-reading item contract does not live with cold reading; the reading
-package imports it from there.
+Fourteen of them return JSON, and the schemas are the core's rather than the
+prompt's. The four repo-workflow reviewer and researcher prompts declare no JSON
+contract: `docs-currency-reviewer` reports a table, `ruthless-reviewer` and
+`security-reviewer` return prose ending in a verdict heading the implement loop
+reads, and `sota-researcher` returns a ranked list. The record families — the
+issue schema, admissions and surprises, dispositions, and the cold-reading run
+and item contract — share one package, `internal/core/issueschema`,
+deliberately: the verb that writes a record and the gate that judges the
+committed tree have to agree on what a well-formed record carries, and two
+hand-kept copies drift the moment one side gains a field. So the cold-reading
+item contract does not live with cold reading; the reading package imports it
+from there.
 
 `agents/` holds the prompt files and their per-agent fixture directories and
 nothing else. Because the plugin manifest declares no agents key, the loader
@@ -95,10 +109,17 @@ the reading's output claims, and takes the regime from the definition rather tha
 from any operand or configuration key, so an output claiming a different regime is
 refused.
 
-A definition holds five parts, and a test asserts exactly that composition:
-`## Object`, `## Question`, `## The blindness core`, `## Regime`, and
-`## Item shape`. The repository sources the assembler admits at that position are
-stated inside `## Object` rather than standing as a part of their own. The
+A definition holds five parts: `## Object`, `## Question`,
+`## The blindness core`, `## Regime`, and `## Item shape`. A test looks up four
+of them by heading, and finds the blindness core by the markers around it
+rather than by its heading.
+Each definition ends with a sixth section that is not one of the parts,
+`## Shell commands the guard refuses`: the block generated from the shell
+guard's registry into the agent prompts that can run a shell, outside the
+blindness core, restating for the sub-agent a command the guard would refuse.
+No test refuses a section beside the five.
+The repository sources the assembler admits at that position are stated inside
+`## Object` rather than standing as a part of their own. The
 blindness core is byte-identical across all four — a test holds it so — and states
 what is true of every reading whatever its position; a definition that edited its
 own copy would be claiming a licence its position does not hold. `## Item shape`
@@ -123,11 +144,21 @@ record kind. Only the first ships.
    of record; the per-run artefact beside it is an ephemeral review request in the
    gitignored local tier. The verb name is `audit` per adr-40, which reserves it
    for promise-versus-reality verdicts; the top-level `/abcd:audit` stays reserved
-   for itd-16's hash-chain surface. Running it is manual: closing a spec moves the
-   linked intent to `shipped/`, but nothing fires the auditor off that transition
-   (spc-6 disowned auto-firing, and no spec owns it now). The term-drift,
-   PRD-fidelity and modification-grammar outputs the role was drawn with are
-   **deferred**: none is in the shipped prompt or in any lint.
+   for itd-16's hash-chain surface. A hand-run `spec close` that ships the
+   intent makes its audit owed: it writes an OWED receipt, a marker in the
+   intent's `## Audit Notes` and a review request under
+   `.abcd/.work.local/reviews/`. When `oracle.roles.intent-auditor` points at a
+   provider connection, the close sends the request there and ingests the
+   verdict. Otherwise the route ends on the harness, and the audit stays owed
+   until the host runs the auditor from that request (`abcd intent audit
+   --owed` drains the owed set). Either way the close stands: a failed call
+   or a refused answer leaves the audit owed, and an answer keyed to its
+   receipt that fails the verdict's validation is dead-lettered. A `build` run
+   audits in the implement loop's validate stage, on the lane whose landing
+   closes the intent's last open spec and before that lane lands; a `drain` run
+   never does, since its lanes are issues and an issue has no criteria. The
+   term-drift, PRD-fidelity and modification-grammar outputs the role was drawn
+   with are **deferred**: none is in the shipped prompt or in any lint.
 2. **Cross-document fidelity → `abcd intent consistency [<itd-N>]`** (shipped,
    itd-48). It reads the brief and every intent outside `superseded/` and reports
    terminology drift, premise contradictions, scope leakage, sequencing
@@ -185,18 +216,28 @@ advice the adapter layer offers rather than a pipeline the core imposes.
 
 ## Verdict-tag protocol
 
-Two verdict enums are in play, and they are deliberately disjoint.
+Two registered verdict enums are in play, and they are deliberately disjoint.
+The implement loop's two reviewers state verdict words of their own.
 
-**1. Review verdicts** — `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` — assess a *change*.
-They are emitted as tags in oracle output and are a shared convention at the
-`spec`/`run` seam boundary (adr-24, adr-26), so any abcd-produced review is
-portable across the seam without a tool-specific validator.
+**1. Review verdicts** — `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` — assess a packed
+*lifeboat*. `lifeboat-reviewer` returns one to `disembark review`, which refuses
+the whole payload when the verdict is outside the set; with no review handed in,
+the verb maps its own checks onto the same set.
 
 **2. Per-criterion acceptance verdicts** — `{MET, MET_WITH_CONCERNS, NOT_MET,
-INCONCLUSIVE}` — assess a *promise against reality*, per itd-1. Rollup logic lives
-in [`04-surfaces/05-intent.md`](../04-surfaces/05-intent.md).
+INCONCLUSIVE}` — assess a *promise against reality*, per itd-1. `intent-auditor`
+returns them, to `intent audit` and to the implement loop's audit step on the
+lane whose landing closes the spec. Rollup logic lives in
+[`04-surfaces/05-intent.md`](../04-surfaces/05-intent.md).
 
-Reviews emit family 1; auditors emit family 2. The two are never mixed.
+**The loop's reviewer verdicts.** `ruthless-reviewer` states `SHIP` or
+`FIX FIRST` under its `### Verdict` heading, and `security-reviewer` states
+`APPROVE`, `BLOCK` or `NEEDS-INPUT`; the loop records the word and lets the lane
+advance only on `SHIP` or `APPROVE`. They are each role's own words, not
+family 1: the ruthless reviewer's `SHIP` shares only its spelling.
+
+The lifeboat review emits family 1; the auditor emits family 2. The two are never
+mixed.
 
 ## The scribe protocol
 

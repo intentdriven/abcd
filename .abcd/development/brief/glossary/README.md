@@ -169,12 +169,18 @@ above are the shape's specification, and conformance to them is a review respons
 5. Copy the rendered blocks the drift gate prints into the generated regions above and below — the
    index is derived from the term files, never hand-typed.
 
-### Via `/abcd:intent grill` (glossary-aware mode)
+### Via `/abcd:intent grill` (design target, not shipped)
 
-When a project has this glossary directory, `/abcd:intent grill` enters
-**glossary-aware mode** and can write new term files inline during the grill session.
+`/abcd:intent grill` is a **design target** (itd-27): `abcd intent` registers no grill sub-verb,
+so no shipped surface writes term files during an interview, and a new term is added manually, as
+above. What ships under the grill name today is the record-grill leg of `/abcd:ideate`'s admission
+gauntlet and the GRILL rules domain's asking rules; neither writes term files. The rest of this
+section describes the design.
 
-**How grill writes back:**
+When a project has this glossary directory, `/abcd:intent grill` would enter
+**glossary-aware mode** and write new term files inline during the grill session.
+
+**How grill would write back:**
 
 - When the interview surfaces a new noun the user wants to pin, grill offers to write it
   immediately (never batched to the end of the session — per Pocock's `/grill-with-docs`
@@ -288,5 +294,5 @@ strings is a guaranteed false positive on every run. A corpus of that shape belo
 ## Acknowledgements
 
 Term file format adapted from [mattpocock/skills](https://github.com/mattpocock/skills) (MIT licence).
-The `/abcd:intent grill` sub-verb's glossary capture pattern draws from the `grill-with-docs` skill
-in that repository.
+The glossary capture pattern designed for the `/abcd:intent grill` sub-verb draws from the
+`grill-with-docs` skill in that repository.

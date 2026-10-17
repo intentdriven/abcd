@@ -1,0 +1,6 @@
+---
+id: dcn-2610161949032458
+slug: the-status-intake-keeps-every-branch-it
+date: 2026-10-16
+---
+2026-10-16 — The status intake keeps every branch it left unread, each with the turn it was left at, and walks them before any other branch, the one left first first; a branch walked and left again goes behind every branch already waiting, so no branch waits behind more than the branches left before it. Once the cap has cut a branch short, it takes half its share from its newest unread commits and the rest from its oldest, and its read mark moves up to the newest commit beneath which every commit is read, so every unread commit is read within a bounded number of intakes. The forge is asked about the branch waiting longest first, and each branch asked goes behind every branch still waiting; a tip whose newest covering push came from an app is kept as asked until the tip moves, so every branch is asked within a bounded number of fetches. This refines dcn-2610161907315656 (spc-2610150728396006 step 3 fix round 5, on review): one place to start from, a newest-first read of each branch and a fixed newest-first order of asking each let a branch that keeps gaining commits keep other announcements unread or unasked for good.

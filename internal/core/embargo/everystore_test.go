@@ -362,3 +362,25 @@ func TestNoFreePlaceAdviceFitsWhoHoldsThePlace(t *testing.T) {
 		mustRefuse(t, err, "worktrees/<root>/embargo")
 	})
 }
+
+// TestCheckRefusesARecordAnotherStoreHoldsUnderEmbargo: the record check
+// reads the same stores the text check does, so a record that only another
+// store under this home links to an unpublished advisory is refused, named
+// by its place and never by its id, and a record no store holds passes.
+func TestCheckRefusesARecordAnotherStoreHoldsUnderEmbargo(t *testing.T) {
+	f := newFixture(t)
+	unrelatedStore(t, f.home, sampleState())
+	res, err := Check(CheckRequest{Home: f.home, RepoRoot: f.repo.Root(), Records: []string{"iss-5", "iss-2610120000000001"}})
+	if err != nil {
+		t.Fatalf("the check refused: %v", err)
+	}
+	wantKinds(t, res, KindEmbargoedRecord)
+	if got := res.Findings[0]; got.Source != "record 2" || strings.Contains(got.Source+got.Where+got.Snippet, "iss-2610120000000001") {
+		t.Fatalf("finding %+v; want it named as the second record, without the id", got)
+	}
+	res, err = Check(CheckRequest{Home: f.home, RepoRoot: f.repo.Root(), Records: []string{"iss-5"}})
+	if err != nil {
+		t.Fatalf("the check refused: %v", err)
+	}
+	wantKinds(t, res)
+}
