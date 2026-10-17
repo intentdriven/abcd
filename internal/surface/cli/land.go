@@ -37,8 +37,10 @@ func newLandCommand(asJSON *bool) *cobra.Command {
 			"land runs the branch's own `make preflight` with your environment and\n" +
 			"credentials, so run it only on a branch whose content you trust.\n\n" +
 			"  1. Origin: every fetch and push URL of origin must be the repository the forge\n" +
-			"     client resolves, and the forge's default branch must be the one origin/HEAD\n" +
-			"     names here and not the branch; checked before anything runs.\n" +
+			"     client resolves, and the forge's default branch must be the one origin\n" +
+			"     itself names (git ls-remote --symref origin HEAD) and not the branch;\n" +
+			"     checked before anything runs. A stale or missing local origin/HEAD is\n" +
+			"     reported and passed over, never written.\n" +
 			"  2. Landed: origin's default branch is fetched; a head already on it has landed,\n" +
 			"     and so has one the forge lists a merged pull request of this repository's\n" +
 			"     branch at (a squash or rebase merge): land says so and stops, pushing,\n" +

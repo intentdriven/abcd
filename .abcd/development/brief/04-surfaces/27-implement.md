@@ -266,8 +266,10 @@ refuses, waits or signals anything. With its wait flag it is the one waiter
 concurrent sessions gate a preflight or a race run with, and `make preflight`
 runs its own test stages through it: it blocks until the one-minute load is
 below the wait limit, no other `go test -race` run is live, no other
-`make preflight` is running and no other waiter is ahead of it in the queue (a
-lower pid) or running its command, under any account; a waiter beneath a waiter
+`make preflight` is running and no other waiter is ahead of it in the queue (one
+that started earlier, or within two seconds of it, and has the lower pid: two
+whose start and pid disagree, as after the process ids wrap, wait on neither) or
+running its command, under any account; a waiter beneath a waiter
 running its command takes that ancestor's place, ahead of every queued waiter. All of that is read from
 the process table, which shows every account's processes, judged from each
 candidate's arguments with the waiter's own ancestry excluded
@@ -280,7 +282,12 @@ running its command holds every later gate for the command's length, by design. 
 gate: the waiter waits a random 15 to 60 seconds and checks everything again,
 and opens only if that re-check is clear too (iss-2610102020442624). Within one
 account it also takes a hold under the abcd home, which a waiter beneath the
-holder ignores. It runs a command given after `--` and exits with its code,
+holder ignores. Across accounts, which share no hold, two waiters whose start
+and pid disagree can still open in one moment, so the command form shows itself
+as running its command from the moment it opens and looks once more two seconds
+later; the one with the higher pid stands back, gives up its hold, re-draws its
+jitter and waits again, at most three times, while the lower pid runs.
+It runs a command given after `--` and exits with its code,
 forwarding an interrupt to it, and gives up after its timeout at exit 1, naming
 what it was still waiting on. Inside `make preflight` each test stage then
 takes a `go test -p` derived from the online cores and the load as the stage
