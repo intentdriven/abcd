@@ -2,9 +2,11 @@
 
 abcd hands every judgement call to a model the host already runs, and keeps the
 deterministic half for itself. What that buys a user: the default install needs no
-API key and no model configuration, and every judgement comes back as JSON a verb
-validates, so a model that hallucinates a citation produces a refusal rather than
-a record. What it costs: abcd cannot judge anything on its own, and a verb whose
+API key and no model configuration, and a verb checks every judgement it takes in.
+A JSON payload is validated against the core's schema, so a model that
+hallucinates a citation produces a refusal rather than a record; a reviewer's
+prose return is read by the verdict heading it ends with, and refused without
+one. What it costs: abcd cannot judge anything on its own, and a verb whose
 agent was never dispatched has no fallback verdict to offer.
 
 An agent here is a **markdown prompt file** under `agents/`, host-delegated by
@@ -54,13 +56,14 @@ Fourteen of them return JSON, and the schemas are the core's rather than the
 prompt's. The four repo-workflow reviewer and researcher prompts declare no JSON
 contract: `docs-currency-reviewer` reports a table, `ruthless-reviewer` and
 `security-reviewer` return prose ending in a verdict heading the implement loop
-reads, and `sota-researcher` returns a ranked list. The record families — the issue schema, admissions and
-surprises, dispositions, and the cold-reading run and item contract — share one
-package, `internal/core/issueschema`, deliberately: the verb that writes a record
-and the gate that judges the committed tree have to agree on what a well-formed
-record carries, and two hand-kept copies drift the moment one side gains a field.
-So the cold-reading item contract does not live with cold reading; the reading
-package imports it from there.
+reads, and `sota-researcher` returns a ranked list. The record families — the
+issue schema, admissions and surprises, dispositions, and the cold-reading run
+and item contract — share one package, `internal/core/issueschema`,
+deliberately: the verb that writes a record and the gate that judges the
+committed tree have to agree on what a well-formed record carries, and two
+hand-kept copies drift the moment one side gains a field. So the cold-reading
+item contract does not live with cold reading; the reading package imports it
+from there.
 
 `agents/` holds the prompt files and their per-agent fixture directories and
 nothing else. Because the plugin manifest declares no agents key, the loader
@@ -203,18 +206,28 @@ advice the adapter layer offers rather than a pipeline the core imposes.
 
 ## Verdict-tag protocol
 
-Two verdict enums are in play, and they are deliberately disjoint.
+Two registered verdict enums are in play, and they are deliberately disjoint.
+The implement loop's two reviewers state verdict words of their own.
 
-**1. Review verdicts** — `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` — assess a *change*.
-They are emitted as tags in oracle output and are a shared convention at the
-`spec`/`run` seam boundary (adr-24, adr-26), so any abcd-produced review is
-portable across the seam without a tool-specific validator.
+**1. Review verdicts** — `{SHIP, NEEDS_WORK, MAJOR_RETHINK}` — assess a packed
+*lifeboat*. `lifeboat-reviewer` returns one to `disembark review`, which refuses
+the whole payload when the verdict is outside the set; with no review handed in,
+the verb maps its own checks onto the same set.
 
 **2. Per-criterion acceptance verdicts** — `{MET, MET_WITH_CONCERNS, NOT_MET,
-INCONCLUSIVE}` — assess a *promise against reality*, per itd-1. Rollup logic lives
-in [`04-surfaces/05-intent.md`](../04-surfaces/05-intent.md).
+INCONCLUSIVE}` — assess a *promise against reality*, per itd-1. `intent-auditor`
+returns them, to `intent audit` and to the implement loop's audit step on the
+lane whose landing closes the spec. Rollup logic lives in
+[`04-surfaces/05-intent.md`](../04-surfaces/05-intent.md).
 
-Reviews emit family 1; auditors emit family 2. The two are never mixed.
+**The loop's reviewer verdicts.** `ruthless-reviewer` states `SHIP` or
+`FIX FIRST` under its `### Verdict` heading, and `security-reviewer` states
+`APPROVE`, `BLOCK` or `NEEDS-INPUT`; the loop records the word and lets the lane
+advance only on `SHIP` or `APPROVE`. They are each role's own words, not
+family 1: the ruthless reviewer's `SHIP` shares only its spelling.
+
+The lifeboat review emits family 1; the auditor emits family 2. The two are never
+mixed.
 
 ## The scribe protocol
 
