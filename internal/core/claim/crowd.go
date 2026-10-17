@@ -213,12 +213,12 @@ func capRefusal(mine []string, limit int, note string) error {
 }
 
 // LiveHeldBy is the records holder holds live in the view, from any copy,
-// sorted, less except: the count the cap judges a fresh reservation of except
+// sorted, less except and less any release hold, which the cap does not count: the count the cap judges a fresh reservation of except
 // by (crowding), read from the view alone so a caller counts with no fetch.
 func (s Snapshot) LiveHeldBy(holder, except string) []string {
 	var out []string
 	for _, r := range s.Reservations {
-		if r.State == StateLive && r.Record != except && sameHolder(r.Holder, holder) {
+		if r.State == StateLive && r.Record != except && sameHolder(r.Holder, holder) && !isRelease(r.Record) {
 			out = append(out, r.Record)
 		}
 	}

@@ -202,3 +202,18 @@ func writeConfig(t *testing.T, home, body string) {
 		t.Fatal(err)
 	}
 }
+
+// TestLiveHeldByLeavesOutAReleaseHold: the count a drain compares with the
+// cap is the cap's own, so a live release hold, which the cap does not count,
+// is left out of it.
+func TestLiveHeldByLeavesOutAReleaseHold(t *testing.T) {
+	snap := Snapshot{Reservations: []Reservation{
+		{Record: "iss-1", Holder: "octo", State: StateLive},
+		{Record: "rel-v0.15.0", Holder: "octo", State: StateLive},
+		{Record: "iss-2", Holder: "Octo", State: StateLive},
+		{Record: "iss-3", Holder: "quinn", State: StateLive},
+	}}
+	if got := snap.LiveHeldBy("octo", "iss-9"); len(got) != 2 || got[0] != "iss-1" || got[1] != "iss-2" {
+		t.Fatalf("LiveHeldBy = %v; want iss-1 and iss-2, the release hold left out", got)
+	}
+}
