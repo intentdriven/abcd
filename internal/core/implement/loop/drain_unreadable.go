@@ -137,7 +137,7 @@ func accountName(uid uint32) string {
 // itself, with HOME as "$HOME", which a shell expands inside double quotes
 // where it would not expand ~, and the rest in single quotes, inside which no
 // shell expands anything, the `!` an interactive bash or zsh would read as
-// history included, with each ' written '\”. A path outside HOME is
+// history included, with each single quote closed, escaped with a backslash and reopened. A path outside HOME is
 // single-quoted whole. fsutil.DisplayPath is for prose: outside HOME it is a
 // folder name, which no command can act on.
 //
