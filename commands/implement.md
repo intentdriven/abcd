@@ -684,7 +684,9 @@ of your own. Gate every other `go test -race` on a shared machine with
 carries that string, and never opened. `--wait` blocks until the one-minute
 load average is below the wait limit (`wait-load`, by default twice the online
 core count), no other `go test -race` run is live, no other `make preflight`
-is running, and no other waiter is ahead of it in the queue (a lower pid) or
+is running, and no other waiter is ahead of it in the queue (one that started
+earlier, or within two seconds of it, and has the lower pid: two whose start
+and pid disagree, as after the machine's process ids wrap, wait on neither) or
 running its command, under any account. All of that is read from the process
 table, which shows every account's processes, judged from each process's
 arguments with the waiter's own process and ancestors excluded: no file another
@@ -697,10 +699,16 @@ queue, and a waiter beneath a waiter running its command (the preflight's own
 gate under `--wait -- make preflight`) takes that ancestor's place, ahead of
 every queued waiter, since the ancestor has already won its turn. Once all of it is clear the waiter waits a random 15 to 60 seconds and
 checks everything again, and opens only if the re-check is clear too, so two
-starters in one quiet minute do not start together. Twice the cores, because a
+starters in one quiet minute do not start together. Across accounts, which
+share no hold, two waiters whose start and pid disagree (as after the process
+ids wrap) wait on neither and can still open in one moment, so the command form
+shows itself as running its command from the moment it opens, looks once more
+two seconds later, and the one with the higher pid stands back: it gives up its
+hold, re-draws its jitter and waits again, at most three times, while the lower
+pid runs its command. Twice the cores, because a
 busy machine with several sessions already sits near one core-count of load;
-one waiter at a time is kept by the process table and the hold, not by the
-load number; and one race run adds about a core-count, so the peak stays near
+one waiter at a time is kept by the process table, the hold and that last look
+(the cross-account exception above), not by the load number; and one race run adds about a core-count, so the peak stays near
 three times the cores, under the extreme limit. Inside `make preflight` each
 test stage then takes a `go test -p` derived from the online cores and the load
 as the stage starts (twice the cores less the load, at most the cores and at
@@ -711,7 +719,7 @@ after `--timeout` (30 minutes by default; `make preflight` gives it two hours),
 exiting 1 and naming what it still waited on (`still`: `load`, `race-run`,
 `preflight`, `waiter`, `lock` or `unreadable`). `--json` reports `status`
 (`open`, `timeout`, `skipped` on a CI runner, `unchecked` on an unsupported
-platform), `waited_on` and `waited_s`.
+platform), `waited_on` and `waited_s`, and `backoffs` when it stood back.
 
 Within one account the waiter that opens also writes a hold,
 `~/.abcd.noindex/load-wait.json`, and every other waiter of that account waits

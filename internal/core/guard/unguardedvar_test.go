@@ -102,16 +102,17 @@ func TestRmOnAnUnguardedVariablePathTeachesTheRewrite(t *testing.T) {
 }
 
 // TestRmRewriteInsideAShellStringIsNotThisEntry: the successor's rewrite
-// handed to a shell does not fire the entry. The string as a whole is still
-// a warn of the execute-a-string family, which reads `${VAR:?}` there as
-// syntax it does not inspect; that verdict is not this entry's and is not
-// pinned here.
+// handed to a shell does not fire the entry. The string as a whole is
+// refused as a variable-built `-c` delete (shell-c-variable-delete), and
+// beneath that it is a warn of the execute-a-string family, which reads
+// `${VAR:?}` there as syntax it does not inspect; neither verdict is this
+// entry's, and neither is pinned here.
 func TestRmRewriteInsideAShellStringIsNotThisEntry(t *testing.T) {
 	for _, cmd := range []string{
 		`sh -c 'rm -rf "${VAR:?}"/build'`,
 		`bash -c 'rm -f "${VAR:?}"/*'`,
 	} {
-		d := verdictOf(t, cmd)
+		d := readingOf(t, cmd)
 		if d.Verdict == VerdictBlock || contains(d.Matches, "rm-unguarded-variable-path") {
 			t.Errorf("Check(%q) = %q via %v, want no rm-unguarded-variable-path match", cmd, d.Verdict, d.Matches)
 		}
@@ -150,7 +151,7 @@ func TestRmGuardedRewriteInsideADoubleQuotedShellString(t *testing.T) {
 		`sh -c "rm -rf ${X:-${Y:?}}/y"`,
 		`sh -c "rm -rf ${X:-${Y:-/tmp}}/y"`,
 	} {
-		d := verdictOf(t, cmd)
+		d := readingOf(t, cmd)
 		if d.Verdict == VerdictBlock || contains(d.Matches, id) {
 			t.Errorf("Check(%q) = %q via %v, want no %s match", cmd, d.Verdict, d.Matches, id)
 		}

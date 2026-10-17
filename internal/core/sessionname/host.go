@@ -39,12 +39,11 @@ type Table struct {
 }
 
 // startTolerance is how far two readings of one process's start time may
-// differ and still name the same process. macOS reports a process's age in
-// whole seconds and Linux in clock ticks against an uptime read a moment
-// apart, so one process read twice can differ by a second; a different
-// process given the same id starts at least the time it took the old one to
-// end and the id to come round, which is far longer.
-const startTolerance = 2
+// differ and still name the same process: machineload.StartTolerance, the one
+// tolerance every start-time comparison uses (the load gate's queue orders by
+// it too). A different process given the same id starts at least the time it
+// took the old one to end and the id to come round, which is far longer.
+const startTolerance = machineload.StartTolerance
 
 // maxReadSlack caps how far a start time is allowed to be early for a slow
 // read. It sits above the twenty seconds macOS's ps run is given before it is
