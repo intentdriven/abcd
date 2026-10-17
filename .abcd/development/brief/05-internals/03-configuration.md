@@ -156,7 +156,9 @@ origin's push URLs a fork, so a malformed value (neither `"refuse"` nor one
 plain owner and one plain name), or a misspelt key under `reservation`, refuses
 a reservation on a fork naming the file and never stops one anywhere else. The machine layer's `reservation.github_username`
 (04-surfaces/37-reserve.md) shares the namespace; it is read from the machine
-layer alone and is not one of the sixteen.
+layer alone and is not one of the sixteen. The holder lookup reads the
+machine's own file whatever origin is, so a misspelt key under `reservation`
+there refuses every reservation that reaches that lookup, on a fork or not.
 
 There is no separate `.abcd/meta.json` at repo scope: setup metadata is the `meta`
 block. This repository's own config carries five of these blocks — `docs`, `meta`,

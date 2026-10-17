@@ -253,7 +253,8 @@ on origin's default branch backs off, with a tip or without one
    since the drain's part ends at the open pull request.
 6. When the drain has opened as many lanes as its cap, it ends and says so.
 7. For the next eligible issue in the drain order that the drain has not taken
-   or handed back and this checkout has no run in progress for, it asks the host judgement
+   or handed back and this checkout has no run for that was not handed back
+   (in progress or complete), it asks the host judgement
    over the issue's remedy (below) and opens nothing, unless the host has
    already answered no over the remedy as it stands. With that no, it starts
    the implement loop for the issue and names the run. An issue the loop's own

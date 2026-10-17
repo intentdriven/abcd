@@ -214,12 +214,13 @@ the account's own. A value outside the range, or a key under `reservation`
 that nothing reads, refuses an act that adds a reservation (reviving a lapsed
 one among them) naming the file, never falling back to ten; no other act reads
 the setting, so a bad value never stops a release or the renewal of a live
-reservation. An unknown key under `reservation` does stop every act of a
-person whose username is read from that file (`reservation.github_username`),
-since the holder's reader claims the same keys. A `config.json` that cannot be
-read at all (writable by others, not valid JSON) is read past, ten applies,
-and the refusal at the cap says why; at the ceiling of 100 the refusal no
-longer offers raising it.
+reservation. The holder's reader (`reservation.github_username`) reads the
+same file first for every person whose git email is not a GitHub no-reply
+address, so an unknown key under `reservation`, or a file that cannot be read,
+stops every act of such a person, a username from their token included. For
+anyone else a `config.json` that cannot be read at all (writable by others,
+not valid JSON) is read past, ten applies, and the refusal at the cap says
+why; at the ceiling of 100 the refusal no longer offers raising it.
 
 An act the judgement finds reserves afresh, a reservation over no tip or a
 released one, or a take-over, then asks the forge whether origin is a fork,
@@ -363,7 +364,9 @@ margin, an unreadable one is within its hold, another push won the race, or the
 same person's other copy holds it and no take-over was asked for, or a
 footprint path that is not a generated file is in another person's live
 reservation's footprint (or, for a build's or a drain's reservation, the same
-person's from another copy), or a drain's reservation meets a hand-back that stands. Exit 2 on the cap,
+person's from another copy), or a drain's reservation meets a hand-back that stands,
+or the record is finished (resolved, won't-fixed, shipped or superseded) on
+origin's default branch. Exit 2 on the cap,
 on a fork origin, and on every other refusal and failure. The JSON document carries `act`, `record`, `holder`,
 `copy` (`this` or `another`, never a copy's key), `footprint`, `claimed_at`,
 `effective_expiry`, `commit`, `replaced` for a take-over,
