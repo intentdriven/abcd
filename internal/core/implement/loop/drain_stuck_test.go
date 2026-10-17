@@ -3,6 +3,7 @@ package loop
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -379,5 +380,56 @@ func TestTheStuckBoundsAreReadFromThePacesLayers(t *testing.T) {
 	r := wantStuck(t, res, bare, runID, "the record names no remedy")
 	if !strings.Contains(r.Reason, "1 time") {
 		t.Fatalf("the hand-back names the bound the repository set: %q", r.Reason)
+	}
+}
+
+// TestALaneRefusedIsVersion13s: a lane's `refused` is state version 13's.
+// Version 12 is its strict subset and reads as the current version, so a run
+// a version-12 abcd wrote carries on; a file of version 12 or lower carrying
+// it is refused naming the version and the key (12 and 11 here: this run
+// holds a reservation, which version 10 never wrote).
+func TestALaneRefusedIsVersion13s(t *testing.T) {
+	c := &clock{t: time.Date(2026, 10, 17, 9, 0, 0, 0, time.UTC)}
+	repo, _, runID := stuckDrain(t, c)
+	refuseStep(t, repo, runID, briefRefusing(sameRefusal), Options{Now: c.now})
+	statePath := filepath.Join(repo.Root(), filepath.FromSlash(StateRelPath(runID)))
+	current, err := os.ReadFile(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	as := func(version int, keepRefused bool) {
+		t.Helper()
+		if err := os.WriteFile(statePath, current, 0o600); err != nil {
+			t.Fatal(err)
+		}
+		editState(t, repo.Root(), runID, func(doc map[string]any) {
+			doc["schema_version"] = version
+			if !keepRefused {
+				delete(doc["lanes"].([]any)[0].(map[string]any), "refused")
+			}
+		})
+	}
+	if SchemaVersion != schemaVersionUnrefused+1 {
+		t.Fatalf("the current version is the one after the version before `refused`: %d, %d", SchemaVersion, schemaVersionUnrefused)
+	}
+	for _, version := range []int{schemaVersionUnrefused, schemaVersionUnanswered} {
+		as(version, true)
+		_, err := ReadState(repo.Root(), runID)
+		r := mustRefusal(t, err)
+		if !strings.Contains(r.Reason, fmt.Sprintf("schema version %d", version)) || !strings.Contains(r.Reason, "`refused` on lane-1") {
+			t.Errorf("version %d carrying `refused` is refused naming the version and the key: %+v", version, r)
+		}
+	}
+	as(12, false)
+	st, err := ReadState(repo.Root(), runID)
+	if err != nil {
+		t.Fatalf("a version-12 file reads: %v", err)
+	}
+	if st.SchemaVersion != 13 || st.Lanes[0].Refused != nil || st.Lanes[0].Stage != StageBrief {
+		t.Fatalf("a version-12 file reads as version 13, its lane as it was: version %d, %+v", st.SchemaVersion, st.Lanes[0])
+	}
+	as(13, true)
+	if st, err := ReadState(repo.Root(), runID); err != nil || st.Lanes[0].Refused == nil {
+		t.Fatalf("a version-13 file reads with its lane's `refused`: %+v %v", st.Lanes, err)
 	}
 }
