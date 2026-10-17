@@ -99,10 +99,13 @@ The following are non-negotiable invariants — any architectural choice that vi
    The status branches (itd-2609151838312703, `abcd-status/<username>` on
    `origin`, one per person) are fetched and pushed only by verbs whose
    documented meaning says so: `announce`, whose meaning is one listing of
-   the status branches on origin (`git ls-remote`), then one fetch of each
-   status branch whose name is a lower-case GitHub username and origin's
-   default branch (and a second, of those status branches alone, when the
-   default branch cannot be read), then one push to the sender's own status
+   the status branches on origin (`git ls-remote`), then one fetch of the
+   first 500 status branches whose names are lower-case GitHub usernames,
+   those past the 500 counted and not fetched, the sender's own wherever it
+   sorts, and origin's default branch (and a second, of those status
+   branches alone, when the default branch cannot be read), preceded, for a
+   record item in a clone that names no default branch of origin, by one
+   `git ls-remote --symref origin HEAD`, which writes nothing, then one push to the sender's own status
    branch, with one more listing and fetch after each push origin refuses, to tell a push that landed anyway and a lost race from another
    refusal, and one more push for each of at most three retries after a push
    that lost a race, and, as a reservation act may, one call to the forge's
@@ -113,8 +116,9 @@ The following are non-negotiable invariants — any architectural choice that vi
    origin does not hold yet fails. The embargo check an announcement passes reads only this machine's
    store. `status`, whose meaning is one listing of the status branches on
    `origin` (`git ls-remote`), then one fetch of the reservations with their
-   release tags, of each status branch whose name is a GitHub username in
-   lower case, each by its own refspec so a case-colliding name is never
+   release tags, of the first 500 status branches whose names are GitHub
+   usernames in lower case, those past the 500 counted and not fetched,
+   each by its own refspec so a case-colliding name is never
    fetched, and of origin's default branch, then one read of the forge's
    record of who pushed (`gh api`, the repository's activity record) for each
    status branch holding a standing announcement it has not asked about.
