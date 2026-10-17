@@ -2151,6 +2151,15 @@ moment it opens every race gate and every other such command counts it as a
 race run, so a second one waits for the first. A
 symlinked ~/.abcd.noindex is refused. On a CI runner it opens at once.
 
+While it waits, in a checkout, the waiter keeps your own reservations from
+lapsing: at once and then every five minutes it renews each of your live
+reservations from this copy that is half through its lease, with its own term,
+and says each renewal on standard error. It never reserves anything new, takes
+nothing over and revives nothing that has lapsed; a renewal that fails is said
+once, and the wait goes on. The renewal runs beside the gate, never in it, so
+the gate's order and its open never wait on one, and it stops when the gate
+opens.
+
 **Flags:**
 
 ```
