@@ -78,6 +78,10 @@ _None open._
 - **Given** a review run through the opencode runner, **when** its receipt is read beside a host-run review's, **then** the two differ only in the route named.
 - **Given** the lane, **when** it ships, **then** a security review of the process launch, the repository path and the permission flags is on its record.
 
+## Typed Links
+
+- **built on by `itd-2610161733316518`** (one feature built across a model matrix): Routes OpenRouter and local models into the matrix's tool-using builder and reviewer roles through these runners.
+
 ## Audit Notes
 
 - 2026-09-30 — Closed on the fake-harness tests under the person's ruling RN1 (2026-09-30: "(a) SAME RULE, FINISH ON FAKES: the runner may close on the fake-harness tests with the three live checks (iss-2609301519558538) recorded as owed."). The acceptance criteria are proven against fake harnesses on a pinned PATH (the opencode review-route criterion structurally, and the no-host fallback path in the core only, since its surface waits on the ADR decision 6 owes); no real claude or opencode binary has run a role. The three live checks are owed and not yet run: iss-2609301519558538 tracks them and stays open.

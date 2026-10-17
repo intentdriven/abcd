@@ -23,6 +23,8 @@ const (
 	keyClaimedAt   = "Abcd-Claimed-At"
 	keyExpiresAt   = "Abcd-Expires-At"
 	keyReleasedAt  = "Abcd-Released-At"
+	keyHandedBack  = "Abcd-Handed-Back"
+	keyRecordBlob  = "Abcd-Record"
 	keyAssistedBy  = "Assisted-by"
 )
 
@@ -46,7 +48,7 @@ type family struct {
 // working copy for a lease, validated by validateReservation.
 var reservationFamily = &family{
 	name:    "reservation",
-	keys:    []string{keyReservation, keyHolder, keyCopy, keyFootprint, keyClaimedAt, keyExpiresAt, keyReleasedAt, keyAssistedBy},
+	keys:    []string{keyReservation, keyHolder, keyCopy, keyFootprint, keyClaimedAt, keyExpiresAt, keyReleasedAt, keyHandedBack, keyRecordBlob, keyStage, keyAssistedBy},
 	shorten: "name fewer or shorter footprint paths",
 }
 
@@ -73,6 +75,14 @@ type message struct {
 	ClaimedAt  time.Time
 	ExpiresAt  time.Time
 	ReleasedAt time.Time
+	// HandedBack is a tombstone's hand-back kind, one of HandBackKinds, and
+	// RecordBlob the blob id of the record on origin's default branch it was
+	// handed back over; both or neither, and only on a tombstone.
+	HandedBack string
+	RecordBlob string
+	// Stage is a drain lane's renewal's stage, one of LaneStages, "" for
+	// every other commit; never on a tombstone.
+	Stage string
 	// AssistedBy is the `Assisted-by:` value, abcd's composed label: commit-tree
 	// runs no prepare-commit-msg hook, so the writer names it.
 	AssistedBy string
@@ -107,8 +117,15 @@ func (m message) text() string {
 	}
 	line(keyClaimedAt, stamp(m.ClaimedAt))
 	line(keyExpiresAt, stamp(m.ExpiresAt))
+	if m.Stage != "" {
+		line(keyStage, m.Stage)
+	}
 	if m.released() {
 		line(keyReleasedAt, stamp(m.ReleasedAt))
+	}
+	if m.HandedBack != "" {
+		line(keyHandedBack, m.HandedBack)
+		line(keyRecordBlob, m.RecordBlob)
 	}
 	if m.AssistedBy != "" {
 		line(keyAssistedBy, m.AssistedBy)
@@ -158,6 +175,8 @@ const (
 	reasonCopy          = "it does not name one working copy"
 	reasonTime          = "a time it carries is missing, repeated or not RFC 3339"
 	reasonFootprint     = "a footprint it names is not a repository-relative path"
+	reasonHandBack      = "its hand-back is not one known kind with its record's object name, on a release"
+	reasonStage         = "its lane stage is not one known stage, on a reservation that is not released"
 )
 
 // parseTip reads one commit object as a commit of the family parse reads:
@@ -291,9 +310,13 @@ func parseMessage(record, text string) (message, string) {
 }
 
 // validateReservation is the reservation family's validator: the trailers must
-// name record (the reservation's subject) exactly once, one GitHub username as holder, one working copy,
-// the lease's times and only repository-relative footprint paths. A key it
-// does not know, and any text outside the trailers, is ignored.
+// name record (the reservation's subject) exactly once, one GitHub username
+// as holder, one working copy, the lease's times and only
+// repository-relative footprint paths, a tombstone's hand-back, when it
+// carries one, one kind from the vocabulary with one object name
+// (validateHandBack), and a reservation's lane stage, when it carries one,
+// one of LaneStages (validateStage). A key it does not know, and any text outside the
+// trailers, is ignored.
 func validateReservation(record string, t trailers) (message, string) {
 	var m message
 	id, ok := t.one(keyReservation)
@@ -331,6 +354,12 @@ func validateReservation(record string, t trailers) (message, string) {
 		}
 		m.Footprint = append(m.Footprint, p)
 	}
+	if why := validateHandBack(&m, t); why != "" {
+		return message{}, why
+	}
+	if why := validateStage(&m, t); why != "" {
+		return message{}, why
+	}
 	if v, ok := t.one(keyAssistedBy); ok {
 		m.AssistedBy = v
 	}
@@ -346,6 +375,12 @@ func namesSubject(id, subject string) bool {
 	}
 	return recordid.CitedIDRe.MatchString(id) && recordid.CanonCitedID(id) == subject
 }
+
+// ValidFootprintPath reports whether p is a footprint path a reservation may
+// carry (validFootprint), for a caller composing a renewal's Narrow: a path
+// it holds false for is never written, and a renewal naming one in Narrow
+// drops the narrowing.
+func ValidFootprintPath(p string) bool { return validFootprint(p) }
 
 // validFootprint reports whether p is a footprint path a reservation may carry:
 // a repository-relative path (fsutil.ValidRelPath) of printing runes only, no

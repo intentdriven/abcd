@@ -28,8 +28,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -63,6 +65,11 @@ func loopFakeHarness(mode string) int {
 	if dir := os.Getenv(loopFakeLogEnv); dir != "" {
 		argv, _ := json.Marshal(os.Args[1:])
 		_ = os.WriteFile(filepath.Join(dir, name+".argv.json"), argv, 0o600)
+		// One line per launch, so a test can count them.
+		if f, err := os.OpenFile(filepath.Join(dir, name+".launches"), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600); err == nil {
+			_, _ = f.WriteString("launched\n")
+			_ = f.Close()
+		}
 	}
 	prompt := os.Args[len(os.Args)-1]
 	field := func(prefix string) string {
@@ -84,6 +91,57 @@ func loopFakeHarness(mode string) int {
 		fmt.Println(`{"type":"rate_limit_event","rate_limit_info":{"status":"rejected","resetsAt":1791000000,"rateLimitType":"five_hour"},"session_id":"fake-session-3"}`)
 		fmt.Println(`{"type":"result","subtype":"success","is_error":true,"result":"limit reached","session_id":"fake-session-3"}`)
 		return 1
+	}
+	if mode == "hang" {
+		// A harness that does not finish, with a child of its own in its
+		// process group: both pids are logged, the child's first, so a test
+		// can stop the run and see that neither outlived it.
+		if dir := os.Getenv(loopFakeLogEnv); dir != "" {
+			child := exec.Command("/bin/sleep", "60")
+			if child.Start() == nil {
+				_ = os.WriteFile(filepath.Join(dir, name+".child.pid"), []byte(strconv.Itoa(child.Process.Pid)), 0o600)
+			}
+			_ = os.WriteFile(filepath.Join(dir, name+".pid"), []byte(strconv.Itoa(os.Getpid())), 0o600)
+		}
+		time.Sleep(60 * time.Second)
+		return 0
+	}
+	if answer, ok := strings.CutPrefix(mode, "judge-"); ok {
+		// The drain's judge (judgement.go): the answer the routed brief asks
+		// for, naming the issue the brief names and no digest, which abcd
+		// computes itself. It logs the directory it was started in, what that
+		// directory held, and the brief, since the directory is removed once
+		// the move has read the answer.
+		brief, _ := os.ReadFile(field("Brief: "))
+		if dir := os.Getenv(loopFakeLogEnv); dir != "" {
+			cwd, _ := os.Getwd()
+			var held []string
+			if es, err := os.ReadDir("."); err == nil {
+				for _, e := range es {
+					held = append(held, e.Name())
+				}
+			}
+			mode := ""
+			if fi, err := os.Stat("."); err == nil {
+				mode = fi.Mode().Perm().String()
+			}
+			where, _ := json.Marshal(map[string]any{"cwd": cwd, "held": held, "mode": mode})
+			_ = os.WriteFile(filepath.Join(dir, name+".judge-dir.json"), where, 0o600)
+			_ = os.WriteFile(filepath.Join(dir, name+".judge-brief.md"), brief, 0o600)
+		}
+		issue := ""
+		for _, line := range strings.Split(string(brief), "\n") {
+			if v, ok := strings.CutPrefix(line, "- id: "); ok && issue == "" {
+				issue = v
+			}
+		}
+		a := map[string]any{"schema_version": DrainJudgementSchemaVersion, "issue": issue, "answer": answer,
+			"reason": "the fake judge's reason"}
+		if answer == JudgementYes {
+			a["kind"] = HandBackTrustRule
+		}
+		body, _ := json.Marshal(a)
+		_ = os.WriteFile(field("Receipt: "), body, 0o600)
 	}
 	if mode == "ok" || strings.HasPrefix(mode, "model-") {
 		body := "{}\n"

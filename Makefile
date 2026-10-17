@@ -311,15 +311,19 @@ asking-sync-check:
 # stage then takes a go test -p derived from the online cores and the load as
 # the stage starts, at most the cores divided by the setting
 # (cmd/test-parallelism), so one run cannot saturate the machine.
+# The unit stage takes the race stage's 20-minute package budget, not go
+# test's 10m default: internal/core/implement/loop ran about ten minutes alone
+# on a loaded development machine (2026-10-17) and timed out at 10m with no
+# test hung.
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go run ./cmd/abcd implement load --wait --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
-	go test -p "$$p" ./...
+	go test -p "$$p" -timeout 20m ./...
 	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
-	go test -race -p "$$p" -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
+	go test -race -p "$$p" -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"
 
 # The push receipt (iss-2608290810036869, iss-2608210738378295). The pre-push hook

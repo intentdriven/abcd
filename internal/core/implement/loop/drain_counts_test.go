@@ -1,10 +1,14 @@
 package loop
 
 import (
+	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/capture"
 )
 
 // The summary's counts (itd-82 scope 8, spc-2609212015054359 step 2): the
@@ -135,5 +139,66 @@ func TestADrainStoppedOnAnOutageWithALaneInProgressClaimsNoNormalEnding(t *testi
 	}
 	if strings.Contains(res.Next, "normal ending") || strings.Contains(res.Next, "no lane ended in a pull request") {
 		t.Errorf("a drain stopped with a lane in progress does not call it a normal ending: %s", res.Next)
+	}
+}
+
+// TestADrainsOwnPromotionIsCountedOnce: the move after a drain promotes an
+// issue reads it from the ledger as promoted, and that is the drain's own
+// promotion, already in its hand-backs; it is not flagged as the rule's too,
+// so the rule's flags hold across the two moves while nothing else changed.
+// The JSON tells the rule from the route by field: a hand-back the drain
+// routed carries `route: promoted` and the draft, and a field flag carries
+// `from: field`, `route: rule` and the rule in `rule`.
+func TestADrainsOwnPromotionIsCountedOnce(t *testing.T) {
+	repo := drainRepo(t)
+	first, err := Drain(repo.Root(), Options{}, DrainOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	promoted := judge(t, repo, Options{}, first, JudgementYes, HandBackUserVisible, "the page gains a flag users see")
+	r := routeOf(t, promoted.Routed, secondIssue)
+	if r.Route != RoutePromoted || r.Draft == "" {
+		t.Fatalf("the judgement's yes promotes the issue: %+v", r)
+	}
+	if c := promoted.Counts; c.Promotions != 1 || c.RuleFlags != 1 {
+		t.Fatalf("the promoting move counts one promotion and the major issue's flag: %+v", c)
+	}
+
+	next := judge(t, repo, Options{}, promoted, JudgementNo, "", "internal")
+	if next.Start == nil {
+		t.Fatalf("the next move opens the next issue's lane: %+v", next)
+	}
+	if c := next.Counts; c.Promotions != 1 || c.RuleFlags != 1 || c.RuleFlags != len(next.Flags) {
+		t.Errorf("the drain's own promotion is counted once across the moves: %+v (flags %+v)", c, next.Flags)
+	}
+	for _, f := range next.Flags {
+		if f.Issue == secondIssue {
+			t.Errorf("the drain's own promotion is flagged as the rule's as well: %+v", f)
+		}
+	}
+	if i := slices.IndexFunc(next.Dispositions, func(v capture.DrainVerdict) bool { return v.ID == secondIssue }); i < 0 ||
+		next.Dispositions[i].Rule != capture.RulePromoted {
+		t.Errorf("the disposition still reads the issue as promoted: %+v", next.Dispositions)
+	}
+
+	// The two are told apart by their fields, never by the shared word alone.
+	var out struct {
+		HandBacks []map[string]any `json:"hand_backs"`
+	}
+	raw, err := json.Marshal(next)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(raw, &out); err != nil {
+		t.Fatal(err)
+	}
+	hb := out.HandBacks[slices.IndexFunc(out.HandBacks, func(m map[string]any) bool { return m["issue"] == secondIssue })]
+	if hb["route"] != RoutePromoted || hb["from"] != DrainFromJudgement || hb["kind"] != HandBackUserVisible || hb["draft"] == nil || hb["rule"] != nil {
+		t.Errorf("the drain's promotion is a route, with its draft and no rule: %v", hb)
+	}
+	flag := fieldFlags(capture.DrainPlan{Dispositions: []capture.DrainVerdict{{ID: secondIssue, Outcome: capture.DrainHandBack,
+		Rule: capture.RulePromoted, Reason: "related_intents names itd-1"}}}, nil)
+	if len(flag) != 1 || flag[0].From != "field" || flag[0].Route != RouteRule || flag[0].Rule != string(capture.RulePromoted) || flag[0].Draft != "" {
+		t.Errorf("a promotion this drain did not make is the rule's flag, from field, route rule: %+v", flag)
 	}
 }
