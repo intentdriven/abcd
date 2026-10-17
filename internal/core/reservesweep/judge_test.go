@@ -253,3 +253,16 @@ func TestTheClassifierReadsEachKind(t *testing.T) {
 		}
 	}
 }
+
+// TestAMergeCommitIsUnknown: abcd writes only one-parent commits on a
+// reservation branch, and the sweep reads the first-parent line alone, so a
+// commit with a second parent could carry a hand-back the walk never sees. It
+// is unknown, and its branch is kept.
+func TestAMergeCommitIsUnknown(t *testing.T) {
+	const id = "iss-5"
+	obj := commitObject(emptyTreeSHA1, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", t0, reservationText(id, t0))
+	obj = []byte(strings.Replace(string(obj), "\nauthor ", "\nparent bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\nauthor ", 1))
+	if c := classify(id, "abc", obj, emptyTreeSHA1); c.Kind != KindUnknown || c.Why == "" {
+		t.Fatalf("a reservation with two parents = %+v; want unknown, with a reason", c)
+	}
+}

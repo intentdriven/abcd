@@ -58,7 +58,7 @@ func classify(record, commit string, obj []byte, emptyTree string) commitInfo {
 		c.Why = "its commit object does not parse"
 		return c
 	}
-	tree := ""
+	tree, parents := "", 0
 	for _, l := range strings.Split(string(headers), "\n") {
 		k, v, _ := strings.Cut(l, " ")
 		switch k {
@@ -67,6 +67,7 @@ func classify(record, commit string, obj []byte, emptyTree string) commitInfo {
 				tree = v
 			}
 		case "parent":
+			parents++
 			if c.Parent == "" {
 				c.Parent = v
 			}
@@ -77,6 +78,12 @@ func classify(record, commit string, obj []byte, emptyTree string) commitInfo {
 	switch {
 	case tree == "" || c.CommittedAt.IsZero():
 		c.Why = "its commit object does not parse"
+		return c
+	case parents > 1:
+		// abcd writes only one-parent commits here, and the walk reads the
+		// first-parent line alone, so a second parent could hold a hand-back
+		// the walk never reads.
+		c.Why = "it has more than one parent"
 		return c
 	case tree != emptyTree:
 		c.Why = "its tree is not the empty tree"

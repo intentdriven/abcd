@@ -36,6 +36,14 @@ permissions: {}
 
 jobs:
   sweep:
+    # Only the default branch may run with the App: its two secrets live in the
+    # reservation-sweep environment, whose deployment-branch rule admits the
+    # default branch alone, so a workflow run from any other branch (a
+    # workflow_dispatch on a pushed branch that changed cmd/abcd, say) resolves
+    # neither secret and gets no bypass token. The `if` keeps an honest run on
+    # another branch from starting at all; the environment is what holds.
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    environment: reservation-sweep
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
