@@ -117,9 +117,17 @@ set -euo pipefail
 # files could otherwise read as one with the empty tree. A .git/info/grafts
 # file is honoured even then, and can give a commit no parents, hiding the
 # commits beneath it from the walk, so no graft file is read: GIT_GRAFT_FILE
-# names a path that cannot exist, which git reads as no grafts at all.
+# names a path that cannot exist, which git reads as no grafts at all. A
+# commit-graph file is a cache git reads a commit's tree and parents from in
+# place of the commit, and one written by hand can claim the empty tree for a
+# commit carrying files, so no commit-graph is read either: core.commitGraph
+# is set false after any entries the environment already gives.
 export GIT_NO_REPLACE_OBJECTS=1
 export GIT_GRAFT_FILE=/dev/null/none
+cg_n="${GIT_CONFIG_COUNT:-0}"
+case "$cg_n" in '' | *[!0-9]*) cg_n=0 ;; esac
+export "GIT_CONFIG_KEY_$cg_n=core.commitGraph" "GIT_CONFIG_VALUE_$cg_n=false"
+export GIT_CONFIG_COUNT=$((cg_n + 1))
 cd "$(git rev-parse --show-toplevel)"
 
 protected="main"
@@ -153,7 +161,7 @@ is_null_id() {
 # a reservation over a tip it fetched without a receipt, and the walk only
 # reads: nothing is fetched, deepened or written.
 only_empty_trees() {
-  local listing walked line stored oldifs walked_n stored_n
+  local listing walked line stored parents oldifs walked_n stored_n
   listing="$(git rev-list --format=%T "$@" 2>/dev/null)" || return 1
   [ -n "$empty_tree" ] || return 1
   [ -z "$(printf '%s\n' "$listing" | grep -v -e '^commit ' -e "^$empty_tree\$" -e '^$')" ] || return 1
@@ -166,7 +174,12 @@ only_empty_trees() {
     set -- $line
     walked_n=$(($# - 1))
     stored="$(git cat-file commit "$1" 2>/dev/null)" || return 1
-    stored_n="$(printf '%s\n' "$stored" | sed -n -e '/^$/q' -e '/^parent /p' | wc -l)" || return 1
+    # The header ends at the first blank line; sed reads to the end rather
+    # than quit there, so a long message never cuts the pipe under pipefail.
+    parents="$(printf '%s\n' "$stored" | sed -n -e '1,/^$/{' -e '/^parent /p' -e '}')" || return 1
+    # shellcheck disable=SC2086 # the lines are "parent <id>" pairs
+    set -- $parents
+    stored_n=$(($# / 2))
     [ "$walked_n" -eq "$stored_n" ] || return 1
     IFS=$'\n'
   done
