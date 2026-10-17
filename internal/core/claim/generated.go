@@ -38,9 +38,10 @@ const (
 	generatedAttr = "linguist-generated"
 )
 
-// Generated is the set of files on origin's default branch, as last fetched,
-// that its root .gitattributes declares linguist-generated. A directory is
-// never in it, even when every file under it is. The zero value is empty.
+// Generated is the set of regular files on origin's default branch, as last
+// fetched, that its root .gitattributes declares linguist-generated. A
+// directory is never in it, even when every file under it is, nor is a
+// symbolic link. The zero value is empty.
 type Generated struct{ files map[string]bool }
 
 // Is reports whether p, a repository-relative path, is a generated file.
@@ -85,7 +86,10 @@ func GeneratedFiles(root string) (Generated, string) {
 	files := map[string]bool{}
 	for _, entry := range entries {
 		meta, p, ok := strings.Cut(entry, "\t")
-		if f := strings.Fields(meta); ok && len(f) == 3 && f[1] == "blob" && !underNested(p, nested) && rules.generated(p) {
+		// A regular file only, executable or not: never a symbolic link or a
+		// submodule.
+		f := strings.Fields(meta)
+		if ok && len(f) == 3 && (f[0] == "100644" || f[0] == "100755") && f[1] == "blob" && !underNested(p, nested) && rules.generated(p) {
 			files[p] = true
 		}
 	}

@@ -3,6 +3,7 @@ package claim
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -266,4 +267,20 @@ func TestADeclarationHoldingANULDeclaresNothing(t *testing.T) {
 	w.declare("*.md linguist-generated\nREADME.md -linguist-generated\x00\n", "a.md")
 	p := w.clone("1234+octo@users.noreply.github.com", "")
 	wantGenerated(t, p.dir, map[string]bool{"a.md": false, "README.md": false}, ".gitattributes on origin/main holds a NUL byte")
+}
+
+// TestOnlyARegularFileIsGenerated: a symbolic link the declaration matches is
+// not generated; a regular file, executable or not, is.
+func TestOnlyARegularFileIsGenerated(t *testing.T) {
+	w := newWorld(t)
+	w.seed.Write("tool.md", "#!/bin/sh\n")
+	if err := os.Chmod(filepath.Join(w.seed.Root(), "tool.md"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("a.md", filepath.Join(w.seed.Root(), "link.md")); err != nil {
+		t.Fatal(err)
+	}
+	w.declare("*.md linguist-generated\n", "a.md")
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	wantGenerated(t, p.dir, map[string]bool{"a.md": true, "tool.md": true, "link.md": false}, "")
 }
