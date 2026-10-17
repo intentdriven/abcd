@@ -67,9 +67,14 @@ colleague's `/abcd:status` shows it before the branch exists there. Land
 announces each issue, intent or pull request the branch's own commits name in
 a `Refs:`, `Resolves:` or `Delivers:` trailer; a lane announces its own
 record. An item you already announced `merging`, still standing for a minute
-or more, is not announced again. A record not yet on the default branch is
+or more, is not announced again, unless your newest announcement of it is now
+another (`merged`, say): a colleague sees only that newest one, so `merging`
+is sent anew. A record not yet on the default branch is
 not announced (the refusal above), and the verb says so and pushes. Any other
-failure refuses the push with the reason, and nothing is pushed.
+failure refuses the push with the reason, and nothing is pushed. When a branch
+names several items and a later one fails, the announcements already sent for
+the earlier ones stay standing, and running the verb again resumes without
+sending them again while they stand.
 
 A push a person types by hand with `git push` posts no announcement. Neither
 does any hook. Run this verb first when a colleague should see it.

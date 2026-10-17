@@ -22,9 +22,13 @@ reviewed before it is landed.
 **What it does to the remote.** Before the push, land announces: it posts
 `merging <item>` on your status branch, through the code `/abcd:announce`
 runs, for each issue, intent or pull request the branch's own commits name in
-a `Refs:`, `Resolves:` or `Delivers:` trailer, and pushes only once each
-announcement is on `origin`. So a colleague's `/abcd:status` shows the
-announcement before the branch exists there. A `git push` typed by hand posts
+a `Refs:`, `Resolves:` or `Delivers:` trailer (a pull request written `#N`),
+and pushes only once each announcement is on `origin`. So a colleague's
+`/abcd:status` shows the announcement before the branch exists there. An item
+you announced `merging` that still stands is not sent again, unless your newest
+announcement of it is now another, `merged` say. When the branch names several
+items and a later one fails, the announcements already sent for the earlier
+ones stay standing, and running land again resumes without sending them again while they stand. A `git push` typed by hand posts
 no announcement. The push is a plain
 `git push origin <head>:refs/heads/<branch>` of the commit the gate checked,
 from the branch's own checkout, with the repository's hooks running, never

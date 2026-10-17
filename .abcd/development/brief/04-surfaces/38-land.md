@@ -65,20 +65,27 @@ bound: the refusal says so and gives the push to run by hand.
    push, the verb posts `merging <item>` on the person's status branch for
    each issue, intent or pull request the branch's own commits (those not on
    `origin`'s default branch as just fetched) name in a `Refs:`, `Resolves:`
-   or `Delivers:` trailer, each once, through `claim.AnnounceBeforePush`, the
+   or `Delivers:` trailer (a pull request written `#N`: a bare number is a
+   word of the trailer's text, as in `Refs: spc-9 step 3`), each once,
+   through `claim.AnnounceBeforePush`, the
    code `abcd announce` runs, and the push waits until each announcement has
    reached `origin` (iss-2610161645224876, dcn-2610170655202547,
    dcn-2610170704191129). So a colleague's next `abcd status` shows the
    announcement before the branch is on `origin`. An item the person already
    announced `merging`, standing a minute more, is not announced again, so a
-   re-run posts nothing new. A record not yet on the default branch is not
+   re-run posts nothing new, unless the person's newest announcement of it is
+   now another (`merged`, say), which a reader shows instead, and then
+   `merging` is sent anew. A record not yet on the default branch is not
    announced, since an announcement names only a public record, and the step
    says so; a branch whose commits name no item announces nothing, and the
    step says that too (status `skipped`). An announcement that cannot be
    published (an embargo store that cannot be checked or holds the record,
    no username to send as, `origin` refusing the push or not answering)
    refuses the landing with the reason, and nothing is pushed
-   (dcn-2610170704189712): run the verb again once it is settled. A push a
+   (dcn-2610170704189712): run the verb again once it is settled. When the
+   branch names several items and a later one fails, the announcements already
+   sent for the earlier ones stay standing, and the re-run resumes without
+   sending them again while they stand. A push a
    person types by hand with `git push` posts no announcement; no hook
    announces.
 3. **Push** (`land.push`). A plain `git push --porcelain origin

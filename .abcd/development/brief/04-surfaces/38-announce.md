@@ -120,11 +120,16 @@ landing of a build or drain lane (the implement loop's land stage, which
 `claim.AnnounceBeforePush`, which calls `Announce` with the kind `merging`:
 the same checks, the same fetch and the same push, and the push it was made
 for waits until it has reached `origin`. One the person already sent, of
-that kind and item and standing a minute more, is not sent again (read from
-the sender's own status branch as just fetched, at most its newest 100
-commits). A record not yet on the default branch is not announced and the
+that kind and item and standing a minute more, is not sent again when it is
+the sender's newest announcement of that item (read from the sender's own
+status branch as just fetched, at most its newest 100 commits, and read again
+after a lost race); under a newer one of the item, `merged` say, it no longer
+stands, since a reader shows only the newest, and `merging` is sent anew. A
+record not yet on the default branch is not announced and the
 verb says so; any other failure refuses that push, nothing pushed
-(dcn-2610170704189712). A push a person types by hand with `git push` posts
+(dcn-2610170704189712). When a branch names several items and a later one
+fails, the announcements already sent for the earlier ones stay standing, and
+a re-run resumes without sending them again while they stand. A push a person types by hand with `git push` posts
 no announcement, and no hook posts one: the pre-push hook is unchanged.
 
 ## Exits
