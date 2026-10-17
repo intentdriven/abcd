@@ -349,6 +349,69 @@ func TestHandBackPushesToWIPBranchThroughTheHook(t *testing.T) {
 	}
 }
 
+// A hand-back run again within the same second, saying the same things,
+// writes the report already committed as the branch's last commit: there is
+// nothing to commit, and that commit is pushed as it stands, with no word of
+// a refusal (iss-2610161458426987).
+func TestHandBackPushesAnUnchangedReportAsItStands(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.fake("date", "echo 2026-10-16T00:00:00Z")
+	c.work("one.md")
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("the first hand-back exited %d\n%s%s", code, out, errOut)
+	}
+	head := c.git("rev-parse", "HEAD")
+	out, errOut, code = c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("the hand-back of an unchanged report exited %d\n%s%s", code, out, errOut)
+	}
+	if got := c.git("rev-parse", "HEAD"); got != head {
+		t.Errorf("the unchanged report moved HEAD from %s to %s", head, got)
+	}
+	ref := "refs/heads/" + hostWIPPrefix + handBackItem
+	if got := c.originRef(ref); got != head {
+		t.Errorf("origin holds %q on %s, want the report commit %s", got, ref, head)
+	}
+	if strings.Contains(out+errOut, "could not be committed") || strings.Contains(out+errOut, "refused") {
+		t.Errorf("the hand-back calls an unchanged report a refused commit:\n%s%s", out, errOut)
+	}
+	if !strings.Contains(out+errOut, "unchanged") {
+		t.Errorf("the hand-back does not say the report is unchanged:\n%s%s", out, errOut)
+	}
+	if calls := c.forgeCalls(); len(calls) != 0 {
+		t.Errorf("an unchanged report that pushed also went to the tracking issue: %v", calls)
+	}
+}
+
+// The same report committed further back, with work after it, cannot be the
+// branch's last commit without a commit to make: the hand-back falls back,
+// and says that is why rather than blaming git or a hook.
+func TestHandBackNamesAnEarlierIdenticalReport(t *testing.T) {
+	c := newForgeCase(t, trackingIssue)
+	c.fake("date", "echo 2026-10-16T00:00:00Z")
+	c.work("one.md")
+	out, errOut, code := c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("the first hand-back exited %d\n%s%s", code, out, errOut)
+	}
+	c.work("two.md")
+	head := c.git("rev-parse", "HEAD")
+	out, errOut, code = c.handBack(nil, "--item", handBackItem, "--state", "handed-back")
+	if code != 0 {
+		t.Fatalf("the hand-back whose comment posted exited %d\n%s%s", code, out, errOut)
+	}
+	if got := c.git("rev-parse", "HEAD"); got != head {
+		t.Errorf("the hand-back moved HEAD from %s to %s", head, got)
+	}
+	if strings.Contains(out+errOut, "could not be committed") {
+		t.Errorf("the hand-back calls an unchanged report a refused commit:\n%s%s", out, errOut)
+	}
+	if !strings.Contains(errOut, "identical to the one an earlier commit holds") {
+		t.Errorf("the hand-back does not say an earlier commit holds the same report:\n%s", errOut)
+	}
+}
+
 func TestHandBackFallsBackToIssueCommentWhenPushFails(t *testing.T) {
 	c := newForgeCase(t, trackingIssue)
 	c.work("one.md")

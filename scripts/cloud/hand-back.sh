@@ -348,7 +348,18 @@ if [ -z "$why" ]; then
 	cat "$tmp/report.md" >"$report"
 	printf 'chore(cloud): hand back the report on %s\n\nThe session %s; the report alone, after its work.\n\nAssisted-by: %s\n' \
 		"$item" "$([ "$state" = stopped ] && echo stopped || echo handed its work back)" "$assisted" >"$tmp/message"
-	if ! git add -- "$report" >/dev/null 2>&1 || ! git commit -q --only -F "$tmp/message" -- "$report" >/dev/null 2>&1; then
+	# A hand-back run again within finished_at's second, saying the same
+	# things, writes the report HEAD already holds, and git has nothing to
+	# commit. That is no refusal: as the branch's last commit, alone, the
+	# report is pushed as it stands; further back, it cannot be last without
+	# a commit to make, and the reason says so.
+	if git cat-file -e "HEAD:$report" 2>/dev/null && git diff --quiet HEAD -- "$report" 2>/dev/null; then
+		if [ "$(git diff-tree --no-commit-id --name-only -r HEAD 2>/dev/null)" = "$report" ]; then
+			echo "hand-back: the report is unchanged from the one committed as $(git rev-parse --short HEAD), so that commit is pushed as it stands." >&2
+		else
+			why="the report is identical to the one an earlier commit holds, so there was nothing to commit and it would not be the branch's last commit"
+		fi
+	elif ! git add -- "$report" >/dev/null 2>&1 || ! git commit -q --only -F "$tmp/message" -- "$report" >/dev/null 2>&1; then
 		# The report is left in the tree, unstaged, as the session wrote it.
 		git reset -q -- "$report" >/dev/null 2>&1 || true
 		why="the report could not be committed (git or a commit hook refused the commit)"
