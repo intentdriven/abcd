@@ -6,13 +6,17 @@ package landing
 // step is idempotent, so a re-run resumes where the last one stopped:
 //
 //  1. resolve: the branch (the checkout's current one, or the one named, in
-//     the worktree that has it checked out) and its head; refused on the
-//     default branch, a detached HEAD and a tree with uncommitted changes.
-//     With land.push and land.enqueue both off nothing else runs.
+//     the worktree that has it checked out) and its head; refused on a
+//     detached HEAD and a tree with uncommitted changes. With land.push and
+//     land.enqueue both off nothing else runs.
 //  2. origin: origin's every fetch and push URL must be the repository the
 //     forge client resolves here, and the forge's default branch must be the
-//     one origin/HEAD names here and not the branch; checked before the gate,
-//     so a landing the forge refuses never runs the preflight.
+//     one origin itself names (git ls-remote --symref, never fetched or
+//     written) and not the branch; checked before the gate, so a landing the
+//     forge refuses never runs the preflight. A stale or missing local
+//     origin/HEAD is passed over, and the step says so: land goes on with
+//     the agreed default, fetches it when it is not tracked here, and leaves
+//     origin/HEAD as it is.
 //  3. landed: origin's default branch is fetched, and a head already on it
 //     has landed; so has a head the forge lists a merged pull request from
 //     this repository's branch into the default branch at (a squash or
@@ -212,17 +216,11 @@ func Land(cwd string, o Options) (Result, error) {
 		return res, err
 	}
 	res.Branch, res.Checkout = branch, fsutil.RedactHome(dir)
-	ref := gitutil.DefaultRef(dir)
-	def, ok := strings.CutPrefix(ref, "refs/remotes/"+Remote+"/")
-	if !ok || def == "" || def == "HEAD" {
-		return res, refuse("the repository has no default branch on the remote "+Remote+" to land on",
-			"add the remote and fetch it (`git fetch "+Remote+"`), then run abcd land again")
-	}
-	res.Default = def
-	if branch == def {
-		return res, refuse(branch+" is the default branch, and land never pushes it",
-			"land a branch of your own and merge it through a pull request")
-	}
+	// The default as this checkout last fetched it is only a first reading:
+	// origin/HEAD can be stale or missing, so checkOrigin asks the forge and
+	// origin, and their agreed answer replaces it.
+	local := trackedDefault(dir)
+	res.Default = local
 	head, err := headOf(dir)
 	if err != nil {
 		return res, err
@@ -239,14 +237,20 @@ func Land(cwd string, o Options) (Result, error) {
 	}
 
 	if !res.Push.On && !res.Enqueue.On {
+		// Neither the forge nor origin is asked, so no default is claimed.
+		res.Default = ""
 		res.add("gate", StatusSkipped, "land.push and land.enqueue are both off, so nothing would land: the preflight did not run", "")
 		addPushOff(&res)
 		res.add("enqueue", StatusOff, res.Enqueue.offText()+": nothing was armed or queued", "")
 		return res, nil
 	}
-	origin, err := checkOrigin(o, dir, branch, def)
+	origin, def, err := checkOrigin(o, dir, branch)
 	if err != nil {
 		return res, err
+	}
+	res.Default = def
+	if local != def {
+		settleStaleDefault(&res, dir, local, def)
 	}
 	tracking, on, err := Landed(o.Git, dir, def, head)
 	var fe *FetchError
@@ -467,24 +471,65 @@ type forgeRepo struct {
 	} `json:"defaultBranchRef"`
 }
 
+// trackedDefault is origin's default branch as this checkout last fetched it
+// (gitutil.DefaultRef: origin/HEAD's target, or a conventional name on the
+// remote), or "" when none names a remote-tracking branch of origin.
+func trackedDefault(dir string) string {
+	def, ok := strings.CutPrefix(gitutil.DefaultRef(dir), "refs/remotes/"+Remote+"/")
+	if !ok || def == "HEAD" {
+		return ""
+	}
+	return def
+}
+
+// settleStaleDefault is the landing going on past a stale or missing local
+// default (local, "" when nothing names one) with def, the default the forge
+// and origin agree on, and saying loudly that origin was asked. It fetches
+// nothing: the landed check that follows fetches origin's def into
+// refs/remotes/origin/<def> whatever was tracked before. It never writes
+// origin/HEAD: that ref is the person's, and every worktree of the repository
+// shares it.
+func settleStaleDefault(res *Result, dir, local, def string) {
+	was := "is missing here"
+	if local != "" {
+		if originHEADSet(dir) {
+			was = "here is stale (it resolves to " + local + ")"
+		} else {
+			was = "is missing here (the guess from a conventional name was " + local + ")"
+		}
+	}
+	res.add("origin", StatusDone, Remote+"/HEAD "+was+", so "+Remote+" was asked: its default branch is "+def+", as the forge's is; "+Remote+"/HEAD was left as it is", "")
+}
+
+// originHEADSet reports whether the checkout names origin's default with a
+// symbolic origin/HEAD, as opposed to the conventional-name guess
+// trackedDefault falls back to when it is unset.
+func originHEADSet(dir string) bool {
+	_, err := gitutil.Run(dir, "symbolic-ref", "--quiet", "refs/remotes/"+Remote+"/HEAD")
+	return err == nil
+}
+
 // checkOrigin refuses unless every fetch and push URL of origin is the
 // repository the forge client resolves here, so the push and the pull request
-// land in the same place, and unless the forge's default branch is def, the
-// one origin/HEAD names here, and is not branch: a local origin/HEAD can be
-// stale (the forge's default renamed after the clone), and the forge is the
-// authority on which branch land must never push. One forge call asks both.
-func checkOrigin(o Options, dir, branch, def string) (originURLs, error) {
+// land in the same place, and unless the forge's default branch is the one
+// origin itself names (git ls-remote --symref) and is not branch. It returns
+// that agreed default. The checkout's own origin/HEAD is never consulted: it
+// can be stale (the default renamed after the clone) or missing, and the forge
+// and origin are the authorities on which branch land must never push. A
+// forge and an origin that disagree are two authorities on one repository at
+// odds (the forge client resolving another repository, say), and are refused.
+func checkOrigin(o Options, dir, branch string) (originURLs, string, error) {
 	out, err := o.Forge(dir, "repo", "view", "--json", "nameWithOwner,url,sshUrl,defaultBranchRef")
 	if err != nil {
 		if errors.Is(err, ErrNoForgeClient) {
-			return originURLs{}, noForgeClient()
+			return originURLs{}, "", noForgeClient()
 		}
-		return originURLs{}, refuse("the forge client could not say which repository origin is and which branch is its default, so land cannot prove the push is safe: "+fsutil.RedactHome(err.Error()),
+		return originURLs{}, "", refuse("the forge client could not say which repository origin is and which branch is its default, so land cannot prove the push is safe: "+fsutil.RedactHome(err.Error()),
 			"settle what the forge client reports (gh auth status), then run abcd land again; nothing was gated or pushed")
 	}
 	var repo forgeRepo
 	if json.Unmarshal([]byte(out), &repo) != nil {
-		return originURLs{}, refuse("the forge client's view of the repository does not parse", "check the forge client (gh --version), then run abcd land again; nothing was pushed")
+		return originURLs{}, "", refuse("the forge client's view of the repository does not parse", "check the forge client (gh --version), then run abcd land again; nothing was pushed")
 	}
 	keys := map[string]bool{}
 	for _, u := range []string{repo.URL, repo.SSHURL} {
@@ -494,21 +539,27 @@ func checkOrigin(o Options, dir, branch, def string) (originURLs, error) {
 	}
 	urls, err := readOriginURLs(dir, repo, keys)
 	if err != nil {
-		return originURLs{}, err
+		return originURLs{}, "", err
 	}
 	fdef := repo.DefaultBranchRef.Name
 	switch {
 	case fdef == "":
-		return urls, refuse("the forge client reports no default branch for the repository, so land cannot prove "+branch+" is not it",
+		return urls, "", refuse("the forge client reports no default branch for the repository, so land cannot prove "+branch+" is not it",
 			"check the forge client (gh repo view), then run abcd land again; nothing was gated or pushed")
 	case fdef == branch:
-		return urls, refuse(branch+" is the forge's default branch, and land never pushes the default branch",
-			"land a branch of your own and merge it through a pull request; refresh the local default with git remote set-head "+Remote+" --auto")
-	case fdef != def:
-		return urls, refuse("the forge's default branch is "+fdef+", but "+Remote+"/HEAD here names "+def+" (a stale or missing origin/HEAD), so land cannot trust which branch is the default",
-			"refresh it (git fetch "+Remote+" && git remote set-head "+Remote+" --auto), then run abcd land again; nothing was gated or pushed")
+		return urls, "", refuse(branch+" is the forge's default branch, and land never pushes the default branch",
+			"land a branch of your own and merge it through a pull request; nothing was gated or pushed")
 	}
-	return urls, nil
+	odef, err := gitutil.RemoteHeadBranch(dir, Remote)
+	switch {
+	case err != nil:
+		return urls, "", refuse("land asked "+Remote+" which branch is its default (git ls-remote --symref "+Remote+" HEAD) and got no answer it can trust, so it cannot prove "+branch+" is not the default: "+fsutil.RedactHome(err.Error()),
+			"settle what git reports, then run abcd land again; nothing was gated or pushed")
+	case odef != fdef:
+		return urls, "", refuse("the forge's default branch is "+fdef+", but "+Remote+" names "+odef+" as its default (git ls-remote --symref "+Remote+" HEAD): two authorities on one repository disagree (the forge client may resolve another repository), so land cannot tell which branch is the default",
+			"settle which is right (gh repo view; git ls-remote --symref "+Remote+" HEAD), then run abcd land again; nothing was gated or pushed")
+	}
+	return urls, fdef, nil
 }
 
 // originURLs are origin's fetch and push URLs as checked against the forge's

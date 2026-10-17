@@ -21,3 +21,6 @@ func SetAccountPasswdForTest(t *testing.T, path string) {
 	accountSource.passwd = path
 	t.Cleanup(func() { accountSource = prev })
 }
+
+// RemoteHeadFrom is RemoteHeadBranch's reading of an ls-remote answer.
+var RemoteHeadFrom = remoteHeadFrom

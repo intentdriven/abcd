@@ -36,7 +36,7 @@ const maxRootLine = 4096
 // or listing the roots, or a line of a shape git never writes, is an error.
 func DefaultBranchRoots(root string) ([]string, error) {
 	rev := "HEAD"
-	if ref := DefaultRef(root); strings.HasPrefix(ref, "refs/remotes/origin/") {
+	if ref := TrackedDefaultBranch(root, "origin"); ref != "" {
 		rev = ref
 	} else if _, noCommit, err := RunCappedExitOne(root, maxRootLine, "rev-parse", "--verify", "--quiet", "HEAD^{commit}", "--"); err != nil {
 		return nil, fmt.Errorf("git rev-parse HEAD: %w", err)

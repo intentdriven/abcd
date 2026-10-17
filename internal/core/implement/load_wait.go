@@ -7,8 +7,10 @@ import (
 	"io"
 	"math/rand/v2"
 	"os"
+	"os/exec"
 	"runtime"
 	"slices"
+	"sync"
 	"syscall"
 	"time"
 
@@ -45,6 +47,18 @@ import (
 // seconds and checks everything again, and opens only if that re-check also
 // finds it free, so two starters released by one quiet minute do not start
 // together (iss-2610102020442624).
+//
+// Two waiters whose start and pid disagree, as after the process ids wrap,
+// wait on neither (machineload.QueueAhead), and across accounts no hold keeps
+// them apart: re-checks that fall in one moment, before either shows in the
+// table as running its command, both open. Under `--wait -- make preflight`
+// each preflight's own gate then waits on the other's running waiter, and both
+// stand until their timeouts. So the command form shows itself in the table as
+// running from the moment it opens (a short-lived child, its mark), waits
+// WaitOpenPause and reads the table once more before it starts its command; a
+// waiter that finds another opened within that moment with the lower pid
+// stands back: it gives up its hold, re-draws its jitter and waits again,
+// while the lower pid goes on. It stands back at most WaitBackoffCap times.
 //
 // A falling load opens every waiter watching it at once, which on 2026-10-11
 // put four race runs on a 16-core machine together. So within one account the
@@ -121,7 +135,17 @@ var (
 	// that finds the machine free and the re-check that opens the gate.
 	WaitJitterMin = 15 * time.Second
 	WaitJitterMax = 60 * time.Second
+	// WaitOpenPause is how long the command form waits after it opens, showing
+	// in the process table as running its command, before it looks once more
+	// for another waiter that opened in the same moment (WaitLoad).
+	WaitOpenPause = 2 * time.Second
 )
+
+// WaitBackoffCap bounds how many times one wait stands back from another
+// waiter that opened in the same moment with the lower pid. A waiter that has
+// stood back this many times opens without that last look, as it did before
+// the look was added, so no wait goes round for ever.
+const WaitBackoffCap = 3
 
 // waitJitter is a random wait from WaitJitterMin to WaitJitterMax.
 func waitJitter() time.Duration {
@@ -178,6 +202,14 @@ type WaitRequest struct {
 	// re-check that opens the gate; nil is a random WaitJitterMin to
 	// WaitJitterMax.
 	Jitter func() time.Duration
+	// Mark shows the command form's waiter in the process table as running its
+	// command from the moment it opens until its command starts: it starts a
+	// child of the waiter and returns the function that stops it. nil is a
+	// short-lived /bin/sleep.
+	Mark func() (stop func(), err error)
+	// OnBackoff is called at each back-off, with the waiters that opened in the
+	// same moment with the lower pid and the jitter waited before looking again.
+	OnBackoff func(lower []int, jitter time.Duration)
 }
 
 // WaitHolder is a hold: the record under ~/.abcd.noindex/ and what the report
@@ -222,12 +254,20 @@ type WaitResult struct {
 	// name the pids in the text report; the JSON report carries the condition.
 	Preflights []int `json:"-"`
 	Waiters    []int `json:"-"`
+	// Backoffs is how many times the waiter stood back from another that opened
+	// in the same moment with the lower pid.
+	Backoffs int `json:"backoffs,omitempty"`
+	// Unmark stops the command form's mark (WaitRequest.Mark). The caller calls
+	// it once its command has started, or could not be started; nil when there
+	// is no mark.
+	Unmark func() `json:"-"`
 }
 
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
-// refusal before any wait: a home it cannot resolve, a symlinked
-// ~/.abcd.noindex, or a hold lock that is not a regular file. A timeout is a
-// status, not an error.
+// refusal before any wait (a home it cannot resolve, a symlinked
+// ~/.abcd.noindex, or a hold lock that is not a regular file), or a hold it
+// could not give up when standing back after a wait. A timeout is a status,
+// not an error.
 func WaitLoad(req WaitRequest) (WaitResult, error) {
 	getenv := req.Getenv
 	if getenv == nil {
@@ -304,6 +344,31 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 				return res, err
 			}
 		}
+		if done && res.Status == WaitOpen && req.Command && res.Backoffs < WaitBackoffCap {
+			lower, stop := openLook(req, sleep)
+			if len(lower) > 0 {
+				// Stand back: the lower pid opened in the same moment and keeps
+				// going. Give up the hold, re-draw the jitter, and wait again.
+				stop()
+				if res.Hold != nil {
+					if err := releaseHoldIn(root, *res.Hold); err != nil {
+						return res, fmt.Errorf("the hold %s could not be given up: %w", abcdhome.Display(WaitHoldFileName), err)
+					}
+				}
+				res.Status, res.Hold, res.Waiters = "", nil, lower
+				res.Backoffs++
+				if !slices.Contains(res.WaitedOn, WaitOnWaiter) {
+					res.WaitedOn = append(res.WaitedOn, WaitOnWaiter)
+				}
+				j := min(jitter(), max(deadline.Sub(now()), 0))
+				if req.OnBackoff != nil {
+					req.OnBackoff(lower, j)
+				}
+				sleep(j)
+				continue
+			}
+			res.Unmark = stop
+		}
 		res.WaitedS = now().Sub(start).Seconds()
 		if done {
 			// What held an earlier look shut is history (WaitedOn), not the
@@ -330,6 +395,64 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 		}
 		sleep(min(pollEvery, left))
 	}
+}
+
+// openLook is the command form's last look, once it has opened and before it
+// starts its command. Two waiters whose start and pid disagree wait on neither
+// (machineload.QueueAhead), and across accounts no hold keeps them apart, so
+// both can open in one moment, before either shows in the table as running
+// its command; under `--wait -- make preflight` each preflight's own gate then
+// waits on the other's running waiter until its timeout. So the waiter marks
+// itself as running (req.Mark), waits WaitOpenPause, and reads the table once
+// more: the waiters it returns opened within that moment and have the lower
+// pid, and this one stands back from them. The mark is left running for the
+// caller to stop once the command has started (WaitResult.Unmark); a mark that
+// cannot be started leaves this waiter unseen by the others' look, and its own
+// look still runs. A table that cannot be read finds no one
+// (dcn-2610162257477571).
+func openLook(req WaitRequest, sleep func(time.Duration)) ([]int, func()) {
+	mark := req.Mark
+	if mark == nil {
+		mark = sleepMark
+	}
+	stop, err := mark()
+	if err != nil || stop == nil {
+		stop = func() {}
+	}
+	var once sync.Once
+	stopOnce := func() { once.Do(stop) }
+	sleep(WaitOpenPause)
+	snap, err := req.Read()
+	if err != nil || !snap.HasProcs {
+		return nil, stopOnce
+	}
+	args, err := req.ReadArgs(machineload.GateCandidates(snap, req.Self))
+	if err != nil {
+		return nil, stopOnce
+	}
+	window := WaitOpenPause + machineload.StartTolerance*time.Second
+	var lower []int
+	for _, pid := range machineload.JustOpened(snap, req.Self, args, window) {
+		if pid < req.Self.PID {
+			lower = append(lower, pid)
+		}
+	}
+	return lower, stopOnce
+}
+
+// sleepMark is the default mark: a /bin/sleep child of the waiter, which the
+// process table shows as the waiter running its command. It outlives no
+// waiter for long: the waiter stops it once its command has started, and a
+// waiter that dies first leaves it to end on its own.
+func sleepMark() (func(), error) {
+	c := exec.Command("/bin/sleep", "30")
+	if err := c.Start(); err != nil {
+		return nil, err
+	}
+	return func() {
+		_ = c.Process.Kill()
+		_ = c.Wait()
+	}, nil
 }
 
 // waitLook is one look at the machine and the hold. It reports the conditions
@@ -530,6 +653,12 @@ func ReleaseWaitHold(home string, h WaitHolder) error {
 		return err
 	}
 	defer root.Close()
+	return releaseHoldIn(root, h)
+}
+
+// releaseHoldIn removes the hold h through root when it is still the record in
+// force.
+func releaseHoldIn(root *os.Root, h WaitHolder) error {
 	return fsutil.WithFileLockIn(root, waitLockFileName, waitLockTimeout, func() error {
 		cur, ok := readHoldIn(root)
 		if !ok || cur.PID != h.PID || cur.StartUnix != h.StartUnix || !cur.Opened.Equal(h.Opened) {
