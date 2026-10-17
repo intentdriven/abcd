@@ -277,3 +277,32 @@ func TestIsLocalNamesThisMachine(t *testing.T) {
 		}
 	}
 }
+
+// TestARefusalNotNamingTheUsageFieldCarriesNoHint: a 400 whose body does not
+// name stream_options or include_usage, to a request that asked for usage,
+// reads as it did before the adapter asked: no hint that the field is to
+// blame, and not ErrStreamUsage. It is still told apart as a refusal of a
+// request that asked (ErrUsageRefused), which only a setup acts on.
+func TestARefusalNotNamingTheUsageFieldCarriesNoHint(t *testing.T) {
+	for _, code := range []int{http.StatusBadRequest, http.StatusUnprocessableEntity} {
+		f := newFake(t, status(code, `{"error":{"message":"max_tokens is too large"}}`))
+		_, err := mustClient(t, f.base(), testKey).Complete(context.Background(), request(), jsonObject)
+		if err == nil || errors.Is(err, ErrStreamUsage) || strings.Contains(err.Error(), StreamUsageField) {
+			t.Fatalf("HTTP %d: err = %v, want a refusal with no usage hint", code, err)
+		}
+		if !errors.Is(err, ErrUsageRefused) {
+			t.Fatalf("HTTP %d: err = %v, want it told apart as ErrUsageRefused", code, err)
+		}
+		req := request()
+		req.NoStreamUsage = true
+		if _, err := mustClient(t, f.base(), testKey).Complete(context.Background(), req, jsonObject); errors.Is(err, ErrUsageRefused) {
+			t.Fatalf("HTTP %d: a request that did not ask is ErrUsageRefused: %v", code, err)
+		}
+	}
+	// A body that names include_usage alone carries the hint.
+	f := newFake(t, status(http.StatusUnprocessableEntity, `{"error":{"message":"extra field: include_usage"}}`))
+	_, err := mustClient(t, f.base(), testKey).Complete(context.Background(), request(), jsonObject)
+	if !errors.Is(err, ErrStreamUsage) || !errors.Is(err, ErrUsageRefused) || !strings.Contains(err.Error(), StreamUsageField) {
+		t.Fatalf("err = %v, want ErrStreamUsage naming the field", err)
+	}
+}

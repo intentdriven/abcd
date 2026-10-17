@@ -152,16 +152,36 @@ type Request struct {
 // as added by the adapter rather than as a setting sent.
 const StreamUsageField = "stream_options.include_usage"
 
-// ErrStreamUsage is what a refusal wraps when the server refused, with HTTP
-// 400 or 422, a request that asked for usage in the stream: the field may be
-// what it refused, and the caller names the setting that stops asking.
-var ErrStreamUsage = errors.New("openaiapi: the server refused a request that asked for usage in the stream")
+// ErrUsageRefused is what a refusal is when the server refused, with HTTP
+// 400 or 422, a request that asked for usage in the stream, whatever its body
+// says: the field may be what it refused. Only a setup acts on it, by asking
+// once more without the field (oracle.Connect); an ordinary call is never
+// sent twice.
+var ErrUsageRefused = errors.New("openaiapi: the server refused a request that asked for usage in the stream")
 
-// streamUsageError is a scrubbed refusal that is ErrStreamUsage.
-type streamUsageError struct{ msg string }
+// ErrStreamUsage is the ErrUsageRefused whose refusal names the field
+// (stream_options or include_usage): the field is likely what it refused, so
+// the caller names the setting that stops asking.
+var ErrStreamUsage = errors.New("openaiapi: the server refused the request's usage in the stream")
+
+// streamUsageError is a scrubbed refusal of a request that asked for usage
+// in the stream: always ErrUsageRefused, and ErrStreamUsage when its body
+// names the field.
+type streamUsageError struct {
+	msg   string
+	named bool
+}
 
 func (e *streamUsageError) Error() string { return e.msg }
-func (e *streamUsageError) Unwrap() error { return ErrStreamUsage }
+func (e *streamUsageError) Is(target error) bool {
+	return target == ErrUsageRefused || (e.named && target == ErrStreamUsage)
+}
+
+// namesStreamUsage reports whether a refusal's body, scrubbed, names the
+// field the adapter added.
+func namesStreamUsage(body string) bool {
+	return strings.Contains(body, "stream_options") || strings.Contains(body, "include_usage")
+}
 
 // Result is one validated answer: the document the output contract admitted,
 // the model asked for, and the model the provider reported (bounded, with any
@@ -460,13 +480,19 @@ func (c *Client) Complete(ctx context.Context, req Request, contract func([]byte
 	live := &liveBody{r: resp.Body, l: l}
 
 	if resp.StatusCode != http.StatusOK {
-		err := c.failedStatus(l, resp)
+		body, err := c.failedStatus(l, resp)
 		if !req.NoStreamUsage && (resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity) {
 			// The status refuses the request, and the field the adapter added
-			// may be what it refused: the caller names the setting that stops
-			// asking. No second request is made without it.
-			return Result{}, &streamUsageError{msg: err.Error() + " (the request asked for usage in the stream, " + StreamUsageField +
-				", which a server that does not take the field refuses)"}
+			// may be what it refused. Only a body that names the field says
+			// so; any other keeps its own words. No second request is made
+			// here without the field.
+			named := namesStreamUsage(body)
+			msg := err.Error()
+			if named {
+				msg += " (the request asked for usage in the stream, " + StreamUsageField +
+					", which a server that does not take the field refuses)"
+			}
+			return Result{}, &streamUsageError{msg: msg, named: named}
 		}
 		return Result{}, err
 	}
@@ -490,18 +516,20 @@ func (c *Client) Complete(ctx context.Context, req Request, contract func([]byte
 // status is reported. A body cut off, by the wait, the size bound or a read
 // error, is not quoted at all: the cut can end inside a key the provider
 // echoed, and the scrub matches whole key forms only (iss-2610031210435016).
-func (c *Client) failedStatus(l *limits, resp *http.Response) error {
+// The whole body, scrubbed, comes back beside the error, "" when it was cut
+// off, so the caller can read what the refusal names without quoting more.
+func (c *Client) failedStatus(l *limits, resp *http.Response) (string, error) {
 	wait := time.AfterFunc(c.errorWait, func() { l.cancel(errErrorBody) })
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes+1))
 	wait.Stop()
 	msg := fmt.Sprintf("%s answered HTTP %d", c.host, resp.StatusCode)
 	if err != nil || len(raw) > maxErrorBodyBytes {
-		return c.fail(msg + " (its body was cut off, so it is not quoted)")
+		return "", c.fail(msg + " (its body was cut off, so it is not quoted)")
 	}
 	if said := c.providerSaid(raw); said != "" {
 		msg += ": " + said
 	}
-	return c.fail(msg)
+	return c.scrub(string(raw)), c.fail(msg)
 }
 
 // render builds the request body: the adapter's own fields, then the
