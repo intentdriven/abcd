@@ -2,12 +2,15 @@ package claim
 
 import (
 	"os"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/adapter/scanner"
 	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/assistedby"
 	"github.com/intentdriven/abcd/internal/core/lease"
+	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // Options carries what a caller may set about the environment an act runs in.
@@ -20,10 +23,15 @@ type Options struct {
 	// Version is the binary's version the Assisted-by label names; "" means
 	// the running binary's (core.Version).
 	Version string
+	// Embargo is the embargo check an announcement is held to (C5); nil
+	// refuses every announcement, since an unchecked one is never let through.
+	Embargo EmbargoCheck
 	// ForgeUser answers whose GitHub account the forge token gh resolves from
 	// the session's environment belongs to (login and numeric id): the user endpoint, asked only by an
 	// explicit act when git's identity names no holder. nil means the real
-	// call, `gh api user`; tests set it so none touches the network.
+	// call, `gh api user`, asked once per process for each checkout and forge
+	// credential; tests set it so none touches the network, and an answer it
+	// gives is never cached.
 	ForgeUser func(root string) (login string, id int64, err error)
 }
 
@@ -55,18 +63,27 @@ func (o Options) assistedBy() string {
 
 // Request is one reservation act asked for.
 type Request struct {
-	// Record is the issue or intent id, as the person typed it.
+	// Record is the issue or intent id, as the person typed it, or a release
+	// subject, rel-vX.Y.Z.
 	Record string
 	// Footprint is the repository-relative files the work will change; a
-	// reservation requires at least one, a release takes none.
+	// reservation of a record requires at least one, and a release subject
+	// and a release (the tombstone) take none.
 	Footprint []string
-	// Lease is how long the reservation holds; zero means lease.Default.
+	// Lease is how long the reservation holds; zero means lease.Default, or
+	// lease.Max for a release subject.
 	Lease time.Duration
 	// TakeOver moves this person's own live reservation from another copy to
 	// this one. It never overrides another person's.
 	TakeOver bool
 	// Release pushes the tombstone instead.
 	Release bool
+	// Tip, with Release, names the one reservation commit the release may
+	// tombstone: a tip that has moved since (renewed or reserved again by
+	// hand, or replaced) is refused with a *NotHeld, NotHeldMoved, and nothing
+	// is pushed. Empty releases whatever reservation of this person's from
+	// this copy the tip holds.
+	Tip string
 	// Renew renews this person's own reservation from this copy, live or
 	// lapsed, and nothing else: an absent, unreadable or released tip, and one
 	// another person or another copy holds, is refused with a *NotHeld naming
@@ -74,6 +91,19 @@ type Request struct {
 	// record anew and never takes one over. It keeps the tip's footprint, so
 	// Footprint must be empty.
 	Renew bool
+	// HandBack, with Release, publishes a hand-back: the tombstone names this
+	// kind, one of HandBackKinds, and the blob id of the record on origin's
+	// default branch (Result.HandBackUnpublished says why it names none).
+	HandBack string
+	// HandBackBlob, with HandBack, is the blob id of the record the hand-back
+	// was judged over: a release finding origin's default branch holding the
+	// record at another blob publishes no hand-back, and says so
+	// (Result.HandBackUnpublished). Empty names the blob as last fetched.
+	HandBackBlob string
+	// Drain marks a reservation a drain makes: it backs off a hand-back
+	// tombstone whose record is unchanged on origin's default branch, where a
+	// person's own reservation goes ahead and is told (Result.HandedBack).
+	Drain bool
 	// Live, with Renew, refuses one's own reservation that has lapsed too
 	// (NotHeldLapsed): the land fence renews only a reservation that holds.
 	Live bool
@@ -114,13 +144,35 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	if req.Release && (len(req.Footprint) > 0 || req.TakeOver || req.Lease != 0) {
 		return nil, refuse("a release takes no footprint, take-over or lease; %s", nothingPushed)
 	}
+	if req.Tip != "" && (!req.Release || !gitutil.IsFullSHA(req.Tip)) {
+		return nil, refuse("only a release names the reservation commit it releases, by its full object name; %s", nothingPushed)
+	}
 	if req.Renew && (req.Release || req.TakeOver || len(req.Footprint) > 0) {
 		return nil, refuse("a renewal keeps its reservation's footprint, and takes no footprint, take-over or release; %s", nothingPushed)
 	}
 	if req.Live && !req.Renew {
 		return nil, refuse("only a renewal can require a live reservation; %s", nothingPushed)
 	}
-	if !req.Release && !req.Renew && len(req.Footprint) == 0 {
+	if req.HandBack != "" && !req.Release {
+		return nil, refuse("only a release publishes a hand-back; %s", nothingPushed)
+	}
+	if req.HandBack != "" && !slices.Contains(HandBackKinds, req.HandBack) {
+		return nil, refuse("hand-back kind %s is not one of %s; %s", echo(req.HandBack), strings.Join(HandBackKinds, ", "), nothingPushed)
+	}
+	if req.HandBackBlob != "" && req.HandBack == "" {
+		return nil, refuse("only a hand-back names the record blob it was judged over; %s", nothingPushed)
+	}
+	if req.HandBackBlob != "" && !validBlob(req.HandBackBlob) {
+		return nil, refuse("record blob %s is not an object name; %s", echo(req.HandBackBlob), nothingPushed)
+	}
+	if req.Drain && (req.Release || req.Renew) {
+		return nil, refuse("only a reservation is a drain's to back off a hand-back, never a release or a renewal; %s", nothingPushed)
+	}
+	release := isRelease(id)
+	if release && len(req.Footprint) > 0 {
+		return nil, refuse("a release reservation holds every merge and takes no footprint; %s", nothingPushed)
+	}
+	if !release && !req.Release && !req.Renew && len(req.Footprint) == 0 {
 		return nil, refuse("a reservation names the files the work will change: pass --footprint <path> once per path; %s", nothingPushed)
 	}
 	for _, p := range req.Footprint {
@@ -129,7 +181,12 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 		}
 	}
 	term := req.Lease
-	if term == 0 {
+	switch {
+	case term == 0 && release && !req.Release:
+		// A release holds for a day unless a lease is named: a cut waits on
+		// checks and an approval, and must outlast them (release.go).
+		term = lease.Max
+	case term == 0:
 		term = lease.Default
 	}
 	if term < lease.Min || term > lease.Max {
@@ -159,10 +216,11 @@ func prepare(root string, req Request, o Options, local ...func(root string) err
 	}
 	if !req.Release && !req.Renew {
 		// The reservation is measured by the longer of its own message and the
-		// tombstone that will one day release it (a longer subject and an
-		// Abcd-Released-At line), so a reservation the writer accepts can
-		// always be released.
-		for _, text := range []string{p.reservation().text(), p.tombstone(req.Footprint).text()} {
+		// tombstone that will one day release it (a longer subject, an
+		// Abcd-Released-At line, and the longest hand-back with the longer of
+		// git's object names), so a reservation the writer accepts can always
+		// be released, handed back or not.
+		for _, text := range []string{p.reservation().text(), p.longestTombstone(req.Footprint).text()} {
 			if err := checkMessage(root, text); err != nil {
 				return nil, err
 			}
@@ -186,6 +244,15 @@ func (p *prepared) tombstone(footprint []string) message {
 		Record: p.id, Holder: p.holder, Copy: p.copy, Footprint: footprint,
 		ClaimedAt: p.now, ExpiresAt: p.now, ReleasedAt: p.now, AssistedBy: p.label,
 	}
+}
+
+// longestTombstone is the longest tombstone that may one day release a
+// reservation with footprint: one naming the longest hand-back kind and the
+// longer of git's object names.
+func (p *prepared) longestTombstone(footprint []string) message {
+	m := p.tombstone(footprint)
+	m.HandedBack, m.RecordBlob = longestHandBack(), longestBlob
+	return m
 }
 
 // checkMessage refuses a reservation message the writer may not write

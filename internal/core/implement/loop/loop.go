@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -72,6 +73,18 @@ type Options struct {
 	// noReserve starts a run on an origin without reserving its key: a test
 	// fixture that stands a run up and takes its reservation by hand sets it.
 	noReserve bool
+	// held is the reservation the drain took on the issue before it asked
+	// the judgement over it: the lane a no opens starts on it, and
+	// reserveStart pushes nothing. Nil, the start reserves as it always has.
+	held *heldReservation
+	// plan is the drain plan an issue's start check reads in place of the
+	// checkout's ledger: the drain sets it to the plan its move read from
+	// origin's default branch (drain_origin.go). Nil, the check reads the
+	// checkout's.
+	plan *capture.DrainPlan
+	// drain marks a lane start the drain makes: a reservation it pushes backs
+	// off a hand-back whose record is unchanged on origin (claim.Request.Drain).
+	drain bool
 }
 
 // StageClaim is the refusal stage of a start whose shared-run claim is refused
@@ -223,6 +236,14 @@ type StartResult struct {
 	// footprint); empty when it reserved nothing (no remote named origin, or
 	// a resumed run handed back).
 	Reservation string `json:"reservation,omitempty"`
+	// ForkUnchecked is why the start's reservation could not ask the forge
+	// whether origin is a fork, so it went on without the check (claim's
+	// Result.ForkUnchecked); "" when it asked, or asked nothing.
+	ForkUnchecked string `json:"fork_unchecked,omitempty"`
+	// ForkAllowed is the fork, as owner/name, the start's reservation was let
+	// through on because reservation.fork_origin names it (claim's
+	// Result.ForkAllowed); "" when none was.
+	ForkAllowed string `json:"fork_allowed,omitempty"`
 	Next        string `json:"next"`
 }
 
@@ -354,6 +375,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		return StartResult{}, err
 	}
 	snap.takeOver = o.TakeOver
+	snap.plan = o.plan
 	chk, err := check(repoRoot, key, o.Session, snap)
 	if err != nil {
 		return StartResult{}, err
@@ -372,7 +394,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	// The run's reservation on the shared remote (reservation.go), once the
 	// record may start and before the run exists: another's hold refuses the
 	// start, and a run that is then not created releases it.
-	reservedAt, reservedNote, fresh, err := reserveStart(repoRoot, chk, o)
+	rsv, err := reserveStart(repoRoot, chk, o)
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -380,7 +402,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 	// created here, or a racing start's run resumed below.
 	keep := false
 	defer func() {
-		if fresh && !keep {
+		if rsv.fresh && !keep {
 			releaseKey(repoRoot, chk.Key, o.now())
 		}
 	}()
@@ -438,7 +460,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 			// The run's first window opens at its start.
 			WindowStartedAt: &now,
 			Pace:            &pace,
-			ReservedAt:      reservedAt,
+			ReservedAt:      rsv.at,
 		}
 		openNextLane(&st)
 		st.Record = append(st.Record, Entry{At: now, Lane: st.Lanes[0].ID, Stage: "start",
@@ -446,8 +468,8 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		st.Record = append(st.Record, Entry{At: now, Stage: StagePace,
 			Note: "pace " + pace.String() + "; the first window opens now"})
 		st.Record = append(st.Record, Entry{At: now, Stage: CheckBudget, Note: budget.Detail})
-		if reservedNote != "" {
-			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: reservedNote})
+		if rsv.note != "" {
+			st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: rsv.note})
 		}
 		if pick != nil {
 			rp := *pick
@@ -468,7 +490,7 @@ func start(repoRoot, key string, o Options, pick *RunPick) (StartResult, error) 
 		}
 		res = startResult(st, chk.Checks, false)
 		res.Claim = claim
-		res.Reservation = reservedNote
+		res.Reservation, res.ForkUnchecked, res.ForkAllowed = rsv.note, rsv.forkUnchecked, rsv.forkAllowed
 		keep = true
 		return nil
 	})
@@ -872,7 +894,7 @@ func receipt(repoRoot, runID, receipt string, steps Stages, o Options, route *ru
 			// The lane's own receipt handed the work back: the verifier has
 			// discarded it, and the lane ends here, before the validators.
 			handBackLane(st, &lane, *lane.HandBack, "", now)
-			releaseOnHandBack(repoRoot, st, now)
+			releaseOnHandBack(repoRoot, st, *lane.HandBack, now)
 			st.Lanes[i] = lane
 			st.UpdatedAt = now
 			res = laneResult(*st, lane, "", nil)

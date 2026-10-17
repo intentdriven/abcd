@@ -1,7 +1,7 @@
 ---
 name: reserve
-description: "Reserve an issue or intent on the shared remote, or release it: Writes one commit to its origin branch; refuses a record someone else holds, with exit 3."
-argument-hint: "<record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>] | <record-id> --release | --holder | --sweep [--apply] [--older-than <days>]"
+description: "Reserve an issue, intent or release on the shared remote, or release it: Writes one commit to its origin branch; refuses what someone else holds, with exit 3."
+argument-hint: "<record-id> --footprint <path> [--footprint <path>…] [--take-over] [--lease <duration>] | rel-vX.Y.Z [--lease <duration>] | <record-id|rel-vX.Y.Z> --release | --holder | --sweep [--apply] [--older-than <days>]"
 block: agents
 user-invocable: false
 ---
@@ -46,8 +46,54 @@ copy's key), `footprint`, `claimed_at`, `effective_expiry`, `commit`, and
 `commit`, `effective_expiry`, and `unreadable` when it could not be read. When
 origin's default branch could not be read, `derived_unchecked` says why: the
 act went on, but whether the record is already finished there was not checked.
+When GitHub could not say whether origin is a fork (gh missing, out of time or
+refused), origin's host is not github.com by name, a push URL could not be
+read, or a github.com URL does not name exactly one owner and one repository,
+`fork_unchecked` says why: the act went on, and the text reads `not checked: whether origin is a fork
+(…)`. When origin is the one fork the repository allows, `fork_allowed` names
+it as `<owner>/<name>` and the text reads `origin is a fork the repository
+allows (<owner>/<name>)`. Pass either on to the user.
 
 Tell the user what was reserved and until when.
+
+## Reserve a release before cutting it
+
+A session cutting a release reserves the release itself, so every other
+session's land step holds its merge until the cut is done:
+
+```bash
+"${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-v0.16.0 --json
+```
+
+The subject is `rel-v` and the version, three plain numbers (`rel-v0.16.0`,
+never `rel-0.16.0` or `rel-v0.16.0-rc1`). It takes no footprint (one is
+refused, exit 2), and it does not count toward the cap of ten. With no
+`--lease` it holds for `24h`, so a cut that waits on checks and an approval
+outlasts it; running the same command again from the same copy renews it for
+another day, and without a renewal it holds no longer than a day (see
+**Clocks** for one claimed ahead of this copy's clock). It ends by itself once the tag
+`v0.16.0` is on `origin` (the listing shows it `released`, `released_by:
+tag`), or with `--release` from the copy that holds it. Reserving a release
+already tagged on `origin` is refused (exit 2). While it is live, an
+`implement step` at the land fence in any other copy, the user's own other
+computer included, exits 3 naming the release and its holder and arms nothing;
+this copy's own landings are not held. The hold stops a merge from being armed
+and nothing more: a pull request whose auto-merge was on, or that was in the
+merge queue, before the release was reserved still merges when its checks
+pass, so the cutting session checks for armed pull requests and merge-queue
+entries after reserving and again before merging the release pull request
+(`/abcd:launch`, "Before step 1"), and tells people working in the repository
+by hand to hold. `/abcd:peers` shows the line "release
+v0.16.0 being cut by @octo: merges are held", by the same rule the hold
+counts with: in the cutting copy it shows "you are cutting release v0.16.0
+from this copy: every other session's merges are held", and a release dated
+more than five minutes ahead whose first sighting this checkout cannot keep
+is shown as not counted, in the words `abcd land`'s notice uses; `peers
+--json`'s `release_holds` rows say so with `own` and `unsighted`. The fetch every act makes reads
+`origin`'s release tags with the reservations, into `refs/abcd/release-tags/`,
+and never touches this checkout's own tags. Those are ordinary refs in this
+checkout, so `git log --all` lists the commits they name and `git push
+--mirror` would push them.
 
 ## When it refuses
 
@@ -84,8 +130,24 @@ is refused, naming the ten; a renewal, and a take-over of the user's own other
 copy, of a reservation still live are never refused by the cap, while renewing
 one that has lapsed counts as a new one. Release one first, if the user agrees.
 
-**Exit 2 is every other refusal**: an id that is not an issue or intent, no
-footprint, a path that is not repository-relative, a lease out of bounds, a
+**Exit 2 on a fork origin.** A new reservation or a take-over asks GitHub
+whether each URL origin pushes to is a fork; a renewal and a release never ask,
+except a drain's reservation that renews your lapsed one, which is the drain's
+hold afresh and asks as a new one does.
+A fork is refused before anything is pushed, since a reservation there is
+invisible to everyone working on the repository it was made from. The refusal
+names that repository and the `git remote set-url` command that points origin
+there; relay it, and run the command only if the user agrees. When the fork is
+itself where everyone working on the repository reserves, the repository says
+so by setting `reservation.fork_origin` to that fork's `"<owner>/<name>"` in
+`.abcd/config.json` (the default is `"refuse"`); never set it to get past the
+refusal without the user's word. It allows that one fork only: a fork of it is
+refused naming both, and a value that is neither `"refuse"` nor one owner and
+one name is refused, naming the file, once origin is a fork.
+
+**Exit 2 is every other refusal**: an id that is not an issue, an intent or a
+release (`rel-vX.Y.Z`), no footprint for a record or one for a release, a
+release already tagged on `origin`, a path that is not repository-relative, a lease out of bounds, a
 message over the 4096-byte cap, no GitHub account (the token could not be
 asked or did not answer), no local tier (`.abcd/.work.local/`, which `/abcd:ahoy install` creates), no remote
 named `origin`, a fetch or a push origin refused. Each refusal ends by saying
@@ -147,7 +209,37 @@ take-over or lease. Only the holder's own reservation from this copy is
 released (exit 2 otherwise); a release already made exits 0 as
 `already_released` and pushes nothing. A record that is resolved, won't-fixed,
 shipped or superseded on origin's default branch counts as released whatever
-its reservation says.
+its reservation says, and so does a release whose tag is on `origin`. Such a
+record is not reserved again: a reservation or take-over of
+it backs off (exit 3) saying it is finished on origin's default branch, with a
+tip or without one, and pushes nothing.
+
+**Over a hand-back.** A drain that hands an issue back to a person releases
+its reservation with a tombstone naming the hand-back's kind (one of
+`user-visible`, `trust-rule`, `design-finding`, `second-package`,
+`unachievable`, `stuck`, `closed`; the last two are reserved for steps not yet
+built, a stuck lane and a closed pull request, and nothing writes them yet) and
+the blob id of the issue's record on
+origin's default branch. Every drain backs off that issue until a person
+changes the record there, and no drain takes over or renews a reservation you
+make over it, lapsed or not. Your own reservation over it is made, and the
+result says whose hand-back it was made over, of which kind and when
+(`  note: ...` in the text form, `handed_back` in `--json`): read the record's
+hand-back before you start, since it names a decision that is a person's.
+Releasing it again without changing the record keeps the hand-back: the
+release's tombstone carries its kind and blob forward, and the release says so
+(`  note: ...`, `hand_back_kept` in `--json`), so no account's drain takes the
+issue until a person changes the record. A release whose tombstone cannot mark
+the hand-back (the record is in no one file on origin's default branch, that
+branch could not be read, or the message would pass its cap) is still made, plain, and says why on a
+`  no hand-back: ...` line (`hand_back_unpublished` in `--json`).
+
+**Reopening a record.** The back-off reads origin's default branch alone, so a
+record being reopened on a branch (moved from `resolved/` or `wontfix/` back to
+`open/`, or an intent from `shipped/` or `superseded/`) still backs off, and no
+flag, `--take-over` included, gets past it. Merge the reopen first: once
+origin's default branch holds the record open again, reserve it
+(dcn-2610161135122294). Tell the user that, rather than retrying.
 
 ## Sweep spent reservations
 

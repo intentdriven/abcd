@@ -68,13 +68,19 @@ A prompt that matches no domain injects nothing (zero added tokens).
 ### Default domains
 
 `COMMITTING`, `DOCUMENTATION`, `ROADMAP`, `ISSUES`, `INTENTS`, `LIFEBOAT`, `PII`,
-`OPINIONS`, `LOAD`, `SHELL`, `GRILL`. Each carries recall keywords and its rules, bundled
+`OPINIONS`, `LOAD`, `SHELL`, `GRILL`, `SCRATCH`. Each carries recall keywords and its rules, bundled
 in the abcd binary; a repo overrides them per-field via `.abcd/rules.json`.
 `OPINIONS` points at the canonical conventions under
 `.abcd/development/principles/` rather than copying them. `LOAD` carries the
 trust rule for load experiments: one owned process group killed together through
 a re-checked handle and never by pattern, clean proven by what is running, and
-explicit consent with a cap below the core count on a live development machine.
+explicit consent with a cap below the core count on a live development machine;
+and the load gate a preflight waits at: test stages admitted as many at once as
+the person's own `load.preflights` in `~/.abcd.noindex/config.json` allows (one
+by default and two at most, never set by a repository), and race stages kept
+apart among checkouts that have the race gate: one at a time within an account,
+and across accounts all but a narrow window (a race waiter gone before its race
+run shows, or two waiters whose start and pid disagree after a pid wrap).
 `SHELL` is the teaching half of the shell-hazard guard: it is generated from the
 same hazard registry `abcd guard` enforces in the repository, one rule per entry
 (the command, why it is dangerous, and what to run instead; a rule from the
@@ -88,6 +94,17 @@ widen rather than recommend); it is generated from the same limits the question
 check in `abcd guard hook` enforces, and recalls on words of asking and
 choosing, so it lands in most sessions. A repository that does not want it
 silences it with `{"GRILL": {"state": "dormant"}}` in `.abcd/rules.json`.
+`SCRATCH` says where a session's working files go: what a later turn,
+session or agent reruns or reads (a helper script, a queue ticket, a handover)
+goes in the main checkout's `.abcd/.work.local/scratch/` (or `logs/`) or a
+directory under `~/.abcd.noindex/`, never in a linked worktree's local tier,
+which `git worktree remove` deletes with the worktree; a file for that
+worktree's own work alone may stay in its own tier. A verifier's copy goes in a
+directory of its own under `~/.abcd.noindex/` keyed on the root-commit SHA, and
+the host's own scratchpad keeps only the turn's throwaway files, since a reboot
+or a new session loses it. Its second rule sends an agent to abcd's commands
+before it writes a helper script, and has it capture the gap when none does the
+job.
 
 ### Reset triggers
 

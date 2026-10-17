@@ -41,7 +41,9 @@ No run is created until every check passes, and each is a read (criteria 1 and 2
 - **key** — the record is an intent, or an issue id by shape (the issue key,
   decision 10). An issue takes two checks and no others: the repository's own
   drain rule takes it, read as the drain reads it ([`35-drain.md`](35-drain.md)),
-  and no peer holds it out of `open/` or claims it. Its run has one lane, whose
+  and no peer holds it out of `open/` or claims it. One hand-back is let
+  through: an issue the drain hands back as `promoted`, linked to an intent, is
+  taken by a person's own build, the row naming the intent. Its run has one lane, whose
   brief is the issue with its remedy as the work.
 - **ready** — the implement-readiness gate the intent verb reports: planned,
   criteria written, the spec linked both ways and written past its stub. Its

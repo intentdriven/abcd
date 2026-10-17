@@ -45,6 +45,14 @@ const (
 	maxListing = 16 << 20
 )
 
+// The starts of the not-read reasons a caller tells apart to choose a peer's
+// repair: git would not answer for a worktree (most often a git file that
+// points nowhere), and a ledger holds one id in two folders.
+const (
+	NotReadGitRefused = "git refused to answer for it: "
+	NotReadSplit      = "its ledger holds one id in two places"
+)
+
 // holding is one record file a tree holds.
 type holding struct {
 	folder string // open, resolved, wontfix, or an intent bucket
@@ -186,7 +194,13 @@ func readWorktree(root, common string, wt worktree, merged map[string]bool, defa
 	// repository's records as this one's.
 	theirs, err := commonDir(wt.path)
 	if err != nil {
-		p.NotRead = "git refused to answer for it: " + firstLine(err.Error())
+		p.NotRead = NotReadGitRefused + firstLine(err.Error())
+		// Where the git file points is read from the file, not left to git's
+		// refusal: Linux's git names a broken git file's target "(null)", so
+		// a reason relying on git's stderr names it on macOS alone.
+		if target, ok := gitutil.GitfileTarget(wt.path); ok {
+			p.NotRead += "; its git file points at " + target
+		}
 		p.unjudged = true
 		return p, nil, true
 	}
@@ -263,7 +277,7 @@ func judgeHoldings(h holdings, present bool) string {
 	if len(split) == 0 {
 		return ""
 	}
-	return "its ledger holds one id in two places (" + strings.Join(split, "; ") +
+	return NotReadSplit + " (" + strings.Join(split, "; ") +
 		"), which is no status at all; move or remove one of each so the ledger says which status the record is in"
 }
 
@@ -338,6 +352,49 @@ func (r Report) Unjudged() []Peer {
 		}
 	}
 	return out
+}
+
+// NotReadShown is p's not-read reason as a surface prints it, with no
+// absolute local path in it: the peer's own directory as fsutil.DisplayPathsIn
+// names it, HOME as ~, the checkout at repoRoot as ., and any other absolute
+// path, such as where a broken git file points, by its last element alone
+// (iss-2609281329007423). Every surface that prints a reason prints this
+// form: the drain's refusal, the build's peers check and `abcd peers`.
+func (p Peer) NotReadShown(repoRoot string) string {
+	s := fsutil.DisplayPathsIn(p.NotRead, p.Path)
+	if filepath.IsAbs(repoRoot) {
+		s = fsutil.RedactRoot(s, repoRoot, ".")
+		if real, err := filepath.EvalSymlinks(repoRoot); err == nil && real != repoRoot {
+			s = fsutil.RedactRoot(s, real, ".")
+		}
+	}
+	return displayAbsPaths(s)
+}
+
+// displayAbsPaths replaces each absolute path left in s, one starting where a
+// path can (the start, or after a space, a quote, a bracket or an equals
+// sign, so a URL's // is left alone) and running to the next space or quote, with
+// fsutil.DisplayPath's form of it. A path in a message has no reliable end, so
+// one holding a space keeps the words after it; what it never keeps is the
+// directories above them.
+func displayAbsPaths(s string) string {
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if s[i] != '/' || (i > 0 && !strings.ContainsRune(" \t\n'\"([=", rune(s[i-1]))) {
+			b.WriteByte(s[i])
+			i++
+			continue
+		}
+		end := i + strings.IndexFunc(s[i:]+" ", func(r rune) bool { return strings.ContainsRune(" \t\n'\")]", r) })
+		tok := strings.TrimRight(s[i:end], ".,;:")
+		if tok == "/" {
+			b.WriteString(tok)
+		} else {
+			b.WriteString(fsutil.DisplayPath(tok))
+		}
+		i += len(tok)
+	}
+	return b.String()
 }
 
 // HeldHere reports whether this checkout holds id in any folder of its family.
@@ -460,20 +517,28 @@ func isRealDirChain(root, rel string) bool {
 	return true
 }
 
-// FoldersAt is the folder each record sits in on ref, read from the object
-// store by filename (no checkout, no network): record id to every folder a
-// file claiming it sits in (open, resolved, wontfix, or an intent bucket). It
-// is the peers reader's own tree read, exported so the reservation's derived
-// release decides which folder a record is in by the same reader.
-func FoldersAt(root, ref string) (map[string][]string, error) {
+// RecordAt is one file a ref's tree holds a record in: its folder and the
+// object name of its blob.
+type RecordAt struct {
+	Folder string
+	Blob   string
+}
+
+// RecordsAt is the record ids ref's tree holds, each with every file that
+// claims it (its folder: open, resolved, wontfix, or an intent bucket; and
+// its blob), read from the object store by filename, with no checkout and no
+// network. It is the peers reader's own tree read, exported so a reservation
+// decides which folder a record is in, and which blob it is, by the same
+// reader.
+func RecordsAt(root, ref string) (map[string][]RecordAt, error) {
 	h, _, err := scanTree(root, ref)
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string][]string, len(h))
+	out := make(map[string][]RecordAt, len(h))
 	for id, hs := range h {
 		for _, x := range hs {
-			out[id] = append(out[id], x.folder)
+			out[id] = append(out[id], RecordAt{Folder: x.folder, Blob: x.blob})
 		}
 	}
 	return out, nil

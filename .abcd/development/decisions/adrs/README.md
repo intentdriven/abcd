@@ -209,8 +209,10 @@ The intent lint (a Go implementation) extends to verify these reciprocally.
 | [adr-2610091918443997](2610091918443997-what-may-enter-abcd-s-memory-notes.md) | What may enter abcd's memory notes without the person's yes, and how a note reaches the record | accepted | 2026-10-09 |
 | [adr-2610110925465593](2610110925465593-decisions-are-one-flat-file-each-and-the.md) | Decisions are one flat file each and the single log is retired (supersedes adr-2609151138420062) | accepted | 2026-10-11 |
 | [adr-2610120558328615](2610120558328615-a-private-advisory-s-record-never-enters.md) | A private advisory's record never enters the public ledger, its store is never committed, and nothing public carries an advisory id or hint | accepted | 2026-10-12 |
+| [adr-2610120937435856](2610120937435856-a-cloud-session-s-unchecked-work-goes.md) | A cloud session's unchecked work goes only to a declared work-in-progress prefix that never reaches the default branch | accepted | 2026-10-12 |
 | [adr-2610140859394097](2610140859394097-abcd-s-home-ignores-itself-once-and.md) | abcd's home ignores itself once, and credentials never sit in a working tree | proposed | 2026-10-14 |
 | [adr-2610150603484802](2610150603484802-a-fresh-install-s-facilitator-is-a.md) | A fresh install's facilitator is a person until the repository says auto | accepted | 2026-10-15 |
 | [adr-2610150729333337](2610150729333337-a-status-branch-moves-without-a.md) | A status branch moves without a preflight receipt | proposed | 2026-10-15 |
+| [adr-2610161621415708](2610161621415708-abcd-s-command-guard-steers-agents-an-os.md) | Unattended runs abcd launches execute inside an OS sandbox | proposed | 2026-10-16 |
 | [adr-2610161940004937](2610161940004937-spent-reservation-branches-are-deleted.md) | Spent reservation branches are deleted only by one GitHub App the ruleset names | proposed | 2026-10-16 |
 <!-- /index -->

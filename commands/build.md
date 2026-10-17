@@ -97,7 +97,14 @@ flag. The payload is `/abcd:reserve`'s: `act`, `record`, `holder`, `copy`,
 An issue id builds the loop's issue-keyed lane instead: `build <iss-N>` (an
 issue id by shape) checks that the repository's own drain rule takes the issue,
 read as `/abcd:drain --dry-run` reads it, and that no peer holds it, then opens
-one lane whose brief is the issue with its remedy as the work. The receipt must
+one lane whose brief is the issue with its remedy as the work. One hand-back is
+let through: an issue the drain hands back as `promoted` (its `related_intents`
+names an intent) is taken by a person's own build when no other rule would hand
+it back, and the `eligible` row names the intent it goes through; this is how an
+after-merge audit's owed check reaches a lane. The rule is asked again with
+`promoted` set aside, so a linked issue that security, category, severity,
+"Waits on", a deferral or a missing remedy still holds is refused with that
+reason, and every other hand-back is refused. The receipt must
 name the issue in `resolves`, and the landing resolves it. `/abcd:drain` starts
 these runs one at a time; see `/abcd:implement` for the lane's receipt and its
 hand-back.
@@ -531,7 +538,16 @@ A lane's stages run in order:
    merge, says so in the step's note and the run record ("left open for a
    person to merge: the ruleset requires no approval"), and never arms it on a
    later step; a missing mirror requires nothing. It pushes nothing to the lane
-   afterwards. Then `step` exits 3 until the
+   afterwards. Before it arms or leaves anything open, the land fence fetches
+   the reservations from `origin` and, while another session holds a live
+   release reservation (`rel-vX.Y.Z`, `/abcd:reserve`), arms nothing: `step`
+   exits 3 naming the release and its holder (or "your copy on another
+   computer"), and the pull request stays open and unarmed, since a session
+   cutting a release has the final say on what merges before its tag. Tell the
+   user who is cutting which release, and step again once the release is
+   tagged or its holder released it; never merge around the hold. The copy
+   cutting the release is not held. A fetch `origin` does not answer arms
+   nothing either. Then `step` exits 3 until the
    pushed head is an ancestor of the default branch on `origin`; stop driving
    the run and come back later. Once it is, the loop removes the lane's
    worktree and branch, the lane is done, and the next pending step opens the

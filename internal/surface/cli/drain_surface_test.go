@@ -686,3 +686,23 @@ func TestARunsForgedHandBackTextIsRefusedOnEveryStream(t *testing.T) {
 		}
 	}
 }
+
+// TestDrainHelpStatesThePromotedRule: the drain's help lists every field the
+// rule reads, related_intents among them, and every hand-back that holds
+// whatever the repository's record says: an issue linked to an intent
+// (promoted, a consistency finding aside) as well as "Waits on" and a live
+// deferral. The generated reference renders this text, so it is held too.
+func TestDrainHelpStatesThePromotedRule(t *testing.T) {
+	var asJSON bool
+	long := strings.Join(strings.Fields(newDrainCommand(&asJSON).Long), " ")
+	for _, want := range []string{
+		"nothing open in blocked_by; no intent in related_intents",
+		"is handed back as promoted",
+		"the consistency pass files",
+		"a person's own `abcd build <iss-N>` still takes it",
+	} {
+		if !strings.Contains(long, want) {
+			t.Errorf("the drain help does not say %q:\n%s", want, long)
+		}
+	}
+}

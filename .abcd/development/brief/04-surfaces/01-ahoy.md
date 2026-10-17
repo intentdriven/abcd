@@ -410,6 +410,12 @@ earlier version wrote wider is narrowed when abcd next writes it
 
 ```
 ~/.abcd.noindex/                       USER SCOPE — one per machine (machine-local state only)
+  .gitignore                     one * line, so a git repository in the home folder
+                                 never stages this folder; laid once, owner-only, and
+                                 never laid again once deleted (itd-2610140858048004);
+                                 an ignore file already there is left as it is and
+                                 only the marker is written
+  gitignore-laid                 the marker recording that lay
   history/                       the REGISTRY only: identity and lineage keyed on the
                                  root-commit SHA. ahoy owns it; it holds no transcripts
   transcripts/<root-sha>/        the redacted transcript corpus, a SIBLING of the
@@ -420,7 +426,13 @@ earlier version wrote wider is narrowed when abcd next writes it
   lab/<root-sha>/<lab-id>/       one lab's evidence: snapshot, probe records, findings,
                                  harvest; index.jsonl beside the homes registers them,
                                  never committed (itd-2609212137128014)
-  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout
+  worktrees/<root-sha>/<name>/   session and agent worktrees, never beside the checkout;
+                                 the build loop creates each lane's worktree here today
+                                 and ahoy reports one its repository no longer links;
+                                 the store's own verbs and its reclaim are NOT BUILT
+                                 (itd-2609091014076309)
+  notes/<root-sha>/              the store's notes archive: a reclaimed worktree's
+                                 .abcd/.work.local/, redacted, beside a manifest
                                  (NOT BUILT — itd-2609091014076309)
   runs/<root-sha>/               an autonomous run's shared state: the run log, one
                                  claim per record, one record per joined session
@@ -439,8 +451,16 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  (oracle.api.<provider>) the provider setup writes,
                                  and the only file a provider block may sit in;
                                  that write holds .config.json.lock beside it
-  memory/                        user-scope memory (personal, cross-project — a later
-                                 phase; the shipped store is repo-scope .abcd/memory/)
+  memory.json                    the machine layer of the memory notes: the person's
+                                 own notes, which agents write through the memory
+                                 verb and which it removes at the person's request;
+                                 each is tied to the repository it was written in
+                                 unless written for every project. The prompt router
+                                 recalls them beside the project's .abcd/memory.json,
+                                 a person's reviewed commit, whose note wins an id
+                                 both hold
+  memory/                        curated cross-project memory pages (a later phase;
+                                 nothing resolves it today)
   sources/                       the local sources corpus the library verb maintains
                                  and /abcd:library reads. Created only by its explicit
                                  init: absent means every other corpus verb and the
@@ -959,7 +979,11 @@ oracle backend, the deep-scan toggle and the repo visibility, select track-lates
 dogfood mode, proceed despite a stale running binary (the default refuses before
 the adoption question and before any write, the writability probe of a named
 `PATH` directory included, and names the rebuild fix), name the directory for the `PATH` entry,
-and opt the repo into the attribution prompt hook. A value flag (marker
+opt the repo into the attribution prompt hook and into both outbound checks,
+answer the README question with the parts abcd keeps current (or none), answer
+yes to installing a named missing tool, and answer the setup questions from an
+answers file, naming where an entry that names no place of its own was
+answered. A value flag (marker
 target, oracle backend, deep-scan toggle, visibility) is held to the
 `config-change` approval like any other settings change: one that would change
 a saved setting puts that approval even with no `config-change` gap, and a

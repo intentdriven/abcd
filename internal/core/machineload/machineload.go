@@ -33,6 +33,16 @@ type Proc struct {
 	Name string
 }
 
+// StartTolerance is how far, in whole seconds, two start times read from the
+// process table may differ and still be one moment as far as the table can
+// tell: a start time is the
+// read's moment less the process's age, and macOS reports an age in whole
+// seconds and Linux in clock ticks against an uptime read a moment apart, so
+// one process read twice can differ by a second. The session-name register
+// (sessionname) judges a recorded host by it, and the load gate's queue
+// (QueueAhead) orders two waiters within it by pid instead.
+const StartTolerance = 2
+
 // Share is the process's lifetime CPU share in cores: cumulative CPU time over
 // age, so 1.0 is one core flat out since it started. A multi-threaded process can
 // exceed 1.0. A process with no measurable age has no share.

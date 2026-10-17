@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/claim"
 	"github.com/intentdriven/abcd/internal/core/drainrule"
 	"github.com/intentdriven/abcd/internal/core/implement/loop"
 	"github.com/intentdriven/abcd/internal/core/layered"
@@ -17,11 +18,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// drainOutput is the --json envelope of `drain --dry-run`: the core's plan,
-// marked as a dry run so a reader never takes it for a run's summary.
+// drainOutput is the --json envelope of `drain --dry-run`: the core's plan
+// and the view of origin it was read from, marked as a dry run so a reader
+// never takes it for a run's summary.
 type drainOutput struct {
 	DryRun bool `json:"dry_run"`
-	capture.DrainPlan
+	loop.DrainPreview
 }
 
 // newDrainCommand builds the `drain` verb (itd-82, spc-2609212015054359):
@@ -37,27 +39,73 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"hand the rest back by kind. Which issues need no decision is this repository's own\n" +
 			"recorded decision: an accepted decision record whose frontmatter carries the four\n" +
 			"fields drain_categories, drain_severities, drain_security and drain_remedy. The\n" +
-			"rule reads the record's fields alone: nothing open in blocked_by; a category the\n" +
-			"rule takes; a severity it takes; and a remedy: field. abcd's strict baseline takes\n" +
-			"tech-debt, documentation, inconsistency, drift, bug and ux at nitpick or minor, and\n" +
-			"hands every security issue to a person. A repository's record may loosen those\n" +
-			"floors (major, critical, security), and every floor it loosens is named. An issue\n" +
-			"whose remedy opens \"Waits on\", or whose deferral past the current release tag is\n" +
-			"live, or names a release tag this checkout lacks, is always handed back. Every\n" +
-			"other open issue is handed back, listed as ineligible, or skipped naming its\n" +
-			"blocker, by the rule that excluded it.\n\n" +
+			"rule reads the issue's fields alone: nothing open in blocked_by; no intent in\n" +
+			"related_intents; a category the rule takes; a severity it takes; and a remedy:\n" +
+			"field. abcd's strict baseline takes tech-debt, documentation, inconsistency, drift,\n" +
+			"bug and ux at nitpick or minor, and hands every security issue to a person. A\n" +
+			"repository's record may loosen those floors (major, critical, security), and every\n" +
+			"floor it loosens is named. Three hand-backs hold whatever the record says. An issue\n" +
+			"whose related_intents names an intent is handed back as promoted, naming the\n" +
+			"intents: it goes through its intent (`abcd build <itd-N>`, or `abcd intent audit\n" +
+			"<itd-N>` for an audit's owed check), and a person's own `abcd build <iss-N>` still\n" +
+			"takes it; a record the consistency pass files is the exception, since the intents\n" +
+			"it names are the two it found contradicting: once a person has written its remedy,\n" +
+			"it is judged by its other fields as if it named no intent, and an intent it was\n" +
+			"promoted into still owns it. An issue whose remedy opens \"Waits on\", or whose\n" +
+			"deferral past the current release tag is live, or names a release tag this checkout\n" +
+			"lacks, is handed back too. Every other open issue is handed back, listed as\n" +
+			"ineligible, or skipped naming its blocker, by the rule that excluded it.\n\n" +
+			"In a checkout with a remote named origin, the ledger is read from origin's default\n" +
+			"branch, never from the checkout, which may be behind it: each move fetches the\n" +
+			"reservations and that branch first, under the drain's lock and before any judgement\n" +
+			"or reservation, and plans from what it fetched. A move that cannot read origin (the\n" +
+			"fetch fails, the default branch cannot be read, or no origin/HEAD names one) plans\n" +
+			"nothing: it records the failure in the drain's state and waits as for an outage,\n" +
+			"looking again after one minute, five, ten, then hourly, and exits 0 saying when.\n" +
+			"A probe that fails eight hours into the hourly stage gives up, as the outage gate\n" +
+			"does: the drain ends (stopped \"origin\"), and the next abcd drain begins a new\n" +
+			"drain, waiting again if origin still cannot be read.\n\n" +
 			"--dry-run shows every open issue's disposition, the eligible ones first in the\n" +
-			"order a drain takes them (by category, then severity, then oldest first), and\n" +
-			"writes nothing. The host judgement over each eligible remedy does not run; it can\n" +
-			"only ever hand an issue back.\n\n" +
+			"order a drain takes them (by category, then severity, then the issues naming a\n" +
+			"file before the rest, then each account's own order on origin, drawn from the\n" +
+			"holder git's identity names, when it names one, and the copy's key), and\n" +
+			"writes nothing; on a copy with no key yet it takes each group oldest first and\n" +
+			"says the copy's own order is drawn at its first move. It fetches nothing either: it plans from origin's default branch as\n" +
+			"last fetched, and says how old that view is, how many commits the checkout is\n" +
+			"behind it, and which issues open in the checkout it has already finished. The host\n" +
+			"judgement over each eligible remedy does not run; it can only ever hand an issue\n" +
+			"back.\n\n" +
 			"Without --dry-run, each invocation performs one move of the drain and exits. Before\n" +
-			"the next eligible issue's lane opens, the host judges its remedy: the drain writes\n" +
+			"the next eligible issue's lane opens, the host judges its remedy: on origin, the\n" +
+			"drain first reserves the issue (passing over, with no push, any issue or footprint\n" +
+			"another copy holds), then writes\n" +
 			"a request (.abcd/.work.local/run/drain-judgement.request.md) asking whether the\n" +
 			"remedy changes what a user sees or a trust boundary, and opens nothing. The host\n" +
 			"writes its answer where the request says and hands it back with --judgement <file>,\n" +
 			"which is validated strictly; a refused answer changes nothing. A yes hands the\n" +
 			"issue back before any lane opens, routed as a lane's hand-back of the same kind\n" +
-			"(below); a no lets the lane open. The judgement can never make an issue eligible:\n" +
+			"(below); a no lets the lane open on the reservation. The drain releases that\n" +
+			"reservation, and only it, with a fetch and one tombstone push whenever no lane will\n" +
+			"open on it: on a yes, on an answer over an issue that has left the eligible set,\n" +
+			"when the judgement is superseded (the order asks another issue, nothing eligible is\n" +
+			"left, the drain stops, or a no comes once the window has elapsed), when the lane's\n" +
+			"start is refused or fails, and when a request lapses unanswered. A yes's tombstone\n" +
+			"publishes the hand-back on origin, its kind and the blob id of the issue's record\n" +
+			"there, as a lane's hand-back does, when the drain's reservation is still the\n" +
+			"issue's tip: every account's drain passes the issue over, pushing and asking\n" +
+			"nothing, until a person changes that record, and no drain takes over or renews a\n" +
+			"reservation a person made over it, lapsed or not. A yes whose reservation has\n" +
+			"moved on (renewed, reserved again or taken over since, or released by a person),\n" +
+			"or that took none because you held the issue live, publishes nothing yet: the\n" +
+			"drain keeps the hand-back pending (pending_hand_backs in --json) and publishes it\n" +
+			"over the issue's next release on origin. A record changed or finished on origin's\n" +
+			"default branch since, one origin holds in no one file, or a tombstone the hand-back\n" +
+			"would take past its cap drops it, and the move says it was dropped and why; a\n" +
+			"default branch that could not be read keeps it pending. A promotion\n" +
+			"this checkout cannot make, not holding the record as origin does, is left to a\n" +
+			"checkout that can. The reservation is taken once per request: one unanswered when it lapses is\n" +
+			"dropped and the issue asked again only after the drain's other eligible work. The\n" +
+			"judgement can never make an issue eligible:\n" +
 			"an answer over an issue that has left the eligible set decides nothing, and one over\n" +
 			"a remedy rewritten since the request is refused and asked again. Once judged, the\n" +
 			"drain hands the next eligible issue, in that order, to the implement loop's issue-keyed\n" +
@@ -69,8 +117,9 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"stamps the issue's related_intents and nothing else); a trust or safety rule is\n" +
 			"flagged as needing a decision record, with the question; a design finding or a\n" +
 			"second package is flagged with the home the lane names. Every issue the rule\n" +
-			"hands back is flagged naming the rule. Nothing but the promotion is written to\n" +
-			"the ledger, and every hand-back is in the summary.\n\n" +
+			"hands back is flagged naming the rule, less one this drain promoted itself, which\n" +
+			"is counted once, as its promotion. Nothing but the promotion is written to the\n" +
+			"ledger, and every hand-back is in the summary.\n\n" +
 			"The drain is paced as a run is: its window and pause are --pace, --sub-agents and\n" +
 			"--fix-rounds as `abcd build` reads them, set when the drain begins. At the window's\n" +
 			"end the drain's state (.abcd/.work.local/run/drain.json) takes next_eligible_at and\n" +
@@ -99,7 +148,7 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			if cmd.Flags().Changed("max") || cmd.Flags().Changed("pace") || cmd.Flags().Changed("sub-agents") || cmd.Flags().Changed("fix-rounds") || cmd.Flags().Changed("judgement") {
 				return &exitError{Code: 2, Msg: "abcd drain: --dry-run takes no --max, --pace, --sub-agents, --fix-rounds or --judgement: it opens no lane and asks no judgement (nothing written)"}
 			}
-			plan, err := capture.PlanDrain(capture.DrainPlanRequest{RepoRoot: repoRoot})
+			pv, err := loop.DrainDryRun(repoRoot, time.Now())
 			// Every refusal of the rule exits 2, as the bare verb's does: a rule
 			// unrecorded, ambiguous, malformed, or unreadable (a link, a record
 			// past the size cap).
@@ -109,9 +158,13 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return fmt.Errorf("abcd drain: %w", err)
 			}
-			warnLoosened(cmd, plan.Record, plan.Loosened)
-			out := drainOutput{DryRun: true, DrainPlan: plan}
-			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, out, func(w io.Writer) { renderDrainPlan(w, plan) })
+			warnLoosened(cmd, pv.Record, pv.Loosened)
+			pv.OriginUnread = fsutil.RedactHome(pv.OriginUnread)
+			out := drainOutput{DryRun: true, DrainPreview: pv}
+			return renderLedger(cmd.OutOrStdout(), *asJSON, repoRoot, out, func(w io.Writer) {
+				renderDrainPlan(w, pv.DrainPlan)
+				renderDrainOrigin(w, pv.Origin, pv.OriginUnread)
+			})
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show every open issue's disposition and the order a drain takes them; writes nothing")
@@ -170,6 +223,7 @@ func runDrain(cmd *cobra.Command, asJSON bool, repoRoot string, maxLanes int, pa
 	res.Next = fsutil.RedactHome(res.Next)
 	if res.Start != nil {
 		res.Start.Next = fsutil.RedactHome(res.Start.Next)
+		res.Start.ForkUnchecked = fsutil.RedactHome(res.Start.ForkUnchecked)
 	}
 	return render(cmd.OutOrStdout(), asJSON, res, func(w io.Writer) { renderDrainRun(w, res) })
 }
@@ -197,6 +251,15 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 	renderPace(w, res.Pace)
 	if res.Start != nil {
 		renderBudget(w, res.Start.Checks)
+		// A lane's reservation that could not ask the forge whether origin is
+		// a fork, or was let through on the fork the repository allows, says
+		// so, as reserve does (spc-2610161044461448, step 10).
+		if res.Start.ForkUnchecked != "" {
+			fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(claim.ForkUncheckedLine(res.Start.ForkUnchecked)))
+		}
+		if res.Start.ForkAllowed != "" {
+			fmt.Fprintf(w, "  %s\n", termsafe.Sanitize(claim.ForkAllowedLine(res.Start.ForkAllowed)))
+		}
 	}
 	fmt.Fprintf(w, "  lanes: %d opened, one at a time\n", len(res.Lanes))
 	for _, l := range res.Lanes {
@@ -228,6 +291,10 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 			fmt.Fprintf(w, "    %s\n", termsafe.Sanitize(loop.DrainSummaryLine(r)))
 		}
 	}
+	for _, p := range res.PendingHandBacks {
+		fmt.Fprintf(w, "  hand-back pending: %s (%s), routed %s, not yet on origin: %s\n", p.Issue, p.Kind,
+			p.At.UTC().Format(time.RFC3339), termsafe.Sanitize(p.Why))
+	}
 	for _, p := range res.Passed {
 		fmt.Fprintf(w, "  passed: %s (%s): %s\n", p.ID, p.Check, termsafe.Sanitize(p.Reason))
 	}
@@ -240,6 +307,13 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		parts = append(parts, fmt.Sprintf("%d %s", counts[o], o))
 	}
 	fmt.Fprintf(w, "  ledger: %s (`abcd drain --dry-run` lists each)\n", strings.Join(parts, ", "))
+	if res.Origin != nil {
+		renderDrainOrigin(w, res.Origin, "")
+	}
+	if wt := res.OriginWait; wt != nil {
+		fmt.Fprintf(w, "  origin: waiting (%s) since %s, %d probe(s); next at %s\n", termsafe.Sanitize(wt.Kind),
+			wt.Since.UTC().Format(time.RFC3339), wt.Probes, wt.NextProbeAt.UTC().Format(time.RFC3339))
+	}
 	renderDrainCounts(w, res.Counts)
 	if res.NextEligibleAt != nil {
 		fmt.Fprintf(w, "  next_eligible_at: %s\n", res.NextEligibleAt.UTC().Format(time.RFC3339))
@@ -251,6 +325,8 @@ func renderDrainRun(w io.Writer, res loop.DrainResult) {
 		fmt.Fprintln(w, "  ended: nothing eligible is left")
 	case loop.DrainStoppedOutage:
 		fmt.Fprintln(w, "  ended: the run gave up on a lost connection")
+	case loop.DrainStoppedOrigin:
+		fmt.Fprintln(w, "  ended: the drain gave up waiting on origin")
 	}
 	fmt.Fprintf(w, "next: %s\n", termsafe.Sanitize(res.Next))
 }
@@ -332,5 +408,27 @@ func renderDrainPlan(w io.Writer, plan capture.DrainPlan) {
 	fmt.Fprintf(w, "  counts: %s\n", strings.Join(counts, ", "))
 	if plan.Counts[capture.DrainEligible] > 0 {
 		fmt.Fprintln(w, "  the host judgement over each eligible remedy has not run; it can only hand an issue back")
+	}
+}
+
+// renderDrainOrigin is the view of origin's default branch a plan was read
+// from: the branch and commit, the view's age, the commits this checkout is
+// behind, and the issues open here that it has finished; or why there is no
+// such view.
+func renderDrainOrigin(w io.Writer, o *loop.DrainOrigin, unread string) {
+	if o == nil {
+		if unread != "" {
+			fmt.Fprintf(w, "  origin: %s\n", termsafe.Sanitize(unread))
+		}
+		return
+	}
+	age := "at a time nothing here recorded"
+	if o.FetchedAt != nil {
+		age = fmt.Sprintf("%d minute(s) before, at %s", o.AgeMinutes, o.FetchedAt.UTC().Format(time.RFC3339))
+	}
+	fmt.Fprintf(w, "  origin: planned from %s at %s, as last fetched %s; this checkout is %d commit(s) behind it\n",
+		termsafe.Sanitize(o.Ref), termsafe.Sanitize(shortCommit(o.Commit)), age, o.Behind)
+	if len(o.Finished) > 0 {
+		fmt.Fprintf(w, "  finished on %s, still open in this checkout: %s\n", termsafe.Sanitize(o.Ref), termsafe.Sanitize(strings.Join(o.Finished, ", ")))
 	}
 }

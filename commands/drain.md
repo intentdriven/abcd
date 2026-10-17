@@ -49,6 +49,12 @@ An open issue is **eligible** when all of these hold, read from its fields
 alone:
 
 - no record in its `blocked_by` is still open;
+- its `related_intents` names no intent (an issue linked to an intent goes
+  through that intent, whatever the repository's record says), unless the
+  consistency pass filed it: the two intents such a record names are the ones
+  its contradiction is between, so once a person has written its remedy it is
+  judged by the other fields below as if it named no intent (an intent it was
+  promoted into, which names it back in `related_issues`, still owns it);
 - its category is one the rule takes;
 - its severity is one the rule takes;
 - it carries a `remedy:` (`abcd capture --remedy "<fix>"`, which every new
@@ -67,6 +73,7 @@ decides its one disposition:
 | `outcome` | `rule` | Meaning |
 | --- | --- | --- |
 | `skipped` | `blocked` | an open record blocks it; `blockers` names them |
+| `handback` | `promoted` | its `related_intents` names an intent, and the consistency pass did not file it; the reason names each intent once, at most three and then how many more, and the way through the intent: `abcd build <itd-N>`, or `abcd intent audit <itd-N>` for an audit's owed check |
 | `handback` | `security` | category `security`, a person's unless the rule sets `drain_security: take` |
 | `handback` | `category` | a category the rule does not take |
 | `handback` | `severity` | a severity the rule does not take (`major` and `critical` under the baseline) |
@@ -84,9 +91,18 @@ eligible issue before its lane opens, the host judgement over its remedy
 
 Eligible issues come first, in the order a drain takes them: by category
 `tech-debt`, `documentation`, `inconsistency`, `drift`, `bug`, `ux`, then
-`security` when the rule takes it; then by severity, `nitpick` first; then
-oldest first. The payload's `order` states the rule. Every other open issue
-follows, by id.
+`security` when the rule takes it; then by severity, `nitpick` first; then,
+within each group of one category and severity, the issues whose `found_at`
+names a file before those naming a directory or no path (a symbolic link is a
+file wherever it points, as git stores it; a path origin's commit does not
+hold, a submodule, and a path through a link count as no file, in the working
+tree as on origin); then each
+part oldest first without `origin`, or, on `origin`, in this drain's own order:
+a rendezvous hash of the holder git's identity names with no network act, this
+copy's key and the issue id, so every account and copy keeps one order from
+move to move and two of them start a group at different issues. When git's
+identity names no holder, the copy's key alone tells copies apart. The
+payload's `order` states the rule. Every other open issue follows, by id.
 
 ## Loosened floors
 
@@ -113,6 +129,21 @@ still handed back as live, lapsing only when the newer tag is fetched); `order` 
 `dispositions` holds one entry per open issue (`id`, `path`, `title`, `severity`,
 `category`, `outcome`, `rule`, `reason`, and `blockers` when skipped); `counts`
 totals them by outcome; `ledger` names the checkout and branch read.
+`order_drawn_at_first_move` is `true` when this copy has no key yet: the dry
+run mints none, so it takes each group oldest first, and `order` says the
+copy's own order within each group is drawn at its first move, which mints the
+key. Once the copy has a key, the dry run shows the order its next move takes.
+
+In a checkout with a remote named `origin`, the dry run plans from origin's
+default branch as this checkout last fetched it, and fetches nothing: `source`
+names that branch and its commit; `origin` carries `ref`, `commit`,
+`fetched_at` (when abcd last fetched here, `null` when nothing recorded it),
+`age_minutes`, `behind` (the commits of that branch this checkout lacks) and
+`finished` (the issues open in this checkout that the branch holds resolved or
+wontfix). When this checkout names no default branch of origin, `origin` is
+`null`, `origin_unread` says why, and the plan is the checkout's own ledger.
+Tell the user the view's age and how far behind the checkout is, and name each
+finished issue: a drain will not take it.
 
 Tell the user any loosened floors, then the counts, then the eligible issues in
 order, then the others grouped by outcome with their reasons. For an
@@ -120,12 +151,37 @@ order, then the others grouped by outcome with their reasons. For an
 `abcd capture remedy <iss-N> "<fix>"` is what makes it a candidate, and name the
 ones an automatic filer wrote apart, since their reason says so. For a
 `waits-on-ruling` or `deferred` hand-back, say which ruling or release it waits
-on. Do not act on the list: a hand-back is a person's decision.
+on, and for a `promoted` one, which intent it goes through; a person's own
+`abcd build <iss-N>` still takes a `promoted` issue no other rule would hand back, naming the intent. Do not act on the list: a hand-back is a person's decision.
 
 ## The run
 
 Each `abcd drain` without `--dry-run` performs one move and exits 0, saying
 what it did in `next`:
+
+- **It reads the ledger from origin.** In a checkout with a remote named
+  `origin`, every move first fetches the reservations and origin's default
+  branch, under the drain's lock, and plans from the ledger that branch holds,
+  never from the checkout, which may be behind: an issue another account
+  finished there is not taken, and one filed there and not yet in this
+  checkout is judged and opened from origin's record. `origin` names the
+  branch, its commit, the commits this checkout is behind and the issues open
+  here it has finished. A move that cannot read origin (the fetch fails, the
+  default branch cannot be read, or no `origin/HEAD` names one) plans nothing:
+  it asks no judgement, reserves nothing, records the failure in the drain's
+  state (`origin_wait`: `since`, `kind` — `fetch`, `default-branch` or
+  `origin-head` — `probes`, `next_probe_at`, and `hourly_since` once the
+  probes are hourly) and says in `next` when it looks again, one minute, five,
+  ten, then hourly; a move before then reads nothing. It gives up as the outage
+  gate does: a probe that fails eight hours into the hourly stage ends the
+  drain with `stopped: "origin"` and `complete: true`, and `next` says what
+  failed, since when, the probes made and the lanes the drain opened; the
+  next `abcd drain` begins a new drain, waiting again if origin still cannot
+  be read. The
+  text form reads "ended: the drain gave up waiting on origin".
+  For `origin-head`, run `git remote set-head origin --auto` and
+  `git fetch origin`. Tell the user, and run `abcd drain` again at or after
+  `next_probe_at`.
 
 - **It asks the host judgement.** Before the next eligible issue's lane opens,
   the drain writes a request, `.abcd/.work.local/run/drain-judgement.request.md`,
@@ -144,20 +200,96 @@ what it did in `next`:
   could not tell. Do not open the lane, edit the record or fix anything while
   judging.
 - **It reserves the issue.** In a checkout with a remote named `origin`, the
-  drain reserves each issue on it as the issue's lane starts, as `abcd reserve`
-  does, with the path the issue's `found_at` names (a `:line` locator dropped)
-  as the footprint, so every other person and computer sees it is taken. An
+  drain reserves each issue on it before it asks the judgement over it, as
+  `abcd reserve` does, with the path the issue's `found_at` names (a `:line`
+  locator dropped) as the footprint, so every other person and computer sees it
+  is taken: while it holds, no other account's drain reserves, judges or opens
+  the issue. `judging.hold` records the reservation the drain took (`commit`,
+  `claimed_at`, `expires_at`), and the lane a `no` opens starts on it, with no
+  second push. The drain releases that reservation, and no other, whenever no
+  lane will open on it: on a `yes`; on an answer over an issue that has left
+  the eligible set; when the judgement is superseded (the order now asks another issue,
+  nothing eligible is left, the drain stops at its cap, on an outage or giving
+  up on origin, or a `no` comes once the window has elapsed); when the lane's
+  start is refused or fails; and when a request lapses. It does so on every
+  path the drain's process lives through, an error or a crash in the move
+  included; a drain killed outright (Ctrl-C, or a kill signal) releases
+  nothing, and its reservation lapses after one lease (two hours by default).
+  Each release is a fetch and one tombstone push over the commit the drain's
+  reservation made, made only while that commit is still the tip, so a
+  reservation you made or renewed with `abcd reserve` since is left as it
+  stands. A poll that can read origin's reservations checks the same tip
+  before it asks again: when the reservation recorded is no longer there (you
+  released it, say), the drain reserves the issue again first. A poll that
+  cannot read them says so, and the release still checks the tip. A reservation of yours that is still live
+  when the drain reaches the issue is yours, and the drain never releases it;
+  one of yours that has lapsed, the drain's push renews, and it is the
+  drain's from then on. A `yes` releases with a tombstone
+  that publishes the hand-back on `origin`: its kind (`Abcd-Handed-Back`) and
+  the blob id of the issue's record on origin's default branch
+  (`Abcd-Record`), never free text. A user-visible `yes` over an issue this
+  checkout does not hold as origin's default branch does (absent here, or
+  held here as another record) promotes nothing here: the route is a flag
+  whose `wrote` says why and whose `home` names the checkout that can promote
+  it, and the hand-back is published all the same. A `yes` whose hold the
+  move cannot release with the hand-back on it (you renewed or reserved the
+  issue again by hand, another took it over, you released it, or the drain
+  took none because you held the issue live) says in `wrote` that the
+  hand-back is not yet published, and why, and keeps it in
+  `pending_hand_backs`; a later move whose view shows the issue released by a
+  tombstone that marks no hand-back publishes it over that release, fenced on
+  it and on the blob the `yes` was judged over, so your own reserve and
+  release never erase it. A record changed or finished on origin's default
+  branch since, one origin holds in no one file, or a tombstone the hand-back
+  would take past its cap ends it with nothing published, and the move says
+  in `next` and in the route's `wrote` that it was dropped, and why, never
+  that it was published; a move that could not read origin's default branch
+  keeps it pending. No drain takes over or renews a reservation you made over
+  a standing hand-back, lapsed or not: it backs off, as it does the hand-back's
+  own tombstone. The reservation is taken once
+  per request and never renewed while you poll: a request still unanswered
+  when it lapses (two hours by default) is dropped and its reservation
+  released at once, in the first move after the lapse. That move does not ask
+  the issue again, nor does any move within five minutes of it (the take-over
+  margin), so another account has a window to take it: meanwhile the issue is
+  passed over, check `lapsed`, naming when it is asked again, and a drain with
+  no other work waits rather than ending. After that it is asked again, on a
+  new reservation, only after the drain's other eligible work. An
   issue whose `found_at` names no repository-relative path cannot be reserved:
   it is handed back before any judgement is asked over it, `from:
   "reservation"`, with the reason `<iss-N> has no found_at path to reserve it
   with; handed back`, and the drain moves to the next issue. An issue another
-  person holds is passed over (`passed`, check `reservation`, naming the
-  holder), and a reservation refused for a reason of this checkout's own (no
-  GitHub username, `origin` not answering) refuses the move, nothing opened.
+  copy holds in the move's view, or whose footprint shares a path with another
+  copy's live reservation, is passed over before anything is pushed or asked
+  (`passed`, check `reservation`, naming the holder), with no fetch beyond the
+  move's one; one the push itself finds held is passed over the same way. An
+  issue whose tip on `origin` is a hand-back, from any copy on any account,
+  is passed over the same way, naming the kind, who handed it back and when,
+  while origin's default branch holds its record at the blob the tombstone
+  names: it is a person's until a person changes that record, and a
+  reservation the drain pushes backs off it even when the view missed it. A
+  reservation refused for a reason of this checkout's own (no
+  GitHub username, `origin` not answering, `origin` a fork the repository
+  does not allow) refuses the move, nothing opened; one that could not ask
+  GitHub whether `origin` is a fork goes ahead, and the lane that starts on it
+  says so in its run record and in `start.fork_unchecked`, as `abcd reserve`
+  does, in whichever move the lane opens; a lane whose own reservation renews
+  a judgement's hold that lapsed asks again. A move refused once it has done
+  anything (a judgement taken, a hand-back routed, a lane finished) writes
+  that first, and its refusal says whether the answer given was taken, so it
+  is never given twice. A peer this checkout cannot read (a sibling worktree git will not
+  answer for, one another account owns, or a ledger holding one id in two
+  folders) refuses the move once, after the move's housekeeping is done and
+  written and before any issue is judged or reserved (check `peers`),
+  naming each peer with the repair its reason calls for: never a removal, which
+  would delete the worktree's ignored files. Left alone, such a peer would
+  read as holding every issue, and the drain would pass each over and end.
   The lane's run then renews the reservation, fences its landing on it and
   tombstones it once it lands (`commands/implement.md`); when the lane is
-  handed back instead, the step that hands it back pushes the tombstone, and
-  the route's `wrote` says so as the drain routes the hand-back; a tombstone
+  handed back instead, the step that hands it back pushes the tombstone,
+  publishing the hand-back with its kind (`unachievable` for a lane stopped
+  after its fix rounds), and the route's `wrote` says so as the drain routes
+  the hand-back; a tombstone
   that step could not push (`origin` not answering) the drain pushes then. Without `origin` there
   is nowhere to reserve, and nothing is.
 - **It opens a lane.** The next eligible issue in the order, once judged `no`
@@ -227,9 +359,13 @@ branch and ends it. The drain routes it:
 | `design-finding`, `second-package` | `home`: flagged with the `home` the lane names | nothing |
 | (fix rounds exhausted) | `home`: flagged, the issue staying open | nothing |
 
-Every issue the rule hands back is in `flags` with `route: "rule"` and the
-`rule` that excluded it; `flags` are re-derived at every move and written
-nowhere.
+Every issue the rule hands back is in `flags` with `from: "field"`,
+`route: "rule"` and the `rule` that excluded it; `flags` are re-derived at every
+move and written nowhere. An issue this drain promoted itself reads as
+`promoted` on every move after, and is not flagged again: it is counted once,
+in `hand_backs` with `route: "promoted"` and its `draft`. So the rule
+`promoted` is always a flag's `rule` field, and the route `promoted` always a
+hand-back's `route` field.
 
 ### The run's payload
 
@@ -246,14 +382,18 @@ the run this move started; `routed` are the hand-backs this move routed and
 none; `judged` is the answer this move took and `judgements` every one the
 drain has taken (`issue`, `remedy_sha256`, `answer`, `kind`, `reason`,
 `applied`, `note`, `at`), `applied` being `false`, with the `note` saying why,
-for an answer over an issue that left the eligible set before it was taken;
+for an answer over an issue that left the eligible set before it was taken,
+and `hold` the reservation it was asked on;
+`pending_hand_backs` are the hand-backs routed and not yet published on
+`origin` (`issue`, `kind`, `blob`, `why`, `at`), which the text form lists as
+`hand-back pending:` lines;
 `flags` are the rule's
 hand-backs; `passed` names an eligible issue this move did not take, with why;
 `dispositions` is the plan; `finished` lists the merged lanes this move took
 the landing's last step for (`issue`, `run_id`, `pr`, `done`, and a `note`:
 the landing's line, or why it did not finish the lane when `done` is `false`);
-`next_eligible_at`, `stopped` (`cap`, `empty` or
-`outage`) and `complete` say whether it paused or ended; `counts` totals the
+`next_eligible_at`, `stopped` (`cap`, `empty`,
+`outage` or `origin`) and `complete` say whether it paused or ended; `counts` totals the
 drain as it stands: `lanes_opened`, `in_progress`, `pull_requests` (the lanes
 whose landing opened one; a merge is a person's gate and is not counted),
 `lanes_handed_back`, the hand-backs by route (`promotions`, `decision_records`,

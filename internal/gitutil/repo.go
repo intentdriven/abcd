@@ -658,7 +658,12 @@ func RunCapped(root string, maxBytes int, args ...string) (string, error) {
 // truncated answer. git also exits 1 on some refusals (merge-tree's "not
 // something we can merge"), so a caller checks the answer's shape.
 func RunCappedExitOne(root string, maxBytes int, args ...string) ([]byte, bool, error) {
-	cmd := isolatedGit(root, args...)
+	return runCappedExitOneCmd(isolatedGit(root, args...), maxBytes, args)
+}
+
+// runCappedExitOneCmd is RunCappedExitOne's body, for an isolated command
+// already built.
+func runCappedExitOneCmd(cmd *exec.Cmd, maxBytes int, args []string) ([]byte, bool, error) {
 	w := &capWriter{remaining: maxBytes}
 	e := &capWriter{remaining: 4096}
 	cmd.Stdout, cmd.Stderr = w, e
@@ -763,8 +768,38 @@ func ToplevelContext(ctx context.Context, dir string) (string, error) {
 	return top, nil
 }
 
-// gitfileCap bounds the gitfile holdsGitDir reads: one "gitdir: <path>" line.
+// gitfileCap bounds the gitfile GitfileTarget reads: one "gitdir: <path>" line.
 const gitfileCap = 4 << 10
+
+// GitfileTarget is where the git file at dir/.git points: its first line's
+// "gitdir: " path, joined to dir when relative, cleaned. It is read through
+// fsutil.OpenRegular, so a symlinked, non-regular or absent .git, a first
+// line that is no "gitdir: " line, or one running past gitfileCap bytes,
+// answers false. It
+// says where the file points and nothing of whether a repository is there: a
+// worktree whose git file points nowhere is the case it exists to name, since
+// git's own refusal names the path on some platforms and "(null)" on others.
+func GitfileTarget(dir string) (string, bool) {
+	f, _, err := fsutil.OpenRegular(filepath.Join(dir, ".git"))
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	buf := make([]byte, gitfileCap)
+	n, _ := io.ReadFull(f, buf)
+	line, _, cut := strings.Cut(string(buf[:n]), "\n")
+	if !cut && n == gitfileCap {
+		return "", false // a first line past the cap would name a truncated path
+	}
+	target, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "gitdir: ")
+	if !ok || target == "" {
+		return "", false
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(dir, target)
+	}
+	return filepath.Clean(target), true
+}
 
 // holdsGitDir reports whether top's own .git entry is gitDir: the directory
 // itself, a symlink to it, or a regular file whose "gitdir: " line names it (relative to top
@@ -794,20 +829,9 @@ func holdsGitDir(top, gitDir string) bool {
 		got, err := os.Stat(entry)
 		return err == nil && got.IsDir() && os.SameFile(got, want)
 	case fi.Mode().IsRegular():
-		f, err := os.Open(entry)
-		if err != nil {
+		target, ok := GitfileTarget(top)
+		if !ok {
 			return false
-		}
-		defer f.Close()
-		buf := make([]byte, gitfileCap)
-		n, _ := io.ReadFull(f, buf)
-		line, _, _ := strings.Cut(string(buf[:n]), "\n")
-		target, ok := strings.CutPrefix(strings.TrimRight(line, "\r"), "gitdir: ")
-		if !ok || target == "" {
-			return false
-		}
-		if !filepath.IsAbs(target) {
-			target = filepath.Join(top, target)
 		}
 		got, err := os.Stat(target)
 		return err == nil && os.SameFile(got, want)

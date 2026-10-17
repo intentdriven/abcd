@@ -139,6 +139,7 @@ func TestReserveUsageErrorsAndExitCodes(t *testing.T) {
 		want string
 	}{
 		{"bare", []string{"reserve"}, "abcd peers"},
+		{"bare names the release", []string{"reserve"}, "or the release being cut (abcd reserve rel-vX.Y.Z)"},
 		{"two operands", []string{"reserve", "iss-5", "iss-6", "--footprint", "a.go"}, "one record id"},
 		{"release with a footprint", []string{"reserve", "iss-5", "--release", "--footprint", "a.go"}, "--release"},
 		{"release with take-over", []string{"reserve", "iss-5", "--release", "--take-over"}, "--release"},
@@ -282,4 +283,22 @@ func TestReserveRendersCarryNoHostOrHomePath(t *testing.T) {
 		t.Fatalf("a missing origin under --json: exit %d", code)
 	}
 	check("the --json refusal", stdout)
+}
+
+// TestTheReservePageHintNamesTheRelease: the command page's argument hint
+// names the release subject beside the record id, as the verb's help does.
+func TestTheReservePageHintNamesTheRelease(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join(repoRootFromTest(t), "commands", "reserve.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		if hint, ok := strings.CutPrefix(line, "argument-hint: "); ok {
+			if !strings.Contains(hint, "rel-vX.Y.Z") {
+				t.Fatalf("argument-hint %s; want it to name rel-vX.Y.Z", hint)
+			}
+			return
+		}
+	}
+	t.Fatal("commands/reserve.md has no argument-hint")
 }

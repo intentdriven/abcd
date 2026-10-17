@@ -56,6 +56,10 @@ var Buckets = []string{BucketDrafts, BucketPlanned, BucketShipped, BucketDiscipl
 // maxIntentFileBytes caps any intent markdown file read (trust boundary).
 const maxIntentFileBytes = 256 * 1024
 
+// MaxFileBytes is the cap a caller reading the store out of a commit's tree
+// judges each file by before it reads it (LoadTree).
+const MaxFileBytes = maxIntentFileBytes
+
 // An intent id and a spec id constrain what path this package will build
 // (path-traversal defence); the predicates that decide it live in
 // internal/core/recordid, because the record-lint gate has to refuse exactly the

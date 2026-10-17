@@ -153,10 +153,10 @@ func Sweep(root string, o Options) (Report, error) {
 		return rep, fmt.Errorf("%s; nothing was deleted", fsutil.RedactHome(err.Error()))
 	}
 	rep.DefaultUnread = gap
-	var finished map[string][]string
+	var finished map[string][]peers.RecordAt
 	if gap == "" {
 		if ref := gitutil.DefaultRef(root); strings.HasPrefix(ref, "refs/remotes/"+claim.Remote+"/") {
-			if finished, err = peers.FoldersAt(root, ref); err != nil {
+			if finished, err = peers.RecordsAt(root, ref); err != nil {
 				rep.DefaultUnread = "could not read " + gitutil.ShortRef(ref) + ": " + fsutil.RedactHome(err.Error())
 				finished = nil
 			}
@@ -219,13 +219,13 @@ var terminalFolders = map[string][]string{
 // folders. It is narrower than the claim package's derived release, which
 // counts a record in any terminal folder: a record also left in open/ is
 // one the ledger refuses to read, and the sweep keeps its branch.
-func terminal(finished map[string][]string, id string) bool {
-	folders := finished[id]
-	if len(folders) == 0 {
+func terminal(finished map[string][]peers.RecordAt, id string) bool {
+	recs := finished[id]
+	if len(recs) == 0 {
 		return false
 	}
-	for _, f := range folders {
-		if !slices.Contains(terminalFolders[id[:3]], f) {
+	for _, r := range recs {
+		if !slices.Contains(terminalFolders[id[:3]], r.Folder) {
 			return false
 		}
 	}

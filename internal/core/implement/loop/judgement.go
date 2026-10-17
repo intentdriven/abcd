@@ -81,6 +81,26 @@ type DrainJudging struct {
 	Request      string    `json:"request"`
 	Answer       string    `json:"answer"`
 	RequestedAt  time.Time `json:"requested_at"`
+	// Hold is the reservation the drain took on the issue to ask this
+	// judgement; nil when it took none (no origin, or this person already
+	// held the issue from this copy, which is theirs and never the drain's
+	// to release).
+	Hold *DrainHold `json:"hold,omitempty"`
+}
+
+// DrainHold is a reservation the drain took on an issue to judge it: the
+// commit its push made, and when it was claimed and lapses. The drain releases
+// that commit and no other, so a reservation this person made or renewed by
+// hand since is left as it stands. ForkUnchecked and ForkAllowed are the fork
+// check the act could not make or waived (claim's Result), kept so the lane a
+// no opens on the hold says so as a lane that reserved for itself does
+// (spc-2610161044461448 step 10).
+type DrainHold struct {
+	Commit        string    `json:"commit"`
+	ClaimedAt     time.Time `json:"claimed_at"`
+	ExpiresAt     time.Time `json:"expires_at"`
+	ForkUnchecked string    `json:"fork_unchecked,omitempty"`
+	ForkAllowed   string    `json:"fork_allowed,omitempty"`
 }
 
 // DrainJudgement is one answer the drain took: the question's answer, the kind
@@ -96,6 +116,10 @@ type DrainJudgement struct {
 	Applied      bool      `json:"applied"`
 	Note         string    `json:"note,omitempty"`
 	At           time.Time `json:"at"`
+	// Hold is the reservation the answer was asked on, nil when the drain
+	// took none: the lane a no opens on it, in this move or a later one,
+	// names the fork check it could not make or waived.
+	Hold *DrainHold `json:"hold,omitempty"`
 }
 
 // JudgementAnswer is the host's answer file, read strictly: any other field
@@ -125,19 +149,6 @@ func judgementFor(st DrainState, issue, digest string) *DrainJudgement {
 		}
 	}
 	return nil
-}
-
-// openIssues reads the open ledger by id.
-func openIssues(repoRoot string) (map[string]capture.Issue, error) {
-	lr, err := capture.List(capture.ListRequest{RepoRoot: repoRoot, State: capture.StateOpen})
-	if err != nil {
-		return nil, err
-	}
-	out := make(map[string]capture.Issue, len(lr.Issues))
-	for _, iss := range lr.Issues {
-		out[iss.ID] = iss
-	}
-	return out, nil
 }
 
 // requestJudgement writes the request for iss's judgement and returns what
@@ -327,11 +338,7 @@ func takeJudgement(repoRoot, path string, st DrainState, live bool, plan capture
 		out.Note = j.Issue + " is no longer eligible, so the judgement decides nothing: " + why
 		return out, nil
 	}
-	issues, err := openIssues(repoRoot)
-	if err != nil {
-		return DrainJudgement{}, err
-	}
-	if iss, ok := issues[j.Issue]; !ok || remedyDigest(iss.Remedy) != j.RemedySHA256 {
+	if iss, ok := plan.OpenIssue(j.Issue); !ok || remedyDigest(iss.Remedy) != j.RemedySHA256 {
 		return DrainJudgement{}, refuse(StageDrain, "", "", j.Issue+"'s remedy has been rewritten since the judgement was requested, so the answer judges a remedy the lane would not work from",
 			"run `abcd drain`; it asks again over the remedy as it stands")
 	}

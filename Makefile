@@ -291,15 +291,37 @@ asking-sync-check:
 # checks again, so two preflights in one quiet minute do not start together; a
 # preflight whose own gate is waiting takes that waiter's place in the queue.
 # It gives up after two hours, failing the preflight and naming what it still
-# waited on, and on a CI runner it opens at once. Each test stage then takes a
-# go test -p derived from the online cores and the load as the stage starts
+# waited on, and on a CI runner it opens at once. How many preflights may be in
+# their test stages at once is the person's own machine setting, never the
+# checkout's: load.preflights in ~/.abcd.noindex/config.json, or
+# ABCD_LOAD_PREFLIGHTS in the environment for a trial, one by default and two
+# at most until a measured trial supports more (iss-2610161639025702). The race
+# stage waits at its own gate (`--race-gate`, spelt without --wait so an older
+# abcd never reads a preflight there as queued at its first gate). At one, the
+# race gate opens at once, so the preflight runs exactly as before. Above one,
+# the first gate admits a preflight while fewer than that many others are in
+# their test stages, a live race run does not shut it by itself, and a waiter
+# queued ahead still does; and the race gate is shut while another go test
+# -race run or race waiter ahead is live, the load is at the limit or the race
+# gate's own hold is in force. That keeps race stages apart among checkouts
+# that have this gate: one at a time within an account, and across accounts
+# all but a narrow window (a race waiter gone before its race run shows, or two
+# waiters whose start and pid disagree after a pid wrap). An older checkout's
+# race stage is ungated, so set 2 only once none runs a preflight. Each test
+# stage then takes a go test -p derived from the online cores and the load as
+# the stage starts, at most the cores divided by the setting
 # (cmd/test-parallelism), so one run cannot saturate the machine.
+# The unit stage takes the race stage's 20-minute package budget, not go
+# test's 10m default: internal/core/implement/loop ran about ten minutes alone
+# on a loaded development machine (2026-10-17) and timed out at 10m with no
+# test hung.
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...
 	go run ./cmd/abcd implement load --wait --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
-	go test -p "$$p" ./...
+	go test -p "$$p" -timeout 20m ./...
+	go run ./cmd/abcd implement load --race-gate --timeout 2h
 	p=$$(go run ./cmd/test-parallelism) && \
 	go test -race -p "$$p" -timeout 20m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 	@scripts/preflight-receipt.sh mint "$(PREFLIGHT_BEGAN)"

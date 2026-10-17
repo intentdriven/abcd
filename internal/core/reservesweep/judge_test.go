@@ -212,7 +212,7 @@ func tombstoneText(id string, claimed, released time.Time, extra string) string 
 }
 
 func handBackText(id string, claimed, released time.Time) string {
-	return tombstoneText(id, claimed, released, "Abcd-Handed-Back: needs-decision\nAbcd-Record: 0123456789abcdef0123456789abcdef01234567\n")
+	return tombstoneText(id, claimed, released, "Abcd-Handed-Back: "+claim.HandBackUserVisible+"\nAbcd-Record: 0123456789abcdef0123456789abcdef01234567\n")
 }
 
 func TestTheClassifierReadsEachKind(t *testing.T) {

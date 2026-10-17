@@ -109,12 +109,25 @@ func TestLandJSONCarriesTheSteps(t *testing.T) {
 	}
 }
 
+// The default branch is the one the forge and origin agree on, never the
+// checkout's own origin/HEAD (iss-2610161831078335), so the refusal follows
+// their answers.
 func TestLandOnTheDefaultBranchExitsTwoAndPushesNothing(t *testing.T) {
-	dir, _ := landWorld(t)
+	dir, origin := landWorld(t)
+	landSeams.Forge = func(_ string, args ...string) (string, error) {
+		if len(args) >= 2 && args[0] == "repo" && args[1] == "view" {
+			return `{"nameWithOwner":"o/r","url":"` + origin + `","sshUrl":"git@example.com:o/r.git","defaultBranchRef":{"name":"main"}}`, nil
+		}
+		return "", errors.New("no forge in this test")
+	}
+	before := strings.TrimSpace(gitCmd(t, origin, "rev-parse", "main"))
 	gitCmd(t, dir, "checkout", "-q", "main")
 	code, _, stderr := reserveRun(t, dir, "land")
-	if code != 2 || !strings.Contains(stderr, "default branch") {
-		t.Fatalf("exit %d, stderr %q: want 2 naming the default branch", code, stderr)
+	if code != 2 || !strings.Contains(stderr, "default branch") || strings.Contains(stderr, "set-head") {
+		t.Fatalf("exit %d, stderr %q: want 2 naming the default branch, with no set-head hint", code, stderr)
+	}
+	if after := strings.TrimSpace(gitCmd(t, origin, "rev-parse", "main")); after != before {
+		t.Fatalf("origin main moved from %s to %s: want nothing pushed", before, after)
 	}
 }
 

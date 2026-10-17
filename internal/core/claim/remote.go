@@ -10,7 +10,6 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/intent"
 	"github.com/intentdriven/abcd/internal/core/lease"
-	"github.com/intentdriven/abcd/internal/core/peers"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
@@ -62,10 +61,48 @@ type Result struct {
 	// Commit is the commit pushed, or the tombstone already there.
 	Commit   string
 	Replaced *Replaced
+	// RenewedLive is true for a renewal (ActRenewed) of a reservation that
+	// was still live when the act judged it, false for one that had lapsed:
+	// a drain tells a person's own live reservation, which is never its to
+	// release, from one it brought back to life with its own push.
+	RenewedLive bool
 	// DerivedUnchecked is why origin's default branch could not be read, so
 	// whether the record is already finished there was not checked; "" when
 	// it was read (or origin has none).
 	DerivedUnchecked string
+	// HandedBack is the hand-back a person's own reservation was made over,
+	// its record unchanged on origin's default branch since, which a surface
+	// tells the person (HandBack.Note); nil for every other act.
+	HandedBack *HandBack
+	// HandBackUnpublished is why a release whose tombstone would have marked
+	// a hand-back, one asked for or one it kept (HandBackKept), pushed a plain
+	// tombstone or nothing instead: origin's default branch could not be
+	// read (HandBackUnread), or holds no one record of it to name, the record
+	// changed since the hand-back was judged, or the tombstone with the
+	// hand-back would pass the message cap. "" when the hand-back was
+	// published, or none was due.
+	HandBackUnpublished string
+	// HandBackUnread is true when HandBackUnpublished is because origin's
+	// default branch could not be read for the record's blob at all: the
+	// hand-back asked for is still due, and a later release may publish it.
+	// Every other reason ends it.
+	HandBackUnread bool
+	// HandBackKept is the hand-back a plain release carried forward: the
+	// released reservation was made over that hand-back's tombstone, and its
+	// record is unchanged on origin's default branch since, so the tombstone
+	// keeps it standing (HandBack.KeptNote); nil for every other act.
+	HandBackKept *HandBack
+	// ForkUnchecked is why a fresh reservation could not ask the forge whether
+	// one of origin's push URLs is a fork (no answer, or a host not
+	// github.com by name), so the act went on without the check; "" when it
+	// was checked, not asked (a renewal, a release, a local path), found no
+	// fork, or found the one the repository allows (ForkAllowed).
+	ForkUnchecked string
+	// ForkAllowed is the fork, as owner/name, a fresh reservation was let
+	// through on because reservation.fork_origin names it, so the check was
+	// waived and is said to be (ForkAllowedLine); "" when no fork was named,
+	// or none was allowed.
+	ForkAllowed string
 }
 
 // beforePush, when a test sets it, runs between the judgement and the push:
@@ -77,9 +114,18 @@ type judged struct {
 	tip
 	present bool
 	// derived is true when the record is terminal on the default branch as
-	// fetched, so its reservation counts as released whatever its expiry.
+	// fetched, or a release subject's tag is on origin as fetched, so its
+	// reservation counts as released whatever its expiry.
 	derived bool
-	verdict lease.Verdict
+	// blob is the record's blob on the default branch as last fetched, "" when
+	// it holds the record in no file or several, or none can be read: what a
+	// hand-back's release names, and what a standing hand-back is judged by.
+	blob string
+	// blobUnread is why origin's default branch could not be read for the
+	// blob at all (this checkout names none of it, or its tree would not
+	// read), "" when it was read, whatever it held.
+	blobUnread string
+	verdict    lease.Verdict
 	// mine and thisCopy compare a readable tip's holder and copy with the
 	// person and copy acting.
 	mine, thisCopy bool
@@ -98,7 +144,7 @@ func (j judged) released() bool {
 // tip it judged allows. A refusal pushes nothing; a failure leaves nothing
 // locally but an unreferenced commit git's collection removes.
 func Reserve(root string, req Request, o Options) (Result, error) {
-	p, err := prepare(root, req, o, originPresent)
+	p, err := prepare(root, req, o, func(root string) error { return originPresent(root, "reservations") })
 	if err != nil {
 		return Result{}, err
 	}
@@ -111,6 +157,16 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 		return Result{}, err
 	}
 	p.derivedGap = gap
+	if isRelease(p.id) && !p.req.Release && !p.req.Renew {
+		// A release already tagged has no cut left to hold.
+		tagged, err := taggedOnOrigin(root, p.id)
+		if err != nil {
+			return Result{}, refuse("could not read whether %s is tagged on %s: %s; %s", releaseTag(p.id), Remote, redacted(err), noReservation)
+		}
+		if tagged {
+			return Result{}, refuse("%s is already tagged on %s, so there is no cut to hold; %s", releaseTag(p.id), Remote, nothingPushed)
+		}
+	}
 	j, err := judge(p, tree)
 	if err != nil {
 		return Result{}, err
@@ -127,6 +183,33 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 			return Result{}, err
 		}
 	}
+	// The fork check follows the judgement, so only an act that reserves
+	// afresh (a reservation or a take-over, never a renewal or a release,
+	// however it was asked for) asks the forge, and precedes the commit and
+	// the push, so a fork is refused before anything is pushed. A drain's
+	// reservation that renews this copy's lapsed one is afresh too: that push
+	// makes it the drain's hold, which a lane opens on, so it asks as a fresh
+	// one does (spc-2610161044461448 step 10; the review of steps 1 to 18).
+	forkUnchecked, forkAllowed := "", ""
+	if !p.req.Release && (res.Act != ActRenewed || p.req.Drain && !res.RenewedLive) {
+		if forkUnchecked, forkAllowed, err = checkFork(root, p.now, o.home()); err != nil {
+			return Result{}, err
+		}
+	}
+	if p.req.Release && m.HandedBack != "" {
+		// A hand-back that would take the tombstone past the cap (a reservation
+		// another binary accepted, under a shorter label) is dropped, never the
+		// release: a refused release would leave the issue held until its lease
+		// ran out (spc-2610161044461448, review of steps 1-18).
+		if why := handBackUnfit(root, m); why != "" {
+			m.HandedBack, m.RecordBlob, res.HandBackKept, res.HandBackUnpublished = "", "", nil, why
+			if j.message.released() {
+				// Over a tombstone already there, a plain one says nothing new.
+				return Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Footprint: j.Footprint, ClaimedAt: j.ClaimedAt,
+					ExpiresAt: j.ExpiresAt, Commit: j.Commit, HandBackUnpublished: why, DerivedUnchecked: p.derivedGap}, nil
+			}
+		}
+	}
 	sha, err := writeCommit(p, m, tree, parent)
 	if err != nil {
 		return Result{}, err
@@ -140,6 +223,8 @@ func Reserve(root string, req Request, o Options) (Result, error) {
 	res.Commit = sha
 	res.Copy = CopyThis
 	res.DerivedUnchecked = p.derivedGap
+	res.ForkUnchecked = forkUnchecked
+	res.ForkAllowed = forkAllowed
 	return res, nil
 }
 
@@ -185,13 +270,16 @@ func lostRace(p *prepared, tree string, before judged, perr error) error {
 	if derr == nil {
 		return pushFailed
 	}
+	if j.derived {
+		return derr
+	}
 	// A renewal or a release that met another's tip says so in its own
 	// terms, which its caller reads.
 	var nh *NotHeld
 	if errors.As(derr, &nh) {
 		return derr
 	}
-	if errors.Is(derr, ErrBackOff) && j.Unreadable == "" && !j.mine {
+	if errors.Is(derr, ErrBackOff) && j.Unreadable == "" && !j.mine && !j.message.released() {
 		return backOff("%s was reserved by %s while this push was on its way, until %s; back off and take other work",
 			p.id, j.Holder, stamp(j.verdict.EffectiveExpiry))
 	}
@@ -218,20 +306,53 @@ func pushRejection(stdout string, err error) error {
 // decide is the push table: the result an act will report, the message it
 // writes and the parent it writes it on, or the refusal.
 func decide(p *prepared, j judged) (Result, message, string, error) {
+	// A release and a renewal take their own rows before the finished-record
+	// back-off decideReserve makes: the holder's tombstone still lands, and a
+	// renewal is told the default branch released it, which the land fence
+	// reads.
 	if p.req.Release {
 		return decideRelease(p, j)
 	}
 	if p.req.Renew {
 		return decideRenew(p, j)
 	}
+	res, m, parent, err := decideReserve(p, j)
+	// A drain's take-over or renewal of a reservation made over a standing
+	// hand-back backs off it, as a drain's reservation over the hand-back's
+	// own tombstone does: the tip alone does not show it.
+	if err == nil && p.req.Drain && (res.Act == ActTakenOver || res.Act == ActRenewed) {
+		if err := drainOverHandBack(p, j); err != nil {
+			return Result{}, message{}, "", err
+		}
+	}
+	return res, m, parent, err
+}
+
+// decideReserve is a reservation's rows of the push table: reserved afresh,
+// renewed, taken over, or backed off.
+func decideReserve(p *prepared, j judged) (Result, message, string, error) {
 	m := p.reservation()
 	res := Result{Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt, ExpiresAt: m.ExpiresAt}
 	now := p.now
 	switch {
+	case j.derived:
+		// A record finished on origin's default branch is not reserved, with
+		// a tip or without one: the work it names is done (iss-2610160957404827).
+		return Result{}, message{}, "", backOff("%s, so there is nothing to reserve; take other work; %s",
+			derivedWhy(p.id), nothingPushed)
 	case !j.present:
 		res.Act = ActReserved
 		return res, m, "", nil
 	case j.released():
+		// A hand-back whose record is unchanged is a person's to settle: a
+		// drain backs off it, and a person's own reservation is told of it
+		// (spc-2610161044461448 step 3).
+		if j.handBackStands() {
+			if p.req.Drain {
+				return Result{}, message{}, "", j.handBackBackOff(p.id)
+			}
+			res.HandedBack = &HandBack{Kind: j.HandedBack, Holder: j.Holder, At: j.ReleasedAt}
+		}
 		res.Act = ActReserved
 		return res, m, j.Commit, nil
 	case j.Unreadable != "":
@@ -249,7 +370,7 @@ func decide(p *prepared, j judged) (Result, message, string, error) {
 		res.Replaced = &Replaced{Commit: j.Commit, EffectiveExpiry: hold, Unreadable: j.Unreadable}
 		return res, m, j.Commit, nil
 	case j.mine && j.thisCopy:
-		res.Act = ActRenewed
+		res.Act, res.RenewedLive = ActRenewed, j.verdict.Live
 		return res, m, j.Commit, nil
 	}
 	exp := j.verdict.EffectiveExpiry
@@ -286,20 +407,89 @@ func decideRelease(p *prepared, j judged) (Result, message, string, error) {
 		return Result{}, message{}, "", refuse("the reservation on %s is unreadable (%s), so nobody holds it to release; %s",
 			p.id, j.Unreadable, nothingPushed)
 	case j.message.released():
-		copyOf := CopyAnother
-		if j.mine && j.thisCopy {
-			copyOf = CopyThis
-		}
-		return Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Copy: copyOf, Footprint: j.Footprint,
-			ClaimedAt: j.ClaimedAt, ExpiresAt: j.ExpiresAt, Commit: j.Commit}, message{}, "", nil
+		return releasedAlready(p, j)
 	case !j.mine:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherPerson, ErrRefused,
 			fmt.Sprintf("%s is reserved by %s, not by you; %s", p.id, j.Holder, nothingPushed))
 	case !j.thisCopy:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldAnotherCopy, ErrRefused,
 			fmt.Sprintf("%s is held by your copy on another computer; release it there, or take it over here first; %s", p.id, nothingPushed))
+	case p.req.Tip != "" && j.Commit != p.req.Tip:
+		return Result{}, message{}, "", j.notHeld(p.id, NotHeldMoved, ErrRefused,
+			fmt.Sprintf("the reservation on %s is no longer commit %s: it was renewed or reserved again since, so it is left as it stands; %s",
+				p.id, p.req.Tip[:12], nothingPushed))
 	}
 	m := p.tombstone(j.Footprint)
+	res := Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
+		ExpiresAt: m.ExpiresAt}
+	if p.req.HandBack != "" {
+		res.HandBackUnpublished, res.HandBackUnread = p.markHandBack(&m, j)
+		return res, m, j.Commit, nil
+	}
+	// A plain release of a reservation made over a hand-back that still
+	// stands keeps it: the hand-back is a person's to settle by changing the
+	// record, which reserving and releasing the issue does not do.
+	kept, why := keptHandBack(p, j)
+	if kept != nil {
+		m.HandedBack, m.RecordBlob = kept.HandedBack, kept.RecordBlob
+		res.HandBackKept = &HandBack{Kind: kept.HandedBack, Holder: kept.Holder, At: kept.ReleasedAt}
+	}
+	res.HandBackUnpublished = why
+	return res, m, j.Commit, nil
+}
+
+// markHandBack names the hand-back asked for on m, the tombstone a release
+// pushes over j, with the record's blob on origin's default branch, and
+// returns why it named none instead: the branch could not be read (unread is
+// then true), no one record of it there to name, or a record other than the
+// one the hand-back was judged over (HandBackBlob).
+func (p *prepared) markHandBack(m *message, j judged) (why string, unread bool) {
+	switch {
+	case j.blob == "" && j.blobUnread != "":
+		return fmt.Sprintf("%s's default branch could not be read (%s), so the tombstone marks no hand-back", Remote, j.blobUnread), true
+	case j.blob == "":
+		return fmt.Sprintf("%s's default branch as last fetched holds no one record of %s, so the tombstone marks no hand-back", Remote, p.id), false
+	case p.req.HandBackBlob != "" && p.req.HandBackBlob != j.blob:
+		return fmt.Sprintf("%s's record on %s's default branch has changed since the hand-back was judged, so the tombstone marks no hand-back: a person's edit re-admits it",
+			p.id, Remote), false
+	}
+	m.HandedBack, m.RecordBlob = p.req.HandBack, j.blob
+	return "", false
+}
+
+// releasedAlready is a release's row over a tip already released by a
+// tombstone. A release asked to publish a hand-back over a tombstone that
+// marks none publishes it as that tombstone's child, so a hand-back whose
+// reservation was released another way (by hand, or by a move whose state
+// write failed) is still published; with Tip it is fenced on the commit the
+// release names, which must be the tombstone or the reservation it released.
+// Every other release over a tombstone pushes nothing.
+func releasedAlready(p *prepared, j judged) (Result, message, string, error) {
+	copyOf := CopyAnother
+	if j.mine && j.thisCopy {
+		copyOf = CopyThis
+	}
+	done := Result{Act: ActAlreadyReleased, Record: p.id, Holder: j.Holder, Copy: copyOf, Footprint: j.Footprint,
+		ClaimedAt: j.ClaimedAt, ExpiresAt: j.ExpiresAt, Commit: j.Commit}
+	if p.req.HandBack == "" || j.HandedBack != "" || j.derived {
+		return done, message{}, "", nil
+	}
+	if p.req.Tip != "" && p.req.Tip != j.Commit {
+		parent, err := firstParent(p.root, j.Commit)
+		if err != nil {
+			return Result{}, message{}, "", refuse("could not read which reservation the tombstone on %s released: %s; %s", p.id, redacted(err), nothingPushed)
+		}
+		if parent != p.req.Tip {
+			return Result{}, message{}, "", j.notHeld(p.id, NotHeldMoved, ErrRefused,
+				fmt.Sprintf("the reservation on %s is no longer commit %s: it was released after it was renewed or reserved again, so the hand-back is not published over it; %s",
+					p.id, p.req.Tip[:12], nothingPushed))
+		}
+	}
+	m := p.tombstone(j.Footprint)
+	if why, unread := p.markHandBack(&m, j); why != "" {
+		done.HandBackUnpublished, done.HandBackUnread = why, unread
+		return done, message{}, "", nil
+	}
 	return Result{Act: ActReleased, Record: p.id, Holder: p.holder, Footprint: m.Footprint, ClaimedAt: m.ClaimedAt,
 		ExpiresAt: m.ExpiresAt}, m, j.Commit, nil
 }
@@ -317,7 +507,7 @@ func decideRenew(p *prepared, j judged) (Result, message, string, error) {
 			fmt.Sprintf("%s holds no reservation on %s to renew; %s", p.id, Remote, nothingPushed))
 	case j.derived:
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldReleased, ErrBackOff,
-			fmt.Sprintf("the reservation on %s is released: %s is finished on %s's default branch; %s", p.id, p.id, Remote, nothingPushed))
+			fmt.Sprintf("the reservation on %s is released: %s; %s", p.id, derivedWhy(p.id), nothingPushed))
 	case j.Unreadable != "":
 		return Result{}, message{}, "", j.notHeld(p.id, NotHeldUnreadable, ErrBackOff,
 			fmt.Sprintf("the reservation on %s is unreadable (%s); %s", p.id, j.Unreadable, nothingPushed))
@@ -364,17 +554,43 @@ func judge(p *prepared, tree string) (judged, error) {
 		return judged{}, refuse("could not read the reservation on %s: %s; %s", p.id, redacted(err), noReservation)
 	}
 	j := judged{tip: t, present: ok}
-	if !ok {
-		return j, nil
-	}
-	// A default branch the fetch could not read derives nothing: the copy
-	// this clone holds may be stale, so it is not read.
-	if p.derivedGap == "" {
-		j.derived, err = terminalOnDefault(p.root, p.id)
-	}
-	if err != nil {
-		return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
-			p.id, redacted(err), noReservation)
+	if isRelease(p.id) {
+		// A release subject names no record on the default branch: its tag
+		// ends it, read by the same fetch as its reservation, so it is never
+		// stale beside it, and it carries no record blob.
+		if !ok {
+			return j, nil
+		}
+		if j.derived, err = taggedOnOrigin(p.root, p.id); err != nil {
+			return judged{}, refuse("could not read whether %s is tagged on %s: %s; %s",
+				releaseTag(p.id), Remote, redacted(err), noReservation)
+		}
+	} else {
+		// The default branch is read whether or not a tip exists, since a
+		// finished record is not reserved either way. One the fetch could not
+		// read derives nothing: the copy this clone holds may be stale. Its
+		// blob of the record is still read as last fetched, when it reads, and
+		// a stale branch reads the record as it was when last fetched: a
+		// hand-back made over a newer blob than that reads as changed though
+		// no one edited it since, and a person's edit this copy has not
+		// fetched reads as unchanged until it is (dcn-2610161412283450,
+		// refined by dcn-2610161837009957). One with no blob read stands.
+		recs, err := defaultRecords(p.root)
+		if err != nil && p.derivedGap == "" {
+			return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
+				p.id, redacted(err), noReservation)
+		}
+		switch {
+		case originDefault(p.root) == "":
+			j.blobUnread = "this checkout names no default branch of " + Remote
+		case err != nil:
+			j.blobUnread = p.derivedGap + "; " + redacted(err)
+		}
+		j.derived = p.derivedGap == "" && terminal(recs[p.id], p.id)
+		j.blob = blobOf(recs[p.id])
+		if !ok {
+			return j, nil
+		}
 	}
 	if t.Unreadable != "" {
 		j.verdict = lease.Judge(lease.Stamp{Unreadable: true, WrittenAt: t.WrittenAt, FirstSeen: t.FirstSeen}, lease.Default, p.now)
@@ -386,6 +602,15 @@ func judge(p *prepared, tree string) (judged, error) {
 	return j, nil
 }
 
+// derivedWhy says what released a subject outside its own tip: a release's
+// tag on origin, or a record finished on origin's default branch.
+func derivedWhy(id string) string {
+	if isRelease(id) {
+		return releaseTag(id) + " is tagged on " + Remote
+	}
+	return id + " is finished on " + Remote + "'s default branch"
+}
+
 // terminalFolders are the folders whose membership finishes a record: an
 // issue resolved or wontfix, an intent shipped or superseded.
 var terminalFolders = map[string][]string{
@@ -393,35 +618,52 @@ var terminalFolders = map[string][]string{
 	"itd": {intent.BucketShipped, intent.BucketSuperseded},
 }
 
-// terminalOnDefault reports whether id is in a terminal folder on origin's
-// default branch as last fetched. With no default branch on origin, nothing
-// is derived.
-func terminalOnDefault(root, id string) (bool, error) {
-	ref := originDefault(root)
-	if ref == "" {
-		return false, nil
-	}
-	folders, err := peers.FoldersAt(root, ref)
-	if err != nil {
-		return false, err
-	}
-	return terminal(folders, id), nil
-}
-
 // originDefault is origin's default branch as this checkout last fetched it,
 // a ref under refs/remotes/origin/, or "".
 func originDefault(root string) string {
 	trace("symbolic-ref", "--quiet", "refs/remotes/"+Remote+"/HEAD")
-	ref := gitutil.DefaultRef(root)
-	if !strings.HasPrefix(ref, "refs/remotes/"+Remote+"/") {
-		return ""
+	return gitutil.TrackedDefaultBranch(root, Remote)
+}
+
+// remoteDefault asks origin which branch is its default, for a clone that
+// names none (no origin/HEAD, and no conventional branch name fetched), and
+// returns that branch's remote-tracking ref, refs/remotes/origin/<branch>. It
+// asks with `git ls-remote --symref origin HEAD`, which reads the remote's
+// advertisement and writes nothing here: origin/HEAD stays as the repository
+// has it, unset. An answer that names no branch, or a branch whose name is
+// not a valid ref, is an error, never a guess. A branch literally named HEAD
+// names no branch: its remote-tracking ref would be origin/HEAD itself.
+func remoteDefault(root string) (string, error) {
+	args := []string{"ls-remote", "--symref", Remote, "HEAD"}
+	trace(args...)
+	out, err := gitutil.Net(root, args...)
+	if err != nil {
+		return "", errors.New(redacted(err))
 	}
-	return ref
+	for _, line := range strings.Split(out, "\n") {
+		rest, ok := strings.CutPrefix(line, "ref: ")
+		if !ok {
+			continue
+		}
+		target, name, ok := strings.Cut(rest, "\t")
+		if !ok || name != "HEAD" {
+			continue
+		}
+		branch, ok := strings.CutPrefix(target, "refs/heads/")
+		if !ok || branch == "" || branch == "HEAD" {
+			return "", errors.New("origin's HEAD does not name a branch")
+		}
+		if _, err := localGit(root, 4096, "check-ref-format", "refs/heads/"+branch); err != nil {
+			return "", errors.New("origin's HEAD names a branch whose name is not a valid ref")
+		}
+		return "refs/remotes/" + Remote + "/" + branch, nil
+	}
+	return "", errors.New("origin did not name a default branch")
 }
 
 // originPresent refuses a checkout with no remote named origin, naming the
-// remotes it has.
-func originPresent(root string) error {
+// remotes it has; what names what lives there ("reservations").
+func originPresent(root, what string) error {
 	out, err := localGit(root, 64<<10, "remote")
 	if err != nil {
 		return refuse("could not list this checkout's remotes: %s; %s", redacted(err), nothingPushed)
@@ -431,14 +673,14 @@ func originPresent(root string) error {
 		return nil
 	}
 	if len(names) == 0 {
-		return refuse("reservations live on the remote named %s, and this checkout has no remote; %s", Remote, nothingPushed)
+		return refuse("%s live on the remote named %s, and this checkout has no remote; %s", what, Remote, nothingPushed)
 	}
 	quoted := make([]string, len(names))
 	for i, n := range names {
 		quoted[i] = echoName(n)
 	}
-	return refuse("reservations live on the remote named %s, and this checkout's remotes are: %s; %s",
-		Remote, strings.Join(quoted, ", "), nothingPushed)
+	return refuse("%s live on the remote named %s, and this checkout's remotes are: %s; %s",
+		what, Remote, strings.Join(quoted, ", "), nothingPushed)
 }
 
 // echoName renders a remote's name bare when it is a plain name, quoted
@@ -470,27 +712,73 @@ func echoName(n string) string {
 // before it keep their stamps, each true, and it and those after it keep the
 // stamp of their last fetch that recorded one.
 func fetch(root string, now time.Time, outcome string, spaces ...namespace) (gap string, err error) {
+	return fetchWith(root, now, outcome, originDefault(root), spaces...)
+}
+
+// fetchWith is fetch with the default branch's remote-tracking ref named by
+// the caller: ref is refs/remotes/origin/<branch>, or "" to fetch the
+// namespaces alone.
+func fetchWith(root string, now time.Time, outcome, ref string, spaces ...namespace) (gap string, err error) {
 	if len(spaces) == 0 {
 		return "", refuse("a fetch names no namespace; %s", outcome)
 	}
-	args := []string{"fetch", "--prune", "--no-tags", Remote}
+	// A namespace that names each branch (only) may name thousands: those
+	// refspecs travel on stdin (`git fetch --stdin`), never on the command
+	// line, which the system's argument limit bounds. A globbed refspec stays
+	// on the command line.
+	var listed []string
 	for _, ns := range spaces {
-		args = append(args, ns.refspec())
+		if ns.only != nil {
+			listed = append(listed, ns.refspecs()...)
+		}
 	}
-	ref := originDefault(root)
+	args := []string{"fetch", "--prune", "--no-tags", Remote}
+	if len(listed) > 0 {
+		args = []string{"fetch", "--prune", "--no-tags", "--stdin", Remote}
+	}
+	bare := len(args)
+	for _, ns := range spaces {
+		if ns.only == nil {
+			args = append(args, ns.refspecs()...)
+		}
+		args = append(args, ns.also...)
+	}
+	stdin := ""
+	if len(listed) > 0 {
+		stdin = strings.Join(listed, "\n") + "\n"
+	}
 	withDefault := args
 	if ref != "" {
 		branch := strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/")
 		withDefault = append(append([]string(nil), args...), "+refs/heads/"+branch+":"+ref)
 	}
-	trace(withDefault...)
-	_, ferr := gitutil.Net(root, withDefault...)
-	if ferr != nil && ref != "" {
-		gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
-		trace(args...)
-		_, ferr = gitutil.Net(root, args...)
+	// A fetch naming no refspec at all (a listed namespace origin holds
+	// nothing of, and no default branch) is not run: a bare `git fetch
+	// origin` would fetch whatever this clone is configured to.
+	var ferr error
+	if len(listed) > 0 {
+		ferr = stdinFetchFloor()
+	}
+	if ferr == nil {
+		if len(withDefault) > bare || len(listed) > 0 {
+			trace(withDefault...)
+			_, ferr = gitutil.NetInput(root, stdin, withDefault...)
+		}
+		if ferr != nil && ref != "" {
+			gap = "could not read " + gitutil.ShortRef(ref) + " from " + Remote + ": " + redacted(ferr)
+			ferr = nil
+			if len(args) > bare || len(listed) > 0 {
+				trace(args...)
+				_, ferr = gitutil.NetInput(root, stdin, args...)
+			}
+		}
 	}
 	if ferr != nil {
+		// Each namespace keeps that its fetch failed, and why, for every
+		// reader to say rather than show the last view as current (C10).
+		for _, ns := range spaces {
+			noteFetchFailure(root, ns, now, redacted(ferr))
+		}
 		e := &FetchError{Reason: redacted(ferr)}
 		if what := nouns(spaces); what != reservations.noun || outcome != noReservation {
 			e.what, e.outcome = what, outcome
@@ -499,10 +787,26 @@ func fetch(root string, now time.Time, outcome string, spaces ...namespace) (gap
 	}
 	for _, ns := range spaces {
 		if err := stampFetch(root, ns, now); err != nil {
+			noteFetchFailure(root, ns, now, "fetched, but could not record when: "+redacted(err))
 			return "", refuse("fetched %s, but could not record when: %s; %s", ns.noun, redacted(err), outcome)
 		}
+		clearFetchFailure(root, ns)
 	}
 	return gap, nil
+}
+
+// stdinFetchFloor refuses a fetch that reads its refspecs on standard input
+// (`git fetch --stdin`) on a git older than 2.29, which first read them
+// there, in fixed words naming the version: nil when git is at the floor.
+func stdinFetchFloor() error {
+	ok, version := gitutil.GitAtLeast(2, 29)
+	switch {
+	case ok:
+		return nil
+	case version == "":
+		return errors.New("`git fetch --stdin`, which the status fetch reads its branches on, needs git 2.29 or later, and this git's version could not be read")
+	}
+	return fmt.Errorf("`git fetch --stdin`, which the status fetch reads its branches on, needs git 2.29 or later, and this git is %s", version)
 }
 
 // FetchError is a failed fetch from origin: Reason is git's own,
