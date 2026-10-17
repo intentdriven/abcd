@@ -306,7 +306,18 @@ jitter and no settle, so the preflight runs exactly as before. Above one it is
 shut only by another live `go test -race` run, a race waiter queued ahead of
 it by the same rule (started earlier, or within two seconds of it, and with the
 lower pid) or running its command, the load limit and
-the race gate's own hold, so one race stage runs at a time among the preflights whose checkouts have the race gate; a preflight run from a checkout older than the gate runs its race stage ungated, so two at once is safe only once no such checkout runs one. A first gate's waiter never queues
+the race gate's own hold, so race stages are kept apart among the preflights
+whose checkouts have the race gate, one at a time within an account and across
+accounts all but a narrow window: a race waiter exits as it opens, before its
+preflight's race run shows in the table, and after a pid wrap two race waiters
+whose start and pid disagree wait on neither. A preflight run from a checkout
+older than the gate runs its race stage ungated, so two at once is safe only
+once no such checkout runs one. The setting is each account's own: an account
+at one opens its race gate at once, so its race stage can start beside an
+account at two's, and race stages are kept apart only among accounts that all
+set two. And the plain form of the first gate takes no last look, so across
+accounts two openers whose re-checks fall in one moment can both open beside a
+preflight in its tests, three in their test stages at once. A first gate's waiter never queues
 there, a race waiter never queues at the first gate, and a preflight whose
 waiter is at its race gate counts as in its test stages. Each gate keeps its
 own hold record and is shut only by it: a first gate's command hold lasts

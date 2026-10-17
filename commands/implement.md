@@ -739,8 +739,9 @@ once`). Above one it stays shut while another `go test -race` run is live, a
 race waiter queued ahead of it (by the same rule: started earlier, or within
 two seconds of it, and with the lower pid) or running its command is, the load
 is at the wait limit, or the race gate's own hold is in force (another race
-waiter of the account opened within two minutes), so there is one race stage at
-a time whatever the first gate admits. Each gate is shut only by its own gate's
+waiter of the account opened within two minutes), so race stages are kept
+apart whatever the first gate admits: one at a time within an account, and
+across accounts all but the narrow windows below. Each gate is shut only by its own gate's
 hold: a first gate's `--wait -- make preflight` holds its gate until its
 preflight starts its race run, and were that to shut the race gate too, an
 earlier preflight's race stage would wait on it while the holder's own race
@@ -766,12 +767,31 @@ itself; the load limit still does, and the race gate waits as described
 above. The first gate's last look still applies: an opener that finds a lower
 pid opened in the same moment stands back, and its next look counts that
 waiter, from the moment its mark shows it running, as one of the preflights in
-their test stages. Race stages are one at a time only among preflights whose checkouts
-have the race gate: a preflight run from a checkout older than the gate runs
-its race stage ungated, so set 2 only once no such checkout runs a preflight. Each stage's `go test -p` is then at most the cores divided by the
+their test stages. Race stages are kept apart only among preflights whose
+checkouts have the race gate: a preflight run from a checkout older than the
+gate runs its race stage ungated, so set 2 only once no such checkout runs a
+preflight. Each stage's `go test -p` is then at most the cores divided by the
 setting, so two concurrent stages do not each take the whole machine. A value
 that is not a whole number from 1 to 2 refuses the wait, naming where it was
 set; a `load.preflights` in a repository's `.abcd/config.json` is never read.
+
+What 2 does not close, across accounts, which share no hold:
+
+- **Accounts that set it differently.** The setting is each account's own, and
+  an account at 1 opens its race gate at once, as before the gate existed, so
+  its race stage can start while an account at 2 is in its race stage, and the
+  gate of the account at 2 sees that race run only once it is live. Race
+  stages are kept apart only among accounts that all set 2.
+- **A race stage starting.** A race waiter exits as it opens, and its
+  preflight's `go test -race` shows in the process table a few seconds later,
+  once `cmd/test-parallelism` has run; a race waiter of another account that
+  re-checks in that moment opens too. After the process ids wrap, two race
+  waiters whose start and pid disagree wait on neither, and the plain form
+  takes no last look, so their re-checks can both open.
+- **Three in their test stages.** The plain form of the first gate, which
+  `make preflight` runs, takes no last look either, so two accounts' openers
+  whose re-checks fall in one moment can both open beside a preflight already
+  in its tests, three preflights in their test stages at once.
 
 A `~/.abcd.noindex/config.json` that cannot be read for the count does not
 stop the wait: one that others can write, one that is not valid JSON, or one

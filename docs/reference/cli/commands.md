@@ -2051,10 +2051,13 @@ without reading the machine, taking a hold or waiting a jitter, so a preflight's
 race stage follows its tests exactly as before. Above one it is shut only while
 another `go test -race` run is live, a race waiter is ahead of it (by the same
 rule) or running its command, the load is at the wait limit, or the race gate's
-own hold is in force (each gate is shut only by its own gate's hold), so one
-race stage runs at a time among the preflights whose checkouts
-have the race gate; a checkout older than the gate runs its race stage
-ungated, so set 2 only once no such checkout runs a preflight. A first gate's
+own hold is in force (each gate is shut only by its own gate's hold). That keeps
+race stages apart among the preflights whose checkouts have the race gate: one
+at a time within an account, and across accounts all but a narrow window (a
+race waiter gone before its race run shows, or two waiters whose start and pid
+disagree after a pid wrap). An account at one opens its race gate at once
+whatever another account set, and a checkout older than the gate runs its race
+stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's
 waiter never queues
 behind a race waiter, and a preflight whose waiter is at its race gate is in its
 test stages. A waiter that has opened stands back only from a lower pid that
@@ -2069,8 +2072,8 @@ supports more. At 1 both gates read as before the setting existed. Above 1 the
 first gate opens while fewer than that many other preflights or waiters running
 their command are in their test stages (a `--wait -- make preflight` counts
 once), a waiter queued ahead still shuts it, and a live race run does not shut
-it by itself; the load limit still does, and the race gate keeps race stages one
-at a time. A value it cannot use refuses the wait, naming where it was set. A
+it by itself; the load limit still does, and the race gate keeps race stages
+apart. A value it cannot use refuses the wait, naming where it was set. A
 `~/.abcd.noindex/config.json` that cannot be read for it (writable by others,
 not valid JSON, or a `load` that is not an object) is read past instead: one
 preflight at a time applies, and one line on stderr names the file, the cause

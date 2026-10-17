@@ -83,9 +83,10 @@ import (
 // put four race runs on a 16-core machine together. So within one account the
 // waiter that opens also takes a hold, a record under ~/.abcd.noindex/ written
 // under a flock, one record for each gate, and every other waiter of that
-// account at the same gate stays shut while the hold is in force (a hold whose holder is the waiter's own ancestor, as when
-// `--wait -- make preflight` runs a preflight that gates itself, is not; that
-// inner waiter also takes its ancestor's place in the process-table queue,
+// account at the same gate stays shut while the hold is in force (a hold
+// whose holder is the waiter's own ancestor, as when `--wait -- make
+// preflight` runs a preflight that gates itself, is not; that inner waiter
+// also takes its ancestor's place in the process-table queue,
 // machineload.QueueAhead):
 //
 //   - the plain form (`--wait` alone) holds for WaitSettle after opening, long

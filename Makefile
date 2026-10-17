@@ -302,12 +302,15 @@ asking-sync-check:
 # the first gate admits a preflight while fewer than that many others are in
 # their test stages, a live race run does not shut it by itself, and a waiter
 # queued ahead still does; and the race gate is shut while another go test
-# -race run or race waiter ahead is live or the load is at the limit, so one
-# race stage runs at a time among checkouts that have this gate (an older
-# checkout's race stage is ungated, so set 2 only once none runs a preflight). Each test stage then takes a go test -p derived
-# from the online cores and the load as the stage starts, at most the cores
-# divided by the setting (cmd/test-parallelism), so one run cannot saturate
-# the machine.
+# -race run or race waiter ahead is live, the load is at the limit or the race
+# gate's own hold is in force. That keeps race stages apart among checkouts
+# that have this gate: one at a time within an account, and across accounts
+# all but a narrow window (a race waiter gone before its race run shows, or two
+# waiters whose start and pid disagree after a pid wrap). An older checkout's
+# race stage is ungated, so set 2 only once none runs a preflight. Each test
+# stage then takes a go test -p derived from the online cores and the load as
+# the stage starts, at most the cores divided by the setting
+# (cmd/test-parallelism), so one run cannot saturate the machine.
 preflight: load-check fmt-check lint-reviews lint-issues record-lint issue-drift docs-lint check-attribution site-render smoke evals-cold-reading
 	go build ./...
 	go vet ./...

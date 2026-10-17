@@ -122,10 +122,13 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"race stage follows its tests exactly as before. Above one it is shut only while\n" +
 			"another `go test -race` run is live, a race waiter is ahead of it (by the same\n" +
 			"rule) or running its command, the load is at the wait limit, or the race gate's\n" +
-			"own hold is in force (each gate is shut only by its own gate's hold), so one\n" +
-			"race stage runs at a time among the preflights whose checkouts\n" +
-			"have the race gate; a checkout older than the gate runs its race stage\n" +
-			"ungated, so set 2 only once no such checkout runs a preflight. A first gate's\n" +
+			"own hold is in force (each gate is shut only by its own gate's hold). That keeps\n" +
+			"race stages apart among the preflights whose checkouts have the race gate: one\n" +
+			"at a time within an account, and across accounts all but a narrow window (a\n" +
+			"race waiter gone before its race run shows, or two waiters whose start and pid\n" +
+			"disagree after a pid wrap). An account at one opens its race gate at once\n" +
+			"whatever another account set, and a checkout older than the gate runs its race\n" +
+			"stage ungated, so set 2 only once no such checkout runs a preflight. A first gate's\n" +
 			"waiter never queues\n" +
 			"behind a race waiter, and a preflight whose waiter is at its race gate is in its\n" +
 			"test stages. A waiter that has opened stands back only from a lower pid that\n" +
@@ -139,8 +142,8 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"first gate opens while fewer than that many other preflights or waiters running\n" +
 			"their command are in their test stages (a `--wait -- make preflight` counts\n" +
 			"once), a waiter queued ahead still shuts it, and a live race run does not shut\n" +
-			"it by itself; the load limit still does, and the race gate keeps race stages one\n" +
-			"at a time. A value it cannot use refuses the wait, naming where it was set. A\n" +
+			"it by itself; the load limit still does, and the race gate keeps race stages\n" +
+			"apart. A value it cannot use refuses the wait, naming where it was set. A\n" +
 			"`" + abcdhome.Display("config.json") + "` that cannot be read for it (writable by others,\n" +
 			"not valid JSON, or a `load` that is not an object) is read past instead: one\n" +
 			"preflight at a time applies, and one line on stderr names the file, the cause\n" +
