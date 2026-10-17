@@ -178,12 +178,14 @@ func newImplementLoadCommand(asJSON *bool) *cobra.Command {
 			"symlinked " + abcdhome.Display() + " is refused. On a CI runner it opens at once.\n\n" +
 			"While it waits, in a checkout, the waiter keeps your own reservations from\n" +
 			"lapsing: at once and then every five minutes it renews each of your live\n" +
-			"reservations from this copy that is half through its lease, with its own term,\n" +
-			"and says each renewal on standard error. It never reserves anything new, takes\n" +
-			"nothing over and revives nothing that has lapsed; a renewal that fails is said\n" +
-			"once, and the wait goes on. The renewal runs beside the gate, never in it, so\n" +
+			"reservations from this copy that is half through its lease, for its own term or\n" +
+			"two hours, whichever is longer, and says each renewal on standard error. It\n" +
+			"never reserves anything new, takes nothing over and revives nothing that has\n" +
+			"lapsed, so a lease shorter than ten minutes can still lapse between two rounds;\n" +
+			"a renewal that fails is said once, and the wait goes on. The renewal runs beside the gate, never in it, so\n" +
 			"the gate's order and its open never wait on one, and it stops when the gate\n" +
-			"opens.",
+			"opens. Since it runs through git and gh, no waiter counts another's git or gh\n" +
+			"child as its command: gate make or go, never git or gh itself.",
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				return nil
