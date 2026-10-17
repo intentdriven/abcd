@@ -263,7 +263,8 @@ no footprint, or an issue with no found_at path, is refused at the reservation a
 is started. Another person's reservation, or your own from another computer, refuses
 the start as contention; --take-over moves your own live reservation from another copy
 to this one, never another person's. `abcd implement step` renews the reservation, fences
-the landing with it and releases it once the run lands; a run whose issue lane is handed
+the landing's push and its arming with it and releases it once the run lands; a run
+whose issue lane is handed
 back releases it then. --release pushes the tombstone over this copy's reservation on the
 key and changes nothing in the run's state: a later step meets it at the land fence, and
 `abcd build` again reserves it anew. --release takes no other flag. The reservation needs
@@ -1207,7 +1208,10 @@ a tombstone marking it stuck, and takes up the next issue. A refusal that cannot
 change (the issue finished at the lane's base or on origin's default branch, the
 reservation now another person's) hands it back at once; the wait for a preflight
 receipt and an outage's wait are never counted. `abcd implement step --discard`
-removes a stuck lane's worktree and branch and ends its run. A lane
+removes a stuck lane's worktree and branch and ends its run. Every move renews the
+reservation of the lane in progress at half its lease, waiting or not, and the
+landing checks it before its push, so a lane whose reservation became another
+person's pushes nothing and is handed back as stuck. A lane
 that finds a decision in its issue hands it back by kind, its work discarded: a
 user-visible change is promoted to an intent draft (`capture promote`, which
 stamps the issue's related_intents and nothing else); a trust or safety rule is

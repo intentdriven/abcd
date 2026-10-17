@@ -384,8 +384,11 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		Order: plan.Order, Dispositions: plan.Dispositions, Routed: []DrainRoute{}, Passed: []Excluded{},
 		Flags: fieldFlags(plan, st.HandBacks), Finished: []DrainFinished{}, Origin: origin}
 	// viewUnread is why the reservations this move fetched could not be read,
-	// and lapse what became of a judgement request whose hold lapsed.
+	// and lapse what became of a judgement request whose hold lapsed;
+	// leaseNotes are the renewals of the lane in progress that failed or
+	// found the hold another's (drain_lease.go).
 	viewUnread, lapse := "", ""
+	var leaseNotes []string
 	// published is what became of the pending hand-backs this move ended.
 	var published []string
 	finish := func(write bool) (DrainResult, error) {
@@ -411,6 +414,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 		}
 		if viewUnread != "" {
 			res.Next = joinNext(res.Next, viewUnread)
+		}
+		if len(leaseNotes) > 0 {
+			res.Next = joinNext(append([]string{res.Next}, leaseNotes...)...)
 		}
 		if write {
 			st.UpdatedAt = now
@@ -603,6 +609,9 @@ func drainMove(repoRoot string, o Options, d DrainOptions, flags paceFlags, rule
 	if res.Finished, err = finishMerged(repoRoot, now); err != nil {
 		return refuseMoved(err)
 	}
+	// The lane in progress is renewed at half its lease on every move,
+	// waiting or not, before the window gate (drain_lease.go).
+	leaseNotes = renewInProgress(repoRoot, st, view, now)
 	finished := false
 	for _, f := range res.Finished {
 		for i := range st.Lanes {

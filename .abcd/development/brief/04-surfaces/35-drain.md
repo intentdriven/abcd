@@ -364,7 +364,12 @@ on origin's default branch backs off, with a tip or without one
    and tombstone ([`27-implement.md`](27-implement.md)); every drain move
    renews, at half its lease, the reservation of each issue lane parked at
    land, so a pull request waiting on a person stays held while the drain
-   moves; a lane handed back has its reservation tombstoned by the step that
+   moves, and the reservation of the lane in progress, before its window gate,
+   so a move that waits renews too, whether or not a step of the lane ran
+   (spc-2610161044461448 step 7, dcn-2610161040374343). The landing checks the
+   reservation before its push as the land fence does before arming, and a
+   lane whose hold is now another person's pushes nothing, opens no pull
+   request and is handed back at once as stuck; a lane handed back has its reservation tombstoned by the step that
    hands it back, or by the drain's route when that step's push failed, the
    tombstone publishing the hand-back with the lane's kind (`unachievable` for
    a lane stopped after its fix rounds), and the route the drain writes names

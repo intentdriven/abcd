@@ -120,7 +120,10 @@ func newDrainCommand(asJSON *bool) *cobra.Command {
 			"change (the issue finished at the lane's base or on origin's default branch, the\n" +
 			"reservation now another person's) hands it back at once; the wait for a preflight\n" +
 			"receipt and an outage's wait are never counted. `abcd implement step --discard`\n" +
-			"removes a stuck lane's worktree and branch and ends its run. A lane\n" +
+			"removes a stuck lane's worktree and branch and ends its run. Every move renews the\n" +
+			"reservation of the lane in progress at half its lease, waiting or not, and the\n" +
+			"landing checks it before its push, so a lane whose reservation became another\n" +
+			"person's pushes nothing and is handed back as stuck. A lane\n" +
 			"that finds a decision in its issue hands it back by kind, its work discarded: a\n" +
 			"user-visible change is promoted to an intent draft (`capture promote`, which\n" +
 			"stamps the issue's related_intents and nothing else); a trust or safety rule is\n" +

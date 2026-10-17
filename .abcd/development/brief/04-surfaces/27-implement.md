@@ -353,7 +353,11 @@ merge needs, or the merge of a pull request left open, as a checkout with no
 mirror always leaves it), which is also past any queue's
 `check_response_timeout_minutes`. Past the fence the hold rests on renewals at half the lease: each step
 of the run, whatever its stage, each receipt handed back, and each drain move
-for a drain lane parked at land. A run neither stepped, given a receipt nor
+for a drain lane parked at land or in progress, waiting or not
+(spc-2610161044461448 step 7). The landing checks the reservation before its
+push as the fence does before arming, renewing it with its own term, so a
+reservation that moved while the lane worked pushes nothing and opens no
+pull request. A run neither stepped, given a receipt nor
 drained over for longer than its lease loses its reservation; one that finds
 it held by another person or copy says so and logs `reservation_lost` once. Once the run's last lane has landed, the
 step pushes a tombstone over the reservation while it is still this person's

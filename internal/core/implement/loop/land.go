@@ -18,9 +18,11 @@ package loop
 //     and an `Assisted-by:` naming the model the lane's receipts reported (the
 //     records carry its prose), with the repository's hooks running.
 //  3. push: refused unless the repository's preflight receipt names the lane's
-//     head (the pre-push hook's gate, checked before any connection opens), then
-//     a plain `git push` of the lane's branch from the checkout the run lives
-//     in, its hooks running: the loop never skips a hook and never forces.
+//     head (the pre-push hook's gate, checked before any connection opens) and
+//     the run's reservation is still this person's from this copy (the push
+//     fence, the land fence's check), then a plain `git push` of the lane's
+//     branch from the checkout the run lives in, its hooks running: the loop
+//     never skips a hook and never forces.
 //  4. pull request: through the forge client the repository already uses
 //     (`gh`), with a body built from the records and passed through the
 //     outbound scrub; after creating it the loop re-reads the body the forge
@@ -449,6 +451,14 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 		r.checkWait = since
 		return Outcome{}, r
 	}
+	// The reservation is checked before the push as well as at the arming
+	// (spc-2610161044461448 step 7): one that moved to another while the
+	// lane worked pushes nothing, so it never becomes a duplicate pull
+	// request.
+	holds, err := pushFence(c, *lane)
+	if err != nil {
+		return Outcome{}, err
+	}
 	// The head the receipt names is pushed by its commit id, not the branch's
 	// ref, so a branch that moves after the check cannot change what is pushed.
 	if _, err := gitutil.Net(c.RepoRoot, "push", "--porcelain", Remote, lane.HeadSHA+":refs/heads/"+lane.Branch); err != nil {
@@ -461,6 +471,9 @@ func landPush(c Context, lane *Lane) (Outcome, error) {
 	note := "pushed " + lane.Branch + " at " + shortSHA(lane.HeadSHA) + " to " + Remote + " on its preflight receipt"
 	if ld.CheckWaitSince != nil {
 		note += fmt.Sprintf(", after waiting %d minute(s) for its full check", int(c.Now.Sub(*ld.CheckWaitSince)/time.Minute))
+	}
+	if !holds.IsZero() {
+		note += "; the reservation on " + c.State.Key + " holds until " + stamp(holds)
 	}
 	ld.PreflightReceipt, ld.Pushed, ld.CheckWaitSince = fsutil.RedactHome(rcp), lane.HeadSHA, nil
 	return Outcome{Stay: true, Note: note}, nil

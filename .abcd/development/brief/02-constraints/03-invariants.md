@@ -48,9 +48,12 @@ The following are non-negotiable invariants — any architectural choice that vi
    the blob id of the issue's record on origin's default branch), pushing the
    tombstone a handed-back lane's step could not push (a fetch and one push,
    carrying the lane's hand-back kind), and
-   renewing, at half its lease, the reservation of each lane parked at land; and `implement step` and `implement receipt`, whose
+   renewing, at half its lease, the reservation of each lane parked at land
+   and of the lane in progress, on every move, waiting or not (a fetch and one
+   push, spc-2610161044461448 step 7); and `implement step` and `implement receipt`, whose
    meaning includes renewing the run's reservation at half its lease, the land
-   fence's fetch and renewal before a merge is armed, and the tombstone once
+   fence's fetch and renewal before the landing pushes the lane's branch and
+   again before a merge is armed, and the tombstone once
    the run's last lane lands or an issue lane is handed back, the latter
    carrying the hand-back's kind and the issue's record blob. `build next`'s
    exclusions, `build <itd-N>`'s peers check and every render of a

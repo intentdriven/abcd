@@ -548,7 +548,11 @@ the fence the reservation holds only
 while something renews it at half its lease: each step of the run does,
 whatever its stage, an implementer's long stage included, so does handing an
 agent's receipt back with `receipt`, and each `abcd drain` move does for a
-drain's lane parked at land. A run nobody steps, hands a receipt to or drains
+drain's lane parked at land and for its lane in progress, waiting or not.
+Before the push at step 3 the landing checks the reservation the same way,
+renewing it with its own term: one that is no longer this person's from this
+copy and live pushes nothing and opens no pull request, as contention, and a
+drain hands a lane whose reservation is another person's back at once. A run nobody steps, hands a receipt to or drains
 over for longer than its lease loses the reservation, and another person may
 then take the record over. A step or a receipt that finds the reservation held
 by another person or copy says so in its answer and logs `reservation_lost` in

@@ -119,7 +119,8 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"is started. Another person's reservation, or your own from another computer, refuses\n" +
 			"the start as contention; --take-over moves your own live reservation from another copy\n" +
 			"to this one, never another person's. `abcd implement step` renews the reservation, fences\n" +
-			"the landing with it and releases it once the run lands; a run whose issue lane is handed\n" +
+			"the landing's push and its arming with it and releases it once the run lands; a run\n" +
+			"whose issue lane is handed\n" +
 			"back releases it then. --release pushes the tombstone over this copy's reservation on the\n" +
 			"key and changes nothing in the run's state: a later step meets it at the land fence, and\n" +
 			"`abcd build` again reserves it anew. --release takes no other flag. The reservation needs\n" +

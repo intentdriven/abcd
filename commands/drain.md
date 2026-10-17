@@ -284,8 +284,13 @@ what it did in `next`:
   naming each peer with the repair its reason calls for: never a removal, which
   would delete the worktree's ignored files. Left alone, such a peer would
   read as holding every issue, and the drain would pass each over and end.
-  The lane's run then renews the reservation, fences its landing on it and
-  tombstones it once it lands (`commands/implement.md`); when the lane is
+  The lane's run then renews the reservation, fences its landing on it, before
+  its push and again before arming, and tombstones it once it lands
+  (`commands/implement.md`). Every drain move also renews the lane in
+  progress at half its lease, waiting or not, though no step of the lane ran,
+  so a lane the host paused past its lease is not taken over; a lane whose
+  reservation is another person's by its push pushes nothing, opens no pull
+  request, and the next drain hands it back as `stuck` at once. When the lane is
   handed back instead, the step that hands it back pushes the tombstone,
   publishing the hand-back with its kind (`unachievable` for a lane stopped
   after its fix rounds), and the route's `wrote` says so as the drain routes
