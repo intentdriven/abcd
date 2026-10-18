@@ -37,7 +37,9 @@ and it marks the question open. The answer resets the state to `managed`: the
 plugin's hook on the question tool's result resets it when the answer comes
 back, and on a host that does not run that hook the prompt hook resets it on
 the next human message. Either says so once on stderr, so you do not set it
-back yourself.
+back yourself. While the away mode below holds, the guard refuses every
+question instead, whatever its chip, and sets nothing: its reason says which
+acts to queue and that every other question is decided with `abcd decide`.
 
 **The agent, at a stop that is not a question.** When you stop to obtain a
 verdict any other way, such as a hand-off or a step the person runs, record

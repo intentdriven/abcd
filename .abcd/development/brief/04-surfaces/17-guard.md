@@ -206,6 +206,39 @@ them, is not a decision: the question runs and the hook says so on exit 1, the
 same fail-open-loud contract below. The manifest's pre-tool-use matcher names the
 shell tool and the question tool, and nothing else.
 
+**While the person is away** (spc-2610180914469489, "The question reroute";
+dcn-2610180937177502, dcn-2610181003477194), the gate reads the away record
+(`internal/core/autonomy`, the person's word that they are away, set through
+`abcd mode`) before anything above. While it holds, every call to the question
+tool is refused with the host's deny and one reason, whatever the chip: abcd's
+question or another
+tool's, chipped or not, and a questions field the check cannot read alike,
+from any working copy of the repository. Nothing past the away check runs, so
+no mode is set from a chip and no question is marked open; the badge's
+chip-set path is never reached while away. The reason names none of the asking
+rules, so the agent reroutes the question rather than redrafting it. It routes
+the question by the act it asks about (`autonomy.QuestionRoute`, the list in
+`autonomy.PersonOnlyActs`): an act only the person may approve is queued with
+the queue `abcd mode` keeps for their return, and the session carries on with
+other work. The acts are an embargo close's approval digest, the embargo
+triage verdict, the drain's hand-back, the confirmed apply verb for remote
+configuration, a release sign-off (a cut, or a step of one, that asks for the
+person by name or that no standing instruction of theirs allows; a standing
+permission for automatic cuts stands, and the away mode adds none), pushing,
+opening or merging a pull request without a standing instruction of the
+person's (the away mode is never that instruction), publishing, a visibility
+change or an outward comment or message, a new dependency, a secret, a
+credential or an App, a step only a website or a browser can do, a
+destructive act, anything that spends money, and any other act a command page
+or a brief invariant names as the person's. Every other question, product or
+technical, is decided and recorded with `abcd decide`, with its grounds and
+how to reverse it. **Nothing detects the act mechanically:** the agent
+classifies its own question from the reason's list, and the guard's registry
+entries enforce only what they name, a force push and a skipped hook among
+them. An away record or lock the store refuses reads as not away: the question
+is checked as if the person were present, and the hook says so on stderr,
+with exit 1 where it would otherwise admit the question silently.
+
 ## Fail-open-loud
 
 A broken guard never bricks a session and never silently stops protecting one.
