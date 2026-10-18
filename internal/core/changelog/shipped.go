@@ -96,6 +96,14 @@ type Record struct {
 	// value nobody could read would drop real content from a release record on a
 	// typo, which is the worse of the two failures.
 	ShippedInErr string
+	// FoundAtNew reports that the record's `found_at:` is a path that resolves
+	// in the tree the record was read from and not in the anchor tag's: the
+	// record is about a surface the last release did not have, so a fix to it
+	// is no fix a reader of that release could see (iss-2610172148157726).
+	// found_at may be words, a conceptual location capture allows; words, a
+	// path at the anchor, one removed since and one at neither end all leave
+	// it false, so it is set only where the answer is certain.
+	FoundAtNew bool
 	// PressRelease is the body of the record's `## Press Release` section, empty
 	// when it has none. It is the source a release page's quotes are verified
 	// against, read from the same blob as Title and Summary so the page and the
@@ -415,6 +423,9 @@ func newRecord(root, ref, baseRef, relPath string) Record {
 	// the cut, so it stayed and refused the release as unlabelled with no way to
 	// honour the exclusion.
 	rec.ShippedIn, rec.ShippedInErr = parseShippedIn(root, baseRef, fields["shipped_in"].Value)
+	if foundAt, ok := frontmatter.ScalarString(fields["found_at"].Value); ok {
+		rec.FoundAtNew = pathNewSince(root, ref, baseRef, foundAt)
+	}
 	// A YAML null is an ABSENT impact, not a malformed one. ParseImpact is a value
 	// validator and knows only the empty string as absent, so the null spellings
 	// ("~", "null", "Null", "NULL") reached it as values and came back as "invalid
@@ -434,6 +445,31 @@ func newRecord(root, ref, baseRef, relPath string) Record {
 	}
 	rec.Impact = impact
 	return rec
+}
+
+// pathNewSince reports whether p, a record's found_at, is a repository path
+// that resolves in ref's tree and not in baseRef's, each read as stored through
+// the isolated git the cut reads every blob with. Anything else is false: no
+// anchor, a value that is not a clean relative path (words, an absolute path,
+// one climbing out with ".."), or a path that resolves at the anchor or not at
+// ref. The tree it names may be a file or a directory.
+func pathNewSince(root, ref, baseRef, p string) bool {
+	if baseRef == "" || ref == "" || ref == baseRef {
+		return false
+	}
+	p = strings.TrimSpace(p)
+	if p == "" || strings.ContainsAny(p, " \t\n\r") || path.IsAbs(p) {
+		return false
+	}
+	clean := path.Clean(p)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+		return false
+	}
+	has := func(at string) bool {
+		_, err := gitutil.Run(root, "cat-file", "-e", at+":"+clean)
+		return err == nil
+	}
+	return has(ref) && !has(baseRef)
 }
 
 // parseShippedIn reads the `shipped_in:` frontmatter value and decides whether it

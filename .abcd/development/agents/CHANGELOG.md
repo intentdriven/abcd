@@ -12,6 +12,21 @@ over the brief's earlier `1.0.0`-at-close expectation). The four M6 synthesis
 agents below entered at `0.1.0`, wired to their `abcd disembark` verbs and
 unmeasured; `lifeboat-oracle` has since become `lifeboat-reviewer` at `0.1.1`.
 
+## 2026-10-18 (iss-2610172148157726 — a fix to a surface new since the last release is no fix)
+
+### release-changelog-composer 0.5.0
+
+MINOR: the cut tells the composer which surfaces the last release did not
+have. Each entry carries `found_at_new` when its record's `found_at` is a path
+that release's tree lacked, and `guard.new_commands` lists the commands its
+surface snapshot lacked. A fix to such a surface is folded into that surface's
+`Added` line, or worded as what it does, never as a `Fixed` line saying a
+behaviour no reader of the last release saw has stopped; v0.15.1 shipped such
+lines for the cloud scripts and the status fetch. The binary refuses a `Fixed`
+line citing a `found_at_new` record (`fixed-new-surface`); the command list is
+the composer's to judge, since no record names its command. Unmeasured, in the
+`0.x` band.
+
 ## 2026-10-16 (iss-2610161734179773 — a refused draft is redrafted without telling the person)
 
 ### question-drafter 0.1.3

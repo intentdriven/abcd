@@ -367,6 +367,7 @@ func ingest(root string, current surface.Snapshot, raw []byte, at time.Time, ops
 	// the whole list at once.
 	var rs reasons
 	entries, cited, entriesOK := validateEntries(payload.Entries, &rs)
+	checkFixedNewSurface(cut, entries, &rs)
 	var required []string
 	var incomplete *IncompleteError
 	if entriesOK {
@@ -695,6 +696,49 @@ func validateEntries(entries []ChangelogEntry, rs *reasons) ([]ChangelogEntry, m
 		out = append(out, ChangelogEntry{Section: in.Section, Records: ids, Text: text})
 	}
 	return out, cited, len(*rs) == start
+}
+
+// checkFixedNewSurface refuses a Fixed line that cites a record about a surface
+// the anchor tag did not hold (Entry.FoundAtNew): a fix to it is no fix a
+// reader of the last release could see, so the line says what the surface
+// does instead, under Added (iss-2610172148157726). The section decides only
+// where the line prints, never the version, which the records' impact
+// decides, so moving the line changes nothing else. A record the binary cannot
+// place, a found_at in words or one the anchor held, is left to the composer's
+// judgement, which reads the guard's new_commands for the rest.
+func checkFixedNewSurface(cut Cut, entries []ChangelogEntry, rs *reasons) {
+	newSurface := map[string]bool{}
+	for _, e := range cut.Added {
+		if e.FoundAtNew {
+			newSurface[e.ID] = true
+		}
+	}
+	if len(newSurface) == 0 {
+		return
+	}
+	base := cut.BaseTag
+	if base == "" {
+		base = "the last release"
+	}
+	for i, e := range entries {
+		if e.Section != SectionFixed {
+			continue
+		}
+		var hit []string
+		for _, id := range e.Records {
+			if newSurface[id] {
+				hit = append(hit, id)
+			}
+		}
+		if len(hit) == 0 {
+			continue
+		}
+		rs.add(ReasonFixedNewSurface, fmt.Sprintf("entries[%d].section", i),
+			"entry %d is a Fixed line citing %s, about a surface %s did not have, so no reader of that release "+
+				"could see the behaviour it says was fixed; fold it into that surface's Added line, or put it under "+
+				"Added worded as what it does",
+			i+1, strings.Join(hit, ", "), base)
+	}
 }
 
 // checkBijection is the heart of this phase: the set of cited ids must equal the
