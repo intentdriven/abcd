@@ -174,7 +174,7 @@ type chunk struct {
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
-	Usage *Usage          `json:"usage"`
+	servedBy
 	Error json.RawMessage `json:"error"`
 }
 
@@ -222,9 +222,10 @@ func (c *Client) readStream(l *limits, body io.Reader, asked string, contract fu
 			// models cannot show which one answered.
 			return Result{}, c.fail(c.host + " reported more than one model in one answer, so what answered cannot be shown; the answer is refused rather than used")
 		}
-		if ch.Usage != nil {
-			a.usage = ch.Usage
-		}
+		// The usage arrives in a chunk of its own after the finish reason
+		// when the request asked for it, which is why the stream is read to
+		// [DONE] rather than to the finish reason.
+		ch.servedBy.readInto(&a)
 		for _, choice := range ch.Choices {
 			if choice.Index != 0 {
 				continue

@@ -1225,7 +1225,7 @@ command for the person.**
 ### By hand
 
 The setup is `abcd ahoy connect <provider> --base-url <url> --model <model>
-[--model <model>…] --home <home> [--key <name>]`. **This writes, under
+[--model <model>…] --home <home> [--key <name>] [--stream-usage=false]`. **This writes, under
 `~/.abcd.noindex/` and, for the keychain home, into the platform keychain.** Ask the
 technical facilitator which home through your question tool, under a `Tech`
 chip, after relaying `key_homes`, and offer the three without
@@ -1235,11 +1235,18 @@ is); `abcd` and `keychain` take the key piped in on stdin from a file or a
 variable, or, when the person runs the command in a terminal, pasted on hidden
 input: abcd prints one line on stderr, "Paste the key for <provider> and press
 Enter. It is not shown.", and reads the key with echo off. An empty paste is
-refused as an empty pipe is. It verifies the provider with one call to the first model listed,
-and only when that call succeeds keeps the key in that home and writes the
+refused as an empty pipe is. It verifies the provider with a call to the first model listed,
+asked once more on the usage refusal below, and only when the verification succeeds keeps the key in that home and writes the
 provider block (the base URL, the key's name and the models, the allowlist)
 into `~/.abcd.noindex/config.json`. Nothing goes into the repository or the harness's
-settings, and a failed verification writes nothing. A `~/.abcd.noindex` that is a
+settings, and a failed verification writes nothing. The verification call
+asks the server for usage in the stream (`stream_options.include_usage`);
+a server that refuses that request with HTTP 400 or 422 is asked once more
+without it, and when that succeeds the block is written with
+`stream_usage: false` (its calls then go without the field) and the result
+says so in `stream_usage_note`: relay that line. `--stream-usage=false`
+writes that setting outright, for a server known to refuse the field, and
+the verification is then asked once, as given. A `~/.abcd.noindex` that is a
 symlink (into a dotfiles checkout, say) is refused with nothing written, in
 any home, naming the link: the key would otherwise land wherever it points.
 A `--file` pointer is refused, naming the link, when any directory between the
@@ -1266,7 +1273,7 @@ and nothing written. **Never ask the person for the key and never pass it
 yourself**: it would enter this conversation. Give them the command to run in
 their own terminal, where they paste the key on hidden input or pipe it in from
 a file or a variable they hold, and relay the result — `verified` (the provider, the model asked for, the model
-it reported and the credential's name), each `wrote` path, and `dispatch`. A
+it reported and the credential's name), `stream_usage` and `stream_usage_note` when present, each `wrote` path, and `dispatch`. A
 route the configuration read skips is named on stderr, in the text and the JSON
 form alike, and the setup stands: relay that line too.
 
