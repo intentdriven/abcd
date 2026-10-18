@@ -521,7 +521,7 @@ earlier version wrote wider is narrowed when abcd next writes it
                                  is agents_md; the one conventions file abcd writes
 ```
 
-The same inventory is stated as a table under *The two `.abcd/` scopes* in
+The same inventory is stated in prose under *The two `.abcd/` scopes* in
 [`05-internals/03-configuration.md`](../05-internals/03-configuration.md#the-two-abcd-scopes);
 the two are one list and must agree. The three declaration files at the bottom
 are caller-controlled and line-oriented. `trusted-roots` and

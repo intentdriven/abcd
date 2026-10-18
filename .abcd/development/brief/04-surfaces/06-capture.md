@@ -420,6 +420,7 @@ synthesis_clusters: [<label>, ...]  # optional synthesis grouping
 blocked_by: [iss-N, ...]   # dependency edges, written at capture or afterwards by linking; blocked/priority is derived, never stored
 duplicates: [iss-N|itd-N, ...]  # written by the filing-time match (a near-identical double; removed by hand when wrong) or by a wontfix that names what the record duplicates
 refines: [iss-N|itd-N, ...]     # written by the filing-time match: this record is the narrower case
+finding_ref: cfk-<16 hex>  # written by the consistency pass's filer, naming the finding this record was filed for, so a finding found again links to it
 wontfix_reason: "<text>"   # required when in wontfix/
 resolution: "<one-line>"   # required when in resolved/
 shipped_in: vX.Y.Z         # migration use: the release that already carried the work

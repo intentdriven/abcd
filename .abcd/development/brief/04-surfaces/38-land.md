@@ -158,7 +158,10 @@ this one code path (ruling R3).
 - The forge client's and git's environments are scrubbed of `GIT_DIR` and
   `GIT_CONFIG_*`, as the networked git runner's are. A local git command (the
   read of `origin`'s URLs) runs through `gitutil.LocalGit`, which adds none of the
-  networked runner's settings.
+  networked runner's settings. Under a test binary, networked git is
+  restricted to local transports with no credential helper, so a test can
+  neither reach a real forge nor ask anyone for a credential; outside one the
+  person's own configuration applies unchanged.
 - A credential in a URL that git or the forge client quotes
   (`scheme://user:token@`, `https://token@`) is dropped from every note and
   refusal.

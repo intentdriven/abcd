@@ -2495,6 +2495,17 @@ After filing, two adversarial reviews (design and record discipline, each an Opu
 
 The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and itd-166 was widened to the asked and served sides it was routed. The routing survived as a five-record split; its plumbing row was the part the initial routing got wrong.
 
+## 2026-10-17: headless agents in parallel coordinate through the shared remote (product thinker, routing confirmed)
+
+| part | type | home |
+|---|---|---|
+| a pass any session can run reads the records on the shared remote and acts on them: which change waits on which, held until it lands and rebuilt on top of it; a machine and model budget per agent; work returned when its holder stops renewing | capability | intent itd-2610170634394993 |
+| every wait has a deadline; a claim carries a generation number that a push, queue or tag re-checks, and a lapsed claim is retaken only after a delay; a reader refuses a coordination record newer than it knows; an autonomous session never works under the person's own forge login, only under a credential of its own limited to what its work needs (added the same day on the product thinker's ruling) | trust rule | an ADR at planning, then a brief invariant once accepted; not yet minted |
+| coordination lives on the shared remote and never only in conversation | stance | a principle at planning; the ruling of 2026-10-03 that coordination is visible on the remote or the forge is its source |
+| the record formats and their versions, the dependency line's spelling, and how the pass decides | plumbing | the brief, at planning |
+
+Verdict: SPLIT, confirmed. The capability is filed as the draft; the trust rule and the stance get their own records at planning. The draft was filed after a state-of-the-art pass (`2026-10-17-parallel-headless-agent-coordination.md`) that moved the design away from a coordinator process that must stay alive and toward a pass over shared records with fencing and deadlines. The product thinker asked for the draft and confirmed the split as proposed, with no change.
+
 ## 2026-10-16: after a plugin update, offer setup again
 
 The proposal: when abcd's plugin was updated, offer the person to run setup again so new settings and setup questions are picked up.
