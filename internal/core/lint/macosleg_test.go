@@ -67,7 +67,10 @@ func TestMacOSLegRunsItsSuiteOnlyWhereItLands(t *testing.T) {
 
 	for _, leg := range legs {
 		for _, event := range events {
-			verdicts := []string{"false"}
+			// "" is a classifier that wrote no output (it failed, or timed
+			// out under the check job's !cancelled()): it reads as not inert,
+			// and it decides whether the ubuntu leg tests internal/ at all.
+			verdicts := []string{"false", ""}
 			if event == "pull_request" {
 				// Only a pull request can be classified inert; every other
 				// event runs the full matrix (the changes job's own contract).

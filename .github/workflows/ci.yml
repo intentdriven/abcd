@@ -385,18 +385,18 @@ jobs:
       # minutes of a leg that had reached 31 against its 30-minute ceiling, on
       # a runner whose four cores both passes already kept busy. So the plain
       # pass covers the packages outside internal/, and, by name, the tests
-      # that assert only without the race detector (the next step). On an
-      # inert change the race lane stands down, and the plain pass runs the
-      # whole module, as the leg's only test pass. The macOS leg runs one
+      # that assert only without the race detector ("Test (plain-only
+      # guards)", below). On an inert change the race lane stands down, and
+      # the plain pass runs the whole module, as the leg's only test pass. The macOS leg runs one
       # race-enabled pass over the whole module instead (the last step of this
       # group). TestMacOSLegRunsItsSuiteOnlyWhereItLands holds which passes run
       # on which event.
       #
-      # The two packages named ahead of the pattern are the slowest in this
-      # pass (126-187s and 110-147s on the four-core runner, 2026-10-15). In
-      # import-path order internal/surface/cli started about three and a half
-      # minutes into the step and finished it alone; named first, both start
-      # with the step. The set is still exactly ./... (go test runs a package
+      # On an inert change, where it runs, the two packages named ahead of the
+      # pattern are the slowest in this pass (126-187s and 110-147s on the
+      # four-core runner, 2026-10-15). In import-path order
+      # internal/surface/cli started about three and a half minutes into the
+      # step and finished it alone; named first, both start with the step. The set is still exactly ./... (go test runs a package
       # named twice once), which TestPlainTestStepRunsTheWholeModule pins.
       - name: Test
         if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert == 'true'
@@ -466,8 +466,9 @@ jobs:
       # The race pass runs every test the plain pass would, but the ones that
       # assert only without the detector (the ubuntu leg's plain-only guard
       # step) assert nothing in it, so on this leg their bounds are not
-      # checked; iss-2610180542030806 tracks running them here. It runs straight after vet, so the slowest
-      # packages start at the start of the leg's testing. TestMacOSLegRunsItsSuiteOnlyWhereItLands
+      # checked; iss-2610180542030806 tracks running them here. It runs
+      # straight after vet, so the slowest packages start at the start of the
+      # leg's testing. TestMacOSLegRunsItsSuiteOnlyWhereItLands
       # holds it to one pass where the leg runs at all, and none on a pull request.
       - name: Test (race, whole module)
         if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'

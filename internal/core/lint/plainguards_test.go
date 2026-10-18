@@ -48,11 +48,18 @@ var raceFlagNonGuards = map[string]string{
 	"internal/core/interview stubBinary": "chooses a cheaper stub binary",
 }
 
-// plainOnlyGuards scans the test files in dir (one package directory) and
+// plainOnlyGuards scans the Go files in dir (one package directory) and
 // returns the top-level tests that reach a plain-only assertion, sorted, and
-// every use of raceFlag it could classify neither as a guard nor as a declared
-// non-guard, as "func: line" strings. rel is dir's slash path from the
-// repository root, the key raceFlagNonGuards uses.
+// every reading of raceFlag it could classify neither as a guard nor as a
+// declared non-guard, as "<what>: line <n>" strings. rel is dir's slash path
+// from the repository root, the key raceFlagNonGuards uses.
+//
+// It fails closed: only a plain function in a test file is classified, so the
+// flag read anywhere else (a method, a package-level declaration, a file that
+// is not a test) is reported, as is a file behind a race build constraint that
+// declares anything but the flag, and a function name a package declares
+// twice. Functions are keyed by package name, so a directory's internal and
+// external test packages never stand in for each other.
 func plainOnlyGuards(t *testing.T, dir, rel string) (tests, unclassified []string) {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -61,34 +68,81 @@ func plainOnlyGuards(t *testing.T, dir, rel string) (tests, unclassified []strin
 		t.Fatal(err)
 	}
 	type fn struct {
+		pkg   string
 		decl  *ast.FuncDecl
 		guard bool
 	}
-	funcs := map[string]*fn{}
+	funcs := map[string]*fn{} // keyed by package name and function name
 	var order []string
+	odd := func(what string, pos token.Pos) {
+		unclassified = append(unclassified, what+": line "+strconv.Itoa(fset.Position(pos).Line))
+	}
+	flagReads := func(n ast.Node, what string, skip map[*ast.Ident]bool) {
+		ast.Inspect(n, func(n ast.Node) bool {
+			if id, ok := n.(*ast.Ident); ok && id.Name == raceFlag && !skip[id] {
+				odd(what, id.Pos())
+			}
+			return true
+		})
+	}
 	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), "_test.go") {
+		name := e.Name()
+		if e.IsDir() || !strings.HasSuffix(name, ".go") {
 			continue
 		}
-		f, err := parser.ParseFile(fset, filepath.Join(dir, e.Name()), nil, 0)
+		path := filepath.Join(dir, name)
+		src, err := os.ReadFile(path)
 		if err != nil {
-			t.Fatalf("%s: %v", filepath.Join(rel, e.Name()), err)
+			t.Fatal(err)
 		}
+		raceTagged := regexp.MustCompile(`(?m)^//go:build .*\brace\b`).Match(src)
+		isTest := strings.HasSuffix(name, "_test.go")
+		if !isTest && !raceTagged && !strings.Contains(string(src), raceFlag) {
+			continue
+		}
+		f, err := parser.ParseFile(fset, path, src, 0)
+		if err != nil {
+			t.Fatalf("%s: %v", rel+"/"+name, err)
+		}
+		if raceTagged {
+			// The flag's own declaration, and nothing else, may sit behind
+			// a race build constraint.
+			for _, d := range f.Decls {
+				g, ok := d.(*ast.GenDecl)
+				if ok && g.Tok == token.CONST && len(g.Specs) == 1 {
+					if v := g.Specs[0].(*ast.ValueSpec); len(v.Names) == 1 && v.Names[0].Name == raceFlag {
+						continue
+					}
+				}
+				odd(name+" declares more than "+raceFlag+" behind a race build constraint", d.Pos())
+			}
+			continue
+		}
+		if !isTest {
+			flagReads(f, name+" (not a test file)", nil)
+			continue
+		}
+		pkg := f.Name.Name
 		for _, d := range f.Decls {
 			fd, ok := d.(*ast.FuncDecl)
 			if !ok || fd.Body == nil || fd.Recv != nil {
+				flagReads(d, name+" outside a plain function", nil)
 				continue
 			}
-			if _, dup := funcs[fd.Name.Name]; !dup {
-				order = append(order, fd.Name.Name)
+			key := pkg + "." + fd.Name.Name
+			if _, dup := funcs[key]; dup {
+				odd("package "+pkg+" declares "+fd.Name.Name+" twice", fd.Pos())
+				continue
 			}
-			funcs[fd.Name.Name] = &fn{decl: fd}
+			order = append(order, key)
+			funcs[key] = &fn{pkg: pkg, decl: fd}
 		}
 	}
 
 	// A function is a guard when its own body holds a plain-only assertion.
-	for _, name := range order {
-		f := funcs[name]
+	for _, key := range order {
+		f := funcs[key]
+		name := f.decl.Name.Name
 		seen := map[*ast.Ident]bool{}
 		ast.Inspect(f.decl.Body, func(n ast.Node) bool {
 			is, ok := n.(*ast.IfStmt)
@@ -103,28 +157,23 @@ func plainOnlyGuards(t *testing.T, dir, rel string) (tests, unclassified []strin
 			}
 			return true
 		})
-		ast.Inspect(f.decl.Body, func(n ast.Node) bool {
-			if id, ok := n.(*ast.Ident); ok && id.Name == raceFlag && !seen[id] {
-				if _, declared := raceFlagNonGuards[rel+" "+name]; !declared {
-					unclassified = append(unclassified, name+": line "+strconv.Itoa(fset.Position(id.Pos()).Line))
-				}
-			}
-			return true
-		})
+		if _, declared := raceFlagNonGuards[rel+" "+name]; !declared {
+			flagReads(f.decl.Body, name, seen)
+		}
 	}
 
 	// A function reaches a guard when it names one, called or passed as a
 	// value; repeat until nothing changes.
 	for changed := true; changed; {
 		changed = false
-		for _, name := range order {
-			f := funcs[name]
+		for _, key := range order {
+			f := funcs[key]
 			if f.guard {
 				continue
 			}
 			ast.Inspect(f.decl.Body, func(n ast.Node) bool {
-				if id, ok := n.(*ast.Ident); ok && id.Name != name {
-					if g, ok := funcs[id.Name]; ok && g.guard {
+				if id, ok := n.(*ast.Ident); ok && id.Name != f.decl.Name.Name {
+					if g, ok := funcs[f.pkg+"."+id.Name]; ok && g.guard {
 						f.guard, changed = true, true
 						return false
 					}
@@ -133,9 +182,9 @@ func plainOnlyGuards(t *testing.T, dir, rel string) (tests, unclassified []strin
 			})
 		}
 	}
-	for _, name := range order {
-		if f := funcs[name]; f.guard && isTopLevelTest(f.decl) {
-			tests = append(tests, name)
+	for _, key := range order {
+		if f := funcs[key]; f.guard && isTopLevelTest(f.decl) {
+			tests = append(tests, f.decl.Name.Name)
 		}
 	}
 	sort.Strings(tests)
@@ -248,6 +297,74 @@ func TestUsesTheStub(t *testing.T) { _ = stubBinary() }
 	// TestRunsTheSameEitherWay reads the flag in a shape that is no guard;
 	// stubBinary is declared for internal/core/interview, the rel given here.
 	if want := []string{"TestRunsTheSameEitherWay: line 30"}; !slices.Equal(unclassified, want) {
+		t.Errorf("unclassified = %q; want %q", unclassified, want)
+	}
+}
+
+// TestThePlainOnlyGuardScanFailsClosed: a reading of the flag the scan does not
+// classify is reported, never passed over. A method, a package-level
+// declaration and a file that is not a test each read it; a file behind a race
+// build constraint declares more than the flag; and the external test package
+// declares a helper of the same name as the internal one's guard, which stands
+// in for it in neither direction.
+func TestThePlainOnlyGuardScanFailsClosed(t *testing.T) {
+	dir := t.TempDir()
+	files := map[string]string{
+		"race_on_test.go": "//go:build race\n\npackage p\n\nconst raceEnabled = true\n\nfunc extra() {}\n",
+		"p_test.go": `package p
+
+import "testing"
+
+type harness struct{}
+
+func (harness) assertLinear(t *testing.T) {
+	if raceEnabled {
+		t.Skip("plain only")
+	}
+}
+
+var skipUnderRace = func(t *testing.T) {
+	if raceEnabled {
+		t.Skip("plain only")
+	}
+}
+
+func assertGrowth(t *testing.T) {
+	if raceEnabled {
+		t.Skip("plain only")
+	}
+}
+
+func TestInternal(t *testing.T) { assertGrowth(t) }
+`,
+		"x_test.go": `package p_test
+
+import "testing"
+
+func assertGrowth(t *testing.T) {}
+
+func TestExternal(t *testing.T) { assertGrowth(t) }
+`,
+		"p.go": "package p\n\nvar slow = !raceEnabled\n",
+	}
+	for name, src := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(src), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests, unclassified := plainOnlyGuards(t, dir, "internal/p")
+	if want := []string{"TestInternal"}; !slices.Equal(tests, want) {
+		t.Errorf("guards = %q; want %q: the external package's assertGrowth is no guard", tests, want)
+	}
+	sort.Strings(unclassified)
+	want := []string{
+		"p.go (not a test file): line 3",
+		"p_test.go outside a plain function: line 8",
+		"p_test.go outside a plain function: line 14",
+		"race_on_test.go declares more than raceEnabled behind a race build constraint: line 7",
+	}
+	sort.Strings(want)
+	if !slices.Equal(unclassified, want) {
 		t.Errorf("unclassified = %q; want %q", unclassified, want)
 	}
 }
