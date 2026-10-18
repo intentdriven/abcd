@@ -59,7 +59,8 @@ func newPublishFixtureWith(t *testing.T, stateA string, storeA bool) publishFixt
 	return px
 }
 
-// answer sets the n-th read of ghsa: in state, with the versions given.
+// answer sets the n-th read of ghsa: in state, with the versions given; a
+// published or closed one carries GitHub's timestamp for it.
 func (px publishFixture) answer(t *testing.T, ghsa string, n int, state, rng, patched string) {
 	t.Helper()
 	v := vulnJSON(examplePackage, rng)
@@ -67,6 +68,9 @@ func (px publishFixture) answer(t *testing.T, ghsa string, n int, state, rng, pa
 		v["patched_versions"] = patched
 	}
 	a := advisoryJSON(ghsa, state, "high", "a sample summary", "the report")
+	if state == "published" || state == "closed" {
+		a[state+"_at"] = endedAt.Format(time.RFC3339)
+	}
 	a["vulnerabilities"] = []map[string]any{v}
 	b, err := json.Marshal(a)
 	if err != nil {

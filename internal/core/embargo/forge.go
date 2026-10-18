@@ -38,8 +38,9 @@ const forgeSkew = 5 * time.Minute
 // those skip names (intake has just listed them in triage or draft), and
 // records the end GitHub reports for each: published_at, or closed_at for an
 // advisory the store judged with a closing verdict (closedUnjudged says why
-// no other close is recorded), from GitHub's own timestamp, or from now when
-// GitHub gives none. answers holds each advisory read in a state this abcd
+// no other close is recorded), from GitHub's own timestamp: an end GitHub
+// gives no timestamp for is left unread, never stamped with the clock's
+// time. answers holds each advisory read in a state this abcd
 // knows and recorded or left as it is, for the caller to reuse.
 //
 // GitHub's answer is untrusted input. The request names only an id the
@@ -82,7 +83,12 @@ func readHeld(s Store, st *State, skip map[string]bool, now time.Time) (answers 
 			continue
 		}
 		if a.State == "published" || a.State == "closed" {
-			at, ok := forgeTime(a.endedAt(), now)
+			v := a.endedAt()
+			if v == nil || strings.TrimSpace(*v) == "" {
+				left("GitHub reports it " + a.State + " but gives no " + a.State + "_at")
+				continue
+			}
+			at, ok := forgeTime(*v, now)
 			if !ok {
 				left("GitHub reports it " + a.State + " with a " + a.State + "_at that is not a time this abcd reads")
 				continue
@@ -116,14 +122,10 @@ func closedUnjudged(verdict *string) string {
 		"a person settles it: " + settle
 }
 
-// forgeTime is the time a timestamp GitHub reports names, or now when it
-// reports none; ok is false for one that is not RFC 3339, or lies past the
-// clock by more than forgeSkew.
-func forgeTime(v *string, now time.Time) (time.Time, bool) {
-	if v == nil || strings.TrimSpace(*v) == "" {
-		return now, true
-	}
-	t, err := time.Parse(time.RFC3339, *v)
+// forgeTime is the time a timestamp GitHub reports names; ok is false for
+// one that is not RFC 3339, or lies past the clock by more than forgeSkew.
+func forgeTime(v string, now time.Time) (time.Time, bool) {
+	t, err := time.Parse(time.RFC3339, v)
 	if err != nil || t.After(now.Add(forgeSkew)) {
 		return time.Time{}, false
 	}

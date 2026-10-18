@@ -358,3 +358,24 @@ func readGHAnswer(t *testing.T, g *ghFake, ghsa string) string {
 	t.Helper()
 	return readFile(t, filepath.Join(g.dir, "resp", ghKey("GET", listPath+"/"+ghsa, "")))
 }
+
+// TestMissingForgeTimeLeavesUnread: every timestamp the store records from
+// GitHub is GitHub's own, so an end GitHub reports with no published_at or
+// closed_at is not recorded at the clock's time: the advisory is listed,
+// with a fixed reason, and left as the store holds it.
+func TestMissingForgeTimeLeavesUnread(t *testing.T) {
+	for _, state := range []string{"published", "closed"} {
+		t.Run(state, func(t *testing.T) {
+			pf, f := heldFixture(t)
+			pf.seed(t, judged(strp(VerdictNotAVulnerability)))
+			heldOnly(t, pf.g, ghsaA, state, "")
+			res := runIntake(t, f)
+			if a := pf.held(t, ghsaA); a.PublishedAt != nil || a.ClosedAt != nil || a.ForgeState != "draft" {
+				t.Fatalf("held %+v", a)
+			}
+			if len(res.Ended) != 0 || len(res.Unread) != 1 || !strings.Contains(res.Unread[0].Reason, "gives no "+state+"_at") {
+				t.Fatalf("result %+v", res)
+			}
+		})
+	}
+}
