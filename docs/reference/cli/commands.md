@@ -1569,7 +1569,7 @@ abcd embark probe ../lifeboat
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes branch records; refuses a hazard via check, hook or approve, and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
@@ -1810,7 +1810,7 @@ heredoc (`abcd guard check <<'EOF'` ... `EOF`) passes it through untouched.
 
 #### `abcd guard hook`
 
-Judge the shell command in a host's pre-tool-use payload: Writes nothing; refuses a hazard or a badly built question with the host's deny.
+Judge the shell command in a host's pre-tool-use payload: Writes a created branch's record; refuses a hazard or a badly built question with the host's deny.
 
 **Usage:** `abcd guard hook`
 

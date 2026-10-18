@@ -1,6 +1,6 @@
 ---
 name: guard
-description: "Judge a shell command against the hazard registry before it runs: Writes nothing; refuses a hazard through check, hook or approve, and an unknown sub-verb."
+description: "Judge a shell command against the hazard registry before it runs: Writes branch records; refuses a hazard via check, hook or approve, and an unknown sub-verb."
 argument-hint: "[check [--command <command>] | hook | approve --dir <dir>]"
 block: agents
 user-invocable: false
@@ -9,8 +9,9 @@ user-invocable: false
 # `/abcd:guard` shell-hazard check
 
 Decide whether a shell command is safe to run, using abcd's hazard registry —
-the bundled hazard entries merged with this repo's `.abcd/guard.json`. This
-command performs **zero writes**.
+the bundled hazard entries merged with this repo's `.abcd/guard.json`. The
+check performs **zero writes**; the hook writes one thing, the record of a
+branch the session creates (below), and refuses nothing for it.
 
 ## `check` — decide one command
 
@@ -77,6 +78,20 @@ lets the command run. The host shows that reason to you on one error line and
 hands it to the agent. A notice the hook printed before it blocked, such as a
 repository guard file that did not load, leads the reason, because the host
 discards the hook's stderr when it exits 0.
+
+Before it judges a shell command, the hook records the branches the command
+creates, for the away mode's reading of which branches are the session's own
+(`/abcd:mode`): `git worktree add -b|-B <b>`, `git switch -c|-C <b>`, `git
+checkout -b|-B <b>` and `git branch <b>`, each only when no branch of that name
+exists yet; a bare `git worktree add <path>`, recorded as the branch git names
+after the folder, and `git worktree add <path> <branch>`; and `git branch
+-m|-M <old> <new>`, which carries a record from the old name to the new. It
+records them whether or not the person is away, under the working copy's key in
+the away store (`~/.abcd.noindex/away/<root-sha>/`), matched by whole name, in a
+list of the hundred most recent. The recorder **refuses nothing**: a store it
+cannot write leaves one stderr line and the command goes on to the check as
+before, and a record made for a command that then fails names a branch that
+does not exist, which the reading ignores.
 
 On the host's question tool the hook checks abcd's own questions instead of
 consulting the registry. A question is abcd's when a header is in abcd's chip

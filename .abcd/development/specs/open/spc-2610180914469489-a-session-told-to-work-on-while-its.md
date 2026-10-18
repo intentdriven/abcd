@@ -609,6 +609,67 @@ lane's choice, recorded for review; none changes a test the step names.
   `commands/guard.md`, `commands/mode.md` and the guard hook's help text
   gain a sentence each, since each describes the gate and would otherwise
   misstate it while away.
+- 2026-10-18 (lane 2's choice, steps 3 and 4, for review): **The
+  created-branch list holds a hundred names**, the oldest dropped
+  (`autonomy.MaxCreatedBranches`): a hundred names at git's 255-byte limit
+  stay well within the store's 64 KiB per file. A rename keeps the record's
+  place and time.
+- 2026-10-18 (lane 2's choice, for review): **The recorder reads literal
+  words only, and runs before the registry loads.** A word a substitution or
+  a variable prints makes the command no act; `git -C <dir>` is stepped over,
+  not followed, and every name is judged against the session copy's
+  repository. It runs ahead of the registry, so a disabled or unloaded
+  registry does not stop a branch being recorded. `git worktree add <path>
+  <commit-ish>` records the name when it is a branch or resolves to nothing
+  (git then creates it), never a tag or an object name; `--detach` and
+  `--orphan` record nothing; `git branch -c|-C` is recorded as a creation.
+- 2026-10-18 (lane 2's choice, for review): **The copy is the payload
+  `cwd`'s worktree until step 2's start-copy note lands.** The recorder
+  resolves it in one function (`awayCopyRoot` in `internal/surface/cli`) for
+  step 2 to route through its note, and `autonomy.ReadOwed` takes the copy
+  root from its caller (`ReadOptions.Root`).
+- 2026-10-18 (lane 2's choice, for review): **The away listing lists every
+  open pull request, not only the person's,** so a branch whose pull request
+  another person authored can be told apart: the person is the holder name
+  reservations resolve without a network read (`claim.ReaderHolder`), and
+  when that is unknown the listing asks `--author @me` and that rule is not
+  applied. At most 200 are listed. The ADR's decision says "the person's
+  open pull requests"; invariant 7's clause says "the open pull requests".
+- 2026-10-18 (lane 2's choice, for review): **"Recent" is a commit beyond
+  the default branch whose author email is this checkout's, made or
+  rewritten (the later of its author and committer dates) within 14 days.**
+  A live reservation links a branch by its name too (the record id on word
+  boundaries), not only through a pull request. The reflog route reads both
+  ends of each `checkout: moving from A to B` line and the branch checked out
+  now.
+- 2026-10-18 (lane 2's choice, for review): **A stacked branch whose base
+  has moved on is still found without a pull request:** the branch they share
+  a commit with, outside the default branch, is its base when that commit
+  was the other branch's own tip by its reflog (set there other than by the
+  branch's creation, which tells a base from a branch cut from it). A stacked
+  branch is one `stacked` item naming what it needs, never a separate behind
+  or failing item; a stacked pull request with no checks reported, where no
+  receipts are minted, is not verified and owed.
+- 2026-10-18 (lane 2's choice, for review): **When the listing fails, "a
+  branch with a pull request" is read as an own branch with an upstream that
+  is not gone**, compared on disk with the last-fetched default branch; the
+  fetch time is the default branch's reflog, else `claim.LastFetched`.
+- 2026-10-18 (lane 2's choice, for review): **A release reservation
+  (`rel-…`) is never owed as uncarried work,** since no pull request carries
+  a release; its renewal due still counts.
+- 2026-10-18 (lane 2's choice, for review): **A queued step names a branch
+  as a whole name in which `.`, `_`, `/` and `-` continue the name,** so
+  `feat/p` is never found in `feat/p-2`: stricter than the record id's word
+  boundary, where `-` ends the id so `fix/iss-5-x` names iss-5. `ReadOwed`
+  records each hand-back itself (`Store.RecordHandBack`), and the unpushed
+  item's reason is the fact alone; the push wording is the verdict's (step 5).
+- 2026-10-18 (lane 2's choice, for review): **The run states are read
+  leniently, for their lanes alone**, rather than through the loop's strict
+  decoder: a run counts while a spec step is pending or a lane is not done,
+  and a lane counts while its stage is not done, discarded or handed back.
+  `landing.GHContext` was added beside `landing.GH` to bind the forge client
+  to the ten-second deadline, and the guard's `abcd guard` and `abcd guard
+  hook` sentences now name the branch record they write.
 
 Choices made while building steps 2 and 5 on 2026-10-18, by build lane 1,
 each recorded for review; none changes a test the steps name.
@@ -756,6 +817,7 @@ each recorded for review; none changes a test the steps name.
      write leaves a stderr line); TestBranchRecorderUnderLock (two recordings
      racing keep both). commands/guard.md and the brief's guard chapter say
      the hook records a created branch and refuses nothing for it.
+   - landed: 710b9626b
 4. Owed work, and invariant 7's clause
    - packages: internal/core/autonomy, .abcd/development/brief/02-constraints/03-invariants.md
    - tests: internal/core/autonomy
@@ -811,6 +873,7 @@ each recorded for review; none changes a test the steps name.
      reservation is never reported as uncarried);
      TestOwedOrderFixed. Brief invariant 7 gains the away mode's one listing
      per check and its deadline, citing adr-2610181003541997.
+   - landed: 1ad31a522
 5. The stop verdict, the Stop and StopFailure hooks
    - packages: internal/core/autonomy, internal/surface/cli, hooks
    - tests: internal/core/autonomy, internal/surface/cli
