@@ -172,9 +172,22 @@ fields than an earlier one does not replace it. `unpinned` lists each field of t
 and served lists the call could not pin, with its reason: `not_reported` (the
 response does not carry it), `self_reported`, `harness_computed`,
 `not_configured` (no setting or pin names it; a route to this machine lists the
-weight file's fingerprint, its quantisation and the runtime's version so until a
-local route can be pinned) or `not_verified` (abcd configured the value and the
-record carries it, but nothing on the route shows it reached the provider). Recording adds no request to the ones the call
+weight file's fingerprint, its quantisation and the runtime's version so unless
+a local pin names them) or `not_verified` (abcd configured the value and the
+record carries it, but nothing on the route shows it reached the provider). A
+route to this machine also lists the served local fields
+(`served.weights_sha256`, `served.quantisation`, `served.runtime_version`,
+`served.context_length`, `served.kv_cache_type`, `served.tool_calls`): each is
+`self_reported` when the server's probe read it, since it is the server's own
+word, and `not_reported` otherwise. A model a block on this machine pins
+(`oracle.api.<provider>.pins`, a local pin, iss-2610161734428291;
+[`03-configuration.md`](03-configuration.md)) is probed once per process before
+its first use through the runtime's own endpoints, and the record carries the
+pin as `local_pin` and what the server reported as `local_served`: a pinned
+field the server confirmed is no longer listed, one it does not report
+(llama-server and mlx_lm.server report no digest) is `not_verified`, and the
+pin's context is the asked context. A field the server reports otherwise
+refuses the call before the brief is sent. Recording adds no request to the ones the call
 makes. A model its provider block pins to one OpenRouter provider
 (`oracle.api.<provider>.pins`, iss-2610161734413178) is sent with OpenRouter's
 provider routing object (one provider in `order`, `allow_fallbacks: false`,
@@ -295,7 +308,20 @@ review is skipped.
   says: the served provider and the provider's own counts stay not reported,
   and nothing shows the pin reached OpenRouter, so the provider pin is
   listed as `not_verified` beside the pin the record carries: configured,
-  not verified on the wire.
+  not verified on the wire. A runner route whose provider is a block on this
+  machine says so (`local: true`) and lists the local fields as the
+  adapter's route does (iss-2610171545099084): not configured without a
+  local pin. A role routed
+  through opencode to a model a local pin names is refused on the same three
+  variables, then the server is probed and held to tool calls and a context
+  it can say it serves (every role a runner runs uses tools), and only then
+  is a sealed configuration written, carrying the provider's `baseURL` alone
+  so opencode reaches the server the probe read. opencode pins no served
+  context on any of the three runtimes (its `limit.context` is its own
+  reckoning and needs `limit.output` beside it, which would replace the
+  person's), so the probe is what confirms the context. The route records
+  `local_pin`, `local_served`, the configuration's SHA-256 and opencode's
+  version.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the

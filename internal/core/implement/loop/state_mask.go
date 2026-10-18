@@ -198,7 +198,8 @@ func (t Transcript) masked() Transcript {
 
 // maskRoute masks the route a runner reported, its model above all, and both
 // sides of its run (itd-166), each string the harness supplied included, and
-// the pin a pinned opencode run was pointed at (iss-2610161734413178).
+// the pin a pinned opencode run was pointed at (iss-2610161734413178), or
+// the local pin and what its server reported (iss-2610161734428291).
 func maskRoute(r runner.RouteRecord) runner.RouteRecord {
 	r.Asked, r.Ran, r.Model = line(r.Asked), line(r.Ran), line(r.Model)
 	s := &r.Sides
@@ -210,6 +211,16 @@ func maskRoute(r runner.RouteRecord) runner.RouteRecord {
 		p.Order, p.Quantizations = maskEach(p.Order, line), maskEach(p.Quantizations, line)
 		p.DataCollection, p.CanonicalSlug = line(p.DataCollection), line(p.CanonicalSlug)
 		return p
+	})
+	s.LocalPin = maskPtr(s.LocalPin, func(p oracle.LocalPin) oracle.LocalPin {
+		p.Runtime, p.RuntimeVersion, p.WeightsSHA256 = line(p.Runtime), line(p.RuntimeVersion), line(p.WeightsSHA256)
+		p.Quantisation, p.KVCacheType = line(p.Quantisation), line(p.KVCacheType)
+		return p
+	})
+	s.LocalServed = maskPtr(s.LocalServed, func(v oracle.LocalServed) oracle.LocalServed {
+		v.Model, v.RuntimeVersion, v.WeightsSHA256 = line(v.Model), line(v.RuntimeVersion), line(v.WeightsSHA256)
+		v.Quantisation, v.KVCacheType = line(v.Quantisation), line(v.KVCacheType)
+		return v
 	})
 	s.Cost = maskPtr(s.Cost, func(c oracle.Cost) oracle.Cost {
 		c.Unit = line(c.Unit)

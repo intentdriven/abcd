@@ -19,6 +19,12 @@ func pinnedRoutes() map[string]runner.RouteRecord {
 				Quantizations: []string{"fp8"}, CanonicalSlug: "qwen/qwen3-coder"}}},
 		"pin config hash": {Asked: runner.OpenCode, Ran: runner.OpenCode,
 			Sides: runner.Sides{PinConfigSHA256: strings.Repeat("b", 64)}},
+		"local pin": {Asked: runner.OpenCode, Ran: runner.OpenCode,
+			Sides: runner.Sides{LocalPin: &oracle.LocalPin{Runtime: "ollama", RuntimeVersion: "0.12.6",
+				WeightsSHA256: strings.Repeat("c", 64), Quantisation: "Q4_K_M", ContextLength: 32768, KVCacheType: "f16"}}},
+		"local served": {Asked: runner.OpenCode, Ran: runner.OpenCode,
+			Sides: runner.Sides{LocalServed: &oracle.LocalServed{Model: "qwen3-coder", ContextLength: 32768}}},
+		"local route": {Asked: runner.OpenCode, Ran: runner.OpenCode, Sides: runner.Sides{Local: true}},
 	}
 }
 
@@ -50,7 +56,8 @@ func TestAPinnedRouteIsVersion14s(t *testing.T) {
 					t.Fatalf("%s at version %d: %v", name, version, err)
 				}
 				got := st.Lanes[0].Receipts[0].Route
-				if got == nil || got.PinConfigSHA256 != r.PinConfigSHA256 || (r.ProviderPin != nil) != (got.ProviderPin != nil) {
+				if got == nil || got.PinConfigSHA256 != r.PinConfigSHA256 || (r.ProviderPin != nil) != (got.ProviderPin != nil) ||
+					(r.LocalPin != nil) != (got.LocalPin != nil) || (r.LocalServed != nil) != (got.LocalServed != nil) || r.Local != got.Local {
 					t.Fatalf("%s read back = %+v", name, got)
 				}
 				continue

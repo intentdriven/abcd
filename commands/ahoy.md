@@ -1442,7 +1442,10 @@ what served each call, one extra request per call, made only because the
 person turned it on) are added to the block by hand afterwards, on an
 OpenRouter block alone, as the configuration chapter of the brief describes,
 and a configured provider's verification sends the first listed model's pin
-when it has one. The verification never reads the generation record back,
+when it has one. A block on this machine takes a local pin there instead
+(the runtime, its version, the weights' digest, quantisation, context length
+and KV-cache type, iss-2610161734428291), which probes the server before the
+route's first use. The verification never reads the generation record back,
 even when the block says `read_generation: true`: that would be one more
 request for an answer the verification discards. A role
 routed through opencode to a pinned model is refused while the person's

@@ -28,9 +28,10 @@ const (
 	AskedPromptSHA256   Field = "asked.prompt_sha256"
 	AskedHarnessVersion Field = "asked.harness_version"
 	// The local fields are a local model's (decision 7): the weight file's
-	// fingerprint, its quantisation and the runtime's version, which a local
-	// route lists as not configured until a local route can be pinned
-	// (iss-2610161734428291).
+	// fingerprint, its quantisation and the runtime's version, which a route
+	// to this machine lists as not configured unless the model is pinned
+	// (localpin.go, iss-2610161734428291), and as not verified when it is
+	// and the server did not report the value.
 	AskedWeightsSHA256  Field = "asked.weights_sha256"
 	AskedQuantisation   Field = "asked.quantisation"
 	AskedRuntimeVersion Field = "asked.runtime_version"
@@ -48,10 +49,20 @@ const (
 	ServedCacheReadTokens  Field = "served.cache_read_tokens"
 	ServedCacheWriteTokens Field = "served.cache_write_tokens"
 	ServedCost             Field = "served.cost"
+	// The served local fields are what a server on this machine reported
+	// when it was probed before a pinned route's first use (localpin.go):
+	// each is the server's own word, so self-reported, or not reported.
+	ServedWeightsSHA256  Field = "served.weights_sha256"
+	ServedQuantisation   Field = "served.quantisation"
+	ServedRuntimeVersion Field = "served.runtime_version"
+	ServedContextLength  Field = "served.context_length"
+	ServedKVCacheType    Field = "served.kv_cache_type"
+	ServedToolCalls      Field = "served.tool_calls"
 )
 
 // AskedFields and ServedFields are the fixed lists, in the order a record
-// lists them. LocalFields extends the asked list on a local route.
+// lists them. On a route to this machine LocalFields extends the asked list
+// and LocalServedFields the served one.
 var (
 	AskedFields = []Field{AskedModel, AskedProviderPin, AskedTemperature, AskedTopP, AskedSeed,
 		AskedEffort, AskedContext, AskedPromptSHA256, AskedHarnessVersion}
@@ -59,6 +70,8 @@ var (
 	ServedFields = []Field{ServedModel, ServedProvider, ServedGenerationID, ServedFinishReason,
 		ServedPromptTokens, ServedCompletionTokens, ServedReasoningTokens,
 		ServedCacheReadTokens, ServedCacheWriteTokens, ServedCost}
+	LocalServedFields = []Field{ServedWeightsSHA256, ServedQuantisation, ServedRuntimeVersion,
+		ServedContextLength, ServedKVCacheType, ServedToolCalls}
 )
 
 // UnpinnedReason is why a field is not pinned (decision 8).

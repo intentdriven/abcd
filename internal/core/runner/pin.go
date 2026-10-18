@@ -50,6 +50,14 @@ package runner
 // attempts and the provider's own counts stay not reported. Nothing on this
 // path shows the pin reached OpenRouter either, so the record carries the pin
 // and lists it as not verified: configured, not verified on the wire.
+//
+// A role routed to a model a block on this machine pins down to its weights
+// (oracle.LocalPin, iss-2610161734428291) runs the same way: refused while the
+// person names a configuration of their own, then the server is probed
+// (oracle's ProbeLocal, held to tool calls and a context it can say it
+// serves, since every role a runner runs uses tools), and only then is the
+// sealed configuration written, naming the provider's base URL so opencode
+// reaches the server the probe read (localConfig).
 
 import (
 	"bytes"
@@ -57,6 +65,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -114,13 +123,73 @@ func pinConfig(model string, pin oracle.Pin) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-// sealPin writes the pin's configuration for one run of req, outside the
-// repository and the checkout, and returns where.
-func (o *OpenCodeCLI) sealPin(req Request) (sealedPin, error) {
-	raw, err := pinConfig(o.model, *o.pin)
-	if err != nil {
-		return sealedPin{}, fail(OpenCode, ReasonFailed, "the pinned configuration could not be built")
+// localConfig is the sealed configuration's text for model, a
+// <provider>/<model> route to a server on this machine at base: the
+// provider's base URL, so opencode reaches the server the probe read, and
+// the model's entry, and nothing else. opencode pins no served context on any
+// of the three runtimes (the context is the server's setting, and its own
+// limit.context is opencode's reckoning, which requires limit.output beside
+// it and would replace the person's), so the probe confirms the context and
+// the configuration names none.
+func localConfig(model, base string) ([]byte, error) {
+	provider, name, _ := strings.Cut(model, "/")
+	if strings.ContainsAny(base, "{}") {
+		return nil, errors.New("the base URL carries a brace, which opencode would read as a substitution")
 	}
+	type options struct {
+		BaseURL string `json:"baseURL"`
+	}
+	type block struct {
+		Options options                   `json:"options"`
+		Models  map[string]map[string]any `json:"models"`
+	}
+	cfg := struct {
+		Schema   string           `json:"$schema"`
+		Provider map[string]block `json:"provider"`
+	}{Schema: openCodeConfigSchema, Provider: map[string]block{
+		provider: {Options: options{BaseURL: base}, Models: map[string]map[string]any{name: {}}},
+	}}
+	var b bytes.Buffer
+	enc := json.NewEncoder(&b)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(cfg); err != nil {
+		return nil, err
+	}
+	return b.Bytes(), nil
+}
+
+// sealedConfig is the run's sealed configuration: the OpenRouter pin's, or
+// the local pin's.
+func (o *OpenCodeCLI) sealedConfig() ([]byte, error) {
+	var raw []byte
+	var err error
+	if o.localPin != nil {
+		raw, err = localConfig(o.model, o.localBase)
+	} else {
+		raw, err = pinConfig(o.model, *o.pin)
+	}
+	if err != nil {
+		return nil, fail(OpenCode, ReasonFailed, "the pinned configuration could not be built")
+	}
+	return raw, nil
+}
+
+// probeLocal probes the local pin's server before the run, refusing it when
+// the server could not hold the pin for a tool-using role.
+func (o *OpenCodeCLI) probeLocal(ctx context.Context) (*oracle.LocalServed, error) {
+	if o.probe == nil || o.localBase == "" {
+		return nil, fail(OpenCode, ReasonFailed, "the local pin's server is not configured, so it cannot be probed")
+	}
+	served, err := o.probe(ctx)
+	if err != nil {
+		return nil, failAt(err, OpenCode, ReasonFailed, "%s", err.Error())
+	}
+	return served, nil
+}
+
+// sealPin writes raw, the run's sealed configuration, for one run of req,
+// outside the repository and the checkout, and returns where.
+func (o *OpenCodeCLI) sealPin(req Request, raw []byte) (sealedPin, error) {
 	dir, err := os.MkdirTemp("", "abcd-opencode-pin-")
 	if err != nil {
 		return sealedPin{}, fail(OpenCode, ReasonFailed, "no directory could be made for the run's pinned configuration")

@@ -48,7 +48,11 @@ import (
 type ClaudeCLI struct {
 	// model is the model route, <provider>/<model>, or "" for the harness's
 	// own default.
-	model  string
+	model string
+	// local says the route's provider is a block on this machine, whose
+	// local fields the record lists (sides.go); claude is handed no local
+	// pin, so they stay not configured.
+	local  bool
 	launch launcher
 	// approver is the absolute path of the abcd binary a shell launch starts
 	// as its permission prompt answerer.
@@ -192,6 +196,7 @@ func (c *ClaudeCLI) Run(ctx context.Context, req Request) (Answer, []byte, error
 		return ans, transcript, err
 	}
 	ans.ModelAsked, ans.PromptSHA256 = c.askedModel(), promptSHA256(req)
+	ans.Local = c.local
 	ans.Unpinned = claudeUnpinned(ans)
 	return ans, transcript, nil
 }

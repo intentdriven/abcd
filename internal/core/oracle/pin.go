@@ -100,8 +100,7 @@ func readPins(baseURL string, models []string, raw map[string]pinFile) (map[stri
 		return nil, nil
 	}
 	if !isOpenRouter(baseURL) {
-		return nil, fmt.Errorf("%s is OpenRouter's provider routing, and base_url does not reach OpenRouter (%s); "+
-			"a pin sent anywhere else would be recorded as holding a call nothing held", pinsKey, openRouterHost)
+		return nil, errNotPinnable()
 	}
 	names := make([]string, 0, len(raw))
 	for m := range raw {
@@ -139,6 +138,14 @@ func readPins(baseURL string, models []string, raw map[string]pinFile) (map[stri
 			Quantizations: []string{pf.Quantizations[0]}, CanonicalSlug: pf.CanonicalSlug}
 	}
 	return pins, nil
+}
+
+// errNotPinnable refuses pins on a block that is neither OpenRouter's nor on
+// this machine.
+func errNotPinnable() error {
+	return fmt.Errorf("%s is OpenRouter's provider routing, or a local model's pin on a server on this machine, "+
+		"and base_url reaches neither OpenRouter (%s) nor this machine; a pin sent anywhere else would be recorded "+
+		"as holding a call nothing held", pinsKey, openRouterHost)
 }
 
 // readGenerationSetting checks a block's read_generation: true only on a

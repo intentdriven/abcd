@@ -45,9 +45,12 @@ package oracle
 // network and never prints.
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -110,6 +113,9 @@ type Provider struct {
 	// Pins is the block's pins, by the listed model each holds to one
 	// OpenRouter provider (pin.go); nil when it pins none.
 	Pins map[string]Pin `json:"pins,omitempty"`
+	// LocalPins is a block on this machine's pins, by the listed model each
+	// names down to its weights (localpin.go); nil when it pins none.
+	LocalPins map[string]LocalPin `json:"local_pins,omitempty"`
 	// ReadGeneration is the block's read_generation: true makes every call
 	// through it read OpenRouter's generation record back once it is
 	// answered (pin.go), a request of its own. false, the default, makes
@@ -159,11 +165,13 @@ type APIConfig struct {
 
 // providerFile is a provider block as the file spells it, decoded strictly.
 type providerFile struct {
-	BaseURL     string             `json:"base_url"`
-	Key         *string            `json:"key"`
-	Models      []string           `json:"models"`
-	StreamUsage *bool              `json:"stream_usage"`
-	Pins        map[string]pinFile `json:"pins"`
+	BaseURL     string   `json:"base_url"`
+	Key         *string  `json:"key"`
+	Models      []string `json:"models"`
+	StreamUsage *bool    `json:"stream_usage"`
+	// Pins is pins, each decoded by the block it sits in: an OpenRouter
+	// block's as a routing pin, a block on this machine's as a local pin.
+	Pins map[string]json.RawMessage `json:"pins"`
 	// ReadGeneration is read_generation, nil when the block omits it.
 	ReadGeneration *bool `json:"read_generation"`
 }
@@ -318,13 +326,49 @@ func (c *APIConfig) provider(name string, fd layered.Found) (Provider, error) {
 		}
 	}
 	p.Models = append([]string(nil), pf.Models...)
-	if p.Pins, err = readPins(p.BaseURL, p.Models, pf.Pins); err != nil {
+	if err := p.readAnyPins(pf.Pins); err != nil {
 		return Provider{}, err
 	}
 	if p.ReadGeneration, err = readGenerationSetting(p.BaseURL, pf.ReadGeneration); err != nil {
 		return Provider{}, err
 	}
 	return p, nil
+}
+
+// readAnyPins reads a block's pins as the block's base URL decides: an
+// OpenRouter block's pin a model to one provider, a block on this machine's
+// name a model down to its weights, and any other block's are refused.
+func (p *Provider) readAnyPins(raw map[string]json.RawMessage) error {
+	if len(raw) == 0 {
+		return nil
+	}
+	if !isOpenRouter(p.BaseURL) && openaiapi.IsLocal(p.BaseURL) {
+		local := make(map[string]localPinFile, len(raw))
+		for _, m := range slices.Sorted(maps.Keys(raw)) {
+			pf, err := layered.Decode[localPinFile](raw[m])
+			if err != nil {
+				return fmt.Errorf("%s.%s, a local pin: %w", pinsKey, layered.BoundKey(m), err)
+			}
+			local[m] = pf
+		}
+		var err error
+		p.LocalPins, err = readLocalPins(p.Models, local)
+		return err
+	}
+	if !isOpenRouter(p.BaseURL) {
+		return errNotPinnable()
+	}
+	routing := make(map[string]pinFile, len(raw))
+	for _, m := range slices.Sorted(maps.Keys(raw)) {
+		pf, err := layered.Decode[pinFile](raw[m])
+		if err != nil {
+			return fmt.Errorf("%s.%s, an OpenRouter pin: %w", pinsKey, layered.BoundKey(m), err)
+		}
+		routing[m] = pf
+	}
+	var err error
+	p.Pins, err = readPins(p.BaseURL, p.Models, routing)
+	return err
 }
 
 func deniedError(model string, e DenyEntry) error {

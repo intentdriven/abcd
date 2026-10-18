@@ -191,6 +191,20 @@ rather than skipped:
         },
         "read_generation": true          // optional, OpenRouter's base URL only, default false:
                                          //   one extra request per call, to read what served it
+      },
+      "ollama": {
+        "base_url": "http://127.0.0.1:11434/v1",
+        "models": ["qwen3-coder:30b"],
+        "pins": {                        // on a base URL on this machine: a local pin
+          "qwen3-coder:30b": {
+            "runtime": "ollama",         // ollama, llama.cpp or mlx
+            "runtime_version": "0.14.2",
+            "weights_sha256": "06c1…0bca", // the weight file's SHA-256, or Ollama's digest
+            "quantisation": "Q4_K_M",
+            "context_length": 32768,     // the context the server serves the model at
+            "kv_cache_type": "f16"
+          }
+        }
       }
     },
     "denylist": ["openai/*"],            // optional, none bundled; repo or machine
@@ -236,9 +250,30 @@ rather than skipped:
   leave the record claiming a pin nothing held; elsewhere it is refused. A pin
   sits in the provider block, so like the block it is the machine's alone.
   A role routed through opencode to a pinned model is refused while the
-  person's environment sets `OPENCODE_CONFIG` or `OPENCODE_CONFIG_CONTENT`,
-  which the run's sealed configuration would otherwise replace
-  ([`02-adapters.md`](02-adapters.md)).
+  person's environment sets `OPENCODE_CONFIG`, `OPENCODE_CONFIG_DIR` or
+  `OPENCODE_CONFIG_CONTENT`, which the run's sealed configuration would
+  otherwise replace ([`02-adapters.md`](02-adapters.md)).
+- **A local pin names a model on this machine down to its weights**
+  (iss-2610161734428291, itd-2610161733316518's local cells). On a block whose
+  `base_url` is on this machine, `oracle.api.<provider>.pins.<model>` declares
+  every one of the runtime (`ollama`, `llama.cpp` or `mlx`), its
+  `runtime_version`, `weights_sha256` (the weight file's SHA-256, or Ollama's
+  model digest, with or without `sha256:`), `quantisation`, `context_length`
+  and `kv_cache_type`; a pin that leaves one out, or names a model off the
+  block's list, is refused when the configuration is read. abcd never hashes a
+  weight file of its own accord: the person declares the digest. Before the
+  route's first use in a process the server is probed, on this machine alone,
+  bounded at five seconds, asking no model anything: Ollama's `/api/version`,
+  `/api/show`, `/api/tags` and `/api/ps`, llama-server's `/props`,
+  mlx_lm.server's `/v1/models`. A value the server reports otherwise than the
+  pin refuses the route, naming the field, before the brief is sent. A route
+  that runs a tool-using role (every role a runner runs) is also refused when
+  the server says the model takes no tool calls, when Ollama cannot say what
+  context it serves (it defaults to 4096 and truncates a longer prompt
+  silently: set `num_ctx` in a Modelfile, or `OLLAMA_CONTEXT_LENGTH` and load
+  the model), or when a llama-server pin declares a q4 KV cache. A probe that
+  read nothing is made again at the next use. Like every member of a provider
+  block, a local pin is the machine's alone.
 - **Reading back what served a call is the person's choice, per provider.**
   `oracle.api.<provider>.read_generation: true` makes every call through that
   block read OpenRouter's generation record once it is answered (the

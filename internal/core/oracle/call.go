@@ -84,6 +84,11 @@ type CallRecord struct {
 	// its order, the one that served included, so a fallback shows as an
 	// attempt before it; absent when no record was read.
 	Attempts []openaiapi.Attempt `json:"attempts,omitempty"`
+	// LocalPin is the local pin the call's model holds to on a server on this
+	// machine (localpin.go), and LocalServed what the server reported when it
+	// was probed before its first use; both absent on any other route.
+	LocalPin    *LocalPin    `json:"local_pin,omitempty"`
+	LocalServed *LocalServed `json:"local_served,omitempty"`
 }
 
 // CallRequest is one call: where it goes, the brief, the settings as sent and
@@ -169,13 +174,22 @@ func resolveKey(creds credential.Source, p Provider) (string, error) {
 // only after the answer is admitted (pin.go).
 //
 // A model p's block pins is sent with its pin as OpenRouter's provider
-// routing object, and the record carries the pin on the asked side.
+// routing object, and the record carries the pin on the asked side. A model
+// a block on this machine pins is probed before its first use in the process
+// and refused when the server reports otherwise (localpin.go); the call is
+// self-contained, so no tool call is asked of the server.
 func complete(ctx context.Context, p Provider, key, model string, brief openaiapi.Brief, settings Settings,
 	contract func([]byte) error, denylist []DenyEntry, opts ...openaiapi.Option) ([]byte, CallRecord, error) {
 	provider := p.Name
 	client, err := openaiapi.New(p.BaseURL, key, opts...)
 	if err != nil {
 		return nil, CallRecord{}, fmt.Errorf("oracle adapter: provider %s: %w", provider, err)
+	}
+	var served *LocalServed
+	if pin, ok := p.LocalPins[model]; ok {
+		if served, err = checkLocal(ctx, client, p, pin, model, false); err != nil {
+			return nil, CallRecord{}, err
+		}
 	}
 	req := openaiapi.Request{Model: model, Brief: brief, Settings: settings, NoStreamUsage: !p.AsksStreamUsage()}
 	if pin, ok := p.pin(model); ok {
@@ -198,7 +212,7 @@ func complete(ctx context.Context, p Provider, key, model string, brief openaiap
 	if rb.gen != nil {
 		res, source = withGeneration(res, *rb.gen)
 	}
-	rec := callRecord(p, brief, settings, res)
+	rec := callRecord(p, brief, settings, res, served)
 	rec.GenerationReadback, rec.GenerationReadbackError = rb.state, rb.reason
 	rec.UsageSource = source
 	if rb.gen != nil {
@@ -208,9 +222,10 @@ func complete(ctx context.Context, p Provider, key, model string, brief openaiap
 }
 
 // callRecord is the call's both sides, built from the request this layer sent
-// and the response the adapter read: nothing in it was asked of the model,
-// and building it sends nothing (criterion 8).
-func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openaiapi.Result) CallRecord {
+// and the response the adapter read, with what a server on this machine
+// reported when it was probed (served, nil on any other route): nothing in
+// it was asked of the model, and building it sends nothing (criterion 8).
+func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openaiapi.Result, served *LocalServed) CallRecord {
 	rec := CallRecord{Provider: p.Name, ModelAsked: res.ModelAsked, ModelReported: res.ModelReported,
 		PromptSHA256: openaiapi.PromptSHA256(brief), AdapterAdded: []string{},
 		ServedProvider: res.Provider, GenerationID: res.GenerationID, FinishReason: res.FinishReason,
@@ -234,13 +249,21 @@ func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openai
 		_, sent := settings[s.name]
 		un.Unless(sent, s.f, NotConfigured)
 	}
+	// A route to this machine lists its local fields, and a local pin's
+	// context is the context asked for (localpin.go).
+	local := openaiapi.IsLocal(p.BaseURL)
+	if pin, ok := p.LocalPins[res.ModelAsked]; ok {
+		rec.LocalPin, rec.LocalServed = &pin, served
+	}
 	un.Add(AskedEffort, NotConfigured)
-	un.Add(AskedContext, NotConfigured)
+	if local {
+		LocalContext(&un, rec.LocalPin, served)
+	} else {
+		un.Add(AskedContext, NotConfigured)
+	}
 	un.Add(AskedHarnessVersion, NotReported)
-	if openaiapi.IsLocal(p.BaseURL) {
-		for _, f := range LocalFields {
-			un.Add(f, NotConfigured)
-		}
+	if local {
+		LocalAsked(&un, rec.LocalPin, served)
 	}
 	// The served side: the adapter refuses an answer that names no model, so
 	// the model is always the provider's own report.
@@ -254,6 +277,9 @@ func callRecord(p Provider, brief openaiapi.Brief, settings Settings, res openai
 	un.Unless(u != nil && u.CachedTokens != nil, ServedCacheReadTokens, NotReported)
 	un.Unless(u != nil && u.CacheWriteTokens != nil, ServedCacheWriteTokens, NotReported)
 	un.Unless(u != nil && u.Cost != nil, ServedCost, NotReported)
+	if local {
+		LocalServedList(&un, served)
+	}
 	if u == nil {
 		rec.Unpinned = un.List()
 		return rec

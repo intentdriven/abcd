@@ -236,8 +236,8 @@ func PromptSHA256(b Brief) string {
 }
 
 // IsLocal reports whether baseURL reaches a server on this machine (localhost
-// or a loopback address): a local route, whose weights and runtime the
-// configuration does not pin yet.
+// or a loopback address): a local route, whose weights and runtime only a
+// local pin names (local.go).
 func IsLocal(baseURL string) bool {
 	u, err := url.Parse(baseURL)
 	return err == nil && u.Host != "" && loopback(u.Hostname())
@@ -271,7 +271,11 @@ type Client struct {
 	generation string
 	genWait    time.Duration
 	genBackoff time.Duration
-	hc         *http.Client
+	// base is the admitted base URL, parsed, and probeWait the bound on one
+	// probe of a local server (local.go).
+	base      *url.URL
+	probeWait time.Duration
+	hc        *http.Client
 }
 
 // Option configures a Client.
@@ -355,6 +359,8 @@ func New(baseURL, key string, opts ...Option) (*Client, error) {
 		generation: under(u, basePath(u)+"/generation"),
 		genWait:    GenerationTimeout,
 		genBackoff: generationBackoff,
+		base:       parsedBase(u),
+		probeWait:  LocalProbeTimeout,
 		key:        key,
 		forms:      keyForms(key),
 		host:       u.Host,
