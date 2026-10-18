@@ -49,6 +49,8 @@ type IntakeResult struct {
 	// one whose state GitHub could not tell, left as the store holds it.
 	Ended  []ForgeEnd       `json:"ended"`
 	Unread []UnreadAdvisory `json:"unread"`
+	// Restores is each restore the store's state owes (restoresOwed).
+	Restores []Restore `json:"restores"`
 }
 
 // mapSeverity maps GitHub's advisory severity onto the ledger's: critical to
@@ -212,6 +214,7 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 	if err := s.SaveState(st); err != nil {
 		return IntakeResult{}, err
 	}
+	res.Restores = restoresOwed(req.Home, s, st)
 	return res, nil
 }
 

@@ -150,7 +150,7 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("intake: exit %d, %s", code, stderr)
 	}
-	if got := strings.Join(jsonKeys(t, out), ","); got != "ended,held,intake_at,minted,needs_severity,repo,store,store_created,unread" {
+	if got := strings.Join(jsonKeys(t, out), ","); got != "ended,held,intake_at,minted,needs_severity,repo,restores,store,store_created,unread" {
 		t.Errorf("intake keys %s", got)
 	}
 	if strings.Contains(out, os.Getenv("HOME")) {
@@ -207,7 +207,7 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("publish: exit %d, %s", code, stderr)
 	}
-	if got := strings.Join(jsonKeys(t, out), ","); got != "approved,no_draft_left,plan,published" {
+	if got := strings.Join(jsonKeys(t, out), ","); got != "approved,no_draft_left,plan,published,restores" {
 		t.Errorf("publish keys %s", got)
 	}
 	var pr embargo.PublishResult
@@ -237,8 +237,8 @@ func TestEmbargoCheckRendersItsNote(t *testing.T) {
 }
 
 // TestEmbargoPublishRendersStoreEvidence: the text form says which planned
-// advisory takes its fix from the store, and after publication prints the
-// command that restores its record, for that advisory alone.
+// advisory takes its fix from the store, and after publication prints each
+// restore the result names, once.
 func TestEmbargoPublishRendersStoreEvidence(t *testing.T) {
 	const restore = "cp -- ~/.abcd.noindex/worktrees/0123/embargo/.abcd/work/issues/resolved/iss-1-private-report.md .abcd/work/issues/resolved/"
 	fix := strings.Repeat("a", 40)
@@ -256,24 +256,40 @@ func TestEmbargoPublishRendersStoreEvidence(t *testing.T) {
 
 	b.Reset()
 	renderEmbargoPublish(&b, embargo.PublishResult{Plan: plan, Approved: true, NoDraftLeft: true, Published: []embargo.PublishedAdvisory{
-		{GHSAID: surfaceGHSA, IssueID: "iss-1", RestoreWith: restore},
-		{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2"},
-	}})
-	if got := b.String(); !strings.Contains(got, "restore its record as resolved, from the checkout's root:\n    "+restore+"\n") || strings.Count(got, "restore its record") != 1 {
+		{GHSAID: surfaceGHSA, IssueID: "iss-1"}, {GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2"},
+	}, Restores: []embargo.Restore{{GHSAID: surfaceGHSA, IssueID: "iss-1", RestoreWith: restore}}})
+	if got := b.String(); !strings.Contains(got, "  "+surfaceGHSA+" (iss-1) is published; restore its record as resolved, from the checkout's root:\n    "+restore+"\n") ||
+		strings.Count(got, "restore its record") != 1 {
 		t.Fatalf("the publication's text form is %q", got)
 	}
 }
 
-// TestEmbargoPublishRendersRestoreOfLeftOut: an advisory a plan leaves out
-// because GitHub reports it published already, from the store's evidence,
-// still shows its restore command in the text form.
-func TestEmbargoPublishRendersRestoreOfLeftOut(t *testing.T) {
+// TestEmbargoRendersRestores: a plan and an intake each print every restore
+// the store's state owes, and a restore that names no command says why.
+func TestEmbargoRendersRestores(t *testing.T) {
 	const restore = "cp -- ~/.abcd.noindex/worktrees/0123/embargo/.abcd/work/issues/resolved/iss-1-private-report.md .abcd/work/issues/resolved/"
+	rs := []embargo.Restore{
+		{GHSAID: surfaceGHSA, IssueID: "iss-1", RestoreWith: restore},
+		{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: "its private record in the store carries another id; no command restoring it is named"},
+	}
+	wants := []string{
+		"  " + surfaceGHSA + " (iss-1) is published; restore its record as resolved, from the checkout's root:\n    " + restore + "\n",
+		"  GHSA-rrrr-rrrr-rrrr (iss-2) is published, and its record is not restored: its private record in the store carries another id; no command restoring it is named\n",
+	}
 	var b bytes.Buffer
 	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{},
-		LeftOut: []embargo.LeftOut{{GHSAID: surfaceGHSA, IssueID: "iss-1", Reason: "GitHub reports it published already", RestoreWith: restore}}}})
-	if got := b.String(); !strings.Contains(got, "restore its record as resolved, from the checkout's root:\n    "+restore+"\n") {
-		t.Fatalf("the plan's text form is %q", got)
+		LeftOut: []embargo.LeftOut{}, Restores: rs}})
+	for _, want := range wants {
+		if got := b.String(); !strings.Contains(got, want) {
+			t.Fatalf("the plan's text form is %q; want %q", got, want)
+		}
+	}
+	b.Reset()
+	renderEmbargoIntake(&b, embargo.IntakeResult{Repo: "example/example", Minted: []embargo.MintedRecord{}, Held: []string{}, NeedsSeverity: []string{}, Restores: rs})
+	for _, want := range wants {
+		if got := b.String(); !strings.Contains(got, want) {
+			t.Fatalf("the intake's text form is %q; want %q", got, want)
+		}
 	}
 }
 

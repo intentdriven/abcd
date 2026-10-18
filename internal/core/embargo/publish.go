@@ -10,15 +10,11 @@ import (
 )
 
 // PublishedAdvisory is one advisory GitHub confirmed published, and when
-// abcd recorded it. RestoreWith, for an advisory planned from the fix its
-// private record names in the store, is the command, run from the
-// checkout's root, that restores that record, resolved, into the public
-// ledger now the advisory is public.
+// abcd recorded it.
 type PublishedAdvisory struct {
 	GHSAID      string    `json:"ghsa_id"`
 	IssueID     string    `json:"issue_id"`
 	PublishedAt time.Time `json:"published_at"`
-	RestoreWith string    `json:"restore_with,omitempty"`
 }
 
 // PublishResult is what a publish showed and did: the plan, and with an
@@ -29,6 +25,9 @@ type PublishResult struct {
 	Approved    bool                `json:"approved"`
 	Published   []PublishedAdvisory `json:"published"`
 	NoDraftLeft bool                `json:"no_draft_left"`
+	// Restores, after a publication, is each restore the store's state then
+	// owes (restoresOwed), those of the advisories just published included.
+	Restores []Restore `json:"restores"`
 }
 
 // PublishFailedError is a publication that stopped: at advisory GHSAID (the
@@ -41,9 +40,10 @@ type PublishFailedError struct {
 	Reason      string   `json:"reason"`
 	Published   []string `json:"published"`
 	Unpublished []string `json:"unpublished"`
-	// RestoreWith is the restore command of each advisory published from the
-	// store's evidence before the failure (PublishedAdvisory.RestoreWith).
-	RestoreWith []string `json:"restore_with,omitempty"`
+	// restores is each restore the store's state owes at the failure
+	// (restoresOwed), named in the message: those of the advisories
+	// published before it included.
+	restores []Restore
 }
 
 func (e *PublishFailedError) Error() string {
@@ -67,8 +67,12 @@ func (e *PublishFailedError) Error() string {
 		b.WriteString("; not published: " + strings.Join(e.Unpublished, ", "))
 	}
 	b.WriteString(" (look at the advisories on GitHub; running `abcd embargo publish` again plans only what is still unpublished)")
-	for _, c := range e.RestoreWith {
-		b.WriteString("; restore a record published from the store's evidence, from the checkout's root: " + c)
+	for _, r := range e.restores {
+		if r.RestoreWith != "" {
+			b.WriteString("; restore the record of " + r.GHSAID + " (" + r.IssueID + "), from the checkout's root: " + r.RestoreWith)
+		} else {
+			b.WriteString("; the record of " + r.GHSAID + " (" + r.IssueID + ") is not restored: " + r.Reason)
+		}
 	}
 	return b.String()
 }
@@ -92,7 +96,7 @@ func Publish(req PublishRequest) (PublishResult, error) {
 	if err != nil {
 		return PublishResult{}, err
 	}
-	res := PublishResult{Plan: plan, Published: []PublishedAdvisory{}}
+	res := PublishResult{Plan: plan, Published: []PublishedAdvisory{}, Restores: []Restore{}}
 	if req.Approve == "" {
 		return res, nil
 	}
@@ -110,15 +114,12 @@ func Publish(req PublishRequest) (PublishResult, error) {
 		planned[i] = e.GHSAID
 	}
 	fail := func(i int, ghsa, why string) error {
-		var done, restore []string
+		var done []string
 		for _, p := range res.Published {
 			done = append(done, p.GHSAID)
-			if p.RestoreWith != "" {
-				restore = append(restore, p.RestoreWith)
-			}
 		}
 		return &PublishFailedError{GHSAID: ghsa, Canary: i == 0 && ghsa != "", Reason: why, Published: done, Unpublished: planned[len(done):],
-			RestoreWith: restore}
+			restores: restoresOwed(req.Home, s, st)}
 	}
 
 	for i, e := range plan.Entries {
@@ -131,11 +132,7 @@ func Publish(req PublishRequest) (PublishResult, error) {
 			recordForgeEnd(&st.Advisories[j], "published", now)
 			err = s.SaveState(st)
 		}
-		pub := PublishedAdvisory{GHSAID: e.GHSAID, IssueID: e.IssueID, PublishedAt: now}
-		if e.StoreEvidence {
-			pub.RestoreWith, _ = restoreCommand(req.Home, s, e.storeRecord)
-		}
-		res.Published = append(res.Published, pub)
+		res.Published = append(res.Published, PublishedAdvisory{GHSAID: e.GHSAID, IssueID: e.IssueID, PublishedAt: now})
 		if err != nil {
 			return res, fail(i, e.GHSAID, "it is published on GitHub, but its published_at could not be recorded in the store ("+err.Error()+
 				"); the next `abcd embargo publish` reads it published on GitHub and records it")
@@ -159,6 +156,7 @@ func Publish(req PublishRequest) (PublishResult, error) {
 		return res, fail(len(planned), "", "GitHub still lists "+strings.Join(left, ", ")+" in draft or triage after reading it back published")
 	}
 	res.NoDraftLeft = true
+	res.Restores = restoresOwed(req.Home, s, st)
 	return res, nil
 }
 

@@ -392,39 +392,61 @@ func TestPlanKeepsVulnerabilityClosedOnGitHub(t *testing.T) {
 	noWrites(t, px.g)
 }
 
+// restoreOf is the restore a list names for ghsa, and whether it names one.
+func restoreOf(rs []Restore, ghsa string) (Restore, bool) {
+	for _, r := range rs {
+		if r.GHSAID == ghsa {
+			return r, true
+		}
+	}
+	return Restore{}, false
+}
+
+// wantRestore is the restore command of issID's record resolved in the store.
+func (px publishFixture) wantRestore(t *testing.T, issID string) string {
+	t.Helper()
+	rel, err := filepath.Rel(px.f.home, filepath.Join(px.s.Root, ".abcd", "work", "issues", "resolved", issID+"-private-report.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return "cp -- ~/" + filepath.ToSlash(rel) + " .abcd/work/issues/resolved/"
+}
+
 // TestPublishNamesRestoreForStoreEvidence: an advisory planned from the fix
-// the store records is published like any other, and its result carries the
+// the store records is published like any other, and the result names the
 // command that restores its record, resolved, from the store into the
 // public ledger now the advisory is public; an advisory planned from its
-// public record carries none, nor does a plan that is only shown.
+// public record, which the checkout's ledger holds, is named by none, nor
+// is anything named while the plan is only shown.
 func TestPublishNamesRestoreForStoreEvidence(t *testing.T) {
 	px := newPublishFixtureWith(t, "draft", true)
 	shown := px.show(t)
 	if len(shown.Plan.Entries) != 2 || !shown.Plan.Entries[0].StoreEvidence || shown.Plan.Entries[1].StoreEvidence {
 		t.Fatalf("plan %+v", shown.Plan)
 	}
+	if len(shown.Plan.Restores) != 0 {
+		t.Fatalf("a plan names a restore before anything is published: %+v", shown.Plan.Restores)
+	}
 	res, err := px.publish(shown.Plan.Digest)
 	if err != nil || len(res.Published) != 2 {
 		t.Fatalf("result %+v, %v", res, err)
 	}
-	rel, err := filepath.Rel(px.f.home, filepath.Join(px.s.Root, ".abcd", "work", "issues", "resolved", issA+"-private-report.md"))
-	if err != nil {
-		t.Fatal(err)
+	want := px.wantRestore(t, issA)
+	if r, ok := restoreOf(res.Restores, ghsaA); !ok || r.RestoreWith != want || r.IssueID != issA {
+		t.Fatalf("restore %+v\nwant %q", res.Restores, want)
 	}
-	want := "cp -- ~/" + filepath.ToSlash(rel) + " .abcd/work/issues/resolved/"
-	if a := res.Published[0]; a.GHSAID != ghsaA || a.RestoreWith != want {
-		t.Fatalf("restore command\n got %q\nwant %q", a.RestoreWith, want)
-	}
-	if b := res.Published[1]; b.GHSAID != ghsaB || b.RestoreWith != "" {
-		t.Fatalf("a public-record advisory names a restore: %+v", b)
+	if _, ok := restoreOf(res.Restores, ghsaB); ok || len(res.Restores) != 1 {
+		t.Fatalf("a public-record advisory names a restore: %+v", res.Restores)
 	}
 }
 
-// TestRestoreNamedWhenARunStopsAfterPublishing: an advisory published from
-// the store's evidence by a run that then stopped keeps its restore command:
-// the failure names it, and a later plan that finds it published on GitHub
-// names it again with the advisory it leaves out, so it is never lost.
-func TestRestoreNamedWhenARunStopsAfterPublishing(t *testing.T) {
+// TestRestoreNamedUntilTheRecordIsInTheCheckout: the restore an advisory
+// published from the store's evidence owes is read from the store's state,
+// not from the run that published it, so it is never lost: a run that
+// stopped after publishing names it, every later plan and intake names it
+// again, and once the record is in the checkout's resolved/ folder none
+// names it.
+func TestRestoreNamedUntilTheRecordIsInTheCheckout(t *testing.T) {
 	px := newPublishFixtureWith(t, "draft", true)
 	stateDir := filepath.Dir(px.s.StatePath())
 	t.Cleanup(func() { _ = os.Chmod(stateDir, 0o700) })
@@ -437,13 +459,9 @@ func TestRestoreNamedWhenARunStopsAfterPublishing(t *testing.T) {
 	if !errors.As(err, &pe) || pe.GHSAID != ghsaA {
 		t.Fatalf("err = %v (%+v)", err, pe)
 	}
-	rel, rerr := filepath.Rel(px.f.home, filepath.Join(px.s.Root, ".abcd", "work", "issues", "resolved", issA+"-private-report.md"))
-	if rerr != nil {
-		t.Fatal(rerr)
-	}
-	want := "cp -- ~/" + filepath.ToSlash(rel) + " .abcd/work/issues/resolved/"
-	if len(pe.RestoreWith) != 1 || pe.RestoreWith[0] != want || !strings.Contains(err.Error(), want) {
-		t.Fatalf("the failure does not name the restore command %q: %+v, %v", want, pe.RestoreWith, err)
+	want := px.wantRestore(t, issA)
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("the failure does not name the restore command %q: %v", want, err)
 	}
 
 	px.g.hook(":")
@@ -451,17 +469,30 @@ func TestRestoreNamedWhenARunStopsAfterPublishing(t *testing.T) {
 		t.Fatal(err)
 	}
 	px.answer(t, ghsaA, 5, "published", "< 0.9.0", "0.9.0")
+	for i := range 2 {
+		p, err := planPublication(PublishRequest{Home: px.f.home, RepoRoot: px.f.repo.Root(), Now: func() time.Time { return publishedAt }})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r, ok := restoreOf(p.Restores, ghsaA); !ok || r.RestoreWith != want {
+			t.Fatalf("plan %d after the stop names %+v, want the restore command %q", i+1, p.Restores, want)
+		}
+	}
+	px.f.repo.Git("remote", "add", "origin", "https://github.com/example/example.git")
+	in, err := Intake(IntakeRequest{Home: px.f.home, RepoRoot: px.f.repo.Root(), Now: func() time.Time { return publishedAt }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r, ok := restoreOf(in.Restores, ghsaA); !ok || r.RestoreWith != want {
+		t.Fatalf("intake names %+v, want the restore command %q", in.Restores, want)
+	}
+
+	px.f.repo.Write(".abcd/work/issues/resolved/"+issA+"-private-report.md", readFile(t, filepath.Join(px.s.Root, ".abcd", "work", "issues", "resolved", issA+"-private-report.md")))
 	p, err := planPublication(PublishRequest{Home: px.f.home, RepoRoot: px.f.repo.Root(), Now: func() time.Time { return publishedAt }})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, l := range p.LeftOut {
-		if l.GHSAID == ghsaA {
-			if l.RestoreWith != want || !strings.Contains(l.Reason, "published already") {
-				t.Fatalf("left out %+v, want the restore command %q", l, want)
-			}
-			return
-		}
+	if len(p.Restores) != 0 {
+		t.Fatalf("a record the checkout holds is still named: %+v", p.Restores)
 	}
-	t.Fatalf("A is not left out of the replan: %+v", p)
 }

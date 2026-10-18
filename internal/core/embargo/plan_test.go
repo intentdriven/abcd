@@ -750,10 +750,8 @@ func TestPublishedStoreRecordGuardsNameNoRestore(t *testing.T) {
 			}
 			pf.g.answer("GET", listPath+"/"+ghsaOpen, "", 0, string(b))
 			p := pf.plan(t, "")
-			for _, l := range p.LeftOut {
-				if l.RestoreWith != "" {
-					t.Fatalf("a restore is named for a store record that fails its checks: %+v", l)
-				}
+			if len(p.Restores) != 1 || p.Restores[0].RestoreWith != "" || !strings.Contains(p.Restores[0].Reason, tc.reason) {
+				t.Fatalf("restores %+v; want none named, saying %q", p.Restores, tc.reason)
 			}
 		})
 	}

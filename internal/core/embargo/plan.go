@@ -82,22 +82,25 @@ type PlanEntry struct {
 	// release carries no public record of it. It is omitted when false, so a
 	// public-record entry, and the digest over it, is what it always was.
 	StoreEvidence bool `json:"store_evidence,omitempty"`
-	// storeRecord is that private record's path inside the store,
-	// slash-separated: what the restore command copies. It is never shown,
-	// marshalled or bound into the digest.
-	storeRecord string
 }
 
 // LeftOut is an advisory judged a vulnerability that the plan does not
-// publish, and why. RestoreWith, for one GitHub reports published already
-// whose private record is resolved in the store and not in the release, is
-// the command that restores that record into the public ledger (see
-// PublishedAdvisory): a run that published it and stopped never printed it.
+// publish, and why.
 type LeftOut struct {
+	GHSAID  string `json:"ghsa_id"`
+	IssueID string `json:"issue_id"`
+	Reason  string `json:"reason"`
+}
+
+// Restore is an advisory published on GitHub whose private record is
+// resolved in the store and not yet in the checkout's public ledger:
+// RestoreWith is the command, run from the checkout's root, that copies the
+// record there; when it is empty, Reason says why none is named.
+type Restore struct {
 	GHSAID      string `json:"ghsa_id"`
 	IssueID     string `json:"issue_id"`
-	Reason      string `json:"reason"`
 	RestoreWith string `json:"restore_with,omitempty"`
+	Reason      string `json:"reason,omitempty"`
 }
 
 // PublicationPlan is what publication would do. Digest is the approval it
@@ -110,9 +113,13 @@ type PublicationPlan struct {
 	LeftOut []LeftOut   `json:"left_out"`
 	// Unread is each held advisory whose state GitHub could not tell, left
 	// as the store holds it (readHeld).
-	Unread      []UnreadAdvisory `json:"unread"`
-	Digest      string           `json:"digest"`
-	ApproveWith string           `json:"approve_with"`
+	Unread []UnreadAdvisory `json:"unread"`
+	// Restores is each restore the store's state owes (restoresOwed): it is
+	// not bound into the digest, since approving a plan approves what it
+	// publishes.
+	Restores    []Restore `json:"restores"`
+	Digest      string    `json:"digest"`
+	ApproveWith string    `json:"approve_with"`
 }
 
 // planPublication builds the publication plan and changes nothing on GitHub:
@@ -183,11 +190,7 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 			return PublicationPlan{}, err
 		}
 		if why != "" {
-			l := LeftOut{GHSAID: a.GHSAID, IssueID: a.IssueID, Reason: why}
-			if e.ForgeState == "published" && e.storeRecord != "" {
-				l.RestoreWith, _ = restoreCommand(home, s, e.storeRecord)
-			}
-			p.LeftOut = append(p.LeftOut, l)
+			p.LeftOut = append(p.LeftOut, LeftOut{GHSAID: a.GHSAID, IssueID: a.IssueID, Reason: why})
 			continue
 		}
 		p.Entries = append(p.Entries, e)
@@ -197,6 +200,7 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 			return PublicationPlan{}, err
 		}
 	}
+	p.Restores = restoresOwed(home, s, *st)
 	p.Digest = planDigest(p)
 	if len(p.Entries) > 0 {
 		p.ApproveWith = "abcd embargo publish --release " + release + " --approve " + p.Digest
@@ -248,9 +252,7 @@ func resolvedRecords(checkout, release string) ([]string, error) {
 // under embargo, which the advisory's text must not name: publishing it
 // would disclose them. An advisory in the same plan counts, since
 // publication is not one atomic act. One GitHub reports published or closed
-// already (readHeld has recorded it) is left out with its ForgeState set,
-// and, published from the store's evidence, its storeRecord, for the
-// restore command. An error is a failure that refuses the whole plan (a git
+// already (readHeld has recorded it) is left out, saying so. An error is a failure that refuses the whole plan (a git
 // request that fails, a text the scanner cannot judge).
 func planEntry(s Store, release string, resolved []string, a Advisory, remote remoteAdvisory, unreadWhy string, others denySet) (e PlanEntry, why string, err error) {
 	rec := ""
@@ -261,11 +263,7 @@ func planEntry(s Store, release string, resolved []string, a Advisory, remote re
 		}
 	}
 	if remote.State == "published" || remote.State == "closed" {
-		ended := PlanEntry{ForgeState: remote.State}
-		if rec == "" {
-			ended.storeRecord, _, _ = s.storeRecord(a.IssueID)
-		}
-		return ended, "GitHub reports it " + remote.State + " already; its " + remote.State + "_at is recorded from that", nil
+		return PlanEntry{}, "GitHub reports it " + remote.State + " already; its " + remote.State + "_at is recorded from that", nil
 	}
 	var fix, storeRec string
 	if rec != "" {
@@ -323,7 +321,7 @@ func planEntry(s Store, release string, resolved []string, a Advisory, remote re
 	}
 	return PlanEntry{GHSAID: a.GHSAID, IssueID: a.IssueID, FixCommit: fix, FirstTag: first, PatchedVersion: patched,
 		ForgeState: remote.State, Vulnerabilities: vulns, TextDigest: textDigest(remote),
-		StoreEvidence: storeRec != "", storeRecord: storeRec}, "", nil
+		StoreEvidence: storeRec != ""}, "", nil
 }
 
 // isRecordOf reports whether a ledger file name is the record of issID.
@@ -474,6 +472,41 @@ func shellWord(p string) string {
 // shellQuote is p single-quoted: each single quote in it ends the quoted
 // run, is written escaped, and starts a new one.
 func shellQuote(p string) string { return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'" }
+
+// restoresOwed is each restore the store's state owes, in id order: every
+// advisory it records published whose private record is resolved in the
+// store and not yet in the checkout's public ledger (its resolved/ folder,
+// by name), with the command that copies it there (restoreCommand). It is
+// read from the state, never from the run that published the advisory, so
+// a run that stopped, or a publication by hand on GitHub, loses nothing:
+// every plan and every intake names it until the record is in the
+// checkout. The store's record is held to storeRecord's checks first; one
+// that fails them is listed with the reason, and no command is named.
+func restoresOwed(home string, s Store, st State) []Restore {
+	out := []Restore{}
+	var inCheckout []os.DirEntry
+	if entries, err := os.ReadDir(filepath.Join(s.Checkout, filepath.FromSlash(resolvedRel))); err == nil {
+		inCheckout = entries
+	}
+	for _, a := range st.Advisories {
+		if a.PublishedAt == nil || slices.ContainsFunc(inCheckout, func(e os.DirEntry) bool { return isRecordOf(e.Name(), a.IssueID) }) {
+			continue
+		}
+		rel, _, why := s.storeRecord(a.IssueID)
+		if why == storeRecordNone {
+			continue
+		}
+		r := Restore{GHSAID: a.GHSAID, IssueID: a.IssueID}
+		if why != "" {
+			r.Reason = why + "; no command restoring it is named"
+		} else {
+			r.RestoreWith, r.Reason = restoreCommand(home, s, rel)
+		}
+		out = append(out, r)
+	}
+	slices.SortFunc(out, func(a, b Restore) int { return strings.Compare(a.GHSAID, b.GHSAID) })
+	return out
+}
 
 // recordForgeEnd stamps the end GitHub reports for a held advisory:
 // published_at or closed_at, at the time given, with the forge state to

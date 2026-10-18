@@ -117,6 +117,7 @@ func renderEmbargoIntake(w io.Writer, res embargo.IntakeResult) {
 		fmt.Fprintf(w, "  no record yet: %s has no severity this abcd maps, and the check holds it under embargo; set it on GitHub, then run intake again\n", id)
 	}
 	renderForgeEnds(w, res.Ended, res.Unread)
+	renderRestores(w, res.Restores)
 	created := ""
 	if res.StoreCreated {
 		created = " (made now)"
@@ -389,10 +390,8 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 		fmt.Fprintln(w)
 		for _, a := range res.Published {
 			fmt.Fprintf(w, "  published %s (%s) at %s\n", a.GHSAID, a.IssueID, a.PublishedAt.Format("2006-01-02T15:04:05Z"))
-			if a.RestoreWith != "" {
-				fmt.Fprintf(w, "  restore its record as resolved, from the checkout's root:\n    %s\n", termsafe.Sanitize(a.RestoreWith))
-			}
 		}
+		renderRestores(w, res.Restores)
 		return
 	}
 	fmt.Fprintf(w, "abcd embargo publish — plan for %s in %s: %s, %s left out; nothing was sent\n",
@@ -411,10 +410,8 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 	renderForgeEnds(w, nil, p.Unread)
 	for _, l := range p.LeftOut {
 		fmt.Fprintf(w, "  left out %s (%s): %s\n", l.GHSAID, l.IssueID, termsafe.Sanitize(l.Reason))
-		if l.RestoreWith != "" {
-			fmt.Fprintf(w, "  restore its record as resolved, from the checkout's root:\n    %s\n", termsafe.Sanitize(l.RestoreWith))
-		}
 	}
+	renderRestores(w, p.Restores)
 	if p.ApproveWith != "" {
 		fmt.Fprintf(w, "digest: %s\napprove with: %s\n", p.Digest, p.ApproveWith)
 	}
@@ -428,6 +425,19 @@ func renderForgeEnds(w io.Writer, ended []embargo.ForgeEnd, unread []embargo.Unr
 	}
 	for _, u := range unread {
 		fmt.Fprintf(w, "  %s (%s): %s\n", u.GHSAID, u.IssueID, termsafe.Sanitize(u.Reason))
+	}
+}
+
+// renderRestores names each restore the store's state owes: the command
+// that copies a published advisory's record into the public ledger, or why
+// none is named.
+func renderRestores(w io.Writer, restores []embargo.Restore) {
+	for _, r := range restores {
+		if r.RestoreWith != "" {
+			fmt.Fprintf(w, "  %s (%s) is published; restore its record as resolved, from the checkout's root:\n    %s\n", r.GHSAID, r.IssueID, termsafe.Sanitize(r.RestoreWith))
+			continue
+		}
+		fmt.Fprintf(w, "  %s (%s) is published, and its record is not restored: %s\n", r.GHSAID, r.IssueID, termsafe.Sanitize(r.Reason))
 	}
 }
 
