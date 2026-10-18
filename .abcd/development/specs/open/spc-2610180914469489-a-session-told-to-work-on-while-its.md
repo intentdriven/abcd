@@ -1011,6 +1011,7 @@ for review; none changes a test a step names.
      show the stop allowed and flagged with no forge call. Capture before and
      after the change on the same checkout, as the release lesson on host
      fixes requires.
+   - landed: d0249f356
 
 ## Live captures
 
