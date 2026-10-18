@@ -42,6 +42,15 @@ get no record yet but are held under embargo all the same, so the check
 refuses their id, reserved CVE id and title: tell the user to set the severity
 on GitHub and run intake again. Nothing is written to the public ledger.
 
+An advisory the store holds that GitHub no longer lists in triage or draft was
+published or closed there, by abcd or by hand, and intake reads it on its own.
+`ended` lists each GitHub reports published or closed, with the
+`published_at` or `closed_at` now recorded from GitHub's own timestamp: a
+published one leaves the check, and its record can be restored. `unread` lists
+each whose state GitHub could not tell (a failed read, a state this abcd does
+not know, a timestamp that is not one), left as the store holds it, under
+embargo, with the reason; run intake again once GitHub answers.
+
 ## Triage
 
 ```bash
@@ -199,9 +208,12 @@ digest for any other plan sends nothing. With it abcd publishes one advisory
 first as a canary and reads it back, then the rest the same way, stopping at
 the first mismatch, and confirms none is left in draft. A stopped run exits 1
 naming what is published and what is not; running publish again plans only
-what is still unpublished. An advisory GitHub already reports published or
-closed is left out of a plan, and its `published_at` or `closed_at` recorded
-from that, so a publication whose record failed is completed by the next run.
+what is still unpublished. Every plan reads each advisory the store holds that
+is neither published nor closed, judged or not, as intake does: one GitHub
+reports published or closed is left out of the plan, and its `published_at` or
+`closed_at` recorded from that, so a publication whose record failed, or one
+made by hand on GitHub, is completed by the next run; one GitHub cannot say is
+listed in `unread` and left as it is.
 
 Each advisory published from store evidence carries `restore_with`, the
 command, run from the checkout's root, that copies its private record,

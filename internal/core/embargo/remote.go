@@ -21,8 +21,22 @@ type remoteAdvisory struct {
 	Description *string `json:"description"`
 	Severity    *string `json:"severity"`
 	State       string  `json:"state"`
+	PublishedAt *string `json:"published_at"`
+	ClosedAt    *string `json:"closed_at"`
 
 	Vulnerabilities []remoteVulnerability `json:"vulnerabilities"`
+}
+
+// endedAt is the timestamp GitHub gives for the end its state reports:
+// published_at for published, closed_at for closed, nil otherwise.
+func (a remoteAdvisory) endedAt() *string {
+	switch a.State {
+	case "published":
+		return a.PublishedAt
+	case "closed":
+		return a.ClosedAt
+	}
+	return nil
 }
 
 // remoteVulnerability is one affected package of an advisory, as GitHub

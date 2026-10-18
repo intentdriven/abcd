@@ -116,6 +116,7 @@ func renderEmbargoIntake(w io.Writer, res embargo.IntakeResult) {
 	for _, id := range res.NeedsSeverity {
 		fmt.Fprintf(w, "  no record yet: %s has no severity this abcd maps, and the check holds it under embargo; set it on GitHub, then run intake again\n", id)
 	}
+	renderForgeEnds(w, res.Ended, res.Unread)
 	created := ""
 	if res.StoreCreated {
 		created = " (made now)"
@@ -407,6 +408,7 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 				v.VulnerableVersionRange, v.PatchedVersions)
 		}
 	}
+	renderForgeEnds(w, nil, p.Unread)
 	for _, l := range p.LeftOut {
 		fmt.Fprintf(w, "  left out %s (%s): %s\n", l.GHSAID, l.IssueID, termsafe.Sanitize(l.Reason))
 		if l.RestoreWith != "" {
@@ -415,6 +417,17 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 	}
 	if p.ApproveWith != "" {
 		fmt.Fprintf(w, "digest: %s\napprove with: %s\n", p.Digest, p.ApproveWith)
+	}
+}
+
+// renderForgeEnds names each held advisory GitHub reports published or
+// closed, as now recorded, and each whose state GitHub could not tell.
+func renderForgeEnds(w io.Writer, ended []embargo.ForgeEnd, unread []embargo.UnreadAdvisory) {
+	for _, e := range ended {
+		fmt.Fprintf(w, "  %s (%s) is %s on GitHub; %s_at is recorded from that, at %s\n", e.GHSAID, e.IssueID, e.State, e.State, e.At.Format("2006-01-02T15:04:05Z"))
+	}
+	for _, u := range unread {
+		fmt.Fprintf(w, "  %s (%s): %s\n", u.GHSAID, u.IssueID, termsafe.Sanitize(u.Reason))
 	}
 }
 

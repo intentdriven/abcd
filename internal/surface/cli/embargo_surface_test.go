@@ -150,7 +150,7 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("intake: exit %d, %s", code, stderr)
 	}
-	if got := strings.Join(jsonKeys(t, out), ","); got != "held,intake_at,minted,needs_severity,repo,store,store_created" {
+	if got := strings.Join(jsonKeys(t, out), ","); got != "ended,held,intake_at,minted,needs_severity,repo,store,store_created,unread" {
 		t.Errorf("intake keys %s", got)
 	}
 	if strings.Contains(out, os.Getenv("HOME")) {
@@ -273,6 +273,31 @@ func TestEmbargoPublishRendersRestoreOfLeftOut(t *testing.T) {
 	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{},
 		LeftOut: []embargo.LeftOut{{GHSAID: surfaceGHSA, IssueID: "iss-1", Reason: "GitHub reports it published already", RestoreWith: restore}}}})
 	if got := b.String(); !strings.Contains(got, "restore its record as resolved, from the checkout's root:\n    "+restore+"\n") {
+		t.Fatalf("the plan's text form is %q", got)
+	}
+}
+
+// TestEmbargoIntakeRendersForgeEnds: the text form names each held
+// advisory GitHub reports published or closed, now recorded, and each one
+// GitHub could not tell, left as it was.
+func TestEmbargoIntakeRendersForgeEnds(t *testing.T) {
+	var b bytes.Buffer
+	renderEmbargoIntake(&b, embargo.IntakeResult{Repo: "example/example", Minted: []embargo.MintedRecord{}, Held: []string{}, NeedsSeverity: []string{},
+		Ended:  []embargo.ForgeEnd{{GHSAID: surfaceGHSA, IssueID: "iss-1", State: "published"}},
+		Unread: []embargo.UnreadAdvisory{{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: "GitHub could not be read for it; its state in the store is unchanged"}}})
+	got := b.String()
+	for _, want := range []string{
+		"  " + surfaceGHSA + " (iss-1) is published on GitHub; published_at is recorded from that, at 0001-01-01T00:00:00Z\n",
+		"  GHSA-rrrr-rrrr-rrrr (iss-2): GitHub could not be read for it; its state in the store is unchanged\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("the text form is %q; want %q", got, want)
+		}
+	}
+	b.Reset()
+	renderEmbargoPublish(&b, embargo.PublishResult{Plan: embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", Entries: []embargo.PlanEntry{}, LeftOut: []embargo.LeftOut{},
+		Unread: []embargo.UnreadAdvisory{{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: "GitHub could not be read for it; its state in the store is unchanged"}}}})
+	if got := b.String(); !strings.Contains(got, "  GHSA-rrrr-rrrr-rrrr (iss-2): GitHub could not be read for it; its state in the store is unchanged\n") {
 		t.Fatalf("the plan's text form is %q", got)
 	}
 }

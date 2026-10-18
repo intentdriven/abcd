@@ -52,6 +52,12 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   person's own `gh` and mints one private record per advisory not seen before;
   severity maps critical to critical, high to major, medium and low to minor,
   and an advisory with no severity is listed for the person, not recorded.
+  Each held advisory GitHub no longer lists there is read on its own, and one
+  GitHub reports published or closed, by any hand, is recorded so, which
+  releases a published one from the outbound check; GitHub's answer is held to
+  a known state and a well-formed time, and one that is not leaves the
+  advisory under embargo, saying so. Every publication plan reads the held
+  advisories the same way.
 - **triage** records one of four verdicts (vulnerability, not abcd's, not a
   vulnerability, public track) with who decided it and when; the two closing
   verdicts draft the closing explanation, and "not abcd's" names both halves of

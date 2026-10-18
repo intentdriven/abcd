@@ -227,9 +227,9 @@ func TestUnresolvedRecordLeftOut(t *testing.T) {
 	if r := leftOutReason(t, p, ghsaPublic); !strings.Contains(r, "names no fix commit") {
 		t.Fatalf("reason %q", r)
 	}
-	if len(pf.g.calls()) != 0 {
-		t.Fatal("an advisory left out by the release was read from GitHub")
-	}
+	// Every plan reads each held advisory's state (iss-2610171250479046),
+	// and sends nothing else.
+	noWrites(t, pf.g)
 }
 
 // TestMissingPackageLeftOut: an advisory with no package on GitHub is left
@@ -574,9 +574,9 @@ func TestStoreRecordedFixInNoTagLeftOut(t *testing.T) {
 	if len(p.Entries) != 0 || !strings.Contains(leftOutReason(t, p, ghsaOpen), "no release tag") {
 		t.Fatalf("plan %+v", p)
 	}
-	if len(pf.g.calls()) != 0 {
-		t.Fatal("an advisory left out by the release was read from GitHub")
-	}
+	// Every plan reads each held advisory's state (iss-2610171250479046),
+	// and sends nothing else.
+	noWrites(t, pf.g)
 }
 
 // TestStoreRecordedFixMustBeFullCommitID: the store is a trust boundary, so
@@ -616,9 +616,7 @@ func TestStoreRecordedFixMustBeFullCommitID(t *testing.T) {
 			if _, err := os.Stat(filepath.Join(pf.f.home, "written")); err == nil {
 				t.Fatal("a value from the store reached git as an option")
 			}
-			if len(pf.g.calls()) != 0 {
-				t.Fatal("an advisory left out by the release was read from GitHub")
-			}
+			noWrites(t, pf.g)
 		})
 	}
 

@@ -103,12 +103,15 @@ type LeftOut struct {
 // takes, and ApproveWith the command that gives it (empty when nothing is
 // planned).
 type PublicationPlan struct {
-	Repo        string      `json:"repo"`
-	Release     string      `json:"release"`
-	Entries     []PlanEntry `json:"entries"`
-	LeftOut     []LeftOut   `json:"left_out"`
-	Digest      string      `json:"digest"`
-	ApproveWith string      `json:"approve_with"`
+	Repo    string      `json:"repo"`
+	Release string      `json:"release"`
+	Entries []PlanEntry `json:"entries"`
+	LeftOut []LeftOut   `json:"left_out"`
+	// Unread is each held advisory whose state GitHub could not tell, left
+	// as the store holds it (readHeld).
+	Unread      []UnreadAdvisory `json:"unread"`
+	Digest      string           `json:"digest"`
+	ApproveWith string           `json:"approve_with"`
 }
 
 // planPublication builds the publication plan and changes nothing on GitHub:
@@ -123,23 +126,23 @@ func planPublication(req PublishRequest) (PublicationPlan, error) {
 	return planFor(s, &st, req.Home, req.Release, clock(req.Now))
 }
 
-// planFor builds the plan of release over the store's state. For each
-// advisory judged a vulnerability and neither published nor closed, in id
-// order: its record must be resolved in the release's tree and name its fix
-// commit, or, when the release carries no public record of it (the security
-// rule holds the record out of every committed tree until the advisory is
-// published), its private record must be resolved in the store's own ledger
-// naming the full id of its fix commit (storeFixCommit). The first release
-// tag holding that commit gives the patched version; the advisory, read from
-// GitHub, must still be unpublished, carry its package, an affected range in
-// GitHub's form, and text the outbound scan passes. Each that fails a step is left out with the reason. Git is read
-// before GitHub, so an advisory the release leaves out is never requested.
-//
-// An advisory GitHub reports published or closed already is left out, and
-// its published_at or closed_at is stamped with now and saved: a run that
-// published or closed it on GitHub but could not record it (a save that
-// failed after the update) is reconciled here, instead of holding the
-// advisory under embargo for ever.
+// planFor builds the plan of release over the store's state. First every
+// advisory the store holds that is neither published nor closed, judged or
+// not, is read from GitHub once (readHeld), and an end GitHub reports for
+// one is recorded and saved: a run that published or closed it on GitHub but
+// could not record it, or a hand on GitHub, is reconciled here instead of
+// holding the advisory under embargo for ever; one GitHub cannot say is
+// listed in Unread and left as it is. Then, for each advisory judged a
+// vulnerability and neither published nor closed before this plan, in id
+// order: one GitHub reports published or closed is left out, saying so; its
+// record must be resolved in the release's tree and name its fix commit, or,
+// when the release carries no public record of it (the security rule holds
+// the record out of every committed tree until the advisory is published),
+// its private record must be resolved in the store's own ledger naming the
+// full id of its fix commit (storeFixCommit). The first release tag holding
+// that commit gives the patched version; the advisory as GitHub reports it
+// must carry its package, an affected range in GitHub's form, and text the
+// outbound scan passes. Each that fails a step is left out with the reason.
 func planFor(s Store, st *State, home, release string, now time.Time) (PublicationPlan, error) {
 	if st.Repo == "" {
 		return PublicationPlan{}, refuse("the embargo store does not name its repository", "run `abcd embargo intake` once, then run it again")
@@ -152,7 +155,7 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 	if err != nil {
 		return PublicationPlan{}, err
 	}
-	p := PublicationPlan{Repo: st.Repo, Release: release, Entries: []PlanEntry{}, LeftOut: []LeftOut{}}
+	p := PublicationPlan{Repo: st.Repo, Release: release, Entries: []PlanEntry{}, LeftOut: []LeftOut{}, Unread: []UnreadAdvisory{}}
 	var candidates []Advisory
 	for _, a := range st.Advisories {
 		if a.Verdict != nil && *a.Verdict == VerdictVulnerability && a.PublishedAt == nil && a.ClosedAt == nil {
@@ -160,21 +163,24 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 		}
 	}
 	slices.SortFunc(candidates, func(a, b Advisory) int { return strings.Compare(a.GHSAID, b.GHSAID) })
-	reconciled := false
+	answers, ended, unread := readHeld(s, st, nil, now)
+	p.Unread = unread
+	unreadWhy := map[string]string{}
+	for _, u := range unread {
+		unreadWhy[u.GHSAID] = u.Reason
+	}
 	for _, a := range candidates {
-		e, why, done, err := planEntry(s, st.Repo, release, resolved, a, othersDenySet(*st, a.GHSAID))
+		remote, read := answers[a.GHSAID]
+		if !read {
+			remote.State = ""
+		}
+		e, why, err := planEntry(s, release, resolved, a, remote, unreadWhy[a.GHSAID], othersDenySet(*st, a.GHSAID))
 		if err != nil {
 			return PublicationPlan{}, err
 		}
-		if done != "" {
-			if j, err := findAdvisory(*st, a.GHSAID); err == nil {
-				recordForgeEnd(&st.Advisories[j], done, now)
-				reconciled = true
-			}
-		}
 		if why != "" {
 			l := LeftOut{GHSAID: a.GHSAID, IssueID: a.IssueID, Reason: why}
-			if done == "published" && e.storeRecord != "" {
+			if e.ForgeState == "published" && e.storeRecord != "" {
 				l.RestoreWith = restoreCommand(home, s, e.storeRecord)
 			}
 			p.LeftOut = append(p.LeftOut, l)
@@ -182,7 +188,7 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 		}
 		p.Entries = append(p.Entries, e)
 	}
-	if reconciled {
+	if len(ended) > 0 {
 		if err := s.SaveState(*st); err != nil {
 			return PublicationPlan{}, err
 		}
@@ -232,20 +238,30 @@ func resolvedRecords(checkout, release string) ([]string, error) {
 	return paths, nil
 }
 
-// planEntry plans one advisory, or says why it is left out. others is every
-// other advisory still under embargo, which the advisory's text must not
-// name: publishing it would disclose them. An advisory in the same plan
-// counts, since publication is not one atomic act. done is "published" or
-// "closed" when GitHub reports the advisory so already, for the caller to
-// record. An error is a failure that refuses the whole plan (a git or GitHub
+// planEntry plans one advisory, or says why it is left out. remote is the
+// advisory as readHeld read it from GitHub, its State empty when it could
+// not be read (unreadWhy says why). others is every other advisory still
+// under embargo, which the advisory's text must not name: publishing it
+// would disclose them. An advisory in the same plan counts, since
+// publication is not one atomic act. One GitHub reports published or closed
+// already (readHeld has recorded it) is left out with its ForgeState set,
+// and, published from the store's evidence, its storeRecord, for the
+// restore command. An error is a failure that refuses the whole plan (a git
 // request that fails, a text the scanner cannot judge).
-func planEntry(s Store, repo, release string, resolved []string, a Advisory, others denySet) (e PlanEntry, why, done string, err error) {
+func planEntry(s Store, release string, resolved []string, a Advisory, remote remoteAdvisory, unreadWhy string, others denySet) (e PlanEntry, why string, err error) {
 	rec := ""
 	for _, p := range resolved {
 		if isRecordOf(path.Base(p), a.IssueID) {
 			rec = p
 			break
 		}
+	}
+	if remote.State == "published" || remote.State == "closed" {
+		ended := PlanEntry{ForgeState: remote.State}
+		if rec == "" {
+			ended.storeRecord, _ = s.storeResolvedRecord(a.IssueID)
+		}
+		return ended, "GitHub reports it " + remote.State + " already; its " + remote.State + "_at is recorded from that", nil
 	}
 	var fix, storeRec string
 	if rec != "" {
@@ -254,39 +270,33 @@ func planEntry(s Store, repo, release string, resolved []string, a Advisory, oth
 		why = "its record is not resolved in " + release + ", " + why
 	}
 	if why != "" {
-		return PlanEntry{}, why, "", nil
+		return PlanEntry{}, why, nil
 	}
 	first, why, err := firstReleaseTag(s.Checkout, fix, release)
 	if err != nil || why != "" {
-		return PlanEntry{}, why, "", err
+		return PlanEntry{}, why, err
 	}
 	patched := patchedVersion(first)
 
-	remote, err := getAdvisory(s.Checkout, repo, a.GHSAID)
-	if err != nil {
-		return PlanEntry{}, "", "", err
-	}
 	switch remote.State {
 	case "triage", "draft":
-	case "published", "closed":
-		// The store's record goes back with it, so a published advisory
-		// planned from the store's evidence still names its restore command.
-		return PlanEntry{storeRecord: storeRec}, "GitHub reports it " + remote.State + " already; its " + remote.State + "_at is recorded from that", remote.State, nil
+	case "":
+		return PlanEntry{}, unreadWhy, nil
 	default:
-		return PlanEntry{}, "GitHub reports it in a state this abcd does not know", "", nil
+		return PlanEntry{}, "GitHub reports it in a state this abcd does not know", nil
 	}
 	const noPackage = "GitHub carries no package for it; set the package on GitHub, then run it again"
 	if len(remote.Vulnerabilities) == 0 {
-		return PlanEntry{}, noPackage, "", nil
+		return PlanEntry{}, noPackage, nil
 	}
 	var vulns []PlannedVulnerability
 	for _, v := range remote.Vulnerabilities {
 		if v.Package == nil || strings.TrimSpace(v.Package.Ecosystem) == "" || strings.TrimSpace(v.Package.Name) == "" {
-			return PlanEntry{}, noPackage, "", nil
+			return PlanEntry{}, noPackage, nil
 		}
 		rng, err := affectedRange(v.VulnerableVersionRange, patched)
 		if err != nil {
-			return PlanEntry{}, err.Error(), "", nil
+			return PlanEntry{}, err.Error(), nil
 		}
 		fns := v.VulnerableFunctions
 		if fns == nil {
@@ -297,19 +307,19 @@ func planEntry(s Store, repo, release string, resolved []string, a Advisory, oth
 	for _, part := range []struct{ name, text string }{{"summary", remote.Summary}, {"description", remote.description()}} {
 		f, err := scanOutbound(s.Checkout, "the advisory's "+part.name, part.text, true)
 		if err != nil {
-			return PlanEntry{}, "", "", err
+			return PlanEntry{}, "", err
 		}
 		if f != nil {
-			return PlanEntry{}, fmt.Sprintf("its %s on GitHub carries a %s on line %d; correct it there, then run it again", part.name, f.kind, f.line), "", nil
+			return PlanEntry{}, fmt.Sprintf("its %s on GitHub carries a %s on line %d; correct it there, then run it again", part.name, f.kind, f.line), nil
 		}
 		if m := others.matches(part.text); len(m) > 0 {
 			return PlanEntry{}, fmt.Sprintf("its %s on GitHub names another advisory still under embargo (%s on line %d), which publishing it would disclose; "+
-				"correct it there, or publish the other first, then run it again", part.name, m[0].kind, strings.Count(part.text[:m[0].start], "\n")+1), "", nil
+				"correct it there, or publish the other first, then run it again", part.name, m[0].kind, strings.Count(part.text[:m[0].start], "\n")+1), nil
 		}
 	}
 	return PlanEntry{GHSAID: a.GHSAID, IssueID: a.IssueID, FixCommit: fix, FirstTag: first, PatchedVersion: patched,
 		ForgeState: remote.State, Vulnerabilities: vulns, TextDigest: textDigest(remote),
-		StoreEvidence: storeRec != "", storeRecord: storeRec}, "", "", nil
+		StoreEvidence: storeRec != "", storeRecord: storeRec}, "", nil
 }
 
 // isRecordOf reports whether a ledger file name is the record of issID.
@@ -331,26 +341,9 @@ func isRecordOf(base, issID string) bool {
 // resolve it to exactly itself as a commit, which holds it to this
 // repository's hash and refuses a tag object's name.
 func (s Store) storeFixCommit(issID string) (fix, rel, why string) {
-	const none = "nor is its private record resolved in the store"
-	dir := resolvedRel
-	entries, err := os.ReadDir(filepath.Join(s.Root, filepath.FromSlash(dir)))
-	if errors.Is(err, fs.ErrNotExist) {
-		return "", "", none
-	}
-	if err != nil {
-		return "", "", "and the store's resolved/ folder could not be listed"
-	}
-	for _, e := range entries {
-		if !isRecordOf(e.Name(), issID) {
-			continue
-		}
-		if rel != "" {
-			return "", "", "and the store holds its private record twice in resolved/"
-		}
-		rel = dir + "/" + e.Name()
-	}
-	if rel == "" {
-		return "", "", none
+	rel, why = s.storeResolvedRecord(issID)
+	if why != "" {
+		return "", "", why
 	}
 	root, err := os.OpenRoot(s.Root)
 	if err != nil {
@@ -383,6 +376,33 @@ func (s Store) storeFixCommit(issID string) (fix, rel, why string) {
 	return sha, rel, ""
 }
 
+// storeResolvedRecord is the path in the store, slash-separated, of issID's
+// private record in the store's resolved/ folder, found by its name alone;
+// why ("" when there is one) is worded as storeFixCommit's.
+func (s Store) storeResolvedRecord(issID string) (rel, why string) {
+	const none = "nor is its private record resolved in the store"
+	entries, err := os.ReadDir(filepath.Join(s.Root, filepath.FromSlash(resolvedRel)))
+	if errors.Is(err, fs.ErrNotExist) {
+		return "", none
+	}
+	if err != nil {
+		return "", "and the store's resolved/ folder could not be listed"
+	}
+	for _, e := range entries {
+		if !isRecordOf(e.Name(), issID) {
+			continue
+		}
+		if rel != "" {
+			return "", "and the store holds its private record twice in resolved/"
+		}
+		rel = resolvedRel + "/" + e.Name()
+	}
+	if rel == "" {
+		return "", none
+	}
+	return rel, ""
+}
+
 // plainPathRe is a path a shell reads as written, unquoted.
 var plainPathRe = regexp.MustCompile(`\A[A-Za-z0-9._/+-]+\z`)
 
@@ -403,9 +423,9 @@ func restoreCommand(home string, s Store, rel string) string {
 }
 
 // recordForgeEnd stamps the end GitHub reports for a held advisory:
-// published_at or closed_at, at now, with the forge state to match.
-func recordForgeEnd(a *Advisory, state string, now time.Time) {
-	at := now
+// published_at or closed_at, at the time given, with the forge state to
+// match.
+func recordForgeEnd(a *Advisory, state string, at time.Time) {
 	switch state {
 	case "published":
 		a.PublishedAt, a.ForgeState = &at, "published"
