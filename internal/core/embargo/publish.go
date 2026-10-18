@@ -133,7 +133,7 @@ func Publish(req PublishRequest) (PublishResult, error) {
 		}
 		pub := PublishedAdvisory{GHSAID: e.GHSAID, IssueID: e.IssueID, PublishedAt: now}
 		if e.StoreEvidence {
-			pub.RestoreWith = restoreCommand(req.Home, s, e.storeRecord)
+			pub.RestoreWith, _ = restoreCommand(req.Home, s, e.storeRecord)
 		}
 		res.Published = append(res.Published, pub)
 		if err != nil {

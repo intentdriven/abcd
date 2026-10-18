@@ -3,13 +3,17 @@ package embargo
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/capture"
+	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
+	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // planFixture is a checkout with an embargo store, a fake gh, and helpers to
@@ -750,6 +754,104 @@ func TestPublishedStoreRecordGuardsNameNoRestore(t *testing.T) {
 				if l.RestoreWith != "" {
 					t.Fatalf("a restore is named for a store record that fails its checks: %+v", l)
 				}
+			}
+		})
+	}
+}
+
+// TestRestoreCommandQuoting: the restore command names the store's record
+// under ~ whenever the store sits under home, in home's own spelling or
+// through a link to it, with the rest single-quoted when a shell would not
+// read it as written; one outside home is quoted whole and left whole by
+// the surface's home redaction. A name holding a character the terminal
+// would not show as written names no command, saying why. Each command,
+// run by a shell with that home, names exactly the record.
+func TestRestoreCommandQuoting(t *testing.T) {
+	const key = "0123456789abcdef0123456789abcdef01234567"
+	storeUnder := func(home string) string {
+		return filepath.Join(home, ".abcd.noindex", "worktrees", key, "embargo")
+	}
+	for name, tc := range map[string]struct {
+		setup func(t *testing.T) (home, root string)
+		file  string
+		want  string // "~": the ~/ form; "abs": quoted whole; "": none
+	}{
+		"plain":         {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-private-report.md", "~"},
+		"space":         {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-a report.md", "~"},
+		"single quote":  {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-it's.md", "~"},
+		"dollar":        {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-$HOME.md", "~"},
+		"newline":       {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-a\nb.md", ""},
+		"bidi":          {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-a‮b.md", ""},
+		"control":       {func(t *testing.T) (string, string) { h := t.TempDir(); return h, storeUnder(h) }, "iss-1-a\x1bb.md", ""},
+		"outside home":  {func(t *testing.T) (string, string) { return t.TempDir(), storeUnder(t.TempDir()) }, "iss-1-private-report.md", "abs"},
+		"outside quote": {func(t *testing.T) (string, string) { return t.TempDir(), storeUnder(t.TempDir()) }, "iss-1-it's.md", "abs"},
+		"symlinked home": {func(t *testing.T) (string, string) {
+			real := t.TempDir()
+			link := filepath.Join(t.TempDir(), "home")
+			if err := os.Symlink(real, link); err != nil {
+				t.Fatal(err)
+			}
+			return link, storeUnder(real)
+		}, "iss-1-private-report.md", "~"},
+		"symlinked abcd home": {func(t *testing.T) (string, string) {
+			h, elsewhere := t.TempDir(), t.TempDir()
+			if err := os.Symlink(elsewhere, filepath.Join(h, ".abcd.noindex")); err != nil {
+				t.Fatal(err)
+			}
+			return h, storeUnder(h)
+		}, "iss-1-private-report.md", "~"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			home, root := tc.setup(t)
+			t.Setenv("HOME", home)
+			dir := filepath.Join(root, ".abcd", "work", "issues", "resolved")
+			if err := os.MkdirAll(dir, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			src := filepath.Join(dir, tc.file)
+			if err := os.WriteFile(src, []byte("a record\n"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			cmd, why := restoreCommand(home, Store{Root: root}, resolvedRel+"/"+tc.file)
+			if tc.want == "" {
+				if cmd != "" || !strings.Contains(why, "terminal") {
+					t.Fatalf("command %q, why %q; want none, saying why", cmd, why)
+				}
+				return
+			}
+			const dst = " .abcd/work/issues/resolved/"
+			shown, ok := strings.CutPrefix(cmd, "cp -- ")
+			if !ok || why != "" || !strings.HasSuffix(shown, dst) {
+				t.Fatalf("command %q, why %q", cmd, why)
+			}
+			shown = strings.TrimSuffix(shown, dst)
+			switch tc.want {
+			case "~":
+				if !strings.HasPrefix(shown, "~/") {
+					t.Fatalf("command %q does not name the record under ~", cmd)
+				}
+			case "abs":
+				if !strings.HasPrefix(shown, "'/") {
+					t.Fatalf("command %q does not quote the record's path whole", cmd)
+				}
+			}
+			if strings.Contains(cmd, home) || strings.Contains(cmd, storepath.Resolve(home)) {
+				t.Fatalf("command %q names the home directory", cmd)
+			}
+			if fsutil.RedactHome(cmd) != cmd {
+				t.Fatalf("home redaction changes the command %q to %q", cmd, fsutil.RedactHome(cmd))
+			}
+			if termsafe.Sanitize(cmd) != cmd {
+				t.Fatalf("the terminal would not show the command as written: %q", cmd)
+			}
+			sh := exec.Command("sh", "-c", "printf '%s' "+shown)
+			sh.Env = append(os.Environ(), "HOME="+home)
+			out, err := sh.Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if storepath.Resolve(string(out)) != storepath.Resolve(src) {
+				t.Fatalf("a shell reads %q as %q, not the record %q", shown, out, src)
 			}
 		})
 	}

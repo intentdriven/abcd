@@ -21,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
 // resolvedRel is where a release's tree holds the resolved records, slash-separated.
@@ -184,7 +185,7 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 		if why != "" {
 			l := LeftOut{GHSAID: a.GHSAID, IssueID: a.IssueID, Reason: why}
 			if e.ForgeState == "published" && e.storeRecord != "" {
-				l.RestoreWith = restoreCommand(home, s, e.storeRecord)
+				l.RestoreWith, _ = restoreCommand(home, s, e.storeRecord)
 			}
 			p.LeftOut = append(p.LeftOut, l)
 			continue
@@ -421,18 +422,58 @@ var plainPathRe = regexp.MustCompile(`\A[A-Za-z0-9._/+-]+\z`)
 // restoreCommand is the command, run from the checkout's root, that copies
 // the private record at rel in the store, already resolved there, into the
 // public ledger's resolved/ folder: what a person runs once its advisory is
-// published. The record is named under ~ when it sits under home in a form a
-// shell reads unquoted, as the store does, and quoted whole otherwise.
-func restoreCommand(home string, s Store, rel string) string {
+// published. why, when cmd is empty, says why none is named.
+//
+// The record is named under ~ whenever it sits under home: in home's own
+// spelling first (the store is placed there, so a link inside abcd's home
+// never matters), then through home's links. The rest follows ~/ as
+// written when a shell reads it so, and single-quoted otherwise, so the
+// tilde still expands and the command names no home directory, in --json
+// or after a surface's home redaction. A store outside home is quoted
+// whole. A path holding a character the terminal does not show as written
+// (termsafe.Sanitize would change it) names no command: the one shown would
+// name another file.
+func restoreCommand(home string, s Store, rel string) (cmd, why string) {
 	src := filepath.Join(s.Root, filepath.FromSlash(rel))
-	shown := "'" + strings.ReplaceAll(src, "'", `'\''`) + "'"
-	if inside(src, home) {
-		if r, err := filepath.Rel(storepath.Resolve(home), storepath.Resolve(src)); err == nil && plainPathRe.MatchString(filepath.ToSlash(r)) {
-			shown = "~/" + filepath.ToSlash(r)
-		}
+	shown := shellQuote(src)
+	if r, ok := relUnder(home, src); ok {
+		shown = "~/" + shellWord(r)
+	} else if r, ok := relUnder(storepath.Resolve(home), storepath.Resolve(src)); ok {
+		shown = "~/" + shellWord(r)
 	}
-	return "cp -- " + shown + " " + resolvedRel + "/"
+	cmd = "cp -- " + shown + " " + resolvedRel + "/"
+	if termsafe.Sanitize(cmd) != cmd {
+		return "", "the path of its private record in the store holds a character the terminal does not show as written, so no command is named; " +
+			"copy the record from the store's resolved/ folder into the public ledger's by hand"
+	}
+	return cmd, ""
 }
+
+// relUnder is p relative to dir, slash-separated, when p lies strictly
+// under dir as both are spelled.
+func relUnder(dir, p string) (string, bool) {
+	if dir == "" {
+		return "", false
+	}
+	r, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(p))
+	if err != nil || r == "." || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) || filepath.IsAbs(r) {
+		return "", false
+	}
+	return filepath.ToSlash(r), true
+}
+
+// shellWord is p as one shell word: as written when a shell reads it so,
+// single-quoted otherwise.
+func shellWord(p string) string {
+	if plainPathRe.MatchString(p) {
+		return p
+	}
+	return shellQuote(p)
+}
+
+// shellQuote is p single-quoted: each single quote in it ends the quoted
+// run, is written escaped, and starts a new one.
+func shellQuote(p string) string { return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'" }
 
 // recordForgeEnd stamps the end GitHub reports for a held advisory:
 // published_at or closed_at, at the time given, with the forge state to
