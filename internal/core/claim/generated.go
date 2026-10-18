@@ -56,7 +56,13 @@ func (g Generated) Is(p string) bool {
 // root .gitattributes); otherwise the set is empty and the reason says why
 // generated files were not recognised.
 func GeneratedFiles(root string) (Generated, string) {
-	ref := originDefault(root)
+	return generatedFilesAt(root, originDefault(root))
+}
+
+// generatedFilesAt is GeneratedFiles read from ref, origin's default branch as
+// the caller resolved it ("" for none), so an operation that has named the
+// branch once reads it under that one name.
+func generatedFilesAt(root, ref string) (Generated, string) {
 	if ref == "" {
 		return Generated{}, ""
 	}

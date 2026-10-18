@@ -145,7 +145,7 @@ func loopFakeHarness(mode string) int {
 		body, _ := json.Marshal(a)
 		_ = os.WriteFile(field("Receipt: "), body, 0o600)
 	}
-	if mode == "ok" || strings.HasPrefix(mode, "model-") {
+	if mode == "ok" || mode == "metered" || strings.HasPrefix(mode, "model-") {
 		body := "{}\n"
 		if role := field("You are the "); strings.HasPrefix(role, RoleRuthless) {
 			body = reviewReturn
@@ -166,6 +166,15 @@ func loopFakeHarness(mode string) int {
 		model = "fake\x1b[2Jmodel\r\n"
 	}
 	init, _ := json.Marshal(map[string]string{"type": "system", "subtype": "init", "session_id": "fake-session-2", "model": model})
+	if mode == "metered" {
+		// The claude CLI 2.1's init and result events as they meter a run
+		// (internal/core/runner's real-stream fixture, reduced).
+		fmt.Println(`{"type":"system","subtype":"init","session_id":"fake-session-2","model":"claude-haiku-5-5","claude_code_version":"2.1.302"}`)
+		fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-2","stop_reason":"end_turn",` +
+			`"total_cost_usd":0.0038,"usage":{"input_tokens":2,"output_tokens":76,"cache_read_input_tokens":11228,"cache_creation_input_tokens":18650},` +
+			`"modelUsage":{"claude-haiku-5-5":{"provider":"firstParty"}}}`)
+		return 0
+	}
 	fmt.Println(string(init))
 	fmt.Println(`{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-2"}`)
 	return 0

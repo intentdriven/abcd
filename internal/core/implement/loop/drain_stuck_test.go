@@ -484,8 +484,8 @@ func TestALaneRefusedIsVersion13s(t *testing.T) {
 			}
 		})
 	}
-	if SchemaVersion != schemaVersionUnrefused+1 {
-		t.Fatalf("the current version is the one after the version before `refused`: %d, %d", SchemaVersion, schemaVersionUnrefused)
+	if schemaVersionUnmetered != schemaVersionUnrefused+1 {
+		t.Fatalf("`refused` is the version after the version before it: %d, %d", schemaVersionUnmetered, schemaVersionUnrefused)
 	}
 	for _, version := range []int{schemaVersionUnrefused, schemaVersionUnanswered} {
 		as(version, true)
@@ -500,8 +500,8 @@ func TestALaneRefusedIsVersion13s(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a version-12 file reads: %v", err)
 	}
-	if st.SchemaVersion != 13 || st.Lanes[0].Refused != nil || st.Lanes[0].Stage != StageBrief {
-		t.Fatalf("a version-12 file reads as version 13, its lane as it was: version %d, %+v", st.SchemaVersion, st.Lanes[0])
+	if st.SchemaVersion != SchemaVersion || st.Lanes[0].Refused != nil || st.Lanes[0].Stage != StageBrief {
+		t.Fatalf("a version-12 file reads as the current version, its lane as it was: version %d, %+v", st.SchemaVersion, st.Lanes[0])
 	}
 	as(13, true)
 	if st, err := ReadState(repo.Root(), runID); err != nil || st.Lanes[0].Refused == nil {

@@ -28,6 +28,8 @@ const (
 	// the test sets it to a value built at run time and asserts it never
 	// reaches an argument, an error or a receipt.
 	fakeCredEnv = "ANTHROPIC_API_KEY"
+	// fakeStreamEnv names the fixture the stream mode answers with.
+	fakeStreamEnv = "ABCD_RUNNER_FAKE_STREAM"
 )
 
 func TestMain(m *testing.M) {
@@ -127,6 +129,18 @@ func fakeHarness(mode string) int {
 		init, _ := json.Marshal(map[string]string{"type": "system", "subtype": "init", "session_id": "fake-session-1", "model": model})
 		fmt.Fprintln(os.Stdout, string(init))
 		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-1"}`)
+		return 0
+	case "stream":
+		// A harness that answers with a recorded event stream: the file
+		// fakeStreamEnv names, a fixture under testdata/.
+		if rec := promptField(prompt, "Receipt: "); rec != "" {
+			_ = os.WriteFile(rec, []byte(`{"ok":true}`), 0o600)
+		}
+		raw, err := os.ReadFile(os.Getenv(fakeStreamEnv))
+		if err != nil {
+			return 3
+		}
+		_, _ = os.Stdout.Write(raw)
 		return 0
 	case "approve":
 		// A harness that puts two permission prompts to the prompt tool its
