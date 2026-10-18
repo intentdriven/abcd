@@ -17,11 +17,12 @@ versions: null
 
 A **session** is the unit of work for the `/abcd:intent grill` sub-verb, which is a **design
 target**, not shipped: `abcd intent` registers no grill sub-verb, so nothing that ships today runs
-a session in this sense, and the [glossary README](../README.md)'s grill section records the
-design. What ships is the planning interview, which the `/abcd:intent` plugin page runs with the
-person present and the `interview` sub-verb runs in a plain Terminal, and the record-grill leg of
-`/abcd:ideate`'s admission gauntlet; neither writes a PRD. In the design, a session begins when the
-human runs the command and ends when the PRD is written. Within a session, the oracle asks
+a session in this sense. The [glossary README](../README.md)'s grill section records the design.
+Two things ship instead. One is the planning interview: the `/abcd:intent` plugin page runs it
+with the person present, and the `interview` sub-verb runs it in a plain Terminal. Both forms ask
+one thing at a time. The other is the record-grill leg of `/abcd:ideate`'s admission gauntlet,
+which reads the record and asks no one anything. Neither writes a PRD. In the design, a session
+begins when the human runs the command and ends when the PRD is written. Within a session, the oracle asks
 Socratic questions (up to 12 total, 3 per round), the human answers, the oracle sharpens terms
 and captures glossary updates inline, then silently synthesises a PRD.
 
@@ -38,7 +39,7 @@ session is atomic — it either completes (PRD written) or is abandoned (no PRD 
 **Never** use "user session", "login session", "auth session", or "HTTP session" to mean this
 concept. Those terms carry authentication and web-protocol connotations that are orthogonal to
 the grill interview. Within abcd documentation, unqualified "session" in the interview context
-always means a grill session.
+means the designed grill exchange, never one of the interviews that ship.
 
 ## Lifecycle
 
@@ -49,7 +50,7 @@ always means a grill session.
 
 ## Examples
 
-- "In this session, Carol worked through three rounds of Socratic questioning for `itd-27`."
+- "In the design, a session takes Carol through three rounds of Socratic questioning for an intent."
 - "A session that is abandoned before PRD synthesis produces no artefact."
 
 ## Related terms
