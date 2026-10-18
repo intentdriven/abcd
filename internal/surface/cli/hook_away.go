@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -103,31 +102,15 @@ func readAwayFailOpen(stderr io.Writer, cwd string) (*autonomy.Record, bool, boo
 }
 
 // managedRoot is the root of the checkout cwd stands in, and whether abcd
-// manages it (autonomy.Managed): `.abcd/` at its root, or, for a linked
-// worktree, at the root of the repository's main worktree, since a worktree
-// a session makes shares the repository's away store and a branch cut before
-// `.abcd/` was committed (or a `.abcd/` never committed) leaves it out. Every
-// away hook asks it first: outside a managed checkout the hook reads nothing
-// and says nothing, and the git it runs only names the roots.
+// manages it (autonomy.Managed). Every away hook and the branch recorder ask
+// it first: outside a managed checkout they read nothing, write nothing and
+// say nothing, and the git they run only names the roots.
 func managedRoot(cwd string) (string, bool) {
 	if cwd == "" {
 		return "", false
 	}
 	root, err := gitutil.CheckoutRoot(cwd, autonomy.StoreName)
-	if err != nil {
-		return "", false
-	}
-	if autonomy.Managed(root) {
-		return root, true
-	}
-	if fi, err := os.Lstat(filepath.Join(root, ".git")); err != nil || !fi.Mode().IsRegular() {
-		return "", false // not a linked worktree: there is no main worktree to ask
-	}
-	common, err := gitutil.RevParseAbsPath(root, "--git-common-dir")
-	if err != nil || filepath.Base(common) != ".git" {
-		return "", false
-	}
-	if !autonomy.Managed(filepath.Dir(common)) {
+	if err != nil || !autonomy.Managed(root) {
 		return "", false
 	}
 	return root, true

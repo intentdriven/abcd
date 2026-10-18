@@ -5,12 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
-	"github.com/intentdriven/abcd/internal/core/mode"
 	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
@@ -144,15 +141,15 @@ func applyBranchChanges(list []CreatedBranch, changes []BranchChange, now time.T
 // names nothing git can resolve) and records what passes under the copy's key
 // (claim.CopyKey, minted as a reservation verb mints it) in the away store.
 // copyRoot is the session's working copy; runDir is where the command runs,
-// whose current branch a rename with no old name renames. A checkout without
-// the local tier, or with no root commit, records nothing and is no error:
-// abcd does not manage it. The error is a store the recorder could not write;
+// whose current branch a rename with no old name renames. A checkout
+// abcd does not manage (Managed), or with no root commit, records nothing and
+// is no error. The error is a store the recorder could not write;
 // it never refuses the command.
 func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) error {
 	if len(changes) == 0 {
 		return nil
 	}
-	if fi, err := os.Lstat(filepath.Join(copyRoot, filepath.FromSlash(mode.TierRelPath))); err != nil || !fi.IsDir() {
+	if !Managed(copyRoot) {
 		return nil
 	}
 	home, err := o.home()

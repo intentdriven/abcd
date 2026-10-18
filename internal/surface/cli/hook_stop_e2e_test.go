@@ -91,8 +91,8 @@ func TestHookStopEndToEndOwnUnpushedBranch(t *testing.T) {
 		if out.Decision == "block" {
 			t.Fatalf("with no away record the stop is allowed, got %s\nstderr: %s", so, se)
 		}
-		if !strings.Contains(out.SystemMessage, "feat/x") {
-			t.Errorf("present, the owed branch is named to the person: got %s", so)
+		if want := "abcd: stopped with work owed (1 item); next: branch feat/x has commits not pushed."; out.SystemMessage != want {
+			t.Errorf("present, the owed branch is named to the person once:\n got %s\nwant %q", so, want)
 		}
 		if calls := ghCalls(t, ghLog); calls != "" {
 			t.Errorf("present, the check reads disk only, but the forge was asked: %q", calls)

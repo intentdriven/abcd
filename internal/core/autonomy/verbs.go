@@ -91,13 +91,31 @@ func Resolve(cwd string, o Options) (root string, st Store, err error) {
 }
 
 // Managed reports whether abcd manages the checkout at root: `.abcd/` is a
-// directory at its root (a symbolic link is not). The away mode's hooks act
-// only in such a checkout, so a plugin installed for every repository reads
-// nothing, runs no git past naming the root, and says nothing in any other.
+// directory at its root (a symbolic link is not), or root is a linked
+// worktree of a repository whose main worktree has one. A worktree a session
+// makes shares the repository's away store, and a branch cut before `.abcd/`
+// was committed, or a `.abcd/` never committed, leaves it out of the
+// worktree. The away mode's hooks and recorder act only in such a checkout,
+// so a plugin installed for every repository reads nothing, writes nothing,
+// runs no git past naming the roots, and says nothing in any other.
 func Managed(root string) bool {
 	if root == "" {
 		return false
 	}
+	if hasAbcd(root) {
+		return true
+	}
+	if fi, err := os.Lstat(filepath.Join(root, ".git")); err != nil || !fi.Mode().IsRegular() {
+		return false // not a linked worktree: there is no main worktree to ask
+	}
+	common, err := gitutil.RevParseAbsPath(root, "--git-common-dir")
+	if err != nil || filepath.Base(common) != ".git" {
+		return false
+	}
+	return hasAbcd(filepath.Dir(common))
+}
+
+func hasAbcd(root string) bool {
 	fi, err := os.Lstat(filepath.Join(root, ".abcd"))
 	return err == nil && fi.IsDir()
 }

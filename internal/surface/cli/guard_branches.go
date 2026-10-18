@@ -7,22 +7,21 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/core/guard"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // awayCopyRoot is the working copy a hook acts for: the session's start copy,
 // as the session-start hook noted it (autonomy.ResolveCopy), else the worktree
-// root of the payload's cwd. The stop check reads the copy's owed work from
-// the same root (spc-2610180914469489, "Which copy"), so a branch a session
-// cuts after changing into a worktree it made is recorded where the check
-// looks.
+// root of the payload's cwd; and nothing at all outside a checkout abcd
+// manages (managedRoot). The stop check reads the copy's owed work from the
+// same root (spc-2610180914469489, "Which copy"), so a branch a session cuts
+// after changing into a worktree it made is recorded where the check looks.
 func awayCopyRoot(cwd, sessionID string) (string, bool) {
-	if root, _, err := autonomy.ResolveCopy(cwd, sessionID, autonomy.Options{}); err == nil {
-		return root, true
-	}
-	root, err := gitutil.CheckoutRoot(cwd, autonomy.StoreName)
-	if err != nil {
+	root, ok := managedRoot(cwd)
+	if !ok {
 		return "", false
+	}
+	if c, _, err := autonomy.ResolveCopy(root, sessionID, autonomy.Options{}); err == nil {
+		return c, true
 	}
 	return root, true
 }

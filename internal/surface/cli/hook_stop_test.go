@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -392,5 +393,95 @@ func TestHookStopBlockIsFeedback(t *testing.T) {
 	}
 	if len(out.Raw) != 1 {
 		t.Errorf("a block carries only hookSpecificOutput: %s", so)
+	}
+}
+
+// homeFiles lists every path under dir, relative, for a before-and-after
+// compare.
+func homeFiles(t *testing.T, dir string) []string {
+	t.Helper()
+	var out []string
+	_ = filepath.WalkDir(dir, func(p string, _ os.DirEntry, err error) error {
+		if err == nil && p != dir {
+			rel, _ := filepath.Rel(dir, p)
+			out = append(out, rel)
+		}
+		return nil
+	})
+	return out
+}
+
+// TestAwayHooksLeaveUnmanagedRepoAlone: in a repository abcd does not manage
+// every hook path of the away mode returns at once: the stop check (with the
+// real owed reader), StopFailure and the branch recorder print nothing,
+// create nothing under abcd's home folder, exit 0 and run no git past
+// naming the checkout's root; the session-start and prompt hooks add no away
+// block and create no away store, session note or state file. (The away
+// store has no record here; a record shared with a managed copy is
+// TestHookStopUnmanagedRepoSilent's.)
+func TestAwayHooksLeaveUnmanagedRepoAlone(t *testing.T) {
+	awayCheckout(t) // the sandboxed HOME
+	home := os.Getenv("HOME")
+	repo := unmanagedOwnUnpushed(t)
+	abcdHome := filepath.Join(home, ".abcd.noindex")
+	before := homeFiles(t, abcdHome)
+	log := gitCallLog(t)
+	onlyRoot := func(what string) {
+		t.Helper()
+		for _, line := range strings.Split(strings.TrimSpace(ghCalls(t, log)), "\n") {
+			if line != "" && line != "version" && !strings.Contains(line, "rev-parse --show-toplevel") {
+				t.Errorf("%s ran git past naming the root: %q", what, line)
+			}
+		}
+		if err := os.WriteFile(log, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	so, se, err := runSplit(t, stopHookPayload(t, "un-1", repo, false, "Done."), "hook", "stop")
+	if err != nil || so != "" {
+		t.Errorf("stop: err %v stdout %q stderr %q", err, so, se)
+	}
+	onlyRoot("stop")
+	fail := `{"session_id":"un-1","cwd":"` + repo + `","hook_event_name":"StopFailure","error":"rate_limit"}`
+	if so, se, err := runSplit(t, fail, "hook", "stop-failure"); err != nil || so != "" {
+		t.Errorf("stop-failure: err %v stdout %q stderr %q", err, so, se)
+	}
+	onlyRoot("stop-failure")
+	baseline := func(command string) string {
+		t.Helper()
+		so, se, code := runGuard(preToolUse(t, "Bash", command, repo), "guard", "hook")
+		if code != 0 || strings.Contains(so, "deny") {
+			t.Fatalf("guard hook on %q: code %d stdout %q stderr %q", command, code, so, se)
+		}
+		return ghCalls(t, log)
+	}
+	// The guard's own reading of a command is not the recorder's: a command
+	// with no branch act sets the baseline the branch acts must not exceed.
+	_ = os.WriteFile(log, nil, 0o600)
+	plain := baseline("git status --porcelain")
+	for _, c := range []string{"git switch -c feat/new", "git worktree add -b feat/wt ../wt", "git checkout -b feat/co"} {
+		_ = os.WriteFile(log, nil, 0o600)
+		got := baseline(c)
+		for _, line := range strings.Split(strings.TrimSpace(got), "\n") {
+			if line != "" && line != "version" && !strings.Contains(line, "rev-parse --show-toplevel") && !strings.Contains(plain, line) {
+				t.Errorf("the recorder ran git for %q in an unmanaged checkout: %q", c, line)
+			}
+		}
+	}
+	if after := homeFiles(t, abcdHome); !slices.Equal(before, after) {
+		t.Errorf("abcd's home folder changed: before %v after %v", before, after)
+	}
+
+	so, _, _ = runSplit(t, awayStartPayload("un-1", repo, "startup"), "hook", "session-start")
+	so2, _, _ := runSplit(t, awayPromptPayload("un-1", repo, "hello"), "hook", "prompt-router")
+	if strings.Contains(so+so2, "AWAY") || strings.Contains(so2, "away until") {
+		t.Errorf("an unmanaged checkout got the away block or line:\n%s\n%s", so, so2)
+	}
+	if _, err := os.Stat(filepath.Join(abcdHome, autonomy.StoreDir)); err == nil {
+		t.Errorf("an unmanaged checkout created the away store")
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".abcd")); err == nil {
+		t.Errorf("an unmanaged checkout gained a .abcd/ folder")
 	}
 }
