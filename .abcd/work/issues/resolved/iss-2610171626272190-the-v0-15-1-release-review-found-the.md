@@ -10,6 +10,8 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: ".abcd/development/brief/02-constraints/04-naming.md"
 remedy: "Rewrite the passage at .abcd/development/brief/02-constraints/04-naming.md:49-51 to match the shipped behaviour the review names, and check its sibling chapters for the same claim."
+resolution: "the naming chapter's bare-abcd exemption now says abcd status is a verb of its own, not an unregistered command"
+impact: internal
 ---
 
 The v0.15.1 release review found the brief at .abcd/development/brief/02-constraints/04-naming.md:49-51 out of step with the shipped code. It says: The namespace root refuses any positional that is not a record id, so `status` is not a registered command. In the code: `abcd status` is a registered top-level verb (root --help, Records group: 'List everyone's announcements, reservations and releases being cut'), with commands/status.md and .abcd/development/brief/04-surfaces/39-status.md.

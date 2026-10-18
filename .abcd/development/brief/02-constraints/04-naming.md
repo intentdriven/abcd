@@ -47,19 +47,21 @@ The exemptions carrying a rationale of their own:
 - `/abcd:reflect`: release-retrospective surface (itd-24). Not
   metaphor-mapped, soft register.
 - `/abcd` (bare, top-level): where-am-i status board (itd-20). The namespace root
-  refuses any positional that is not a record id, so `status` is not a registered
-  command; `abcd help` prints the root help, a different render from the bare
-  board.
+  refuses any positional that is not a record id, and neither `status` nor
+  `help` routes to the board: `abcd status` is a verb of its own, listing
+  everyone's announcements, reservations and releases being cut
+  ([`../04-surfaces/39-status.md`](../04-surfaces/39-status.md)), and
+  `abcd help` prints the root help, a different render from the bare board.
 
 The remaining surfaces are exempt for the plain reason that no maritime cognate
-adds meaning: `banlist`, `build`, `dashboard`, `decide`, `docs`, `drain`,
-`embargo`, `guard`, `history`, `hook`, `ideate`, `identity`, `implement`,
-`inbox`, `lab`, `land`, `library`, `lint`, `memory`, `mode`, `peers`,
-`reading`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`,
-`statusline`, and `update`. They are registered here so the exemption is on the
-record. `embargo` is meant in its disclosure sense, an advisory held private
-until it is closed or published, not the maritime order that once kept ships
-in port.
+adds meaning: `announce`, `banlist`, `build`, `dashboard`, `decide`, `docs`,
+`drain`, `embargo`, `guard`, `history`, `hook`, `ideate`, `identity`,
+`implement`, `inbox`, `lab`, `land`, `library`, `lint`, `memory`, `mode`,
+`peers`, `reading`, `report`, `reserve`, `rules`, `scribe`, `site`, `spec`,
+`status`, `statusline`, and `update`. They are registered here so the
+exemption is on the record. `embargo` is meant in its disclosure sense, an
+advisory held private until it is closed or published, not the maritime order
+that once kept ships in port.
 
 **Reserved meta-development commands** (later phases; named now to prevent
 collisions):
