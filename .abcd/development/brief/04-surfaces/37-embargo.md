@@ -52,12 +52,19 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   person's own `gh` and mints one private record per advisory not seen before;
   severity maps critical to critical, high to major, medium and low to minor,
   and an advisory with no severity is listed for the person, not recorded.
-  Each held advisory GitHub no longer lists there is read on its own, and one
-  GitHub reports published or closed, by any hand, is recorded so, which
-  releases a published one from the outbound check; GitHub's answer is held to
-  a known state and a well-formed time, and one that is not leaves the
-  advisory under embargo, saying so. Every publication plan reads the held
-  advisories the same way.
+  Each held advisory GitHub lists in neither state is read on its own. One
+  GitHub reports published, by any hand, is recorded so, which releases it
+  from the outbound check; one it reports closed is recorded so only when the
+  store's verdict on it is a closing one, since a close recorded on GitHub's
+  word alone would drop an advisory judged a vulnerability, or never judged,
+  from every plan for good. Every timestamp is GitHub's own: its answer is held
+  to a known state and a well-formed time, present. An answer that fails that,
+  or a close the store's verdict does not make, leaves the advisory under
+  embargo, read again on the next run so a reopen is seen, and listed with
+  the reason; the second is the person's to settle. A missing `gh`, or a token
+  without the advisory scope, refuses the run whole with its remedy, recording
+  nothing. Every publication plan reads the held advisories the same way, and
+  lists what it recorded.
 - **triage** records one of four verdicts (vulnerability, not abcd's, not a
   vulnerability, public track) with who decided it and when; the two closing
   verdicts draft the closing explanation, and "not abcd's" names both halves of
@@ -83,9 +90,15 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   published, from its private record resolved in the store's own ledger. The
   store is a trust boundary: the plan takes a commit from it only when it is
   the full object name of a commit of this repository, as git resolves it, and
-  leaves the advisory out otherwise. For an advisory published on that
-  evidence it prints the command that copies the private record, resolved,
-  into the public ledger.
+  leaves the advisory out otherwise. The command that copies a private
+  record, resolved, into the public ledger is read from the store's state,
+  not from the run that published: every plan, intake and publication names
+  it for each advisory recorded published whose record is resolved in the
+  store, passes the same checks, and is not yet in the checkout's ledger, so
+  a stopped run loses nothing. A record whose path the terminal would not
+  show as written names no command, saying why. Before the record lands, the
+  person compares its body, minted from the reporter's report, with the
+  published advisory.
 
 ## What stays the person's
 

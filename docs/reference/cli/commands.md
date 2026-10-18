@@ -1456,6 +1456,19 @@ with no severity is listed for you to set on GitHub and not recorded. A
 re-run records nothing twice. Nothing is written to this checkout's ledger
 or committed anywhere.
 
+Each advisory the store holds that GitHub lists in neither state is read
+from GitHub on its own. One GitHub reports published is recorded published, at
+GitHub's own published_at, which releases it from the check; one it reports
+closed is recorded closed, at its closed_at, only when its verdict is
+not-abcds or not-a-vulnerability. Each recorded is listed as ended. One
+GitHub cannot tell (a failed read, an unknown state, a missing or malformed
+time), or reports closed while the store holds it otherwise, is listed as
+unread, with the reason, and left under embargo to be read again. A missing
+gh, or a token without the advisory scope, refuses the intake with nothing
+recorded. Each published advisory whose private record is resolved in the
+store and not yet in this checkout's ledger is listed with the command that
+restores it.
+
 #### `abcd embargo publish`
 
 Show the publication plan with computed patched versions, or publish it: Writes GitHub and the store only with --approve; refuses a digest for another plan.
@@ -1475,12 +1488,21 @@ release tag, whose package is not set on GitHub, or whose text carries a
 secret, a private name or another advisory still under embargo is left out,
 saying why. Without --approve nothing but reads is sent.
 
+Every plan first reads from GitHub each advisory the store holds that is
+neither published nor closed, as intake does: it records each published one,
+and each closed one whose verdict is a closing one, at GitHub's own time,
+lists each it recorded as ended, and lists each it could not tell, or found
+closed while the store holds it otherwise, as unread, left under embargo. A
+missing gh, or a token without the advisory scope, refuses the plan with
+nothing recorded.
+
 With --approve <digest> of exactly the plan shown it publishes one advisory as
 a canary and reads it back, then the rest the same way, stopping at the first
-mismatch, and confirms none is left in draft. For each advisory published on
-the store's evidence it prints the command that copies its resolved record
-into the public ledger. A host passes --approve only after the person, in
-that session, has seen the plan and said yes to it.
+mismatch, and confirms none is left in draft. Every plan and publication
+lists each published advisory whose private record is resolved in the store
+and not yet in this checkout's ledger, with the command that copies it into
+the public ledger, until the checkout holds it. A host passes --approve only
+after the person, in that session, has seen the plan and said yes to it.
 
 **Flags:**
 

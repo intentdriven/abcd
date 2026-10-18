@@ -44,12 +44,19 @@ on GitHub and run intake again. Nothing is written to the public ledger.
 
 An advisory the store holds that GitHub no longer lists in triage or draft was
 published or closed there, by abcd or by hand, and intake reads it on its own.
-`ended` lists each GitHub reports published or closed, with the
-`published_at` or `closed_at` now recorded from GitHub's own timestamp: a
-published one leaves the check, and its record can be restored. `unread` lists
-each whose state GitHub could not tell (a failed read, a state this abcd does
-not know, a timestamp that is not one), left as the store holds it, under
-embargo, with the reason; run intake again once GitHub answers.
+`ended` lists each now recorded, with the `published_at` or `closed_at` taken
+from GitHub's own timestamp: a published one is recorded whatever its verdict,
+and leaves the check; a closed one is recorded only when its verdict is
+`not-abcds` or `not-a-vulnerability`. `unread` lists each left as the store
+holds it, under embargo, with the reason, and read again by the next intake or
+plan: a failed read, a state this abcd does not know, a timestamp that is
+missing or is not one, or a close GitHub reports while the store holds the
+advisory as a vulnerability, untriaged, or on the public track. That last is
+the person's to settle: tell the user, who reopens it on GitHub to publish it
+or records a closing verdict with triage, which the next read then records. A
+missing `gh`, or a token GitHub refuses for want of the advisory scope, refuses
+the intake whole, recording nothing, and names the remedy. `restores` lists
+each restore owed, as for publish below.
 
 ## Triage
 
@@ -208,21 +215,34 @@ digest for any other plan sends nothing. With it abcd publishes one advisory
 first as a canary and reads it back, then the rest the same way, stopping at
 the first mismatch, and confirms none is left in draft. A stopped run exits 1
 naming what is published and what is not; running publish again plans only
-what is still unpublished. Every plan reads each advisory the store holds that
-is neither published nor closed, judged or not, as intake does: one GitHub
-reports published or closed is left out of the plan, and its `published_at` or
-`closed_at` recorded from that, so a publication whose record failed, or one
-made by hand on GitHub, is completed by the next run; one GitHub cannot say is
-listed in `unread` and left as it is.
+what is still unpublished.
 
-Each advisory published from store evidence carries `restore_with`, the
-command, run from the checkout's root, that copies its private record,
-resolved, from the store into the public ledger's `resolved/` folder now its
-advisory is public. abcd has no verb that restores a record; show the user the
-command, and the person runs it and lands the record in a change of its own.
-The command is never lost to a stopped run: the failure names it for each
-advisory published before the stop, and a later plan that finds such an
-advisory published on GitHub names it again on its `left_out` entry.
+Every plan first reads each advisory the store holds that is neither published
+nor closed, judged or not, as intake does, and records what GitHub reports on
+the same terms: `ended` lists each it recorded, so a publication whose record
+failed, or one made by hand on GitHub, is completed by the next run, and an
+advisory found so is left out of the plan; `unread` lists each left as the
+store holds it, with the reason. A candidate GitHub cannot say is also left
+out, with that reason. A missing `gh`, or a token without the advisory scope,
+refuses the plan whole, recording nothing. Neither list is bound into the
+digest.
+
+`restores` names each restore the store's state owes: every advisory recorded
+published whose private record is resolved in the store, and passes the same
+checks as the plan's evidence, while this checkout's `.abcd/work/issues/resolved/`
+holds no record of it. Its `restore_with` is the command, run from the
+checkout's root, that copies the record into the public ledger's `resolved/`
+folder. It is read from the store's state, not from the run that published, so
+every plan, every intake and every publication names it, a stopped run's
+failure included, until the record is in the checkout. A record that fails
+those checks, or whose path holds a character the terminal would not show as
+written, names no command and gives the `reason`.
+
+abcd has no verb that restores a record; show the user the command, and the
+person runs it. The record was minted at intake from the reporter's original
+report, so before it lands, tell the person to compare its body with the
+advisory as published on GitHub and remove anything only the reporter should
+see. The person then lands the record in a change of its own.
 
 ## What stays the person's act
 
@@ -233,7 +253,8 @@ with the person:
   that publishes the advisories, and resolving each private record in the
   store with its fix commit;
 - restoring each record into the public ledger once its advisory is
-  published, with the command publish prints;
+  published, with the command a plan or an intake names, after comparing its
+  body with the published advisory;
 - requesting a CVE for an advisory, on GitHub;
 - putting back any record details they redacted to land a fix, once the
   advisory is published;

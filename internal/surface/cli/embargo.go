@@ -90,7 +90,19 @@ func newEmbargoIntakeCommand(asJSON *bool) *cobra.Command {
 			"critical to critical, high to major, medium and low to minor; an advisory\n" +
 			"with no severity is listed for you to set on GitHub and not recorded. A\n" +
 			"re-run records nothing twice. Nothing is written to this checkout's ledger\n" +
-			"or committed anywhere.",
+			"or committed anywhere.\n\n" +
+			"Each advisory the store holds that GitHub lists in neither state is read\n" +
+			"from GitHub on its own. One GitHub reports published is recorded published, at\n" +
+			"GitHub's own published_at, which releases it from the check; one it reports\n" +
+			"closed is recorded closed, at its closed_at, only when its verdict is\n" +
+			"not-abcds or not-a-vulnerability. Each recorded is listed as ended. One\n" +
+			"GitHub cannot tell (a failed read, an unknown state, a missing or malformed\n" +
+			"time), or reports closed while the store holds it otherwise, is listed as\n" +
+			"unread, with the reason, and left under embargo to be read again. A missing\n" +
+			"gh, or a token without the advisory scope, refuses the intake with nothing\n" +
+			"recorded. Each published advisory whose private record is resolved in the\n" +
+			"store and not yet in this checkout's ledger is listed with the command that\n" +
+			"restores it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const verb = "abcd embargo intake"
@@ -356,12 +368,20 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 			"release tag, whose package is not set on GitHub, or whose text carries a\n" +
 			"secret, a private name or another advisory still under embargo is left out,\n" +
 			"saying why. Without --approve nothing but reads is sent.\n\n" +
+			"Every plan first reads from GitHub each advisory the store holds that is\n" +
+			"neither published nor closed, as intake does: it records each published one,\n" +
+			"and each closed one whose verdict is a closing one, at GitHub's own time,\n" +
+			"lists each it recorded as ended, and lists each it could not tell, or found\n" +
+			"closed while the store holds it otherwise, as unread, left under embargo. A\n" +
+			"missing gh, or a token without the advisory scope, refuses the plan with\n" +
+			"nothing recorded.\n\n" +
 			"With --approve <digest> of exactly the plan shown it publishes one advisory as\n" +
 			"a canary and reads it back, then the rest the same way, stopping at the first\n" +
-			"mismatch, and confirms none is left in draft. For each advisory published on\n" +
-			"the store's evidence it prints the command that copies its resolved record\n" +
-			"into the public ledger. A host passes --approve only after the person, in\n" +
-			"that session, has seen the plan and said yes to it.",
+			"mismatch, and confirms none is left in draft. Every plan and publication\n" +
+			"lists each published advisory whose private record is resolved in the store\n" +
+			"and not yet in this checkout's ledger, with the command that copies it into\n" +
+			"the public ledger, until the checkout holds it. A host passes --approve only\n" +
+			"after the person, in that session, has seen the plan and said yes to it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const verb = "abcd embargo publish"
