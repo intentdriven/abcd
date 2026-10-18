@@ -26,29 +26,13 @@ import (
 // be read, or the away store's lock not had within its two seconds allows the
 // stop and says so on stderr. A stop is never blocked on abcd's own fault.
 
-// stopReadOptions is what the stop check hands the owed reader: the
-// session's working copy (its start copy, from the session-start note), the
-// away record (not holding, the reader reads disk only and never calls the
-// forge), the home the away store lives under, and the clock.
-//
-// TODO(merge): this is a local stand-in for autonomy.ReadOptions, which step
-// 4's branch adds with these fields among others; at the merge the type
-// becomes autonomy.ReadOptions and the seam's default autonomy.ReadOwed.
-type stopReadOptions struct {
-	Root   string
-	Record *autonomy.Record
-	Home   string
-	Now    func() time.Time
-}
-
-// stopOwedReader is the seam the owed reader (spc-2610180914469489 step 4,
-// built in parallel, autonomy.ReadOwed) fills: it returns the owed set, its
-// forge listing under its own ten-second deadline while away. Until it is
-// wired the seam reads nothing owed, so the verdict judges an empty set. A
-// test replaces it with constructed sets.
-var stopOwedReader = func(context.Context, stopReadOptions) (autonomy.Owed, error) {
-	return autonomy.Owed{}, nil
-}
+// stopOwedReader is the seam onto the owed reader (spc-2610180914469489 step
+// 4): autonomy.ReadOwed, asked with the session's working copy (its start
+// copy, from the session-start note), the away record (not holding, the
+// reader reads disk only and never calls the forge), the home the away store
+// lives under, and the clock. While away its forge listing runs under its own
+// ten-second deadline. A test replaces it with constructed sets.
+var stopOwedReader = autonomy.ReadOwed
 
 // stopReadBudget bounds the owed read inside the Stop hook's 30-second
 // timeout, leaving the hook time to judge, record and answer.
@@ -143,7 +127,7 @@ stderr; every outcome exits 0.`,
 			ctx, cancel := context.WithTimeout(context.Background(), stopReadBudget)
 			defer cancel()
 			home, _ := os.UserHomeDir()
-			owed, err := stopOwedReader(ctx, stopReadOptions{Root: copyRoot, Record: rec, Home: home, Now: func() time.Time { return now }})
+			owed, err := stopOwedReader(ctx, autonomy.ReadOptions{Root: copyRoot, Record: rec, Home: home, Now: func() time.Time { return now }})
 			if err != nil {
 				return stopAllow(cmd, "owed work could not be read (%s)", fsutil.RedactHome(err.Error()))
 			}

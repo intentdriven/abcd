@@ -17,11 +17,11 @@ import (
 
 // fakeOwed replaces the owed reader for one test with one answering owed, and
 // counts the calls and what each was asked.
-func fakeOwed(t *testing.T, owed *autonomy.Owed) *[]stopReadOptions {
+func fakeOwed(t *testing.T, owed *autonomy.Owed) *[]autonomy.ReadOptions {
 	t.Helper()
-	var asked []stopReadOptions
+	var asked []autonomy.ReadOptions
 	prev := stopOwedReader
-	stopOwedReader = func(_ context.Context, q stopReadOptions) (autonomy.Owed, error) {
+	stopOwedReader = func(_ context.Context, q autonomy.ReadOptions) (autonomy.Owed, error) {
 		asked = append(asked, q)
 		return *owed, nil
 	}
