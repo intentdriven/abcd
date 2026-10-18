@@ -32,8 +32,11 @@ import (
 // that hold them, so a guard added, renamed or removed fails here until the
 // step says so.
 
-// plainGuardStep names the ubuntu leg's step that runs the plain-only guards.
-const plainGuardStep = "Test (plain-only guards)"
+// plainGuardSteps name the steps that run the plain-only guards, one per leg:
+// the ubuntu leg's runs ahead of its race lane, so a guard fails fast, and
+// the macOS leg's after its one race pass (iss-2610180542030806), so that
+// pass still starts the leg's testing. Each must name the derived list.
+var plainGuardSteps = []string{"Test (plain-only guards)", "Test (plain-only guards, macOS)"}
 
 // raceFlag is the build constant the guards read, declared per package in a
 // race_on_test.go and a race_off_test.go pair.
@@ -369,10 +372,10 @@ func TestExternal(t *testing.T) { assertGrowth(t) }
 	}
 }
 
-// TestTheUbuntuLegRunsEveryPlainOnlyGuard: the ubuntu leg's plain-only guard
-// step names exactly the tests under internal/ that assert something only
-// without -race, and exactly the packages that hold them, so none of them
-// leaves CI when the plain pass stops rerunning ./internal/....
+// TestTheUbuntuLegRunsEveryPlainOnlyGuard: each leg's plain-only guard step
+// names exactly the tests under internal/ that assert something only without
+// -race, and exactly the packages that hold them, so none of them leaves CI
+// where a leg's only pass over internal/ is race-enabled.
 func TestTheUbuntuLegRunsEveryPlainOnlyGuard(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
 	wantTests := map[string]bool{}
@@ -418,31 +421,35 @@ func TestTheUbuntuLegRunsEveryPlainOnlyGuard(t *testing.T) {
 	if !ok {
 		t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
 	}
-	step, ok := workflowStepBlock(check, plainGuardStep)
-	if !ok {
-		t.Fatalf("%s: no %q step; the tests that assert only without -race (%d of them) run nowhere "+
-			"in CI once the plain pass skips ./internal/...", where, plainGuardStep, len(wantTests))
-	}
-	cmd := oneGoTest(t, where+" step "+plainGuardStep, step)
-	m := regexp.MustCompile(`\s-run '\^\(([A-Za-z0-9_|]+)\)\$'`).FindStringSubmatch(cmd)
-	if m == nil {
-		t.Fatalf("%s step %q: `%s` carries no `-run '^(TestA|TestB)$'`", where, plainGuardStep, cmd)
-	}
-	gotTests := strings.Split(m[1], "|")
-	var gotPkgs []string
-	for _, w := range strings.Fields(cmd)[2:] {
-		if strings.HasPrefix(w, "./") {
-			gotPkgs = append(gotPkgs, w)
+	for _, name := range plainGuardSteps {
+		step, ok := workflowStepBlock(check, name)
+		if !ok {
+			t.Errorf("%s: no %q step; the tests that assert only without -race (%d of them) run on "+
+				"that leg in no pass that asserts them", where, name, len(wantTests))
+			continue
 		}
-	}
-	missing, extra := setDiff(gotTests, wantTests)
-	if len(missing) > 0 || len(extra) > 0 {
-		t.Errorf("%s step %q names the wrong tests:\n  missing (assert only without -race, run nowhere): %q\n"+
-			"  extra (no plain-only assertion): %q", where, plainGuardStep, missing, extra)
-	}
-	missing, extra = setDiff(gotPkgs, wantPkgs)
-	if len(missing) > 0 || len(extra) > 0 {
-		t.Errorf("%s step %q runs the wrong packages:\n  missing: %q\n  extra: %q", where, plainGuardStep, missing, extra)
+		cmd := oneGoTest(t, where+" step "+name, step)
+		m := regexp.MustCompile(`\s-run '\^\(([A-Za-z0-9_|]+)\)\$'`).FindStringSubmatch(cmd)
+		if m == nil {
+			t.Errorf("%s step %q: `%s` carries no `-run '^(TestA|TestB)$'`", where, name, cmd)
+			continue
+		}
+		gotTests := strings.Split(m[1], "|")
+		var gotPkgs []string
+		for _, w := range strings.Fields(cmd)[2:] {
+			if strings.HasPrefix(w, "./") {
+				gotPkgs = append(gotPkgs, w)
+			}
+		}
+		missing, extra := setDiff(gotTests, wantTests)
+		if len(missing) > 0 || len(extra) > 0 {
+			t.Errorf("%s step %q names the wrong tests:\n  missing (assert only without -race, run nowhere): %q\n"+
+				"  extra (no plain-only assertion): %q", where, name, missing, extra)
+		}
+		missing, extra = setDiff(gotPkgs, wantPkgs)
+		if len(missing) > 0 || len(extra) > 0 {
+			t.Errorf("%s step %q runs the wrong packages:\n  missing: %q\n  extra: %q", where, name, missing, extra)
+		}
 	}
 }
 
