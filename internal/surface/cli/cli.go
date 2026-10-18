@@ -1991,7 +1991,7 @@ and the --json envelope carries the name as session_title.`,
 				// git failing once on a loaded machine is not a directory
 				// outside any repository: ask again before giving the session
 				// up, as the sub-agent hook does (iss-2610051434156079).
-				det, err = retryDetect(cmd.ErrOrStderr(), cwd, det)
+				det, err = retryDetect(cmd.ErrOrStderr(), sessionEndResolveWaits, cwd, det)
 			}
 			if err == nil && det.RootSHA == "" {
 				if rerr := det.RepoIdentity.RootErr(); rerr != nil {
@@ -2019,7 +2019,7 @@ and the --json envelope carries the name as session_title.`,
 					fmt.Fprintf(cmd.ErrOrStderr(), "abcd %s\n", termsafe.Sanitize(n))
 				}
 			}
-			res, err := stageWithRetry(cmd.ErrOrStderr(), captureRoot(cwd), det.RootSHA, history.StageMeta{
+			res, err := stageWithRetry(cmd.ErrOrStderr(), 0, captureRoot(cwd), det.RootSHA, history.StageMeta{
 				Lineage:    history.CaptureMeta{SessionID: in.SessionID, Kind: "native", LineageSource: "hook"},
 				SourcePath: in.TranscriptPath,
 			}, raw)

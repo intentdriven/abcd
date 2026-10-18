@@ -91,6 +91,14 @@ var subagentResolveWaits = []time.Duration{100 * time.Millisecond, 400 * time.Mi
 // transcript is marked as missed rather than dropped unseen.
 var subagentStageRetries = 3
 
+// sessionEndResolveWaits are retryDetect's pauses for the session-end hook,
+// which the host gives 1.5 seconds in all unless the hook asks for more
+// (SessionEnd's default budget, per the host's hooks reference): two short
+// pauses cover a git that failed once and leave the stage its time. Its stage
+// is not retried for the same reason; a session's own lock is contended only
+// by that session re-firing.
+var sessionEndResolveWaits = []time.Duration{100 * time.Millisecond, 300 * time.Millisecond}
+
 // newSubagentStopCommand builds `abcd hook subagent-stop`.
 func newSubagentStopCommand() *cobra.Command {
 	return &cobra.Command{
@@ -162,7 +170,7 @@ func newSubagentStopCommand() *cobra.Command {
 			}
 
 			meta := subagentStageMeta(in)
-			res, err := stageWithRetry(cmd.ErrOrStderr(), repoRoot, rootSHA, meta, raw)
+			res, err := stageWithRetry(cmd.ErrOrStderr(), subagentStageRetries, repoRoot, rootSHA, meta, raw)
 			if err != nil {
 				// The transcript was read and is lost. The marker is what lets
 				// the person see that: this hook's stderr reaches only a debug
@@ -284,28 +292,28 @@ func retrySubagentStore(w io.Writer, in hookInput, first error) (repoRoot, rootS
 // timeout, so a stage that cannot take the lock waits longer instead of losing
 // the transcript (iss-2610051434156079). Every other failure returns at once:
 // it would fail the same way again.
-func stageWithRetry(w io.Writer, repoRoot, rootSHA string, meta history.StageMeta, raw []byte) (history.StageResult, error) {
+func stageWithRetry(w io.Writer, retries int, repoRoot, rootSHA string, meta history.StageMeta, raw []byte) (history.StageResult, error) {
 	who := "session " + termsafe.Sanitize(meta.Lineage.SessionID)
 	if meta.Lineage.AgentID != "" {
 		who = "sub-agent " + termsafe.Sanitize(meta.Lineage.AgentID)
 	}
 	res, err := history.Stage(repoRoot, rootSHA, meta, raw)
-	for try := 0; err != nil && errors.Is(err, fsutil.ErrLockContention) && try < subagentStageRetries; try++ {
+	for try := 0; err != nil && errors.Is(err, fsutil.ErrLockContention) && try < retries; try++ {
 		fmt.Fprintf(w, "abcd history: %s: the staging lock was held past its timeout; trying again (%d of %d)\n",
-			who, try+1, subagentStageRetries)
+			who, try+1, retries)
 		res, err = history.Stage(repoRoot, rootSHA, meta, raw)
 	}
 	return res, err
 }
 
 // retryDetect is the session-end hook's retrySubagentStore: when git gave no
-// root commit for a repository-shaped cwd, detection is asked again on the
-// same bounded waits, and a try that turns definite (a root, or git answering
+// root commit for a repository-shaped cwd, detection is asked again after
+// each of waits, and a try that turns definite (a root, or git answering
 // that there is none) ends the retries. Each retry is said on stderr
 // (iss-2610051434156079).
-func retryDetect(w io.Writer, cwd string, first ahoy.DetectionResult) (ahoy.DetectionResult, error) {
+func retryDetect(w io.Writer, waits []time.Duration, cwd string, first ahoy.DetectionResult) (ahoy.DetectionResult, error) {
 	det := first
-	for i, wait := range subagentResolveWaits {
+	for i, wait := range waits {
 		time.Sleep(wait)
 		next, err := ahoy.Detect(cwd)
 		if err != nil {
