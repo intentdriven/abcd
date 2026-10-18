@@ -371,17 +371,19 @@ func TestPublishedAtRecordedFromGitHubAfterSaveFails(t *testing.T) {
 	}
 }
 
-// TestPlanRecordsClosedOnGitHub: an advisory judged a vulnerability that
-// GitHub reports closed is left out, and its closed_at is recorded.
-func TestPlanRecordsClosedOnGitHub(t *testing.T) {
+// TestPlanKeepsVulnerabilityClosedOnGitHub: an advisory judged a
+// vulnerability that GitHub reports closed is left out, saying a person
+// settles it, and its close is not recorded: it stays under embargo and a
+// candidate for the next plan.
+func TestPlanKeepsVulnerabilityClosedOnGitHub(t *testing.T) {
 	px := newPublishFixture(t, "draft")
 	px.answer(t, ghsaA, 1, "closed", "", "")
 	p := px.plan(t, "")
-	if r := leftOutReason(t, p, ghsaA); !strings.Contains(r, "closed already") {
+	if r := leftOutReason(t, p, ghsaA); !strings.Contains(r, "a person settles it") || !strings.Contains(r, "as a vulnerability") {
 		t.Fatalf("left-out reason %q", r)
 	}
-	if a := px.advisory(t, ghsaA); a.ClosedAt == nil || a.ForgeState != "closed" || a.PublishedAt != nil {
-		t.Fatalf("the plan did not record what GitHub reports: %+v", a)
+	if a := px.advisory(t, ghsaA); a.ClosedAt != nil || a.ForgeState != "draft" || a.PublishedAt != nil {
+		t.Fatalf("the plan recorded a close the store's verdict does not make: %+v", a)
 	}
 	noWrites(t, px.g)
 }

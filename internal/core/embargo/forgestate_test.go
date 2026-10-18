@@ -105,10 +105,12 @@ func TestIntakeRecordsAdvisoryPublishedOnGitHub(t *testing.T) {
 	noWrites(t, pf.g)
 }
 
-// TestIntakeRecordsAdvisoryClosedOnGitHub: one GitHub reports closed gets
-// its closed_at, and stays unpublished.
+// TestIntakeRecordsAdvisoryClosedOnGitHub: one the store judged with a
+// closing verdict that GitHub reports closed gets its closed_at, and stays
+// unpublished.
 func TestIntakeRecordsAdvisoryClosedOnGitHub(t *testing.T) {
 	pf, f := heldFixture(t)
+	pf.seed(t, judged(strp(VerdictNotAVulnerability)), Advisory{GHSAID: ghsaB, IssueID: issB, Title: "a sample untriaged report", Severity: "minor", ForgeState: "triage"})
 	heldOnly(t, pf.g, ghsaA, "closed", endedAt.Format(time.RFC3339))
 	heldOnly(t, pf.g, ghsaB, "triage", "")
 	res := runIntake(t, f)
@@ -247,4 +249,112 @@ func TestForgeAccessRefusesWholeIntake(t *testing.T) {
 	if readFile(t, pf.s.StatePath()) != before {
 		t.Fatal("a refused intake recorded something")
 	}
+}
+
+// judged is advisory A of heldFixture with verdict (nil: untriaged).
+func judged(verdict *string) Advisory {
+	a := vulnAdvisory(ghsaA, issA)
+	a.Verdict = verdict
+	if verdict == nil {
+		a.DecidedBy, a.DecidedAt = nil, nil
+	} else if *verdict != VerdictVulnerability {
+		a.Reason = strp("a sample reason")
+	}
+	return a
+}
+
+// TestClosedOnGitHubRecordedOnlyForClosingVerdict: GitHub's closed is
+// recorded only for an advisory the store already judged with a closing
+// verdict. One the store holds as a vulnerability, untriaged, or on the
+// public track keeps its state, under embargo and still a candidate for
+// publication, and is listed with a fixed reason naming what the store
+// holds, for a person to settle.
+func TestClosedOnGitHubRecordedOnlyForClosingVerdict(t *testing.T) {
+	for name, tc := range map[string]struct {
+		verdict *string
+		record  bool
+		holds   string
+	}{
+		"untriaged":           {nil, false, "untriaged"},
+		"vulnerability":       {strp(VerdictVulnerability), false, "as a vulnerability"},
+		"public-track":        {strp(VerdictPublicTrack), false, "on the public track"},
+		"not-abcds":           {strp(VerdictNotAbcds), true, ""},
+		"not-a-vulnerability": {strp(VerdictNotAVulnerability), true, ""},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, g := intakeFixture(t)
+			s, _, err := openStore(f.home, f.repo.Root())
+			if err != nil {
+				t.Fatal(err)
+			}
+			pf := planFixture{f: f, s: s, g: g}
+			pf.seed(t, judged(tc.verdict))
+			heldOnly(t, g, ghsaA, "closed", endedAt.Format(time.RFC3339))
+			res := runIntake(t, f)
+			a := pf.held(t, ghsaA)
+			if tc.record {
+				if a.ClosedAt == nil || !a.ClosedAt.Equal(endedAt) || a.ForgeState != "closed" || len(res.Ended) != 1 || len(res.Unread) != 0 {
+					t.Fatalf("held %+v, result %+v", a, res)
+				}
+				return
+			}
+			if a.ClosedAt != nil || a.ForgeState != "draft" || len(res.Ended) != 0 {
+				t.Fatalf("closed recorded for a %s advisory: held %+v, result %+v", name, a, res)
+			}
+			if len(res.Unread) != 1 || res.Unread[0].GHSAID != ghsaA {
+				t.Fatalf("unread %+v", res.Unread)
+			}
+			r := res.Unread[0].Reason
+			for _, want := range []string{"closed on GitHub", tc.holds, "not recorded", "a person settles it"} {
+				if !strings.Contains(r, want) {
+					t.Fatalf("reason %q does not say %q", r, want)
+				}
+			}
+		})
+	}
+}
+
+// TestClosedOnGitHubReadAgain: an advisory judged a vulnerability that
+// GitHub reports closed is read again by the next plan, so a reopen is seen:
+// it then plans as before, and is no longer listed.
+func TestClosedOnGitHubReadAgain(t *testing.T) {
+	pf, _ := heldFixture(t)
+	pf.tag("v0.9.0")
+	heldOnly(t, pf.g, ghsaB, "triage", "")
+	a := advisoryJSON(ghsaA, "closed", "high", "a sample summary", "the report")
+	a["closed_at"] = endedAt.Format(time.RFC3339)
+	b, err := json.Marshal(a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pf.g.answer("GET", listPath+"/"+ghsaA, "", 1, string(b))
+	pf.remote(t, ghsaA, "draft", "the report")
+	pf.g.answer("GET", listPath+"/"+ghsaA, "", 2, readGHAnswer(t, pf.g, ghsaA))
+
+	first := pf.plan(t, "")
+	if len(first.Unread) != 1 || first.Unread[0].GHSAID != ghsaA || !strings.Contains(first.Unread[0].Reason, "as a vulnerability") {
+		t.Fatalf("first plan %+v", first)
+	}
+	if h := pf.held(t, ghsaA); h.ClosedAt != nil {
+		t.Fatalf("closed recorded: %+v", h)
+	}
+	second := pf.plan(t, "")
+	if len(second.Unread) != 0 {
+		t.Fatalf("a reopened advisory is still listed: %+v", second.Unread)
+	}
+	reads := 0
+	for _, c := range pf.g.calls() {
+		if c.has(listPath + "/" + ghsaA) {
+			reads++
+		}
+	}
+	if reads != 2 {
+		t.Fatalf("%d reads of the advisory, want one per plan", reads)
+	}
+}
+
+// readGHAnswer is the fake's unnumbered answer for a read of ghsa.
+func readGHAnswer(t *testing.T, g *ghFake, ghsa string) string {
+	t.Helper()
+	return readFile(t, filepath.Join(g.dir, "resp", ghKey("GET", listPath+"/"+ghsa, "")))
 }

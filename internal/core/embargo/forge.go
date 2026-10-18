@@ -36,9 +36,11 @@ const forgeSkew = 5 * time.Minute
 // readHeld reads, one advisory at a time, the state GitHub reports for each
 // advisory the state holds that is neither published nor closed there, but
 // those skip names (intake has just listed them in triage or draft), and
-// records the end GitHub reports for each: published_at or closed_at, from
-// GitHub's own timestamp, or from now when GitHub gives none. answers holds
-// each advisory read in a state this abcd knows, for the caller to reuse.
+// records the end GitHub reports for each: published_at, or closed_at for an
+// advisory the store judged with a closing verdict (closedUnjudged says why
+// no other close is recorded), from GitHub's own timestamp, or from now when
+// GitHub gives none. answers holds each advisory read in a state this abcd
+// knows and recorded or left as it is, for the caller to reuse.
 //
 // GitHub's answer is untrusted input. The request names only an id the
 // state holds, already held to the GHSA shape, and getAdvisory holds the
@@ -75,6 +77,10 @@ func readHeld(s Store, st *State, skip map[string]bool, now time.Time) (answers 
 			left("GitHub reports it in a state this abcd does not know")
 			continue
 		}
+		if a.State == "closed" && (h.Verdict == nil || !isClosingVerdict(*h.Verdict)) {
+			unread = append(unread, UnreadAdvisory{GHSAID: h.GHSAID, IssueID: h.IssueID, Reason: closedUnjudged(h.Verdict)})
+			continue
+		}
 		if a.State == "published" || a.State == "closed" {
 			at, ok := forgeTime(a.endedAt(), now)
 			if !ok {
@@ -87,6 +93,27 @@ func readHeld(s Store, st *State, skip map[string]bool, now time.Time) (answers 
 		answers[h.GHSAID] = a
 	}
 	return answers, ended, unread, nil
+}
+
+// closedUnjudged is the reason a held advisory GitHub reports closed is
+// listed and its close not recorded: the store's verdict for it (verdict,
+// nil when untriaged) is not a closing one. A close is irreversible only in
+// the store: recorded, it would drop an advisory the store holds as a
+// vulnerability from every plan for good, on the word of whoever closed it.
+// The advisory stays as the store holds it, under embargo and read again by
+// every intake and plan, so a reopen on GitHub is seen; a person settles it.
+func closedUnjudged(verdict *string) string {
+	holds, settle := "untriaged", "record its verdict with `abcd embargo triage`; a closing verdict records the close"
+	if verdict != nil {
+		switch *verdict {
+		case VerdictVulnerability:
+			holds, settle = "as a vulnerability", "reopen it on GitHub to publish it, or record a closing verdict with `abcd embargo triage`"
+		case VerdictPublicTrack:
+			holds, settle = "on the public track", "record a closing verdict with `abcd embargo triage`, which records the close"
+		}
+	}
+	return "it is closed on GitHub while the store holds it " + holds + ", so its close is not recorded and it stays under embargo; " +
+		"a person settles it: " + settle
 }
 
 // forgeTime is the time a timestamp GitHub reports names, or now when it
