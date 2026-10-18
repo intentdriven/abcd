@@ -21,7 +21,7 @@ type Renewal struct {
 // reservations as last fetched (View), which asks the network nothing, and
 // each renewal is a renew-only, live-only act (Request.Renew, Request.Live):
 // it never reserves a record anew, never takes one over and never revives one
-// that has lapsed. A renewal keeps the tip's own term (RenewalTerm). A
+// that has lapsed. A renewal keeps the tip's own term (renewalTerm). A
 // release subject is left alone: its hold is a release cut's, kept by the
 // cut. The error is a view that could not be read; each renewal's own
 // failure is in its Renewal.
@@ -33,24 +33,24 @@ func RenewDue(root string, o Options) ([]Renewal, error) {
 	}
 	var out []Renewal
 	for _, r := range snap.Reservations {
-		if r.Copy != CopyThis || r.State != StateLive || isRelease(r.Record) || !HalfThrough(r, now) {
+		if r.Copy != CopyThis || r.State != StateLive || isRelease(r.Record) || !halfThrough(r, now) {
 			continue
 		}
-		res, err := Reserve(root, Request{Record: r.Record, Renew: true, Live: true, Lease: RenewalTerm(r)}, o)
+		res, err := Reserve(root, Request{Record: r.Record, Renew: true, Live: true, Lease: renewalTerm(r)}, o)
 		out = append(out, Renewal{Record: r.Record, Until: res.ExpiresAt, Err: err})
 	}
 	return out, nil
 }
 
-// HalfThrough reports whether r is half through its lease at now, counted from
+// halfThrough reports whether r is half through its lease at now, counted from
 // its claimed-at to its effective expiry: the point a renewal is due.
-func HalfThrough(r Reservation, now time.Time) bool {
+func halfThrough(r Reservation, now time.Time) bool {
 	return !now.Before(r.ClaimedAt.Add(r.EffectiveExpiry.Sub(r.ClaimedAt) / 2))
 }
 
-// RenewalTerm is the lease a renewal of r pushes: r's own term, never shorter
+// renewalTerm is the lease a renewal of r pushes: r's own term, never shorter
 // than the default nor longer than a day, so a renewal never cuts a longer
 // term a fence gave a pull request waiting on a person.
-func RenewalTerm(r Reservation) time.Duration {
+func renewalTerm(r Reservation) time.Duration {
 	return min(max(lease.Default, r.EffectiveExpiry.Sub(r.ClaimedAt)), lease.Max)
 }
