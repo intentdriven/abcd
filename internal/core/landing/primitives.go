@@ -100,15 +100,25 @@ var ErrNoForgeClient = errors.New("the forge client `gh` is not installed")
 // that comes from a record or a branch rides in its flag's own argument
 // (--flag=value) at the caller, so none can be read as a flag of its own.
 func GH(dir string, args ...string) (string, error) {
+	return GHContext(context.Background(), dir, args...)
+}
+
+// GHContext is GH bound to ctx as well as to ForgeTimeout: the client is
+// killed at whichever ends first, and a process it started that still holds
+// its output open is waited for at most a second more, so a caller's own
+// deadline (the away mode's stop check, which lists the forge under ten
+// seconds) holds.
+func GHContext(parent context.Context, dir string, args ...string) (string, error) {
 	bin, err := exec.LookPath("gh")
 	if err != nil {
 		return "", ErrNoForgeClient
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), ForgeTimeout)
+	ctx, cancel := context.WithTimeout(parent, ForgeTimeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, args...)
 	cmd.Dir = dir
 	cmd.Env = append(gitutil.ScrubbedEnv(), "GH_PROMPT_DISABLED=1", "GH_NO_UPDATE_NOTIFIER=1")
+	cmd.WaitDelay = time.Second
 	return runCapped(cmd, "gh "+strings.Join(args[:min(2, len(args))], " "))
 }
 

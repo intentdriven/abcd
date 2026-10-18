@@ -77,4 +77,62 @@
 // behind one, a stacked branch, an unpushed branch, and a reservation whose
 // work no pull request carries. Owed.Fingerprint and Owed.CappedFingerprint
 // compare two owed sets item by item, ignoring order and reasons.
+//
+// # The created-branch list
+//
+// The guard's pre-tool hook records the branches a session creates
+// (spc-2610180914469489 step 3) through RecordCreated(copyRoot, runDir,
+// changes, Options), whether or not the person is away: a BranchCreated name
+// only when no branch of that name exists yet, a BranchCheckedOut one (`git
+// worktree add <path> [<branch>]`) when it is a branch or names nothing git
+// resolves, and a BranchMoved rename carrying a record by whole name. The list
+// is CreatedFile(copyKey) in the away store, keyed on the working copy's
+// reservation copy key (claim.CopyKey), written under the store's lock
+// (Store.RecordBranches) and capped at MaxCreatedBranches, the oldest
+// dropped; Store.CreatedBranches reads it. A checkout without the local tier
+// records nothing.
+//
+// # Reading the owed work
+//
+// ReadOwed is the stop check's one seam onto owed work:
+//
+//	func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error)
+//
+// o.Root is the session's working copy and o.Record the away record as the
+// check read it. While o.Record does not hold at o.Now the person is present
+// and ReadOwed reads disk only: renewals due and unpushed own branches, with
+// no forge call. While it holds, ReadOwed adds one `gh pr list` of the open
+// pull requests (o.Forge, landing.GHContext by default) under ForgeDeadline
+// (ten seconds, o.ForgeDeadline in a test), for failing, behind (the forge's
+// merge state: BEHIND, and DIRTY as behind; UNKNOWN is a note), stacked and
+// uncarried work. A listing that fails or is late is a note, and the check
+// judges from disk alone: a pushed branch is compared with the last-fetched
+// default branch, naming the fetch, and no reservation is reported uncarried
+// (adr-2610181003541997).
+//
+// A branch is the session's own when this copy's HEAD reflog has checked it
+// out or the copy's created-branch list holds it, either only while it holds
+// a commit of this checkout's author email made within StaleWindow (14 days)
+// or a live reservation under this copy's key links it; when it is a lane of
+// an unfinished run in this copy's local tier whose reservation is live under
+// this copy's key; or when it heads an open pull request of the person's that
+// a live reservation under this copy's key links. Never the default branch,
+// nor a branch whose open pull request another person authored. A pull
+// request carries a reservation's work when the record id is in its head
+// branch's name or on a Resolves: or Delivers: line of its body, on word
+// boundaries; a Refs: line carries it only for a head already own.
+//
+// A stacked branch (its pull request's base is not the default branch, or,
+// with none, its nearest own ancestor branch is not in the default branch) is
+// owed by the clearing rule alone: while it is behind its base, failing, has a
+// review outstanding (CHANGES_REQUESTED, or a run lane with no passing review
+// of its head) or is not verified (a preflight receipt naming its head where
+// the repository mints receipts, else passing checks); an item whose only
+// unmet condition is checks still running is not capped. With --hold-pushes,
+// an unpushed own branch a queued step names as a whole name, whose head
+// contains its base's last-fetched tip and has a receipt, is handed back:
+// left out of the set and recorded once per branch and head
+// (Store.RecordHandBack). The items come sorted by OwedKinds' order. The
+// error is a root that is not a working copy; anything else ReadOwed could
+// not read is a note in Owed.Notes.
 package autonomy
