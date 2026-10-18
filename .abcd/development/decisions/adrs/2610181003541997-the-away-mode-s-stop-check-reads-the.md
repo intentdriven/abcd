@@ -35,9 +35,16 @@ verb.
 We will treat setting the away mode (`abcd mode autonomous`, which the
 person runs or asks a session to run, and which grants no push rights,
 dcn-2610181016510153) as invoking the stop check's forge read while the mode holds:
-at most one pull-request listing of the person's open pull requests per
-check (head and base branch, author, body, merge state, review decision and
-check rollup), under a ten-second deadline. There is no cache, so a run of
+at most one pull-request listing per check (head and base branch, author,
+body, merge state, review decision and check rollup, at most 200 pull
+requests), under a ten-second deadline. When the person's forge login is
+known (the holder name reservations resolve without a network read), the
+listing covers every open pull request in the repository, not only the
+person's: the reader needs other people's pull requests to tell a branch
+whose open pull request another person authored from the session's own, and
+to leave it out. When the login is unknown, the listing asks for the
+person's own pull requests alone (`--author @me`) and that rule is not
+applied. There is no cache, so a run of
 eight blocks costs up to eight listings, each bounded by the deadline; a
 reuse cache is remaining work of itd-2610170638184486 (dcn-2610181017056307).
 

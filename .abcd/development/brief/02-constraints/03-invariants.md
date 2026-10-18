@@ -122,7 +122,10 @@ The following are non-negotiable invariants — any architectural choice that vi
    for as long as it holds, the stop check's one read of the forge at each
    turn's end, at most one listing of the open pull requests through the
    forge client (`gh pr list`: head and base branch, author, body, merge
-   state, review decision and check rollup) under a ten-second deadline, with
+   state, review decision and check rollup), every open one when the
+   person's forge login is known, so another person's pull request can be
+   told from the session's own, and the person's own alone when it is not,
+   under a ten-second deadline, with
    no cache, so a run of eight blocked stops costs up to eight bounded
    listings. A listing that fails or is late is named as not read, never
    hidden, and the check judges from disk alone: a branch with a pull request

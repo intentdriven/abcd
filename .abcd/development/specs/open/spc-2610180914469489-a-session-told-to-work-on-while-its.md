@@ -335,9 +335,11 @@ dcn-2610181003488355):
   adr-2610181003541997).** While the person is present the check reads disk
   only: renewals due (reservations as last fetched, `claim.LastFetched`) and
   unpushed own branches. It never calls the forge, so no turn's end touches
-  the network. While away it adds at most one `gh pr list` of the person's
-  open pull requests (head and base branch, author, body, merge state,
-  review decision, check rollup; each field among those
+  the network. While away it adds at most one `gh pr list` of the open pull
+  requests, every open one when the person's forge login is known (so a
+  branch whose pull request another person authored is left out of "own"),
+  the person's own alone when it is not (head and base branch, author,
+  body, merge state, review decision, check rollup; each field among those
   `internal/ghcontract` pins) under a ten-second deadline. On a failure or
   timeout it fails open to the disk kinds, naming the pull requests as not
   read: a branch with a pull request is compared on disk with the
@@ -740,6 +742,41 @@ each recorded for review; none changes a test the steps name.
   lane's branch merges, `internal/core/autonomy/question_placeholder.go`
   stands in for its `question.go` with exactly its text; it is deleted at
   the merge.
+
+Choices made while integrating the three lanes on 2026-10-18, each recorded
+for review; none changes a test a step names.
+
+- 2026-10-18 (integration's choice, for review): **The placeholder went in
+  the merge.** Step 6's `question.go` and lane 1's
+  `question_placeholder.go` declared the same names word for word, so the
+  placeholder was removed in the merge commit that brought step 6 in, to
+  keep every commit building.
+- 2026-10-18 (integration's choice, for review): **The stop hook owns the
+  hand-back record.** Lane 2's reader recorded a hand-back as it found one,
+  and lane 1's front door recorded each the verdict accepted. `ReadOwed` now
+  records nothing: it moves the handed-back item from `Owed.Items` into
+  `Owed.HandedBack`, the verdict accepts it (`Verdict.HandBacks`), and the
+  stop hook records what was accepted under the lock, once per branch and
+  head. One owner, and an item the verdict puts back among the owed is never
+  recorded as handed back. This replaces lane 2's "`ReadOwed` records each
+  hand-back itself" and lane 1's "the reader and the front door may both
+  record one" above. `ReadOwed` also fills `Owed.NextRenewal`, present or
+  away, from the same halfway point its renewal items use.
+- 2026-10-18 (integration's choice, for review): **The seam is wired.** The
+  stop hook's `stopOwedReader` defaults to `autonomy.ReadOwed` and is asked
+  with `autonomy.ReadOptions`; lane 1's stand-in type is gone.
+- 2026-10-18 (integration's choice, for review): **The recorder keys on the
+  start copy.** `awayCopyRoot` resolves the copy through
+  `autonomy.ResolveCopy` with the hook payload's session id, falling back
+  to the payload cwd's worktree when the session has no note or the store
+  cannot be opened, so the branch list and the stop check read the same
+  copy's key.
+- 2026-10-18 (integration's choice, for review): **The ADR says what the
+  listing covers.** adr-2610181003541997, still proposed, now says the
+  listing covers every open pull request when the person's forge login is
+  known, and the person's own alone when it is not, as lane 2's reader does
+  and invariant 7's clause now says too; lane 2's note above on the
+  mismatch is answered by it.
 
 ## Footprint
 
