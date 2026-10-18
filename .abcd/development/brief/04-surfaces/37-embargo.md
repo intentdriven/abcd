@@ -68,9 +68,12 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   run's. A missing `gh`, a `gh` signed in to no account or holding a token
   GitHub rejects, or a refusal whose words name the advisory scope, refuses the
   run whole with its remedy, recording nothing. Every publication plan reads
-  the held advisories the same way, and lists what it recorded; a plan whose
-  every read meets a 404 or a 403, reading none, refuses whole too, since that
-  is what a token without the scope meets.
+  the held advisories the same way, and lists what it recorded. A plan whose
+  every read meets a 404 or a 403 cannot tell deleted advisories from a token
+  without the scope, so it asks once for the repository's advisory listing,
+  which answers only a token holding the scope: answered, the plan goes on
+  with those advisories unread; refused, or failing otherwise, the plan
+  refuses whole.
 - **triage** records one of four verdicts (vulnerability, not abcd's, not a
   vulnerability, public track) with who decided it and when; the two closing
   verdicts draft the closing explanation, and "not abcd's" names both halves of

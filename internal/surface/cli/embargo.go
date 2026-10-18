@@ -379,11 +379,12 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 			"and each closed one whose verdict ends its private track, at GitHub's own\n" +
 			"time, lists each it recorded as ended, and lists each it could not tell, or\n" +
 			"found closed while the store holds it otherwise, as unread, left under\n" +
-			"embargo; a 404 or 403 on one advisory's read leaves that one unread. A missing\n" +
-			"gh, a gh signed in to no account or holding a token GitHub rejects, a refusal\n" +
-			"naming the advisory scope, or a 404 or 403 on every advisory's read with none\n" +
-			"read, which is what a token without the scope meets, refuses the plan with\n" +
-			"nothing recorded.\n\n" +
+			"embargo; a 404 or 403 on an advisory's read leaves it unread. When every read\n" +
+			"meets one, the plan asks once for the repository's advisory listing: if it\n" +
+			"answers, the scope is proven and the plan goes on; if GitHub refuses it, or\n" +
+			"it fails otherwise, the plan refuses. A missing gh, a gh signed in to no\n" +
+			"account or holding a token GitHub rejects, or a refusal naming the advisory\n" +
+			"scope, refuses the plan with nothing recorded.\n\n" +
 			"With --approve <digest> of exactly the plan shown it publishes one advisory as\n" +
 			"a canary and reads it back, then the rest the same way, stopping at the first\n" +
 			"mismatch, and confirms none is left in draft. Every plan and publication\n" +

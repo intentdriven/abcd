@@ -147,7 +147,8 @@ func planPublication(req PublishRequest) (PublicationPlan, error) {
 // holding the advisory under embargo for ever; each recorded is listed in
 // Ended, and one readHeld leaves as it is in Unread. A read every other read
 // would meet too (gh missing or signed out, a scope refused), or a 404 or 403
-// on every read with none read, refuses the plan whole. Then, for each advisory judged a
+// on every read when the advisory listing is refused too (scopeAnswers),
+// refuses the plan whole. Then, for each advisory judged a
 // vulnerability and neither published nor closed before this plan, in id
 // order: one GitHub reports published or closed is left out, saying so; its
 // record must be resolved in the release's tree and name its fix commit, or,

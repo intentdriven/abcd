@@ -503,29 +503,65 @@ func TestOneAdvisoryNotShownLeavesItUnread(t *testing.T) {
 	}
 }
 
-// TestEveryAdvisoryNotShownRefusesPlan: a plan whose every held advisory's
-// read GitHub answers with a 404 or a 403 has read nothing, which is what a
-// token without the advisory scope meets: it refuses whole, naming the
-// scope, and records nothing. An intake whose listing has just answered has
-// proven the scope, so there the advisories are left unread and it goes on.
-func TestEveryAdvisoryNotShownRefusesPlan(t *testing.T) {
+// TestEveryAdvisoryNotShownListingDecides: when every held advisory's read
+// a plan makes answers 404 or 403, the plan asks for the repository's
+// advisory listing once, which tells a missing scope from advisories GitHub
+// no longer shows. A listing that answers proves the scope: the advisories
+// are unread and the plan goes on, so a store whose one advisory was
+// deleted on GitHub still plans. A listing GitHub refuses is a missing
+// scope, refused whole with its remedy; a listing that fails otherwise
+// refuses whole with its own fixed remedy. Either refusal records nothing
+// and repeats none of gh's words. An intake, whose own listing has just
+// answered, goes on without asking again.
+func TestEveryAdvisoryNotShownListingDecides(t *testing.T) {
 	for code, stderr := range notShown {
-		t.Run("plan "+code, func(t *testing.T) {
+		t.Run("one deleted "+code, func(t *testing.T) {
 			pf, _ := heldFixture(t)
+			pf.seed(t, vulnAdvisory(ghsaA, issA))
 			pf.tag("v0.9.0")
 			pf.g.fail("GET", listPath+"/"+ghsaA, "", stderr)
-			pf.g.fail("GET", listPath+"/"+ghsaB, "", stderr)
-			before := readFile(t, pf.s.StatePath())
-			_, err := planPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Now: func() time.Time { return fixedNow.Add(time.Hour) }})
-			mustRefuse(t, err, "gh auth refresh")
-			mustRefuse(t, err, "every advisory")
-			if strings.Contains(err.Error(), "Forbidden") || strings.Contains(err.Error(), "Not Found") {
-				t.Fatalf("the refusal repeats gh's own words: %v", err)
+			p := pf.plan(t, "")
+			if len(p.Unread) != 1 || p.Unread[0].GHSAID != ghsaA || !strings.Contains(p.Unread[0].Reason, "no such advisory to this account") {
+				t.Fatalf("plan %+v", p)
 			}
-			if readFile(t, pf.s.StatePath()) != before {
-				t.Fatal("a refused plan recorded something")
+			if !strings.Contains(leftOutReason(t, p, ghsaA), "not resolved in v0.9.0") {
+				t.Fatalf("plan %+v", p)
 			}
+			listed := 0
+			for _, c := range pf.g.calls() {
+				if c.has(listPath) {
+					listed++
+				}
+			}
+			if listed != 1 {
+				t.Fatalf("%d listings, want one", listed)
+			}
+			noWrites(t, pf.g)
 		})
+		for name, tc := range map[string]struct{ listing, want string }{
+			"listing refused for scope " + code: {stderr, "gh auth refresh"},
+			"listing refused in words " + code:  {"gh: Resource not accessible by personal access token (HTTP 403)", "gh auth refresh"},
+			"listing fails transiently " + code: {"gh: Server Error (HTTP 502)", "the listing that tells"},
+		} {
+			t.Run(name, func(t *testing.T) {
+				pf, _ := heldFixture(t)
+				pf.tag("v0.9.0")
+				pf.g.fail("GET", listPath+"/"+ghsaA, "", stderr)
+				pf.g.fail("GET", listPath+"/"+ghsaB, "", stderr)
+				pf.g.fail("GET", listPath, "triage", tc.listing)
+				before := readFile(t, pf.s.StatePath())
+				_, err := planPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Now: func() time.Time { return fixedNow.Add(time.Hour) }})
+				mustRefuse(t, err, tc.want)
+				for _, words := range []string{"Forbidden", "Not Found", "Server Error", "personal access token"} {
+					if strings.Contains(err.Error(), words) {
+						t.Fatalf("the refusal repeats gh's own words: %v", err)
+					}
+				}
+				if readFile(t, pf.s.StatePath()) != before {
+					t.Fatal("a refused plan recorded something")
+				}
+			})
+		}
 		t.Run("intake "+code, func(t *testing.T) {
 			pf, f := heldFixture(t)
 			pf.g.fail("GET", listPath+"/"+ghsaA, "", stderr)

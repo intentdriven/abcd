@@ -139,7 +139,8 @@ func (e *accessRefusal) Unwrap() error { return e.RefusalError }
 // this account cannot see, meets it on that advisory's read alone. A caller
 // making one request refuses on it as on accessRefusal (it is the same
 // RefusalError); readHeld leaves that one advisory unread instead, and
-// refuses whole only when every read it made met it.
+// when every read it made met it, asks the listing whether the scope is
+// held (scopeAnswers).
 type notShownRefusal struct{ *RefusalError }
 
 func (e *notShownRefusal) Unwrap() error { return e.RefusalError }

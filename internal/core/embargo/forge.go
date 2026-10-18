@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // forge.go is what the store learns from GitHub about the advisories it
@@ -61,10 +63,11 @@ const forgeSkew = 5 * time.Minute
 // recording nothing. A bare 404 or 403 (notShownRefusal) is one advisory's
 // answer: GitHub shows it to no one this token speaks for, as when it was
 // deleted, so that advisory is left unread with a fixed reason and the run
-// goes on. Only when every read made met it, and nothing was read, does it
-// refuse whole, naming the scope, since that is what a token without the
-// scope meets; scopeProven skips that refusal for a caller whose listing of
-// the repository's advisories has just answered, which proves the scope.
+// goes on. When every read made met it, a token without the scope would
+// look the same, so the scope is put to the test (scopeAnswers): the
+// repository's advisory listing, asked once, answers only a token holding
+// it. scopeProven skips that for a caller whose own listing has just
+// answered.
 func readHeld(s Store, st *State, skip map[string]bool, scopeProven bool, now time.Time) (answers map[string]remoteAdvisory, ended []ForgeEnd, unread []UnreadAdvisory, err error) {
 	answers = map[string]remoteAdvisory{}
 	ended, unread = []ForgeEnd{}, []UnreadAdvisory{}
@@ -117,9 +120,41 @@ func readHeld(s Store, st *State, skip map[string]bool, scopeProven bool, now ti
 		answers[h.GHSAID] = a
 	}
 	if !scopeProven && notShown > 0 && notShown == asked {
-		return nil, nil, nil, &RefusalError{Reason: everyNotShown, Remedy: scopeRemedy}
+		if err := scopeAnswers(s.Checkout, st.Repo); err != nil {
+			return nil, nil, nil, err
+		}
 	}
 	return answers, ended, unread, nil
+}
+
+// scopeAnswers asks for the repository's advisory listing once, through the
+// listing intake makes (listAdvisories), to tell a token without the
+// advisory scope from advisories GitHub no longer shows this account: nil
+// when it answers, which proves the scope. A listing GitHub refuses in words
+// naming a scope or access, or with a bare 404 or 403, refuses whole with
+// the scope remedy (everyNotShown); a gh missing or signed out refuses with
+// its own; any other failure, such as a transient fault or an answer not of
+// the listing's shape, refuses whole with a fixed remedy. None repeats what
+// gh or GitHub sent.
+func scopeAnswers(checkout, repo string) error {
+	_, err := listAdvisories(checkout, repo, "triage")
+	if err == nil {
+		return nil
+	}
+	var missing *tools.MissingError
+	var access *accessRefusal
+	var hidden *notShownRefusal
+	switch {
+	case errors.As(err, &missing):
+		return err
+	case errors.As(err, &access) && access.RefusalError.Reason == signedOutReason:
+		return err
+	case errors.As(err, &access), errors.As(err, &hidden):
+		return &RefusalError{Reason: everyNotShown, Remedy: scopeRemedy}
+	}
+	return refuse("GitHub reports no such advisory to this account for every advisory the store holds, and the listing that tells "+
+		"a token without the advisory scope from advisories GitHub no longer shows could not be read; nothing was recorded",
+		"run it again; if it persists, settle what `gh api` reports for the repository's security advisories")
 }
 
 // advisoryNotShown is the reason a held advisory is left unread when
@@ -127,9 +162,10 @@ func readHeld(s Store, st *State, skip map[string]bool, scopeProven bool, now ti
 const advisoryNotShown = "GitHub reports no such advisory to this account (it may be deleted, or this account may not see it)"
 
 // everyNotShown is the refusal of a run in which GitHub answered the read of
-// every held advisory with a bare 404 or 403, and read none.
+// every held advisory with a bare 404 or 403, and refused the advisory
+// listing too.
 const everyNotShown = "GitHub reports no such advisory to this account for every advisory the store holds, " +
-	"which is what a token without the advisory scope meets; nothing was recorded: " + scopeRead
+	"and refuses the repository's advisory listing, which is what a token without the advisory scope meets; nothing was recorded: " + scopeRead
 
 // endsPrivateTrack reports whether the store's verdict (nil when
 // untriaged) already ends the advisory's private track, so a close GitHub

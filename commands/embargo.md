@@ -245,10 +245,15 @@ advisory found so is left out of the plan; `unread` lists each left as the
 store holds it, with the reason; a 404 or 403 on one advisory's read leaves
 that one unread and the plan goes on. A candidate GitHub cannot say is also
 left out, with that reason. A missing `gh`, a `gh` signed in to no account or
-holding a token GitHub rejects, a refusal whose words name the advisory scope,
-or a 404 or 403 on every advisory's read with none read, which is what a token
-without the scope meets, refuses the plan whole, recording nothing. Neither
-list is bound into the digest.
+holding a token GitHub rejects, or a refusal whose words name the advisory
+scope, refuses the plan whole, recording nothing. When every advisory's read
+meets a 404 or 403, a token without the scope would look the same, so the
+plan asks GitHub once for the repository's advisory listing: if it answers,
+the scope is proven, those advisories are unread, and the plan goes on (a
+store whose one advisory was deleted on GitHub still plans); if GitHub
+refuses it, the plan refuses whole with the scope remedy; if it fails
+otherwise, the plan refuses whole and asks for a re-run. Neither list is
+bound into the digest.
 
 `restores` names each restore the store's state owes: every advisory recorded
 published whose private record is resolved in the store, and passes the same

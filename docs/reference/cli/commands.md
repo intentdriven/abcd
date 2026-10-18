@@ -1499,11 +1499,12 @@ neither published nor closed, as intake does: it records each published one,
 and each closed one whose verdict ends its private track, at GitHub's own
 time, lists each it recorded as ended, and lists each it could not tell, or
 found closed while the store holds it otherwise, as unread, left under
-embargo; a 404 or 403 on one advisory's read leaves that one unread. A missing
-gh, a gh signed in to no account or holding a token GitHub rejects, a refusal
-naming the advisory scope, or a 404 or 403 on every advisory's read with none
-read, which is what a token without the scope meets, refuses the plan with
-nothing recorded.
+embargo; a 404 or 403 on an advisory's read leaves it unread. When every read
+meets one, the plan asks once for the repository's advisory listing: if it
+answers, the scope is proven and the plan goes on; if GitHub refuses it, or
+it fails otherwise, the plan refuses. A missing gh, a gh signed in to no
+account or holding a token GitHub rejects, or a refusal naming the advisory
+scope, refuses the plan with nothing recorded.
 
 With --approve <digest> of exactly the plan shown it publishes one advisory as
 a canary and reads it back, then the rest the same way, stopping at the first
