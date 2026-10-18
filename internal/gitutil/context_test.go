@@ -38,6 +38,10 @@ func hangingGit(t *testing.T) (pidFile string) {
 // context's own error rather than an empty answer, and the git it started is
 // gone — killed, not abandoned to finish on its own.
 func TestRootCommitContextKillsGitAtTheDeadline(t *testing.T) {
+	// The partial-clone guard asks the real git for its version once per
+	// process; asked here first, so the hanging git below is only the
+	// root-commit lookup and not the version probe the guard makes before it.
+	gitutil.GitAtLeast(2, 0)
 	pidFile := hangingGit(t)
 	// Repository-shaped, so the lookup asks git: a directory with no .git
 	// entry is answered without it.

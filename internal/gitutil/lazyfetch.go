@@ -70,15 +70,23 @@ func (v *versionCache) honoursNoLazyFetch() (bool, string) {
 }
 
 // atLeast reports whether the git on PATH is at least major.minor, and the
-// version line it read, probing once per process. A probe that fails, or a
-// line that does not parse, is below every floor.
+// version line it read, probing until one probe runs and then never again in
+// the process. A probe that fails, or a line that does not parse, is below
+// every floor. A failed probe is not kept: git that could not run once on a
+// loaded machine would otherwise be read as a git too old for the rest of
+// the process, refusing every object read in a partial clone
+// (iss-2610051434156079). A line that does not parse is git's own answer, and
+// is kept.
 func (v *versionCache) atLeast(major, minor int) (bool, string) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	if !v.done {
 		raw, err := v.src()
+		if err != nil {
+			return false, strings.TrimSpace(raw)
+		}
 		v.raw = strings.TrimSpace(raw)
-		v.ok = err == nil
+		v.ok = true
 		v.done = true
 	}
 	return v.ok && versionAtLeast(v.raw, major, minor), v.raw

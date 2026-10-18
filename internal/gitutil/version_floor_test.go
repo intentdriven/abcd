@@ -32,3 +32,27 @@ func TestGitAtLeastNamesTheVersionInDigitsAlone(t *testing.T) {
 		}
 	}
 }
+
+// TestAFailedVersionProbeIsAskedAgain: a git that could not run once (a fork
+// refused on a loaded machine) is not kept as a git below every floor for the
+// rest of the process; the next question probes again (iss-2610051434156079).
+func TestAFailedVersionProbeIsAskedAgain(t *testing.T) {
+	calls := 0
+	restore := gitutil.SwapGitVersionForTest(func() (string, error) {
+		calls++
+		if calls == 1 {
+			return "", errors.New("fork/exec git: resource temporarily unavailable")
+		}
+		return "git version 2.52.0", nil
+	})
+	defer restore()
+	if ok, _ := gitutil.GitAtLeast(2, 44); ok {
+		t.Fatal("a failed probe read as a git at the floor")
+	}
+	if ok, v := gitutil.GitAtLeast(2, 44); !ok || v != "2.52" {
+		t.Fatalf("the probe after a failure = %v %q; want it asked again and at the floor", ok, v)
+	}
+	if ok, _ := gitutil.GitAtLeast(2, 44); !ok || calls != 2 {
+		t.Fatalf("a probe that ran was asked again (%d calls); want it kept", calls)
+	}
+}
