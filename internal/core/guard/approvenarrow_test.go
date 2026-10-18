@@ -110,15 +110,21 @@ func TestApproveJudgesAGlobRemovalsDirectoryThroughSymlinks(t *testing.T) {
 		t.Fatal(err)
 	}
 	unfixed := refusedAs(unfixedPathEntryID)
+	// A glob whose directory reaches a directory directly in the home through
+	// a link is refused either way: as a critical removal where the link's
+	// target is read in the home's own spelling (Linux), or as a path the
+	// line does not fix where the temporary directory's own link hides that
+	// (macOS's /var).
+	outsideGlob := refusedAs(unfixedPathEntryID, criticalRemovalEntryID)
 	r.run(t, []approveCase{
 		{`rm -rf build/*`, nil},
 		{`rm -rf inlink/*`, nil},
 		{`rm -f build/*.o inlink/*.o`, nil},
 		{`cd build && rm -f *.o`, nil},
 		{`rm -rf build/* && touch done`, nil},
-		{`rm -rf linkd/*`, unfixed},
-		{`rm -f linkd/*.md`, unfixed},
-		{`cd linkd && rm -f *.md`, unfixed},
+		{`rm -rf linkd/*`, outsideGlob},
+		{`rm -f linkd/*.md`, outsideGlob},
+		{`cd linkd && rm -f *.md`, outsideGlob},
 		{`mkdir fresh && ln -s ~/Library fresh/l && rm -rf fresh/l/*`, unfixed},
 		{`ln -s ~/Library l2 && rm -rf l2/*`, unfixed},
 		{`ln -s ~/Library l2; rm -rf l2/*`, unfixed},

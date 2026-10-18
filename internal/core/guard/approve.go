@@ -406,9 +406,12 @@ func criticalRemoval(s segment, st *shellState, f approveFacts) (target string, 
 	for _, a := range commandSites(s) {
 		var ops []int
 		critical := f.criticalDir
+		// rm, rmdir and mv act on the link an operand names, not on what it
+		// reaches, unless the operand ends in a slash.
+		ownLink := false
 		switch b := filepath.Base(s.tokens[a.idx]); b {
 		case "rm", "rmdir":
-			ops = operandsFrom(s, a.idx+1, nil)
+			ops, ownLink = operandsFrom(s, a.idx+1, nil), true
 		case "find":
 			ops, critical = findDeletes(s, a.idx+1), f.homeOrAbove
 		case "mv":
@@ -416,6 +419,7 @@ func criticalRemoval(s segment, st *shellState, f approveFacts) (target string, 
 			if !flagGiven(s, a.idx+1, "-t", "--target-directory") && len(ops) > 0 {
 				ops = ops[:len(ops)-1] // the destination stays
 			}
+			ownLink = true
 		case "rsync":
 			if !flagGiven(s, a.idx+1, "--del") && !flagPrefixGiven(s, a.idx+1, "--delete") {
 				continue
@@ -435,7 +439,7 @@ func criticalRemoval(s segment, st *shellState, f approveFacts) (target string, 
 		}
 		for _, j := range ops {
 			op := s.tokens[j]
-			crit, unplacedName := criticalTarget(op, s.globAt(j), st, f, critical)
+			crit, unplacedName := criticalTarget(op, s.globAt(j), st, f, critical, ownLink && !strings.HasSuffix(op, "/"))
 			if crit || unplacedName {
 				return strings.NewReplacer(string(unknownMark), "$…", string(varMark), "$…").Replace(op), !crit, true
 			}
@@ -559,7 +563,7 @@ func findStarts(s segment, from int) []int {
 // path; a relative one is read in the directory st fixes, and where st leaves
 // that directory unknown it is reported unplaced instead; a glob is judged by
 // the directory it expands in.
-func criticalTarget(op string, globbed bool, st *shellState, f approveFacts, critical func(string) bool) (crit, unplaced bool) {
+func criticalTarget(op string, globbed bool, st *shellState, f approveFacts, critical func(string) bool, ownLink bool) (crit, unplaced bool) {
 	if strings.ContainsRune(op, unknownMark) || strings.ContainsRune(op, varMark) {
 		return true, false
 	}
@@ -592,7 +596,13 @@ func criticalTarget(op string, globbed bool, st *shellState, f approveFacts, cri
 		}
 	}
 	// As written and with its existing directories resolved: the checkouts
-	// git lists are in their resolved spelling.
+	// git lists are in their resolved spelling. A command that acts on the
+	// link itself (ownLink) is judged by the link: only the directories above
+	// its last part are resolved, so removing a link that reaches a critical
+	// path is not removing that path.
+	if ownLink {
+		return critical(p) || critical(filepath.Join(fsutil.RealExistingPath(filepath.Dir(p)), filepath.Base(p))), false
+	}
 	return critical(p) || critical(fsutil.RealExistingPath(p)), false
 }
 
