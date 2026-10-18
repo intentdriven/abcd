@@ -345,14 +345,20 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 			"vMAJOR.MINOR.PATCH tag): for each advisory judged a vulnerability and not yet\n" +
 			"published, its record resolved in that release, its fix commit, the first\n" +
 			"release tag holding the fix, the patched version that gives, and the affected\n" +
-			"range in GitHub's form. An advisory whose record is not resolved there, whose\n" +
-			"fix is in no release tag, whose package is not set on GitHub, or whose text\n" +
-			"carries a secret, a private name or another advisory still under embargo is\n" +
-			"left out, saying why. Without --approve nothing but reads is sent.\n\n" +
+			"range in GitHub's form. The security rule keeps a security record out of every\n" +
+			"committed tree until its advisory is published, so when the release carries no\n" +
+			"public record the evidence is the advisory's private record, resolved in the\n" +
+			"embargo store's own ledger with the full id of its fix commit; nothing else\n" +
+			"the store holds is taken. An advisory resolved in neither, whose fix is in no\n" +
+			"release tag, whose package is not set on GitHub, or whose text carries a\n" +
+			"secret, a private name or another advisory still under embargo is left out,\n" +
+			"saying why. Without --approve nothing but reads is sent.\n\n" +
 			"With --approve <digest> of exactly the plan shown it publishes one advisory as\n" +
 			"a canary and reads it back, then the rest the same way, stopping at the first\n" +
-			"mismatch, and confirms none is left in draft. A host passes --approve only\n" +
-			"after the person, in that session, has seen the plan and said yes to it.",
+			"mismatch, and confirms none is left in draft. For each advisory published on\n" +
+			"the store's evidence it prints the command that copies its resolved record\n" +
+			"into the public ledger. A host passes --approve only after the person, in\n" +
+			"that session, has seen the plan and said yes to it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const verb = "abcd embargo publish"

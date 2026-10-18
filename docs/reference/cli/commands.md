@@ -1466,15 +1466,21 @@ Show the publication plan for the release tag (--release, default the highest
 vMAJOR.MINOR.PATCH tag): for each advisory judged a vulnerability and not yet
 published, its record resolved in that release, its fix commit, the first
 release tag holding the fix, the patched version that gives, and the affected
-range in GitHub's form. An advisory whose record is not resolved there, whose
-fix is in no release tag, whose package is not set on GitHub, or whose text
-carries a secret, a private name or another advisory still under embargo is
-left out, saying why. Without --approve nothing but reads is sent.
+range in GitHub's form. The security rule keeps a security record out of every
+committed tree until its advisory is published, so when the release carries no
+public record the evidence is the advisory's private record, resolved in the
+embargo store's own ledger with the full id of its fix commit; nothing else
+the store holds is taken. An advisory resolved in neither, whose fix is in no
+release tag, whose package is not set on GitHub, or whose text carries a
+secret, a private name or another advisory still under embargo is left out,
+saying why. Without --approve nothing but reads is sent.
 
 With --approve <digest> of exactly the plan shown it publishes one advisory as
 a canary and reads it back, then the rest the same way, stopping at the first
-mismatch, and confirms none is left in draft. A host passes --approve only
-after the person, in that session, has seen the plan and said yes to it.
+mismatch, and confirms none is left in draft. For each advisory published on
+the store's evidence it prints the command that copies its resolved record
+into the public ledger. A host passes --approve only after the person, in
+that session, has seen the plan and said yes to it.
 
 **Flags:**
 
