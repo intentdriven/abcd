@@ -1012,6 +1012,227 @@ for review; none changes a test a step names.
      after the change on the same checkout, as the release lesson on host
      fixes requires.
 
+## Live captures
+
+Run on 2026-10-18, 13:44 to 14:02 BST, with Claude Code 2.1.302
+(`claude-opus-5-5`), against the branch at f403910ac. API spend for all the
+runs together: about 1.70 USD.
+
+**The harness.** Everything sits in one scratch folder, `<scratch>`, outside
+every working tree:
+
+- `<scratch>/plugin` is `git archive f403910ac`. Its binary rung `abcd` is a
+  wrapper that runs `<scratch>/abcd-stall`, which is `go build ./cmd/abcd` at
+  f403910ac, with `HOME=<scratch>/home`, so the away store and every other
+  file of abcd's lands there. The before capture uses `<scratch>/plugin-before`
+  and `<scratch>/abcd-before`, the same build at the branch's merge base
+  646f2fb04.
+- `<scratch>/repo` is the lab checkout. It holds `CLAUDE.md` with abcd's
+  marker block, `.abcd/config.json` and a gitignored local tier. Its bare
+  origin is `<scratch>/origin.git`. `feat/x` was made in this checkout with
+  `git checkout -b`, so its HEAD reflog holds it, then pushed once, then given
+  a second commit by `user.email` that was not pushed. The checkout then went
+  back to `main`.
+- `<scratch>/pathbin` comes first on PATH. It holds a stub `gh` that logs
+  every call and answers `pr list` with `[]`, so no real forge is touched. It
+  also holds the same `abcd` wrapper, for the session's own `abcd mode queue`.
+- `claude -p` runs with `--plugin-dir`, `--setting-sources project,local`,
+  `--output-format stream-json --verbose --include-hook-events`,
+  `--no-session-persistence`, `--permission-prompts none`, a narrow
+  `--allowedTools` (never `git push`, so no capture shows a push clearing an
+  item) and `--max-budget-usd 3` (`<scratch>/run-session.sh`). The runs that
+  need several prompts in one session, or `/compact`, use stream-json input
+  through `<scratch>/drive.py`, which sends each prompt only after the turn
+  before it has ended.
+- Transcripts are `<scratch>/transcripts/<n>.jsonl`, with `.stderr` beside
+  each, and `<scratch>/summarise.py` turns each into `<n>.summary.txt`.
+  Nothing under the account's own Claude configuration was edited.
+
+The person's `!` command and a relayed `!` are not checked here. Those checks
+moved to the checklist draft with the guard entries ("Trim after round 2").
+
+**0. Before the change** (`0-before`). The merge-base plugin, the same lab and
+the same owed `feat/x`, with the prompt "Say hello and stop." There is no Stop
+hook: the session answers "Hello!" and the turn ends (`turns=1`). This is the
+stall.
+
+**1. Present, no away record** (`1-present`). The prompt is "Say hello and
+stop." SessionStart and the prompt hook add nothing. The Stop hook allows the
+stop with `{"systemMessage":"abcd: stopped with work owed (1 item); next:
+branch feat/x has commits not pushed …"}`, and the host shows it as "Stop
+says: …". The stub `gh` was never called. Verdict: as designed.
+
+**2. Away, no standing instruction to push** (`2-away`). The record was set
+with `abcd mode autonomous --until 15:45` (two hours ahead), then the same
+prompt was sent.
+
+- SessionStart:startup returns the `## AWAY` block, with "grants no rights",
+  the person-only list and "Run `abcd mode back` only on the person's word in
+  this session".
+- The prompt hook's `systemMessage` is "abcd: away until 2026-10-18 15:45 BST,
+  set by Alice from repo; 0 steps queued, 0 items handed back. `abcd mode
+  back` ends it.", and the host shows it to the person.
+- The first Stop is blocked: `{"decision":"block","reason":"abcd: the person
+  is away and work is owed (1 item). Next: branch feat/x has commits not
+  pushed … Do the local work, then push if your standing instruction allows;
+  queue only if the person has said pushes wait. A push you may not send stays
+  owed: queue it with \`abcd mode queue …\`"}`.
+- Claude goes on. It says the away mode is no standing instruction and runs
+  `abcd mode queue "Push branch feat/x …"`.
+- With no `--hold-pushes`, the queued push hands nothing back. The next stop
+  is blocked again, adding "If it cannot move, take another or schedule a look
+  before 14:15 BST", which is the 30-minute ceiling.
+- Every later reply has no tool call, and each one is blocked rather than
+  allowed. After ten blocks the host prints "A hook blocked the turn from
+  ending 9 consecutive times — overriding and ending turn."
+- The stub `gh` logged ten `pr list … --author @me` calls, one per check.
+- The away record holds the queued step and one stop, `work-owed`,
+  `possibly_forced_by_cap: true`, with count 2. The two are blocks 9 and 10:
+  abcd's count ran 1 to 10, since `stop_hook_active` stayed true across the
+  tool call.
+
+Verdict: as designed. One block, a tool call, then nine blocks with no tool
+call before the host overrode the stop. So **the host's count resets on a
+tool call and overrides at the ninth block since**, which is the eighth
+continuation. abcd's count does not see that reset, so it records the cap one
+block early as well as at the real one. That errs toward recording, as the
+spec says.
+
+**3. A question while away.** Print mode does not offer the host's question
+tool. `AskUserQuestion` is missing from the session's tool list even with
+`--tools AskUserQuestion,Bash,Read`, and missing again in stream-json input
+mode. **The live refusal by the host was therefore not captured.**
+
+- *Live* (`3-question`): asked to use AskUserQuestion, the session cannot. It
+  follows the away block instead: it decides the choice itself, intends to
+  record it with `abcd decide`, queues the push, and is blocked to the cap
+  again. That is ten more `gh` calls for ten checks.
+- *Hook level* (`3b-question-hook`): an AskUserQuestion PreToolUse payload was
+  sent through `sh <scratch>/plugin/hooks/pre-tool-use.sh`, the command the
+  host runs. It returns `permissionDecision: "deny"` with "Blocked by the abcd
+  guard (question tool): the person is away (abcd mode autonomous), so no
+  question is put to them, whatever its chip and whoever wrote it. Route the
+  question by the act it asks about …", followed by the full person-only list
+  and the route to `abcd decide`.
+
+Verdict: the reroute text is right at the hook. The host side remains to
+capture in an interactive session.
+
+**4. Compaction re-injection** (`4-compact`). Stream-json input sent "Say
+hello and stop." and then `/compact`.
+
+- The first stop is blocked, and Claude queues the push.
+- The second stop is blocked and names the deadline "before 14:19 BST".
+  Claude then calls CronCreate with a one-shot `13 14 18 10 *`, and the host
+  answers "Next run: Oct 18 2:13pm".
+- The third stop is allowed silently. The session state reads `waiting`,
+  `next_look` `2026-10-18T14:13:00+01:00` (the host's own next run) and
+  `wakes: 1`.
+- `/compact` (trigger `manual`) runs PreCompact, and then
+  **SessionStart:compact returns the `## AWAY` block again**.
+
+Verdict: as designed, captured live.
+
+**5. Cron wakes, compared with the host** (`5-cron`). Three prompts went to one
+session, each sent after the turn before it ended.
+
+- *Turn 1.* CronCreate `0 7 * * *`. The host's CronList row is "Every day at
+  7:00 AM (recurring) [session-only], next run Oct 19 7:30am". abcd computes
+  the same latest fire time: the 07:00 match plus the host's lateness, at most
+  30 minutes. The first stop is blocked (the first block of the session). The
+  second, with only the morning cron, is **refused as a wake**: it is blocked
+  with "schedule a look before 14:21 BST". Claude then adds `*/10 * * * *`;
+  the host lists "next run Oct 18 2:01pm" (13:51 now). abcd's bound is the
+  14:00 match plus half the gap, 14:05, before the 14:21 deadline, and the
+  host's 14:01 falls inside it. That stop is **allowed** (wake 1).
+- *Turn 2*, with the owed set unchanged: allowed (wake 2).
+- *Turn 3*: blocked with "The set has not moved over two wakes, so a wake no
+  longer releases this stop: move the item, or take another." Then nine
+  one-word replies with no tool call. The host overrides at the ninth block,
+  and abcd's count reaches nine at that same block and records the stop.
+- 13 `gh` calls for 13 checks.
+
+A first attempt sent all three prompts at once. The host merged them into
+one turn, which gave nine blocks in a row with no tool call and the host's
+override at the ninth. Its transcript was overwritten by the rerun, and its
+one recorded stop stays in the record's count.
+
+Verdict: as designed. The `*/10` wake released twice and the third stop was
+blocked, and abcd's fire times agree with what the host lists.
+
+**6. `--hold-pushes`, a stacked branch, the hand-back** (`6-hold-stacked`).
+
+- *Setup.* `abcd mode autonomous --until 14:01 --hold-pushes` (eight minutes
+  ahead; the queue and the stop were kept). A hand-made receipt file named
+  `feat/x`'s head went into `.abcd/.work.local/preflight-receipts/`.
+- *Prompt 1.* The session runs `git worktree add -b feat/stacked
+  <scratch>/wt-stacked feat/x`. The pre-tool hook records the branch.
+- *First stop.* `feat/x` is already handed back: an earlier queued step names
+  it, its head contains `origin/main` and has a receipt. Only the new branch
+  is owed: "work is owed (1 item). Next: branch feat/stacked has commits not
+  pushed … With --hold-pushes the person has said pushes wait: finish the
+  local work …, then queue the push naming the branch, as \`abcd mode queue
+  "push feat/stacked"\`."
+- The stacked condition itself is not owed: the receipt and an equal base tip
+  meet the clearing rule. So the item shown is the stacked branch's unpushed
+  one.
+- Claude queues "push feat/stacked", and the next stop hands that back too.
+  Nothing is owed, so row 7 blocks with "take the next ready item first …
+  schedule a look before 14:54 BST", which is the one-hour ceiling.
+- Claude creates a one-shot cron for 14:37 (host: "Next run: Oct 18 2:37pm"),
+  and the stop is allowed.
+- *Prompt 2.* The person's line reads "pushes wait for you; 4 steps queued,
+  **2 items handed back**". The stop is allowed silently.
+
+Verdict: as designed.
+
+**7. The window lapsed** (`7-lapsed`, after 14:01).
+
+- The prompt hook shows "abcd: the away window ended at 2026-10-18 14:01 BST
+  with 4 steps queued and 2 stops recorded, not yet read. `abcd mode back`
+  prints them and closes it."
+- The stop is checked as present: allowed with "stopped with work owed (2
+  items); next: branch feat/stacked has commits not pushed …".
+- No `gh` call.
+
+**8. StopFailure** (`8-stopfailure-hook`, hook level). Triggering a real API
+error was not possible cheaply, so a payload `{"hook_event_name":
+"StopFailure","error":"rate_limit",…}` was sent through `sh
+<scratch>/plugin/hooks/stop-failure.sh` while away. It exits 0 with no output,
+and the record gains `{"kind":"api-error","error_type":"rate_limit"}`. **A
+live StopFailure was not captured**, so the host's field name is not proven
+here.
+
+**9. `abcd mode back`** (`9-mode-back`, run by hand). It prints one line per
+queued step (four), per handed-back item ("handed back: feat/x at
+512f75b1df8a", the same for feat/stacked), and per recorded stop ("stopped
+with work owed, possibly forced by the cap: … (6 times, first … 13:46 BST,
+last … 13:52 BST)", "stopped on an API error (rate_limit) …"). It ends with
+"the away window ended at 2026-10-18 14:01 BST; closed by Alice from repo".
+
+**Not captured, and why.**
+
+- The behind pull request: the stub forge answers `[]`, and a real lab base
+  that requires up-to-date branches was out of reach here.
+- The host's question refusal live: print mode has no question tool (above).
+- A live StopFailure.
+- A push clearing an item: pushes were withheld on purpose.
+
+**Seen in passing, none of them blocking.**
+
+- The item's text repeats itself: "branch feat/x has commits not pushed
+  (feat/x has commits not pushed)", in the reason, in the person's message
+  and in the recorded stop.
+- The host marks the first block of each turn with a notification "Stop hook
+  error occurred · ctrl+o to see", although the hook exited 0 with outcome
+  `success` and empty stderr. That wording is the host's, but a person sees
+  it.
+- The stops' count overstates the forced stops: 6 recorded against 4 the host
+  forced, from the early record when a tool call reset the host's count.
+- Bounded by the cap, the blocked session repeats itself. In `3-question` it
+  called the hook "faulty" for keeping a queued push owed, which is the
+  designed behaviour without `--hold-pushes`.
+
 ## Size
 
 Re-estimated after review round 3 at 7.5 working days of work, up from the
