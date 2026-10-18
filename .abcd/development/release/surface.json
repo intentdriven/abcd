@@ -1780,6 +1780,16 @@
       "flags": []
     },
     {
+      "path": "abcd hook stop",
+      "hidden": false,
+      "flags": []
+    },
+    {
+      "path": "abcd hook stop-failure",
+      "hidden": false,
+      "flags": []
+    },
+    {
       "path": "abcd hook subagent-stop",
       "hidden": false,
       "flags": []

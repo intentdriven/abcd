@@ -152,6 +152,7 @@ func applyHookPlaneFailOpen(root *cobra.Command) {
 		{"hook"}, {"hook", "prompt-router"}, {"hook", "prompt-router-reset"},
 		{"hook", "session-start"}, {"hook", "session-end"},
 		{"hook", "subagent-stop"}, {"hook", "question-answered"},
+		{"hook", "stop"}, {"hook", "stop-failure"},
 	} {
 		if cmd := findByPath(root, path); cmd != nil {
 			cmd.SetFlagErrorFunc(failOpenFlagError)
@@ -2287,6 +2288,10 @@ envelope carries it as system_message.`,
 	// Its body lives in hook_subagent.go, with the attribution ladder and the
 	// store resolution it needs.
 	hookCmd.AddCommand(newSubagentStopCommand())
+
+	// stop and stop-failure — Stop and StopFailure: the away mode's stop
+	// check (spc-2610180914469489 step 5). Their bodies live in hook_stop.go.
+	hookCmd.AddCommand(newHookStopCommand(), newHookStopFailureCommand())
 
 	return hookCmd
 }

@@ -659,7 +659,7 @@ carries the prompt-router entries it expects. Neither install nor uninstall ever
 mutates it: the manifest is plugin-static. A missing or malformed manifest
 surfaces as a non-resolvable diagnostic.
 
-The shipped manifest wires seven event types, and every event command is a
+The shipped manifest wires nine event types, and every event command is a
 resolving shim rather than a plain binary call. Five of them self-provision.
 `UserPromptSubmit`, `PreToolUse`, `PostToolUse` and `PreCompact` each attempt
 `hooks/bootstrap.sh` only when the plugin-root binary is missing, recording the
@@ -668,8 +668,10 @@ window. `UserPromptSubmit`, the hook that runs on every message, declares a
 120-second `timeout`, the time a salvage on a slow link has before the host
 cancels it; `PreToolUse`, `PostToolUse` and `PreCompact` declare none and take
 the host's ten-minute default, so a slow first download finishes there. `SessionStart`
-declares 240 seconds, the script's worst case with room to spare, and
-`SessionEnd` and `SubagentStop` declare none. Every event that runs the script,
+declares 240 seconds, the script's worst case with room to spare,
+`SessionEnd`, `SubagentStop` and `StopFailure` declare none, and `Stop` declares
+30 seconds, room for the away mode's stop check to make its one forge listing
+under its own ten-second deadline and its git reads. Every event that runs the script,
 `SessionStart` included, names a `statusMessage` the host shows as its spinner
 text while the hook runs, so the wait is never a silent stall: the salvage
 itself sends the script's output nowhere. The message states no duration,
@@ -689,6 +691,11 @@ capture (iss-2608210934566223). Each resolves the plugin root, then `PATH`, then
 says in one line that the transcript was not captured. `SubagentStop` never
 returns a non-zero code of its own beyond that refusal, because exit 2 is the
 host's BLOCKING status on that event and would stop the sub-agent finishing.
+`Stop` and `StopFailure`, which carry the away mode's stop check
+(spc-2610180914469489), download nothing either: both fire at a turn's end, where
+a fetch would hold the session, and each resolves the plugin root, then `PATH`,
+then says in one line that the stop check did not run, with exit 1, never the
+`Stop` event's blocking 2.
 
 **The `PATH` rung is owned-only** (GHSA-gx3m-3224-qqcv, CWE-426). It accepts only
 an absolute resolution out of a directory that is neither under the shim's
