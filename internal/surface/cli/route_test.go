@@ -161,7 +161,7 @@ func TestNothingAcceptedReceiptIsHostDecidesOnTheHarness(t *testing.T) {
 	var rc oracle.ReceiptRoute
 	member(t, []byte(stdout), "route", &rc)
 	want := oracle.ReceiptRoute{Agent: "principle-distiller", TierAsked: oracle.HostDecides,
-		ConnectionUsed: oracle.Harness, SettingsSent: oracle.Settings{}, Unpinned: oracle.HandOffUnpinned("")}
+		ConnectionUsed: oracle.Harness, SettingsSent: oracle.Settings{}, Unpinned: oracle.HandOffUnpinnedForTest("")}
 	if !receiptEqual(rc, want) {
 		t.Fatalf("route = %+v, want %+v", rc, want)
 	}
@@ -224,7 +224,7 @@ func TestDisembarkIngestsCarryTheReceipt(t *testing.T) {
 			var rc oracle.ReceiptRoute
 			member(t, []byte(stdout), "route", &rc)
 			want := oracle.ReceiptRoute{Agent: v.agent, TierAsked: oracle.Local, ConnectionUsed: oracle.Harness, // abcd-lint:allow
-				FallbackReason: rc.FallbackReason, SettingsSent: oracle.Settings{}, Unpinned: oracle.HandOffUnpinned("")}
+				FallbackReason: rc.FallbackReason, SettingsSent: oracle.Settings{}, Unpinned: oracle.HandOffUnpinnedForTest("")}
 			if rc.FallbackReason == "" || !receiptEqual(rc, want) {
 				t.Fatalf("route = %+v", rc)
 			}

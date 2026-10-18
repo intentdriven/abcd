@@ -47,7 +47,7 @@ func TestReadingIngestCarriesTheReceipt(t *testing.T) {
 	member(t, []byte(stdout), "route", &rc)
 	want := oracle.ReceiptRoute{Agent: "cold-reading-detection", TierAsked: oracle.Economy, ConnectionUsed: oracle.Harness,
 		FallbackReason: rc.FallbackReason, Override: "cold-reading-detection=economy", SettingsSent: oracle.Settings{},
-		ModelReported: "a-model", Unpinned: oracle.HandOffUnpinned("a-model")}
+		ModelReported: "a-model", Unpinned: oracle.HandOffUnpinnedForTest("a-model")}
 	if rc.FallbackReason == "" || !receiptEqual(rc, want) {
 		t.Fatalf("route = %+v", rc)
 	}

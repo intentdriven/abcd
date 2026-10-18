@@ -105,16 +105,20 @@ func (r Route) Receipt(model string) ReceiptRoute {
 		SettingsSent: sent, ModelReported: model,
 	}
 	if !r.OnProvider() {
-		rr.Unpinned = HandOffUnpinned(model)
+		rr.Unpinned = handOffUnpinned(model)
 	}
 	return rr
 }
 
-// HandOffUnpinned is the harness leg's list: the host chooses the model and
+// HandOffUnpinnedForTest is handOffUnpinned, for the surface tests that
+// build the receipt a harness leg writes.
+func HandOffUnpinnedForTest(model string) []Unpinned { return handOffUnpinned(model) }
+
+// handOffUnpinned is the harness leg's list: the host chooses the model and
 // its settings and renders the prompt, and reports none of it, so every asked
 // field is not configured by abcd or not reported to it, and every served
 // field but the payload's own model is not reported.
-func HandOffUnpinned(model string) []Unpinned {
+func handOffUnpinned(model string) []Unpinned {
 	var un Unpin
 	for _, f := range AskedFields {
 		switch f {
