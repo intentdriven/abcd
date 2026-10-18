@@ -199,6 +199,15 @@ func TestHookSubagentStopMarksAStageThatStillFails(t *testing.T) {
 	if out := string(runCLI(t, "history", "staged")); !strings.Contains(out, "1 transcript(s) were read but could not be staged") {
 		t.Errorf("history staged does not report the missed stage:\n%s", out)
 	}
+	// Under --json the array stays an array, and the note reaches the agent
+	// reading it on stderr.
+	jsonOut, jsonErr, _ := runHookAllowingFailure("", "history", "staged", "--json")
+	if !strings.HasPrefix(strings.TrimSpace(jsonOut), "[") || strings.Contains(jsonOut, "NOTE") {
+		t.Errorf("history staged --json stdout is not the plain array:\n%s", jsonOut)
+	}
+	if !strings.Contains(jsonErr, "1 transcript(s) were read but could not be staged") {
+		t.Errorf("history staged --json does not report the missed stage on stderr:\n%s", jsonErr)
+	}
 }
 
 // notStaged lists the stderr of every hook in a burst that did not report

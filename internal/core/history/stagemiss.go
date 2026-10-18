@@ -69,7 +69,17 @@ func NoteStageMiss(repoRoot, rootSHA, who, reason string) error {
 	return fsutil.WithFileLock(path+".lock", stageMissLockTimeout, func() error {
 		now := time.Now().UTC()
 		note := StageMissNote{Schema: 1, FirstSeen: now}
-		if prior, ok, err := readStageMiss(path); err == nil && ok {
+		prior, ok, rerr := readStageMiss(path)
+		switch {
+		case rerr != nil:
+			// A marker that cannot be read is replaced, and the reason says
+			// earlier misses were counted there, so the count restarting is
+			// never read as the first miss.
+			reason = "an earlier, unreadable stage-miss marker was replaced, so earlier misses are not counted here; " + reason
+			if len(reason) > stageMissReasonMax {
+				reason = reason[:stageMissReasonMax]
+			}
+		case ok:
 			note.FirstSeen, note.Count = prior.FirstSeen, prior.Count
 		}
 		note.LastSeen, note.LastWho, note.LastReason = now, who, reason

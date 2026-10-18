@@ -374,9 +374,10 @@ var ErrNoRootAnswer = errors.New("git gave no root commit for a repository")
 // histories); the first `rev-list` reports is the canonical one, the same
 // choice the history registry and the lifeboat probe make.
 //
-// It returns ("", nil) only for the two definite answers: root names no
-// directory or no repository (nothing at or above it carries a .git entry),
-// or the repository has no commits yet. Every other failure is an error a
+// It returns ("", nil) only for the definite answers: root names no
+// directory; git exited 128 and nothing at or above root, as written or with
+// its symlinks resolved, carries a .git entry; or the repository has no
+// commits yet. Every other failure is an error a
 // caller must handle: ErrNoRootAnswer for a git that did not answer for a
 // repository-shaped directory, ErrGitTimedOut for one whose output missed the
 // runner's wait twice. A failed git call is never read as an answer, since a
@@ -399,9 +400,10 @@ func RootCommitContext(ctx context.Context, root string) (string, error) {
 	if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
 		return "", nil
 	}
-	if !RepoShaped(root) {
-		return "", nil
-	}
+	// git is always asked first: a directory reached through a symlink, or a
+	// bare repository, carries no .git entry on the path as written, and only
+	// git can say it is a repository. The shape is consulted after a failure,
+	// to tell "not a repository" from "a repository git did not answer for".
 	out, err := RunLimitedContext(ctx, root, 4096, "rev-list", "-n", "1", "--max-parents=0", "HEAD")
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", ctxErr
@@ -410,7 +412,7 @@ func RootCommitContext(ctx context.Context, root string) (string, error) {
 		if errors.Is(err, ErrGitTimedOut) {
 			return "", err
 		}
-		if emptyHistory(ctx, root, err) {
+		if notARepository(root, err) || emptyHistory(ctx, root, err) {
 			return "", nil
 		}
 		// The cause stays in the chain (%w), so a caller can still tell
@@ -422,6 +424,34 @@ func RootCommitContext(ctx context.Context, root string) (string, error) {
 		return "", nil
 	}
 	return fields[0], nil
+}
+
+// notARepository reports whether a lookup git exited 128 on failed because
+// root is in no repository: git said so itself, or neither the path as
+// written nor its resolved form has a .git entry at or above it. git exits
+// 128 for that and for a repository it will not answer for alike, so its
+// message and the shape decide; a git that did not run to an exit is never
+// "not a repository".
+func notARepository(root string, lookupErr error) bool {
+	var ee *exec.ExitError
+	if !errors.As(lookupErr, &ee) || ee.ExitCode() != 128 {
+		return false
+	}
+	// git's own answer, in the C locale gitEnv pins: a .git entry that holds
+	// no repository (an empty folder, a stale gitfile) is still not one. The
+	// match is anchored on runBoundedCmd's stderr quote, so a path naming the
+	// words cannot pass for it; a refusal ("detected dubious ownership") is
+	// not this answer and stays an error.
+	if strings.Contains(lookupErr.Error(), `(stderr: "fatal: not a git repository`) {
+		return true
+	}
+	if RepoShaped(root) {
+		return false
+	}
+	if real, err := filepath.EvalSymlinks(root); err == nil && RepoShaped(real) {
+		return false
+	}
+	return true
 }
 
 // emptyHistory reports whether a failed root-commit lookup failed because the

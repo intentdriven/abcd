@@ -4022,10 +4022,15 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				}
 				// Classification is read-only; the human report names the
 				// next step per folder kind (itd-40 AC2/AC3).
-				switch res.FolderKind {
-				case ahoy.UnmanagedRepo:
+				switch rerr := res.RepoIdentity.RootErr(); {
+				case res.RootSHA == "" && rerr != nil:
+					// git not answering is not a repository abcd does not
+					// manage: it may be registered (iss-2610051434156079).
+					fmt.Fprintf(w, "  git gave no root commit for this repository (%s), so abcd cannot tell whether it manages it; run this again.\n",
+						termsafe.Sanitize(fsutil.RedactHome(rerr.Error())))
+				case res.FolderKind == ahoy.UnmanagedRepo:
 					fmt.Fprintf(w, "  unmanaged git repo — run `/abcd:ahoy install` to adopt it.\n")
-				case ahoy.UnmanagedFolder:
+				case res.FolderKind == ahoy.UnmanagedFolder:
 					fmt.Fprintf(w, "  not a git repository — nothing to act on.\n")
 				}
 			})

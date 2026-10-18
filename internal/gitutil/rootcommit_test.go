@@ -119,3 +119,36 @@ func TestRootCommitNamesAGitThatCannotStart(t *testing.T) {
 		}
 	})
 }
+
+// TestRootCommitThroughASymlinkIsItsSHA: a directory reached through a symlink
+// into a repository's subdirectory carries no .git entry on the path as
+// written, and is still a repository; git is asked, not the path's shape.
+func TestRootCommitThroughASymlinkIsItsSHA(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("svc/api/main.txt", "x\n")
+	r.Commit("one")
+	want := r.Git("rev-list", "--max-parents=0", "HEAD")
+	link := filepath.Join(t.TempDir(), "api")
+	if err := os.Symlink(filepath.Join(r.Root(), "svc", "api"), link); err != nil {
+		t.Skipf("symlink: %v", err)
+	}
+	got, err := gitutil.RootCommit(link)
+	if got != want || err != nil {
+		t.Errorf("RootCommit through a symlink = %q, %v; want %q, nil", got, err, want)
+	}
+}
+
+// TestRootCommitOfABareRepositoryIsItsSHA: a bare repository has no .git
+// entry at all, and still has a root commit.
+func TestRootCommitOfABareRepositoryIsItsSHA(t *testing.T) {
+	r := gittest.NewRepo(t)
+	r.Write("a.txt", "a\n")
+	r.Commit("one")
+	want := r.Git("rev-list", "--max-parents=0", "HEAD")
+	bare := filepath.Join(t.TempDir(), "bare.git")
+	gittest.CloneBare(t, r.Root(), bare)
+	got, err := gitutil.RootCommit(bare)
+	if got != want || err != nil {
+		t.Errorf("RootCommit of a bare repository = %q, %v; want %q, nil", got, err, want)
+	}
+}

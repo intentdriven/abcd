@@ -1,6 +1,7 @@
 package history
 
 import (
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -58,5 +59,29 @@ func TestStageMissKeepsTheReasonOneBoundedLine(t *testing.T) {
 	}
 	if strings.ContainsAny(note.LastReason, "\r\n") || len(note.LastReason) > stageMissReasonMax {
 		t.Errorf("reason not one bounded line: %q (%d bytes)", note.LastReason, len(note.LastReason))
+	}
+}
+
+// TestStageMissSaysAReplacedMarkerHeldEarlierMisses: a marker that no longer
+// parses is replaced, and the reason says earlier misses were counted there,
+// so the restarted count is never read as the first miss.
+func TestStageMissSaysAReplacedMarkerHeldEarlierMisses(t *testing.T) {
+	repoRoot, _ := setupStore(t)
+	path, err := stageMissPath(repoRoot, testRootSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := NoteStageMiss(repoRoot, testRootSHA, "sub-agent a1", "lock held"); err != nil {
+		t.Fatal(err)
+	}
+	note, ok, err := StageMiss(repoRoot, testRootSHA)
+	if err != nil || !ok {
+		t.Fatalf("marker not readable after replacement: ok=%v err=%v", ok, err)
+	}
+	if note.Count != 1 || !strings.Contains(note.LastReason, "earlier, unreadable stage-miss marker was replaced") {
+		t.Errorf("marker = %+v; want a count of 1 that says earlier misses were lost", note)
 	}
 }

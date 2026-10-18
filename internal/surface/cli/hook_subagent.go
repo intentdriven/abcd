@@ -38,6 +38,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/history"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -267,6 +268,11 @@ func resolveSubagentStore(in hookInput) (repoRoot, rootSHA, via string, rootErr 
 // it then. A try whose answer turns definite stops the retries the same way.
 // Each retry is said on stderr.
 func retrySubagentStore(w io.Writer, in hookInput, first error) (repoRoot, rootSHA, via string) {
+	if errors.Is(first, gitutil.ErrLazyFetchFloor) {
+		// abcd's own refusal to read a partial clone's objects on an old git
+		// answers the same every time: there is nothing a retry could find.
+		return "", "", ""
+	}
 	last := first
 	for i, wait := range subagentResolveWaits {
 		time.Sleep(wait)
@@ -313,6 +319,9 @@ func stageWithRetry(w io.Writer, retries int, repoRoot, rootSHA string, meta his
 // (iss-2610051434156079).
 func retryDetect(w io.Writer, waits []time.Duration, cwd string, first ahoy.DetectionResult) (ahoy.DetectionResult, error) {
 	det := first
+	if errors.Is(det.RepoIdentity.RootErr(), gitutil.ErrLazyFetchFloor) {
+		return det, nil
+	}
 	for i, wait := range waits {
 		time.Sleep(wait)
 		next, err := ahoy.Detect(cwd)
