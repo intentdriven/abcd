@@ -108,7 +108,14 @@ stderr; every outcome exits 0. Outside a checkout abcd manages (no .abcd/
 at its root, nor at its main worktree's) it reads nothing and prints
 nothing.`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) (ret error) {
+			// A panic allows the stop: exit 2 is the host's block on this
+			// event, and a stop is never blocked on abcd's own fault.
+			defer func() {
+				if r := recover(); r != nil {
+					ret = stopAllow(cmd, "the stop check failed (%s)", termsafe.CleanProseLine(fsutil.RedactHome(fmt.Sprint(r)), 256))
+				}
+			}()
 			p, err := readStopPayload(cmd)
 			if err != nil {
 				return stopAllow(cmd, "unreadable Stop payload (%s)", termsafe.Sanitize(err.Error()))
@@ -249,7 +256,13 @@ host ignores this hook's output and it cannot continue the session. While
 the person is present, or outside a checkout abcd manages, nothing is
 written. Every outcome exits 0.`,
 		Args: cobra.NoArgs,
-		RunE: func(cmd *cobra.Command, _ []string) error {
+		RunE: func(cmd *cobra.Command, _ []string) (ret error) {
+			defer func() {
+				if r := recover(); r != nil {
+					diagnosticLine(cmd.ErrOrStderr(), "abcd stop: the API-error stop was not recorded (%s)", termsafe.CleanProseLine(fsutil.RedactHome(fmt.Sprint(r)), 256))
+					ret = nil
+				}
+			}()
 			p, err := readStopPayload(cmd)
 			if err != nil {
 				diagnosticLine(cmd.ErrOrStderr(), "abcd stop: unreadable StopFailure payload (%s); nothing recorded", termsafe.Sanitize(err.Error()))

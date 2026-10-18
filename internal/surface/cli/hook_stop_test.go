@@ -485,3 +485,27 @@ func TestAwayHooksLeaveUnmanagedRepoAlone(t *testing.T) {
 		t.Errorf("an unmanaged checkout gained a .abcd/ folder")
 	}
 }
+
+// TestHookStopPanicAllows: a panic inside the stop check allows the stop,
+// exits 0 and names it on stderr; it never reaches the host as exit 2, which
+// a Stop hook reads as a block.
+func TestHookStopPanicAllows(t *testing.T) {
+	root := awayCheckout(t)
+	setAway(t)
+	prev := stopOwedReader
+	stopOwedReader = func(context.Context, autonomy.ReadOptions) (autonomy.Owed, error) { panic("boom") }
+	t.Cleanup(func() { stopOwedReader = prev })
+	var so, se string
+	var err error
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				t.Fatalf("the panic escaped the hook: %v", r)
+			}
+		}()
+		so, se, err = runSplit(t, stopHookPayload(t, "p-1", root, false, "Done."), "hook", "stop")
+	}()
+	if err != nil || so != "" || !strings.Contains(se, "allowed") || !strings.Contains(se, "boom") {
+		t.Errorf("a panic: err %v stdout %q stderr %q", err, so, se)
+	}
+}
