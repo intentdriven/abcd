@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"strings"
 	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
@@ -137,14 +138,14 @@ func applyBranchChanges(list []CreatedBranch, changes []BranchChange, now time.T
 // RecordCreated is the created-branch recorder the guard's pre-tool hook
 // runs, before the command does, whether or not the person is away: it judges
 // each change against the repository as it stands (a created branch only when
-// no branch of that name exists yet; a checked-out one when it is a branch or
-// names nothing git can resolve) and records what passes under the copy's key
-// (claim.CopyKey, minted as a reservation verb mints it) in the away store.
-// copyRoot is the session's working copy; runDir is where the command runs,
-// whose current branch a rename with no old name renames. A checkout
-// abcd does not manage (Managed), or with no root commit, records nothing and
-// is no error. The error is a store the recorder could not write;
-// it never refuses the command.
+// no branch of that name exists yet; a checked-out one when it is a branch no
+// worktree has checked out, or names nothing git can resolve) and records
+// what passes under the copy's key (claim.CopyKey, minted as a reservation
+// verb mints it) in the away store. copyRoot is the session's working copy;
+// runDir is where the command runs, whose current branch a rename with no old
+// name renames. A checkout abcd does not manage (Managed), or with no root
+// commit, records nothing and is no error. The error is a store the recorder
+// could not write; it never refuses the command.
 func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) error {
 	if len(changes) == 0 {
 		return nil
@@ -164,6 +165,7 @@ func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) e
 		return err
 	}
 	var keep []BranchChange
+	var checkedOut map[string]bool
 	for _, c := range changes {
 		switch c.Kind {
 		case BranchCreated:
@@ -171,6 +173,15 @@ func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) e
 				keep = append(keep, c)
 			}
 		case BranchCheckedOut:
+			if checkedOut == nil {
+				checkedOut = worktreeBranches(copyRoot)
+			}
+			// git refuses to check out a branch another worktree has
+			// checked out, and the recorder runs before the command, so
+			// such a name is a peer's branch, not this session's.
+			if checkedOut[c.Name] {
+				continue
+			}
 			if branchExists(copyRoot, c.Name) || !resolves(copyRoot, c.Name) {
 				keep = append(keep, c)
 			}
@@ -193,6 +204,22 @@ func RecordCreated(copyRoot, runDir string, changes []BranchChange, o Options) e
 		return err
 	}
 	return st.RecordBranches(key, keep, o.now())
+}
+
+// worktreeBranches are the branches the repository's worktrees have checked
+// out, by short name; empty when they cannot be listed.
+func worktreeBranches(root string) map[string]bool {
+	out := map[string]bool{}
+	wts, err := gitutil.ListWorktrees(root, gitutil.MaxWorktreeListing)
+	if err != nil {
+		return out
+	}
+	for _, wt := range wts {
+		if name, ok := strings.CutPrefix(wt.Branch, "refs/heads/"); ok {
+			out[name] = true
+		}
+	}
+	return out
 }
 
 // branchExists reports whether refs/heads/name names a commit in the

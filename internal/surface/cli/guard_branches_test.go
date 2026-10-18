@@ -180,3 +180,22 @@ func TestBranchRecorderUsesSessionStartCopy(t *testing.T) {
 		t.Fatalf("with no note nothing is recorded under another copy: start copy holds %v", got)
 	}
 }
+
+// TestBranchRecorderSkipsBranchCheckedOutElsewhere: `git worktree add <path>
+// <branch>` naming a branch another worktree has checked out fails in git,
+// so the recorder, which runs before the command, records nothing for it;
+// the same command naming a branch no worktree has checked out is recorded.
+func TestBranchRecorderSkipsBranchCheckedOutElsewhere(t *testing.T) {
+	root := awayCheckout(t)
+	sib := filepath.Join(t.TempDir(), "b")
+	gitAt(t, root, "worktree", "add", "-q", "-b", "feat/sib", sib)
+	gitAt(t, root, "branch", "feat/free")
+	hookAllows(t, root, "git worktree add ../r feat/sib")
+	if got := createdBranches(t, root); slices.Contains(got, "feat/sib") {
+		t.Errorf("a branch another worktree has checked out was recorded: %v", got)
+	}
+	hookAllows(t, root, "git worktree add ../f feat/free")
+	if got := createdBranches(t, root); !slices.Contains(got, "feat/free") {
+		t.Errorf("a branch no worktree has checked out was not recorded: %v", got)
+	}
+}

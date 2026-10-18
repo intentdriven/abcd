@@ -115,8 +115,9 @@
 // (spc-2610180914469489 step 3) through RecordCreated(copyRoot, runDir,
 // changes, Options), whether or not the person is away: a BranchCreated name
 // only when no branch of that name exists yet, a BranchCheckedOut one (`git
-// worktree add <path> [<branch>]`) when it is a branch or names nothing git
-// resolves, and a BranchMoved rename carrying a record by whole name. The list
+// worktree add <path> [<branch>]`) when it is a branch no worktree has
+// checked out (git refuses that command, which runs after the recorder) or
+// names nothing git resolves, and a BranchMoved rename carrying a record by whole name. The list
 // is CreatedFile(copyKey) in the away store, keyed on the working copy's
 // reservation copy key (claim.CopyKey), written under the store's lock
 // (Store.RecordBranches) and capped at MaxCreatedBranches, the oldest
