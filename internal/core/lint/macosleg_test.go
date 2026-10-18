@@ -170,19 +170,31 @@ func TestMacOSLegRunsItsSuiteOnlyWhereItLands(t *testing.T) {
 							}
 							return
 						}
-						// The plain pass may name its slowest packages ahead of
-						// the pattern; TestPlainTestStepRunsTheWholeModule holds
-						// its set to exactly the module's.
-						plain := slices.ContainsFunc(passes, func(p string) bool {
+						// Where the race lane stands down (an inert change) the
+						// plain pass is the leg's only one and runs the whole
+						// module; TestPlainTestStepRunsTheWholeModule holds its
+						// set. Where the race lane runs, it runs every internal
+						// test, so the plain passes run only what it cannot
+						// assert (iss-2610171803053186): the packages outside
+						// internal/, and the tests that assert only without
+						// -race, by name.
+						plainWhole := slices.ContainsFunc(passes, func(p string) bool {
 							return !strings.HasPrefix(p, "go test -race ") && strings.HasSuffix(p, " "+modulePattern)
 						})
-						if !plain {
-							t.Errorf("the %s leg runs no plain `go test ... ./...` on a %s event: %q", leg.os, event, passes)
-						}
 						hasRace := slices.ContainsFunc(passes, func(p string) bool { return strings.HasPrefix(p, "go test -race ") })
-						if want := inert != "true"; hasRace != want {
-							t.Errorf("the %s leg's race pass runs=%v on a %s event with inert=%s; want %v",
-								leg.os, hasRace, event, inert, want)
+						outside := slices.Contains(passes, "go test "+outsideInternalPattern)
+						guards := slices.ContainsFunc(passes, func(p string) bool {
+							return !strings.HasPrefix(p, "go test -race ") && strings.HasPrefix(p, "go test -run ")
+						})
+						if inert == "true" {
+							if !plainWhole || hasRace || outside || guards {
+								t.Errorf("the %s leg on an inert %s event runs %q; want one plain "+
+									"`go test ... %s` and no race pass", leg.os, event, passes, modulePattern)
+							}
+						} else if plainWhole || !hasRace || !outside || !guards {
+							t.Errorf("the %s leg on a %s event that is not inert runs %q; want the race "+
+								"pass, `go test %s` and the plain-only guards by name, and no plain "+
+								"rerun of the whole module", leg.os, event, passes, outsideInternalPattern)
 						}
 					}
 				})

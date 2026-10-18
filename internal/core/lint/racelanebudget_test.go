@@ -33,8 +33,8 @@ import (
 // there: the queue gives up first, with no job failure to read. So no leg of
 // the check job may carry a timeout-minutes above the cap the ruleset mirror
 // records. Ruling Z (2026-09-28, the technical facilitator) raised the macOS
-// leg, and the ubuntu leg's ceiling is 45 since 2026-10-17; the job declares that as one matrix
-// expression, which checkLegTimeouts reads leg by leg. The queue's cap is 90
+// leg, and every other leg keeps 30, after a spell at 45 from 2026-10-17 (dcn-2610171803056931,
+// iss-2610171803053186); the job declares that as one matrix expression, which checkLegTimeouts reads leg by leg. The queue's cap is 90
 // minutes since 2026-10-11 and the macOS leg's is 60 since 2026-10-15, below
 // it, so on that leg the job's own ceiling is the binding one. The step's -timeout still earns its place under that cap: it lifts the
 // ten-minute per-package default, so a slow package fails on the job's clock
@@ -127,11 +127,11 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 				t.Errorf("%s: the macos-latest leg's timeout-minutes is %s; want %dm, the ceiling "+
 					"the technical facilitator set on 2026-10-15", where, leg.minutes, checkMacOSCeilingMinutes)
 			}
-			// Ruling Z raised the macOS leg; the ubuntu leg's ceiling was
-			// raised to 45 on 2026-10-17, when the drain bundle grew its race run.
+			// Ruling Z raised the macOS leg; every other leg keeps 30, after
+			// a spell at 45 from 2026-10-17 (dcn-2610171803056931).
 			if leg.os != "macos-latest" && leg.minutes != checkUbuntuCeilingMinutes*time.Minute {
-				t.Errorf("%s: the %s leg's timeout-minutes is %s; want %dm, the ceiling set on "+
-					"2026-10-17 for every leg but macOS", where, leg.os, leg.minutes, checkUbuntuCeilingMinutes)
+				t.Errorf("%s: the %s leg's timeout-minutes is %s; want %dm, the ceiling "+
+					"of every leg but macOS", where, leg.os, leg.minutes, checkUbuntuCeilingMinutes)
 			}
 		}
 	}
@@ -159,9 +159,11 @@ func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 const checkMacOSCeilingMinutes = 60
 
 // checkUbuntuCeilingMinutes is the check job's ceiling on every leg but
-// macOS: 30 under ruling Z, 45 since 2026-10-17, when the drain bundle
-// (spc-2610161044461448) grew the loop package's race run past 30.
-const checkUbuntuCeilingMinutes = 45
+// macOS: 30 under ruling Z; 45 from 2026-10-17, when the drain bundle
+// (spc-2610161044461448) grew the loop package's race run past 30
+// (dcn-2610171803056931); 30 again since the plain pass stopped rerunning
+// the race lane's tests (iss-2610171803053186).
+const checkUbuntuCeilingMinutes = 30
 
 // checkWarnLeadMinutes is how far ahead of the macOS leg's ceiling the warning
 // step fires: ruling Z's cancel policy (2026-09-28) set the line ten minutes
@@ -452,10 +454,56 @@ func jobTimeoutMinutes(t *testing.T, where, job string) time.Duration {
 	return time.Duration(n) * time.Minute
 }
 
-// TestPlainTestStepRunsTheWholeModule: the ubuntu leg's plain pass names its
-// slowest packages ahead of ./..., so they start with the step instead of
-// behind every faster package (a speed lane under the cancel policy of
-// 2026-09-28), and it still runs exactly the module: ./... last, no package
+// outsideInternalPattern is the plain pass the ubuntu leg runs beside its race
+// lane: every package ./... matches that ./internal/... does not.
+const outsideInternalPattern = "./cmd/..."
+
+// TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot: where the race lane
+// runs, the ubuntu leg's plain pass covers only the packages it does not
+// (iss-2610171803053186), and exactly those: go list resolves the step's
+// pattern to the module's packages less the race lane's.
+func TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot(t *testing.T) {
+	root := filepath.Join("..", "..", "..")
+	const where = ".github/workflows/ci.yml job check"
+	check, ok := workflowJobBlock(readRepoFile(t, root, ".github/workflows/ci.yml"), "check")
+	if !ok {
+		t.Fatalf("%s: no such job; the parser or the workflow changed shape", where)
+	}
+	const name = "Test (outside internal)"
+	step, ok := workflowStepBlock(check, name)
+	if !ok {
+		t.Fatalf("%s: no %q step", where, name)
+	}
+	if cmd, want := oneGoTest(t, where+" step "+name, step), "go test "+outsideInternalPattern; cmd != want {
+		t.Fatalf("%s step %q runs `%s`; want `%s`", where, name, cmd, want)
+	}
+	list := func(pattern string) []string {
+		cmd := exec.Command("go", "list", pattern)
+		cmd.Dir = root
+		out, err := cmd.Output()
+		if err != nil {
+			t.Fatalf("go list %s: %v", pattern, err)
+		}
+		return strings.Fields(string(out))
+	}
+	internal := list(raceLanePattern)
+	var want []string
+	for _, p := range list(modulePattern) {
+		if !slices.Contains(internal, p) {
+			want = append(want, p)
+		}
+	}
+	if got := list(outsideInternalPattern); !slices.Equal(got, want) {
+		t.Errorf("%s step %q: %s resolves to %q; the packages outside the race lane are %q",
+			where, name, outsideInternalPattern, got, want)
+	}
+}
+
+// TestPlainTestStepRunsTheWholeModule: the ubuntu leg's plain pass on an inert
+// change, where the race lane stands down and it is the leg's only test pass,
+// names its slowest packages ahead of ./..., so they start with the step
+// instead of behind every faster package (a speed lane under the cancel policy
+// of 2026-09-28), and it still runs exactly the module: ./... last, no package
 // named twice, and the same set go list resolves ./... to.
 func TestPlainTestStepRunsTheWholeModule(t *testing.T) {
 	root := filepath.Join("..", "..", "..")

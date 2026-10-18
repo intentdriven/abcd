@@ -277,11 +277,13 @@ jobs:
     # grown from 31-35 to 34-40 minutes (iss-2610142326511964), so on this leg
     # the job's own ceiling, not the queue's, is the binding one. Raising it
     # again is the technical facilitator's call, and the remedy for a leg near
-    # the cap is a faster suite. The ubuntu leg ran inside 30 minutes until the
-    # drain bundle (spc-2610161044461448) grew the loop package's race run; the
-    # technical facilitator's ceiling, set by the coordinating session on
-    # delegation on 2026-10-17 (dcn-2610171803056931), is 45 until a faster suite brings it
-    # back under 30 (iss-2610171803053186). The race step's -timeout lifts go test's 10m
+    # the cap is a faster suite. The ubuntu leg's ceiling is 30. The drain
+    # bundle (spc-2610161044461448) grew the loop package's race run until the
+    # leg reached 31 minutes, and it spent from 2026-10-17 at 45
+    # (dcn-2610171803056931). It came back to 30 when the leg's plain pass
+    # stopped rerunning every internal test the race lane already runs
+    # (iss-2610171803053186): the worst of five merge-group runs had spent 9.3
+    # minutes on that rerun. The race step's -timeout lifts go test's 10m
     # per-package default, so a slow package runs on to this ceiling instead of
     # failing at ten minutes. The step names its slowest packages first, so they
     # start with the step rather than behind every faster package; a hang in one
@@ -290,7 +292,7 @@ jobs:
     # TestRaceLaneBudgetIsDeclaredAndFitsItsJob holds every leg at or below the
     # cap, and TestCheckJobWarnsBeforeTheQueueCap holds the warning step at the
     # end of the job below it.
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 60 || 45 }}
+    timeout-minutes: ${{ matrix.os == 'macos-latest' && 60 || 30 }}
     strategy:
       fail-fast: false
       matrix:
@@ -377,11 +379,18 @@ jobs:
       # synced write on macOS that no test asserts anything about. It needs a
       # test binary as well, so nothing built here stops flushing.
       #
-      # The ubuntu leg tests in two passes, plain over the module and then
-      # race-enabled over ./internal/...; ubuntu runners are not the scarce
-      # ones, and the plain pass reports a failure minutes before the race pass
-      # would. The macOS leg runs one race-enabled pass over the whole module
-      # instead (the last step of this group).
+      # The ubuntu leg's plain pass runs what its race lane does not
+      # (iss-2610171803053186). Where the race lane runs, it runs every test
+      # under ./internal/..., so a plain rerun of them repeated it: 7 to 9.3
+      # minutes of a leg that had reached 31 against its 30-minute ceiling, on
+      # a runner whose four cores both passes already kept busy. So the plain
+      # pass covers the packages outside internal/, and, by name, the tests
+      # that assert only without the race detector (the next step). On an
+      # inert change the race lane stands down, and the plain pass runs the
+      # whole module, as the leg's only test pass. The macOS leg runs one
+      # race-enabled pass over the whole module instead (the last step of this
+      # group). TestMacOSLegRunsItsSuiteOnlyWhereItLands holds which passes run
+      # on which event.
       #
       # The two packages named ahead of the pattern are the slowest in this
       # pass (126-187s and 110-147s on the four-core runner, 2026-10-15). In
@@ -390,13 +399,35 @@ jobs:
       # with the step. The set is still exactly ./... (go test runs a package
       # named twice once), which TestPlainTestStepRunsTheWholeModule pins.
       - name: Test
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert == 'true'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test ./internal/core/implement/loop ./internal/surface/cli ./...
 
-      # Only a source change can introduce a data race, and the plain lane above
-      # has already run the same tests over the record.
+      # Every package ./... matches that ./internal/... does not;
+      # TestTheOutsideInternalStepRunsWhatTheRaceLaneDoesNot holds the set.
+      - name: Test (outside internal)
+        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+        run: go test ./cmd/...
+
+      # The tests that assert only without the race detector: cost guards that
+      # count work or bound CPU time, which under -race measure the
+      # instrumentation, so they skip there or drop their bound. The race lane
+      # runs them and asserts nothing, so they run here, plain, by name; they
+      # are what catches a quadratic blow-up. The list is derived from the
+      # test files: TestTheUbuntuLegRunsEveryPlainOnlyGuard reads every one
+      # under internal/ and fails until this step names exactly those tests and
+      # their packages.
+      - name: Test (plain-only guards)
+        if: matrix.os == 'ubuntu-latest' && needs.changes.outputs.inert != 'true'
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+        run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
+
+      # Only a source change can introduce a data race. On an inert change the
+      # plain pass above runs the whole module in this lane's place.
       #
       # -timeout is a declared budget, not go test's 10m per-package default:
       # internal/surface/cli under -race on the macOS runner measured 418-568s
@@ -432,8 +463,10 @@ jobs:
       # plain plus 23.1 race of a 39.9-minute leg (8 queue runs, 2026-10-11),
       # and the race pass already ran every internal test, so the plain pass
       # added only the packages outside internal/ at a third of the leg's time.
-      # The race detector runs every test the plain pass would, so dropping the
-      # plain pass drops no test. It runs straight after vet, so the slowest
+      # The race pass runs every test the plain pass would, but the ones that
+      # assert only without the detector (the ubuntu leg's plain-only guard
+      # step) assert nothing in it, so on this leg their bounds are not
+      # checked; iss-2610180542030806 tracks running them here. It runs straight after vet, so the slowest
       # packages start at the start of the leg's testing. TestMacOSLegRunsItsSuiteOnlyWhereItLands
       # holds it to one pass where the leg runs at all, and none on a pull request.
       - name: Test (race, whole module)
