@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/intentdriven/abcd/internal/core/claim"
 )
@@ -13,7 +14,8 @@ import (
 // one emit carries both, on every path the router has: the plain titling
 // object, the --json envelope, and a rules.json that will not load, in either
 // form. Neither half may displace the other (spc-2610150728396006 step 3,
-// itd-2610111707085098).
+// itd-2610111707085098). Its budgets are its own (ownHookBudgets), so a
+// loaded runner cannot leave the status unavailable.
 func TestThePromptThatNamesTheSessionCarriesTheStatus(t *testing.T) {
 	const line = "- @octo (claimed): merging #1012, for 30 min\n"
 	for _, c := range []struct {
@@ -26,10 +28,12 @@ func TestThePromptThatNamesTheSessionCarriesTheStatus(t *testing.T) {
 		{"rules-error-json", true, true},
 	} {
 		t.Run(c.name, func(t *testing.T) {
+			ownHookBudgets(t, 10*time.Second)
 			f := newNameFixture(t)
 			w := newReserveWorld(t)
 			octo := w.clone(t, "octo", octoMail)
 			pat := w.clone(t, "pat", "5+pat@users.noreply.github.com")
+			t.Cleanup(claim.WaitPromptReadsForTest)
 			if code, _, stderr := reserveRun(t, octo, "announce", "merging", "1012"); code != 0 {
 				t.Fatalf("announce: exit %d, %s", code, stderr)
 			}

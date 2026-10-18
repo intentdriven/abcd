@@ -56,7 +56,7 @@ import (
 // start first instead of last (iss-2609281715083637). The order may change; the
 // set may not: go list must resolve the command's packages to exactly the ones
 // ./internal/... matches. The macOS pass is the one exception, by design
-// (iss-2610110938293273): it is that leg's only test pass, so the same
+// (iss-2610110938293273): it is that leg's only pass over the module, so the same
 // slowest-first list ends in ./... and resolves to the whole module.
 func TestRaceLaneBudgetIsDeclaredAndFitsItsJob(t *testing.T) {
 	root := filepath.Join("..", "..", "..")
@@ -378,7 +378,7 @@ func racePackages(t *testing.T, where, text string) []string {
 const raceLanePattern = "./internal/..."
 
 // modulePattern is the package set of the macOS leg's one race-enabled pass:
-// the whole module, since it is that leg's only test pass.
+// the whole module, since it is that leg's only pass over the module.
 const modulePattern = "./..."
 
 // macOSRaceStep names that pass in ci.yml's check job.
