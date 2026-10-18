@@ -90,6 +90,18 @@ func Resolve(cwd string, o Options) (root string, st Store, err error) {
 	return root, st, err
 }
 
+// Managed reports whether abcd manages the checkout at root: `.abcd/` is a
+// directory at its root (a symbolic link is not). The away mode's hooks act
+// only in such a checkout, so a plugin installed for every repository reads
+// nothing, runs no git past naming the root, and says nothing in any other.
+func Managed(root string) bool {
+	if root == "" {
+		return false
+	}
+	fi, err := os.Lstat(filepath.Join(root, ".abcd"))
+	return err == nil && fi.IsDir()
+}
+
 // SetAway is `abcd mode autonomous [--until <time>] [--hold-pushes]` from
 // cwd: until "" is open-ended. A past or unreadable --until, one past seven
 // days, no checkout, and a checkout without the local tier are refused with

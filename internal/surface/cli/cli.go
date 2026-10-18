@@ -1793,8 +1793,8 @@ envelope carries it as system_message.`,
 			// is shown to the person. Read before the rules, for the drain's
 			// reason, from the drain's root-commit lookup, and inside the
 			// hook's one deadline: the status read below takes what it leaves.
-			away := readPromptAway(cmd.ErrOrStderr(), drained)
 			root := rulesRoot(cwd, cmd.ErrOrStderr())
+			away := readPromptAway(cmd.ErrOrStderr(), drained, root)
 			rs, err := rules.Load(root)
 			if err != nil {
 				// rules.Load errors already carry their own "rules:" prefix, so

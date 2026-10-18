@@ -109,10 +109,11 @@ stderr; every outcome exits 0.`,
 			if err != nil {
 				return stopAllow(cmd, "unreadable Stop payload (%s)", termsafe.Sanitize(err.Error()))
 			}
-			if p.Cwd == "" {
-				return nil
+			root, ok := managedRoot(p.Cwd)
+			if !ok {
+				return nil // not a checkout abcd manages: nothing to check, and no git spent
 			}
-			copyRoot, st, err := autonomy.ResolveCopy(p.Cwd, p.SessionID, autonomy.Options{})
+			copyRoot, st, err := autonomy.ResolveCopy(root, p.SessionID, autonomy.Options{})
 			if err != nil {
 				return nil // not a checkout abcd can key a store on: nothing to check
 			}
@@ -239,10 +240,11 @@ the person is present nothing is written. Every outcome exits 0.`,
 				diagnosticLine(cmd.ErrOrStderr(), "abcd stop: unreadable StopFailure payload (%s); nothing recorded", termsafe.Sanitize(err.Error()))
 				return nil
 			}
-			if p.Cwd == "" {
+			root, ok := managedRoot(p.Cwd)
+			if !ok {
 				return nil
 			}
-			_, st, err := autonomy.ResolveCopy(p.Cwd, p.SessionID, autonomy.Options{})
+			_, st, err := autonomy.ResolveCopy(root, p.SessionID, autonomy.Options{})
 			if err != nil {
 				return nil
 			}

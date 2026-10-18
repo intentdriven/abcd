@@ -52,11 +52,12 @@ type awayView struct {
 
 // readPromptAway reads the away record for the repository whose root commit
 // the live drain already looked up for this prompt, so the router still makes
-// one root-commit lookup a prompt. It fails open: a record that cannot be read
+// one root-commit lookup a prompt, and only when abcd manages the checkout at
+// root (the loader's root for this prompt). It fails open: a record that cannot be read
 // safely is named on stderr and adds nothing; with no root commit (outside a
 // checkout, or git not answering in time) it adds nothing silently.
-func readPromptAway(stderr io.Writer, drained rootLookup) awayView {
-	if !drained.asked || drained.err != nil || drained.sha == "" {
+func readPromptAway(stderr io.Writer, drained rootLookup, root string) awayView {
+	if !autonomy.Managed(root) || !drained.asked || drained.err != nil || drained.sha == "" {
 		return awayView{}
 	}
 	home, err := os.UserHomeDir()
@@ -101,19 +102,47 @@ func readAwayFailOpen(stderr io.Writer, cwd string) (*autonomy.Record, bool, boo
 	return rec, holds, true
 }
 
-// sessionStartAway notes the session's start copy and returns the away block
-// when the record holds. The note is written only in a checkout abcd manages
-// (one with `.abcd/` at its root), and only the first time for a session, so
-// a compaction or resume run from a worktree the session made keeps the start.
-func sessionStartAway(stderr io.Writer, in hookInput, cwd string) string {
+// managedRoot is the root of the checkout cwd stands in, and whether abcd
+// manages it (autonomy.Managed): `.abcd/` at its root, or, for a linked
+// worktree, at the root of the repository's main worktree, since a worktree
+// a session makes shares the repository's away store and a branch cut before
+// `.abcd/` was committed (or a `.abcd/` never committed) leaves it out. Every
+// away hook asks it first: outside a managed checkout the hook reads nothing
+// and says nothing, and the git it runs only names the roots.
+func managedRoot(cwd string) (string, bool) {
 	if cwd == "" {
-		return ""
+		return "", false
 	}
 	root, err := gitutil.CheckoutRoot(cwd, autonomy.StoreName)
 	if err != nil {
+		return "", false
+	}
+	if autonomy.Managed(root) {
+		return root, true
+	}
+	if fi, err := os.Lstat(filepath.Join(root, ".git")); err != nil || !fi.Mode().IsRegular() {
+		return "", false // not a linked worktree: there is no main worktree to ask
+	}
+	common, err := gitutil.RevParseAbsPath(root, "--git-common-dir")
+	if err != nil || filepath.Base(common) != ".git" {
+		return "", false
+	}
+	if !autonomy.Managed(filepath.Dir(common)) {
+		return "", false
+	}
+	return root, true
+}
+
+// sessionStartAway notes the session's start copy and returns the away block
+// when the record holds. Both happen only in a checkout abcd manages (one with
+// `.abcd/` at its root), and the note only the first time for a session, so a
+// compaction or resume run from a worktree the session made keeps the start.
+func sessionStartAway(stderr io.Writer, in hookInput, cwd string) string {
+	root, ok := managedRoot(cwd)
+	if !ok {
 		return ""
 	}
-	if fi, err := os.Lstat(filepath.Join(root, ".abcd")); err == nil && fi.IsDir() && autonomy.ValidSessionID(in.SessionID) {
+	if autonomy.ValidSessionID(in.SessionID) {
 		if _, st, err := autonomy.Resolve(root, autonomy.Options{}); err == nil {
 			if _, err := st.NoteSessionCopy(in.SessionID, root, time.Now()); err != nil {
 				diagnosticLine(stderr, "abcd mode: the session's start copy was not noted (%s)", fsutil.RedactHome(err.Error()))

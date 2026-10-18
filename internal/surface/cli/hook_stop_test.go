@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -264,4 +265,98 @@ func TestHookStopFailureRecords(t *testing.T) {
 	if got := last[len(last)-1].ErrorType; got != "unknown" {
 		t.Errorf("an error type outside the host's shape was recorded as %q, want unknown", got)
 	}
+}
+
+// gitCallLog puts a git on PATH that logs each call's arguments to the
+// returned file and runs the real git.
+func gitCallLog(t *testing.T) string {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not on PATH")
+	}
+	bin := t.TempDir()
+	log := filepath.Join(t.TempDir(), "git-calls.log")
+	script := "#!/bin/sh\nprintf '%s\\n' \"$*\" >> '" + log + "'\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return log
+}
+
+// unmanagedOwnUnpushed is a checkout abcd does not manage (no .abcd/ at its
+// root) on an own branch, pushed without -u to nowhere: a commit of the
+// checkout's author no remote holds.
+func unmanagedOwnUnpushed(t *testing.T) string {
+	t.Helper()
+	repo := realPath(t, t.TempDir())
+	gitInitAt(t, repo)
+	gitAt(t, repo, "config", "--local", "user.email", "alice@example.invalid")
+	gitAt(t, repo, "config", "--local", "user.name", "Alice")
+	gitAt(t, repo, "config", "--local", "commit.gpgsign", "false")
+	gitAt(t, repo, "commit", "-q", "--allow-empty", "-m", "seed")
+	gitAt(t, repo, "checkout", "-q", "-b", "feat/elsewhere")
+	gitAt(t, repo, "commit", "-q", "--allow-empty", "-m", "not pushed")
+	return repo
+}
+
+// TestHookStopUnmanagedRepoSilent: in a checkout abcd does not manage the
+// stop hook allows silently, never reads the owed work and runs no git past
+// naming the checkout's root; StopFailure records nothing there, and the
+// session-start and prompt hooks add no away block, even with an away record
+// holding for the repository (set from a managed copy of it).
+func TestHookStopUnmanagedRepoSilent(t *testing.T) {
+	t.Run("stop", func(t *testing.T) {
+		awayCheckout(t) // the sandboxed HOME
+		repo := unmanagedOwnUnpushed(t)
+		owed := autonomy.Owed{Items: []autonomy.OwedItem{{Kind: autonomy.OwedUnpushed, Capped: true, Branch: "feat/elsewhere", Head: "aaaa"}}}
+		asked := fakeOwed(t, &owed)
+		log := gitCallLog(t)
+		_, so, se := runStop(t, stopHookPayload(t, "u1", repo, false, "Done."))
+		if so != "" || se != "" {
+			t.Errorf("an unmanaged checkout: stdout %q stderr %q, want nothing", so, se)
+		}
+		if len(*asked) != 0 {
+			t.Errorf("an unmanaged checkout's owed work was read: %+v", *asked)
+		}
+		for _, line := range strings.Split(strings.TrimSpace(ghCalls(t, log)), "\n") {
+			// `git version` is the client's version probe, read once a
+			// process, not a read of the repository.
+			if line != "" && line != "version" && !strings.Contains(line, "rev-parse --show-toplevel") {
+				t.Errorf("an unmanaged checkout ran git past naming its root: %q", line)
+			}
+		}
+	})
+	t.Run("away record from a managed copy", func(t *testing.T) {
+		root := awayCheckout(t)
+		// A clone shares the repository's root commit, so its away store,
+		// but has no .abcd/ at its root (the fixture's .abcd/ is untracked).
+		sib := filepath.Join(t.TempDir(), "sib")
+		gitAt(t, root, "clone", "-q", root, sib)
+		sib = realPath(t, sib)
+		setAway(t)
+		owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
+		asked := fakeOwed(t, &owed)
+		if _, so, se := runStop(t, stopHookPayload(t, "u2", sib, false, "Done.")); so != "" || len(*asked) != 0 {
+			t.Errorf("stop from an unmanaged copy: stdout %q stderr %q, reader asked %d times", so, se, len(*asked))
+		}
+		fail := `{"session_id":"u2","cwd":"` + sib + `","hook_event_name":"StopFailure","error":"rate_limit"}`
+		if _, _, err := runSplit(t, fail, "hook", "stop-failure"); err != nil {
+			t.Fatal(err)
+		}
+		if stops := readAway(t, root).Stops; len(stops) != 0 {
+			t.Errorf("StopFailure from an unmanaged copy recorded %+v", stops)
+		}
+		if so, _, _ := runSplit(t, awayStartPayload("u2", sib, "startup"), "hook", "session-start"); strings.Contains(so, "## AWAY") {
+			t.Errorf("session start in an unmanaged copy added the away block:\n%s", so)
+		}
+		if so, _, _ := runSplit(t, awayPromptPayload("u2", sib, "hello"), "hook", "prompt-router"); strings.Contains(so, "AWAY") || strings.Contains(so, "away") {
+			t.Errorf("a prompt in an unmanaged copy carried the away block or line:\n%s", so)
+		}
+		// The managed copy is unchanged.
+		if out, so, _ := runStop(t, stopHookPayload(t, "u3", root, false, "Done.")); out.Decision != "block" {
+			t.Errorf("the managed copy no longer blocks: %s", so)
+		}
+	})
 }
