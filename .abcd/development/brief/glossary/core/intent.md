@@ -17,8 +17,11 @@ versions: null
 
 An **intent** is the highest-leverage authoring moment in abcd's workflow. Written in a
 press-release style (present tense, customer-voice), it commits to the outcome before any
-technical solution is chosen. The intent is frozen at promotion time and is an immutable input
-artefact — it is never edited after `/abcd:intent plan` is run.
+technical solution is chosen. Planning (`/abcd:intent plan`) is the product thinker's sign-off on
+that outcome, not a freeze of the file, and a planned intent's record still changes: its planning
+interview may edit any part of it, and the intent sub-verbs write a hold, a target release,
+dependency edges, the spec link, its kind and its impact judgement into the frontmatter, stamp
+identities onto its scope conditions and append to its grounds.
 
 ## When to use
 
