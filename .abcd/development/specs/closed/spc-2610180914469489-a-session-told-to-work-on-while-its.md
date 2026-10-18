@@ -1141,13 +1141,13 @@ prompt was sent.
   the person-only list and "Run `abcd mode back` only on the person's word in
   this session".
 - The prompt hook's `systemMessage` is "abcd: away until 2026-10-18 15:45 BST,
-  set by Alice from repo; 0 steps queued, 0 items handed back. `abcd mode
-  back` ends it.", and the host shows it to the person.
+  set by Alice from repo; 0 steps queued, 0 items handed back.
+  `abcd mode back` ends it.", and the host shows it to the person.
 - The first Stop is blocked: `{"decision":"block","reason":"abcd: the person
   is away and work is owed (1 item). Next: branch feat/x has commits not
   pushed … Do the local work, then push if your standing instruction allows;
   queue only if the person has said pushes wait. A push you may not send stays
-  owed: queue it with \`abcd mode queue …\`"}`.
+  owed: queue it with abcd mode queue …"}`.
 - Claude goes on. It says the away mode is no standing instruction and runs
   `abcd mode queue "Push branch feat/x …"`.
 - With no `--hold-pushes`, the queued push hands nothing back. The next stop
