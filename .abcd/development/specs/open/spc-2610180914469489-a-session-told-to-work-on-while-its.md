@@ -1304,6 +1304,63 @@ last … 13:52 BST)", "stopped on an API error (rate_limit) …"). It ends with
   called the hook "faulty" for keeping a queued push owed, which is the
   designed behaviour without `--hold-pushes`.
 
+### Re-capture after diff review round 1 (9962906df)
+
+Run on 2026-10-18, 15:05 to 15:10 BST, with the same Claude Code and model,
+against the branch at 9962906df. The binary `<scratch>/abcd-stall` and the
+plugin copy `<scratch>/plugin` (a fresh `git archive 9962906df`, with the same
+wrapper rung) were rebuilt. The away store and the lab's local tier were
+cleared, `feat/stacked` and its worktree removed, so `feat/x` again has one
+unpushed commit (512f75b) and the lab is the managed checkout it was
+(`.abcd/config.json` beside `.git`). API spend for the four runs: about
+0.72 USD. Transcripts: `<scratch>/transcripts/2-away-r2`, `2b-away-hold-r2`,
+`1-present-r2` and `3-unmanaged-r2`, each as `.jsonl`, `.stderr` and
+`.summary.txt`.
+
+**2-away-r2** (away record set with `abcd mode autonomous --until 17:05`,
+prompt "Say hello and stop.").
+
+- The stop is still prevented. The Stop hook answers `{"hookSpecificOutput":
+  {"hookEventName":"Stop","additionalContext":"abcd: the person is away and
+  work is owed (1 item). Next: branch feat/x has commits not pushed. Do the
+  local work, then push if your standing instruction allows; …"}}`, and the
+  session goes on to queue the push. Thirteen Stop hooks ran and none ended
+  the turn until the host's cap: "A hook blocked the turn from ending 9
+  consecutive times — overriding and ending turn."
+- The output uses `hookSpecificOutput.additionalContext`, with no `decision`
+  or `reason` field.
+- The host shows no "Stop hook error occurred": `hook error` and `Stop hook
+  feedback` match nothing in the stream-json or the stderr (0 and 0). The one
+  `notification` in the stream is the cap's own (`stop-hook-block-cap`).
+- The item names `feat/x` once: "Next: branch feat/x has commits not pushed."
+  The doubled "(feat/x has commits not pushed)" of the earlier run is gone.
+- The stub `gh` logged 13 `pr list` calls for 13 Stop hooks, one per check.
+- The model's own `abcd decide` call was denied by the narrow `--allowedTools`
+  (a `permission_denied` event); the hook has no part in that.
+
+**2b-away-hold-r2** (the same, with `--hold-pushes`). Without `--hold-pushes`
+the reason only carries the generic `abcd mode queue "<step>"` placeholder,
+so the branch quoting is checked here. The first Stop output ends: "queue the
+push naming the branch, as `abcd mode queue 'push feat/x'`." The branch is a
+single quoted shell word. No hook error (0 matches), 10 Stop hooks, 10 `gh`
+calls, ended by the host's cap.
+
+**1-present-r2** (no away record). The stop is allowed. The hook returns
+`{"systemMessage":"abcd: stopped with work owed (1 item); next: branch feat/x
+has commits not pushed."}`, shown as the informational "Stop says: …". No
+hook error, and the stub `gh` was never called (0 calls).
+
+**3-unmanaged-r2** (a copy of the lab in a sibling folder with `.abcd/`
+removed and `feat/x` still unpushed; the away record from the lab was in
+force). The Stop hook prints nothing (`exit=0`, empty output), the prompt hook
+adds nothing, the turn ends after one reply ("Hello!"), no abcd text appears
+in the stream, and the stub `gh` was never called.
+
+Verdict: the block holds, the host's error notice is gone, and the item text
+no longer repeats. One thing to know: a Stop that follows the queued push,
+when nothing is owed, still continues the session ("take the next ready item
+first …"), since that wording is a continuation prompt.
+
 ## Size
 
 Re-estimated after review round 3 at 7.5 working days of work, up from the
