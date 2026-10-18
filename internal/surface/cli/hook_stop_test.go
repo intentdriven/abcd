@@ -458,6 +458,9 @@ func TestAwayHooksLeaveUnmanagedRepoAlone(t *testing.T) {
 	}
 	// The guard's own reading of a command is not the recorder's: a command
 	// with no branch act sets the baseline the branch acts must not exceed.
+	// The guard checks the git version once per process; warm that up first
+	// so the baseline holds only what every command costs.
+	_ = baseline("git status --porcelain")
 	_ = os.WriteFile(log, nil, 0o600)
 	plain := baseline("git status --porcelain")
 	for _, c := range []string{"git switch -c feat/new", "git worktree add -b feat/wt ../wt", "git checkout -b feat/co"} {
