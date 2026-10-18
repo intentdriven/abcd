@@ -76,8 +76,10 @@ func (o ReadOptions) now() time.Time {
 // is late is named in Owed.Notes and the check judges from disk alone
 // (adr-2610181003541997). With --hold-pushes, an unpushed own branch a queued
 // step names, whose head contains its base's last-fetched tip and has a
-// preflight receipt, is handed back: left out of the set and recorded once
-// per branch and head in the away record.
+// preflight receipt, is handed back: moved out of Owed.Items into
+// Owed.HandedBack, for the verdict to accept and the stop hook to record.
+// Owed.NextRenewal is the earliest renewal due among the live reservations
+// under this copy's key, due or not yet, present or away.
 //
 // The error is a root that is not a working copy; every other failure to read
 // something is a note, and the set is judged without it.
@@ -144,7 +146,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		}
 		return a.Record < b.Record
 	})
-	return Owed{Items: r.items, Notes: r.notes}, nil
+	return Owed{Items: r.items, Notes: r.notes, NextRenewal: r.nextRenewal, HandedBack: r.handed}, nil
 }
 
 // owedReader is one ReadOwed's state.
@@ -169,8 +171,10 @@ type owedReader struct {
 	own            map[string]bool
 	stackBase      map[string]string // a branch's base's tip on disk, for the hand-back
 
-	items []OwedItem
-	notes []string
+	items       []OwedItem
+	handed      []OwedItem // handed back by a queued step, for the verdict to accept
+	nextRenewal time.Time  // the earliest renewal due among r.mine
+	notes       []string
 }
 
 type localBranch struct {
@@ -774,7 +778,11 @@ func (r *owedReader) unpushed(b *localBranch) bool {
 // subject, which no pull request carries, aside).
 func (r *owedReader) reservationItems() {
 	for _, res := range r.mine {
-		if half := res.ClaimedAt.Add(res.EffectiveExpiry.Sub(res.ClaimedAt) / 2); !r.now.Before(half) {
+		half := res.ClaimedAt.Add(res.EffectiveExpiry.Sub(res.ClaimedAt) / 2)
+		if r.nextRenewal.IsZero() || half.Before(r.nextRenewal) {
+			r.nextRenewal = half
+		}
+		if !r.now.Before(half) {
 			r.add(OwedItem{Kind: OwedRenewal, Record: res.Record,
 				Reason: fmt.Sprintf("the reservation of %s is due for renewal (it lapses %s): renew it with `abcd reserve %s`",
 					res.Record, showTime(res.EffectiveExpiry), res.Record)})
@@ -800,16 +808,12 @@ func (r *owedReader) reservationItems() {
 // --hold-pushes, a queued step naming an own branch hands back that branch's
 // unpushed item, while its head contains its base's last-fetched tip and a
 // preflight receipt names it where the repository mints receipts. Each is
-// recorded once per branch and head.
+// moved from the owed items to r.handed for the verdict, which accepts it;
+// the stop hook records what the verdict accepted, once per branch and head,
+// so the reader records nothing.
 func (r *owedReader) handBack() {
 	if !r.away || !r.rec.HoldPushes || len(r.rec.Queue) == 0 || !r.receiptsMinted {
 		return
-	}
-	var st *Store
-	if r.home != "" {
-		if s, err := OpenStore(r.home, r.root); err == nil {
-			st = &s
-		}
 	}
 	kept := r.items[:0]
 	for _, it := range r.items {
@@ -825,11 +829,7 @@ func (r *owedReader) handBack() {
 			kept = append(kept, it)
 			continue
 		}
-		if st != nil {
-			if _, err := st.RecordHandBack(it.Branch, it.Head, r.now); err != nil {
-				r.note("the hand-back of %s was not recorded (%s)", it.Branch, err)
-			}
-		}
+		r.handed = append(r.handed, it)
 	}
 	r.items = kept
 }

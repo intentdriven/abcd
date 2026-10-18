@@ -150,8 +150,11 @@
 // unmet condition is checks still running is not capped. With --hold-pushes,
 // an unpushed own branch a queued step names as a whole name, whose head
 // contains its base's last-fetched tip and has a receipt, is handed back:
-// left out of the set and recorded once per branch and head
-// (Store.RecordHandBack). The items come sorted by OwedKinds' order. The
+// moved out of Owed.Items into Owed.HandedBack. ReadOwed records nothing:
+// the verdict accepts the hand-back (Verdict.HandBacks) and the stop hook
+// records it, once per branch and head (Store.RecordHandBack), so a
+// hand-back has one owner. Owed.NextRenewal is filled present or away. The
+// items come sorted by OwedKinds' order. The
 // error is a root that is not a working copy; anything else ReadOwed could
 // not read is a note in Owed.Notes.
 package autonomy

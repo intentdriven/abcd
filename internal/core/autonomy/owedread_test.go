@@ -437,6 +437,39 @@ func TestReservationCopyKeyFilter(t *testing.T) {
 	}
 }
 
+// TestNextRenewalEarliestLive: Owed.NextRenewal is the earliest renewal due
+// (halfway between the latest claim and the expiry) among the live
+// reservations under this copy's key, due or not yet, which the stop
+// verdict's deadline needs; a sibling copy's or a lapsed reservation does not
+// count, and with none it is zero. It is filled while present too, since it
+// is read from disk.
+func TestNextRenewalEarliestLive(t *testing.T) {
+	f := newFx(t)
+	if owed := f.read(true); !owed.NextRenewal.IsZero() {
+		t.Fatalf("with no reservation NextRenewal is zero, got %s", owed.NextRenewal)
+	}
+	// due in 1h30: claimed an hour ago, expiring in four hours
+	f.reserve("iss-1", claim.CopyThis, f.now.Add(-time.Hour), f.now.Add(4*time.Hour))
+	// due in 30m, but a sibling copy's
+	f.reserve("iss-2", "", f.now.Add(-time.Hour), f.now.Add(2*time.Hour))
+	// due in 45m: claimed 15 minutes ago, a two-hour lease
+	f.reserve("iss-3", claim.CopyThis, f.now.Add(-15*time.Minute), f.now.Add(105*time.Minute))
+	// lapsed
+	f.res = append(f.res, claim.Reservation{Record: "iss-4", Copy: claim.CopyThis, State: claim.StateExpired,
+		ClaimedAt: f.now.Add(-5 * time.Hour), EffectiveExpiry: f.now.Add(-time.Hour)})
+	want := f.now.Add(45 * time.Minute)
+	for _, away := range []bool{true, false} {
+		if got := f.read(away).NextRenewal; !got.Equal(want) {
+			t.Fatalf("away=%v: NextRenewal = %s, want iss-3's due %s", away, got, want)
+		}
+	}
+	// a renewal already due still counts: it is the earliest
+	f.reserve("iss-5", claim.CopyThis, f.now.Add(-3*time.Hour), f.now.Add(time.Hour))
+	if got, want := f.read(true).NextRenewal, f.now.Add(-time.Hour); !got.Equal(want) {
+		t.Fatalf("a renewal already due is the earliest: NextRenewal = %s, want %s", got, want)
+	}
+}
+
 // TestReservationLinkByHeadOrClosingTrailer: the record id in the head branch
 // or on a Resolves: or Delivers: line links; a green linked pull request is
 // not owed until renewal is due.
@@ -723,16 +756,18 @@ func TestQueuedPushHandsItemBack(t *testing.T) {
 	})
 	t.Run("hold-pushes verified", func(t *testing.T) {
 		f := setup(t)
-		if owed := readWith(f, true, "push feat/p"); has(owed, OwedUnpushed, "feat/p") {
+		owed := readWith(f, true, "push feat/p")
+		if has(owed, OwedUnpushed, "feat/p") {
 			t.Fatalf("a verified branch's queued push is handed back: %s", describe(owed))
 		}
-		o := f.opts()
-		st, _ := OpenStore(f.home, f.root)
-		o.Record, _ = st.Read()
-		f.readWith(o)
-		hb := handedBack(t, f)
-		if len(hb) != 1 || hb[0].Branch != "feat/p" || hb[0].Head != f.head("feat/p") {
-			t.Fatalf("the hand-back is recorded once per branch and head: %+v", hb)
+		if len(owed.HandedBack) != 1 || owed.HandedBack[0].Kind != OwedUnpushed ||
+			owed.HandedBack[0].Branch != "feat/p" || owed.HandedBack[0].Head != f.head("feat/p") {
+			t.Fatalf("the handed-back item goes to the verdict in Owed.HandedBack, with its branch and head: %+v", owed.HandedBack)
+		}
+		// The verdict accepts a hand-back and the stop hook records it; the
+		// reader records nothing, so one owner writes it once.
+		if hb := handedBack(t, f); len(hb) != 0 {
+			t.Fatalf("the reader records no hand-back itself: %+v", hb)
 		}
 	})
 	t.Run("hold-pushes base moved", func(t *testing.T) {
