@@ -102,7 +102,8 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   nobody can install. Such a tag is passed over for the next published
   release, the plan's own release must be one, and origin or GitHub that
   cannot be read refuses the plan rather than falling back on the checkout's
-  tags. The fix commit comes
+  tags. Origin's tags vouch only while origin names the repository the store
+  was made for, so a repointed origin refuses the plan, as it refuses intake. The fix commit comes
   from the advisory's record resolved in the release, or, since the security
   rule keeps that record out of every committed tree until the advisory is
   published, from its private record resolved in the store's own ledger. The

@@ -1485,10 +1485,11 @@ release when origin holds the tag at the object this checkout holds and GitHub
 reports its release neither a draft nor a prerelease; any other tag gives no
 patched version, and --release naming one is refused. When origin's tags, or
 GitHub's answer for a release, cannot be read, the plan refuses with nothing
-recorded. The security rule keeps a security record out of every committed tree
-until its advisory is published, so when the release carries no public record
-the evidence is the advisory's private record, resolved in the embargo store's
-own ledger with the full id of its fix commit; nothing else the store holds is
+recorded, and so does an origin naming another repository than the store's. The
+security rule keeps a security record out of every committed tree until its
+advisory is published, so when the release carries no public record the
+evidence is the advisory's private record, resolved in the embargo store's own
+ledger with the full id of its fix commit; nothing else the store holds is
 taken. An advisory resolved in neither, whose fix is in no published release up
 to the release, whose package is not set on GitHub, or whose text carries a
 secret, a private name or another advisory still under embargo is left out,

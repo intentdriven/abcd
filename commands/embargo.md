@@ -196,12 +196,17 @@ when both hold: origin holds the tag at the same object as this checkout
 release for it that is neither a draft nor a prerelease. A tag that only this
 checkout holds, or one whose release run failed or is still drafting, gives no
 patched version: the next published release holding the fix gives it, and a
-fix in none up to the release is left out, saying so. A `--release` naming a
+fix in none up to the release is left out, saying so. The affected range then
+reaches below that later version, so it also names the skipped tag, which
+over-warns rather than under-warns. A `--release` naming a
 tag that is not a published release is refused with what it lacks and the
 remedy (push the tag with `git push origin <tag>`, or publish its release on
 GitHub). When origin's tags cannot be listed, or GitHub cannot be read for a
 release or answers for another tag, the plan refuses whole, recording
-nothing; the checkout's own tags are never taken in their place.
+nothing; the checkout's own tags are never taken in their place. Origin's tags
+vouch only for the repository the store was made for, so a plan, and so a
+publish, whose origin names another repository (a fork, say) is refused, as
+intake refuses it.
 
 The security rule keeps a security record out of every committed tree until
 its advisory is published, so the release usually carries no public record of

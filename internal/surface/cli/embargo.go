@@ -366,10 +366,11 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 			"reports its release neither a draft nor a prerelease; any other tag gives no\n" +
 			"patched version, and --release naming one is refused. When origin's tags, or\n" +
 			"GitHub's answer for a release, cannot be read, the plan refuses with nothing\n" +
-			"recorded. The security rule keeps a security record out of every committed tree\n" +
-			"until its advisory is published, so when the release carries no public record\n" +
-			"the evidence is the advisory's private record, resolved in the embargo store's\n" +
-			"own ledger with the full id of its fix commit; nothing else the store holds is\n" +
+			"recorded, and so does an origin naming another repository than the store's. The\n" +
+			"security rule keeps a security record out of every committed tree until its\n" +
+			"advisory is published, so when the release carries no public record the\n" +
+			"evidence is the advisory's private record, resolved in the embargo store's own\n" +
+			"ledger with the full id of its fix commit; nothing else the store holds is\n" +
 			"taken. An advisory resolved in neither, whose fix is in no published release up\n" +
 			"to the release, whose package is not set on GitHub, or whose text carries a\n" +
 			"secret, a private name or another advisory still under embargo is left out,\n" +
