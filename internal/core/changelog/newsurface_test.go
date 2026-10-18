@@ -46,6 +46,7 @@ func TestARecordFoundAtAPathNewSinceTheAnchorIsMarked(t *testing.T) {
 	rec("iss-10", "moved/drain.go")
 	rec("iss-11", "moved")
 	rec("iss-12", ":(top)scripts/new.sh")
+	rec("iss-13", "./:(top)scripts/new.sh")
 	// A bare value, as YAML allows beside the quoted form capture writes.
 	r.write(resolvedDir+"iss-9-x.md", "---\nid: iss-9\nimpact: fix\nfound_at: scripts/new.sh\n---\n# iss-9\n")
 	r.commit("fixes since the release")
@@ -70,6 +71,7 @@ func TestARecordFoundAtAPathNewSinceTheAnchorIsMarked(t *testing.T) {
 		"iss-10": false, // renamed since the anchor: a new path, an old surface
 		"iss-11": false, // a directory holding a renamed file
 		"iss-12": false, // pathspec magic, not a plain path
+		"iss-13": false, // the same magic behind ./
 	} {
 		if v, ok := got[id]; !ok {
 			t.Errorf("%s is not in the cut", id)
@@ -113,6 +115,10 @@ func TestABloblessCloneDoesNotMarkAPathTheAnchorHad(t *testing.T) {
 	src.git("tag", "-f", "v0.1.0")
 	src.write("old.sh", "old, edited since\n")
 	src.write(resolvedDir+"iss-2-x.md", "---\nid: iss-2\nimpact: fix\nfound_at: \"old.sh\"\n---\n# iss-2\n")
+	// A positive control: a path new since the anchor is still marked in the
+	// clone, so the test cannot pass by the probe marking nothing.
+	src.write("scripts/new.sh", "new\n")
+	src.write(resolvedDir+"iss-3-x.md", "---\nid: iss-3\nimpact: fix\nfound_at: \"scripts/new.sh\"\n---\n# iss-3\n")
 	src.commit("a fix to it")
 	src.git("config", "uploadpack.allowfilter", "true")
 
@@ -139,9 +145,40 @@ func TestABloblessCloneDoesNotMarkAPathTheAnchorHad(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	marked := map[string]bool{}
 	for _, rec := range set.Added {
-		if rec.ID == "iss-2" && rec.FoundAtNew {
-			t.Errorf("iss-2 is marked new in a blobless clone, though v0.1.0 holds old.sh")
-		}
+		marked[rec.ID] = rec.FoundAtNew
+	}
+	if marked["iss-2"] {
+		t.Errorf("iss-2 is marked new in a blobless clone, though v0.1.0 holds old.sh")
+	}
+	if !marked["iss-3"] {
+		t.Errorf("iss-3 is not marked in the blobless clone, though scripts/new.sh is new since v0.1.0")
+	}
+}
+
+// TestARenameSetTooLargeToReadMarksNothing: past its rename limit git skips
+// rename detection and still exits 0, so a moved file would read as new. The
+// probe pins the limit and, where the added and deleted paths could exceed
+// it, cannot be sure of any rename, so it marks nothing.
+func TestARenameSetTooLargeToReadMarksNothing(t *testing.T) {
+	r := baseRepo(t)
+	r.write("a.go", "package a\n"+strings.Repeat("// a line the move keeps as it was\n", 40))
+	r.write("b.go", "package b\n"+strings.Repeat("// a line the move keeps as it was\n", 40))
+	r.commit("two files at the release")
+	r.git("tag", "-f", "v0.1.0")
+	r.remove("a.go")
+	r.remove("b.go")
+	r.write("moved/x.go", "package a\n// edited\n"+strings.Repeat("// a line the move keeps as it was\n", 40))
+	r.write("moved/y.go", "package b\n// edited\n"+strings.Repeat("// a line the move keeps as it was\n", 40))
+	r.commit("both moved and edited")
+
+	// The new names share no basename with the old, so git's basename
+	// pairing, which runs before the limit, finds neither.
+	if pr := newPathProbeWithin(r.root, "v0.1.0", 1); pr.newSince("moved/x.go") {
+		t.Errorf("with a rename limit of 1 over two moves, moved/x.go is marked new; want nothing marked")
+	}
+	if pr := newPathProbeWithin(r.root, "v0.1.0", 1000); pr.newSince("moved/x.go") {
+		t.Errorf("within the limit, moved/x.go is a rename target and must not be marked")
 	}
 }

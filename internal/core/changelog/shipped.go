@@ -5,6 +5,7 @@ import (
 	"path"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/frontmatter"
@@ -465,15 +466,29 @@ type pathProbe struct {
 // the blobs rename detection compares among them, leaves the probe with no
 // rename set, so it marks nothing.
 func newPathProbe(root, baseRef string) *pathProbe {
+	return newPathProbeWithin(root, baseRef, renameLimit)
+}
+
+// renameLimit pins the rename detection a probe asks of git, so a
+// repository's own diff.renameLimit cannot change what a cut marks.
+const renameLimit = 1000
+
+// newPathProbeWithin is newPathProbe under a named rename limit. Past its
+// limit git skips rename detection and still exits 0, so a cut whose added
+// and deleted paths could exceed it is one where no rename is certain, and
+// the probe marks nothing.
+func newPathProbeWithin(root, baseRef string, limit int) *pathProbe {
 	pr := &pathProbe{root: root, base: baseRef}
 	if baseRef == "" {
 		return pr
 	}
-	out, err := gitutil.Run(root, "diff", "-z", "--no-ext-diff", "--no-textconv", "--name-status", "-M", baseRef, "HEAD", "--")
+	out, err := gitutil.Run(root, "diff", "-z", "--no-ext-diff", "--no-textconv", "--name-status", "-M",
+		"-l"+strconv.Itoa(limit), baseRef, "HEAD", "--")
 	if err != nil {
 		return pr
 	}
-	pr.renamed = map[string]bool{}
+	renamed := map[string]bool{}
+	added, deleted := 0, 0
 	f := strings.Split(out, "\x00")
 	for i := 0; i < len(f); i++ {
 		status := f[i]
@@ -481,12 +496,24 @@ func newPathProbe(root, baseRef string) *pathProbe {
 			continue
 		}
 		if (status[0] == 'R' || status[0] == 'C') && i+2 < len(f) {
-			pr.renamed[f[i+2]] = true
+			renamed[f[i+2]] = true
 			i += 2
 			continue
 		}
+		switch status[0] {
+		case 'A':
+			added++
+		case 'D':
+			deleted++
+		}
 		i++ // one path follows every other status
 	}
+	// What is left unpaired is what git would have had to compare; past the
+	// limit it may not have, and said so only on stderr.
+	if added*deleted > limit*limit {
+		return pr
+	}
+	pr.renamed = renamed
 	return pr
 }
 
@@ -501,11 +528,11 @@ func (pr *pathProbe) newSince(p string) bool {
 		return false
 	}
 	p = strings.TrimSpace(p)
-	if p == "" || strings.ContainsAny(p, " \t\n\r") || path.IsAbs(p) || strings.HasPrefix(p, ":") {
+	if p == "" || strings.ContainsAny(p, " \t\n\r") || path.IsAbs(p) {
 		return false
 	}
 	clean := path.Clean(p)
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") {
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || strings.HasPrefix(clean, ":") {
 		return false
 	}
 	if pr.renamed[clean] {
