@@ -58,10 +58,19 @@ decides whether a session commits, pushes, or opens or merges a pull request.
 **The lock and the checks.** Every change to the record holds a lock file
 beside it and re-reads the record inside the lock, so two writers never lose
 an update and a check that read the record before the person came back never
-writes it back. The record and the lock are used only when each is a regular
-file this account owns that no one else can write, within 64 KiB: one that
-fails those checks, or does not parse, reads as not away, and a verb asked to
-change it refuses, naming the file.
+writes it back; only ending the mode goes around a lock it cannot have
+(below). The record and the lock are used only when each is a regular file
+this account owns that no one else can write, within 64 KiB: one that fails
+those checks, or does not parse, reads as not away, and queueing a step
+refuses it, naming the file. Setting the mode refuses the same, except that it
+carries a record merely past 64 KiB, letting its oldest lines go.
+
+**Ending never refuses on the record.** The person's word that they are back
+ends the mode whatever state the record or its lock is in. A record past
+64 KiB is printed whole and kept with its oldest lines let go; one that does
+not parse, or is not safely this account's, is replaced by a closed record,
+printing nothing from it; and a lock not had within two seconds, or not safe
+to take, is gone around, closing without it. Each is named on its own line.
 
 **The badge while away.** While the record holds, parking the badge on the
 product thinker or the technical facilitator is refused, naming
@@ -69,10 +78,12 @@ product thinker or the technical facilitator is refused, naming
 nobody answers.
 
 Every refusal of the away verbs exits 2 with nothing written: an unreadable
-or past end, one past seven days, a checkout without the local tier, no
-checkout, a queued step with no record holding or with no words, a lock not
-had within two seconds, and a record or lock that fails the checks. None makes
-a network request.
+or past end, one past seven days, a checkout without the local tier (checked
+only when setting the mode), no checkout, a queued step with no record holding
+or with no words, and, when setting the mode or queueing a step, a lock not
+had within two seconds and a record or lock that fails the checks. Ending the
+mode refuses only where there is no checkout, no home or no root commit to key
+the record on. None makes a network request.
 
 <!-- surface-appendix:begin — generated from the command tree by `go generate ./internal/surface/cli`; never edit by hand -->
 

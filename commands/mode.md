@@ -72,7 +72,8 @@ one the set form refuses (exit 2) and creates nothing — say so, and point at
 The person's word that they are away and sessions should work on until they
 are back. It sits beside the badge and is not a fourth word. One record holds
 it for every working copy of the repository on this machine, in
-`~/.abcd.noindex/away/<root-sha>/record.json`, changed only under its lock.
+`~/.abcd.noindex/away/<root-sha>/record.json`, changed under its lock, which
+only `back` goes around when it cannot have it.
 
 **The away mode grants no rights.** The person's own standing instruction
 stays what decides whether a session commits, pushes, or opens or merges a
@@ -118,8 +119,10 @@ recorded stop (a stop at the host's cap is labelled "possibly forced by the
 cap"), records who ended it and from which working copy, and closes the
 record; on a record whose time has passed it prints the same and closes it.
 Relay every line to the user. A record or lock that is not a regular file this
-account owns that no one else can write, within 64 KiB, is refused by
-`autonomous` and `queue` (exit 2), naming the file. `back` ends the mode
+account owns that no one else can write, or a record that does not parse, is
+refused by `autonomous` and `queue` (exit 2), naming the file; so is one past
+64 KiB, except that `autonomous` carries a record merely past 64 KiB, letting
+its oldest lines go. `back` ends the mode
 whatever state the record is in: one past 64 KiB is printed whole and kept
 with its oldest lines let go and counted; one that does not parse, or is not
 safely this account's, is replaced by a closed record, printing nothing from

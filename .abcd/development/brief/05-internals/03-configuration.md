@@ -1320,8 +1320,9 @@ additionally never exits non-zero beyond that refusal, because exit 2 is the hos
 BLOCKING code on that event. `Stop` and `StopFailure` carry the away
 mode's stop check (`hook stop`, `hook stop-failure`, spc-2610180914469489) and fire
 at a turn's end, where a fetch would hold the session; each resolves the plugin
-root, then PATH, then says the stop check did not run, at exit 1, never `Stop`'s
-blocking 2. `Stop` declares a 30-second `timeout`, room for the check's one forge
+root, then PATH, then says what did not happen, at exit 1, never `Stop`'s
+blocking 2: `Stop` that the stop check did not run, `StopFailure` that a turn
+ended on an API error was not recorded. `Stop` declares a 30-second `timeout`, room for the check's one forge
 listing under its own ten-second deadline; `StopFailure` declares none.
 
 `SessionEnd` carries `hook session-end`, which stages the session's own transcript;

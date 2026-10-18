@@ -4,8 +4,9 @@ A destructive shell command typed by accident costs a person hours: a force
 push that erases a colleague's commits, an `rm -rf` with an unlucky glob, a
 `git clean` over uncommitted work. `/abcd:guard` catches those before they run
 and says what to run instead. It writes nothing but the record of a branch an
-agent creates (below), and it costs nothing to have on: an unrecognised command
-passes through untouched.
+agent creates and, when it admits abcd's own question where the badge shows,
+the waiting-on mode and the marker saying a question is open (both below), and
+it costs nothing to have on: an unrecognised command passes through untouched.
 
 Two things use it. A person or a script asks it about one command line. A
 compatible agent harness asks it about every command the agent is about to run,
@@ -261,8 +262,8 @@ key (the reservations' copy key) in the away store, `~/.abcd.noindex/away/<root-
 written under the store's lock through its atomic writer, in a list capped at
 the hundred most recent, the oldest dropped. The recorder records and **refuses
 nothing**: a store it cannot write leaves one stderr line and the command goes
-on to the guard's own judgement, and a checkout without the local tier records
-nothing. A record made for a command that then fails names a branch that does
+on to the guard's own judgement, and a checkout abcd does not manage (no
+`.abcd/` at its root or at its main worktree's) records nothing. A record made for a command that then fails names a branch that does
 not exist, and the away mode's reading ignores it.
 
 ## Fail-open-loud

@@ -1,6 +1,6 @@
 ---
 name: guard
-description: "Judge a shell command against the hazard registry before it runs: Writes branch records; refuses a hazard via check, hook or approve, and an unknown sub-verb."
+description: "Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb."
 argument-hint: "[check [--command <command>] | hook | approve --dir <dir>]"
 block: agents
 user-invocable: false
@@ -10,8 +10,10 @@ user-invocable: false
 
 Decide whether a shell command is safe to run, using abcd's hazard registry —
 the bundled hazard entries merged with this repo's `.abcd/guard.json`. The
-check performs **zero writes**; the hook writes one thing, the record of a
-branch the session creates (below), and refuses nothing for it.
+check performs **zero writes**. The hook writes the record of a branch the
+session creates (below), and refuses nothing for it; when it admits abcd's own
+question where the badge shows, it also writes the waiting-on mode and the
+marker saying a question is open (below).
 
 ## `check` — decide one command
 
@@ -141,9 +143,10 @@ question tool the warning says the question runs, and where no tool name can be
 read the warning names no tool.
 
 While the away mode holds (`/abcd:mode autonomous`), the hook refuses every
-question on the host's question tool before any of the checks above, abcd's or
-another tool's, whatever its chip, with one reason, and sets no mode and marks
-nothing open. The reason routes the question by the act it asks about: an act
+question on the host's question tool whose payload it can decode, before any
+of the checks above, abcd's or another tool's, whatever its chip, with one
+reason, and sets no mode and marks nothing open; a payload it cannot decode
+runs with the loud warning above, away or not. The reason routes the question by the act it asks about: an act
 only the person may approve (an embargo `--approve` digest or triage verdict,
 the drain's hand-back, the remote-configuration apply verb, a release sign-off,
 pushing, opening or merging a pull request without a standing instruction,
@@ -153,7 +156,8 @@ page or a brief invariant names as the person's) is queued with
 `/abcd:mode queue "<step>"`, and every other question is decided and recorded
 with `/abcd:decide`. Nothing detects the act: the agent classifies its own
 question from the reason's list. An away record that cannot be read safely
-reads as not away, and the hook says so with the warning status.
+reads as not away, and the hook says so on stderr, with the warning status
+only where it would otherwise admit the question silently.
 
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
 call that is neither a shell command nor a question, a registry that does not

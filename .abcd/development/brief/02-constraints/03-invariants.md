@@ -128,10 +128,10 @@ The following are non-negotiable invariants — any architectural choice that vi
    under a ten-second deadline, with
    no cache, so a run of eight blocked stops costs up to eight bounded
    listings. A listing that fails or is late is named as not read, never
-   hidden, and the check judges from disk alone: a branch with a pull request
-   is compared with the last-fetched default branch, naming when it was
-   fetched, and a reservation is never reported as carried by no pull
-   request. Whenever the away mode does not hold, the stop check reads disk
+   hidden, and the check judges from disk alone: every pushed branch of the
+   session's own is compared with the last-fetched default branch, naming
+   when it was fetched, and a reservation is never reported as carried by no
+   pull request. Whenever the away mode does not hold, the stop check reads disk
    only, and no turn's end touches the network, held by
    `TestPresentReadsDiskOnly`
    ([adr-2610181003541997](../../decisions/adrs/2610181003541997-the-away-mode-s-stop-check-reads-the.md),

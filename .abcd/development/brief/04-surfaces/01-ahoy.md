@@ -694,8 +694,9 @@ host's BLOCKING status on that event and would stop the sub-agent finishing.
 `Stop` and `StopFailure`, which carry the away mode's stop check
 (spc-2610180914469489), download nothing either: both fire at a turn's end, where
 a fetch would hold the session, and each resolves the plugin root, then `PATH`,
-then says in one line that the stop check did not run, with exit 1, never the
-`Stop` event's blocking 2.
+then says in one line what did not happen, with exit 1, never the `Stop`
+event's blocking 2: `Stop` that the stop check did not run, `StopFailure` that
+a turn ended on an API error was not recorded.
 
 **The `PATH` rung is owned-only** (GHSA-gx3m-3224-qqcv, CWE-426). It accepts only
 an absolute resolution out of a directory that is neither under the shim's

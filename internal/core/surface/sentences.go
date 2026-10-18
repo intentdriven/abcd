@@ -139,13 +139,13 @@ var sentences = map[string]string{
 		"Writes nothing; refuses a lifeboat whose manifest does not verify.",
 
 	"abcd guard": "Judge a shell command against the hazard registry before it runs: " +
-		"Writes branch records; refuses a hazard via check, hook or approve, and an unknown sub-verb.",
+		"Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.",
 	"abcd guard check": "Judge one shell command against the hazard registry: " +
 		"Writes nothing; refuses a hazard with exit 1 and a command it cannot parse with exit 2.",
 	"abcd guard approve": "Answer a headless agent's permission prompts over MCP: " +
 		"Writes nothing; refuses every prompt but a shell command the guard reads whole and clears.",
 	"abcd guard hook": "Judge the shell command in a host's pre-tool-use payload: " +
-		"Writes a created branch's record; refuses a hazard or a badly built question with the host's deny.",
+		"Writes branch records and a question's mode; refuses a hazard or a badly built question.",
 
 	"abcd history": "Keep session transcripts in the user-level store and read them back: " +
 		"Writes nothing bare, and redacts each one it stores; refuses an unknown sub-verb.",
@@ -355,7 +355,7 @@ var sentences = map[string]string{
 	"abcd mode autonomous": "Record that the person is away and sessions work on, until a time or open-ended: " +
 		"Writes the away record; refuses an end already past or past seven days.",
 	"abcd mode back": "End the away mode, printing what was queued and recorded one line each: " +
-		"Writes the away record's ending; refuses a record not safely this account's.",
+		"Writes its ending whatever the record's or lock's state; refuses outside a git checkout.",
 	"abcd mode queue": "Queue one step for the person's return while they are away: " +
 		"Writes the away record; refuses when no away record holds.",
 

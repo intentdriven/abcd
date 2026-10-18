@@ -66,9 +66,11 @@ func newModeAutonomousCommand(asJSON *bool) *cobra.Command {
 			"time or with `abcd mode back`; a prompt never ends it. Setting it again keeps\n" +
 			"whatever is queued or recorded and not yet read.\n\n" +
 			"The record lives in " + abcdhome.Display(autonomy.StoreDir, "<root-sha>", autonomy.RecordFile) + ", keyed on the repository's\n" +
-			"root commit, and is changed only under its lock. Exit 2 on a refusal (an unreadable\n" +
-			"or past --until, one past seven days, no local tier, no checkout, or a record or\n" +
-			"lock that is not safely this account's) with nothing written. No network request.",
+			"root commit, and is changed under its lock, which only `abcd mode back` goes\n" +
+			"around. A record merely past its 64 KiB is carried, its oldest lines let go.\n" +
+			"Exit 2 on a refusal (an unreadable or past --until, one past seven days, no local\n" +
+			"tier, no checkout, or a record or lock that is not safely this account's) with\n" +
+			"nothing written. No network request.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()

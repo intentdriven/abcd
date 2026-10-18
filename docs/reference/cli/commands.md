@@ -1569,7 +1569,7 @@ abcd embark probe ../lifeboat
 
 ### `abcd guard`
 
-Judge a shell command against the hazard registry before it runs: Writes branch records; refuses a hazard via check, hook or approve, and an unknown sub-verb.
+Judge a shell command against the hazard registry before it runs: Writes branch records and a question's mode; refuses a hazard and an unknown sub-verb.
 
 **Usage:** `abcd guard`
 
@@ -1810,7 +1810,7 @@ heredoc (`abcd guard check <<'EOF'` ... `EOF`) passes it through untouched.
 
 #### `abcd guard hook`
 
-Judge the shell command in a host's pre-tool-use payload: Writes a created branch's record; refuses a hazard or a badly built question with the host's deny.
+Judge the shell command in a host's pre-tool-use payload: Writes branch records and a question's mode; refuses a hazard or a badly built question.
 
 **Usage:** `abcd guard hook`
 
@@ -4081,9 +4081,11 @@ time or with `abcd mode back`; a prompt never ends it. Setting it again keeps
 whatever is queued or recorded and not yet read.
 
 The record lives in ~/.abcd.noindex/away/<root-sha>/record.json, keyed on the repository's
-root commit, and is changed only under its lock. Exit 2 on a refusal (an unreadable
-or past --until, one past seven days, no local tier, no checkout, or a record or
-lock that is not safely this account's) with nothing written. No network request.
+root commit, and is changed under its lock, which only `abcd mode back` goes
+around. A record merely past its 64 KiB is carried, its oldest lines let go.
+Exit 2 on a refusal (an unreadable or past --until, one past seven days, no local
+tier, no checkout, or a record or lock that is not safely this account's) with
+nothing written. No network request.
 
 **Flags:**
 
@@ -4094,7 +4096,7 @@ lock that is not safely this account's) with nothing written. No network request
 
 #### `abcd mode back`
 
-End the away mode, printing what was queued and recorded one line each: Writes the away record's ending; refuses a record not safely this account's.
+End the away mode, printing what was queued and recorded one line each: Writes its ending whatever the record's or lock's state; refuses outside a git checkout.
 
 **Usage:** `abcd mode back`
 
