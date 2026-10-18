@@ -2,7 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"errors"
+	"fmt"
 	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -10,12 +15,93 @@ import (
 	"github.com/intentdriven/abcd/internal/core/claim"
 )
 
-// TestThePromptHookShowsEachAnnouncementOnce is C6 and C12 at the hook: after
-// a fetch brought an announcement in, the next prompt's injected text carries
-// it, rendered from its fields, with the grants-nothing line, inside a second
-// with an origin that would hang any network call; the prompt after shows it
-// no more; and a rules.json that will not load does not switch it off.
+// hangOrigin points root's origin at a command that would hang any network
+// call for 30 s and first leaves a file at the path it returns, so a test
+// knows from the file, not the clock, whether anything reached for origin.
+func hangOrigin(t *testing.T, root string) (touched string) {
+	t.Helper()
+	touched = filepath.Join(t.TempDir(), "origin-reached")
+	if strings.ContainsAny(touched, " %") {
+		t.Fatalf("the marker path %q needs escaping in an ext:: URL", touched)
+	}
+	gitCmd(t, root, "config", "protocol.ext.allow", "always")
+	// git-remote-ext splits the command at spaces, and "% " is its literal
+	// space, so sh -c gets the whole of "touch <file>; sleep 30" as one
+	// argument. A backslash escapes nothing there: "sleep\ 30" would hand
+	// sleep no argument, and it would exit at once instead of hanging.
+	gitCmd(t, root, "remote", "set-url", "origin", "ext::sh -c touch% "+touched+";% sleep% 30")
+	return touched
+}
+
+// requireOriginUntouched fails the test if anything reached for the origin
+// hangOrigin set up.
+func requireOriginUntouched(t *testing.T, touched string) {
+	t.Helper()
+	if _, err := os.Stat(touched); err == nil {
+		t.Fatal("the hook reached for origin; want it never to touch the network")
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatal(err)
+	}
+}
+
+// TestThePromptHookReturnsInsideItsSecond is C12's bound at the hook: with an
+// announcement to show and an origin that would hang any network call, the
+// hook returns inside its one-second budget and never reaches for origin.
+// The bound is the shipped one, so the clock decides it, and one reading on a
+// loaded runner can run over (iss-2610180735158998). Each of three tries runs
+// in a checkout of its own, so each has the announcement still to show, and
+// each try's time is logged; two tries over the second fail the test, so one
+// spike is absorbed and a hook that is usually slow is not. Whether origin
+// was reached is decided by the file hangOrigin's command leaves, never by
+// the clock.
+func TestThePromptHookReturnsInsideItsSecond(t *testing.T) {
+	const tries = 3
+	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
+	w := newReserveWorld(t)
+	octo := w.clone(t, "octo", octoMail)
+	if code, _, stderr := reserveRun(t, octo, "announce", "merging", "1012"); code != 0 {
+		t.Fatalf("announce: exit %d, %s", code, stderr)
+	}
+	over := 0
+	for i := 1; i <= tries; i++ {
+		pat := w.clone(t, fmt.Sprintf("pat%d", i), "5+pat@users.noreply.github.com")
+		if code, _, stderr := reserveRun(t, pat, "status"); code != 0 {
+			t.Fatalf("status: exit %d, %s", code, stderr)
+		}
+		touched := hangOrigin(t, pat)
+		// runHook runs the hook in this process, so the time around it is
+		// the hook's own, from its start to its last write: no process start
+		// or exit is in it.
+		start := time.Now()
+		runHook(t, hookInputJSON(t, fmt.Sprintf("s-bound-%d", i), pat, "hello there"), "hook", "prompt-router")
+		took := time.Since(start)
+		t.Logf("try %d: the hook took %s", i, took)
+		requireOriginUntouched(t, touched)
+		if took > time.Second {
+			over++
+		}
+	}
+	if over >= 2 {
+		t.Fatalf("%d of %d tries took over the hook's second; want at most one", over, tries)
+	}
+}
+
+// TestThePromptHookShowsEachAnnouncementOnce is C6 at the hook: after a fetch
+// brought an announcement in, the next prompt's injected text carries it,
+// rendered from its fields, with the grants-nothing line, with an origin that
+// would hang any network call and is never reached; the prompt after shows it
+// no more; and a rules.json that will not load does not switch it off. The
+// budgets are the test's own, ten seconds for the hook and for the status
+// read, because what is shown is asked here and the shipped bound is asked by
+// TestThePromptHookReturnsInsideItsSecond: under the shipped second a loaded
+// runner can spend the read's share, and the block then says the status is
+// unavailable (iss-2610180735158998).
 func TestThePromptHookShowsEachAnnouncementOnce(t *testing.T) {
+	const spare = 10 * time.Second
+	oldBudget := hookBudget
+	hookBudget = spare
+	defer func() { hookBudget = oldBudget }()
+	defer claim.SetPromptReadBudgetForTest(spare)()
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	w := newReserveWorld(t)
 	octo := w.clone(t, "octo", octoMail)
@@ -26,18 +112,9 @@ func TestThePromptHookShowsEachAnnouncementOnce(t *testing.T) {
 	if code, _, stderr := reserveRun(t, pat, "status"); code != 0 {
 		t.Fatalf("status: exit %d, %s", code, stderr)
 	}
-	gitCmd(t, pat, "config", "protocol.ext.allow", "always")
-	gitCmd(t, pat, "remote", "set-url", "origin", "ext::sh -c sleep\\ 30")
+	touched := hangOrigin(t, pat)
 
-	// runHook runs the hook in this process, so the time around it is the
-	// hook's own, from its start to its last write: no process start or exit
-	// is in it.
-	start := time.Now()
 	out, _ := runHook(t, hookInputJSON(t, "s-status", pat, "hello there"), "hook", "prompt-router")
-	// The origin would hang for 30 s; the hook returns inside its second.
-	if took := time.Since(start); took > time.Second {
-		t.Fatalf("the hook took %s; want it never to wait on the network", took)
-	}
 	for _, want := range []string{claim.NotesHeading + "\n", "- @octo (claimed): merging #1012, for 30 min\n", claim.GrantsNothing + "\n"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("the hook's text:\n%s\nwant it to carry %q", out, want)
@@ -47,6 +124,7 @@ func TestThePromptHookShowsEachAnnouncementOnce(t *testing.T) {
 	if strings.Contains(again, claim.NotesHeading) {
 		t.Fatalf("the second prompt shows the status again:\n%s", again)
 	}
+	requireOriginUntouched(t, touched)
 
 	// A second announcement, then a rules.json that will not load: the
 	// status block is still emitted, in both forms.
