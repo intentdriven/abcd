@@ -90,7 +90,9 @@
 // work no pull request carries. Owed.Fingerprint and Owed.CappedFingerprint
 // compare two owed sets item by item, ignoring order and reasons.
 // Owed.NextRenewal is the earliest renewal due among the live reservations
-// under this copy's key (zero when none), and Owed.HandedBack the items a
+// under this copy's key (zero when none), Owed.WakeBy the latest a wake may
+// fire for them (a renewal not yet due, or the lapse of one already due, so
+// a renewal only due keeps releasing on a wake), and Owed.HandedBack the items a
 // queued step handed back, which the verdict accepts only under
 // --hold-pushes and only for an unpushed branch's item with its head.
 //

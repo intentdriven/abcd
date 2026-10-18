@@ -150,7 +150,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		}
 		return a.Record < b.Record
 	})
-	return Owed{Items: r.items, Notes: r.notes, NextRenewal: r.nextRenewal, HandedBack: r.handed, Incomplete: r.incomplete}, nil
+	return Owed{Items: r.items, Notes: r.notes, NextRenewal: r.nextRenewal, WakeBy: r.wakeBy, HandedBack: r.handed, Incomplete: r.incomplete}, nil
 }
 
 // owedReader is one ReadOwed's state.
@@ -181,6 +181,7 @@ type owedReader struct {
 	items       []OwedItem
 	handed      []OwedItem // handed back by a queued step, for the verdict to accept
 	nextRenewal time.Time  // the earliest renewal due among r.mine
+	wakeBy      time.Time  // the latest a wake may fire for r.mine (Owed.WakeBy)
 	notes       []string
 }
 
@@ -939,6 +940,13 @@ func (r *owedReader) reservationItems() {
 		half := res.ClaimedAt.Add(res.EffectiveExpiry.Sub(res.ClaimedAt) / 2)
 		if r.nextRenewal.IsZero() || half.Before(r.nextRenewal) {
 			r.nextRenewal = half
+		}
+		need := half
+		if !r.now.Before(half) {
+			need = res.EffectiveExpiry
+		}
+		if r.wakeBy.IsZero() || need.Before(r.wakeBy) {
+			r.wakeBy = need
 		}
 		if !r.now.Before(half) {
 			r.add(OwedItem{Kind: OwedRenewal, Record: res.Record,

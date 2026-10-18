@@ -1198,3 +1198,41 @@ func TestReadOwedHonoursDeadline(t *testing.T) {
 		t.Fatalf("a read cut short is marked incomplete with a note: incomplete %v, %s", owed.Incomplete, describe(owed))
 	}
 }
+
+// TestDueRenewalReleasesOnWake: a set of only a renewal already due, as the
+// reader produces it (its renewal time past, its lease not yet lapsed), is
+// released by a wake that fires before the lease lapses less the skew, as
+// the spec's "a renewal only due keeps releasing" says; a wake past the
+// lapse does not qualify.
+func TestDueRenewalReleasesOnWake(t *testing.T) {
+	f := newFx(t)
+	f.now = at(t, "2026-10-18 21:01")
+	f.reserve("iss-9", claim.CopyThis, f.now.Add(-3*time.Hour), f.now.Add(time.Hour))
+	f.forge.prs = []fakePR{pr(1, "fix/iss-9", "main", "alice")}
+	rec := f.awayRecord(false)
+	o := f.opts()
+	o.Record = rec
+	owed := f.readWith(o)
+	if len(owed.Items) != 1 || owed.Items[0].Kind != OwedRenewal {
+		t.Fatalf("want only the renewal due: %s", describe(owed))
+	}
+	if d := Deadline(owed, f.now); !d.After(f.now) {
+		t.Fatalf("the deadline for a due renewal is %s, already past at %s", d, f.now)
+	}
+	st := SessionState{}
+	wake := StopInput{SessionCrons: crons("*/10 * * * *"), Location: london(t)}
+	v := Judge(rec, owed, wake, st, f.now)
+	if v.Row != 2 {
+		t.Fatalf("first stop row %d, want 2", v.Row)
+	}
+	for i := 0; i < 3; i++ {
+		v = Judge(rec, owed, wake, v.State, f.now)
+		if v.Block {
+			t.Fatalf("wake %d: a due renewal alone blocked (row %d); want it released", i+1, v.Row)
+		}
+	}
+	late := StopInput{SessionCrons: crons("0 23 * * *"), Location: london(t)}
+	if v := Judge(rec, owed, late, v.State, f.now); !v.Block {
+		t.Errorf("a wake past the lease's lapse released the stop")
+	}
+}

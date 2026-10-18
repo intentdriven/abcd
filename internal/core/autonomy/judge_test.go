@@ -176,6 +176,12 @@ func TestWakeReleasesUnchangedSetTwice(t *testing.T) {
 	for _, item := range []OwedItem{renewalDue, stackedWait} {
 		s := newSequence(t, awayRec(now, false), now)
 		owed := owedOf(item)
+		if item.Kind == OwedRenewal {
+			// As the reader produces a renewal due: its renewal time past,
+			// its lease lapsing in three hours, past the six stops ten minutes
+			// apart (TestDueRenewalReleasesOnWake).
+			owed.NextRenewal, owed.WakeBy = now.Add(-time.Hour), now.Add(3*time.Hour)
+		}
 		s.stop(owed, wake)
 		for i := 0; i < 5; i++ {
 			if v := s.stop(owed, wake); v.Block {

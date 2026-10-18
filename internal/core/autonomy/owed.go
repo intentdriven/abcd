@@ -82,6 +82,12 @@ type Owed struct {
 	// stop verdict's deadline is it less lease.Skew, when that is sooner than
 	// the ceiling (dcn-2610181003455731).
 	NextRenewal time.Time `json:"next_renewal,omitempty"`
+	// WakeBy is the latest a wake may fire for this copy's live
+	// reservations: the earliest of each one's renewal while it is not yet
+	// due, and its lapse once it is. A renewal already due is owed, and a
+	// wake before the lease lapses releases it as the spec has it; zero when
+	// there is no reservation, and Deadline then reads NextRenewal.
+	WakeBy time.Time `json:"wake_by,omitempty"`
 	// HandedBack are the items a queued step handed back this check, taken
 	// out of Items by the reader (dcn-2610181035355741). The verdict accepts
 	// only an unpushed branch's item, with its head, under --hold-pushes,

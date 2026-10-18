@@ -39,8 +39,9 @@ type BackgroundTask struct {
 }
 
 // Deadline is the latest a wake may fire for the stop to wait on it: the
-// earlier of the earliest renewal due among the live reservations under this
-// copy's key less lease.Skew, and now plus a ceiling, OwedCeiling while work
+// earlier of Owed.WakeBy (the earliest renewal not yet due among the live
+// reservations under this copy's key, or the lapse of one already due; else
+// Owed.NextRenewal) less lease.Skew, and now plus a ceiling, OwedCeiling while work
 // is owed and IdleCeiling when none is (dcn-2610181003455731).
 func Deadline(owed Owed, now time.Time) time.Time {
 	ceiling := IdleCeiling
@@ -48,8 +49,12 @@ func Deadline(owed Owed, now time.Time) time.Time {
 		ceiling = OwedCeiling
 	}
 	d := now.Add(ceiling)
-	if !owed.NextRenewal.IsZero() {
-		if r := owed.NextRenewal.Add(-lease.Skew); r.Before(d) {
+	by := owed.WakeBy
+	if by.IsZero() {
+		by = owed.NextRenewal
+	}
+	if !by.IsZero() {
+		if r := by.Add(-lease.Skew); r.Before(d) {
 			d = r
 		}
 	}
