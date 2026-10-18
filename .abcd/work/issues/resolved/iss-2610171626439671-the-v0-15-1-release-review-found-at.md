@@ -10,6 +10,10 @@ origin: researcher-authored
 production_mode: hand-written
 found_at: "commands/launch.md"
 remedy: "Rewrite the passage at commands/launch.md:115-116 to match the shipped behaviour the review names, and check its sibling chapters for the same claim."
+resolution: "The page now states what the shipped code does, re-verified against the code and the verb's --help at v0.15.1 before the edit."
+impact: internal
+resolved_by:
+  commit: "a394eb10a"
 ---
 
 The v0.15.1 release review found at commands/launch.md:115-116: The page is addressed to the person cutting the release and says '`/abcd:peers` shows "release vX.Y.Z being cut by @you: merges are held"'. Run from the cutting copy, peers renders Hold.Line(), which is 'you are cutting release vX.Y.Z from this copy: every other session's merges are held' (internal/core/claim/release.go:122-126; peers.go:470). The quoted line is what other copies see. commands/reserve.md:91-95 states both correctly. Fix: say that other sessions see the quoted line and this copy sees the 'you are cutting' line.

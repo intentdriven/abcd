@@ -86,7 +86,11 @@ the record (`Abcd-Reservation`), the holder (`Abcd-Holder`, a GitHub username),
 the working copy (`Abcd-Copy`, a random key kept in the checkout's local tier),
 the footprint (`Abcd-Footprint`, one per path), the lease (`Abcd-Claimed-At`,
 `Abcd-Expires-At`) and abcd's composed `Assisted-by: abcd:<version>` label; a
-release adds `Abcd-Released-At`. A release that hands the record back to a
+release adds `Abcd-Released-At`. A drain lane's renewal adds `Abcd-Stage`, the
+stage the lane is in, one of `worktree`, `brief`, `implement`, `validate` and
+`land`. A fresh or taken-over reservation and a release never carry one, and a
+reader reads a tip whose stage is another word, repeated or on a release
+commit as unreadable. A release that hands the record back to a
 person, which only the implement loop and the drain make, adds
 `Abcd-Handed-Back`, the hand-back's kind, and `Abcd-Record`, the blob id of the
 record on origin's default branch as last fetched (spc-2610161044461448 step 3,
