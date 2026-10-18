@@ -110,6 +110,8 @@ var examples = map[string]string{
 	"abcd library declassify": "abcd library declassify example-paper-2026",
 	"abcd library ingest":     "abcd library ingest https://example.com/paper.pdf",
 
+	"abcd mode queue": `abcd mode queue "approve the embargo close for the example advisory"`,
+
 	"abcd memory add":    `abcd memory add --title "The tests need the race flag" --recall test --recall race --by Example:model-1 < note.txt`,
 	"abcd memory remove": "abcd memory remove mem-2609010000000001",
 

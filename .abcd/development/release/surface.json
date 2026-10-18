@@ -3396,6 +3396,39 @@
       "flags": []
     },
     {
+      "path": "abcd mode autonomous",
+      "hidden": false,
+      "sentence": "Record that the person is away and sessions work on, until a time or open-ended: Writes the away record; refuses an end already past or past seven days.",
+      "flags": [
+        {
+          "name": "hold-pushes",
+          "shorthand": "",
+          "type": "bool",
+          "required": false,
+          "hidden": false
+        },
+        {
+          "name": "until",
+          "shorthand": "",
+          "type": "string",
+          "required": false,
+          "hidden": false
+        }
+      ]
+    },
+    {
+      "path": "abcd mode back",
+      "hidden": false,
+      "sentence": "End the away mode, printing what was queued and recorded one line each: Writes the away record's ending; refuses a record not safely this account's.",
+      "flags": []
+    },
+    {
+      "path": "abcd mode queue",
+      "hidden": false,
+      "sentence": "Queue one step for the person's return while they are away: Writes the away record; refuses when no away record holds.",
+      "flags": []
+    },
+    {
       "path": "abcd peers",
       "hidden": false,
       "group": "agents",

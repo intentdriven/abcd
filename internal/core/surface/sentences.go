@@ -352,6 +352,12 @@ var sentences = map[string]string{
 
 	"abcd mode": "Print or set whose answer the agent loop is waiting on: " +
 		"Writes the state only when setting it; refuses an unknown state or a checkout with no local tier.",
+	"abcd mode autonomous": "Record that the person is away and sessions work on, until a time or open-ended: " +
+		"Writes the away record; refuses an end already past or past seven days.",
+	"abcd mode back": "End the away mode, printing what was queued and recorded one line each: " +
+		"Writes the away record's ending; refuses a record not safely this account's.",
+	"abcd mode queue": "Queue one step for the person's return while they are away: " +
+		"Writes the away record; refuses when no away record holds.",
 
 	"abcd peers": "List what sibling worktrees and branches hold that this checkout lacks, and the reservations: " +
 		"Writes the fetched reservations; refuses outside a git checkout.",
