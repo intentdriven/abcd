@@ -25,6 +25,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/claim"
+	"github.com/intentdriven/abcd/internal/core/implement"
 	"github.com/intentdriven/abcd/internal/core/lease"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/core/spec"
@@ -92,13 +93,49 @@ func renewReservation(repoRoot string, st *State, now time.Time, snap *claim.Sna
 	if !due {
 		return ""
 	}
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own)}, claimOptions(now))
+	req := claim.Request{Record: st.Key, Renew: true, Lease: renewalTerm(*own), Stage: renewalStage(*st)}
+	// At its landing, an issue lane's renewal narrows its footprint to the
+	// files its branch changed (narrow.go); a narrowing that was due and
+	// could not be made is said in the renewal's note.
+	var declined string
+	req.Narrow, _, declined = narrowedFootprint(repoRoot, *st, *own)
+	res, err := reserveRenewal(repoRoot, req, claimOptions(now))
 	if err != nil {
 		return renewFailed(st, now, err)
 	}
-	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed,
-		Note: fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))})
+	note := fmt.Sprintf("renewed the reservation on %s, half its lease having passed, until %s", st.Key, stamp(res.ExpiresAt))
+	switch {
+	case res.Narrowed:
+		note += fmt.Sprintf("; its footprint narrowed from %s to the files its branch changed: %s",
+			strings.Join(own.Footprint, ", "), strings.Join(res.Footprint, ", "))
+	case len(req.Narrow) > 0:
+		declined = "the narrowing to the files its branch changed could not be written into the reservation"
+	}
+	if declined != "" {
+		note += "; reservation kept at its full footprint: " + declined
+	}
+	st.Record = append(st.Record, Entry{At: now, Stage: StageReservationRenewed, Note: note})
 	st.UpdatedAt = now
+	return ""
+}
+
+// reserveRenewal is claim.Reserve for a renewal of a run's reservation, a
+// seam a test replaces to read the request each renewal makes.
+var reserveRenewal = claim.Reserve
+
+// renewalStage is the stage a renewal of st's reservation names, as its
+// Abcd-Stage trailer (spc-2610161044461448 step 18; dcn-2610161040394970):
+// the stage the run's current lane is in, spelled as the loop spells it,
+// which claim.LaneStages lists; "" for a run with no lane left to perform
+// (done, handed back, held or discarded), whose renewal names none.
+func renewalStage(st State) string {
+	i := st.current()
+	if i < 0 {
+		return ""
+	}
+	if s := string(st.Lanes[i].Stage); claim.ValidLaneStage(s) {
+		return s
+	}
 	return ""
 }
 
@@ -178,72 +215,137 @@ func stamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
 // keeping its term.
 const fenceLease = lease.Max
 
-// landFence is the land fence, at the top of the arming. It fetches the
-// reservations from origin, then refuses, arming nothing, unless the run's own
-// reservation is this person's from this copy and live (renewing it with
-// term, the fenceLease), and while a release another
-// session is cutting holds every merge (releaseHold, C7). A run that holds no
-// reservation fetches them all the same, for the hold
-// (claim.FetchMergeHold, the judgement `abcd land` makes too). It returns the
+// fenceAct is the landing step a fence guards, as its refusals name it: the
+// arming (fenceArm), or the push before it (fencePush).
+type fenceAct struct {
+	// not is what the lane does not do, after "so this lane does not".
+	not string
+	// none is what is left undone when origin did not answer, after "so",
+	// or after "no release hold could be judged and".
+	none string
+	// stays is what a refusal over another person's hold, or a release
+	// hold, leaves as it was.
+	stays string
+}
+
+var (
+	fenceArm  = fenceAct{not: "arm its merge", none: "the merge is not armed", stays: "the pull request stays open and unarmed"}
+	fencePush = fenceAct{not: "push its branch", none: "nothing is pushed", stays: "nothing is pushed and no pull request is opened"}
+)
+
+// landFence is the land fence, at the top of the arming (fence, fenceArm),
+// renewing the run's reservation with term, the fenceLease. It returns the
 // renewed expiry, zero for a run that holds no reservation, and the notice
 // naming each release dated ahead that the hold did not count
 // (claim.MergeHold.Notice), "" when there is none.
 func landFence(c Context, lane Lane, term time.Duration) (time.Time, string, error) {
+	return fence(c, lane, term, fenceArm)
+}
+
+// pushFence is the fence before the landing's push (spc-2610161044461448
+// step 7; dcn-2610161040374343): the land fence's check, made before the push
+// as well as at the arming, so a reservation that lapsed and moved to another
+// while the lane worked never becomes a duplicate pull request, and a release
+// another session is cutting holds the push as `abcd land`'s own release hold
+// does (C7). It renews a reservation that holds with the tip's own term
+// (renewalTerm), so the push never cuts a lease; a hold that is now another
+// person's, or released as finished on origin's default branch, cannot
+// change, and a drain hands the lane back at once (stuck.go).
+func pushFence(c Context, lane Lane) (time.Time, string, error) {
+	term := lease.Default
+	if c.State.ReservedAt != nil {
+		if snap, err := claim.View(c.RepoRoot, c.Now); err == nil {
+			if r, ok := snap.Lookup(c.State.Key); ok && r.Copy == claim.CopyThis {
+				term = renewalTerm(r)
+			}
+		}
+	}
+	return fence(c, lane, term, fencePush)
+}
+
+// fence is the land fence for act. It fetches the reservations from origin,
+// then refuses, doing nothing of act, unless the run's own reservation is
+// this person's from this copy and live (renewing it with term,
+// renewAtFence), and while a release another session is cutting holds every
+// merge (releaseHold, C7). A run that holds no reservation fetches them all
+// the same, for the hold (claim.FetchMergeHold, the judgement `abcd land`
+// makes too). A fetch that fails is a wait by design either way
+// (dcn-2610170116582725; fenceUnread). It returns the renewed expiry, zero
+// for a run that holds no reservation, and the notice naming each release
+// dated ahead that the hold did not count, "" when there is none.
+func fence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, string, error) {
 	if c.State.ReservedAt == nil {
 		m, err := claim.FetchMergeHold(c.RepoRoot, c.Now, claimOptions(c.Now))
 		var fe *claim.FetchError
 		switch {
 		case errors.As(err, &fe):
-			return time.Time{}, "", contend(string(StageLand), "", lane.ID,
-				"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and the merge is not armed",
-				"run abcd implement step again once origin answers")
+			return time.Time{}, "", fenceUnread(lane,
+				"could not read the reservations from "+claim.Remote+": "+fe.Reason+", so no release hold could be judged and "+act.none,
+				fe.Reason, "git fetch the reservations")
 		case err != nil:
 			return time.Time{}, "", refuse(string(StageLand), "", lane.ID, "the reservations could not be read at the land fence: "+err.Error(),
 				"settle what it names, then run `abcd implement step` again")
 		}
-		return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m)
+		return time.Time{}, termsafe.Sanitize(m.Notice()), heldMerge(lane, m, act)
 	}
-	holds, err := renewAtFence(c, lane, term)
+	holds, err := renewAtFence(c, lane, term, act)
 	if err != nil {
 		return time.Time{}, "", err
 	}
-	notice, err := releaseHold(c, lane)
+	notice, err := releaseHold(c, lane, act)
 	return holds, notice, err
 }
 
-// releaseHold refuses the arming, as contention, while the reservations as the
+// fenceUnread is the fence's wait on an origin it could not read: never a
+// refusal a drain counts toward a stuck lane (stuck.go), whatever git says,
+// since the drain's own read of origin at every move is what gives up on an
+// origin that stays unread. A lost network also waits on the shared outage
+// probe, as the push's own failure does (netFailure); what names the fetch.
+func fenceUnread(lane Lane, reason, gitReason, what string) *Refusal {
+	r := contend(string(StageLand), "", lane.ID, reason, "run abcd implement step again once origin answers")
+	r.originUnread = true
+	if implement.IsNetworkFailure(gitReason) {
+		r.outage = &outageReport{service: implement.ServiceNetwork, kind: implement.OutageTool, lane: lane.ID, what: what}
+	}
+	return r
+}
+
+// releaseHold refuses act, as contention, while the reservations as the
 // fence's renewal just fetched them show a release being cut that is not this
 // copy's own (claim.MergeHolds, the judgement `abcd land` makes too, which
 // keeps this copy's first sighting of a release dated ahead). It returns the
 // notice naming each release dated ahead that the hold did not count.
-func releaseHold(c Context, lane Lane) (string, error) {
+func releaseHold(c Context, lane Lane, act fenceAct) (string, error) {
 	m, err := claim.MergeHolds(c.RepoRoot, c.Now, claimOptions(c.Now))
 	if err != nil {
 		return "", refuse(string(StageLand), "", lane.ID, "the release holds could not be read at the land fence: "+err.Error(),
 			"settle what it names, then run `abcd implement step` again")
 	}
-	return termsafe.Sanitize(m.Notice()), heldMerge(lane, m)
+	return termsafe.Sanitize(m.Notice()), heldMerge(lane, m, act)
 }
 
-// heldMerge is the merge hold's refusal at the fence: every other session's
-// lane, the same person's other copy included, leaves its pull request open
-// for the cutting session to merge or hold. It names each release, its holder
-// and until when.
-func heldMerge(lane Lane, m claim.MergeHold) error {
+// heldMerge is the merge hold's refusal at the fence for act: every other
+// session's lane, the same person's other copy included, leaves its pull
+// request open (or its branch unpushed) for the cutting session to merge or
+// hold. It names each release, its holder and until when.
+func heldMerge(lane Lane, m claim.MergeHold, act fenceAct) error {
 	if !m.Held() {
 		return nil
 	}
-	return contend(string(StageLand), "", lane.ID,
-		termsafe.Sanitize(m.Reason()+", so this lane does not arm its merge"),
-		termsafe.Sanitize("the pull request stays open and unarmed; "+m.Waits()+", then run `abcd implement step` again"))
+	r := contend(string(StageLand), "", lane.ID,
+		termsafe.Sanitize(m.Reason()+", so this lane does not "+act.not),
+		termsafe.Sanitize(act.stays+"; "+m.Waits()+", then run `abcd implement step` again"))
+	r.releaseHeld = true
+	return r
 }
 
-// renewAtFence renews the run's own reservation at the fence: it fetches the
-// reservations and refuses, arming nothing, unless the tip is this person's
-// from this copy and live; when it holds, it renews it with term.
-func renewAtFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
+// renewAtFence renews the run's own reservation at the fence for act: it
+// fetches the reservations and refuses, doing nothing of act, unless the tip
+// is this person's from this copy and live; when it holds, it renews it with
+// term.
+func renewAtFence(c Context, lane Lane, term time.Duration, act fenceAct) (time.Time, error) {
 	id := c.State.Key
-	res, err := claim.Reserve(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: term},
+	res, err := reserveRenewal(c.RepoRoot, claim.Request{Record: id, Renew: true, Live: true, Lease: term, Stage: renewalStage(c.State)},
 		claimOptions(c.Now))
 	if err == nil {
 		return res.ExpiresAt, nil
@@ -251,46 +353,51 @@ func renewAtFence(c Context, lane Lane, term time.Duration) (time.Time, error) {
 	stage := string(StageLand)
 	again := "run `abcd implement step` again"
 	reserveAgain := "reserve it again with abcd build " + id
+	not := ", so this lane does not " + act.not
 	var fe *claim.FetchError
 	var nh *claim.NotHeld
 	switch {
 	case errors.As(err, &fe):
-		return time.Time{}, contend(stage, "", lane.ID,
-			"could not read the reservation on "+id+" from "+claim.Remote+": "+fe.Reason+", so the merge is not armed",
-			"run abcd implement step again once origin answers")
+		return time.Time{}, fenceUnread(lane,
+			"could not read the reservation on "+id+" from "+claim.Remote+": "+fe.Reason+", so "+act.none,
+			fe.Reason, "git fetch the reservation on "+id)
 	case errors.As(err, &nh):
 		switch nh.Why {
 		case claim.NotHeldAnotherPerson:
-			return time.Time{}, contend(stage, "", lane.ID,
-				fmt.Sprintf("the reservation on %s is now %s's, until %s, so this lane does not arm its merge", id, nh.Holder, stamp(nh.Expiry)),
-				"the pull request stays open and unarmed; take other work, or settle the record with "+nh.Holder+", then "+again)
+			r := contend(stage, "", lane.ID,
+				fmt.Sprintf("the reservation on %s is now %s's, until %s%s", id, nh.Holder, stamp(nh.Expiry), not),
+				act.stays+"; take other work, or settle the record with "+nh.Holder+", then "+again)
+			r.final = "the reservation on " + id + " is now " + nh.Holder + "'s"
+			return time.Time{}, r
 		case claim.NotHeldAnotherCopy:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" moved to your copy on another computer, so this lane does not arm its merge here",
+				"the reservation on "+id+" moved to your copy on another computer"+not+" here",
 				"carry the lane on from that copy, or take the reservation back here (`abcd reserve "+id+" --take-over --footprint <path>`), then "+again)
 		case claim.NotHeldReleased:
 			if nh.Derived {
-				return time.Time{}, contend(stage, "", lane.ID,
-					"the reservation on "+id+" was released: "+id+" is finished on "+claim.Remote+"'s default branch, so this lane does not arm its merge",
+				r := contend(stage, "", lane.ID,
+					"the reservation on "+id+" was released: "+id+" is finished on "+claim.Remote+"'s default branch"+not,
 					"confirm the record is finished on the default branch, and hand the lane back or close its pull request")
+				r.final = id + " is finished on " + claim.Remote + "'s default branch"
+				return time.Time{}, r
 			}
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" was released at "+stamp(nh.ReleasedAt)+", so this lane does not arm its merge", reserveAgain)
+				"the reservation on "+id+" was released at "+stamp(nh.ReleasedAt)+not, reserveAgain)
 		case claim.NotHeldAbsent:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" is gone from "+claim.Remote+", so this lane does not arm its merge", reserveAgain)
+				"the reservation on "+id+" is gone from "+claim.Remote+not, reserveAgain)
 		case claim.NotHeldUnreadable:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"the reservation on "+id+" is unreadable ("+nh.Unreadable+"), so this lane does not arm its merge",
+				"the reservation on "+id+" is unreadable ("+nh.Unreadable+")"+not,
 				"it can be taken over once its hold ends at "+stamp(nh.Expiry)+" and five minutes more; then "+reserveAgain)
 		case claim.NotHeldLapsed:
 			return time.Time{}, contend(stage, "", lane.ID,
-				"your reservation on "+id+" lapsed at "+stamp(nh.Expiry)+", so this lane does not arm its merge",
+				"your reservation on "+id+" lapsed at "+stamp(nh.Expiry)+not,
 				again+": a step renews this copy's lapsed reservation before its stage")
 		}
 	case errors.Is(err, claim.ErrBackOff):
 		return time.Time{}, contend(stage, "", lane.ID,
-			"the reservation on "+id+" could not be renewed: "+err.Error()+"; so this lane does not arm its merge",
+			"the reservation on "+id+" could not be renewed: "+err.Error()+"; so this lane does not "+act.not,
 			"take it up with the holder it names, then "+again)
 	}
 	return time.Time{}, refuse(stage, "", lane.ID, "the reservation on "+id+" could not be renewed at the land fence: "+err.Error(),
@@ -325,7 +432,7 @@ func tidyReservation(c Context, lane Lane) string {
 	if c.State.ReservedAt == nil || !completesRun(c.State, lane.ID) {
 		return ""
 	}
-	clause, failed := releaseReservation(c.RepoRoot, c.State.Key, c.Now)
+	clause, failed := releaseReservation(c.RepoRoot, c.State.Key, "", c.Now)
 	if failed {
 		clause += "; the landing stands, and the reservation counts as released while " + c.State.Key + " is finished on the default branch"
 	}
@@ -338,23 +445,91 @@ func tidyReservation(c Context, lane Lane) string {
 // fetch or push that failed (failed is then true). It never refuses. The
 // clause quotes a refusal and a holder, both derived from the remote, so it
 // is returned terminal-safe and home-redacted for every caller.
-func releaseReservation(repoRoot, id string, now time.Time) (clause string, failed bool) {
-	defer func() { clause = termsafe.Sanitize(fsutil.RedactHome(clause)) }()
-	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true}, claimOptions(now))
+//
+// A kind other than "" publishes a hand-back (spc-2610161044461448 step 3):
+// the tombstone names the kind and the blob id of the issue's record on
+// origin's default branch, so no drain on any account takes the issue again
+// until a person changes that record.
+func releaseReservation(repoRoot, id, kind string, now time.Time) (clause string, failed bool) {
+	return releaseReservationAt(repoRoot, id, "", kind, now)
+}
+
+// releaseReservationAt is releaseReservation of the one reservation commit
+// tip names ("" for whichever the tip holds): one renewed or reserved again
+// since is left as it stands.
+func releaseReservationAt(repoRoot, id, tip, kind string, now time.Time) (clause string, failed bool) {
+	out := releaseAt(repoRoot, id, tip, kind, "", now)
+	return out.clause, out.failed
+}
+
+// released is what one release came to: the clause the caller writes, whether
+// it failed (a fetch or a push that did not reach origin, or a refusal the
+// tip gave for a reason of its own: the reservation still holds, so the
+// release is due again), and, for a release asked to publish a hand-back,
+// why the hand-back is not on origin and is still due ("" when it was
+// published, or is no longer due: the record changed, origin holds no one
+// record of it, the tombstone would pass the cap, or the tip already marks
+// one). A default branch that could not be read keeps it due. published is
+// true only when this release's push put the hand-back on origin.
+type released struct {
+	clause    string
+	failed    bool
+	pending   string
+	published bool
+}
+
+// releaseAt is the one release the loop makes: claim's release of id, fenced
+// on tip when it names one, publishing kind when it is not "", judged over
+// blob when it is not "" (claim.Request.HandBackBlob). The clause quotes a
+// refusal and a holder, both derived from the remote, so it is returned
+// terminal-safe and home-redacted for every caller.
+func releaseAt(repoRoot, id, tip, kind, blob string, now time.Time) (out released) {
+	defer func() {
+		out.clause = termsafe.Sanitize(fsutil.RedactHome(out.clause))
+		out.pending = termsafe.Sanitize(fsutil.RedactHome(out.pending))
+	}()
+	res, err := claimReserve(repoRoot, claim.Request{Record: id, Release: true, Tip: tip, HandBack: kind, HandBackBlob: blob}, claimOptions(now))
 	var nh *claim.NotHeld
 	switch {
+	case err == nil && res.Act == claim.ActAlreadyReleased && kind != "" && res.HandBackUnpublished != "":
+		out = released{clause: "the reservation on " + id + " was already released; " + res.HandBackUnpublished}
+		if res.HandBackUnread {
+			out.pending = out.clause
+		}
+		return out
 	case err == nil && res.Act == claim.ActAlreadyReleased:
-		return "the reservation on " + id + " was already released", false
+		return released{clause: "the reservation on " + id + " was already released"}
+	case err == nil && kind != "" && res.HandBackUnpublished != "":
+		out = released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackUnpublished}
+		if res.HandBackUnread {
+			out.pending = out.clause
+		}
+		return out
+	case err == nil && kind != "":
+		return released{published: true, clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ") marking it handed back as " + kind +
+			", so no drain takes it again until its record changes on " + claim.Remote + "'s default branch"}
+	case err == nil && res.HandBackKept != nil:
+		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + "); " + res.HandBackKept.KeptNote(id)}
 	case err == nil:
-		return "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")", false
+		return released{clause: "released the reservation on " + id + " with a tombstone (" + shortSHA(res.Commit) + ")"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherPerson:
-		return "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s", false
+		out = released{clause: "left the reservation on " + id + " as it stands: it is " + nh.Holder + "'s"}
 	case errors.As(err, &nh) && nh.Why == claim.NotHeldAnotherCopy:
-		return "left the reservation on " + id + " as it stands: your copy on another computer holds it", false
+		out = released{clause: "left the reservation on " + id + " as it stands: your copy on another computer holds it"}
+	case errors.As(err, &nh) && nh.Why == claim.NotHeldMoved:
+		out = released{clause: "left the reservation on " + id + " as it stands: it was renewed or reserved again since the drain took it"}
 	case errors.Is(err, claim.ErrRefused) && !isPushFailure(err):
-		return "left the reservation on " + id + " as it stands: " + err.Error(), false
+		// A refusal of the tip's own (a message it may not write, a tip it
+		// cannot read) leaves the reservation holding: it is never logged as
+		// released, and the drain routing a hand-back tries it again.
+		out = released{clause: "could not release the reservation on " + id + ": " + err.Error(), failed: true}
+	default:
+		out = released{clause: "could not push the tombstone over the reservation on " + id + ": " + err.Error(), failed: true}
 	}
-	return "could not push the tombstone over the reservation on " + id + ": " + err.Error(), true
+	if kind != "" {
+		out.pending = out.clause
+	}
+	return out
 }
 
 // isPushFailure reports whether err is a reservation act that failed reaching
@@ -365,35 +540,101 @@ func isPushFailure(err error) bool {
 	return errors.As(err, &fe) || errors.As(err, &pe)
 }
 
+// reserved is what a run's reservation act came to: when it was made, the
+// run record's line for it, whether it was fresh (a reserve or a take-over)
+// rather than a renewal of one this copy already held, so only a fresh one is
+// released when the run is not created, and why it could not ask the forge
+// whether origin is a fork ("" when it asked, or asked nothing).
+type reserved struct {
+	at            *time.Time
+	note          string
+	fresh         bool
+	forkUnchecked string
+	forkAllowed   string
+}
+
 // reserveKey reserves a run's key on origin for this copy with req's
 // footprint (and its take-over and lease), and returns the run record's line
 // for it. The caller has found a remote named origin. Another's hold is the
 // back-off, contention at the reservation check; any other refusal stops the
-// start. fresh is true when the act made the reservation (a reserve or a
-// take-over) rather than renewing one this copy already held, so only a
-// fresh one is released when the run is not created.
-func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (at *time.Time, note string, fresh bool, err error) {
+// start.
+func reserveKey(repoRoot, key string, req claim.Request, now time.Time) (reserved, error) {
 	req.Record = key
 	res, err := claim.Reserve(repoRoot, req, claimOptions(now))
 	return reservedNote(res, err, now)
 }
 
+// reserveForJudgement reserves id on origin for the judgement the drain is
+// about to ask over it, with footprint (and --take-over), and returns the
+// drain's hold: the reservation the act made. Every push it makes is the
+// drain's, a renewal of this person's reservation that had lapsed included,
+// so the drain records it and releases it; the one exception is a renewal of
+// a reservation this person still held live from this copy (made by hand,
+// which the move's view could not show it), which gives no hold (nil): it is
+// never the drain's to release. Another's hold is contention, as for
+// reserveKey.
+//
+// A drain move passes over every issue with a live run here before it
+// reserves, so the act reaches an issue whose lane in this checkout holds it
+// live only when a concurrent `abcd build` started that run after the move
+// read the runs. For that case the request names the lane's stage: when the
+// act renews the lane's own live hold, the renewal keeps the stage another
+// account reads rather than clearing it (spc-2610161044461448 step 18,
+// dcn-2610170809478944); a fresh or lapsed hold names none. Under
+// --take-over the request names no stage at all: a take-over is never a
+// renewal that may carry one, and claim refuses a stage beside it.
+func reserveForJudgement(repoRoot, id string, footprint []string, takeOver bool, now time.Time) (*DrainHold, error) {
+	stage := ""
+	if runs, err := Runs(repoRoot); err == nil && !takeOver {
+		if run, ok := liveRun(runs, id, true); ok {
+			stage = renewalStage(run)
+		}
+	}
+	res, err := claim.Reserve(repoRoot, claim.Request{Record: id, Footprint: footprint, TakeOver: takeOver, Drain: true, Stage: stage}, claimOptions(now))
+	if _, err := reservedNote(res, err, now); err != nil {
+		return nil, err
+	}
+	if res.Act == claim.ActRenewed && res.RenewedLive {
+		return nil, nil
+	}
+	return &DrainHold{Commit: res.Commit, ClaimedAt: res.ClaimedAt, ExpiresAt: res.ExpiresAt,
+		ForkUnchecked: res.ForkUnchecked, ForkAllowed: res.ForkAllowed}, nil
+}
+
 // reservedNote is reserveKey's reading of a reservation act's outcome: the
-// run record's line for it, or the refusal.
-func reservedNote(res claim.Result, err error, now time.Time) (at *time.Time, note string, fresh bool, _ error) {
+// run record's line for it, or the refusal. A fork check the act could not
+// make is named in the line, as reserve names it, so the run record says so.
+func reservedNote(res claim.Result, err error, now time.Time) (reserved, error) {
 	if err != nil {
 		if errors.Is(err, claim.ErrBackOff) {
-			return nil, "", false, contend(StageReservation, CheckReservation, "", err.Error(),
+			return reserved{}, contend(StageReservation, CheckReservation, "", err.Error(),
 				"take other work; `abcd peers` lists the reservations on "+claim.Remote)
 		}
-		return nil, "", false, refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
+		if ce := (*claim.CapError)(nil); errors.As(err, &ce) {
+			r := refuse(StageReservation, "", "", err.Error(), "wait for one of your pull requests to merge, which ends its reservation, then run the verb again")
+			r.capped = slices.Clone(ce.Held)
+			return reserved{}, r
+		}
+		return reserved{}, refuse(StageReservation, "", "", err.Error(), "settle what it names, then run the verb again")
 	}
 	verb := map[claim.Act]string{claim.ActReserved: "reserved", claim.ActRenewed: "renewed the reservation on",
 		claim.ActTakenOver: "took over the reservation on"}[res.Act]
-	note = fmt.Sprintf("%s %s on %s for this copy until %s, footprint: %s", verb, res.Record, claim.Remote,
+	note := fmt.Sprintf("%s %s on %s for this copy until %s, footprint: %s", verb, res.Record, claim.Remote,
 		stamp(res.ExpiresAt), strings.Join(res.Footprint, ", "))
+	// A person's own reservation over a hand-back goes ahead, and says so
+	// (spc-2610161044461448 step 3); a drain's backed off above.
+	if res.HandedBack != nil {
+		note += "; " + res.HandedBack.Note(res.Record)
+	}
+	if res.ForkUnchecked != "" {
+		note += "; " + claim.ForkUncheckedLine(res.ForkUnchecked)
+	}
+	if res.ForkAllowed != "" {
+		note += "; " + claim.ForkAllowedLine(res.ForkAllowed)
+	}
 	t := now
-	return &t, note, res.Act != claim.ActRenewed, nil
+	return reserved{at: &t, note: note, fresh: res.Act != claim.ActRenewed,
+		forkUnchecked: res.ForkUnchecked, forkAllowed: res.ForkAllowed}, nil
 }
 
 // reserveStart is a new run's reservation, once its checks pass and before
@@ -402,21 +643,37 @@ func reservedNote(res claim.Result, err error, now time.Time) (at *time.Time, no
 // found_at) or, when it named none, the one the run's record names
 // (runFootprint), and --take-over passes through. A checkout with no remote
 // named origin has nowhere to reserve, and reserves nothing (nil, "").
-func reserveStart(repoRoot string, chk CheckResult, o Options) (at *time.Time, note string, fresh bool, err error) {
+func reserveStart(repoRoot string, chk CheckResult, o Options) (reserved, error) {
 	if o.noReserve {
-		return nil, "", false, nil
+		return reserved{}, nil
+	}
+	if o.held != nil {
+		t := o.held.at
+		return reserved{at: &t, note: o.held.note, forkUnchecked: o.held.forkUnchecked, forkAllowed: o.held.forkAllowed}, nil
 	}
 	ok, err := claim.HasOrigin(repoRoot)
 	if err != nil || !ok {
-		return nil, "", false, err
+		return reserved{}, err
 	}
 	fp := o.reserve
 	if fp == nil {
 		if fp, err = runFootprint(repoRoot, chk.Key, chk.Spec, "nothing was started"); err != nil {
-			return nil, "", false, err
+			return reserved{}, err
 		}
 	}
-	return reserveKey(repoRoot, chk.Key, claim.Request{Footprint: fp, TakeOver: o.TakeOver}, o.now())
+	return reserveKey(repoRoot, chk.Key, claim.Request{Footprint: fp, TakeOver: o.TakeOver, Drain: o.drain}, o.now())
+}
+
+// heldReservation is the reservation a drain took on an issue before it
+// asked the judgement over it, as the move's view shows it: when it was
+// claimed, the run record's line for it, and the fork check the reservation
+// could not make or waived (DrainHold). The lane a no opens starts on it with
+// no second push; it is not fresh, so a start that then fails leaves it to the
+// drain, which releases it.
+type heldReservation struct {
+	at                         time.Time
+	note                       string
+	forkUnchecked, forkAllowed string
 }
 
 // reserveResumed is a resumed run's reservation: `abcd build` over a run in
@@ -427,7 +684,9 @@ func reserveStart(repoRoot string, chk CheckResult, o Options) (at *time.Time, n
 // (reserveAgain), so a resume never cuts the day the land fence gave a pull
 // request waiting on a person nor meets an overlap a race let in, and one
 // whose footprint the record has since widened is reserved again with the
-// widened footprint, judged for overlap. A run
+// widened footprint, judged for overlap. Only a run whose lane is at its
+// landing can hold a narrowed tip, so only there is an issue's tip within its
+// found_at renewed as it stands (reserveAgain's landing). A run
 // handed back starts nothing further and reserves nothing. The run's state
 // records the reservation; a refusal leaves the run unchanged.
 func reserveResumed(repoRoot string, res *StartResult, o Options) error {
@@ -450,24 +709,26 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 		return err
 	}
 	now := o.now()
-	at, note, fresh, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, now)
+	i := st.current()
+	landing := i >= 0 && st.Lanes[i].Stage == StageLand
+	r, err := reserveAgain(repoRoot, st.Key, fp, o.TakeOver, landing, renewalStage(st), now)
 	if err != nil {
 		return err
 	}
 	if err := mutate(repoRoot, res.RunID, func(_ *os.Root, st *State) (bool, error) {
 		if st.ReservedAt == nil {
-			st.ReservedAt = at
+			st.ReservedAt = r.at
 		}
-		st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: note})
+		st.Record = append(st.Record, Entry{At: now, Stage: StageReservation, Note: r.note})
 		st.UpdatedAt = now
 		return true, nil
 	}); err != nil {
-		if fresh {
+		if r.fresh {
 			releaseKey(repoRoot, st.Key, now)
 		}
 		return err
 	}
-	res.Reservation = note
+	res.Reservation, res.ForkUnchecked, res.ForkAllowed = r.note, r.forkUnchecked, r.forkAllowed
 	return nil
 }
 
@@ -481,11 +742,16 @@ func reserveResumed(repoRoot string, res *StartResult, o Options) error {
 // written (a spec's packages line that gained a path) is reserved with it,
 // so the widening is published and judged for overlap like any reservation,
 // with the tip's term, so a widening resume never cuts the fence's day either.
+// An issue's tip that lies within its record's footprint, while its lane is
+// at its landing (landing), is the narrowing of that landing (narrow.go),
+// renewed as it stands, never read as a widening; anywhere short of the
+// landing nothing has narrowed it, so a tip narrower than the found_at is a
+// found_at widened mid-run, and is widened like an intent's.
 // A renewal the fetched tip shows the view was stale for (the reservation
 // gone, released by a tombstone, or moved to this person's other copy)
 // falls back to the reservation any other resume makes: a reserve with the
 // record's footprint, --take-over passed through.
-func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Time) (*time.Time, string, bool, error) {
+func reserveAgain(repoRoot, key string, fp []string, takeOver, landing bool, stage string, now time.Time) (reserved, error) {
 	plain := claim.Request{Footprint: fp, TakeOver: takeOver}
 	snap, err := claim.View(repoRoot, now)
 	if err != nil {
@@ -495,18 +761,77 @@ func reserveAgain(repoRoot, key string, fp []string, takeOver bool, now time.Tim
 	if !ok || r.Copy != claim.CopyThis || r.State != claim.StateLive {
 		return reserveKey(repoRoot, key, plain, now)
 	}
-	if !covers(r.Footprint, fp) {
-		widened := plain
-		widened.Lease = renewalTerm(r)
-		return reserveKey(repoRoot, key, widened, now)
+	// An issue run's tip within the record's footprint, its lane at the
+	// landing, is the narrowing that landing made (narrow.go), never a
+	// widening of the record: the resume renews it as it stands, so it
+	// neither publishes the whole found_at again nor is refused by an
+	// overlap the narrowing let in.
+	narrowed := landing && validIssueKey(key) && covers(fp, r.Footprint)
+	if !narrowed && !covers(r.Footprint, fp) {
+		return widenReservation(repoRoot, key, fp, takeOver, r, now)
 	}
-	res, err := claim.Reserve(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r)}, claimOptions(now))
+	res, err := reserveRenewal(repoRoot, claim.Request{Record: key, Renew: true, Lease: renewalTerm(r), Stage: stage}, claimOptions(now))
 	var nh *claim.NotHeld
 	if errors.As(err, &nh) && (nh.Why == claim.NotHeldAbsent || nh.Why == claim.NotHeldAnotherCopy ||
 		(nh.Why == claim.NotHeldReleased && !nh.Derived)) {
 		return reserveKey(repoRoot, key, plain, now)
 	}
 	return reservedNote(res, err, now)
+}
+
+// widenReservation reserves key again with fp, a footprint the tip own does
+// not cover, keeping own's term: the widening is published and judged for
+// overlap (and against the cap) like any reservation, so a widening never
+// cuts the day a fence gave a pull request either.
+func widenReservation(repoRoot, key string, fp []string, takeOver bool, own claim.Reservation, now time.Time) (reserved, error) {
+	return reserveKey(repoRoot, key, claim.Request{Footprint: fp, TakeOver: takeOver, Lease: renewalTerm(own)}, now)
+}
+
+// reserveOnLeavingLand reserves an issue lane's whole found_at again when the
+// lane leaves its landing for an earlier stage (a landing's sync sends it to
+// a fresh round), before the lane goes on (dcn-2610170947246937, refining
+// dcn-2610170919040486): the landing's renewal may have narrowed the
+// reservation to the lane's changes, and the fix round that may follow can
+// change any file of the found_at. The sync calls it once it knows it will
+// merge and before it merges (mergeDefault; dcn-2610171009498218), so a
+// refusal leaves the branch and the worktree at the judged head; the move
+// calls it for any other way back from the landing (performMove). A tip of this copy's that already covers the found_at, an
+// intent's run, and a run holding no reservation take no act; a tip the view
+// shows lost is the land fence's to stop. The widening is the one a resume
+// makes (widenReservation), judged for overlap and against the cap; a
+// refusal of it refuses the step for a person, naming what it met, with
+// nothing merged by the step and nothing pushed, and the lane stays at its
+// landing. note is the run record's line for a widening made.
+func reserveOnLeavingLand(repoRoot string, st State, lane Lane, now time.Time) (note string, err error) {
+	if st.ReservedAt == nil || st.Issue() == "" {
+		return "", nil
+	}
+	fp, err := runFootprint(repoRoot, st.Key, st.Spec, "the lane stays at its landing and nothing is pushed")
+	if err != nil {
+		return "", err
+	}
+	snap, err := claim.View(repoRoot, now)
+	if err != nil {
+		return "", refuse(string(StageLand), "", lane.ID,
+			"the lane leaves its landing for a fresh round, and its reservation on "+st.Key+" cannot be read to reserve its whole found_at again: "+fsutil.RedactHome(err.Error())+"; the lane stays at its landing and nothing is pushed",
+			"settle what it names, then run `abcd implement step` again")
+	}
+	own, ok := snap.Lookup(st.Key)
+	if !ok || own.Copy != claim.CopyThis || (own.State != claim.StateLive && own.State != claim.StateExpired) || covers(own.Footprint, fp) {
+		return "", nil
+	}
+	r, err := widenReservation(repoRoot, st.Key, fp, false, own, now)
+	if err != nil {
+		reason := err.Error()
+		if rf, ok := AsRefusal(err); ok {
+			reason = rf.Reason
+		}
+		return "", refuse(string(StageLand), "", lane.ID,
+			fmt.Sprintf("the lane leaves its landing for a fresh round, whose fix round may change any file of %s's found_at, but its reservation, narrowed to %s, cannot be widened back to %s: %s; the lane stays at its landing, its branch at the judged head %s, with nothing merged and nothing pushed",
+				st.Key, strings.Join(own.Footprint, ", "), strings.Join(fp, ", "), reason, shortSHA(lane.HeadSHA)),
+			"wait for the reservation it names to end, or settle it with its holder, then run `abcd implement step` again; or hand the lane back so the issue is built again")
+	}
+	return r.note + ", widened again as the lane leaves its landing for a fresh round", nil
 }
 
 // covers reports whether every path of fp lies within held: equal to one of
@@ -618,11 +943,11 @@ func ReleaseReservation(repoRoot, key string, o Options) (claim.Result, error) {
 // failed, at reservation_release_failed, which the drain routing the
 // hand-back tries again (releaseHandedBack). An intent's run keeps its
 // reservation: its held lanes may still land.
-func releaseOnHandBack(repoRoot string, st *State, now time.Time) {
+func releaseOnHandBack(repoRoot string, st *State, hb HandBack, now time.Time) {
 	if st.ReservedAt == nil || st.Issue() == "" {
 		return
 	}
-	clause, failed := releaseReservation(repoRoot, st.Key, now)
+	clause, failed := releaseReservation(repoRoot, st.Key, tombstoneKind(hb), now)
 	stage := StageReservationReleased
 	if failed {
 		clause += ", so it lapses with its lease unless a drain routing the hand-back releases it"
@@ -663,7 +988,7 @@ func noFoundAtHandBack(issue string, now time.Time) DrainRoute {
 // fetch or push failed logged reservation_release_failed instead, and that
 // run, like one handed back by an abcd before that step, is released here.
 // It returns the route's clause, "" for a run that holds no reservation.
-func releaseHandedBack(repoRoot string, run State, now time.Time) string {
+func releaseHandedBack(repoRoot string, run State, hb HandBack, now time.Time) string {
 	if run.ReservedAt == nil || run.Issue() == "" {
 		return ""
 	}
@@ -675,7 +1000,7 @@ func releaseHandedBack(repoRoot string, run State, now time.Time) string {
 			return run.Record[k].Note
 		}
 	}
-	clause, failed := releaseReservation(repoRoot, run.Key, now)
+	clause, failed := releaseReservation(repoRoot, run.Key, tombstoneKind(hb), now)
 	if failed {
 		clause += ", so it lapses with its lease"
 	}

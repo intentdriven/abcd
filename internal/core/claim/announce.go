@@ -569,7 +569,7 @@ func statusTip(root, branch string, listed bool) (string, error) {
 }
 
 // publicOnDefault refuses a record absent from origin's default branch as
-// just fetched into ref (C4), read through peers.FoldersAt, the reader the
+// just fetched into ref (C4), read through peers.RecordsAt, the reader the
 // derived release reads by; and refuses any record when the fetch could not
 // read it (gap), since a stale copy cannot say what is public now.
 func publicOnDefault(root, id, ref, gap string) error {
@@ -579,11 +579,11 @@ func publicOnDefault(root, id, ref, gap string) error {
 	if gap != "" {
 		return refuse("%s, so whether %s is public cannot be told; %s", gap, id, noAnnouncement)
 	}
-	folders, err := peers.FoldersAt(root, ref)
+	recs, err := peers.RecordsAt(root, ref)
 	if err != nil {
 		return refuse("could not read whether %s is on %s's default branch: %s; %s", id, Remote, redacted(err), noAnnouncement)
 	}
-	if len(folders[id]) == 0 {
+	if len(recs[id]) == 0 {
 		return refuse("%s is not on %s's default branch as last fetched (%s), so it is not public yet: an announcement names only a public record; %s",
 			id, Remote, strings.TrimPrefix(ref, "refs/remotes/"+Remote+"/"), noAnnouncement)
 	}

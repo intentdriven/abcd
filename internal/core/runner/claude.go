@@ -5,8 +5,10 @@ package runner
 // CLAUDE.md auto-discovery and configured servers do not run untrusted
 // (the intent's Decision 4); the stream-json event stream as the transcript;
 // no session persisted by the harness, since abcd's store keeps the record;
-// and the role's contract's tools granted without a prompt, everything else
-// denied rather than asked (dontAsk), because no one is there to answer.
+// and the role's contract's tools granted without a prompt, the tools it is
+// refused outright in the deny list, and everything else denied rather than
+// asked (dontAsk), because no one is there to answer. A grant or a refusal may
+// name a path in the harness's permission-rule form (Read(//abs/dir/**)).
 //
 // Under --bare the harness reads its Anthropic credential from its own
 // environment or its own settings only; abcd passes the environment through
@@ -56,6 +58,10 @@ func (c *ClaudeCLI) args(req Request) []string {
 	}
 	if len(req.Tools) > 0 {
 		a = append(a, "--allowedTools="+strings.Join(req.Tools, ","))
+	}
+	// A refusal is the harness's deny rule, which it judges before any grant.
+	if len(req.Denied) > 0 {
+		a = append(a, "--disallowedTools="+strings.Join(req.Denied, ","))
 	}
 	// The brief and the receipt sit in the run's own directory: a lane's,
 	// outside the working tree the role runs in, or an interview's turns,

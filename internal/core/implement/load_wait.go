@@ -16,6 +16,7 @@ import (
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/cienv"
+	"github.com/intentdriven/abcd/internal/core/layered"
 	"github.com/intentdriven/abcd/internal/core/machineload"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
@@ -352,8 +353,9 @@ type WaitResult struct {
 }
 
 // WaitLoad waits until the gate opens or the timeout passes. Its error is a
-// refusal before any wait (a home it cannot resolve, a symlinked
-// ~/.abcd.noindex, or a hold lock that is not a regular file), or a hold it
+// refusal before any wait (a home it cannot resolve, a home inside a git
+// working tree that is not the account's own, a symlinked ~/.abcd.noindex, or
+// a hold lock that is not a regular file), or a hold it
 // could not give up when standing back after a wait. A timeout is a status,
 // not an error.
 func WaitLoad(req WaitRequest) (WaitResult, error) {
@@ -401,6 +403,12 @@ func WaitLoad(req WaitRequest) (WaitResult, error) {
 			return res, errors.New("the home directory could not be resolved, so there is nowhere to keep the hold; nothing was waited for")
 		}
 		home = h
+	}
+	// A home inside a git working tree that is not the account's own is
+	// refused before anything is created under it (layered.MachineRoots): a
+	// hold kept there would queue apart from the machine's own queue.
+	if roots, _ := layered.MachineRoots(home); roots.HomeRefused {
+		return res, errors.New("the home directory lies inside a working tree, so the load gate keeps no hold there; run with your own home; nothing was waited for")
 	}
 	root, err := fsutil.EnsureHomeScope(home, abcdhome.Rel(), abcdhome.DirMode)
 	if err != nil {

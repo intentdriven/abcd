@@ -456,3 +456,41 @@ func TestBinaryInsideTheCheckoutIsRefused(t *testing.T) {
 		t.Fatal("the binary inside the checkout was launched")
 	}
 }
+
+// TestClaudeLaunchScopesItsToolsByPath: a contract may grant a tool on a path
+// alone, in the harness's permission-rule form for an absolute path, and
+// refuse a tool on a path outright; the grants travel in the allow flag and
+// the refusals in the deny flag, each as one argument, however long the path.
+func TestClaudeLaunchScopesItsToolsByPath(t *testing.T) {
+	f := newFake(t, "ok", Claude)
+	req := f.request("drain-judge")
+	long := "//" + strings.Repeat("deep/", 40) + "judge"
+	req.Tools = []string{"Read(" + long + "/**)", "Edit(" + long + "/answer.json)"}
+	req.Denied = []string{"Read(//Users/a b/checkout/**)", "Edit(//Users/a b/checkout/**)"}
+	if _, _, err := newClaude("").Run(context.Background(), req); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	argv := f.argv(t, Claude)
+	for _, want := range []string{
+		"--allowedTools=Read(" + long + "/**),Edit(" + long + "/answer.json)",
+		"--disallowedTools=Read(//Users/a b/checkout/**),Edit(//Users/a b/checkout/**)",
+	} {
+		if !slices.Contains(argv, want) {
+			t.Errorf("claude argv %q lacks %q", argv, want)
+		}
+	}
+}
+
+// TestADeniedToolIsCheckedAsAGrantIs: a refusal that would split the deny
+// flag refuses the request before anything runs.
+func TestADeniedToolIsCheckedAsAGrantIs(t *testing.T) {
+	f := newFake(t, "ok", Claude)
+	req := f.request("drain-judge")
+	req.Denied = []string{"Read(//a),Edit(//b)"}
+	if _, _, err := newClaude("").Run(context.Background(), req); err == nil {
+		t.Fatal("a deny list that splits the flag was accepted")
+	}
+	if f.launched(Claude) {
+		t.Error("a refused request launched the harness")
+	}
+}

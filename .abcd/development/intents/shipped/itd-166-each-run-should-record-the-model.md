@@ -66,7 +66,7 @@ Recorded by the technical facilitator on the product thinker's delegation (2026-
 6. **The opencode fix lands here, as its remedy's second branch.** opencode 1.18.31's run mode names no model in its JSON events (checked in the installed binary by the review of 2026-10-17), so the runner stops copying the asked model, leaves the served model empty and lists it as not reported. That resolves iss-2610161709506207.
 7. **Local fingerprints wait on the local pin.** The asked-side weight fingerprint, quantisation and runtime version need a configured pin that does not exist; until iss-2610161734428291 lands, a local route lists them as not configured. Reason: nothing can be recorded that was never configured, and guessing it from the server would be self-reported at best.
 8. **Four reasons for a missing field.** Not reported (the route's output does not carry it), self-reported (the model or payload declared it), computed by the harness (claude's and opencode's cost come from the harness's own price table, not the provider), not configured (no pin exists). Reason: the review found that harness-computed cost is neither reported nor self-reported, and a reader must be able to tell the four apart.
-9. **Run state moves to schema 13.** Older binaries read run state strictly, so the new route fields bump the version under the existing rule: a version-12 file reads as not recorded and is written back at 13. Reason: the run-state reader refuses unknown fields by design.
+9. **Run state moves to schema 14.** Older binaries read run state strictly, so the new route fields bump the version under the existing rule: a version-13 file reads as not recorded and is written back at 14. Reason: the run-state reader refuses unknown fields by design. (Built as 13; renumbered to 14 when release v0.15.1 took 13 for a drain lane's `refused`.)
 10. **Fixed field lists.** Asked: model, provider pin, each sampling setting, seed, effort, context, prompt sha256, harness version. Served: model, provider, generation id, finish reason, prompt, completion, reasoning, cache-read and cache-write tokens, cost. Each route lists exactly the fields it lacks. Reason: criterion 4 is testable only against a fixed list.
 
 ## Open Questions
@@ -130,10 +130,10 @@ Per-criterion verdicts:
   evidence: internal/core/oracle/sides_test.go:194 — "func TestARefusedUsageRequestNamesTheSetting(t *testing.T) {"
   evidence: internal/adapter/openaiapi/served_test.go:300 — "func TestARefusalNotNamingTheUsageFieldCarriesNoHint(t *testing.T) {"
   evidence: internal/core/oracle/connect.go:526 — "case p.StreamUsage == nil && errors.Is(err, openaiapi.ErrUsageRefused):"
-- ac-7 — MET: the runner's Sides are embedded in the existing runner.RouteRecord that the dispatch and the drive already store on lane receipts and the run state (bumped to schema 13 with version-12 files read as not recorded), the provider call record rides the existing ReceiptRoute the consistency route file holds, maskRoute masks every new string, adapter strings go through scrub and cleanModel and harness strings through cleanHarness, and a test asserts the reviews directory gains no new kind of file
+- ac-7 — MET: the runner's Sides are embedded in the existing runner.RouteRecord that the dispatch and the drive already store on lane receipts and the run state (bumped to schema 14 with version-13 files read as not recorded), the provider call record rides the existing ReceiptRoute the consistency route file holds, maskRoute masks every new string, adapter strings go through scrub and cleanModel and harness strings through cleanHarness, and a test asserts the reviews directory gains no new kind of file
   evidence: internal/core/runner/receipt.go:24 — "Sides"
   evidence: internal/core/implement/loop/drive.go:141 — "rec := runner.RecordOf(route.Runner, ran, ans)"
-  evidence: internal/core/implement/loop/state.go:185 — "const SchemaVersion = 13"
+  evidence: internal/core/implement/loop/state.go:194 — "const SchemaVersion = 14"
   evidence: internal/core/implement/loop/state_mask.go:177 — "func maskRoute(r runner.RouteRecord) runner.RouteRecord {"
   evidence: internal/adapter/openaiapi/client.go:747 — "Provider: cleanModel(c.scrub(a.provider)), Usage: a.usage}"
   evidence: internal/core/runner/sides.go:75 — "func cleanHarness(s string) string {"

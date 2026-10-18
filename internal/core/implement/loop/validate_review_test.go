@@ -1247,8 +1247,8 @@ func TestAVersion11ReservationReadsAsVersion12(t *testing.T) {
 	res := reviewOut(t, repo.Root(), id, stages, RoleRuthless)
 	aw := *res.Awaiting
 	reserved := time.Date(2026, 10, 14, 12, 0, 0, 0, time.UTC)
-	if schemaVersionUnanswered != 11 || schemaVersionUnmetered != 12 {
-		t.Fatalf("the route's answer is version 12's, after the reservation's 11: %d %d", schemaVersionUnanswered, SchemaVersion)
+	if schemaVersionUnanswered != 11 || schemaVersionUnrefused != 12 {
+		t.Fatalf("the route's answer is version 12's, after the reservation's 11: %d %d", schemaVersionUnanswered, schemaVersionUnrefused)
 	}
 	editState(t, repo.Root(), id, func(doc map[string]any) {
 		doc["schema_version"] = schemaVersionUnanswered

@@ -212,6 +212,13 @@ review is skipped.
   is zero or more and finite, the rule the provider adapter holds its usage
   member to; a summed count that would overflow, or a summed cost that stops
   being finite, is listed as not reported rather than recorded.
+  Besides the reviewers and the
+  implementer, the drain's judge, `drain-judge`, takes the same route
+  ([`35-drain.md`](../04-surfaces/35-drain.md#the-judgement-before-a-lane-opens)),
+  to the claude runner alone, in a private directory of its own outside every
+  working tree, granted reading that directory and writing its answer file
+  there alone and refused the checkout, each rule naming its real absolute
+  path.
 - **RepoPrompt over MCP** (`internal/adapter/repoprompt`, itd-6) sends the
   review to the RepoPrompt the person runs, which answers with whichever model
   the person configured in it. The opt-in is `oracle.review = rp` in the

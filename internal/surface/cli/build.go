@@ -121,7 +121,8 @@ func newBuildCommand(asJSON *bool) *cobra.Command {
 			"is started. Another person's reservation, or your own from another computer, refuses\n" +
 			"the start as contention; --take-over moves your own live reservation from another copy\n" +
 			"to this one, never another person's. `abcd implement step` renews the reservation, fences\n" +
-			"the landing with it and releases it once the run lands; a run whose issue lane is handed\n" +
+			"the landing's push and its arming with it and releases it once the run lands; a run\n" +
+			"whose issue lane is handed\n" +
 			"back releases it then. --release pushes the tombstone over this copy's reservation on the\n" +
 			"key and changes nothing in the run's state: a later step meets it at the land fence, and\n" +
 			"`abcd build` again reserves it anew. --release takes no other flag. The reservation needs\n" +
@@ -877,7 +878,8 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 			"the hand-back and each held lane. --release <lane-id> lands a held lane as it is;\n" +
 			"--discard <lane-id> removes its worktree and branch, then closes its pull request, and\n" +
 			"leaves its step unlanded. Either is refused, changing nothing,\n" +
-			"for a lane that is not held or while any lane still has work.\n" +
+			"for a lane that is not held or while any lane still has work. --discard also takes\n" +
+			"an issue run's lane a drain handed back as stuck, and ends that run.\n" +
 			"--restart <lane-id> restarts a lane whose implementer died, or yielded on a network\n" +
 			"failure (--yielded passes its `NETWORK: <cmd>` line), as a fresh agent from the lane's\n" +
 			"last commit: everything left uncommitted is saved aside under the lane's directory\n" +
@@ -1065,7 +1067,7 @@ func newImplementStepCommand(asJSON *bool) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&runID, "run", "", "the run to step (run-<16 digits>); the one run in progress when omitted")
 	cmd.Flags().StringVar(&release, "release", "", "land a held lane as it is (lane-<n>), once no lane has work left")
-	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>): remove its worktree and branch, then close its pull request")
+	cmd.Flags().StringVar(&discard, "discard", "", "discard a held lane (lane-<n>), or one a drain handed back as stuck: remove its worktree and branch, then close its pull request")
 	cmd.Flags().StringVar(&restart, "restart", "", "restart a lane whose implementer died (lane-<n>) as a fresh agent from its last commit, its uncommitted work saved aside")
 	cmd.Flags().StringVar(&yielded, "yielded", "", "with --restart: the line the agent yielded with, NETWORK: <cmd>, when a network failure stopped it rather than it dying")
 	cmd.Flags().BoolVar(&acceptConfig, "accept-config-change", false, "accept, once you have looked, a change to the repository's git settings that the run tripwire stopped, then take the step")
