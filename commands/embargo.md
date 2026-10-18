@@ -46,14 +46,16 @@ An advisory the store holds that GitHub no longer lists in triage or draft was
 published or closed there, by abcd or by hand, and intake reads it on its own.
 `ended` lists each now recorded, with the `published_at` or `closed_at` taken
 from GitHub's own timestamp: a published one is recorded whatever its verdict,
-and leaves the check; a closed one is recorded only when its verdict is
-`not-abcds` or `not-a-vulnerability`. `unread` lists each left as the store
+and leaves the check; a closed one is recorded only when its verdict already
+ends the private track: `not-abcds`, `not-a-vulnerability` or
+`public-track`. `unread` lists each left as the store
 holds it, under embargo, with the reason, and read again by the next intake or
 plan: a failed read, a state this abcd does not know, a timestamp that is
 missing or is not one, or a close GitHub reports while the store holds the
-advisory as a vulnerability, untriaged, or on the public track. That last is
-the person's to settle: tell the user, who reopens it on GitHub to publish it
-or records a closing verdict with triage, which the next read then records. A
+advisory as a vulnerability or untriaged. That last is the person's to
+settle: tell the user, who reopens it on GitHub to publish it or records a
+verdict that ends the private track with triage, which the next read then
+records. A
 missing `gh`, or a token GitHub refuses for want of the advisory scope, refuses
 the intake whole, recording nothing, and names the remedy. `restores` lists
 each restore owed, as for publish below.

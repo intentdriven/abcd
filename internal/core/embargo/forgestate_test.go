@@ -266,11 +266,11 @@ func judged(verdict *string) Advisory {
 }
 
 // TestClosedOnGitHubRecordedOnlyForClosingVerdict: GitHub's closed is
-// recorded only for an advisory the store already judged with a closing
-// verdict. One the store holds as a vulnerability, untriaged, or on the
-// public track keeps its state, under embargo and still a candidate for
-// publication, and is listed with a fixed reason naming what the store
-// holds, for a person to settle.
+// recorded only for an advisory whose verdict already ends its private
+// track: a closing verdict, or the public track. One the store holds as a
+// vulnerability, or untriaged, keeps its state, under embargo and still a
+// candidate for publication, and is listed with a fixed reason naming what
+// the store holds, for a person to settle.
 func TestClosedOnGitHubRecordedOnlyForClosingVerdict(t *testing.T) {
 	for name, tc := range map[string]struct {
 		verdict *string
@@ -279,7 +279,7 @@ func TestClosedOnGitHubRecordedOnlyForClosingVerdict(t *testing.T) {
 	}{
 		"untriaged":           {nil, false, "untriaged"},
 		"vulnerability":       {strp(VerdictVulnerability), false, "as a vulnerability"},
-		"public-track":        {strp(VerdictPublicTrack), false, "on the public track"},
+		"public-track":        {strp(VerdictPublicTrack), true, ""},
 		"not-abcds":           {strp(VerdictNotAbcds), true, ""},
 		"not-a-vulnerability": {strp(VerdictNotAVulnerability), true, ""},
 	} {

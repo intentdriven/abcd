@@ -55,7 +55,8 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   Each held advisory GitHub lists in neither state is read on its own. One
   GitHub reports published, by any hand, is recorded so, which releases it
   from the outbound check; one it reports closed is recorded so only when the
-  store's verdict on it is a closing one, since a close recorded on GitHub's
+  store's verdict on it already ends the private track (a closing verdict, or
+  the public track), since a close recorded on GitHub's
   word alone would drop an advisory judged a vulnerability, or never judged,
   from every plan for good. Every timestamp is GitHub's own: its answer is held
   to a known state and a well-formed time, present. An answer that fails that,

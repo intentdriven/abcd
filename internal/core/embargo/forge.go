@@ -39,8 +39,8 @@ const forgeSkew = 5 * time.Minute
 // advisory the state holds that is neither published nor closed there, but
 // those skip names (intake has just listed them in triage or draft), and
 // records the end GitHub reports for each: published_at, or closed_at for an
-// advisory the store judged with a closing verdict (closedUnjudged says why
-// no other close is recorded), from GitHub's own timestamp: an end GitHub
+// advisory whose verdict ends its private track (endsPrivateTrack;
+// closedUnjudged says why no other close is recorded), from GitHub's own timestamp: an end GitHub
 // gives no timestamp for is left unread, never stamped with the clock's
 // time. answers holds each advisory read in a state this abcd
 // knows and recorded or left as it is, for the caller to reuse.
@@ -80,7 +80,7 @@ func readHeld(s Store, st *State, skip map[string]bool, now time.Time) (answers 
 			left("GitHub reports it in a state this abcd does not know")
 			continue
 		}
-		if a.State == "closed" && (h.Verdict == nil || !isClosingVerdict(*h.Verdict)) {
+		if a.State == "closed" && !endsPrivateTrack(h.Verdict) {
 			unread = append(unread, UnreadAdvisory{GHSAID: h.GHSAID, IssueID: h.IssueID, Reason: closedUnjudged(h.Verdict)})
 			continue
 		}
@@ -103,22 +103,29 @@ func readHeld(s Store, st *State, skip map[string]bool, now time.Time) (answers 
 	return answers, ended, unread, nil
 }
 
+// endsPrivateTrack reports whether the store's verdict (nil when
+// untriaged) already ends the advisory's private track, so a close GitHub
+// reports for it is consistent with the store's own decision and is
+// recorded: a closing verdict (not-abcds, not-a-vulnerability), or the
+// public track, whose triage moves the record to wontfix/ and whose title
+// the check already treats as public. It is not close's rule: close sends a
+// closing text only for a closing verdict (isClosingVerdict).
+func endsPrivateTrack(verdict *string) bool {
+	return verdict != nil && (isClosingVerdict(*verdict) || *verdict == VerdictPublicTrack)
+}
+
 // closedUnjudged is the reason a held advisory GitHub reports closed is
 // listed and its close not recorded: the store's verdict for it (verdict,
-// nil when untriaged) is not a closing one. A close is irreversible only in
-// the store: recorded, it would drop an advisory the store holds as a
-// vulnerability from every plan for good, on the word of whoever closed it.
-// The advisory stays as the store holds it, under embargo and read again by
-// every intake and plan, so a reopen on GitHub is seen; a person settles it.
+// nil when untriaged) does not end its private track (endsPrivateTrack).
+// Recorded, the close would drop an advisory the store holds as a
+// vulnerability, or never judged, from every plan for good, on the word of
+// whoever closed it. The advisory stays as the store holds it, under
+// embargo and read again by every intake and plan, so a reopen on GitHub is
+// seen; a person settles it.
 func closedUnjudged(verdict *string) string {
-	holds, settle := "untriaged", "record its verdict with `abcd embargo triage`; a closing verdict records the close"
-	if verdict != nil {
-		switch *verdict {
-		case VerdictVulnerability:
-			holds, settle = "as a vulnerability", "reopen it on GitHub to publish it, or record a closing verdict with `abcd embargo triage`"
-		case VerdictPublicTrack:
-			holds, settle = "on the public track", "record a closing verdict with `abcd embargo triage`, which records the close"
-		}
+	holds, settle := "untriaged", "record its verdict with `abcd embargo triage`; a closing or public-track verdict records the close"
+	if verdict != nil && *verdict == VerdictVulnerability {
+		holds, settle = "as a vulnerability", "reopen it on GitHub to publish it, or record a closing verdict with `abcd embargo triage`"
 	}
 	return "it is closed on GitHub while the store holds it " + holds + ", so its close is not recorded and it stays under embargo; " +
 		"a person settles it: " + settle

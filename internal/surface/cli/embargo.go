@@ -95,14 +95,14 @@ func newEmbargoIntakeCommand(asJSON *bool) *cobra.Command {
 			"from GitHub on its own. One GitHub reports published is recorded published, at\n" +
 			"GitHub's own published_at, which releases it from the check; one it reports\n" +
 			"closed is recorded closed, at its closed_at, only when its verdict is\n" +
-			"not-abcds or not-a-vulnerability. Each recorded is listed as ended. One\n" +
-			"GitHub cannot tell (a failed read, an unknown state, a missing or malformed\n" +
-			"time), or reports closed while the store holds it otherwise, is listed as\n" +
-			"unread, with the reason, and left under embargo to be read again. A missing\n" +
-			"gh, or a token without the advisory scope, refuses the intake with nothing\n" +
-			"recorded. Each published advisory whose private record is resolved in the\n" +
-			"store and not yet in this checkout's ledger is listed with the command that\n" +
-			"restores it.",
+			"not-abcds, not-a-vulnerability or public-track. Each recorded is listed as\n" +
+			"ended. One GitHub cannot tell (a failed read, an unknown state, a missing or\n" +
+			"malformed time), or reports closed while the store holds it otherwise, is\n" +
+			"listed as unread, with the reason, and left under embargo to be read again. A\n" +
+			"missing gh, or a token without the advisory scope, refuses the intake with\n" +
+			"nothing recorded. Each published advisory whose private record is resolved in\n" +
+			"the store and not yet in this checkout's ledger is listed with the command\n" +
+			"that restores it.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			const verb = "abcd embargo intake"
@@ -370,11 +370,11 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 			"saying why. Without --approve nothing but reads is sent.\n\n" +
 			"Every plan first reads from GitHub each advisory the store holds that is\n" +
 			"neither published nor closed, as intake does: it records each published one,\n" +
-			"and each closed one whose verdict is a closing one, at GitHub's own time,\n" +
-			"lists each it recorded as ended, and lists each it could not tell, or found\n" +
-			"closed while the store holds it otherwise, as unread, left under embargo. A\n" +
-			"missing gh, or a token without the advisory scope, refuses the plan with\n" +
-			"nothing recorded.\n\n" +
+			"and each closed one whose verdict ends its private track, at GitHub's own\n" +
+			"time, lists each it recorded as ended, and lists each it could not tell, or\n" +
+			"found closed while the store holds it otherwise, as unread, left under\n" +
+			"embargo. A missing gh, or a token without the advisory scope, refuses the plan\n" +
+			"with nothing recorded.\n\n" +
 			"With --approve <digest> of exactly the plan shown it publishes one advisory as\n" +
 			"a canary and reads it back, then the rest the same way, stopping at the first\n" +
 			"mismatch, and confirms none is left in draft. Every plan and publication\n" +

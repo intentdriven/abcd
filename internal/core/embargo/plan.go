@@ -129,7 +129,8 @@ type PublicationPlan struct {
 // planPublication builds the publication plan and changes nothing on GitHub:
 // the only requests it sends are reads of the advisories it plans. In the
 // store it records only what those reads report: an advisory GitHub already
-// holds published, or closed under a closing verdict (readHeld).
+// holds published, or closed under a verdict that ends its private track
+// (readHeld).
 func planPublication(req PublishRequest) (PublicationPlan, error) {
 	s, st, err := openExisting(req.Home, req.RepoRoot)
 	if err != nil {
