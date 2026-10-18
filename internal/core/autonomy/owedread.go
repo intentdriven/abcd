@@ -757,8 +757,9 @@ func (r *owedReader) stacked(name, head, base, baseTip string, p pullRequest, ha
 }
 
 // unpushed reports whether b holds commits not on its upstream, or, with no
-// upstream configured, not in any remote-tracking ref. A branch whose upstream
-// is gone never counts.
+// upstream configured, not in any remote-tracking ref and not already landed
+// in the default branch (r.landed). A branch whose upstream is gone never
+// counts.
 func (r *owedReader) unpushed(b *localBranch) bool {
 	if b.upstream != "" {
 		if b.upstreamGone {
@@ -769,7 +770,91 @@ func (r *owedReader) unpushed(b *localBranch) bool {
 		return err == nil && n > 0
 	}
 	out, err := r.git("rev-list", "-n", "1", b.head, "--not", "--remotes", "--")
-	return err == nil && strings.TrimSpace(out) != ""
+	if err != nil || strings.TrimSpace(out) == "" {
+		return false
+	}
+	switch r.landed(b) {
+	case landedYes:
+		return false
+	case landedUnknown:
+		r.note("%s has commits in no remote branch and no upstream, and could not be told landed in %s or not (its change conflicts with it and its commits' patches are not all there), so it is not counted as unpushed",
+			b.name, r.defLabel())
+		return false
+	}
+	return true
+}
+
+// landedness is whether a branch's work is already in the default branch.
+type landedness int
+
+const (
+	landedNo landedness = iota
+	landedYes
+	landedUnknown
+)
+
+// maxLandedOutput bounds the merge and patch reads of r.landed.
+const maxLandedOutput = 1 << 20
+
+// landed decides whether a branch with no upstream and commits in no remote
+// branch has nonetheless landed in the default branch as last fetched: the
+// usual shape of a branch pushed without -u, squash- or rebase-merged, and
+// its remote branch deleted and pruned. Merging it into the default branch
+// (`merge-tree --write-tree`, writing nothing, with the repository's merge
+// drivers replaced by git's built-in merge, as the conflict probe pins them)
+// changing nothing is landed, which covers a squash of several commits; a
+// clean merge that changes the tree is not landed. A merge that conflicts,
+// or fails, falls to `git cherry`: every commit already upstream by patch id
+// ('-' lines only) is landed, which covers a single commit main has edited
+// over since; otherwise it cannot be told. No default branch to compare with
+// cannot be told either.
+func (r *owedReader) landed(b *localBranch) landedness {
+	if r.defTip == "" {
+		return landedUnknown
+	}
+	if overrides, err := gitutil.MergeDriverOverrides(r.root); err == nil {
+		args := append(overrides, "-c", "merge.union.driver="+gitutil.BuiltinMergeDriver(), "-c", "merge.renormalize=false",
+			"merge-tree", "--write-tree", "--name-only", "--no-messages", "-z", r.defTip, b.head)
+		out, conflicted, err := gitutil.RunCappedExitOne(r.root, maxLandedOutput, args...)
+		if err == nil && !conflicted {
+			tree, _, _ := strings.Cut(string(out), "\x00")
+			tree = strings.TrimSpace(tree)
+			defTree, terr := r.git("rev-parse", "--verify", "--quiet", r.defTip+"^{tree}")
+			if gitutil.IsFullSHA(tree) && terr == nil {
+				if tree == strings.TrimSpace(defTree) {
+					return landedYes
+				}
+				return landedNo
+			}
+		}
+	}
+	out, err := gitutil.RunCapped(r.root, maxLandedOutput, "cherry", r.defTip, b.head)
+	if err != nil {
+		return landedUnknown
+	}
+	lines := 0
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		lines++
+		if !strings.HasPrefix(line, "- ") {
+			return landedUnknown
+		}
+	}
+	if lines == 0 {
+		return landedUnknown
+	}
+	return landedYes
+}
+
+// defLabel names the default branch as last fetched, for a note.
+func (r *owedReader) defLabel() string {
+	if r.def == "" {
+		return "the default branch"
+	}
+	return gitutil.ShortRef(r.def) + " as last fetched"
 }
 
 // reservationItems judges this copy's live reservations: a renewal due

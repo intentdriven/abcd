@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -91,6 +93,7 @@ type fx struct {
 	forge  *fakeForge
 	res    []claim.Reservation
 	email  string
+	files  int // the files commitOn has added, for the next one's name
 }
 
 func newFx(t *testing.T) *fx {
@@ -118,11 +121,39 @@ func newFx(t *testing.T) *fx {
 
 func (f *fx) git(args ...string) string { f.t.Helper(); return f.repo.Git(args...) }
 
-// commitOn records an empty commit on branch without checking it out, by
-// author (the fixture's own when ""), and returns it.
+// gitIn runs git in the fixture with stdin, under the fixture's isolated
+// environment.
+func (f *fx) gitIn(stdin string, args ...string) string {
+	f.t.Helper()
+	cmd := exec.Command("git", append([]string{"-C", f.root}, args...)...)
+	cmd.Env = f.repo.Env()
+	cmd.Stdin = strings.NewReader(stdin)
+	out, err := cmd.Output()
+	if err != nil {
+		f.t.Fatalf("git %v: %v", args, err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// treeWith is branch's tree with one file added, written to the object store.
+func (f *fx) treeWith(branch, name, content string) string {
+	f.t.Helper()
+	blob := f.gitIn(content, "hash-object", "-w", "--stdin")
+	entries := f.git("ls-tree", branch+"^{tree}")
+	if entries != "" {
+		entries += "\n"
+	}
+	return f.gitIn(entries+"100644 blob "+blob+"\t"+name+"\n", "mktree")
+}
+
+// commitOn records a commit on branch without checking it out, by author
+// (the fixture's own when ""), and returns it. The commit adds a file of its
+// own, so its change is real: a commit that changes nothing has, by
+// definition, already landed wherever its branch is merged.
 func (f *fx) commitOn(branch, msg, author string) string {
 	f.t.Helper()
-	tree := f.git("rev-parse", branch+"^{tree}")
+	f.files++
+	tree := f.treeWith(branch, fmt.Sprintf("f-%d.txt", f.files), msg+"\n")
 	args := []string{}
 	if author != "" {
 		args = append(args, "-c", "user.email="+author, "-c", "user.name="+strings.Split(author, "@")[0])
@@ -269,7 +300,11 @@ func TestOwnBranchFromRecordedCreation(t *testing.T) {
 	f := newFx(t)
 	wt := filepath.Join(t.TempDir(), "s")
 	f.git("worktree", "add", "-q", "-b", "feat/s", wt)
-	f.git("-C", wt, "commit", "-q", "--allow-empty", "-m", "stacked work")
+	if err := os.WriteFile(filepath.Join(wt, "s.txt"), []byte("stacked\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	f.git("-C", wt, "add", "s.txt")
+	f.git("-C", wt, "commit", "-q", "-m", "stacked work")
 	if owed := f.read(false); has(owed, OwedUnpushed, "feat/s") {
 		t.Fatalf("an unrecorded branch in another worktree is not own: %s", describe(owed))
 	}
@@ -962,5 +997,102 @@ func TestOwedOrderFixed(t *testing.T) {
 	}
 	if next, _ := owed.Next(); next.Kind != OwedRenewal {
 		t.Fatalf("the next item is the renewal: %+v", next)
+	}
+}
+
+// change commits content to file on branch, checking it out and back to
+// main, and returns the commit.
+func (f *fx) change(branch, file, content string) string {
+	f.t.Helper()
+	f.git("checkout", "-q", branch)
+	f.repo.Write(file, content)
+	f.git("add", "--", file)
+	f.git("commit", "-q", "-m", "change "+file+" on "+branch)
+	c := f.git("rev-parse", "HEAD")
+	f.git("checkout", "-q", "main")
+	return c
+}
+
+// squashLand squash-merges branch into main, pushes main, and deletes and
+// prunes the remote branch the branch was pushed to without -u.
+func (f *fx) squashLand(branch string) {
+	f.t.Helper()
+	f.git("push", "-q", "origin", branch) // no -u: no upstream configured
+	f.git("merge", "-q", "--squash", branch)
+	f.git("commit", "-q", "-m", "squash "+branch)
+	f.git("push", "-q", "origin", "main")
+	f.git("push", "-q", "origin", "--delete", branch)
+	f.git("fetch", "-q", "--prune", "origin")
+}
+
+// TestNoUpstreamLandedBranchNotOwed: a branch pushed without -u, then
+// squash-merged with its remote branch deleted and pruned, has no upstream
+// and no commit in any remote ref, but its work is already in the default
+// branch: it is not owed, whether it held several commits (the squash's
+// patch matches none of them) or one that main has since edited over.
+func TestNoUpstreamLandedBranchNotOwed(t *testing.T) {
+	t.Run("multi-commit squash", func(t *testing.T) {
+		f := newFx(t)
+		f.git("branch", "feat/sq")
+		f.change("feat/sq", "a.txt", "one\n")
+		f.change("feat/sq", "b.txt", "two\n")
+		f.own("feat/sq")
+		f.squashLand("feat/sq")
+		f.change("main", "c.txt", "later\n")
+		f.git("push", "-q", "origin", "main")
+		f.git("fetch", "-q", "origin")
+		if owed := f.read(false); has(owed, OwedUnpushed, "feat/sq") || strings.Contains(describe(owed), "feat/sq") {
+			t.Fatalf("a squash-merged, pruned branch is not owed: %s", describe(owed))
+		}
+	})
+	t.Run("one commit edited over since", func(t *testing.T) {
+		f := newFx(t)
+		f.git("branch", "feat/one")
+		f.change("feat/one", "a.txt", "one\n")
+		f.own("feat/one")
+		f.squashLand("feat/one")
+		f.change("main", "a.txt", "one, edited\n")
+		f.git("push", "-q", "origin", "main")
+		f.git("fetch", "-q", "origin")
+		if owed := f.read(false); has(owed, OwedUnpushed, "feat/one") || strings.Contains(describe(owed), "feat/one") {
+			t.Fatalf("a landed commit main has edited over since is not owed: %s", describe(owed))
+		}
+	})
+}
+
+// TestNoUpstreamUnlandedBranchOwed: a no-upstream branch holding a commit
+// whose change the default branch lacks is still owed.
+func TestNoUpstreamUnlandedBranchOwed(t *testing.T) {
+	f := newFx(t)
+	f.git("branch", "feat/new")
+	f.change("feat/new", "n.txt", "new\n")
+	f.own("feat/new")
+	f.change("main", "m.txt", "moved on\n")
+	f.git("push", "-q", "origin", "main")
+	f.git("fetch", "-q", "origin")
+	if owed := f.read(false); !has(owed, OwedUnpushed, "feat/new") {
+		t.Fatalf("an unpushed, unlanded branch is owed: %s", describe(owed))
+	}
+}
+
+// TestNoUpstreamUndecidedBranchNoted: a no-upstream branch whose change
+// conflicts with the default branch and whose patch is not upstream cannot
+// be told landed or not: it is named in a note, not owed.
+func TestNoUpstreamUndecidedBranchNoted(t *testing.T) {
+	f := newFx(t)
+	f.change("main", "a.txt", "base\n")
+	f.git("push", "-q", "origin", "main")
+	f.git("branch", "feat/c")
+	f.change("feat/c", "a.txt", "theirs\n")
+	f.own("feat/c")
+	f.change("main", "a.txt", "ours\n")
+	f.git("push", "-q", "origin", "main")
+	f.git("fetch", "-q", "origin")
+	owed := f.read(false)
+	if has(owed, OwedUnpushed, "feat/c") {
+		t.Fatalf("an undecidable branch is not owed: %s", describe(owed))
+	}
+	if !strings.Contains(strings.Join(owed.Notes, " "), "feat/c") {
+		t.Fatalf("an undecidable branch is named in a note: %s", describe(owed))
 	}
 }
