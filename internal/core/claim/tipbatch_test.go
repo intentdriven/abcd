@@ -2,12 +2,17 @@ package claim
 
 import (
 	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/gittest"
 )
 
 // The reservation tips a view reads come from origin, written by whoever can
@@ -106,6 +111,110 @@ func TestABatchedViewReadsEveryTipAsItsOwnReadWould(t *testing.T) {
 	}
 	if got[1].t.Unreadable != reasonObjectTooBig || got[0].t.Unreadable != "" || got[4].t.Unreadable != "" {
 		t.Errorf("want the oversized tip unreadable and the tips either side of it read: %+v", got)
+	}
+	// The batch, not a fallback, read the commits within the bound; the
+	// oversized commit and the blob it left to be read on their own.
+	bodies := batchedTipBodies(p.dir, refs)
+	for i, inBatch := range []bool{true, false, true, false, true} {
+		if _, ok := bodies[refs[i]]; ok != inBatch {
+			t.Errorf("%s read in the batch = %v; want %v", refs[i], ok, inBatch)
+		}
+	}
+}
+
+// localTip makes a commit on the empty tree with msg, dated t0, in p's own
+// object store, and sets id's remote-tracking reservation ref to it: a copy's
+// own tracking ref can name anything, which is all a view reads.
+func (p *participant) localTip(id, msg string) string {
+	p.w.t.Helper()
+	path := filepath.Join(p.w.t.TempDir(), "msg")
+	if err := os.WriteFile(path, []byte(msg), 0o600); err != nil {
+		p.w.t.Fatal(err)
+	}
+	tree := strings.TrimSpace(p.git("hash-object", "-w", "-t", "tree", "/dev/null"))
+	date := "@" + strconv.FormatInt(t0.Unix(), 10) + " +0000"
+	cmd := exec.Command("git", "-C", p.dir, "-c", "user.name=Mal", "-c", "user.email=mal@example.invalid",
+		"-c", "commit.gpgsign=false", "commit-tree", tree, "-F", path)
+	cmd.Env = append(gittest.Env(p.w.t), "GIT_AUTHOR_DATE="+date, "GIT_COMMITTER_DATE="+date)
+	out, err := cmd.Output()
+	if err != nil {
+		p.w.t.Fatal(err)
+	}
+	sha := strings.TrimSpace(string(out))
+	p.git("update-ref", TrackingPrefix+id, sha)
+	return sha
+}
+
+// TestABatchedReadAgreesWithItsOwnReadAtEveryBound: the tips where a batched
+// read could part from a read on its own, each read both ways and held
+// equal. Messages either side of the message cap, raw and as git trims
+// them (a body of the cap plus its newline reads as at the cap, not past it),
+// and one ending in trailing blanks;
+// commits of exactly the object bound and one byte past it; two refs on one
+// commit; and an annotated tag as a tip.
+func TestABatchedReadAgreesWithItsOwnReadAtEveryBound(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-1", "a"); err != nil {
+		t.Fatal(err)
+	}
+	var refs []string
+	add := func(id string) { refs = append(refs, TrackingPrefix+id) }
+	add("iss-1")
+	head := func(id string) string { return "abcd reservation: " + id + "\n\nAbcd-Reservation: " + id + "\n" }
+	for i, n := range []int{MaxMessageBytes - 1, MaxMessageBytes, MaxMessageBytes + 1, MaxMessageBytes + 2} {
+		id := "iss-" + strconv.Itoa(10+i)
+		msg := head(id)
+		msg += strings.Repeat("x", n-len(msg)-1) + "\n"
+		p.localTip(id, msg)
+		add(id)
+	}
+	// A reservation whose message ends in trailing blanks: read as stored, the
+	// blanks are trimmed, and it names its holder; read untrimmed, its last
+	// trailer would carry them.
+	p.localTip("iss-15", "abcd reservation: iss-15\n\nAbcd-Reservation: iss-15\nAbcd-Holder: octo\n\n \t\n")
+	add("iss-15")
+	// The object bound: a commit of exactly maxObjectBytes, and one past it.
+	for i, want := range []int{maxObjectBytes, maxObjectBytes + 1} {
+		id := "iss-" + strconv.Itoa(20+i)
+		probe := p.localTip(id, head(id))
+		size, _ := strconv.Atoi(strings.TrimSpace(p.git("cat-file", "-s", probe)))
+		p.localTip(id, head(id)+strings.Repeat("y", want-size))
+		if got, _ := strconv.Atoi(strings.TrimSpace(p.git("cat-file", "-s", TrackingPrefix+id))); got != want {
+			t.Fatalf("%s is %d bytes; want %d", id, got, want)
+		}
+		add(id)
+	}
+	// Two refs on one commit, and an annotated tag as a tip.
+	p.git("update-ref", TrackingPrefix+"iss-30", strings.TrimSpace(p.git("rev-parse", TrackingPrefix+"iss-1")))
+	add("iss-30")
+	p.git("-c", "user.name=Mal", "-c", "user.email=mal@example.invalid", "tag", "-a", "-m", "a tag", "t31", TrackingPrefix+"iss-1")
+	p.git("update-ref", TrackingPrefix+"iss-31", strings.TrimSpace(p.git("rev-parse", "t31")))
+	add("iss-31")
+
+	tree, err := emptyTree(p.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := t0.Add(time.Minute)
+	got := readSeenTips(p.dir, refs, tree, at, false)
+	for i, ref := range refs {
+		id := strings.TrimPrefix(ref, TrackingPrefix)
+		tp, ok, err := readSeen(p.dir, id, ref, tree, at, false)
+		if want := (tipRead{t: tp, ok: ok, err: err}); !reflect.DeepEqual(got[i], want) {
+			t.Errorf("%s batched = %+v\n read on its own = %+v", id, got[i], want)
+		}
+	}
+	bodies := batchedTipBodies(p.dir, refs)
+	for _, id := range []string{"iss-1", "iss-10", "iss-11", "iss-12", "iss-13", "iss-15", "iss-20", "iss-30"} {
+		if _, ok := bodies[TrackingPrefix+id]; !ok {
+			t.Errorf("%s was not read in the batch; the comparison above did not exercise it", id)
+		}
+	}
+	for _, id := range []string{"iss-21", "iss-31"} {
+		if _, ok := bodies[TrackingPrefix+id]; ok {
+			t.Errorf("%s was read in the batch; past the bound or not a commit, it is read on its own", id)
+		}
 	}
 }
 

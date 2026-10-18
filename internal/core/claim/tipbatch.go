@@ -48,8 +48,11 @@ func readSeenTips(root string, refs []string, tree string, fetchedAt time.Time, 
 	for i, ref := range refs {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
 		if b, ok := bodies[ref]; ok {
-			// As readTip reads a commit within the bound: parsed, then dated.
-			h, m := parseTip(b.name, []byte(b.body), tree, reservationParser(id))
+			// As readTip reads a commit within the bound: the object as
+			// storedGit hands it over, trailing whitespace trimmed, then
+			// parsed and dated. An untrimmed body would read a message at the
+			// cap as past it, and the view would disagree with the act.
+			h, m := parseTip(b.name, []byte(strings.TrimRight(b.body, " \t\r\n")), tree, reservationParser(id))
 			t := tip{head: dated(root, h, fetchedAt, keep), message: m}
 			out[i] = tipRead{t: seen(root, t, fetchedAt, keep), ok: true}
 			continue
@@ -59,6 +62,12 @@ func readSeenTips(root string, refs []string, tree string, fetchedAt time.Time, 
 	}
 	return out
 }
+
+// batchBudget bounds what one batch reads of commit bodies: about a hundred
+// and twenty tips at the object bound. A tip past it is read on its own, as
+// before, so the memory a view holds stays flat however many reservation
+// refs a writer pushes.
+const batchBudget = 1 << 20
 
 // tipBody is a tip's commit and its object as git stored it.
 type tipBody struct {
@@ -120,6 +129,9 @@ func batchedTipBodies(root string, refs []string) map[string]tipBody {
 		n, err := strconv.Atoi(f[2])
 		if err != nil || n < 0 || n > maxObjectBytes {
 			continue // read on its own, which says why it is unreadable
+		}
+		if total+n+len(f[0])+32 > batchBudget {
+			continue // past the budget: read on its own
 		}
 		wants = append(wants, batchWant{name: f[0], size: n})
 		total += n + len(f[0]) + 32
