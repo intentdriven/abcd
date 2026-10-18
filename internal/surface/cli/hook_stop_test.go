@@ -414,8 +414,9 @@ func homeFiles(t *testing.T, dir string) []string {
 // TestAwayHooksLeaveUnmanagedRepoAlone: in a repository abcd does not manage
 // every hook path of the away mode returns at once: the stop check (with the
 // real owed reader), StopFailure and the branch recorder print nothing,
-// create nothing under abcd's home folder, exit 0 and run no git past
-// naming the checkout's root; the session-start and prompt hooks add no away
+// create nothing under abcd's home folder, exit 0 and run no git (the
+// guard's own reading of a command aside, the same with or without a branch
+// act); the session-start and prompt hooks add no away
 // block and create no away store, session note or state file. (The away
 // store has no record here; a record shared with a managed copy is
 // TestHookStopUnmanagedRepoSilent's.)
@@ -428,10 +429,8 @@ func TestAwayHooksLeaveUnmanagedRepoAlone(t *testing.T) {
 	log := gitCallLog(t)
 	onlyRoot := func(what string) {
 		t.Helper()
-		for _, line := range strings.Split(strings.TrimSpace(ghCalls(t, log)), "\n") {
-			if line != "" && line != "version" && !strings.Contains(line, "rev-parse --show-toplevel") {
-				t.Errorf("%s ran git past naming the root: %q", what, line)
-			}
+		if calls := strings.TrimSpace(ghCalls(t, log)); calls != "" {
+			t.Errorf("%s ran git in an unmanaged checkout:\n%s", what, calls)
 		}
 		if err := os.WriteFile(log, nil, 0o600); err != nil {
 			t.Fatal(err)
@@ -462,11 +461,8 @@ func TestAwayHooksLeaveUnmanagedRepoAlone(t *testing.T) {
 	plain := baseline("git status --porcelain")
 	for _, c := range []string{"git switch -c feat/new", "git worktree add -b feat/wt ../wt", "git checkout -b feat/co"} {
 		_ = os.WriteFile(log, nil, 0o600)
-		got := baseline(c)
-		for _, line := range strings.Split(strings.TrimSpace(got), "\n") {
-			if line != "" && line != "version" && !strings.Contains(line, "rev-parse --show-toplevel") && !strings.Contains(plain, line) {
-				t.Errorf("the recorder ran git for %q in an unmanaged checkout: %q", c, line)
-			}
+		if got := baseline(c); got != plain {
+			t.Errorf("the recorder ran git for %q in an unmanaged checkout:\n%s\nbaseline:\n%s", c, got, plain)
 		}
 	}
 	if after := homeFiles(t, abcdHome); !slices.Equal(before, after) {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -104,9 +105,21 @@ func readAwayFailOpen(stderr io.Writer, cwd string) (*autonomy.Record, bool, boo
 // managedRoot is the root of the checkout cwd stands in, and whether abcd
 // manages it (autonomy.Managed). Every away hook and the branch recorder ask
 // it first: outside a managed checkout they read nothing, write nothing and
-// say nothing, and the git they run only names the roots.
+// say nothing, and run no git at all where the checkout's .git is a folder.
 func managedRoot(cwd string) (string, bool) {
 	if cwd == "" {
+		return "", false
+	}
+	// The marker first, with no git at all: the nearest folder holding a
+	// .git entry. A plain .git folder with no .abcd/ beside it is a
+	// checkout abcd does not manage, and the hooks leave it untouched; only
+	// a managed-looking one, or a linked worktree's .git file, is asked of
+	// git.
+	shaped := gitutil.RepoShapedRoot(cwd)
+	if shaped == "" {
+		return "", false
+	}
+	if fi, err := os.Lstat(filepath.Join(shaped, ".git")); err == nil && fi.IsDir() && !autonomy.Managed(shaped) {
 		return "", false
 	}
 	root, err := gitutil.CheckoutRoot(cwd, autonomy.StoreName)
