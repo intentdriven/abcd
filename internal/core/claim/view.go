@@ -184,7 +184,10 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	// subjects alone, which no record there ends.
 	var records map[string][]peers.RecordAt
 	anyRecord := slices.ContainsFunc(refs, func(ref string) bool { return !isRelease(strings.TrimPrefix(ref, TrackingPrefix)) })
-	if ref := originDefault(root); derive && anyRecord && ref != "" {
+	// One name for origin's default branch per view (iss-2610180545134593): a
+	// view fetches nothing, so the name cannot move under it.
+	defaultRef := originDefault(root)
+	if ref := defaultRef; derive && anyRecord && ref != "" {
 		if records, err = peers.RecordsAt(root, ref); err != nil {
 			return snap, fmt.Errorf("reading %s: %s", gitutil.ShortRef(ref), redacted(err))
 		}
@@ -228,7 +231,7 @@ func viewOf(root string, now time.Time, derive bool, only func(subject string) b
 	// origin's default branch recognises none.
 	if slices.ContainsFunc(snap.Reservations, func(r Reservation) bool { return r.State == StateLive && len(r.Footprint) > 0 }) {
 		if derive {
-			snap.Generated, snap.GeneratedUnread = GeneratedFiles(root)
+			snap.Generated, snap.GeneratedUnread = generatedFilesAt(root, defaultRef)
 		} else {
 			snap.GeneratedUnread = "origin's default branch could not be read when the reservations were fetched"
 		}
