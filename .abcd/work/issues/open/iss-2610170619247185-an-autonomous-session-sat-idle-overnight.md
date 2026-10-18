@@ -8,6 +8,7 @@ source: "user-observation"
 found_during: "autonomous overnight run 2026-10-16"
 origin: researcher-authored
 production_mode: hand-written
+related_intents: [itd-2610170638184486, itd-2610180912189125]
 found_at: "the agent loop between turns in an autonomous run"
 lapsed_at: "2026-10-16T19:48:14Z"
 remedy: "Make an autonomous run abcd state rather than chat: an 'abcd mode autonomous --until <time>' state per checkout that the prompt and session-start hooks inject (so compaction and peer relays cannot drop it); a Stop hook that, while that state holds, refuses to end a turn that has owed work (its reservations, its behind or failing pull requests, its unpushed branches) and names the next item, bounded by the host's stop_hook_active flag; the question check rerouting a product question in that state to 'abcd decide' with only website-only steps queued for the morning; and idle time per session in 'abcd peers' so a coordinator sees a stall."
