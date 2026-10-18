@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -46,6 +47,11 @@ func holderJSON(login, noreply, source string) string {
 //	FAKE_HOLDER       what the token-identity verb prints on standard output
 //	FAKE_HOLDER_EXIT  its exit code (default 0)
 //	FAKE_BUILD        the build of abcd's exit code when set (it fails)
+//	FAKE_ROOT_ONLY    a directory standing in for root's home: the user abcd
+//	                  cannot read what it holds, so a command run through
+//	                  runuser that names a file there is refused, and the
+//	                  token-identity verb, which reaches the forge over HTTPS,
+//	                  fails as TLS does when a CA variable names a file there
 //
 // git's system configuration is a file of the test's own ($STATE/gitconfig,
 // through GIT_CONFIG_SYSTEM), so the setup's root-wide trust of the checkout
@@ -99,6 +105,11 @@ if [ -n "${FAKE_USERADD:-}" ]; then echo "useradd: cannot lock /etc/passwd" >&2;
 	c.fake("runuser", `[ "${1:-}" = -u ] && [ "${2:-}" = abcd ] && [ "${3:-}" = -- ] || { echo "fake runuser: unexpected $*" >&2; exit 3; }
 shift 3
 echo "as-abcd $*" >>"$CALLS"
+if [ -n "${FAKE_ROOT_ONLY:-}" ]; then
+	for a in "$@"; do
+		case "$a" in "$FAKE_ROOT_ONLY"/*) echo "fake runuser: $a: Permission denied" >&2; exit 1 ;; esac
+	done
+fi
 exec "$@"`)
 	c.fake("uname", `case "$*" in -m) echo x86_64 ;; -s) echo Linux ;; *) exec /usr/bin/uname "$@" ;; esac`)
 	c.fake("curl", `out="" url="" prev=""
@@ -133,6 +144,13 @@ case "$*" in
 	if [ -n "${FAKE_BUILD:-}" ]; then echo "fake go: the build failed" >&2; exit "$FAKE_BUILD"; fi
 	printf '#!/bin/sh\necho built abcd\n' >"$3" && chmod +x "$3" ;;
 "run ./cmd/abcd reserve --holder --json")
+	for v in SSL_CERT_FILE GIT_SSL_CAINFO CURL_CA_BUNDLE REQUESTS_CA_BUNDLE NODE_EXTRA_CA_CERTS; do
+		eval "f=\${$v:-}"
+		[ -z "$f" ] || echo "$v=$f" >>"$STATE/holder-ca"
+		case "$f" in "${FAKE_ROOT_ONLY:-/nonexistent}"/*)
+			echo "abcd reserve: x509: certificate signed by unknown authority ($v=$f: permission denied)" >&2; exit 1 ;;
+		esac
+	done
 	if [ -n "${FAKE_HOLDER:-}" ]; then printf '%s\n' "$FAKE_HOLDER"; fi
 	echo "abcd reserve: git's identity is $(git config user.name) <$(git config user.email)>" >&2
 	exit "${FAKE_HOLDER_EXIT:-0}" ;;
@@ -601,5 +619,231 @@ func TestSetupParsesTheRealHolderAnswer(t *testing.T) {
 	}
 	if strings.Contains(out, vendorMail) {
 		t.Errorf("setup repeated the container's identity\n%s", out)
+	}
+}
+
+// caSeen is every CA variable the token-identity verb, the setup's networked
+// command run as abcd, saw in its environment, in the order it saw them.
+func caSeen(t *testing.T, c *cloudCase) []string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Join(filepath.Dir(c.dir), "state", "holder-ca"))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		t.Fatal(err)
+	}
+	return strings.Fields(string(b))
+}
+
+// The proxy's CA bundle a test names, and its exact bytes.
+const proxyCA = "-----BEGIN CERTIFICATE-----\nMIIBproxyCAforTheHostedSession\n-----END CERTIFICATE-----\n"
+
+// TestSetupHandsTheUserARootOnlyCABundle: in a hosted session the proxy's CA
+// bundle sits under root's home, which the user abcd cannot read, so every
+// networked command run as abcd failed its certificate check. The setup made
+// the user, so root copies exactly that bundle, 0444 and root's own, into a
+// directory only root can write, and points the same variables at it for the
+// commands it runs as abcd and for the session's later shells, root's
+// included. abcd never writes the copy, and verification is never turned off.
+//
+// The fake's root is the test's own uid: the fake id answers 0 for it.
+func TestSetupHandsTheUserARootOnlyCABundle(t *testing.T) {
+	c := newSetupCase(t)
+	caDir := filepath.Join(filepath.Dir(c.dir), "share", "abcd", "cloud-ca")
+	rootOnly := filepath.Join(filepath.Dir(c.dir), "root-home")
+	if err := os.MkdirAll(rootOnly, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(rootOnly, "proxy-ca.pem")
+	if err := os.WriteFile(bundle, []byte(proxyCA), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	envFile := filepath.Join(t.TempDir(), "session.env")
+	env := append(append([]string{}, setupRemote...),
+		"FAKE_HOLDER="+holderJSON(tokenLogin, tokenNoReply, "token"), "CLAUDE_ENV_FILE="+envFile,
+		"FAKE_ROOT_ONLY="+rootOnly, "ABCD_CLOUD_CA_DIR="+caDir, "SSL_CERT_FILE="+bundle, "GIT_SSL_CAINFO="+bundle)
+
+	var outs, logs []string
+	for run := 1; run <= 2; run++ {
+		c.resetCalls()
+		out, code := c.script(env, setupScript)
+		if code != 0 {
+			t.Fatalf("setup run %d exited %d with the proxy's CA bundle readable only by root\n%s", run, code, out)
+		}
+		outs, logs = append(outs, out), append(logs, c.callLog())
+	}
+	if strings.Contains(logs[1], "chown 0:0 "+caDir+"/") {
+		t.Errorf("the second setup rewrote a copy whose content had not changed:\n%s", logs[1])
+	}
+	if n, m := strings.Count(outs[0], "\n"), strings.Count(outs[1], "\n"); n != m {
+		t.Errorf("the second setup printed %d lines, the first %d\n%s\n--\n%s", m, n, outs[0], outs[1])
+	}
+	if !strings.Contains(outs[0], "SSL_CERT_FILE") || !strings.Contains(outs[0], "GIT_SSL_CAINFO") {
+		t.Errorf("setup does not say which CA variables it pointed at the user's copy\n%s", outs[0])
+	}
+
+	seen := caSeen(t, c)
+	if len(seen) != 4 {
+		t.Fatalf("the user's networked command saw CA variables %q over two runs, want SSL_CERT_FILE and GIT_SSL_CAINFO each run", seen)
+	}
+	copies := map[string]string{}
+	for _, kv := range seen {
+		name, path, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(path, rootOnly+string(filepath.Separator)) {
+			t.Errorf("the user's command was handed %s=%s, a bundle only root can read", name, path)
+			continue
+		}
+		if filepath.Dir(path) != caDir {
+			t.Errorf("%s=%s is not in the directory only root can write, %s", name, path, caDir)
+		}
+		b, err := os.ReadFile(path)
+		if err != nil || string(b) != proxyCA {
+			t.Errorf("%s=%s does not hold exactly the proxy's bundle: %q (%v)", name, path, b, err)
+		}
+		if st, err := os.Lstat(path); err != nil || !st.Mode().IsRegular() || st.Mode().Perm() != 0o444 {
+			t.Errorf("the copy %s is not a plain file of mode 0444 (%v, %v)", path, st.Mode(), err)
+		} else if uid := st.Sys().(*syscall.Stat_t).Uid; int(uid) != os.Getuid() {
+			t.Errorf("the copy %s belongs to uid %d, not the fake's root (%d)", path, uid, os.Getuid())
+		}
+		if prev, ok := copies[name]; ok && prev != path {
+			t.Errorf("%s named %s on the first run and %s on the second", name, prev, path)
+		}
+		copies[name] = path
+	}
+	if st, err := os.Lstat(caDir); err != nil || !st.IsDir() || st.Mode().Perm() != 0o755 {
+		t.Errorf("the copies' directory %s is not a real directory of mode 0755 (%v, %v)", caDir, st.Mode(), err)
+	} else if uid := st.Sys().(*syscall.Stat_t).Uid; int(uid) != os.Getuid() {
+		t.Errorf("the copies' directory belongs to uid %d, not the fake's root (%d)", uid, os.Getuid())
+	}
+	log := logs[0]
+	for _, want := range []string{
+		`(?m)^chown 0:0 ` + regexp.QuoteMeta(caDir) + `$`,
+		`(?m)^chown 0:0 ` + regexp.QuoteMeta(caDir) + `/\.ca\.\S+$`,
+	} {
+		if !regexp.MustCompile(want).MatchString(log) {
+			t.Errorf("root did not give the directory and the copy to root (%s):\n%s", want, log)
+		}
+	}
+	for _, l := range strings.Split(logs[0]+logs[1], "\n") {
+		if strings.HasPrefix(l, "as-abcd ") && strings.Contains(l, caDir) && !strings.HasPrefix(l, "as-abcd test -r ") {
+			t.Errorf("abcd touched the copies' directory beyond reading: %s", l)
+		}
+	}
+
+	b, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatalf("the variables file was not written: %v", err)
+	}
+	for name, path := range copies {
+		if n := strings.Count(string(b), "export "+name+"='"+path+"'\n"); n != 1 {
+			t.Errorf("the variables file points %s at the user's copy %d times after two setups, want once:\n%s", name, n, b)
+		}
+	}
+	if strings.Count(string(b), "\n") != 4 {
+		t.Errorf("the variables file carries more than abcd's two and the two CA exports:\n%s", b)
+	}
+	if orig, err := os.ReadFile(bundle); err != nil || string(orig) != proxyCA {
+		t.Errorf("the proxy's own bundle was changed: %q (%v)", orig, err)
+	}
+	for _, never := range []string{"NO_VERIFY", "sslVerify", "sslverify", "REJECT_UNAUTHORIZED", "--insecure", "/etc/ssl"} {
+		if strings.Contains(string(b), never) || strings.Contains(logs[0]+logs[1], never) || strings.Contains(c.localConfig(), never) {
+			t.Errorf("setup weakened TLS verification (%s):\n%s\n%s", never, b, logs[0]+logs[1])
+		}
+	}
+}
+
+// TestSetupLeavesAReadableCABundleAsItIs: a CA bundle the user can already
+// read is not copied, not re-pointed and not touched.
+func TestSetupLeavesAReadableCABundleAsItIs(t *testing.T) {
+	c := newSetupCase(t)
+	rootOnly := filepath.Join(filepath.Dir(c.dir), "root-home")
+	shared := filepath.Join(filepath.Dir(c.dir), "etc-ssl")
+	for _, d := range []string{rootOnly, shared} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	caDir := filepath.Join(filepath.Dir(c.dir), "share", "abcd", "cloud-ca")
+	bundle := filepath.Join(shared, "ca.pem")
+	if err := os.WriteFile(bundle, []byte(proxyCA), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Stat(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envFile := filepath.Join(t.TempDir(), "session.env")
+	env := append(append([]string{}, setupRemote...),
+		"FAKE_HOLDER="+holderJSON(tokenLogin, tokenNoReply, "token"), "CLAUDE_ENV_FILE="+envFile,
+		"FAKE_ROOT_ONLY="+rootOnly, "ABCD_CLOUD_CA_DIR="+caDir, "SSL_CERT_FILE="+bundle, "CURL_CA_BUNDLE="+bundle)
+	out, code := c.script(env, setupScript)
+	if code != 0 {
+		t.Fatalf("setup exited %d\n%s", code, out)
+	}
+	seen := caSeen(t, c)
+	want := []string{"SSL_CERT_FILE=" + bundle, "CURL_CA_BUNDLE=" + bundle}
+	if strings.Join(seen, " ") != strings.Join(want, " ") {
+		t.Errorf("the user's networked command saw %q, want the readable bundle unchanged, %q", seen, want)
+	}
+	b, _ := os.ReadFile(envFile)
+	for _, name := range []string{"SSL_CERT_FILE", "CURL_CA_BUNDLE"} {
+		if strings.Contains(string(b), name) {
+			t.Errorf("a readable bundle was re-pointed for later shells:\n%s", b)
+		}
+	}
+	if _, err := os.Stat(caDir); !os.IsNotExist(err) {
+		t.Errorf("a copy was made of a bundle the user can read (%v)", err)
+	}
+	after, err := os.Stat(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if after.Mode() != before.Mode() || !after.ModTime().Equal(before.ModTime()) {
+		t.Errorf("the readable bundle was touched: %v %v, was %v %v", after.Mode(), after.ModTime(), before.Mode(), before.ModTime())
+	}
+	if got, _ := os.ReadFile(bundle); string(got) != proxyCA {
+		t.Errorf("the readable bundle's content changed: %q", got)
+	}
+}
+
+// TestSetupRefusesASymlinkAtTheCACopy: root writes the copy, so a symlink
+// standing where the copy goes is refused, never followed: the file it names
+// is left as it was, and the setup says the copy could not be made.
+func TestSetupRefusesASymlinkAtTheCACopy(t *testing.T) {
+	c := newSetupCase(t)
+	caDir := filepath.Join(filepath.Dir(c.dir), "share", "abcd", "cloud-ca")
+	rootOnly := filepath.Join(filepath.Dir(c.dir), "root-home")
+	for _, d := range []string{caDir, rootOnly} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bundle := filepath.Join(rootOnly, "proxy-ca.pem")
+	if err := os.WriteFile(bundle, []byte(proxyCA), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(filepath.Dir(c.dir), "victim")
+	if err := os.WriteFile(victim, []byte("root's own file\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(caDir, "SSL_CERT_FILE.pem")
+	if err := os.Symlink(victim, dst); err != nil {
+		t.Fatal(err)
+	}
+	out, code := c.script(append(append([]string{}, setupRemote...),
+		"FAKE_HOLDER="+holderJSON(tokenLogin, tokenNoReply, "token"),
+		"FAKE_ROOT_ONLY="+rootOnly, "ABCD_CLOUD_CA_DIR="+caDir, "SSL_CERT_FILE="+bundle), setupScript)
+	if code == 0 {
+		t.Errorf("setup exited 0 with a symlink where the CA copy goes\n%s", out)
+	}
+	if !strings.Contains(out, "NOT IN PLACE") || !strings.Contains(out, "a copy could not be made") {
+		t.Errorf("setup does not say the copy could not be made\n%s", out)
+	}
+	if b, _ := os.ReadFile(victim); string(b) != "root's own file\n" {
+		t.Errorf("the setup wrote through the symlink: %q", b)
+	}
+	if st, err := os.Lstat(dst); err != nil || st.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the symlink was replaced or removed (%v, %v)", st.Mode(), err)
 	}
 }

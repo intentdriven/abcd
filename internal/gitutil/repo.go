@@ -609,12 +609,33 @@ var ErrGitTimedOut = errors.New("git did not answer in time")
 // exec.ErrWaitDelay, its output not yet copied. That miss is asked once more;
 // a second miss is returned as ErrGitTimedOut, never as git's answer.
 func RunLimitedContext(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
+	return runLimitedContext(ctx, root, maxBytes, false, args)
+}
+
+// RunLimitedNetContext is RunLimitedContext for an isolated git command that
+// reaches a remote (the implement loop's outage probe, an ls-remote): the
+// same command and bounds, its environment built by netEnv, as every
+// networked git command's is.
+func RunLimitedNetContext(ctx context.Context, root string, maxBytes int, args ...string) (string, error) {
+	return runLimitedContext(ctx, root, maxBytes, true, args)
+}
+
+// runLimitedContext is RunLimitedContext (network false) and
+// RunLimitedNetContext (true).
+func runLimitedContext(ctx context.Context, root string, maxBytes int, network bool, args []string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
 	}
-	out, _, err := runBoundedCmd(isolatedGitContext(ctx, root, args...), maxBytes)
+	command := func() *exec.Cmd {
+		cmd := isolatedGitContext(ctx, root, args...)
+		if network {
+			cmd.Env = netEnv(cmd.Env)
+		}
+		return cmd
+	}
+	out, _, err := runBoundedCmd(command(), maxBytes)
 	if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
-		out, _, err = runBoundedCmd(isolatedGitContext(ctx, root, args...), maxBytes)
+		out, _, err = runBoundedCmd(command(), maxBytes)
 		if errors.Is(err, exec.ErrWaitDelay) && ctx.Err() == nil {
 			return "", fmt.Errorf("git %s: %w: its output was still open when the wait for it ran out, on a retry too (%w)",
 				strings.Join(args, " "), ErrGitTimedOut, err)

@@ -76,9 +76,9 @@ payload adds:
 - `reservations`: each with its `record`, `holder`, `footprint`,
   `effective_expiry`, `state` and `commit`; `claimed_at` for a readable one;
   `copy: "this"` when it was made from this checkout; `released_by`
-  (`tombstone`, or `default-branch` when the record is already resolved,
-  won't-fixed, shipped or superseded on origin's default branch) for a
-  released one; and for an `unreadable` one its fixed `unreadable` reason, no
+  (`tombstone`, `default-branch` when the record is already resolved,
+  won't-fixed, shipped or superseded on origin's default branch, or `tag`
+  when a release's tag is on origin) for a released one; and for an `unreadable` one its fixed `unreadable` reason, no
   holder, and `held_from_fetch` when its hold is counted from when this copy
   first fetched it. The states are `live`, `expired`, `released` and
   `unreadable`. A live reservation a drain lane renewed carries its `stage`,
@@ -90,6 +90,15 @@ payload adds:
   live shows none, so the field is then absent; the text form shows the
   stage beside a live one alone.
 - `live_by_holder`: each person's count of live reservations.
+- `release_holds`: each release being cut (a live `rel-vX.Y.Z` reservation,
+  or an unreadable one within its hold, which holds every other session's
+  merge until its tag is on origin; see `/abcd:reserve`), with its `release`,
+  `subject`, `holder` (absent for an unreadable one, which carries its
+  `unreadable` reason), `copy: "this"` when it was made from this checkout,
+  `effective_expiry`, `own` (this copy's own cut), `unsighted` (dated more
+  than five minutes ahead or undated, with no first sighting kept here), neither of
+  which holds a merge, and `text`, the line the text form shows it by. Tell
+  the user who is cutting which release, and that merges are held.
 - `hand_backs_by_holder`: for each holder, the hand-backs of the last 24
   hours: each released tip carrying a hand-back, as `record`, `kind` (one of
   `user-visible`, `trust-rule`, `design-finding`, `second-package`,

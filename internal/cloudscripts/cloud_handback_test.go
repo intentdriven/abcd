@@ -442,6 +442,18 @@ func TestHandBackKeepsAnUnchangedReportsDisclosureHonest(t *testing.T) {
 	if !strings.Contains(errOut, "Assisted-by") {
 		t.Errorf("the hand-back does not say the disclosure differs:\n%s", errOut)
 	}
+	// No push was tried, so neither the closing line nor the comment's
+	// heading for the reason names one (iss-2610170926360632).
+	if strings.Contains(out, "push failed") {
+		t.Errorf("the closing line names a push that was never tried:\n%s", out)
+	}
+	calls := c.forgeCalls()
+	if len(calls) != 1 {
+		t.Fatalf("the fallback made %d forge calls, want the one comment: %v", len(calls), calls)
+	}
+	if strings.Contains(calls[0].stdin, "push failed") || !strings.Contains(calls[0].stdin, "Why it did not go with the work") {
+		t.Errorf("the comment's heading for the reason is not the fallback's:\n%s", calls[0].stdin)
+	}
 }
 
 // A report_dir with a doubled slash names the same folder as its single-slash
