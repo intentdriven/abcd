@@ -34,9 +34,14 @@ import (
 // ten-second deadline. A test replaces it with constructed sets.
 var stopOwedReader = autonomy.ReadOwed
 
-// stopReadBudget bounds the owed read inside the Stop hook's 30-second
-// timeout, leaving the hook time to judge, record and answer.
-const stopReadBudget = 25 * time.Second
+// stopReadBudget bounds the owed read, counted from the hook's start (the
+// checkout's root and root commit included), its forge listing's own
+// ten-second deadline inside it. Judging, the session's state and at most a
+// few store writes under their two-second lock follow, so the hook ends
+// within about 20 seconds, well inside the host's 30-second timeout. A read
+// the budget cuts short is incomplete, and the stop is allowed, naming what
+// was not read (spc-2610180914469489, "Diff review round 1", major 6).
+const stopReadBudget = 14 * time.Second
 
 // stopBlockCapEnv names the host's setting that raises its continuation cap.
 const stopBlockCapEnv = "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP"
@@ -100,6 +105,10 @@ host's cap of consecutive continuations (eight, or
 CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) is recorded in the away record as a stop
 possibly forced by the cap. While the person is present the check reads disk
 only and, with work owed, allows the stop with a systemMessage naming it.
+The owed work is read within 14 seconds of the hook's start, so the hook
+ends well inside the host's 30-second timeout; a reading cut short allows
+the stop with a systemMessage naming what was not read, recorded in the away
+record while the person is away.
 
 The session's state is kept per session id in its start copy's local tier,
 .abcd/.work.local/autonomy/sessions/<session-id>.json. A malformed payload,
@@ -116,6 +125,8 @@ nothing.`,
 					ret = stopAllow(cmd, "the stop check failed (%s)", termsafe.CleanProseLine(fsutil.RedactHome(fmt.Sprint(r)), 256))
 				}
 			}()
+			ctx, cancel := context.WithTimeout(context.Background(), stopReadBudget)
+			defer cancel()
 			p, err := readStopPayload(cmd)
 			if err != nil {
 				return stopAllow(cmd, "unreadable Stop payload (%s)", termsafe.Sanitize(err.Error()))
@@ -136,8 +147,6 @@ nothing.`,
 			if away && !autonomy.ValidSessionID(p.SessionID) {
 				return stopAllow(cmd, "the session id %q is not [A-Za-z0-9_-]{1,128}", termsafe.CleanProseLine(p.SessionID, 64))
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), stopReadBudget)
-			defer cancel()
 			home, _ := os.UserHomeDir()
 			owed, err := stopOwedReader(ctx, autonomy.ReadOptions{Root: copyRoot, Record: rec, Home: home, Now: func() time.Time { return now }})
 			if err != nil {

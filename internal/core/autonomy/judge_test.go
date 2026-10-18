@@ -589,3 +589,24 @@ func TestRowOnePastCapRecordsStop(t *testing.T) {
 		}
 	}
 }
+
+// TestIncompleteReadAllows: a reading the time budget cut short allows the
+// stop, present or away, naming what was not read to the person; while away
+// it records the stop.
+func TestIncompleteReadAllows(t *testing.T) {
+	now := at(t, "2026-10-18 21:00")
+	owed := Owed{Items: []OwedItem{behindPR}, Incomplete: true, Notes: []string{"the check ran out of its time budget before reading 3 of 9 own branches"}}
+	for _, away := range []bool{true, false} {
+		var rec *Record
+		if away {
+			rec = awayRec(now, false)
+		}
+		v := judgeAt(t, rec, owed, StopInput{}, SessionState{}, now)
+		if v.Block || !strings.Contains(v.SystemMessage, "3 of 9 own branches") {
+			t.Errorf("away %v: block %v message %q, want allowed and named", away, v.Block, v.SystemMessage)
+		}
+		if got := v.Stop != nil && v.Stop.Kind == StopCheckIncomplete; got != away {
+			t.Errorf("away %v: stop %+v", away, v.Stop)
+		}
+	}
+}

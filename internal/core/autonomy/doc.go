@@ -171,4 +171,16 @@
 // items come sorted by OwedKinds' order. The
 // error is a root that is not a working copy; anything else ReadOwed could
 // not read is a note in Owed.Notes.
+//
+// Every git call ReadOwed makes is bound to ctx, and the stack-base search
+// reads each own branch's reflog once a check and walks each branch's own
+// history once, so its cost grows with the branches, not their pairs. A
+// context that ends before everything is read stops the reading where it
+// is: Owed.Incomplete is set, a note says what was not read, and Judge
+// allows the stop with a line naming it, recording a StopCheckIncomplete
+// while away. A branch with no upstream and no commit in any remote branch
+// is owed only when merging it into the last-fetched default branch would
+// change it; one squash- or rebase-merged already is not, and one that
+// cannot be told is a note. A listing at its limit of 200 may be truncated:
+// a note says so, and no reservation is reported uncarried from it.
 package autonomy

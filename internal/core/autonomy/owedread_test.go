@@ -1121,3 +1121,80 @@ func TestForgeListingAtLimitTruncated(t *testing.T) {
 		}
 	}
 }
+
+// manyOwnBranches makes n own branches, each with a commit of the fixture's
+// own not in any remote, none with a pull request.
+func (f *fx) manyOwnBranches(n int) {
+	f.t.Helper()
+	for i := 0; i < n; i++ {
+		b := fmt.Sprintf("feat/m%02d", i)
+		f.git("branch", b)
+		f.commitOn(b, "work "+b, "")
+		f.own(b)
+	}
+}
+
+// countGit puts a git on PATH that counts its calls into the returned file.
+func countGit(t *testing.T) func() int {
+	t.Helper()
+	real, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git not on PATH")
+	}
+	bin := t.TempDir()
+	log := filepath.Join(t.TempDir(), "calls")
+	script := "#!/bin/sh\necho x >> '" + log + "'\nexec '" + real + "' \"$@\"\n"
+	if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return func() int {
+		raw, _ := os.ReadFile(log)
+		_ = os.WriteFile(log, nil, 0o600)
+		return strings.Count(string(raw), "\n")
+	}
+}
+
+// TestStackBaseSearchLinear: finding the bases of own branches with no pull
+// request (the listing failed) costs git calls in proportion to the
+// branches, not to their pairs: doubling the branches far less than
+// quadruples the calls.
+func TestStackBaseSearchLinear(t *testing.T) {
+	calls := map[int]int{}
+	for _, n := range []int{10, 20} {
+		f := newFx(t)
+		f.manyOwnBranches(n)
+		f.forge.err = errors.New("listing failed")
+		count := countGit(t)
+		count()
+		f.read(true)
+		calls[n] = count()
+	}
+	if calls[20] > calls[10]*3 {
+		t.Fatalf("git calls: %d for 10 branches, %d for 20; want them to grow linearly", calls[10], calls[20])
+	}
+}
+
+// TestReadOwedHonoursDeadline: a check whose time budget runs out stops
+// reading, returns promptly, marks the reading incomplete and says what was
+// not read.
+func TestReadOwedHonoursDeadline(t *testing.T) {
+	f := newFx(t)
+	f.manyOwnBranches(30)
+	f.forge.err = errors.New("listing failed")
+	o := f.opts()
+	o.Record = f.awayRecord(false)
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	owed, err := ReadOwed(ctx, o)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if took := time.Since(start); took > 5*time.Second {
+		t.Errorf("the read took %s past a 150ms budget", took)
+	}
+	if !owed.Incomplete || !strings.Contains(strings.Join(owed.Notes, " "), "ran out of its time budget") {
+		t.Fatalf("a read cut short is marked incomplete with a note: incomplete %v, %s", owed.Incomplete, describe(owed))
+	}
+}

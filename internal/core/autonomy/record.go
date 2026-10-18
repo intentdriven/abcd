@@ -99,6 +99,10 @@ const (
 	StopNoNextLook StopKind = "no-next-look"
 	// StopAPIError is a turn the host ended on an API error.
 	StopAPIError StopKind = "api-error"
+	// StopCheckIncomplete is a stop allowed because the check's time budget
+	// ran out before it had read the owed work; Detail says what was not
+	// read.
+	StopCheckIncomplete StopKind = "check-incomplete"
 )
 
 // Stop is one recorded stop. Count, First and Last are kept by AddStop: a stop
@@ -355,6 +359,8 @@ func stopLine(s Stop) string {
 		b.WriteString("stopped with work owed")
 	case StopNoNextLook:
 		b.WriteString("stopped with no next look")
+	case StopCheckIncomplete:
+		b.WriteString("allowed to stop, the check out of time")
 	case StopAPIError:
 		b.WriteString("stopped on an API error")
 		if s.ErrorType != "" {

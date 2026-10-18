@@ -509,3 +509,37 @@ func TestHookStopPanicAllows(t *testing.T) {
 		t.Errorf("a panic: err %v stdout %q stderr %q", err, so, se)
 	}
 }
+
+// TestHookStopBudgetFailsOpen: the owed read runs under a deadline well
+// inside the host's 30-second hook timeout, leaving room to judge and record
+// within about 20 seconds in all; a reading the deadline cut short allows the
+// stop with a line naming what was not read, and records the stop while away.
+func TestHookStopBudgetFailsOpen(t *testing.T) {
+	root := awayCheckout(t)
+	setAway(t)
+	var left time.Duration
+	prev := stopOwedReader
+	stopOwedReader = func(ctx context.Context, _ autonomy.ReadOptions) (autonomy.Owed, error) {
+		if d, ok := ctx.Deadline(); ok {
+			left = time.Until(d)
+		}
+		return autonomy.Owed{Items: []autonomy.OwedItem{behindItem}, Incomplete: true,
+			Notes: []string{"the check ran out of its time budget before reading 4 of 40 own branches (from feat/m36 on)"}}, nil
+	}
+	t.Cleanup(func() { stopOwedReader = prev })
+	start := time.Now()
+	out, so, _ := runStop(t, stopHookPayload(t, "bud-1", root, false, "Done."))
+	if left <= 0 || left > 15*time.Second {
+		t.Errorf("the owed read had %s left on its deadline, want at most 15s", left)
+	}
+	if time.Since(start) > 20*time.Second {
+		t.Errorf("the hook took %s", time.Since(start))
+	}
+	if out.Decision != "" || !strings.Contains(out.SystemMessage, "4 of 40 own branches") {
+		t.Errorf("a reading cut short: %s, want the stop allowed and named", so)
+	}
+	stops := readAway(t, root).Stops
+	if len(stops) != 1 || stops[0].Kind != autonomy.StopCheckIncomplete {
+		t.Errorf("recorded %+v, want the stop allowed by the budget", stops)
+	}
+}

@@ -90,6 +90,16 @@ type Verdict struct {
 // passes the cap is recorded as a stop possibly forced by the cap.
 func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time) Verdict {
 	away := rec.Holds(now)
+	if owed.Incomplete {
+		// The check ran out of its time budget: it fails open, allowing the
+		// stop with a line naming what was not read, and, while away,
+		// recording the stop. The session's state is left as it was.
+		v := Verdict{SystemMessage: incompleteLine(owed)}
+		if away {
+			v.Stop = &Stop{Kind: StopCheckIncomplete, Detail: incompleteDetail(owed)}
+		}
+		return v
+	}
 	owed, handBacks := settleHandBacks(rec, owed, away)
 	if !away {
 		if owed.Empty() {
@@ -309,6 +319,26 @@ func orBranch(pr, branch string) string {
 		return pr
 	}
 	return "branch " + clean(branch)
+}
+
+// incompleteDetail is what an incomplete reading's notes say was not read.
+func incompleteDetail(owed Owed) string {
+	for _, n := range owed.Notes {
+		if strings.Contains(n, "ran out of its time budget") {
+			return termsafe.CleanProseLine(n, 256)
+		}
+	}
+	return "the check ran out of its time budget"
+}
+
+// incompleteLine is the person's line on a stop allowed because the check ran
+// out of its time budget.
+func incompleteLine(owed Owed) string {
+	line := "abcd: the stop was allowed: " + incompleteDetail(owed)
+	if item, ok := owed.Next(); ok {
+		line += "; work read as owed so far: " + describeItem(item)
+	}
+	return line + "."
 }
 
 // presentLine is the person's line on a stop while present with work owed.

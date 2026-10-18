@@ -87,6 +87,10 @@ type Owed struct {
 	// only an unpushed branch's item, with its head, under --hold-pushes,
 	// and puts any other back among the owed items.
 	HandedBack []OwedItem `json:"handed_back,omitempty"`
+	// Incomplete is a reading the check's time budget cut short: Notes say
+	// what was not read, and the verdict allows the stop, naming it, rather
+	// than judge from part of the work.
+	Incomplete bool `json:"incomplete,omitempty"`
 }
 
 // Empty reports whether nothing is owed.

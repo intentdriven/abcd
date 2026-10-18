@@ -98,6 +98,7 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		}
 	}
 	r := &owedReader{
+		ctx:   ctx,
 		root:  root,
 		home:  home,
 		now:   o.now(),
@@ -149,11 +150,12 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		}
 		return a.Record < b.Record
 	})
-	return Owed{Items: r.items, Notes: r.notes, NextRenewal: r.nextRenewal, HandedBack: r.handed}, nil
+	return Owed{Items: r.items, Notes: r.notes, NextRenewal: r.nextRenewal, HandedBack: r.handed, Incomplete: r.incomplete}, nil
 }
 
 // owedReader is one ReadOwed's state.
 type owedReader struct {
+	ctx        context.Context
 	root, home string
 	now        time.Time
 	away       bool
@@ -172,6 +174,8 @@ type owedReader struct {
 
 	receiptsMinted bool
 	own            map[string]bool
+	stacks         *stackIndex       // read once, for diskStackBase
+	incomplete     bool              // the time budget ran out before everything was read
 	stackBase      map[string]string // a branch's base's tip on disk, for the hand-back
 
 	items       []OwedItem
@@ -200,16 +204,33 @@ func (r *owedReader) note(format string, a ...any) {
 	r.notes = append(r.notes, fmt.Sprintf(format, a...))
 }
 
+// git runs one git command bound to the check's context: past its deadline
+// git is killed and the call fails.
 func (r *owedReader) git(args ...string) (string, error) {
-	return gitutil.RunLimited(r.root, 1<<20, args...)
+	return gitutil.RunLimitedContext(r.ctx, r.root, 1<<20, args...)
 }
 
+// ancestor reports whether a is an ancestor of b; false when git cannot say,
+// the deadline passed included.
 func (r *owedReader) ancestor(a, b string) bool {
 	if a == "" || b == "" {
 		return false
 	}
-	ok, err := gitutil.IsAncestor(r.root, a, b)
-	return err == nil && ok
+	_, err := r.git("merge-base", "--is-ancestor", a, b)
+	return err == nil
+}
+
+// expired reports whether the check's time budget has run out.
+func (r *owedReader) expired() bool { return r.ctx.Err() != nil }
+
+// ranOut marks the reading incomplete, once noting what was not read: the
+// verdict then allows the stop, naming it (spc-2610180914469489, "Diff review
+// round 1", major 6).
+func (r *owedReader) ranOut(what string) {
+	if !r.incomplete {
+		r.note("the check ran out of its time budget before reading %s", what)
+	}
+	r.incomplete = true
 }
 
 // readRefs reads the default branch as last fetched and every local branch
@@ -494,10 +515,15 @@ func (r *owedReader) findOwn() {
 	for _, h := range linkedHeads {
 		linked[h] = true
 	}
-	for _, name := range append(r.reflogBranches(), r.recordedBranches()...) {
+	candidates := append(r.reflogBranches(), r.recordedBranches()...)
+	for i, name := range candidates {
 		b, ok := r.branches[name]
 		if !ok || r.own[name] {
 			continue
+		}
+		if r.expired() {
+			r.ranOut(fmt.Sprintf("which branches are this copy's own (%d of %d not checked)", len(candidates)-i, len(candidates)))
+			break
 		}
 		if linked[name] || r.linksByName(name) || r.authoredRecently(b) {
 			r.own[name] = true
@@ -545,58 +571,93 @@ func (r *owedReader) fetchedAt() string {
 	return "an unknown time"
 }
 
-// diskStackBase is the nearest other own branch whose tip is an ancestor of
-// b's and is not in the last-fetched default branch, or nil. A base that has
-// moved on since b was cut is no longer an ancestor of b's tip, so it is found
-// too by the commit they share, when that commit is not in the default branch
-// and was the other branch's own tip (its reflog set it there other than by
-// creating the branch, which tells the base from a branch cut from it).
-func (r *owedReader) diskStackBase(b *localBranch) *localBranch {
-	var best *localBranch
-	for _, name := range r.ownNames() {
-		c, ok := r.branches[name]
-		if !ok || c.name == b.name || c.head == b.head || !r.ancestor(c.head, b.head) || r.ancestor(c.head, r.defTip) {
-			continue
-		}
-		if best == nil || r.ancestor(best.head, c.head) {
-			best = c
-		}
-	}
-	if best != nil {
-		return best
-	}
-	var bestFork string
-	for _, name := range r.ownNames() {
-		c, ok := r.branches[name]
-		if !ok || c.name == b.name || r.ancestor(b.head, c.head) {
-			continue
-		}
-		out, err := r.git("merge-base", c.head, b.head)
-		fork := strings.TrimSpace(out)
-		if err != nil || fork == "" || fork == b.head || r.ancestor(fork, r.defTip) || !r.wasOwnTip(c.name, fork) {
-			continue
-		}
-		if best == nil || r.ancestor(bestFork, fork) {
-			best, bestFork = c, fork
-		}
-	}
-	return best
+// stackWalk bounds how far back diskStackBase looks in a branch's own
+// history (its commits not in the last-fetched default branch).
+const stackWalk = 1000
+
+// stackIndex is what diskStackBase reads once a check, so finding every own
+// branch's base takes a fixed number of git calls a branch rather than one a
+// pair: the own branches by their current head, and by each tip their reflog
+// set other than by creating the branch.
+type stackIndex struct {
+	heads map[string][]string // a commit -> the own branches whose head it is
+	tips  map[string][]string // a commit -> the own branches it was a set tip of
 }
 
-// wasOwnTip reports whether branch's reflog shows sha as its tip, set there
-// other than by the branch's creation.
-func (r *owedReader) wasOwnTip(branch, sha string) bool {
-	out, err := r.git("reflog", "show", "-n", "1000", "--format=%H%x09%gs", "refs/heads/"+branch, "--")
-	if err != nil {
-		return false
+func (r *owedReader) stackIdx() *stackIndex {
+	if r.stacks != nil {
+		return r.stacks
 	}
-	for _, line := range strings.Split(out, "\n") {
-		h, msg, _ := strings.Cut(line, "\t")
-		if h == sha && !strings.HasPrefix(msg, "branch: Created from") {
-			return true
+	idx := &stackIndex{heads: map[string][]string{}, tips: map[string][]string{}}
+	for _, name := range r.ownNames() {
+		c, ok := r.branches[name]
+		if !ok || r.expired() {
+			continue
+		}
+		idx.heads[c.head] = append(idx.heads[c.head], name)
+		out, err := r.git("reflog", "show", "-n", "1000", "--format=%H%x09%gs", "refs/heads/"+name, "--")
+		if err != nil {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, line := range strings.Split(out, "\n") {
+			h, msg, _ := strings.Cut(line, "\t")
+			if h == "" || seen[h] || strings.HasPrefix(msg, "branch: Created from") {
+				continue
+			}
+			seen[h] = true
+			idx.tips[h] = append(idx.tips[h], name)
 		}
 	}
-	return false
+	r.stacks = idx
+	return idx
+}
+
+// diskStackBase is the nearest other own branch whose tip is in b's own
+// history (an ancestor of b's head not in the last-fetched default branch),
+// or nil. A base that has moved on since b was cut no longer has its tip
+// there, so it is found too by a commit of b's own history that was the
+// other branch's tip (its reflog set it there other than by creating the
+// branch, which tells the base from a branch cut from it) and is still in
+// its history. One walk of b's own history, newest first in topological
+// order, finds the nearest; the reflogs are read once a check (stackIdx).
+func (r *owedReader) diskStackBase(b *localBranch) *localBranch {
+	args := []string{"rev-list", "--topo-order", "-n", strconv.Itoa(stackWalk), b.head}
+	if r.defTip != "" {
+		args = append(args, "--not", r.defTip)
+	}
+	out, err := r.git(append(args, "--")...)
+	if err != nil {
+		return nil
+	}
+	idx := r.stackIdx()
+	pick := func(names []string) *localBranch {
+		for _, n := range names {
+			if c, ok := r.branches[n]; ok && n != b.name && c.head != b.head {
+				return c
+			}
+		}
+		return nil
+	}
+	history := strings.Fields(out)
+	for _, h := range history {
+		if c := pick(idx.heads[h]); c != nil {
+			return c
+		}
+	}
+	for _, h := range history {
+		if h == b.head {
+			continue
+		}
+		for _, n := range idx.tips[h] {
+			c, ok := r.branches[n]
+			if !ok || n == b.name || r.ancestor(b.head, c.head) || !r.ancestor(h, c.head) {
+				continue
+			}
+			return c
+		}
+	}
+	return nil
 }
 
 // baseTipOnDisk is a base branch's tip as it stands on disk: the local branch,
@@ -631,7 +692,12 @@ func (r *owedReader) add(i OwedItem) { r.items = append(r.items, i) }
 // stacked branches by the clearing rule, and unpushed commits.
 func (r *owedReader) branchItems() {
 	r.stackBase = map[string]string{}
-	for _, name := range r.ownNames() {
+	names := r.ownNames()
+	for i, name := range names {
+		if r.expired() {
+			r.ranOut(fmt.Sprintf("%d of %d own branches (from %s on)", len(names)-i, len(names), name))
+			return
+		}
 		b := r.branches[name]
 		head := ""
 		if b != nil {
@@ -780,7 +846,11 @@ func (r *owedReader) unpushed(b *localBranch) bool {
 	case landedYes:
 		return false
 	case landedUnknown:
-		r.note("%s has commits in no remote branch and no upstream, and could not be told landed in %s or not (its change conflicts with it and its commits' patches are not all there), so it is not counted as unpushed",
+		if r.expired() {
+			r.ranOut("whether " + b.name + " has landed")
+			return false
+		}
+		r.note("%s has commits in no remote branch and no upstream, and could not be told landed in %s or not (there is no default branch to compare with, or its change conflicts with it and its commits' patches are not all there), so it is not counted as unpushed",
 			b.name, r.defLabel())
 		return false
 	}
@@ -812,7 +882,7 @@ const maxLandedOutput = 1 << 20
 // over since; otherwise it cannot be told. No default branch to compare with
 // cannot be told either.
 func (r *owedReader) landed(b *localBranch) landedness {
-	if r.defTip == "" {
+	if r.defTip == "" || r.expired() {
 		return landedUnknown
 	}
 	if overrides, err := gitutil.MergeDriverOverrides(r.root); err == nil {
@@ -831,7 +901,7 @@ func (r *owedReader) landed(b *localBranch) landedness {
 			}
 		}
 	}
-	out, err := gitutil.RunCapped(r.root, maxLandedOutput, "cherry", r.defTip, b.head)
+	out, err := gitutil.RunLimitedContext(r.ctx, r.root, maxLandedOutput, "cherry", r.defTip, b.head)
 	if err != nil {
 		return landedUnknown
 	}
