@@ -161,7 +161,9 @@ func Intake(req IntakeRequest) (IntakeResult, error) {
 	for _, id := range ids {
 		inListing[id] = true
 	}
-	_, res.Ended, res.Unread = readHeld(s, &st, inListing, now)
+	if _, res.Ended, res.Unread, err = readHeld(s, &st, inListing, now); err != nil {
+		return IntakeResult{}, err
+	}
 	held := map[string]int{}
 	for i, a := range st.Advisories {
 		held[a.GHSAID] = i

@@ -2,9 +2,15 @@ package embargo
 
 import (
 	"encoding/json"
+	"errors"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/intentdriven/abcd/internal/core/tools"
 )
 
 // forge_state_test.go — iss-2610171250479046: the store learns from GitHub
@@ -177,4 +183,68 @@ func TestPlanRecordsHeldAdvisoryPublishedOnGitHub(t *testing.T) {
 		t.Fatalf("plan %+v", p)
 	}
 	noWrites(t, pf.g)
+}
+
+// withoutGH leaves PATH holding git alone, so gh is not found.
+func withoutGH(t *testing.T) {
+	t.Helper()
+	git, err := exec.LookPath("git")
+	if err != nil {
+		t.Skip("git unavailable")
+	}
+	dir := t.TempDir()
+	if err := os.Symlink(git, filepath.Join(dir, "git")); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+}
+
+// TestForgeAccessRefusesWholePlan: a held advisory GitHub refuses to show
+// for want of a scope, or a gh that is not installed, refuses the whole plan
+// with its remedy, and records nothing, even an end read for another held
+// advisory; only a transient fault leaves one advisory unread.
+func TestForgeAccessRefusesWholePlan(t *testing.T) {
+	for name, set := range map[string]func(t *testing.T, g *ghFake){
+		"scope": func(_ *testing.T, g *ghFake) {
+			g.fail("GET", listPath+"/"+ghsaA, "", "HTTP 403: Resource not accessible by integration")
+		},
+		"no gh": func(t *testing.T, _ *ghFake) { withoutGH(t) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			pf, _ := heldFixture(t)
+			pf.tag("v0.9.0")
+			heldOnly(t, pf.g, ghsaB, "published", endedAt.Format(time.RFC3339))
+			set(t, pf.g)
+			before := readFile(t, pf.s.StatePath())
+			_, err := planPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Now: func() time.Time { return fixedNow.Add(time.Hour) }})
+			var missing *tools.MissingError
+			switch name {
+			case "scope":
+				mustRefuse(t, err, "repository_advisories")
+				mustRefuse(t, err, "gh auth refresh")
+			default:
+				if !errors.As(err, &missing) {
+					t.Fatalf("err = %v, want gh's missing-tool refusal", err)
+				}
+			}
+			if readFile(t, pf.s.StatePath()) != before {
+				t.Fatal("a refused plan recorded an end")
+			}
+		})
+	}
+}
+
+// TestForgeAccessRefusesWholeIntake: a held advisory GitHub refuses to show
+// for want of a scope refuses the whole intake with its remedy, recording
+// nothing.
+func TestForgeAccessRefusesWholeIntake(t *testing.T) {
+	pf, f := heldFixture(t)
+	pf.g.fail("GET", listPath+"/"+ghsaA, "", "HTTP 403: Resource not accessible by integration")
+	heldOnly(t, pf.g, ghsaB, "published", endedAt.Format(time.RFC3339))
+	before := readFile(t, pf.s.StatePath())
+	_, err := Intake(IntakeRequest{Home: f.home, RepoRoot: f.repo.Root(), Now: func() time.Time { return fixedNow }})
+	mustRefuse(t, err, "gh auth refresh")
+	if readFile(t, pf.s.StatePath()) != before {
+		t.Fatal("a refused intake recorded something")
+	}
 }

@@ -163,7 +163,10 @@ func planFor(s Store, st *State, home, release string, now time.Time) (Publicati
 		}
 	}
 	slices.SortFunc(candidates, func(a, b Advisory) int { return strings.Compare(a.GHSAID, b.GHSAID) })
-	answers, ended, unread := readHeld(s, st, nil, now)
+	answers, ended, unread, err := readHeld(s, st, nil, now)
+	if err != nil {
+		return PublicationPlan{}, err
+	}
 	p.Unread = unread
 	unreadWhy := map[string]string{}
 	for _, u := range unread {

@@ -87,9 +87,27 @@ func remoteError(err error, write bool) error {
 		if write {
 			scope = scopeWrite
 		}
-		return refuse("GitHub refused the request: "+scope, scopeRemedy)
+		return &accessRefusal{&RefusalError{Reason: "GitHub refused the request: " + scope, Remedy: scopeRemedy}}
 	}
 	return refuse("gh could not complete the request to GitHub ("+msg+")", "settle what gh reports, then run it again")
+}
+
+// accessRefusal is remoteError's refusal for want of a scope or access: a
+// RefusalError (errors.As finds it), told apart so a caller that reads many
+// advisories one at a time refuses whole on it, as on a missing gh, instead
+// of taking it for one advisory GitHub could not show.
+type accessRefusal struct{ *RefusalError }
+
+func (e *accessRefusal) Unwrap() error { return e.RefusalError }
+
+// refusesWhole reports whether err, from a gh call, is one that every other
+// call would meet too: gh missing, or GitHub refusing for want of a scope or
+// access. It is passed up whole, with its remedy, never read as one
+// advisory's transient fault.
+func refusesWhole(err error) bool {
+	var missing *tools.MissingError
+	var access *accessRefusal
+	return errors.As(err, &missing) || errors.As(err, &access)
 }
 
 // listAdvisories lists the repository's advisories in one state, every page:

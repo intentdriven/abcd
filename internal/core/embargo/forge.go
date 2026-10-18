@@ -47,7 +47,12 @@ const forgeSkew = 5 * time.Minute
 // any of that, or a read that fails, leaves the advisory as the store holds
 // it and is listed in unread, with a reason that repeats nothing GitHub sent.
 // Nothing GitHub sends names a path or reaches a command line.
-func readHeld(s Store, st *State, skip map[string]bool, now time.Time) (answers map[string]remoteAdvisory, ended []ForgeEnd, unread []UnreadAdvisory) {
+//
+// A read gh cannot make at all (gh is not installed) or that GitHub refuses
+// for want of a scope or access is no fault of one advisory: every other
+// read meets it too. It is returned whole, with its remedy (refusesWhole),
+// and the caller refuses, recording nothing.
+func readHeld(s Store, st *State, skip map[string]bool, now time.Time) (answers map[string]remoteAdvisory, ended []ForgeEnd, unread []UnreadAdvisory, err error) {
 	answers = map[string]remoteAdvisory{}
 	ended, unread = []ForgeEnd{}, []UnreadAdvisory{}
 	for i := range st.Advisories {
@@ -58,8 +63,11 @@ func readHeld(s Store, st *State, skip map[string]bool, now time.Time) (answers 
 		left := func(why string) {
 			unread = append(unread, UnreadAdvisory{GHSAID: h.GHSAID, IssueID: h.IssueID, Reason: why + "; its state in the store is unchanged"})
 		}
-		a, err := getAdvisory(s.Checkout, st.Repo, h.GHSAID)
-		if err != nil {
+		a, rerr := getAdvisory(s.Checkout, st.Repo, h.GHSAID)
+		if rerr != nil {
+			if refusesWhole(rerr) {
+				return nil, nil, nil, rerr
+			}
 			left("GitHub could not be read for it")
 			continue
 		}
@@ -78,7 +86,7 @@ func readHeld(s Store, st *State, skip map[string]bool, now time.Time) (answers 
 		}
 		answers[h.GHSAID] = a
 	}
-	return answers, ended, unread
+	return answers, ended, unread, nil
 }
 
 // forgeTime is the time a timestamp GitHub reports names, or now when it
