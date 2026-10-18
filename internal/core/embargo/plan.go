@@ -111,8 +111,8 @@ type PublicationPlan struct {
 	Release string      `json:"release"`
 	Entries []PlanEntry `json:"entries"`
 	LeftOut []LeftOut   `json:"left_out"`
-	// Unread is each held advisory whose state GitHub could not tell, left
-	// as the store holds it (readHeld).
+	// Unread is each held advisory whose end was not recorded, left as the
+	// store holds it, and why (readHeld).
 	Unread []UnreadAdvisory `json:"unread"`
 	// Ended is each held advisory this plan found published or closed on
 	// GitHub and recorded so (readHeld): a plan changes the store's state
@@ -129,7 +129,7 @@ type PublicationPlan struct {
 // planPublication builds the publication plan and changes nothing on GitHub:
 // the only requests it sends are reads of the advisories it plans. In the
 // store it records only what those reads report: an advisory GitHub already
-// holds published or closed.
+// holds published, or closed under a closing verdict (readHeld).
 func planPublication(req PublishRequest) (PublicationPlan, error) {
 	s, st, err := openExisting(req.Home, req.RepoRoot)
 	if err != nil {
@@ -143,8 +143,9 @@ func planPublication(req PublishRequest) (PublicationPlan, error) {
 // not, is read from GitHub once (readHeld), and an end GitHub reports for
 // one is recorded and saved: a run that published or closed it on GitHub but
 // could not record it, or a hand on GitHub, is reconciled here instead of
-// holding the advisory under embargo for ever; one GitHub cannot say is
-// listed in Unread and left as it is. Then, for each advisory judged a
+// holding the advisory under embargo for ever; each recorded is listed in
+// Ended, and one readHeld leaves as it is in Unread. A read every other read
+// would meet too (gh missing, a scope refused) refuses the plan whole. Then, for each advisory judged a
 // vulnerability and neither published nor closed before this plan, in id
 // order: one GitHub reports published or closed is left out, saying so; its
 // record must be resolved in the release's tree and name its fix commit, or,

@@ -456,7 +456,7 @@ func renderEmbargoPublish(w io.Writer, res embargo.PublishResult) {
 }
 
 // renderForgeEnds names each held advisory GitHub reports published or
-// closed, as now recorded, and each whose state GitHub could not tell.
+// closed, as now recorded, and each whose end was not recorded, with why.
 func renderForgeEnds(w io.Writer, ended []embargo.ForgeEnd, unread []embargo.UnreadAdvisory) {
 	for _, e := range ended {
 		fmt.Fprintf(w, "  %s (%s) is %s on GitHub; %s_at is recorded from that, at %s\n", e.GHSAID, e.IssueID, e.State, e.State, e.At.Format("2006-01-02T15:04:05Z"))

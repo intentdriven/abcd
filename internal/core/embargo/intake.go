@@ -46,7 +46,7 @@ type IntakeResult struct {
 	NeedsSeverity []string       `json:"needs_severity"`
 	// Ended lists each held advisory GitHub no longer lists in triage or
 	// draft and reports published or closed, as now recorded; Unread each
-	// one whose state GitHub could not tell, left as the store holds it.
+	// one whose end was not recorded, left as the store holds it, and why.
 	Ended  []ForgeEnd       `json:"ended"`
 	Unread []UnreadAdvisory `json:"unread"`
 	// Restores is each restore the store's state owes (restoresOwed).

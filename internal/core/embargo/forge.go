@@ -21,8 +21,10 @@ type ForgeEnd struct {
 	At      time.Time `json:"at"`
 }
 
-// UnreadAdvisory is a held advisory whose state on GitHub could not be
-// told, left as the store holds it, under embargo, and why.
+// UnreadAdvisory is a held advisory whose end on GitHub was not recorded,
+// left as the store holds it, under embargo, and why: its state could not be
+// told, or GitHub reports a close the store's verdict does not make
+// (closedUnjudged).
 type UnreadAdvisory struct {
 	GHSAID  string `json:"ghsa_id"`
 	IssueID string `json:"issue_id"`
