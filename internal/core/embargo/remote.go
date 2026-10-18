@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"os/exec"
 	"strings"
 
 	"github.com/intentdriven/abcd/internal/core/github"
@@ -69,15 +70,40 @@ const (
 		"or a fine-grained token with Repository security advisories: write, on an account that is an admin or " +
 		"security manager of the repository, or a collaborator on the advisory"
 	scopeRemedy = "grant it with `gh auth refresh -s repository_advisories:write` (abcd never runs gh auth itself), then run it again"
+
+	signedOutReason = "gh is signed in to no GitHub account, or GitHub no longer accepts its token, so no advisory can be read"
+	signedOutRemedy = "sign in with your own identity with `gh auth login` (abcd never runs gh auth itself), then run it again"
 )
 
+// ghAuthRequired is the exit status gh documents for a command that needs
+// authentication and has none (`gh help exit-codes`).
+const ghAuthRequired = 4
+
+// ghSignedOut reports whether a failed gh call failed for want of an
+// accepted sign-in: gh's own authentication-required exit status, which it
+// gives when no account is signed in and no token is set, or GitHub's
+// HTTP 401, which gh reports when the token it holds is no longer accepted.
+// Only gh's exit status and GitHub's status code are read, never gh's
+// words, which can carry an identity.
+func ghSignedOut(err error) bool {
+	var exit *exec.ExitError
+	if errors.As(err, &exit) && exit.ExitCode() == ghAuthRequired {
+		return true
+	}
+	return strings.Contains(err.Error(), "HTTP 401")
+}
+
 // remoteError explains a failed gh call. A missing gh passes through with the
-// tool registry's explanation; a refusal GitHub gives for want of a scope or
-// access names the scope and the person's own remedy.
+// tool registry's explanation; a gh signed in to no account, or holding a
+// token GitHub no longer accepts (ghSignedOut), and a refusal GitHub gives for
+// want of a scope or access, each name the person's own remedy.
 func remoteError(err error, write bool) error {
 	var missing *tools.MissingError
 	if errors.As(err, &missing) {
 		return err
+	}
+	if ghSignedOut(err) {
+		return &accessRefusal{&RefusalError{Reason: signedOutReason, Remedy: signedOutRemedy}}
 	}
 	msg := err.Error()
 	low := strings.ToLower(msg)
@@ -92,7 +118,8 @@ func remoteError(err error, write bool) error {
 	return refuse("gh could not complete the request to GitHub ("+msg+")", "settle what gh reports, then run it again")
 }
 
-// accessRefusal is remoteError's refusal for want of a scope or access: a
+// accessRefusal is remoteError's refusal for want of a sign-in, a scope or
+// access: a
 // RefusalError (errors.As finds it), told apart so a caller that reads many
 // advisories one at a time refuses whole on it, as on a missing gh, instead
 // of taking it for one advisory GitHub could not show.
@@ -101,7 +128,8 @@ type accessRefusal struct{ *RefusalError }
 func (e *accessRefusal) Unwrap() error { return e.RefusalError }
 
 // refusesWhole reports whether err, from a gh call, is one that every other
-// call would meet too: gh missing, or GitHub refusing for want of a scope or
+// call would meet too: gh missing, gh signed in to no account or holding a
+// token GitHub no longer accepts, or GitHub refusing for want of a scope or
 // access. It is passed up whole, with its remedy, never read as one
 // advisory's transient fault.
 func refusesWhole(err error) bool {

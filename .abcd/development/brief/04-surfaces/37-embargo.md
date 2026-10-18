@@ -62,9 +62,10 @@ account's alone. `abcd peers` skips the store, counting it without its path.
   to a known state and a well-formed time, present. An answer that fails that,
   or a close the store's verdict does not make, leaves the advisory under
   embargo, read again on the next run so a reopen is seen, and listed with
-  the reason; the second is the person's to settle. A missing `gh`, or a token
-  without the advisory scope, refuses the run whole with its remedy, recording
-  nothing. Every publication plan reads the held advisories the same way, and
+  the reason; the second is the person's to settle. A missing `gh`, a `gh`
+  signed in to no account or holding a token GitHub no longer accepts, or a
+  token without the advisory scope, refuses the run whole with its remedy,
+  recording nothing. Every publication plan reads the held advisories the same way, and
   lists what it recorded.
 - **triage** records one of four verdicts (vulnerability, not abcd's, not a
   vulnerability, public track) with who decided it and when; the two closing

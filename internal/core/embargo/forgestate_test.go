@@ -203,34 +203,61 @@ func withoutGH(t *testing.T) {
 	t.Setenv("PATH", dir)
 }
 
+// signedOut makes gh answer a read of ghsa as it does with no account
+// signed in: its exit status 4, authentication required, and its own words.
+func signedOut(g *ghFake, ghsa string) {
+	g.hook(`if [ "$path" = '` + listPath + "/" + ghsa + `' ]; then ` +
+		`printf '%s\n' 'To get started with GitHub CLI, please run:  gh auth login' ` +
+		`'Alternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.' >&2; exit 4; fi`)
+}
+
+// forgeAccessFaults are the failed reads every other read would meet too,
+// each with what its refusal must name: a token without the advisory scope,
+// a gh signed in to no account, a token GitHub no longer accepts, and gh
+// not installed ("" wants gh's missing-tool refusal).
+var forgeAccessFaults = map[string]struct {
+	set  func(t *testing.T, g *ghFake)
+	want string
+}{
+	"scope": {func(_ *testing.T, g *ghFake) {
+		g.fail("GET", listPath+"/"+ghsaA, "", "HTTP 403: Resource not accessible by integration")
+	}, "gh auth refresh"},
+	"signed out":      {func(_ *testing.T, g *ghFake) { signedOut(g, ghsaA) }, "gh auth login"},
+	"bad credentials": {func(_ *testing.T, g *ghFake) { g.fail("GET", listPath+"/"+ghsaA, "", "HTTP 401: Bad credentials") }, "gh auth login"},
+	"no gh":           {func(t *testing.T, _ *ghFake) { withoutGH(t) }, ""},
+}
+
+// mustRefuseForAccess holds err to the refusal fault wants.
+func mustRefuseForAccess(t *testing.T, err error, want string) {
+	t.Helper()
+	if want == "" {
+		var missing *tools.MissingError
+		if !errors.As(err, &missing) {
+			t.Fatalf("err = %v, want gh's missing-tool refusal", err)
+		}
+		return
+	}
+	mustRefuse(t, err, want)
+	if strings.Contains(err.Error(), "GH_TOKEN") || strings.Contains(err.Error(), "Bad credentials") {
+		t.Fatalf("the refusal repeats gh's own words: %v", err)
+	}
+}
+
 // TestForgeAccessRefusesWholePlan: a held advisory GitHub refuses to show
-// for want of a scope, or a gh that is not installed, refuses the whole plan
-// with its remedy, and records nothing, even an end read for another held
-// advisory; only a transient fault leaves one advisory unread.
+// for want of a scope, or for want of a signed-in account or an accepted
+// token, or a gh that is not installed, refuses the whole plan with its
+// remedy, and records nothing, even an end read for another held advisory;
+// only a transient fault leaves one advisory unread.
 func TestForgeAccessRefusesWholePlan(t *testing.T) {
-	for name, set := range map[string]func(t *testing.T, g *ghFake){
-		"scope": func(_ *testing.T, g *ghFake) {
-			g.fail("GET", listPath+"/"+ghsaA, "", "HTTP 403: Resource not accessible by integration")
-		},
-		"no gh": func(t *testing.T, _ *ghFake) { withoutGH(t) },
-	} {
+	for name, tc := range forgeAccessFaults {
 		t.Run(name, func(t *testing.T) {
 			pf, _ := heldFixture(t)
 			pf.tag("v0.9.0")
 			heldOnly(t, pf.g, ghsaB, "published", endedAt.Format(time.RFC3339))
-			set(t, pf.g)
+			tc.set(t, pf.g)
 			before := readFile(t, pf.s.StatePath())
 			_, err := planPublication(PublishRequest{Home: pf.f.home, RepoRoot: pf.f.repo.Root(), Now: func() time.Time { return fixedNow.Add(time.Hour) }})
-			var missing *tools.MissingError
-			switch name {
-			case "scope":
-				mustRefuse(t, err, "repository_advisories")
-				mustRefuse(t, err, "gh auth refresh")
-			default:
-				if !errors.As(err, &missing) {
-					t.Fatalf("err = %v, want gh's missing-tool refusal", err)
-				}
-			}
+			mustRefuseForAccess(t, err, tc.want)
 			if readFile(t, pf.s.StatePath()) != before {
 				t.Fatal("a refused plan recorded an end")
 			}
@@ -238,18 +265,25 @@ func TestForgeAccessRefusesWholePlan(t *testing.T) {
 	}
 }
 
-// TestForgeAccessRefusesWholeIntake: a held advisory GitHub refuses to show
-// for want of a scope refuses the whole intake with its remedy, recording
-// nothing.
+// TestForgeAccessRefusesWholeIntake: the same faults on the read of a held
+// advisory refuse the whole intake with its remedy, recording nothing. (A
+// missing gh refuses at the listing, before any held advisory is read.)
 func TestForgeAccessRefusesWholeIntake(t *testing.T) {
-	pf, f := heldFixture(t)
-	pf.g.fail("GET", listPath+"/"+ghsaA, "", "HTTP 403: Resource not accessible by integration")
-	heldOnly(t, pf.g, ghsaB, "published", endedAt.Format(time.RFC3339))
-	before := readFile(t, pf.s.StatePath())
-	_, err := Intake(IntakeRequest{Home: f.home, RepoRoot: f.repo.Root(), Now: func() time.Time { return fixedNow }})
-	mustRefuse(t, err, "gh auth refresh")
-	if readFile(t, pf.s.StatePath()) != before {
-		t.Fatal("a refused intake recorded something")
+	for name, tc := range forgeAccessFaults {
+		if tc.want == "" {
+			continue
+		}
+		t.Run(name, func(t *testing.T) {
+			pf, f := heldFixture(t)
+			tc.set(t, pf.g)
+			heldOnly(t, pf.g, ghsaB, "published", endedAt.Format(time.RFC3339))
+			before := readFile(t, pf.s.StatePath())
+			_, err := Intake(IntakeRequest{Home: f.home, RepoRoot: f.repo.Root(), Now: func() time.Time { return fixedNow }})
+			mustRefuseForAccess(t, err, tc.want)
+			if readFile(t, pf.s.StatePath()) != before {
+				t.Fatal("a refused intake recorded something")
+			}
+		})
 	}
 }
 

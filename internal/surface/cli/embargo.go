@@ -99,7 +99,8 @@ func newEmbargoIntakeCommand(asJSON *bool) *cobra.Command {
 			"ended. One GitHub cannot tell (a failed read, an unknown state, a missing or\n" +
 			"malformed time), or reports closed while the store holds it otherwise, is\n" +
 			"listed as unread, with the reason, and left under embargo to be read again. A\n" +
-			"missing gh, or a token without the advisory scope, refuses the intake with\n" +
+			"missing gh, a gh signed in to no account or holding a token GitHub no longer\n" +
+			"accepts, or a token without the advisory scope, refuses the intake with\n" +
 			"nothing recorded. Each published advisory whose private record is resolved in\n" +
 			"the store and not yet in this checkout's ledger is listed with the command\n" +
 			"that restores it.",
@@ -373,7 +374,8 @@ func newEmbargoPublishCommand(asJSON *bool) *cobra.Command {
 			"and each closed one whose verdict ends its private track, at GitHub's own\n" +
 			"time, lists each it recorded as ended, and lists each it could not tell, or\n" +
 			"found closed while the store holds it otherwise, as unread, left under\n" +
-			"embargo. A missing gh, or a token without the advisory scope, refuses the plan\n" +
+			"embargo. A missing gh, a gh signed in to no account or holding a token GitHub\n" +
+			"no longer accepts, or a token without the advisory scope, refuses the plan\n" +
 			"with nothing recorded.\n\n" +
 			"With --approve <digest> of exactly the plan shown it publishes one advisory as\n" +
 			"a canary and reads it back, then the rest the same way, stopping at the first\n" +
