@@ -23,7 +23,7 @@ Every request to GitHub is the person's own `gh`, signed in to an account that
 may read and edit the repository's security advisories; abcd holds no token.
 A refusal for want of a scope names it and the person's own remedy
 (`gh auth refresh -s repository_advisories:write`); one for want of a sign-in,
-a `gh` signed in to no account or holding a token GitHub no longer accepts,
+a `gh` signed in to no account or holding a token GitHub rejects,
 names `gh auth login`.
 
 Pick the sub-verb from the user's input. With none, ask which step they are
@@ -58,7 +58,7 @@ advisory as a vulnerability or untriaged. That last is the person's to
 settle: tell the user, who reopens it on GitHub to publish it or records a
 verdict that ends the private track with triage, which the next read then
 records. A missing `gh`, a `gh` signed in to no account or holding a token
-GitHub no longer accepts, or a token GitHub refuses for want of the advisory
+GitHub rejects, or a token GitHub refuses for want of the advisory
 scope, refuses the intake whole, recording nothing, and names the remedy. `restores` lists
 each restore owed, as for publish below.
 
@@ -228,7 +228,7 @@ failed, or one made by hand on GitHub, is completed by the next run, and an
 advisory found so is left out of the plan; `unread` lists each left as the
 store holds it, with the reason. A candidate GitHub cannot say is also left
 out, with that reason. A missing `gh`, a `gh` signed in to no account or
-holding a token GitHub no longer accepts, or a token without the advisory
+holding a token GitHub rejects, or a token without the advisory
 scope, refuses the plan whole, recording nothing. Neither list is bound into the
 digest.
 

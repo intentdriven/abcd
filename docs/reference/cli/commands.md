@@ -1464,8 +1464,8 @@ not-abcds, not-a-vulnerability or public-track. Each recorded is listed as
 ended. One GitHub cannot tell (a failed read, an unknown state, a missing or
 malformed time), or reports closed while the store holds it otherwise, is
 listed as unread, with the reason, and left under embargo to be read again. A
-missing gh, a gh signed in to no account or holding a token GitHub no longer
-accepts, or a token without the advisory scope, refuses the intake with
+missing gh, a gh signed in to no account or holding a token GitHub rejects,
+or a token without the advisory scope, refuses the intake with
 nothing recorded. Each published advisory whose private record is resolved in
 the store and not yet in this checkout's ledger is listed with the command
 that restores it.
@@ -1495,7 +1495,7 @@ and each closed one whose verdict ends its private track, at GitHub's own
 time, lists each it recorded as ended, and lists each it could not tell, or
 found closed while the store holds it otherwise, as unread, left under
 embargo. A missing gh, a gh signed in to no account or holding a token GitHub
-no longer accepts, or a token without the advisory scope, refuses the plan
+rejects, or a token without the advisory scope, refuses the plan
 with nothing recorded.
 
 With --approve <digest> of exactly the plan shown it publishes one advisory as

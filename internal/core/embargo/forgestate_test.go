@@ -213,7 +213,7 @@ func signedOut(g *ghFake, ghsa string) {
 
 // forgeAccessFaults are the failed reads every other read would meet too,
 // each with what its refusal must name: a token without the advisory scope,
-// a gh signed in to no account, a token GitHub no longer accepts, and gh
+// a gh signed in to no account, a token GitHub rejects, and gh
 // not installed ("" wants gh's missing-tool refusal).
 var forgeAccessFaults = map[string]struct {
 	set  func(t *testing.T, g *ghFake)

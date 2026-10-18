@@ -71,7 +71,7 @@ const (
 		"security manager of the repository, or a collaborator on the advisory"
 	scopeRemedy = "grant it with `gh auth refresh -s repository_advisories:write` (abcd never runs gh auth itself), then run it again"
 
-	signedOutReason = "gh is signed in to no GitHub account, or GitHub no longer accepts its token, so no advisory can be read"
+	signedOutReason = "gh is signed in to no GitHub account, or GitHub rejects its token, so no advisory can be read"
 	signedOutRemedy = "sign in with your own identity with `gh auth login` (abcd never runs gh auth itself), then run it again"
 )
 
@@ -82,7 +82,7 @@ const ghAuthRequired = 4
 // ghSignedOut reports whether a failed gh call failed for want of an
 // accepted sign-in: gh's own authentication-required exit status, which it
 // gives when no account is signed in and no token is set, or GitHub's
-// HTTP 401, which gh reports when the token it holds is no longer accepted.
+// HTTP 401, which gh reports when the token it holds is rejected.
 // Only gh's exit status and GitHub's status code are read, never gh's
 // words, which can carry an identity.
 func ghSignedOut(err error) bool {
@@ -95,7 +95,7 @@ func ghSignedOut(err error) bool {
 
 // remoteError explains a failed gh call. A missing gh passes through with the
 // tool registry's explanation; a gh signed in to no account, or holding a
-// token GitHub no longer accepts (ghSignedOut), and a refusal GitHub gives for
+// token GitHub rejects (ghSignedOut), and a refusal GitHub gives for
 // want of a scope or access, each name the person's own remedy.
 func remoteError(err error, write bool) error {
 	var missing *tools.MissingError
@@ -129,7 +129,7 @@ func (e *accessRefusal) Unwrap() error { return e.RefusalError }
 
 // refusesWhole reports whether err, from a gh call, is one that every other
 // call would meet too: gh missing, gh signed in to no account or holding a
-// token GitHub no longer accepts, or GitHub refusing for want of a scope or
+// token GitHub rejects, or GitHub refusing for want of a scope or
 // access. It is passed up whole, with its remedy, never read as one
 // advisory's transient fault.
 func refusesWhole(err error) bool {
