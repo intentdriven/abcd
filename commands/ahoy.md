@@ -516,6 +516,15 @@ relayed without one:
 yes | "${CLAUDE_PLUGIN_ROOT}/abcd" ahoy install
 ```
 
+**`--only-waiting` is the setup after an update.** It is the run the yes to
+the offer `abcd update news` makes starts ([`/abcd:update`](update.md)), and
+the one the `version.upgrade` gap's fix hint names: it puts only the questions this repository never answered and the
+settings whose default changed, approves every kind of change without asking,
+and records the running release as the setup version. A question answered, or
+deferred with decide later, is left as it is. With `--yes` it answers no
+question at all: the artefact kind and the house-style question are left
+unwritten, each still waiting, and a note names the run that asks them.
+
 **One line answers one question.** The install asks one approval per gap
 category present — often several — and every line after the last one you supply
 reads end-of-input and DECLINES. `yes` is the reliable form because it never

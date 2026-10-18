@@ -920,7 +920,8 @@ func (a *applyCtx) stepBanlist() {
 	// The em-dash house-style question is asked HERE, where the seed is about to be
 	// written, and nowhere else: a repository that already has a config keeps its
 	// own severity, and a question whose answer would go nowhere is not asked.
-	if a.has("banlist.public_family_missing") && publicPathIsWritable(a.cwd) {
+	if a.has("banlist.public_family_missing") && publicPathIsWritable(a.cwd) &&
+		!a.leftForAPerson("the house-style question, and with it the documentation check's config ("+banlist.PublicConfigRelPath+"),") {
 		sev, note := a.emDashSeverity()
 		if a.createContained(writeDocsCheck, root, banlist.PublicConfigRelPath, docsLintSeed(sev, seedRoots(root)), 0o644, 0o755) && note != "" {
 			a.notes = append(a.notes, note)

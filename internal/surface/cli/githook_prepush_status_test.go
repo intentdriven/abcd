@@ -1,6 +1,9 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/binary"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -152,9 +155,10 @@ func TestPrePushIgnoresAGraftFile(t *testing.T) {
 
 // TestPrePushGatesAStatusPushFromAShallowClone: a .git/shallow line naming an
 // announcement stops a history walk at it, hiding the commit carrying files
-// beneath it, even with no graft file read. The hook cannot see the whole
-// range in a shallow clone, so the status row does not pass it: the push is
-// gated, refused without a receipt, and origin is unmoved.
+// beneath it, even with no graft file read. The range the hook walks lists
+// that commit, whose parents it cannot read, so the status row does not pass
+// it: the push is gated, refused without a receipt, and origin is unmoved.
+// githook_prepush_shallow_test.go pins the same from a real shallow clone.
 func TestPrePushGatesAStatusPushFromAShallowClone(t *testing.T) {
 	c := newPrePushCase(t)
 	files := c.commit("feature.md", "a feature\n")
@@ -221,4 +225,91 @@ func TestPrePushAnyRefMerelyLikeTheStatusPrefixNeedsAReceipt(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestPrePushReadsNoCommitGraph: a commit-graph file is a cache git reads a
+// commit's tree and parents from in place of the commit itself, so a graph
+// written by hand can claim the empty tree for a commit that carries files.
+// The hook reads commits as stored, never through a commit-graph, whether the
+// push asks for one with `git -c core.commitGraph=true` or the environment
+// turns git's test switch for one on, so the push is gated and refused
+// without a receipt, and origin is unmoved.
+func TestPrePushReadsNoCommitGraph(t *testing.T) {
+	for name, tc := range map[string]struct {
+		args []string
+		env  []string
+	}{
+		"plain push":            {},
+		"push asking for one":   {args: []string{"-c", "core.commitGraph=true"}},
+		"test switch turned on": {env: []string{"GIT_TEST_COMMIT_GRAPH=1"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			c := newPrePushCase(t)
+			files := c.commit("feature.md", "a feature\n")
+			forged := c.git("commit-tree", c.git("rev-parse", files+"^{tree}"), "-m", "abcd announcement: merging #1012")
+			c.git("update-ref", "refs/heads/forged", forged)
+			c.git("commit-graph", "write", "--reachable")
+			empty := c.git("hash-object", "-w", "-t", "tree", "/dev/null")
+			forgeCommitGraphTree(t, filepath.Join(c.git("rev-parse", "--absolute-git-dir"), "objects", "info", "commit-graph"), forged, empty)
+			if tree := c.git("-c", "core.commitGraph=true", "log", "-1", "--format=%T", forged); tree != empty {
+				t.Fatalf("the forged commit-graph does not stand in: %s reads as tree %s", forged, tree)
+			}
+			c.env = append(c.env, tc.env...)
+			out, err := c.run(c.dir, "git", append(tc.args, "push", "origin", forged+":"+statusRef)...)
+			if err == nil || !strings.Contains(out, "no passing preflight") {
+				t.Fatalf("a commit carrying files passed under the status prefix behind a forged commit-graph (err %v)\n%s", err, out)
+			}
+			if got := c.remoteRef(statusRef); got != "" {
+				t.Errorf("the remote moved to %s although the push was refused", got)
+			}
+		})
+	}
+}
+
+// forgeCommitGraphTree rewrites the root tree a commit-graph file records for
+// commit, in the graph's commit data chunk, to tree.
+func forgeCommitGraphTree(t *testing.T, path, commit, tree string) {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b) < 8 || string(b[:4]) != "CGPH" {
+		t.Fatalf("%s is not a commit-graph", path)
+	}
+	h := 20
+	if b[5] == 2 {
+		h = 32
+	}
+	chunks := map[string]uint64{}
+	for i := 0; i < int(b[6]); i++ {
+		e := b[8+12*i:]
+		chunks[string(e[:4])] = binary.BigEndian.Uint64(e[4:12])
+	}
+	oidl, cdat := chunks["OIDL"], chunks["CDAT"]
+	if oidl == 0 || cdat == 0 {
+		t.Fatalf("%s has no OIDL or CDAT chunk", path)
+	}
+	want, err := hex.DecodeString(commit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	treeID, err := hex.DecodeString(tree)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n := int(binary.BigEndian.Uint32(b[oidl-4 : oidl])) // the fanout's last entry
+	for i := 0; i < n; i++ {
+		if bytes.Equal(b[int(oidl)+i*h:int(oidl)+(i+1)*h], want) {
+			copy(b[int(cdat)+i*(h+16):], treeID)
+			if err := os.Chmod(path, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, b, 0o644); err != nil {
+				t.Fatal(err)
+			}
+			return
+		}
+	}
+	t.Fatalf("%s does not list %s", path, commit)
 }

@@ -37,7 +37,11 @@ var wordReaders = map[string]string{
 	"firstOperandLimit":  "the rule itself",
 
 	// match.go
-	"matchSegmentNamed":    "sitesNamed: every place the entry's command can sit; anyProgram marks a name nothing fixes",
+	"matchSegmentEnv":      "sitesNamed: every place the entry's command can sit; anyProgram marks a name nothing fixes",
+	"exportsAny":           "commandSites and nameCouldBe",
+	"exportOperands":       "nameCouldBe, and clusterCouldCarry on every unknown option word",
+	"runnersAt":            "readWord on every word before the subcommand",
+	"runnerStartsAt":       "exempt: looks up a word walkToCommand already stepped as a runner; runnersAt reads a subcommand the line does not fix as every runner",
 	"newEntryMatcher":      "operandAcceptance over readWord",
 	"precededByCD":         "commandSites and nameCouldBeAny",
 	"steppedBeforeCommand": "vanishable (Tier 2's start filter)",
@@ -76,9 +80,11 @@ var wordReaders = map[string]string{
 	"longEnvTakesValue":      "exempt: reads the known option name scanEnvSplits hands it after reading the word by the rule",
 
 	// execstring.go
-	"execStringPayloads": "commandArrivals and nameCouldBe",
-	"scanExecString":     "readWord, flagCouldBe and clusterCouldCarry on every word",
-	"clusteredPayload":   "exempt: reads the known word scanExecString hands it",
+	"execStringPayloads":  "commandArrivals and nameCouldBe",
+	"scanExecString":      "readWord, flagCouldBe and clusterCouldCarry on every word",
+	"clusteredPayload":    "exempt: reads the known word scanExecString hands it",
+	"scanRunnerShell":     "readWord and unknownFlagCouldBe on every word",
+	"runnerShellPayloads": "exempt: reads only the words walkToCommand stepped as a runner, by the arrival it records; scanRunnerShell reads the runner's options by the rule",
 
 	// gitconfig.go, hookspath.go, stash.go, gitabbrev.go
 	"expandGitAliasesAt":     "sitesNamed",
@@ -141,19 +147,57 @@ var wordReaders = map[string]string{
 	"sedTargets":         "exempt: reads sed's literal options; each target goes through resolveToken, which refuses an unknown word",
 	"gitTargets":         "exempt: reads git's literal options; each target goes through resolveToken or fixedToken, which refuse an unknown word",
 	"tarExtracts":        "exempt: reads tar's literal mode letters; an unknown mode word reads as no extraction, a write the reading misses",
+	"findRuns":           "isUnknown: an unknown word may be -exec, so what follows it is read as the command find runs",
+	"goBuildTarget":      "exempt: reads go build's literal -o spellings; an unknown word reads as no -o, a write the reading misses",
+	"secondOf":           "exempt: compares a filter's output operand with `-`, standard output; an unknown operand goes through at, which reads it as not fixed",
+	"splitTarget":        "exempt: steps split's literal value options; an unknown word is an operand, which at reads as not fixed",
 
 	// Grammar and registry readers, not command words.
-	"seqWidth":          "exempt: a brace sequence's number sign, before any word exists",
-	"padInt":            "exempt: writes a brace sequence's number sign, before any word exists",
-	"committedRegistry": "exempt: hands git its own options to read the committed registry; reads no command word",
-	"allReserved":       "exempt: reserved words are grammar, which no substitution prints",
-	"keywordAt":         "exempt: reserved words are grammar, which no substitution prints",
-	"emptyable":         "exempt: reads a parameter's name after its `$` (`-` is the option-letter parameter), never a command word",
-	"readHeredocDelim":  "exempt: the `<<-` operator is grammar",
-	"simpleParamEnd":    "exempt: reads the `$-` special parameter's name, grammar that makes the word unknown",
-	"spellParameterAt":  "exempt: reads a `${…}` expansion's `-` operator (`${HOME:-x}`), grammar that spells the variable and the default's word for arg_values",
-	"validatePattern":   "exempt: reads registry patterns, not command words",
-	"validEntryID":      "exempt: reads a registry id, not a command word",
+	"seqWidth":         "exempt: a brace sequence's number sign, before any word exists",
+	"padInt":           "exempt: writes a brace sequence's number sign, before any word exists",
+	"registryAt":       "exempt: hands git its own options to read the registry at a commit; reads no command word",
+	"allReserved":      "exempt: reserved words are grammar, which no substitution prints",
+	"keywordAt":        "exempt: reserved words are grammar, which no substitution prints",
+	"bashParens":       "exempt: compares the words before a ( with for, case and in, keywords the tokenizer saw unquoted; a word holding an unknown mark never equals one",
+	"emptyable":        "exempt: reads a parameter's name after its `$` (`-` is the option-letter parameter), never a command word",
+	"readHeredocDelim": "exempt: the `<<-` operator is grammar",
+	"simpleParamEnd":   "exempt: reads the `$-` special parameter's name, grammar that makes the word unknown",
+	"spellParameterAt": "exempt: reads a `${…}` expansion's `-` operator (`${HOME:-x}`), grammar that spells the variable and the default's word for arg_values",
+	"validatePattern":  "exempt: reads registry patterns, not command words",
+	"validEntryID":     "exempt: reads a registry id, not a command word",
+
+	// approve.go: the approver refuses a word holding an unknown mark at every
+	// place it reads one, so an unknown word never reads as a clearance.
+	"approveShellAt":  "commandSites: every place a command can sit; a name holding an unknown mark is refused",
+	"criticalRemoval": "commandSites and precededByCD; an operand holding an unknown mark is refused as a critical target",
+	"pwshCode":        "exempt: compares a known word with PowerShell's parameter names; inlineCode refuses a word holding an unknown mark before it",
+	"inlineCode":      "isUnknown: a word holding an unknown mark may be any flag, so it is refused before any word is read as the script",
+	"scriptAfter":     "exempt: reads the known word before an operand; inlineCode refuses a word holding an unknown mark before it reaches one",
+	"clusterHas":      "isUnknown: a word the line does not fix may hold the flag",
+	"findDeleting":    "isUnknown: an unknown word after -exec may be rm",
+	"findStarts":      "isUnknown: an unknown word among the starting points is a start",
+
+	// approvegroup.go: the text an approval hands back.
+	"wrapIntact":   "exempt: compares the words of the text runFrom wrote itself with the change of directory and the bash call it wrote, word for word; a word holding an unknown mark never equals one",
+	"approvedCall": "exempt: spells the bash call runFrom writes, from the guard's own literals; reads no command word",
+
+	// approvepaths.go: the approver's reading of what a line writes.
+	"pathUses":         "commandSites and fixedToken; an operand holding an unknown mark is a target the line does not fix, which is refused",
+	"gitConfigRefusal": "sitesNamed, readGitConfig and firstOperands; an unknown subcommand is read as config",
+	"gitConfigWrite":   "isUnknown: an unknown word may be a scope, a mode or the key, and a write with one is refused",
+	"execPinKeys":      "exempt: reads gitutil's own -c pins, not a command word",
+
+	// approvecode.go: code reaching an interpreter outside its inline flag.
+	"otherCode":         "exempt: hands the site to the readers below, each listed",
+	"codeOnStdin":       "isUnknown: an operand the line does not fix may name the standard input, and is refused",
+	"awkCode":           "isUnknown: a program the line does not fix is refused",
+	"sedScripts":        "isUnknown: a script the line does not fix is refused",
+	"tarCode":           "exempt: reads tar's literal options; an unknown word reads as no such option, an approval the reading may miss",
+	"vimCode":           "isUnknown: a command the line does not fix is refused",
+	"factsFor":          "exempt: hands git its own options to read the repository's paths; reads no command word",
+	"unfixedSubstrings": "exempt: reads the command text whole for a substring expansion's operator and only ever refuses; it approves no word",
+	"commandNames":      "exempt: finds the name position to catch a builtin spelled with quotes, and only ever refuses; it approves no word",
+	"unfixedNames":      "exempt: reads the names a builtin is handed and only ever refuses; it approves no word",
 }
 
 // TestEveryWordReaderGoesThroughUnknown is the grep the rule promises, run as a

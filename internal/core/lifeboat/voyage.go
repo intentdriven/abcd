@@ -27,8 +27,9 @@ var rootSHARe = regexp.MustCompile(`^(?:[0-9a-f]{40}|[0-9a-f]{64})$`)
 // voyageEntry is one line of the append-only disembark ledger. It carries no
 // oracle verdict or shared_with field — nothing produces them yet, and an empty
 // field would be a lie (adr-35). The manifest hash ties the line to the
-// lifeboat's own _provenance.json; the full file list lives there, pinned by the
-// hash, so the ledger records the count, not the list.
+// lifeboat's own _provenance.json, which carries it; the file list is the
+// lifeboat's tree, pinned by that hash, so the ledger records the count, not the
+// list.
 type voyageEntry struct {
 	SchemaVersion  int    `json:"schema_version"`
 	Event          string `json:"event"`

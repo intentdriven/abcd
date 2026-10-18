@@ -608,7 +608,10 @@ lab store, the worktree store (the build loop writes each lane's worktree
 there today; the store's own verbs and its reclaim are unbuilt) and its staged
 notes archive (`notes/<root-sha>/`, which nothing writes yet), the run state an autonomous run's sessions share
 ([`../04-surfaces/27-implement.md`](../04-surfaces/27-implement.md)), the inbox of reports managed repositories file back to abcd
-([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the machine layer of the layered configuration in `config.json`
+([`../04-surfaces/29-report.md`](../04-surfaces/29-report.md)), the setup
+answers that change the machine in `interviews/` (one record per install run
+that asked them), the copies of the harness's settings file in `backups/`
+(taken before the status line changes it, the newest 10 kept), the machine layer of the layered configuration in `config.json`
 (its readers are every key read through the layered reader,
 `internal/core/layered`: the provider adapter's `oracle` keys, the reviewer
 route's `oracle.review`, the filing-time match's `match`, the

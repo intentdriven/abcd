@@ -363,7 +363,11 @@ what it did in `next`:
   loop's issue-keyed run (the run `abcd build <iss-N>` starts): `start` names
   the run, and `lane` the issue and run id. Drive it as any run:
   `abcd implement step --run <run-id>` until it awaits an agent, then start that
-  agent with the brief it names. The brief is the issue with its remedy as the
+  agent with the brief it names. A role routed to a runner is started by
+  `implement step` itself (`commands/build.md`); a claude launch whose role's
+  contract grants the shell has its shell commands answered by
+  `abcd guard approve`, against the hazard registry at the lane's base commit
+  (`commands/guard.md`). The brief is the issue with its remedy as the
   work; the implementer's receipt names the issue in `resolves`, and the landing
   resolves it and opens one pull request.
 - **It waits.** While that lane is in progress, a drain opens nothing and names

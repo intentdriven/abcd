@@ -2087,7 +2087,8 @@ and the --json envelope carries the name as session_title.`,
 			// otherwise redact all of it before the user's first prompt. Whatever
 			// it leaves is said out loud rather than dropped, so a partial pass
 			// never reads as a complete one.
-			if det, err := ahoy.Detect(cwd); err == nil && det.RootSHA != "" {
+			det, detErr := ahoy.Detect(cwd)
+			if detErr == nil && det.RootSHA != "" {
 				currentSHA = det.RootSHA
 				// Record which store this session belongs to while a real
 				// working directory is still available to say so. A sub-agent
@@ -2205,6 +2206,11 @@ and the --json envelope carries the name as session_title.`,
 				fmt.Fprintln(cmd.OutOrStdout(), g)
 			} else if n != "" {
 				notices = append(notices, n)
+			}
+			// The moment after an update (spc-2610170635097509): one constant
+			// line, read only, from the detection above (update_news.go).
+			if detErr == nil {
+				notices = append(notices, updateNewsSessionStart(cmd.OutOrStdout(), cwd, det)...)
 			}
 			if len(notices) == 0 {
 				return nil
@@ -4066,6 +4072,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 				opts.LiveSessions = liveSessions
 			}
 			opts.Outbound = outbound
+			opts.OnlyWaiting = onlyWaiting(cmd)
 			opts.VerifyProvenance = ahoyReleaseProvenance
 			named, err := installToolNames(installTools)
 			if err != nil {
@@ -4227,6 +4234,7 @@ func newAhoyCommand(asJSON *bool) *cobra.Command {
 	installCmd.Flags().StringVar(&readmeParts, "readme-parts", "", "answer the README question: the parts of README.md abcd keeps current, comma-separated from licence, links, contents, release-badge, build-badge and abcd-badge, or none, which answers no and is not asked again; stored in .abcd/config.json and honoured in any run, the approve-everything flag included")
 	installCmd.Flags().StringVar(&liveSessions, "live-sessions", "", "answer the live brief session question: where sessions may run, local, cloud or both, or none, which answers no and is not asked again; stored in .abcd/config.json as sessions.live and honoured in any run, the approve-everything flag included; abcd session setup then does the setting up")
 	installCmd.Flags().StringVar(&answeredIn, "answered-in", interview.Terminal, "where an answers-file entry that names no place was answered: Terminal, or the host whose question tool asked it, as its plugin page passes; recorded with each answer")
+	addOnlyWaitingFlag(installCmd)
 	ahoyCmd.AddCommand(installCmd)
 
 	// uninstall

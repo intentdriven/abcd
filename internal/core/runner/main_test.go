@@ -128,6 +128,17 @@ func fakeHarness(mode string) int {
 		fmt.Fprintln(os.Stdout, string(init))
 		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-1"}`)
 		return 0
+	case "approve":
+		// A harness that puts two permission prompts to the prompt tool its
+		// launch names, through the MCP server its --mcp-config starts, and
+		// logs the answers it got.
+		if err := fakePrompts(os.Args[1:], logDir); err != nil {
+			fmt.Fprintf(os.Stderr, "fake harness: %v\n", err)
+			return 3
+		}
+		fmt.Fprintln(os.Stdout, `{"type":"system","subtype":"init","session_id":"fake-session-1","model":"fake-model"}`)
+		fmt.Fprintln(os.Stdout, `{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"fake-session-1"}`)
+		return 0
 	case "ok", "noreceipt":
 		if mode == "ok" {
 			if rec := promptField(prompt, "Receipt: "); rec != "" {
@@ -148,6 +159,102 @@ func fakeHarness(mode string) int {
 	fmt.Fprintf(os.Stderr, "fake harness: unknown mode %q\n", mode)
 	return 2
 }
+
+// fakePrompts plays the harness's side of the permission prompt tool: it
+// starts the one server --mcp-config names, as the harness does, shakes
+// hands, and calls the tool --permission-prompt-tool names once per command
+// in fakePromptCommands, writing each answer's text to approver.answers.json.
+func fakePrompts(argv []string, logDir string) error {
+	var cfg struct {
+		MCPServers map[string]struct {
+			Command string   `json:"command"`
+			Args    []string `json:"args"`
+		} `json:"mcpServers"`
+	}
+	var tool string
+	for _, a := range argv {
+		if v, ok := strings.CutPrefix(a, "--mcp-config="); ok {
+			if err := json.Unmarshal([]byte(v), &cfg); err != nil {
+				return err
+			}
+		}
+		if v, ok := strings.CutPrefix(a, "--permission-prompt-tool="); ok {
+			tool = v
+		}
+	}
+	server, name, ok := strings.Cut(strings.TrimPrefix(tool, "mcp__"), "__")
+	srv, found := cfg.MCPServers[server]
+	if !ok || !found {
+		return fmt.Errorf("the prompt tool %q names no server the launch starts", tool)
+	}
+	cmd := exec.Command(srv.Command, srv.Args...)
+	cmd.Env = os.Environ()
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		return err
+	}
+	outPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	out := bufio.NewScanner(outPipe)
+	out.Buffer(make([]byte, 1<<20), 1<<20)
+	call := func(id int, method string, params any) (json.RawMessage, error) {
+		b, _ := json.Marshal(map[string]any{"jsonrpc": "2.0", "id": id, "method": method, "params": params})
+		if _, err := fmt.Fprintf(in, "%s\n", b); err != nil {
+			return nil, err
+		}
+		if !out.Scan() {
+			return nil, fmt.Errorf("the server closed before answering %s", method)
+		}
+		var r struct {
+			Result json.RawMessage `json:"result"`
+			Error  json.RawMessage `json:"error"`
+		}
+		if err := json.Unmarshal(out.Bytes(), &r); err != nil || r.Error != nil {
+			return nil, fmt.Errorf("%s: %s", method, out.Bytes())
+		}
+		return r.Result, nil
+	}
+	if _, err := call(0, "initialize", map[string]any{"protocolVersion": "2025-11-25", "capabilities": map[string]any{},
+		"clientInfo": map[string]any{"name": "fake", "version": "0"}}); err != nil {
+		return err
+	}
+	fmt.Fprintln(in, `{"jsonrpc":"2.0","method":"notifications/initialized"}`)
+	answers := map[string]string{}
+	for i, c := range fakePromptCommands {
+		res, err := call(i+1, "tools/call", map[string]any{"name": name, "arguments": map[string]any{
+			"tool_name": "Bash", "input": map[string]any{"command": c}, "tool_use_id": fmt.Sprintf("toolu_%d", i)}})
+		if err != nil {
+			return err
+		}
+		var content struct {
+			Content []struct {
+				Text string `json:"text"`
+			} `json:"content"`
+		}
+		if err := json.Unmarshal(res, &content); err != nil || len(content.Content) != 1 {
+			return fmt.Errorf("the answer %s is not one text block", res)
+		}
+		answers[c] = content.Content[0].Text
+	}
+	_ = in.Close()
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("the server did not exit cleanly: %w", err)
+	}
+	raw, _ := json.Marshal(answers)
+	return os.WriteFile(filepath.Join(logDir, "approver.answers.json"), raw, 0o600)
+}
+
+// fakePromptCommands are the shell commands the approve mode puts to the
+// prompt tool: a hazard and a command the guard clears.
+var fakePromptCommands = []string{fakeHazard, "go test ./..."}
+
+// fakeHazard is the hazard the approve mode puts to the prompt tool.
+const fakeHazard = "git push --force origin main"
 
 // promptField returns the value of the prompt line that starts with prefix.
 func promptField(prompt, prefix string) string {

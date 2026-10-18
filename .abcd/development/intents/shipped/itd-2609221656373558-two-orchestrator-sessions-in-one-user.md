@@ -10,7 +10,7 @@ severity: minor
 impact: additive
 origin: researcher-authored
 production_mode: hand-written
-related_intents: [itd-2609091014076309, itd-2609150819440345, itd-33]
+related_intents: [itd-2609091014076309, itd-2609150819440345, itd-33, itd-2610170634394993]
 related_adrs: [adr-2609221009491186]
 ---
 

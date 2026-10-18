@@ -236,7 +236,8 @@ func TestReadmeNoIsStored(t *testing.T) {
 }
 
 // TestReadmeUnaskedWithoutAConfigIsReportedSkipped: at a terminal, a run
-// whose .abcd/config.json does not exist (the starter files declined) has
+// whose .abcd/config.json does not exist (the starter files and the settings
+// change declined, so no answered value creates it either) has
 // nowhere to store the pair's answer, so it does not ask it, and reports it
 // under optional_skipped as every pair a run leaves unasked is, rather than
 // saying nothing about it.
@@ -249,7 +250,7 @@ func TestReadmeUnaskedWithoutAConfigIsReportedSkipped(t *testing.T) {
 	writeFixture(t, repo, "README.md", "# Project\n", 0o644)
 	p := &helpedPrompter{confirm: func(q string) bool {
 		c := askedCategory(q)
-		return c != "" && c != SafeAutocreate
+		return c != "" && c != SafeAutocreate && c != ConfigChange
 	}}
 	adopt := true
 	res, err := Install(repo, InstallOptions{Adopt: &adopt}, p)
@@ -257,7 +258,7 @@ func TestReadmeUnaskedWithoutAConfigIsReportedSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(configPath(repo)); !os.IsNotExist(err) {
-		t.Fatalf("declining the starter files left a config (%v); asked %q", err, p.keys())
+		t.Fatalf("declining the starter files and the settings change left a config (%v); asked %q", err, p.keys())
 	}
 	if got := p.readmeKeys(); len(got) != 0 {
 		t.Errorf("the pair was asked with nowhere to store its answer: %q", got)
@@ -268,7 +269,8 @@ func TestReadmeUnaskedWithoutAConfigIsReportedSkipped(t *testing.T) {
 }
 
 // TestReadmeSkippedWithoutAConfigNamesTheStarterFiles: a run that ends with no
-// .abcd/config.json reports the README question skipped, and its summary names
+// .abcd/config.json (the starter files and the settings change declined)
+// reports the README question skipped, and its summary names
 // the route that works: the starter files first. Without them the question is
 // not asked, at a terminal or off one, and --readme-parts is refused, so a hint
 // naming only those two routes names two that fail (iss-2610120505551170).
@@ -281,7 +283,7 @@ func TestReadmeSkippedWithoutAConfigNamesTheStarterFiles(t *testing.T) {
 	writeFixture(t, repo, "README.md", "# Project\n", 0o644)
 	p := &helpedPrompter{confirm: func(q string) bool {
 		c := askedCategory(q)
-		return c != "" && c != SafeAutocreate
+		return c != "" && c != SafeAutocreate && c != ConfigChange
 	}}
 	adopt := true
 	res, err := Install(repo, InstallOptions{Adopt: &adopt}, p)

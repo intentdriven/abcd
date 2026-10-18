@@ -315,3 +315,128 @@ func execStringWarnSignal(verb string) payloadSignal {
 		successor: "Put the command string immediately after the flag that carries it, so the guard can read it.",
 	}
 }
+
+// runnerShellGrammar is how a package runner hands a command string to a
+// shell: call names the options whose value is the string, and shellMode the
+// options that take nothing and run the command words after the runner's
+// options, joined by spaces, in a shell.
+type runnerShellGrammar struct {
+	call      []string
+	shellMode []string
+}
+
+// runnerShellFlags names, per package runner, the options that run a shell
+// string. npm's documented exec grammar, for npx and `npm exec` alike, takes
+// the string as the value of -c or --call (`npx -c 'eslint && say ok'`).
+// pnpm's exec takes -c or --shell-mode alone and runs its command words in a
+// shell. Either string is read as a script, as a `bash -c` string is, so a
+// command inside it meets the same entries (payloadsOf).
+var runnerShellFlags = map[string]runnerShellGrammar{
+	"npx":       {call: []string{"-c", "--call"}},
+	"npm exec":  {call: []string{"-c", "--call"}},
+	"pnpm exec": {shellMode: []string{"-c", "--shell-mode"}},
+}
+
+// runnerShellPayloads returns the shell strings every package runner the walk
+// steps through (an arrival read as a wrapper) hands to a shell, by
+// runnerShellFlags. Only the runner's own options are read: a -c after the
+// program it runs belongs to that program (`npx eslint -c .eslintrc`).
+func runnerShellPayloads(tokens []string, arrivals []arrival) []string {
+	var out []string
+	for _, a := range arrivals {
+		if !a.wrapper {
+			continue
+		}
+		for _, rs := range runnerStartsAt(tokens, a.idx) {
+			g, ok := runnerShellFlags[rs.wrapper]
+			if !ok {
+				continue
+			}
+			out = append(out, scanRunnerShell(tokens, rs.at, g, wrapperValueFlags[rs.wrapper])...)
+		}
+	}
+	return out
+}
+
+// scanRunnerShell reads one runner's options from start, every way readWord
+// reads each word, and returns the shell strings they carry: the word after a
+// call option, the text after `--call=`, and, once a shell-mode option is
+// read, the words from the first operand on joined by spaces. A word a
+// substitution prints can be any of the options. The scan ends at the
+// runner's first operand, or at `--`, after which the words are the command.
+func scanRunnerShell(tokens []string, start int, g runnerShellGrammar, valueFlags []string) []string {
+	type at struct {
+		i     int
+		shell bool
+	}
+	var out []string
+	seen := map[at]bool{}
+	var stack []at
+	push := func(s at) {
+		if s.i < len(tokens) && !seen[s] {
+			stack = append(stack, s)
+		}
+	}
+	push(at{i: start})
+	could := func(tok string, flags []string) bool {
+		for _, f := range flags {
+			if tok == f || unknownFlagCouldBe(tok, f) {
+				return true
+			}
+		}
+		return false
+	}
+	for len(stack) > 0 {
+		s := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if seen[s] {
+			continue
+		}
+		seen[s] = true
+		tally(1)
+		tok := tokens[s.i]
+		if tok == "--" {
+			if s.shell && s.i+1 < len(tokens) {
+				out = append(out, strings.Join(tokens[s.i+1:], " "))
+			}
+			continue
+		}
+		if !isUnknown(tok) {
+			glued := false
+			for _, f := range g.call {
+				if v, ok := strings.CutPrefix(tok, f+"="); ok && strings.HasPrefix(f, "--") {
+					out = append(out, v)
+					glued = true
+				}
+			}
+			if glued {
+				push(at{i: s.i + 1, shell: s.shell})
+				continue
+			}
+		}
+		isCall, isMode := could(tok, g.call), could(tok, g.shellMode)
+		if isCall {
+			if s.i+1 < len(tokens) {
+				out = append(out, tokens[s.i+1])
+			}
+			push(at{i: s.i + 2, shell: s.shell})
+		}
+		if isMode {
+			push(at{i: s.i + 1, shell: true})
+		}
+		if (isCall || isMode) && !isUnknown(tok) {
+			continue
+		}
+		r := readWord(tok, valueFlags)
+		if r.vanish || r.flag {
+			push(at{i: s.i + 1, shell: s.shell})
+		}
+		if r.takes {
+			push(at{i: s.i + 2, shell: s.shell})
+		}
+		if r.operand && s.shell {
+			out = append(out, strings.Join(tokens[s.i:], " "))
+		}
+	}
+	return out
+}

@@ -5,8 +5,8 @@ package interview
 // itself under the name claude, which a test puts on PATH, and TestMain,
 // seeing stubScriptEnv and claude's own flags, plays that harness. Each turn
 // it copies the script's turn-<n>.json to the receipt path the prompt names
-// (no file: no receipt), keeps a copy of the turn's brief beside the script,
-// and prints the events of a successful run. A turn-<n>.also.json in the
+// (no file: no receipt), keeps a copy of the turn's brief and of its argv
+// (turn-<n>.argv.json) beside the script, and prints the events of a successful run. A turn-<n>.also.json in the
 // script, a map of path to content, makes the turn write those files too: a
 // path under "turns/" lands in the turn's own directory, any other in the
 // directory the runner was started in, and turnDirToken in a file's content
@@ -125,6 +125,9 @@ func stubRunner(dir string) int {
 	}
 	receipt, brief := field("Receipt: "), field("Brief: ")
 	turn := strings.TrimSuffix(filepath.Base(receipt), ".receipt.json")
+	if argv, err := json.Marshal(os.Args[1:]); err == nil {
+		_ = os.WriteFile(filepath.Join(dir, turn+".argv.json"), argv, 0o600)
+	}
 	if b, err := os.ReadFile(brief); err == nil {
 		_ = os.WriteFile(filepath.Join(dir, turn+".brief.seen.md"), b, 0o600)
 	}

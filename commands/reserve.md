@@ -64,7 +64,8 @@ Tell the user what was reserved and until when.
 ## Reserve a release before cutting it
 
 A session cutting a release reserves the release itself, so every other
-session's land step holds its merge until the cut is done:
+session's land step, the implement loop's and `abcd land`, holds its merge
+until the cut is done:
 
 ```bash
 "${CLAUDE_PLUGIN_ROOT}/abcd" reserve rel-v0.16.0 --json
@@ -80,8 +81,9 @@ another day, and without a renewal it holds no longer than a day (see
 `v0.16.0` is on `origin` (the listing shows it `released`, `released_by:
 tag`), or with `--release` from the copy that holds it. Reserving a release
 already tagged on `origin` is refused (exit 2). While it is live, an
-`implement step` at the land fence in any other copy, the user's own other
-computer included, exits 3 naming the release and its holder and arms nothing;
+`implement step` at the land fence or an `abcd land` in any other copy, the
+user's own other computer included, exits 3 naming the release and its holder
+and arms nothing;
 this copy's own landings are not held. The hold stops a merge from being armed
 and nothing more: a pull request whose auto-merge was on, or that was in the
 merge queue, before the release was reserved still merges when its checks
@@ -128,9 +130,11 @@ there but cannot be read (it is not a regular file, is over 256 KiB, holds a
 NUL byte, or takes too long to match against the files),
 nothing is shared, the refusal adds "generated files were not recognised: …",
 and a reservation that is made says the same (`generated_unread`). abcd
-shares a generated file only when the root declaration is plain ASCII with no
-quoting, macros or checkout conversion (`ident`, `working-tree-encoding`), and
-otherwise warns and shares none.
+shares a generated file only when every line of the root declaration that git
+reads (each but a blank or comment line) is ASCII, with no quoting, macros or
+checkout conversion (`ident`, `working-tree-encoding`), and otherwise warns
+and shares none. A byte-order mark counts as outside ASCII, even before a
+comment.
 Running the command again to renew is checked the same way, since it names
 its footprint anew, so a reservation is never widened onto another; a build's
 or a drain's own renewal keeps its footprint and is not checked while the

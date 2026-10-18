@@ -556,3 +556,41 @@ func TestChangesBetweenDispatchesAreNotTheRoles(t *testing.T) {
 		t.Fatalf("changed %v, finished %d", res.Changed, len(r.finished))
 	}
 }
+
+// TestAShellInterviewIsJudgedAgainstTheHeadItLaunchedOn: an interview has no
+// lane base, so a role granted the shell is launched with the approver judging
+// against the registry at the HEAD the working tree had when the interview
+// started, even when a later turn's tree has moved on.
+func TestAShellInterviewIsJudgedAgainstTheHeadItLaunchedOn(t *testing.T) {
+	script := stubOnPath(t, stubAsk("Product Q1", "Is that answer complete?"), stubDone)
+	r := newWrittenRun(t, routedToClaude)
+	r.git.Write("README", "x\n")
+	r.git.Commit("base")
+	head := strings.TrimSpace(r.git.Git("rev-parse", "HEAD"))
+	r.w.Tools = []string{"Read", "Bash"}
+	answer := r.w.Answer
+	r.w.Answer = func(a question.Ask) ([]Reply, error) {
+		// Between the turns the tree moves on: the second turn is still
+		// judged against the HEAD the interview launched on.
+		r.git.Write("NOTES", "y\n")
+		r.git.Commit("later")
+		return answer(a)
+	}
+	if _, err := r.w.Run(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, turn := range []string{"turn-1", "turn-2"} {
+		raw, err := os.ReadFile(filepath.Join(script, turn+".argv.json"))
+		if err != nil {
+			t.Fatalf("%s was not launched: %v", turn, err)
+		}
+		var argv []string
+		if err := json.Unmarshal(raw, &argv); err != nil {
+			t.Fatal(err)
+		}
+		i := slices.IndexFunc(argv, func(a string) bool { return strings.HasPrefix(a, "--mcp-config=") })
+		if i < 0 || !strings.Contains(argv[i], `"--base=`+head+`"`) {
+			t.Errorf("%s: the approver is not judged against the launch's HEAD %s: %q", turn, head, argv)
+		}
+	}
+}

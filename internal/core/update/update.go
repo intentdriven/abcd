@@ -37,6 +37,7 @@ import (
 	"github.com/minio/selfupdate"
 
 	"github.com/intentdriven/abcd/internal/abcdhome"
+	"github.com/intentdriven/abcd/internal/core"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/vintage"
 	"github.com/intentdriven/abcd/internal/fsutil"
@@ -337,7 +338,7 @@ type Updater struct {
 
 // releaseOrigin is the one place releases come from — the same origin
 // `update --check` and hooks/bootstrap.sh resolve against, deliberately.
-const releaseOrigin = "https://github.com/intentdriven/abcd"
+const releaseOrigin = core.ReleaseOrigin
 
 // NewGitHubUpdater builds the updater as it ships: the pinned origin, the
 // full urlguard policy, and GitHub's own asset hosts as the only legal

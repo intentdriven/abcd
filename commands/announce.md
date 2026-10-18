@@ -17,9 +17,14 @@ reservation (`/abcd:reserve`), not an announcement.
 
 **What it does to the remote.** The command's documented meaning is a listing,
 a fetch and a push: it lists the status branches on origin first (`git
-ls-remote`, which changes nothing here), fetches each one named by a lower-case
-GitHub username, by name, with origin's default branch, then writes one commit to your own status branch, `abcd-status/<your GitHub
+ls-remote`, which changes nothing here), fetches the first 500 named by lower-case
+GitHub usernames, in origin's order and with your own among them, each by
+name, with origin's default branch, then writes one commit to your own status branch, `abcd-status/<your GitHub
 username in lower case>` on the remote named `origin`, and to nothing else.
+The status branches are named on the fetch's standard input (`git fetch
+--stdin`), which needs git 2.29 or later: Once origin holds a status branch,
+an older git fetches nothing, and the refusal names the status fetch and the
+git version.
 The commit changes no file (its tree is the empty tree); its trailers carry the
 kind, the item, you as sender, this working copy, the time sent and the
 expiry, and nothing else. The push is a plain fast-forward with the
@@ -96,7 +101,8 @@ origin. Relay the reason; each names the field and the limit, or what to set.
   not be written), exit 2 says a refused push may still have reached origin
   and names the status branch: fetch and look at it before announcing again.
 - No local tier (`.abcd/.work.local/`, which `/abcd:ahoy install` creates), no
-  remote named `origin`, or a fetch origin refused.
+  remote named `origin`, a fetch origin refused, or, once origin holds a status
+  branch, a git older than 2.29.
 
 **What an announcement is not.** Announcements coordinate people who share
 push access to the repository and act in good faith. They are not an access
