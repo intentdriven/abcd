@@ -205,7 +205,7 @@ func hashText(s string) string {
 }
 
 func questionReason() string {
-	return "abcd: your last message ends on a question, and the person is away, so no one will answer it. Do not ask: decide it and record it with `abcd decide` (its grounds and how to reverse it); or, if only the person may approve the act, queue it with `abcd mode queue \"<step>\"` and carry on with other work."
+	return "abcd: your last message ends on a question, and the person is away, so no one will answer it. Do not ask it.\n" + QuestionRoute()
 }
 
 func owedReason(rec *Record, owed Owed, tail string) string {

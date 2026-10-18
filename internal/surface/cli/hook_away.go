@@ -29,20 +29,6 @@ import (
 // under the home folder (owner-only, checked as rules.json is), never from a
 // tracked file, and every interpolated value is cleaned to one line.
 
-// awayPersonOnlyActs is the list of acts only the person may approve, which
-// the away block repeats (spc-2610180914469489, "The question reroute").
-var awayPersonOnlyActs = []string{
-	"an approval or ruling the repository binds to the person per act: an embargo close's `--approve <digest>` (passed only after the person, in this session, has read the text and said yes), the embargo triage verdict, the drain's hand-back, the confirmed apply verb for remote configuration, and a release sign-off (a cut, or a step of one, that asks for the person by name or that no standing instruction of theirs allows; a standing permission for automatic cuts stands, and the away mode adds none)",
-	"pushing, opening or merging a pull request without a standing instruction of the person's that allows it; the away mode is never that instruction",
-	"publishing anything, changing a repository's visibility, or posting a comment or message outward, other than a pull request a standing instruction allows",
-	"adding a dependency",
-	"a secret, a credential or an App",
-	"a step only a website or a browser can do",
-	"a destructive act: deleting what the session did not create, overwriting uncommitted work, a force push, discarding a peer's work",
-	"anything that spends money",
-	"any other act a command page or a brief invariant names as the person's",
-}
-
 // awayBlock is the agent-facing block for a record that holds.
 func awayBlock(rec *autonomy.Record) string {
 	var b strings.Builder
@@ -51,10 +37,8 @@ func awayBlock(rec *autonomy.Record) string {
 		b.WriteString(l + "\n")
 	}
 	b.WriteString("\nThe mode is never permission for anything. While it holds, a turn's end is checked: while work is owed the session keeps working, and it waits only with a scheduled wake that fires soon enough.\n\n")
-	b.WriteString("Never ask the person a question while they are away. Decide it and record it with `abcd decide` (its grounds and how to reverse it); or, when only the person may approve the act, queue it with `abcd mode queue \"<step>\"` and carry on with other work meanwhile. Acts only the person may approve:\n\n")
-	for _, a := range awayPersonOnlyActs {
-		b.WriteString("- " + a + "\n")
-	}
+	b.WriteString("Never ask the person a question while they are away.\n")
+	b.WriteString(autonomy.QuestionRoute() + "\n")
 	b.WriteString("\nRun `abcd mode back` only on the person's word in this session.\n")
 	return b.String()
 }
