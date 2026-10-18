@@ -442,8 +442,8 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	got := pat.notes()
 	// The origin would hang for 30 s; the block reads disk alone, well inside
 	// it. The bound is slack's (wallClockSlack), not the hook's second: a
-	// network wait is also caught by the announcement the read must still
-	// show, and by the trace below.
+	// network wait runs the read out of its budget, which notes fails on,
+	// and the trace below names it.
 	if took := time.Since(start); took > slack(time.Second) {
 		t.Fatalf("the block took %s; want it never to wait on the network", took)
 	}
@@ -474,8 +474,10 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	defer cancel()
 	start = time.Now()
 	n, err := PromptNotes(ctx, pat.dir, w.clock(), pat.opts())
-	// The read is held until the test ends; the hook's deadline is a second.
-	if took := time.Since(start); took > time.Second {
+	// The read is held until the test ends, so any finite bound shows the
+	// prompt returned at its deadline, a second, and not at the read's end;
+	// the bound is slack's, as above.
+	if took := time.Since(start); took > slack(time.Second) {
 		t.Fatalf("a slow read held the prompt for %s", took)
 	}
 	if !errors.Is(err, ErrStatusUnavailable) || !strings.Contains(n.Text, "status unavailable: reading it here took longer than this prompt allows") {

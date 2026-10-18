@@ -81,6 +81,7 @@ func TestThePromptHookReturnsInsideItsSecond(t *testing.T) {
 	t.Setenv("ABCD_RULES_STATE_DIR", t.TempDir())
 	w := newReserveWorld(t)
 	octo := w.clone(t, "octo", octoMail)
+	t.Cleanup(claim.WaitPromptReadsForTest)
 	if code, _, stderr := reserveRun(t, octo, "announce", "merging", "1012"); code != 0 {
 		t.Fatalf("announce: exit %d, %s", code, stderr)
 	}
@@ -88,7 +89,6 @@ func TestThePromptHookReturnsInsideItsSecond(t *testing.T) {
 	var markers []string
 	for i := 1; i <= tries; i++ {
 		pat := w.clone(t, fmt.Sprintf("pat%d", i), "5+pat@users.noreply.github.com")
-		t.Cleanup(claim.WaitPromptReadsForTest)
 		if code, _, stderr := reserveRun(t, pat, "status"); code != 0 {
 			t.Fatalf("status: exit %d, %s", code, stderr)
 		}
