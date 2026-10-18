@@ -54,6 +54,14 @@ flags.
   resulting gaps. Through the plugin page it is also how a repository is
   prepared to abcd's working conventions, a workflow the host agent runs around
   that binary step (below).
+  Its only-waiting mode is the setup after an update
+  (spc-2610170635097509): it puts only the questions this repository never
+  answered and the settings whose default changed in a release since its
+  setup, never one answered or deferred with decide later, approves every kind
+  of change up front, and records the running release. Run with the
+  approve-everything flag it answers no question, so each still waits.
+  The yes to the offer of update's news sub-verb runs it; that sub-verb is
+  the update chapter's ([21-update.md](21-update.md#sub-verbs)).
 - **Uninstall** is reversible removal: the marker block, abcd's README parts
   (and a README.md abcd created, once nothing but blank lines remains), abcd's
   own `PATH` entry where abcd owns it, and the provenance record that proves
@@ -1347,6 +1355,7 @@ Sub-verbs: none.
 | `--dev` | bool |
 | `--docs-target` | string |
 | `--install-tool` | stringSlice |
+| `--only-waiting` | bool |
 | `--oracle-backend` | string |
 | `--outbound` | bool |
 | `--readme-parts` | string |

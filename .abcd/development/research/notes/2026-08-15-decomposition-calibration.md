@@ -2505,3 +2505,16 @@ The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and
 | the record formats and their versions, the dependency line's spelling, and how the pass decides | plumbing | the brief, at planning |
 
 Verdict: SPLIT, confirmed. The capability is filed as the draft; the trust rule and the stance get their own records at planning. The draft was filed after a state-of-the-art pass (`2026-10-17-parallel-headless-agent-coordination.md`) that moved the design away from a coordinator process that must stay alive and toward a pass over shared records with fencing and deadlines. The product thinker asked for the draft and confirmed the split as proposed, with no change.
+
+## 2026-10-16: after a plugin update, offer setup again
+
+The proposal: when abcd's plugin was updated, offer the person to run setup again so new settings and setup questions are picked up.
+
+| part | type | home |
+|---|---|---|
+| the next session offers to run setup again after an update, never without a yes | capability | intent itd-2610161616086564 (draft) |
+| a short what-changed summary for this repository after an update | capability | intent itd-2610161617096084 (draft) |
+| noticing an update reads only what is on disk, never the network | trust rule | already stated by itd-111 (shipped); no new record |
+| setup changes nothing without the person's yes | trust rule | existing consent rules; no new record |
+
+Verdict: SPLIT. The initial routing proposed one intent (FILE-AS-IS) with the what-changed summary inside it; the product thinker chose to split the summary into its own record, so the routing did not survive as proposed. Both drafts carry `builds_on: [itd-111, itd-105]`. The product thinker then asked for the two new drafts and the two shipped intents they build on to be one bundle; a bundle can only join records not yet shipped, so the two drafts are to be planned as one bundle, linked to the shipped pair through `builds_on`.

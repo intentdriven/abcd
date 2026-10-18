@@ -49,6 +49,14 @@ func (o *recordingOps) remove(rel string) error {
 	return o.do("remove", rel, func() error { return o.real.remove(rel) })
 }
 
+func (o *recordingOps) writeIn(rel string, data []byte) error {
+	return o.do("write", rel, func() error { return o.real.writeIn(rel, data) })
+}
+
+func (o *recordingOps) removeIn(rel string) error {
+	return o.do("remove", rel, func() error { return o.real.removeIn(rel) })
+}
+
 const outgoingPage = "# Release 0.3.9 (2026-06-01)\n\nAn earlier release. (itd-12)\n"
 
 // withOutgoingPage is pageRepo carrying a previous release page, so a cut moves

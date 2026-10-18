@@ -77,6 +77,9 @@ func (a *applyCtx) stepArtefact() {
 	if !a.approved[ConfigChange] || !a.has(ArtefactMissingGapID) {
 		return
 	}
+	if !hasPluginManifest(a.cwd) && a.leftForAPerson("the artefact kind ("+launch.ArtefactRelPath+")") {
+		return
+	}
 	kind, note := a.artefactKind()
 	data := launch.MarshalArtefact(launch.Artefact{Kind: kind})
 	// Proved through the one reader before it is written, so ahoy can never
