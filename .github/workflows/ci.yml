@@ -387,10 +387,11 @@ jobs:
       # pass covers the packages outside internal/, and, by name, the tests
       # that assert only without the race detector ("Test (plain-only
       # guards)", below). On an inert change the race lane stands down, and
-      # the plain pass runs the whole module, as the leg's only test pass. The macOS leg runs one
-      # race-enabled pass over the whole module instead (the last step of this
-      # group). TestMacOSLegRunsItsSuiteOnlyWhereItLands holds which passes run
-      # on which event.
+      # the plain pass runs the whole module, as the leg's only test pass. The
+      # macOS leg runs one race-enabled pass over the whole module instead,
+      # then the same plain-only guards (the last two steps of this group).
+      # TestMacOSLegRunsItsSuiteOnlyWhereItLands holds which passes run on
+      # which event.
       #
       # On an inert change, where it runs, the two packages named ahead of the
       # pattern are the slowest in this pass (126-187s and 110-147s on the
@@ -417,7 +418,7 @@ jobs:
       # instrumentation, so they skip there or drop their bound. The race lane
       # runs them and asserts nothing, so they run here, plain, by name; they
       # are what catches a quadratic blow-up. The list is derived from the
-      # test files: TestTheUbuntuLegRunsEveryPlainOnlyGuard reads every one
+      # test files: TestEveryLegRunsEveryPlainOnlyGuard reads every one
       # under internal/ and fails until this step names exactly those tests and
       # their packages.
       - name: Test (plain-only guards)
@@ -457,24 +458,34 @@ jobs:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./internal/...
 
-      # The macOS leg's one test pass (iss-2610110938293273): race-enabled, over
+      # The macOS leg's one pass over the module (iss-2610110938293273): race-enabled, over
       # the whole module, with the same slowest-first order and the same
       # -timeout as the race lane above. Two passes cost a median 13.6 minutes
       # plain plus 23.1 race of a 39.9-minute leg (8 queue runs, 2026-10-11),
       # and the race pass already ran every internal test, so the plain pass
       # added only the packages outside internal/ at a third of the leg's time.
       # The race pass runs every test the plain pass would, but the ones that
-      # assert only without the detector (the ubuntu leg's plain-only guard
-      # step) assert nothing in it, so on this leg their bounds are not
-      # checked; iss-2610180542030806 tracks running them here. It runs
-      # straight after vet, so the slowest packages start at the start of the
-      # leg's testing. TestMacOSLegRunsItsSuiteOnlyWhereItLands
-      # holds it to one pass where the leg runs at all, and none on a pull request.
+      # assert only without the detector assert nothing in it, so they run
+      # after it, plain and by name (the next step). It runs straight after
+      # vet, so the slowest packages start at the start of the leg's testing.
+      # TestMacOSLegRunsItsSuiteOnlyWhereItLands holds the leg to these two
+      # passes where it runs at all, and none on a pull request.
       - name: Test (race, whole module)
         if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
         env:
           ABCD_TEST_SKIP_FLUSH: "1"
         run: go test -race -timeout 40m ./internal/surface/cli ./internal/core/reading ./internal/core/launch ./internal/core/lifeboat ./internal/core/lint ./internal/adapter/scanner ./internal/core/implement/loop ./internal/core/interview ./internal/core/capture ./internal/core/ahoy ./internal/core/site ./...
+
+      # The plain-only guards on the macOS leg (iss-2610180542030806): the same
+      # command as the ubuntu leg's "Test (plain-only guards)", after the race
+      # pass. About a minute, on a leg that ran 36.5 of its 60 in the last
+      # merge-group run. TestEveryLegRunsEveryPlainOnlyGuard holds both
+      # steps to the list it derives from the test files.
+      - name: Test (plain-only guards, macOS)
+        if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
+        env:
+          ABCD_TEST_SKIP_FLUSH: "1"
+        run: go test -run '^(TestAHereDocBodyFeedStaysLinear|TestAPatternPastTheStepBudgetIsNotGenerated|TestAVeryDeepPathIsJudgedQuickly|TestAdjacencyProbeStaysLinearOnLongLines|TestAdjacencyProbeWindowIsBounded|TestBacktickPrePassStaysLinear|TestBraceScanStaysLinear|TestClosedOverDocumentsStayLinear|TestClosingScansAreLinear|TestDoubleQuotedBraceExpansionStaysLinear|TestExpandedHeredocBodyStaysLinear|TestForgeTextWorkIsLinear|TestGallopingProbeCostIsLinearInLineLength|TestGallopingProbeStaysBoundedOnLongLines|TestGluedFixedOutputStaysLinear|TestGluedSweepWorkIsLinear|TestHereDocumentPayloadStaysLinear|TestHistoryCaptureAcceptsWhatTheHooksAccept|TestHomeSpellingsStayLinear|TestIFSSplitCheckStaysLinear|TestJunctionBacktrackIsBounded|TestKillFeedGroupsAndStringsStayLinear|TestKillFeedReadingStaysLinear|TestMakerNoteWorkIsLinear|TestMetadataViewsWorkIsLinear|TestNestedHereDocumentPayloadStaysLinear|TestParameterExpansionReadingStaysLinear|TestPatternShapesStayLinear|TestQuotedSubstitutionStaysLinear|TestRawHeadingScanStaysLinearInTheOpenerCount|TestScanLineWorkIsLinear|TestScriptReadingStaysLinearOnAdversarialLines|TestSpeculationIsBoundedAtTheStdinCap|TestSpellingSetsStayLinear|TestSurfaceChapterProseStatesNoShape|TestSweepCallerHomeWorkIsLinear|TestSynopsisScanIsLinearInThePage|TestTheBudgetBoundsWallTimeOverLongLiterals|TestTheBudgetBoundsWallTimeOverManyLines|TestTheHiddenHTMLReadersStayLinear|TestTheTagWalksStayLinear|TestUTF16ViewWorkIsLinear|TestUnknownWordWalksStayLinear)$' ./internal/adapter/scanner ./internal/core/claim ./internal/core/guard ./internal/core/reading ./internal/surface/cli
 
       # Drift gate for the .abcd/development design record. Blocking: a
       # blocker-severity finding exits non-zero and fails the job; warn-level
