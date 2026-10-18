@@ -799,7 +799,8 @@ for review; none changes a test a step names.
   second half keeps a session that changed into a worktree it made (whose
   branch may predate `.abcd/`, or whose `.abcd/` was never committed)
   checked; one `git rev-parse --git-common-dir` is the only cost, paid only
-  in a linked worktree with no `.abcd/`. The recorder now asks the same
+  in a linked worktree with no `.abcd/`. A checkout whose `.git` is a folder
+  with no `.abcd/` beside it is told from the marker alone, with no git. The recorder now asks the same
   question instead of the local tier, which a fresh worktree lacks.
 - 2026-10-18 (fix round 1's choice, for review): **A landed no-upstream
   branch is told by a merge first.** `git cherry` alone misses a squash of
@@ -1495,7 +1496,7 @@ requirements to majors 1, 3 and 6. Each item and how it was handled:
 
 | # | finding | handled |
 |---|---|---|
-| major 1 | the Stop hook acted in every git repository, not only managed ones | fixed: Stop, StopFailure, the session-start and prompt away paths and the branch recorder return at once outside a managed checkout (`autonomy.Managed`), with no output, no file under abcd's home, no session note or state, and no git past naming the roots; TestHookStopUnmanagedRepoSilent, TestAwayHooksLeaveUnmanagedRepoAlone (93d34a1ef, e1d64652a) |
+| major 1 | the Stop hook acted in every git repository, not only managed ones | fixed: Stop, StopFailure, the session-start and prompt away paths and the branch recorder return at once outside a managed checkout (`autonomy.Managed`), with no output, no file under abcd's home, no session note or state, and no git at all where the checkout's .git is a folder (the nearest .git entry is found without git); TestHookStopUnmanagedRepoSilent, TestAwayHooksLeaveUnmanagedRepoAlone (93d34a1ef, e1d64652a, 1eec1addc) |
 | major 2 | a squash-merged branch with no upstream read as unpushed for 14 days | fixed: a merge into the default branch that changes nothing is landed, a conflicting one falls to `git cherry`, and the undecidable is a note; TestNoUpstreamLandedBranchNotOwed, TestNoUpstreamUnlandedBranchOwed, TestNoUpstreamUndecidedBranchNoted (546c22e40) |
 | major 3 | a full record kept the person from ending the mode | fixed: AddStop collapses an identical stop anywhere and rotates past its bound; hand-backs rotate; the queue refuses past its bound; Back ends a record past its bound, unparsable, partly unparsable, not safely this account's or behind a busy or unsafe lock, printing what it can and naming the rest; Begin carries a full record fitted; TestAddStopCollapsesAnywhere, TestRecordStaysWithinBoundInUse, TestBackEndsAnyRecord, TestBackWithLockHeld, TestBeginCarriesAFullRecord, TestModeBackEndsAnUnreadableRecord (e101881f2) |
 | major 4 | a failed `git worktree add <path> <existing>` recorded a peer's branch | fixed at record time: a name a worktree has checked out is skipped; TestBranchRecorderSkipsBranchCheckedOutElsewhere (fa7f6a8f2). At read time a reflog branch another worktree holds is not own (minor 4's fix); a recorded one stays own, since a worktree the session made holds its branch by design |
