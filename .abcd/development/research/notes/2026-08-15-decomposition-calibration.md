@@ -2502,12 +2502,12 @@ The SOTA survey was filed as research/notes/2026-10-16-model-matrix-sota.md, and
 | the away mode with an owner and an end time, repeated at every start, compaction and prompt; the stop check that refuses to end a turn with owed work while the person is away; the question reroute and the queue of steps for the person's hands | capability | intent itd-2610180912189125 (planned, spc-2610180914469489), the first slice, which builds on the draft |
 | the per-session checklist on disk and its re-injection; waits per item; trigger promises; timed wakes; the states working, waiting and stopped | capability | itd-2610170638184486 (draft) |
 | the pre-run blocker sweep, asked by message | capability | the same draft, by the product thinker's choice |
-| the two lists for the person's return across sessions | capability | the same draft; the slice ships a per-repository form |
+| the two lists for the person's return across sessions | capability | the same draft; the slice's per-repository form moved back here in its review round 1 (dcn-2610180937181929), leaving it only `abcd mode back` printing the queue |
 | the technical facilitator set to auto or to a person, and whether a feature's design work is done | capability | the same draft, reading the existing `facilitator.mode` of itd-2610150602547271; no second toggle |
 | the private shared option, the public option and the phone | capability | proposed as its own intent in the bundle; split not filed |
 | the checklist records a credential's kind, scope and expiry, never its value or anything that retrieves it | trust rule | proposed ADR and brief invariant clause at planning; not filed |
 | a public upload passes the embargo check | cited | brief invariant 22; no new rule |
-| the stop check's one forge listing per check | rule clause | brief invariant 7, amended by the slice's step 6 |
+| the stop check's one forge listing per check, made only while the person is away | rule clause | brief invariant 7, amended by the slice's step 3 (step 6 before its review round 1) |
 | a wait holds one item, never the session, and a declared dependency holds only the landing | stance | proposed principle; not filed |
 | a state shown to a person follows what the machine sees, and the agent's own words are a hint | stance | the coordination intent's decision 6 and the principle `enforcement-claims-are-facts`, cited; no new principle |
 | the checklist's JSON format and its crash-safe write | plumbing | the brief's internals, through `internal/fsutil`'s atomic writer |

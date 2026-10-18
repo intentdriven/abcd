@@ -17,7 +17,7 @@ related_issues: [iss-2610170619247185]
 
 ## Press Release
 
-> A session told to work on while its person is away keeps working until they are back. Alice, a solo founder who is also the product thinker, leaves for the evening and says the sessions should work on until 09:00. abcd records that once for the repository, with who set it and when it ends, and repeats it to every session at each start, after each compaction and with every prompt, so no summary and no relay between sessions can drop it. A session that tries to end its turn while it still has work it can do alone (a reservation whose work is not yet handed in, a pull request of its own that has fallen behind or is failing, a branch it has not pushed, a branch stacked on another change that is still open) is handed the next of those items instead. One with nothing left to do may stop only with its next look scheduled. A question it would have put to Alice is decided and recorded instead, and a step only Alice's hands can do is queued for their return. In the morning Alice sees those steps and the decisions taken while they were away, and while they are at the terminal nothing is refused: a stop with work left is only pointed out.
+> A session told to work on while its person is away keeps working until they are back. Alice, a solo founder who is also the product thinker, leaves for the evening and says the sessions should work on until 09:00. abcd records that once for the repository, with who set it and when it ends, and repeats it to every session at each start, after each compaction and with every prompt, so no summary and no relay between sessions can drop it. A session that tries to end its turn while it still has work it can do alone (a reservation whose work is not yet handed in, a pull request of its own that has fallen behind or is failing, a branch it has not pushed, a branch stacked on another change that is still open) is handed the next of those items instead. One with nothing left to do takes the next ready item, and may stop only with its next look scheduled before its reservations need renewing. A question it would have put to Alice is decided and recorded instead, and an act only Alice may approve (an advisory's approval, a publication, a new dependency, a secret, a browser step) is queued for their return. When Alice is back and says so, the mode ends and they see the queued steps and any stop the host forced; from then on nothing is refused, and a stop with work left is only pointed out.
 
 ## Why This Matters
 
@@ -60,40 +60,53 @@ its turn on a question to the person.
   enforced.
 - Sessions on one computer: the away record is held per repository on that <!-- cond: cond-2610180914460950 -->
   machine, so a session on another computer or in the cloud does not see it.
-- The stop check's pull-request reading needs the forge client signed in; when <!-- cond: cond-2610180914462056 -->
-  it cannot read the forge it judges from disk alone and says so.
+- The stop check's pull-request reading, made only while the person is away, <!-- cond: cond-2610180914462056 -->
+  needs the forge client signed in; when it cannot read the forge in time it
+  judges from a recent cached listing or from disk alone, and says so.
 - A session that keeps working through the host: the check refuses a stop, it <!-- cond: cond-2610180914469321 -->
-  cannot start a session that is not running.
+  cannot start a session that is not running. A turn the host ends on an API
+  error, such as a rate limit, fires no Stop hook and cannot be continued: it
+  is recorded, and only a wake the session had already scheduled resumes it.
 
 ## What's In Scope
 
 - **The away mode.** `abcd mode autonomous [--until <time>]` records who set
-  it, when, and when it ends; `abcd mode back` ends it. One record per
-  repository on the machine, shared by every working copy
-  (dcn-2610180913399042, dcn-2610180913399499).
+  it, when, and when it ends, at most seven days on; `abcd mode back` ends it,
+  prints the queue and the recorded stops, and records who ended it. One
+  record per repository on the machine, shared by every working copy, changed
+  only under a lock (dcn-2610180913399042, dcn-2610180913399499,
+  dcn-2610180937181736).
 - **Repeated, never summarised away.** While it holds, the session-start hook
   (every source, compaction included) and the prompt hook (every prompt) add
-  one short block to the session's context (dcn-2610180913406972).
-- **The stop check.** A plugin Stop hook asks `abcd hook stop`, which refuses
-  to end a turn with owed work while the person is away, names the next item,
-  and is bounded so it never spins; while the person is present it only points
-  the work out (dcn-2610180913413137, dcn-2610180913421109).
-- **Owed work**, in exactly these terms: a live reservation whose renewal is
-  due or whose work no open pull request carries yet; an open pull request of
-  the session's own that is behind the default branch or failing its checks; a
-  branch of its own with commits not pushed; and a branch of its own stacked on
-  a change that is still open, whose merge from the default branch, fixes,
-  review and preflight are owed now while only its landing waits
-  (dcn-2610180913416683).
+  one short block to the session's context (dcn-2610180913406972), and the
+  prompt hook shows the person one line naming the away mode
+  (dcn-2610180937181736).
+- **The stop check.** A plugin Stop hook asks `abcd hook stop`. While the
+  person is away a session is only working or waiting: a turn's end with owed
+  work is refused, naming the next item, and a stop is allowed only with a
+  wake that fires before its reservations need renewing; the host's cap of
+  eight continuations is the outer bound, and a stop it forces is recorded.
+  A StopFailure hook records a turn ended by an API error. While the person
+  is present the check reads disk only and points the work out
+  (dcn-2610180913413137, dcn-2610180913421109, dcn-2610180936577720,
+  dcn-2610180936579498, dcn-2610180937175629).
+- **Owed work**, in exactly these terms: a live reservation under this
+  working copy's key whose renewal is due or whose work no open pull request
+  carries yet; an open pull request of the session's own that is behind the
+  default branch or failing its checks; a branch of its own with commits not
+  pushed; and a branch of its own stacked on a change that is still open,
+  while it is behind, failing or has no preflight receipt, since only its
+  landing waits for the base. A branch is the session's own when this copy
+  ever checked it out, a run in this copy cut it as a lane, or a reservation
+  under this copy's key links it (dcn-2610180913416683,
+  dcn-2610180936568358, dcn-2610180936571036).
 - **The question reroute.** While the person is away, the guard refuses every
-  question on the host's question tool: a decision is taken and recorded with
-  `abcd decide`, and a step only the person's hands can do is queued with
-  `abcd mode queue "<step>"` (dcn-2610180913431493).
-- **The person's return.** The queue and the decisions recorded in the window,
-  shown once on the next prompt after the mode ends (dcn-2610180913431985).
-- **Shown and reachable.** The status line names the away mode and its end; a
-  bare `abcd mode` prints the record, the queue and the owed items
-  (dcn-2610180913445272).
+  question on the host's question tool. A question about an act only the
+  person may approve (a per-act approval such as an embargo close's digest,
+  a publication or visibility change, a new dependency, a secret, credential
+  or App, a website or browser step, a destructive act, a spend) is queued
+  with `abcd mode queue "<step>"`; every other question is decided and
+  recorded with `abcd decide` (dcn-2610180913431493, dcn-2610180937177502).
 
 ## What's Out of Scope
 
@@ -102,6 +115,11 @@ its turn on a question to the person.
   published options and the phone.
 - Idle time a coordinator sees across sessions, which comes with the
   coordination intent's central view in `abcd status`.
+- Moved back to itd-2610170638184486 by review round 1
+  (dcn-2610180937181929): the report shown once on the person's return (the
+  queue, the window's decisions gathered across working copies, the recorded
+  stops and who ended the mode), the status line naming the away mode, and
+  the bare `abcd mode` print of the record, the queue and the owed items.
 - Starting or waking a session that is not running.
 - Each autonomous session's own forge credential, owned by the coordination
   intent.
@@ -115,49 +133,64 @@ its turn on a question to the person.
 - **Given** the away mode holds, **when** a session's context is compacted,
   **then** the session-start hook fired with source `compact` adds the away
   block again, and so does the prompt hook on the next prompt.
-- **Given** the away mode holds and the session's own pull request is behind
-  the default branch, **when** the session tries to end its turn, **then** the
+- **Given** the away mode holds and the session's own pull request, opened
+  and checked out in its working copy before the mode was set, is behind the
+  default branch, **when** the session tries to end its turn, **then** the
   stop is blocked and the reason names that pull request as the next item and
   says how many items remain.
-- **Given** the away mode holds and a branch of the session's own is stacked
-  on a pull request that is still open, **when** it tries to end its turn,
-  **then** the stop is blocked and the reason asks for the merge from the
-  default branch, the fixes, the review and the preflight now, and says only
-  the landing waits for the base.
+- **Given** the away mode holds and a lane branch that a run in the
+  session's working copy cut in its own worktree is stacked on a pull request
+  that is still open and is behind the default branch, **when** the session
+  tries to end its turn, **then** the stop is blocked and the reason asks for
+  the merge from the default branch, the fixes, the review and the preflight
+  now, and says only the landing waits for the base; **and when** the branch
+  is up to date, green and has a preflight receipt, **then** it is waiting on
+  its base and is not owed.
 - **Given** the away mode holds and the session holds a live reservation whose
   work no open pull request carries, or a branch with unpushed commits,
   **when** it tries to end its turn, **then** the stop is blocked naming that
   item.
-- **Given** the stop was blocked once and the host reports the session is
-  already continuing because of a stop hook, **when** it tries to stop again
-  with the owed set unchanged, **then** the stop is allowed and recorded as
-  stopped with work owed, and that record appears on Alice's return.
+- **Given** the stop was blocked and the session replied "awaiting the
+  person" with no tool call and no wake, **when** it tries to stop again with
+  the owed set unchanged, **then** the stop is blocked again; **and when** the
+  host's cap of continuations ends the turn, **then** it is recorded as
+  stopped with work owed, shown when Alice runs `abcd mode back`.
 - **Given** the away mode holds and nothing is owed, **when** the session tries
-  to stop with no scheduled wake and no background task, **then** the stop is
-  blocked once asking it to schedule its next look in under an hour; **and
-  when** it stops with a wake scheduled, **then** the stop is allowed and the
-  session is waiting.
+  to stop with no qualifying wake, **then** the stop is blocked, telling it to
+  take the next ready item first and only then schedule its next look before
+  its earliest reservation renewal is due; a wake set for 09:00 the next
+  morning, or a background shell task, does not qualify; **and when** it stops
+  with a wake that fires in time, **then** the stop is allowed and the
+  session is waiting, with that time kept as its next look.
 - **Given** no away mode holds (Alice is at the terminal), **when** a session
-  with owed work ends its turn, **then** the stop is allowed and one line
-  shown to Alice names the owed work.
-- **Given** the away mode holds, **when** the agent puts a question to Alice on
-  the host's question tool, **then** the guard refuses it, telling the agent to
-  decide and record it with `abcd decide` and carry on, or, for a step only
-  Alice's hands can do, to queue it with `abcd mode queue`.
-- **Given** a window in which two decisions were recorded and one step was
-  queued, **when** Alice runs `abcd mode back` or the window's time passes and
-  they send the next prompt, **then** they see the queued step and both
-  decisions with their text, once.
-- **Given** the away mode holds, **when** Alice looks at the status line,
-  **then** it names the away mode and its end; **and when** Nia, the technical
-  facilitator, runs a bare `abcd mode` with no plugin host, **then** it prints
-  the record, the queue and the owed items.
-- **Given** `--until` names a time already past, or the repository has no local
-  tier, **when** `abcd mode autonomous` runs, **then** it refuses, names the
-  reason, and writes nothing.
-- **Given** the forge cannot be read during a stop check, **when** the session
-  tries to stop while away, **then** the check judges from the disk kinds alone
-  and the reason says the pull requests were not read.
+  with owed work ends its turn, **then** the stop is allowed, one line shown
+  to Alice names the owed work read from disk, and the forge is not called.
+- **Given** the away mode holds, **when** the agent puts a product question to
+  Alice on the host's question tool, under any chip, **then** the guard
+  refuses it, telling the agent to decide and record it with `abcd decide`
+  and carry on; **and when** it asks Alice to approve closing a security
+  advisory, **then** the same refusal tells it that an act only Alice may
+  approve is queued with `abcd mode queue`, and it never supplies the
+  approval itself.
+- **Given** the away mode holds, **when** Alice sends any prompt, **then** one
+  line shown to Alice names the away mode, its end, who set it and how to end
+  it.
+- **Given** a window in which one step was queued and the host forced one
+  stop, **when** Alice runs `abcd mode back`, **then** they see the queued
+  step and the stop, and the mode ends recording who ended it.
+- **Given** a stop check reading the forge while Alice runs `abcd mode back`
+  in another session, **when** the check finishes, **then** the mode stays
+  ended.
+- **Given** the away mode holds, **when** a turn ends on a rate limit, **then**
+  the stop and its error type are recorded and shown when Alice runs `abcd
+  mode back`.
+- **Given** `--until` names a time already past or more than seven days
+  ahead, or the repository has no local tier, **when** `abcd mode autonomous`
+  runs, **then** it refuses, names the reason, and writes nothing.
+- **Given** the forge cannot be read within ten seconds during a stop check,
+  **when** the session tries to stop while away, **then** the check judges
+  from a listing cached in the last half lease, naming its age, or from the
+  disk kinds alone, saying the pull requests were not read.
 - **Given** the slice is built, **when** a live Claude Code session with the
   plugin from the branch runs an away window with seeded owed work, a
   compaction and an attempted stop, **then** a captured transcript shows the
@@ -217,7 +250,23 @@ ruling or the ground it rests on; the full text is in the decision record.
 9. **No question waits while away** (dcn-2610180913431493).
 10. **Two lists on return, derived** (dcn-2610180913431985).
 11. **Host-agnostic core, reachable without a host**
-    (dcn-2610180913445272).
+    (dcn-2610180913445272); its status-line and bare-print halves moved by
+    decision 19.
+
+Review round 1 of 2026-10-18 refined them:
+
+12. **"Own" without a window, this copy's reservations only**
+    (dcn-2610180936568358).
+13. **Stacked branches cleared; the forge read only while away**
+    (dcn-2610180936571036).
+14. **Away means working or waiting** (dcn-2610180936577720).
+15. **A wake qualifies by its next fire time** (dcn-2610180936579498).
+16. **API-error stops recorded; prose questions blocked once**
+    (dcn-2610180937175629).
+17. **Questions routed by the act** (dcn-2610180937177502).
+18. **The record's lock, checks and seven-day cap** (dcn-2610180937181736).
+19. **The return report, status line and bare print move to the draft**
+    (dcn-2610180937181929).
 
 ## Audit Notes
 

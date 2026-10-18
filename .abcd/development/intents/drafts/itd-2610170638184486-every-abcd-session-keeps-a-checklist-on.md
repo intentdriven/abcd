@@ -173,6 +173,22 @@ session's interview on 2026-10-17:
   for iss-2610170619247185 so the security and bug-fix release waits on it
   alone (dcn-2610180913379049, dcn-2610180913388445). This draft keeps the
   rest and reuses the slice's away record and hook path.
+- **Moved back from the first slice by its review round 1 (2026-10-18,
+  dcn-2610180937181929), named remaining work of this draft:**
+  - the report shown once on the first prompt after the away mode ends: the
+    queued steps, the decisions recorded in the window and the stops the
+    host forced, with who ended the mode and from which working copy;
+  - the window's decisions gathered from every working copy, by `abcd
+    decide` appending each decision's id to the away record under its lock
+    while the window is open, since sibling worktrees hold their own
+    decision records;
+  - the status line naming the away mode and its end;
+  - a bare `abcd mode` printing the away record, the queue and the owed
+    items with no plugin host;
+  - the brief's surface text for these.
+
+  The slice keeps `abcd mode back` printing the queue and the recorded stops,
+  so nothing queued goes unread meanwhile.
 
 ## Decisions
 
