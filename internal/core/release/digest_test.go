@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/releasedigest"
 	"github.com/intentdriven/abcd/internal/gittest"
 )
@@ -238,10 +239,10 @@ func TestDigestPathIsRefusedBeforeAnyWrite(t *testing.T) {
 func TestDigestIsReadFromTheRepositoryLayerOnly(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".abcd.noindex"), 0o700); err != nil {
+	if err := os.MkdirAll(abcdhome.Path(home), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(home, ".abcd.noindex", "config.json"),
+	if err := os.WriteFile(abcdhome.Path(home, "config.json"),
 		[]byte(`{"release":{"digest":"`+digestRel+`"}}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
