@@ -47,10 +47,20 @@ func stopHookPayload(t *testing.T, session, cwd string, active bool, last string
 	return string(b)
 }
 
+// stopOut is the Stop hook's answer as the host reads it. A block is the
+// host's non-error feedback, hookSpecificOutput.additionalContext, which
+// keeps the session going under the same loop protections as a decision
+// block without the "Stop hook error" notice; Decision and Reason are filled
+// from it, and Raw keeps what was printed.
 type stopOut struct {
-	Decision      string `json:"decision"`
-	Reason        string `json:"reason"`
-	SystemMessage string `json:"systemMessage"`
+	Decision           string `json:"decision"`
+	Reason             string `json:"reason"`
+	SystemMessage      string `json:"systemMessage"`
+	HookSpecificOutput struct {
+		HookEventName     string `json:"hookEventName"`
+		AdditionalContext string `json:"additionalContext"`
+	} `json:"hookSpecificOutput"`
+	Raw map[string]any `json:"-"`
 }
 
 func runStop(t *testing.T, payload string) (stopOut, string, string) {
@@ -63,6 +73,10 @@ func runStop(t *testing.T, payload string) (stopOut, string, string) {
 	if strings.TrimSpace(so) != "" {
 		if err := json.Unmarshal([]byte(so), &out); err != nil {
 			t.Fatalf("hook stop stdout is not one object: %v\n%s", err, so)
+		}
+		_ = json.Unmarshal([]byte(so), &out.Raw)
+		if c := out.HookSpecificOutput.AdditionalContext; c != "" && out.HookSpecificOutput.HookEventName == "Stop" {
+			out.Decision, out.Reason = "block", c
 		}
 	}
 	return out, so, se
@@ -359,4 +373,24 @@ func TestHookStopUnmanagedRepoSilent(t *testing.T) {
 			t.Errorf("the managed copy no longer blocks: %s", so)
 		}
 	})
+}
+
+// TestHookStopBlockIsFeedback: a block is written as the host's non-error
+// feedback, {"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":…}},
+// never as {"decision":"block"}, which the host shows as a hook error.
+func TestHookStopBlockIsFeedback(t *testing.T) {
+	root := awayCheckout(t)
+	setAway(t)
+	owed := autonomy.Owed{Items: []autonomy.OwedItem{behindItem}}
+	fakeOwed(t, &owed)
+	out, so, _ := runStop(t, stopHookPayload(t, "fb-1", root, false, "Done."))
+	if _, ok := out.Raw["decision"]; ok {
+		t.Errorf("a block is written as a decision, which the host shows as an error: %s", so)
+	}
+	if out.HookSpecificOutput.HookEventName != "Stop" || !strings.Contains(out.HookSpecificOutput.AdditionalContext, "feat/behind") {
+		t.Errorf("a block is the Stop hook's additionalContext naming the item: %s", so)
+	}
+	if len(out.Raw) != 1 {
+		t.Errorf("a block carries only hookSpecificOutput: %s", so)
+	}
 }

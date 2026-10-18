@@ -93,7 +93,9 @@ before the deadline: within half an hour while work is owed (an hour when
 none is) and before the session's reservations need renewing. A wake
 releases an unchanged set of work the session can do itself at most twice
 in a row, and a last message ending on a question is blocked once. Plain
-stdout is then {"decision":"block","reason":...}; the block passing the
+stdout is then the host's non-error Stop feedback,
+{"hookSpecificOutput":{"hookEventName":"Stop","additionalContext":...}},
+which continues the session as a block does; the block passing the
 host's cap of consecutive continuations (eight, or
 CLAUDE_CODE_STOP_HOOK_BLOCK_CAP) is recorded in the away record as a stop
 possibly forced by the cap. While the person is present the check reads disk
@@ -102,7 +104,9 @@ only and, with work owed, allows the stop with a systemMessage naming it.
 The session's state is kept per session id in its start copy's local tier,
 .abcd/.work.local/autonomy/sessions/<session-id>.json. A malformed payload,
 an unreadable record or a lock not had allows the stop, naming why on
-stderr; every outcome exits 0.`,
+stderr; every outcome exits 0. Outside a checkout abcd manages (no .abcd/
+at its root, nor at its main worktree's) it reads nothing and prints
+nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := readStopPayload(cmd)
@@ -187,9 +191,19 @@ func stopBlockCap(stderr io.Writer) int {
 	return n
 }
 
+// stopBlockOutput is a block written as the host's non-error feedback for a
+// Stop hook: hookSpecificOutput.additionalContext keeps the session going
+// under the same loop protections as {"decision":"block"} (stop_hook_active
+// and the continuation cap), and the host labels it "Stop hook feedback"
+// rather than showing a hook error, its documented form for a hook working as
+// designed (code.claude.com/docs/en/hooks, "Stop decision control").
 type stopBlockOutput struct {
-	Decision string `json:"decision"`
-	Reason   string `json:"reason"`
+	HookSpecificOutput stopBlockFields `json:"hookSpecificOutput"`
+}
+
+type stopBlockFields struct {
+	HookEventName     string `json:"hookEventName"`
+	AdditionalContext string `json:"additionalContext"`
 }
 
 type stopMessageOutput struct {
@@ -202,7 +216,7 @@ func emitStop(cmd *cobra.Command, v autonomy.Verdict) error {
 	var obj any
 	switch {
 	case v.Block:
-		obj = stopBlockOutput{Decision: "block", Reason: v.Reason}
+		obj = stopBlockOutput{HookSpecificOutput: stopBlockFields{HookEventName: "Stop", AdditionalContext: v.Reason}}
 	case v.SystemMessage != "":
 		obj = stopMessageOutput{SystemMessage: termsafe.CleanProseLine(v.SystemMessage, 1024)}
 	default:
@@ -232,7 +246,8 @@ func newHookStopFailureCommand() *cobra.Command {
 host ended on an API error is recorded in it as "stopped on an API error"
 with the error type, under the store's lock; abcd mode back prints it. The
 host ignores this hook's output and it cannot continue the session. While
-the person is present nothing is written. Every outcome exits 0.`,
+the person is present, or outside a checkout abcd manages, nothing is
+written. Every outcome exits 0.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			p, err := readStopPayload(cmd)
