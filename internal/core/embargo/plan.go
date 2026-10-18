@@ -21,6 +21,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/launch"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/shellquote"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -442,7 +443,7 @@ var plainPathRe = regexp.MustCompile(`\A[A-Za-z0-9._/+-]+\z`)
 // account, ~ names another directory and the copy finds no record there.
 func restoreCommand(home string, s Store, rel string) (cmd, why string) {
 	src := filepath.Join(s.Root, filepath.FromSlash(rel))
-	shown := shellQuote(src)
+	shown := shellquote.Single(src)
 	if r, ok := relUnder(home, src); ok {
 		shown = "~/" + shellWord(r)
 	} else if r, ok := relUnder(storepath.Resolve(home), storepath.Resolve(src)); ok {
@@ -475,12 +476,8 @@ func shellWord(p string) string {
 	if plainPathRe.MatchString(p) {
 		return p
 	}
-	return shellQuote(p)
+	return shellquote.Single(p)
 }
-
-// shellQuote is p single-quoted: each single quote in it ends the quoted
-// run, is written escaped, and starts a new one.
-func shellQuote(p string) string { return "'" + strings.ReplaceAll(p, "'", `'\''`) + "'" }
 
 // restoresOwed is each restore the store's state owes, in id order: every
 // advisory it records published whose private record is resolved in the

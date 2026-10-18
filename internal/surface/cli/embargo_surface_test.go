@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/embargo"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/gittest"
@@ -207,7 +208,7 @@ func TestEmbargoJSONShapes(t *testing.T) {
 	// A release counts once origin holds its tag: origin becomes a bare
 	// repository once intake has read the repository from its URL.
 	bare := filepath.Join(t.TempDir(), "origin.git")
-	r.Git("init", "-q", "--bare", bare)
+	gittest.InitBare(t, bare)
 	r.Git("config", "remote.origin.url", bare)
 	// A local origin names no github.com repository: the plan reads it as
 	// the one intake recorded.
@@ -251,7 +252,7 @@ func TestEmbargoCheckRendersItsNote(t *testing.T) {
 // advisory takes its fix from the store, and after publication prints each
 // restore the result names, once.
 func TestEmbargoPublishRendersStoreEvidence(t *testing.T) {
-	const restore = "cp -- ~/.abcd.noindex/worktrees/0123/embargo/.abcd/work/issues/resolved/iss-1-private-report.md .abcd/work/issues/resolved/"
+	restore := "cp -- " + abcdhome.Display("worktrees", "0123", "embargo", ".abcd/work/issues/resolved/iss-1-private-report.md") + " .abcd/work/issues/resolved/"
 	fix := strings.Repeat("a", 40)
 	plan := embargo.PublicationPlan{Repo: "example/example", Release: "v0.9.0", LeftOut: []embargo.LeftOut{}, Digest: "d", ApproveWith: "abcd embargo publish --release v0.9.0 --approve d",
 		Entries: []embargo.PlanEntry{
@@ -278,7 +279,7 @@ func TestEmbargoPublishRendersStoreEvidence(t *testing.T) {
 // TestEmbargoRendersRestores: a plan and an intake each print every restore
 // the store's state owes, and a restore that names no command says why.
 func TestEmbargoRendersRestores(t *testing.T) {
-	const restore = "cp -- ~/.abcd.noindex/worktrees/0123/embargo/.abcd/work/issues/resolved/iss-1-private-report.md .abcd/work/issues/resolved/"
+	restore := "cp -- " + abcdhome.Display("worktrees", "0123", "embargo", ".abcd/work/issues/resolved/iss-1-private-report.md") + " .abcd/work/issues/resolved/"
 	rs := []embargo.Restore{
 		{GHSAID: surfaceGHSA, IssueID: "iss-1", RestoreWith: restore},
 		{GHSAID: "GHSA-rrrr-rrrr-rrrr", IssueID: "iss-2", Reason: "its private record in the store carries another id; no command restoring it is named"},

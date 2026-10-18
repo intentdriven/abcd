@@ -9,10 +9,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/capture"
 	"github.com/intentdriven/abcd/internal/core/embargo/storepath"
 	"github.com/intentdriven/abcd/internal/core/issueschema"
 	"github.com/intentdriven/abcd/internal/fsutil"
+	"github.com/intentdriven/abcd/internal/gittest"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -94,7 +96,7 @@ func (pf planFixture) localTag(name string) { pf.f.repo.Git("tag", name) }
 func (pf planFixture) originPath() string {
 	bare := filepath.Join(pf.f.repo.Root(), ".git", "fixture-origin.git")
 	if _, err := os.Stat(bare); err != nil {
-		pf.f.repo.Git("init", "-q", "--bare", bare)
+		gittest.InitBare(pf.g.t, bare)
 		pf.f.repo.Git("config", "remote.origin.url", bare)
 	}
 	return bare
@@ -808,7 +810,7 @@ func TestPublishedStoreRecordGuardsNameNoRestore(t *testing.T) {
 func TestRestoreCommandQuoting(t *testing.T) {
 	const key = "0123456789abcdef0123456789abcdef01234567"
 	storeUnder := func(home string) string {
-		return filepath.Join(home, ".abcd.noindex", "worktrees", key, "embargo")
+		return abcdhome.Path(home, "worktrees", key, "embargo")
 	}
 	for name, tc := range map[string]struct {
 		setup func(t *testing.T) (home, root string)
@@ -834,7 +836,7 @@ func TestRestoreCommandQuoting(t *testing.T) {
 		}, "iss-1-private-report.md", "~"},
 		"symlinked abcd home": {func(t *testing.T) (string, string) {
 			h, elsewhere := t.TempDir(), t.TempDir()
-			if err := os.Symlink(elsewhere, filepath.Join(h, ".abcd.noindex")); err != nil {
+			if err := os.Symlink(elsewhere, abcdhome.Path(h)); err != nil {
 				t.Fatal(err)
 			}
 			return h, storeUnder(h)
