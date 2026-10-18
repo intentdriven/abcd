@@ -6,9 +6,11 @@ package loop
 // reservation that was (DrainJudging.Hold), and a move releases it, by a
 // tombstone over that commit alone, on every path that leaves it unused while
 // the process lives, a panic included. Only two things keep it: the judgement
-// still awaited over its issue, and the lane a no opens on it. A process
-// killed outright (SIGINT or SIGKILL; the drain installs no handler) runs no
-// release, so its hold lapses after one lease. A reservation this person
+// still awaited over its issue, and the lane a no opens on it. The CLI's
+// handler (drainSignalContext) takes only the first interrupt or termination,
+// which cancels the move's context; a process killed outright (SIGKILL, or a
+// second interrupt or termination) runs no release, so its hold lapses after
+// one lease. A reservation this person
 // holds live, made or renewed by hand, is never the drain's, so a judgement
 // never releases it; one of theirs that had lapsed and that the drain's push
 // renews is the drain's from that push on.
