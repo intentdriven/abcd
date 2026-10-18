@@ -35,6 +35,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -72,6 +73,11 @@ type Request struct {
 	// Tools are the tools the role's contract grants, granted without a
 	// prompt; none granted when empty.
 	Tools []string
+	// Base is the full object name of the commit the run's working tree was
+	// cut from: a lane's base, or the HEAD an interview launched on. A launch
+	// that grants the shell needs it, since the approver judges every
+	// command against the hazard registry at that commit.
+	Base string
 	// Denied are the tools the role is refused outright, whatever else would
 	// grant them: a harness that keeps a deny list takes them there, ahead of
 	// every grant.
@@ -250,6 +256,9 @@ func (r Request) check() error {
 		if !toolRe.MatchString(t) {
 			return fmt.Errorf("runner: tool %q is not a tool name as a contract spells it", termsafe.Sanitize(t))
 		}
+	}
+	if r.Base != "" && !gitutil.IsFullSHA(r.Base) {
+		return fmt.Errorf("runner: the base %q is not a commit's full object name", termsafe.Sanitize(r.Base))
 	}
 	if !sessionRe.MatchString(r.SessionID) {
 		return errors.New("runner: the request names no session id for its transcript")

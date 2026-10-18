@@ -15,6 +15,9 @@
     "forge": true,
     "hook": true
   },
+  "release": {
+    "digest": "internal/core/releasedigest/digest.json"
+  },
   "repo": {
     "visibility": "public"
   }

@@ -116,19 +116,22 @@ func Drive(ctx context.Context, repoRoot, runID string, steps Stages, o Options,
 	if err != nil {
 		return res, err
 	}
-	var worktree string
+	var worktree, base string
 	for _, l := range st.Lanes {
 		if l.ID == res.Lane {
-			worktree = l.Worktree
+			worktree, base = l.Worktree, l.BaseSHA
 		}
 	}
 	req := runner.Request{
-		Role:      aw.Role,
-		Brief:     absIn(repoRoot, aw.Brief),
-		Receipt:   absIn(repoRoot, aw.Receipt),
-		Dir:       worktree,
-		Checkout:  filepath.Clean(repoRoot),
-		Tools:     toolsFor(aw.Role),
+		Role:     aw.Role,
+		Brief:    absIn(repoRoot, aw.Brief),
+		Receipt:  absIn(repoRoot, aw.Receipt),
+		Dir:      worktree,
+		Checkout: filepath.Clean(repoRoot),
+		Tools:    toolsFor(aw.Role),
+		// The approver of a shell launch judges against the registry the
+		// lane was cut from, never one the lane has since changed.
+		Base:      base,
 		SessionID: fmt.Sprintf("%s-%s-%s-%d", runID, res.Lane, aw.Role, o.now().Unix()),
 		Timeout:   rs.Timeout,
 	}

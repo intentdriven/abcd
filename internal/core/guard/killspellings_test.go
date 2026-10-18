@@ -188,7 +188,7 @@ func TestArgsFromConstraint(t *testing.T) {
 	if got := merged.Entries["kill-by-search"].Pattern.ArgsFrom; len(got) != 1 || got[0].Command != "pidof" {
 		t.Errorf("an override's args_from replaces the list whole; got %+v", got)
 	}
-	if what := weakening(Defaults(), merged); !strings.Contains(what, "kill-by-search") {
+	if what := weakening(Defaults(), merged, false); !strings.Contains(what, "kill-by-search") {
 		t.Errorf("narrowing a blocker's sources is a weakening; weakening() = %q", what)
 	}
 

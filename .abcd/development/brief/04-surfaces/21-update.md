@@ -67,9 +67,30 @@ never constructs the updater that swaps a binary.
 
 | Verb | Bucket | Status |
 |---|---|---|
+| `news` | — | shipped |
 
-The table is empty: the verb registers no sub-command. Its one argument is an
-optional release tag, and the check is a flag.
+The verb's one argument is an optional release tag, and the check is a flag.
+A lowercase word that is not a release tag (every release tag starts with `v`
+and a digit) is a mistyped sub-verb, refused as an unknown command with exit 2
+before anything is resolved or fetched.
+
+- **News** is the moment after an abcd update
+  (itd-2610161617096084, itd-2610161616086564). Bare, it prints what the agent
+  relays at the start of its first reply: one line per release this computer
+  has not been shown, from the digest of changes the binary carries
+  (`internal/core/releasedigest`), naming how many changes each made and the
+  records that need the person to act, a line naming any release the digest
+  cannot describe with where its notes are, and, where the update brings this
+  repository setup it never answered, the offer to run setup again. Its full
+  form prints every change, those needing action first, with the record each
+  cites, then what waits here. Neither writes. Two forms write, and only
+  under `~/.abcd.noindex/after-update/`, never in the repository: one records
+  the person's answer to the offer, yes or not now, once per repository and
+  release, and one records that the news was read where no offer was made.
+  The plugin page runs them only with a person's reply. A yes is followed by
+  ahoy's only-waiting install, the setup that waits. Its words are numbers,
+  checked release tags, core's titles and the digest, never the repository's
+  text, and nothing is fetched.
 
 ## Behaviour
 
@@ -164,9 +185,8 @@ the release it installs replaces an earlier one, and records the replaced
 release as `previous_tag` in the `binary-meta` it writes at the swap (the ruling
 CJ1). A first install, a copy out of the cache at the same release and the
 per-session fast path replace no release and print no such line. The session
-start check does not compare versions and shows nothing about an update, with
-one exception: the bootstrap salvage that the per-prompt, per-command and
-pre-compaction hooks run discards its output, so a swap made there adds
+start check never prints that line, with one exception: the bootstrap salvage
+that the per-prompt, per-command and pre-compaction hooks run discards its output, so a swap made there adds
 `transition_unseen=yes` to the `binary-meta` it writes, and the next session
 start shows the line once. Once is a claim per release: the session check
 creates `cache/update-shown-<new>` in the plugin data directory, or
@@ -179,6 +199,22 @@ empty claim file is the session check's single write, and claims for earlier
 releases stay where they are. A directory failing the shape check every reader
 of the data directory applies, or a tag outside the release-tag alphabet, shows
 nothing and writes nothing.
+
+What the update changed is said apart from that line, after the person's
+first message (spc-2610170635097509). When this computer has not been shown
+the news up to the running release, or the update brings the repository setup
+it never answered and the offer for the running release was not answered
+here, session start prints one constant sentence to the session's context,
+with no version and no count, telling the agent to run this verb's news
+sub-verb and relay what it prints at the start of its first reply. Working
+that out reads only what is on this computer: the binary's version and the
+digest it carries, the repository's `setup_version` checked to be exactly a
+release tag, the binary record's `previous_tag`, the setup answers records,
+the store under `~/.abcd.noindex/after-update/`, and, where an offer could be
+due, the repository files setup reads to tell which of its questions apply;
+nothing is fetched or written. The
+sub-verb is described under [Sub-verbs](#sub-verbs); the setup a yes runs is
+the ahoy chapter's.
 
 ## The receipt
 
@@ -224,11 +260,21 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd update`
 
-Sub-verbs: none.
+Sub-verbs: `abcd update news`.
 
 | Flag | Type |
 |---|---|
 | `--check` | bool |
 | `--yes` | bool |
+
+### `abcd update news`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--answer` | string |
+| `--full` | bool |
+| `--seen` | bool |
 
 <!-- surface-appendix:end -->

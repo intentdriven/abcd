@@ -2,6 +2,7 @@ package guard
 
 import (
 	"path"
+	"sort"
 	"strings"
 )
 
@@ -74,44 +75,133 @@ var wrappers = map[string]bool{
 	// operand names, fetching the package when it is not installed
 	// (iss-2610112232319827). Not a util-linux shim like those above; its
 	// value flags come from npm's documented grammar (wrappersWithoutProbes).
-	// Its siblings are two words, `npm exec`, `pnpm dlx` and `yarn dlx`, and
-	// are read by runnerSubcommands.
+	// Its siblings are two words, `npm exec`, `pnpm dlx`, `pnpm exec`,
+	// `yarn dlx` and `bun x`, and are read by runnerSubcommands.
 	"npx": true,
+	// bun's package runner, `bunx <pkg> [args]`, the one-word spelling of
+	// `bun x`: it runs the program its first operand names as npx does.
+	"bunx": true,
 }
 
 // packageRunners names the one-word package runners among the wrappers. The
 // walk steps them as wrappers, and arrives at the word itself as a command as
 // well, so an entry naming the runner still matches it (walkToCommand).
-var packageRunners = map[string]bool{"npx": true}
+var packageRunners = map[string]bool{"npx": true, "bunx": true}
 
 // runnerSubcommands names the package managers whose subcommand makes them a
 // runner as npx is, and the wrapper each subcommand is read as: `npm exec`
-// (and its alias `npm x`), `pnpm dlx`, `yarn dlx`. A subcommand the line does
-// not fix can be the runner's.
+// (and its alias `npm x`), `pnpm dlx`, `pnpm exec`, `yarn dlx` and `bun x`.
+// A subcommand the line does not fix can be any of the runner's. The
+// manager's own options before it are read by wrapperValueFlags under the
+// manager's name.
 var runnerSubcommands = map[string]map[string]string{
 	"npm":  {"exec": "npm exec", "x": "npm exec"},
-	"pnpm": {"dlx": "pnpm dlx"},
+	"pnpm": {"dlx": "pnpm dlx", "exec": "pnpm exec"},
 	"yarn": {"dlx": "yarn dlx"},
+	"bun":  {"x": "bunx"},
 }
 
-// runnerAt reports the runner wrapper the word at pos of tokens starts, when
-// name, its lower-cased basename, is a package manager whose next word is a
-// runner subcommand, or a word the line does not fix.
-func runnerAt(name string, tokens []string, pos int) (string, bool) {
+// runnerStart is one runner a package manager word can start: the wrapper it
+// is read as (wrapperValueFlags names its options) and the index of the first
+// word after its subcommand, where the runner's own options begin.
+type runnerStart struct {
+	wrapper string
+	at      int
+}
+
+// runnersAt reports the runners the word at pos of tokens can start, in name
+// order, when name, its lower-cased basename, is a package manager whose
+// subcommand is a runner subcommand (one runner), or a word the line does not
+// fix (every runner subcommand that manager has). The manager's own options
+// before the subcommand are stepped, with the value each of its value flags
+// takes (wrapperValueFlags under the manager's name): `pnpm --filter web exec`
+// and `npm --prefix sub exec` start the runner `pnpm exec` and `npm exec` do.
+// Each word is read every way readWord reads it.
+func runnersAt(name string, tokens []string, pos int) []runnerStart {
 	subs, ok := runnerSubcommands[name]
-	if !ok || pos+1 >= len(tokens) {
-		return "", false
+	if !ok {
+		return nil
 	}
-	next := tokens[pos+1]
-	if w, ok := subs[next]; ok {
-		return w, true
-	}
-	if isUnknown(next) {
-		for _, w := range subs {
-			return w, true
+	valueFlags := wrapperValueFlags[name]
+	got := map[runnerStart]bool{}
+	var out []runnerStart
+	add := func(rs runnerStart) {
+		if !got[rs] {
+			got[rs] = true
+			out = append(out, rs)
 		}
 	}
-	return "", false
+	seen := map[int]bool{}
+	stack := []int{pos + 1}
+	for len(stack) > 0 {
+		i := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		if i >= len(tokens) || seen[i] {
+			continue
+		}
+		seen[i] = true
+		tally(1)
+		tok := tokens[i]
+		if w, ok := subs[tok]; ok {
+			add(runnerStart{wrapper: w, at: i + 1})
+			continue
+		}
+		r := readWord(tok, valueFlags)
+		if r.operand && isUnknown(tok) {
+			for _, w := range subs {
+				add(runnerStart{wrapper: w, at: i + 1})
+			}
+		}
+		if r.vanish || r.flag {
+			stack = append(stack, i+1)
+		}
+		if r.takes {
+			stack = append(stack, i+2)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].wrapper != out[j].wrapper {
+			return out[i].wrapper < out[j].wrapper
+		}
+		return out[i].at < out[j].at
+	})
+	return out
+}
+
+// runnerStartsAt is every runner the word at idx of tokens starts: a one-word
+// runner (npx, bunx) at the word after it, or a package manager's runner
+// subcommand (runnersAt).
+func runnerStartsAt(tokens []string, idx int) []runnerStart {
+	w := strings.ToLower(path.Base(tokens[idx]))
+	if packageRunners[w] {
+		return []runnerStart{{wrapper: w, at: idx + 1}}
+	}
+	return runnersAt(w, tokens, idx)
+}
+
+// packagePrograms names, by the package that ships it, the program a package
+// runner starts for a package whose name is not the program's: `npx
+// @anthropic-ai/claude-code` starts claude, and `npx opencode-ai` starts
+// opencode. A package named for its program (`@openai/codex`, `kill-port`)
+// needs no line here; packageName reads it.
+var packagePrograms = map[string]string{
+	"@anthropic-ai/claude-code": "claude",
+	"opencode-ai":               "opencode",
+}
+
+// packageProgram is the program packagePrograms names for a package runner's
+// operand, its version left aside (`@anthropic-ai/claude-code@latest`), and
+// whether it names one. A word the line does not fix names none.
+func packageProgram(tok string) (string, bool) {
+	if isUnknown(tok) {
+		return "", false
+	}
+	spec := strings.ToLower(tok)
+	if at := strings.LastIndexByte(spec, '@'); at > 0 && at > strings.LastIndexByte(spec, '/') {
+		spec = spec[:at]
+	}
+	prog, ok := packagePrograms[spec]
+	return prog, ok
 }
 
 // packageName is a package runner's operand without its version: npx runs the
@@ -131,8 +221,9 @@ func packageName(tok string) string {
 // the FOLLOWING token, so the walk to command position steps over the value
 // rather than reading it as the command (`sudo -u bob rm -rf *` is an `rm`).
 //
-// The table is deliberately explicit and small: only wrappers in the set above,
-// only flags those wrappers actually document, and only the separate-token form
+// The table is deliberately explicit and small: only wrappers in the set above
+// and the package managers whose subcommand starts one (runnerSubcommands),
+// only flags those programs actually document, and only the separate-token form
 // — a `--flag=value` carries its value in the same token and needs no entry.
 // Booleans (`sudo -n`, `env -i`, `time -p`) need no entry either; they are
 // stepped over as flags. A value flag the table does not name is NOT stepped
@@ -187,6 +278,29 @@ var wrapperValueFlags = map[string][]string{
 	"npm exec": {"-p", "--package", "-w", "--workspace"},
 	"pnpm dlx": {"--package"},
 	"yarn dlx": {"-p", "--package"},
+	// bun's documented `bunx` grammar, for `bunx` and `bun x` alike: the
+	// package to install. `--bun` takes nothing.
+	"bunx": {"-p", "--package"},
+	// pnpm's documented exec grammar: the packages to run in and the one to
+	// resume from. NOT -c/--shell-mode, which takes nothing and hands the
+	// command to a shell.
+	"pnpm exec": {"--filter", "-F", "--resume-from"},
+	// A package manager's own value flags, read before its runner subcommand
+	// (runnersAt): `npm --prefix sub exec`, `pnpm --filter web exec`, `yarn
+	// --cwd sub dlx`. npm's are its documented configuration options with a
+	// short form or a path or name value; pnpm's are its documented global
+	// options (directory, filtering, reporting); yarn's only global value
+	// flag is --cwd. A boolean (`pnpm -r`, `npm --yes`) needs no entry.
+	"npm": {
+		"-C", "--prefix", "-w", "--workspace", "-L", "--location",
+		"--loglevel", "--userconfig", "--globalconfig", "--cache", "--registry",
+	},
+	"pnpm": {
+		"-C", "--dir", "--filter", "-F", "--filter-prod", "--test-pattern",
+		"--changed-files-ignore-pattern", "--reporter", "--loglevel",
+		"--workspace-concurrency",
+	},
+	"yarn": {"--cwd"},
 	// `setsid`, `eatmydata`, `proxychains` and `taskset` take no value flags.
 }
 
@@ -248,6 +362,98 @@ func precededByCD(before []segment, chain int) bool {
 		}
 	}
 	return false
+}
+
+// envSetBefore reports whether a word before the command at site sets one
+// of names in its environment: an assignment word, which the walk steps as
+// the shell's own prefix or as an operand of env or sudo (envAssigns).
+func envSetBefore(s segment, site int, names []string) bool {
+	for i := 0; i < site && i < len(s.tokens); i++ {
+		if setsName(s.tokens[i], names) {
+			return true
+		}
+	}
+	return false
+}
+
+// setsName reports whether the known word tok sets one of names: `NAME=…`,
+// or `NAME+=…`, which appends to it.
+func setsName(tok string, names []string) bool {
+	if isUnknown(tok) {
+		return false
+	}
+	eq := strings.IndexByte(tok, '=')
+	if eq <= 0 {
+		return false
+	}
+	name := strings.TrimSuffix(tok[:eq], "+")
+	for _, n := range names {
+		if name == n {
+			return true
+		}
+	}
+	return false
+}
+
+// exportsAny reports whether the command s exports one of names to the
+// commands after it in the shell: `export NAME` or `export NAME=…`, and
+// `declare -x` or `typeset -x` with the same operands (exportOperands). A
+// name a substitution prints can be any of them (nameCouldBe).
+func exportsAny(s segment, names []string) bool {
+	for _, a := range commandSites(s) {
+		first, ok := exportOperands(s.tokens, a.idx)
+		if !ok {
+			continue
+		}
+		for _, tok := range s.tokens[first:] {
+			if setsName(tok, names) {
+				return true
+			}
+			for _, n := range names {
+				if tok == n {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// exportOperands reports whether the command at site exports the names it is
+// given, and the index of its first operand. export always does. declare
+// and typeset do when an option among the words before their first operand
+// carries x (`-x`, `-gx`, `-rx`), as bash and zsh read it, and not when the
+// last such option is `+x`, which takes the export away; `--` ends the
+// options. A word a substitution prints can be an option, -x among them.
+func exportOperands(tokens []string, site int) (first int, ok bool) {
+	tok := tokens[site]
+	if nameCouldBe(tok, "export") {
+		return site + 1, true
+	}
+	if !nameCouldBe(tok, "declare") && !nameCouldBe(tok, "typeset") {
+		return 0, false
+	}
+	exports := false
+	i := site + 1
+	for ; i < len(tokens); i++ {
+		w := tokens[i]
+		if w == "--" {
+			i++
+			break
+		}
+		if isUnknown(w) {
+			// It can be an option, so the words after it can be too.
+			exports = exports || clusterCouldCarry(w, 'x')
+			continue
+		}
+		if len(w) < 2 || (w[0] != '-' && w[0] != '+') {
+			break
+		}
+		if strings.ContainsRune(w[1:], 'x') {
+			exports = w[0] == '-'
+		}
+	}
+	return i, exports
 }
 
 // directoryChanges names the builtins an `after_cd` entry reads as the
@@ -411,6 +617,14 @@ func matchSegment(p Pattern, s segment) bool {
 // name is unknown, not because the line names the entry's program, and Check
 // reports it as the substitution's, not the entry's (review4-guard finding 4).
 func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
+	return matchSegmentEnv(p, s, false)
+}
+
+// matchSegmentEnv is matchSegmentNamed, where exported reports whether an
+// earlier command in the line exports a variable p.Env names. An entry that
+// names variables fires only where the line sets one for the command: by
+// that export, or by an assignment among the words before it (envSetBefore).
+func matchSegmentEnv(p Pattern, s segment, exported bool) (hit, named bool) {
 	// The places a command can sit are looked through for every entry; the
 	// words after them are walked only for an entry whose command stands at
 	// one, which is where the count below charges them. Charging every word
@@ -433,6 +647,15 @@ func matchSegmentNamed(p Pattern, s segment) (hit, named bool) {
 		kept := sites[:0:0]
 		for _, a := range sites {
 			if !(anyProgram(s.tokens[a.idx]) && variableCarried(s, a.idx)) {
+				kept = append(kept, a)
+			}
+		}
+		sites = kept
+	}
+	if len(p.Env) > 0 && !exported {
+		kept := sites[:0:0]
+		for _, a := range sites {
+			if envSetBefore(s, a.idx, p.Env) {
 				kept = append(kept, a)
 			}
 		}

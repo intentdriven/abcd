@@ -151,6 +151,21 @@ type Files struct {
 	// statCalls counts the filesystem lookups made, so a test can prove the
 	// site bound holds before any lookup (maxScriptTargets).
 	statCalls int
+	// runDirs are the directories a headless run keeps its own files in
+	// (its brief and its receipt), outside the working tree: the approver
+	// lets a removal reach them.
+	runDirs []string
+}
+
+// WithRunDirs returns f with dirs as the run's own directories, each a clean
+// absolute path; any other is left out.
+func (f *Files) WithRunDirs(dirs ...string) *Files {
+	for _, d := range dirs {
+		if filepath.IsAbs(d) && filepath.Clean(d) == d && !containsString(f.runDirs, d) {
+			f.runDirs = append(f.runDirs, d)
+		}
+	}
+	return f
 }
 
 // statResult is one cached lookup of a path.
@@ -275,6 +290,19 @@ type readCtx struct {
 	// readings counts the texts read, so a directory one reading names
 	// (shellState.dirGen) is never one another names.
 	readings int
+	// record asks the reading to keep, in line, every segment of the command
+	// line itself with the shell states it can run in, as the reading placed
+	// them: the approver (approve.go) judges the line's writes and removals
+	// from the same model the reading used.
+	record bool
+	line   []placedSeg
+}
+
+// placedSeg is one segment of the command line and every shell state it can
+// run in.
+type placedSeg struct {
+	seg    segment
+	states []*shellState
 }
 
 func newReadCtx(f *Files) *readCtx {
@@ -1041,6 +1069,11 @@ func (r Registry) readScripts(segs []segment, rc *readCtx, run *scriptRun) []pay
 	// the line runs, which a front door does not hand the guard as typed.
 	if run == nil {
 		signals = append(signals, r.forgeText(rc, segs, recs)...)
+		if rc.record {
+			for i, s := range segs {
+				rc.line = append(rc.line, placedSeg{seg: s, states: recs[i].states})
+			}
+		}
 	}
 
 	// The targets each segment points a shell at, in every state it can run

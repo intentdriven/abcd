@@ -33,8 +33,8 @@ Do not call a persona a "user" (too generic and erases the named-character frami
 
 ## Examples
 
-- "Said Iris, product lead: 'Grill caught the ambiguity in three minutes.'"
-- "Alice (product engineer) would use `/abcd:intent grill` before every plan submission."
+- "Said Iris, product lead: 'The planning interview caught the ambiguity in three minutes.'"
+- "Alice (product engineer) would run the planning interview (`abcd intent interview`) before every plan submission."
 
 ## Related terms
 

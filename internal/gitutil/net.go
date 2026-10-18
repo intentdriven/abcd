@@ -7,7 +7,9 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
+	"testing"
 	"time"
 )
 
@@ -50,6 +52,8 @@ const (
 // netOutputCap, on a failure too (a porcelain push reports its rejections
 // there); a failure's error carries git's bounded stderr. On a failure both are
 // scrubbed of credential URLs (ScrubURLCredentials) before they are cut.
+// Under a test binary, networked git is restricted to local transports with
+// no credential helper (netEnv); outside one nothing about it changes.
 func Net(dir string, args ...string) (string, error) {
 	return runHooked(dir, true, "", args, nil)
 }
@@ -133,6 +137,7 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 	cmd := exec.CommandContext(ctx, "git", full...)
 	cmd.Env = append(ScrubbedEnv(), "GIT_TERMINAL_PROMPT=0")
 	if network {
+		cmd.Env = netEnv(cmd.Env)
 		if ssh := netSSHCommand(dir); ssh != "" {
 			cmd.Env = append(cmd.Env, "GIT_SSH_COMMAND="+ssh)
 		}
@@ -164,6 +169,67 @@ func runHooked(dir string, network bool, stdin string, args []string, sink io.Wr
 		return "", fmt.Errorf("%s wrote more than %d bytes", what, netOutputCap)
 	}
 	return stdout.String(), nil
+}
+
+// testTransportGuard is the configuration netEnv adds to a networked git
+// command run by a test binary, so a test can neither reach a real forge nor
+// ask anyone for a credential (iss-2610170718356567). An empty
+// credential.helper clears every helper a lower scope named, the system
+// config's osxkeychain among them, so git calls none. protocol.allow=never
+// refuses every transport that names no policy of its own, and http, https,
+// ssh and git are named never outright, so a config that allows one cannot
+// let it back in; git refuses them before it connects. A local path, a
+// file:// URL and a URL a repository's url.<base>.insteadOf rewrites to one
+// keep git's own default for file. A repository's own policy for another
+// protocol (a test's ext:: remote standing in for a slow one) still applies.
+var testTransportGuard = [][2]string{
+	{"credential.helper", ""},
+	{"protocol.allow", "never"},
+	{"protocol.http.allow", "never"},
+	{"protocol.https.allow", "never"},
+	{"protocol.ssh.allow", "never"},
+	{"protocol.git.allow", "never"},
+	{"protocol.file.allow", "user"},
+}
+
+// netGuardOff switches the guard off for a test of this package that drives
+// a transport through a fake (the ssh command Net composes).
+var netGuardOff bool
+
+// netEnv is the environment of every git command abcd runs that may reach a
+// remote, built on env, the environment it would otherwise run with: Net,
+// NetEach, NetInput (and through them RemoteHeadBranch, the landing and the
+// reservation code) and RunLimitedNetContext. Outside a test binary it is env
+// unchanged, so the person's own configuration and credential helpers apply
+// exactly as their own git applies them. Under a test binary
+// (testing.Testing) networked git is restricted to local transports with no
+// credential helper: testTransportGuard rides in the GIT_CONFIG_COUNT form,
+// after any entries env already carries, so it outranks every config file.
+func netEnv(env []string) []string { return netEnvFor(env, testing.Testing() && !netGuardOff) }
+
+// netEnvFor is netEnv with the test-binary question answered by underTest.
+func netEnvFor(env []string, underTest bool) []string {
+	if !underTest {
+		return env
+	}
+	n := 0
+	out := make([]string, 0, len(env)+2*len(testTransportGuard)+1)
+	for _, kv := range env {
+		if v, ok := strings.CutPrefix(kv, "GIT_CONFIG_COUNT="); ok {
+			n, _ = strconv.Atoi(v)
+		}
+		// GIT_ALLOW_PROTOCOL outranks every protocol.*.allow entry, so one
+		// inherited from the developer's shell would let the guarded
+		// transports back in; under a test it is dropped.
+		if strings.HasPrefix(kv, "GIT_ALLOW_PROTOCOL=") {
+			continue
+		}
+		out = append(out, kv)
+	}
+	for i, kv := range testTransportGuard {
+		out = append(out, "GIT_CONFIG_KEY_"+strconv.Itoa(n+i)+"="+kv[0], "GIT_CONFIG_VALUE_"+strconv.Itoa(n+i)+"="+kv[1])
+	}
+	return append(out, "GIT_CONFIG_COUNT="+strconv.Itoa(n+len(testTransportGuard)))
 }
 
 // netSSHCommand is the ssh command Net runs git's ssh transport through: ssh

@@ -44,6 +44,10 @@ var cloudScrubbed = []string{
 	// A binary built from this checkout, and the host's file of variables for
 	// later shells: a test sets each, or none is set.
 	"ABCD_BIN=", "ABCD_OUTBOUND_BIN=", "CLAUDE_ENV_FILE=",
+	// The CA bundles a hosted session's proxy names: a test sets each, or
+	// none is set.
+	"SSL_CERT_FILE=", "GIT_SSL_CAINFO=", "CURL_CA_BUNDLE=", "REQUESTS_CA_BUNDLE=", "NODE_EXTRA_CA_CERTS=",
+	"FAKE_ROOT_ONLY=", "ABCD_CLOUD_CA_DIR=",
 }
 
 func newCloudCase(t *testing.T) *cloudCase {
@@ -78,7 +82,13 @@ func newCloudCase(t *testing.T) *cloudCase {
 			c.env = append(c.env, kv)
 		}
 	}
-	c.env = append(c.env, "PATH="+c.bin+string(os.PathListSeparator)+os.Getenv("PATH"), "CALLS="+c.calls)
+	// GIT_ALLOW_PROTOCOL=file holds every git the scripts and the built abcd
+	// run to local remotes: a github.com origin a test sets reaches no real
+	// forge, and a URL insteadOf rewrites to the bare repository still
+	// answers (iss-2610170718356567). The built binary is no test binary, so
+	// the guard gitutil keeps for one does not reach it, and its networked
+	// runner keeps this variable where it strips GIT_CONFIG_*.
+	c.env = append(c.env, "PATH="+c.bin+string(os.PathListSeparator)+os.Getenv("PATH"), "CALLS="+c.calls, "GIT_ALLOW_PROTOCOL=file")
 
 	gittest.InitBare(t, c.origin)
 	if out, err := c.run(base, "git", "init", "-q", "-b", "main", c.dir); err != nil {

@@ -2,7 +2,7 @@ package release
 
 // write.go — the cut's writes, their order, and their undo.
 //
-// A feature cut makes up to three writes, and they land together or not at all,
+// A feature cut makes up to four writes, and they land together or not at all,
 // after the rewrite of every intent record whose missed target the cut moves to
 // `next` (itd-2609212103572513 criterion 3):
 //
@@ -10,11 +10,15 @@ package release
 //     .abcd/development/releases/<its version>.md, never overwriting;
 //  2. the PAGE: the new RELEASE.md, replaced atomically (a copy then a replace,
 //     so there is no instant with no RELEASE.md);
-//  3. the CHANGELOG heading, written LAST, so the file the tagging workflow reads
-//     lands only after the page did.
+//  3. the DIGEST, when the repository declares one (digest.go): the declared
+//     file with the cut's release appended, written atomically through an
+//     os.Root;
+//  4. the CHANGELOG heading, written LAST, so the file the tagging workflow reads
+//     lands only after everything else did.
 //
 // Everything that can be checked is checked before step 1 (the payload, the
-// outgoing page's heading, the archive target). A failure at a later step undoes
+// outgoing page's heading, the archive target, the declared digest path and
+// the digest it appends to). A failure at a later step undoes
 // the earlier ones in reverse, and the report says whether that worked.
 
 import (
@@ -35,6 +39,11 @@ type fileOps interface {
 	createExclusive(rel string, data []byte) error
 	replace(rel string, data []byte) error
 	remove(rel string) error
+	// writeIn and removeIn write and remove a file through an os.Root, so a
+	// path a repository declares (the release digest) cannot be carried
+	// outside the tree by a symlinked ancestor.
+	writeIn(rel string, data []byte) error
+	removeIn(rel string) error
 }
 
 // osOps performs the writes inside the repository root. The archive is created
@@ -61,6 +70,24 @@ func (o osOps) remove(rel string) error {
 	return os.Remove(filepath.Join(o.root, filepath.FromSlash(rel)))
 }
 
+func (o osOps) writeIn(rel string, data []byte) error {
+	r, err := os.OpenRoot(o.root)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	return fsutil.WriteFileAtomicPreserveModeInRoot(r, rel, data)
+}
+
+func (o osOps) removeIn(rel string) error {
+	r, err := os.OpenRoot(o.root)
+	if err != nil {
+		return err
+	}
+	defer r.Close()
+	return r.Remove(rel)
+}
+
 // UndoPlan is what it takes to put the tree back as it was before a cut wrote.
 // The ship verb applies it when a step AFTER the ingest refuses (the payload
 // render), so a refused ship leaves no release record behind.
@@ -75,6 +102,12 @@ type UndoPlan struct {
 	archived        string
 	archiveDirMade  bool
 	changelogDone   bool
+	// digestRel is the declared digest, digestBefore its bytes before the cut
+	// (when digestExisted), and digestWritten whether the cut wrote it.
+	digestRel     string
+	digestBefore  []byte
+	digestExisted bool
+	digestWritten bool
 }
 
 // Apply undoes every write the cut made, in reverse, and returns a description
@@ -98,6 +131,17 @@ func (u UndoPlan) apply(ops fileOps, root string) []string {
 	if u.changelogDone {
 		if err := ops.replace(changelogFile, u.changelogBefore); err != nil {
 			failures = append(failures, changelogFile+": "+err.Error())
+		}
+	}
+	if u.digestWritten {
+		var err error
+		if u.digestExisted {
+			err = ops.writeIn(u.digestRel, u.digestBefore)
+		} else {
+			err = ops.removeIn(u.digestRel)
+		}
+		if err != nil {
+			failures = append(failures, u.digestRel+": "+err.Error())
 		}
 	}
 	if u.pageWritten {
@@ -136,6 +180,10 @@ type cutPlan struct {
 	records   []intent.TargetRewrite
 	changelog []byte
 	page      []byte // nil when no page is written
+	// digest is the declared digest's new bytes, written to digestRel; nil
+	// when the repository declares no digest.
+	digest    []byte
+	digestRel string
 	undo      UndoPlan
 }
 
@@ -182,6 +230,7 @@ func execute(ops fileOps, root string, plan cutPlan) (UndoPlan, error) {
 	done.records = nil
 	done.archived = ""
 	done.pageWritten = false
+	done.digestWritten = false
 	done.changelogDone = false
 
 	fail := func(step string, err error) (UndoPlan, error) {
@@ -213,6 +262,12 @@ func execute(ops fileOps, root string, plan cutPlan) (UndoPlan, error) {
 			return fail(PageFile, err)
 		}
 		done.pageWritten = true
+	}
+	if plan.digest != nil {
+		if err := ops.writeIn(plan.digestRel, plan.digest); err != nil {
+			return fail(plan.digestRel, err)
+		}
+		done.digestWritten = true
 	}
 	if err := ops.replace(changelogFile, plan.changelog); err != nil {
 		return fail(changelogFile, err)

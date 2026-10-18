@@ -861,7 +861,8 @@ var notNetworkMarkers = []string{
 }
 
 // RemoteProbe is the production network probe: `git ls-remote --exit-code
-// origin HEAD` in repoRoot through the isolated git helper, bounded by
+// origin HEAD` in repoRoot through the isolated networked git helper
+// (gitutil.RunLimitedNetContext), bounded by
 // NetworkProbeTimeout. The connection is back when the remote answers — with
 // HEAD (exit 0), without it (exit 2), or with a refusal that is not a network
 // failure, since a remote that refuses has been reached. It is down when git
@@ -871,7 +872,7 @@ func RemoteProbe(repoRoot string) func() (bool, string) {
 	return func() (bool, string) {
 		ctx, cancel := context.WithTimeout(context.Background(), NetworkProbeTimeout)
 		defer cancel()
-		_, err := gitutil.RunLimitedContext(ctx, repoRoot, 4096,
+		_, err := gitutil.RunLimitedNetContext(ctx, repoRoot, 4096,
 			"-c", "core.askPass=false", "ls-remote", "--exit-code", "origin", "HEAD")
 		if err == nil {
 			return true, "origin answered"

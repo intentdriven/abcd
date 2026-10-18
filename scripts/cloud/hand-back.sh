@@ -32,10 +32,9 @@
 #      checkout's .githooks, since a push the hook never sees is a skipped
 #      hook. The connector's prefix is read through connector.sh (C12);
 #   5. only when that fails (the identity, the commit, the hooks or the push),
-#      post the same report, with `channel: issue-comment` and why the push
-#      failed, as a
-#      comment on cloud.conf's tracking_issue through the forge's REST
-#      interface: `gh api --method POST repos/<owner>/<name>/issues/<n>/comments
+#      post the same report, with `channel: issue-comment` and why it did not
+#      go with the work, as a comment on cloud.conf's tracking_issue through
+#      the forge's REST interface: `gh api --method POST repos/<owner>/<name>/issues/<n>/comments
 #      --input -`, after the same outbound check. Owner and name come from
 #      origin's URL, read strictly as a plain github.com one (forge-repo.sh).
 #      With tracking_issue empty the fallback refuses by name ("no tracking
@@ -134,7 +133,7 @@ done
 
 finished="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-# compose <channel> [<why the push failed>] writes the report on standard output.
+# compose <channel> [<why it did not go with the work>] writes the report on standard output.
 compose() {
 	printf -- '---\nitem: %s\nstate: %s\nchannel: %s\nfinished_at: %s\n---\n\n' "$item" "$state" "$1" "$finished"
 	printf '# Cloud session report: %s\n\n' "$item"
@@ -142,7 +141,7 @@ compose() {
 	printf '## What failed\n\n%s\n\n' "$failed"
 	printf '## What it needs from the person\n\n%s\n' "$needs"
 	if [ $# -ge 2 ]; then
-		printf '\n## Why the push failed\n\n'
+		printf '\n## Why it did not go with the work\n\n'
 		printf '%s\n' "$2" | sed 's/^/    /'
 	fi
 }
@@ -445,5 +444,5 @@ if [ "$rc" -ne 0 ]; then
 	scrub "$out" | tail -n 5 >&2
 	neither "the comment on the tracking issue, #$tracking, was not posted (gh exited $rc)"
 fi
-echo "hand-back: the push failed, so the report was posted as a comment on the tracking issue, #$tracking, instead."
+echo "hand-back: the report could not go with the work, so it was posted as a comment on the tracking issue, #$tracking, instead."
 exit 0

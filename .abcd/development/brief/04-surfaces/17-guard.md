@@ -28,6 +28,7 @@ runs".
 |---|---|---|
 | `check` | gate | shipped |
 | `hook` | — | shipped |
+| `approve` | — | shipped |
 
 The check takes the candidate as the value of its command flag or on stdin, and
 stdin is the one to prefer for a command line you did not type: the shell
@@ -319,6 +320,173 @@ reads the registry of the repository the workdir names, so a command the check
 allows in one repository can be warned about or blocked by the hook when its
 workdir is another.
 
+## Answering a headless agent's prompts
+
+An agent abcd starts through its claude runner has no terminal, so nobody can
+answer the harness's permission prompts (iss-2610161612203555). A launch whose
+role's contract grants the shell therefore carries the guard
+(dcn-2610161624025493): the runner names the harness's permission prompt tool,
+`mcp__abcd__approve`, and starts the guard's approve sub-verb, for the working
+tree the agent runs in, as the launch's one MCP server, on stdio, both on that
+launch's command line, under
+the default permission mode, with the shell no longer granted without a prompt.
+Every shell command the harness would ask a person about is put to the guard,
+read against the registry of the working tree the agent runs in, afresh for
+each prompt, and judged against the registry the run started on
+(dcn-2610161821420088): the runner passes the lane's base commit, or the
+working tree's HEAD when an interview launched, and the working tree's registry
+is in force only where it is at least as strong as the one there. Any weakening
+since then, of a warn as much as a blocker, committed during the run or not,
+leaves no registry in force and refuses every command; a shell launch with no
+base is not started.
+
+The bar is higher than the hook's, because nobody answers after it. Only a
+clean allow approves: no entry and no signal, a warn included; no note about the
+check; the repository's registry in force and switched on; every program named
+by the line, not a variable, a substitution or a glob (`[`, `[[` and `test` are
+the test commands they name, not globs); every operand bash evaluates as
+arithmetic a written number, since a name there can hold an index that runs a
+command (`arithmetic-operand-unfixed`; `[` and `test` compare numbers without
+evaluating them); and none of the shapes
+the approver refuses itself. Those read the guard's own parse of the line, not
+its text:
+
+- code the guard does not read handed to an interpreter: inline (`python -c`,
+  `node -e` and the like), on the standard input of one that names no script
+  file, in an awk program or a sed script that runs a command, in tar's options
+  that run a program, or in a vim or ex command holding a `!`; the words after a
+  script's name, or after python's `-m` module, are the script's, not the
+  interpreter's;
+- a write the guard's write model reads, or a removal, whose target the line
+  does not fix (the write model is a list of known writers, so a program
+  outside it writes without being read): the targets are the
+  ones the guard's write model resolves, in every shell state the reading placed
+  the command in, with the operands of the commands that change, remove or link
+  a path; a variable, a substitution's output, a glob or a name after an unknown
+  change of directory may be any file. A glob removal whose fixed directory,
+  followed through symlinks to where it leads, is inside the working tree is
+  approved, when no earlier part of the line writes or removes a file (which
+  could make that directory a link first), unless a protected name could match
+  it: one its literal text aims at, a name starting with a dot only by a
+  pattern that spells the dot, or one already standing in that directory. A
+  glob with a wildcard in a directory part (`build/*/*`, `build/*/x.o`), or
+  that ends in `/`, is refused, since it lists directories the line never
+  names, any of which may be a symlink out of the working tree. A command
+  where an unquoted `(` stands in a word (`build/l(:A)`, `x(.)`, a
+  redirection's target), whatever the command and whatever follows the `(`, is
+  refused whole, since zsh reads it as glob qualifiers or modifiers that can
+  change the path (`build/l(:A)` is where the symlink leads) and the words
+  after it are not read as the command's own; bash refuses such a line, and
+  every approved command runs under bash, so this refusal is a second layer. A
+  quoted or escaped `(` is text, and a function definition's `()`, the `((` of
+  an arithmetic for-loop (`for ((;;))`; one whose header holds a name is refused
+  as arithmetic) and the `(` before a case
+  pattern (`case a in (a) …`), which bash needs and which name no path, are not
+  such a word;
+- a write or removal reaching a protected path, compared after the target's
+  existing directories are resolved through symlinks and its case folded where
+  the filesystem folds it: the git common directory with its hooks and config,
+  each hooks directory core.hooksPath names, each checkout's `.git`, the home
+  shell start-up files and git configuration, the host's settings directories,
+  `.mcp.json` and `.abcd/guard.json`, abcd's own folder in the home directory
+  (its trusted-roots, rules.json, config.json and the rest of the user layer,
+  the run's own worktree kept there excepted), and the names the harness's own
+  list protects in any working tree. A line that only names one of them is not
+  a write;
+- a removal whose fixed target lies outside the launched working tree, the
+  run's own directories (the brief's and the receipt's, which the runner names
+  to the approver) and the temporary directory. Writes outside the working tree are judged by
+  the protected set alone: bounding them is the OS sandbox's job
+  (spc-2610161751056096), not the approver's (dcn-2610161930191632); <!-- record-lint: forward-looking -->
+- `git config` writing outside the repository's own file (its global or
+  system scope, or a file it names), setting a key that starts a program (the keys `gitutil.ExecPins` pins and the others git
+  documents) or `core.worktree`, which moves the working tree git writes to
+  another directory, or opening the editor, and any git command setting such a
+  key for itself, except a `-c` setting of `core.pager` or `core.sshCommand` to
+  a command the line spells out, which is judged as the command git runs, the
+  way a bang alias is, and approved when clean and no earlier part of the line
+  writes or removes a file;
+- removing, moving or recursively changing a path that is, or may be, the root,
+  a top-level directory, the home directory or one of its direct children, the
+  working tree or a directory above it, or another checkout of the repository;
+  a find that deletes from home or above; an rsync that deletes into such a
+  directory;
+- a call that asks to run outside the host's sandbox.
+
+The protected paths and critical removals keep the refusals the harness's own
+safety checks gave in the refuse-every-prompt mode: the prompt tool is told the
+tool and its input, not why the harness asked, so the approver refuses those
+shapes itself. An approved call runs with the command judged and its
+description, re-encoded, and nothing else the call carried, from the working
+tree it was judged for and under bash (dcn-2610170805446355): the harness keeps
+the shell's directory from one call to the next, and runs the text in the
+person's login shell, which may be zsh, while the guard reads every command in
+bash's grammar. So the approval hands the command back as
+`cd -- '<dir>' && /bin/bash --noprofile --norc -p -c '<command>'`, the
+directory and the command each quoted as one literal word: the login shell only
+changes directory and, when that succeeds, starts /bin/bash with its profile,
+rc and environment start-up files ignored (-p), so `BASH_ENV`, functions
+exported as `BASH_FUNC_*` and `SHELLOPTS` from the environment do nothing, and
+bash runs the command, so what the guard judged is what runs. The call is not
+an `exec`: text the host joins after it (its `&& pwd -P >| <file>` record of
+the shell's working directory) still runs, and `exec` would guard nothing the
+agent controls. bash gives no zsh-only construct its zsh meaning: glob
+qualifiers, `(:A)`
+modifiers and `{ … } always { … }` are syntax errors to it, and it runs nothing
+of a line holding one. When the directory cannot be entered no part of the
+command runs, a part after `||` or `;` included, and the command's exit status
+is the call's. The text handed back is read again with the guard's own parse,
+and the call is approved only when it is exactly the change of directory joined
+by `&&` to that one bash call, with the whole command as its last word and
+nothing else; nothing in the command can end that word early, so a `}` or a
+`fi` with nothing open is bash's syntax error inside the working tree, not a
+refusal. A change of directory inside the line
+still holds for the rest of it, and a relative name after a `cd` the line spells
+out and joins with `&&` is read in that directory. A command holding a NUL
+byte, which no shell passes on as written, is refused before it is read
+(`command-holds-nul`). Everything else, and
+a prompt for any tool but the shell, is refused with the guard's reason and
+successor, which the harness hands the agent so it can rewrite the command. The
+checks read the line itself: a script the line runs is read for the registry's
+hazards, not for its own writes.
+
+What the approver does not cover, plainly: the file tools the role is granted
+on the launch (the contract's tools other than the shell, which the runner
+grants without a prompt) write without asking the approver, so the protected
+paths bound only the shell's writes; a script the line runs writes unread, and
+a command that writes into a directory is judged by that directory, not by the
+files that land inside it; and the abcd binary that answers the prompts is not
+among the paths it protects. The registry's agent-launch entries recognise a
+harness by its program name, by the package that ships it and behind the
+launchers the registry steps, so a harness started under another name, a copied
+or linked binary run by that name, is not recognisable at this layer
+(iss-2610162027075062). The list of agent launches is a mistake filter: it
+steers an agent that starts another harness by an ordinary route, a harness
+started by any route outside it (another name, a copied binary, a
+configuration file it reads) is bounded by the OS sandbox and not by the list,
+so a further form is added when it is common, not to close the class
+(dcn-2610162040034117). Bounding all of those is the OS sandbox for launched
+agents (spc-2610161751056096), not the approver. <!-- record-lint: forward-looking -->
+
+What this widens, plainly: on such a launch, a shell command the harness would
+have refused for want of a person, such as a compound line its parser cannot
+trace, now runs when the guard clears it. What it narrows: a shell grant used to
+run every command unasked, with no guard at all, since bare mode loads no
+plugin hook; now each command the harness does not itself treat as read-only
+reaches the guard first. The guard stays a mistake filter
+([adr-42](../../decisions/adrs/0042-guard-parse-layer-is-a-mistake-filter.md));
+the approver widens nothing past what it reads, and this adds no sandbox, which
+for autonomous runs is a separate later step (dcn-2610161619296615).
+
+The expected shape, a pre-tool-use hook in a per-launch `--settings` file, does
+not work: bare mode skips every hook, those a `--settings` file declares
+included (probed on the harness's 2.1.301 release), while an MCP server
+`--mcp-config` names is the one thing bare mode starts. The person's host
+settings are never written, and a session the person drives never starts the
+approver. A launch whose contract grants no shell refuses every prompt unasked,
+as before; the opencode runner has no per-launch prompt answerer, so its
+launches keep the permissions opencode's own configuration sets.
+
 ## What an allow means
 
 An allow means **no registry entry matched**, never that a command is safe.
@@ -415,6 +583,8 @@ it does. A delete chained after `pushd` or `popd` is read as one chained after
 `cd`. A `kill` handed what a process search prints, in a substitution or
 piped into `xargs kill`, is read as the kill by name it is — through a group
 and into one, whose every command is read as handed what is piped into it,
+up to a `}` the line leaves wholly unquoted (a `}""` or `}''` is a command's
+name and does not end it),
 through a shell string that runs the search, and into a shell string `xargs`
 runs or a pipe or redirect feeds, whose every command is read as handed its
 input, or whose positional parameters or own text hold the search's output; out
@@ -608,9 +778,19 @@ _Generated from the command tree; a drift test fails `go test` when this appendi
 
 ### `abcd guard`
 
-Sub-verbs: `abcd guard check`, `abcd guard hook`.
+Sub-verbs: `abcd guard approve`, `abcd guard check`, `abcd guard hook`.
 
 Flags: none.
+
+### `abcd guard approve`
+
+Sub-verbs: none.
+
+| Flag | Type |
+|---|---|
+| `--base` | string |
+| `--dir` | string |
+| `--run-dir` | stringArray |
 
 ### `abcd guard check`
 
