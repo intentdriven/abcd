@@ -483,8 +483,8 @@ jobs:
 
       # The plain-only guards on the macOS leg (iss-2610180542030806): the same
       # command as the ubuntu leg's "Test (plain-only guards)", after the race
-      # pass. About a minute, on a leg that ran 36.5 of its 60 in the last
-      # merge-group run. TestEveryLegRunsEveryPlainOnlyGuard holds both
+      # pass, about a minute when it was added on a leg that ran 36.5 minutes.
+      # TestEveryLegRunsEveryPlainOnlyGuard holds both
       # steps to the list it derives from the test files.
       - name: Test (plain-only guards, macOS)
         if: matrix.os == 'macos-latest' && github.event_name != 'pull_request'
@@ -585,13 +585,15 @@ jobs:
       # job: `always()` runs it however the steps before it ended, and
       # `continue-on-error` holds even a broken script to a warning.
       # TestCheckJobWarnsBeforeTheQueueCap pins the threshold ten minutes below
-      # the leg's ceiling.
+      # the leg's ceiling, and CEILING_MINUTES, the cap the message names, to
+      # that ceiling.
       - name: Warn when the check nears the queue's cap
         if: always() && matrix.os == 'macos-latest' && github.event_name != 'pull_request'
         continue-on-error: true
         env:
           STARTED_AT: ${{ steps.started.outputs.epoch }}
           WARN_AFTER_MINUTES: 60
+          CEILING_MINUTES: 70
         run: |
           case "${STARTED_AT:-}" in
             '' | *[!0-9]*)
@@ -603,7 +605,7 @@ jobs:
           minutes=$((elapsed / 60))
           echo "check (macos-latest) has run ${minutes}m $((elapsed % 60))s; the warning line is ${WARN_AFTER_MINUTES}m"
           if [ "$elapsed" -gt $((WARN_AFTER_MINUTES * 60)) ]; then
-            msg="check (macos-latest) ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's $((WARN_AFTER_MINUTES + 10))-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
+            msg="check (macos-latest) ran ${minutes} minutes, past the ${WARN_AFTER_MINUTES}-minute warning line and close to the job's ${CEILING_MINUTES}-minute cap. If it is cancelled at the cap, rerun it once; a second cancellation for the same reason stops the pull request: open a speed lane to make the suite faster, and do not raise the timeout."
             echo "::warning title=macOS check near the queue's cap::${msg}"
             printf '### macOS check near the merge queue cap\n\n%s\n' "$msg" >>"$GITHUB_STEP_SUMMARY"
           fi

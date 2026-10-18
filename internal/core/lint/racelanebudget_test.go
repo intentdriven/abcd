@@ -209,6 +209,17 @@ func TestCheckJobWarnsBeforeTheQueueCap(t *testing.T) {
 			"%d-minute ceiling (the cancel policy of ruling Z)",
 			where, checkWarnStep, warn, checkWarnAfterMinutes, checkWarnLeadMinutes, checkMacOSCeilingMinutes)
 	}
+	// The cap the message names comes from the step's own env, held to the
+	// leg's ceiling here, so the message cannot name a cap the job no longer
+	// has (dcn-2610181756328249).
+	c := regexp.MustCompile(`(?m)^\s+CEILING_MINUTES: "?(\d+)"?\s*$`).FindStringSubmatch(step)
+	if c == nil {
+		t.Errorf("%s step %q: no CEILING_MINUTES in its env; the message would name the cap from a "+
+			"number no test holds to the leg's ceiling", where, checkWarnStep)
+	} else if ceiling, _ := strconv.Atoi(c[1]); ceiling != checkMacOSCeilingMinutes {
+		t.Errorf("%s step %q: CEILING_MINUTES is %d; want %d, the macos-latest leg's ceiling",
+			where, checkWarnStep, ceiling, checkMacOSCeilingMinutes)
+	}
 	warnAfter := time.Duration(warn) * time.Minute
 	for _, leg := range checkLegTimeouts(t, where, job) {
 		if leg.os == "macos-latest" && warnAfter >= leg.minutes {
@@ -239,6 +250,10 @@ func TestCheckJobWarnsBeforeTheQueueCap(t *testing.T) {
 		t.Fatalf("%s step %q has no run: script", where, checkWarnStep)
 	}
 	run := step[at:]
+	if !strings.Contains(run, "${CEILING_MINUTES}-minute cap") {
+		t.Errorf("%s step %q: its script does not name the cap as ${CEILING_MINUTES}-minute cap; a "+
+			"cap written any other way can drift from the ceiling", where, checkWarnStep)
+	}
 	for _, want := range []string{"::warning", "GITHUB_STEP_SUMMARY", "rerun", "speed lane"} {
 		if !strings.Contains(run, want) {
 			t.Errorf("%s step %q: its script never mentions %q; the warning names the rerun-once "+
