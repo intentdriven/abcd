@@ -39,11 +39,17 @@ func hangingGit(t *testing.T) (pidFile string) {
 // gone — killed, not abandoned to finish on its own.
 func TestRootCommitContextKillsGitAtTheDeadline(t *testing.T) {
 	pidFile := hangingGit(t)
+	// Repository-shaped, so the lookup asks git: a directory with no .git
+	// entry is answered without it.
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
 	start := time.Now()
-	sha, err := gitutil.RootCommitContext(ctx, t.TempDir())
+	sha, err := gitutil.RootCommitContext(ctx, dir)
 	took := time.Since(start)
 	if sha != "" || !errors.Is(err, context.DeadlineExceeded) {
 		t.Errorf("RootCommitContext = %q, %v; want \"\" and context.DeadlineExceeded", sha, err)
@@ -85,7 +91,7 @@ func TestRootCommitContextAnswersAsRootCommitDoes(t *testing.T) {
 			t.Skipf("git %v unavailable: %v (%s)", args, err, out)
 		}
 	}
-	want := gitutil.RootCommit(repo)
+	want := gittest.RootCommit(t, repo)
 	if !gitutil.IsFullSHA(want) {
 		t.Fatalf("fixture: RootCommit = %q", want)
 	}

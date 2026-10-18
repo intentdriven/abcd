@@ -362,31 +362,46 @@ func IsAncestor(root, ancestor, descendant string) (bool, error) {
 	return false, fmt.Errorf("%w (stderr: %q)", err, strings.TrimSpace(string(e.buf)))
 }
 
-// RootCommit returns the repository's canonical (first) root-commit SHA, or ""
-// when it cannot be derived — git absent, not a repository, no commits. It is
-// total: a caller keying a store or a marker on the repository's identity gets
-// "" rather than an error, and decides for itself what an unidentified
-// repository means. A repository can have several root commits (an octopus of
-// unrelated histories); the first `rev-list` reports is the canonical one, the
-// same choice the history registry and the lifeboat probe make.
+// ErrNoRootAnswer is a root-commit lookup that got no answer from git for a
+// directory that is a repository by its shape: git did not start, was killed,
+// exited in a way that names neither a root commit nor an empty history, or
+// refused the repository. It is never "this repository has no root commit",
+// which is ("", nil) (iss-2610051434156079).
+var ErrNoRootAnswer = errors.New("git gave no root commit for a repository")
+
+// RootCommit returns the repository's canonical (first) root-commit SHA. A
+// repository can have several root commits (an octopus of unrelated
+// histories); the first `rev-list` reports is the canonical one, the same
+// choice the history registry and the lifeboat probe make.
+//
+// It returns ("", nil) only for the two definite answers: root names no
+// directory or no repository (nothing at or above it carries a .git entry),
+// or the repository has no commits yet. Every other failure is an error a
+// caller must handle: ErrNoRootAnswer for a git that did not answer for a
+// repository-shaped directory, ErrGitTimedOut for one whose output missed the
+// runner's wait twice. A failed git call is never read as an answer, since a
+// caller keying a store on the identity would otherwise take a real
+// repository for none (iss-2610051434156079).
 //
 // The output is bounded (one object name, so the cap is generous) rather than
 // buffered whole: a hostile repository must not be able to make an identity
 // probe allocate. It has no deadline, so it waits for git's answer however
 // loaded the machine is (contextWaitDelay): a slow git is never read as a
 // repository with no root commit (iss-2610100846469473).
-func RootCommit(root string) string {
-	sha, _ := RootCommitContext(context.Background(), root)
-	return sha
+func RootCommit(root string) (string, error) {
+	return RootCommitContext(context.Background(), root)
 }
 
-// RootCommitContext is RootCommit bound to ctx: the same answer, total in the
-// same way, except that git not answering in time is returned as its own
-// error — a context that ends before git answers (wrapped, with git killed),
-// or a git whose output missed the runner's WaitDelay twice (ErrGitTimedOut) —
-// so a caller can tell "this repository has no root commit" from "git did not
-// answer in time".
+// RootCommitContext is RootCommit bound to ctx: the same answers, and a
+// context that ends before git answers is returned as that context's error,
+// with git killed.
 func RootCommitContext(ctx context.Context, root string) (string, error) {
+	if _, err := os.Stat(root); errors.Is(err, os.ErrNotExist) {
+		return "", nil
+	}
+	if !RepoShaped(root) {
+		return "", nil
+	}
 	out, err := RunLimitedContext(ctx, root, 4096, "rev-list", "-n", "1", "--max-parents=0", "HEAD")
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return "", ctxErr
@@ -395,13 +410,32 @@ func RootCommitContext(ctx context.Context, root string) (string, error) {
 		if errors.Is(err, ErrGitTimedOut) {
 			return "", err
 		}
-		return "", nil
+		if emptyHistory(ctx, root, err) {
+			return "", nil
+		}
+		// The cause stays in the chain (%w), so a caller can still tell
+		// a deliberate refusal, such as ErrLazyFetchFloor, from git failing.
+		return "", fmt.Errorf("%w: %s: %w", ErrNoRootAnswer, root, err)
 	}
 	fields := strings.Fields(out)
 	if len(fields) == 0 {
 		return "", nil
 	}
 	return fields[0], nil
+}
+
+// emptyHistory reports whether a failed root-commit lookup failed because the
+// repository has no commits yet. git exits 128 for that and for every other
+// fatal error alike, so it is asked directly: `rev-parse --verify -q HEAD`
+// exits 1, quietly, for an unborn HEAD in a repository git answers for. Any
+// other outcome, including git not running at all, is not an empty history.
+func emptyHistory(ctx context.Context, root string, lookupErr error) bool {
+	var ee *exec.ExitError
+	if !errors.As(lookupErr, &ee) || ee.ExitCode() != 128 {
+		return false
+	}
+	_, err := RunLimitedContext(ctx, root, 4096, "rev-parse", "--verify", "-q", "HEAD")
+	return errors.As(err, &ee) && ee.ExitCode() == 1
 }
 
 // fullSHARe is a full object name: forty hex digits under SHA-1, sixty-four

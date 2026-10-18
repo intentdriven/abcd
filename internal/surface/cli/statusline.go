@@ -13,6 +13,7 @@ import (
 	"github.com/intentdriven/abcd/internal/abcdhome"
 	"github.com/intentdriven/abcd/internal/core/ahoy"
 	"github.com/intentdriven/abcd/internal/core/statusline"
+	"github.com/intentdriven/abcd/internal/gitutil"
 	"github.com/intentdriven/abcd/internal/procgroup"
 	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
@@ -243,7 +244,11 @@ func decideStatus(gitCtx context.Context, gitBudget time.Duration, stdin io.Read
 	if rootErr == nil {
 		var mErr error
 		if managed, mErr = ahoy.ManagedContext(gitCtx, root); mErr != nil {
-			d.notes = append(d.notes, fmt.Sprintf("git did not say within %s whether abcd manages this checkout, so the status line is empty for this refresh", gitBudget))
+			note := fmt.Sprintf("git did not say within %s whether abcd manages this checkout, so the status line is empty for this refresh", gitBudget)
+			if errors.Is(mErr, gitutil.ErrNoRootAnswer) {
+				note = "git gave no root commit for this checkout, so whether abcd manages it is unknown and the status line is empty for this refresh"
+			}
+			d.notes = append(d.notes, note)
 			d.blank = true
 			return d
 		}

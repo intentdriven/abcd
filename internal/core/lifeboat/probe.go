@@ -208,7 +208,22 @@ func newSourceContext(repoRoot string) (*SourceContext, error) {
 	}
 	if gitutil.InRepo(abs) {
 		c.isGit = true
-		c.rootSHA = gitutil.RootCommit(abs)
+		sha, err := gitutil.RootCommit(abs)
+		switch {
+		case errors.Is(err, gitutil.ErrLazyFetchFloor):
+			// abcd's own refusal to read objects in a partial clone below
+			// git 2.44, not git failing: every git read of the probe is
+			// refused alike, the default scan refuses on it (ignoreScopeErr),
+			// and the asked-for wide scan proceeds with the root unrecorded,
+			// so the voyage keyed on it is skipped rather than keyed on "".
+		case err != nil:
+			// The root commit is recorded in the coverage, the plan and the
+			// voyage; a git that did not answer stops the probe rather than
+			// stamping a repository as one with no root commit.
+			c.Close()
+			return nil, fmt.Errorf("reading the source repository's root commit: %w", err)
+		}
+		c.rootSHA = sha
 	}
 	return c, nil
 }

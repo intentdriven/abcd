@@ -13,11 +13,11 @@ import (
 )
 
 // stageMissFilename is the marker, beside the staging directory, that counts
-// the sub-agent transcripts a SubagentStop hook read but could not stage
-// (iss-2610051434156079). The hook exits 0 whatever happens, since a non-zero
-// exit is that event's blocking code, and its stderr reaches only a debug log,
-// so without the marker a lost transcript would be seen by no one.
-const stageMissFilename = "subagent-stage-misses.json"
+// the transcripts a staging hook (sub-agent stop, session end) read but could
+// not stage (iss-2610051434156079). Both hooks exit 0 whatever happens, and
+// their stderr reaches only a debug log, so without the marker a lost
+// transcript would be seen by no one.
+const stageMissFilename = "stage-misses.json"
 
 // stageMissLockTimeout bounds the wait for the marker's own lock. A burst of
 // completions that all miss writes the marker once each, and the critical
@@ -28,15 +28,15 @@ const stageMissLockTimeout = 5 * time.Second
 // whatever the failure said.
 const stageMissReasonMax = 300
 
-// StageMissNote is the marker: how many sub-agent transcripts were read but
-// not staged, when the first and the last were, and the last one's agent and
-// reason.
+// StageMissNote is the marker: how many transcripts were read but not staged,
+// when the first and the last were, and whose the last was (a sub-agent or a
+// session) and why.
 type StageMissNote struct {
 	Schema     int       `json:"schema"`
 	FirstSeen  time.Time `json:"first_seen"`
 	LastSeen   time.Time `json:"last_seen"`
 	Count      int       `json:"count"`
-	LastAgent  string    `json:"last_agent"`
+	LastWho    string    `json:"last_who"`
 	LastReason string    `json:"last_reason"`
 }
 
@@ -49,11 +49,12 @@ func stageMissPath(repoRoot, rootSHA string) (string, error) {
 	return filepath.Join(lane, stageMissFilename), nil
 }
 
-// NoteStageMiss records one sub-agent transcript that was read and could not
-// be staged, under the marker's own lock so concurrent misses each count.
-// agentID and reason are stored as given apart from a bound on the reason;
-// every reader sanitises them before printing.
-func NoteStageMiss(repoRoot, rootSHA, agentID, reason string) error {
+// NoteStageMiss records one transcript that was read and could not be staged,
+// under the marker's own lock so concurrent misses each count. who names it
+// ("sub-agent <id>" or "session <id>"). who and reason are stored as given,
+// apart from a bound on the reason, and every reader sanitises them before
+// printing.
+func NoteStageMiss(repoRoot, rootSHA, who, reason string) error {
 	if !rootSHARe.MatchString(rootSHA) {
 		return errors.New(rootSHAErrMsg)
 	}
@@ -71,7 +72,7 @@ func NoteStageMiss(repoRoot, rootSHA, agentID, reason string) error {
 		if prior, ok, err := readStageMiss(path); err == nil && ok {
 			note.FirstSeen, note.Count = prior.FirstSeen, prior.Count
 		}
-		note.LastSeen, note.LastAgent, note.LastReason = now, agentID, reason
+		note.LastSeen, note.LastWho, note.LastReason = now, who, reason
 		note.Count++
 		data, err := json.Marshal(note)
 		if err != nil {
@@ -81,8 +82,8 @@ func NoteStageMiss(repoRoot, rootSHA, agentID, reason string) error {
 	})
 }
 
-// StageMiss reads the marker. A missing marker is not an error: no sub-agent
-// transcript has been missed.
+// StageMiss reads the marker. A missing marker is not an error: no transcript
+// has been missed.
 func StageMiss(repoRoot, rootSHA string) (StageMissNote, bool, error) {
 	if !rootSHARe.MatchString(rootSHA) {
 		return StageMissNote{}, false, errors.New(rootSHAErrMsg)

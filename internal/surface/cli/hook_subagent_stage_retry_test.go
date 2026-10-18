@@ -192,11 +192,11 @@ func TestHookSubagentStopMarksAStageThatStillFails(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("the missed stage left no marker (%v)\nstderr: %s", err, stderr)
 	}
-	if miss.Count != 1 || miss.LastAgent != "m1" || !strings.Contains(miss.LastReason, "lock") {
+	if miss.Count != 1 || miss.LastWho != "sub-agent m1" || !strings.Contains(miss.LastReason, "lock") {
 		t.Errorf("marker = %+v; want one miss by m1 naming the lock", miss)
 	}
 	t.Chdir(repo)
-	if out := string(runCLI(t, "history", "staged")); !strings.Contains(out, "1 sub-agent transcript(s) were read but could not be staged") {
+	if out := string(runCLI(t, "history", "staged")); !strings.Contains(out, "1 transcript(s) were read but could not be staged") {
 		t.Errorf("history staged does not report the missed stage:\n%s", out)
 	}
 }
@@ -211,4 +211,31 @@ func notStaged(stderrs []string) string {
 		}
 	}
 	return b.String()
+}
+
+// TestHookSessionEndRetriesATransientRootFailure: the session's own transcript
+// had the same silent loss as a sub-agent's. One failed root-commit lookup at
+// session end no longer gives the session up; the hook asks again and stages.
+func TestHookSessionEndRetriesATransientRootFailure(t *testing.T) {
+	repo, rootSHA := sessionEndRepo(t)
+	tp := filepath.Join(t.TempDir(), "session.jsonl")
+	if err := os.WriteFile(tp, []byte(`{"role":"user","text":"hello"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	failRootCommitGit(t, 1)
+
+	_, stderr, failed := runHookAllowingFailure(endPayload(t, "sess-end-retry", repo, tp), "hook", "session-end")
+	if failed {
+		t.Fatalf("the hook exited non-zero: %s", stderr)
+	}
+	staged, err := history.ListStaged(repo, rootSHA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(staged) != 1 {
+		t.Fatalf("a transient git failure at session end dropped the session: %d staged\nstderr: %s", len(staged), stderr)
+	}
+	if !strings.Contains(stderr, "resolved on try") {
+		t.Errorf("stderr does not say the repository resolved on a retry: %q", stderr)
+	}
 }

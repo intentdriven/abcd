@@ -87,17 +87,24 @@ const (
 // readMemoryLayers reads both layers through the recall's one reader
 // (recall.ReadLayers), for the repository the rules loader resolved, and
 // that repository's root commit, the key a personal note is tied by. A layer
-// that cannot be read is named, never fatal here.
-func readMemoryLayers(home, repoRoot string) (l recall.Layers, root string, unreadable []recall.Refusal) {
+// that cannot be read is named, never fatal here. A root commit git did not
+// answer for is the error: without it every tied note would read as another
+// repository's, a reach the listing would state as fact.
+func readMemoryLayers(home, repoRoot string) (l recall.Layers, root string, unreadable []recall.Refusal, err error) {
 	l, unreadable = recall.ReadLayers(home, repoRoot)
 	if unreadable == nil {
 		unreadable = []recall.Refusal{}
 	}
-	return l, memoryRootCommit(repoRoot), unreadable
+	root, err = memoryRootCommit(repoRoot)
+	if err != nil {
+		return recall.Layers{}, "", nil, fmt.Errorf("abcd memory: reading this repository's root commit, which says which personal notes are tied to it: %w", err)
+	}
+	return l, root, unreadable, nil
 }
 
 // memoryRootCommit is the repository's root commit, the key a personal note
-// is tied by; "" outside a repository with commits.
+// is tied by; "" outside a repository with commits, and an error when git did
+// not answer.
 var memoryRootCommit = gitutil.RootCommit
 
 // reachOf names a personal note's reach from the repository root key.
@@ -163,7 +170,10 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			l, root, unreadable := readMemoryLayers(home, repoRoot)
+			l, root, unreadable, err := readMemoryLayers(home, repoRoot)
+			if err != nil {
+				return err
+			}
 			out := memoryBareOutput{Project: len(l.Project), Unreadable: unreadable}
 			for _, n := range l.Machine {
 				switch reachOf(n, root) {
@@ -258,7 +268,10 @@ func newMemoryCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			l, root, unreadable := readMemoryLayers(home, repoRoot)
+			l, root, unreadable, err := readMemoryLayers(home, repoRoot)
+			if err != nil {
+				return err
+			}
 			out := memoryListOutput{Notes: []memoryNoteView{}, Unreadable: unreadable}
 			for _, n := range l.Machine {
 				out.Notes = append(out.Notes, noteView("machine", reachOf(n, root), n))

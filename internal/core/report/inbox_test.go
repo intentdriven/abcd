@@ -16,7 +16,6 @@ import (
 	"github.com/intentdriven/abcd/internal/core/lint"
 	"github.com/intentdriven/abcd/internal/core/recordid"
 	"github.com/intentdriven/abcd/internal/gittest"
-	"github.com/intentdriven/abcd/internal/gitutil"
 )
 
 // sandbox points HOME at a fresh directory, so the inbox the test sees is its
@@ -51,7 +50,7 @@ func committedRepo(t *testing.T) *gittest.Repo {
 func abcdCheckout(t *testing.T) *gittest.Repo {
 	t.Helper()
 	r := committedRepo(t)
-	t.Cleanup(SetAbcdRootCommitForTest(gitutil.RootCommit(r.Root())))
+	t.Cleanup(SetAbcdRootCommitForTest(gittest.RootCommit(t, r.Root())))
 	return r
 }
 
@@ -391,7 +390,7 @@ func TestPromoteRetryAfterAFailedMoveFilesOneCapture(t *testing.T) {
 // holds this test: the root commit is abcd's identity, and a constant that
 // drifted from it would refuse every promotion in abcd's own checkout.
 func TestAbcdRootCommitIsThisCheckouts(t *testing.T) {
-	root := gitutil.RootCommit(".")
+	root := gittest.RootCommit(t, ".")
 	if root == "" {
 		t.Skip("not run from a git checkout (an archive copy); nothing to pin against")
 	}

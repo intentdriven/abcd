@@ -201,6 +201,11 @@ func Setup(req SetupRequest) (SetupResult, error) {
 	if err != nil {
 		return SetupResult{}, fmt.Errorf("site setup: could not classify this folder: %w", err)
 	}
+	if rerr := det.RepoIdentity.RootErr(); det.RootSHA == "" && rerr != nil {
+		// git not answering is not a folder outside abcd: say which it was,
+		// and still set nothing up (iss-2610051434156079).
+		return SetupResult{}, fmt.Errorf("site setup: git gave no root commit for this repository, so abcd cannot tell whether it manages it: %w", rerr)
+	}
 	if det.FolderKind != ahoy.ManagedRepo {
 		return SetupResult{}, ErrNotManaged
 	}

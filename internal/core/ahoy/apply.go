@@ -1197,6 +1197,14 @@ func (a *applyCtx) stepHistory() {
 		a.note(writeSessionStore, filepath.Join(root, "index.json"))
 	}
 	sha := a.det.RepoIdentity.RootSHA
+	if rerr := a.det.RepoIdentity.RootErr(); rerr != nil {
+		// git did not answer for the root commit: the repository is not
+		// registered or given a store this run, and says so, rather than
+		// being passed over as one with no commits (iss-2610051434156079).
+		a.refuse("could not register this repository on this machine: git gave no root commit for it (" +
+			fsutil.RedactRoot(errText(rerr), a.cwd, ".") + "); run `abcd ahoy install` again")
+		return
+	}
 	if sha == "" {
 		return
 	}
