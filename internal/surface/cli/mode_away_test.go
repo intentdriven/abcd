@@ -281,3 +281,24 @@ func TestModeQueueRefusals(t *testing.T) {
 		t.Errorf("queue on a record others can write: err = %v, want exit 2 naming %s", err, autonomy.RecordFile)
 	}
 }
+
+// TestModeBackEndsAnUnreadableRecord: `abcd mode back` on a record that does
+// not parse exits 0, says the record could not be read and was replaced, and
+// the mode no longer holds; the --json envelope carries the notes.
+func TestModeBackEndsAnUnreadableRecord(t *testing.T) {
+	root := awayCheckout(t)
+	setAway(t)
+	if err := os.WriteFile(awayStore(t, root).RecordPath(), []byte("{not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout, stderr, err := runSplit(t, "", "mode", "back", "--json")
+	if err != nil {
+		t.Fatalf("mode back on an unreadable record: %v\n%s", err, stderr)
+	}
+	if !strings.Contains(stdout, `"notes"`) || !strings.Contains(stdout, "could not be read") {
+		t.Errorf("the envelope lacks the notes:\n%s", stdout)
+	}
+	if rec := readAway(t, root); rec.Closed == nil || rec.Holds(time.Now()) {
+		t.Errorf("after mode back the record holds: %+v", rec)
+	}
+}

@@ -4104,9 +4104,12 @@ the cap"), record who ended it and from which working copy, and close the record
 On a record whose time has already passed it prints the same and closes it. With
 no record, or one already closed, it says there is nothing to end.
 
-A session runs it only on the person's word in that session. Exit 2 when the
-record or its lock is not safely this account's, naming the file, with nothing
-written. No network request.
+A session runs it only on the person's word in that session. It ends the mode
+whatever state the record is in: one past its 64 KiB is printed whole and kept
+with its oldest lines let go and counted; one that does not parse, or is not
+safely this account's, is replaced by a closed record, printing nothing from
+it; and a lock not had in time is gone around. Each is named on its own line.
+No network request.
 
 #### `abcd mode queue`
 
@@ -4119,8 +4122,8 @@ the person may approve, which a session queues instead of asking, then carries o
 with other work. `abcd mode back` prints each queued step on one line.
 
 Exit 2 when no away record holds (ask the person instead), on an empty step or one
-over 500 characters, and when the record or its lock is not safely this account's,
-with nothing written. No network request.
+over 500 characters, when the queue is full (it is never cut), and when the record
+or its lock is not safely this account's, with nothing written. No network request.
 
 **Example:**
 

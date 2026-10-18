@@ -1,6 +1,7 @@
 package autonomy
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -40,6 +41,8 @@ var (
 	ErrStepEmpty = errors.New("autonomy: the step is empty")
 	// ErrStepTooLong is a queued step past MaxStepLen.
 	ErrStepTooLong = errors.New("autonomy: the step is too long")
+	// ErrQueueFull is a step the queue has no room for.
+	ErrQueueFull = errors.New("autonomy: the queue is full")
 )
 
 // Who names a person acting on the record and the working copy they act from
@@ -62,6 +65,13 @@ type Record struct {
 	HandedBack    []HandBack   `json:"handed_back"`
 	Stops         []Stop       `json:"stops"`
 	Closed        *Closing     `json:"closed,omitempty"`
+	// DroppedStops, DroppedHandBacks and DroppedSteps count what was let go
+	// to keep the record within MaxFileBytes: the oldest stops (by their
+	// counts) and hand-backs as new ones arrive, and, only when a record
+	// past its bound is carried or closed, the oldest queued steps.
+	DroppedStops     int `json:"dropped_stops,omitempty"`
+	DroppedHandBacks int `json:"dropped_handed_back,omitempty"`
+	DroppedSteps     int `json:"dropped_queue,omitempty"`
 }
 
 // QueuedStep is one step queued for the person's return.
@@ -142,8 +152,68 @@ func Begin(prev *Record, who Who, now, until time.Time, holdPushes bool) (*Recor
 		r.Queue = append(r.Queue, prev.Queue...)
 		r.HandedBack = append(r.HandedBack, prev.HandedBack...)
 		r.Stops = append(r.Stops, prev.Stops...)
+		r.DroppedStops, r.DroppedHandBacks, r.DroppedSteps = prev.DroppedStops, prev.DroppedHandBacks, prev.DroppedSteps
 	}
+	r.Fit()
 	return r, nil
+}
+
+// The parts' bounds keep a record within MaxFileBytes in use, each in its
+// JSON form: the queue refuses a step past queueBudget, and the stops and
+// hand-backs let their oldest go past theirs. The rest of the record (who,
+// from where, when) is a few hundred bytes.
+const (
+	queueBudget    = 24 << 10
+	stopsBudget    = 24 << 10
+	handBackBudget = 8 << 10
+	// fitBudget is what Fit leaves a record, under MaxFileBytes with room
+	// for the closing Back adds and the newline the store writes.
+	fitBudget = MaxFileBytes - 1<<10
+)
+
+func jsonLen(v any) int {
+	raw, err := json.MarshalIndent(v, "", "  ")
+	if err != nil {
+		return 0
+	}
+	return len(raw)
+}
+
+// oldestStop is the index of the stop seen least recently.
+func (r *Record) oldestStop() int {
+	o := 0
+	for i, s := range r.Stops {
+		if s.Last.Before(r.Stops[o].Last) {
+			o = i
+		}
+	}
+	return o
+}
+
+func (r *Record) dropStop(i int) {
+	r.DroppedStops += max(r.Stops[i].Count, 1)
+	r.Stops = append(r.Stops[:i:i], r.Stops[i+1:]...)
+}
+
+// Fit lets go of what a record past its bound cannot hold, oldest first and
+// counted: stops, then hand-backs, then queued steps. A record within its
+// bound is unchanged. Begin fits what it carries and Back what it closes, so
+// neither ever fails on size; Back prints every line before it fits.
+func (r *Record) Fit() {
+	for jsonLen(r) > fitBudget {
+		switch {
+		case len(r.Stops) > 0:
+			r.dropStop(r.oldestStop())
+		case len(r.HandedBack) > 0:
+			r.HandedBack = r.HandedBack[1:]
+			r.DroppedHandBacks++
+		case len(r.Queue) > 0:
+			r.Queue = r.Queue[1:]
+			r.DroppedSteps++
+		default:
+			return
+		}
+	}
 }
 
 // Ends is when the record ends: its stored end, but never later than seven
@@ -184,23 +254,33 @@ func (r *Record) AddStep(step, from string, now time.Time) error {
 	if n := utf8.RuneCountInString(step); n > MaxStepLen {
 		return fmt.Errorf("%w: %d characters, at most %d", ErrStepTooLong, n, MaxStepLen)
 	}
-	r.Queue = append(r.Queue, QueuedStep{Step: step, At: now.Truncate(time.Second), From: from})
+	q := append(r.Queue[:len(r.Queue):len(r.Queue)], QueuedStep{Step: step, At: now.Truncate(time.Second), From: from})
+	if jsonLen(q) > queueBudget {
+		return fmt.Errorf("%w: %d steps are queued, as many as the record holds; nothing is dropped, and `abcd mode back` prints them", ErrQueueFull, len(r.Queue))
+	}
+	r.Queue = q
 	return nil
 }
 
-// AddStop records a stop at now. A stop identical to the last one recorded
-// (same kind, error type, detail and cap label) adds to that entry's count and
-// last time instead, so a wake every ten minutes cannot grow the record past
-// its 64 KiB check.
+// AddStop records a stop at now. A stop identical to one already recorded,
+// anywhere in the list (same kind, error type, detail, which names the item,
+// and cap label), adds to that entry's count and last time instead, so two
+// copies blocked on different items, alternating, keep two entries. Past
+// stopsBudget the stop seen least recently goes, counted in DroppedStops.
 func (r *Record) AddStop(s Stop, now time.Time) {
 	now = now.Truncate(time.Second)
-	if n := len(r.Stops); n > 0 && sameStop(r.Stops[n-1], s) {
-		r.Stops[n-1].Count++
-		r.Stops[n-1].Last = now
-		return
+	for i := range r.Stops {
+		if sameStop(r.Stops[i], s) {
+			r.Stops[i].Count++
+			r.Stops[i].Last = now
+			return
+		}
 	}
 	s.Count, s.First, s.Last = 1, now, now
 	r.Stops = append(r.Stops, s)
+	for len(r.Stops) > 1 && jsonLen(r.Stops) > stopsBudget {
+		r.dropStop(r.oldestStop())
+	}
 }
 
 func sameStop(a, b Stop) bool {
@@ -216,6 +296,10 @@ func (r *Record) AddHandBack(branch, head string, now time.Time) bool {
 		}
 	}
 	r.HandedBack = append(r.HandedBack, HandBack{Branch: branch, Head: head, At: now.Truncate(time.Second)})
+	for len(r.HandedBack) > 1 && jsonLen(r.HandedBack) > handBackBudget {
+		r.HandedBack = r.HandedBack[1:]
+		r.DroppedHandBacks++
+	}
 	return true
 }
 
@@ -250,6 +334,16 @@ func (r *Record) Lines() []string {
 	}
 	for _, s := range r.Stops {
 		lines = append(lines, stopLine(s))
+	}
+	const kept = "were let go to keep the record within 64 KiB"
+	if r.DroppedSteps > 0 {
+		lines = append(lines, fmt.Sprintf("%s %s", count(r.DroppedSteps, "earlier queued step", "earlier queued steps"), kept))
+	}
+	if r.DroppedHandBacks > 0 {
+		lines = append(lines, fmt.Sprintf("%s %s", count(r.DroppedHandBacks, "earlier item handed back", "earlier items handed back"), kept))
+	}
+	if r.DroppedStops > 0 {
+		lines = append(lines, fmt.Sprintf("%s %s", count(r.DroppedStops, "earlier stop", "earlier stops"), kept))
 	}
 	return lines
 }

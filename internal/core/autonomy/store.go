@@ -245,9 +245,14 @@ func (s Store) Away(now time.Time) (*Record, bool, error) {
 // is written. Update returns the record written, or the one read when nothing
 // was.
 func (s Store) Update(fn func(cur *Record) (*Record, error)) (*Record, error) {
+	return s.update(s.Read, fn)
+}
+
+// update is Update with the read under the lock named.
+func (s Store) update(read func() (*Record, error), fn func(cur *Record) (*Record, error)) (*Record, error) {
 	var out *Record
 	err := s.WithLock(func() error {
-		cur, err := s.Read()
+		cur, err := read()
 		if err != nil {
 			return err
 		}

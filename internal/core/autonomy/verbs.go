@@ -151,7 +151,7 @@ func SetAway(cwd, until string, holdPushes bool, o Options) (*Record, error) {
 	if _, err := Begin(nil, who, now, end, holdPushes); err != nil {
 		return nil, err
 	}
-	return st.Update(func(cur *Record) (*Record, error) {
+	return st.update(st.carryRead, func(cur *Record) (*Record, error) {
 		return Begin(cur, who, now, end, holdPushes)
 	})
 }
@@ -166,30 +166,40 @@ type BackResult struct {
 	Record *Record
 	// Lines are the record's lines, printed one each.
 	Lines []string
+	// Notes say what could not be read or done as usual on the way to
+	// ending the mode (a record past its bound, unparsable or not safely
+	// this account's; a lock held past its timeout), one line each.
+	Notes []string
 }
 
 // Back is `abcd mode back` from cwd: under the lock it reads the record's
 // lines, records who ended it and from which copy, and closes it, on a
-// record whose time has passed as on one that holds.
+// record whose time has passed as on one that holds. It ends the mode
+// whatever state the record is in (end.go): a record past its bound is
+// printed whole and kept fitted; one it cannot read, or not safely this
+// account's, is replaced by a closed record, printing nothing from it; and a
+// lock not had within its timeout, or not safe to take, is gone around,
+// closing without it. Each is named in the result's notes.
 func Back(cwd string, o Options) (BackResult, error) {
 	root, st, err := Resolve(cwd, o)
 	if err != nil {
 		return BackResult{}, err
 	}
 	now := o.now()
+	who := Who{Name: o.who(root, st.home), Copy: root}
 	res := BackResult{State: "none"}
-	rec, err := st.Update(func(cur *Record) (*Record, error) {
-		if cur == nil || cur.Closed != nil {
-			return nil, nil
-		}
-		res.State = "lapsed"
-		if cur.Holds(now) {
-			res.State = "away"
-		}
-		res.Lines = cur.Lines()
-		cur.Close(Who{Name: o.who(root, st.home), Copy: root}, now)
-		return cur, nil
+	ran := false
+	var rec *Record
+	err = st.WithLock(func() error {
+		ran = true
+		var e error
+		rec, e = st.endRecord(&res, who, now)
+		return e
 	})
+	if err != nil && !ran {
+		res = BackResult{State: "none", Notes: []string{fmt.Sprintf("the store's lock was not had (%s), so the record was closed without it", err)}}
+		rec, err = st.endUnlocked(&res, who, now)
+	}
 	res.Record = rec
 	return res, err
 }

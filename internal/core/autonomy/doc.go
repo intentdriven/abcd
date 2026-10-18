@@ -40,7 +40,13 @@
 //
 // Store.Away is the hooks' read: an unreadable or unsafe record (or lock)
 // reads as not away, with the reason returned for a stderr line. A verb asked
-// to change such a record refuses, naming the file.
+// to change such a record refuses, naming the file, except Back: ending the
+// mode never depends on the record (end.go). A record past its bound is
+// printed whole and kept fitted (Record.Fit); one that does not parse, names
+// another schema or is not safely this account's is replaced by a closed
+// record, printing nothing from it; parts of the wrong shape are left out;
+// and a lock not had within LockTimeout, or not safe to take, is gone
+// around, the atomic write re-checked. BackResult.Notes names each.
 //
 // # Record
 //
@@ -57,8 +63,14 @@
 //	queue           []QueuedStep: steps for the person (`abcd mode queue`)
 //	handed_back     []HandBack: items the stop check handed back, by branch
 //	                and head, once each
-//	stops           []Stop: the stops recorded, a stop identical to the last
-//	                kept as that entry with a count and the last time
+//	stops           []Stop: the stops recorded, a stop identical to one
+//	                already recorded, anywhere, kept as that entry with a
+//	                count and the last time
+//	dropped_*       what was let go to stay within MaxFileBytes, counted:
+//	                the oldest stops and hand-backs past their own bounds,
+//	                and queued steps only when Begin carries, or Back
+//	                closes, a record past its bound; a queue past its bound
+//	                refuses the next step (ErrQueueFull) instead
 //	closed          *Closing: once ended by word, who ended it and from
 //	                which copy
 //
@@ -108,8 +120,9 @@
 // is CreatedFile(copyKey) in the away store, keyed on the working copy's
 // reservation copy key (claim.CopyKey), written under the store's lock
 // (Store.RecordBranches) and capped at MaxCreatedBranches, the oldest
-// dropped; Store.CreatedBranches reads it. A checkout without the local tier
-// records nothing.
+// dropped; Store.CreatedBranches reads it. A checkout abcd does not manage
+// (Managed: no `.abcd/` at its root, nor at its main worktree's) records
+// nothing, and every away hook returns at once there.
 //
 // # Reading the owed work
 //

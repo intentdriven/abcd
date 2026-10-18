@@ -11,6 +11,7 @@ import (
 	"github.com/intentdriven/abcd/internal/core/autonomy"
 	"github.com/intentdriven/abcd/internal/fsutil"
 	"github.com/intentdriven/abcd/internal/gitutil"
+	"github.com/intentdriven/abcd/internal/termsafe"
 	"github.com/spf13/cobra"
 )
 
@@ -35,6 +36,9 @@ type backOutput struct {
 	Lines     []string `json:"lines"`
 	EndedBy   string   `json:"ended_by,omitempty"`
 	EndedFrom string   `json:"ended_from,omitempty"`
+	// Notes say what could not be read or done as usual on the way to
+	// ending the mode.
+	Notes []string `json:"notes,omitempty"`
 }
 
 // queueOutput is the --json envelope of `abcd mode queue`.
@@ -106,9 +110,12 @@ func newModeBackCommand(asJSON *bool) *cobra.Command {
 			"the cap\"), record who ended it and from which working copy, and close the record.\n" +
 			"On a record whose time has already passed it prints the same and closes it. With\n" +
 			"no record, or one already closed, it says there is nothing to end.\n\n" +
-			"A session runs it only on the person's word in that session. Exit 2 when the\n" +
-			"record or its lock is not safely this account's, naming the file, with nothing\n" +
-			"written. No network request.",
+			"A session runs it only on the person's word in that session. It ends the mode\n" +
+			"whatever state the record is in: one past its 64 KiB is printed whole and kept\n" +
+			"with its oldest lines let go and counted; one that does not parse, or is not\n" +
+			"safely this account's, is replaced by a closed record, printing nothing from\n" +
+			"it; and a lock not had in time is gone around. Each is named on its own line.\n" +
+			"No network request.",
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cwd, err := os.Getwd()
@@ -119,7 +126,7 @@ func newModeBackCommand(asJSON *bool) *cobra.Command {
 			if err != nil {
 				return awayRefusal("back", err)
 			}
-			out := backOutput{State: res.State, Lines: res.Lines}
+			out := backOutput{State: res.State, Lines: res.Lines, Notes: res.Notes}
 			if out.Lines == nil {
 				out.Lines = []string{}
 			}
@@ -130,6 +137,9 @@ func newModeBackCommand(asJSON *bool) *cobra.Command {
 			return render(cmd.OutOrStdout(), *asJSON, out, func(w io.Writer) {
 				for _, l := range out.Lines {
 					fmt.Fprintln(w, l)
+				}
+				for _, n := range out.Notes {
+					fmt.Fprintln(w, "abcd: "+termsafe.CleanProseLine(n, 512))
 				}
 				switch res.State {
 				case "none":
@@ -154,8 +164,8 @@ func newModeQueueCommand(asJSON *bool) *cobra.Command {
 			"the person may approve, which a session queues instead of asking, then carries on\n" +
 			"with other work. `abcd mode back` prints each queued step on one line.\n\n" +
 			"Exit 2 when no away record holds (ask the person instead), on an empty step or one\n" +
-			"over 500 characters, and when the record or its lock is not safely this account's,\n" +
-			"with nothing written. No network request.",
+			"over 500 characters, when the queue is full (it is never cut), and when the record\n" +
+			"or its lock is not safely this account's, with nothing written. No network request.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cwd, err := os.Getwd()
@@ -187,7 +197,7 @@ func whoWords(name string) string {
 func awayRefusal(verb string, err error) error {
 	for _, sentinel := range []error{
 		autonomy.ErrUntilUnreadable, autonomy.ErrUntilPast, autonomy.ErrUntilBeyondCap,
-		autonomy.ErrStepEmpty, autonomy.ErrStepTooLong, autonomy.ErrNotAway,
+		autonomy.ErrStepEmpty, autonomy.ErrStepTooLong, autonomy.ErrQueueFull, autonomy.ErrNotAway,
 		autonomy.ErrNoLocalTier, autonomy.ErrUnsafe, autonomy.ErrLockBusy, autonomy.ErrRecordFull,
 		autonomy.ErrNoRootCommit, autonomy.ErrNoHome, gitutil.ErrNoCheckoutRoot,
 	} {

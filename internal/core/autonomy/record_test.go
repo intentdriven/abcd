@@ -199,8 +199,10 @@ func TestRepeatedStopCollapses(t *testing.T) {
 	}
 	r.AddStop(b, now.Add(30*time.Minute))
 	r.AddStop(a, now.Add(40*time.Minute))
-	if len(r.Stops) != 3 {
-		t.Errorf("stops = %+v, want three entries", r.Stops)
+	// An identical stop anywhere in the list collapses into its entry, not
+	// only the one just before it (the diff review's major 3).
+	if len(r.Stops) != 2 || r.Stops[0].Count != 3 || !r.Stops[0].Last.Equal(now.Add(40*time.Minute)) {
+		t.Errorf("stops = %+v, want two entries, the first counted three times", r.Stops)
 	}
 	if r.Stops[1].Count != 1 {
 		t.Errorf("a first stop's count = %d, want 1", r.Stops[1].Count)

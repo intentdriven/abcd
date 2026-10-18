@@ -188,8 +188,15 @@ func TestRecordOwnershipFailsOpen(t *testing.T) {
 			if _, err := QueueStep(root, "push feat/x", o); err == nil || !errors.Is(err, ErrUnsafe) || !strings.Contains(err.Error(), c.file) {
 				t.Errorf("queue on a spoilt %s: err = %v, want ErrUnsafe naming it", c.file, err)
 			}
-			if _, err := Back(root, o); err == nil || !strings.Contains(err.Error(), c.file) {
-				t.Errorf("back on a spoilt %s: err = %v, want a refusal naming it", c.file, err)
+			// Ending the mode never depends on the record (the diff review's
+			// major 3): back succeeds, naming the spoilt file in a note, and
+			// the mode no longer holds.
+			res, err := Back(root, o)
+			if err != nil || !strings.Contains(strings.Join(res.Notes, " "), c.file) {
+				t.Errorf("back on a spoilt %s: %+v (%v), want it ended with a note naming the file", c.file, res, err)
+			}
+			if _, holds, _ := st.Away(now); holds {
+				t.Errorf("back on a spoilt %s left the mode holding", c.file)
 			}
 		})
 	}
