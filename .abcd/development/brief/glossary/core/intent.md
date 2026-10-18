@@ -34,8 +34,8 @@ specced *implementation* block, not the human-authored *intention*.
 
 ## Examples
 
-- "The intent for `itd-27` describes the grill sub-verb from the user's perspective."
-- "`/abcd:intent grill itd-27` interrogates that intent before it becomes a spec."
+- "The intent for `itd-10` describes removing abcd from a project entirely, from the user's perspective."
+- "`abcd intent interview itd-10` runs that intent's planning interview before it becomes a spec."
 
 ## Related terms
 
