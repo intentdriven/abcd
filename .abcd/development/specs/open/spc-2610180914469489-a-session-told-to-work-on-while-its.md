@@ -575,6 +575,76 @@ lane's choice, recorded for review; none changes a test the step names.
   sub-verbs' sentences and the queue's worked example go in
   `internal/core/surface`, as every visible verb's do.
 
+Choices made while building steps 2 and 5 on 2026-10-18, by build lane 1,
+each recorded for review; none changes a test the steps name.
+
+- 2026-10-18 (lane 1's choice, for review): **The start-copy note.** The
+  session-start hook notes a session's start worktree in the away store's
+  `sessions.json` only in a checkout with `.abcd/` at its root, and only the
+  first time for a session id, so a compaction or resume run after the
+  session changed into a worktree it made keeps the start. Notes older than
+  30 days, and past 256, are dropped. `autonomy.ResolveCopy` reads it back
+  for the stop check and for step 3's recorder.
+- 2026-10-18 (lane 1's choice, for review): **The prompt hook's read.** It
+  reads the away record through the live drain's root-commit lookup, so the
+  router still makes one such lookup a prompt, and appends the away block
+  after the rules, the memory notes and the status block. The block's words
+  come from the owner-only home store, never a tracked file, which is why
+  the session-start hook may print it on stdout where its notices stay on
+  stderr.
+- 2026-10-18 (lane 1's choice, for review): **The person's lines.** While
+  the record holds: "abcd: away until <time>, set by <who> from <copy>; N
+  steps queued, M items handed back. `abcd mode back` ends it." (with
+  "pushes wait for you" under `--hold-pushes`). Lapsed and unclosed: one
+  line counting the queued steps and recorded stops, as the plan names, not
+  the hand-backs. Both are `Record.PersonLine` and `Record.LapsedLine`.
+- 2026-10-18 (lane 1's choice, for review): **The owed seam.** The plan
+  names no reader, so the stop hook takes the owed set through one function
+  value, `stopOwedReader` in `internal/surface/cli/hook_stop.go`, shaped as
+  step 4's `autonomy.ReadOwed` (asked with the start copy, the record, the
+  home and the clock; the record not holding means disk only). Until step
+  4's reader fills it, it reads nothing owed. Recording a hand-back is
+  idempotent per branch and head, so the reader and the front door may both
+  record one.
+- 2026-10-18 (lane 1's choice, for review): **Two fields on `Owed`.**
+  `NextRenewal`, the earliest renewal due among the live reservations under
+  this copy's key, due or not yet, which the deadline needs and no owed item
+  carries; and `HandedBack`, the items a queued step handed back, which the
+  verdict judges. Both are additive.
+- 2026-10-18 (lane 1's choice, for review): **The hand-back at the
+  verdict.** `Judge` accepts a hand-back only while away, under
+  `--hold-pushes`, and only of an unpushed branch's item naming its branch
+  and head; any other item the reader hands back is put back among the owed
+  items. The front door records each accepted one under the lock.
+- 2026-10-18 (lane 1's choice, for review): **Rows the plan leaves open.**
+  The prose-question block (row 1) does not take the owed set as seen, so
+  the next check names it; at the cap it records nothing, since the plan
+  names rows 2, 4, 5 and 7. A block past the cap leaves the session's state
+  "stopped". The push sentence goes with an unpushed branch, an uncarried
+  reservation, and a behind or failing pull request, the items whose next
+  act the plan calls a push. The next look is the earliest-matching
+  qualifying wake; a recurring task with no following match by the deadline
+  plus an hour is taken as up to 30 minutes late.
+- 2026-10-18 (lane 1's choice, for review): **The parser's edges.** Names
+  (`MON`), `@` forms and a step on a single value are not read, so they
+  never qualify. The day-of-month and day-of-week "written from `*`" rule
+  takes a field starting with `*`.
+- 2026-10-18 (lane 1's choice, for review): **abcd's own faults allow.**
+  Present, the session's state is neither read nor written. Away, a session
+  state that cannot be read or saved, and an owed set the reader could not
+  return, allow the stop with a stderr line, as a malformed payload does. A
+  StopFailure error type outside `[a-z][a-z0-9_]{0,63}` is recorded as
+  `unknown`. `hooks/stop.sh` and `hooks/stop-failure.sh` never download the
+  binary, as `hooks/subagent-stop.sh` does not, and exit 1 when it is
+  missing, never the Stop event's blocking 2; the brief's hook paragraphs
+  name them among the exceptions.
+- 2026-10-18 (lane 1's choice, for review): **One text for the person-only
+  acts.** The away block and the prose-question block carry
+  `autonomy.QuestionRoute()`, step 6's statement of the list. Until that
+  lane's branch merges, `internal/core/autonomy/question_placeholder.go`
+  stands in for its `question.go` with exactly its text; it is deleted at
+  the merge.
+
 ## Footprint
 
 - packages: internal/core/autonomy, internal/core/mode, internal/core/guard, internal/surface/cli, hooks, commands/mode.md, commands/guard.md, .abcd/development/brief/02-constraints/03-invariants.md, .abcd/development/brief/04-surfaces/08-abcd.md, .abcd/development/brief/04-surfaces/17-guard.md
@@ -634,6 +704,7 @@ lane's choice, recorded for review; none changes a test the step names.
      line naming `abcd mode back` on every prompt until `mode back` closes
      it, and one with neither shows nothing); all inside the hook's existing
      deadline.
+   - landed: 472488938
 3. The created-branch recorder
    - packages: internal/core/guard, internal/core/autonomy, internal/surface/cli, commands/guard.md, .abcd/development/brief/04-surfaces/17-guard.md
    - tests: internal/core/guard, internal/core/autonomy, internal/surface/cli
@@ -760,6 +831,7 @@ lane's choice, recorded for review; none changes a test the step names.
      and `hooks/stop-failure.sh` take the same bootstrap and home checks as
      `hooks/subagent-stop.sh` (the hook-shape tests cover them); `go generate
      ./internal/surface/cli` refreshes the derived appendix.
+   - landed: 5d754f95b
 6. The question reroute
    - packages: internal/surface/cli, internal/core/autonomy, .abcd/development/brief/04-surfaces/17-guard.md
    - tests: internal/surface/cli, internal/core/autonomy
