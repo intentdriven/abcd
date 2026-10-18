@@ -104,6 +104,10 @@ type listing struct {
 	// mine is whether every listed pull request is the person's (a listing
 	// by `--author @me`, made when the person's forge name is not known).
 	mine bool
+	// truncated is a listing that returned exactly prListLimit pull
+	// requests, so more may be open than it shows: a pull request it does
+	// not show is unknown, never absent.
+	truncated bool
 }
 
 // listOpen makes the listing under deadline: every open pull request when the
@@ -130,7 +134,7 @@ func listOpen(ctx context.Context, forge Forge, dir, person string, deadline tim
 	if err := json.Unmarshal([]byte(out), &prs); err != nil {
 		return listing{unread: "the forge's listing of the pull requests does not parse"}
 	}
-	return listing{read: true, prs: prs, mine: mine}
+	return listing{read: true, prs: prs, mine: mine, truncated: len(prs) >= prListLimit}
 }
 
 // byHead is the open pull request whose head is branch in this repository

@@ -129,6 +129,9 @@ func ReadOwed(ctx context.Context, o ReadOptions) (Owed, error) {
 		if !r.list.read {
 			r.note("the pull requests were not read (%s), so the check judged from disk alone", r.list.unread)
 		}
+		if r.list.truncated {
+			r.note("the forge listed %d open pull requests, its limit, so the listing may be truncated: a reservation no listed pull request carries is not counted as uncarried", len(r.list.prs))
+		}
 	}
 	r.receiptsMinted = receiptsMinted(root)
 	r.readLanes()
@@ -882,7 +885,7 @@ func (r *owedReader) reservationItems() {
 				break
 			}
 		}
-		if !carried {
+		if !carried && !r.list.truncated {
 			r.add(OwedItem{Kind: OwedUncarried, Capped: true, Record: res.Record,
 				Reason: fmt.Sprintf("no open pull request carries the work of %s yet: finish it and open one", res.Record)})
 		}

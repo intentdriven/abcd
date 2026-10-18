@@ -1096,3 +1096,28 @@ func TestNoUpstreamUndecidedBranchNoted(t *testing.T) {
 		t.Fatalf("an undecidable branch is named in a note: %s", describe(owed))
 	}
 }
+
+// TestForgeListingAtLimitTruncated: a listing that returns exactly its limit
+// may be truncated, so a note says so and a reservation no listed pull
+// request carries is not reported as uncarried; one short of the limit is
+// whole, and the reservation is.
+func TestForgeListingAtLimitTruncated(t *testing.T) {
+	for _, n := range []int{prListLimit, prListLimit - 1} {
+		f := newFx(t)
+		f.reserveFresh("iss-77")
+		for i := 0; i < n; i++ {
+			f.forge.prs = append(f.forge.prs, pr(1000+i, fmt.Sprintf("other/%d", i), "main", "bob"))
+		}
+		owed := f.read(true)
+		notes := strings.Join(owed.Notes, " ")
+		if n == prListLimit {
+			if has(owed, OwedUncarried, "iss-77") || !strings.Contains(notes, "truncated") {
+				t.Errorf("a listing at its limit of %d: %s", n, describe(owed))
+			}
+			continue
+		}
+		if !has(owed, OwedUncarried, "iss-77") || strings.Contains(notes, "truncated") {
+			t.Errorf("a listing of %d, under its limit: %s", n, describe(owed))
+		}
+	}
+}
