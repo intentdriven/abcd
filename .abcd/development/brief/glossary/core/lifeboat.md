@@ -49,5 +49,5 @@ flow-control connotations in the abcd pipeline context).
 
 - [record families](record-families.md) — the one page that maps the record families and how they relate
 - [voyage](voyage.md) — the lifeboat captures voyage knowledge at a point in time
-- [embark](../interview/embark.md) — the grill sub-verb term for the opening move; distinct
-  from the `/abcd:embark` command that unpacks a lifeboat
+- [embark](../interview/embark.md) — the opening move of a grill session, a design target that
+  does not ship; distinct from the `/abcd:embark` command that unpacks a lifeboat
