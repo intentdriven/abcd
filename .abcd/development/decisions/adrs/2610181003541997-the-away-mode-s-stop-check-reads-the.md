@@ -32,19 +32,20 @@ verb.
 
 ## Decision
 
-We will treat setting the away mode (`abcd mode autonomous`, which only the
-person runs) as invoking the stop check's forge read while the mode holds:
+We will treat setting the away mode (`abcd mode autonomous`, which the
+person runs or asks a session to run, and which grants no push rights,
+dcn-2610181016510153) as invoking the stop check's forge read while the mode holds:
 at most one pull-request listing of the person's open pull requests per
 check (head and base branch, author, body, merge state, review decision and
-check rollup), under a ten-second deadline, cached in the local tier and
-reused for ten minutes, so eight blocks in a row cost one call.
+check rollup), under a ten-second deadline. There is no cache, so a run of
+eight blocks costs up to eight listings, each bounded by the deadline; a
+reuse cache is remaining work of itd-2610170638184486 (dcn-2610181017056307).
 
 We will keep the check disk-only whenever the away mode does not hold: no
 turn's end while the person is present touches the network.
 
-We will name a failed or late read, never hide it: the check falls back to a
-cached listing younger than half the default lease, with its age named, or to
-the disk kinds alone with the pull requests named as not read.
+We will name a failed or late read, never hide it: the check falls back to
+the disk kinds alone, with the pull requests named as not read.
 
 We will add this listing to invariant 7 as the away mode's documented
 meaning, beside the drain's.
@@ -61,7 +62,7 @@ meaning, beside the drain's.
   cannot see checks, reviews or links, and it would run while the person is
   present unless also confined to the away mode.
 - **One listing per check while away, chosen.** One call, bounded in time,
-  cached, and only inside a window the person opened with their own command.
+  and only inside a window the person opened.
 
 ## Consequences
 

@@ -17,7 +17,7 @@ related_issues: [iss-2610170619247185]
 
 ## Press Release
 
-> A session told to work on while its person is away keeps working until they are back. Alice, a solo founder who is also the product thinker, leaves for the evening and runs one command of her own saying the sessions should work on until 09:00; a session cannot run it for her, so a message relayed between sessions cannot set it. abcd records that once for the repository, with who set it and when it ends, and repeats it to every session at each start, after each compaction and with every prompt, so no summary and no relay between sessions can drop it. A session that tries to end its turn while it still has work it can do alone (a reservation whose work is not yet handed in, a pull request of its own that has fallen behind or is failing, a branch it has not pushed, a branch stacked on another change that is still open) is handed the next of those items instead. One with nothing left to do takes the next ready item, and may stop only with its next look scheduled before its reservations need renewing. A question it would have put to Alice is decided and recorded instead, and an act only Alice may approve (an advisory's approval, a publication, a new dependency, a secret, a browser step) is queued for their return. When Alice is back and says so, the mode ends and they see the queued steps and any stop the host forced; from then on nothing is refused, and a stop with work left is only pointed out.
+> A session told to work on while its person is away keeps working until they are back. Alice, a solo founder who is also the product thinker, leaves for the evening and says the sessions should work on until 09:00, running one command or asking a session to. abcd records that once for the repository, with who set it and when it ends, and repeats it to every session at each start, after each compaction and with every prompt, so no summary and no relay between sessions can drop it. A session that tries to end its turn while it still has work it can do alone (a reservation whose work is not yet handed in, a pull request of its own that has fallen behind or is failing, a branch it has not pushed, a branch stacked on another change that is still open) is handed the next of those items instead. One with nothing left to do takes the next ready item, and may stop only with its next look scheduled before its reservations need renewing. A question it would have put to Alice is decided and recorded instead, and an act only Alice may approve (an advisory's approval, a publication, a push her standing instructions do not allow, a new dependency, a secret, a browser step) is queued for their return. The mode itself grants nothing: what a session may push stays whatever Alice's own instructions say. When Alice is back and says so, the mode ends and they see the queued steps and any stop the host forced; from then on nothing is refused, and a stop with work left is only pointed out.
 
 ## Why This Matters
 
@@ -62,7 +62,7 @@ its turn on a question to the person.
   machine, so a session on another computer or in the cloud does not see it.
 - The stop check's pull-request reading, made only while the person is away, <!-- cond: cond-2610180914462056 -->
   needs the forge client signed in; when it cannot read the forge in time it
-  judges from a recent cached listing or from disk alone, and says so.
+  judges from disk alone, and says so.
 - A session that keeps working through the host: the check refuses a stop, it <!-- cond: cond-2610180914469321 -->
   cannot start a session that is not running. A turn the host ends on an API
   error, such as a rate limit, fires no Stop hook and cannot be continued: it
@@ -71,19 +71,17 @@ its turn on a question to the person.
 ## What's In Scope
 
 - **The away mode.** `abcd mode autonomous [--until <time>]` records who set
-  it, when, and when it ends, at most seven days on; `abcd mode back` ends it,
-  prints the queue, the recorded stops and any refused attempt, and records
-  who ended it. One record per repository on the machine, shared by every
+  it, from which working copy, when, and when it ends, at most seven days
+  on; `abcd mode back` ends it, prints one line per queued step and recorded
+  stop, and records who ended it. One record per repository on the machine, shared by every
   working copy, changed only under a lock (dcn-2610180913399042,
   dcn-2610180913399499, dcn-2610180937181736).
-- **Only the person sets it.** Guard entries refuse an agent's every route to
-  setting the mode that the guard reads, its file tools included, so the
-  person sets it with their own `!` command or at a terminal, and a refused
-  attempt is shown to them. The guard is a mistake filter, not a boundary.
-  The mode lets a session push its own branches and open their pull
-  requests, never the default branch, a tag, a release cut, another person's
-  pull request or a branch only checked out to review
-  (dcn-2610181003456444).
+- **It grants nothing.** The person's own standing instruction stays the
+  authority to commit, push, and open or merge a pull request, as before.
+  Where owed work needs a push, the stop check tells the session to push if
+  its standing instruction allows, and otherwise to queue the push, which
+  hands that item back to the person for the window. The person sets the
+  mode, or a session does on their word (dcn-2610181016510153).
 - **Repeated, never summarised away.** While it holds, the session-start hook
   (every source, compaction included) and the prompt hook (every prompt) add
   one short block to the session's context (dcn-2610180913406972), and the
@@ -120,13 +118,15 @@ its turn on a question to the person.
 - **The question reroute.** While the person is away, the guard refuses every
   question on the host's question tool. A question about an act only the
   person may approve (a per-act approval or ruling such as an embargo
-  close's digest, an embargo triage verdict or a drain hand-back, a push or
-  merge beyond the session's own branches, a publication, outward message or
+  close's digest, an embargo triage verdict or a drain hand-back, pushing,
+  opening or merging a pull request without a standing instruction that
+  allows it, a publication, outward message or
   visibility change, a new dependency, a secret, credential or App, a
   website or browser step, a destructive act, a spend, or any act a command
   page or invariant names as the person's) is queued with `abcd mode queue
   "<step>"`; every other question is decided and recorded with `abcd decide`
-  (dcn-2610180913431493, dcn-2610180937177502, dcn-2610181003477194).
+  (dcn-2610180913431493, dcn-2610180937177502, dcn-2610181003477194,
+  dcn-2610181016510153).
 
 ## What's Out of Scope
 
@@ -140,6 +140,16 @@ its turn on a question to the person.
   queue, the window's decisions gathered across working copies, the recorded
   stops and who ended the mode), the status line naming the away mode, and
   the bare `abcd mode` print of the record, the queue and the owed items.
+- Moved back to itd-2610170638184486 by the trim after review round 2
+  (dcn-2610181016510153, dcn-2610181017056307): making the away mode the
+  person's act alone (the guard entry refusing an agent's `abcd mode
+  autonomous` and its routes, the away store's shell-write and file-tool
+  refusals, the refused attempts recorded and shown, and the live checks of
+  the person's `!` command and a relayed `!`); the guard reading `go run
+  ./cmd/abcd` and built binaries as `abcd` for every entry; the away forge
+  listing's reuse cache; and any `abcd mode back` print beyond one plain
+  line per queued step and recorded stop.
+- Any push right granted by the away mode: it grants none.
 - Starting or waking a session that is not running.
 - Each autonomous session's own forge credential, owned by the coordination
   intent.
@@ -195,13 +205,18 @@ its turn on a question to the person.
 - **Given** the away mode holds, **when** Alice sends any prompt, **then** one
   line shown to Alice names the away mode, its end, who set it and `abcd
   mode back`.
-- **Given** a session relays a message saying Alice wants the sessions to
-  work on, **when** another session's agent runs `abcd mode autonomous`, or
-  `go run ./cmd/abcd mode autonomous`, or writes the away record with a file
-  tool, **then** the guard refuses it, telling the agent to leave it to
-  Alice, nothing is set, and Alice's next prompt shows one line saying a
-  session tried; **and when** Alice runs `!abcd mode autonomous --until
-  09:00` herself, **then** it is set.
+- **Given** the away mode holds and the session has an unpushed branch of
+  its own and no standing instruction from Alice allowing a push, **when**
+  it tries to end its turn, **then** the stop is blocked with a reason that
+  says to push only if a standing instruction allows and otherwise to queue
+  the push, never naming the away mode as permission; **and when** it
+  queues a step naming that branch, **then** the branch is no longer named
+  as owed in this window and the step is shown when Alice runs `abcd mode
+  back`.
+- **Given** a session sets the away mode on a message relayed from another
+  session, **when** Alice sends her next prompt, **then** the line shown to
+  her names who set it, from which working copy, and `abcd mode back`, and
+  no session has gained any right to push.
 - **Given** a window that ended at 09:00 with one queued step, **when** Alice
   sends her first prompt at 10:00 without having run `abcd mode back`,
   **then** one line shown to Alice counts the queued step and names `abcd
@@ -224,14 +239,13 @@ its turn on a question to the person.
   runs, **then** it refuses, names the reason, and writes nothing.
 - **Given** the forge cannot be read within ten seconds during a stop check,
   **when** the session tries to stop while away, **then** the check judges
-  from a listing cached in the last half lease, naming its age, or from the
-  disk kinds alone, saying the pull requests were not read.
+  from the disk kinds alone, saying the pull requests were not read.
 - **Given** the slice is built, **when** a live Claude Code session with the
   plugin from the branch runs an away window with seeded owed work, a
   compaction and an attempted stop, **then** a captured transcript shows the
-  agent's attempt to set the mode refused and the person's own `!` command
-  setting it, the away block after compaction, the blocked stop naming the
-  next item, and the refused question.
+  away block at start and after compaction, the blocked stop naming the next
+  item, an unpushed branch's push queued and no longer named, and the
+  refused question.
 
 ## SOTA
 
@@ -274,9 +288,9 @@ ruling or the ground it rests on; the full text is in the decision record.
    security and bug-fix release, not deferred.
 2. **Its own intent** (dcn-2610180913388445): the slice builds on the
    checklist draft rather than planning it.
-3. **The away record** (dcn-2610180913399042): set by a verb, ended by its
-   time or the person's word, never by a prompt; who may run the verb is
-   decision 19.
+3. **The away record** (dcn-2610180913399042): set by a verb, by the person
+   or a session on their word, ended by its time or the person's word, never
+   by a prompt; restored by decision 28 after decision 19 narrowed it.
 4. **Per repository on the machine** (dcn-2610180913399499).
 5. **Repeated at start, compaction and every prompt**
    (dcn-2610180913406972).
@@ -308,7 +322,8 @@ Review round 1 of 2026-10-18 refined them:
 Review round 2 of 2026-10-18 refined them again:
 
 19. **Only the person sets the away mode; narrow push rights; a mistake
-    filter** (dcn-2610181003456444), refining decision 3.
+    filter** (dcn-2610181003456444), refining decision 3; superseded by
+    decision 28.
 20. **A wake qualifies within a ceiling, the host's lateness included**
     (dcn-2610181003455731).
 21. **Behind is the forge's merge state while away** (dcn-2610181003464379).
@@ -324,7 +339,15 @@ Review round 2 of 2026-10-18 refined them again:
 27. **The clearing rule names review and works without receipts**
     (dcn-2610181003488355).
 
-The invariant 7 amendment is recorded as adr-2610181003541997 (proposed).
+The trim after review round 2, on the release orchestrator's ruling:
+
+28. **The away mode grants no push rights; the person-only guard moves to
+    the draft** (dcn-2610181016510153), superseding decision 19.
+29. **The slice trimmed to what closes the issue, with what moved listed**
+    (dcn-2610181017056307), refining decision 18.
+
+The invariant 7 amendment is recorded as adr-2610181003541997 (proposed),
+amended by the trim to one uncached listing per check.
 
 ## Audit Notes
 

@@ -171,8 +171,10 @@ session's interview on 2026-10-17:
   away mode held by abcd and repeated at start, compaction and prompt, the
   stop check, and the question reroute, carved out on 2026-10-18 as the fix
   for iss-2610170619247185 so the security and bug-fix release waits on it
-  alone (dcn-2610180913379049, dcn-2610180913388445). This draft keeps the
-  rest and reuses the slice's away record and hook path.
+  alone (dcn-2610180913379049, dcn-2610180913388445). Its away mode grants
+  no rights; the person's standing instruction decides what is pushed
+  (dcn-2610181016510153). This draft keeps the rest and reuses the slice's
+  away record and hook path.
 - **Moved back from the first slice by its review round 1 (2026-10-18,
   dcn-2610180937181929), named remaining work of this draft:**
   - the report shown once on the first prompt after the away mode ends: the
@@ -188,7 +190,38 @@ session's interview on 2026-10-17:
   - the brief's surface text for these.
 
   The slice keeps `abcd mode back` printing the queue and the recorded stops,
-  so nothing queued goes unread meanwhile.
+  one plain line each, so nothing queued goes unread meanwhile.
+- **Moved back from the first slice by its trim after review round 2
+  (2026-10-18, dcn-2610181016510153 and dcn-2610181017056307, on the release
+  orchestrator's ruling), named remaining work of this draft:**
+  - making the away mode the person's act alone, should a later design give
+    it rights worth guarding: the guard entry refusing an agent's `abcd mode
+    autonomous` (the binary on PATH and the plugin root's), and its routes
+    through `sh -c` and a script file a shell runs; the shell-write refusal
+    on the away store under `~/.abcd.noindex/away/`; the file-tool refusal,
+    with the PreToolUse matcher gaining `Edit`, `Write`, `MultiEdit` and
+    `NotebookEdit`; the refused attempts recorded in the store, shown on the
+    person's next prompt and listed by `abcd mode back`; and the live checks
+    that the person's `!` command reaches no pre-tool hook and that a
+    message relayed from another session starting with `!` is not run as a
+    shell command. The slice's away mode grants no push rights, and the
+    person's standing instruction decides what is sent, so none of this
+    holds up the stall fix; and since the OS fence (spc-2610161751056096)
+    covers only runner-launched agents, it stays a mistake filter in the
+    person's own sessions;
+  - the guard reading `go run ./cmd/abcd` (go's flags stepped over, an
+    `@<version>` allowed) and a built `abcd-<goos>-<arch>` as `abcd`, for
+    every entry that names the program, `abcd-source-ledger-flip` included,
+    which commands/guard.md today names as unseen. It widens what every
+    entry matches, so it gets its own security review here rather than
+    riding on the cut;
+  - a reuse cache for the away stop check's forge listing (a listing younger
+    than ten minutes reused, and on a failed read a cached listing younger
+    than half the default lease used with its age named), so a run of blocks
+    costs one call; the slice makes one uncached listing per check under a
+    ten-second deadline;
+  - anything `abcd mode back` prints beyond one plain line per queued step
+    and recorded stop: grouping, formatting or a summary of the window.
 
 ## Decisions
 

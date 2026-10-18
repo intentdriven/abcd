@@ -10,18 +10,18 @@ production_mode: hand-written
 ## Summary
 
 Delivers itd-2610180912189125, the first slice of the checklist draft
-(itd-2610170638184486) and the fix for iss-2610170619247185. Four parts:
+(itd-2610170638184486) and the fix for iss-2610170619247185. Trimmed after
+review round 2 to what closes the issue (dcn-2610181017056307). Three parts:
 
-- **The away mode.** `abcd mode autonomous [--until <time>]`, `abcd mode back`
-  and `abcd mode queue "<step>"` keep one away record per repository on the
-  machine, changed only under a lock. The session-start hook (every source,
-  `compact` included) and the prompt hook repeat it to the agent while it
-  holds, and the prompt hook shows the person one line saying so.
-- **Only the person sets it.** Guard entries refuse every route to setting
-  the mode that the guard reads, an agent's shell call and its file tools
-  included, so the person sets it with their own `!` command or at a
-  terminal. What the mode grants is narrow: the session pushes its own
-  branches and opens their pull requests, and nothing beyond them.
+- **The away record.** `abcd mode autonomous [--until <time>]`, `abcd mode
+  back` and `abcd mode queue "<step>"` keep one away record per repository on
+  the machine, changed only under a lock and lapsing at its end, seven days
+  at most. The session-start hook (every source, `compact` included) and the
+  prompt hook repeat it to the agent while it holds, and the prompt hook
+  shows the person one line saying so, naming `abcd mode back`. The mode
+  grants no rights: the person's own standing instruction stays the
+  authority to commit, push and open or merge a pull request
+  (dcn-2610181016510153).
 - **The stop check.** A plugin Stop hook runs `abcd hook stop`. While the
   record holds, a session is only working or waiting: a turn's end is blocked
   while owed work exists, naming the next item, and is allowed only with a
@@ -33,18 +33,22 @@ Delivers itd-2610180912189125, the first slice of the checklist draft
 - **The question reroute.** While the record holds, the guard refuses every
   question on the host's question tool. An act only the person may approve
   goes to the queue; every other question is decided and recorded with `abcd
-  decide`. `abcd mode back` prints the queue and the recorded stops.
+  decide`. `abcd mode back` prints the queue and the recorded stops, one line
+  each.
 
 Every behaviour is built test-first: each step names its tests, written and
 watched failing before its code. The last step is a live Claude Code session
 capture, because the hook mechanics are the host's and a unit test cannot
 prove them (principle evaluate-at-the-user-surface).
 
-Moved out by review round 1 (dcn-2610180937181929), back to the checklist
-draft as named remaining work: the report shown once on the person's return
-(the queue, the window's decisions gathered across working copies, the
-recorded stops and who ended the mode), the status line, the bare `abcd mode`
-print, and the brief's surface text for them.
+Moved out by review round 1 (dcn-2610180937181929) and by the trim after
+round 2 (dcn-2610181016510153, dcn-2610181017056307), back to the checklist
+draft as named remaining work: the report shown once on the person's return,
+the status line, the bare `abcd mode` print, making the away mode the
+person's act alone (the guard entries, their other routes and the refused
+attempts), the guard's reading of `go run ./cmd/abcd` and built binaries as
+`abcd`, and the forge listing's reuse cache. "Trim after round 2" below
+lists each.
 
 ## Design
 
@@ -80,14 +84,8 @@ docs.claude.com hooks page redirects there):
   input has no field naming the prompt's origin, so a hook cannot tell the
   person's word from a relayed one.
 
-Read on 2026-10-18 at https://code.claude.com/docs/en/interactive-mode and
-https://code.claude.com/docs/en/scheduled-tasks:
+Read on 2026-10-18 at https://code.claude.com/docs/en/scheduled-tasks:
 
-- **Shell mode.** Input starting with `!` runs "shell commands directly
-  without going through Claude", and those commands run outside the sandbox
-  "because the sandbox applies to the commands Claude runs". So the
-  person's `!` command is not a Bash tool call and should not reach the
-  pre-tool hook; step 7 confirms it live.
 - **Scheduled tasks.** "All times are interpreted in your local timezone",
   not UTC. A recurring task "starts each run late by up to half the gap to
   the next run, and by at most 30 minutes", except `*/5 * * * *`, which runs
@@ -100,7 +98,7 @@ https://code.claude.com/docs/en/scheduled-tasks:
 abcd's hook manifest already registers SessionStart with no matcher, so
 compaction already runs `abcd hook session-start`. It has no Stop or
 StopFailure entry, and its PreToolUse entry matches the shell tool and the
-host's question tool, not the file tools.
+host's question tool.
 
 ### The away record
 
@@ -109,23 +107,21 @@ host's question tool, not the file tools.
   root commit as the worktree store is (dcn-2610180913399499), with a lock
   file beside it. The same folder holds each working copy's list of branches
   it created (dcn-2610181003463367). Everything in it is written through
-  fsutil's atomic writer, and only by abcd: the guard refuses an agent's
-  write to it (below).
+  fsutil's atomic writer.
 - **What it holds.** Who set it: the holder name reservations cache, without
   a network read, falling back to git's `user.name`, and the working copy it
   was set from. It also holds the start, the end, the queue of steps for the
   person, the stops recorded (with work owed, with no next look, or on an
   API error with its type, each at the cap labelled "possibly forced by the
-  cap"), the guard's refused attempts to set the mode, and, once ended by
-  word, who ended it and from which working copy.
+  cap"), and, once ended by word, who ended it and from which working copy.
 - **The lock** (dcn-2610180937181736). Every read-modify-write (`mode
-  autonomous`, `mode back`, `mode queue`, a recorded stop) holds
-  `fsutil.WithFileLock` on the lock file and re-reads the record inside it.
-  The stop check reads the record and lists the forge outside the lock, then
-  takes it, re-reads, and records its stop only if the record still holds, so
-  a check that began while away never writes away back after `abcd mode
-  back`. A lock not had within two seconds: the verbs refuse naming it, and
-  the hooks allow the stop and say so on stderr.
+  autonomous`, `mode back`, `mode queue`, a recorded stop, a recorded
+  branch) holds `fsutil.WithFileLock` on the lock file and re-reads the
+  record inside it. The stop check reads the record and lists the forge
+  outside the lock, then takes it, re-reads, and records its stop only if the
+  record still holds, so a check that began while away never writes away
+  back after `abcd mode back`. A lock not had within two seconds: the verbs
+  refuse naming it, and the hooks allow the stop and say so on stderr.
 - **Ownership and permissions.** The record and the lock file are used only
   when each is a regular file this account owns that no one else can write,
   within 64 KiB: the checks `rules.json` already gets. A record that fails
@@ -139,107 +135,56 @@ host's question tool, not the file tools.
   nothing written. A run of several days, like the standing run of 2026-10-15
   through 2026-10-17, fits; a forgotten record lapses.
 - **Seen by the person.** While the record holds, the prompt hook adds a
-  one-line `systemMessage` on every prompt: away until when, set by whom,
-  and the literal `abcd mode back` as the way to end it. The away block tells
-  the agent to run `abcd mode back` only on the person's word in its session
-  (dcn-2610181003474765).
+  one-line `systemMessage` on every prompt: away until when, set by whom and
+  from which working copy, and the literal `abcd mode back` as the way to
+  end it. The away block tells the agent to run `abcd mode back` only on the
+  person's word in its session (dcn-2610181003474765).
 - **A lapsed window with anything unread.** While a record whose end has
-  passed is not yet closed and holds a queued step, a recorded stop or a
-  refused attempt, the prompt hook shows the person one line on every prompt
-  counting them and naming `abcd mode back`, until that verb closes the
-  record (dcn-2610181003474765).
-- **A refused attempt.** When the guard refuses an attempt to set the mode
-  (below), it records the time and the working copy in the store under the
-  lock, and the next prompt's line tells the person that a session tried and
-  that only they can set it; `abcd mode back` lists every attempt.
-- **Ending it.** `abcd mode back` prints the queue and the recorded stops,
-  records who ended the mode and from which working copy, and ends the
-  record; on a record whose time has passed it prints the same and closes it.
+  passed is not yet closed and holds a queued step or a recorded stop, the
+  prompt hook shows the person one line on every prompt counting them and
+  naming `abcd mode back`, until that verb closes the record
+  (dcn-2610181003474765).
+- **Ending it.** `abcd mode back` prints one plain line per queued step and
+  per recorded stop (its label included), records who ended the mode and
+  from which working copy, and ends the record; on a record whose time has
+  passed it prints the same and closes it. Nothing more is printed: the
+  report on return moved to the checklist draft.
 - **The badge.** The three-word badge in `internal/core/mode` is untouched.
   While the record holds, `abcd mode product-thinker` and `abcd mode
-  facilitator` are refused, naming `abcd decide`.
+  facilitator` are refused, naming `abcd decide`, since a badge parked on the
+  person is a question waiting for them (dcn-2610180913431493).
 
-### Only the person sets it
+### Who sets it, and what it grants
 
-Setting the away mode hands sessions the right to push, so it must be the
-person's own act (dcn-2610181003456444, refining dcn-2610180913399042). The
-prompt hook cannot tell the person's message from one another session relays,
-so "on the person's word" cannot be checked, and a peer's relay on 2026-10-16
-would have let one agent give itself, and every copy, seven days of push
-rights. The guard closes the routes it can read, on the precedent of
-`abcd-source-ledger-flip`, which already leaves a person-only verb to the
-person:
+**It grants nothing** (dcn-2610181016510153, superseding
+dcn-2610181003456444). The person's own standing instruction stays the
+authority to commit, push, and open or merge a pull request, exactly as
+before the mode existed. The away mode only keeps a session working while
+owed work exists and turns its questions into recorded decisions or queued
+steps; it is never treated as permission. The away block says so, in those
+words.
 
-- **`abcd-away-mode-set`** (blocker, in the bundled registry): the program
-  `abcd`, subcommand `mode`, second subcommand `autonomous`, whatever its
-  flags. Matched by basename, it covers the binary on PATH and the plugin
-  root's; the guard already reads `sh -c` payloads and, under
-  adr-2610091150447054, a script file a shell runs, so a script that calls
-  it is refused too.
-- **The program's other spellings.** The matcher reads two more spellings of
-  the program as `abcd`, for every entry that names it: a built
-  `abcd-<goos>-<arch>` (what `make build` writes), and `go run <pkg>` whose
-  package path ends in `cmd/abcd`, optionally `@<version>`, with go's own
-  flags stepped over, the rest of the line being the program's arguments. So
-  `go run ./cmd/abcd mode autonomous` is refused by the same entry, and so
-  is a `go run` of the ledger flip, which commands/guard.md today names as
-  unseen.
-- **`abcd-away-store-write`** (blocker): a shell write whose resolved target
-  lies inside `~/.abcd.noindex/away/`, through a redirection or a writer the
-  guard lists (the list commands/guard.md names), or a delete of it. The
-  record, its lock and the branch lists are written only by abcd's own verbs
-  and hooks.
-- **The file tools** (`abcd-away-store-file-tool`, a refusal the hook
-  reports under that name, since registry entries read shell text only).
-  The plugin's PreToolUse matcher gains `Edit`, `Write`,
-  `MultiEdit` and `NotebookEdit`, and `abcd guard hook` refuses one whose
-  `file_path` (or `notebook_path`) resolves, `~` expanded and symlinks
-  followed, inside `~/.abcd.noindex/away/`; every other path is allowed with
-  no further reading. This adds one hook start to each file-tool call, as the
-  shell tool already pays.
-- **The refusal's words.** The why: setting the away mode hands every
-  session on this machine the right to push, so it is the person's own act.
-  The successor: tell the person that you believe they asked for it and let
-  them run `abcd mode autonomous` themselves, with `!` in this session or at
-  a terminal. `abcd mode back` and `abcd mode queue` stay allowed: ending the
-  mode is the safe direction, and the queue only adds to what the person
-  reads.
+**Who sets it.** The person, with their own command (at a terminal, or with
+`!` in the session), or a session on the person's word in that session, as
+dcn-2610180913399042 first said. Nothing checks which: the prompt hook cannot
+tell the person's message from one another session relays. Because the mode
+grants no rights, a mode set on a relayed word only keeps sessions working
+and deciding instead of asking, and the person sees who set it, from which
+working copy, and `abcd mode back` on their next prompt.
 
-**A mistake filter, not a boundary.** The guard reads a command's text, so
-it stops an agent that follows refusals from granting itself the mode on a
-relayed word; it does not stop one that routes around it (another
-interpreter, a program, a copy of the binary under another name, the
-unseen spellings commands/guard.md lists), as adr-42 says of the whole parse
-layer, and as the decision of 2026-10-17 on the default branch says of the
-headless approver. The OS fence (spc-2610161751056096,
-adr-2610161621415708) makes it a boundary for the agents abcd's runner
-launches once it ships, since it confines their writes to abcd's home to
-their own worktree, so a launched role can write neither the store nor,
-through the binary, the record. It does not fence the person's own
-interactive session, which is where the stall happened.
-
-**Why that is enough for now.** The grant governs only an agent that
-follows refusals: one that ignores them can push without any mode, so no
-shape of the mode adds a boundary inside the person's own session. The
-rights are narrow, every push is reversible and visible on the forge, and
-the record (who set it and from which copy) and the refused attempts leave a
-trail the person reads on the next prompt and on `abcd mode back`.
-
-**What the mode grants.** The session commits and pushes its own branches
-and opens their pull requests, which is the owed work; merging follows the
-repository's own rule. Never: the default branch, a tag, a release cut,
-another person's pull request, a branch this copy only checked out to
-review, or a force push. The away block repeats the grant and the
-exclusions.
-
-**The fallback, if the capture breaks the premise.** If step 7 shows that a
-message relayed from another session can run as a `!` command, or that an
-agent's tool call can reach the host's shell mode, the mode grants no push
-rights at all and the person's own standing instruction stays the authority
-to push; the guard entries stay, since a mode set by mistake still silences
-questions. If step 7 shows only that the person's `!` command does pass the
-pre-tool hook, nothing changes but the docs: the person sets it at a
-terminal.
+**Why the guard entries left the slice.** Round 2's choice (a) made setting
+the mode the person's act alone, because the mode then carried push rights.
+The OS sandbox of spc-2610161751056096 fences only the agents abcd's runner
+launches, never the person's own interactive sessions, which are the ones
+that stalled. There, the guard entries would only ever be a mistake filter
+(adr-42), so their two days would buy a trust claim the plan cannot make.
+With no push rights in the mode there is nothing for them to protect in this
+slice. Making the mode the person's act alone (the guard entry, its other
+routes, the store's shell-write and file-tool refusals, the refused
+attempts, and the capture's checks of the `!` path), and the guard reading
+`go run ./cmd/abcd` and built binaries as `abcd` for every entry, the ledger
+flip included, are named remaining work of itd-2610170638184486; the second
+is a security-relevant widening that gets its own review there.
 
 ### Owed work
 
@@ -263,11 +208,13 @@ dcn-2610181003488355):
     run `git worktree add -b|-B <b>`, `git switch -c|-C <b>` or `git checkout
     -b|-B <b>`, and no branch named `<b>` exists yet, it records `<b>` under
     this copy's key in the away store, under the store's lock, whether or not
-    the person is away. This is how the stacked drain branches of 2026-10-17
-    (`feat/drain-step11` and its siblings) are seen: cut with a plain `git
-    worktree add`, they had no upstream, no entry in this copy's reflog, no
-    run state and no record id in their names. A record made for a command
-    that then failed names a branch that does not exist, and is ignored;
+    the person is away. The hook only records; it refuses nothing, and a
+    failed write leaves the command allowed with a stderr line. This is how
+    the stacked drain branches of 2026-10-17 (`feat/drain-step11` and its
+    siblings) are seen: cut with a plain `git worktree add`, they had no
+    upstream, no entry in this copy's reflog, no run state and no record id
+    in their names. A record made for a command that then failed names a
+    branch that does not exist, and is ignored;
   - it is the branch of a lane in a run state this copy's local tier holds
     (`.abcd/.work.local/run/<run-id>/state.json`), while that run's
     reservation is live under this copy's key;
@@ -326,6 +273,16 @@ dcn-2610181003488355):
   upstream configured, not in any remote-tracking ref. A branch whose
   upstream is gone (merged and deleted on the remote, a squash merge
   included) never counts.
+- **Handed back by the queue** (dcn-2610181016510153). The mode grants no
+  push, so an item whose next act is a push (an unpushed branch, a
+  reservation whose work no pull request carries, a behind or failing pull
+  request once its local fix is committed) may be one the session has no
+  standing instruction to send. A queued step that names the item's branch
+  or record id, on the same word-boundary match as the link, hands that item
+  back to the person for the rest of the window, so the stop check stops
+  naming it. A branch is handed back only while it holds commits its upstream
+  lacks, so the local work (the merge from the base, the fix, the review, the
+  preflight) is done first and only the push waits.
 - **What is read, and when (invariant 7,
   adr-2610181003541997).** While the person is present the check reads disk
   only: renewals due (reservations as last fetched, `claim.LastFetched`) and
@@ -333,13 +290,13 @@ dcn-2610181003488355):
   the network. While away it adds at most one `gh pr list` of the person's
   open pull requests (head and base branch, author, body, merge state,
   review decision, check rollup; each field among those
-  `internal/ghcontract` pins) under a ten-second deadline, cached in the
-  local tier: a listing younger than ten minutes is reused, not repeated, so
-  eight blocks in a row cost one call; on a failure or timeout a cached
-  listing younger than half the default lease is used with its age named,
-  else the disk kinds alone with the pull requests named as not read. Brief
-  invariant 7 gains this listing as the away mode's documented meaning, as
-  the drain's listing is, by adr-2610181003541997.
+  `internal/ghcontract` pins) under a ten-second deadline. On a failure or
+  timeout it judges from the disk kinds alone, naming the pull requests as
+  not read. There is no cache: a run of eight blocks costs up to eight
+  listings, each bounded by the deadline (the reuse cache is remaining work
+  of the checklist draft). Brief invariant 7 gains this listing as the away
+  mode's documented meaning, as the drain's listing is, by
+  adr-2610181003541997.
 - **Order.** The next item is the first of: a renewal due, a failing pull
   request, a behind one, a stacked branch, an unpushed branch, unhanded work.
 
@@ -401,6 +358,11 @@ While away, the rows are read in order and the first that matches decides:
 | 5 | none owed, qualifying wake | allow (waiting; next look kept) |
 | 6 | none owed, no qualifying wake | block: take the next ready item first (reserve it), and only if none can be taken alone, schedule a look before the deadline (working) |
 
+- **An item that needs a push** (dcn-2610181016510153). The reason for it
+  says: do the local work, then push if your standing instruction allows;
+  otherwise queue the push with `abcd mode queue "<step>"` naming the branch
+  or record id, and take the next item. It never says the away mode allows
+  the push.
 - **`stop_hook_active`** decides no row, so both values are covered by every
   row. It alone drives the count (dcn-2610181003484631, refining
   dcn-2610180936577720): a block with it `false` sets the count to one, and
@@ -432,7 +394,7 @@ While away, the rows are read in order and the first that matches decides:
 record first. While it holds, it denies every question-tool call, abcd's or
 another tool's, with one reason whatever the chip (dcn-2610180937177502).
 The classification is by the act asked about, which the reason lists, so the
-agent routes it (dcn-2610181003477194):
+agent routes it (dcn-2610181003477194, extended by dcn-2610181016510153):
 
 - **Queued for the person** with `abcd mode queue "<step>"`, carrying on with
   other work meanwhile, is a question about an act only the person may
@@ -445,11 +407,12 @@ agent routes it (dcn-2610181003477194):
     the drain's hand-back ("a hand-back is a person's decision",
     `commands/drain.md`); the confirmed apply verb for remote configuration
     (brief invariant 10); a release sign-off;
-  - a push or merge beyond the session's own branches: the default branch, a
-    tag, a release cut, another person's pull request, a branch only checked
-    out to review;
+  - pushing, opening or merging a pull request without a standing
+    instruction of the person's that allows it; the away mode is never that
+    instruction;
   - publishing anything, changing a repository's visibility, or posting a
-    comment or message outward, other than the session's own pull request;
+    comment or message outward, other than a pull request a standing
+    instruction allows;
   - adding a dependency;
   - a secret, a credential or an App;
   - a step only a website or a browser can do;
@@ -470,9 +433,8 @@ only what they name, a force push and a skipped hook among them; the rest of
 the list rests on the agent following it, as the person-only rules on the
 command pages already do.
 
-What the mode grants is stated under "Only the person sets it" above, and
-the away block repeats the grant, the exclusions and this list. No mode is
-set and no question is marked open.
+The away block repeats this list and that the mode grants nothing. No mode
+is set and no question is marked open.
 
 ## Footprint
 
@@ -486,76 +448,53 @@ set and no question is marked open.
    - tests: internal/core/autonomy, internal/core/mode, internal/surface/cli
    - Watched failing first: TestAwayRecordSharedAcrossWorktrees (`abcd mode
      autonomous --until 09:00` writes one record in the away store that a
-     sibling worktree reads); TestUntilClockTimeAndTimestamp;
+     sibling worktree reads, with who set it and from which copy);
+     TestUntilClockTimeAndTimestamp;
      TestUntilRefusedPastOrNoTierOrNoCheckout (nothing written);
      TestStaleRecordCapSevenDays (an open-ended record reads as ended seven
      days on, and `--until` beyond that is refused);
-     TestModeBackPrintsQueueStopsAndAttempts (the queue, the recorded stops
-     with their "possibly forced by the cap" label and the refused attempts,
-     and the ender and copy recorded; also on a record whose time has
-     passed); TestRecordPastEndReadsEnded; TestQueueAppends;
+     TestModeBackPrintsQueueAndStops (one plain line per queued step and per
+     recorded stop, the "possibly forced by the cap" label included, and the
+     ender and copy recorded; also on a record whose time has passed);
+     TestRecordPastEndReadsEnded; TestQueueAppends;
      TestConcurrentWritesUnderLock (two `mode queue` calls racing keep both
      steps, and a stop recorded after `mode back` re-reads inside the lock
      and does not turn the mode back on); TestRecordOwnershipFailsOpen (a
      record or lock that is a symlink, not this account's, writable by
      others, or over 64 KiB reads as not away, and a verb refuses naming
-     it); TestAttemptRecordedUnderLock (an attempt appended while away and
-     while not, kept by a racing `mode queue`); TestBadgeRefusedWhileAway;
-     the badge's three-word vocabulary test passes unchanged. The plugin page
-     and the brief's `abcd mode` surface text describe the three verbs, say
-     that only the person runs `abcd mode autonomous` and list what the mode
-     grants and never grants, and `go generate ./internal/surface/cli`
-     refreshes the derived appendix.
-2. Only the person sets it: the guard entries and the branch recorder
-   - packages: internal/core/guard, internal/surface/cli, hooks, commands/guard.md, .abcd/development/brief/04-surfaces/17-guard.md
-   - tests: internal/core/guard, internal/surface/cli
-   - Watched failing first: TestAwayModeSetIsLeftToThePerson
-     (`abcd-away-mode-set` blocks `abcd mode autonomous`, with
-     `--until 09:00` and `--json`, `"$CLAUDE_PLUGIN_ROOT"/abcd mode
-     autonomous`, `sh -c 'abcd mode autonomous'` and `bin/abcd-darwin-arm64
-     mode autonomous`, and allows `abcd mode back`, `abcd mode queue "x"`,
-     `abcd mode`, `abcd mode facilitator` and `abcd capture "an agent ran
-     abcd mode autonomous"`); TestGoRunOfAbcdReadAsAbcd (`go run ./cmd/abcd
-     mode autonomous`, `go run -race ./cmd/abcd mode autonomous` and `go run
-     github.com/intentdriven/abcd/cmd/abcd@v1.2.3 mode autonomous` block,
-     and so does `go run ./cmd/abcd library ledger --flip 3`, while `go run
-     ./cmd/abcd mode back` and `go run ./cmd/other mode autonomous` allow);
-     TestAwayModeSetInAScriptFile (a script a shell runs that calls it is
-     refused, under the existing script reading); TestAwayStoreShellWrite
-     (`printf '{}' > ~/.abcd.noindex/away/x/away.json`, `tee`, `cp` and
-     `rm` into the store block; a write elsewhere under `~/.abcd.noindex/`
-     allows); TestGuardHookFileToolAwayStore (`abcd-away-store-file-tool`:
-     `Write`, `Edit`, `MultiEdit` and `NotebookEdit` on a path in the store, through `~` and through a
-     symlink, are denied, and on any other path allowed without reading the
-     store); TestGuardRefusalRecordsAttempt (a refusal by either away entry
-     appends an attempt under the lock, and fails open with a stderr line
-     when the store cannot be written); TestBranchRecorderOnCreate (`git
-     worktree add -b feat/x ../x`, `git switch -c feat/y` and `git checkout
-     -B feat/z` record the branch under this copy's key only when no branch
-     of that name exists, and `git checkout -b main` on an existing `main`
-     records nothing); the registry's fixture test covers the new entries'
-     known-bad and known-good lines; `hooks/hooks.json`'s PreToolUse matcher
-     gains the four file tools and the hook-shape tests cover it.
-     commands/guard.md names the entries, the `go run` and built-binary
-     spellings, and what stays unseen; the brief's guard chapter says the
-     same.
-3. Repeated to the agent, shown to the person
+     it); TestBadgeRefusedWhileAway; the badge's three-word vocabulary test
+     passes unchanged. The plugin page and the brief's `abcd mode` surface
+     text describe the three verbs and say the mode grants no rights, the
+     person's standing instruction deciding what is pushed, and `go generate
+     ./internal/surface/cli` refreshes the derived appendix.
+2. Repeated to the agent, shown to the person
    - packages: internal/surface/cli
    - tests: internal/surface/cli
    - Watched failing first: TestSessionStartAwayBlockEverySource (`startup`,
      `resume` and `compact` print the away block while the record holds,
-     nothing when it does not, and the block carries what the mode grants,
-     its exclusions, the person-only act list and the rule to run `abcd mode
-     back` only on the person's word); TestPromptRouterAwayBlockEveryPrompt
-     (a second prompt in the same session too, outside the loader's dedup
+     nothing when it does not, and the block says the mode grants nothing,
+     carries the person-only act list and the rule to run `abcd mode back`
+     only on the person's word); TestPromptRouterAwayBlockEveryPrompt (a
+     second prompt in the same session too, outside the loader's dedup
      ledger); TestPromptRouterAwaySystemMessage (one line the person sees on
-     every prompt while it holds, carrying the literal `abcd mode back`);
-     TestPromptRouterLapsedWindowLine (a lapsed, unclosed record with a
-     queued step, a recorded stop or an attempt shows one line naming `abcd
-     mode back` on every prompt until `mode back` closes it, and one with
-     none shows nothing); TestPromptRouterAttemptLine (an attempt recorded
-     since the last line is shown once, while away and while not); all
-     inside the hook's existing deadline.
+     every prompt while it holds, naming who set it, from which copy, and
+     the literal `abcd mode back`); TestPromptRouterLapsedWindowLine (a
+     lapsed, unclosed record with a queued step or a recorded stop shows one
+     line naming `abcd mode back` on every prompt until `mode back` closes
+     it, and one with neither shows nothing); all inside the hook's existing
+     deadline.
+3. The created-branch recorder
+   - packages: internal/core/guard, internal/core/autonomy, internal/surface/cli, commands/guard.md, .abcd/development/brief/04-surfaces/17-guard.md
+   - tests: internal/core/guard, internal/core/autonomy, internal/surface/cli
+   - Watched failing first: TestBranchRecorderOnCreate (`git worktree add -b
+     feat/x ../x`, `git switch -c feat/y` and `git checkout -B feat/z`
+     record the branch under this copy's key, whether or not the person is
+     away, only when no branch of that name exists, and `git checkout -b
+     main` on an existing `main` records nothing); TestBranchRecorderNeverRefuses
+     (the command is allowed whatever the recorder does, and a store it cannot
+     write leaves a stderr line); TestBranchRecorderUnderLock (two recordings
+     racing keep both). commands/guard.md and the brief's guard chapter say
+     the hook records a created branch and refuses nothing for it.
 4. Owed work, and invariant 7's clause
    - packages: internal/core/autonomy, .abcd/development/brief/02-constraints/03-invariants.md
    - tests: internal/core/autonomy
@@ -592,13 +531,15 @@ set and no question is marked open.
      TestClearingRuleWithoutReceipts (in a repository with no receipt
      folder, passing checks verify; with no pull request the reason says it
      was not verified); TestUnpushedSkipsGoneUpstream (a squash-merged
-     branch whose upstream is gone is not owed); TestPresentReadsDiskOnly
-     (zero forge calls while present); TestForgeListingDeadlineAndCache (a
-     hung listing ends at ten seconds; a listing younger than ten minutes is
-     reused; a stale cache falls back with its age named, else the disk
-     kinds and a "not read" note); TestOwedOrderFixed. Brief invariant 7
-     gains the away mode's one listing per check, its deadline and its
-     cache, citing adr-2610181003541997.
+     branch whose upstream is gone is not owed); TestQueuedPushHandsItemBack
+     (a queued step naming an unpushed branch hands it back while the branch
+     is ahead of its upstream; one naming a behind branch with nothing to
+     push does not; iss-5 queued does not hand back iss-50);
+     TestPresentReadsDiskOnly (zero forge calls while present);
+     TestForgeListingDeadline (a hung listing ends at ten seconds, and the
+     check judges from the disk kinds with a "not read" note);
+     TestOwedOrderFixed. Brief invariant 7 gains the away mode's one listing
+     per check and its deadline, citing adr-2610181003541997.
 5. The stop verdict, the Stop and StopFailure hooks
    - packages: internal/core/autonomy, internal/surface/cli, hooks
    - tests: internal/core/autonomy, internal/surface/cli
@@ -610,7 +551,10 @@ set and no question is marked open.
      "possibly forced by the cap"); TestCountResetsOnlyOnInactive (a change
      in the owed set at the sixth block does not reset the count, and the
      ninth consecutive block still records the stop; a block with
-     `stop_hook_active` false sets it to one); TestDeadlineCeiling (with
+     `stop_hook_active` false sets it to one); TestPushItemReasonDefersToStandingInstruction
+     (the reason for an unpushed branch says to push only if the standing
+     instruction allows, otherwise to queue it, and never names the away mode
+     as permission); TestDeadlineCeiling (with
      work owed and no reservation, now plus 30 minutes; with nothing owed,
      now plus one hour; with a renewal due sooner, that minus the skew);
      TestCronNextFire (lists, ranges, steps, both day fields, an unparsable
@@ -648,65 +592,74 @@ set and no question is marked open.
      get the same reason); TestAwayReasonListsPersonOnlyActs (the reason
      names every act in the list: the embargo `--approve` digest, the
      embargo triage verdict, the drain's hand-back, the remote-configuration
-     apply verb, a release sign-off and its meaning, a push or merge beyond
-     the session's own branches, an outward comment or message, and the
-     catch-all; and the route to `abcd mode queue` for those and to `abcd
-     decide` for the rest); TestAwayQuestionSetsNoMode (no mode set, no
-     marker written); TestPresentQuestionGateUnchanged. The brief's guard
-     chapter says what the gate does while away, and that nothing detects
-     the act mechanically.
+     apply verb, a release sign-off and its meaning, pushing, opening or
+     merging a pull request without a standing instruction, an outward
+     comment or message, and the catch-all; that the away mode is no
+     standing instruction; and the route to `abcd mode queue` for those and
+     to `abcd decide` for the rest); TestAwayQuestionSetsNoMode (no mode
+     set, no marker written); TestPresentQuestionGateUnchanged. The brief's
+     guard chapter says what the gate does while away, and that nothing
+     detects the act mechanically.
 7. The live session capture
    - packages: none (evidence only, kept in the local tier)
    - tests: a live Claude Code session with the plugin built from the branch
    - In a lab checkout, seed one behind pull request checked out before the
      mode is set, one stacked branch made with `git worktree add -b` in the
      session, and one unpushed branch, and record the transcript. It must
-     show: the agent's own `abcd mode autonomous` refused by the guard, and
-     `go run ./cmd/abcd mode autonomous` refused too, each attempt then
-     shown on the person's next prompt; the person's `!abcd mode autonomous
-     --until <an hour ahead>` running with no pre-tool hook call (a probe
-     hook the lab adds beside abcd's logs none for it), which settles whether the person can set it
-     from the session or must use a terminal; a message relayed from a
-     second session, starting with `!`, arriving as a prompt and not run as
-     a shell command, and whether that relay fires the prompt hook; the away
-     block on start and the person's line naming `abcd mode back`; a manual
-     `/compact` followed by the block again; an attempted stop blocked
-     naming the behind pull request; a reply with no tool call blocked
-     again rather than allowed; the stacked branch's item; a cron set for
-     the next morning refused as a wake and one inside the deadline
-     accepted, with abcd's computed fire time compared with the `next run`
-     the host's `CronList` row shows; nine blocks in a row with no tool
-     call, then the same with one tool call in between, to see where the
-     host's count resets; a question refused with the one reason; the
-     window left to lapse with a queued step, and the next prompt's line
-     naming `abcd mode back`; and `abcd mode back` printing the queue, the
-     recorded stops and the attempts. Repeat with the mode off to show the
-     stop allowed and flagged with no forge call. Capture before and after
-     the change on the same checkout, as the release lesson on host fixes
-     requires. If the relayed `!` runs as a shell command, or an agent's
-     tool call reaches shell mode, the plan falls back to a mode that grants
-     no push rights (dcn-2610181003456444) before it ships.
+     show: the mode set and the away block on start, with the person's line
+     naming who set it and `abcd mode back`; a manual `/compact` followed by
+     the block again; an attempted stop blocked naming the behind pull
+     request; a reply with no tool call blocked again rather than allowed;
+     the stacked branch's item; the unpushed branch's reason deferring to the
+     standing instruction, and, with none given, the push queued and the
+     item no longer named; a cron set for the next morning refused as a wake
+     and one inside the deadline accepted, with abcd's computed fire time
+     compared with the `next run` the host's `CronList` row shows; nine
+     blocks in a row with no tool call, then the same with one tool call in
+     between, to see where the host's count resets; a question refused with
+     the one reason; the window left to lapse with a queued step, and the
+     next prompt's line naming `abcd mode back`; and `abcd mode back`
+     printing the queue and the recorded stops. Repeat with the mode off to
+     show the stop allowed and flagged with no forge call. Capture before and
+     after the change on the same checkout, as the release lesson on host
+     fixes requires.
 
 ## Size
 
-Re-estimated in review round 2 at eight working days, up from five. The new
-step 2 (the guard entries, the `go run` spelling and the file-tool hook) is
-most of the growth; the rest is the ownership, link and review rules in step
-4, the deadline, jitter and cron cases in step 5, and the longer capture:
+Re-estimated after the trim at 5.75 working days, down from eight
+(dcn-2610181017056307):
 
-| step | days |
-|---|---|
-| 1. The away record, its store, its lock and its verbs | 1.0 |
-| 2. Only the person sets it: the guard entries and the branch recorder | 1.5 |
-| 3. Repeated to the agent, shown to the person | 0.75 |
-| 4. Owed work, and invariant 7's clause | 2.0 |
-| 5. The stop verdict, the Stop and StopFailure hooks | 1.5 |
-| 6. The question reroute | 0.5 |
-| 7. The live session capture | 0.75 |
-| total | 8.0 |
+| step | days | was |
+|---|---|---|
+| 1. The away record, its store, its lock and its verbs | 0.75 | 1.0 |
+| 2. Repeated to the agent, shown to the person | 0.5 | 0.75 |
+| 3. The created-branch recorder | 0.25 | (in the old step 2, 1.5) |
+| 4. Owed work, and invariant 7's clause | 1.75 | 2.0 |
+| 5. The stop verdict, the Stop and StopFailure hooks | 1.5 | 1.5 |
+| 6. The question reroute | 0.5 | 0.5 |
+| 7. The live session capture | 0.5 | 0.75 |
+| total | 5.75 | 8.0 |
 
-Round 1 estimated five days for six steps; the first plan wrote no size
-down.
+Step 1 loses the refused attempts and the fuller `mode back` print; step 2
+the attempt line; step 4 the listing's reuse cache and its stale-cache
+fallback, less the small queue hand-back it gains; step 7 the guard, `!`
+and relay checks. The old step 2's guard entries leave whole, and only its
+branch recorder stays, as step 3.
+
+**Why not four.** About four working days is not reachable by scoping
+alone. Steps 3 to 5 carry 3.5 days, and every rule in them answers a
+review finding the trim keeps: the created-branch, stale-ownership and
+`Refs:` rules (round-2 blockers 3 to 5), the merge state (blocker 2), and the
+deadline and cron cases (blocker 1). Cutting any of them reopens a blocker,
+and the stacked-branch rules are the issue's second instance. The floor is
+about 5.75 days of work. The elapsed time can be shorter: `Judge` is pure
+over the owed set, so steps 3 and 4 can run in one lane while steps 1, 2, 5
+and 6 run in another once step 1 fixes the record's shape, which puts the
+critical path at about four days with the capture after both. Whether to run
+two lanes is the release orchestrator's choice.
+
+Round 2 estimated eight days for seven steps, round 1 five days for six; the
+first plan wrote no size down.
 
 ## Review round 1
 
@@ -756,3 +709,70 @@ narrowed by the findings below. Each item and how it was handled:
 | minor | the intent still lists a superseded decision | fixed: dcn-2610180913431985 removed from the intent's list; its successor dcn-2610180937181929 stays |
 | minor | mint an ADR for the invariant 7 amendment | made: adr-2610181003541997, proposed |
 | size | not a finding; re-estimated for the fixes | eight working days, step by step above |
+
+## Trim after round 2
+
+On 2026-10-18 the release orchestrator ruled that the plan take the fallback
+and be trimmed to what closes iss-2610170619247185, aiming at about four
+working days, because the security and bug-fix cut waits on this slice. The
+reviewer added which items stay. Two decisions record it:
+dcn-2610181016510153 (the away mode grants no push rights; supersedes
+dcn-2610181003456444) and dcn-2610181017056307 (the trim and what moved).
+
+**What stays** is what serves the three things the issue needs: (i) a
+session with owed work cannot end its turn silently (the Stop hook, the
+ownership rules, the qualifying wake, the cap handling); (ii) questions
+reroute by the act (decided with `abcd decide`, or queued when only the
+person may approve); (iii) the away record (set, ended, lapsing,
+re-injected at start, compaction and prompt, with its lock).
+
+**What moved** to itd-2610170638184486, as named remaining work, and why:
+
+| moved | why |
+|---|---|
+| the guard entry refusing an agent's `abcd mode autonomous`, and its routes through `sh -c` and script files | the mode grants no rights now, so there is nothing for it to guard in this slice; and the OS fence (spc-2610161751056096) never covers the person's interactive sessions, so it could not become a boundary for the sessions that stalled |
+| the guard reading `go run ./cmd/abcd` and built `abcd-<goos>-<arch>` binaries as `abcd`, for every entry, the ledger flip included | a security-relevant widening of what every entry matches, which deserves its own review in the checklist work, not a ride on this cut |
+| the shell-write and file-tool refusals on the away store, and the PreToolUse matcher gaining the file tools | they only protected the person-only setting |
+| the refused attempts: recorded, shown on the next prompt, listed by `abcd mode back` | they only reported the person-only setting |
+| the capture's checks of the person's `!` command and of a relayed `!` | they tested the push-rights premise the fallback removes; the checklist work needs them when it makes the mode person-only |
+| the away forge listing's ten-minute reuse cache and its stale-cache fallback | tuning: each away check makes one listing under its ten-second deadline, and a failed read judges from disk, naming the pull requests as not read, so nothing is hidden; a run of eight blocks costs up to eight bounded listings |
+| `abcd mode back` printing more than one plain line per queued step and per recorded stop | the report on return is already the checklist draft's; the plain lines keep the queue read |
+
+**Added by the fallback** (dcn-2610181016510153): the reason for an item that
+needs a push tells the session to push if its standing instruction allows
+and otherwise to queue the push, never treating the away mode as
+permission; a queued step that names the item's branch or record id hands it
+back for the window, a branch only while it holds commits to push; and the
+person-only acts gain pushing, opening or merging a pull request without a
+standing instruction. Without the hand-back, a session with no standing
+instruction to push would be blocked on its unpushed branch until the host's
+cap.
+
+**Each round-2 item after the trim:**
+
+| # | round-2 finding | state after the trim |
+|---|---|---|
+| (a) | away mode as the person's ask to push is not safe | closed by the fallback the review named: the mode grants no push rights, so a relayed word cannot grant any; the guard entries that answered it the other way moved out with dcn-2610181003456444, which dcn-2610181016510153 supersedes. A mode set on a relayed word only keeps sessions working and deciding, and the person sees who set it on the next prompt |
+| (b) | the cap count can miss a forced stop | kept: the count resets only on `stop_hook_active` false, the stop at the cap is labelled "possibly forced by the cap", and the capture checks where the host resets (step 5, step 7) |
+| (c) | cron in local time; a capture check | kept: the capture compares abcd's fire time with the host's `CronList` next run (step 7) |
+| 1 | the wake deadline still allows the stall | kept whole: the ceiling, the host's lateness, the 24-hour-lease case and the daylight-saving, day-7, `a-b/n` and `*/n` cases (step 5) |
+| 2 | "behind" against a stale default branch | kept: the forge's merge state while away, disk only for a branch with no pull request (step 4); the listing loses only its reuse cache, and invariant 7's clause and adr-2610181003541997, amended while proposed, say one listing per check |
+| 3 | instance 2 missed: the stacked drain branches | kept, in any mode: the pre-tool hook records a created branch, now its own step 3, and it refuses nothing; the capture seeds one (step 7) |
+| 4 | `Refs:` as a carrier; iss-5 matching iss-50 | kept: linked by head branch or a closing trailer on word boundaries, a `Refs:` line carrying only for an already-own branch (step 4) |
+| 5 | stale ownership | kept: run lanes only while their reservation is live, reflog and recorded branches only with a commit of this checkout's in 14 days (step 4) |
+| 6 | the person-only list is incomplete | kept, and extended by the fallback: pushing, opening or merging a pull request without a standing instruction joins it, replacing "a push or merge beyond the session's own branches" (step 6) |
+| 7 | the queue goes unread when the window lapses | kept: the every-prompt line and the lapsed-window line, both naming `abcd mode back`; the lapsed line now counts queued steps and recorded stops, the refused attempts having moved (step 2) |
+| minor | the clearing rule needs abcd's receipt | kept: passing checks verify where no receipts are minted (step 4) |
+| minor | the clearing rule leaves out review | kept: an outstanding review keeps a stacked branch owed (step 4) |
+| minor | the intent lists a superseded decision | unchanged, still fixed; dcn-2610181003456444 is now superseded too and the intent says so |
+| minor | mint an ADR for invariant 7 | kept: adr-2610181003541997, proposed, amended to drop the cache from its decision |
+| size | re-estimate | 5.75 days, step by step under Size; about four is the elapsed time with two lanes, not the work |
+
+**Round-1 items the trim touches:** item 9 (the per-turn forge call) stays
+fixed, since present mode makes no call and the away call is bounded, though
+no longer cached; item 13 keeps the recorded ender, while showing it on
+return had already moved; items 6, 7 and 11 are kept whole.
+
+**No blocker is reopened.** Nothing the review made essential to (i) to
+(iii) was cut. The items kept against the trim's pressure, and why, are
+listed in dcn-2610181017056307: each is the fix of a finding above.
