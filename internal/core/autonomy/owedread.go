@@ -650,7 +650,7 @@ func (r *owedReader) branchItems() {
 		}
 		if b != nil && r.unpushed(b) {
 			r.add(OwedItem{Kind: OwedUnpushed, Capped: true, Branch: name, Head: head,
-				Reason: fmt.Sprintf("%s has commits not pushed", name)})
+				Reason: fmt.Sprintf("branch %s has commits not pushed", name)})
 		}
 	}
 }
@@ -873,7 +873,7 @@ func (r *owedReader) reservationItems() {
 		if !r.now.Before(half) {
 			r.add(OwedItem{Kind: OwedRenewal, Record: res.Record,
 				Reason: fmt.Sprintf("the reservation of %s is due for renewal (it lapses %s): renew it with `abcd reserve %s`",
-					res.Record, showTime(res.EffectiveExpiry), res.Record)})
+					res.Record, showTime(res.EffectiveExpiry), shellWord(res.Record))})
 		}
 		if !r.away || !r.list.read || strings.HasPrefix(res.Record, "rel-") {
 			continue

@@ -529,3 +529,63 @@ func TestSessionIDShape(t *testing.T) {
 		t.Errorf("state path %s, want %s", p, want)
 	}
 }
+
+// TestReasonSaysItOnce: an item's words appear once, in the agent's reason,
+// the person's line and the recorded stop alike, with the reader's reason as
+// it writes it.
+func TestReasonSaysItOnce(t *testing.T) {
+	now := at(t, "2026-10-18 21:00")
+	item := OwedItem{Kind: OwedUnpushed, Capped: true, Branch: "feat/x", Head: "cccc", Reason: "branch feat/x has commits not pushed"}
+	owed := owedOf(item)
+	if got, want := presentLine(owed), "abcd: stopped with work owed (1 item); next: branch feat/x has commits not pushed."; got != want {
+		t.Errorf("the person's line:\n got %q\nwant %q", got, want)
+	}
+	v := judgeAt(t, awayRec(now, false), owed, StopInput{}, SessionState{}, now)
+	if want := "abcd: the person is away and work is owed (1 item). Next: branch feat/x has commits not pushed. Do the local work"; !strings.HasPrefix(v.Reason, want) {
+		t.Errorf("the reason:\n got %q\nwant it to begin %q", v.Reason, want)
+	}
+	seen := SessionState{Fingerprint: owed.Fingerprint(), WakeFingerprint: owed.CappedFingerprint(), Blocks: DefaultBlockCap}
+	v = judgeAt(t, awayRec(now, false), owed, StopInput{StopHookActive: true}, seen, now)
+	if v.Stop == nil || v.Stop.Detail != "branch feat/x has commits not pushed" {
+		t.Errorf("the recorded stop: %+v", v.Stop)
+	}
+}
+
+// TestSuggestedQueueCommandQuotesBranch: a branch name holding `$(…)`, a
+// backquote or a single quote, all legal in a refname, reaches the suggested
+// `abcd mode queue` command as one single-quoted shell word.
+func TestSuggestedQueueCommandQuotesBranch(t *testing.T) {
+	now := at(t, "2026-10-18 21:00")
+	for branch, want := range map[string]string{
+		"feat/x":                   "`abcd mode queue 'push feat/x'`",
+		"feat/$(touch${IFS}pwned)": "`abcd mode queue 'push feat/$(touch${IFS}pwned)'`",
+		"feat/`id`":                "`abcd mode queue 'push feat/`id`'`",
+		"feat/it's":                `abcd mode queue 'push feat/it'\''s'`,
+	} {
+		item := OwedItem{Kind: OwedUnpushed, Capped: true, Branch: branch, Head: "cccc"}
+		v := judgeAt(t, awayRec(now, true), owedOf(item), StopInput{}, SessionState{}, now)
+		if !strings.Contains(v.Reason, want) {
+			t.Errorf("branch %q: the reason lacks %s:\n%s", branch, want, v.Reason)
+		}
+	}
+}
+
+// TestRowOnePastCapRecordsStop: a question blocked once more past the cap
+// records the stop: work owed when anything is, else no next look.
+func TestRowOnePastCapRecordsStop(t *testing.T) {
+	now := at(t, "2026-10-18 21:00")
+	rec := awayRec(now, false)
+	for _, c := range []struct {
+		owed Owed
+		kind StopKind
+	}{{owedOf(behindPR), StopWorkOwed}, {Owed{}, StopNoNextLook}} {
+		st := SessionState{Fingerprint: c.owed.Fingerprint(), WakeFingerprint: c.owed.CappedFingerprint(), Blocks: DefaultBlockCap}
+		v := judgeAt(t, rec, c.owed, StopInput{StopHookActive: true, LastAssistantMessage: "Shall I merge it?"}, st, now)
+		if v.Row != 1 || !v.Block {
+			t.Fatalf("row %d block %v, want row 1 blocked", v.Row, v.Block)
+		}
+		if v.Stop == nil || v.Stop.Kind != c.kind || !v.Stop.PossiblyForcedByCap || v.State.State != StateStopped {
+			t.Errorf("row 1 past the cap with %d owed: stop %+v state %q, want %s", len(c.owed.Items), v.Stop, v.State.State, c.kind)
+		}
+	}
+}

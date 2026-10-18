@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/intentdriven/abcd/internal/shellquote"
 	"github.com/intentdriven/abcd/internal/termsafe"
 )
 
@@ -158,7 +159,16 @@ func Judge(rec *Record, owed Owed, in StopInput, st SessionState, now time.Time)
 		limit = DefaultBlockCap
 	}
 	if next.Blocks > limit {
-		switch v.Row {
+		row := v.Row
+		if row == 1 {
+			// A question blocked past the cap is a stop like any other:
+			// with work owed, or with none and no look scheduled.
+			row = 7
+			if !owed.Empty() {
+				row = 2
+			}
+		}
+		switch row {
 		case 2, 4, 5:
 			item, _ := owed.Next()
 			v.Stop = &Stop{Kind: StopWorkOwed, Detail: describeItem(item), PossiblyForcedByCap: true}
@@ -239,17 +249,34 @@ func needsPush(k OwedKind) bool {
 // person's standing instruction and never names the away mode as leave.
 func pushWords(rec *Record, item OwedItem) string {
 	if rec != nil && rec.HoldPushes {
-		target := "the branch"
+		target := "<branch>"
 		if item.Branch != "" {
 			target = clean(item.Branch)
 		}
-		return fmt.Sprintf("With --hold-pushes the person has said pushes wait: finish the local work (the merge from the base, the preflight), then queue the push naming the branch, as `abcd mode queue \"push %s\"`.", target)
+		return fmt.Sprintf("With --hold-pushes the person has said pushes wait: finish the local work (the merge from the base, the preflight), then queue the push naming the branch, as `abcd mode queue %s`.", shellWord("push "+target))
 	}
 	return "Do the local work, then push if your standing instruction allows; queue only if the person has said pushes wait. A push you may not send stays owed: queue it with `abcd mode queue \"<step>\"` for the person and take another item meanwhile."
 }
 
-// describeItem names an owed item in plain words.
+// shellWord is s as one word of a command the reason suggests: as it is when
+// it holds only characters no shell reads specially, else single-quoted
+// (shellquote.Single), so a branch name or record id holding `$(…)`, a
+// backquote or a quote cannot run anything when the suggestion is pasted.
+func shellWord(s string) string {
+	if s != "" && strings.IndexFunc(s, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._/-", r))
+	}) < 0 {
+		return s
+	}
+	return shellquote.Single(s)
+}
+
+// describeItem names an owed item in plain words: the reader's reason when it
+// wrote one, which already names the item, else words built from its fields.
 func describeItem(i OwedItem) string {
+	if i.Reason != "" {
+		return termsafe.CleanProseLine(i.Reason, 256)
+	}
 	pr := ""
 	if i.PR > 0 {
 		pr = fmt.Sprintf("pull request #%d", i.PR)
@@ -273,9 +300,6 @@ func describeItem(i OwedItem) string {
 		s = "the reservation on " + clean(i.Record) + " has no open pull request carrying its work"
 	default:
 		s = clean(string(i.Kind)) + " " + clean(i.Branch+i.Record)
-	}
-	if i.Reason != "" {
-		s += " (" + termsafe.CleanProseLine(i.Reason, 256) + ")"
 	}
 	return s
 }
