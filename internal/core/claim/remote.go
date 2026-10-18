@@ -604,13 +604,16 @@ func judge(p *prepared, tree string) (judged, error) {
 		// no one edited it since, and a person's edit this copy has not
 		// fetched reads as unchanged until it is (dcn-2610161412283450,
 		// refined by dcn-2610161837009957). One with no blob read stands.
-		recs, err := defaultRecords(p.root)
+		// One name for the default branch, resolved after the act's fetch,
+		// which can create or move origin/HEAD (iss-2610180545134593).
+		ref := originDefault(p.root)
+		recs, err := defaultRecords(p.root, ref)
 		if err != nil && p.derivedGap == "" {
 			return judged{}, refuse("could not read whether %s is finished on the default branch: %s; %s",
 				p.id, redacted(err), noReservation)
 		}
 		switch {
-		case originDefault(p.root) == "":
+		case ref == "":
 			j.blobUnread = "this checkout names no default branch of " + Remote
 		case err != nil:
 			j.blobUnread = p.derivedGap + "; " + redacted(err)
