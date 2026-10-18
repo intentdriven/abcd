@@ -208,7 +208,7 @@ the mode the person's act alone, because the mode then carried push rights.
 The OS sandbox of spc-2610161751056096 fences only the agents abcd's runner
 launches, never the person's own interactive sessions, which are the ones
 that stalled. There, the guard entries would only ever be a mistake filter
-(adr-42), so their two days would buy a trust claim the plan cannot make.
+(adr-42, dcn-2610171112384712), so their two days would buy a trust claim the plan cannot make.
 With no push rights in the mode there is nothing for them to protect in this
 slice. Making the mode the person's act alone (the guard entry, its other
 routes, the store's shell-write and file-tool refusals, the refused
@@ -306,7 +306,7 @@ dcn-2610181003488355):
   its head is outstanding (the listing's review decision is
   `CHANGES_REQUESTED`, or for a run's lane its run state records no passing
   review of its head), since the coordination prep's decision that a
-  declared dependency constrains only the landing says its review runs now;
+  declared dependency constrains only the landing (dcn-2610180905291297) says its review runs now;
   or it is not verified. Verified means a preflight receipt naming its head
   in any worktree (`landing.Receipt`) where the repository mints receipts
   (a receipt folder exists in one of its worktrees); in a repository without
@@ -1416,7 +1416,7 @@ handled:
 | 2 | the escape bound reproduces the stall | fixed: an unchanged owed set is allowed only with a qualifying wake, else blocked again, the host's cap the outer bound with the stop recorded; `stop_hook_active` decides no row, so the missing row is covered (dcn-2610180936577720) |
 | 3 | a wake's timing is never checked | fixed: next fire time from abcd's own cron parser, before the earliest renewal due minus the skew; background tasks never count; distant, recurring and stale-shell rows tested (dcn-2610180936579498) |
 | 4 | the reroute approves acts only the person may approve | fixed: classified by the act with the listed person-only acts, the embargo `--approve` digest included; the chip no longer routes (dcn-2610180937177502) |
-| 5 | stopping while away contradicts the coordination decision | fixed: while away only working or waiting with a qualifying wake; the next look stored in the session's state (dcn-2610180936577720) |
+| 5 | stopping while away contradicts the coordination decision (dcn-2610180720541206) | fixed: while away only working or waiting with a qualifying wake; the next look stored in the session's state (dcn-2610180936577720) |
 | 6 | concurrent writes lose updates | fixed: `fsutil.WithFileLock` with a re-read inside it; ownership and permission checks; an unreadable record fails open (dcn-2610180937181736) |
 | 7 | a stale record traps the person | fixed in part: capped at seven days rather than 24 hours, since the record's standing run of 2026-10-15 to 2026-10-17 would not fit 24 hours and requiring `--until` contradicts the open-ended ruling; the person sees a line on every prompt rather than past a threshold; the agent runs `abcd mode back` only on the person's word (dcn-2610180937181736) |
 | 8 | the return list reads one working copy's decisions | moved: the return list leaves the slice with the split, and the fix (`abcd decide` appending each id to the away record under its lock) moves with it (dcn-2610180937181929) |
@@ -1437,7 +1437,7 @@ narrowed by the findings below. Each item and how it was handled:
 
 | # | finding | handled |
 |---|---|---|
-| (a) | away mode as the person's ask to push is not safe: the prompt hook cannot tell a relayed message from the person's, so an agent could grant itself and every copy seven days of push rights | fixed: guard entries refuse every route to setting the mode the guard reads (the binary by any of its names, a `go run` of `cmd/abcd`, `sh -c`, a script file, a shell write into the away store, the file tools), so the person sets it with `!` or at a terminal; refused attempts are recorded and shown; the grant is narrow and its exclusions stated (never the default branch, a tag, a release cut, another person's pull request, a review-only branch, a force push); the guard is called a mistake filter, the OS fence the boundary for launched agents only; the capture checks the `!` path and a relayed `!`, with the no-push fallback named if they break the premise (dcn-2610181003456444) |
+| (a) | away mode as the person's ask to push is not safe: the prompt hook cannot tell a relayed message from the person's, so an agent could grant itself and every copy seven days of push rights | fixed: guard entries refuse every route to setting the mode the guard reads (the binary by any of its names, a `go run` of `cmd/abcd`, `sh -c`, a script file, a shell write into the away store, the file tools), so the person sets it with `!` or at a terminal; refused attempts are recorded and shown; the grant is narrow and its exclusions stated (never the default branch, a tag, a release cut, another person's pull request, a review-only branch, a force push); the guard is called a mistake filter, the OS fence the boundary for launched agents only (dcn-2610171112384712); the capture checks the `!` path and a relayed `!`, with the no-push fallback named if they break the premise (dcn-2610181003456444) |
 | (b) | the cap count can miss a forced stop when the owed set changes | fixed: the count resets only on `stop_hook_active` false, a stop at the cap is labelled "possibly forced by the cap", and the capture checks where the host resets (dcn-2610181003484631) |
 | (c) | cron in local time is correct; add a capture check | fixed: the capture compares abcd's computed fire time with the host's listed next run (dcn-2610181003455731) |
 | 1 | the wake deadline still allows the stall, through long leases and the host's lateness | fixed: the deadline is the earlier of the renewal due minus the skew and now plus 30 minutes while owed (one hour when not); a recurring cron's fire time adds half its gap, at most 30 minutes; TestQualifyingWakeDistantCron is pinned to a 24-hour lease; daylight saving, day-of-week 7, `a-b/n` and `*/n` in a day field are tested (dcn-2610181003455731) |

@@ -30,12 +30,12 @@ The session ended its turn on a question nobody was there to answer, and a
 Claude Code session runs only when something sends it input, so nothing ran
 until a peer's message six hours later. The same night a coordinating session
 held three finished steps behind a merge order when only their landing order
-was fixed.
+was fixed (dcn-2610180905291297).
 
 This is the smallest slice of the checklist draft (itd-2610170638184486) that
 removes the stall's core cause, carved out so the security and bug-fix release
 waits on it alone (dcn-2610180913379049, dcn-2610180913388445). It needs
-nothing on the shared remote, so it does not wait on the coordination intent.
+nothing on the shared remote, so it does not wait on the coordination intent (itd-2610170634394993).
 
 ## Mechanism
 
@@ -67,6 +67,9 @@ its turn on a question to the person.
   cannot start a session that is not running. A turn the host ends on an API
   error, such as a rate limit, fires no Stop hook and cannot be continued: it
   is recorded, and only a wake the session had already scheduled resumes it.
+- Known residual: a sibling working copy's branch that no worktree holds any <!-- cond: cond-2610181530194405 -->
+  more still reads as this session's own when both copies commit with the same
+  email, because nothing on disk tells them apart.
 
 ## What's In Scope
 
@@ -142,7 +145,7 @@ its turn on a question to the person.
   promises, abcd's own timed wakes, the pre-run blocker sweep, the shared and
   published options and the phone.
 - Idle time a coordinator sees across sessions, which comes with the
-  coordination intent's central view in `abcd status`.
+  coordination intent's (itd-2610170634394993) central view in `abcd status`.
 - Moved back to itd-2610170638184486 by review round 1
   (dcn-2610180937181929): the report shown once on the person's return (the
   queue, the window's decisions gathered across working copies, the recorded
@@ -160,7 +163,7 @@ its turn on a question to the person.
 - Any push right granted by the away mode: it grants none.
 - Starting or waking a session that is not running.
 - Each autonomous session's own forge credential, owned by the coordination
-  intent.
+  intent (itd-2610170634394993).
 
 ## Acceptance Criteria
 
@@ -181,7 +184,7 @@ its turn on a question to the person.
   that is still open and is behind the default branch, **when** the session
   tries to end its turn, **then** the stop is blocked and the reason asks for
   the merge from the default branch, the fixes, the review and the preflight
-  now, and says only the landing waits for the base; **and when** the branch
+  now, and says only the landing waits for the base (dcn-2610180905291297); **and when** the branch
   is up to date, green and has a preflight receipt, **then** it is waiting on
   its base and is not owed.
 - **Given** the away mode holds and the session holds a live reservation whose
@@ -284,7 +287,7 @@ Surveyed 2026-10-18 against the host's current hook reference
   draft's format decision already chose for the checklist.
 - **A supervisor process that restarts or prompts idle sessions:** a common
   pattern, not adopted: it needs a process that stays alive, which the
-  coordination intent's on-demand pass rules out, and it cannot tell owed work
+  coordination intent's (itd-2610170634394993) on-demand pass rules out, and it cannot tell owed work
   from a finished session without the same reading this slice adds.
 - **The host's agent-team idle hook (TeammateIdle):** young, bound to one agent
   team in one session, so it cannot reach sessions in separate working copies.
@@ -329,7 +332,8 @@ Review round 1 of 2026-10-18 refined them:
     (dcn-2610180936568358).
 12. **Stacked branches cleared; the forge read only while away**
     (dcn-2610180936571036).
-13. **Away means working or waiting** (dcn-2610180936577720).
+13. **Away means working or waiting** (dcn-2610180936577720, following
+    dcn-2610180720541206).
 14. **A wake qualifies by its next fire time** (dcn-2610180936579498).
 15. **API-error stops recorded; prose questions blocked once**
     (dcn-2610180937175629).
@@ -342,7 +346,8 @@ Review round 1 of 2026-10-18 refined them:
 Review round 2 of 2026-10-18 refined them again:
 
 19. **Only the person sets the away mode; narrow push rights; a mistake
-    filter** (dcn-2610181003456444), refining decision 3; superseded by
+    filter** (dcn-2610181003456444, on the ground of dcn-2610171112384712),
+    refining decision 3; superseded by
     decision 28.
 20. **A wake qualifies within a ceiling, the host's lateness included**
     (dcn-2610181003455731).
