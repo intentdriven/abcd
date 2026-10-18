@@ -1,10 +1,5 @@
 package autonomy
 
-// PLACEHOLDER for the merge: the build lane of step 6 (branch
-// feat/away-reroute) defines PersonOnlyActs and QuestionRoute in question.go,
-// with exactly this text. This file stands in for it so steps 2 and 5 call the
-// real names; delete it when that branch merges, and nothing else changes.
-
 import "strings"
 
 // The question reroute (spc-2610180914469489, "The question reroute";

@@ -125,6 +125,21 @@ warns loudly. So is a payload the hook cannot decode at all: where it names the
 question tool the warning says the question runs, and where no tool name can be
 read the warning names no tool.
 
+While the away mode holds (`/abcd:mode autonomous`), the hook refuses every
+question on the host's question tool before any of the checks above, abcd's or
+another tool's, whatever its chip, with one reason, and sets no mode and marks
+nothing open. The reason routes the question by the act it asks about: an act
+only the person may approve (an embargo `--approve` digest or triage verdict,
+the drain's hand-back, the remote-configuration apply verb, a release sign-off,
+pushing, opening or merging a pull request without a standing instruction,
+publishing or posting outward, a new dependency, a secret, a credential or an
+App, a website step, a destructive act, spending, or any other act a command
+page or a brief invariant names as the person's) is queued with
+`/abcd:mode queue "<step>"`, and every other question is decided and recorded
+with `/abcd:decide`. Nothing detects the act: the agent classifies its own
+question from the reason's list. An away record that cannot be read safely
+reads as not away, and the hook says so with the warning status.
+
 Anything the adapter cannot turn into a decision — an unreadable payload, a tool
 call that is neither a shell command nor a question, a registry that does not
 load — allows the command and warns loudly. A guard that cannot answer never

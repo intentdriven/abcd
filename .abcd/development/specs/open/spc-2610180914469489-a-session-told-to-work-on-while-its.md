@@ -574,6 +574,41 @@ lane's choice, recorded for review; none changes a test the step names.
   `08-abcd.md` keeps the badge and points at the new chapter. The three
   sub-verbs' sentences and the queue's worked example go in
   `internal/core/surface`, as every visible verb's do.
+- 2026-10-18 (step 6 lane's choice, for review): **The away check comes
+  before decoding.** "Every question-tool call" is read literally: a
+  questions field the check cannot read is refused with the same reason
+  while away, rather than running on the loud fail-open status, since a
+  question nobody is there to answer stalls the session whatever its shape.
+  A payload whose outer JSON does not decode still fails open, because the
+  hook then has no working directory to find the record by.
+- 2026-10-18 (step 6 lane's choice, for review): **The reason names none of
+  the asking rules.** Its head line says the person is away and that no
+  question is put to them whatever its chip and whoever wrote it, then
+  `autonomy.QuestionRoute`: the queue route with the person-only acts, the
+  decide route, and that nothing detects the act. A reason that also listed
+  the question's field findings would invite a redraft instead of a
+  reroute.
+- 2026-10-18 (step 6 lane's choice, for review): **The text lives in
+  `internal/core/autonomy`.** `PersonOnlyActs` and `QuestionRoute` are
+  additive exports beside the record, so step 2's away block and step 5's
+  row 1 ("block with the reroute's reason") can repeat the same list rather
+  than a copy that drifts.
+- 2026-10-18 (step 6 lane's choice, for review): **An unreadable away record
+  is loud at the question gate.** A record or lock the store refuses reads as
+  not away, the question is checked as if the person were present, and one
+  line names the record: folded into the reason when the gate denies, and
+  with exit 1 (the guard's fail-open-loud status) when it would otherwise
+  admit silently. Where the gate already answered on stdout with the rows
+  note, it keeps exit 0, since exit 1 would drop the note. Outside a
+  checkout, with no root commit or no home, nobody is away and nothing is
+  said.
+- 2026-10-18 (step 6 lane's choice, for review): **The badge's chip-set path
+  needs no code of its own.** The away check returns the deny before the
+  chip is read, so no mode is set and no question marked open while away;
+  TestAwayQuestionSetsNoMode holds it. Beyond the step's named packages,
+  `commands/guard.md`, `commands/mode.md` and the guard hook's help text
+  gain a sentence each, since each describes the gate and would otherwise
+  misstate it while away.
 
 Choices made while building steps 2 and 5 on 2026-10-18, by build lane 1,
 each recorded for review; none changes a test the steps name.
@@ -848,6 +883,7 @@ each recorded for review; none changes a test the steps name.
      set, no marker written); TestPresentQuestionGateUnchanged. The brief's
      guard chapter says what the gate does while away, and that nothing
      detects the act mechanically.
+   - landed: 2d27610df
 7. The live session capture
    - packages: none (evidence only, kept in the local tier)
    - tests: a live Claude Code session with the plugin built from the branch
