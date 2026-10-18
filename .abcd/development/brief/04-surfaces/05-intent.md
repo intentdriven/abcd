@@ -486,7 +486,7 @@ The later-phase PRD-freeze front end for planning runs this ordered sequence (th
 9. Writes `## Links` block to the new spec (atomic; idempotent).
 10. Writes `spec: spc-N` back to PRD frontmatter.
 
-Both the press-release intent and the frozen PRD are immutable input artefacts post-promotion. The press release is the elevator pitch; the PRD is the AI-consumption contract.
+In that design, the press-release intent and the frozen PRD are both immutable input artefacts after promotion. The press release is the elevator pitch; the PRD is the AI-consumption contract. What ships freezes neither: no PRD is written, and a planned intent's record still changes, through its planning interview and the intent sub-verbs that write its hold, target release, dependency edges, spec link, kind and impact judgement ([intent](../glossary/core/intent.md)).
 
 ## 6. Acceptance gates and bidirectional link verification
 
