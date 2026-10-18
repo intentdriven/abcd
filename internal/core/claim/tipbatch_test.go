@@ -114,7 +114,7 @@ func TestABatchedViewReadsEveryTipAsItsOwnReadWould(t *testing.T) {
 	}
 	// The batch, not a fallback, read the commits within the bound; the
 	// oversized commit and the blob it left to be read on their own.
-	bodies := batchedTipBodies(p.dir, refs)
+	bodies := batchedTipBodies(p.dir, refs, batchBudget)
 	for i, inBatch := range []bool{true, false, true, false, true} {
 		if _, ok := bodies[refs[i]]; ok != inBatch {
 			t.Errorf("%s read in the batch = %v; want %v", refs[i], ok, inBatch)
@@ -205,7 +205,7 @@ func TestABatchedReadAgreesWithItsOwnReadAtEveryBound(t *testing.T) {
 			t.Errorf("%s batched = %+v\n read on its own = %+v", id, got[i], want)
 		}
 	}
-	bodies := batchedTipBodies(p.dir, refs)
+	bodies := batchedTipBodies(p.dir, refs, batchBudget)
 	for _, id := range []string{"iss-1", "iss-10", "iss-11", "iss-12", "iss-13", "iss-15", "iss-20", "iss-30"} {
 		if _, ok := bodies[TrackingPrefix+id]; !ok {
 			t.Errorf("%s was not read in the batch; the comparison above did not exercise it", id)
@@ -247,5 +247,46 @@ func TestAViewReadsItsTipsInAFixedNumberOfProcesses(t *testing.T) {
 	}
 	if n := len(slices.DeleteFunc(slices.Clone(subs), func(s string) bool { return s != "for-each-ref" })); n > 2 {
 		t.Errorf("the view ran %d for-each-ref processes; want at most 2, the listing and the tips' names: %q", n, subs)
+	}
+}
+
+// TestATipPastTheBatchBudgetIsReadOnItsOwn: the budget bounds the bodies one
+// batch reads, and a tip past it is read on its own and reads the same. With
+// room for two of five tips, the first two are read in the batch and the
+// rest on their own, all five as each reads alone.
+func TestATipPastTheBatchBudgetIsReadOnItsOwn(t *testing.T) {
+	w := newWorld(t)
+	p := w.clone("1234+octo@users.noreply.github.com", "")
+	if _, err := p.reserve("iss-1", "a"); err != nil {
+		t.Fatal(err)
+	}
+	var refs []string
+	for i := 1; i <= 5; i++ {
+		id := "iss-" + strconv.Itoa(40+i)
+		p.localTip(id, "abcd reservation: "+id+"\n\nAbcd-Reservation: "+id+"\n"+strings.Repeat("z", 200)+"\n")
+		refs = append(refs, TrackingPrefix+id)
+	}
+	size, _ := strconv.Atoi(strings.TrimSpace(p.git("cat-file", "-s", refs[0])))
+	// The batch's own allowance (64) and two tips' (each its size, its name
+	// and 32): room for two, not three.
+	budget := 64 + 2*(size+40+32) + size/2
+	bodies := batchedTipBodies(p.dir, refs, budget)
+	for i, ref := range refs {
+		if _, ok := bodies[ref]; ok != (i < 2) {
+			t.Errorf("%s read in the batch = %v; want %v with room for two", ref, ok, i < 2)
+		}
+	}
+	tree, err := emptyTree(p.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	at := t0.Add(time.Minute)
+	got := readSeenTipsWithin(p.dir, refs, tree, at, false, budget)
+	for i, ref := range refs {
+		id := strings.TrimPrefix(ref, TrackingPrefix)
+		tp, ok, err := readSeen(p.dir, id, ref, tree, at, false)
+		if want := (tipRead{t: tp, ok: ok, err: err}); !reflect.DeepEqual(got[i], want) {
+			t.Errorf("%s within the budget = %+v\n read on its own = %+v", id, got[i], want)
+		}
 	}
 }

@@ -43,7 +43,13 @@ type batchWant struct {
 // ref, tree, fetchedAt, keep) reads it: the same tip, the same ok and the
 // same error.
 func readSeenTips(root string, refs []string, tree string, fetchedAt time.Time, keep bool) []tipRead {
-	bodies := batchedTipBodies(root, refs)
+	return readSeenTipsWithin(root, refs, tree, fetchedAt, keep, batchBudget)
+}
+
+// readSeenTipsWithin is readSeenTips with the batch's budget named: a test
+// holds a small one to prove what falls past it is read on its own.
+func readSeenTipsWithin(root string, refs []string, tree string, fetchedAt time.Time, keep bool, budget int) []tipRead {
+	bodies := batchedTipBodies(root, refs, budget)
 	out := make([]tipRead, len(refs))
 	for i, ref := range refs {
 		id := strings.TrimPrefix(ref, TrackingPrefix)
@@ -63,8 +69,8 @@ func readSeenTips(root string, refs []string, tree string, fetchedAt time.Time, 
 	return out
 }
 
-// batchBudget bounds what one batch reads of commit bodies: about a hundred
-// and twenty tips at the object bound. A tip past it is read on its own, as
+// batchBudget bounds what one batch reads of commit bodies: about 126 tips at
+// the object bound. A tip past it is read on its own, as
 // before, so the memory a view holds stays flat however many reservation
 // refs a writer pushes.
 const batchBudget = 1 << 20
@@ -80,9 +86,10 @@ type tipBody struct {
 // types, the commits' types and sizes from their headers (`cat-file
 // --batch-check`), then their bodies (`cat-file --batch`), each read as
 // stored and capped. A ref it reads no body for is left out, for the caller
-// to read on its own; a command that fails leaves out every ref it would have
-// read, never refuses the read.
-func batchedTipBodies(root string, refs []string) map[string]tipBody {
+// to read on its own, as is one past budget, which bounds the bodies the
+// batch reads; a command that fails leaves out every ref it would have read,
+// never refuses the read.
+func batchedTipBodies(root string, refs []string, budget int) map[string]tipBody {
 	if len(refs) == 0 {
 		return nil
 	}
@@ -130,7 +137,7 @@ func batchedTipBodies(root string, refs []string) map[string]tipBody {
 		if err != nil || n < 0 || n > maxObjectBytes {
 			continue // read on its own, which says why it is unreadable
 		}
-		if total+n+len(f[0])+32 > batchBudget {
+		if total+n+len(f[0])+32 > budget {
 			continue // past the budget: read on its own
 		}
 		wants = append(wants, batchWant{name: f[0], size: n})
