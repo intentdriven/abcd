@@ -434,7 +434,9 @@ func TestThePromptNeverWaitsOnTheNetwork(t *testing.T) {
 	pat.status(nil)
 	// An origin that would hang any fetch, push or listing sent to it.
 	pat.git("config", "protocol.ext.allow", "always")
-	pat.git("remote", "set-url", "origin", "ext::sh -c sleep\\ 30")
+	// "% " is git-remote-ext's literal space; a backslash would hand sleep
+	// no argument, and the origin would fail at once instead of hanging.
+	pat.git("remote", "set-url", "origin", "ext::sh -c sleep% 30")
 	log := traced(t)
 	start := time.Now()
 	got := pat.notes()
