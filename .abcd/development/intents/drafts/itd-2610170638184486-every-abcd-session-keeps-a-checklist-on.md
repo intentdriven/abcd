@@ -81,7 +81,71 @@ unowned pull request.
 
 ## Acceptance Criteria
 
-> _Required (the itd-1 discipline): add at least one Given-When-Then bullet describing the verifiable bar for "shipped" before this draft can be planned._
+_Draft for the product thinker to walk in the planning interview: derived by
+the agent on 2026-10-18 from the press release and the decisions below, none
+of it yet confirmed. The away mode, the stop check and the question reroute
+are criteria of itd-2610180912189125, the slice that builds on this draft,
+and are not repeated here. The last three move with the phone and the shared
+options if the split proposed for Thursday is confirmed._
+
+- **Given** Alice, the product thinker, has said the sessions work on until
+  09:00, **when** a session writes its checklist, **then** the file in its
+  working copy's local tier holds the design decisions signed off, whether
+  the technical facilitator is set to auto, the kinds of choice still raised
+  with a person, each item waiting and on whom, its trigger promises, and the
+  work it owns, read from its reservations, its pull requests and its
+  branches.
+- **Given** a session with a checklist, **when** it starts or its context is
+  compacted, **then** the last complete checklist is added to its context by
+  the session-start hook, the compact source included.
+- **Given** a session killed while writing its checklist, or a reboot,
+  **when** the next session starts in that working copy, **then** it reads and
+  is given the last complete checklist, never a truncated or empty one, and an
+  unreadable file falls back to the last good copy and says so.
+- **Given** a checklist promise "when pull request 42 merges, add the
+  wrapper", **when** the session next looks (at a start, a wake or a stop
+  check) after 42 has merged, **then** the promise is named as its next item,
+  with no watcher process kept running.
+- **Given** a session whose items all wait on something outside, **when** it
+  records the wait, **then** its checklist names what each item waits for and
+  when it looks again, sooner than half its reservations' lease, and its state
+  reads waiting, never stopped.
+- **Given** Alice is about to leave, **when** the orchestrating session runs
+  the blocker sweep, **then** every session writes into its checklist any
+  undecided design decision, step only a person's hands can do, work it
+  depends on from another session, and credential missing or expiring, the
+  orchestrator puts them to Alice together, and it says the run is likely to
+  stay autonomous only once every session reports none open.
+- **Given** the sweep finds a credential that expires before the window ends,
+  **when** the session records it, **then** the checklist holds its kind, its
+  scope and its expiry, and never its value or anything that retrieves it.
+- **Given** Alice comes back, **when** they read what the sessions left them,
+  **then** they see two short lists across every session: the steps only
+  their own hands can do, and the decisions taken while they were away, each
+  with its grounds and how to reverse it.
+- **Given** Nia, the technical facilitator, is set to auto, **when** a session
+  meets a technical trade-off, **then** it decides and records it; **and
+  given** Nia is set to a person and is present, **when** the trade-off is one
+  of security, performance or compatibility, **then** it is raised with them,
+  and any other is decided and recorded.
+- **Given** a feature whose design trade-offs are listed in its checklist,
+  **when** a session asks whether the human design work for it is done,
+  **then** the answer is yes only when every genuine trade-off has a recorded
+  answer from the product thinker.
+- **Given** a session's state shown to a person, **when** what the session
+  wrote about itself disagrees with what the machine can see (its claim
+  renewal, its process, its last commit), **then** the state shown follows
+  the machine, with the session's own words beside it as a hint.
+- **Given** the private shared option is on, **when** a session writes its
+  checklist, **then** the checklist is shared in full by default, and a person
+  can narrow what is shared.
+- **Given** the public option is on, **when** it publishes a checklist,
+  **then** nothing carrying the id of an advisory not yet published leaves the
+  machine, by the same check announcements apply.
+- **Given** the phone app on the private shared option, **when** a session's
+  work would otherwise stop on a question, **then** the person whose role it
+  belongs to (product questions to Alice, technical trade-offs to Nia) is
+  notified, and can only choose among the options offered or add a note.
 
 ## Scope Split
 
@@ -103,6 +167,12 @@ session's interview on 2026-10-17:
   one line, what it waits on, when it was last seen), published only when it
   changes and only after the session has written its checklist; and each
   autonomous session's own credential.
+- **The first slice (itd-2610180912189125, which builds on this draft):** the
+  away mode held by abcd and repeated at start, compaction and prompt, the
+  stop check, and the question reroute, carved out on 2026-10-18 as the fix
+  for iss-2610170619247185 so the security and bug-fix release waits on it
+  alone (dcn-2610180913379049, dcn-2610180913388445). This draft keeps the
+  rest and reuses the slice's away record and hook path.
 
 ## Decisions
 
