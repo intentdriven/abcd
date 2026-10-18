@@ -88,17 +88,20 @@ func GeneratedFiles(root string) (Generated, string) {
 }
 
 // plainDeclaration is why the root declaration is not plain, "" when it is:
-// abcd shares a generated file only on a declaration that is ASCII
-// throughout, quotes no pattern, has no line starting with [attr] and
-// converts no file on checkout (ident, working-tree-encoding).
+// abcd shares a generated file only on a declaration whose every line git
+// reads is ASCII, quotes no pattern, does not start with [attr] and
+// converts no file on checkout (ident, working-tree-encoding). A blank or
+// comment line, one whose first non-blank byte is '#', is one git skips
+// whole, so what it holds decides nothing; a byte-order mark before the
+// '#' leaves the line read, and outside ASCII.
 func plainDeclaration(text string) string {
-	if !isASCII(text) {
-		return "holds a byte outside ASCII"
-	}
 	for line := range strings.SplitSeq(text, "\n") {
 		f := attrFields(line)
 		if len(f) == 0 || strings.HasPrefix(f[0], "#") {
 			continue
+		}
+		if !isASCII(line) {
+			return "holds a byte outside ASCII"
 		}
 		switch {
 		case strings.HasPrefix(f[0], `"`):

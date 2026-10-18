@@ -130,9 +130,11 @@ there but cannot be read (it is not a regular file, is over 256 KiB, holds a
 NUL byte, or takes too long to match against the files),
 nothing is shared, the refusal adds "generated files were not recognised: …",
 and a reservation that is made says the same (`generated_unread`). abcd
-shares a generated file only when the root declaration is plain ASCII with no
-quoting, macros or checkout conversion (`ident`, `working-tree-encoding`), and
-otherwise warns and shares none.
+shares a generated file only when every line of the root declaration that git
+reads (each but a blank or comment line) is ASCII, with no quoting, macros or
+checkout conversion (`ident`, `working-tree-encoding`), and otherwise warns
+and shares none. A byte-order mark counts as outside ASCII, even before a
+comment.
 Running the command again to renew is checked the same way, since it names
 its footprint anew, so a reservation is never widened onto another; a build's
 or a drain's own renewal keeps its footprint and is not checked while the
