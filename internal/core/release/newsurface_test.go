@@ -34,7 +34,7 @@ func TestAFixedLineAboutASurfaceNewSinceTheAnchorIsRefused(t *testing.T) {
 	if r.Code != ReasonFixedNewSurface || r.At != "entries[1].section" {
 		t.Errorf("reason = %+v; want %s at entries[1].section", r, ReasonFixedNewSurface)
 	}
-	for _, want := range []string{"entry 2", "iss-2610170635209097", "v0.15.0", "Added", "what it does"} {
+	for _, want := range []string{"entry 2", "iss-2610170635209097", "v0.15.0", "Added", "what it does", "found_at"} {
 		if !strings.Contains(r.Detail, want) {
 			t.Errorf("the refusal does not say %q, so a cut is left guessing: %s", want, r.Detail)
 		}

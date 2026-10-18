@@ -128,13 +128,17 @@ arithmetic. It maps to a section like this:
 A fix to a surface the last release did not have is no fix its reader could
 see. A record with `found_at_new`, or one about a command in
 `guard.new_commands`, may carry `impact: fix` and a body saying "no longer",
-but the behaviour it fixed never shipped. Fold it into that surface's `Added`
-line, or put it under `Added` worded as what the surface does, never as a
-`Fixed` line saying the wrong behaviour stopped. For a `found_at_new` record
-the binary refuses a `Fixed` line (`fixed-new-surface`); for a command in
-`guard.new_commands` it cannot tie the record to the command, so the judgement
-is yours, from the record's body. The section moves only where the line
-prints: the version comes from `impact`, which you never change.
+but the behaviour it fixed never reached a release. Fold it into that
+surface's `Added` line, or put it under `Added` worded as what the surface
+does, never as a `Fixed` line saying the wrong behaviour stopped. For a
+`found_at_new` record the binary refuses a `Fixed` line (`fixed-new-surface`).
+That flag says the record's path is new, not that its behaviour is: where the
+behaviour did ship and only its code moved to a new file, the record is wrong
+rather than the line, and the refusal tells the operator to correct its
+`found_at`; never reword a real fix as new to get past it. For a command in
+`guard.new_commands` the binary cannot tie a record to the command, so that
+judgement is yours, from the record's body. The section moves only where the
+line prints: the version comes from `impact`, which you never change.
 
 A record body may say "no longer", "was", "used to" or "the old spelling is
 gone". Those words are the record's own baseline — the state of the branch when

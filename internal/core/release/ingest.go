@@ -701,7 +701,10 @@ func validateEntries(entries []ChangelogEntry, rs *reasons) ([]ChangelogEntry, m
 // checkFixedNewSurface refuses a Fixed line that cites a record about a surface
 // the anchor tag did not hold (Entry.FoundAtNew): a fix to it is no fix a
 // reader of the last release could see, so the line says what the surface
-// does instead, under Added (iss-2610172148157726). The section decides only
+// does instead, under Added (iss-2610172148157726). The flag says the PATH is
+// new, which a rename since the anchor does not set but a file split from an
+// older one does, so the refusal also names the record's own way out: a
+// found_at naming the path the release had. The section decides only
 // where the line prints, never the version, which the records' impact
 // decides, so moving the line changes nothing else. A record the binary cannot
 // place, a found_at in words or one the anchor held, is left to the composer's
@@ -734,9 +737,10 @@ func checkFixedNewSurface(cut Cut, entries []ChangelogEntry, rs *reasons) {
 			continue
 		}
 		rs.add(ReasonFixedNewSurface, fmt.Sprintf("entries[%d].section", i),
-			"entry %d is a Fixed line citing %s, about a surface %s did not have, so no reader of that release "+
-				"could see the behaviour it says was fixed; fold it into that surface's Added line, or put it under "+
-				"Added worded as what it does",
+			"entry %d is a Fixed line citing %s, whose found_at is a path %s did not have, so no reader of that "+
+				"release could see the behaviour it says was fixed; fold it into that surface's Added line, or put it "+
+				"under Added worded as what it does. If the behaviour did ship and only its code moved to a new file, "+
+				"correct the record's found_at to the path the release had",
 			i+1, strings.Join(hit, ", "), base)
 	}
 }

@@ -24,8 +24,10 @@ surface snapshot lacked. A fix to such a surface is folded into that surface's
 behaviour no reader of the last release saw has stopped; v0.15.1 shipped such
 lines for the cloud scripts and the status fetch. The binary refuses a `Fixed`
 line citing a `found_at_new` record (`fixed-new-surface`); the command list is
-the composer's to judge, since no record names its command. Unmeasured, in the
-`0.x` band.
+the composer's to judge, since no record names its command. A path moved since
+the last release is not new, and where only a fix's code moved to a new file
+the refusal tells the operator to correct the record's `found_at`, never the
+composer to reword a real fix. Unmeasured, in the `0.x` band.
 
 ## 2026-10-16 (iss-2610161734179773 — a refused draft is redrafted without telling the person)
 
